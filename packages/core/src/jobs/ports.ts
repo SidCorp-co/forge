@@ -5,6 +5,7 @@
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
 import type { PreambleBlock } from '@forge/contracts/jobs';
 import type { DispatchState, PolicyStateSource } from '@forge/contracts/project-config';
+import type { RunContextSource } from '@forge/contracts/run-context';
 import type { Db } from '../db/client.js';
 import type {
   JobType,
@@ -94,6 +95,11 @@ interface JobContextPort {
     loaded: readonly unknown[],
     source: string,
   ): Promise<void>;
+  /** Records the rules and lessons a job's prompt carried against its session (ISS-1065); never throws. */
+  recordCarried(
+    run: { projectId: string; sessionId: string; issueIds: readonly string[] },
+    carried: readonly RunContextSource[],
+  ): void;
 }
 
 /** One MCP server a granted integration binding produced. */
@@ -107,7 +113,12 @@ interface JobsPorts {
   buildPipelinePreamble(
     projectId: string,
     opts: { step: JobType; policy: DispatchState },
-  ): Promise<{ content: string; blocks: PreambleBlock[]; contentLanguage?: ContentLanguageRecord }>;
+  ): Promise<{
+    content: string;
+    blocks: PreambleBlock[];
+    contentLanguage?: ContentLanguageRecord;
+    carried: RunContextSource[];
+  }>;
   skillActivity: SkillActivityPort;
   dispatchPolicy: DispatchPolicyPort;
   jobContext: JobContextPort;

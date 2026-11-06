@@ -189,6 +189,7 @@ import { reportQueryRoutes } from './report-queries/routes.js';
 import { reportRoutes } from './reports/routes.js';
 import { issueRequirementRoutes, requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
+import { runContextRoutes } from './run-context/routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
@@ -487,6 +488,7 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/agent-reports', agentReportsRetiredRoutes);
   app.route('/api/shares', shareOpenRoutes);
   app.route('/api/projects', knowledgeRoutes);
+  app.route('/api/projects', runContextRoutes);
   app.route('/api/skills', skillCrudRoutes);
   app.route('/api/runners', runnerRoutes);
 

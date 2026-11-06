@@ -204,6 +204,14 @@ export async function prepareClaimedJob(args: {
     { repoPath, resume: resume.record },
   );
   await recordSessionContext(agentSessionId, built);
+  jobsPorts().jobContext.recordCarried(
+    {
+      projectId: job.projectId,
+      sessionId: agentSessionId,
+      issueIds: job.issueId ? [job.issueId] : [],
+    },
+    built.carried,
+  );
 
   return {
     jobId: job.id,

@@ -334,6 +334,11 @@ export async function openRunSession(args: {
   const opened = claimed.opened;
   if (!opened)
     throw new Error('openRunSession: the claim returned neither a session nor an answer');
+  devicesPorts().recordOrientationCarried({
+    projectId: args.projectId,
+    deviceId: args.deviceId,
+    sessionId: opened.sessionId,
+  });
   logger.info(
     {
       runSessionId: opened.sessionId,

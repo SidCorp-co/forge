@@ -123,6 +123,8 @@ import {
   requirementJudgedBy,
   requirementSecretRefsOfSession,
 } from './requirements/index.js';
+import { recordCarried } from './run-context/index.js';
+import { recordOrientationCarried } from './run-context-ports.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
   provideSchedulesPorts,
@@ -197,6 +199,23 @@ export const declaredRunSecretPorts = {
   openReviewRun,
 };
 
+/** The design and contract context a job's issue reaches, and the record of what its prompt carried. */
+const JOB_CONTEXT = {
+  loadArtifactContext,
+  renderArtifactContext,
+  loadRequirementContext,
+  issueMockupsOf,
+  renderIssueMockups,
+  loadPinnedContracts,
+  renderPinnedContracts,
+  pathsNamedIn,
+  loadContractContext,
+  renderContractContext,
+  recordArtifactContext,
+  recordContractContext,
+  recordCarried,
+};
+
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
     contractProviderGate,
@@ -211,20 +230,7 @@ export function provideExecutionPorts(): void {
       dispatchState: async (projectId, wanted) =>
         dispatchStateOf(projectId, await requirePolicy(projectId), wanted),
     },
-    jobContext: {
-      loadArtifactContext,
-      renderArtifactContext,
-      loadRequirementContext,
-      issueMockupsOf,
-      renderIssueMockups,
-      loadPinnedContracts,
-      renderPinnedContracts,
-      pathsNamedIn,
-      loadContractContext,
-      renderContractContext,
-      recordArtifactContext,
-      recordContractContext,
-    },
+    jobContext: JOB_CONTEXT,
     vault: { isVaultConfigured, decryptSecret },
     mcpServers: { applyGrantedMcpServers },
     stewardJobCredential,
@@ -277,6 +283,7 @@ export function provideExecutionPorts(): void {
     mainRunnerHead,
     cmpVersion,
     checkoutOrientation: servedCheckoutOrientation,
+    recordOrientationCarried,
     questions: {
       // the box names its issue as `forge-runner question ask --issue ISS-n` does: a display key is
       // resolved in the project it asks in, and one naming no issue there is refused by name (ISS-619)

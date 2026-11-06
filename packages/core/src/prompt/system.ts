@@ -7,6 +7,7 @@ import {
 } from '@forge/contracts/content-language';
 import type { PreambleBlock, PreambleBlockId } from '@forge/contracts/jobs';
 import type { DispatchState } from '@forge/contracts/project-config';
+import type { RunContextSource } from '@forge/contracts/run-context';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -20,6 +21,7 @@ import { logger } from '../lib/logger.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/index.js';
 import { promotedBranch, readProjectDocument, readReleasePath } from '../project-config/index.js';
+import { carriedIn } from './carried.js';
 import { loadActiveIntegrationRows, renderIntegrations } from './facts/integration-facts.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
@@ -31,6 +33,8 @@ interface BuiltPreamble {
   blocks: PreambleBlock[];
   /** The content language a step's preamble told it; absent where no step was named. */
   contentLanguage?: ContentLanguageRecord;
+  /** The rules and lessons the preamble carried, for the record of what reached its run (ISS-1065). */
+  carried: RunContextSource[];
 }
 
 const BRANCH_SENTINEL = '<detect-from-git>';
@@ -256,9 +260,11 @@ export async function buildPipelinePreambleStructured(
     id: 'project-context',
     body: formatProjectContext(projectId),
   });
+  let carried: RunContextSource[] = [];
   if (step && factInputs) {
     const factsBlock = renderStageFactsText(factInputs, projectId, step);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });
+    carried = carriedIn(factsBlock, factInputs.alwaysInjectFacts, factInputs.lessons);
   }
   // Built-in per-state depth, after the shared prefix so cross-state cache on
   // the prefix is preserved.
@@ -280,5 +286,7 @@ export async function buildPipelinePreambleStructured(
     chars: s.body.length,
     estTokens: estimateTokens(s.body),
   }));
-  return contentLanguage ? { content, blocks, contentLanguage } : { content, blocks };
+  return contentLanguage
+    ? { content, blocks, contentLanguage, carried }
+    : { content, blocks, carried };
 }

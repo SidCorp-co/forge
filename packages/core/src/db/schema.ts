@@ -54,6 +54,7 @@ export * from './schema-release-naming-drafts.js';
 export * from './schema-release-namings.js';
 export * from './schema-report-executions.js';
 export * from './schema-report-runs.js';
+export * from './schema-run-context.js';
 export * from './schema-runners.js';
 export * from './schema-schedule-runs.js';
 export * from './schema-schedules.js';

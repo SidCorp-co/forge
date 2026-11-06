@@ -1137,6 +1137,12 @@
         "requirement-to-delivery#turn"
       ]
     },
+    "run-context": {
+      "kind": "domain",
+      "context": "knowledge",
+      "owns": ["runContextReaches"],
+      "serves": ["REQ-13", "REQ-50"]
+    },
     "runners": {
       "kind": "kernel",
       "context": "execution",

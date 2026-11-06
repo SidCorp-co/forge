@@ -175,6 +175,7 @@ import {
   roomSettleWriter,
 } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
+import { provideRunContextDomainPorts } from './run-context-ports.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { provideSandboxPorts } from './sandbox/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
@@ -242,6 +243,7 @@ providePreferencesPorts({
   },
 });
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
+provideRunContextDomainPorts();
 provideKnowledgePorts({
   searchMemory: runMemorySearch,
   reembedRequirement: embedRequirementHead,

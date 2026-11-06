@@ -65,6 +65,8 @@ interface DevicesPorts {
   cmpVersion(a: string, b: string): number;
   /** The orientation a box writes into a checkout of the project: the one affordances table and the project's always-applied rules. */
   checkoutOrientation(projectId: string, slug: string): Promise<string>;
+  /** Records the rules and lessons that orientation carries against a run just opened (ISS-1065); never throws. */
+  recordOrientationCarried(run: { projectId: string; deviceId: string; sessionId: string }): void;
   questions: {
     askQuestion(input: DeviceQuestion): Promise<{ id: string }>;
     registerWaiter(args: { questionId: string; deviceId: string; runId: string }): Promise<void>;

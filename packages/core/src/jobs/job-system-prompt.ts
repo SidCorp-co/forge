@@ -7,6 +7,7 @@
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
 import type { PreambleBlock } from '@forge/contracts/jobs';
 import type { DispatchState } from '@forge/contracts/project-config';
+import type { RunContextSource } from '@forge/contracts/run-context';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type JobType } from '../db/schema.js';
@@ -28,6 +29,8 @@ interface JobSystemPrompt {
   requirement: GivenRequirement | null;
   contracts: readonly unknown[];
   pinnedContracts: readonly unknown[];
+  /** The rules and lessons its preamble carried (ISS-1065). */
+  carried: RunContextSource[];
 }
 
 type IssueText = {
@@ -233,5 +236,6 @@ export async function buildJobSystemPrompt(input: {
     requirement,
     contracts,
     pinnedContracts,
+    carried: preamble.carried,
   };
 }
