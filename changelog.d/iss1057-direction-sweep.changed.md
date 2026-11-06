@@ -1,1 +1,1 @@
-**The docs state one loop.** Vision, contributing and governance now read Product, Delivery, Release, Audit; an agent decides on the record, a person is asked only for a serious decision, and stale proposals are gone.
+**One loop, and the audit holds nothing.** The docs read Product, Delivery, Release, Audit; a person is asked only for a serious decision; a change rated high now lands and ships without waiting for a green cleanup.
