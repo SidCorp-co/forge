@@ -1,6 +1,8 @@
 // The sidebar's one nav model (simplify census C2-10): the workspace tier carries the attention count
-// and the Ecosystem group, the project tier its needs-you counts, and the one switcher both rail
-// widths open lists pinned projects first.
+// and one Ecosystem row, the project tier its needs-you counts, and the one switcher both rail widths
+// open lists pinned projects first. A row a person never acts on has none (ISS-1071, ISS-1073):
+// Approvals is read under the Dashboard's Needs you, Threads from the Ecosystem page while a thread
+// exists, Pair on Runners, and Pipeline as Issues › Waves.
 
 import { say } from "@/test/said";
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -23,18 +25,27 @@ const project = (over: Partial<SwitcherProject>): SwitcherProject => ({
 });
 
 describe("the nav model", () => {
-  it("puts the attention count on Overview and ends the workspace tier with the Ecosystem group, open by default", () => {
+  it("puts the attention count on Overview and ends the workspace tier with one Ecosystem row, its count what waits on the person", () => {
     const items = workspaceNavItems(7, undefined);
     expect(items.map((e) => e.key)).toEqual(["overview", "activity", "runners", "integrations", "ecosystem"]);
     expect(items[0]).toMatchObject({ badge: 7 });
     const eco = items[4];
-    expect(isNavGroup(eco) && eco.defaultOpen).toBe(true);
-    expect(isNavGroup(eco) && eco.items.map((it) => it.key)).toEqual(["eco-threads", "eco-new"]);
+    expect(isNavGroup(eco)).toBe(false);
+    expect(eco).toMatchObject({ key: "ecosystem", label: "Ecosystem", href: "/ecosystems" });
+    expect(eco?.badge).toBeUndefined();
+    const read = { mine: ["p1"], drafts: [], ecosystems: [], invitations: [], projects: [], threads: [] } as never;
+    expect(workspaceNavItems(0, read)[4]).toMatchObject({ key: "ecosystem", badge: 0 });
+  });
+
+  it("lights the one Ecosystem row on every ecosystem page, Runners on Pair, and Issues on the old Pipeline", () => {
+    for (const path of ["/ecosystems", "/ecosystems/threads", "/ecosystems/new", "/ecosystems/e1/contracts"]) expect(buildActiveKey(path, null)).toBe("ecosystem");
+    expect(buildActiveKey("/pair", null)).toBe("runners");
+    expect(buildActiveKey("/projects/hop/pipeline", "hop")).toBe("proj-issues");
   });
 
   it("groups the product record under Product, open, and the build machinery under Delivery (REQ-34 BC-23)", () => {
     const menu = projectMenu({});
-    expect(menu.map((e) => e.label)).toEqual(["Dashboard", "Approvals", "Product", "Delivery"]);
+    expect(menu.map((e) => e.label)).toEqual(["Dashboard", "Product", "Delivery"]);
     const groups = menu.filter(isNavGroup);
     expect(groups.map((g) => [g.key, g.defaultOpen])).toEqual([
       ["product", true],
@@ -59,15 +70,10 @@ describe("the nav model", () => {
     expect(delivery?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
   });
 
-  it("puts Approvals beside the Dashboard, counted by the one Needs you decisions read, and lights it on its page", () => {
-    const decisions = { total: 4 };
-    const row = projectMenu({ decisions }).find((e) => e.key === "proj-approvals");
-    expect(row).toMatchObject({ label: "Approvals", badge: 4, badgeHint: "4 waiting on your decision" });
-    expect(PROJECT_ITEMS.find((it) => it.key === "proj-approvals")?.sub).toBe("/approvals");
-    expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("proj-approvals");
-    // nothing read yet: no count rather than a zero that is not known
-    expect(projectMenu({}).find((e) => e.key === "proj-approvals")?.badge).toBeUndefined();
-    expect(projectMenu({ decisions: { total: 0 } }).find((e) => e.key === "proj-approvals")).toMatchObject({ badge: 0 });
+  it("holds no Approvals row: the serious decisions are read under the Dashboard's Needs you, which its page lights (ISS-1071)", () => {
+    expect(PROJECT_ITEMS.map((it) => it.key)).not.toContain("proj-approvals");
+    expect(projectMenu({ decisions: { total: 4 } }).map((e) => e.key)).not.toContain("proj-approvals");
+    expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("proj-overview");
   });
 
   it("lights a Product row on its own page", () => {

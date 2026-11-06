@@ -1,6 +1,5 @@
 import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isNavGroup } from "@/design";
-import { joinedEcosystems, needsMe } from "@/features/ecosystem";
-import { ecosystemRoutes } from "@/features/ecosystem";
+import { needsMe } from "@/features/ecosystem";
 import type { WorkspaceRead } from "@/features/ecosystem";
 import type { NeedsYouDecisions } from "@forge/contracts/needs-you-decisions";
 import { needsYouHint } from "@/features/needs-you";
@@ -18,6 +17,7 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   { key: "overview", label: en("nav.overview"), icon: "grid", href: "/" },
   // what each project's master works now and next, across the workspace (ISS-951)
   { key: "activity", label: en("nav.activity"), icon: "activity", href: "/activity" },
+  // a device is paired on Runners; `/pair` is only the page a runner's login opens with its code (ISS-1073)
   { key: "runners", label: en("nav.runners"), icon: "server", href: "/runners" },
   { key: "integrations", label: en("nav.integrations"), icon: "link", href: "/integrations" },
 ];
@@ -43,18 +43,17 @@ interface ProjGroup extends NavItemGroup {
 type ProjEntry = ProjItem | ProjGroup;
 
 const PRODUCT_GROUP_KEY = "product";
-const APPROVALS_KEY = "proj-approvals";
 const DELIVERY_GROUP_KEY = "delivery";
 
 // what a project is for comes first, under Product, open as its rows were before they were grouped;
 // the machinery that builds it sits under Delivery (REQ-34 BC-23, after ISS-65 and FB-6). Decisions,
 // the roadmap and memory have no row of their own (REQ-33): each is read on the item it is about.
 // A person works in Feedback, Requirements and Releases, so Product leads with those three; Delivery
-// stays one fold away for agents and masters, every route still reachable (ISS-1001).
+// stays one fold away for agents and masters, every route still reachable (ISS-1001). The decisions a
+// person owes are read under the Dashboard's Needs you, not a row of their own: routine approval is a
+// defect (owner, 2026-11-06), so what is left for a person is too little to be a page in the rail (ISS-1071).
 const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: en("nav.proj-overview"), icon: "grid", sub: "" },
-  // what waits on the person's approve-type decision, from every area, in one list
-  { key: APPROVALS_KEY, label: en("nav.proj-approvals"), icon: "inbox", sub: "/approvals" },
   {
     key: PRODUCT_GROUP_KEY,
     label: en("nav.product"),
@@ -90,7 +89,7 @@ export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isNavGroup
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
   needsYou?: NeedsYouResponse | undefined;
-  /** The decisions the viewer owes: the Needs you read's `decisions`, the `total` the decisions read counts (REQ-48 BC-11). */
+  /** The decisions the viewer owes: the Needs you read's `decisions` (REQ-48 BC-11). No rail row counts them since the Approvals row went (ISS-1071). */
   decisions?: Pick<NeedsYouDecisions, "total"> | undefined;
 }
 
@@ -105,10 +104,6 @@ const AREA_OF: Record<string, NeedsYouAreaKey> = {
 };
 
 function badgeOf(key: string, badges: ProjectBadges, language: string): Pick<NavItem, "badge" | "badgeHint"> {
-  if (key === APPROVALS_KEY) {
-    const n = badges.decisions?.total;
-    return n === undefined ? {} : { badge: n, badgeHint: productCopy(language)("shell.approvalsCount", { n }) };
-  }
   const area = AREA_OF[key];
   if (area) {
     const read = badges.needsYou?.areas[area];
@@ -123,41 +118,18 @@ export function projectMenu(badges: ProjectBadges, language = "en"): ProjEntry[]
   return PROJECT_MENU.map((e) => (isNavGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
 }
 
-const ECO_THREADS_KEY = "eco-threads";
-const ECO_NEW_KEY = "eco-new";
-const ECO_PREFIX = "eco:";
+// The Ecosystem is one row (ISS-1073): its page lists the ecosystems the person is in, a new one, and
+// Threads while a thread exists; its count is every thread waiting on the person.
+const ECOSYSTEM_ITEM: NavItem & { href: string } = { key: "ecosystem", label: en("nav.ecosystem"), icon: "ecosystem", href: "/ecosystems" };
 
-// the Ecosystem group is the workspace's: Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing project-scoped, so it shows whichever project is open
-export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
-  return [
-    { key: ECO_THREADS_KEY, label: en("nav.eco-threads"), icon: "mail", badge: read ? needsMe(read) : undefined },
-    ...(read ? joinedEcosystems(read) : []).map((e) => ({
-      key: `${ECO_PREFIX}${e.id}`,
-      label: e.name,
-      icon: "ecosystem" as const,
-      mark: e.code,
-      badge: needsMe(read as WorkspaceRead, e.id),
-    })),
-    { key: ECO_NEW_KEY, label: en("nav.eco-new"), icon: "plus" },
-  ];
+/** The one Ecosystem row, its count every thread waiting on the person once their ecosystems are read. */
+export function ecosystemRow(read: WorkspaceRead | undefined): NavItem & { href: string } {
+  return { ...ECOSYSTEM_ITEM, badge: read ? needsMe(read) : undefined };
 }
 
-function ecosystemGroup(read: WorkspaceRead | undefined): NavItemGroup {
-  return { key: "ecosystem", label: en("nav.ecosystem"), icon: "ecosystem", items: ecosystemMenu(read), badge: read ? needsMe(read) : undefined, defaultOpen: true };
-}
-
-/** Where an Ecosystem-group key leads, or null when the key is not one of the group's. */
+/** Where the Ecosystem row leads, or null when the key is not it. */
 export function ecosystemHref(key: string): string | null {
-  if (key === ECO_THREADS_KEY) return ecosystemRoutes.threads();
-  if (key === ECO_NEW_KEY) return ecosystemRoutes.create();
-  return key.startsWith(ECO_PREFIX) ? ecosystemRoutes.ecosystem(key.slice(ECO_PREFIX.length)) : null;
-}
-
-function ecosystemKey(pathname: string): string | null {
-  if (pathname === "/ecosystems/threads" || pathname.startsWith("/ecosystems/threads/")) return ECO_THREADS_KEY;
-  if (pathname === "/ecosystems/new") return ECO_NEW_KEY;
-  const m = pathname.match(/^\/ecosystems\/([^/]+)/);
-  return m ? `${ECO_PREFIX}${decodeURIComponent(m[1])}` : null;
+  return key === ECOSYSTEM_ITEM.key ? ECOSYSTEM_ITEM.href : null;
 }
 
 /** Parse the active project slug out of the (basePath-stripped) pathname. */
@@ -200,11 +172,13 @@ function matchesSub(rest: string, sub: string): boolean {
  *  lit on its own route. */
 export function buildActiveKey(pathname: string, slug: string | null): string {
   if (pathname.startsWith("/docs")) return "docs";
-  const eco = ecosystemKey(pathname);
-  if (eco) return eco;
+  if (matchesSub(pathname, "/ecosystems")) return ECOSYSTEM_ITEM.key;
+  if (matchesSub(pathname, "/pair")) return "runners";
   if (slug) {
     const base = `/projects/${slug}`;
     const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+    // the board Pipeline drew is Issues › Waves now, where its route sends an old link (ISS-1073)
+    if (matchesSub(rest, "/pipeline")) return "proj-issues";
     const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
     return hit?.key ?? "proj-overview";
   }
@@ -225,11 +199,11 @@ export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOp
   return "home";
 }
 
-/** The rail's workspace tier: Overview carries the attention count, then the Ecosystem group. */
+/** The rail's workspace tier: Overview carries the attention count, then the one Ecosystem row. */
 export function workspaceNavItems(attentionCount: number, ecosystems: WorkspaceRead | undefined): NavEntry[] {
   return [
     ...WORKSPACE_ITEMS.map((it) => (it.key === "overview" ? { ...it, badge: attentionCount, badgeHint: en("shell.waitingAcross", { n: attentionCount }) } : it)),
-    ecosystemGroup(ecosystems),
+    ecosystemRow(ecosystems),
   ];
 }
 

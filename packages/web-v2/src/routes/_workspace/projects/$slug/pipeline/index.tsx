@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PipelineBoard } from "@/features/pipeline";
-import { useCopy } from "@/lib/i18n/interface-language";
-import { ProjectGate } from "@/features/projects";
+import { useEffect } from "react";
+import { useParams, useRouter } from "@/lib/navigation/router";
 
-function ProjectPipelinePage() {
-  const t = useCopy();
-  return (
-    <ProjectGate label={t("common.gate.pipeline")}>
-      {(p) => <PipelineBoard scope={{ projectId: p.id, slug: p.slug }} />}
-    </ProjectGate>
-  );
+// ISS-1073: the Pipeline board repeated Issues, a column per status with no act of its own; a link kept
+// to it lands on Issues › Waves, which reads the same work by the run that takes it.
+function PipelineMovedPage() {
+  const router = useRouter();
+  const slug = useParams<{ slug: string }>()?.slug;
+  useEffect(() => {
+    if (slug) router.replace(`/projects/${encodeURIComponent(slug)}/issues?group=waves`);
+  }, [router, slug]);
+  return null;
 }
 
-export const Route = createFileRoute("/_workspace/projects/$slug/pipeline/")({ component: ProjectPipelinePage });
+export const Route = createFileRoute("/_workspace/projects/$slug/pipeline/")({ component: PipelineMovedPage });

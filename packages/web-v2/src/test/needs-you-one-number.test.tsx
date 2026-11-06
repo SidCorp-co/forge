@@ -1,5 +1,5 @@
-// REQ-48 BC-11: one number waits on the person. The Approvals page's count, its menu badge, the
-// Dashboard's Needs you (its group counts the read's total, ISS-1067) and /attention's part for the project (three shown
+// REQ-48 BC-11: one number waits on the person. The Approvals page's count (it has no rail row since
+// ISS-1071, so no menu badge), the Dashboard's Needs you (its group counts the read's total, ISS-1067) and /attention's part for the project (three shown
 // and "+n more", and the rail's attention total) all read `total` from the one Needs you decisions
 // read. The read here carries more decisions than it lists, as core's does past its page, so a
 // surface that counts the rows it was handed instead of `total` reads a different number and fails.
@@ -9,7 +9,6 @@ import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AttentionScreen, useAttention } from "@/features/attention";
 import { ProjectDashboard } from "@/features/activity";
-import { projectMenu } from "@/features/shell/nav-model";
 import { APPROVALS_PROJECT as P, APPROVALS_READ } from "@/test/approvals-read";
 import { STATUS } from "@/test/project-status";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -55,14 +54,11 @@ function AttentionTotal() {
 }
 
 describe("one Needs you number", () => {
-  it("is the same on the Approvals page, its menu badge, the Dashboard and /attention", async () => {
+  it("is the same on the Approvals page, the Dashboard and /attention", async () => {
     core();
     const page = renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     const pageCount = Number((await screen.findByTestId("approvals-count")).dataset.total);
     page.unmount();
-
-    const badge = projectMenu({ decisions: READ }).find((e) => "key" in e && e.key === "proj-approvals");
-    const badgeCount = badge && "badge" in badge ? badge.badge : undefined;
 
     const home = renderWithQuery(<ProjectDashboard projectId={P} slug="hop" />);
     const needs = (await screen.findAllByTestId("list-group")).find((g) => g.getAttribute("data-group") === "needs") as HTMLElement;
@@ -81,9 +77,8 @@ describe("one Needs you number", () => {
     expect(within(section).getByTestId("needs-you-more")).toHaveAttribute("href", "/projects/hop/approvals");
     attention.unmount();
 
-    expect({ pageCount, badgeCount, homeCount, attentionCount, railCount }).toEqual({
+    expect({ pageCount, homeCount, attentionCount, railCount }).toEqual({
       pageCount: READ.total,
-      badgeCount: READ.total,
       homeCount: READ.total,
       attentionCount: READ.total,
       railCount: READ.total,

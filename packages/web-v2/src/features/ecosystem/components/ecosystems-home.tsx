@@ -63,6 +63,20 @@ function NewButton() {
   );
 }
 
+/** Threads, while a thread exists for the person: the rail has one Ecosystem row (ISS-1073), so this page opens it. */
+function ThreadsLink({ read }: { read: WorkspaceRead }) {
+  const t = useCopy();
+  if (read.threads.length === 0) return null;
+  const owed = needsMe(read);
+  return (
+    <Link href={ecosystemRoutes.threads()} className="inline-flex items-center gap-1.5 text-13 font-semibold text-link hover:underline">
+      <Icon name="mail" size={14} />
+      {t("nav.eco-threads")}
+      {owed > 0 ? <Badge tone="accent">{owed}</Badge> : null}
+    </Link>
+  );
+}
+
 /** `/ecosystems`: the empty state with the requests to join, or the ecosystems the person is in. */
 export function EcosystemsHome() {
   const t = useCopy();
@@ -89,7 +103,8 @@ export function EcosystemsHome() {
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-20 font-bold">{t("ecosystem.api.ecosystems")}</h1>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-4">
+          <ThreadsLink read={read} />
           <NewButton />
         </span>
       </div>

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils/cn";
 import { useMyEcosystems } from "@/features/ecosystem";
 import { useCopy, useInterfaceLanguage, useNavLabel } from "@/lib/i18n/interface-language";
 import {
-  ecosystemMenu,
+  ecosystemRow,
   type ProjectBadges,
   SECONDARY_DESTINATIONS,
   WORKSPACE_ITEMS,
@@ -107,7 +107,7 @@ export function MobileNavDrawer({
   footer,
 }: MobileNavDrawerProps) {
   // Esc closes the mobile drawer.
-  const ecosystemItems = ecosystemMenu(useMyEcosystems().data);
+  const ecosystem = ecosystemRow(useMyEcosystems().data);
   const t = useCopy();
   const language = useInterfaceLanguage();
   const navLabel = useNavLabel();
@@ -158,8 +158,7 @@ export function MobileNavDrawer({
       {DRAWER_WORKSPACE_ITEMS.map((it) =>
         navRow(it, !slug && it.key === activeKey, it.key === "attention" ? attentionCount : undefined),
       )}
-      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">{navLabel("ecosystem", "Ecosystem")}</span>
-      {ecosystemItems.map((it) => navRow(it))}
+      {navRow(ecosystem, !slug && ecosystem.key === activeKey)}
     </>
   );
 

@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useSearchParams } from "@/lib/navigation/router";
 import { Banner, Button, EmptyState, enumLabel, Field, Icon, PageTitle, Property, PropertyList, Section, Select } from "@/design";
 import { agentAddress, agentLabel } from "@/features/agent-accounts";
-import { SetupCommand } from "@/features/runners";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useApproveDevice, usePairIdentities } from "../hooks";
@@ -15,7 +14,8 @@ const AS_MYSELF = "";
  * `/pair` — the browser approval step of the runner device-login flow. The CLI
  * (`forge-runner login`) opens this page with `?code=XXX`; the signed-in user
  * confirms, binding the pending device-login code to their account. After
- * approval the CLI's poll loop receives the device token.
+ * approval the CLI's poll loop receives the device token. Its route mounts it
+ * only with a code: with none it sends the person to Runners (ISS-1073).
  *
  * An org admin may instead pair the box as one of their organization's AGENTS
  * (ISS-1093): the credential then belongs to the agent account, is fenced to
@@ -38,17 +38,7 @@ export function PairScreen() {
   return (
     <div className="mx-auto flex w-full max-w-140 flex-col gap-4 px-6 py-8">
       <PageTitle>{t("pairing.title")}</PageTitle>
-      {!code ? (
-        <>
-          <EmptyState message={t("pairing.noCode")} />
-          <Section title={t("pairing.install.title")}>
-            <span className="fg-label">{t("pairing.install.runOn")}</span>
-            <div className="mt-1.5">
-              <SetupCommand />
-            </div>
-          </Section>
-        </>
-      ) : approve.data?.approved === true ? (
+      {approve.data?.approved === true ? (
         <PairApproved chosen={chosen} device={approve.data.device} />
       ) : denied ? (
         <EmptyState message={t("pairing.denied")} />
