@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.545] - 2026-11-06
+
+Steward decisions keep answering overdue waits, and stale steward notes are rewritten
+
+### Fixed
+
+- **A dated or conditioned decision keeps answering the steward.** One recorded while an item waited holds once that wait turns stuck or overdue, until its date passes or another act is owed, so the steward stops re-asking.
+- **A steward note follows Forge's reworded facts.** A note written before the facts it states were reworded reads stale and is rewritten within a day, and an ask never restates a stale note or a standing that moved.
+
 ## [0.4.0-dev.544] - 2026-11-06
 
 Rooms take release deciders from the project's recorded rulings

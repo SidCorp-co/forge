@@ -1,1 +1,0 @@
-**A steward note follows Forge's reworded facts.** A note written before the facts it states were reworded reads stale and is rewritten within a day, and an ask never restates a stale note or a standing that moved.
