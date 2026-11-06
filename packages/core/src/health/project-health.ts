@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { firstShipped } from '../pipeline/index.js';
+import { RUN_SCOPE_SQL } from '../runs/index.js';
 
 /**
  * The ten independent per-project reads behind `GET /api/projects/health`, and
@@ -92,20 +93,23 @@ const readCycleRows = (projectIds: string[]) =>
     GROUP BY c.project_id
   `) as unknown as Promise<CycleRow[]>;
 
-const readLiveRunRows = (projectIds: string[]) =>
-  db
-    .select({
-      projectId: pipelineRuns.projectId,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(pipelineRuns)
-    .where(
-      and(
-        inArray(pipelineRuns.projectId, projectIds),
-        inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
-      ),
-    )
-    .groupBy(pipelineRuns.projectId);
+// the one live-run count (ISS-1069): the runs the runs read lists (`runs:RUN_SCOPE_SQL`), so the
+// rail, Projects, Activity and Agents read one number; a master's pane and a chat are not runs here
+const readLiveRunRows = async (projectIds: string[]) => [
+  ...((await db.execute(sql`
+      SELECT r.project_id AS "projectId", count(*)::int AS n
+        FROM pipeline_runs r
+       WHERE r.project_id IN (${sql.join(
+         projectIds.map((id) => sql`${id}`),
+         sql`, `,
+       )})
+         AND r.status IN (${sql.join(
+           LIVE_PIPELINE_RUN_STATUSES.map((st) => sql`${st}`),
+           sql`, `,
+         )})
+         AND ${RUN_SCOPE_SQL}
+       GROUP BY r.project_id`)) as Iterable<{ projectId: string; n: number }>),
+];
 
 const readRunnerRows = (projectIds: string[]) =>
   db
