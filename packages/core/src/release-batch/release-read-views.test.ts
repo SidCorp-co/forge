@@ -127,6 +127,7 @@ const shared = (n: number, isAdmin = true): Shared => ({
   viewer: { userId: 'u1', agency: 'human', isAdmin, mayApprove: isAdmin },
   approvers: [],
   admins: ['Ada'],
+  masterCuts: false,
   facts: facts(n),
   contentLanguage: 'en',
   provider: null,
