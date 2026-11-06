@@ -73,12 +73,16 @@ export async function runMemoryDecay(): Promise<DecayResult> {
       ),
     );
 
+  // Only what decay itself archived is purged. A memory a person retired, or a note retired with
+  // its issue or its window, keeps its record: retiring says nothing is deleted.
   const purgedRows = await db
     .delete(memories)
     .where(
       and(
         inArray(memories.source, DECAY_SOURCES),
         lt(memories.archivedAt, daysAgo(PURGE_ARCHIVED_AFTER_DAYS)),
+        sql`${memories.metadata}->>'archivedBy' LIKE 'decay: %'`,
+        sql`NOT (${memories.metadata} ? 'retired')`,
       ),
     );
 

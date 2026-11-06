@@ -266,3 +266,30 @@ describe('a decision is not a memory (criterion 4)', () => {
     expect(JSON.stringify(read.body)).toContain('old-decision');
   });
 });
+
+describe('retiring keeps the record: the decay purge deletes only what decay archived', () => {
+  it('purges a row decay archived long ago, and keeps one a person retired and one retired with its issue', async () => {
+    const w = await world();
+    const longAgo = ago(100 * DAY_H);
+    const rows: [string, object][] = [
+      ['decayed', { archivedBy: 'decay: unused' }],
+      ['person-retired', { retired: { by: 'someone', at: longAgo.toISOString(), reason: 'owner retired it' } }],
+      ['issue-retired', { archivedBy: 'note: written for ISS-1, which reached closed, and not verified since' }],
+    ];
+    for (const [ref, metadata] of rows) {
+      await seed(w.projectId, ref, { written: longAgo, metadata });
+      await db.execute(sql`
+        UPDATE memories SET archived_at = ${longAgo.toISOString()}
+         WHERE project_id = ${w.projectId} AND source_ref = ${ref}`);
+    }
+
+    await runMemoryDecay();
+
+    const left = (await db.execute(sql`
+      SELECT source_ref AS ref FROM memories WHERE project_id = ${w.projectId}`)) as unknown as { ref: string }[];
+    const refs = left.map((r) => r.ref);
+    expect(refs).not.toContain('decayed');
+    expect(refs).toContain('person-retired');
+    expect(refs).toContain('issue-retired');
+  });
+});
