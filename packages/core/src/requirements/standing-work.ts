@@ -14,7 +14,7 @@
 // moving"), so the group stays moving; only the wait is named, as the step asks of every result
 // (BC-19), and it reads Needs you only for the viewer it names (BC-22).
 
-import type { ReleaseLeg } from '@forge/contracts/forecast';
+import { isOwedLeg, type ReleaseLeg } from '@forge/contracts/forecast';
 import { PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import type {
@@ -146,7 +146,7 @@ const oldestSince = (issues: readonly WorkIssue[]): Date | null =>
 
 function releaseTurn(leg: ReleaseLeg, landed: number): Turn {
   const about = { refers: 'release' as const };
-  if (leg.kind !== 'person') {
+  if (!isOwedLeg(leg)) {
     return {
       group: 'moving',
       waitingOn: wait(
@@ -163,7 +163,9 @@ function releaseTurn(leg: ReleaseLeg, landed: number): Turn {
       ),
     };
   }
-  const kind = leg.says.who.key === 'standing.who.you' ? 'you' : 'person';
+  // a release act the master owes is agent work, never a person's (ISS-1058)
+  const kind =
+    leg.kind === 'master' ? 'agent' : leg.says.who.key === 'standing.who.you' ? 'you' : 'person';
   return {
     group: groupOf(kind),
     waitingOn: wait(

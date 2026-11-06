@@ -81,6 +81,7 @@ export {
 } from './queries.js';
 export { bindingReachesProduction, dispatchCoolifyDeployDirect } from './release-coolify.js';
 export type { CarriedVerdict, IssueFact } from './release-facts.js';
+export { readReleaseOwes } from './release-owes.js';
 export {
   listReleases,
   type ReleaseRecord,

@@ -268,22 +268,35 @@ export interface ReleaseHolder {
 }
 
 /** What follows a landing before the change is in people's hands. */
+/**
+ * What a release act a leg names says: who takes it, the act, why, and the version it cuts. A
+ * `person` leg is a person's act; a `master` leg is the project's master's, which the one rule gives
+ * a routine release act (`who-owes.ts:whoOwes`, ISS-1058): agent work, never a person's "you".
+ */
+interface OwedLegFields {
+	mode: Exclude<ReleaseMode, "automatic">;
+	/** `You` where the reader owes it, else the holders by name (`standing.ts:holdersWho`), `Nobody` where none holds it; `Master` on a master leg. */
+	who: string;
+	act: string;
+	reason: string;
+	says: ForecastWaitSays;
+	/** The version the act cuts, the page its line links to; null where no cut is owed (`none`). */
+	version: string | null;
+	/** Everyone holding the permission a person's act takes (`RELEASE_ACT_PERMISSION`); empty where nobody does, and on a master leg. */
+	holders: ReleaseHolder[];
+}
+
 export type ReleaseLeg =
 	| { kind: "automatic"; basis: ReleaseLagBasis }
 	| { kind: "not_enough_history"; n: number; floor: number }
-	| {
-			kind: "person";
-			mode: Exclude<ReleaseMode, "automatic">;
-			/** `You` where the reader owes it, else the holders by name (`standing.ts:holdersWho`), `Nobody` where none holds it. */
-			who: string;
-			act: string;
-			reason: string;
-			says: ForecastWaitSays;
-			/** The version the act cuts, the page its line links to; null where no cut is owed (`none`). */
-			version: string | null;
-			/** Everyone holding the permission the act takes (`RELEASE_ACT_PERMISSION`); empty where nobody does. */
-			holders: ReleaseHolder[];
-	  };
+	| ({ kind: "person" } & OwedLegFields)
+	| ({ kind: "master" } & OwedLegFields);
+
+/** A leg that names who owes an act: a person's, or the master's (ISS-1058). */
+export const isOwedLeg = (
+	leg: ReleaseLeg | null | undefined,
+): leg is Extract<ReleaseLeg, { kind: "person" | "master" }> =>
+	leg?.kind === "person" || leg?.kind === "master";
 
 /** A p50–p85 span from now, with no basis of its own: the parts it adds carry theirs. */
 export interface ForecastSpan {

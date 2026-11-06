@@ -18,7 +18,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { holds, namedHolders } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
-import { nextDraftVersion } from '../release-batch/index.js';
+import { draftReleaseIssueIds, nextDraftVersion, readReleaseOwes } from '../release-batch/index.js';
 import { type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 
 /** Who reads a forecast, with the grants that decide whether a person's act it names is theirs. */
@@ -43,12 +43,23 @@ export async function readReleaseFacts(
   viewer: ForecastViewer | null,
 ): Promise<ReleaseFacts> {
   const mode = await readReleaseMode(projectId);
-  const [nextVersion, lags, holders] = await Promise.all([
+  const [nextVersion, lags, holders, owes] = await Promise.all([
     mode === 'manual' || mode === 'approval' ? nextDraftVersion(projectId) : null,
     mode === 'automatic' ? readReleaseLags(projectId, now) : [],
     mode === 'automatic' ? [] : namedHolders(RELEASE_ACT_PERMISSION[mode], projectId),
+    // who owes the release act is the one rule's, read with what the draft carries (ISS-1058)
+    mode === 'automatic'
+      ? undefined
+      : draftReleaseIssueIds(projectId).then((ids) => readReleaseOwes(projectId, ids)),
   ]);
-  return { mode, nextVersion, lags, holders, viewerOwes: viewerOwesRelease(mode, viewer) };
+  return {
+    mode,
+    nextVersion,
+    lags,
+    holders,
+    viewerOwes: viewerOwesRelease(mode, viewer),
+    ...(owes ? { owes } : {}),
+  };
 }
 
 /**

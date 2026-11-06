@@ -2,7 +2,8 @@
  * Done as a person means it, pure: the landing forecast, then what the release adds before the
  * change is in their hands. Where production releases on its own, the project's own landed→released
  * durations are sampled trial by trial onto the landing (the same seeded Monte Carlo, the same floor);
- * where a person cuts, approves or releases by hand, the act is named and no date is given for it
+ * where a person or the project's master cuts, approves or records the release, the act is named with
+ * who owes it by the one rule (`who-owes.ts`, ISS-1058) and no date is given for it
  * (VISION: state-never-lies). Every rule here is a unit test in `delivery.test.ts`.
  */
 
@@ -21,6 +22,7 @@ import {
 } from '@forge/contracts/forecast';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
+import type { OwedActKind, OwedBy } from '@forge/contracts/who-owes';
 import { percentile, seeded } from './model.js';
 
 const MINUTE = 60_000;
@@ -35,6 +37,11 @@ export interface ReleaseFacts {
   lags: readonly number[];
   /** The reader is one who owes the act a person takes here, so the leg names them as "You". */
   viewerOwes?: boolean;
+  /**
+   * Who owes each release act, by the one rule read with the project's policy and what the draft
+   * carries (`release-batch/release-owes.ts`, ISS-1058); absent, every act reads as a person's.
+   */
+  owes?: (kind: OwedActKind) => OwedBy;
   floor?: number;
 }
 
@@ -70,6 +77,30 @@ function personLeg(
   };
 }
 
+/** The act the project's master owes here, by the one rule: agent work, with no person named. */
+function masterLeg(
+  mode: Exclude<ReleaseMode, 'automatic'>,
+  said: { act: Said; reason: Said; version: string | null },
+): ReleaseLeg {
+  const says = { who: say('standing.who.projectMaster'), act: said.act, reason: said.reason };
+  return {
+    kind: 'master',
+    mode,
+    who: sayEn(says.who),
+    act: sayEn(says.act),
+    reason: sayEn(says.reason),
+    says,
+    version: said.version,
+    holders: [],
+  };
+}
+
+/** Whether the one rule gives the master this act; read as a person's where no rule was read. */
+const mastersAct = (r: ReleaseFacts, kind: OwedActKind): boolean => r.owes?.(kind).by === 'master';
+
+const cutAct = (v: string | null) =>
+  v ? say('standing.act.cut', { v, more: null }) : say('forecast.act.cutNext');
+
 export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
   const floor = r.floor ?? FORECAST_HISTORY_FLOOR;
   const v = r.nextVersion;
@@ -90,21 +121,52 @@ export function releaseLegOf(r: ReleaseFacts): ReleaseLeg {
     }
     case 'approval': {
       const names = (r.holders ?? []).map((h) => h.name).join(', ');
+      const holders = names ? say('runs.rule.paren', { text: names }) : null;
+      // ISS-1058: the cut is routine and the master's; the approval is a person's only where the
+      // one rule says so (strict, approval required, or what the release carries cannot be undone)
+      if (mastersAct(r, 'release.cut')) {
+        if (mastersAct(r, 'release.cutAndApprove')) {
+          return masterLeg('approval', {
+            act: v
+              ? say('standing.act.cutThenApprove', { v })
+              : say('forecast.act.cutNextThenApprove'),
+            reason: say('forecast.reason.masterCuts'),
+            version: r.nextVersion,
+          });
+        }
+        return masterLeg('approval', {
+          act: cutAct(v),
+          reason: say('forecast.reason.masterCutsPersonApproves', { holders }),
+          version: r.nextVersion,
+        });
+      }
       return personLeg(r, 'approval', {
         act: v ? say('standing.act.cutThenApprove', { v }) : say('forecast.act.cutNextThenApprove'),
-        reason: say('forecast.reason.approval', {
-          holders: names ? say('runs.rule.paren', { text: names }) : null,
-        }),
+        reason: say('forecast.reason.approval', { holders }),
         version: r.nextVersion,
       });
     }
     case 'manual':
+      if (mastersAct(r, 'release.cut')) {
+        return masterLeg('manual', {
+          act: cutAct(v),
+          reason: say('forecast.reason.masterCuts'),
+          version: r.nextVersion,
+        });
+      }
       return personLeg(r, 'manual', {
-        act: v ? say('standing.act.cut', { v, more: null }) : say('forecast.act.cutNext'),
+        act: cutAct(v),
         reason: say('forecast.reason.manual'),
         version: r.nextVersion,
       });
     case 'none':
+      if (mastersAct(r, 'release.record')) {
+        return masterLeg('none', {
+          act: say('standing.act.recordLanding'),
+          reason: say('forecast.reason.masterRecords'),
+          version: null,
+        });
+      }
       return personLeg(r, 'none', {
         act: say('standing.act.releaseItByHand'),
         reason: say('forecast.reason.noProduction'),

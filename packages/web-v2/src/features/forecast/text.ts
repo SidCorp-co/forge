@@ -1,4 +1,4 @@
-import type { DeliveryForecast, Forecast, ForecastPaused, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
+import { type DeliveryForecast, type Forecast, type ForecastPaused, type ForecastSpan, isOwedLeg, type ReleaseLeg, type ScopeForecast } from "@forge/contracts/forecast";
 import { formatClock, formatDateTime, formatNumber } from "@/lib/i18n/format";
 import { labelCopy } from "@/lib/i18n/labels";
 import { type Copy, productCopy } from "@/lib/i18n/product-copy";
@@ -146,11 +146,12 @@ const legDetail = (leg: ReleaseLeg, c: EtaClock): string => {
     case "not_enough_history":
       return t("fc.legNotEnough", { n: leg.n, floor: leg.floor });
     case "person":
+    case "master":
       return t("fc.legPerson", { who: said(leg.says.who, c.lang), act: said(leg.says.act, c.lang) });
   }
 };
 
-const waitsOnText = (leg: Extract<ReleaseLeg, { kind: "person" }>, c: EtaClock) =>
+const waitsOnText = (leg: Extract<ReleaseLeg, { kind: "person" | "master" }>, c: EtaClock) =>
   productCopy(c.lang)("fc.waitsOnTo", { who: said(leg.says.who, c.lang), act: said(leg.says.act, c.lang) });
 
 /**
@@ -174,15 +175,15 @@ export function deliveryText(d: DeliveryForecast, c: EtaClock, opts: TextOpts = 
   const lead = d.landing.kind === "landed" ? `${landing.detail}.` : landing.detail;
   const hands = d.inHands && opts.within !== false ? t("fc.inHands", { within: lowerFirst(within(d.inHands, d.asOf, c)) }) : "";
   const detail = `${hands}${lead}${legDetail(leg, c)}`;
-  const release = leg.kind === "person" ? leg.version : null;
+  const release = isOwedLeg(leg) ? leg.version : null;
   if (d.landing.kind === "landed") {
     if (d.inHands) return { line: t("fc.fixedLive", { when: when(d.inHands, c) }), detail };
-    if (leg.kind === "person") return { line: t("fc.fixedWaits", { waits: waitsOnText(leg, c) }), detail, release };
+    if (isOwedLeg(leg)) return { line: t("fc.fixedWaits", { waits: waitsOnText(leg, c) }), detail, release };
     return { line: t("fc.fixedAutomatic"), detail };
   }
   const lands = t("fc.forecastLands", { when: when(d.landing, c) });
   if (d.inHands) return { line: t("fc.forecastLive", { when: when(d.inHands, c) }), detail };
-  if (leg.kind === "person") return { line: t("fc.landsThen", { lands, waits: waitsOnText(leg, c) }), detail, release };
+  if (isOwedLeg(leg)) return { line: t("fc.landsThen", { lands, waits: waitsOnText(leg, c) }), detail, release };
   return { line: t("fc.landsUnknown", { lands }), detail };
 }
 

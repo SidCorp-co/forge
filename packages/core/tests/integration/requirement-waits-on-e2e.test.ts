@@ -13,6 +13,7 @@ import {
   type World,
   world,
 } from '../helpers/forecast-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 
 // ISS-461 round 3 (REQ-35 BC-5): a requirement's standing names whom it actually waits on, read
@@ -64,7 +65,7 @@ describe('whom a requirement waits on once its issues exist', () => {
   beforeAll(async () => {
     w = await world();
     await servingMaster(w);
-    // a person cuts each release: the admin holds project.admin
+    // a release is cut by hand: the master cuts it, or the admin (project.admin) where the project is strict
     await seedProductionDeployTrigger(w.projectId, w.userId, 'on-request');
     const member = await createTestUser({ verified: true });
     await addProjectMember(w.projectId, member.id, 'member');
@@ -127,18 +128,14 @@ describe('whom a requirement waits on once its issues exist', () => {
     req.queued = queued.key;
   }, 120_000);
 
-  it('names the admin who owes the cut, and the version, once every issue not shipped has landed', async () => {
-    const asMember = await waitOf(w, memberToken, req.landed);
-    expect(asMember).toMatchObject({ kind: 'person', who: adminName, refers: 'release' });
-    expect(asMember.act).toMatch(/^cut \d+\.\d+\.\d+/);
-    expect(asMember.ref).toBe((asMember.act as string).replace(/^cut /, ''));
-    expect(asMember.who).not.toBe('Issues');
-    // the admin reading it is the one who cuts
-    expect(await waitOf(w, w.token, req.landed)).toMatchObject({
-      kind: 'you',
-      who: 'You',
-      refers: 'release',
-    });
+  // ISS-1058: the cut is routine, so the project's master owes it, whoever reads (`who-owes.ts`)
+  it('names the master who owes the cut, and the version, once every issue not shipped has landed', async () => {
+    for (const token of [memberToken, w.token]) {
+      const wait = await waitOf(w, token, req.landed);
+      expect(wait).toMatchObject({ kind: 'agent', who: "The project's master", refers: 'release' });
+      expect(wait.act).toMatch(/^cut \d+\.\d+\.\d+/);
+      expect(wait.ref).toBe((wait.act as string).replace(/^cut /, ''));
+    }
   });
 
   it('names what a parked issue waits on, its key linked, while another issue runs', async () => {
@@ -166,5 +163,17 @@ describe('whom a requirement waits on once its issues exist', () => {
     const wait = await waitOf(w, memberToken, req.queued);
     expect(wait).toMatchObject({ kind: 'agent', who: 'Master' });
     expect(wait.act).toMatch(/^take [A-Z]+-\d+ next$/);
+  });
+  // last: the project turns strict, so the cut is the admin's again
+  it('names the admin who owes the cut on a strict project, as You to that admin', async () => {
+    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
+    const asMember = await waitOf(w, memberToken, req.landed);
+    expect(asMember).toMatchObject({ kind: 'person', who: adminName, refers: 'release' });
+    expect(asMember.who).not.toBe('Issues');
+    expect(await waitOf(w, w.token, req.landed)).toMatchObject({
+      kind: 'you',
+      who: 'You',
+      refers: 'release',
+    });
   });
 });

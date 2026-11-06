@@ -11,6 +11,7 @@ import {
   FORECAST_LABEL,
   type ForecastPaused,
   type IssueProgress,
+  isOwedLeg,
 } from '@forge/contracts/forecast';
 import type {
   ProductProgress as Progress,
@@ -159,7 +160,8 @@ function deliveryWaits(d: DeliveryForecast | null): ProgressWait[] {
   if (!d || d.shipped) return [];
   const out: ProgressWait[] = [];
   if (d.landing.kind === 'paused') out.push(pausedWait(d.landing));
-  if (d.release?.kind === 'person') {
+  // a person's release act, or the master's (ISS-1058): `you` only where the reader owes it
+  if (isOwedLeg(d.release)) {
     out.push({
       who: d.release.who,
       act: d.release.act,

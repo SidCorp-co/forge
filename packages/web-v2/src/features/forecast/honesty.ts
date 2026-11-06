@@ -3,7 +3,7 @@
 // and the release it lands in. Every part is core's (`ForecastMove`, `ForecastConfidence`, the
 // release leg's version); this only says it in the reader's language.
 
-import type { DeliveryForecast, ForecastMove } from "@forge/contracts/forecast";
+import { type DeliveryForecast, type ForecastMove, isOwedLeg } from "@forge/contracts/forecast";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import type { EtaClock } from "@/lib/i18n/eta-clock-words";
@@ -23,7 +23,7 @@ function forecastFacts(d: DeliveryForecast | null | undefined, t: Copy): string[
   if (!d) return [];
   const out: string[] = [];
   if (d.landing.kind === "forecast") out.push(t(`fc.confidence.${d.landing.confidence.level}`));
-  if (d.release?.kind === "person" && d.release.version) out.push(t("fc.inRelease", { v: d.release.version }));
+  if (isOwedLeg(d.release) && d.release.version) out.push(t("fc.inRelease", { v: d.release.version }));
   return out;
 }
 

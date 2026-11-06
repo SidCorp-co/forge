@@ -1969,6 +1969,16 @@ export const SAID = {
 	"forecast.reason.manual": {
 		en: "production does not deploy on land: a project.admin holder cuts releases",
 	},
+	"forecast.reason.masterCuts": {
+		en: "the project's master cuts releases, which is routine, so no date",
+	},
+	"forecast.reason.masterCutsPersonApproves": {
+		en: "the project's master cuts it, then a releases.approve holder{holders} approves it, as this project requires, so no date",
+		vars: { holders: "said?" },
+	},
+	"forecast.reason.masterRecords": {
+		en: "no production environment declared: the project's master records the landing",
+	},
 	"forecast.reason.noProduction": {
 		en: "no production environment declared, so no release carries it",
 	},

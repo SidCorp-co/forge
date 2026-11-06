@@ -1,5 +1,7 @@
 import type { Forecast, ForecastBasis } from '@forge/contracts/forecast';
+import { PERSON_GATES } from '@forge/contracts/person-gates';
 import { say, verbatim } from '@forge/contracts/said';
+import { type OwedPolicy, whoOwes } from '@forge/contracts/who-owes';
 import { describe, expect, it } from 'vitest';
 import { deliveryOf, type ReleaseFacts, releaseLegOf } from './delivery.js';
 
@@ -179,5 +181,88 @@ describe('delivery: in people’s hands, not merged', () => {
       inHands: null,
       shipped: null,
     });
+  });
+});
+
+// ISS-1058: the cut and the record are routine, so they are the project's master's; the approval
+// is a person's only where the one rule (`who-owes.ts:whoOwes`) says so
+describe('who owes the release act, by the one rule', () => {
+  const policy = (p: Partial<OwedPolicy> = {}): OwedPolicy => ({
+    strict: false,
+    gates: Object.fromEntries(PERSON_GATES.map((g) => [g, false])) as OwedPolicy['gates'],
+    releaseApproval: false,
+    ...p,
+  });
+  const owes =
+    (p: OwedPolicy, irreversible: string[] = []): NonNullable<ReleaseFacts['owes']> =>
+    (kind) =>
+      whoOwes(kind, p, { irreversible });
+  const dana = [{ id: 'd', name: 'Dana Lee', kind: 'human' as const }];
+
+  it('names the master for the cut where the project requires no approval, and no person', () => {
+    const leg = releaseLegOf({
+      mode: 'manual',
+      nextVersion: '0.7.0',
+      lags: [],
+      holders: dana,
+      owes: owes(policy()),
+    });
+    expect(leg).toMatchObject({
+      kind: 'master',
+      who: "The project's master",
+      act: 'cut 0.7.0',
+      holders: [],
+    });
+    expect(leg.kind === 'master' && leg.reason).toContain("project's master cuts releases");
+  });
+
+  it('names the master for the cut and the person only for the approval where approval is required', () => {
+    const leg = releaseLegOf({
+      mode: 'approval',
+      nextVersion: '0.7.0',
+      lags: [],
+      holders: dana,
+      owes: owes(policy({ releaseApproval: true })),
+    });
+    expect(leg).toMatchObject({ kind: 'master', who: "The project's master", act: 'cut 0.7.0' });
+    expect(leg.kind === 'master' && leg.reason).toBe(
+      "the project's master cuts it, then a releases.approve holder (Dana Lee) approves it, as this project requires, so no date",
+    );
+  });
+
+  it('names the master for the record where no production is declared', () => {
+    const leg = releaseLegOf({
+      mode: 'none',
+      nextVersion: null,
+      lags: [],
+      holders: dana,
+      owes: owes(policy()),
+    });
+    expect(leg).toMatchObject({
+      kind: 'master',
+      who: "The project's master",
+      act: 'record the landing',
+    });
+  });
+
+  it('keeps the act a person’s on a strict project, or where the release carries what cannot be undone', () => {
+    for (const o of [owes(policy({ strict: true })), owes(policy(), ['drops the legacy table'])]) {
+      expect(
+        releaseLegOf({ mode: 'manual', nextVersion: '0.7.0', lags: [], holders: dana, owes: o }),
+      ).toMatchObject({
+        kind: 'person',
+        who: 'Dana Lee',
+        act: 'cut 0.7.0',
+      });
+      expect(
+        releaseLegOf({
+          mode: 'approval',
+          nextVersion: '0.7.0',
+          lags: [],
+          holders: dana,
+          owes: o,
+        }),
+      ).toMatchObject({ kind: 'person', act: 'cut 0.7.0, then approve it' });
+    }
   });
 });

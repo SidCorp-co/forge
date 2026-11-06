@@ -16,6 +16,7 @@ import {
   type FeedbackWorkIssue,
   type FeedbackWorkState,
   type ForecastWaitSays,
+  isOwedLeg,
 } from '@forge/contracts/forecast';
 import { PARK_STATUSES, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -120,7 +121,7 @@ export function estimateOf(item: Item, carried: Carried, line: FeedbackForecast)
       return none('ended');
     case 'landed': {
       const leg = d.release;
-      if (leg?.kind === 'person') return none('release_waits', { waits: leg.says });
+      if (isOwedLeg(leg)) return none('release_waits', { waits: leg.says });
       if (leg?.kind === 'not_enough_history') {
         return none('release_history', { history: { n: leg.n, floor: leg.floor } });
       }

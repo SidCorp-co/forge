@@ -3,7 +3,7 @@
 // late. Lateness is core's (`ForecastLate`); nothing here decides it. Issue, run, runner and spend
 // figures are Development's, not this page's.
 
-import type { DeliveryForecast, FeedbackForecasts, Forecast, ForecastLate, RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
+import { type DeliveryForecast, type FeedbackForecasts, type Forecast, type ForecastLate, isOwedLeg, type RequirementForecasts, type ScopeForecast } from "@forge/contracts/forecast";
 import type { FeedbackSummary } from "@forge/contracts/feedback";
 import { FEEDBACK_UNTRIAGED_PHASES } from "@forge/contracts/feedback";
 import { REQUIREMENT_LIFECYCLE, type RequirementState } from "@forge/contracts/requirements";
@@ -77,7 +77,7 @@ interface PlanInputs {
 const lateOfForecast = (f: Forecast | null | undefined): ForecastLate | null => (f && (f.kind === "forecast" || f.kind === "paused") ? f.late : null);
 
 const releaseOf = (d: DeliveryForecast | null | undefined): PlanRow["release"] =>
-  d?.release?.kind === "person" && d.release.version ? { version: d.release.version, who: d.release.says.who } : null;
+  isOwedLeg(d?.release) && d?.release?.version ? { version: d.release.version, who: d.release.says.who } : null;
 
 const lateOfDelivery = (d: DeliveryForecast | null | undefined): ForecastLate | null => lateOfForecast(d?.landing);
 

@@ -91,6 +91,14 @@ describe("delivery text: in people's hands, not merged", () => {
     expect(line).toBe("Forecast lands 14:00 – 17:00 today · then waits on Admin to cut 0.2.0");
   });
 
+  // ISS-1058: a cut the project's master owes reads as the master's, with its version, like a person's
+  it("names the project's master and the act where the master cuts the release", () => {
+    const master = { ...manual, kind: "master" as const, ...forecastWait(say("standing.who.projectMaster"), say("standing.act.cut", { v: "0.2.0", more: null }), say("forecast.reason.masterCuts")) };
+    const text = deliveryText(delivery({ release: master, inHands: null }), CLOCK);
+    expect(text.line).toBe("Forecast lands 14:00 – 17:00 today · then waits on The project's master to cut 0.2.0");
+    expect(text.release).toBe("0.2.0");
+  });
+
   it("reads a fixed change still unreleased as waiting on the release", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-30) };
     expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), CLOCK).line).toBe("Fixed · waits on Admin to cut 0.2.0");

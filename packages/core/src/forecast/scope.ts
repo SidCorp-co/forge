@@ -3,11 +3,12 @@
  * and when the last of them is in people's hands (`delivery.ts`).
  */
 
-import type {
-  ComingNextForecast,
-  Forecast,
-  RequirementForecasts,
-  ScopeForecast,
+import {
+  type ComingNextForecast,
+  type Forecast,
+  isOwedLeg,
+  type RequirementForecasts,
+  type ScopeForecast,
 } from '@forge/contracts/forecast';
 import { say } from '@forge/contracts/said';
 import type { WaitingOn } from '@forge/contracts/standing';
@@ -218,7 +219,7 @@ export async function readRequirementForecasts(
 function draftScope(r: Reads, rows: readonly IssueRow[]): ScopeForecast {
   const read = scopeOf(r, rows, 'release', 'draft', null);
   const leg = releaseLegOf(r.release);
-  if (read.forecast?.kind !== 'landed' || leg.kind !== 'person') return read;
+  if (read.forecast?.kind !== 'landed' || !isOwedLeg(leg)) return read;
   return {
     ...read,
     next: pausedOf(

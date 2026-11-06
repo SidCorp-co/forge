@@ -7,12 +7,13 @@
  */
 
 import { countsAsReport } from '@forge/contracts/feedback';
-import type {
-  DeliveryForecast,
-  ForecastLate,
-  ForecastMove,
-  IssueProgress,
-  ScopeForecast,
+import {
+  type DeliveryForecast,
+  type ForecastLate,
+  type ForecastMove,
+  type IssueProgress,
+  isOwedLeg,
+  type ScopeForecast,
 } from '@forge/contracts/forecast';
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
@@ -339,7 +340,7 @@ function nextReleaseOf(
         act: draft.next.act,
         says: { who: draft.next.says.who, act: draft.next.says.act },
       }
-    : leg?.kind === 'person'
+    : isOwedLeg(leg)
       ? { who: leg.who, act: leg.act, says: { who: leg.says.who, act: leg.says.act } }
       : null;
   return {

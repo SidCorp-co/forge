@@ -1,4 +1,6 @@
+import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
 import type { Body } from '../helpers/api.js';
 import { userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
@@ -19,6 +21,7 @@ import {
   type World,
   world,
 } from '../helpers/forecast-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 import { ROLE_WHO } from '../helpers/role-who.js';
 
@@ -108,29 +111,79 @@ describe('feedback reads end to end where production releases on land', () => {
   });
 });
 
-describe('a release a person cuts is named, never dated', () => {
-  it('forecasts the landing, then names the admin and the version to cut', async () => {
+// ISS-1058: the cut is routine, so the project's master owes it (`who-owes.ts:whoOwes`); a person
+// is named only where the project's policy keeps it theirs, or for the approval it requires
+describe('a release cut by hand is named, never dated', () => {
+  async function cutByHand(
+    policy?: (w: World) => Promise<void>,
+  ): Promise<{ w: World; asMember: World; key: string }> {
     const w = await world();
     await servingMaster(w);
     await seedProductionDeployTrigger(w.projectId, w.userId, 'on-request');
+    await policy?.(w);
     await shippedHistory(w);
     const open = await issue(w, { status: 'open', createdAt: ago(1) });
     const key = await feedback(w, [open.id]);
     const member = await createTestUser({ verified: true });
     await addProjectMember(w.projectId, member.id, 'member');
-    const asMember = { ...w, token: await userToken(member.id) };
-    const d = byKey((await read(asMember, '/feedback')).items as Body[], key).delivery as Body;
+    return { w, asMember: { ...w, token: await userToken(member.id) }, key };
+  }
+  const deliveryOf = async (reader: World, key: string) =>
+    byKey((await read(reader, '/feedback')).items as Body[], key).delivery as Body;
+
+  it('forecasts the landing, then names the master and the version to cut, to every reader', async () => {
+    const { w, asMember, key } = await cutByHand();
+    const d = await deliveryOf(asMember, key);
     expect((d.landing as Body).kind).toBe('forecast');
     expect(d.release).toMatchObject({
-      kind: 'person',
+      kind: 'master',
       mode: 'manual',
-      who: expect.not.stringMatching(ROLE_WHO),
+      who: "The project's master",
     });
     expect((d.release as Body).act).toMatch(/^cut \d+\.\d+\.\d+/);
     expect(d.inHands).toBeNull();
+    // the admin reading it owes nothing: the cut is not theirs
+    expect((await deliveryOf(w, key)).release).toMatchObject({
+      kind: 'master',
+      who: "The project's master",
+    });
+  });
+
+  // a strict profile also requires the release approval, so the cut and the approval are a person's
+  it('names the admin who cuts and approves on a strict project, as You to that admin', async () => {
+    const { w, asMember, key } = await cutByHand((w) =>
+      declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } }),
+    );
+    expect((await deliveryOf(asMember, key)).release).toMatchObject({
+      kind: 'person',
+      mode: 'approval',
+      who: expect.not.stringMatching(ROLE_WHO),
+      act: expect.stringMatching(/^cut \d+\.\d+\.\d+, then approve it$/),
+    });
     // JU-7: the admin reading it is the one who cuts, so it names them as You, never by their own name
-    const mine = byKey((await read(w, '/feedback')).items as Body[], key).delivery as Body;
-    expect(mine.release).toMatchObject({ kind: 'person', mode: 'manual', who: 'You' });
+    expect((await deliveryOf(w, key)).release).toMatchObject({
+      kind: 'person',
+      mode: 'approval',
+      who: 'You',
+    });
+  });
+
+  it('names the master for the cut and a person only for the approval the project requires', async () => {
+    const { asMember, key } = await cutByHand(async (w) => {
+      await db.execute(sql`
+        UPDATE project_config_documents
+           SET document = jsonb_set(document, '{release}',
+                                    coalesce(document->'release', '{}'::jsonb) || '{"approval":{"required":true}}'::jsonb)
+         WHERE project_id = ${w.projectId}`);
+    });
+    const release = (await deliveryOf(asMember, key)).release as Body;
+    expect(release).toMatchObject({
+      kind: 'master',
+      mode: 'approval',
+      who: "The project's master",
+    });
+    expect(release.act).toMatch(/^cut \d+\.\d+\.\d+$/);
+    expect(release.reason).toContain('then a releases.approve holder');
   });
 });
 

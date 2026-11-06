@@ -1,4 +1,4 @@
-import { type DeliveryForecast, deliveryDatesOf, type FeedbackForecast, type Forecast, type ForecastSpan, type ReleaseLeg, type ScopeForecast } from "@forge/contracts/forecast";
+import { type DeliveryForecast, deliveryDatesOf, type FeedbackForecast, type Forecast, type ForecastSpan, isOwedLeg, type ReleaseLeg, type ScopeForecast } from "@forge/contracts/forecast";
 import type { Said } from "@forge/contracts/said";
 import { formatDateTime } from "@/lib/i18n/format";
 import { said, saysKey } from "@/lib/i18n/said";
@@ -59,7 +59,7 @@ function rangeHead(span: Pick<ForecastSpan, "p50At" | "p85At">, asOf: string, c:
   return ETA_COPY[c.lang].within(spanText(low, c.lang), spanText(high, c.lang), clockOf(asOf, c));
 }
 
-const tailOf = (leg: ReleaseLeg | null): EtaTail | null => (leg?.kind === "person" ? { who: leg.says.who, act: leg.says.act } : null);
+const tailOf = (leg: ReleaseLeg | null): EtaTail | null => (isOwedLeg(leg) ? { who: leg.says.who, act: leg.says.act } : null);
 
 /** An issue's own landing. */
 export function etaOfForecast(f: Forecast, c: EtaClock): Eta {

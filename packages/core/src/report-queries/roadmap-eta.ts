@@ -7,6 +7,7 @@ import {
   type DeliveryForecast,
   deliveryDatesOf,
   type ForecastRange,
+  isOwedLeg,
   type ReleaseLeg,
 } from '@forge/contracts/forecast';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
@@ -59,7 +60,7 @@ const releaseBasis = (leg: ReleaseLeg | null): string | null => {
   if (leg?.kind === 'automatic') return `release lag read from ${counted(leg.basis.n, 'release')}`;
   if (leg?.kind === 'not_enough_history')
     return `release not forecast: ${leg.n} of ${counted(leg.floor, 'release')} on record`;
-  if (leg?.kind === 'person') return `then ${leg.who} to ${leg.act}`;
+  if (isOwedLeg(leg)) return `then ${leg.who} to ${leg.act}`;
   return null;
 };
 
@@ -116,7 +117,7 @@ export function etaOf(delivery: DeliveryForecast | null): {
         `ended (${((ISSUE_STATUS_LABELS as Record<string, string>)[landing.status] ?? landing.status).toLowerCase()})`,
       );
     case 'landed':
-      return release?.kind === 'person'
+      return isOwedLeg(release)
         ? none(`landed, waits on ${release.who} to ${release.act}`)
         : none(parts('landed, awaiting release', releaseBasis(release)));
     case 'forecast':
