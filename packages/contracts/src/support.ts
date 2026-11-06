@@ -632,14 +632,31 @@ const oauthEndpoint = z
 	.regex(/^https?:\/\//, "an http(s) URL");
 
 /**
+ * The owner's own account at the product (ISS-1052, REQ-85 BC-1): the `sub` or the `email` the
+ * product names whoever signed in by, in its id_token or at its userinfo endpoint. A sign-in made by
+ * any other account keeps nothing and records no consent.
+ */
+export const supportOwnerAccountSchema = z.strictObject({
+	claim: z.enum(["sub", "email"]),
+	value: z.string().trim().min(1).max(320),
+});
+export type SupportOwnerAccount = z.infer<typeof supportOwnerAccountSchema>;
+
+/**
  * How the owner signs in to the product (ISS-1047, REQ-85 BC-3): its OAuth 2.0 authorization
  * endpoint (authorization code with PKCE, S256), its token endpoint, which must be on a host the
  * connection grants, the public client Forge is registered as, and the scopes asked for. The product
  * registers `<Forge API origin>/api/support/owner-sign-in/callback` as that client's redirect.
+ * ISS-1052: `owner` names the owner's own account there, and core reads who signed in from the
+ * id_token (the `openid` scope) or from `userinfoUrl`; `issuer` is the id_token's `iss` where it is
+ * not the token endpoint's origin. A binding naming no owner starts no sign-in.
  */
 export const supportOwnerSignInSchema = z.strictObject({
 	authorizationUrl: oauthEndpoint,
 	tokenUrl: oauthEndpoint,
+	userinfoUrl: oauthEndpoint.optional(),
+	issuer: oauthEndpoint.optional(),
+	owner: supportOwnerAccountSchema.optional(),
 	clientId: z.string().min(1).max(200),
 	scopes: z
 		.array(
@@ -1427,6 +1444,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_SIGN_IN_UNDECLARED",
 	/** The product's token endpoint gave no answer, and the access token is spent; nothing was sent (ISS-1047). */
 	"SUPPORT_OWNER_TOKEN_UNANSWERED",
+	/** The binding names no owner account, or no way to read who signed in, so no sign-in is started (ISS-1052). */
+	"SUPPORT_OWNER_IDENTITY_UNDECLARED",
+	/** Someone other than the owner's own account completed his sign-in: nothing was kept (ISS-1052). */
+	"SUPPORT_OWNER_SIGN_IN_NOT_THE_OWNER",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 

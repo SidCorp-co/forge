@@ -1,14 +1,27 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { expect } from 'vitest';
 
 // ISS-1047: a stand-in for a product whose owner acts take a person's OAuth access token, as
-// Agenfold's do, for the integration tests of core's owner sign-in and refresh.
+// Agenfold's do, for the integration tests of core's owner sign-in and refresh. ISS-1052: each
+// sign-in is made by one of the product's accounts, which its id_token (when `openid` is asked for)
+// and its userinfo endpoint name.
 
 export const CLIENT_ID = 'forge-owner-client';
 const b64url = (b: Buffer) => b.toString('base64url');
 const token = (prefix: string) => `${prefix}_${b64url(randomBytes(18))}`;
+
+/** One of the product's own accounts, as its id_token and userinfo name it. */
+export interface ProductAccount {
+  sub: string;
+  email: string;
+}
+
+/** The owner's account at the product, the one his binding names. */
+export const OWNER_ACCOUNT: ProductAccount = { sub: 'agf-user-1001', email: 'Alice@Agenfold.test' };
+/** Somebody else's account at the same product: whoever opened a forwarded link. */
+export const OTHER_ACCOUNT: ProductAccount = { sub: 'agf-user-2002', email: 'mallory@agenfold.test' };
 
 /**
  * Agenfold as its owner acts see it: an OAuth server (authorization code with PKCE, and refresh
@@ -22,18 +35,29 @@ export class OauthProduct {
   readonly calls: { url: string; auth: string | undefined; body: string }[] = [];
   readonly refreshes: { refreshToken: string; answered: number }[] = [];
   readonly codeTrades: { verifierOk: boolean; redirect: string | null }[] = [];
+  /** The access tokens its userinfo endpoint was asked about. */
+  readonly userinfoAsks: string[] = [];
+  /** Who signs in at the product's page next: the owner, unless a test hands the link on. */
+  signingIn: ProductAccount = OWNER_ACCOUNT;
   /** How long the token endpoint waits before it answers a refresh, so two acts overlap in it. */
   refreshDelayMs = 0;
-  private access = new Map<string, number>();
+  private access = new Map<string, { until: number; account: ProductAccount }>();
   private refresh = new Map<string, 'live' | 'spent' | 'revoked'>();
-  private codes = new Map<string, { challenge: string; redirect: string }>();
+  private codes = new Map<
+    string,
+    { challenge: string; redirect: string; account: ProductAccount; openid: boolean }
+  >();
+  private readonly keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
   private server!: Server;
 
   /** A fresh pair, as a sign-in would give: an access token living `lifetimeSec`, and its refresh token. */
-  mint(lifetimeSec: number): { accessToken: string; refreshToken: string } {
+  mint(
+    lifetimeSec: number,
+    account: ProductAccount = OWNER_ACCOUNT,
+  ): { accessToken: string; refreshToken: string } {
     const accessToken = token('agf_at');
     const refreshToken = token('agf_rt');
-    this.access.set(accessToken, Date.now() + lifetimeSec * 1000);
+    this.access.set(accessToken, { until: Date.now() + lifetimeSec * 1000, account });
     this.refresh.set(refreshToken, 'live');
     this.issued.push(accessToken, refreshToken);
     return { accessToken, refreshToken };
@@ -48,8 +72,28 @@ export class OauthProduct {
     return this.refresh.get(refreshToken);
   }
 
-  /** The owner signs in and confirms: where the product sends his browser back. */
-  async confirm(authorizeUrl: string): Promise<URL> {
+  /** An id_token for `account`, signed RS256, issued by this product to Forge's client. */
+  private idToken(account: ProductAccount): string {
+    const now = Math.floor(Date.now() / 1000);
+    const part = (v: unknown) => b64url(Buffer.from(JSON.stringify(v)));
+    const head = `${part({ alg: 'RS256', typ: 'JWT' })}.${part({
+      iss: this.base,
+      aud: CLIENT_ID,
+      sub: account.sub,
+      email: account.email,
+      email_verified: true,
+      iat: now,
+      exp: now + 600,
+    })}`;
+    return `${head}.${b64url(sign('sha256', Buffer.from(head), this.keys.privateKey))}`;
+  }
+
+  /**
+   * Somebody signs in at the product's page and confirms: where the product sends the browser back.
+   * The owner, unless `as` names whoever else opened the link.
+   */
+  async confirm(authorizeUrl: string, as: ProductAccount = OWNER_ACCOUNT): Promise<URL> {
+    this.signingIn = as;
     const res = await fetch(authorizeUrl, { redirect: 'manual' });
     expect(res.status).toBe(302);
     return new URL(String(res.headers.get('location')));
@@ -74,6 +118,8 @@ export class OauthProduct {
         this.codes.set(issuedCode, {
           challenge: String(q.get('code_challenge')),
           redirect: String(q.get('redirect_uri')),
+          account: this.signingIn,
+          openid: (q.get('scope') ?? '').split(' ').includes('openid'),
         });
         const back = new URL(String(q.get('redirect_uri')));
         back.searchParams.set('code', issuedCode);
@@ -84,8 +130,8 @@ export class OauthProduct {
       if (url.pathname === '/oauth/token') {
         const form = new URLSearchParams(body);
         if (form.get('client_id') !== CLIENT_ID) return json(401, { error: 'invalid_client' });
-        const pair = () => {
-          const p = this.mint(lifetimeSec);
+        const pair = (account: ProductAccount = OWNER_ACCOUNT) => {
+          const p = this.mint(lifetimeSec, account);
           return {
             access_token: p.accessToken,
             refresh_token: p.refreshToken,
@@ -103,7 +149,10 @@ export class OauthProduct {
           if (!held || !verifierOk || held.redirect !== form.get('redirect_uri')) {
             return json(400, { error: 'invalid_grant' });
           }
-          return json(200, pair());
+          return json(200, {
+            ...pair(held.account),
+            ...(held.openid ? { id_token: this.idToken(held.account) } : {}),
+          });
         }
         if (form.get('grant_type') === 'refresh_token') {
           const presented = String(form.get('refresh_token'));
@@ -125,10 +174,15 @@ export class OauthProduct {
         return json(400, { error: 'unsupported_grant_type' });
       }
       const auth = req.headers.authorization;
-      this.calls.push({ url: url.pathname, auth, body });
       const presented = auth?.startsWith('Bearer ') ? auth.slice(7) : '';
-      const until = this.access.get(presented);
-      if (until === undefined || until < Date.now()) {
+      const live = this.access.get(presented);
+      if (url.pathname === '/oauth/userinfo') {
+        this.userinfoAsks.push(presented);
+        if (!live || live.until < Date.now()) return json(401, { error: 'invalid_token' });
+        return json(200, { sub: live.account.sub, email: live.account.email, email_verified: true });
+      }
+      this.calls.push({ url: url.pathname, auth, body });
+      if (!live || live.until < Date.now()) {
         return json(401, { error: 'the access token is expired or unknown' });
       }
       // a careless API echoes the credential back
