@@ -140,11 +140,11 @@ export type CleanupResult = (typeof CLEANUP_RESULTS)[number];
 
 /**
  * `POST /api/projects/:id/cleanup-reports` (BC-9): what one cleanup run cleared, what remains and why.
- * Every debt open when it reports is named once, in `cleared` or `remains`. `covers` names the issues
- * rated high whose merge the green head carries, which the run checks with its own git; only a green
- * report covers anything. `base.sha` is checked against the project's source host: a commit on
- * `base.branch` there, or the report is refused (ISS-912). A later report naming the same `fire`
- * supersedes the one before it, which is kept and reads as superseded.
+ * Every debt open when it reports is named once, in `cleared` or `remains`. A report covers no
+ * change: the audit holds none, so the strict body refuses a `covers` key by name (ISS-1057).
+ * `base.sha` is checked against the project's source host: a commit on `base.branch` there, or the
+ * report is refused (ISS-912). A later report naming the same `fire` supersedes the one before it,
+ * which is kept and reads as superseded.
  */
 export const cleanupReportRequestSchema = z.strictObject({
 	fire: z
@@ -162,10 +162,6 @@ export const cleanupReportRequestSchema = z.strictObject({
 	remains: z
 		.array(z.strictObject({ debt: z.uuid(), why: text("why", LIMITS.reason) }))
 		.max(LIMITS.listed),
-	covers: z
-		.array(z.string().trim().min(1).max(200))
-		.max(LIMITS.items)
-		.optional(),
 });
 export type CleanupReportRequest = z.infer<typeof cleanupReportRequestSchema>;
 
@@ -176,8 +172,6 @@ export const CLEANUP_REFUSAL_CODES = [
 	"CLEANUP_REPORT_INCOMPLETE",
 	"CLEANUP_DEBT_UNKNOWN",
 	"CLEANUP_DEBT_NAMED_TWICE",
-	"CLEANUP_COVERS_RED",
-	"CLEANUP_COVERS_NOT_HIGH",
 	"CLEANUP_RESULT_DISAGREES",
 	"CLEANUP_BASE_NOT_ON_BRANCH",
 	"CLEANUP_BASE_UNCHECKABLE",
@@ -236,7 +230,6 @@ export interface CleanupReportView {
 	ci: string | null;
 	cleared: { debt: string; how: string }[];
 	remains: { debt: string; why: string }[];
-	covers: { issueId: string; issueKey: string }[];
 	reportedBy: string | null;
 	reportedAt: string;
 	/** The later report from the same fire that stands in its place, or null while it is current (ISS-912). */
@@ -254,18 +247,11 @@ export const cleanupReportsQuerySchema = z.strictObject({
 });
 export type CleanupReportsQuery = z.infer<typeof cleanupReportsQuerySchema>;
 
-/** `GET /api/projects/:id/debts`: the ledger, the changes waiting on a cleanup, and the window. */
+/** `GET /api/projects/:id/debts`: the ledger and the window. */
 export interface DebtLedgerView {
 	fast: boolean;
 	open: DebtView[];
 	cleared: DebtView[];
-	/** Issues rated high that no green cleanup covers yet: owed a report by the audit, holding nothing (BC-5). */
-	waiting: {
-		issueId: string;
-		issueKey: string;
-		status: string;
-		impact: Impact;
-	}[];
 	window: {
 		scheduleId: string;
 		cron: string;

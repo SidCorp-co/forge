@@ -3,14 +3,7 @@
  */
 import type { CleanupReportRequest } from '@forge/contracts/cleanup';
 import { describe, expect, it } from 'vitest';
-import {
-  cleanupBrief,
-  debtRefusals,
-  reportOwed,
-  reportRefusals,
-  waitingOnCleanup,
-  windowOffWords,
-} from './rules.js';
+import { cleanupBrief, debtRefusals, reportOwed, reportRefusals, windowOffWords } from './rules.js';
 
 const impact = (rating: 'low' | 'medium' | 'high') =>
   ({ type: 'data', rating, reason: `rated ${rating}` }) as const;
@@ -57,8 +50,8 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
       cleared: [{ debt: D1, how: 'fixed' }],
       remains: [{ debt: D2, why: 'needs a person' }],
     });
-    expect(reportRefusals(whole, open, [])).toEqual([]);
-    const short = reportRefusals(report({ cleared: [{ debt: D1, how: 'fixed' }] }), open, []);
+    expect(reportRefusals(whole, open)).toEqual([]);
+    const short = reportRefusals(report({ cleared: [{ debt: D1, how: 'fixed' }] }), open);
     expect(short.map((r) => r.code)).toEqual(['CLEANUP_REPORT_INCOMPLETE']);
     expect(short[0]?.detail).toContain(D2);
     expect(short[0]?.detail).toContain('scripts/gate.mjs');
@@ -73,9 +66,7 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
         { debt: D2, why: 'later' },
       ],
     });
-    expect(reportRefusals(twice, open, []).map((r) => r.code)).toEqual([
-      'CLEANUP_DEBT_NAMED_TWICE',
-    ]);
+    expect(reportRefusals(twice, open).map((r) => r.code)).toEqual(['CLEANUP_DEBT_NAMED_TWICE']);
     const stranger = report({
       result: 'red',
       cleared: [{ debt: '33333333-3333-4333-8333-333333333333', how: 'x' }],
@@ -84,45 +75,7 @@ describe('what a cleanup report owes (REQ-79 BC-9)', () => {
         { debt: D2, why: 'b' },
       ],
     });
-    expect(reportRefusals(stranger, open, []).map((r) => r.code)).toEqual(['CLEANUP_DEBT_UNKNOWN']);
-  });
-
-  it('covers only on green, and only a change rated high now', () => {
-    const cleared = [{ debt: D1, how: 'fixed' }];
-    const remains = [{ debt: D2, why: 'b' }];
-    const high = { ref: 'ISS-1', issueId: 'i1', key: 'ISS-1', rating: 'high' as const };
-    const medium = { ref: 'ISS-2', issueId: 'i2', key: 'ISS-2', rating: 'medium' as const };
-    const none = { ref: 'ISS-9', issueId: null, key: null, rating: null };
-    expect(reportRefusals(report({ cleared, remains }), open, [high])).toEqual([]);
-    const red = report({
-      result: 'red',
-      remains: [
-        { debt: D1, why: 'a' },
-        { debt: D2, why: 'b' },
-      ],
-    });
-    expect(reportRefusals(red, open, [high]).map((r) => r.code)).toEqual(['CLEANUP_COVERS_RED']);
-    expect(
-      reportRefusals(report({ cleared, remains }), open, [medium, none]).map((r) => r.path),
-    ).toEqual(['/covers/0', '/covers/1']);
-  });
-});
-
-describe('which changes wait for a green cleanup (REQ-79 BC-5, BC-6)', () => {
-  const at = (m: number) => new Date(Date.UTC(2026, 9, 30, 10, m));
-  const rated = [
-    { issueId: 'high', impact: impact('high'), ratedAt: at(0) },
-    { issueId: 'medium', impact: impact('medium'), ratedAt: at(0) },
-    { issueId: 'low', impact: impact('low'), ratedAt: at(0) },
-    { issueId: 'covered', impact: impact('high'), ratedAt: at(0) },
-    { issueId: 'rerated', impact: impact('high'), ratedAt: at(10) },
-  ];
-  it('holds a change rated high no green report since covers, and nothing rated lower', () => {
-    const covered = new Map([
-      ['covered', at(5)],
-      ['rerated', at(5)],
-    ]);
-    expect(waitingOnCleanup(rated, covered).map((r) => r.issueId)).toEqual(['high', 'rerated']);
+    expect(reportRefusals(stranger, open).map((r) => r.code)).toEqual(['CLEANUP_DEBT_UNKNOWN']);
   });
 });
 
@@ -138,7 +91,6 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
       projectId: 'p1',
       fireId: 'f1',
       debts: [],
-      waiting: [],
       landed: { kind: 'landed', branch: 'dev', from, head },
     });
     expect(brief).toContain(`What landed on dev since the last cleanup report: ${from}..${head}`);
@@ -154,14 +106,13 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
       projectId: 'p1',
       fireId: 'f1',
       debts: [],
-      waiting: [],
       landed: { kind: 'landed', branch: 'dev', from: null, head },
     });
     expect(first).toContain('no cleanup report yet');
     expect(first).toContain(head);
   });
 
-  it('names the debt, the changes waiting, its fire and the report it owes', () => {
+  it('names the debt, its fire and the report it owes, and asks no report to cover a change', () => {
     const brief = cleanupBrief({
       projectId: 'p1',
       fireId: 'f1',
@@ -178,11 +129,12 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
           evidence: [],
         },
       ],
-      waiting: [{ key: 'ISS-7', reason: 'a migration' }],
       landed: NOTHING_LANDED,
     });
     expect(brief).toContain(D1);
-    expect(brief).toContain('ISS-7');
+    // ISS-1057: the audit holds no change, so the brief lists none waiting and asks for no `covers`
+    expect(brief).not.toContain('waiting on a green cleanup');
+    expect(brief).not.toContain('covers');
     expect(brief).toContain('"f1"');
     expect(brief).toContain('/api/projects/p1/cleanup-reports');
     expect(brief).toContain("never take a delivery run's");
@@ -194,7 +146,6 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
       projectId: 'p1',
       fireId: 'f1',
       debts: [],
-      waiting: [],
       landed: NOTHING_LANDED,
     });
     expect(brief).toContain('This run is headless');
@@ -210,7 +161,7 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
 
 // ISS-842: debt 3d01ab3d, which no diff can clear, read green on four fires and red on cb6546d2
 describe('a report green exactly when every debt it leaves is carried (REQ-79 BC-10)', () => {
-  const codes = (r: ReturnType<typeof report>) => reportRefusals(r, open, []).map((x) => x.code);
+  const codes = (r: ReturnType<typeof report>) => reportRefusals(r, open).map((x) => x.code);
   const both = [
     { debt: D1, why: 'a' },
     { debt: D2, why: 'b' },
@@ -224,7 +175,7 @@ describe('a report green exactly when every debt it leaves is carried (REQ-79 BC
   });
 
   it('refuses green leaving a debt nobody carries, naming it', () => {
-    const refused = reportRefusals(report({ remains: both }), open, []);
+    const refused = reportRefusals(report({ remains: both }), open);
     expect(refused.map((r) => [r.code, r.path])).toEqual([['CLEANUP_RESULT_DISAGREES', '/result']]);
     expect(refused[0]?.detail).toContain(D1);
     expect(refused[0]?.detail).not.toContain(D2);
@@ -246,7 +197,7 @@ describe('a report green exactly when every debt it leaves is carried (REQ-79 BC
       ],
     });
     expect(codes(none)).toEqual(['CLEANUP_RESULT_DISAGREES']);
-    expect(reportRefusals(none, open, [])[0]?.detail).toContain('leaves no debt');
+    expect(reportRefusals(none, open)[0]?.detail).toContain('leaves no debt');
   });
 
   it('prints each carried debt with its price, and says the result is not the run’s call', () => {
@@ -274,7 +225,6 @@ describe('a report green exactly when every debt it leaves is carried (REQ-79 BC
           ],
         },
       ],
-      waiting: [],
       landed: NOTHING_LANDED,
     });
     expect(brief).toContain(

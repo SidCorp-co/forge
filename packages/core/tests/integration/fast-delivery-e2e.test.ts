@@ -122,7 +122,8 @@ describe('the impact a building agent rates its change at (BC-4)', () => {
     expect((await rate(issue, 'medium')).status).toBe(201);
     const high = await rate(issue, 'high');
     expect(high.status).toBe(201);
-    expect(high.body).toMatchObject({ waits: true, impact: { type: 'data', rating: 'high' } });
+    expect(high.body).toMatchObject({ impact: { type: 'data', rating: 'high' } });
+    expect(high.body).not.toHaveProperty('waits');
     expect(high.body.window).toBeNull();
     const read = await call('GET', `/api/issues/${issue}/impact`);
     expect(read.body.current).toMatchObject({ rating: 'high', reason: 'rated high' });
@@ -286,7 +287,7 @@ describe('a change rated high lands on its build, and the audit window takes its
     ] as const) {
       await rate(issue, rating);
     }
-    expect(((await ledger()).body.waiting as Doc[]).map((w) => w.issueId)).toEqual([high]);
+    expect((await ledger()).body).not.toHaveProperty('waiting');
 
     for (const issue of [high, medium, low]) {
       const landed = await checkLanding(issue);
@@ -374,7 +375,7 @@ describe('a change rated high is never held from promotion by the audit (BC-6)',
     expect(JSON.stringify(cut.body)).not.toContain('RELEASE_CLEANUP_PENDING');
   });
 
-  it('is cut where a person promotes, with no green cleanup covering it, and still waits in the ledger', async () => {
+  it('is cut where a person promotes, with no green cleanup covering it', async () => {
     await seedProductionDeployTrigger(projectId, ownerId, 'on-request');
     const high = await fx.insertIssue('awaiting_release');
     await debts({ items: [red('low')] });
@@ -383,23 +384,6 @@ describe('a change rated high is never held from promotion by the audit (BC-6)',
       issueIds: [high],
     });
     expect(JSON.stringify(cut.body)).not.toContain('RELEASE_CLEANUP_PENDING');
-    expect((await ledger()).body.waiting.map((w: Doc) => w.issueId)).toContain(high);
-  });
-
-  it('is covered only by a green report, never a red one', async () => {
-    await seedProductionDeployTrigger(projectId, ownerId, 'on-request');
-    const high = await fx.insertIssue('awaiting_release');
-    await rate(high, 'high');
-    const debt = (await debts({ items: [red('low')] })).body.debts[0] as string;
-    const onRed = await reportCleanup({
-      result: 'red',
-      remains: [{ debt, why: 'x' }],
-      covers: [high],
-    });
-    expect(codes(onRed)).toEqual(['CLEANUP_COVERS_RED']);
-    const green = await reportCleanup({ cleared: [{ debt, how: 'fixed' }], covers: [high] });
-    expect(green.status, JSON.stringify(green.body)).toBe(201);
-    expect(green.body.waiting).toEqual([]);
   });
 });
 
@@ -423,10 +407,8 @@ describe('the cleanup window fires a run on a slot of its own (BC-7, BC-8)', () 
       sql`SELECT status, reason, refusal FROM schedule_runs WHERE project_id = ${projectId} ORDER BY created_at`,
     );
 
-  it('briefs the run with the open debt and the waiting changes, and starts nothing when all is clean', async () => {
+  it('briefs the run with the open debt, and starts nothing when all is clean', async () => {
     expect((await cleanupFirePlan({ projectId, fireId: 'f' })).kind).toBe('nothing');
-    const high = await fx.insertIssue('awaiting_release');
-    await rate(high, 'high');
     const id = (await debts({ items: [red('low')] })).body.debts[0] as string;
     const plan = await cleanupFirePlan({ projectId, fireId: 'fire-1' });
     expect(plan.kind).toBe('run');

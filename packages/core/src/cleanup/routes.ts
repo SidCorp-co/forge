@@ -170,7 +170,7 @@ cleanupProjectRoutes.post(
   requiresOnParam('project.write'),
   strictBody(
     cleanupReportRequestSchema,
-    "{ fire?, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }], covers?: [issue] } reports a cleanup run (REQ-79 BC-9); base.sha is a full 40-hex commit on base.branch in the project's source, and a later report naming the same fire supersedes the earlier one",
+    "{ fire?, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }] } reports a cleanup run (REQ-79 BC-9); base.sha is a full 40-hex commit on base.branch in the project's source, and a later report naming the same fire supersedes the earlier one",
   ),
   async (c) =>
     c.json(

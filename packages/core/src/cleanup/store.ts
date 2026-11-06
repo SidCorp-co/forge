@@ -11,8 +11,7 @@ import type {
   Impact,
   ImpactView,
 } from '@forge/contracts/cleanup';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 import {
@@ -307,48 +306,6 @@ export async function currentRatings(issueIds: readonly string[]): Promise<Rated
 }
 
 /**
- * The project's open issues that carry a rating at all, with their status; `unlanded` leaves out
- * those whose merge is marked (where production deploys on land, a landed change is live).
- */
-export async function ratedOpenIssues(
-  projectId: string,
-  unlanded = false,
-): Promise<{ id: string; status: string }[]> {
-  return db
-    .selectDistinct({ id: issues.id, status: issues.status })
-    .from(issues)
-    .innerJoin(changeImpacts, eq(changeImpacts.issueId, issues.id))
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        notInArray(issues.status, [...ISSUE_TERMINAL_STATUSES]),
-        unlanded ? isNull(issues.mergedAt) : undefined,
-      ),
-    );
-}
-
-/** When a current green cleanup report last covered each issue, among `issueIds`; a superseded one covers nothing. */
-export async function greenCoverage(
-  projectId: string,
-  issueIds: readonly string[],
-): Promise<Map<string, Date>> {
-  if (issueIds.length === 0) return new Map();
-  const rows = (await db.execute(sql`
-    SELECT c.issue_id, max(r.created_at) AS at
-      FROM ${cleanupReports} r,
-           jsonb_array_elements_text(r.covers) AS c(issue_id)
-     WHERE r.project_id = ${projectId}
-       AND r.result = 'green'
-       AND r.superseded_by IS NULL
-       AND c.issue_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}`),
-         sql`, `,
-       )})
-     GROUP BY c.issue_id`)) as unknown as { issue_id: string; at: string | Date }[];
-  return new Map(rows.map((r) => [r.issue_id, new Date(r.at)]));
-}
-
-/**
  * Keep a report, and clear the debts it names cleared. A report naming its fire supersedes every
  * current report that fire filed before it (ISS-912): those are kept, naming this one, and the fire's
  * reports are taken one at a time so two filed at once still leave exactly one current.
@@ -358,7 +315,6 @@ export async function insertReport(
   row: {
     projectId: string;
     report: CleanupReportRequest;
-    covers: readonly string[];
     reportedBy: string | null;
   },
 ): Promise<{ row: typeof cleanupReports.$inferSelect; supersedes: string[] }> {
@@ -377,7 +333,8 @@ export async function insertReport(
       ci: report.ci ?? null,
       cleared: report.cleared,
       remains: report.remains,
-      covers: [...row.covers],
+      // a report covers nothing since the audit holds no change (ISS-1057); the column keeps history
+      covers: [],
       reportedBy: row.reportedBy,
     })
     .returning();
@@ -428,15 +385,10 @@ export async function readReports(
     )
     .orderBy(desc(cleanupReports.createdAt))
     .limit(limit);
-  const covered = rows.flatMap((r) => r.covers as string[]);
-  const keys = covered.length ? await issueDisplayIds([...new Set(covered)]) : new Map();
-  return rows.map((r) => reportView(r, keys));
+  return rows.map(reportView);
 }
 
-export function reportView(
-  r: typeof cleanupReports.$inferSelect,
-  keys: ReadonlyMap<string, string>,
-): CleanupReportView {
+export function reportView(r: typeof cleanupReports.$inferSelect): CleanupReportView {
   return {
     id: r.id,
     fireId: r.scheduleRunId,
@@ -445,10 +397,6 @@ export function reportView(
     ci: r.ci,
     cleared: r.cleared as CleanupReportView['cleared'],
     remains: r.remains as CleanupReportView['remains'],
-    covers: (r.covers as string[]).map((issueId) => ({
-      issueId,
-      issueKey: keys.get(issueId) ?? issueId,
-    })),
     reportedBy: r.reportedBy,
     reportedAt: r.createdAt.toISOString(),
     supersededBy: r.supersededBy,

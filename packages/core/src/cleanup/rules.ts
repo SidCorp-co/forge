@@ -1,7 +1,7 @@
 /**
  * Fast delivery's rules (REQ-79), pure: what a debt record may carry, what a cleanup report owes the
- * ledger, which changes rated high no cleanup has covered yet, and the brief a cleanup run starts with. `store.ts`
- * and `service.ts` read and write around them.
+ * ledger, what the base owes the audit, and the brief a cleanup run starts with. `store.ts` and
+ * `service.ts` read and write around them.
  */
 
 import {
@@ -48,23 +48,14 @@ export interface OpenDebt {
   carried: boolean;
 }
 
-/** One issue a report names as covered, as read now: its key and its current rating, if any. */
-export interface CoverCandidate {
-  ref: string;
-  issueId: string | null;
-  key: string | null;
-  rating: Impact['rating'] | null;
-}
-
 /**
  * Why a cleanup report cannot be kept, each by name (BC-9): a debt it names that is not open on this
- * project, a debt named twice, an open debt it names neither cleared nor remaining, a red report that
- * covers anything, and a covered issue not rated high now.
+ * project, a debt named twice, an open debt it names neither cleared nor remaining, and a result its
+ * ledger contradicts.
  */
 export function reportRefusals(
   report: CleanupReportRequest,
   open: readonly OpenDebt[],
-  covers: readonly CoverCandidate[],
 ): CleanupRefusal[] {
   const out: CleanupRefusal[] = [];
   const openIds = new Set(open.map((d) => d.id.toLowerCase()));
@@ -101,29 +92,6 @@ export function reportRefusals(
   }
   const resultFault = resultDisagreement(report, open);
   if (resultFault) out.push(resultFault);
-  if (report.result !== 'green' && covers.length > 0) {
-    out.push({
-      code: 'CLEANUP_COVERS_RED',
-      path: '/covers',
-      detail:
-        'only a green cleanup lets a change rated high reach production (REQ-79 BC-5), and this report is red: send `covers` only with `result: green`. Nothing was recorded',
-    });
-  }
-  for (const [i, c] of covers.entries()) {
-    if (c.issueId === null) {
-      out.push({
-        code: 'CLEANUP_COVERS_NOT_HIGH',
-        path: `/covers/${i}`,
-        detail: `${c.ref} is not an issue of this project. Nothing was recorded`,
-      });
-    } else if (c.rating !== HOLDING_RATING) {
-      out.push({
-        code: 'CLEANUP_COVERS_NOT_HIGH',
-        path: `/covers/${i}`,
-        detail: `${c.key ?? c.ref} is ${c.rating ? `rated ${c.rating}` : 'not rated'}, and a cleanup covers only a change rated ${HOLDING_RATING}, the one change the audit owes a report on (REQ-79 BC-5). Leave it out of \`covers\`. Nothing was recorded`,
-      });
-    }
-  }
   return out;
 }
 
@@ -155,27 +123,11 @@ function resultDisagreement(
   return null;
 }
 
-/** An issue whose current rating is high, as the hold reads it. */
+/** An issue's current rating, as the mark's owed merge check reads it. */
 export interface RatedIssue {
   issueId: string;
   impact: Impact;
   ratedAt: Date;
-}
-
-/**
- * The changes the audit still owes a report on (BC-5): rated high now, and no green report since that
- * rating covers them. They hold nothing; the ledger lists them and the cleanup window starts a run on
- * them. A lower rating, or none, is owed nothing.
- */
-export function waitingOnCleanup(
-  rated: readonly RatedIssue[],
-  coveredAt: ReadonlyMap<string, Date>,
-): RatedIssue[] {
-  return rated.filter((r) => {
-    if (r.impact.rating !== HOLDING_RATING) return false;
-    const covered = coveredAt.get(r.issueId);
-    return !covered || covered < r.ratedAt;
-  });
 }
 
 /** One open debt as the cleanup brief lists it. */
@@ -240,15 +192,14 @@ export function landedWords(landed: Landed): string {
 }
 
 /**
- * The brief a cleanup run starts with (BC-7, BC-9, BC-20): what is open, which changes rated high wait
- * on it, what landed since the last report, the audit guide that says how to work it (BC-23), and the
- * report it owes, with the fire it answers.
+ * The brief a cleanup run starts with (BC-7, BC-9, BC-20): what is open, what landed since the last
+ * report, the audit guide that says how to work it (BC-23), and the report it owes, with the fire it
+ * answers.
  */
 export function cleanupBrief(args: {
   projectId: string;
   fireId: string;
   debts: readonly BriefDebt[];
-  waiting: readonly { key: string; reason: string }[];
   landed: Landed;
 }): string {
   const { projectId, fireId } = args;
@@ -257,17 +208,11 @@ export function cleanupBrief(args: {
       ? landedWords(args.landed)
       : `Nothing to review: ${landedWords(args.landed)}.`;
   const debts = args.debts.length ? args.debts.map(briefDebt).join('\n') : '- none recorded';
-  const waiting = args.waiting.length
-    ? args.waiting.map((w) => `- ${w.key}: ${w.reason}`).join('\n')
-    : '- none';
   return [
     "You are this project's cleanup run (REQ-79), started by its cleanup window: the Audit stage of Product → Delivery → Release → Audit, a job of its own. You run on a slot of your own and never take a delivery run's; leave delivery work to the delivery runs.",
     '',
     `Open cleanup debt (GET /api/projects/${projectId}/debts reads it whole):`,
     debts,
-    '',
-    'Changes rated high impact waiting on a green cleanup before production:',
-    waiting,
     '',
     landed,
     '',
@@ -275,8 +220,8 @@ export function cleanupBrief(args: {
     `1. Read ${guideRef('cleanup-audit')} first: it is how this run works. In a new worktree off the branch this project's work lands on, review what landed above and how it ran, clear the debt above and any CI red on that branch, and return to Product what would change the product, as that guide says. Land each fix the way this project lands work.`,
     "2. Run the project's checks at the head you leave, and record any new debt you find but do not clear: POST /api/projects/" +
       `${projectId}/debts { items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }.`,
-    `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the full 40-hex sha of the head you leave, pushed to that branch> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }. Core reads base.sha on the project's source host and refuses one that branch does not hold (CLEANUP_BASE_NOT_ON_BRANCH); a report you must correct is filed again with the same fire, and the later one supersedes it.`,
-    'Every open debt is named once, cleared with how or remaining with why; only a green report covers anything. Weigh the evidence given on a debt before you work it; what you find yourself, keep on it: POST /api/projects/' +
+    `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the full 40-hex sha of the head you leave, pushed to that branch> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }] }. Core reads base.sha on the project's source host and refuses one that branch does not hold (CLEANUP_BASE_NOT_ON_BRANCH); a report you must correct is filed again with the same fire, and the later one supersedes it.`,
+    'Every open debt is named once, cleared with how or remaining with why. Weigh the evidence given on a debt before you work it; what you find yourself, keep on it: POST /api/projects/' +
       `${projectId}/debts/<debt>/evidence { evidence }.`,
     'The result is not yours to judge (REQ-79 BC-10): it is green exactly when every debt you leave in remains is CARRIED above, and red when you leave one that is not. Core refuses any other result (CLEANUP_RESULT_DISAGREES). A carried debt still remains until it is cleared, and never makes a report red; carrying a debt is not yours either.',
     '',
@@ -286,7 +231,7 @@ export function cleanupBrief(args: {
   ].join('\n');
 }
 
-/** The cleanup window as a landing refusal names it. */
+/** The cleanup window, as the ledger and the brief name it. */
 export interface WindowSaid {
   scheduleId: string;
   cron: string;

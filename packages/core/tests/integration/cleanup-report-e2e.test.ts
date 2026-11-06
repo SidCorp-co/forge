@@ -140,11 +140,16 @@ describe('a cleanup report (BC-9)', () => {
     });
   });
 
-  it('covers only a change rated high, naming the one that is not', async () => {
-    const medium = await fx.insertIssue('awaiting_release');
-    await rate(medium, 'medium');
-    const res = await reportCleanup({ covers: [medium] });
-    expect(codes(res)).toEqual(['CLEANUP_COVERS_NOT_HIGH']);
+  // ISS-1057: the audit holds no change, so a report covers nothing, and one still sending `covers`
+  // (a run on an older brief) is refused by name rather than read and dropped in silence
+  it('refuses `covers` by name, recording nothing', async () => {
+    const high = await fx.insertIssue('awaiting_release');
+    await rate(high, 'high');
+    const res = await reportCleanup({ covers: [high] });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('covers');
+    const listed = await call('GET', `/api/projects/${projectId}/cleanup-reports`);
+    expect(listed.body.reports).toEqual([]);
   });
 });
 
@@ -228,7 +233,7 @@ describe('a debt no change can clear, carried as a priced amnesty (BC-10, ISS-84
     expect((await plan()).kind).toBe('run');
     const remains = [{ debt, why: 'a person must set the token' }];
     // a green report on another branch is no report on the base the change landed on
-    expect((await reportCleanup({ remains, covers: [high] })).status).toBe(201);
+    expect((await reportCleanup({ remains })).status).toBe(201);
     expect((await plan()).kind).toBe('run');
     const green = await reportCleanup({ base: { branch: 'main', sha: 'c'.repeat(40) }, remains });
     expect([green.status, codes(green)]).toEqual([201, []]);

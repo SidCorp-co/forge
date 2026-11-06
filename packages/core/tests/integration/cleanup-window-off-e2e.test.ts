@@ -98,7 +98,8 @@ describe('ISS-1049: no door that reads or records debt creates a cleanup window'
       reason: 'rated high',
     });
     expect(rated.status).toBe(201);
-    expect(rated.body).toMatchObject({ waits: true, window: null });
+    expect(rated.body).toMatchObject({ window: null });
+    expect(rated.body).not.toHaveProperty('waits');
     await db.transaction((tx) =>
       recordMergeCheckCleanup(tx, {
         issueId: issue,
