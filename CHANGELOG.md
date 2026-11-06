@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.538] - 2026-11-06
+
+Chat makes your Product decisions: agree, triage, design and release on your word
+
+### Added
+
+- **The chat does a person's Product acts on their word.** Requirement, feedback, design and release acts are put to you, made once you agree, and each item's new state or refusal is shown; the chat opens every page.
+
 ## [0.4.0-dev.537] - 2026-11-06
 
 Support rooms hear true outcomes, Ask Agent acts exactly, cuts take named versions
