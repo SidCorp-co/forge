@@ -50,9 +50,9 @@ commit pass since the issue's last reopen (ISS-914).
 **Three marks, kept apart.** An issue closes when its criteria are met in scope. Released, and
 confirmed on the target environment, are marks on the release, never issue statuses: whether a
 change is live is read from the release record, never from `closed`. A criterion an issue cannot
-meet is moved out on the record before the close, and the close names where each one went. Core
-does not yet close this way: until ISS-1062 lands a close is still the release's act
-(`CLOSE_ONLY_BY_RELEASE`). See
+meet is moved out on the record before the close, and the close names where each one went: the
+run holding the issue closes it, and a close leaving a criterion with nowhere to go is refused
+(`CLOSE_CRITERION_UNPLACED`). See
 [`docs/adr/0014-an-issue-is-one-outcome-and-closes-when-met-in-scope.md`](docs/adr/0014-an-issue-is-one-outcome-and-closes-when-met-in-scope.md).
 
 Fast delivery (REQ-79) is every project's default, and `delivery.fast: false` turns it off. Under

@@ -13,7 +13,7 @@ import type { FlowIssue, FlowMove, IssueFlow } from '../issues/index.js';
 export const FLOW_EVENTS = {
   /** Merged: the machine's `merged` edge into `awaiting_release`. */
   verified: 'awaiting_release',
-  /** Released: the `release.recorded` edge. */
+  /** Closed: met in scope, by the run holding it or a release; whether it is live is the release record's. */
   closed: 'closed',
   /** Sent back after it was taken as done: a failed release, or a closed issue returned. */
   sentBack: 'reopen',

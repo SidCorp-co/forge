@@ -28,7 +28,7 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
       'PATTERN_REVIEW_PENDING',
       'DESIGN_RECORD_MISSING',
       'MERGE_NOT_RECORDED',
-      'CLOSE_ONLY_BY_RELEASE',
+      'CLOSE_CRITERION_UNPLACED',
     ]) {
       expect(prose).toContain(kernel);
     }
@@ -75,7 +75,8 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
     );
     expect(prose).toContain('**An issue closes when its criteria are met in scope**');
     expect(prose).toContain('are marks on the release, never issue statuses');
-    expect(prose).toContain("**Today the kernel still makes the close a release's act:**");
-    expect(prose).toContain('CLOSE_ONLY_BY_RELEASE');
+    expect(prose).toContain('**The run holding the issue closes it:**');
+    expect(prose).not.toContain("**Today the kernel still makes the close a release's act:**");
+    expect(prose).not.toContain('CLOSE_ONLY_BY_RELEASE');
   });
 });

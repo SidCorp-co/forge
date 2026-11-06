@@ -25,9 +25,8 @@ import {
 } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { issueChecklistRecord } from './checklist-record.js';
-import { type MovedCriterion, moveUnmetCriteria, type UnmetInput } from './close-in-scope.js';
+import { type MovedCriterion, postMovedOut, type UnmetInput } from './close-in-scope.js';
 import { designCheckOf } from './design-record.js';
-import { issueDisplayIds } from './display-ids.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { issueGateOf } from './gates.js';
@@ -530,40 +529,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     unblockedDependents,
     movedOut,
   };
-}
-
-/**
- * The close's moves written, and named: on the closed issue, where each criterion it did not meet
- * went, and on each issue that took one on, where it came from. Answers the closed issue's sentences.
- */
-async function postMovedOut(
-  tx: TransitionTx,
-  issueId: string,
-  by: string,
-  moves: readonly MovedCriterion[],
-): Promise<string[]> {
-  const { sentences, landed } = await moveUnmetCriteria(tx, moves);
-  const keys = await issueDisplayIds([issueId], tx);
-  const from = keys.get(issueId) ?? issueId;
-  await postIssueNotice(
-    {
-      issueId,
-      authorId: by,
-      body: `Closed met in scope. Each criterion it did not meet was moved out first: ${sentences.join('; ')}.`,
-    },
-    tx,
-  );
-  for (const l of landed) {
-    await postIssueNotice(
-      {
-        issueId: l.issueId,
-        authorId: by,
-        body: `Criterion ${l.n} came from ${from} criterion ${l.from}, which closed without meeting it.`,
-      },
-      tx,
-    );
-  }
-  return sentences;
 }
 
 /** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as

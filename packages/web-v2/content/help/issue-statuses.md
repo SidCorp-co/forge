@@ -24,7 +24,7 @@ holds the other two.
 | **Approved** | an agent | Nothing. Its plan is agreed, and the next run goes straight to building it. |
 | **Needs info** | **you** | **Answer the question**, make the decision or supply what it asks for. It then resumes where it stopped. |
 | **On hold** | **you** | **Resume it.** Nothing moves until you do — this is a brake, not a question. |
-| **Awaiting release** | the release | Nothing. The next release takes it. Only where your project asks a person to approve releases is it yours: **Release now**. |
+| **Awaiting release** | an agent, or the release | Nothing. Its work is merged: the agent closes it once what it asked for is met, or the next release does. Only where your project asks a person to approve releases is it yours: **Release now**. |
 | **Reopened** | an agent | Nothing. It was sent back with a reason, and an agent takes it up again. |
 | **Closed** | nobody | Done — see [Tell when an issue is done](?path=what-done-means). |
 | **Dropped** | nobody | Decided against. It has no way back — file a new issue instead. |

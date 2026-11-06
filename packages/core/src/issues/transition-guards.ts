@@ -87,22 +87,16 @@ import {
   permissionRefusal,
   projectResource,
 } from '../permissions/index.js';
-import { readAdoptionDelivery } from './adoption-delivery.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { type CallerBox, callerBoxOf } from './caller-box.js';
 import {
-  designDeliveredGuard,
-  designShortfall,
-  readDesignDelivery,
-} from './design-delivered-guard.js';
-import {
   type CloseScopeFacts,
-  closeScopeOf,
+  inScopeGuard,
   type MovedCriterion,
   readCloseScopeFacts,
   type UnmetInput,
-  unplacedDetail,
 } from './close-in-scope.js';
+import { designDeliveredGuard, readDesignDelivery } from './design-delivered-guard.js';
 import { designCheckOf } from './design-record.js';
 import {
   asksFailReturn,
@@ -242,7 +236,9 @@ export async function readIssueMoveFacts(args: {
     failReturn: asksFailReturn(args.from, args.to) ? await readFailReturn(db, issue) : null,
     filing: args.from === 'draft' && args.to === 'closed' ? await filingAnsweredBy(issue.id) : null,
     closeScope:
-      args.to === 'closed' ? await readCloseScopeFacts(db, issue.projectId, args.unmet ?? []) : null,
+      args.to === 'closed'
+        ? await readCloseScopeFacts(db, issue.projectId, args.unmet ?? [])
+        : null,
   };
 }
 
@@ -418,61 +414,6 @@ async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
   };
 }
 
-/**
- * closed from awaiting_release, met in scope: a release closes what it claimed
- * (`issues.release_batch_run_id`) and answers its own criteria hold; a design-only issue needs no one,
- * its approved revisions being what it delivered (REQ-45 BC-4), and neither does an adoption-only one
- * while its record holds (REQ-5 BC-17). Otherwise the close is the holding run's (`notTheHolder`, as
- * its move here was), and each criterion it did not meet is moved out on the record first
- * (`close-in-scope.ts`); `moved` takes the moves for the close to write.
- */
-async function inScopeGuard(
-  ctx: GuardContext,
-  moved: { moves: MovedCriterion[] } | undefined,
-): Promise<GuardFault | null> {
-  const rows = (await ctx.executor.execute(
-    sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
-  )) as unknown as Array<{ release_batch_run_id: string | null }>;
-  if (rows[0]?.release_batch_run_id) return null;
-  // an adoption-only issue ships nothing either: the record it adopted is what landed (REQ-5 BC-17)
-  const adoption = await readAdoptionDelivery(ctx.executor, ctx.issue.id);
-  if (adoption.refs && !adoption.shortfall) return null;
-  const design = await readDesignDelivery(ctx);
-  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
-    return null;
-  const held = notTheHolder(ctx, await runHoldersOf(ctx.executor, ctx.issue));
-  if (held) {
-    const why = design.designOnly ? ` It is design-only, and ${designShortfall(design)}.` : '';
-    const shortfall = adoption.shortfall
-      ? ` Its mark is an adoption record that no longer holds: ${adoption.shortfall}.`
-      : '';
-    return {
-      ...held,
-      detail: `${held.detail} An issue closes when its criteria are met in scope, by the run that holds it, or by a release that claimed it: finishing a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`) or recording the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`) closes every issue it carries.${why}${shortfall}`,
-      details: { ...held.details, designOnly: design.designOnly, adopted: adoption.refs },
-    };
-  }
-  const scope = await closeScopeOf(
-    ctx.executor,
-    ctx.issue,
-    ctx.facts.closeScope ?? { unmet: [], issues: new Map() },
-  );
-  if (scope.unplaced.length > 0) {
-    return {
-      code: 'CLOSE_CRITERION_UNPLACED',
-      detail: unplacedDetail(scope.unplaced),
-      details: {
-        from: ctx.from,
-        to: ctx.to,
-        unplaced: scope.unplaced,
-        destinations: ['next_batch_issue', 'new_issue', 'requirement'],
-      },
-    };
-  }
-  if (moved) moved.moves = scope.moves;
-  return null;
-}
-
 /** A guard's fault as the kernel transition carries it: the refusal, with its details beside it. */
 function refusalOf(fault: GuardFault | null): Refusal | null {
   if (!fault) return null;
@@ -542,7 +483,11 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
               (await patternEntryGuard(input.tx, input.row.id, base.facts.patternEntry)),
           );
     },
-    in_scope: async (input) => refusalOf(await inScopeGuard(ctxOf(input), base.closeMoves)),
+    in_scope: async (input) => {
+      const ctx = ctxOf(input);
+      const held = notTheHolder(ctx, await runHoldersOf(ctx.executor, ctx.issue));
+      return refusalOf(await inScopeGuard(ctx, held, base.closeMoves));
+    },
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
     filing_released: async (input) =>
       refusalOf(await filingReleasedGuard(ctxOf(input), base.facts.filing ?? null)),

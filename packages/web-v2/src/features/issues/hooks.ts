@@ -218,8 +218,8 @@ export function useTransitionIssue() {
 /**
  * ISS-791 — the shipped-work claim for an issue finished by hand, outside the pipeline.
  *
- * `merged_at` is what lets an issue close at all: `closed` means the work shipped (ISS-1108) and a
- * close on an issue without it is refused by name. It releases no `blocks` dependent — those are
+ * `merged_at` is what lets an issue close at all: `closed` means its criteria were met in scope with
+ * its merge recorded, and a close on an issue without it is refused by name. It releases no `blocks` dependent — those are
  * held by the issue's STATUS (ISS-1100). Both directions refresh the single-issue and activity
  * caches, because the server writes an audit comment on each call.
  */

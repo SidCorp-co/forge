@@ -137,8 +137,9 @@ records — before acting on it.
 - \`forge-runner run close <run id> --reason <why>\` once a run's subagent will not be resumed; that
   gives back its tree and its issues.
 - An issue closes when its criteria are met in scope; released and confirmed on the target
-  environment are marks on the release. Today the kernel still makes the close a release's act
-  (\`CLOSE_ONLY_BY_RELEASE\`): a wave never moves an issue to \`closed\`.
+  environment are marks on the release. The run holding an issue closes it, each criterion it did
+  not meet moved out first (\`CLOSE_CRITERION_UNPLACED\`); a report saying "closed" says met in
+  scope, and whether its work is live is read from the release record.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
   is written the wave is open, whatever its members' statuses say.
 
@@ -212,7 +213,7 @@ approval, design record, review or judge before the landing. It works in batches
    goes into the next batch, never a release of its own.
 
 The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`
-only on a recorded merge, the holder alone moving the issue into \`in_progress\` and
-\`awaiting_release\`, and, today, a close only by a release. A gate the project's overrides enforce again
+only on a recorded merge, the holder alone moving the issue into \`in_progress\`,
+\`awaiting_release\` and \`closed\`, and a close only with each unmet criterion moved out on the record. A gate the project's overrides enforce again
 still refuses by name.`,
 };

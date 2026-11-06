@@ -158,7 +158,8 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   confirmed on the target environment, are marks on the release, so "is it live" is read from the
   release and never from `closed`. A criterion an issue cannot meet is moved out on the record before
   the close — to the next batch's issue, a new issue or the requirement — and the close names where
-  each one went. Today the kernel still makes the close the release's act (below).
+  each one went. Close an issue you hold yourself once it is met in scope, naming each criterion
+  it did not meet and where it goes in `unmet` on the move (below).
 - **A defect found live is fixed forward on its own issue.** Reopen the issue that shipped it with
   `cause: "defect"` and its `evidence` beside the reason (`POST /api/issues/:id/transition`
   `{ toStatus: "reopen", reason, cause: "defect", evidence: { liveRead } }`, or `{ verdictId }` or
@@ -171,9 +172,11 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
 
 - a move that is not a legal edge, or that lacks its reason;
 - `awaiting_release` without a recorded merge;
-- a move to `in_progress` or `awaiting_release` by anyone but the issue's holder — so claim it
-  first, with the lease the `issue-flow` guide's Take it names, and hand that lease back last;
-- today, a close by anything but a release that claimed the issue and its recorded merge.
+- a move to `in_progress`, `awaiting_release` or `closed` by anyone but the issue's holder (or a
+  release that claimed it, for the close) — so claim it first, with the lease the `issue-flow`
+  guide's Take it names, and hand that lease back last;
+- a close without its recorded merge, or leaving a criterion it did not meet with nowhere to go
+  (`CLOSE_CRITERION_UNPLACED`).
 
 Owed replies, triages and release notes are still yours in direct mode. Where a project is not
 direct, nothing in this section applies.

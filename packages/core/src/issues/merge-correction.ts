@@ -3,8 +3,8 @@
  *
  * MR 5162's merge stamped adminhub-api ISS-2, closed long before, with 6a40f293 over its real landing
  * b87cbba2. The ordinary doors cannot undo that on a closed issue: an unmark answers
- * UNMARK_REQUIRES_NOT_CLOSED (`closed` means shipped, and clearing the mark would leave it shipping
- * nothing), and a re-mark answers already_merged, keeping the wrong commit and the right one only as a
+ * UNMARK_REQUIRES_NOT_CLOSED (`closed` stands on its recorded merge, and clearing the mark would leave
+ * it standing on nothing), and a re-mark answers already_merged, keeping the wrong commit and the right one only as a
  * claim. Reopening a shipped issue to repair its record would move a status nothing about the work
  * changed. So a closed issue's landing commit is replaced here, in place: the status never moves, the
  * mark stays standing, and the correction is written on the issue's history with who made it, the

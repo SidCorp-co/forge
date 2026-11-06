@@ -17,10 +17,14 @@ import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { issueCriteria } from '../db/schema-issue-criteria.js';
+import { readAdoptionDelivery } from './adoption-delivery.js';
 import { renderCriteriaText } from './criteria/criteria-text.js';
 import { listCriteria } from './criteria/store.js';
+import { designShortfall, readDesignDelivery } from './design-delivered-guard.js';
 import { issueDisplayIds } from './display-ids.js';
 import { issueIdOfKey } from './issue-route-ref.js';
+import { postIssueNotice } from './ports.js';
+import type { GuardContext, GuardFault } from './transition-guards.js';
 
 /** One criterion the closer says it did not meet, and where it goes, as the transition body sends it. */
 export interface UnmetInput {
@@ -220,7 +224,10 @@ async function bcCodesOf(
     req_seq: number;
   }>;
   return new Map(
-    [...rows].map((r) => [r.id, { requirementId: r.requirement_id, reqSeq: r.req_seq, code: r.code }]),
+    [...rows].map((r) => [
+      r.id,
+      { requirementId: r.requirement_id, reqSeq: r.req_seq, code: r.code },
+    ]),
   );
 }
 
@@ -279,4 +286,93 @@ export async function moveUnmetCriteria(
     landed.push({ issueId: destId, n, from: move.n });
   }
   return { sentences, landed };
+}
+
+/**
+ * The close's moves written, and named: on the closed issue, where each criterion it did not meet
+ * went, and on each issue that took one on, where it came from. Answers the closed issue's sentences.
+ */
+export async function postMovedOut(
+  tx: Tx,
+  issueId: string,
+  by: string,
+  moves: readonly MovedCriterion[],
+): Promise<string[]> {
+  const { sentences, landed } = await moveUnmetCriteria(tx, moves);
+  const keys = await issueDisplayIds([issueId], tx);
+  const from = keys.get(issueId) ?? issueId;
+  await postIssueNotice(
+    {
+      issueId,
+      authorId: by,
+      body: `Closed met in scope. Each criterion it did not meet was moved out first: ${sentences.join('; ')}.`,
+    },
+    tx,
+  );
+  for (const l of landed) {
+    await postIssueNotice(
+      {
+        issueId: l.issueId,
+        authorId: by,
+        body: `Criterion ${l.n} came from ${from} criterion ${l.from}, which closed without meeting it.`,
+      },
+      tx,
+    );
+  }
+  return sentences;
+}
+
+/**
+ * closed from awaiting_release, met in scope: a release closes what it claimed
+ * (`issues.release_batch_run_id`) and answers its own criteria hold; a design-only issue needs no one,
+ * its approved revisions being what it delivered (REQ-45 BC-4), and neither does an adoption-only one
+ * while its record holds (REQ-5 BC-17). Otherwise the close is the holding run's (`notTheHolder`, as
+ * its move here was, `held` naming who else holds it), and each criterion it did not meet is moved out on the record first
+ * (`close-in-scope.ts`); `moved` takes the moves for the close to write.
+ */
+export async function inScopeGuard(
+  ctx: GuardContext,
+  held: GuardFault | null,
+  moved: { moves: MovedCriterion[] } | undefined,
+): Promise<GuardFault | null> {
+  const rows = (await ctx.executor.execute(
+    sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
+  )) as unknown as Array<{ release_batch_run_id: string | null }>;
+  if (rows[0]?.release_batch_run_id) return null;
+  // an adoption-only issue ships nothing either: the record it adopted is what landed (REQ-5 BC-17)
+  const adoption = await readAdoptionDelivery(ctx.executor, ctx.issue.id);
+  if (adoption.refs && !adoption.shortfall) return null;
+  const design = await readDesignDelivery(ctx);
+  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
+    return null;
+  if (held) {
+    const why = design.designOnly ? ` It is design-only, and ${designShortfall(design)}.` : '';
+    const shortfall = adoption.shortfall
+      ? ` Its mark is an adoption record that no longer holds: ${adoption.shortfall}.`
+      : '';
+    return {
+      ...held,
+      detail: `${held.detail} An issue closes when its criteria are met in scope, by the run that holds it, or by a release that claimed it: finishing a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`) or recording the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`) closes every issue it carries.${why}${shortfall}`,
+      details: { ...held.details, designOnly: design.designOnly, adopted: adoption.refs },
+    };
+  }
+  const scope = await closeScopeOf(
+    ctx.executor,
+    ctx.issue,
+    ctx.facts.closeScope ?? { unmet: [], issues: new Map() },
+  );
+  if (scope.unplaced.length > 0) {
+    return {
+      code: 'CLOSE_CRITERION_UNPLACED',
+      detail: unplacedDetail(scope.unplaced),
+      details: {
+        from: ctx.from,
+        to: ctx.to,
+        unplaced: scope.unplaced,
+        destinations: ['next_batch_issue', 'new_issue', 'requirement'],
+      },
+    };
+  }
+  if (moved) moved.moves = scope.moves;
+  return null;
 }

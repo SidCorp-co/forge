@@ -353,9 +353,9 @@ design issue the table below holds:
 | `git` | any other mark | keeps it |
 
 A dropped, closed or archived issue, and a project with no project document, are not marked; the
-decision's answer says which (`designIssue.action` `none` with its `why`). Today a closed issue was
-closed by a release, and its mark is what that release read, so an approval after the close leaves it as it
-shipped and posts a notice saying so. This is the one place a mark standing
+decision's answer says which (`designIssue.action` `none` with its `why`). A closed issue was
+met in scope on the mark it carried, which a release that carries it reads, so an approval after the
+close leaves it as it closed and posts a notice saying so. This is the one place a mark standing
 on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a landing written at
 propose names a revision that was not yet approved, and the approval is better evidence than that
 word (ISS-262). Like every mark it moves no status.
@@ -396,8 +396,10 @@ status the run took it from, unless its work landed: a recorded mark the issue w
 (`packages/core/src/pipeline/wedge-landed.ts:landedWorkStands`, the reconciler's own reading) keeps it
 where it stands, and the issue records why (`issue.handBackKept`,
 `packages/core/src/devices/run-issue-return.ts`). A run's end hands back its lease and never undoes a
-landing (adminhub-fe ISS-50, 2026-10-26). `awaiting_release` → `closed` is written by a release that claimed the
-issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPED`). On a project with
+landing (adminhub-fe ISS-50, 2026-10-26). `awaiting_release` → `closed` is the issue met in scope:
+written by the run holding it (`NOT_THE_HOLDER` for anyone else), each criterion it did not meet moved
+out first (`packages/core/src/issues/close-in-scope.ts`, `CLOSE_CRITERION_UNPLACED`), or by a release
+that claimed it, and it needs the merge either way (`CLOSE_REQUIRES_SHIPPED`). On a project with
 no production environment that release is the recorded landing
 (`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which keeps the commit the
 agent names as evidence, never checked, and records an issue whose mark names no commit with its build
@@ -428,8 +430,8 @@ naming the releases it may have shipped in) and cuts nothing for it, and the rel
 under the same code, so no cut carries it. The agent checks with its own git which release holds the
 landing and records it: `POST /api/projects/:id/shipped-in-records` with `issueId`, `version` and
 `evidence` (`packages/core/src/release-batch/shipped-in.ts:recordShippedIn`). A version closes the
-issue through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto that run), so
-`CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it; it gets a notice naming the
+issue through the release's own close (`closeRoster`, after `claimIssuesForRelease` onto that run): a
+draft closes only so (`CLOSE_ONLY_BY_RELEASE`), and the run's `rosterClosed` names it; it gets a notice naming the
 version and the agent's evidence, and `release.shipped` is told again naming it. `version: null` says no
 shipped release holds it, and the next release takes it. Forge refuses only what its rows contradict: a
 version no release of the project shipped (`RELEASE_SHIPPED_IN_UNKNOWN`), a release cut before the
@@ -494,8 +496,7 @@ call (owner, 2026-11-05, ISS-1017). Before that the shape decided which kinds co
 `asserted` or `observed`, outside git `landed` or `observed` — and the mark writer refused a `landing`
 on git (`LANDING_NOT_THIS_SHAPE`), a missing `target` on git (`TARGET_REQUIRED`), artifacts on git
 (`ARTIFACTS_NOT_THIS_SHAPE`) and a missing landing outside git (`LANDING_REQUIRED`); all four are
-gone with the code that computed them. A close is still only a release's today
-(`CLOSE_ONLY_BY_RELEASE`; the direction closes an issue when its criteria are met in scope, ADR
+gone with the code that computed them. An issue closes when its criteria are met in scope (ADR
 0014), and an issue carrying no mark at all is refused `MERGE_NOT_RECORDED`
 into `awaiting_release` and `CLOSE_REQUIRES_SHIPPED` into `closed`. Under release mode `none` the
 recorded landing records an issue whose mark names no commit, saying its build is unread, where it
@@ -525,8 +526,10 @@ A refusal of the `merged` guard names the mark route (`MARK_ROUTE`): `POST /api/
 naming what the agent has, or nothing. The issue detail answer carries `landingShape`, so the web
 rail's Mark merged form asks for a landing outside git and a target on git.
 
-`trg_issues_closed_means_shipped` (0304) requires `merged_at` alone: it is the floor raw SQL cannot
-route around, and it is now the whole rule.
+`trg_issues_closed_means_merged` (0619, which renamed 0304's `trg_issues_closed_means_shipped`)
+requires `merged_at` alone: it is the floor raw SQL cannot route around. Whether the work is live
+is read from the release record (`packages/core/src/pipeline/release-runs.ts:shippedReleasesOf`),
+never from `closed`.
 
 ## A project that releases through change requests
 

@@ -41,7 +41,7 @@ describe('a step and a drive run are handed no output ritual', () => {
     for (const kernel of [
       'WAITING_KIND_REQUIRED',
       'TRANSITION_REASON_REQUIRED',
-      'CLOSE_ONLY_BY_RELEASE',
+      'CLOSE_CRITERION_UNPLACED',
       'CLOSE_REQUIRES_SHIPPED',
       'ILLEGAL_TRANSITION',
     ]) {
@@ -123,7 +123,7 @@ describe('the orientation affordances are judgement guidance, with the refusals 
   it('keeps every kernel refusal the table taught', () => {
     for (const kernel of [
       'CONFIG_WRITE_SHAPE',
-      'CLOSE_ONLY_BY_RELEASE',
+      'CLOSE_CRITERION_UNPLACED',
       'DESIGN_NOT_DELIVERED',
       'RELEASE_ALL_DESIGN_ONLY',
       'A stale revision is refused by name',

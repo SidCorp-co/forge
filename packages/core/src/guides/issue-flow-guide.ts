@@ -22,7 +22,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Taking one issue from open to awaiting_release',
   summary:
-    'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge and move it to `awaiting_release` — today never to `closed`.',
+    'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
   version: 15,
   body: `## Taking one issue from open to awaiting_release
 
@@ -454,9 +454,12 @@ landing and moved, its key in its own commit subject so the mark reads the commi
 **An issue closes when its criteria are met in scope**; released, and confirmed on the target
 environment, are marks on the release, never issue statuses. A criterion this issue cannot meet is
 moved out on the record before the close — to the next batch's issue, a new issue or the
-requirement — and the close names where each one went. **Today the kernel still makes the close a
-release's act:** never move an issue that ships code to \`closed\`, since only a release that
-claimed it closes it (\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. On a project that
+requirement — and the close names where each one went. **The run holding the issue closes it:**
+\`POST /api/issues/:id/transition\` \`{ toStatus: 'closed', unmet: [{ criterion: 3, to: { issue: '<its key>' } }, { criterion: 4, to: 'requirement' }] }\`
+from \`awaiting_release\`, \`unmet\` left out where every criterion is met; a criterion whose newest
+verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`. A
+release that claims an issue still at \`awaiting_release\` closes it too, and whether the work is live
+is read from that release's record, never from \`closed\`. On a project that
 declares no production environment that release is the recorded landing
 (\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version
 optional and a commit only evidence, never checked. The record reports each criterion by the pass

@@ -219,16 +219,17 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     );
   });
 
-  it('the lifecycle guide keeps three marks apart and states today’s kernel in one clause', async () => {
+  it('the lifecycle guide keeps three marks apart, and its holder closes an issue met in scope', async () => {
     const guide = await served('pipeline-and-issue-lifecycle');
     expect(guide).toContain(
       '**Three marks, kept apart.** An issue closes when its criteria are met in scope. Released, and confirmed on the target environment, are marks on the release — never issue statuses',
     );
     expect(guide).toContain('"is it live" is read from the release record');
     expect(guide).toContain('the close names where each one went');
-    expect(guide).toContain(
-      "Today the kernel still makes a close the release's act (`CLOSE_ONLY_BY_RELEASE`",
-    );
+    expect(guide).toContain('The run holding the issue closes it from `awaiting_release`');
+    expect(guide).toContain('(`CLOSE_CRITERION_UNPLACED`)');
+    expect(guide).not.toContain("Today the kernel still makes a close the release's act");
+    expect(guide).not.toContain('CLOSE_ONLY_BY_RELEASE`, the `closed` row below');
     expect(guide).not.toContain('**`closed` means the work shipped');
     expect(guide).not.toContain('`closed` claims the work shipped');
   });
@@ -239,12 +240,13 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     expect(table).not.toContain('`closed` says it shipped');
   });
 
-  it('the dispatch guide splits nothing for size, and a wave never closes', async () => {
+  it('the dispatch guide splits nothing for size, and a holder closes met in scope', async () => {
     const guide = await served('dispatch');
     expect(guide).not.toContain('split it before dispatch where it is more than one run');
     expect(guide).toContain('its size is no reason to split it');
     expect(guide).toContain('only for priority, a handoff or independent tracking');
-    expect(guide).toContain("Today the kernel still makes the close a release's act");
+    expect(guide).not.toContain("Today the kernel still makes the close a release's act");
+    expect(guide).toContain('The run holding an issue closes it, each criterion it did');
     expect(guide).toContain('is checked wide early, before the landing');
   });
 
@@ -257,15 +259,14 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     expect(guide).toContain('a red recorded on the debt ledger is discharged to the Audit');
   });
 
-  it('the release prompt writes the release mark, and closes issues only today', () => {
+  it('the release prompt writes the release mark, and closes what its holders had not', () => {
     const prompt = flat(releaseBatchStatePrompt);
     expect(prompt).not.toContain('`finish` is the ONLY thing in Forge that writes `closed`');
     expect(prompt).toContain(
       "`finish` writes the release's mark — this batch was released — on the release record",
     );
-    expect(prompt).toContain(
-      'and today it is also the only thing in Forge that writes `closed` on the issues it claimed',
-    );
+    expect(prompt).not.toContain('the only thing in Forge that writes `closed`');
+    expect(prompt).toContain('it closes the issues it claimed that their holders had not closed');
     expect(prompt).toContain('Confirmed on the target environment is a separate mark');
   });
 });

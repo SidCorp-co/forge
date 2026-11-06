@@ -506,7 +506,9 @@ mod tests {
             "a move that is not a legal edge, or that lacks its reason",
             "`awaiting_release` without a recorded merge",
             "by anyone but the issue's holder",
-            "today, a close by anything but a release",
+            // ISS-1062: the holder closes an issue met in scope, each unmet criterion moved out first
+            "a close without its recorded merge, or leaving a criterion it did not meet with nowhere to go",
+            "naming each criterion it did not meet and where it goes in `unmet` on the move",
             "Outside direct mode, every issue goes out this way.",
             // ISS-1057 round 2: blast radius chooses the checks, and three marks stay apart
             "a change that touches shared logic, billing, permissions or data is checked wide early",
@@ -528,6 +530,8 @@ mod tests {
             "Take each issue in this session",
             "once it builds and its own tests pass",
             "its own tests pass",
+            "today, a close by anything but a release",
+            "Today the kernel still makes the close the release's act",
             "its build and its own tests",
             "comment what shipped",
             "**What the batch leaves unclean is debt.**",

@@ -38,15 +38,15 @@ text. Do not look for another credential on this machine.
    carries issues waiting at the gate outside this roster, so do NOT deploy it. Cut from a head holding
    only the roster's landings and report again, or abort if none exists; the refusal names them.
 4. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
-   \`accepted\`; your finish is the release's record, and today the server closes every claimed
-   issue on its own. \`commit\` is the SHA you pushed, kept as your evidence and never compared.
+   \`accepted\`; your finish is the release's record, and the server closes every claimed
+   issue its holder has not closed already. \`commit\` is the SHA you pushed, kept as your evidence and never compared.
 5. \`release-batches/<runId>/state\` → \`finish.state\` ends at \`finished\` (report its
    closed/failed) or \`failed\` (report its \`refusal\`). Read it again while it says
    \`accepted\`, \`verifying\` or \`closing\`.
 
 ### What finish means
-\`finish\` writes the release's mark — this batch was released — on the release record, and today
-it is also the only thing in Forge that writes \`closed\` on the issues it claimed. Writing it is a
+\`finish\` writes the release's mark — this batch was released — on the release record, and
+it closes the issues it claimed that their holders had not closed. Writing it is a
 claim that this release happened. Confirmed on the target environment is a separate mark, the live
 judge's, read on the release; an issue's \`closed\` says neither. Call it after the procedure completed AND you read its result. Never
 call it because the steps ran without throwing, and never to tidy up a partial release.

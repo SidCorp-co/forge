@@ -1,5 +1,5 @@
 // issue-flow: the project's work per day or per week, oldest first: issues filed, verified (merged
-// and proven), closed (released) and sent back in each, and how many were still open at its end.
+// and proven), closed (met in scope) and sent back in each, and how many were still open at its end.
 // What a line chart of issues closed per week, or created against closed per day, is drawn from
 // (REQ-32 BC-3). Built over `issues/flow-history.ts:readIssueFlow`; the fold is `flow-fold.ts`.
 
