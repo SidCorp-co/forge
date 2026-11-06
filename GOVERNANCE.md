@@ -105,16 +105,20 @@ comments, evidence, the branch, commits, the push, status moves, the release not
 plan did not foresee, and records each decision on the item it shapes: what it chose, the options,
 why, and the evidence, so it can be read and reversed.
 
-A person is asked only for a decision serious enough to need one — **money, credentials or product
-direction** — once, with a recommendation. A routine approval is a defect, not a safeguard. Where a
+A person is asked only for a decision serious enough to need one — **irreversible, real money,
+credentials or product direction** — once, with a recommendation, and only on a project that keeps
+that control (`strict`) or whose own rule names that person's act
+(`packages/core/src/questions/owed.ts`); elsewhere the agent decides it too, on the record. A
+routine approval is a defect, not a safeguard. Where a
 person's act is a kernel step today (granting a credential, approving a device's pairing, approving
 a release where the project asks for that approval), it is that act and nothing more.
 
-The hard cases are decided and recorded, not parked on a person: a destructive migration says on its
-issue what it loses before it lands; an ambiguity is settled by the reading the requirement supports,
-with the other reading recorded beside the choice; a failure with no way back is reported on its
-issue and escalated, with what was tried. See
-[`docs/adr/0013-a-person-is-asked-only-for-money-credentials-or-product-direction.md`](docs/adr/0013-a-person-is-asked-only-for-money-credentials-or-product-direction.md).
+The hard cases follow the same rule. A destructive migration is irreversible: where a person is
+asked, it is asked with what it loses, and elsewhere its issue says what it loses before it lands.
+An ambiguity is settled by the reading the requirement supports, with the other reading recorded
+beside the choice, unless the readings differ in product direction. A failure with no way back is
+reported on its issue and escalated, with what was tried. See
+[`docs/adr/0013-a-person-is-asked-only-for-a-serious-decision.md`](docs/adr/0013-a-person-is-asked-only-for-a-serious-decision.md).
 
 ## Changing this file
 

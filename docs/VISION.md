@@ -67,8 +67,8 @@ humanless; it becomes **less bottlenecked by human execution and coordination**.
 
 An agent decides and records each decision — what it chose, the options, why, and the evidence — on
 the item that decision shapes: the requirement, the workflow, the design or the issue. A person is
-brought in only for a decision serious enough to need one — money, credentials, product direction —
-and the agent judges which decisions those are. A routine approval is a defect, not a safeguard:
+brought in only for a decision serious enough to need one — irreversible, real money, credentials,
+product direction — and the agent judges which decisions those are. A routine approval is a defect, not a safeguard:
 it puts a person back in the chain this loop exists to remove. How much control a project keeps is
 policy a person sets (`strict`), never the default (owner ruling, 2026-10-31).
 
@@ -186,8 +186,8 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
     next by capability, context and authority.
 11. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: the
     agent decides and records, and **a person is brought in only for a decision serious enough to
-    need one** — money, credentials, product direction. A routine approval is a bottleneck wearing
-    the name of a safeguard.
+    need one** — irreversible, real money, credentials, product direction. A routine approval is a
+    bottleneck wearing the name of a safeguard.
 12. **measured-together-never-apart** — a single operating number is a number that can be gamed.
     Driving interventions toward zero by no longer surfacing what needs one is `state-never-lies`
     wearing an improving metric. No number is read alone.
@@ -233,6 +233,6 @@ not taken, and a document that prices everything except itself has taken one unp
 | `issue-is-the-currency` | work that would have been a message becomes an issue with a state and an audit trail. On the day you only wanted a quick fix, that discipline is friction — and it is the product, not an accident of it |
 | `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf |
 | `state-never-lies` | evidence takes time, and it is paid after the landing rather than before it. A batch that builds and passes the tests related to its changes lands; the whole suite runs after the push and a red is fixed forward in the next batch; a live judge reads the criteria on the running build; and what the batch still owes is recorded as debt for the audit — never reported as done before it is |
-| `route-judgment-not-bottlenecks` | agents will decide things you would have decided differently, and you are not asked first unless it is money, credentials or product direction. Every decision is recorded where it shapes the product, so it can be read and reversed; a project that wants a person on more of them sets `strict` and pays in waiting |
+| `route-judgment-not-bottlenecks` | agents will decide things you would have decided differently, and you are not asked first unless it is irreversible, real money, credentials or product direction. Every decision is recorded where it shapes the product, so it can be read and reversed; a project that wants a person on more of them sets `strict` and pays in waiting |
 | `trust-gates-capability` | capability whose value is obvious to you waits behind kernel work you did not ask for. Reach is earned rather than scheduled, which means asking for it does not move it |
 | Apache-2.0 core | nobody is contractually on the hook for it. No warranty, no support you have not arranged, and a fork you diverge is a fork you maintain — the licence that makes it yours to run is the licence that makes it yours to carry |
