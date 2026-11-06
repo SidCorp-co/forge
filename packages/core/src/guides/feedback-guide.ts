@@ -7,7 +7,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
   title: 'Feedback: filing, triage, resolution and verification',
   summary:
     'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, who routes it (the approvals.triage setting), how an agent without that permission proposes a route a holder accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
-  version: 2,
+  version: 3,
   body: `## Feedback: filing, triage, resolution and verification
 
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
@@ -71,7 +71,7 @@ was already an item and keeps its row, following its root through \`duplicateOf\
   decision naming the new target and the one it replaced, with the approver's \`reason\`.
 
 ### Stored status against the phase you read
-Each stored status is a person's decision: \`new\`, \`triaged\`, \`reopened\`, \`verified\`, \`declined\`.
+Each stored status is written by an act, never derived: \`new\`, \`triaged\`, \`reopened\`, \`verified\`, \`declined\`. Whoever holds the act takes it, the project's master included where it holds the permission (below).
 Two more phases are **read, never written**, from the work the item was routed to:
 - \`planned\`: the route's carrier is alive and has not shipped (the linked issue is open, the
   revision proposal is proposed or accepted but not delivered, the new requirement is not delivered,
@@ -80,12 +80,12 @@ Two more phases are **read, never written**, from the work the item was routed t
 - \`resolved\`: the linked issue is closed, the accepted revision is delivered, the routed requirement
   is delivered, or the answer was posted. A duplicate is resolved with its root, and declined with it.
 - A route whose carrier died (the issue dropped, the suggestion rejected, the requirement dropped) reads
-  \`triaged\` again, and waits on a person to route it anew.
+  \`triaged\` again, and waits to be routed anew by whoever \`approvals.triage\` asks.
 - An issue route carried by several issues reads them all: a dropped one carries nothing, the item is
   \`resolved\` once every other is closed, \`planned\` while any is open (waiting on each still open), and
   \`triaged\` only when every one was dropped.
 
-Nothing reads an item as \`verified\` and nothing verifies it by itself: a person verifies it, or the
+Nothing reads an item as \`verified\` and nothing verifies it by itself: someone on the project verifies it by the act, or the
 reporter's confirm in the fix's preview does as theirs (below).
 
 ### Triage: whoever the project's approvals.triage asks answers the triage checklist and writes the route in the same act

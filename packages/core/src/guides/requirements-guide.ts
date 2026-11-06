@@ -12,8 +12,8 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
-    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 10,
+    "How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed under a baseline pinning its designs — by its checklist and the project's master outside a strict profile, by a holder of requirements.approve where the project's gates keep a person —, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.",
+  version: 11,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -89,7 +89,7 @@ none: its standing asks for an issue of its own under the requirement, or a revi
    requirements.approve), or when a person answers "withdraw" on the steward's question about a stuck
    one; it keeps why, by whom and when, no longer counts as the open revision, and editing or proposing
    it is \`REQUIREMENT_REVISION_WITHDRAWN\`. A stuck draft requirement is asked merge, drop or keep.
-3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head. Every revision
+3. **propose** puts the draft in front of its approver (see *Who may act*: outside a strict profile, the project's master and its checklist). Proposing also checks the base is still the head. Every revision
    read back carries \`criteriaChanges\`: the BC codes it added, reworded and removed against the revision
    it was written against, computed from the criteria, never typed (null for a first revision).
 4. Its approver (see *Who may act*) **accepts** it with \`{ reason }\`, why and on whose authority (it becomes current, the
