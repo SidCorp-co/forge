@@ -17,6 +17,8 @@
  * @direct-test-of packages/core/src/steward/prompts.ts
  * @direct-test-of packages/core/src/development/needs-you-agent-takes.ts
  * @direct-test-of packages/core/src/steward-ports.ts
+ * @direct-test-of packages/core/src/steward/ports.ts
+ * @direct-test-of packages/core/src/release-batch/release-view.ts
  */
 
 import type { WaitingOn } from '@forge/contracts/standing';
@@ -277,22 +279,46 @@ describe('three all-earned issues in one draft on a project with production (adm
   });
 });
 
-/** A release's wait on a person's act, as its page says it (`release-view.ts:approvalTurn`, `draftTurn`). */
-function personWait(act: 'standing.act.approve' | 'standing.act.cut', name: string): WaitingOn {
+/**
+ * A gate-free draft's wait on its cut, as its page says it to nobody in particular: the release
+ * view's own turn, given whether the project's master cuts by the reading the page takes.
+ */
+async function cutWait(): Promise<WaitingOn> {
+  const { turnOf } = await import('../../src/release-batch/release-view.js');
+  const { masterTakesCut } = await import('../../src/development/index.js');
+  const { holderNames } = await import('../../src/permissions/index.js');
+  return turnOf({
+    state: 'draft',
+    version: '0.14.0',
+    projectId,
+    runId: null,
+    merges: null,
+    landedOn: null,
+    required: true,
+    approval: null,
+    approvers: [],
+    admins: await holderNames('project.admin', projectId),
+    masterCuts: await masterTakesCut(projectId),
+    viewer: null,
+    gates: [],
+    inFlight: null,
+    testing: null,
+  }).waitingOn as WaitingOn;
+}
+
+/** A release's wait on a person's approval, as its page says it (`release-view.ts:approvalTurn`). */
+function personWait(act: 'standing.act.approve', name: string): WaitingOn {
   return {
     kind: 'person',
     who: name,
-    act: act === 'standing.act.approve' ? 'approve' : 'cut 0.14.0',
+    act: 'approve',
     rule: 'the release waits on a person',
     ref: null,
     dueAt: null,
     says: {
       who: { key: 'standing.who.named', vars: { name } },
-      act: {
-        key: act,
-        ...(act === 'standing.act.cut' ? { vars: { v: '0.14.0', more: null } } : {}),
-      },
-      rule: { key: 'releases.rule.adminCuts' },
+      act: { key: act },
+      rule: { key: 'releases.rule.asked' },
     } as never,
   };
 }
@@ -341,10 +367,16 @@ describe('a release act the master cannot take goes to whoever holds it, never t
 
   it("the cut is the master's outside strict, and its admins' under strict, never a master who cannot cut", async () => {
     const { releaseTakerOf } = await import('../../src/steward/release-ask.js');
-    const cut = personWait('standing.act.cut', ownerName);
-    expect(await releaseTakerOf(projectId, cut, null)).toEqual({ to: 'master' });
+    // whom the cut goes to is read off a gate-free draft's own page, the one answer (ISS-1043)
+    const standard = await cutWait();
+    expect(standard).toMatchObject({ kind: 'agent', who: 'Master', act: 'cut 0.14.0' });
+    expect(await releaseTakerOf(projectId, standard, null)).toEqual({ to: 'master' });
     await project('strict');
-    const strict = await releaseTakerOf(projectId, cut, null);
-    expect(strict).toMatchObject({ to: 'holders', holders: [{ id: ownerId }] });
+    const strict = await cutWait();
+    expect(strict).toMatchObject({ kind: 'person', act: 'cut 0.14.0' });
+    expect(await releaseTakerOf(projectId, strict, null)).toMatchObject({
+      to: 'holders',
+      holders: [{ id: ownerId }],
+    });
   });
 });

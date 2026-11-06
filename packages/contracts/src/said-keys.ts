@@ -1686,6 +1686,9 @@ export const SAID = {
 	"releases.rule.adminCuts": {
 		en: "merged issues wait at the release gate; an admin cuts the version",
 	},
+	"releases.rule.masterCuts": {
+		en: "merged issues wait at the release gate; the project's master cuts the version",
+	},
 	"releases.rule.noRequest": {
 		en: "approval required, none asked: the master asks with {route}",
 		vars: { route: "code" },

@@ -5,7 +5,7 @@
 // own view, never its table, and a room writer's Forge user through the room (REQ-50 BC-1); and a
 // release's page reads who names it through the steward's addressee (ISS-590).
 
-import { masterTakesCut, masterTakesWait } from './development/index.js';
+import { masterTakesWait } from './development/index.js';
 import { provideLessonsPorts } from './lessons/index.js';
 import { masterAccountsOf } from './master-accounts.js';
 import { getMockupAs } from './mockups/index.js';
@@ -31,7 +31,6 @@ export function provideStewardDomainPorts(
     runningBuildObserved,
     masterAccounts: masterAccountsOf,
     masterTakes: masterTakesWait,
-    masterCuts: masterTakesCut,
     releaseHoldingAct: (_projectId, issueId) => releaseHoldingActOf(issueId),
     holdingRelease: holdingReleaseOf,
   });

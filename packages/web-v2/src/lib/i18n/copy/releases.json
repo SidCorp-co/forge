@@ -384,6 +384,7 @@
     "releases.rule.gated": "{n} lý do chặn việc cắt {v}",
     "releases.rule.inProgress": "lượt chạy release đang làm trên production",
     "releases.rule.issueShipped": "issue đã được phát hành",
+    "releases.rule.masterCuts": "các issue đã merge chờ ở cổng release; master của dự án cắt phiên bản",
     "releases.rule.noRequest": "cần duyệt nhưng chưa có yêu cầu: master gửi yêu cầu qua {route}",
     "releases.rule.noneLeft": "{rule}, và không còn ai",
     "releases.rule.queuedBehindRun": "release đang chạy phải xong trước khi cắt được {v}",

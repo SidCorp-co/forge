@@ -3,8 +3,8 @@
 // carries that is not ready and why, and the next step with its owner. Every fact is the release
 // page's own answer (`GET /api/projects/:id/releases/:version`: its standing, its gates, its
 // approval), never a second computation; whom its act goes to is the steward's one reading
-// (`steward/release-ask.ts:releaseTakerOf`), so a draft the master cuts reads as the master's, as
-// Needs you leaves it. sidpeak's rooms (FB-516, FB-517, FB-537, FB-539) read only a draft's state and
+// (`steward/release-ask.ts:releaseTakerOf`) of that page's wait, which names the master for a draft
+// it cuts (`release-view.ts:draftTurn`, ISS-1043), as Needs you leaves it. sidpeak's rooms (FB-516, FB-517, FB-537, FB-539) read only a draft's state and
 // issue count, tried to approve an uncut draft, and asked Forge to cut it. The agent restates this in
 // the room's words: it carries no refusal code for people to read.
 
@@ -133,18 +133,13 @@ export async function releaseHoldOf(
         : taker.to === 'nobody'
           ? `nobody can ${owes} yet: ${route}`
           : `${waitsOn} is on it (${owes}): nothing is owed by a person`;
-  // the page names the admins who may cut; outside strict the master takes the cut, as Needs you reads it
-  const why =
-    taker.to === 'master' && wait.kind !== 'agent'
-      ? `${wait.rule}; on this project the master takes that act`
-      : wait.rule;
   return {
     waitsOn,
     owes,
     says: `waits on ${waitsOn} to ${owes}, since ${r.at} (${waited})`,
     since: r.at,
     waited,
-    why,
+    why: wait.rule,
     blockers: r.gates
       .filter((g) => g.kind === 'blocker')
       .map((g) => ({

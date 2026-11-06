@@ -47,11 +47,6 @@ interface StewardPorts {
    */
   masterTakes(projectId: string, act: Said): Promise<boolean>;
   /**
-   * Whether the project's master cuts its releases: outside strict its accounts take the cut whatever
-   * their role (the development module's `needs-you-agent-takes.ts:masterTakesCut`).
-   */
-  masterCuts(projectId: string): Promise<boolean>;
-  /**
    * The release not yet shipped that holds the next act of an issue owing nothing of its own (every
    * criterion earned, on a project with production), or null (the release module's
    * `criteria-facts.ts:releaseHoldingActOf`, ISS-1040).

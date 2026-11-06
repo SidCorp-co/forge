@@ -156,8 +156,8 @@ export async function masterTakesWait(
 /**
  * Whether the project's master cuts its releases (`release.cut`), by the same reading: outside strict
  * its accounts writing the project take the cut whatever their role (REQ-79 r6 BC-11). A draft's page
- * names the admins who may cut it, and the steward and a room's release read say the master takes it
- * where it does (ISS-1040, ISS-1009), as Needs you leaves the cut to it.
+ * reads it (`release-view.ts:draftTurn`, through the release module's `masterCuts` port) and names
+ * the master as its cutter, which the steward and a room's release read take from the page (ISS-1043).
  */
 export async function masterTakesCut(projectId: string): Promise<boolean> {
   return (await masterTakesOf(projectId))('release.cut');

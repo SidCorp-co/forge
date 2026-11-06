@@ -7,6 +7,7 @@ import { cleanupFirePlan } from './cleanup/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
 import { db } from './db/client.js';
+import { masterTakesCut } from './development/index.js';
 import {
   declaredRunElsewhere,
   declaredRunOfCall,
@@ -202,6 +203,7 @@ export function provideExecutionPorts(): void {
     // a release at its gate wakes the master the way an issue arriving there does
     wakeMasters: (projectId) =>
       wakeMastersForProject({ projectId, issueId: null, status: 'awaiting_release' }),
+    masterCuts: masterTakesCut,
   });
   provideJobsPorts({
     buildPipelinePreamble: buildPipelinePreambleStructured,

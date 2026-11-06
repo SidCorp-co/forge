@@ -93,7 +93,7 @@ const SUGGESTION_ACTS: ReadonlySet<string> = new Set([
 /** A moved design's pin-only dependents, cleared by the one re-pin act (`needs-you-repin.ts`). */
 const REPIN_BATCH = 'designs.act.repinBatch';
 
-/** A draft release no gate holds, which only an admin cuts (`release-batch/release-view.ts:draftTurn`). */
+/** A draft release no gate holds, which its admins cut where the master does not (`release-batch/release-view.ts:draftTurn`). */
 const RELEASE_CUT = 'standing.act.cut';
 
 type Classified = Built | { reason: NeedsYouNotDecisionReason } | { folded: true };

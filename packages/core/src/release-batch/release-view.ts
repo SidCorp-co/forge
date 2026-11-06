@@ -50,8 +50,13 @@ interface TurnFacts {
     reason: string | null;
   } | null;
   approvers: readonly ReleasePerson[];
-  /** Who holds project.admin, by name: whom a cut names. */
+  /** Who holds project.admin, by name: whom a cut names where the master does not take it. */
   admins: readonly string[];
+  /**
+   * Whether the project's master cuts its drafts: outside strict its accounts take the cut whatever
+   * their role (REQ-79 r6 BC-11, `development/needs-you-agent-takes.ts:masterTakesCut`).
+   */
+  masterCuts: boolean;
   viewer: ViewerFacts | null;
   /** The blockers, in the order the door refuses in, each with whoever owes its act. */
   gates: readonly { code: string; owner: ReleaseGateOwner }[];
@@ -86,7 +91,8 @@ const RELEASE_RUN = say('standing.who.releaseRun');
  * A release's turn. Needs you holds decisions only (REQ-48 BC-11, `lib/standing-times.ts:withTimes`
  * for the other slices): an act of the viewer's that no decision carries, a target to declare or a
  * runner to bring online, reads `waiting` on them, so the list and the needs-me read count the same
- * rows. The cut is one: only an admin makes it, so it stays theirs as the `release.cut` decision.
+ * rows. The cut is one where a person makes it: an admin, as the `release.cut` decision, on a project
+ * whose master does not take it.
  */
 const turn = (
   attentionGroup: ReleaseAttentionGroup,
@@ -153,10 +159,18 @@ function queuedTurn(f: TurnFacts): Turn | null {
   });
 }
 
+/**
+ * A draft no gate holds waits on its cut: the project's master's where it takes the cut (outside
+ * strict, REQ-79 r6 BC-11), as Needs you, the steward and a room's release read all read it from
+ * this one answer (ISS-1043); otherwise its admins', a person's decision.
+ */
 function draftTurn(f: TurnFacts): Turn {
   if (f.gates.length > 0) return gatedTurn(f);
-  const rule = say('releases.rule.adminCuts');
   const act = say('standing.act.cut', { v: f.version, more: null });
+  if (f.masterCuts) {
+    return turn('waiting', 'agent', { who: MASTER, act, rule: say('releases.rule.masterCuts') });
+  }
+  const rule = say('releases.rule.adminCuts');
   if (f.viewer?.isAdmin) return turn('needs_you', 'you', { who: YOU, act, rule });
   if (f.admins.length === 0) {
     return turn('stuck', 'none', {

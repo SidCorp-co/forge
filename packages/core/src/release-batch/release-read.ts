@@ -39,6 +39,7 @@ import { readLandingReadings } from './landing-surfaces.js';
 import { draftNaming, readReleaseNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { draftPromotionViewOf, promotionViewOf } from './promotion-release.js';
+import { masterCutsReleases } from './provider-live.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
@@ -266,6 +267,10 @@ async function sharedFor(
     viewer,
     approvers,
     admins,
+    // read only where a draft is listed: only a draft's cut is the master's or an admin's
+    masterCuts: parts.some((p) => p.state === 'draft')
+      ? await masterCutsReleases(projectId)
+      : false,
     facts,
     contentLanguage: language.contentLanguage,
     provider: productionProviderOf(channels),

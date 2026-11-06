@@ -94,6 +94,8 @@ export interface Shared {
   approvers: ReleasePerson[];
   /** Who holds project.admin, by name. */
   admins: string[];
+  /** Whether the project's master cuts its drafts (`provider-live.ts:masterCutsReleases`, ISS-1043). */
+  masterCuts: boolean;
   facts: ReleaseFacts;
   /** The project's content language tag, which its release notes are written in. */
   contentLanguage: string;
@@ -139,6 +141,7 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,
+    masterCuts: s.masterCuts,
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),

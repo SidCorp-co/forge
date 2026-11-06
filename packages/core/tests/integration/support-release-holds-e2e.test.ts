@@ -12,6 +12,11 @@
  * @direct-test-of packages/core/src/support/prompt.ts
  * @direct-test-of packages/core/src/release-batch/carrying-release.ts
  * @direct-test-of packages/core/src/steward/release-ask.ts
+ * @direct-test-of packages/core/src/release-batch/release-view.ts
+ * @direct-test-of packages/core/src/release-batch/release-read.ts
+ * @direct-test-of packages/core/src/release-batch/release-read-views.ts
+ * @direct-test-of packages/core/src/release-batch/provider-live.ts
+ * @direct-test-of packages/core/src/execution-ports.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -19,6 +24,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { holderNames } from '../../src/permissions/index.js';
+import { readRelease } from '../../src/release-batch/index.js';
 import { releasesRead } from '../../src/support/ops-reads.js';
 import type { RoomRow } from '../../src/support/store.js';
 import '../helpers/api.js';
@@ -56,6 +62,7 @@ interface HeldRelease {
     says: string;
     since: string;
     waited: string;
+    why: string;
     approval: string;
     notReady: { issue: string; title: string; why: string }[];
     next: string;
@@ -103,6 +110,34 @@ describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)
     expect(unseen).toContain('does not mean nothing is happening');
   });
 
+  // ISS-1043: the page said "an admin cuts the version" while every other surface left the cut to the
+  // master, and the room read appended "on this project the master takes that act" to patch it
+  it("the release page itself names the project's master as the cutter, and the room read restates it unpatched", async () => {
+    await fx.insertIssue('awaiting_release', {
+      section: 'Added',
+      title: 'Visit reminders',
+      userFacing: 'A reminder reaches the nurse.',
+    });
+    const owner = { userId: ownerId, agency: 'human' as const, isAdmin: true, mayApprove: true };
+    for (const viewer of [null, owner]) {
+      const page = await readRelease(projectId, '0.1.0', viewer);
+      expect(page.state).toBe('draft');
+      expect(page.attentionGroup).toBe('waiting');
+      expect(page.waitingOn).toMatchObject({
+        kind: 'agent',
+        who: 'Master',
+        act: 'cut 0.1.0',
+        rule: "merged issues wait at the release gate; the project's master cuts the version",
+      });
+    }
+    const draft = (await read()).releases.find((r) => r.state === 'draft');
+    expect(draft?.holds?.says).toContain("waits on the project's master to cut 0.1.0");
+    expect(draft?.holds?.why).toBe(
+      "merged issues wait at the release gate; the project's master cuts the version",
+    );
+    expect(draft?.holds?.why).not.toContain('takes that act');
+  });
+
   it('a draft carrying an issue not ready names it and why', async () => {
     const id = await fx.insertIssue(
       'awaiting_release',
@@ -134,6 +169,11 @@ describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)
     const draft = (await read()).releases.find((r) => r.state === 'draft');
     expect(draft?.holds?.waitsOn).toBe(admins);
     expect(draft?.holds?.says).toContain(`waits on ${admins} to cut 0.1.0`);
+    expect(draft?.holds?.why).toBe(
+      'merged issues wait at the release gate; an admin cuts the version',
+    );
+    const page = await readRelease(projectId, '0.1.0', null);
+    expect(page.waitingOn).toMatchObject({ kind: 'person', act: 'cut 0.1.0' });
     expect(draft?.holds?.approval).toContain('owed once it is cut');
   });
 

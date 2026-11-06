@@ -1,0 +1,1 @@
+**A release draft names the project's master as its cutter where the master takes the cut.** The release page no longer says an admin cuts it while Needs you, the steward and the room read say the master does.
