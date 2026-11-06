@@ -6,8 +6,10 @@
 //
 // Exit 0 clean · 1 dead anchors · 2 the check could not run.
 //
-// Usage:  node scripts/check-memory-anchors.mjs [--json] [--project <uuid>]
-// Token:  $FORGE_PAT, else ~/.config/forge/config.json
+// Usage:  node scripts/check-memory-anchors.mjs --project <uuid> [--json]
+// Host and token: $FORGE_API with $FORGE_PAT, else the `url` and `token` of the
+// forge CLI's config.json ($XDG_CONFIG_HOME/forge, else ~/.config/forge). Both
+// come from one place, so a token is never sent to another instance's host.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -19,22 +21,27 @@ const die = dieAs('check-memory-anchors');
 
 const PROJECT =
   process.argv[process.argv.indexOf('--project') + 1]?.match(/^[0-9a-f-]{36}$/)?.[0] ??
-  'da368b0a-8e21-4763-9d90-8f7b9d0c7115';
-const API = process.env.FORGE_API ?? 'https://forge-beta-api.sidcorp.co';
+  die('--project <uuid> is required: the project whose memory and knowledge rows are audited');
 const JSON_OUT = process.argv.includes('--json');
 
-function token() {
-  if (process.env.FORGE_PAT) return process.env.FORGE_PAT;
-  const p = join(homedir(), '.config/forge/config.json');
-  if (!existsSync(p)) die('no $FORGE_PAT and no ~/.config/forge/config.json');
-  const t = JSON.parse(readFileSync(p, 'utf8')).token;
-  if (!t) die('config.json carries no token');
-  return t;
+function target() {
+  if (process.env.FORGE_PAT || process.env.FORGE_API) {
+    if (!process.env.FORGE_PAT || !process.env.FORGE_API)
+      die('$FORGE_PAT and $FORGE_API are set together or not at all: a token alone names no host');
+    return { api: process.env.FORGE_API, token: process.env.FORGE_PAT };
+  }
+  const dir = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  const p = join(dir, 'forge/config.json');
+  if (!existsSync(p)) die(`no $FORGE_PAT/$FORGE_API and no ${p}`);
+  const { url, token } = JSON.parse(readFileSync(p, 'utf8'));
+  if (!url || !token) die(`${p} carries no ${url ? 'token' : 'url'}`);
+  return { api: url.replace(/\/+$/, ''), token };
 }
+const TARGET = target();
 
 async function get(path) {
-  const res = await fetch(`${API}${path}`, {
-    headers: { Authorization: `Bearer ${token()}`, 'User-Agent': 'curl/8.5.0' },
+  const res = await fetch(`${TARGET.api}${path}`, {
+    headers: { Authorization: `Bearer ${TARGET.token}`, 'User-Agent': 'curl/8.5.0' },
   });
   if (!res.ok) die(`${path} -> HTTP ${res.status}`);
   return res.json();
