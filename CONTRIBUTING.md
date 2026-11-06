@@ -25,9 +25,11 @@ ever disagree.
 3. **Write [Conventional Commits](https://www.conventionalcommits.org/)** — `fix(core): …`,
    `feat(gates): …`, `docs(npmrc): …`. This is already the convention in the history; nothing
    enforces it yet, so it is on you.
-4. **Run `pnpm verify` before you push.** It declares the suites and the build rather than running
-   them all; `pnpm test:changed` is the inner loop — the typecheck and the direct tests of what you
-   touched, never a whole suite — and `pnpm merge-check` is what a change into `dev` must pass.
+4. **Per change, run `pnpm test:changed`** — the typecheck and the direct tests of what you
+   touched, never a whole suite. The batch your change lands in is gated once: `pnpm verify`, which
+   declares the suites and the build rather than running them, and `pnpm merge-check` over the batch
+   rebased onto the latest `dev`, which is what a change into `dev` must pass. The whole suite runs
+   after the push, not before it, and a red there is fixed forward.
 5. **Open a pull request** and fill [the template](.github/PULL_REQUEST_TEMPLATE.md). The
    declarations it asks for decide how your change is handled, so answer them honestly.
 

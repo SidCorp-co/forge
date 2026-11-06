@@ -22,11 +22,12 @@ Closes #
 
 ## Test plan
 
-<!-- Concrete checklist of what you tested. Do not write "tested it works". -->
+<!-- Concrete checklist of what you ran. Do not write "tested it works". Per change: the typecheck
+     and the direct tests of what changed, never a whole suite; the whole suite runs after the push. -->
 
-- [ ] Unit tests pass locally
-- [ ] Integration tests pass locally
-- [ ] Manual scenario: ...
+- [ ] `pnpm test:changed` passes (typecheck and the direct tests of what changed)
+- [ ] `pnpm test:changed --integration`, where a migration or a kernel path changed
+- [ ] Ran it: ...
 
 ## Checklist
 
