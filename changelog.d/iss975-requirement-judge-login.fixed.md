@@ -1,0 +1,1 @@
+**A judge declared at a requirement can sign in.** Its testing secrets come from the environment the requirement is weighed on, each read is audited on the requirement, and where none can be named the refusal says what to declare.

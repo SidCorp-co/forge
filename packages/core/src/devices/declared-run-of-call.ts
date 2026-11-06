@@ -8,6 +8,7 @@ import {
   REVIEW_RUN_METADATA_KEY,
   type ReviewRunDeclaration,
   RUN_GROUP_METADATA_KEY,
+  RUN_REQUIREMENT_METADATA_KEY,
   RUN_SESSION_KIND,
   readReviewRun,
 } from '@forge/contracts/agent-sessions';
@@ -25,8 +26,12 @@ export type DeclaredRunRead =
       sessionId: string;
       runId: string;
       projectId: string;
+      /** The run id the box declared it under; null where it declared none. */
+      boxRunId: string | null;
       /** The issues the run was declared over, in its project. */
       issueIds: string[];
+      /** The requirement a judge run was declared at in place of any issue (ISS-735); null otherwise. */
+      requirement: string | null;
       /** Where a person declared it for review (`devices/review-run.ts`): who, its profile, its end. */
       review: ReviewRunDeclaration | null;
     };
@@ -38,6 +43,8 @@ interface Row {
   run_id: string;
   run_group: unknown;
   review: unknown;
+  box_run_id: string | null;
+  requirement: string | null;
 }
 
 /** The projects a credential reaches, where it is fenced to some; null where it names none. */
@@ -74,6 +81,8 @@ export async function declaredRunOfCall(
   const [row] = (await db.execute(sql`
     SELECT s.id AS session_id, s.status, s.project_id, r.id AS run_id,
            r.metadata -> ${RUN_GROUP_METADATA_KEY} AS run_group,
+           r.metadata ->> 'boxRunId' AS box_run_id,
+           r.metadata ->> ${RUN_REQUIREMENT_METADATA_KEY} AS requirement,
            jsonb_build_object(${REVIEW_RUN_METADATA_KEY}::text, r.metadata -> ${REVIEW_RUN_METADATA_KEY}) AS review
       FROM agent_sessions s
       JOIN pipeline_runs r ON r.id = s.pipeline_run_id
@@ -143,7 +152,9 @@ export async function declaredRunOfCall(
     sessionId: row.session_id,
     runId: row.run_id,
     projectId: row.project_id,
+    boxRunId: row.box_run_id,
     issueIds: issues.map((i) => i.id),
+    requirement: row.requirement,
     review,
   };
 }

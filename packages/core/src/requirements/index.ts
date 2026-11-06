@@ -28,6 +28,12 @@ export { nodesOfDesign } from './follow-reads.js';
 export { linkRefusalOn, plannedRevisionFor, requirementOfIssue } from './issue-links.js';
 export { issueNamingOf, namedIssue } from './issue-projects.js';
 export { issueRequirementOf } from './issue-requirement-read.js';
+export {
+  type RequirementSecretRead,
+  recordRequirementSecretRead,
+  requirementJudgedBy,
+  requirementSecretRefsOfSession,
+} from './judge-run-secrets.js';
 export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
 export { listRowsOf, requirementStandingsOf } from './list-rows.js';
 export type { ProposeDuplicate } from './near-duplicate.js';

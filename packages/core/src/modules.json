@@ -1101,6 +1101,7 @@
         "requirementPictures",
         "requirementReturns",
         "requirementRevisions",
+        "requirementSecretReads",
         "requirementWorkflows",
         "requirements"
       ],

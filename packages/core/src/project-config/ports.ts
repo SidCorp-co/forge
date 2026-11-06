@@ -26,7 +26,11 @@ export type DeclaredRunRead =
       sessionId: string;
       runId: string;
       projectId: string;
+      /** The run id the box declared it under; null where it declared none. */
+      boxRunId: string | null;
       issueIds: string[];
+      /** The requirement a judge run was declared at in place of any issue (ISS-735); null otherwise. */
+      requirement: string | null;
       /** Where a person declared it for review: who, the one profile it reads, its end. */
       review: ReviewRunDeclaration | null;
     };
@@ -38,6 +42,23 @@ export interface RunSecretResolveAudit extends SecretResolveAudit {
   deviceId: string;
   /** The person who declared the run, where it is a review run. */
   declaredBy?: string;
+}
+
+export interface RequirementSecretReadAudit {
+  requirementId: string;
+  sessionId: string;
+  runId: string;
+  boxRunId: string | null;
+  deviceId: string;
+  /** The person the declaring box's credential acts for. */
+  declaredBy: string | null;
+  /** The delivering issue whose landing named the environment; null where none did. */
+  issueId: string | null;
+  basis: 'landing' | 'judgedOn' | 'production';
+  environment: string;
+  profile: string;
+  refs: string[];
+  tokenId: string;
 }
 
 type JobCredentialRead =
@@ -73,6 +94,13 @@ interface ProjectConfigPorts {
   ): Promise<{ box: string; keys: string[] } | null>;
   /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
   recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
+  /** The requirement a judge run was declared at, by key, and the project's issues delivering it. */
+  requirementJudgedBy(
+    projectId: string,
+    key: string,
+  ): Promise<{ requirementId: string; issueIds: string[] } | null>;
+  /** Audit a requirement judge's resolve on the requirement, committed before any value leaves. */
+  recordRequirementSecretRead(audit: RequirementSecretReadAudit): Promise<void>;
   /** Open a review run a person declared on a box serving the project (`devices/review-run.ts`). */
   openReviewRun(args: {
     projectId: string;

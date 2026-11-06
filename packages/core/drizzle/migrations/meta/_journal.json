@@ -3872,6 +3872,13 @@
       "when": 1835395200000,
       "tag": "0607_a_chat_keeps_the_decisions_a_person_agreed_and_the_acts_refused",
       "breakpoints": true
+    },
+    {
+      "idx": 608,
+      "version": "7",
+      "when": 1835481600000,
+      "tag": "0608_a_requirement_judge_reads_its_testing_secrets_audited_on_the_requirement",
+      "breakpoints": true
     }
   ]
 }

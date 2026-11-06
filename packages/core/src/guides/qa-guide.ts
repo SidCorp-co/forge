@@ -80,7 +80,11 @@ Read these before judging anything, while whoever sent you can still equip you.
   seconds after \`forge-runner run declare\`: a read before it is refused
   \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment deploying the branch the
   issue's work landed on is answered, while the run runs; each read is audited on the issue and each
-  value is scrubbed from what the run posts. Keep a value in no file, comment or commit.
+  value is scrubbed from what the run posts. A judge declared at a requirement
+  (\`--requirement REQ-n\`) reads the environment its delivering issues landed on, else the one
+  \`delivery.judgedOn\` names, else production, each read audited on the requirement; where none of
+  those names one it is refused \`TESTING_SECRETS_NO_JUDGED_ENVIRONMENT\`, saying what to declare
+  instead. Keep a value in no file, comment or commit.
 - A session working for a person on a box, with no master to declare for it, gets a run from that
   person: someone holding project admin calls \`POST /api/projects/:id/review-runs\` with
   \`{ issue, box, profile, minutes? }\`, and the session reads that one profile under the box's

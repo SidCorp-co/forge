@@ -183,6 +183,8 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 	"TESTING_SECRETS_JOB_NOT_JUDGING",
 	"TESTING_SECRETS_NO_PROJECT_DOCUMENT",
 	"TESTING_SECRETS_NOT_LANDED",
+	/** A judge run declared at a requirement, where nothing names the environment it judges: no delivering issue landed, no `delivery.judgedOn`, no production (ISS-975). */
+	"TESTING_SECRETS_NO_JUDGED_ENVIRONMENT",
 	"TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET",
 	"TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS",
 	"TESTING_SECRETS_NO_TESTING_PROFILE",

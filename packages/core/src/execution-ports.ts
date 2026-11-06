@@ -117,7 +117,10 @@ import {
   owedBreakdowns,
   owedRequirementRevisions,
   proposedDraftRequirements,
+  recordRequirementSecretRead,
   requirementIdIn,
+  requirementJudgedBy,
+  requirementSecretRefsOfSession,
 } from './requirements/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
@@ -178,10 +181,18 @@ async function checkoutRemoteOf(projectId: string, repository: string): Promise<
 }
 
 /** What the testing-secrets door reads and writes for a declared run, where no job holds it, and the door a person declares a review run at. */
+/** The refs a declared run's session read, on the issues it judges and on a requirement it judges. */
+const secretRefsReadBy = async (sessionId: string) => [
+  ...(await runSecretRefsOfSession(sessionId)),
+  ...(await requirementSecretRefsOfSession(sessionId)),
+];
+
 export const declaredRunSecretPorts = {
   declaredRunOfCall,
   declaredRunElsewhere,
   recordRunSecretResolve,
+  requirementJudgedBy,
+  recordRequirementSecretRead,
   openReviewRun,
 };
 
@@ -241,7 +252,7 @@ export function provideExecutionPorts(): void {
         {
           id: sessionId,
           jobIds: await jobsOfSession(sessionId),
-          read: await runSecretRefsOfSession(sessionId),
+          read: await secretRefsReadBy(sessionId),
         },
         data,
       ),
