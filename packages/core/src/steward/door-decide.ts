@@ -6,9 +6,9 @@
 // drop; either may be asked merge into the live issue it repeats. A draft requirement is asked merge,
 // drop or keep, a draft revision of an agreed one withdraw or keep; a feedback item nobody triages is
 // asked keep or decline, a fix nobody verifies verify, reopen or keep. Nothing is asked where the
-// reading names an act somebody already owes, where the same question is open, or where a person
-// kept the item on the standing it reads now: each is said to the turn to correct, and is no refusal
-// of the run.
+// reading names an act somebody already owes, where the same question is open, where a person
+// kept the item on the standing it reads now, or where a reasoned decision answers that standing
+// (`asks.ts:answerOf`, ISS-1037): each is said to the turn to correct, and is no refusal of the run.
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { PLAIN_DECISION_RULE, plainDecisionSchema } from '@forge/contracts/plain-decision';
@@ -36,6 +36,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { answerOf } from './asks.js';
 import { fingerprintOf } from './decision-ask.js';
 import { doorName } from './door-call.js';
 import { cite, type DoorContext, type DoorSpec, key, send } from './door-kit.js';
@@ -470,6 +471,13 @@ export const DECIDE: DoorSpec<DecideArgs> = {
     if (kept) {
       return correct(
         `${about} was kept on the standing it reads now (question ${kept.id}, answered ${kept.chosen_label ?? kept.chosen}): ask nothing until it moves.`,
+      );
+    }
+    // a reasoned decision answering its standing is the answer this question would ask for (ISS-1037)
+    const decided = standing ? await answerOf(ctx.projectId, standing, new Date()) : null;
+    if (decided) {
+      return correct(
+        `${about} has a decision recorded on this standing (${decided.at.toISOString()}: ${decided.decision ?? decided.why}): ask nothing while it holds; write the note.`,
       );
     }
     const prompt = stewardDecisionQuestion(

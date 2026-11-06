@@ -7,6 +7,8 @@
 // new wait, the wait gone stuck, a run reading the item on another basis) asks again, but a decision
 // naming its own date answers until then while the standing puts the same question: a dependent's
 // blocker moving inside its run is no new question, a blocker drawn after the decision is (ISS-804).
+// A decision naming a condition answers so too, and neither is voided by the wait turning stuck or
+// overdue on its own clock, only by another act owed (ISS-1037: sidpeak's REQ-9..11).
 // The item is an issue, a feedback item or a requirement, its decision read where its own door
 // writes one (ISS-654). An ask about another item than its run's own (a stuck issue asking about its
 // blocker) is answered on either, and a decision recorded since the ask leaves the master's nudge at
@@ -144,6 +146,13 @@ export type AskAnswer = ItemDecision;
 const holds = (d: AskAnswer, now: Date) => d.until === null || d.until > now;
 
 /**
+ * Whether a decision bounds itself, by a date or a condition, rather than by the standing it was
+ * recorded on: it answers while the standing puts the same question (`standing-question.ts`), the
+ * wait turning stuck or overdue on its own clock included (ISS-1037).
+ */
+const boundsItself = (d: AskAnswer) => d.until !== null || d.condition !== null;
+
+/**
  * The reasoned decisions on these items of one kind, newest first, the steward's own left out: an
  * issue's `decision` records (`issues/<id>/events`), or the decision comments on a feedback item or a
  * requirement (`projects/:id/<feedback|requirements>/:key/comments`, ISS-654).
@@ -160,6 +169,7 @@ async function decisionsOn(
     decision: d.decision,
     why: d.why,
     until: d.until,
+    condition: d.condition,
   }));
 }
 
@@ -176,13 +186,16 @@ const asRead: BasisReading = (basis) => basis;
  * its wait began, or went stuck, where a run read it otherwise no later than that; else the first run
  * that read it as now after the last that read it otherwise (the change fell between them, and
  * nothing earlier counts). Null where no run has read it as now since: nothing recorded yet is on it.
+ * Read as the question it puts, going stuck is no change (`questionOfBasis`), so only its wait's
+ * start floors it (ISS-1037).
  */
 async function standingBeganAt(
   standing: AskedStanding,
   read: BasisReading = asRead,
 ): Promise<Date | null> {
+  const stuckSince = read === asRead ? standing.stuck?.since : undefined;
   const floor = new Date(
-    Math.max(Date.parse(standing.since), Date.parse(standing.stuck?.since ?? standing.since)),
+    Math.max(Date.parse(standing.since), Date.parse(stuckSince ?? standing.since)),
   );
   const runs = await db
     .select({ basis: stewardRuns.basis, at: runAt })
@@ -205,9 +218,10 @@ const onStanding = (at: Date, began: Date | null) => began !== null && at >= beg
 /**
  * The newest reasoned decision on the item, by the item's own door and anyone but the steward, that
  * still holds and answers an ask on its standing now, made before it or after (ISS-607 c2): one
- * recorded while the standing reads as now; or one naming its own date, recorded while the standing
- * put the question it puts now (`standing-question.ts`), so a dependent's blocker moving inside its
- * run voids no dated decision on it (ISS-804). On an issue, a blocker drawn onto it after the
+ * recorded while the standing reads as now; or one naming its own date or a condition, recorded
+ * while the standing put the question it puts now (`standing-question.ts`), so a dependent's blocker
+ * moving inside its run voids no dated decision on it (ISS-804), and neither does the wait turning
+ * stuck or overdue on its own clock (ISS-1037). On an issue, a blocker drawn onto it after the
  * decision is a question the decision never answered, dated or not.
  */
 export async function answerOf(
@@ -222,7 +236,7 @@ export async function answerOf(
   ).filter((d) => holds(d, now));
   if (decisions.length === 0) return null;
   const from = began === undefined ? await standingBeganAt(standing) : began;
-  const asked = decisions.some((d) => d.until !== null)
+  const asked = decisions.some(boundsItself)
     ? await standingBeganAt(standing, questionOfBasis)
     : from;
   const blockerAt =
@@ -233,7 +247,7 @@ export async function answerOf(
     decisions.find(
       (d) =>
         (blockerAt === null || d.at >= blockerAt) &&
-        (onStanding(d.at, from) || (d.until !== null && onStanding(d.at, asked))),
+        (onStanding(d.at, from) || (boundsItself(d) && onStanding(d.at, asked))),
     ) ?? null
   );
 }
@@ -274,11 +288,13 @@ async function asksOnStanding(projectId: string, standing: AskedStanding, began:
   );
 }
 
-/** What the turn is told to hold off until: the decision's own date, else its standing moving. */
+/** What the turn is told to hold off until: the decision's own date or condition, else its standing moving. */
 const askNothingUntil = (answer: AskAnswer) =>
   answer.until
     ? `Ask nothing before ${answer.until.toISOString()} unless its question changes; write the note.`
-    : 'Ask nothing until its standing moves; write the note.';
+    : answer.condition
+      ? `Ask nothing while the same act is owed on it, its decision holding on "${answer.condition}"; write the note.`
+      : 'Ask nothing until its standing moves; write the note.';
 
 /**
  * Why an ask about the item on its standing now is not made again, said to the turn, or null where

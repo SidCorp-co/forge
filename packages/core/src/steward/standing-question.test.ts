@@ -1,5 +1,6 @@
 // ISS-804: the question a standing's basis puts reads a dependent's live blocker alike whichever
-// step it is on, and keeps every other field: another blocker, a settled one, another wait.
+// step it is on, and keeps every field but those the clock moves: another blocker, a settled one,
+// another wait. ISS-1037: a wait turning stuck or overdue on its own clock is the same question.
 //
 // @direct-test-of packages/core/src/steward/standing-question.ts
 
@@ -47,8 +48,53 @@ describe('the question a standing puts (ISS-804)', () => {
       dueAt: '2026-11-03T00:00:00Z',
       carriedBy: null,
     });
-    expect(questionOfBasis(master)).toBe(master);
     expect(questionOfBasis(master)).not.toBe(open);
+    const take = (over: Partial<StandingBasisFields>) =>
+      questionOfBasis(
+        standingBasisOf({
+          group: 'queued',
+          waitingKind: 'master',
+          who: 'Master',
+          actKey: 'standing.act.take',
+          ref: null,
+          stuckCode: null,
+          dueAt: '2026-11-03T00:00:00Z',
+          carriedBy: null,
+          ...over,
+        }),
+      );
+    expect(take({ actKey: 'standing.act.dispatch' })).not.toBe(questionOfBasis(master));
+    expect(take({ waitingKind: 'agent' })).not.toBe(questionOfBasis(master));
+    expect(take({ carriedBy: 'ISS-9' })).not.toBe(questionOfBasis(master));
+  });
+
+  it('reads a wait turning stuck or overdue on its own clock as the same question (ISS-1037)', () => {
+    const draft = (over: Partial<StandingBasisFields>) =>
+      standingBasisOf({
+        group: 'waiting',
+        waitingKind: 'agent',
+        who: 'Master',
+        actKey: 'standing.act.proposeOrDrop',
+        ref: null,
+        stuckCode: null,
+        dueAt: '2026-11-06T13:13:00Z',
+        carriedBy: null,
+        ...over,
+      });
+    const waiting = draft({});
+    const overdue = draft({ group: 'stuck', stuckCode: 'overdue' });
+    expect(overdue).not.toBe(waiting);
+    expect(questionOfBasis(overdue)).toBe(questionOfBasis(waiting));
+    expect(questionOfBasis(draft({ group: 'stuck', stuckCode: 'nobody_serves' }))).toBe(
+      questionOfBasis(waiting),
+    );
+    expect(questionOfBasis(draft({ dueAt: null }))).toBe(questionOfBasis(waiting));
+    // another act owed is another question, overdue or not
+    expect(
+      questionOfBasis(
+        draft({ actKey: 'standing.act.reviseThenProposeOrDrop', stuckCode: 'overdue' }),
+      ),
+    ).not.toBe(questionOfBasis(overdue));
   });
 
   it('reads a basis that does not split into its fields strictly, and no basis as itself (edge)', () => {

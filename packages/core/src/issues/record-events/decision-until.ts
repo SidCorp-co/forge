@@ -1,7 +1,8 @@
 // How a decision record's `until` field is read (ISS-607). It ends the decision on a date only where
 // it names one unambiguously: an ISO 8601 date (`2026-11-01`, read as its start, 00:00 UTC) or a
 // date-time carrying its zone (`2026-11-01T09:00Z`, `2026-11-01T09:00+07:00`). Any other text is a
-// condition, which no clock ends: the decision holds until the item's standing moves. `Date.parse`
+// condition, which no clock ends: the decision holds while the item waits on the act it was recorded
+// on, its wait turning overdue included, and ends once another act is owed (ISS-1037). `Date.parse`
 // is never asked to guess, since it reads many sentences as old dates ("the owner admits or drops
 // ISS-304" as the year 303) and so expired a person's decision as it was written. The write is told
 // how its `until` was read, so the reading is never a silent one.
@@ -48,7 +49,7 @@ export function untilReadingWarnings(name: string, text: string, now: Date): str
   const until = readDecisionUntil(text);
   if (until.kind === 'condition') {
     return [
-      `DECISION_UNTIL_CONDITION: ${name} \`${until.text}\` is no ISO 8601 date (2026-11-01) or date-time with a zone (2026-11-01T09:00Z), so it is read as a condition: the decision holds until the item's standing moves, and no date ends it`,
+      `DECISION_UNTIL_CONDITION: ${name} \`${until.text}\` is no ISO 8601 date (2026-11-01) or date-time with a zone (2026-11-01T09:00Z), so it is read as a condition: the decision holds while the item waits on the same act, however long, and no date ends it`,
     ];
   }
   if (until.at <= now) {

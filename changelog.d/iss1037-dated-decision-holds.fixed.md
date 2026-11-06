@@ -1,0 +1,1 @@
+**A dated or conditioned decision keeps answering the steward.** One recorded while an item waited holds once that wait turns stuck or overdue, until its date passes or another act is owed, so the steward stops re-asking.

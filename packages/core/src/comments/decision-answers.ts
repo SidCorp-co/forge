@@ -2,8 +2,9 @@
 // REQ-68 BC-5): a decision comment (`intent: decision`) posted at `projects/:id/feedback/:fb/comments`,
 // `projects/:id/requirements/:req/comments` or `projects/:id/workflows/:flow/comments`, read in the shape an issue's `decision` record is read
 // (`issues/record-events/decision-read.ts`): `reason` is its why, and `reversedWhen` its until, which
-// ends it only on a date it names (`issues/record-events/decision-until.ts`). The steward reads one
-// written after its ask about the item as that ask's answer.
+// ends it only on a date it names (`issues/record-events/decision-until.ts`); one naming a condition
+// holds while the item waits on the act it was recorded on (ISS-1037). The steward reads one written
+// after its ask about the item as that ask's answer.
 
 import type { EntityCommentView } from '@forge/contracts/comments';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -21,6 +22,11 @@ export interface ItemDecision {
   why: string;
   /** The date `reversedWhen` names, after which it stops holding; null for none or a condition, which holds. */
   until: Date | null;
+  /**
+   * The condition `reversedWhen` names where it names no date: the decision holds while the item waits
+   * on the act it was recorded on, however long (ISS-1037). Null for none or a date.
+   */
+  condition: string | null;
 }
 
 const COLUMN = {
@@ -70,6 +76,7 @@ export async function reasonedDecisionsOnItems(
         decision: trimmed(row.decision?.decision),
         why,
         until: read?.kind === 'date' ? read.at : null,
+        condition: read?.kind === 'condition' ? read.text : null,
       },
     ];
   });

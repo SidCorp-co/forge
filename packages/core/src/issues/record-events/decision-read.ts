@@ -22,6 +22,11 @@ export interface ReasonedDecision {
    * decision stops holding once it has passed. Null for no `until` or a condition, which holds.
    */
   until: Date | null;
+  /**
+   * The `until` field where it names a condition rather than a date: the decision holds while the item
+   * waits on the act it was recorded on, however long (ISS-1037). Null for no `until` or a date.
+   */
+  condition: string | null;
 }
 
 interface Field {
@@ -41,6 +46,13 @@ const dateOf = (text: string | null): Date | null => {
   if (!text) return null;
   const until = readDecisionUntil(text);
   return until.kind === 'date' ? until.at : null;
+};
+
+/** The condition an `until` names, or null for none or a date (`decision-until.ts`). */
+const conditionOf = (text: string | null): string | null => {
+  if (!text) return null;
+  const until = readDecisionUntil(text);
+  return until.kind === 'condition' ? until.text : null;
 };
 
 /**
@@ -85,6 +97,7 @@ export async function reasonedDecisionsOn(
         decision: fieldOf(fields, 'decision'),
         why,
         until: dateOf(fieldOf(fields, 'until')),
+        condition: conditionOf(fieldOf(fields, 'until')),
       },
     ];
   });
