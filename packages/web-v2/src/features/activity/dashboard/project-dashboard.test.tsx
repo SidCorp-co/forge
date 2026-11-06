@@ -7,7 +7,7 @@
 // (routes/moved-pages.test.tsx).
 //
 // @direct-test-of packages/web-v2/src/routes/_workspace/projects/$slug/index.tsx
-// @direct-test-of packages/web-v2/src/features/project-dashboard/components/project-dashboard.tsx
+// @direct-test-of packages/web-v2/src/features/activity/dashboard/project-dashboard.tsx
 
 import type { DebtLedgerView } from "@forge/contracts/cleanup";
 import { act, cleanup, screen, within } from "@testing-library/react";

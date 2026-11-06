@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { EmptyState, ErrorState, PageContainer, ProjectLoader } from "@/design";
-import { ProjectDashboard } from "@/features/project-dashboard";
+import { ProjectDashboard } from "@/features/activity";
 import { ProjectHomeHeader } from "@/features/project-home";
 import { useProjectRef } from "@/features/projects/project-ref";
 import { formatApiError } from "@/lib/api/error";

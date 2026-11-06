@@ -10,7 +10,7 @@ import { decisionLineOf } from "@forge/contracts/plain-decision";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { ReleaseSummary } from "@forge/contracts/releases";
 import { GroupedList, type ListGroup, type ListRowView, ProjectLoader, StatusBadge, StatusChip, useGroupFold } from "@/design";
-import { AuditLine } from "@/features/activity";
+import { AuditLine } from "../components/cleanup";
 import { issueRowView, useIssueStanding, useRowWords } from "@/features/issues";
 import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
 import { useReleases } from "@/features/releases";

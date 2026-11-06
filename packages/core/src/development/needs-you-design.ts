@@ -8,7 +8,9 @@ import { repinOwedWait, settleOwedWait } from '@forge/contracts/design-owed';
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
 import { say, verbatim } from '@forge/contracts/said';
 import type { Standing } from '@forge/contracts/standing';
+import { whoOwes } from '@forge/contracts/who-owes';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
+import { readOwedPolicy } from '../project-config/index.js';
 import type { DesignRepinGroup } from './ports.js';
 import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
@@ -44,6 +46,10 @@ export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignR
     touchedAt: group.approvedAt,
   };
 }
+
+/** Who settles a project's places where code and design differ, by the one rule (ISS-1068). */
+export const designSettlerOf = async (projectId: string): Promise<'person' | 'master'> =>
+  whoOwes('design.decide', await readOwedPolicy(projectId)).by;
 
 /** `settleBy`: who settles the places its code and design differ (`whoOwes('design.decide')`, ISS-1068). */
 export function designRowOf(h: WorkflowHealth, settleBy: 'person' | 'master'): DesignRow | null {

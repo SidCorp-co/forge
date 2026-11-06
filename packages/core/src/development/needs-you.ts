@@ -12,16 +12,14 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { say } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { StandingTimes } from '@forge/contracts/steward';
-import { whoOwes } from '@forge/contracts/who-owes';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
-import { readOwedPolicy } from '../project-config/index.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
-import { designRowOf, repinRowOf } from './needs-you-design.js';
+import { designRowOf, designSettlerOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
 import { designHealthOf, designRepinsOf } from './ports.js';
 import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
@@ -99,7 +97,7 @@ export async function readAttention(
     health,
     detached,
     repins,
-    policy,
+    designSettler,
   ] = await Promise.all([
     listRequirementsAs(viewer, projectId),
     listFeedbackAs(viewer, projectId),
@@ -110,7 +108,7 @@ export async function readAttention(
     designHealthOf(viewer, projectId),
     questionRowsOf(projectId, viewer),
     designRepinsOf(viewer, projectId),
-    readOwedPolicy(projectId),
+    designSettlerOf(projectId),
   ]);
   if (!feedback.ok) {
     throw new Error(
@@ -152,7 +150,7 @@ export async function readAttention(
       touchedAt: c.touchedAt,
     })),
     questions: detached,
-    designs: designRowsOf(health, repins, whoOwes('design.decide', policy).by),
+    designs: designRowsOf(health, repins, designSettler),
     automation: [
       ...automation.schedules.map(
         (s): AttentionRow => ({

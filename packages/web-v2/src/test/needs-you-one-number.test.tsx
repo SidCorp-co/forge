@@ -8,7 +8,7 @@ import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AttentionScreen, useAttention } from "@/features/attention";
-import { ProjectDashboard } from "@/features/project-dashboard";
+import { ProjectDashboard } from "@/features/activity";
 import { projectMenu } from "@/features/shell/nav-model";
 import { APPROVALS_PROJECT as P, APPROVALS_READ } from "@/test/approvals-read";
 import { STATUS } from "@/test/project-status";

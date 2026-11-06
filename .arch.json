@@ -321,9 +321,6 @@
     "web-feature-project-config": [
       "packages/web-v2/src/features/project-config/**"
     ],
-    "web-feature-project-dashboard": [
-      "packages/web-v2/src/features/project-dashboard/**"
-    ],
     "web-feature-project-status": [
       "packages/web-v2/src/features/project-status/**"
     ],
@@ -489,7 +486,6 @@
         "web-feature-settings",
         "web-feature-shell",
         "web-feature-version",
-        "web-feature-project-dashboard",
         "web-feature-project-status",
         "web-feature-pairing",
         "web-feature-overview",
