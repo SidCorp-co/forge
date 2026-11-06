@@ -99,7 +99,8 @@ server in \`.mcp.json\` carries only what neither covers, and its instructions n
 - **projectId:** \`${projectId}\`  ·  **slug:** \`${slug}\`
 - **Recall memory FIRST** — project memory is NOT auto-loaded. Before any task needing
   project context: \`POST /api/memory/search { "projectId": "${projectId}", "query": <topic>, "topK": 5 }\`.
-  Treat hits as point-in-time — verify against live code/git before trusting.
+  Treat hits as point-in-time; each carries its \`standing\`, and an \`unverified\` one is a lead to
+  check against live code/git, never a fact.
 - Codebase & project knowledge: \`GET /api/projects/${projectId}/knowledge\` or \`forge knowledge\`.
 - Issues / tasks / status / dependencies: \`forge issue\`, \`forge new\`, \`forge comment\`, or
   \`/api/projects/${projectId}/issues\` and \`/api/issues/<id>\`.

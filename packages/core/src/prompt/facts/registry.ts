@@ -68,7 +68,7 @@ What counts as an issue, and where a note, a question or a done record usually g
 |---|---|---|
 | Ordering between issues | Blocker known at create time → \`projects/<id>/issues -X POST\` with \`relations:[{ kind:'blocks', dependsOnId }]\`, committed before the issue dispatches. Both exist → \`issues/<dependent>/dependencies -X POST -d '{"dependsOnId":"<blocker>","kind":"blocks"}'\` (retract with \`validUntil\` in the past). | Only a \`blocks\` edge gates dispatch, never prose. An \`open\` issue whose edge is sent in a second call can dispatch in the gap |
 | A note or learning | \`memory -X POST\` (durable business logic → repo \`docs/\`) | |
-| A decision in force | a rule (\`projects/<id>/knowledge/<slug> -X PUT\`, kind rule) or a requirement | memory holds no decision in force |
+| A decision in force | a rule (\`projects/<id>/knowledge/<slug> -X PUT\`, kind rule) or a requirement | memory holds no decision in force and refuses one \`MEMORY_DECISION_NOT_MEMORY\` |
 | Work for later | an issue at \`draft\` | \`open\` triages and dispatches it |
 | Work to report | \`title\`, \`description\`, \`priority\`, \`category\`; a plan or criteria where you already have them | |
 | The project's policy (\`qa\`, intake, a status's model or permission profile) | GET \`projects/<id>/policy\`, then PUT the whole document with the \`baseRevision\` you read | A stale revision is refused by name, never merged |

@@ -137,10 +137,13 @@ describe('a run writes memory another reader can trust', () => {
       '`<its slug> ISS-n`',
       'never as a `decision`',
       'MEMORY_EVIDENCE_REQUIRED',
+      'MEMORY_DECISION_NOT_MEMORY',
+      'an `unverified` hit is a lead to check, never a fact',
     ]) {
       expect(DRIVE_RULES_TEXT).toContain(word);
     }
     expect(MEMORY_REFUSAL_CODES).toContain('MEMORY_EVIDENCE_REQUIRED');
+    expect(MEMORY_REFUSAL_CODES).toContain('MEMORY_DECISION_NOT_MEMORY');
   });
 
   // REQ-23 BC-2: the prompt names the guide that says it, and the guide says it
