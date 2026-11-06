@@ -22,17 +22,19 @@ Closes #
 
 ## Test plan
 
-<!-- Concrete checklist of what you ran. Do not write "tested it works". Per change: the typecheck
-     and the direct tests of what changed, never a whole suite; the whole suite runs after the push. -->
+<!-- Concrete checklist of what you ran. Do not write "tested it works". Verification follows the
+     blast radius: per change, the typecheck and the direct tests of what changed, never a whole
+     suite; wide early only where shared logic, billing, permissions or data changed; the whole suite
+     runs after the push. -->
 
 - [ ] `pnpm test:changed` passes (typecheck and the direct tests of what changed)
-- [ ] `pnpm test:changed --integration`, where a migration or a kernel path changed
+- [ ] `pnpm test:changed --integration`, where a migration, a kernel path, or shared logic, billing, permissions or data changed
 - [ ] Ran it: ...
 
 ## Checklist
 
 - [ ] Code follows the project style guide
-- [ ] Self-reviewed the diff
+- [ ] Self-reviewed the diff: it carries what bounds its own impact or proves it, and no standalone cleanup
 - [ ] Updated docs where relevant
 - [ ] Added a `changelog.d/<branch>.<section>.md` fragment for meaningful changes (never a line in [CHANGELOG.md](../CHANGELOG.md))
 - [ ] Commit messages follow Conventional Commits

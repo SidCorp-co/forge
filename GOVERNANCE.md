@@ -47,10 +47,20 @@ the release's commit); a criterion not judged there reads "Not judged on <enviro
 code-property criterion, which only the review judges against the diff, is proven by the review's
 commit pass since the issue's last reopen (ISS-914).
 
+**Three marks, kept apart.** An issue closes when its criteria are met in scope. Released, and
+confirmed on the target environment, are marks on the release, never issue statuses: whether a
+change is live is read from the release record, never from `closed`. A criterion an issue cannot
+meet is moved out on the record before the close, and the close names where each one went. Core
+does not yet close this way: until ISS-1062 lands a close is still the release's act
+(`CLOSE_ONLY_BY_RELEASE`). See
+[`docs/adr/0014-an-issue-is-one-outcome-and-closes-when-met-in-scope.md`](docs/adr/0014-an-issue-is-one-outcome-and-closes-when-met-in-scope.md).
+
 Fast delivery (REQ-79) is every project's default, and `delivery.fast: false` turns it off. Under
 it a merge check asks only that the change is rebased on its base, typechecks and passes its direct
 tests; integration tests and `verify` are the cleanup run's, and deploy health is the release's own
-gate. A red the building agent rates below high passes as cleanup debt. A change it rates high lands
+gate. Which checks a change gets follows its blast radius: one that touches shared logic, billing,
+permissions or data is checked wide early by the agent that builds it, and a small fix with a clear
+blast radius goes on without waiting for a person. A red the building agent rates below high passes as cleanup debt. A change it rates high lands
 and ships like any other, but its mark owes a passing merge check at its commit, which records the
 rating and the debt it leaves (`MERGE_CHECK_MISSING` without one). Nothing waits on the cleanup.
 The cleanup run is the audit, apart from delivery: in the project's `cleanup` schedule window, on its
@@ -103,7 +113,15 @@ to prevent.
 **Agents decide and execute, on the record; people set policy.** An agent decides the plan,
 comments, evidence, the branch, commits, the push, status moves, the release note and whatever the
 plan did not foresee, and records each decision on the item it shapes: what it chose, the options,
-why, and the evidence, so it can be read and reversed.
+why, and the evidence, so it can be read and reversed. One agent may carry an outcome end to end —
+investigate, fix, check, and bring the fix to the integration mark — and an independent reviewer or
+specialist comes in only where the kind of work needs one. While a decision waits on a person, the
+agent goes on with the part that does not depend on it. Authority widens by results: a step agents
+reliably handle is loosened on the data, and the permission widened.
+
+**The fix carries what bounds its impact or proves it, and nothing else.** A defect an agent sees
+that stands alone is recorded as debt for the Audit, with its evidence, never cleaned inside the fix
+([0014](docs/adr/0014-an-issue-is-one-outcome-and-closes-when-met-in-scope.md)).
 
 A person is asked only for a decision serious enough to need one — **irreversible, real money,
 credentials or product direction** — once, with a recommendation, and only on a project that keeps

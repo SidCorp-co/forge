@@ -18,19 +18,25 @@ ever disagree.
 
 ## Getting a change in
 
-1. **Open an issue first** unless the change is trivial. Significant designs are argued in
-   [`docs/proposals/destination/`](docs/proposals/destination/) before they are built.
+1. **Open an issue first** unless the change is trivial: one issue, one verifiable outcome.
+   Significant designs are argued in [`docs/proposals/destination/`](docs/proposals/destination/)
+   before they are built.
 2. **Branch from the default branch**, named `ISS-<number>-<slug>`. Renaming a branch after a pull
    request is open orphans the pull request.
 3. **Write [Conventional Commits](https://www.conventionalcommits.org/)** — `fix(core): …`,
    `feat(gates): …`, `docs(npmrc): …`. This is already the convention in the history; nothing
    enforces it yet, so it is on you.
-4. **Per change, run `pnpm test:changed`** — the typecheck and the direct tests of what you
-   touched, never a whole suite. The batch your change lands in is gated once: `pnpm verify`, which
+4. **Keep the change to its outcome.** It carries what bounds its own impact or proves it — the
+   guard, the migration, the test that goes red without it — and nothing else: cleanup that stands
+   alone is a separate change, never folded into this one.
+5. **Per change, run `pnpm test:changed`** — the typecheck and the direct tests of what you
+   touched, never a whole suite. Where the change touches shared logic, billing, permissions or
+   data, check wide early as well: `pnpm test:changed --integration` and the suite of the module it
+   shares. The batch your change lands in is gated once: `pnpm verify`, which
    declares the suites and the build rather than running them, and `pnpm merge-check` over the batch
    rebased onto the latest `dev`, which is what a change into `dev` must pass. The whole suite runs
    after the push, not before it, and a red there is fixed forward.
-5. **Open a pull request** and fill [the template](.github/PULL_REQUEST_TEMPLATE.md). The
+6. **Open a pull request** and fill [the template](.github/PULL_REQUEST_TEMPLATE.md). The
    declarations it asks for decide how your change is handled, so answer them honestly.
 
 ## What gets a change merged
