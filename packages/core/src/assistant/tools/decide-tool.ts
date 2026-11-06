@@ -195,7 +195,7 @@ function resolve(
     return {
       ok: false,
       code: 'DECISION_ACT_ON_ITS_PAGE',
-      detail: `${d.id} is a ${answer.act} decision, made on its card or its page by the person; only a question's answer is made from chat. Its card stays.`,
+      detail: `${d.id} is a ${answer.act} decision, made on its card or its page by the person; only a question's answer is made from chat as a decision. Its card stays; to make it from chat, put it to them as an act (put_decision_set acts) and make it on their word.`,
     };
   }
   if (answer.needsReason && !item.reason) {
