@@ -52,6 +52,15 @@ export const knowledgeEntries = pgTable(
      * dispatches and moves issues rather than editing files.
      */
     readWhen: jsonb('read_when'),
+    /**
+     * What the entry rests on (`file.ts:symbol` anchors, an issue or requirement key, a URL), where
+     * it applies, and the change that means it needs re-checking (ISS-1064). Null on a row written
+     * before they were asked for, which the anchor audit lists as owing them: the write path
+     * (`knowledge/provenance.ts`) refuses an entry of a kind that owes them, never a NOT NULL here.
+     */
+    source: text('source'),
+    scope: text('scope'),
+    recheckWhen: text('recheck_when'),
     confidence: text('confidence', { enum: ['verified', 'inferred', 'deprecated'] })
       .notNull()
       .default('inferred'),
@@ -119,6 +128,10 @@ export const orgKnowledgeEntries = pgTable(
       .notNull()
       .default('always'),
     orderIndex: integer('order_index').notNull().default(0),
+    /** As on `knowledge_entries` (ISS-1064): every org entry owes them, refused at the write path. */
+    source: text('source'),
+    scope: text('scope'),
+    recheckWhen: text('recheck_when'),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

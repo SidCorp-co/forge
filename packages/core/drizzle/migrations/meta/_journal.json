@@ -3935,6 +3935,13 @@
       "when": 1836432000000,
       "tag": "0619_an_issue_closes_when_met_in_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1836518400000,
+      "tag": "0620_a_knowledge_entry_names_what_it_rests_on",
+      "breakpoints": true
     }
   ]
 }
