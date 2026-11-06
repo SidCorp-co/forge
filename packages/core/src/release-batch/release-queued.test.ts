@@ -66,7 +66,7 @@ describe('a draft no gate holds', () => {
       kind: 'agent',
       who: 'Master',
       act: 'cut 0.3.0',
-      rule: "merged issues wait at the release gate; the project's master cuts the version",
+      rule: 'merged issues wait at the release gate; the master cuts the version',
     });
   });
 

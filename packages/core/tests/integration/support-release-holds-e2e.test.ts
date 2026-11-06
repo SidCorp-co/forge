@@ -127,13 +127,13 @@ describe("a room's release read says what holds a draft (sidpeak 0.22.0, FB-537)
         kind: 'agent',
         who: 'Master',
         act: 'cut 0.1.0',
-        rule: "merged issues wait at the release gate; the project's master cuts the version",
+        rule: 'merged issues wait at the release gate; the master cuts the version',
       });
     }
     const draft = (await read()).releases.find((r) => r.state === 'draft');
     expect(draft?.holds?.says).toContain("waits on the project's master to cut 0.1.0");
     expect(draft?.holds?.why).toBe(
-      "merged issues wait at the release gate; the project's master cuts the version",
+      'merged issues wait at the release gate; the master cuts the version',
     );
     expect(draft?.holds?.why).not.toContain('takes that act');
   });
