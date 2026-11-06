@@ -27,11 +27,8 @@ import { needsYouApi, prefillOf, pressBody, wordsAsItStands } from "../api";
 import { NEEDS_YOU_ROOT } from "../hooks";
 import { decisionHref } from "../routes";
 
-/** What a press came to, for a surface that answers it: the chat posts the item read back (REQ-41 BC-24). */
-export interface DecisionSettled {
-  decision: NeedsYouDecision;
-  ok: boolean;
-}
+/** What a press came to, for a surface that answers it: the chat posts the item read back, or why it failed (REQ-41 BC-24). */
+export type DecisionSettled = { decision: NeedsYouDecision; ok: true } | { decision: NeedsYouDecision; ok: false; error: unknown };
 
 /** A dense decision's question, what it changes, its impact and the recommendation's why, one line each, for its hover. */
 const hoverOf = (d: NeedsYouDecision, t: ReturnType<typeof useCopy>): string =>
@@ -158,7 +155,7 @@ function OwedDecision({
       void qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
       onSettled?.({ decision: d, ok: true });
     },
-    onError: () => onSettled?.({ decision: d, ok: false }),
+    onError: (error) => onSettled?.({ decision: d, ok: false, error }),
   });
   const href = slug ? decisionHref(slug, d.opens) : null;
   const sent = press.isSuccess ? press.variables?.answer : undefined;

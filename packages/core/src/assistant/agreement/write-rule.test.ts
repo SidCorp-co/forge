@@ -186,6 +186,11 @@ const ALLOWED: readonly { why: string; rest: readonly string[]; tools: readonly 
     tools: ['forge_compute'],
   },
   {
+    why: 'a set of decisions put to the person for their agreement, kept with the conversation; it makes no decision and changes no record (ISS-624)',
+    rest: [],
+    tools: ['put_decision_set'],
+  },
+  {
     why: "a block the chat draws into its own room: the chat's own message, never a record",
     rest: ['POST /api/conversations/:id/blocks'],
     tools: ['forge_show'],

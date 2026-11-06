@@ -10,6 +10,7 @@ import * as activitySchema from './schema-activity.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';
 import * as agentSessionEventsSchema from './schema-agent-session-events.js';
 import * as backfillMarkersSchema from './schema-backfill-markers.js';
+import * as chatDecisionsSchema from './schema-chat-decisions.js';
 import * as chatProposalsSchema from './schema-chat-proposals.js';
 import * as conversationsSchema from './schema-conversations.js';
 import * as deployLocksSchema from './schema-deploy-locks.js';
@@ -38,6 +39,7 @@ const schema = {
   ...agentSelvesSchema,
   ...conversationsSchema,
   ...chatProposalsSchema,
+  ...chatDecisionsSchema,
   ...transcriptIndexSchema,
   ...journalSchema,
   ...masterCharterSchema,

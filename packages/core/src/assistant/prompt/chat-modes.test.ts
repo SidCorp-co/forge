@@ -92,12 +92,13 @@ describe('the BA door records what is not its requirement, and names the other m
 // twice, the assistant answered "I cannot press approval for you"; it added ISS-616, 617, 569 and 607
 // to a cluster of eight; it answered the owner's "29" with "No"; and it opened requests with "Correct".
 describe("Assistant mode acts on the person's word, on exactly what was agreed", () => {
-  it('makes decisions with act_on_decisions on the word in their current message, never one more', () => {
+  it('puts the set with put_decision_set and makes it with act_on_decisions on the word in their current message', () => {
     expect(web).toContain("When the person's CURRENT message tells you to make decisions");
     expect(web).toContain(
       'make them with act_on_decisions, quoting their instruction exactly as word',
     );
-    expect(web).toContain('Pass exactly the decisions the conversation agreed, never one more');
+    expect(web).toContain('put it with put_decision_set and list exactly what it returns');
+    expect(web).toContain('on exactly that set');
     expect(web).toContain('never say you cannot press a decision for them');
     expect(web).toContain('leave the decision cards under your reply for them to press');
   });

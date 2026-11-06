@@ -26,6 +26,7 @@ import {
 import { buildBaToolset } from './tools/ba-tools.js';
 import { buildDecideToolset } from './tools/decide-tool.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
+import { withholdingRefusedTwice } from './tools/needs-you-withheld.js';
 import { buildOfferPreviewToolset } from './tools/offer-preview-tool.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset, buildRecordToolset } from './tools/registry.js';
@@ -157,7 +158,7 @@ async function prepareWebTurn(
       userId: authority.userId,
     }),
     tools: mergeToolsets(
-      buildProjectToolset(ctx),
+      withholdingRefusedTwice(buildProjectToolset(ctx), conversationId),
       buildRequirementDraftToolset(ctx, args.project.id),
       buildUiActionToolset(
         { snapshot: () => latestUiSnapshot(conversationId) },
@@ -167,6 +168,8 @@ async function prepareWebTurn(
       buildDecideToolset({
         projectId: args.project.id,
         userId: authority.userId,
+        conversationId,
+        windowId: args.window.windowId,
         latestMessage: () => args.window.latest,
       }),
     ),

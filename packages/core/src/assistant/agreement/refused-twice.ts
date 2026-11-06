@@ -93,34 +93,44 @@ interface Offer {
   target: string;
 }
 
-/** Files the defect into Forge's own feedback; the sentence the model is told, recorded or not. */
-async function recordDefect(offer: Offer, failed: readonly ChatProposalRow[]): Promise<string> {
-  const reasons = failed.map((r) => failureOf(r.failure));
-  const about = offer.target === 'project' ? 'this project' : offer.target;
+/** A defect a chat act met twice, as Forge's own feedback files it. */
+export interface ChatDefect {
+  projectId: string;
+  conversationId: string;
+  personId: string;
+  title: string;
+  body: readonly string[];
+  /** Joins a later filing of the same failure to the open item. */
+  signalKey: string;
+}
+
+/**
+ * Files the defect into Forge's own feedback: the item's key where it was recorded, and the sentence
+ * the model is told, recorded or not.
+ */
+export async function fileChatDefect(
+  defect: ChatDefect,
+): Promise<{ key: string | null; told: string }> {
   // read when a defect is filed, so a gate that never meets one never loads the feedback module
   const { fileForgeFeedback } = await import('../../feedback/index.js');
   const filed = await fileForgeFeedback({
-    actor: { userId: offer.personId, agency: 'agent' },
+    actor: { userId: defect.personId, agency: 'agent' },
     request: {
       kind: 'bug',
       severity: 'high',
-      title: `The chat's ${offer.kindWords} on ${about} failed each time it was pressed`.slice(
-        0,
-        300,
-      ),
-      body: [
-        `In conversation ${offer.conversationId}, the person pressed Record it on the chat's ${offer.kindWords} on ${about} ${failed.length} times and each press failed:`,
-        ...failed.map((r, i) => `- proposal ${r.id}: ${reasons[i]?.code}: ${reasons[i]?.detail}`),
-        'A further offer was refused (REQ-41 BC-28): the card the chat builds for this act fails when pressed.',
-      ].join('\n'),
-      whereSeen: `Assistant chat, conversation ${offer.conversationId}`,
-      signalKey: `chat:refused-twice:${offer.kind}:${reasons[0]?.code ?? 'UNNAMED'}`,
+      title: defect.title.slice(0, 300),
+      body: defect.body.join('\n'),
+      whereSeen: `Assistant chat, conversation ${defect.conversationId}`,
+      signalKey: defect.signalKey,
     },
-    source: { projectId: offer.projectId, issueId: null, runId: null, clientVersion: null },
+    source: { projectId: defect.projectId, issueId: null, runId: null, clientVersion: null },
   });
   if (!filed.ok) {
     const why = filed.refusals.map((r) => `${r.code}: ${r.detail}`).join('; ');
-    return `Forge could not record this defect in its own feedback (${why}); tell the person that too, in those words.`;
+    return {
+      key: null,
+      told: `Forge could not record this defect in its own feedback (${why}); tell the person that too, in those words.`,
+    };
   }
   const [row] = await db
     .select({ seq: feedback.fbSeq })
@@ -128,9 +138,31 @@ async function recordDefect(offer: Offer, failed: readonly ChatProposalRow[]): P
     .where(eq(feedback.id, filed.id))
     .limit(1);
   const key = row ? `FB-${row.seq}` : filed.id;
-  return filed.created
-    ? `Forge recorded the defect in its own feedback as ${key}; tell the person so, naming ${key}.`
-    : `Forge added this to ${key}, already open in its own feedback for the same failure; tell the person so, naming ${key}.`;
+  return {
+    key,
+    told: filed.created
+      ? `Forge recorded the defect in its own feedback as ${key}; tell the person so, naming ${key}.`
+      : `Forge added this to ${key}, already open in its own feedback for the same failure; tell the person so, naming ${key}.`,
+  };
+}
+
+/** Files the defect into Forge's own feedback; the sentence the model is told, recorded or not. */
+async function recordDefect(offer: Offer, failed: readonly ChatProposalRow[]): Promise<string> {
+  const reasons = failed.map((r) => failureOf(r.failure));
+  const about = offer.target === 'project' ? 'this project' : offer.target;
+  const { told } = await fileChatDefect({
+    projectId: offer.projectId,
+    conversationId: offer.conversationId,
+    personId: offer.personId,
+    title: `The chat's ${offer.kindWords} on ${about} failed each time it was pressed`,
+    body: [
+      `In conversation ${offer.conversationId}, the person pressed Record it on the chat's ${offer.kindWords} on ${about} ${failed.length} times and each press failed:`,
+      ...failed.map((r, i) => `- proposal ${r.id}: ${reasons[i]?.code}: ${reasons[i]?.detail}`),
+      'A further offer was refused (REQ-41 BC-28): the card the chat builds for this act fails when pressed.',
+    ],
+    signalKey: `chat:refused-twice:${offer.kind}:${reasons[0]?.code ?? 'UNNAMED'}`,
+  });
+  return told;
 }
 
 /**

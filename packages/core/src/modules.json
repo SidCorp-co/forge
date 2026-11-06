@@ -132,6 +132,8 @@
       "context": "conversations",
       "owns": [
         "assistantSpeakerLinks",
+        "chatDecisionFailures",
+        "chatDecisionSets",
         "chatProposals",
         "conversationPins",
         "rocketchatQuestionDeliveries",

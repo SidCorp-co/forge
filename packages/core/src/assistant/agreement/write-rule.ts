@@ -21,7 +21,7 @@
 // agreement, so only the press on the card writes a held call.
 
 import { withArticle } from '@forge/contracts/articles';
-import { CHAT_DECIDE_TOOL } from '@forge/contracts/chat-decide';
+import { CHAT_DECIDE_TOOL, CHAT_DECISION_SET_TOOL } from '@forge/contracts/chat-decide';
 import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
 import { IDEA_CHANGE_TOOL, IDEA_OFFER_TOOL } from '@forge/contracts/idea-offer';
 import { UI_ACTION_NAMES, UI_ACTIONS } from '@forge/contracts/ui-actions';
@@ -88,6 +88,11 @@ export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
     why: 'a computation over the report runs this turn made, on a sandbox; its result is kept for the room and changes no record',
     rest: ['POST /api/projects/:id/executions'],
     tools: ['forge_compute'],
+  },
+  {
+    why: 'a set of decisions put to the person for their agreement, kept with the conversation; it makes no decision and changes no record (ISS-624)',
+    rest: [],
+    tools: [CHAT_DECISION_SET_TOOL],
   },
   {
     why: "a block the chat draws into its own room: the chat's own message, never a record",

@@ -117,7 +117,57 @@ describe("a decision made on the word is not drawn again, and a press is answere
     expect(await screen.findByTestId("decision-follow-up-failed")).toHaveTextContent("The chat could not say what this changed");
     const follow = calls.find((c) => c.url.includes("/decision-outcomes"));
     expect(follow?.url).toContain("/conversations/c0ffee00-0000-4000-8000-000000000001/decision-outcomes");
-    expect(follow?.body).toEqual({ decision: "requirement:REQ-613:question.answer", opens: { kind: "requirement", key: "REQ-613" }, ok: true });
+    expect(follow?.body).toEqual({ decision: "requirement:REQ-613:question.answer", key: "REQ-613", opens: { kind: "requirement", key: "REQ-613" }, ok: true });
     vi.unstubAllGlobals();
+  });
+
+  // ISS-624, judge K66 c2: a failed press was answered "the card says why" and named no reason
+  it("sends why a press failed, as core refused it, for the room's follow-up to name", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init: RequestInit) => {
+        calls.push({ url, body: typeof init.body === "string" ? JSON.parse(init.body) : null });
+        if (url.endsWith("/answer")) {
+          const refusal = { code: "QUESTION_ROUND_STALE", message: "refused", refusals: [{ code: "QUESTION_ROUND_STALE", path: "", detail: "round 1 was answered; round 2 is open" }] };
+          return Promise.resolve(new Response(JSON.stringify({ error: refusal }), { status: 409, headers: { "content-type": "application/json" } }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({ content: "ok" }), { headers: { "content-type": "application/json" } }));
+      }),
+    );
+    const { default: userEvent } = await import("@testing-library/user-event");
+    renderWithQuery(
+      <TurnDecisions blocks={[block("forge_needs_you", { ...CLUSTER, decisions: [steward(613)], total: 1 })] as never} slug="forge" conversationId="c0ffee00-0000-4000-8000-000000000001" />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "At the next release" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.url.includes("/decision-outcomes"))).toBe(true));
+    const follow = calls.find((c) => c.url.includes("/decision-outcomes"));
+    expect(follow?.body).toEqual({
+      decision: "requirement:REQ-613:question.answer",
+      key: "REQ-613",
+      opens: { kind: "requirement", key: "REQ-613" },
+      ok: false,
+      failure: { code: "QUESTION_ROUND_STALE", detail: "round 1 was answered; round 2 is open" },
+    });
+    vi.unstubAllGlobals();
+  });
+});
+
+// ISS-624, judge K66 c1: reporting each item the act made was left to the model's words
+describe("what the act made on the person's word is drawn from its own result, one row per item", () => {
+  it("draws each item with its state read back, and one not made with why on hover", () => {
+    renderWithQuery(<TurnDecisions blocks={[block("act_on_decisions", decided)] as never} slug="forge" />);
+    const rows = screen.getAllByTestId("decision-act-results")[0]?.querySelectorAll("li") ?? [];
+    expect([...rows].map((r) => [r.getAttribute("data-outcome"), r.textContent])).toEqual([
+      ["already_done", "REQ-603: open already"],
+      ["done", "REQ-609: open"],
+      ["refused", "REQ-612: not made"],
+    ]);
+    expect(rows[2]?.getAttribute("title")).toBe("QUESTION_ROUND_STALE");
+  });
+
+  it("draws nothing for an act refused whole", () => {
+    renderWithQuery(<TurnDecisions blocks={[block("act_on_decisions", { error: "CHAT_DECIDE_NO_WORD" }, true)] as never} slug="forge" />);
+    expect(screen.queryByTestId("decision-act-results")).toBeNull();
   });
 });

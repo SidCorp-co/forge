@@ -3865,6 +3865,13 @@
       "when": 1835308800000,
       "tag": "0606_one_check_records_on_each_issue_its_batch_lands",
       "breakpoints": true
+    },
+    {
+      "idx": 607,
+      "version": "7",
+      "when": 1835395200000,
+      "tag": "0607_a_chat_keeps_the_decisions_a_person_agreed_and_the_acts_refused",
+      "breakpoints": true
     }
   ]
 }

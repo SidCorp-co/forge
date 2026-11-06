@@ -231,12 +231,7 @@ export const decisionRecommendationSchema = z.strictObject({
  * issue, which the agents work (REQ-68 BC-6).
  */
 export const decisionOpensSchema = z.strictObject({
-	kind: z.enum([
-		"requirement",
-		"feedback",
-		"workflow",
-		"release",
-	]),
+	kind: z.enum(["requirement", "feedback", "workflow", "release"]),
 	key: z.string().min(1).max(200),
 });
 export type DecisionOpens = z.infer<typeof decisionOpensSchema>;
@@ -273,7 +268,11 @@ export const questionDecisionId = (questionId: string): string =>
 
 /** A sentence as two of a decision's fields would read alike: its words, case and end stop aside. */
 export const sameSentence = (text: string): string =>
-	text.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!?…]+$/, "");
+	text
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.replace(/[.!?…]+$/, "");
 
 /** One decision only a person can make (BC-1), with what BC-2 asks of it. */
 export const needsYouDecisionSchema = z
@@ -406,7 +405,8 @@ export const needsYouDecisionSchema = z
 		// the button declares what its route needs: an act whose route refuses a press with no reason
 		// asks for one, or a one-click press could never succeed (REQ-41 BC-2, dev.281 re-pin)
 		d.answers.forEach((a, i) => {
-			const given = typeof a.body?.reason === "string" && a.body.reason.trim() !== "";
+			const given =
+				typeof a.body?.reason === "string" && a.body.reason.trim() !== "";
 			if (DECISION_ACTS[a.act].reason && !a.needsReason && !given) {
 				ctx.addIssue({
 					code: "custom",
@@ -417,12 +417,15 @@ export const needsYouDecisionSchema = z
 		});
 		// a declining answer asks why, or carries the why it was recommended for (REQ-68 BC-2)
 		const carriesWhy = (a: DecisionAnswer) =>
-			[a.body?.reason, a.body?.note].some((w) => typeof w === "string" && w.trim() !== "");
+			[a.body?.reason, a.body?.note].some(
+				(w) => typeof w === "string" && w.trim() !== "",
+			);
 		for (const a of declining.filter((x) => !x.needsReason && !carriesWhy(x))) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["answers", d.answers.indexOf(a), "needsReason"],
-				message: "a declining answer asks why: it takes a reason, or carries one",
+				message:
+					"a declining answer asks why: it takes a reason, or carries one",
 			});
 		}
 		const marked = d.answers.filter((a) => a.recommended).map((a) => a.id);
@@ -465,6 +468,20 @@ export const needsYouDecisionsSchema = z.strictObject({
 			items: z.array(notDecisionItemSchema).max(20),
 		}),
 	),
+	/**
+	 * In a chat only: the decisions left out because their act was refused twice in this conversation
+	 * (REQ-41 BC-28, ISS-624), each with both refusals and the Forge feedback item that records them.
+	 * No card is drawn for one, so it is not offered a third time.
+	 */
+	withheld: z
+		.array(
+			z.strictObject({
+				decision: z.string(),
+				key: z.string(),
+				why: z.string(),
+			}),
+		)
+		.optional(),
 });
 export type NeedsYouDecisions = z.infer<typeof needsYouDecisionsSchema>;
 
