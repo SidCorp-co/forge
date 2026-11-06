@@ -277,6 +277,42 @@ describe('ISS-1075: a record that a required approval holds', () => {
     expect((await recordOwner()).kind).toBe('agent');
   });
 
+  // round 3 (FB-543 reopened): autoflow's own agent holds releases.approve, so its read said
+  // "You" and can.decide true while every other surface named the person who owes the approval
+  it('reads the approval as the person’s to an agent holding releases.approve, and offers it no decision', async () => {
+    await landedIssue(5, F4);
+    const { version } = await recordOwner();
+    const agent = (await createTestUser({ kind: 'agent' })).id;
+    await addProjectMember(world.projectId, agent, 'admin');
+    const token = (
+      await mintPat({
+        userId: agent,
+        name: 'autoflow-master',
+        projectIds: [world.projectId],
+        permissions: ['*'],
+      })
+    ).plaintext;
+    const res = await api(token, 'GET', `/api/projects/${world.projectId}/releases/${version}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const release = res.body.release as {
+      can: { decide: boolean };
+      waitingOn: { kind: string };
+      gates: Array<{ code: string; owner: { kind: string } }>;
+    };
+    expect(release.gates.find((g) => g.code === 'NO_RELEASE_GATE')?.owner.kind).toBe('person');
+    expect(release.waitingOn.kind, 'the agent was told the approval is its own').toBe('person');
+    expect(release.can.decide, 'the agent was offered the person’s decision').toBe(false);
+    // the person who owes it still reads it as theirs
+    const mine = await api(
+      world.token,
+      'GET',
+      `/api/projects/${world.projectId}/releases/${version}`,
+    );
+    const own = mine.body.release as { can: { decide: boolean }; waitingOn: { kind: string } };
+    expect(own.waitingOn.kind).toBe('you');
+    expect(own.can.decide).toBe(true);
+  });
+
   // round 2: the act the approver owes is the approval, a decision their Needs you holds and presses;
   // read live on dev.554, autoflow's owner had nothing in Needs you while the release waited on them
   it('puts the approval in the approver’s Needs you, the gate naming it first, and pressing it frees the record', async () => {

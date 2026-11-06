@@ -46,6 +46,7 @@ import {
   totalsOf,
   turnOf,
   type ViewerFacts,
+  viewerDecides,
 } from './release-view.js';
 
 const NOBODY = nobodyWaits(say('releases.rule.issueShipped'));
@@ -344,8 +345,11 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
         s.viewer?.isAdmin === true &&
         !p.gates.some((g) => g.kind === 'blocker'),
       decide:
-        s.viewer?.mayApprove === true &&
-        (p.state === 'draft' ? p.draftDecidable : approvalFacts(p)?.decision === null),
+        viewerDecides(
+          s.viewer ?? null,
+          releaseOwesOf(s.policy, irreversibleIn(p, s), p.draftApproval?.decision === 'approved'),
+          p.state === 'draft',
+        ) && (p.state === 'draft' ? p.draftDecidable : approvalFacts(p)?.decision === null),
       split: split !== null,
     },
     split,

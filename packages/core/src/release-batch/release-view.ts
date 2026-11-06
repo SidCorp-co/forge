@@ -33,6 +33,23 @@ export interface ViewerFacts {
   mayApprove: boolean;
 }
 
+/**
+ * Whether this viewer decides a release's approval (ISS-1075, FB-543): holding releases.approve is
+ * not enough where the one rule gives the approval to a person, so an agent holding the permission
+ * reads it as waiting on that person, as every other surface does, and is offered no decision.
+ */
+export function viewerDecides(
+  viewer: ViewerFacts | null,
+  owes: ReleaseOwes,
+  draft: boolean,
+): boolean {
+  if (!viewer?.mayApprove) return false;
+  return (
+    viewer.agency === 'human' ||
+    owes(draft ? 'release.decideDraft' : 'release.decide').by !== 'person'
+  );
+}
+
 interface TurnFacts {
   state: ReleaseState;
   version: string;
@@ -140,10 +157,12 @@ function gatedTurn(f: TurnFacts): Turn {
   if (owner.kind === 'agent') return turn('waiting', 'agent', says);
   if (owner.kind === 'person') {
     // an approval is the approvers' to decide, every other act the admins' (ISS-1075)
+    // the table named a person: an agent is never that person, whatever it holds (ISS-1075)
     const mine =
-      owner.says.act.key === 'standing.act.approveDraftOrReturn'
-        ? f.viewer?.mayApprove
-        : f.viewer?.isAdmin;
+      f.viewer?.agency === 'human' &&
+      (owner.says.act.key === 'standing.act.approveDraftOrReturn'
+        ? f.viewer.mayApprove
+        : f.viewer.isAdmin);
     return mine ? turn('needs_you', 'you', { ...says, who: YOU }) : turn('waiting', 'person', says);
   }
   return turn('stuck', 'system', says);
@@ -224,7 +243,7 @@ function approvalTurn(f: TurnFacts): Turn {
     });
   }
   const rule = say('releases.rule.asked', { name: a.requestedBy.name });
-  if (f.viewer?.mayApprove && a.decision === null) {
+  if (viewerDecides(f.viewer, f.owes, false) && a.decision === null) {
     return turn('needs_you', 'you', {
       who: YOU,
       act: say('standing.act.approveOrReturn', { v: f.version }),
@@ -266,7 +285,8 @@ function landedTurn(f: TurnFacts): Turn {
   if (untested) return untested;
   const rule = say('releases.rule.landedOwesProduction', { branch });
   const act = say('standing.act.reviewAndPromote', { v: f.version });
-  if (f.viewer?.mayApprove) return turn('needs_you', 'you', { who: YOU, act, rule });
+  if (viewerDecides(f.viewer, f.owes, false))
+    return turn('needs_you', 'you', { who: YOU, act, rule });
   const approvers = f.approvers.map((a) => a.name);
   if (approvers.length === 0) {
     return turn('stuck', 'none', {
