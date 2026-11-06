@@ -72,6 +72,12 @@ export class SupportWorld {
    * reads as a delivery timeout. `stop` throws them, so the run names what failed.
    */
   readonly undelivered: { at: string; roomId: unknown; why: string }[] = [];
+  /**
+   * Each member message the intake failed to take in (`rocketchat/connection-manager.ts:route`), with
+   * why: no `message_in` row, no turn, nothing said in the room. Logged and reported in production;
+   * here `stop` throws them, so a test never passes over a dropped message (ISS-1041).
+   */
+  readonly dropped: { at: string; rid: unknown; why: string }[] = [];
 
   async start(): Promise<void> {
     const { logger } = await import('../../src/lib/logger.js');
@@ -85,6 +91,11 @@ export class SupportWorld {
         const { err, roomId } = (obj ?? {}) as { err?: unknown; roomId?: unknown };
         const why = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         this.undelivered.push({ at: new Date().toISOString(), roomId, why });
+      }
+      if (msg === 'rocketchat: support message failed') {
+        const { err, rid } = (obj ?? {}) as { err?: unknown; rid?: unknown };
+        const why = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        this.dropped.push({ at: new Date().toISOString(), rid, why });
       }
       return (logError as (...a: unknown[]) => void)(obj, msg, ...rest);
     }) as typeof logger.error);
@@ -392,11 +403,15 @@ export class SupportWorld {
         (u) =>
           new Error(`a turn did not reach the box at ${u.at} (room ${String(u.roomId)}): ${u.why}`),
       ),
+      ...this.dropped.map(
+        (d) =>
+          new Error(`a member message was dropped at ${d.at} (group ${String(d.rid)}): ${d.why}`),
+      ),
     ];
     if (failed.length) {
       throw new AggregateError(
         failed,
-        `the session box failed, or was never handed, ${failed.length} turn(s)`,
+        `the session box failed, was never handed a turn, or a member message was dropped: ${failed.length} in all`,
       );
     }
   }

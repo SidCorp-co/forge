@@ -6,12 +6,11 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { mintPat } from '../../src/credentials/pat.js';
-import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { api, type Body } from '../helpers/api.js';
-import { addProjectMember, createTestIssue, createTestUser, rows } from '../helpers/factories.js';
+import { createTestIssue, rows } from '../helpers/factories.js';
+import { supportMaster } from '../helpers/support-master.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/feedback/confirm-wait.ts
@@ -25,20 +24,8 @@ import { SupportWorld } from '../helpers/support-world.js';
 
 const w = new SupportWorld();
 
-/** The project's master: an agent credential that writes the project. */
-async function masterToken(): Promise<string> {
-  const agent = (await createTestUser({ kind: 'agent' })).id;
-  await addProjectMember(w.projectId, agent);
-  return (
-    await mintPat({
-      permissions: ['*'],
-      userId: agent,
-      name: 'master',
-      projectIds: [w.projectId],
-      grantEpoch: PAT_GRANT_EPOCH,
-    })
-  ).plaintext;
-}
+/** The project's master: its own agent, made as the product makes it (ISS-1041). */
+const masterToken = async () => (await supportMaster(w.projectId)).token;
 let master = '';
 
 beforeAll(async () => {
