@@ -94,6 +94,10 @@
       "reason": "kernel rule close_in_scope: whether a closed issue's work is live is read from the release record here (holdingReleaseRunsSql), never from closed"
     },
     {
+      "pattern": "packages/core/src/issues/waiting-for-release.ts",
+      "reason": "kernel rule close_in_scope: what waits for a release, an issue closed met in scope until a shipped release holds it among them, is read here for every roster (waitingForReleaseSql)"
+    },
+    {
       "pattern": "packages/core/src/issues/close-in-scope.ts",
       "reason": "kernel rule close_in_scope: only the holder or a claiming release closes, and an unmet criterion with nowhere to go is refused (NOT_THE_HOLDER, CLOSE_CRITERION_UNPLACED)"
     },
