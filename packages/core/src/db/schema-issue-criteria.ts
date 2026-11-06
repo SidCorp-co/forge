@@ -33,7 +33,7 @@ import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { comments } from './schema-comments.js';
 import { issues } from './schema-issues.js';
-import { requirementCriteria } from './schema-requirements.js';
+import { requirementCriteria, requirements } from './schema-requirements.js';
 import { projectWorkflows } from './schema-workflows.js';
 
 export const issueCriteria = pgTable(
@@ -50,6 +50,11 @@ export const issueCriteria = pgTable(
     /** The requirement criterion (BC-n wording, ISS-57) this issue criterion proves, if any. */
     requirementCriterionId: uuid('requirement_criterion_id'),
     retiredAt: timestamp('retired_at', { withTimezone: true }),
+    /** Where the close that retired it moved it, as a criterion it did not meet (0619): its row on
+     *  the issue that took it on. */
+    movedToCriterionId: uuid('moved_to_criterion_id'),
+    /** Where the close that retired it moved it: the requirement, holding it through the BC it traces. */
+    movedToRequirementId: uuid('moved_to_requirement_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -58,6 +63,20 @@ export const issueCriteria = pgTable(
       columns: [t.requirementCriterionId],
       foreignColumns: [requirementCriteria.id],
     }).onDelete('restrict'),
+    movedToCriterionFk: foreignKey({
+      name: 'issue_criteria_moved_to_criterion_fk',
+      columns: [t.movedToCriterionId],
+      foreignColumns: [t.id],
+    }).onDelete('set null'),
+    movedToRequirementFk: foreignKey({
+      name: 'issue_criteria_moved_to_requirement_fk',
+      columns: [t.movedToRequirementId],
+      foreignColumns: [requirements.id],
+    }).onDelete('restrict'),
+    movedChk: check(
+      'issue_criteria_moved_chk',
+      sql`(${t.movedToCriterionId} IS NULL AND ${t.movedToRequirementId} IS NULL) OR (${t.retiredAt} IS NOT NULL AND (${t.movedToCriterionId} IS NULL OR ${t.movedToRequirementId} IS NULL))`,
+    ),
     nChk: check('issue_criteria_n_chk', sql`${t.n} >= 1`),
     statementChk: check('issue_criteria_statement_chk', sql`${t.statement} ~ '[^[:space:]]'`),
     liveNUq: uniqueIndex('issue_criteria_live_n_uq')

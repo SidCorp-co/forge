@@ -203,6 +203,7 @@ transitionRoutes.post(
       answers,
       cause,
       evidence,
+      unmet,
     } = c.req.valid('json');
     const userId = c.get('userId');
 
@@ -239,6 +240,7 @@ transitionRoutes.post(
           answers,
           cause,
           evidence,
+          unmet,
           ...(recovery ? { recovery } : {}),
         },
       );
@@ -268,6 +270,7 @@ transitionRoutes.post(
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
       ...(result.repointed ? { repointed: result.repointed } : {}),
+      ...(result.movedOut ? { movedOut: result.movedOut } : {}),
       ...(unreported ? { afterCommitFailures: [unreported] } : {}),
     });
   },

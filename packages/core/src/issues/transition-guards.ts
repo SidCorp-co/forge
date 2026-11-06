@@ -26,7 +26,7 @@
  *   Each policy guard here asks its gate as the project's gate profile resolves it (REQ-76,
  *   `@forge/contracts/gate-profiles`), read before the lock with the project document, and a
  *   refusal ends naming the gate, the profile and the key that relaxes it. Holding, the recorded
- *   merge, the release close and the edge itself are the kernel: no profile relaxes them (BC-10).
+ *   merge, the close in scope and the edge itself are the kernel: no profile relaxes them (BC-10).
  *   awaiting_release   the run holding it makes the move, or a holder of          NOT_THE_HOLDER
  *                      `releases.approve` or `project.admin` does
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
@@ -35,12 +35,20 @@
  *                      catalog page is in the change the merge mark names        PATTERN_ENTRY_MISSING
  *                      (`pattern-entry.ts`, read before the lock). No verdict is asked: verdicts are
  *                      judged on the release that carries the work (REQ-45 BC-2)
- *   closed             from awaiting_release, by a release that claimed it        CLOSE_ONLY_BY_RELEASE
- *                      (a release batch, a recorded release, or with no          CLOSE_REQUIRES_SHIPPED
- *                      production environment a recorded landing), merge recorded
+ *   closed             met in scope, from awaiting_release: the run holding it   NOT_THE_HOLDER
+ *                      makes the move, or a holder of `releases.approve` or
+ *                      `project.admin`, or a release that claimed it does (a
+ *                      release batch, a recorded release, or with no production
+ *                      environment a recorded landing); merge recorded           CLOSE_REQUIRES_SHIPPED
+ *                      each criterion it did not meet (named in `unmet`, or      CLOSE_CRITERION_UNPLACED
+ *                      its newest verdict a fail) moved out on the record, to an
+ *                      issue or the requirement (`close-in-scope.ts`); a release's
+ *                      close answers its own criteria hold
  *                      from any other live status, or from awaiting_release      DESIGN_NOT_DELIVERED
- *                      without a release, only a design-only issue whose design
- *                      revisions are all approved (REQ-45 BC-4)
+ *                      held by no run and claimed by no release, a design-only
+ *                      issue whose design revisions are all approved (REQ-45 BC-4)
+ *                      from draft, an owed filing, only on the release that      CLOSE_ONLY_BY_RELEASE
+ *                      shipped its merge (`filing-close-guard.ts`)
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
@@ -87,6 +95,14 @@ import {
   designShortfall,
   readDesignDelivery,
 } from './design-delivered-guard.js';
+import {
+  type CloseScopeFacts,
+  closeScopeOf,
+  type MovedCriterion,
+  readCloseScopeFacts,
+  type UnmetInput,
+  unplacedDetail,
+} from './close-in-scope.js';
 import { designCheckOf } from './design-record.js';
 import {
   asksFailReturn,
@@ -128,6 +144,7 @@ export type GuardCode = Exclude<
   | 'DEFECT_CAUSE_REQUIRED'
   | 'DEFECT_EVIDENCE_SHAPE'
   | 'DEFECT_EVIDENCE_NOT_FOUND'
+  | 'UNMET_NOT_APPLICABLE'
 >;
 
 export interface GuardFault {
@@ -171,13 +188,15 @@ interface IssueMoveFacts {
   failReturn: FailReturnFacts | null;
   /** The move from `draft` to `closed`: the owed filing the issue answers, if it answers one (ISS-774). */
   filing?: OwedFiling | null;
+  /** The move to `closed`: the criteria the closer says it did not meet, each destination read. */
+  closeScope?: CloseScopeFacts | null;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
 type HoldOverride = (typeof HOLD_OVERRIDES)[number];
 
-/** The moves that ask who holds the issue: the claim, and the holding run's move to its release. */
-const ASKS_FOR_HOLDER: readonly IssueStatus[] = ['in_progress', 'awaiting_release'];
+/** The moves that ask who holds the issue: the claim, the holding run's move to its release, and its close. */
+const ASKS_FOR_HOLDER: readonly IssueStatus[] = ['in_progress', 'awaiting_release', 'closed'];
 
 async function holdOverrideOf(
   actorUserId: string,
@@ -197,6 +216,8 @@ export async function readIssueMoveFacts(args: {
   actorDeviceId?: string | null;
   from: IssueStatus;
   to: IssueStatus;
+  /** The criteria a close says it did not meet, with where each goes (`close-in-scope.ts`). */
+  unmet?: readonly UnmetInput[] | undefined;
 }): Promise<IssueMoveFacts> {
   const { issue } = args;
   const document = (await readProjectDocument(issue.projectId))?.document;
@@ -220,6 +241,8 @@ export async function readIssueMoveFacts(args: {
     catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
     failReturn: asksFailReturn(args.from, args.to) ? await readFailReturn(db, issue) : null,
     filing: args.from === 'draft' && args.to === 'closed' ? await filingAnsweredBy(issue.id) : null,
+    closeScope:
+      args.to === 'closed' ? await readCloseScopeFacts(db, issue.projectId, args.unmet ?? []) : null,
   };
 }
 
@@ -396,11 +419,17 @@ async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 /**
- * closed from awaiting_release: a release closes what it claimed (`issues.release_batch_run_id`); a
- * design-only issue needs none, its approved revisions being what shipped (REQ-45 BC-4), and neither
- * does an adoption-only one while its record holds (REQ-5 BC-17).
+ * closed from awaiting_release, met in scope: a release closes what it claimed
+ * (`issues.release_batch_run_id`) and answers its own criteria hold; a design-only issue needs no one,
+ * its approved revisions being what it delivered (REQ-45 BC-4), and neither does an adoption-only one
+ * while its record holds (REQ-5 BC-17). Otherwise the close is the holding run's (`notTheHolder`, as
+ * its move here was), and each criterion it did not meet is moved out on the record first
+ * (`close-in-scope.ts`); `moved` takes the moves for the close to write.
  */
-async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
+async function inScopeGuard(
+  ctx: GuardContext,
+  moved: { moves: MovedCriterion[] } | undefined,
+): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
@@ -411,16 +440,37 @@ async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const design = await readDesignDelivery(ctx);
   if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
     return null;
-  return {
-    code: 'CLOSE_ONLY_BY_RELEASE',
-    detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}${adoption.shortfall ? `; its mark is an adoption record that no longer holds: ${adoption.shortfall}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`), which on a project with no production environment records its landing; either closes every issue it carries.`,
-    details: {
-      from: ctx.from,
-      to: ctx.to,
-      designOnly: design.designOnly,
-      adopted: adoption.refs,
-    },
-  };
+  const held = notTheHolder(ctx, await runHoldersOf(ctx.executor, ctx.issue));
+  if (held) {
+    const why = design.designOnly ? ` It is design-only, and ${designShortfall(design)}.` : '';
+    const shortfall = adoption.shortfall
+      ? ` Its mark is an adoption record that no longer holds: ${adoption.shortfall}.`
+      : '';
+    return {
+      ...held,
+      detail: `${held.detail} An issue closes when its criteria are met in scope, by the run that holds it, or by a release that claimed it: finishing a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`) or recording the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`) closes every issue it carries.${why}${shortfall}`,
+      details: { ...held.details, designOnly: design.designOnly, adopted: adoption.refs },
+    };
+  }
+  const scope = await closeScopeOf(
+    ctx.executor,
+    ctx.issue,
+    ctx.facts.closeScope ?? { unmet: [], issues: new Map() },
+  );
+  if (scope.unplaced.length > 0) {
+    return {
+      code: 'CLOSE_CRITERION_UNPLACED',
+      detail: unplacedDetail(scope.unplaced),
+      details: {
+        from: ctx.from,
+        to: ctx.to,
+        unplaced: scope.unplaced,
+        destinations: ['next_batch_issue', 'new_issue', 'requirement'],
+      },
+    };
+  }
+  if (moved) moved.moves = scope.moves;
+  return null;
 }
 
 /** A guard's fault as the kernel transition carries it: the refusal, with its details beside it. */
@@ -448,6 +498,8 @@ type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
   recoveringRunId?: string | null | undefined;
   /** Where the `fail_routed` guard leaves the note its move posts, once it lets the move go back. */
   failReturned?: { note: string | null } | undefined;
+  /** Where the `in_scope` guard leaves the criteria its close moves out, once it lets the close go. */
+  closeMoves?: { moves: MovedCriterion[] } | undefined;
 };
 
 /** Each guard the issue machine names, bound to the move being made. */
@@ -490,7 +542,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
               (await patternEntryGuard(input.tx, input.row.id, base.facts.patternEntry)),
           );
     },
-    released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
+    in_scope: async (input) => refusalOf(await inScopeGuard(ctxOf(input), base.closeMoves)),
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
     filing_released: async (input) =>
       refusalOf(await filingReleasedGuard(ctxOf(input), base.facts.filing ?? null)),

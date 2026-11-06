@@ -1,15 +1,18 @@
-// The issue machine: workflow `issue-lifecycle`, revision 26. A status answers only "who is
+// The issue machine: workflow `issue-lifecycle`, revision 27. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
 // landing moves no status: it records the merge, and the agent holding the issue moves it on. Work
 // that landed moves to `awaiting_release` without verdicts, which are judged on the release that
-// carries it (REQ-45 BC-1, BC-2). An issue closes through a release, or, where its only deliverable
-// is a design, once its design revisions are approved (REQ-45 BC-4). A draft opens through the
-// issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`). A reopen a requirement-level
-// fail made goes back to the status it came from once that fail is routed past the issue (ISS-760).
-// A draft filed for a merge its project owed a filing for closes on the release that already shipped
-// that merge, straight from `draft`: its code landed before it was filed (ISS-774). The draft's own
-// holder takes it straight to `in_progress`, through the same checklist, never passing through `open`,
-// where a pool run could claim it first, and goes back to `draft` when its run ends (ISS-834).
+// carries it (REQ-45 BC-1, BC-2). An issue closes when its criteria are met in scope: from
+// `awaiting_release` by the run holding it, its merge recorded and each criterion it did not meet
+// moved out on the record first, or by a release that claimed it; where its only deliverable is a
+// design, once its design revisions are approved (REQ-45 BC-4). Whether its work is live is the
+// release record's to say, never `closed`'s. A draft opens through the issue-ready checklist
+// (`checklist-registry.ts:ISSUE_READY_CHECKLIST`). A reopen a requirement-level fail made goes back
+// to the status it came from once that fail is routed past the issue (ISS-760). A draft filed for a
+// merge its project owed a filing for closes on the release that already shipped that merge, straight
+// from `draft`: its code landed before it was filed (ISS-774). The draft's own holder takes it
+// straight to `in_progress`, through the same checklist, never passing through `open`, where a pool
+// run could claim it first, and goes back to `draft` when its run ends (ISS-834).
 
 import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
@@ -60,7 +63,12 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"MERGE_NOT_RECORDED",
 	"MERGE_DESIGN_ONLY",
 	"CLOSE_REQUIRES_SHIPPED",
+	/** A draft filed for an owed merge closes only on the release that shipped it (ISS-774). */
 	"CLOSE_ONLY_BY_RELEASE",
+	/** A close leaving a criterion it did not meet with no destination named for it. */
+	"CLOSE_CRITERION_UNPLACED",
+	/** `unmet` on a move whose target is not `closed`: only a close moves criteria out. */
+	"UNMET_NOT_APPLICABLE",
 	"DESIGN_NOT_DELIVERED",
 	"TRANSITION_REASON_REQUIRED",
 	"WAITING_KIND_REQUIRED",
@@ -233,7 +241,7 @@ export const ISSUE_GUARDS = [
 	"plan_checkpoint",
 	"design",
 	"merged",
-	"released",
+	"in_scope",
 	"left_status",
 	"unheld",
 	"run_holder",
@@ -312,8 +320,9 @@ export const ISSUE_MACHINE = defineMachine({
 		"011aa9bf",
 		"16f5e49d",
 		"b65627cc",
+		"a7a32987",
 	],
-	design: { flow: "issue-lifecycle", revision: 26 },
+	design: { flow: "issue-lifecycle", revision: 27 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,
@@ -402,12 +411,14 @@ export const ISSUE_MACHINE = defineMachine({
 		},
 		...sideExits("approved"),
 
+		// met in scope: the holding run's close, or a release's that claimed it; whether the work is
+		// live is the release record's to say, never this status's
 		{
 			from: "awaiting_release",
 			to: "closed",
-			act: "release.recorded",
+			act: "met.in.scope",
 			permission: MOVE,
-			guards: ["released", "merged"],
+			guards: ["in_scope", "merged"],
 		},
 		{
 			from: "awaiting_release",

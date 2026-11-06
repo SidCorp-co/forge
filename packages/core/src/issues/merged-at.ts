@@ -8,7 +8,7 @@ import { landedSql } from './host-landing.js';
 import { CLEAR_THE_MARK, landingShortfall, MARK_ROUTE } from './landing-evidence.js';
 import type { MergeRecordExecutor } from './merge-record.js';
 
-/** What a refusal under the shipped-work rule says, or `null` where the call may proceed. */
+/** What a refusal under the merge rule says, or `null` where the call may proceed. */
 interface ShippedRuleRefusal {
   detail: string;
   details: Record<string, unknown>;
@@ -16,9 +16,10 @@ interface ShippedRuleRefusal {
 
 /** What every refusal under the merge rule ends with: `dropped` for what was not work, and the
  *  mark that records work which did land. */
-const CLOSED_MEANS_SHIPPED =
-  '`closed` means the work shipped, and `awaiting_release` that it is merged and waits for its ' +
-  'release. Use `dropped` for work that turned out not to be work — a note, a question, a ' +
+const CLOSED_MEANS_MERGED =
+  '`closed` means its criteria were met in scope with its merge recorded, and `awaiting_release` ' +
+  'that it is merged; whether the work is live is read from the release record. Use `dropped` for ' +
+  'work that turned out not to be work — a note, a question, a ' +
   'duplicate, something already done — which is terminal without the claim and releases every ' +
   `\`blocks\` dependent the same way. ${MARK_ROUTE}`;
 
@@ -93,7 +94,7 @@ export async function mergeNotRecorded(
   }
   return {
     code,
-    detail: `\`${args.to}\` needs a recorded merge, and this issue carries no \`merged_at\`. ${CLOSED_MEANS_SHIPPED}`,
+    detail: `\`${args.to}\` needs a recorded merge, and this issue carries no \`merged_at\`. ${CLOSED_MEANS_MERGED}`,
     details: { to: args.to, requires: 'mergedAt', useInstead: 'dropped' },
   };
 }
@@ -149,9 +150,9 @@ export function refuseUnmarkOnClosed(status: IssueStatus): ShippedRuleRefusal | 
   if (status !== 'closed') return null;
   return {
     detail:
-      'this issue is `closed`, and `closed` means the work shipped, so the claim cannot be ' +
+      'this issue is `closed`, and `closed` stands on its recorded merge, so the claim cannot be ' +
       'withdrawn while it stands there: clearing `merged_at` would leave a closed issue with ' +
-      'nothing on it saying anything shipped. Move it off `closed` first — `reopen` is the only ' +
+      'nothing on it saying anything landed. Move it off `closed` first — `reopen` is the only ' +
       'exit `closed` has — and then `unmark`, or take `dropped` from `reopen` where the work ' +
       'never landed at all.',
     details: { status: 'closed', moveTo: 'reopen', useInstead: 'dropped' },

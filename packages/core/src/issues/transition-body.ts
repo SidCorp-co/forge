@@ -32,6 +32,25 @@ export const transitionBodySchema = z
     // a defect stall; both are refused on any other target
     cause: z.enum(REOPEN_CAUSES).optional(),
     evidence: defectEvidenceSchema.optional(),
+    // a close's criteria it did not meet, each with where it goes: an issue by key or id, or the
+    // requirement it serves; one with no `to` is refused by name at the close (`close-in-scope.ts`)
+    unmet: z
+      .array(
+        z
+          .object({
+            criterion: z.number().int().min(1),
+            to: z
+              .union([
+                z.object({ issue: z.string().trim().min(1).max(200) }).strict(),
+                z.literal('requirement'),
+              ])
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100)
+      .optional(),
     // handed to the kernel as sent: it parses them by the checklist of the edge the move takes,
     // and refuses and records a wrong one exactly as it does a lane move's; the contract publishes
     // the shape that checklist derives

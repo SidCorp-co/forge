@@ -25,7 +25,9 @@ import {
 } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { issueChecklistRecord } from './checklist-record.js';
+import { type MovedCriterion, moveUnmetCriteria, type UnmetInput } from './close-in-scope.js';
 import { designCheckOf } from './design-record.js';
+import { issueDisplayIds } from './display-ids.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { issueGateOf } from './gates.js';
@@ -142,6 +144,11 @@ interface ApplyStatusTransitionOptions {
   cause?: ReopenCause | undefined;
   /** The proof a `cause: defect` reopen cites: a verdict or attachment on the issue, or a live read. */
   evidence?: DefectEvidence | undefined;
+  /**
+   * A close's criteria it did not meet, each with where it goes (`close-in-scope.ts`): moved out on
+   * the record in the close's transaction, and named on the issue. Refused on any other move.
+   */
+  unmet?: readonly UnmetInput[] | undefined;
 }
 
 export interface StatusTransitionResult {
@@ -161,6 +168,8 @@ export interface StatusTransitionResult {
   step: WorkStep | null;
   /** A re-point of the park (`park-repoint.ts`): the questions it withdrew and those it asked. */
   repointed?: { withdrawn: string[]; asked: string[] };
+  /** Where a close moved each criterion it did not meet, as its notice names them. */
+  movedOut?: string[];
 }
 
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
@@ -240,6 +249,14 @@ async function moveIssue(
     if (edge) throw transitionRefused(edge.code, edge.detail, edge.details);
   }
 
+  if (options.unmet?.length && toStatus !== 'closed') {
+    throw transitionRefused(
+      'UNMET_NOT_APPLICABLE',
+      `\`unmet\` names the criteria a close did not meet and where each goes, and \`${toStatus}\` is no close. Send it on the move to \`closed\`, once the issue is met in scope.`,
+      { from: fromStatus, to: toStatus },
+    );
+  }
+
   if (options.waitingKind && toStatus !== 'needs_info') {
     throw transitionRefused(
       'WAITING_KIND_NOT_APPLICABLE',
@@ -300,6 +317,7 @@ async function moveIssue(
     terminal,
     unblockedDependents: txResult.unblockedDependents,
     step,
+    ...(txResult.movedOut.length > 0 ? { movedOut: txResult.movedOut } : {}),
   };
 }
 
@@ -320,6 +338,7 @@ export type TransitionWriteInput = {
 type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
   unblockedDependents: UnblockedDependent[];
+  movedOut: string[];
 };
 
 /** The work state a move leaves: the park's left status and the step. */
@@ -360,9 +379,13 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     actorDeviceId: actor.type === 'device' ? actor.id : null,
     from: fromStatus,
     to: toStatus,
+    unmet: options.unmet,
   });
   // the note the way back from a requirement-level fail's reopen posts, left by its guard (ISS-760)
   const failReturned: { note: string | null } = { note: null };
+  // the criteria a close moves out, left by its `in_scope` guard once it lets the close go
+  const closeMoves: { moves: MovedCriterion[] } = { moves: [] };
+  let movedOut: string[] = [];
   const parked: { question: ParkQuestion | null } = { question: null };
   const write = (exec: KernelExecutor) =>
     transition(exec, ISSUE_MACHINE, {
@@ -393,6 +416,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         waitingKind: options.waitingKind,
         recoveringRunId: options.recoveringRunId,
         failReturned,
+        closeMoves,
       }),
       beforeWrite: async (tx) => {
         const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
@@ -461,6 +485,9 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         if (failReturned.note) {
           await postIssueNotice({ issueId: issue.id, authorId: by, body: failReturned.note }, tx);
         }
+        if (toStatus === 'closed' && closeMoves.moves.length > 0) {
+          movedOut = await postMovedOut(tx, issue.id, by, closeMoves.moves);
+        }
         if (toStatus === 'dropped') {
           unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
           await postDropUnblockNotices(tx, issue, unblockedDependents, actor);
@@ -501,7 +528,42 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   return {
     row: { ...row, status: row.status as IssueStatus },
     unblockedDependents,
+    movedOut,
   };
+}
+
+/**
+ * The close's moves written, and named: on the closed issue, where each criterion it did not meet
+ * went, and on each issue that took one on, where it came from. Answers the closed issue's sentences.
+ */
+async function postMovedOut(
+  tx: TransitionTx,
+  issueId: string,
+  by: string,
+  moves: readonly MovedCriterion[],
+): Promise<string[]> {
+  const { sentences, landed } = await moveUnmetCriteria(tx, moves);
+  const keys = await issueDisplayIds([issueId], tx);
+  const from = keys.get(issueId) ?? issueId;
+  await postIssueNotice(
+    {
+      issueId,
+      authorId: by,
+      body: `Closed met in scope. Each criterion it did not meet was moved out first: ${sentences.join('; ')}.`,
+    },
+    tx,
+  );
+  for (const l of landed) {
+    await postIssueNotice(
+      {
+        issueId: l.issueId,
+        authorId: by,
+        body: `Criterion ${l.n} came from ${from} criterion ${l.from}, which closed without meeting it.`,
+      },
+      tx,
+    );
+  }
+  return sentences;
 }
 
 /** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as

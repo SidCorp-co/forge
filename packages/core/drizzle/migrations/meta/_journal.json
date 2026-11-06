@@ -3928,6 +3928,13 @@
       "when": 1836086400000,
       "tag": "0615_a_settled_decision_tells_the_workspace_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1836432000000,
+      "tag": "0619_an_issue_closes_when_met_in_scope",
+      "breakpoints": true
     }
   ]
 }
