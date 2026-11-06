@@ -50,9 +50,9 @@ commit pass since the issue's last reopen (ISS-914).
 Fast delivery (REQ-79) is every project's default, and `delivery.fast: false` turns it off. Under
 it a merge check asks only that the change is rebased on its base, typechecks and passes its direct
 tests; integration tests and `verify` are the cleanup run's, and deploy health is the release's own
-gate. A red the building agent rates below high passes as cleanup debt, and a change it rates high
-waits for a green cleanup report: held from landing where production deploys on land
-(`MERGE_CLEANUP_PENDING`), and from promotion where a person promotes (`RELEASE_CLEANUP_PENDING`).
+gate. A red the building agent rates below high passes as cleanup debt. A change it rates high lands
+and ships like any other, but its mark owes a passing merge check at its commit, which records the
+rating and the debt it leaves (`MERGE_CHECK_MISSING` without one). Nothing waits on the cleanup.
 The cleanup run is the audit, apart from delivery: in the project's `cleanup` schedule window, on its
 own slot, it reviews what landed since its last report by the served audit guide, works the debt,
 and reports what it cleared and what remains.
