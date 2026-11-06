@@ -32,9 +32,17 @@ const tools: SupportTool[] = [
       email: { in: 'body', description: 'where to', required: true },
     },
   },
+  {
+    name: 'create_organization',
+    kind: 'owner',
+    method: 'POST',
+    path: '/organizations',
+    summary: 'create an organization, as the owner',
+    params: { name: { in: 'body', description: 'its name', required: true } },
+  },
 ];
 
-const plan = (name: string, kind: 'diagnose' | 'fix', args: Record<string, string>) =>
+const plan = (name: string, kind: 'diagnose' | 'fix' | 'owner', args: Record<string, string>) =>
   planCall({ config, tools, name, kind, args });
 
 /** A fetch that answers one canned response and records what it was asked. */
@@ -63,6 +71,16 @@ describe('planCall: a call is planned only as the project declared it (BC-12, BC
   it('refuses a fix asked through the diagnose door: a fix waits on the asker (BC-13)', () => {
     const out = plan('resend_invoice', 'diagnose', { orderId: '1234', email: 'a@b.test' });
     expect('refusal' in out && out.refusal.code).toBe('SUPPORT_TOOL_KIND');
+  });
+
+  it('refuses an owner act through any other door, and any other tool through the owner door (ISS-1013)', () => {
+    const asRun = plan('create_organization', 'diagnose', { name: 'SidCorp' });
+    expect('refusal' in asRun && asRun.refusal.code).toBe('SUPPORT_TOOL_KIND');
+    expect('refusal' in asRun && asRun.refusal.detail).toContain('ask for it with owner_act');
+    const asOwner = plan('resend_invoice', 'owner', { orderId: '1234', email: 'a@b.test' });
+    expect('refusal' in asOwner && asOwner.refusal.code).toBe('SUPPORT_TOOL_KIND');
+    const owned = plan('create_organization', 'owner', { name: 'SidCorp' });
+    expect('plan' in owned && owned.plan.body).toEqual({ name: 'SidCorp' });
   });
 
   it('refuses an argument the tool does not take, and one that fails its pattern', () => {
