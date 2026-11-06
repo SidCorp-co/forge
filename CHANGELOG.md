@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.540] - 2026-11-06
+
+The steward weighs criteria proof the same way the issue's criteria read does
+
+### Fixed
+
+- **The steward no longer calls earned criteria missing.** Its notes now state each criterion exactly as the criteria read weighs it, earned or owed with that reason, and ask for a judge only where one is owed.
+
 ## [0.4.0-dev.539] - 2026-11-06
 
 Verdicts name their evidence shape, accept declared run ids, and requirement judges sign in

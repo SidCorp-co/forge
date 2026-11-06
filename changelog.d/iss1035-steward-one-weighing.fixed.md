@@ -1,1 +1,0 @@
-**The steward no longer calls earned criteria missing.** Its notes now state each criterion exactly as the criteria read weighs it, earned or owed with that reason, and ask for a judge only where one is owed.
