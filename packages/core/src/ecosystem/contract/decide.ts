@@ -3,14 +3,18 @@ import { db } from '../../db/client.js';
 import { embedFeedbackLater } from '../../feedback/index.js';
 import { settleContractWaitsIn } from '../../issues/index.js';
 import { contractLockKey } from '../../lib/contract-versions.js';
-import { emitEvent } from '../../outbox/index.js';
 import { permissionFactsOf } from '../../permissions/index.js';
 import { readGateProfile } from '../../project-config/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { lockKeys, projectsWhere } from '../store.js';
-import { type Approved, announceApprovedIn, fileBreakingIn } from './announce.js';
+import {
+  type Approved,
+  announceApprovedIn,
+  announceDecidedIn,
+  fileBreakingIn,
+} from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
 import { compareVersions } from './naming.js';
 import { approvalView, decideVersion, type StoredVersion, versionsOf } from './store.js';
@@ -64,12 +68,7 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
       (v) => v.version === version,
     );
     if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
-    // either decision settles its approver's Needs you row, which the workspace's Activity hears (ISS-1053)
-    await emitEvent(tx, 'decision.settled', {
-      projectId,
-      act: 'contract.decide',
-      subject: `${contract}@${version}`,
-    });
+    await announceDecidedIn(tx, { projectId, contract, version });
     if (decision !== 'approve' || !iface) return { ok: true, version: decided, filed: [] };
     // the approval releases every wait it reaches in its own transaction; the event it emits wakes them
     const versioning = iface.document.commitments.versioning;

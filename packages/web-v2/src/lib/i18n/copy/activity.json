@@ -111,7 +111,7 @@
     "activity.cleanup.off": "Off",
     "activity.cleanup.nextRun": "Next run {at}",
     "activity.cleanup.lastReport": "Last report",
-    "activity.cleanup.noReport": "No report yet",
+    "activity.cleanup.noReport": "No report",
     "activity.cleanup.result.green": "Green",
     "activity.cleanup.result.red": "Red",
     "activity.cleanup.cleared": "Cleared",

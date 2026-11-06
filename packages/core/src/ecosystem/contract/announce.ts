@@ -66,3 +66,15 @@ export async function announceApprovedIn(tx: Tx, a: Approved): Promise<void> {
     filer: a.filer,
   });
 }
+
+// either decision settles its approver's Needs you row, which the workspace's Activity hears (ISS-1053)
+export async function announceDecidedIn(
+  tx: Tx,
+  d: { projectId: string; contract: string; version: string },
+): Promise<void> {
+  await emitEvent(tx, 'decision.settled', {
+    projectId: d.projectId,
+    act: 'contract.decide',
+    subject: `${d.contract}@${d.version}`,
+  });
+}

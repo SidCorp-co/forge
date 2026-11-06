@@ -127,7 +127,7 @@ describe("ISS-1051 the Activity peek shows a release in flight and the project's
     expect(row.dataset.on).toBe("false");
     expect(row.textContent).toBe("Off");
     expect(row.getAttribute("title")).toBe(LEDGER_NONE.windowOff);
-    expect(within(peek).getByTestId("cleanup-no-report").textContent).toBe("No report yet");
+    expect(within(peek).getByTestId("cleanup-no-report").textContent).toBe("No report");
     expect(within(peek).queryByTestId("cleanup-debts")).toBeNull();
   });
 });
