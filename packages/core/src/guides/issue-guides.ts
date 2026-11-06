@@ -31,7 +31,7 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | A session log or summary of what you did | a record | a handoff doc, or project memory |
 | A note, learning, or convention | knowledge | \`POST /api/memory\` (durable business logic → repo \`docs/\`) |
 | A decision inside the work — a tradeoff, a scope call, a choice between two designs | yours | make it, and record the choice, the options and why on the item it shapes |
-| A decision only a person owns — money, credentials, product direction, standing policy | a question | a comment on the issue that raised it + \`needs_info\` (\`waitingKind: needs_decision\`) if it blocks that issue, asked once, with your recommendation |
+| A decision only a person owns — irreversible, real money, credentials, product direction, standing policy | a question | a comment on the issue that raised it + \`needs_info\` (\`waitingKind: needs_decision\`) if it blocks that issue, asked once, with your recommendation |
 | An audit or scan finding that names no work yet | an observation | memory; once it names work, it goes in its lane (below) |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
 
@@ -65,7 +65,7 @@ So decide where each one goes:
 
 1. **In reach here** → usually cheapest to fix it, declared under \`Extra fixes:\` in your comment. A declared extra fix is authorized work, judged on merit.
 2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
-3. **It needs a decision only a person owns** (money, credentials, product direction, standing policy) → \`needs_info\` + \`waitingKind: needs_decision\` + \`reason\` when it blocks this issue, with your recommendation. Any other decision is yours: make it and record it.
+3. **It needs a decision only a person owns** (irreversible, real money, credentials, product direction, standing policy) → \`needs_info\` + \`waitingKind: needs_decision\` + \`reason\` when it blocks this issue, with your recommendation. Any other decision is yours: make it and record it.
 4. **It is separate work** → its lane, above: product-shaped → Feedback; technical → an issue of its own in its module's technical backlog, filed as above so someone can pick it up. Never a bare \`draft\` with no module, kind or evidence.
 
 ### When you find one that is not work — act on it, don't leave it
@@ -263,7 +263,7 @@ Leaving costs nothing beyond naming the status the park left — \`issue_work_st
 | Kind | What it means | What unblocks it |
 |---|---|---|
 | \`needs_answer\` | a question about the requirements | the answer |
-| \`needs_decision\` | a person must decide what only a person owns: money, product direction, standing policy, or an approval the project's policy keeps for a person | the decision |
+| \`needs_decision\` | a person must decide what only a person owns: an irreversible act, real money, product direction, standing policy, or an approval the project's policy keeps for a person | the decision |
 | \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource |
 
 A plan awaiting a person's approval, where the project's policy asks one, is \`needs_decision\`. A tradeoff or a scope call inside agreed work is not: the agent decides it and records the choice on the item it shapes. These were the old \`waiting\` park's kinds; \`waiting\` folded into \`needs_info\` with its kind kept.
