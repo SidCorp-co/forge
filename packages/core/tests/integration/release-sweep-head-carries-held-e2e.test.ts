@@ -79,7 +79,7 @@ function verdictBlock(criterion: number, verdict: string): string {
     `runtime: ${SERVING}`,
     'evidence: judge-evidence.txt',
     'why: exercised directly',
-    'judge: judge-1',
+    'judge: qa',
     'judge-from: inherited',
   ].join('\n');
 }
