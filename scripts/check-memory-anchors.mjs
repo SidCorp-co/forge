@@ -127,7 +127,10 @@ function controls(corpus) {
   return checks;
 }
 
-const PATH_RE = /\b(?:packages|scripts|docs|drizzle|\.forge|\.github)\/[A-Za-z0-9_./@-]+/g;
+// A path starts a token (so `forge-local-docs/x` is not read as `docs/x`), and one that runs into
+// a glob character is a pattern, not a file, so it is not judged as a path.
+const PATH_RE =
+  /(?<![\w./@-])(?:packages|scripts|docs|drizzle|\.forge|\.github)\/[A-Za-z0-9_./@-]+(?![A-Za-z0-9_./@-]*[*?{])/g;
 const SYM_RE = /`([A-Za-z_][A-Za-z0-9_]{4,60})`/g;
 const HEXISH = /^[0-9a-f]{6,40}$/i;
 const OPAQUE = /^[a-z0-9]{16,}$/;
