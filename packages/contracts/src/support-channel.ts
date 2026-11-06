@@ -139,12 +139,13 @@ export const CHANNEL_DECIDER_ACT_LABEL: Record<SupportProposalKind, string> = {
 };
 
 /**
- * A rule's naming of one member as the person who decides an act (ISS-1000): read from the words of
- * the message the rule links, and kept on the rule, so the brief and the agreement read one record.
- * It stands while the rule's writer is the owner the binding names or a member a person confirmed in
- * a role that may confirm a change (`CHANGE_CONFIRM_ROLES`); a Product member's rule names no decider.
+ * One member the project's rulings name as the one who decides acts (ISS-1042), by the chat username
+ * the room knows them by, and the acts. It lives on a project knowledge entry of kind `rule`, under
+ * `metadata.deciders` (`RULING_DECIDERS_KEY`), which a master or orchestrator writes from a ruling
+ * through the knowledge door; a rule said in a room never names one. That member's go in any words, on
+ * a proposal of one of those acts put to them or in their own request for it, is their agreement.
  */
-export const channelDeciderSchema = z.strictObject({
+export const rulingDeciderSchema = z.strictObject({
 	member: chatUsernameSchema,
 	acts: z
 		.array(z.enum(CHANNEL_DECIDER_ACTS))
@@ -152,24 +153,39 @@ export const channelDeciderSchema = z.strictObject({
 		.max(CHANNEL_DECIDER_ACTS.length)
 		.refine((a) => new Set(a).size === a.length, "an act is named once"),
 });
-export type ChannelDecider = z.infer<typeof channelDeciderSchema>;
+export type RulingDecider = z.infer<typeof rulingDeciderSchema>;
+
+/** The key of a `rule` knowledge entry's metadata that names its deciders (ISS-1042). */
+export const RULING_DECIDERS_KEY = "deciders";
+
+/** A ruling's deciders: one entry per member, at least one. */
+export const rulingDecidersSchema = z
+	.array(rulingDeciderSchema)
+	.min(1)
+	.max(50)
+	.refine(
+		(d) => new Set(d.map((x) => x.member.toLowerCase())).size === d.length,
+		"a member is named once; list all their acts in one entry",
+	);
+
+/** The valid shape of `metadata.deciders`, as a refusal names it. */
+export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username>, acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[] }], on an entry of kind rule`;
 
 /** An instruction a member gave in the channel, kept as a rule linked to its message (BC-35). */
-export const supportRuleRequestSchema = z.strictObject({
-	thread: supportThreadIdSchema,
-	message: supportThreadIdSchema,
-	text: channelRuleTextSchema,
-	/**
-	 * Where the rule names a member as the one who decides an act (ISS-1000): that member, and the
-	 * acts. Their own request for one of them is their agreement, while the rule's writer is the owner
-	 * this binding names or a member a person confirmed as Technical or Maintenance.
-	 */
-	decides: channelDeciderSchema
-		.optional()
-		.describe(
-			"where the rule names a member as the one who decides an act: { member, acts: (filing | fix | deploy | build | command)[] }",
-		),
-});
+export const supportRuleRequestSchema = z.strictObject(
+	{
+		thread: supportThreadIdSchema,
+		message: supportThreadIdSchema,
+		text: channelRuleTextSchema,
+	},
+	{
+		// ISS-1000's room-typed decider is gone (ISS-1042): a caller still sending it is told where it went
+		error: (iss) =>
+			iss.code === "unrecognized_keys" && iss.keys.includes("decides")
+				? "`decides` is gone: a channel rule names no decider. Who decides an act comes from the project's rulings, which its master records; keep the rule's words, and send the instruction to the project's master with support.record"
+				: undefined,
+	},
+);
 
 /** A question asked again, with its one answer (BC-36). */
 export const supportCommonIssueRequestSchema = z.strictObject({
@@ -384,22 +400,9 @@ export interface ChannelMemberView {
 	updatedAt: string;
 }
 
-/**
- * Whom a rule names as decider, and whether it stands (ISS-1000): `by` is what makes it stand now,
- * its writer being the owner the binding names or a member confirmed as Technical or Maintenance; null
- * where its writer is neither, and the member's own request is then no agreement by it.
- */
-export interface ChannelDeciderView {
-	member: string;
-	acts: SupportProposalKind[];
-	by: "owner" | "confirmer" | null;
-}
-
 export interface ChannelRuleView {
 	id: string;
 	text: string;
-	/** The member the rule names as decider for some acts; null for a rule naming none. */
-	decides: ChannelDeciderView | null;
 	/** The member whose message it came from; null for a rule a person added in Forge. */
 	author: string | null;
 	/** The message it is linked to; null for a rule a person added in Forge. */

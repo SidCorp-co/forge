@@ -340,16 +340,8 @@ export const supportChannelRules = pgTable(
       .references(() => supportChannels.id, { onDelete: 'cascade' }),
     text: text('text').notNull(),
     author: text('author'),
-    /** The chat server's id of the account that wrote the rule's message (ISS-1000); null before it was kept. */
-    authorKey: text('author_key'),
     messageId: text('message_id'),
     thread: text('thread'),
-    /**
-     * The member the rule names as the one who decides `deciderActs` (ISS-1000), by username: their
-     * own request for one of those acts is their agreement while the rule's writer may name one.
-     */
-    decider: text('decider'),
-    deciderActs: text('decider_acts', { enum: SUPPORT_PROPOSAL_KINDS }).array(),
     addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     removedAt: timestamp('removed_at', { withTimezone: true }),
@@ -361,10 +353,6 @@ export const supportChannelRules = pgTable(
     sourceChk: check(
       'support_channel_rules_source_chk',
       sql`(${t.messageId} IS NULL) = (${t.author} IS NULL) AND (${t.messageId} IS NULL) = (${t.thread} IS NULL)`,
-    ),
-    deciderChk: check(
-      'support_channel_rules_decider_chk',
-      sql`(${t.decider} IS NULL) = (${t.deciderActs} IS NULL) AND (${t.decider} IS NULL OR (${t.messageId} IS NOT NULL AND ${t.authorKey} IS NOT NULL AND cardinality(${t.deciderActs}) > 0 AND ${t.deciderActs} <@ ARRAY[${inList(SUPPORT_PROPOSAL_KINDS)}]::text[]))`,
     ),
   }),
 );

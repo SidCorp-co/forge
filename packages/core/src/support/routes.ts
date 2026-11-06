@@ -120,7 +120,7 @@ const SHAPES = {
   command: '{ thread, host, command }',
   read: '{ name, args?, thread?, check? }',
   member: '{ member, roles, askFor?, message }',
-  rule: '{ thread, message, text, decides?: { member, acts } }',
+  rule: '{ thread, message, text }',
   commonIssue: '{ threads, question, answer, feedback? }',
   route: '{ thread, to: forge | technical | product, member?, title?, text }',
   announce: '{ text }',

@@ -12,6 +12,7 @@ import {
 } from './entry-input.js';
 import { lessonOwnedRefusal } from './lesson-entries.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
+import { rulingDecidersRefusal } from './ruling-deciders.js';
 
 export async function upsertKnowledgeEntry(
   input: UpsertKnowledgeInput,
@@ -162,6 +163,11 @@ export async function upsertKnowledgeEntries(
 ): Promise<UpsertKnowledgeResult[]> {
   if (inputs.length === 0) return [];
   const entries = lastPerKey(inputs);
+  // a ruling naming who decides an act is read by every room of the project (ISS-1042)
+  for (const entry of entries) {
+    const deciders = rulingDecidersRefusal(entry);
+    if (deciders) throw deciders;
+  }
   for (const projectId of new Set(entries.map((e) => e.projectId))) {
     const owned = await lessonOwnedRefusal(
       projectId,

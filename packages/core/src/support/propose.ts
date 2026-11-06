@@ -150,18 +150,18 @@ function nextStep(
   if (!consent) {
     return `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`;
   }
-  // a decider's agreement comes from a rule a person wrote: the session is told which (ISS-1000)
+  // a decider's agreement comes from a ruling of the project: the session is told which (ISS-1042)
   const why =
     consent.by === 'decider'
-      ? `the channel rule ${consent.author ? `@${consent.author}` : 'the owner'} wrote names them the one who decides ${actsWords([fix.kind])}, so their own request is their agreement`
+      ? `the project's ruling [knowledge:${consent.ruling}] names them the one who decides ${actsWords([fix.kind])}, so their own request is their agreement`
       : 'in this room their own request is their agreement';
   return `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves, and ${why}: call agree { thread, proposal: "${fix.code}", message: <the id of their message asking for it> } now, and ask them nothing.`;
 }
 
 /**
  * Whether the asker's own request will be their agreement to this proposal: an asker the room lets
- * confirm (ISS-953), the owner the binding names asking for a filing (ISS-954), or the member a
- * standing channel rule names as the one who decides this act (ISS-1000).
+ * confirm (ISS-953), the owner the binding names asking for a filing (ISS-954), or the member the
+ * project's rulings name as the one who decides this act (ISS-1042).
  */
 async function ownRequestConsents(
   room: RoomRow,

@@ -24,6 +24,10 @@ export {
 export { orgKnowledgeCreatedAt, orgOnDemandSlugsOf } from './org-knowledge.js';
 export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
 export { provideKnowledgePorts } from './ports.js';
+export {
+  type RulingDeciderRead,
+  rulingDecidersOf,
+} from './ruling-deciders.js';
 export { keywordSearchKnowledge, searchKnowledge } from './search.js';
 export {
   type AlwaysInjectFact,

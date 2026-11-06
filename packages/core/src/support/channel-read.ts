@@ -6,7 +6,6 @@ import {
   CHANNEL_ROLE_LABEL,
   CHANNEL_ROUTES,
   type ChannelCommonIssueView,
-  type ChannelDeciderView,
   type ChannelMemberView,
   type ChannelRole,
   type ChannelRouteView,
@@ -15,6 +14,7 @@ import {
   type ChannelView,
 } from '@forge/contracts/support-channel';
 import { externalItemPhases } from '../feedback/index.js';
+import { type RulingDeciderRead, rulingDecidersOf } from '../knowledge/index.js';
 import { userNames } from '../lib/people.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { requireDeclaredOn } from '../permissions/index.js';
@@ -30,7 +30,7 @@ import {
   roomsOfChannel,
   rulesOf,
 } from './channel-store.js';
-import { actsWords, channelOwners, deciderView } from './deciders.js';
+import { decidersBlock } from './deciders.js';
 import { roomHealth } from './health.js';
 
 /** The group's name as a bot of the channel reads it, where one can. */
@@ -98,16 +98,16 @@ export async function channelViewOf(
 type Record_ = Pick<ChannelView, 'memberRows' | 'ruleRows' | 'commonIssueRows' | 'routes'>;
 const EMPTY: Record_ = { memberRows: [], ruleRows: [], commonIssueRows: [], routes: routesOf([]) };
 
+/** The record as a session reads it: the channel's, and who the project's rulings say decides (ISS-1042). */
+type SessionRecord = Record_ & { deciders: RulingDeciderRead[] };
+
 async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_> {
   const [members, rules, issues] = await Promise.all([
     membersOf(channel.id),
     rulesOf(channel.id),
     commonIssuesOf(channel.id),
   ]);
-  const [names, owners] = await Promise.all([
-    userNames(members.map((m) => m.confirmedBy)),
-    channelOwners(projectId, channel.rid),
-  ]);
+  const names = await userNames(members.map((m) => m.confirmedBy));
   const fbIds = issues.flatMap((i) => (i.feedbackId ? [i.feedbackId] : []));
   const keys = await externalItemPhases(projectId, fbIds);
   const memberRows: ChannelMemberView[] = members.map((m) => ({
@@ -121,7 +121,6 @@ async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_
   const ruleRows: ChannelRuleView[] = rules.map((r) => ({
     id: r.id,
     text: r.text,
-    decides: deciderView(r, owners, members),
     author: r.author,
     message: r.messageId,
     thread: r.thread,
@@ -138,10 +137,17 @@ async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_
   return { memberRows, ruleRows, commonIssueRows, routes: routesOf(members) };
 }
 
-/** The record as the session reads it with `support.channel`. */
-export async function sessionChannelView(projectId: string, rid: string): Promise<Record_> {
+/**
+ * The record as the session reads it with `support.channel` and its brief: the channel's, and the
+ * deciders the project's rulings name (ISS-1042), the one source `agree` reads too.
+ */
+export async function sessionChannelView(projectId: string, rid: string): Promise<SessionRecord> {
   const channel = await channelOf(projectId, rid);
-  return channel ? recordOf(projectId, channel) : EMPTY;
+  const [record, deciders] = await Promise.all([
+    channel ? recordOf(projectId, channel) : EMPTY,
+    rulingDecidersOf(projectId),
+  ]);
+  return { ...record, deciders };
 }
 
 const roleWords = (roles: readonly string[]) =>
@@ -152,7 +158,8 @@ const roleWords = (roles: readonly string[]) =>
  * each, the rules its team gave, the questions it keeps asking, and the three routes. A rule is a
  * team member's words and is framed as such; it never outranks the brief's own rules.
  */
-export function channelBlock(record: Record_, group?: string): string {
+export function channelBlock(record: SessionRecord, group?: string): string {
+  const deciders = decidersBlock(record.deciders);
   const members = record.memberRows.length
     ? record.memberRows
         .map(
@@ -163,11 +170,10 @@ export function channelBlock(record: Record_, group?: string): string {
     : '- none recorded yet: infer each writer with support.member';
   const rules = record.ruleRows.length
     ? record.ruleRows
-        .map(
-          (r) =>
-            markUntrusted(r.text, {
-              source: r.author ? `channel rule by @${r.author}` : 'channel rule',
-            }) + (r.decides ? `\n${deciderLine(r.decides)}` : ''),
+        .map((r) =>
+          markUntrusted(r.text, {
+            source: r.author ? `channel rule by @${r.author}` : 'channel rule',
+          }),
         )
         .join('\n')
     : '- none';
@@ -191,18 +197,8 @@ export function channelBlock(record: Record_, group?: string): string {
     `Channel rules:\n${rules}`,
     `Common issues:\n${issues}`,
     `Routes, never mixed:\n${record.routes.map(route).join('\n')}`,
+    ...(deciders ? [deciders] : []),
   ].join('\n\n');
-}
-
-/**
- * What Forge reads of a rule naming a decider (ISS-1000), under the rule's own words: the one record
- * the agreement rule reads too, so the brief never names a decider whose request would be refused.
- */
-function deciderLine(d: ChannelDeciderView): string {
-  const acts = actsWords(d.acts);
-  return d.by
-    ? `  Forge holds it: @${d.member} decides ${acts} here, named by ${d.by === 'owner' ? 'the owner' : 'a confirmed Technical or Maintenance member'}; their own request for it is their agreement, so cite it with agree at once and ask them nothing.`
-    : `  Forge holds it: it names @${d.member} for ${acts}, but no one who may name a decider wrote it (only the owner or a confirmed Technical or Maintenance member does), so their requests still wait for their plain yes.`;
 }
 
 /** The roles of every writer the channel record holds, by lower-cased username (BC-37). */

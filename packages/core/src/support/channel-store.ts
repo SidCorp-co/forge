@@ -209,9 +209,8 @@ export async function rulesOf(channelId: string): Promise<RuleRow[]> {
 }
 
 /**
- * Add a rule; a rule already linked to the same message is that rule, read again from it: its text,
- * its writer's account and whom it names as decider take this reading (ISS-1000), so a rule kept
- * before it named a decider takes one when the session reads the message again.
+ * Add a rule; a rule already linked to the same message is that rule, read again from it: its text
+ * takes this reading.
  */
 export async function addRule(values: typeof supportChannelRules.$inferInsert): Promise<RuleRow> {
   if (values.messageId == null) {
@@ -225,12 +224,7 @@ export async function addRule(values: typeof supportChannelRules.$inferInsert): 
     .onConflictDoUpdate({
       target: [supportChannelRules.channelId, supportChannelRules.messageId],
       targetWhere: sql`removed_at IS NULL AND message_id IS NOT NULL`,
-      set: {
-        text: values.text,
-        authorKey: values.authorKey ?? null,
-        decider: values.decider ?? null,
-        deciderActs: values.deciderActs ?? null,
-      },
+      set: { text: values.text },
     })
     .returning();
   if (!row) throw new Error('support: a rule neither inserted nor updated');

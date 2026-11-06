@@ -3893,6 +3893,13 @@
       "when": 1835654400000,
       "tag": "0610_a_room_message_ends_only_its_own_threads_wait_and_is_kept",
       "breakpoints": true
+    },
+    {
+      "idx": 611,
+      "version": "7",
+      "when": 1835740800000,
+      "tag": "0611_who_decides_an_act_is_the_projects_ruling",
+      "breakpoints": true
     }
   ]
 }
