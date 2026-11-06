@@ -1,1 +1,0 @@
-**Activity clears an item from waiting on you as soon as you settle it.** Every move it hears marks that project's held glance stale, and each decision Needs you offers reports itself, so the row leaves next read.

@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.551] - 2026-11-06
+
+Activity clears settled decisions promptly, and contract approvals reach their approver's Needs you
+
+### Added
+
+- **Activity shows each project's cleanup and its release in flight.** A project's peek says whether its cleanup window is on and when it runs, its last report and open debt on demand, and a cut release's stage.
+
+### Fixed
+
+- **Activity clears an item from waiting on you as soon as you settle it.** Every move it hears marks that project's held glance stale, and each decision Needs you offers reports itself, so the row leaves next read.
+- **A master whose background builder is running no longer reads idle.** Its pane reports it awaiting that builder until the builder ends, bounded at three hours, so Activity shows it working and the box sends no new pass meanwhile.
+- **A proposed contract version now reaches its approver's Needs you.** The newest proposed version is a decision with approve and return, naming the versions behind it, and Activity counts it under you.
+
 ## [0.4.0-dev.550] - 2026-11-06
 
 Owner sign-in checks the account; cleanup windows stay off and review what landed

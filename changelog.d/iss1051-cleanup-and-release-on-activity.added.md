@@ -1,1 +1,0 @@
-**Activity shows each project's cleanup and its release in flight.** A project's peek says whether its cleanup window is on and when it runs, its last report and open debt on demand, and a cut release's stage.

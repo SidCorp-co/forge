@@ -1,1 +1,0 @@
-**A proposed contract version now reaches its approver's Needs you.** The newest proposed version is a decision with approve and return, naming the versions behind it, and Activity counts it under you.

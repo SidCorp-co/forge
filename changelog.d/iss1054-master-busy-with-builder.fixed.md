@@ -1,1 +1,0 @@
-**A master whose background builder is running no longer reads idle.** Its pane reports it awaiting that builder until the builder ends, bounded at three hours, so Activity shows it working and the box sends no new pass meanwhile.
