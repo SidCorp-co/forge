@@ -337,7 +337,8 @@ async function putSet(scope: Scope, argsJson: string) {
     }
     items.push({
       decision: resolved.d.id,
-      key: resolved.d.key,
+      // the item the person reads it by, and reads back by once it no longer waits
+      key: itemOf(resolved.d, resolved.d.key)?.key ?? resolved.d.key,
       answer: resolved.answer.id,
       label: resolved.answer.label,
       ...(asked.reason ? { reason: asked.reason } : {}),
