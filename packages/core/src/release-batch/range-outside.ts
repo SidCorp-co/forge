@@ -115,9 +115,7 @@ export async function outsideGateIssues(
   const rows = await db
     .select({ id: issues.id, commit: issues.mergedCommitSha })
     .from(issues)
-    .where(
-      and(eq(issues.projectId, projectId), waitingForReleaseSql(sql`${issues}`), outside),
-    )
+    .where(and(eq(issues.projectId, projectId), waitingForReleaseSql(sql`${issues}`), outside))
     .orderBy(issues.mergedAt, issues.id);
   const keys = await issueDisplayIds(rows.map((r) => r.id));
   return rows.map((r) => ({ id: r.id, key: keys.get(r.id) ?? r.id, commit: r.commit }));

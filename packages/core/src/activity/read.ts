@@ -39,6 +39,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readNeedsYouAcross } from '../development/index.js';
 import { readAdmissibleForProjects, SESSION_SILENCE_TIMEOUT_S } from '../devices/index.js';
+import { waitingForReleaseSql } from '../issues/index.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MasterGlance, readMasterGlances } from '../masters/index.js';
@@ -132,7 +133,7 @@ async function readAwaitingRelease(projectIds: readonly string[]): Promise<Map<s
     await db.execute(sql`
       SELECT project_id, count(*)::int AS n FROM issues
        WHERE project_id IN (${uuids(projectIds)})
-         AND status = 'awaiting_release' AND archived_at IS NULL
+         AND ${waitingForReleaseSql(sql`issues`)} AND archived_at IS NULL
        GROUP BY project_id`),
   );
   return new Map(rows.map((r) => [String(r.project_id), Number(r.n)]));

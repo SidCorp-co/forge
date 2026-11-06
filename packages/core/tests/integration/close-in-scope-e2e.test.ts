@@ -43,7 +43,6 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { userToken } from '../helpers/api.js';
-import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 import {
   closeWorld,
   type Doc,
@@ -62,6 +61,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 const LIVE = {
   live: {
@@ -129,7 +129,11 @@ async function lease(id: string, who = 'holder'): Promise<void> {
   ok(
     await call(who, 'PATCH', `/api/issues/${id}`, {
       sessionContext: {
-        lease: { holder: `catalog-master-${who}`, renewedAt: new Date().toISOString(), minutes: 60 },
+        lease: {
+          holder: `catalog-master-${who}`,
+          renewedAt: new Date().toISOString(),
+          minutes: 60,
+        },
       },
     }),
   );
@@ -150,9 +154,11 @@ const statusOf = async (id: string) =>
 
 const refusalsOf = (r: Reply): Array<{ code: string; detail: string }> => {
   const e = (r.json as { error?: { code?: string; detail?: string; refusals?: unknown[] } }).error;
-  return (e?.refusals as Array<{ code: string; detail: string }> | undefined) ?? [
-    { code: e?.code ?? '', detail: e?.detail ?? '' },
-  ];
+  return (
+    (e?.refusals as Array<{ code: string; detail: string }> | undefined) ?? [
+      { code: e?.code ?? '', detail: e?.detail ?? '' },
+    ]
+  );
 };
 
 async function liveOf(id: string) {

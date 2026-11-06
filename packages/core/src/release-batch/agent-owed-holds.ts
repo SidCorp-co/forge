@@ -1,11 +1,11 @@
 // The release holds a project's master owes the act of (ISS-888): read for its owed work
 // (`masters/owed.ts`), so a hold naming the agent's act is never written and left unread.
 
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
-import { issueDisplayIds, releaseHoldWords } from '../issues/index.js';
+import { issueDisplayIds, releaseHoldWords, waitingForReleaseSql } from '../issues/index.js';
 
 /** A standing hold whose act is the agent's: the issue it holds and what it waits for. */
 export interface AgentOwedHold {
@@ -36,7 +36,7 @@ export async function agentOwedHolds(projectId: string): Promise<AgentOwedHold[]
         eq(releaseHolds.projectId, projectId),
         isNull(releaseHolds.clearedAt),
         eq(releaseHolds.owes, 'agent'),
-        eq(issues.status, 'awaiting_release'),
+        waitingForReleaseSql(sql`${issues}`),
         isNull(issues.releaseBatchRunId),
       ),
     )

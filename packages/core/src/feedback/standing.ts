@@ -60,9 +60,7 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
     case 'issue': {
       const carrying = f.routedIssues.filter((i) => i.status !== 'dropped');
       if (carrying.length === 0 || carrying.some((i) => i.status === 'draft')) return 'triaged';
-      return carrying.every((i) => i.status === 'closed' && !i.unreleased)
-        ? 'resolved'
-        : 'planned';
+      return carrying.every((i) => i.status === 'closed' && !i.unreleased) ? 'resolved' : 'planned';
     }
     case 'revision':
       if (!f.suggestion) return 'triaged';

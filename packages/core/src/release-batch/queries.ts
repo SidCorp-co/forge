@@ -17,7 +17,12 @@ import type { ReleaseEndedRunHold, ReleaseVersionCarrier } from '@forge/contract
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
-import { activeIssuePrefix, designOnlyMarkSql, waitingAtSql, waitingForReleaseSql } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  designOnlyMarkSql,
+  waitingAtSql,
+  waitingForReleaseSql,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readReleasePath } from '../project-config/index.js';
 import { nextRunFor } from '../schedules/index.js';

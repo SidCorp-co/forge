@@ -5,7 +5,7 @@ import { db } from '../db/client.js';
 import { idList } from '../db/raw-sql.js';
 import { issues } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { issueWorkInFlightSql } from '../issues/index.js';
+import { issueWorkInFlightSql, waitingForReleaseSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { readPulseLive } from './pulse-live.js';
@@ -112,7 +112,7 @@ async function selectReleaseWaiting(
              p.slug AS project_slug, p.issue_prefix
       FROM issues i JOIN projects p ON p.id = i.project_id
       WHERE i.project_id IN (${idList(projectIds)})
-        AND i.status = 'awaiting_release'
+        AND ${waitingForReleaseSql(sql`i`)}
         AND i.updated_at < ${sqlTimestamp(now)}
                            - (${thresholds.releaseWaitingSeconds}::int * interval '1 second')
     )

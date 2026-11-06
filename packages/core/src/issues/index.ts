@@ -228,22 +228,15 @@ export {
 export {
   arrivedAfterOf,
   closedAtOf,
+  holdingReleaseRunsSql,
+  releasedSql,
   reopenedAtOf,
   reopenedRoundsOf,
   reworkedSince,
-  holdingReleaseRunsSql,
-  releasedSql,
   shipsWithdrawnOf,
   voidedUpTo,
 } from './release-evidence.js';
 export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
-export {
-  adoptionOnlyMarkSql,
-  closedUnreleasedSql,
-  IN_SCOPE_CLOSE_SINCE,
-  waitingAtSql,
-  waitingForReleaseSql,
-} from './waiting-for-release.js';
 export { releaseRecordGaps } from './release-record-required.js';
 export { provideReleasedLineReads } from './released-line-reads.js';
 export {
@@ -299,6 +292,13 @@ export {
 } from './testing-secret-audit.js';
 export { emitIssueFieldUpdate } from './update-hook.js';
 export { updateIssueFields } from './update-service.js';
+export {
+  adoptionOnlyMarkSql,
+  closedUnreleasedSql,
+  IN_SCOPE_CLOSE_SINCE,
+  waitingAtSql,
+  waitingForReleaseSql,
+} from './waiting-for-release.js';
 export {
   type Carriage,
   type ChangedPaths,

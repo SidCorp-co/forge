@@ -20,7 +20,8 @@ import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import { heldByEndedRelease } from '../issues/index.js';
 import { shippedReleasesOf } from './release-runs.js';
 
-/** Where merged work waits for a release: the only status a release takes work from. */
+/** Where merged work waits for a release; a release also carries an issue closed met in scope
+ *  that no shipped release holds yet (`issues/waiting-for-release.ts:waitingForReleaseSql`). */
 const AWAITING_RELEASE: IssueStatus = 'awaiting_release';
 
 /** The fields of an issue its live reach is read from. */
@@ -104,17 +105,17 @@ function nextReleaseOwed(status: string): string {
     return 'the next release on this project, which takes it from `awaiting_release`';
   }
   if (status === 'closed') {
-    return 'a release naming it: it was closed outside one, and a release takes work only from `awaiting_release`';
+    return 'the next release on this project: its criteria were met in scope and it closed outside a release, and a release carries such an issue as it stands at `closed`';
   }
   return `its release, once it is at \`awaiting_release\`: it is \`${status}\``;
 }
 
 /** Who owes the record of which shipped release holds a landing no release names, by status. */
 function shippedInOwed(status: string): string {
-  if (status === AWAITING_RELEASE) {
+  if (status === AWAITING_RELEASE || status === 'closed') {
     return 'its agent, who reads with git which shipped release holds the landing and records it: POST /api/projects/:id/shipped-in-records { issueId, version, evidence }, `version: null` where none does';
   }
-  return `no door records it for a \`${status}\` issue: a shipped-in record is taken only at \`awaiting_release\``;
+  return `no door records it for a \`${status}\` issue: a shipped-in record is taken only for an issue waiting for a release, at \`awaiting_release\` or closed met in scope`;
 }
 
 /** One issue's answer where no shipped release carries it, against the project's shipped cuts. */

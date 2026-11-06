@@ -9,18 +9,17 @@ import {
   type FeedbackSummary,
   feedbackKey,
 } from '@forge/contracts/feedback';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { whoOwes } from '@forge/contracts/who-owes';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, pipelineRuns, projects } from '../db/schema.js';
+import { pipelineRuns, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { activeIssuePrefix, closedUnreleasedSql } from '../issues/index.js';
+import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { readOwedPolicy } from '../project-config/index.js';
@@ -28,6 +27,7 @@ import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { forgeOriginsOf } from './forge-reads.js';
+import { carrierIssueRows, owedCarriers, unreleasedCarrierKeys } from './list-carriers.js';
 import { releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
@@ -146,20 +146,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows] = await Promise.all(
     [
       activeIssuePrefix(projectId),
-      issueIds.length
-        ? db
-            .select({
-              id: issues.id,
-              seq: issues.issSeq,
-              title: issues.title,
-              status: issues.status,
-              releaseVersion: pipelineRuns.releaseVersion,
-              unreleased: sql<boolean>`${closedUnreleasedSql(sql`${issues}`)}`,
-            })
-            .from(issues)
-            .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
-            .where(inArray(issues.id, issueIds))
-        : [],
+      carrierIssueRows(issueIds),
       reqIds.length
         ? db
             .select({
@@ -384,32 +371,6 @@ export function routeView(r: Row, l: Linked): FeedbackRouteView | null {
   }
 }
 
-/** The keys of an issue route's carriers closed met in scope that no shipped release holds yet. */
-function unreleasedCarrierKeys(r: Row, l: Linked): ReadonlySet<string> {
-  return new Set(
-    (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
-      const issue = l.issues.get(id);
-      return issue?.unreleased ? [issue.key] : [];
-    }),
-  );
-}
-
-/**
- * What a planned item still waits on: an issue route's carriers not yet closed or dropped, and those
- * closed that still wait for their release (`unreleased`); any other route's one carrier.
- */
-function owedCarriers(
-  route: FeedbackRouteView | null,
-  unreleased: ReadonlySet<string>,
-): FeedbackCarrierView[] {
-  if (!route) return [];
-  if (route.route !== 'issue') return route.carriers;
-  const finished: readonly (string | null)[] = ISSUE_TERMINAL_STATUSES;
-  return route.carriers.filter(
-    (c) => !finished.includes(c.status) || (c.key !== null && unreleased.has(c.key)),
-  );
-}
-
 /** The snooze an item is still parked under: one that has run out reads as no snooze, so it is New again with nothing to clear. */
 export function snoozeOf(
   r: Pick<Row, 'snoozedUntil' | 'snoozeReason'>,
@@ -438,7 +399,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
   const snoozed = snoozeOf(r, now);
   const route = routeView(r, l);
   const reporter = l.names.get(r.reportedBy) ?? 'The reporter';
-  const unreleased = unreleasedCarrierKeys(r, l);
+  const unreleased = unreleasedCarrierKeys(l.routeIssues.get(r.id) ?? [], l.issues);
   const owed = owedCarriers(route, unreleased);
   const carried = r.route === 'issue' ? carriersOf(r, l) : { carrier: null, draft: null };
   return feedbackStandingOf(
@@ -461,9 +422,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
         phase === 'planned' &&
         r.route === 'issue' &&
         owed.length > 0 &&
-        owed.every(
-          (c) => c.status === AT_RELEASE_GATE || (c.key !== null && unreleased.has(c.key)),
-        )
+        owed.every((c) => c.status === AT_RELEASE_GATE || (c.key !== null && unreleased.has(c.key)))
           ? l.release
           : null,
       releaseHolders: l.releaseHolders,

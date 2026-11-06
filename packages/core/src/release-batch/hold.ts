@@ -13,6 +13,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { waitingForReleaseSql } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 
@@ -285,7 +286,7 @@ export async function writeReleaseHolds(args: {
       const waiting = (await tx.execute(sql`
         SELECT 1 FROM issues
          WHERE id = ${issueId}
-           AND status = 'awaiting_release'
+           AND ${waitingForReleaseSql(sql`issues`)}
            AND release_batch_run_id IS NULL
          FOR UPDATE
       `)) as unknown as unknown[];
@@ -363,7 +364,7 @@ export async function releaseHoldsOf(
       and(
         inArray(releaseHolds.issueId, [...issueIds]),
         isNull(releaseHolds.clearedAt),
-        eq(issues.status, 'awaiting_release'),
+        waitingForReleaseSql(sql`${issues}`),
         isNull(issues.releaseBatchRunId),
       ),
     );
@@ -403,8 +404,8 @@ export async function clearProjectReleaseHolds(
 }
 
 /**
- * Take the hold off every row that is no longer waiting unclaimed at the gate, whichever route
- * took it there — a person's close, a release claim, a reopen. Without it the first hold a row is
+ * Take the hold off every row that is no longer waiting unclaimed for a release
+ * (`waitingForReleaseSql`), whichever route took it there — a release claim or record, a reopen. Without it the first hold a row is
  * given outlives the wait it describes.
  */
 export async function clearStaleReleaseHolds(now: Date = new Date()): Promise<number> {
@@ -414,7 +415,7 @@ export async function clearStaleReleaseHolds(now: Date = new Date()): Promise<nu
       FROM issues i
      WHERE h.issue_id = i.id
        AND h.cleared_at IS NULL
-       AND (i.status <> 'awaiting_release' OR i.release_batch_run_id IS NOT NULL)
+       AND (NOT ${waitingForReleaseSql(sql`i`)} OR i.release_batch_run_id IS NOT NULL)
     RETURNING h.id
   `)) as unknown as Array<{ id: string }>;
   if (cleared.length > 0) {
