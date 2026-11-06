@@ -1,14 +1,16 @@
 // An operations room's reads (REQ-75 BC-20), and a channel agent's over the projects it follows
 // (ISS-844, ISS-874): each runs as the room, over the projects its scope reaches (`ops-scope.ts`),
 // and reads only what the room's members may already see there. A parked issue carries what it
-// waits on and from whom (`ops-waiting.ts`, ISS-877).
+// waits on and from whom (`ops-waiting.ts`, ISS-877). A release not yet shipped carries what holds
+// it (`ops-release-holds.ts`, ISS-1009).
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import { projectHasLiveMaster, projectRunnerBuilds } from '../devices/index.js';
 import { listIssues } from '../issues/index.js';
-import { listReleases } from '../release-batch/index.js';
+import { holdsAnAct, listReleases } from '../release-batch/index.js';
 import { listRowsOf } from '../requirements/index.js';
+import { releaseHoldOf, UNSEEN } from './ops-release-holds.js';
 import { projectInScope, projectsInScope, type ScopedProject } from './ops-scope.js';
 import type { OpsOutcome } from './ops-types.js';
 import { waitingOf } from './ops-waiting.js';
@@ -70,17 +72,24 @@ export async function releasesRead(room: RoomRow, slug: string): Promise<OpsOutc
   const project = await projectInScope(room, slug);
   if (!project.ok) return project;
   const list = await listReleases(project.value.id, null);
+  const shown = list.releases.slice(0, 10);
+  const releases = await Promise.all(
+    shown.map(async (r) => ({
+      version: r.version,
+      state: r.state,
+      current: r.current,
+      name: r.name,
+      issueCount: r.issueCount,
+      // a release not yet shipped says what holds it, so a room is told whose act it waits on
+      ...(holdsAnAct(r) ? { holds: await releaseHoldOf(project.value.id, r.version) } : {}),
+    })),
+  );
   return {
     ok: true,
     value: {
       project: project.value.slug,
-      releases: list.releases.slice(0, 10).map((r) => ({
-        version: r.version,
-        state: r.state,
-        current: r.current,
-        name: r.name,
-        issueCount: r.issueCount,
-      })),
+      releases,
+      ...(releases.some((r) => 'holds' in r) ? { unseen: UNSEEN } : {}),
     },
   };
 }

@@ -7,7 +7,7 @@ export {
   decideApprovalOfVersion,
   parseDecision,
 } from './approvals.js';
-export { holdingReleaseOf } from './carrying-release.js';
+export { holdingReleaseOf, holdsAnAct } from './carrying-release.js';
 export { admitChangeRequestMerge } from './change-request-merge.js';
 export { releaseEndsRun } from './change-request-roster.js';
 export { settleChangeRequestRelease } from './change-request-settle.js';

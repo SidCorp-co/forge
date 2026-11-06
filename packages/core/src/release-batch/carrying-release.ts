@@ -23,7 +23,7 @@ export interface HoldingRelease {
 }
 
 /** Whether the release still holds an act: neither shipped, nor delivered on its branch, nor stopped. */
-const holds = (r: Pick<ReleaseSummary, 'attentionGroup'>) =>
+export const holdsAnAct = (r: Pick<ReleaseSummary, 'attentionGroup'>) =>
   r.attentionGroup !== 'done' && r.attentionGroup !== 'stopped';
 
 const carries = (r: Pick<ReleaseSummary, 'contents'>, issueId: string) =>
@@ -43,7 +43,7 @@ export async function carryingReleaseOf(
   issueId: string,
 ): Promise<HoldingRelease | null> {
   const { releases } = await listReleases(projectId, null);
-  const hit = releases.find((r) => holds(r) && carries(r, issueId));
+  const hit = releases.find((r) => holdsAnAct(r) && carries(r, issueId));
   return hit ? holdingOf(hit) : null;
 }
 
@@ -53,7 +53,7 @@ export async function holdingReleaseOf(
   version: string,
 ): Promise<HoldingRelease | null> {
   const { releases } = await listReleases(projectId, null);
-  const hit = releases.find((r) => r.version === version && holds(r));
+  const hit = releases.find((r) => r.version === version && holdsAnAct(r));
   return hit ? holdingOf(hit) : null;
 }
 

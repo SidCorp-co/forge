@@ -9,6 +9,7 @@ export { stewardJobCredential } from './job.js';
 export { type LessonsPassTally, runLessonsPass } from './lessons-pass.js';
 export { type MasterAccounts, provideStewardPorts, provideStewardStandings } from './ports.js';
 export { runStewardReaskOnce } from './reask-once.js';
+export { releaseTakerOf } from './release-ask.js';
 export { retireStaleDraftQuestionsOnce } from './retire-stale-drafts.js';
 export { stewardRoutes } from './routes.js';
 export { openStewardAsks, sweepStandings } from './sweep.js';
