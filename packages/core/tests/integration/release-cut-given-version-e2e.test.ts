@@ -99,7 +99,8 @@ describe('a cut that names its version', () => {
 
     const page = await call('GET', '/releases/1.15.0');
     expect(page.status, JSON.stringify(page.body)).toBe(200);
-    expect(page.body.release.cuts[0].rule.decided).toBe('given');
+    const release = page.body.release as { cuts: { rule: { decided: string } }[] };
+    expect(release.cuts[0]?.rule.decided).toBe('given');
   });
 
   it('takes `v1.15.0` the same way', async () => {
