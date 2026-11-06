@@ -36,6 +36,7 @@
  * @direct-test-of packages/core/src/release-batch/recorded.ts
  * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/feedback/list-read.ts
+ * @direct-test-of packages/core/src/feedback/list-carriers.ts
  * @direct-test-of packages/core/src/forecast/feedback-progress.ts
  */
 
