@@ -104,7 +104,9 @@ function reads(items: FeedbackSummary[], forecasts: FeedbackForecast[] = []): Fe
     asOf,
     forecasts: new Map(forecasts.map((f) => [f.key, f])),
     runs: new Map(),
-    requirementIssues: new Map([['REQ-7', [{ key: 'ISS-9', status: 'in_progress', released: false }]]]),
+    requirementIssues: new Map([
+      ['REQ-7', [{ key: 'ISS-9', status: 'in_progress', released: false }]],
+    ]),
     items: new Map(items.map((s) => [s.key, s])),
   };
 }

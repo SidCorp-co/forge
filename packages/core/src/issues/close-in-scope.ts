@@ -61,6 +61,7 @@ export interface MovedCriterion {
 }
 
 /** Where a criterion's destination is refused: its statuses hold the criteria their verdicts were earned on. */
+// status-tuple: differs — these hold criteria fixed by earned verdicts; ISSUE_DISPATCH_TERMINAL_STATUSES says where a dispatch ends, and may grow a status that still takes criteria
 const FROZEN: ReadonlySet<IssueStatus> = new Set(['awaiting_release', 'closed', 'dropped']);
 
 /** The three places a criterion the issue did not meet may go, as every refusal names them. */

@@ -10,9 +10,7 @@ const released = (r: Row) => r.released === true;
 
 describe('a scope’s progress', () => {
   it('counts REQ-19 as none shipped, five landed waiting on the release, one to do', () => {
-    expect(
-      issueProgressOf(rows(...Array(5).fill('awaiting_release'), 'open'), released),
-    ).toEqual({
+    expect(issueProgressOf(rows(...Array(5).fill('awaiting_release'), 'open'), released)).toEqual({
       total: 6,
       shipped: 0,
       awaitingRelease: 5,
@@ -34,7 +32,10 @@ describe('a scope’s progress', () => {
 
   it('reads an issue its holder closed and no release carries as waiting on its release, never shipped', () => {
     const p = issueProgressOf(
-      [{ status: 'closed', released: false }, { status: 'closed', released: true }],
+      [
+        { status: 'closed', released: false },
+        { status: 'closed', released: true },
+      ],
       released,
     );
     expect(p).toEqual({ total: 2, shipped: 1, awaitingRelease: 1, toDo: 0 });

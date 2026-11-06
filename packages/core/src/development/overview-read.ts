@@ -16,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { releasedSql } from '../issues/release-evidence.js';
+import { releasedSql } from '../issues/index.js';
 import { listIssueStanding, STANDING_LIMIT } from '../issues/standing-read.js';
 import { readMasterStanding } from '../masters/read.js';
 import {
