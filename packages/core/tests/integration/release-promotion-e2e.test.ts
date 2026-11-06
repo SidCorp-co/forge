@@ -356,6 +356,29 @@ describe('ISS-762: a promotion already merged is cut as merged and asks nothing 
     expect(planted.compares).toBe(0);
   });
 
+  // ISS-1034, adminhub-fe 2026-11-06: the owner named 1.15.0, and the cut could only wear the next minor
+  it('wears the version the owner names at the cut, and the record under it closes', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(1023, HEAD);
+    await mergedOnHost(1023, '307f35d8'.repeat(5));
+
+    const cut = await call('POST', '/release-batches', {
+      issueIds: ids,
+      promotion: { request: 1023 },
+      version: 'v1.15.0',
+    });
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    expect(cut.body.version).toBe('1.15.0');
+    const [run] = await rows<{ decided: string }>(
+      sql`SELECT metadata -> 'versionCut' ->> 'decided' AS decided FROM pipeline_runs WHERE id = ${String(cut.body.runId)}`,
+    );
+    expect(run?.decided).toBe('given');
+
+    const closed = await record(ids, '1.15.0', '307f35d8'.repeat(5));
+    expect(closed.status, JSON.stringify(closed.body)).toBe(201);
+    expect(closed.body).toMatchObject({ version: '1.15.0', failed: [] });
+  });
+
   it('never asks to promote that merged request again once a release took it', async () => {
     const ids = await landedIssues();
     await promotionRequest(1023, HEAD);
