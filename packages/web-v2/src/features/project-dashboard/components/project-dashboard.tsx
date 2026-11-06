@@ -14,24 +14,26 @@ import { AuditLine } from "@/features/activity";
 import { issueRowView, useIssueStanding, useRowWords } from "@/features/issues";
 import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
 import { useReleases } from "@/features/releases";
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { approvalsHref, questionDecisionHref } from "@/lib/routes/approvals";
+import { issuesHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useRouter } from "@/lib/navigation/router";
 
-/** How many shipped releases the Dashboard names: the newest, the rest on Releases. */
-export const DASHBOARD_SHIPPED = 5;
+/** How many rows a group names: the newest releases, the first issues; the rest are one row to their own page. */
+export const DASHBOARD_ROWS = 5;
 
 type DashRow =
   | { kind: "decision"; d: NeedsYouDecision }
-  /** The decisions the read counts past those it lists: one row to Approvals, where all of them are. */
-  | { kind: "more"; n: number }
+  /** What a group counts past the rows it names: one row to the page that lists all of them. */
+  | { kind: "more"; group: string; n: number; href: string }
   | { kind: "issue"; r: IssueStandingRow }
   | { kind: "release"; r: ReleaseSummary };
 
 const keyOf = (row: DashRow): string =>
-  row.kind === "decision" ? `d:${row.d.id}` : row.kind === "more" ? "d:more" : row.kind === "issue" ? row.r.key : `r:${row.r.version}`;
+  row.kind === "decision" ? `d:${row.d.id}` : row.kind === "more" ? `more:${row.group}` : row.kind === "issue" ? row.r.key : `r:${row.r.version}`;
 
 function decisionPlace(slug: string, d: NeedsYouDecision): string {
   if (d.entity === "question") return questionDecisionHref(slug, d.key);
@@ -41,9 +43,9 @@ function decisionPlace(slug: string, d: NeedsYouDecision): string {
 /** The newest releases that shipped, newest first. */
 export function shippedOf(releases: readonly ReleaseSummary[] | undefined): ReleaseSummary[] {
   return (releases ?? [])
-    .filter((r) => r.releasedAt !== null)
+    .filter((r) => Boolean(r.releasedAt))
     .sort((a, b) => Date.parse(b.releasedAt ?? "") - Date.parse(a.releasedAt ?? ""))
-    .slice(0, DASHBOARD_SHIPPED);
+    .slice(0, DASHBOARD_ROWS);
 }
 
 function useRowView(slug: string): (row: DashRow) => ListRowView {
@@ -54,7 +56,7 @@ function useRowView(slug: string): (row: DashRow) => ListRowView {
   return (row) => {
     if (row.kind === "issue") return { ...issue(row.r), facts: [] };
     if (row.kind === "more") {
-      return { key: keyOf(row), href: approvalsHref(slug), title: t("dash.decision.more", { n: row.n }), facts: [], state: null, waitingOn: null, owner: null, age: null };
+      return { key: keyOf(row), href: row.href, title: <span className="text-muted">{t("dash.more", { n: row.n })}</span>, facts: [], state: null, waitingOn: null, owner: null, age: null };
     }
     if (row.kind === "decision") {
       const d = row.d;
@@ -91,16 +93,24 @@ interface DashRead {
   shipped: ReleaseSummary[];
 }
 
-function groupsOf(t: Copy, read: DashRead): ListGroup<DashRow>[] {
-  const issues = (g: IssueStandingRow["standing"]["attentionGroup"]): DashRow[] =>
-    read.issues.filter((r) => r.standing.attentionGroup === g).map((r) => ({ kind: "issue", r }));
-  const more = read.decisions.total - read.decisions.listed.length;
-  const needs: DashRow[] = [...read.decisions.listed.map((d): DashRow => ({ kind: "decision", d })), ...(more > 0 ? [{ kind: "more", n: more } as const] : [])];
+/** A group's first rows, then one row to `href` for the rest; its header counts `total`, never the rows named. */
+function capped(id: string, rows: DashRow[], total: number, href: string): { rows: DashRow[]; total: number } {
+  const named = rows.slice(0, id === "needs" ? NEEDS_YOU_PERSON_CAP : DASHBOARD_ROWS);
+  const n = total - named.length;
+  return { rows: n > 0 ? [...named, { kind: "more", group: id, n, href }] : named, total };
+}
+
+function groupsOf(t: Copy, slug: string, read: DashRead): ListGroup<DashRow>[] {
+  const issues = (id: "moving" | "stuck") => {
+    const rows = read.issues.filter((r) => r.standing.attentionGroup === id).map((r): DashRow => ({ kind: "issue", r }));
+    return capped(id, rows, rows.length, issuesHref(slug));
+  };
+  const needs = capped("needs", read.decisions.listed.map((d): DashRow => ({ kind: "decision", d })), read.decisions.total, approvalsHref(slug));
   return [
-    { id: "needs", label: t("dash.group.needs"), tone: "you", rows: needs, total: read.decisions.total },
-    { id: "moving", label: t("dash.group.moving"), tone: "run", rows: issues("moving") },
+    { id: "needs", label: t("dash.group.needs"), tone: "you", ...needs },
+    { id: "moving", label: t("dash.group.moving"), tone: "run", ...issues("moving") },
     { id: "shipped", label: t("dash.group.shipped"), tone: "done", rows: read.shipped.map((r) => ({ kind: "release", r })) },
-    { id: "stuck", label: t("dash.group.stuck"), tone: "blocked", rows: issues("stuck") },
+    { id: "stuck", label: t("dash.group.stuck"), tone: "blocked", ...issues("stuck") },
   ];
 }
 
@@ -116,7 +126,7 @@ export function ProjectDashboard({ projectId, slug }: { projectId: string; slug:
   const issues = issuesQ.data?.issues ?? [];
   const shipped = shippedOf(releasesQ.data?.releases);
   const view = useRowView(slug);
-  const groups = groupsOf(t, { decisions, issues, shipped });
+  const groups = groupsOf(t, slug, { decisions, issues, shipped });
   const hrefs = new Map(groups.flatMap((g) => g.rows.map((r) => [keyOf(r), view(r).href] as const)));
   // never "All quiet" over a list still being read: that would say nothing waits, which nobody has read yet
   const reading = needsQ.isLoading || issuesQ.isLoading || releasesQ.isLoading;

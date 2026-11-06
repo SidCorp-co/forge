@@ -19,7 +19,7 @@
     "dash.decision.approve": "Approve",
     "dash.decision.accept": "Accept",
     "dash.decision.verify": "Verify",
-    "dash.decision.more": "{n} more"
+    "dash.more": "{n} more"
   },
   "vi": {
     "dash.fbOpen": "đang mở",
@@ -41,6 +41,6 @@
     "dash.decision.approve": "Duyệt",
     "dash.decision.accept": "Nghiệm thu",
     "dash.decision.verify": "Xác nhận",
-    "dash.decision.more": "Thêm {n}"
+    "dash.more": "Thêm {n}"
   }
 }
