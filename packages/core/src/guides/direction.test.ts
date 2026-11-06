@@ -1,5 +1,6 @@
 // @direct-test-of packages/core/src/guides/
 // @direct-test-of packages/core/src/prompt/facts/registry.ts
+// @direct-test-of packages/core/src/prompt/state-prompts/release-batch.ts
 // The owner's direction of 2026-11-07 (ISS-1057), as the texts core serves teach it: the loop is
 // Product → Delivery → Release → Audit → Product, agents decide and execute on the record, and a
 // person is asked only for what a person owns (money, credentials, product direction, policy). Each
@@ -7,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { renderFact } from '../prompt/facts/registry.js';
+import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
 import { guideRoutes } from './routes.js';
 
 async function served(slug: string): Promise<string> {
@@ -116,5 +118,13 @@ describe('an issue is admitted to the backlog a master works, and stays whole', 
     expect(guide).toContain('one issue is never split across releases');
     expect(guide).not.toContain('When a half genuinely ships on its own');
     expect(guide).not.toContain('Recording a note without triggering a pipeline run');
+  });
+});
+
+describe('a release run hands a person only what a person owns', () => {
+  it('names a credential, an access grant or a decision only a person owns as the blocker it owes a human', () => {
+    const prompt = flat(releaseBatchStatePrompt);
+    expect(prompt).toContain('a decision only a person owns (money, product direction)');
+    expect(prompt).not.toMatch(/an access grant, a decision — say so/);
   });
 });

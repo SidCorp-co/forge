@@ -62,7 +62,7 @@ a step you could not complete, a procedure that does not fit what you actually f
   production, so the roster keeps its claims and stays at its \`release\` step for a person to settle.
   Report each issue where the abort's answer says it is.
 → When what stopped you is a person's to fix — a credential this box lacks, an access grant, a
-  decision — say so in the abort: \`"blocker":{"owes":"human","waitingFor":"<what they must do>"}\`.
+  decision only a person owns (money, product direction) — say so in the abort: \`"blocker":{"owes":"human","waitingFor":"<what they must do>"}\`.
   The roster then stays at the gate held for that person, and no automatic release or schedule cuts
   it again until they act (\`heldForPerson\`). Leave it out only when a later run could get past
   what stopped you, and the next cut takes the roster again.
