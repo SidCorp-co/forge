@@ -4,8 +4,8 @@
 // record or judge before landing. A `strict` project's master dispatches each issue to a shipped role.
 //
 // The mode is read from what the project already declares, never from a switch of its own: fast
-// delivery says a change lands on build and its own tests, and only `strict` asks a person or a
-// separate judge before a merge. The kernel is not the mode's to relax: `KERNEL_RULES` holds whichever
+// delivery says a change lands on its build and the tests related to what it changed, and only
+// `strict` asks a person or a separate judge before a merge. The kernel is not the mode's to relax: `KERNEL_RULES` holds whichever
 // way the master works.
 
 import { fastDeliveryOf } from "./delivery-policy.js";
