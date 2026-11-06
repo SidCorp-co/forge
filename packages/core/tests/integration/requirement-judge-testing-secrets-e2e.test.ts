@@ -15,6 +15,7 @@
  * @direct-test-of packages/core/src/requirements/judge-run-secrets.ts
  * @direct-test-of packages/core/src/devices/declared-run-of-call.ts
  * @direct-test-of packages/core/src/db/schema-requirement-secret-reads.ts
+ * @direct-test-of packages/core/src/project-config/ports.ts
  */
 
 import { randomUUID } from 'node:crypto';
