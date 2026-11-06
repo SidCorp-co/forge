@@ -166,6 +166,29 @@ describe("what the act made on the person's word is drawn from its own result, o
     expect(rows[2]?.getAttribute("title")).toBe("QUESTION_ROUND_STALE");
   });
 
+  // REQ-69 BC-5: a Product act its door refused says why and what to do next
+  it("puts a refused act's next step on its row beside why", () => {
+    const act = {
+      results: [
+        {
+          outcome: "refused",
+          decision: "REQ-801",
+          code: "DECISION_REFUSED",
+          detail: "Undefer on REQ-801 was refused by its own door: REQUIREMENT_NOT_DEFERRED: it is draft.",
+          next: "Open REQ-801, fix what the refusal names, then ask again.",
+          state: { key: "REQ-801", status: "draft", movedBy: null, movedAt: null },
+        },
+      ],
+      note: "",
+    };
+    renderWithQuery(<TurnDecisions blocks={[block("act_on_decisions", act)] as never} slug="forge" />);
+    const row = screen.getByTestId("decision-act-results").querySelector("li");
+    expect(row?.textContent).toBe("REQ-801: not made");
+    expect(row?.getAttribute("title")).toBe(
+      "Undefer on REQ-801 was refused by its own door: REQUIREMENT_NOT_DEFERRED: it is draft. Open REQ-801, fix what the refusal names, then ask again.",
+    );
+  });
+
   it("draws nothing for an act refused whole", () => {
     renderWithQuery(<TurnDecisions blocks={[block("act_on_decisions", { error: "CHAT_DECIDE_NO_WORD" }, true)] as never} slug="forge" />);
     expect(screen.queryByTestId("decision-act-results")).toBeNull();

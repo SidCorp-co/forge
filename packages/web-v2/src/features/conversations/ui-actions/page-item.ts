@@ -9,6 +9,7 @@ const ITEM_SEGMENT: Record<string, UiPageItem["kind"]> = {
   requirements: "requirement",
   feedback: "feedback",
   workflows: "workflow",
+  releases: "release",
 };
 
 /** The record a project path is the page of (`/requirements/REQ-30`), or null: a key its kind does not take names none. */

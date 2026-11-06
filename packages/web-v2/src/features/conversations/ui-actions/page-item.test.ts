@@ -24,3 +24,14 @@ describe("the page item while a mockup is named", () => {
     expect(snap("/projects/acme/issues", "?mockup=MK-3").item).toBeUndefined();
   });
 });
+
+// REQ-69 BC-2: a release page is about its release, so a chat started there answers about it unnamed
+describe("the page item on a release page", () => {
+  it("is the release, by the version its page is addressed by", () => {
+    expect(snap("/projects/acme/releases/0.4.0-dev.217")).toMatchObject({ route: "release", item: { kind: "release", key: "0.4.0-dev.217" } });
+  });
+
+  it("is none on the releases list", () => {
+    expect(snap("/projects/acme/releases").item).toBeUndefined();
+  });
+});

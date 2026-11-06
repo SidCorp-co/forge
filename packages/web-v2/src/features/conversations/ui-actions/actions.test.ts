@@ -34,7 +34,8 @@ describe("the page snapshot names the record its page is about", () => {
     expect(at("/projects/forge/requirements").item).toBeUndefined();
     expect(at("/projects/forge/requirements/not-a-key")).toMatchObject({ route: "other" });
     expect(at("/projects/forge/feedback/REQ-3").item).toBeUndefined();
-    expect(at("/projects/forge/releases/v1").item).toBeUndefined();
+    // a release page names its release (REQ-69 BC-2); a version its kind does not take names none
+    expect(at("/projects/forge/releases/-v1").item).toBeUndefined();
     expect(pageItemOf("/requirements/%E0%A4%A")).toBeNull();
     expect(at("/settings").route).toBe("other");
   });

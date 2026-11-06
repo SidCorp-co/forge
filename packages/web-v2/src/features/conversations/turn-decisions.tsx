@@ -68,7 +68,8 @@ function ActResults({ results }: { results: readonly ChatDecisionResult[] }) {
           <li
             key={`${r.decision}:${r.outcome}`}
             data-outcome={r.outcome}
-            title={r.outcome === "refused" ? r.detail : undefined}
+            // why it was refused and, for a Product act, what the person can do next (REQ-69 BC-5), on hover
+            title={r.outcome === "refused" ? [r.detail, r.next].filter(Boolean).join(" ") : undefined}
           >
             {said}
           </li>

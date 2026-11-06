@@ -24,6 +24,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, type EgressSurface, egressAt } from '../lib/data-egress.js';
 import { mockupForChat } from '../mockups/index.js';
 import { holds } from '../permissions/index.js';
+import { releaseShown } from './page-item-release.js';
 import { latestUiSnapshot } from './ui-snapshot.js';
 
 /** The surface each kind's content leaves through (`lib/data-egress.ts:EGRESS_SURFACES`). */
@@ -33,6 +34,8 @@ const SURFACE: Record<UiPageItemKind, EgressSurface> = {
   feedback: 'feedback',
   workflow: 'design',
   mockup: 'mockup.content',
+  // a release reads as the issues it carries
+  release: 'issue',
 };
 
 export type LoadedPageItem =
@@ -157,6 +160,8 @@ function shownOf(projectId: string, item: UiPageItem, userId: string): Promise<S
       return workflowShown(projectId, item.key);
     case 'mockup':
       return mockupShown(projectId, item.key, userId);
+    case 'release':
+      return releaseShown(projectId, item.key, userId);
   }
 }
 

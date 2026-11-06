@@ -24,19 +24,28 @@ import {
 
 export const UI_ACTION_VERSION = 1 as const;
 
-/** The project routes an action may name, each to its path under `/projects/<slug>`. */
+/**
+ * The project routes an action may name, each to its path under `/projects/<slug>`; every path is a
+ * page the web serves (web-v2 `ui-actions/ui-routes.test.ts` reads its route files, REQ-69 BC-1).
+ * A page moved into another (Memory, Decisions, Lessons, Roadmap, Questions) is not named here.
+ */
 export const UI_ROUTES = {
 	overview: "",
 	issues: "/issues",
 	requirements: "/requirements",
 	feedback: "/feedback",
+	approvals: "/approvals",
 	pipeline: "/pipeline",
 	releases: "/releases",
 	agents: "/agents",
 	workflows: "/workflows",
-	ecosystem: "/ecosystem",
-	schedules: "/automation/schedules",
-	improvements: "/automation/improvements",
+	modules: "/modules",
+	contracts: "/contracts",
+	status: "/status",
+	channels: "/channels",
+	// the project's Ecosystem page is its API page; /ecosystem itself draws nothing
+	ecosystem: "/ecosystem/api",
+	automation: "/automation",
 	settings: "/settings",
 } as const;
 export type UiRoute = keyof typeof UI_ROUTES;
@@ -150,6 +159,7 @@ export const UI_PAGE_ITEM_KINDS = [
 	"feedback",
 	"workflow",
 	"mockup",
+	"release",
 ] as const;
 export type UiPageItemKind = (typeof UI_PAGE_ITEM_KINDS)[number];
 
@@ -209,7 +219,6 @@ const asked = (v: string | null | undefined): string | undefined => {
 export type HighlightResolved =
 	| { ok: true; highlight: UiHighlight; ignored: string[] }
 	| { ok: false; path: "key" | "section" | "step"; message: string };
-
 
 /**
  * The one reading of a highlight's `target`: what the record's kind says it can mark. An issue, a
@@ -740,6 +749,12 @@ export const uiPageItemSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
 		kind: z.literal("mockup"),
 		key: z.string().regex(/^MK-\d{1,9}$/, "a mockup key such as MK-3"),
+	}),
+	z.strictObject({
+		kind: z.literal("release"),
+		key: z
+			.string()
+			.regex(RELEASE_KEY, "a release version such as 0.4.0-dev.217"),
 	}),
 ]);
 export type UiPageItem = z.infer<typeof uiPageItemSchema>;
