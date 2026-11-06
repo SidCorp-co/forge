@@ -4,6 +4,7 @@
 // not take, is refused when the registry is built.
 //
 // @direct-test-of packages/core/src/mcp/action-catalog.ts
+// @direct-test-of packages/core/src/support/tool.ts
 
 import { PERMISSIONS } from '@forge/contracts/permissions';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -214,6 +215,92 @@ describe('the entry forms a description names an action in', () => {
     );
     expect(() => actionCatalog([fake('only { zed }: one.', props, ['only'])])).toThrow(
       /forge_fake's entry for only names an argument `zed` its input does not take/,
+    );
+  });
+});
+
+// ISS-1033: support.record's entry read `record {thread, kind, title, summary, asker?}`, so
+// forge_describe answered no project and the room's session filed a followed project's need on its
+// home (FB-530). A door that judges each action under its own request answers that request, and an
+// entry naming other arguments is refused at registry build.
+describe('a door judging each action under its own request', () => {
+  const support = tools.find((t) => t.name === 'forge_support') as McpTool;
+  const TODAY = 'record {thread, kind, title, summary, asker?}:';
+
+  it('answers support.record as its request takes it: project and whereSeen, under its own guide', () => {
+    const record = catalog.get('support.record');
+    expect(record?.guideOf).toBe('action');
+    expect(
+      record?.guide.startsWith(
+        'record {thread, kind, title, summary, whereSeen?, asker?, project?}:',
+      ),
+    ).toBe(true);
+    expect(Object.keys(record?.input.properties as object)).toEqual(
+      expect.arrayContaining([
+        'thread',
+        'kind',
+        'title',
+        'summary',
+        'whereSeen',
+        'asker',
+        'project',
+      ]),
+    );
+    expect(record?.input.required).toEqual(['thread', 'kind', 'title', 'summary']);
+    // the door's own argument, which no request takes, every action takes
+    expect(Object.keys(record?.input.properties as object)).toContain('rid');
+    expect(Object.keys(catalog.get('support.search')?.input.properties as object)).toEqual(
+      expect.arrayContaining(['query', 'project', 'rid']),
+    );
+  });
+
+  it('refuses today’s record entry by name at registry build, naming the arguments it hides', () => {
+    const entry = support.description.indexOf(
+      'record {thread, kind, title, summary, whereSeen?, asker?, project?}:',
+    );
+    expect(entry).toBeGreaterThan(0);
+    const description = support.description.replace(
+      'record {thread, kind, title, summary, whereSeen?, asker?, project?}:',
+      TODAY,
+    );
+    expect(() => actionCatalog([{ ...support, description }])).toThrow(
+      "mcp registry: forge_support's entry for record leaves out `whereSeen`, `project`, which its request takes",
+    );
+  });
+
+  const requested = (description: string) =>
+    ({
+      ...fake(
+        description,
+        { a: { type: 'string' }, b: { type: 'string' }, rid: { type: 'string' } },
+        ['one'],
+      ),
+      actionRequests: {
+        one: {
+          type: 'object',
+          properties: { a: { type: 'string' }, b: { type: 'string' } },
+          required: ['a'],
+          additionalProperties: false,
+        },
+      },
+    }) as McpTool;
+
+  it('answers the request, the door’s own argument beside it, where the entry names exactly its arguments', () => {
+    const one = actionCatalog([requested('one { a, b? }: does one.')]).get('fake.one');
+    expect(one?.input).toEqual({
+      type: 'object',
+      properties: { a: { type: 'string' }, b: { type: 'string' }, rid: { type: 'string' } },
+      required: ['a'],
+      additionalProperties: false,
+    });
+  });
+
+  it('refuses an entry that hides an argument its request takes, or names one it does not', () => {
+    expect(() => actionCatalog([requested('one { a }: does one.')])).toThrow(
+      "forge_fake's entry for one leaves out `b`, which its request takes",
+    );
+    expect(() => actionCatalog([requested('one { a, b, rid }: does one.')])).toThrow(
+      "forge_fake's entry for one names `rid`, which its request does not take",
     );
   });
 });

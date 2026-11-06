@@ -1,0 +1,1 @@
+**A support room's agent can file on the project that owns the ask.** forge_describe and the room's brief now show support.record's project and whereSeen, and the registry refuses an action entry that hides an argument its request takes.

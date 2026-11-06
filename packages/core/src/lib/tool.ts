@@ -58,6 +58,13 @@ export interface McpTool {
    * in its description's `action { args }:` entry (`mcp/action-catalog.ts`).
    */
   actionInputs?: Readonly<Record<string, Record<string, unknown>>>;
+  /**
+   * The strict request each action is judged under once the door's one flat input is read, as a JSON
+   * Schema object without `action`, for a tool whose description still names each action's entry
+   * (`support/tool.ts:REQUESTS`). `forge_describe` answers that request under the entry's own guide,
+   * and the registry refuses an entry that names other arguments than it takes (ISS-1033).
+   */
+  actionRequests?: Readonly<Record<string, Record<string, unknown>>>;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 

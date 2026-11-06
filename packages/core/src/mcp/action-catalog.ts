@@ -12,7 +12,11 @@
  *
  * A door action whose description holds no entry, or whose entry names an argument the door does
  * not take, is refused by name when the registry is built: the guide is the contract a client
- * calls by, and a slice that does not exist cannot be answered.
+ * calls by, and a slice that does not exist cannot be answered. A door that judges each action under
+ * its own strict request after its flat input (`McpTool.actionRequests`) answers that request under
+ * the entry's guide, and an entry naming other arguments than that request takes is refused by name
+ * too: the entry is what a session reads, and one that hid `project` sent a filing to the wrong
+ * project (ISS-1033).
  */
 
 import type { McpTool } from '../lib/tool.js';
@@ -243,6 +247,64 @@ function narrowedInput(
   };
 }
 
+/** Every argument a JSON Schema object takes, a union's branches' together. */
+function argumentNamesOf(schema: Schema): Set<string> {
+  const names = new Set(Object.keys((schema.properties as Schema | undefined) ?? {}));
+  for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
+    for (const branch of (schema[key] as Schema[] | undefined) ?? []) {
+      for (const name of argumentNamesOf(branch)) names.add(name);
+    }
+  }
+  return names;
+}
+
+/**
+ * The action's own request as its input, once its entry is seen to name exactly the arguments the
+ * request takes: one it leaves out is hidden from every reader of the guide, one it adds is refused.
+ */
+function requestInput(
+  tool: McpTool,
+  action: string,
+  listed: Schema,
+  args: { name: string; optional: boolean }[],
+): Schema {
+  const own = tool.actionRequests?.[action];
+  if (!own) {
+    throw new Error(
+      `mcp registry: ${tool.name} declares each action's request and none for ${action} (mcp/action-catalog.ts)`,
+    );
+  }
+  const input = listedSchema(`${tool.name}.${action}`, own);
+  const takes = argumentNamesOf(input);
+  const named = new Set(args.map((a) => a.name));
+  const hidden = [...takes].filter((n) => !named.has(n));
+  const extra = [...named].filter((n) => !takes.has(n));
+  if (hidden.length > 0 || extra.length > 0) {
+    const said = [
+      ...(hidden.length
+        ? [`leaves out ${hidden.map((n) => `\`${n}\``).join(', ')}, which its request takes`]
+        : []),
+      ...(extra.length
+        ? [`names ${extra.map((n) => `\`${n}\``).join(', ')}, which its request does not take`]
+        : []),
+    ];
+    throw new Error(
+      `mcp registry: ${tool.name}'s entry for ${action} ${said.join(', and ')}; the entry names exactly the arguments the action's request takes, since forge_describe and every session read the action by it (mcp/action-catalog.ts)`,
+    );
+  }
+  // an argument of the door no action's request takes is the door's own, which every action takes
+  // (a channel agent's `rid`)
+  const door = (listed.properties as Schema | undefined) ?? {};
+  const requested = new Set(
+    Object.values(tool.actionRequests ?? {}).flatMap((r) => [...argumentNamesOf(r)]),
+  );
+  const properties = { ...((input.properties as Schema | undefined) ?? {}) };
+  for (const [name, schema] of Object.entries(door)) {
+    if (name !== 'action' && !requested.has(name)) properties[name] = schema;
+  }
+  return { ...input, properties };
+}
+
 function entriesOf(tool: McpTool): ActionEntry[] {
   return entriesWithoutPermission(tool).map((entry) => {
     const permission = toolPermissionFor(tool.permission, entry.action);
@@ -319,7 +381,12 @@ function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
       summary,
       guide,
       guideOf: 'action' as const,
-      input: narrowedInput(tool, f.action, listed, f.argsText ? argumentsIn(f.argsText) : []),
+      input: (tool.actionRequests ? requestInput : narrowedInput)(
+        tool,
+        f.action,
+        listed,
+        f.argsText ? argumentsIn(f.argsText) : [],
+      ),
     };
   });
 }
