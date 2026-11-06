@@ -13375,6 +13375,11 @@
                             "maxItems": 5,
                             "type": "array"
                           },
+                          "irreversible": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                          },
                           "section": {
                             "enum": [
                               "Added",
