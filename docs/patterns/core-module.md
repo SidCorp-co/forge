@@ -59,10 +59,8 @@ The owner ruled on 2026-10-03 that every build gets a clearly defined schema and
 not a style per place, and on 2026-10-04 that the logic was not clean and the build pattern not
 stable ("Logic tôi thấy chưa sạch sẽ và build pattern chưa ổn"). This entry is the one build
 pattern for every module of `packages/core/src`, and for the contracts and web modules that serve
-<!-- doc-citation: unchecked `docs/conventions/domain-entities.md` — the page the pattern catalog replaced, named as history; ISS-466 deleted it -->
-it; until ISS-466 it was `docs/conventions/domain-entities.md`. It is a root of the reconciliation checklist
-([design-is-the-root…](../proposals/design-is-the-root-and-code-is-reconciled-to-it.md)), beside
-requirements and workflow designs.
+it. It is a root beside requirements and workflow designs: code that breaks it is reconciled to it,
+never the other way round.
 
 - **Each rule is a business criterion of REQ-12** (revision 3), cited as *BC-n* beside its heading,
   so a verdict or a Wrong marker can name the rule it judges.

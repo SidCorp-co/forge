@@ -110,11 +110,14 @@ outside is not, however cheap.
 **A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test: each
 is an amnesty, and it names what was traded, what it costs, and the condition that ends it.
 
-**The Product leads, Delivery follows** (`VISION: requirement-leads-delivery`). The Product is
-requirements, workflows, feedback and releases; Delivery is issue → pipeline → deploy → verdict. Work names the
-requirement and criteria it delivers. Where the expectation is wrong or missing, revise the
-requirement or workflow first, then build to it. Done means a named criterion holds on the running
-build. Old code the work touches is cleaned inside that work.
+**The loop is Product → Delivery → Release → Audit → Product, and the Product leads**
+(`VISION: requirement-leads-delivery`). The Product is requirements, workflows and feedback: work
+names the requirement and criteria it delivers, and where the expectation is wrong or missing, the
+requirement or workflow is revised first and then built to. Delivery conforms, in the batches above.
+Release is one per batch, then one live judge, and done means a named criterion holds on the running
+build. Audit is its own job in the cleanup window, apart from delivery: it reads what landed and how
+it ran, and what it finds returns to the Product. Old code the work touches is cleaned inside that
+work.
 
 **Before you change behaviour, know what you are replacing.** Requirement, design, the old logic
 this supersedes, the cleanup that removes it — code shipping beside what it replaced leaves two
@@ -193,8 +196,8 @@ rule itself.
 that discovers it — no deprecation note, no "may be stale" header. **Where a doc that describes
 code disagrees with the code, the code is right**; fix the doc in the same change. **Approved
 requirements and workflow designs are the other way round: they are the root, and code that
-disagrees with them is drift** — marked and reconciled to the design, never used to rewrite it
-(`docs/proposals/design-is-the-root-and-code-is-reconciled-to-it.md`).
+disagrees with them is drift** — reconciled to the design, never used to rewrite it
+(`VISION: requirement-leads-delivery`).
 
 **A proposal is deleted by the change that implements it.** Every `docs/proposals/*.md` opens with
 a `**Removed when:**` line naming the issue whose landing deletes it; `check-honest-costs` refuses
