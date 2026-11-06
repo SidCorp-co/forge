@@ -267,6 +267,8 @@ describe("the peek's Recent list", () => {
         // the peek's cleanup row reads the project's own ledger and reports (ISS-1051)
         if (path.endsWith("/debts")) return json(LEDGER_NONE);
         if (path.endsWith("/cleanup-reports")) return json({ reports: [] });
+        // the live-run count every surface shares (ISS-1069)
+        if (path === "/projects/health") return json([]);
         // Recent takes longer than the room's frames come
         await new Promise((r) => setTimeout(r, 600));
         return json(RECENT);
