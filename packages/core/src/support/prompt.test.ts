@@ -57,6 +57,35 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
   });
 });
 
+// ISS-1039 (#sid-email, 2026-11-06): a share was granted and a person said so in the thread by hand,
+// outside Forge's door; the agent, finding no record, posted that it was still not shared. The brief
+// taught "never done before the master confirms" and not the converse: an item's state comes from the
+// record alone, and a claim the record does not back goes to the owning master, with one holding reply.
+describe('the room brief states an item only from the record, either way', () => {
+  const channel = supportBrief({
+    projectName: 'P',
+    product: null,
+    tools: [],
+    opening: agentOpening({
+      projectName: 'P',
+      product: null,
+      channels: ['#mail'],
+      ownerMode: false,
+    }),
+  });
+
+  it('asserts neither done nor not done from what the record does not show', () => {
+    for (const text of [brief, channel]) {
+      expect(text).toContain(
+        "never call it done before then, nor not done: an item's state is only what the record shows (that result, or a master's post through Forge)",
+      );
+      expect(text).toContain(
+        "where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither",
+      );
+    }
+  });
+});
+
 // ISS-1011: a project may bind several support APIs (one Agenfold workspace each); the session reads
 // which one each tool reads, so it can say which workspace it checked.
 describe('the tools line names the binding each tool reads', () => {
