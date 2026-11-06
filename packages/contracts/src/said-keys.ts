@@ -2154,7 +2154,7 @@ export const SAID = {
 		en: "a marker source waits on a person, or a node awaits decision",
 	},
 	"designs.rule.masterSettles": {
-		en: "reconciling the code to the approved design is the master's; this project's designs gate asks no person",
+		en: "the master reconciles the code to the approved design",
 	},
 	"runs.step.masterGone": {
 		en: "opened for a resident master with no live master session",

@@ -245,9 +245,10 @@ describe('Needs you lists a gated step only for the member who must take it (BC-
     expect(put.status, JSON.stringify(put.body)).toBe(200);
   }
 
-  it('approvals.agree off: the owner who may agree it is asked, the admin who also may is not', async () => {
+  // who-owes (ISS-1058): with the agree gate off, agreeing is the master's, so no person is asked
+  it('approvals.agree off: agreeing is the master’s, so neither the owner nor the admin is asked', async () => {
     const { key } = await readyByMember('Cards sort by date');
-    expect(await asks(member, key)).toHaveLength(1);
+    expect(await asks(member, key)).toEqual([]);
     expect(await asks(admin, key)).toEqual([]);
   });
 

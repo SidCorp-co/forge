@@ -12,6 +12,7 @@ import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { type Doc, ok, refusal, refusedByDb } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 import { openPictureWorld, pictureDoors } from '../helpers/requirement-picture-world.js';
 
 const w = openPictureWorld();
@@ -290,6 +291,8 @@ describe("a feedback item's reporter data, while another item is about one of it
 
 describe('Needs you lists a proposed mockup with its preview and what accepting does (BC-7)', () => {
   it('a revised requirement mockup waits there with its round, what it revises and its open comments', async () => {
+    // a mockup's accept is a person's only where the designs gate asks one (who-owes, ISS-1058)
+    await enforceGates(w.projectId, w.ownerId, ['approval_designs']);
     const req = await requirement('A screen waiting on a decision', 'screen');
     const first = (await propose({ target: { requirement: req }, ...html() })).key as string;
     await comment(first, { body: 'The total hides the tax line.' });
