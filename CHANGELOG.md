@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.544] - 2026-11-06
+
+Rooms take release deciders from the project's recorded rulings
+
+### Fixed
+
+- **A room's decider comes from the project's rulings.** A `rule` knowledge entry naming the member and acts makes their go in any words count, with no rule typed in the room and no writer check.
+
 ## [0.4.0-dev.543] - 2026-11-06
 
 Release asks go once to their holder; rooms can say why a release waits
