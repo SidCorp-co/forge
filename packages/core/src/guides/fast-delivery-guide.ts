@@ -14,7 +14,7 @@ export const FAST_DELIVERY_GUIDE: CoreGuide = {
   title: 'Fast delivery: rate the change, leave debt to the cleanup run',
   summary:
     "Every project delivers fast unless its document says `delivery.fast: false`: a change lands when it builds, deploys healthy and its scoped tests pass; the building run rates the change's impact and leaves a non-severe red as cleanup debt; only a change rated high waits for a green cleanup: it is held from landing where the project deploys on land, and from promotion where a person promotes; the cleanup run works the debt in its own window and reports what it cleared and what remains.",
-  version: 6,
+  version: 7,
   body: `## Fast delivery: rate the change, leave debt to the cleanup run
 
 Fast delivery is every project's default. A project turns it off with \`delivery.fast: false\` in its
@@ -60,8 +60,8 @@ changes land as before, and the release sweep holds nothing for the cleanup ther
 promotes (any other production trigger), landing is not held: a release that would carry the change
 is refused \`RELEASE_CLEANUP_PENDING\` until a green report \`covers\` it.
 
-### The cleanup run
-The project's cleanup window is its \`cleanup\` schedule, which exists only where a project admin
+### The cleanup run: Audit
+Delivery ends at the landing and the release; Audit is the cleanup run's, a job of its own. The project's cleanup window is its \`cleanup\` schedule, which exists only where a project admin
 turned one on (\`POST /api/schedules\` with \`kind: "cleanup"\`, end of day \`0 18 * * *\` UTC is the
 usual time); Forge never makes or enables one. Debt is recorded either way, and where no window is on
 the ledger says so (\`windowOff\`). A person re-times it like any schedule. Its fire starts one
@@ -73,8 +73,9 @@ briefed with the open debt, the changes waiting on it and the range that landed,
 ${guideRef('cleanup-audit')}, and:
 1. reads the ledger, \`GET /api/projects/:id/debts\` (open and cleared debt, the changes rated high
    waiting, the window);
-2. reviews what landed, merges and simplifies it, and clears debt and CI red, in its own worktree,
-   landing as the project lands work;
+2. audits what landed and how it ran, as that guide says: cleans and simplifies it, clears debt and
+   CI red in its own worktree, landing as the project lands work, and returns what would change the
+   product to Product as Feedback;
 3. reports once, last: \`POST /api/projects/:id/cleanup-reports\`
    \`{ fire, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }], covers }\`.
    \`base.sha\` is the full 40-hex sha of the head it left, which core reads on the project's source

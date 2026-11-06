@@ -261,7 +261,7 @@ export function cleanupBrief(args: {
     ? args.waiting.map((w) => `- ${w.key}: ${w.reason}`).join('\n')
     : '- none';
   return [
-    "You are this project's cleanup run (REQ-79), started by its cleanup window. You run on a slot of your own and never take a delivery run's; leave delivery work to the delivery runs.",
+    "You are this project's cleanup run (REQ-79), started by its cleanup window: the Audit stage of Product → Delivery → Release → Audit, a job of its own. You run on a slot of your own and never take a delivery run's; leave delivery work to the delivery runs.",
     '',
     `Open cleanup debt (GET /api/projects/${projectId}/debts reads it whole):`,
     debts,
@@ -272,7 +272,7 @@ export function cleanupBrief(args: {
     landed,
     '',
     'Do this:',
-    `1. Read ${guideRef('cleanup-audit')} first: it is how this run works. In a new worktree off the branch this project's work lands on, review what landed above, clear the debt above and any CI red on that branch, as that guide says. Land each fix the way this project lands work.`,
+    `1. Read ${guideRef('cleanup-audit')} first: it is how this run works. In a new worktree off the branch this project's work lands on, review what landed above and how it ran, clear the debt above and any CI red on that branch, and return to Product what would change the product, as that guide says. Land each fix the way this project lands work.`,
     "2. Run the project's checks at the head you leave, and record any new debt you find but do not clear: POST /api/projects/" +
       `${projectId}/debts { items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }.`,
     `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the full 40-hex sha of the head you leave, pushed to that branch> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }. Core reads base.sha on the project's source host and refuses one that branch does not hold (CLEANUP_BASE_NOT_ON_BRANCH); a report you must correct is filed again with the same fire, and the later one supersedes it.`,

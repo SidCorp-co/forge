@@ -64,3 +64,26 @@ describe('a decision inside the work is the agent’s, never parked on a person'
     expect(guide).not.toContain('waits on a person to route it anew');
   });
 });
+
+describe('Audit is its own job, and what it finds goes back to Product', () => {
+  it('the cleanup-audit guide is the Audit stage and returns findings to Product and lessons', async () => {
+    const guide = await served('cleanup-audit');
+    for (const said of [
+      "Forge's loop is Product → Delivery → Release → Audit → Product, and this is Audit: a job of its own, never a step of delivery.",
+      "Audit runs in the project's cleanup window, after a period of running",
+      '### 3. Read how it ran',
+      'wrong answers, the same question asked again, a fix that was slow to come',
+      '**Patterns that no longer fit.**',
+      'is Feedback (`POST /api/projects/:id/feedback`), for the next Product round to triage',
+      'is kept for retrieval: `POST /api/memory`',
+    ])
+      expect(guide).toContain(said);
+    expect(guide).not.toContain('development, not cleanup: leave it as debt with what you found');
+  });
+
+  it('fast delivery ends at the landing and the release, and hands Audit to the cleanup run', async () => {
+    const guide = await served('fast-delivery');
+    expect(guide).toContain('### The cleanup run: Audit');
+    expect(guide).toContain('returns what would change the product to Product as Feedback');
+  });
+});

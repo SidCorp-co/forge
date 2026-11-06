@@ -144,6 +144,11 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
     expect(brief).toContain(`git log ${from}..${head}`);
     expect(brief).toContain('GET /api/guides/cleanup-audit.md');
     expect(brief).not.toContain('simplify the code you touch');
+    // ISS-1057: the run is the Audit stage, apart from delivery, and what it finds goes back to Product
+    expect(brief).toContain(
+      'the Audit stage of Product → Delivery → Release → Audit, a job of its own',
+    );
+    expect(brief).toContain('return to Product what would change the product');
     const first = cleanupBrief({
       projectId: 'p1',
       fireId: 'f1',
