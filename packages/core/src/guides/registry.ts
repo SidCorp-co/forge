@@ -199,8 +199,9 @@ against live code or git before you rely on it.
 batch or wave. \`draft\` never dispatches. So:
 - Work you want an agent to pick up now → \`open\`.
 - Work for later, or a follow-up you just want recorded → \`draft\`.
-- A note, learning or decision → **not an issue at all**; write it to memory. Nobody browses the
-  issue list for notes.
+- A note or learning → **not an issue at all**; write it to memory. Nobody browses the issue list
+  for notes. A decision in force is not a memory either: it is a rule (project or org knowledge,
+  kind rule) or a requirement, so it has one official source.
 
 ### Worth watching
 - An ordering written in prose gates nothing; only a \`blocks\` edge does.
