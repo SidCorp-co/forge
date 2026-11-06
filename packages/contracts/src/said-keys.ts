@@ -426,6 +426,10 @@ export const SAID = {
 		en: "landed at `{status}`: the next run judges it for `awaiting_release`",
 		vars: { status: "status" },
 	},
+	"issues.rule.landedMaster": {
+		en: "landed at `{status}`: the master moves it on to `awaiting_release`",
+		vars: { status: "status" },
+	},
 	"issues.rule.leaseHeld": {
 		en: "lease held by {holder}",
 		vars: { holder: "name" },

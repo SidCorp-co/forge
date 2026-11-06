@@ -22,6 +22,7 @@ import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import type { MasterServing } from '@forge/contracts/steward';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -50,6 +51,7 @@ import {
   designUnapprovedSql,
   holdsOpenHumanQuestion,
   masterServingOf,
+  readJudge,
   releaseHoldsOf,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
@@ -216,6 +218,7 @@ type Facts = {
   withheld: Map<string, IssueWithheld>;
   releaseHolds: Map<string, ReleaseHoldView>;
   master: MasterServing;
+  judge: VerifiedJudge | null;
   now: Date;
 };
 
@@ -315,6 +318,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     withheld: f.withheld.get(r.id) ?? null,
     statusSince: new Date(r.status_since),
     master: f.master,
+    judge: f.judge,
     now: f.now,
   };
 }
@@ -337,6 +341,7 @@ async function standingRows(
     writers,
     admins,
     master,
+    judge,
     releaseHolds,
   ] = await Promise.all([
     activeIssuePrefix(projectId),
@@ -349,6 +354,7 @@ async function standingRows(
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
     masterServingOf(projectId),
+    readJudge(projectId),
     releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
@@ -375,6 +381,7 @@ async function standingRows(
     withheld,
     releaseHolds,
     master,
+    judge,
     now,
   };
   // on a change-request project the issue's head is its request's, not a run's worklog capture

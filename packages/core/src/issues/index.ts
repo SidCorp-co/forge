@@ -192,6 +192,7 @@ export {
   type DispatchGateCode,
   designUnapprovedSql,
   provideIssuePorts,
+  readJudge,
 } from './ports.js';
 export {
   buildProgressFactsBlock,

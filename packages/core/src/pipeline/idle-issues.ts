@@ -13,6 +13,7 @@
  */
 
 import type { ReleaseHoldView } from '@forge/contracts/releases';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { gateEnforcedSql } from '../db/gate-sql.js';
@@ -33,6 +34,7 @@ import {
   leaseShowsHolderGone,
   patternReviewPendingSql,
   readClaim,
+  readJudge,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
@@ -138,6 +140,7 @@ export async function reconcileIdleIssues(
     now,
   );
   const pooled = await projectsWithAdmittedRunner(rows.map((r) => r.project_id));
+  const judges = await judgesOf(rows.map((r) => r.project_id));
   const admins = await projectAdminUserIdsFor(rows.map((r) => r.project_id));
 
   const result: IdleIssuesResult = {
@@ -148,7 +151,7 @@ export async function reconcileIdleIssues(
     unclassified: 0,
   };
   for (const row of rows) {
-    const judged = judge(row, now, fanout, pooled);
+    const judged = judge(row, now, fanout, pooled, judges);
     if (judged === null) continue;
     result.detected += 1;
     if (judged.unclassified) result.unclassified += 1;
@@ -177,6 +180,7 @@ function judge(
   now: Date,
   fanout: ReadonlyMap<string, number>,
   pooled: ReadonlySet<string>,
+  judges: ReadonlyMap<string, VerifiedJudge | null>,
 ): { record: StrandRecord; lease: LeaseReading; unclassified: boolean } | null {
   const lease = readClaim(row.lease, now, fanout);
   if (leaseIsWorkInProgress(lease.verdict)) return null;
@@ -210,6 +214,7 @@ function judge(
     releaseHold: row.release_hold,
     step: row.step,
     withheld,
+    judge: judges.get(row.project_id) ?? null,
   };
   const { reason, owes } = strandReason({ status: row.status, rule, evidence });
   const waitingFor =
@@ -342,6 +347,14 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
 }
 
 /** Which of these projects has a runner the job pool would admit — that module's own predicate. */
+/** Who judges each project's criteria under its policy, read once per project the pass touches. */
+async function judgesOf(
+  projectIds: readonly string[],
+): Promise<ReadonlyMap<string, VerifiedJudge | null>> {
+  const ids = [...new Set(projectIds)];
+  return new Map(await Promise.all(ids.map(async (id) => [id, await readJudge(id)] as const)));
+}
+
 async function projectsWithAdmittedRunner(
   projectIds: readonly string[],
 ): Promise<ReadonlySet<string>> {

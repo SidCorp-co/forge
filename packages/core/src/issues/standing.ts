@@ -29,6 +29,7 @@ import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { withTimes } from '../lib/standing-times.js';
 import { answeredWait } from './answered-wait.js';
 import { releaseHoldWords } from './release-hold-words.js';
@@ -116,6 +117,8 @@ export interface IssueStandingInput {
   statusSince: Date;
   /** Whether a live master serves the project (`masters/read.ts:masterServingOf`). */
   master: MasterServing;
+  /** Who judges the project's criteria under its policy (`project-config/gates.ts:readVerifiedJudge`). */
+  judge: VerifiedJudge | null;
   now: Date;
 }
 
@@ -286,7 +289,7 @@ function personTurn(input: IssueStandingInput): Turn | null {
   if (status === 'draft') {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
     const blocker = input.blockedBy.find((b) => b.holds);
-    if (blocker) return blockerTurn(blocker);
+    if (blocker) return blockerTurn(blocker, input.judge);
     // the master takes a draft on or drops it (REQ-68: admission is an agent act), never its reader
     return {
       group: 'queued',
@@ -409,7 +412,7 @@ function turnOf(input: IssueStandingInput): Turn {
   }
   if (running) return runningTurn(input);
   const blocker = input.blockedBy.find((b) => b.holds);
-  if (blocker) return blockerTurn(blocker);
+  if (blocker) return blockerTurn(blocker, input.judge);
   const returned = input.designReturned;
   if (returned && TAKEABLE_STATUSES.includes(input.status)) {
     return {
@@ -423,11 +426,11 @@ function turnOf(input: IssueStandingInput): Turn {
       ),
     };
   }
-  const landed = landedWait(input.status, { merged: input.merged, step: input.step });
+  const landed = landedWait(input.status, input);
   if (landed) {
     return {
       group: 'queued',
-      waitingOn: wait('judge', landed.says.who, landed.says.act, landed.says.rule),
+      waitingOn: wait(landed.on, landed.says.who, landed.says.act, landed.says.rule),
     };
   }
   const withheld = withheldOf(input);
@@ -458,7 +461,7 @@ export function deriveIssueStanding(
     title: e.title,
     status: e.status,
     group: edgeGroups.get(e.id) ?? null,
-    landed: awaitsJudge(e),
+    landed: awaitsJudge(e, input.judge),
     designHold: SETTLED.includes(e.status) ? (e.designHold ?? null) : null,
   });
   return {

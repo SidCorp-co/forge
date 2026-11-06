@@ -45,6 +45,7 @@ const issueInput = (status: IssueStatus, master: MasterServing): IssueStandingIn
   withheld: null,
   statusSince: SENT_BACK,
   master,
+  judge: 'self',
   now: NOW,
 });
 

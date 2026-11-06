@@ -36,6 +36,7 @@ const atGate = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => (
   withheld: null,
   statusSince: now,
   master: 'serves',
+  judge: 'self',
   now,
   ...over,
 });

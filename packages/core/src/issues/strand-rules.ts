@@ -8,6 +8,7 @@ import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { say, sayEn } from '@forge/contracts/said';
 import type { WaitingSays } from '@forge/contracts/standing';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { IssueStatus } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import type { LeaseReading } from './session-claim.js';
@@ -111,6 +112,8 @@ export interface StrandEvidence {
   step?: WorkStep | null;
   /** What withholds a takeable row from dispatch, read by the admissible list's own predicates. */
   withheld?: StrandWithheld | null;
+  /** Who judges the project's criteria under its policy (`project-config/gates.ts:readVerifiedJudge`). */
+  judge: VerifiedJudge | null;
 }
 
 /** The gates the admissible list withholds a takeable row behind, as the sweep read them. */
@@ -195,17 +198,30 @@ export function heldReleaseWait(
   };
 }
 
-// a recorded landing moves no status (issue-lifecycle rev 8), so a landed row a run may take waits on
-// the run that claims it and judges what landed, never on the expired claim of the run that landed
-// it. The sweep's reason and the board's standing (`issues/standing.ts`) both read it here.
+// a recorded landing moves no status (issue-lifecycle rev 8). Where the project's policy declares an
+// independent judge, a landed row a run may take waits on the run that claims it and judges what
+// landed, never on the expired claim of the run that landed it. Where it declares none (`self`, or
+// the builder's own pass), nobody judges between the landing and the release (ISS-1068): a landed
+// open or approved row is the master's to move on to `awaiting_release`, and a landed row sent back
+// (`reopen`) is a fix round the master runs again, read by the rules below as any other reopen. The
+// sweep's reason and the board's standing (`issues/standing.ts`) both read it here.
 export function landedWait(
   status: string,
-  evidence: Pick<StrandEvidence, 'merged' | 'step'>,
-): { waitingFor: string; owes: StrandOwner; reason: string; says: WaitingSays } | null {
+  evidence: Pick<StrandEvidence, 'merged' | 'judge'>,
+): {
+  /** Whom the board names: the judging run, or the project's master. */
+  on: 'judge' | 'master';
+  waitingFor: string;
+  owes: StrandOwner;
+  reason: string;
+  says: WaitingSays;
+} | null {
   if (!evidence.merged) return null;
-  if (status === 'open' || status === 'approved' || status === 'reopen') {
+  if (status !== 'open' && status !== 'approved' && status !== 'reopen') return null;
+  if (evidence.judge === 'independent') {
     const rule = say('issues.rule.landed', { status });
     return {
+      on: 'judge',
       waitingFor: 'a run to claim it and judge what landed',
       owes: 'agent',
       reason: sayEn(rule),
@@ -216,7 +232,15 @@ export function landedWait(
       },
     };
   }
-  return null;
+  if (status === 'reopen') return null;
+  const rule = say('issues.rule.landedMaster', { status });
+  return {
+    on: 'master',
+    waitingFor: 'the master to move it on to awaiting_release',
+    owes: 'agent',
+    reason: sayEn(rule),
+    says: { who: say('standing.who.master'), act: say('issues.standing.act.moveOn'), rule },
+  };
 }
 
 /**

@@ -51,6 +51,7 @@ const input = (
   withheld: null,
   statusSince: now,
   master: 'serves',
+  judge: 'self',
   now,
   ...over,
 });

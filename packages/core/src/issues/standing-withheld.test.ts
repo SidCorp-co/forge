@@ -37,6 +37,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   withheld,
   statusSince: now,
   master: 'serves',
+  judge: 'self',
   now,
 });
 

@@ -9,6 +9,7 @@ import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueWithheld, IssueWithheldCode } from '@forge/contracts/issue-standing';
 import { type Said, say } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
+import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { StandingEdge, Turn } from './standing.js';
 import { wait } from './standing-wait.js';
 import { landedWait } from './strand-rules.js';
@@ -16,7 +17,9 @@ import { landedWait } from './strand-rules.js';
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
 const named = (name: string) => say('standing.who.named', { name });
 
-export const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
+/** A landed blocker waits on a judge only where the project's policy declares one (ISS-1068). */
+export const awaitsJudge = (e: StandingEdge, judge: VerifiedJudge | null) =>
+  landedWait(e.status, { merged: e.merged, judge })?.on === 'judge';
 
 const RUNNING = say('issues.standing.act.running');
 const NEEDS_PERSON = say('issues.standing.act.needsPerson');
@@ -44,9 +47,9 @@ export const LIVE_BLOCKER_ACT_KEYS: ReadonlySet<string> = new Set(
   [RUNNING, NEEDS_PERSON, PAUSED, CAME_BACK, NOT_STARTED, LANDED_WAITS_JUDGE].map((s) => s.key),
 );
 
-export function blockerTurn(blocker: StandingEdge): Turn {
+export function blockerTurn(blocker: StandingEdge, judge: VerifiedJudge | null): Turn {
   const design = SETTLED.includes(blocker.status) ? blocker.designHold : null;
-  const judged = awaitsJudge(blocker);
+  const judged = awaitsJudge(blocker, judge);
   return {
     group: 'stuck',
     waitingOn: wait(

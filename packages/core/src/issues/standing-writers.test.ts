@@ -55,6 +55,7 @@ const input = (status: IssueStatus, writers: string[]): IssueStandingInput => ({
   withheld: null,
   statusSince: now,
   master: 'serves',
+  judge: 'self',
   now,
 });
 
