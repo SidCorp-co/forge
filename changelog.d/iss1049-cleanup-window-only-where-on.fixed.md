@@ -1,1 +1,0 @@
-**Cleanup windows run only where a project turned one on.** Recording or reading debt no longer creates an enabled window; debt is still kept, and the ledger says plainly when no window is on and who turns one on.

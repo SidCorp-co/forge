@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.550] - 2026-11-06
+
+Owner sign-in checks the account; cleanup windows stay off and review what landed
+
+### Fixed
+
+- **Cleanup windows run only where a project turned one on.** Recording or reading debt no longer creates an enabled window; debt is still kept, and the ledger says plainly when no window is on and who turns one on.
+- **Cleanup windows review what landed.** A window that is on now starts a run whenever anything landed since its last report, guided by a new audit guide, and a direct batch lands once it builds and its related tests pass.
+- **Only the owner's own account signs in for him.** A product's sign-in now names the owner's account there; anyone else completing his link keeps nothing and records no consent, and a binding naming no owner starts no sign-in.
+
 ## [0.4.0-dev.549] - 2026-11-06
 
 Owner sign-in to a product stays fresh without signing in again

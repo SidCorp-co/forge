@@ -1,1 +1,0 @@
-**Cleanup windows review what landed.** A window that is on now starts a run whenever anything landed since its last report, guided by a new audit guide, and a direct batch lands once it builds and its related tests pass.
