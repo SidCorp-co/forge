@@ -87,3 +87,13 @@ describe('Audit is its own job, and what it finds goes back to Product', () => {
     expect(guide).toContain('returns what would change the product to Product as Feedback');
   });
 });
+
+describe('a person’s act that is a kernel step is described as that and nothing more', () => {
+  it('deploy safety names the production confirm as the kernel’s step where production does not deploy on land', async () => {
+    const guide = await served('deploy-safety');
+    expect(guide).toContain(
+      "Where the project's production does not deploy on land, a deploy reaching production parks on its run until a person confirms it.",
+    );
+    expect(guide).not.toContain("release stage's human-confirm gate");
+  });
+});

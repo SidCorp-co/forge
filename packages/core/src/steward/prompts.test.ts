@@ -22,4 +22,18 @@ describe('a steward act is told a goal, not a script', () => {
     expect(actPrompt('triage_draft')).toContain('Never decline an item');
     expect(actPrompt('output_check')).toContain('You never move an issue back');
   });
+
+  // ISS-1057 (owner direction, 2026-11-07): agents decide and execute on the record; an act the
+  // steward does not take is asked of whoever takes it, the master included, never framed as a
+  // person's by default
+  it('asks whoever owns an act, not a person by default', () => {
+    const stuck = actPrompt('stuck_diagnosis');
+    expect(stuck).toContain('Forge addresses each ask to whoever takes the act');
+    expect(stuck).toContain("the project's master where it holds it");
+    expect(stuck).not.toContain("What is a person's, asked with steward_decide");
+    expect(stuck).not.toContain('a person answers those');
+    const triage = actPrompt('triage_draft');
+    expect(triage).toContain('a decline takes feedback.approve, and is asked of whoever holds it');
+    expect(triage).not.toContain("a decline is a person's decision");
+  });
 });

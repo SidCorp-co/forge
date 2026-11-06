@@ -135,14 +135,14 @@ Only when it's reusable by a *different* agent on a *different* issue — a conv
     title: 'Deploy safety',
     summary:
       'Confirm before an outward-facing deploy, poll status in the foreground, and what a failed deployment means for status.',
-    version: 1,
+    version: 2,
     body: `## Deploy safety
 
 Deploys (\`POST /api/projects/:id/integrations/coolify/deploy\`, or \`forge coolify\`) are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
 
 ### Before you deploy
 - Confirm you're targeting the intended environment. An explicit integration/service scope is a hard filter — don't rely on defaults picking the right one, especially near a release, when it's easy to accidentally redeploy production mid-pipeline instead of a staging target.
-- A production deploy outside the release stage's human-confirm gate is a red flag, not a shortcut — don't bypass it just because you're blocked.
+- Where the project's production does not deploy on land, a deploy reaching production parks on its run until a person confirms it. That confirm is the kernel's step for such a project, not a stall to route around: a production deploy made outside it is a bypass, however blocked you are.
 
 ### While it runs — poll in the foreground
 A pipeline step is a single, one-shot turn: when it ends, the whole process group is killed, including anything you backgrounded. If you background the deploy-status poll and then end your turn, the job may report success or failure and you will never see it — the issue is left parked with no verification. Poll in the foreground so the turn blocks until you actually have the answer. If the wait would blow your time budget, hand off cleanly (comment + status) rather than backgrounding and exiting.
