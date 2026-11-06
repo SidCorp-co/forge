@@ -1,0 +1,1 @@
+**Activity is the one cross-project screen.** Ops and Home's Figures are gone and their links open Activity; Home keeps only what you asked for; live runs read one count everywhere; no Spend shows while every cost is $0.

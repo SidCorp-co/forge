@@ -1,0 +1,1 @@
+**The project Dashboard is Activity for one project.** Needs you, Moving, Shipped and Stuck in one grouped list, with an Audit line where cleanup runs. Retired figures, the onboarding banner, forecasts, the canvas and memory are gone; memory lives in Settings.

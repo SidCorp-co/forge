@@ -169,8 +169,13 @@ const REPORTS_ON = [
 const LEDGER_OFF = { fast: true, open: [], cleared: [], waiting: [], window: null, windowOff: "No cleanup window is on for this project." };
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+/** Every call the page sent, printed as `CALLS activity <n>` with the words. */
+const sent: string[] = [];
 window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://witness.test").pathname.replace(/^\/api/, "");
+  sent.push(path);
+  // the one live-run count the rail, Projects, Agents and Activity read (ISS-1069): Forge and epod run
+  if (path === "/projects/health") return json([{ id: "p-0", liveRuns: 2 }, { id: "p-1", liveRuns: 1 }]);
   if (path === `/orgs/${ORG}/activity`) return json(READ);
   if (path === "/orgs") return json([{ id: ORG, slug: "sidcorp", name: "SidCorp", isPersonal: false, role: "owner" }]);
   if (path === "/auth/me/preferences") return json({ activeOrgId: ORG });
@@ -264,6 +269,7 @@ const words = (name: string) => {
   if (!column) return;
   const { count, words: w } = firstScreenWords(column);
   console.log(`WORDS activity ${name} ${count} :: ${w.join(" ")}`);
+  console.log(`CALLS activity ${sent.length} :: ${sent.join(" | ")}`);
 };
 
 const closePop = async () => {

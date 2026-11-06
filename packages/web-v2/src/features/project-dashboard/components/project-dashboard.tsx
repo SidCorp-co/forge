@@ -23,7 +23,7 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { useRouter } from "@/lib/navigation/router";
 
 /** How many rows a group names: the newest releases, the first issues; the rest are one row to their own page. */
-export const DASHBOARD_ROWS = 5;
+export const DASHBOARD_ROWS = 3;
 
 type DashRow =
   | { kind: "decision"; d: NeedsYouDecision }
