@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.548] - 2026-11-06
+
+Masters build a large issue whole and release it once
+
+### Fixed
+
+- **A batch is at least a whole issue.** The master skill and dispatch guide now say one issue is never split across releases, and a criterion found red live goes into the next batch, never its own release.
+
 ## [0.4.0-dev.547] - 2026-11-06
 
 Support rooms can act in a connected product as the owner, with consent

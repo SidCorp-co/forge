@@ -1,1 +1,0 @@
-**A batch is at least a whole issue.** The master skill and dispatch guide now say one issue is never split across releases, and a criterion found red live goes into the next batch, never its own release.
