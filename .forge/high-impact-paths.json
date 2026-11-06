@@ -1,0 +1,129 @@
+{
+  "$why": "A change to shared logic, data, permissions or a kernel rule breaks what other work stands on, and a red there found only at the batch's merge check is found after other builders stacked work on it (ISS-1061; owner, 2026-11-07: check wide early on shared logic, billing, permissions or data). `pnpm test:changed` runs the direct core integration tests of a change touching any path below with no --integration, and prints the path and its reason. Patterns are repo-relative, `*` within a segment and `**` across; an entry matching no tracked file is refused by name.",
+  "paths": [
+    {
+      "pattern": "packages/core/drizzle/migrations/**",
+      "reason": "a migration changes the schema every query runs on, and only an integration test runs it over a real Postgres"
+    },
+    {
+      "pattern": "packages/core/src/db/schema*.ts",
+      "reason": "the Drizzle schema every query is typed against must match what the migrations build"
+    },
+    {
+      "pattern": "packages/core/src/db/kernel-marker.ts",
+      "reason": "the kernel's transaction flag is what the status triggers let through; a wrong one blocks or opens every status write"
+    },
+    {
+      "pattern": "packages/contracts/src/permissions.ts",
+      "reason": "the one permission vocabulary every can() check in core asks"
+    },
+    {
+      "pattern": "packages/core/src/permissions/**",
+      "reason": "who may act: roles, grants, memberships and the agent fence"
+    },
+    {
+      "pattern": "packages/core/src/lib/authz.ts",
+      "reason": "kernel rule pat_fence: an account route a fenced token may not reach (PAT_ACCOUNT_ROUTE)"
+    },
+    {
+      "pattern": "packages/core/src/credentials/pat*.ts",
+      "reason": "token verification, scope and grant narrowing: what a personal access token reaches"
+    },
+    {
+      "pattern": "packages/core/src/middleware/pat-*.ts",
+      "reason": "kernel rule pat_fence: a fenced token reaches only its own project (PAT_PROJECT_OUTSIDE_FENCE, PAT_ACCOUNT_ROUTE)"
+    },
+    {
+      "pattern": "packages/core/src/middleware/require-pat.ts",
+      "reason": "the door every token-authenticated request passes"
+    },
+    {
+      "pattern": "packages/core/src/middleware/declared-permission.ts",
+      "reason": "what each route and tool declares it needs, which the permission check enforces"
+    },
+    {
+      "pattern": "packages/core/src/requirements/issue-requirement-read.ts",
+      "reason": "kernel rule pat_fence: an issue's requirement read across a token's fence"
+    },
+    {
+      "pattern": "packages/core/src/workflows/issue-design-read.ts",
+      "reason": "kernel rule pat_fence: an issue's design read across a token's fence"
+    },
+    {
+      "pattern": "packages/contracts/src/state-machine.ts",
+      "reason": "every status machine as data: the edges the one kernel transition writes along"
+    },
+    {
+      "pattern": "packages/contracts/src/issue-machine.ts",
+      "reason": "the issue machine: its statuses, edges and the guards each edge names"
+    },
+    {
+      "pattern": "packages/core/src/lifecycle/**",
+      "reason": "the one kernel transition every status write goes through, and its gated-move record"
+    },
+    {
+      "pattern": "packages/contracts/src/gate-profiles.ts",
+      "reason": "KERNEL_RULES and the gate profiles: what no project setting can turn off"
+    },
+    {
+      "pattern": "packages/core/src/issues/transition-*.ts",
+      "reason": "kernel rule transition_evidence and run_holder: the issue transition guards and their refusals (ILLEGAL_TRANSITION, NOT_THE_HOLDER, NO_HOLDER)"
+    },
+    {
+      "pattern": "packages/core/src/issues/apply-transition.ts",
+      "reason": "kernel rule transition_evidence: where an issue move is applied through the machine"
+    },
+    {
+      "pattern": "packages/core/src/issues/recovery-move.ts",
+      "reason": "kernel rule transition_evidence: a recovery move held to the machine's legal edges"
+    },
+    {
+      "pattern": "packages/core/src/issues/fail-return.ts",
+      "reason": "kernel rule transition_evidence: a failed criterion's return move held to the machine's legal edges"
+    },
+    {
+      "pattern": "packages/core/src/issues/park-repoint.ts",
+      "reason": "kernel rule transition_evidence: a parked issue's move needs its reason (TRANSITION_REASON_REQUIRED)"
+    },
+    {
+      "pattern": "packages/core/src/issues/merged-at.ts",
+      "reason": "kernel rule merged: no awaiting_release without a recorded merge (MERGE_NOT_RECORDED, MERGE_DESIGN_ONLY)"
+    },
+    {
+      "pattern": "packages/core/src/issues/release-evidence.ts",
+      "reason": "kernel rule close_by_release: no close without a release that claimed the issue (CLOSE_ONLY_BY_RELEASE)"
+    },
+    {
+      "pattern": "packages/core/src/issues/filing-close-guard.ts",
+      "reason": "kernel rule close_by_release: a filing cannot close an issue that has not shipped (CLOSE_ONLY_BY_RELEASE)"
+    },
+    {
+      "pattern": "packages/core/src/issues/design-delivered-guard.ts",
+      "reason": "kernel rule close_by_release: a design-only issue closes only once its design is approved (DESIGN_NOT_DELIVERED)"
+    },
+    {
+      "pattern": "packages/core/src/release-batch/recorded-landing.ts",
+      "reason": "kernel rule close_by_release: the recorded landing a release claims before it closes an issue"
+    },
+    {
+      "pattern": "packages/core/src/beta-port/mirror.ts",
+      "reason": "kernel rule close_by_release: a beta mirror closes only what shipped (CLOSE_REQUIRES_SHIPPED)"
+    },
+    {
+      "pattern": "packages/core/src/issues/review-rules.ts",
+      "reason": "kernel rule review_by_builder: a recorded review is never the builder's own (REVIEW_BY_BUILDER)"
+    },
+    {
+      "pattern": "packages/core/src/issues/criteria/verdict-*.ts",
+      "reason": "kernel rule verdict_shape: a verdict names a known criterion and carries no secret (VERDICT_CRITERION_UNKNOWN, VERDICT_SECRET)"
+    },
+    {
+      "pattern": "packages/core/src/issues/criteria/event-verdicts.ts",
+      "reason": "kernel rule verdict_shape: verdicts read off events name a known criterion (VERDICT_CRITERION_UNKNOWN)"
+    },
+    {
+      "pattern": "packages/core/src/requirements/acceptance-rules.ts",
+      "reason": "kernel rule requirement_proven: a requirement reads delivered only where every criterion is proven (REQUIREMENT_CRITERIA_UNPROVEN, REQUIREMENT_NO_LIVE_ISSUE)"
+    }
+  ]
+}
