@@ -159,7 +159,8 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   release and never from `closed`. A criterion an issue cannot meet is moved out on the record before
   the close — to the next batch's issue, a new issue or the requirement — and the close names where
   each one went. Close an issue you hold yourself once it is met in scope, naming each criterion
-  it did not meet and where it goes in `unmet` on the move (below).
+  it did not meet and where it goes in `unmet` on the move (below). The next release carries it as
+  it stands at `closed`, on its roster beside the issues at `awaiting_release`.
 - **A defect found live is fixed forward on its own issue.** Reopen the issue that shipped it with
   `cause: "defect"` and its `evidence` beside the reason (`POST /api/issues/:id/transition`
   `{ toStatus: "reopen", reason, cause: "defect", evidence: { liveRead } }`, or `{ verdictId }` or

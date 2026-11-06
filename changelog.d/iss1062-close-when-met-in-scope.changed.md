@@ -1,1 +1,1 @@
-**An issue closes when its criteria are met in scope.** The run holding it closes it, moving each unmet criterion to an issue or the requirement; whether the work is live is read from the release record, never from `closed`.
+**An issue closes when its criteria are met in scope.** Its holder closes it, moving each unmet criterion elsewhere; the next release carries it as it stands, and whether work is live is read from the release record.

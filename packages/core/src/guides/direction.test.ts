@@ -228,6 +228,9 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     expect(guide).toContain('the close names where each one went');
     expect(guide).toContain('The run holding the issue closes it from `awaiting_release`');
     expect(guide).toContain('(`CLOSE_CRITERION_UNPLACED`)');
+    expect(guide).toContain(
+      'the release lists it on its roster, carries it as it stands at `closed`, and it reads released once that release has shipped',
+    );
     expect(guide).not.toContain("Today the kernel still makes a close the release's act");
     expect(guide).not.toContain('CLOSE_ONLY_BY_RELEASE`, the `closed` row below');
     expect(guide).not.toContain('**`closed` means the work shipped');

@@ -458,8 +458,8 @@ requirement — and the close names where each one went. **The run holding the i
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'closed', unmet: [{ criterion: 3, to: { issue: '<its key>' } }, { criterion: 4, to: 'requirement' }] }\`
 from \`awaiting_release\`, \`unmet\` left out where every criterion is met; a criterion whose newest
 verdict is a fail, or one named with nowhere to go, is refused \`CLOSE_CRITERION_UNPLACED\`. A
-release that claims an issue still at \`awaiting_release\` closes it too, and whether the work is live
-is read from that release's record, never from \`closed\`. On a project that
+release that claims an issue still at \`awaiting_release\` closes it too; one you closed it carries as
+it stands. Whether the work is live is read from that release's record, never from \`closed\`. On a project that
 declares no production environment that release is the recorded landing
 (\`POST /api/projects/:id/release-records\`): the agent's record in its own words, a version
 optional and a commit only evidence, never checked. The record reports each criterion by the pass

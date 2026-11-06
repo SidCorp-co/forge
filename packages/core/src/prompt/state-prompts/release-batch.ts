@@ -85,7 +85,8 @@ a step you could not complete, a procedure that does not fit what you actually f
 ### Policy
 - A finish closes the roster issue by issue once it is recorded: a \`finished\` attempt
   lists what it \`closed\` and what \`failed\` to close, and an abort landing mid-close leaves the
-  closed ones closed. Report both lists, each failure with its reason.
+  closed ones closed. An issue its holder already closed met in scope is carried as it stands and
+  listed closed. Report both lists, each failure with its reason.
 - The CHANGELOG entry is written in English. Everything else — comments, your report — goes in
   the language the project works in.
 - finish is idempotent: while an attempt is running, calling it again with the same \`commit\`
