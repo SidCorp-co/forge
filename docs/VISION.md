@@ -35,6 +35,11 @@ contribution is architecture, judgment, risk, complex debugging, and deciding wh
 proceed — not typing every change. A business user should create issues, clarify requirements and
 make product decisions without depending on a developer for each step.
 
+**The aim:** hand a whole outcome to an agent and get it into use with the least waiting. **The
+measure:** quality is read on real work by two figures together — delivery speed and release
+stability. Speed bought with unstable releases is not quality, and neither is stability bought with
+waiting (`measured-together-never-apart`).
+
 ### The loop
 
 **Product → Delivery → Release → Audit → Product**
@@ -42,10 +47,17 @@ make product decisions without depending on a developer for each step.
 **Product leads, Delivery conforms.** The **Product** says what is worth building: requirements,
 workflows and feedback — what is wanted, how it should flow, and what its users say. It is made
 exact first, and where the build and the Product disagree, the Product is corrected and the build
-conforms. **Delivery** builds to it fast, in batches: a batch is at least one whole issue, an issue is
-never split across releases, and a batch lands when it builds and the app answers. **Release** puts
-each batch live once, and one live judge reads its criteria on the running build; a criterion found
-red there goes into the next batch, never into a release of its own. **Audit** is its own job, not
+conforms. **Delivery** builds to it fast, in batches: an issue is one verifiable outcome, a batch is
+at least one whole issue, an issue is never split across releases, and a batch lands when it builds
+and the app answers. Verification follows the blast radius: narrow checks sit next to the fix, wide
+ones run on the integrated build at the release mark, and a change that touches shared logic,
+billing, permissions or data is checked wide early. The fix does only what bounds its own impact or
+proves it; cleanup that can stand alone is recorded as debt for the Audit, never done inside the fix.
+An issue closes when its criteria are met in scope. **Release** puts each batch live once, and one
+live judge reads its criteria on the running build; released and confirmed on the target environment
+are marks on the release, never issue statuses, so "is it live" is read from the release and never
+from a closed issue. A criterion the live judge finds red goes into the next batch, never into a
+release of its own. **Audit** is its own job, not
 the tail of delivery: after a period of running it reads what landed and how it ran — debt, defects,
 logic left unsimplified, patterns that no longer fit, and real use — and what it finds returns to the
 Product as the next round's items and as lessons. Build fast first; once it runs, clean the debt while
@@ -70,7 +82,13 @@ the item that decision shapes: the requirement, the workflow, the design or the 
 brought in only for a decision serious enough to need one — irreversible, real money, credentials,
 product direction — and the agent judges which decisions those are. A routine approval is a defect, not a safeguard:
 it puts a person back in the chain this loop exists to remove. How much control a project keeps is
-policy a person sets (`strict`), never the default (owner ruling, 2026-10-31).
+policy a person sets (`strict`), never the default (owner ruling, 2026-10-31). While a decision waits
+on a person, the agent goes on with the part that does not depend on it.
+
+**One agent may carry an outcome end to end**: it investigates, fixes, checks, and brings the fix to
+the integration mark. An independent reviewer or specialist comes in only where the kind of work
+needs one. **Authority widens by results**: when an agent reliably handles a step that used to need
+supervision, that step is loosened on the data and the permission is widened.
 
 Every product decision should strengthen the ability to operate more software with less unnecessary
 human work, while preserving correctness, accountability, and trust.
@@ -168,7 +186,9 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
    that asked for it, the batch that delivered it, the release that put it live, and the audit that
    read how it ran.
 6. **issue-is-the-currency** — every decision, execution, evidence and outcome traces to an issue.
-   No important work depends on chat folklore.
+   No important work depends on chat folklore. An issue is one verifiable outcome: the agent splits
+   and groups the work inside it, and files a separate issue only for priority, a handoff or
+   independent tracking.
 7. **pipelines-configurable-not-prescribed** — Forge provides lifecycle primitives and guarantees;
    projects define policy.
 8. **memory-must-be-trustworthy** — memory is part of the lifecycle's learning loop, not passive
@@ -176,14 +196,16 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
 9. **requirement-leads-delivery** — the Product (requirements, workflows, feedback) says what is
    expected, and it is made right first; Delivery conforms to it. Where what was built and what is
    expected disagree, the requirement or the workflow is corrected and recorded, never left to drift
-   behind the code. Work is delivered when a criterion it names holds on the running build, read by
-   the live judge after its batch's release, not when it lands. Cleaning what it left is the Audit's,
-   in the cleanup window, and never holds the landing.
+   behind the code. An issue closes when the criteria it names are met in scope; a criterion it
+   cannot meet is moved out on the record first — to the next batch's issue, a new issue or the
+   requirement — so nothing unfinished is lost. Released and confirmed on the target environment are
+   marks on the release, read there and never from `closed`. Cleaning what the work left is the
+   Audit's, in the cleanup window, and never holds the landing.
 
 ### Who acts
 
 10. **agents-and-humans-share-the-lifecycle** — not separate workflows. The system decides who acts
-    next by capability, context and authority.
+    next by capability, context and authority, and authority widens on the record of results.
 11. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: the
     agent decides and records, and **a person is brought in only for a decision serious enough to
     need one** — irreversible, real money, credentials, product direction. A routine approval is a
@@ -232,7 +254,7 @@ not taken, and a document that prices everything except itself has taken one unp
 | One instance, one tenant | you install, upgrade, back up and monitor it, once per team. No shared plane absorbs an outage on your behalf, and nobody else's upgrade fixes your instance |
 | `issue-is-the-currency` | work that would have been a message becomes an issue with a state and an audit trail. On the day you only wanted a quick fix, that discipline is friction — and it is the product, not an accident of it |
 | `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf |
-| `state-never-lies` | evidence takes time, and it is paid after the landing rather than before it. A batch that builds and passes the tests related to its changes lands; the whole suite runs after the push and a red is fixed forward in the next batch; a live judge reads the criteria on the running build; and what the batch still owes is recorded as debt for the audit — never reported as done before it is |
+| `state-never-lies` | evidence takes time, and it is paid after the landing rather than before it. A batch that builds and passes the tests related to its changes lands, checked wide early only where it touches shared logic, billing, permissions or data; the whole suite runs after the push and a red is fixed forward in the next batch; a live judge reads the criteria on the running build and the release records it; and what the batch still owes is recorded as debt for the audit — never reported as released or confirmed before it is |
 | `route-judgment-not-bottlenecks` | agents will decide things you would have decided differently, and you are not asked first unless it is irreversible, real money, credentials or product direction. Every decision is recorded where it shapes the product, so it can be read and reversed; a project that wants a person on more of them sets `strict` and pays in waiting |
 | `trust-gates-capability` | capability whose value is obvious to you waits behind kernel work you did not ask for. Reach is earned rather than scheduled, which means asking for it does not move it |
 | Apache-2.0 core | nobody is contractually on the hook for it. No warranty, no support you have not arranged, and a fork you diverge is a fork you maintain — the licence that makes it yours to run is the licence that makes it yours to carry |

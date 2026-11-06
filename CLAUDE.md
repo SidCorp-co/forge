@@ -23,7 +23,10 @@ the batch splits into parallel builders on disjoint files. Each builder proves w
 running it and runs `pnpm test:changed` over its own tree: `pnpm tc:changed`'s typecheck and only
 the DIRECT tests of what it touched (a test touched, a test importing a touched file, a test
 declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
-the same way), never a whole suite. The batch then runs ONE gate: `pnpm verify` — the conformance
+the same way), never a whole suite. Verification follows the blast radius, not the line count: a
+change that touches shared logic, billing, permissions or data is checked wide early, by its builder
+— `--integration` and the whole suite of the module it shares — instead of waiting for the wide check
+at the release mark. The batch then runs ONE gate: `pnpm verify` — the conformance
 entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` over the batch rebased onto
 the latest `dev`, which refuses a branch behind its base (`MERGE_BEHIND_BASE`) and a claimed
 criterion's probe missing or red (`MERGE_PROBE_MISSING`, `MERGE_PROBE_RED`). Its report is recorded
@@ -100,12 +103,19 @@ Which gate owns what, and what each rule was born from: **[`scripts/README.md`](
 
 ## Doing the work
 
-**Take the complete fix and pay the larger workload for it.** Where a smaller change and a whole
-one both close the issue, the whole one is the deliverable; effort is not a reason to defer
-structural work, and a workaround that becomes routine is a defect. **The bound is the ownership
-line** — no merging or reverting a shared branch, no doing another issue's work, no silently
-overriding a human's decision. Inside it is yours whether or not it is in your AC; the first thing
-outside is not, however cheap.
+**An issue is one verifiable outcome, and one agent may carry it end to end** — investigate, fix,
+check, and bring the fix to the integration mark. You split and group the work inside it; a separate
+issue is filed only for priority, a handoff or independent tracking. An independent reviewer or
+specialist comes in only where the kind of work needs one, and while a decision waits on a person you
+go on with the part that does not depend on it. A small fix with a clear blast radius goes on without
+waiting for anyone.
+
+**The fix does what bounds its own impact or proves it, and nothing else.** The guard that keeps the
+change from reaching further, the migration it needs, the test that goes red without it: those are
+the fix, whatever they cost. A workaround that becomes routine is a defect. Cleanup that can stand
+alone is not done inside the fix — it is recorded as debt for the Audit (*A defect you see has a
+place*, below). **The bound is the ownership line** — no merging or reverting a shared branch, no
+doing another issue's work, no silently overriding a human's decision.
 
 **A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test: each
 is an amnesty, and it names what was traded, what it costs, and the condition that ends it.
@@ -114,10 +124,14 @@ is an amnesty, and it names what was traded, what it costs, and the condition th
 (`VISION: requirement-leads-delivery`). The Product is requirements, workflows and feedback: work
 names the requirement and criteria it delivers, and where the expectation is wrong or missing, the
 requirement or workflow is revised first and then built to. Delivery conforms, in the batches above.
-Release is one per batch, then one live judge, and done means a named criterion holds on the running
-build. Audit is its own job in the cleanup window, apart from delivery: it reads what landed and how
-it ran, and what it finds returns to the Product. Old code the work touches is cleaned inside that
-work.
+Audit is its own job in the cleanup window, apart from delivery: it reads what landed and how it ran,
+and what it finds returns to the Product.
+
+**Three marks, never conflated.** An issue closes when its criteria are met in scope. Released, and
+confirmed on the target environment by the one live judge after the batch's release, are marks on
+the release, never issue statuses: "is it live" is read from the release record, never from
+`closed`. A criterion the issue cannot meet is moved out on the record before the close — to the next
+batch's issue, a new issue or the requirement — and the close names where each one went.
 
 **Before you change behaviour, know what you are replacing.** Requirement, design, the old logic
 this supersedes, the cleanup that removes it — code shipping beside what it replaced leaves two
@@ -150,15 +164,22 @@ run, state, transition, evidence, retry, escalation — has zero tolerance. **Po
 normalize, but an unreported normalization is a guess. A wrong use already load-bearing in the
 field is a priced amnesty named with its issue and the condition that ends it.
 
-### There is no "already red"
+### A defect you see has a place
 
-**A defect you have seen may not leave your hands labelled "not mine".** In reach and inside the
-ownership line → **fix it, whoever caused it**. Out of reach → it leaves as someone's work by one
-of the routes `.forge/orientation.md` names, never as a new issue.
+**A defect you have seen may not leave your hands labelled "not mine" and recorded nowhere.** It goes
+to exactly one of three places:
 
-**Disclosure is not a discharge.** A step that names a defect and ships anyway is a failed step —
-honesty used in place of repair. "Pre-existing", "untouched" and "out of scope" are reasons to
-**record**, never reasons to go quiet or to go green.
+- **The fix needs it**, to bound its impact or to prove itself → **fix it**, whoever caused it.
+- **It stands alone** → record it as debt for the Audit, with its evidence:
+  `POST /api/projects/:id/debts` (`red`, `debt` or `simplify`, where, what, and its impact). It is
+  not done inside the fix. A red rated high is refused as debt and stays the issue's to fix
+  (`packages/core/src/cleanup/rules.ts:debtRefusals`), and so is everything on a project that turned fast delivery off.
+- **Out of reach** → routed to whoever owns it, by one of the routes the Forge orientation in
+  `CLAUDE.local.md` names.
+
+**Disclosure alone is not a discharge.** A defect recorded on the debt ledger is discharged to the
+Audit; a defect only mentioned in a comment is not. "Pre-existing", "untouched" and "out of scope"
+are reasons to **record**, never reasons to go quiet or to go green.
 
 **An issue that does leave is written to the mechanism**: the title is the root cause, the symptom
 is evidence attached to it and never its Outcome. A fix that cannot be shown closing a reproduced
@@ -175,8 +196,8 @@ records the coupling.
 
 **A defect there leaves as an issue there, and you do not edit that repo from a job in this one** —
 a verb that refuses wrongly, a missing way out, a skill naming something this repo no longer has.
-Name it in your comment under `Extra fixes:` as **reported**, not fixed. This is the single
-exception to *fix-it-now*, and it is a boundary rather than an amnesty: the two repos ship on
+Name it in your comment under `Extra fixes:` as **reported**, not fixed — even when the fix
+here needs it. It is the out-of-reach route made absolute, and a boundary rather than an amnesty: the two repos ship on
 different clocks, so a change landing there from here is one no gate here has seen and no reviewer
 there asked for.
 
