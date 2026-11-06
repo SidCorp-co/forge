@@ -100,6 +100,8 @@ const projectOf = (p: Mock, i: number): OrgActivityProject => {
     peoplePending: false,
     release: null,
     releasePending: false,
+    // AdminHub API's release was cut and is deploying (ISS-1051): its release column shows the run
+    releasing: p.n === "AdminHub API" ? { version: "0.14.0", stage: "deploying", since: at("08:58") } : null,
     awaitingRelease: 0,
     lane: {
       from: FROM,
@@ -121,6 +123,51 @@ const READ: OrgActivity = {
   totals: { projects: projects.length, ...(Object.fromEntries(ORG_ACTIVITY_GROUPS.map((g) => [g, projects.filter((p) => p.group === g).length])) as Record<(typeof ORG_ACTIVITY_GROUPS)[number], number>) },
 };
 
+/** AdminHub API's cleanup (ISS-1051): a window on, two debts open, a red report clearing one of three. */
+const DEBT = (id: string, where: string, cleared: boolean) => ({
+  id,
+  issueId: null,
+  issueKey: null,
+  kind: "debt",
+  check: null,
+  where,
+  detail: `Left behind in ${where}`,
+  impact: { type: "logic", rating: "low", reason: "contained" },
+  recordedBy: null,
+  recordedAt: at("07:00"),
+  cleared: cleared ? { reportId: "r-1", how: "split the module", at: at("06:30") } : null,
+  carried: null,
+  evidence: [],
+});
+const LEDGER_ON = {
+  fast: true,
+  open: [DEBT("d-2", "src/orders/export.ts", false), DEBT("d-3", "src/catalog/sync.ts", false)],
+  cleared: [DEBT("d-1", "src/auth/session.ts", true)],
+  waiting: [],
+  window: { scheduleId: "sch-1", cron: "0 18 * * *", timeZone: null, enabled: true, nextRunAt: new Date(NOW + 9 * 3_600_000).toISOString() },
+  windowOff: null,
+};
+const REPORTS_ON = [
+  {
+    id: "r-1",
+    fireId: null,
+    base: { branch: "dev", sha: "a".repeat(40) },
+    result: "red",
+    ci: null,
+    cleared: [{ debt: "d-1", how: "split the module" }],
+    remains: [
+      { debt: "d-2", why: "needs the export rewrite" },
+      { debt: "d-3", why: "waits on the sync contract" },
+    ],
+    covers: [],
+    reportedBy: null,
+    reportedAt: new Date(NOW - 15 * 3_600_000).toISOString(),
+    supersededBy: null,
+  },
+];
+/** AdminHub FE: no window on, nothing recorded. */
+const LEDGER_OFF = { fast: true, open: [], cleared: [], waiting: [], window: null, windowOff: "No cleanup window is on for this project." };
+
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://witness.test").pathname.replace(/^\/api/, "");
@@ -128,6 +175,10 @@ window.fetch = async (input: RequestInfo | URL) => {
   if (path === "/orgs") return json([{ id: ORG, slug: "sidcorp", name: "SidCorp", isPersonal: false, role: "owner" }]);
   if (path === "/auth/me/preferences") return json({ activeOrgId: ORG });
   if (path === "/projects") return json([]);
+  if (path === "/projects/p-3/debts") return json(LEDGER_ON);
+  if (path === "/projects/p-3/cleanup-reports") return json({ reports: REPORTS_ON });
+  if (path === "/projects/p-4/debts") return json(LEDGER_OFF);
+  if (path === "/projects/p-4/cleanup-reports") return json({ reports: [] });
   // a read no fixture answers stays in flight, drawing its loading state
   return new Promise<Response>(() => {});
 };
@@ -254,6 +305,38 @@ const popStage = (name: string, sel: string, t: "light" | "dark", nth = 0) => ({
   },
 });
 
+/** Opens a project's peek by its name, and measures what the peek draws. */
+const peekStage = (slug: string, t: "light" | "dark", name: string, open: string[] = []) => ({
+  name: `${name}-${t}`,
+  run: async () => {
+    await closePop();
+    theme(t);
+    const project = q(`[data-testid=list-row][data-key=${slug}] [data-testid=activity-name]`)?.textContent ?? "";
+    const shown = q("[data-testid=activity-peek]");
+    // a click on the name of the project already open closes its peek
+    if (!shown?.textContent?.includes(project)) {
+      const link = q(`[data-testid=list-row][data-key=${slug}] [data-testid=activity-name]`);
+      if (!link) return [`no ${slug} to open`];
+      link.click();
+    }
+    await pause(600);
+    const peek = q("[data-testid=activity-peek]");
+    if (!peek) return [`${slug} opened no peek`];
+    for (const sel of open) {
+      const toggle = peek.querySelector<HTMLElement>(sel);
+      if (!toggle) return [`the peek has no ${sel}`];
+      toggle.click();
+      await pause(300);
+    }
+    peek.scrollTo?.(0, peek.scrollHeight);
+    for (const el of peek.querySelectorAll<HTMLElement>("*")) if (el.scrollHeight > el.clientHeight + 4) el.scrollTo(0, el.scrollHeight);
+    await pause(250);
+    const { count, words: w } = firstScreenWords(peek, { whole: true });
+    console.log(`WORDS activity ${name}-${t} ${count} :: ${w.join(" ")}`);
+    return [...sideways(), ...contrast("[data-testid=activity-peek]")];
+  },
+});
+
 window.__witness = {
   cases: [
     { name: "wide-1440", width: 1440 },
@@ -283,6 +366,11 @@ window.__witness = {
         return tip && getComputedStyle(tip).display !== "none" ? [] : ["a focused batch shows no summary"];
       },
     },
+    ...(["light", "dark"] as const).flatMap((t) => [
+      peekStage("s-3", t, "peek-releasing"),
+      peekStage("s-3", t, "peek-cleanup-open", ["[data-testid=cleanup-report] summary", "[data-testid=cleanup-debts] summary"]),
+      peekStage("s-4", t, "peek-cleanup-off"),
+    ]),
     {
       name: "releases-only-light",
       run: async () => {

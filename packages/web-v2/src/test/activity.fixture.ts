@@ -1,6 +1,7 @@
 // The workspace Activity read the web tests stand core in with (ISS-951, ISS-979): projects in each
 // group, a lane with runs, a batch, two releases and two waits, and a Recent list.
 
+import type { CleanupReportView, DebtLedgerView } from "@forge/contracts/cleanup";
 import {
   ORG_ACTIVITY_GROUPS,
   type OrgActivity,
@@ -51,6 +52,7 @@ export const project = (over: Partial<OrgActivityProject> & Pick<OrgActivityProj
     peoplePending: false,
     release: null,
     releasePending: false,
+    releasing: null,
     awaitingRelease: 0,
     lane: LANE_EMPTY,
     lastActivityAt: null,
@@ -162,11 +164,29 @@ export const RECENT: OrgActivityRecent = {
   ],
 };
 
-/** Core over `fetch`: the workspace read, and Forge's Recent list. */
-export function serve(body: OrgActivity) {
+/** A project's debt ledger with no window on and nothing recorded: what a project never set up reads. */
+export const LEDGER_NONE: DebtLedgerView = {
+  fast: true,
+  open: [],
+  cleared: [],
+  waiting: [],
+  window: null,
+  windowOff: "No cleanup window is on for this project, so no cleanup run starts here.",
+};
+
+/** Core over `fetch`: the workspace read, Forge's Recent list, and each project's cleanup (ISS-1051). */
+export function serve(
+  body: OrgActivity,
+  cleanup: Record<string, { ledger: DebtLedgerView; reports: CleanupReportView[] }> = {},
+) {
   return fakeCore((call) => {
     if (call.path === `/orgs/${ORG}/activity`) return { body };
     if (call.path === `/orgs/${ORG}/activity/p-forge/recent`) return { body: RECENT };
+    const at = /^\/projects\/([^/]+)\/(debts|cleanup-reports)$/.exec(call.path);
+    if (at) {
+      const c = cleanup[at[1] ?? ""] ?? { ledger: LEDGER_NONE, reports: [] };
+      return { body: at[2] === "debts" ? c.ledger : { reports: c.reports } };
+    }
     return undefined;
   });
 }

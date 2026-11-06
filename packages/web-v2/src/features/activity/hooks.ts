@@ -69,3 +69,26 @@ export function useProjectRecent(orgId: string | null, projectId: string, open: 
     enabled: Boolean(orgId) && open,
   });
 }
+
+/** The root of a project's cleanup row: its own, for the reason Recent has its own (ISS-1051). */
+export const ORG_ACTIVITY_CLEANUP_ROOT = "org-activity-cleanup";
+
+/**
+ * One project's cleanup, read once its peek is open (ISS-1051): the ledger's window and open debt,
+ * and its newest current report, from the two reads the project's own doors serve.
+ */
+export function useProjectCleanup(projectId: string, open: boolean) {
+  const ledger = useQuery({
+    queryKey: [ORG_ACTIVITY_CLEANUP_ROOT, projectId, "ledger"],
+    staleTime: 0,
+    queryFn: () => activityApi.ledger(projectId),
+    enabled: open,
+  });
+  const reports = useQuery({
+    queryKey: [ORG_ACTIVITY_CLEANUP_ROOT, projectId, "reports"],
+    staleTime: 0,
+    queryFn: () => activityApi.cleanupReports(projectId),
+    enabled: open,
+  });
+  return { ledger, reports };
+}

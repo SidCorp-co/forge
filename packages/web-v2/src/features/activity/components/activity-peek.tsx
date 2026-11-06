@@ -1,18 +1,22 @@
 // One project's activity beside the list (ISS-951, MK-8 and MK-9): what its master's pane does and
 // the dialog it is stopped on, what is in flight at its step, its backlog and why its last pass took
-// none of it, what waits on the reader (a question by its own words), its next release, and a Recent
-// list read only when opened. Titles and words a person reads; a record's key only in a link or a
+// none of it, what waits on the reader (a question by its own words), its release in flight or else
+// its next release, its cleanup (ISS-1051), and a Recent list read only when opened. Titles and words a person reads; a record's key only in a link or a
 // tooltip, never as text (ISS-951 round 4, the owner's UI rule), and never an id.
 
-import type { OrgActivityEvent, OrgActivityProject, OrgActivityRelease } from "@forge/contracts/org-activity";
+import type { OrgActivityEvent, OrgActivityProject, OrgActivityRelease, OrgActivityReleasingStage } from "@forge/contracts/org-activity";
 import { type ReactNode, useState } from "react";
 import { EnumBadge, enumLabel, type FullPage, LEGEND, PeekHead, PeekPanel, type PeekState, RowItem, RowList, StatusBadge, statusReading } from "@/design";
 import { useCopy, useCopyLocale, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import { formatAge } from "@/lib/utils/format";
 import { useProjectRecent } from "../hooks";
+import { CleanupPart } from "./cleanup";
 import { answerHref } from "./marks";
 import { Doing, PaneMark } from "./pane";
+
+/** A release run in flight's stage, in the legend's tones: running until it shipped. */
+const RELEASING_TONE: Record<OrgActivityReleasingStage, "run" | "ready"> = { cut: "run", deploying: "run", shipped: "ready" };
 
 /** Shipped (solid) over shipped-or-awaiting (lighter), and `shipped/total`; the scope's name on hover. */
 export function ReleaseBar({ release }: { release: OrgActivityRelease }) {
@@ -202,7 +206,16 @@ export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivity
           {null}
         </Part>
       ) : null}
-      {row.release || row.releasePending ? (
+      {row.releasing ? (
+        <Part label={t("activity.release.inFlight")} count={0}>
+          <div className="flex items-center justify-between gap-3" data-testid="activity-releasing" data-stage={row.releasing.stage}>
+            <span className="min-w-0 truncate font-mono text-13">{row.releasing.version}</span>
+            <span className="text-12 font-medium" style={{ color: LEGEND[RELEASING_TONE[row.releasing.stage]].fg }}>
+              {t(`activity.release.stage.${row.releasing.stage}`)}
+            </span>
+          </div>
+        </Part>
+      ) : row.release || row.releasePending ? (
         <Part label={t("activity.release.next")} count={0}>
           {row.release ? (
             <div className="flex items-center justify-between gap-3" data-testid="activity-release">
@@ -214,6 +227,7 @@ export function ActivityPeek({ row, orgId, peek, full, now }: { row: OrgActivity
           )}
         </Part>
       ) : null}
+      <CleanupPart projectId={row.projectId} now={now} />
       <Recent orgId={orgId} projectId={row.projectId} />
       <div className="pb-4" />
     </PeekPanel>

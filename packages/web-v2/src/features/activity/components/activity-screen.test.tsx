@@ -24,7 +24,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ADMINHUB, AHAPI, CATALOG, FORGE, master, ORG, QUESTION_ID, QUIET, RECENT, read, SILENT, serve } from "@/test/activity.fixture";
+import { ADMINHUB, AHAPI, CATALOG, FORGE, LEDGER_NONE, master, ORG, QUESTION_ID, QUIET, RECENT, read, SILENT, serve } from "@/test/activity.fixture";
 import { fakeCore, HANG, renderWithQuery } from "@/test/render";
 
 const rooms: string[] = [];
@@ -264,6 +264,9 @@ describe("the peek's Recent list", () => {
         const path = new URL(input, "http://forge.test").pathname.replace(/^\/api/, "");
         calls.push(path);
         if (path === `/orgs/${ORG}/activity`) return json(read([FORGE]));
+        // the peek's cleanup row reads the project's own ledger and reports (ISS-1051)
+        if (path.endsWith("/debts")) return json(LEDGER_NONE);
+        if (path.endsWith("/cleanup-reports")) return json({ reports: [] });
         // Recent takes longer than the room's frames come
         await new Promise((r) => setTimeout(r, 600));
         return json(RECENT);
