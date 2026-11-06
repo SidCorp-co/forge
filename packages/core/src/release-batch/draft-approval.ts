@@ -128,6 +128,24 @@ export async function standingDraftApproval(
 }
 
 /**
+ * Whether an approver's standing decision approves exactly this roster (ISS-1075): the latest draft
+ * decision on the project, read whatever version it named, approves when it is `approved` and was
+ * given for the same issues. What waited on a required approval reads it.
+ */
+export async function rosterApproved(
+  projectId: string,
+  roster: readonly string[],
+): Promise<boolean> {
+  const [latest] = await db
+    .select()
+    .from(releaseDraftApprovals)
+    .where(eq(releaseDraftApprovals.projectId, projectId))
+    .orderBy(desc(releaseDraftApprovals.decidedAt), desc(releaseDraftApprovals.id))
+    .limit(1);
+  return !!latest && latest.decision === 'approved' && sameRoster(latest.issueIds, roster);
+}
+
+/**
  * A listed approver's decision on the draft `version`, recorded for the roster waiting at the gate.
  * Refused by name: an actor not holding releases.approve, a carry (a draft is judged by no
  * checklist, so nothing on it is carried), and whatever `draftDecisionRefusal` refuses.

@@ -196,8 +196,8 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 	},
 	"release.record": {
 		serious: false,
-		why: "recording a landing as the delivery is bookkeeping on what already landed, which the master's record door takes outside strict (REQ-79 r6 BC-17)",
-		personWhen: [STRICT],
+		why: "recording a landing as the delivery is bookkeeping on what already landed, which the master's record door takes outside strict (REQ-79 r6 BC-17); where the project requires a person's release approval it closes the release's issues, so it waits on that approval and is the master's once it stands",
+		personWhen: [STRICT, RELEASE_APPROVAL],
 		byContent: true,
 	},
 	"release.split": {
@@ -237,6 +237,9 @@ export interface OwedPolicy {
 export interface OwedContent {
 	/** What it carries that cannot be undone, as each change's release note says (`ReleaseNotes.irreversible`). */
 	irreversible: readonly string[];
+	/** Whether a person's release approval the project requires already stands for this roster: then
+	 * the approval switch is satisfied, and what waited on it is the master's again. */
+	approved?: boolean;
 }
 
 export type OwedBy =
@@ -286,7 +289,11 @@ export function whoOwes(
 			why: `it carries what cannot be undone: ${irreversible.join("; ")}`,
 		};
 	}
-	const on = rule.personWhen.find((s) => switchOn(s, policy));
+	const on = rule.personWhen.find(
+		(s) =>
+			switchOn(s, policy) &&
+			!(s.kind === "release_approval" && content?.approved === true),
+	);
 	if (on)
 		return { by: "person", because: "policy", why: SWITCH_SAID[on.kind](on) };
 	return { by: "master", why: rule.why };

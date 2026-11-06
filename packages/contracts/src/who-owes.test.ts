@@ -102,6 +102,25 @@ describe("who owes an act (ISS-1058): one table, serious or routine", () => {
 		// the approval switch keeps the approval, never the cut or the split
 		expect(whoOwes("release.cut", approval).by).toBe("master");
 		expect(whoOwes("release.split", approval).by).toBe("master");
+		// recording the landing closes the release's issues, so it waits on the required approval
+		// and is the master's once that approval stands for the roster (ISS-1075)
+		expect(
+			whoOwes("release.record", approval, { irreversible: [] }),
+		).toMatchObject({
+			by: "person",
+			because: "policy",
+		});
+		expect(
+			whoOwes("release.record", approval, { irreversible: [], approved: true })
+				.by,
+		).toBe("master");
+		expect(
+			whoOwes(
+				"release.record",
+				{ ...OPEN, strict: true },
+				{ irreversible: [], approved: true },
+			).by,
+		).toBe("person");
 		const strict = { ...OPEN, strict: true };
 		for (const kind of [
 			"release.split",

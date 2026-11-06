@@ -10,6 +10,7 @@ import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { readOwedPolicy } from '../project-config/index.js';
+import { rosterApproved } from './draft-approval.js';
 
 /** Who owes a release act of one release: read with that release's content. */
 export type ReleaseOwes = (kind: OwedActKind) => OwedBy;
@@ -21,9 +22,9 @@ export function irreversibleOf(notes: readonly (ReleaseNotes | null | undefined)
 
 /** The one rule bound to a project's policy and one release's content. */
 export const releaseOwesOf =
-  (policy: OwedPolicy, irreversible: readonly string[]): ReleaseOwes =>
+  (policy: OwedPolicy, irreversible: readonly string[], approved = false): ReleaseOwes =>
   (kind) =>
-    whoOwes(kind, policy, { irreversible });
+    whoOwes(kind, policy, { irreversible, approved });
 
 /** The rule for a roster not yet read with its facts (a draft's gates): its notes are read here. */
 export async function readReleaseOwes(
@@ -39,5 +40,7 @@ export async function readReleaseOwes(
           .from(issues)
           .where(inArray(issues.id, [...issueIds])),
   ]);
-  return releaseOwesOf(policy, irreversibleOf(rows.map((r) => r.releaseNotes)));
+  // a required approval that already stands for this roster frees what waited on it (ISS-1075)
+  const approved = policy.releaseApproval && (await rosterApproved(projectId, issueIds));
+  return releaseOwesOf(policy, irreversibleOf(rows.map((r) => r.releaseNotes)), approved);
 }

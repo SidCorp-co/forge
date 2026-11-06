@@ -240,3 +240,38 @@ describe('ISS-869: a release with no production is decided as a draft by its lis
     expect((await draft()).draftApproval).toBeNull();
   });
 });
+
+// ISS-1075 (FB-543): autoflow requires a person's release approval and declares no production. Its
+// 0.1.0 offered "record the landing" to the master, which closes the release's issues before the
+// approver decided. The record is the approver's until the approval stands, then the master's.
+describe('ISS-1075: a record that a required approval holds', () => {
+  beforeEach(async () => {
+    await seedLandedWorld({ verdictsRequired: false, approvalRequired: true });
+  });
+
+  const recordOwner = async (token = world.token) => {
+    const listed = await api(token, 'GET', `/api/projects/${world.projectId}/releases`);
+    const version = (listed.body.releases as Array<{ version: string; state: string }>).find(
+      (r) => r.state === 'draft',
+    )?.version as string;
+    const res = await api(token, 'GET', `/api/projects/${world.projectId}/releases/${version}`);
+    const gate = (
+      res.body.release as { gates: Array<{ code: string; owner: { kind: string } }> }
+    ).gates.find((g) => g.code === 'NO_RELEASE_GATE');
+    return { version, kind: gate?.owner.kind };
+  };
+
+  it('names the approver for the record, owes the master nothing, and is the master’s once approved', async () => {
+    await landedIssue(5, F4);
+    const before = await recordOwner();
+    expect(before.kind, 'the master was offered a record the approval holds').toBe('person');
+    const { releaseActsOwed } = await import('../../src/release-batch/master-owed-acts.js');
+    const owed = JSON.stringify(await releaseActsOwed(world.projectId));
+    expect(owed).not.toContain('record the landing');
+
+    expect(
+      (await decide(world.token, before.version, { decision: 'approve', reason: 'ok' })).status,
+    ).toBe(201);
+    expect((await recordOwner()).kind).toBe('agent');
+  });
+});

@@ -147,7 +147,7 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,
-    owes: releaseOwesOf(s.policy, irreversibleIn(p, s)),
+    owes: releaseOwesOf(s.policy, irreversibleIn(p, s), p.draftApproval?.decision === 'approved'),
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),

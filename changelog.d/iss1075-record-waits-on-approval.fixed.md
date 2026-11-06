@@ -1,0 +1,1 @@
+**A release's landing waits on its required approval.** Where a project requires a person's release approval, recording a release's landing is the approver's until they approve it, then the master's, so no master closes a release's issues first.
