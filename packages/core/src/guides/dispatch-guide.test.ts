@@ -46,6 +46,15 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(prose).not.toContain('gate profile yolo');
     expect(DISPATCH_GUIDE.summary).not.toContain('yolo');
   });
+
+  // ISS-1048 (owner, 2026-11-06): a master read a batch as any slice of work, split one large issue
+  // into mini-batches and released each, and each live red became one more release
+  it('never makes a batch smaller than an issue, and folds a live red into the next batch', () => {
+    expect(prose).toContain('A batch is never smaller than an issue');
+    expect(prose).toContain('one issue is never split across releases');
+    expect(prose).toContain('a large issue is built whole');
+    expect(prose).toContain('goes into the next batch, never a release of its own');
+  });
 });
 
 // ISS-861 (owner, 2026-11-01): triage writes what helps the run, and no field is a precondition

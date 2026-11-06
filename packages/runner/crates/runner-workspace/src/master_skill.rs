@@ -478,6 +478,12 @@ mod tests {
             "so does each one that arrives while it runs",
             "Builders that run side by side hold disjoint files; issues that touch the same files go to one builder.",
             "no issue gets its own full suite or its own release",
+            // ISS-1048: epod read a batch as any slice of work, split one large issue into
+            // mini-batches and released each; a batch is at least a whole issue
+            "**A batch is never smaller than an issue.**",
+            "One issue is never split across releases",
+            "a large issue is built whole",
+            "goes into the next batch, never a release of its own",
             // ISS-951: an in-pane build writes no step, so the master writes build when it starts
             "\"workState\":{\"step\":\"build\"}",
             "each assumption one line on the issue or in its commit body",
