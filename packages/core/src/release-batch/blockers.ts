@@ -15,6 +15,7 @@ import {
   issueDisplayIds,
   landingShortfall,
   releaseRecordGaps,
+  waitingAtSql,
 } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { readGateProfile } from '../project-config/index.js';
@@ -78,7 +79,7 @@ interface RosterRead {
   unclaimed: string[];
 }
 
-/** The issues this call is about: the caller's list, or the whole roster. */
+/** The issues this call is about: the caller's list, or the whole roster (`waitingAtSql`). */
 async function resolveRoster(
   projectId: string,
   gateStatus: IssueStatus,
@@ -107,7 +108,7 @@ async function resolveRoster(
       await db
         .select({ id: issues.id, claimed: issues.releaseBatchRunId })
         .from(issues)
-        .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus))),
+        .where(and(eq(issues.projectId, projectId), waitingAtSql(sql`${issues}`, gateStatus))),
     out,
   );
   if (!rows) return undefined;

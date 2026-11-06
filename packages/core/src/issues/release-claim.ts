@@ -1,6 +1,7 @@
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { waitingAtSql } from './waiting-for-release.js';
 import { readWorkState, setWorkStep } from './work-state.js';
 
 const LIVE = sql.join(
@@ -23,8 +24,10 @@ export function heldByEndedRelease(claimer: SQL): SQL {
 }
 
 /**
- * A release run claims the named issues of a project waiting at its gate, only where no other run
- * holds them. Answers the ids it claimed; the caller decides what a short claim means.
+ * A release run claims the named issues of a project waiting for it (`waitingAtSql`: at the gate, or
+ * closed met in scope with no shipped release holding them), only where no other run holds them.
+ * Answers the ids it claimed and the status each stands at; the caller decides what a short claim
+ * means.
  */
 export async function claimIssuesForRelease(args: {
   projectId: string;
@@ -37,12 +40,12 @@ export async function claimIssuesForRelease(args: {
    * the row was taken from, so a row it does not close goes back to it.
    */
   fromEndedRelease?: boolean;
-}): Promise<Array<{ id: string; heldBy: string | null }>> {
+}): Promise<Array<{ id: string; heldBy: string | null; status: string }>> {
   if (args.issueIds.length === 0) return [];
   const free = args.fromEndedRelease
     ? sql`(release_batch_run_id IS NULL OR ${heldByEndedRelease(sql`release_batch_run_id`)})`
     : sql`release_batch_run_id IS NULL`;
-  const claimed = await db.execute<{ id: string; heldBy: string | null }>(sql`
+  const claimed = await db.execute<{ id: string; heldBy: string | null; status: string }>(sql`
     WITH taken AS (
       SELECT id, release_batch_run_id AS held_by FROM issues
        WHERE project_id = ${args.projectId}
@@ -50,7 +53,7 @@ export async function claimIssuesForRelease(args: {
            args.issueIds.map((id) => sql`${id}`),
            sql`, `,
          )})
-         AND status = ${args.gateStatus}
+         AND ${waitingAtSql(sql`issues`, args.gateStatus)}
          AND ${free}
        FOR UPDATE
     )
@@ -58,7 +61,7 @@ export async function claimIssuesForRelease(args: {
     SET release_batch_run_id = ${args.runId}, updated_at = now()
     FROM taken
     WHERE issues.id = taken.id
-    RETURNING issues.id, taken.held_by AS "heldBy"
+    RETURNING issues.id, taken.held_by AS "heldBy", issues.status
   `);
   return [...claimed];
 }

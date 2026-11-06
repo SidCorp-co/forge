@@ -12,7 +12,11 @@
 import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
+import {
+  type IssueCriteriaReport,
+  unearnedCriteriaReports,
+  waitingForReleaseSql,
+} from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
@@ -82,9 +86,9 @@ interface CandidateRow {
   cursor_ts: string;
 }
 
-// Projects with an `awaiting_release` issue that is unclaimed, via a bounded, resumable keyset page
-// (`sweep-cursor.ts`)
-// so a project stuck behind 200 others is reached within a few ticks.
+// Projects with an issue waiting unclaimed for a release (`waitingForReleaseSql`), via a bounded,
+// resumable keyset page (`sweep-cursor.ts`) so a project stuck behind 200 others is reached within a
+// few ticks.
 async function candidateProjectIds(now: Date): Promise<string[]> {
   const window = sweepWindow(CANDIDATE_CURSOR_KEY, now.toISOString());
   const after = window.after;
@@ -95,7 +99,7 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
   const rows = (await db.execute(sql`
     SELECT i.id, i.project_id, i.updated_at::text AS cursor_ts
       FROM issues i
-     WHERE i.status = 'awaiting_release'
+     WHERE ${waitingForReleaseSql(sql`i`)}
        AND i.release_batch_run_id IS NULL
        AND i.updated_at <= ${window.until}::timestamptz
        ${resume}

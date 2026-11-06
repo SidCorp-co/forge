@@ -18,14 +18,13 @@
 // over, and an issue held out of it (ISS-144 was held for the next draft) has passed none of them.
 
 import type { ReleaseRangeUnchecked } from '@forge/contracts/release-page';
-import { and, eq, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { and, eq, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { issueDisplayIds } from '../issues/index.js';
+import { issueDisplayIds, waitingForReleaseSql } from '../issues/index.js';
 import { agrees } from '../lib/plural.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
 import { type AncestryReader, ancestrySourceFor } from './ancestry-source.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
 
 /** A gate issue outside the roster, and the commit its merge names (null where it names none). */
 export interface OutsideIssue {
@@ -102,7 +101,7 @@ export async function placeOutside(
  */
 export type RangeRoster = { runId: string } | { issueIds: readonly string[] };
 
-/** The gate issues of `projectId` outside `roster`, oldest landing first. */
+/** The issues of `projectId` waiting for a release (`waitingForReleaseSql`) outside `roster`, oldest landing first. */
 export async function outsideGateIssues(
   projectId: string,
   roster: RangeRoster,
@@ -116,7 +115,9 @@ export async function outsideGateIssues(
   const rows = await db
     .select({ id: issues.id, commit: issues.mergedCommitSha })
     .from(issues)
-    .where(and(eq(issues.projectId, projectId), eq(issues.status, RELEASE_GATE_STATUS), outside))
+    .where(
+      and(eq(issues.projectId, projectId), waitingForReleaseSql(sql`${issues}`), outside),
+    )
     .orderBy(issues.mergedAt, issues.id);
   const keys = await issueDisplayIds(rows.map((r) => r.id));
   return rows.map((r) => ({ id: r.id, key: keys.get(r.id) ?? r.id, commit: r.commit }));

@@ -99,7 +99,9 @@ export async function closedAtOf(
  * The shipped release runs of `projectId` still holding the work of the issue `issueId` names: a
  * shipped release whose roster names it (and did not leave it unclosed), or that closed it
  * afterwards, less one a shipped-in correction moved it off (ISS-846), and less one that shipped
- * before the issue last left `closed`: its reopen rejected the work that release carried. Whether an
+ * before the issue last left `closed`: its reopen rejected the work that release carried, unless that
+ * reopen was undone, its next arrival coming straight back from `reopen` with nothing landed between
+ * (ISS-760, as `reopenedAtOf` reads it). Whether an
  * issue's work is live is read here, never off `closed`, which says only that its criteria were met
  * in scope (`pipeline/release-runs.ts:shippedReleasesOf` lists them; `releasedSql` asks whether any).
  */
@@ -116,7 +118,13 @@ export function holdingReleaseRunsSql(issueId: SQL, projectId: SQL): SQL {
        AND NOT EXISTS (
          SELECT 1 FROM kernel_transitions t
           WHERE t.entity = 'issue' AND t.entity_id = ${issueId}::uuid
-            AND t.from_status = 'closed' AND t.created_at > r.release_released_at)`;
+            AND t.from_status = 'closed' AND t.created_at > r.release_released_at
+            AND NOT coalesce((
+                  SELECT u.from_status = 'reopen' FROM kernel_transitions u
+                   WHERE u.entity = 'issue' AND u.entity_id = t.entity_id
+                     AND u.to_status IN ('awaiting_release', 'closed')
+                     AND u.created_at > t.created_at
+                   ORDER BY u.created_at, u.id LIMIT 1), false))`;
 }
 
 /** True where a shipped release still holds the work of the issue `issueId` names (`holdingReleaseRunsSql`). */

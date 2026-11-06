@@ -110,7 +110,11 @@ function issueNote(args: {
   return `Released as ${args.version}${sha}, recorded by the agent that performed it.\n\n${args.account}${handle}`;
 }
 
-/** Each recorded issue told how it shipped, then closed; one that will not close is named. */
+/**
+ * Each recorded issue told how it shipped, then closed; one that will not close is named. One already
+ * `closed` (met in scope, no shipped release holding it, `waitingForReleaseSql`) is told and carried
+ * as it stands: the record moves no status, and the release it records is what reads it released.
+ */
 export async function closeRecorded(
   roster: Array<{ id: string }>,
   ctx: {
@@ -124,6 +128,7 @@ export async function closeRecorded(
   const { projectId, userId, account, note, runId } = ctx;
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
+  const carried = await closedAmong(roster.map((r) => r.id));
 
   for (const issue of roster) {
     try {
@@ -135,6 +140,10 @@ export async function closeRecorded(
       });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId }, 'release-record: comment failed');
+    }
+    if (carried.has(issue.id)) {
+      closed.push(issue.id);
+      continue;
     }
     try {
       await transitionIssueStatus(
@@ -154,6 +163,16 @@ export async function closeRecorded(
     }
   }
   return { closed, failed };
+}
+
+/** Which of these issues stand at `closed` now. */
+async function closedAmong(issueIds: readonly string[]): Promise<Set<string>> {
+  if (issueIds.length === 0) return new Set();
+  const rows = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(inArray(issues.id, [...issueIds]), eq(issues.status, 'closed')));
+  return new Set(rows.map((r) => r.id));
 }
 
 /**

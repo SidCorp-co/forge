@@ -179,8 +179,9 @@ export async function openClaimedRun(args: {
     return { run: row, version: cut };
   });
   const claimed = await claimRoster(projectId, issueIds, run.id);
+  // a closed issue the release carries has no work left to step through: its status stays `closed`
   await markReleaseSteps(
-    claimed.map((r) => r.id),
+    claimed.filter((r) => r.status !== 'closed').map((r) => r.id),
     run.id,
   );
   return { run, version };

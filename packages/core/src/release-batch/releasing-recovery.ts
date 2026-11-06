@@ -63,13 +63,32 @@ async function runRecordedShip(runId: string): Promise<boolean> {
   return row?.at != null;
 }
 
+/**
+ * The issues `runId` claimed already `closed` (`claim-conflicts.ts:claimRoster`): a release carries
+ * them without closing them, so none is read as closed by it.
+ */
+export async function carriedClosedOf(runId: string, executor: Tx = db): Promise<Set<string>> {
+  const [row] = await executor
+    .select({ carried: sql<unknown>`${pipelineRuns.metadata} -> 'carriedClosed'` })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  const list = row?.carried;
+  return new Set(
+    Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [],
+  );
+}
+
 /** The issues still claimed by `runId` that are `closed`: what its finish closed and nothing moved. */
 export async function closedOnRoster(runId: string, executor: Tx = db): Promise<string[]> {
-  const rows = await executor
-    .select({ id: issues.id })
-    .from(issues)
-    .where(and(eq(issues.releaseBatchRunId, runId), eq(issues.status, 'closed')));
-  return rows.map((r) => r.id);
+  const [rows, carried] = await Promise.all([
+    executor
+      .select({ id: issues.id })
+      .from(issues)
+      .where(and(eq(issues.releaseBatchRunId, runId), eq(issues.status, 'closed'))),
+    carriedClosedOf(runId, executor),
+  ]);
+  return rows.map((r) => r.id).filter((id) => !carried.has(id));
 }
 
 /** A release holds it mid-release: at the gate, its run at the `release` step (ISS-54). */
@@ -199,7 +218,10 @@ export async function recoverStrandedReleasing(
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.releaseBatchRunId, runId));
 
-  const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
+  const carried = await carriedClosedOf(runId);
+  const alreadyClosed = claimed
+    .filter((r) => r.status === 'closed' && !carried.has(r.id))
+    .map((r) => r.id);
   const promoted = await runRecordedPromotion(runId);
   const shipped = promoted && (await runRecordedShip(runId));
   const known = shipped || options.recordedLive === true;
@@ -258,7 +280,8 @@ export async function recoverStrandedReleasing(
 
 /** Release every claim on `runId` (or only those on `only`), and in the same transaction add the
  *  closed ones to the run's `metadata.rosterClosed`: without the claim, that is the only record this
- *  batch closed them. */
+ *  batch closed them. One it claimed already closed (`carriedClosedOf`) it did not close: its roster
+ *  (`metadata.issueIds`) is what records carrying it. */
 export async function releaseClaims(
   tx: Tx,
   runId: string,
@@ -270,7 +293,8 @@ export async function releaseClaims(
     const work = await readWorkState(tx, row.id);
     if (work?.step === 'release') await setWorkStep(tx, row.id, null);
   }
-  const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
+  const carried = await carriedClosedOf(runId, tx);
+  const closed = rows.filter((r) => r.status === 'closed' && !carried.has(r.id)).map((r) => r.id);
   if (closed.length > 0) {
     await writeRunMetadata(
       runId,

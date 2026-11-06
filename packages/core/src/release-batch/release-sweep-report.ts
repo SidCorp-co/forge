@@ -3,13 +3,12 @@
 // run still claiming gate issues no roster carries.
 
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
-import { inArray } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import type { IssueCriteriaReport } from '../issues/index.js';
+import { type IssueCriteriaReport, waitingForReleaseSql } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
 import { servingClause, whyUncorroborated } from './serving-reading.js';
 
 // `createReleaseBatch` claims issues and marks their release step in separate statements
@@ -36,12 +35,14 @@ export async function reportClaimedFailure(
   message: string,
 ): Promise<string[]> {
   const rows = await db
-    .select({ id: issues.id, status: issues.status, releaseBatchRunId: issues.releaseBatchRunId })
+    .select({
+      id: issues.id,
+      waiting: sql<boolean>`${waitingForReleaseSql(sql`${issues}`)}`,
+      releaseBatchRunId: issues.releaseBatchRunId,
+    })
     .from(issues)
     .where(inArray(issues.id, issueIds));
-  const claimed = rows.filter(
-    (r) => !(r.status === RELEASE_GATE_STATUS && r.releaseBatchRunId === null),
-  );
+  const claimed = rows.filter((r) => !(r.waiting && r.releaseBatchRunId === null));
   for (const row of claimed) {
     const body = claimedFailureBody(message, row.releaseBatchRunId);
     try {

@@ -29,7 +29,11 @@ export interface RosterCloseResult {
  */
 export type RosterFence = ((tx: Tx) => Promise<void>) | undefined;
 
-/** Each claimed issue closed under the fence; one that will not close is named with its reason. */
+/**
+ * Each claimed issue closed under the fence; one that will not close is named with its reason. One
+ * claimed already `closed` (met in scope, no shipped release holding it, `waitingForReleaseSql`) is
+ * carried as it stands: the release moves no status, and its record is what reads it released.
+ */
 export async function closeRoster(
   claimed: ClaimedRow[],
   runId: string,
@@ -40,6 +44,10 @@ export async function closeRoster(
   const failed: Array<{ id: string; reason: string }> = [];
 
   for (const issue of claimed) {
+    if (issue.status === 'closed') {
+      closed.push(issue.id);
+      continue;
+    }
     try {
       await transitionIssueStatus(
         {

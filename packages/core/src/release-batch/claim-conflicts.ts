@@ -5,10 +5,15 @@ import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
-import { claimIssuesForRelease, releaseRunClaims } from '../issues/index.js';
+import {
+  claimIssuesForRelease,
+  releasedSql,
+  releaseRunClaims,
+  waitingAtSql,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
-import { closeRunIfOneShot } from '../pipeline/index.js';
+import { closeRunIfOneShot, writeRunMetadata } from '../pipeline/index.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { blockerRefusal, reasonOf, refuseRelease } from './refuse.js';
 import { RELEASE_RECORD_SOURCE } from './version-rule.js';
@@ -48,13 +53,21 @@ type ClaimConflict =
       /** At the gate with its run's step at `release`: held mid-release (it was `releasing`). */
       releasing: boolean;
     }
-  | { id: string; key: string; standing: 'status'; status: IssueStatus }
+  | {
+      id: string;
+      key: string;
+      standing: 'status';
+      status: IssueStatus;
+      /** Where `closed`: whether a shipped release already holds its work (`releasedSql`). */
+      released?: boolean;
+    }
   | { id: string; key: string; standing: 'absent' };
 
 /**
  * The standing of each of `issueIds` that a release on `projectId` cannot claim. A claim is the
- * standing only where releasing it could leave the issue claimable — at the gate, whether or not a
- * release still holds it at its `release` step (the old `releasing`, ISS-54). At any other status
+ * standing only where releasing it could leave the issue claimable — waiting for a release
+ * (`waitingAtSql`: at the gate, or closed met in scope with no shipped release holding it), whether
+ * or not a release still holds it at its `release` step (the old `releasing`, ISS-54). Anywhere else
  * the status bars it, whatever run claims it.
  */
 export async function readClaimConflicts(
@@ -73,6 +86,8 @@ export async function readClaimConflicts(
       issuePrefix: projects.issuePrefix,
       runStatus: pipelineRuns.status,
       runSource: sql<string | null>`${pipelineRuns.metadata} ->> 'source'`,
+      waiting: sql<boolean>`${waitingAtSql(sql`${issues}`, gateStatus)}`,
+      released: sql<boolean>`${releasedSql(sql`${issues}.id`, sql`${issues}.project_id`)}`,
       step: sql<
         string | null
       >`(SELECT w.step FROM issue_work_state w WHERE w.issue_id = ${issues.id})`,
@@ -96,7 +111,7 @@ export async function readClaimConflicts(
     }
     const id = row.id;
     const key = formatIssueRef(row.issuePrefix, row.issSeq);
-    if (row.claimed !== null && row.status === gateStatus) {
+    if (row.claimed !== null && row.waiting) {
       out.push({
         id,
         key,
@@ -107,8 +122,14 @@ export async function readClaimConflicts(
         status: row.status,
         releasing: row.step === 'release',
       });
-    } else if (row.status !== gateStatus) {
-      out.push({ id, key, standing: 'status', status: row.status });
+    } else if (!row.waiting) {
+      out.push({
+        id,
+        key,
+        standing: 'status',
+        status: row.status,
+        ...(row.status === 'closed' ? { released: row.released } : {}),
+      });
     }
   }
   return out;
@@ -173,10 +194,7 @@ function statusSentence(
   list: ClaimConflict[],
 ): string {
   const subject = `${keys(list)} ${isAre(list)} at \`${status}\``;
-  if (status === 'closed') {
-    const it = agrees(list.length, 'one', 'any of them');
-    return `${subject}: already shipped, and a release carries an issue once. If ${it} has to ship again, reopen it and bring it back through the pipeline to the release gate.`;
-  }
+  if (status === 'closed') return closedSentences(list);
   if (status === 'dropped') {
     return `${subject}: set down as not work, so no release carries ${agrees(list.length, 'it', 'them')}.`;
   }
@@ -184,6 +202,29 @@ function statusSentence(
     return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate. A draft filed for a merge its project owed a filing for, marked merged at that merge, is recorded on the shipped release that already holds it instead: POST /api/projects/${projectId}/shipped-in-records { issueId, version, evidence }, which closes it from \`draft\`.`;
   }
   return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate.`;
+}
+
+/**
+ * Closed issues no release may claim: those a shipped release already holds, and those closed with
+ * nothing a release carries. A closed issue met in scope that no release holds yet is on the roster
+ * (`waitingAtSql`), so it never reaches here.
+ */
+function closedSentences(list: ClaimConflict[]): string {
+  const released = list.filter((c) => c.standing === 'status' && c.released === true);
+  const rest = list.filter((c) => !(c.standing === 'status' && c.released === true));
+  const out: string[] = [];
+  if (released.length > 0) {
+    const it = agrees(released.length, 'it', 'any of them');
+    out.push(
+      `${keys(released)} ${isAre(released)} \`closed\` and already released: a shipped release holds ${agrees(released.length, 'its', 'their')} work, and a release carries an issue once. If ${it} has to ship again, reopen it and bring it back through the pipeline to the release gate.`,
+    );
+  }
+  if (rest.length > 0) {
+    out.push(
+      `${keys(rest)} ${isAre(rest)} \`closed\` with nothing a release carries: design-only, adoption-only, closed with no merge recorded, or closed before its holder could close it met in scope, which keeps what it holds.`,
+    );
+  }
+  return out.join(' ');
 }
 
 /** The refusal, one sentence per reason, each naming its issues by key. */
@@ -211,16 +252,24 @@ export function claimConflictSentence(
 
 /**
  * The roster claimed onto `runId`. A roster another caller claimed first cancels the run and
- * refuses `CLAIM_CONFLICT`, naming who holds each issue it lost.
+ * refuses `CLAIM_CONFLICT`, naming who holds each issue it lost. The issues it claimed already
+ * `closed` (met in scope, no shipped release holding them) are named on the run as `carriedClosed`:
+ * the release carries them without closing them, so nothing reads them as closed by it.
  */
 export async function claimRoster(
   projectId: string,
   issueIds: string[],
   runId: string,
-): Promise<Array<{ id: string }>> {
+): Promise<Array<{ id: string; status: string }>> {
   const gateStatus = RELEASE_GATE_STATUS;
   const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId });
-  if (claimed.length === issueIds.length) return claimed;
+  if (claimed.length === issueIds.length) {
+    const carried = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
+    if (carried.length > 0) {
+      await writeRunMetadata(runId, { merge: { carriedClosed: carried }, touch: false });
+    }
+    return claimed;
+  }
   await releaseRunClaims(runId);
   const lost = issueIds.filter((id) => !claimed.some((r) => r.id === id));
   const conflicts = await readClaimConflicts(projectId, gateStatus, lost);

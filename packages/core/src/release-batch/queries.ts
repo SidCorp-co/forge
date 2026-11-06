@@ -17,7 +17,7 @@ import type { ReleaseEndedRunHold, ReleaseVersionCarrier } from '@forge/contract
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
-import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
+import { activeIssuePrefix, designOnlyMarkSql, waitingAtSql, waitingForReleaseSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readReleasePath } from '../project-config/index.js';
 import { nextRunFor } from '../schedules/index.js';
@@ -118,7 +118,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     .where(
       and(
         eq(issues.projectId, projectId),
-        eq(issues.status, gateStatus),
+        waitingAtSql(sql`${issues}`, gateStatus),
         sql`NOT ${designOnlyMarkSql(sql`${issues}`)}`,
       ),
     )
@@ -414,9 +414,10 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
 }
 
 /**
- * The issues waiting at the gate that the draft release refuses `RELEASE_RECORD_MISSING` for, the
- * same test `issues/release-record-required.ts` applies. Writing each note is the project master's
- * act, so its owed read names them (F72); the oldest merge first, as the draft orders them.
+ * The issues waiting unclaimed for a release (`waitingForReleaseSql`) that the draft release refuses
+ * `RELEASE_RECORD_MISSING` for, the same test `issues/release-record-required.ts` applies. Writing
+ * each note is the project master's act, so its owed read names them (F72); the oldest merge first,
+ * as the draft orders them.
  */
 export async function owedReleaseNotes(
   projectId: string,
@@ -428,7 +429,7 @@ export async function owedReleaseNotes(
       .where(
         and(
           eq(issues.projectId, projectId),
-          eq(issues.status, RELEASE_GATE_STATUS),
+          waitingForReleaseSql(sql`${issues}`),
           isNull(issues.releaseBatchRunId),
           sql`(${issues.releaseNotes} IS NULL OR ${issues.releaseNotes} = 'null'::jsonb)`,
         ),
@@ -446,8 +447,9 @@ const ENDED_RUN_STATUSES = ['completed', 'failed', 'cancelled'];
  * The issues waiting to ship whose release note is written but would read wrong to a user: not in
  * the project's content language, carrying an engineer's reference, written before short titles and
  * so without one (REQ-40 BC-17), or saying more than one sentence (REQ-70 BC-3), which keeps it off
- * the release page until fixed. Waiting means at the gate, or claimed by a release that has not
- * ended, so a note can still be fixed before the owner reviews that release; each names the release
+ * the release page until fixed. Waiting means waiting for a release (`waitingForReleaseSql`), unclaimed
+ * or claimed by a release that has not ended, so a note can still be fixed before the owner reviews
+ * that release; each names the release
  * holding it. The same tests the draft page and the write-time rule apply (`releaseNoteAttention`,
  * `releaseNoteUnwritten`); a master fixes each note.
  */
@@ -470,7 +472,7 @@ export async function warnedReleaseNotes(
       .where(
         and(
           eq(issues.projectId, projectId),
-          eq(issues.status, RELEASE_GATE_STATUS),
+          waitingForReleaseSql(sql`${issues}`),
           sql`${issues.releaseNotes} IS NOT NULL AND ${issues.releaseNotes} <> 'null'::jsonb`,
         ),
       )
@@ -507,8 +509,9 @@ export async function warnedReleaseNotes(
 }
 
 /**
- * Every issue waiting unclaimed at the gate on this project, oldest merge first: the roster a cut,
- * the draft and the sweep read. An issue a release run still claims after it ended is in none of
+ * Every issue waiting unclaimed for a release on this project (`waitingForReleaseSql`: at the gate, or
+ * closed met in scope with no shipped release holding it), oldest merge first: the roster a cut, the
+ * draft and the sweep read. An issue a release run still claims after it ended is in none of
  * them; `ended-claims.ts:readEndedRunHolds` is the read that names it, beside each of these (ISS-961).
  */
 export async function waitingIssueIds(projectId: string): Promise<string[]> {
@@ -518,7 +521,7 @@ export async function waitingIssueIds(projectId: string): Promise<string[]> {
     .where(
       and(
         eq(issues.projectId, projectId),
-        eq(issues.status, RELEASE_GATE_STATUS),
+        waitingForReleaseSql(sql`${issues}`),
         isNull(issues.releaseBatchRunId),
       ),
     )

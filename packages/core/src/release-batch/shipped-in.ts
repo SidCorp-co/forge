@@ -37,6 +37,7 @@ import {
   recordActivityTx,
   returnTakenClaims,
   type TransitionActor,
+  waitingForReleaseSql,
 } from '../issues/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { blocker } from './blocker-kit.js';
@@ -77,7 +78,8 @@ interface CutRelease {
 }
 
 /**
- * Of `issueIds`, each unclaimed at the gate whose landing one of `releases` holds by the one rule a
+ * Of `issueIds`, each waiting unclaimed for a release (`waitingForReleaseSql`) whose landing one of
+ * `releases` holds by the one rule a
  * shipped-in record is held to from Forge's rows (ISS-759, `refuseCutBeforeLanding`): cut no earlier
  * than the issue landed, and not carrying it. With `markedAfterCut`, only a release cut before the
  * issue's current mark counts: the shape a late mark leaves (ISS-774). A `none` recorded after the
@@ -98,7 +100,7 @@ export async function heldBy<R extends CutRelease>(
       and(
         eq(issues.projectId, projectId),
         inArray(issues.id, [...issueIds]),
-        eq(issues.status, RELEASE_GATE_STATUS),
+        waitingForReleaseSql(sql`${issues}`),
         isNull(issues.releaseBatchRunId),
       ),
     );
@@ -252,6 +254,8 @@ interface ShippedInRow {
   landedAt: Date | null;
   claimedBy: string | null;
   endedClaim: boolean;
+  /** Waiting for a release (`waitingForReleaseSql`): at the gate, or closed with no release holding it. */
+  waiting: boolean;
 }
 
 export async function readShippedInRow(
@@ -268,6 +272,7 @@ export async function readShippedInRow(
       claimedBy: issues.releaseBatchRunId,
       // a release that ended without shipping still claims it: a row its person may record
       endedClaim: sql<boolean>`${heldByEndedRelease(sql`${issues.releaseBatchRunId}`)}`,
+      waiting: sql<boolean>`${waitingForReleaseSql(sql`${issues}`)}`,
     })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), eq(issues.id, issueId)))
@@ -372,7 +377,7 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
   // merge, from `draft`: its code landed before it was filed (ISS-774, the `filing_released` edge)
   const filing =
     row && row.status === 'draft' && !live && row.landedAt ? await filingAnsweredBy(row.id) : null;
-  const waiting = row?.status === RELEASE_GATE_STATUS || filing !== null;
+  const waiting = row?.waiting === true || filing !== null;
   if (!row || !waiting || live || !row.landedAt) {
     throw refuseRelease(
       'RELEASE_SHIPPED_IN_NOT_WAITING',
@@ -385,8 +390,8 @@ export async function recordShippedIn(args: ShippedInArgs): Promise<ShippedInRes
             : row.status === 'draft'
               ? `ISS-${row.issSeq} is \`draft\`, and its landing is no merge this project owed a filing for: only such a draft, marked merged at that merge's commit and answering it alone, is recorded on the release that shipped it from \`draft\`.`
               : row.status === 'closed'
-                ? `ISS-${row.issSeq} is \`closed\`, so it already ships in a release: where a shipped-in record named the wrong one, correct it with the same call carrying \`corrects: "<the version it names now>"\` and a \`reason\`.`
-                : `ISS-${row.issSeq} is \`${row.status}\`; only an issue waiting at \`${RELEASE_GATE_STATUS}\`, or a draft filed for a merge its project owed a filing for, can be recorded as shipped by an earlier release.`,
+                ? `ISS-${row.issSeq} is \`closed\` and waits for no release: a shipped release already holds its work, or it closed with nothing a release carries. Where a shipped-in record named the wrong release, correct it with the same call carrying \`corrects: "<the version it names now>"\` and a \`reason\`.`
+                : `ISS-${row.issSeq} is \`${row.status}\`; only an issue waiting for a release (at \`${RELEASE_GATE_STATUS}\`, or closed met in scope with no release holding it), or a draft filed for a merge its project owed a filing for, can be recorded as shipped by an earlier release.`,
       '/issueId',
     );
   }

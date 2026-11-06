@@ -237,6 +237,13 @@ export {
   voidedUpTo,
 } from './release-evidence.js';
 export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
+export {
+  adoptionOnlyMarkSql,
+  closedUnreleasedSql,
+  IN_SCOPE_CLOSE_SINCE,
+  waitingAtSql,
+  waitingForReleaseSql,
+} from './waiting-for-release.js';
 export { releaseRecordGaps } from './release-record-required.js';
 export { provideReleasedLineReads } from './released-line-reads.js';
 export {

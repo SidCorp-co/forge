@@ -12,7 +12,6 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { accountActor } from '../issues/index.js';
 import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_SHIPPED_IN_OWED, type ReleaseHold, writeReleaseHolds } from './hold.js';
 import { FENCE_LOST, reasonOf } from './refuse.js';
 import {
@@ -68,9 +67,9 @@ export function repairedRosterHold(version: string, refused: string): ReleaseHol
 }
 
 /**
- * Each issue of `roster` still waiting at the gate, closed into the repaired release `runId`, or held
- * for its agent naming why. An issue the roster carried that has moved on (closed, reopened, claimed
- * by a release at work) is left where it stands.
+ * Each issue of `roster` still waiting for a release (`waitingForReleaseSql`), closed or carried into
+ * the repaired release `runId`, or held for its agent naming why. An issue the roster carried that
+ * has moved on (released, reopened, claimed by a release at work) is left where it stands.
  */
 export async function settleRepairedRoster(args: {
   projectId: string;
@@ -86,7 +85,7 @@ export async function settleRepairedRoster(args: {
   const actor = await accountActor(args.userId);
   for (const issueId of args.roster) {
     const row = await readShippedInRow(args.projectId, issueId);
-    if (!row || row.status !== RELEASE_GATE_STATUS) continue;
+    if (!row?.waiting) continue;
     if (row.claimedBy !== null && !row.endedClaim && row.claimedBy !== args.runId) continue;
     try {
       if (!row.landedAt) {

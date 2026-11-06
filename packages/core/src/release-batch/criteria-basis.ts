@@ -38,8 +38,8 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { waitingForReleaseSql } from '../issues/index.js';
 import { type ReleasePath, readReleasePath } from '../project-config/index.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
 import { type LandedCriterion, landedBuildsOf, landedStandings } from './landed-build.js';
 import {
   earlierCarriageOf,
@@ -170,7 +170,7 @@ async function productionMoves(
     )
     SELECT serving.n::int AS shipped,
            EXISTS (SELECT 1 FROM issues i
-                    WHERE i.project_id = ${projectId} AND i.status = ${RELEASE_GATE_STATUS}
+                    WHERE i.project_id = ${projectId} AND ${waitingForReleaseSql(sql`i`)}
                       AND i.merged_at > serving.at) AS untaken
       FROM serving
   `);
