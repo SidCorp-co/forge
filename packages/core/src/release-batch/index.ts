@@ -31,6 +31,7 @@ export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
 export { criteriaWeighingOf } from './criteria-weighing.js';
 export { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
+export { cutReleaseAs } from './cut-as.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
 export { readEndedRunHolds } from './ended-claims.js';

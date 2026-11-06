@@ -1,4 +1,5 @@
-export { dropAsDuplicateIn } from './acceptance.js';
+export { acceptDelivery, dropAsDuplicateIn, dropRequirement } from './acceptance.js';
+export { acceptRevision, agreeRequirement } from './agree.js';
 export { latestBaselineIn } from './baselines.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
 export {
@@ -9,6 +10,7 @@ export {
 } from './contract-links.js';
 export type { CriterionClip } from './criterion-clip.js';
 export { tracedCodesOf, traceWordingsOf } from './criterion-trace.js';
+export { deferRequirement, undeferRequirement } from './deferral.js';
 export { deferralOf } from './deferral-read.js';
 export { provideRequirementDependents } from './dependents.js';
 export {
@@ -47,7 +49,7 @@ export {
 export { roomSettleWriter } from './room-settle.js';
 export { revisionFields } from './route-kit.js';
 export { linkIssueRefusal } from './rules.js';
-export { proposeRevision, withdrawRevision, writeRevision } from './service.js';
+export { proposeRevision, returnRevision, withdrawRevision, writeRevision } from './service.js';
 export {
   criterionVerdictOf,
   deliveredAmong,

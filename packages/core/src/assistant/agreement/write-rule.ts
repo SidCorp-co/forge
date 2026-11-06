@@ -172,14 +172,16 @@ export const DELEGATES_TO_REST: Readonly<Record<string, string>> = {
 
 /**
  * The business writes a chat makes on the person's own word, not on a card (REQ-41 BC-25, ruled
- * 2026-10-22): the Needs-you decisions they tell it to make in their current message. The tool's own
+ * 2026-10-22; REQ-69 BC-3, BC-4): the Needs-you decisions they tell it to make in their current
+ * message, and the Product acts on items a set put to them in an earlier turn named. The tool's own
  * executor refuses the call by name unless the words it quotes are in that message, acts as the
- * person with their own access, and answers only a question's own answer route, so nothing here
- * reaches a requirement or feedback write, which stays held for its card (REQ-30).
+ * person with their own access, and makes each act only through its item's own core door, which
+ * checks the person's permission and the item's state again (`tools/item-act-doors.ts`). A draft of a
+ * requirement or feedback stays held for its card (REQ-30).
  */
 export const ON_THE_PERSONS_WORD: Readonly<Record<string, string>> = {
   [CHAT_DECIDE_TOOL]:
-    'a Needs-you decision the person told it to make in their current message, which its executor refuses unless their quoted word is there; it answers a question as them, and writes no requirement or feedback',
+    "a Needs-you decision, or a Product act on an item a set put to the person named, made on their word in their current message, which its executor refuses unless their quoted word is there; it acts as them through each item's own door",
 };
 
 interface RefusedFamily {
@@ -230,8 +232,8 @@ export const REFUSED_FROM_CHAT: readonly RefusedFamily[] = [
   },
   {
     family: 'requirement sign-off',
-    why: "a requirement's sign-off and lifecycle are decided by a person on its page",
-    where: "on the requirement's page",
+    why: "a requirement's sign-off and lifecycle are decided by a person, on its page or on their word in chat",
+    where: `on the requirement's page, or put it to them as an act with ${CHAT_DECISION_SET_TOOL} and make it on their word`,
     rest: [
       /\/requirements\/:req\/(agree|accept|promote|drop|defer|undefer|repin|assistant)$/,
       /\/requirements\/:req\/revisions\/:n\/(propose|accept|return)$/,
@@ -241,7 +243,7 @@ export const REFUSED_FROM_CHAT: readonly RefusedFamily[] = [
   {
     family: 'design change',
     why: 'a design is drawn, proposed and decided by its owner',
-    where: "on the design's page",
+    where: `on the design's page; proposing, approving or returning one can be put to them as an act with ${CHAT_DECISION_SET_TOOL}`,
     rest: [/^\S+ \/api\/projects\/:id\/workflows\b/],
     tools: [],
   },

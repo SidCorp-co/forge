@@ -12,15 +12,10 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { gatedRoutes } from '../middleware/gated-routes.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import {
-  requireDeclaredHeld,
-  requireMasterAct,
-  requiresOnParam,
-  requiresOnResolved,
-} from '../permissions/index.js';
-import { readGateProfile } from '../project-config/index.js';
+import { requireDeclaredHeld, requiresOnParam, requiresOnResolved } from '../permissions/index.js';
 import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
+import { requireReleaseActAs } from './cut-as.js';
 import { CUTS_BY_MASTER_ACT } from './declarations.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
@@ -96,14 +91,12 @@ const createBodySchema = z
  * The cut and the record take project.admin, and outside strict the project's master holds them too
  * (REQ-79 r6 BC-17), so an agent alone takes a landed issue through the release that closes it.
  */
-async function requireReleaseAct(
+function requireReleaseAct(
   c: Context<{ Variables: AuthVars }>,
   projectId: string,
   act: string,
 ): Promise<void> {
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  const ask = { agency: restActor(c).agency, profile: await readGateProfile(projectId) };
-  requireMasterAct(access, 'project.admin', ask, act);
+  return requireReleaseActAs(projectId, c.get('userId'), restActor(c).agency, act);
 }
 
 export const releaseBatchRoutes = gatedRoutes<{ Variables: AuthVars }>(

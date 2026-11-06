@@ -3,8 +3,10 @@
 // 2026-10-22: the owner agreed a cluster of drafts, said (in Vietnamese) "OK, open that cluster for me"
 // and then "I said open them for me", and twice heard "I cannot press approval for you". Core checks the word, not
 // the model: the call quotes the person's instruction, and is refused by name unless that quote is
-// in their latest message. Only a decision answered by a question's own answer route is made here;
-// any other act is refused by name and its card stays. Every item is read back after the act, and
+// in their latest message. A Needs-you decision is made here only by a question's own answer route,
+// any other refused by name with its card left standing; a Product act on an item the person asked
+// for is put in a set and made through its item's own door (`item-act-set.ts`, REQ-69 BC-3). Every
+// item is read back after the act, and
 // an item that needed no act is named done with who moved it and when (BC-24, BC-27).
 //
 // What the person agreed is core's, not the prompt's (judge K66 on dev.304, ISS-624): the chat puts a
@@ -37,20 +39,23 @@ import {
   refusedTwiceWhy,
 } from '../decision-acts.js';
 import { type ItemKind, itemKindOf, itemStateOf } from '../item-state.js';
+import { actOnItem, itemActSetItems } from './item-act-set.js';
 import { type ChatToolset, thrownMessage, toolError } from './mcp-adapter.js';
 
 const DESCRIPTION = [
   'Make the Needs-you decisions the person agreed, as the person and with their own access, when their CURRENT message tells you to (e.g. "open them for me", "mở giúp tôi đi").', // i18n-allow: the Vietnamese instruction the model must recognise
   'word: their instruction, quoted exactly from their latest message; the call is refused unless it is there.',
-  `set: the id ${CHAT_DECISION_SET_TOOL} returned when you put the set to them in an earlier turn; it is acted on whole, exactly as put.`,
+  `set: the id ${CHAT_DECISION_SET_TOOL} returned when you put the set to them in an earlier turn; it is acted on whole, exactly as put, Product acts on items included.`,
   'decisions: only where no set was put and their current message names each decision by its key (REQ-12, FB-7, ISS-5), with answer (an answer id; left out, the recommended one) and reason where the answer takes one. A decision their message does not name is refused DECISION_NOT_AGREED.',
   'Each result is read back: done with the item state, already_done with who moved it and when, or refused with why. Report every one as it says.',
   'Without their word in this message, do not call it: the decision cards under your reply are theirs to press.',
 ].join(' ');
 
 const SET_DESCRIPTION = [
-  'Put a set of Needs-you decisions to the person for their agreement, before they say to make them ("open them").',
+  'Put a set of Needs-you decisions, and of Product acts the person asked for, to the person for their agreement, before they say to make them ("open them", "do it").',
   'decisions: each by its forge_needs_you id or the key of the item it opens, with answer (an answer id; left out, the recommended one) and reason where the answer takes one.',
+  "acts: each a Product act a person takes on an item's page: requirement (REQ-n) propose, agree, accept or return its proposed revision, defer, undefer, drop, accept_delivery; feedback (FB-n) triage, with triage in the Feedback page's shape and no issue named; workflow (its flow) propose, approve, return; release (its version) cut, approve, return. reason is the person's words, written in the project's language, where the page asks for one.",
+  'Each act comes back with said: what making it records and where. Tell the person each said line before they agree (REQ-69 BC-4).',
   `Core keeps the set and returns its id; list exactly its items to the person and ask them to agree. Once a later message of theirs agrees, call ${CHAT_DECIDE_TOOL} with that set: it acts on all of it and nothing else. To change the set, put a new one.`,
 ].join(' ');
 
@@ -148,6 +153,8 @@ interface Asked {
   reason?: string | undefined;
   /** The row's key a set kept, read back where the decision no longer waits. */
   key?: string | undefined;
+  /** A Product act on an item a set kept (REQ-69), made through the item's own door. */
+  item?: ChatDecisionSetItem | undefined;
 }
 
 /** How the asked decisions were agreed: by a set put to the person, or by their message naming each. */
@@ -312,11 +319,12 @@ const asJson = (value: unknown) => ({
 async function putSet(scope: Scope, argsJson: string) {
   const params = parsed(chatDecisionSetParamsSchema, argsJson);
   if (!params.ok) return params.refusal;
-  const waiting = await readDecisions(scope.projectId, scope.userId);
+  const asks = params.value.decisions ?? [];
+  const waiting = asks.length ? await readDecisions(scope.projectId, scope.userId) : [];
   const twice = await decisionsRefusedTwice(scope.conversationId);
   const items: ChatDecisionSetItem[] = [];
   const faults: string[] = [];
-  for (const asked of params.value.decisions) {
+  for (const asked of asks) {
     const found = matching(waiting, asked.decision);
     if (found.length !== 1) {
       faults.push(
@@ -344,22 +352,33 @@ async function putSet(scope: Scope, argsJson: string) {
       ...(asked.reason ? { reason: asked.reason } : {}),
     });
   }
+  const acts = params.value.acts
+    ? await itemActSetItems(scope, params.value.acts, twice)
+    : { items: [], faults: [] };
+  faults.push(...acts.faults);
   if (faults.length) {
     return toolError(
-      `CHAT_DECISION_SET_REFUSED: ${faults.join(' ')} No set was kept; put one holding only decisions the chat can make.`,
+      `CHAT_DECISION_SET_REFUSED: ${faults.join(' ')} No set was kept; put one holding only decisions and acts the chat can make.`,
     );
   }
+  const said = new Map(acts.items.map((i) => [i.decision, i.said]));
+  const kept = [...items, ...acts.items.map(({ said: _said, ...item }) => item)];
   const set = await putDecisionSet({
     conversationId: scope.conversationId,
     projectId: scope.projectId,
     personId: scope.userId,
     windowId: scope.windowId,
-    items,
+    items: kept,
   });
   return asJson({
     set,
-    items: items.map((i) => ({ decision: i.decision, key: i.key, answer: i.label })),
-    note: `List exactly these to the person, each by its key and answer, and ask them to agree. When a later message of theirs agrees, call ${CHAT_DECIDE_TOOL} with set ${set}: it makes all of them and nothing else. Do not make them in this turn.`,
+    items: kept.map((i) => ({
+      decision: i.decision,
+      key: i.key,
+      answer: i.label,
+      ...(said.has(i.decision) ? { said: `Making it ${said.get(i.decision)}.` } : {}),
+    })),
+    note: `List exactly these to the person, each by its key and answer, with what each act records where (its said line), and ask them to agree. When a later message of theirs agrees, call ${CHAT_DECIDE_TOOL} with set ${set}: it makes all of them and nothing else. Do not make them in this turn.`,
   });
 }
 
@@ -396,18 +415,26 @@ async function actOnWord(scope: Scope, argsJson: string) {
       answer: i.answer,
       reason: i.reason,
       key: i.key,
+      ...(i.act ? { item: i } : {}),
     }));
   } else {
     asked = named ?? [];
   }
-  const waiting = await readDecisions(scope.projectId, scope.userId);
+  const waiting = asked.some((a) => !a.item)
+    ? await readDecisions(scope.projectId, scope.userId)
+    : [];
   const twice = await decisionsRefusedTwice(scope.conversationId);
   const agreedBy: AgreedBy = set !== undefined ? 'set' : 'message';
   const results: ChatDecisionResult[] = [];
-  for (const one of asked) results.push(await decideOne(scope, waiting, one, agreedBy, twice));
+  for (const one of asked)
+    results.push(
+      one.item
+        ? await actOnItem(scope, one.item)
+        : await decideOne(scope, waiting, one, agreedBy, twice),
+    );
   return asJson({
     results,
-    note: 'Report each item exactly as read back here: done in the state shown, already_done named done with who moved it and when, refused with its reason and what the person can do next. Add no item they did not agree to, and do not say anything else was done.',
+    note: 'Report each item exactly as read back here: done in the state shown, already_done named done with who moved it and when, refused with its reason and its next step. Add no item they did not agree to, and do not say anything else was done.',
   });
 }
 

@@ -11,6 +11,7 @@
 // the conversation is not offered again, and Forge's own feedback records it (BC-28).
 
 import { z } from "zod";
+import { itemActAskSchema, itemActPlanSchema } from "./item-acts.js";
 
 /** The tool the model calls to make them. */
 export const CHAT_DECIDE_TOOL = "act_on_decisions" as const;
@@ -88,10 +89,25 @@ export const chatDecideParamsSchema = z
 	});
 export type ChatDecideParams = z.infer<typeof chatDecideParamsSchema>;
 
-/** What `put_decision_set` takes: the decisions to put to the person, each as `act_on_decisions` would make it. */
-export const chatDecisionSetParamsSchema = z.strictObject({
-	decisions: decisionItemsSchema,
-});
+/**
+ * What `put_decision_set` takes: the Needs-you decisions to put to the person, each as
+ * `act_on_decisions` would make it, and the Product acts on items they asked for (REQ-69 BC-3), each
+ * made through the act's own door once their word agrees the set.
+ */
+export const chatDecisionSetParamsSchema = z
+	.strictObject({
+		decisions: decisionItemsSchema.optional(),
+		acts: z
+			.array(itemActAskSchema)
+			.min(1)
+			.max(CHAT_DECIDE_LIMITS.decisions)
+			.optional(),
+	})
+	.refine((p) => p.decisions !== undefined || p.acts !== undefined, {
+		message:
+			"name decisions (Needs-you decisions to answer), acts (Product acts on items), or both",
+		path: ["decisions"],
+	});
 export type ChatDecisionSetParams = z.infer<typeof chatDecisionSetParamsSchema>;
 
 /** One decision of a set as core keeps it: the decision, its row's key, and the answer it gives. */
@@ -103,6 +119,8 @@ export const chatDecisionSetItemSchema = z.strictObject({
 	answer: z.string(),
 	label: z.string(),
 	reason: z.string().optional(),
+	/** A Product act on an item (REQ-69), as core read it when the set was put; absent on a Needs-you decision. */
+	act: itemActPlanSchema.optional(),
 });
 export type ChatDecisionSetItem = z.infer<typeof chatDecisionSetItemSchema>;
 
@@ -135,6 +153,8 @@ export const chatDecisionResultSchema = z.discriminatedUnion("outcome", [
 		decision: z.string(),
 		code: z.enum(CHAT_DECISION_REFUSAL_CODES),
 		detail: z.string(),
+		/** What the person can do next, where the refusal leaves them a way on (REQ-69 BC-5). */
+		next: z.string().optional(),
 		state: chatItemStateSchema.nullable(),
 	}),
 ]);
