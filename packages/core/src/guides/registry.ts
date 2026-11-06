@@ -48,14 +48,14 @@ const FORGE_GUIDES: readonly CoreGuide[] = [
     title: 'Project settings & test credentials',
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why the project config never returns them.',
-    version: 4,
+    version: 5,
     body: `## Project settings & test credentials
 
 Two reads, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
 - **\`GET /api/projects/:id\`** — name, slug and base branch. A checkout path is not here: each device binding names its own.
 - **\`GET /api/projects/:id/config\` → \`projectDocument\`** — the project document: its repository (\`source.git.repository\`), its setup procedure (\`workspace.setup\`), each environment's tier, address, the branch it deploys from and the testing profile its testers get in through, and the promotions a landed change crosses. A testing profile names \`secret://\` references, never values, and its \`limits\` say what that environment does NOT have.
-- **\`GET /api/projects/:id/policy\`** — the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile. Neither read carries project PROSE — a write naming \`projectFacts\` or \`projectFactsConfig\` is refused by name; the prose is the project's knowledge (\`GET /api/projects/:id/knowledge\`, or \`forge knowledge\`). It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
+- **\`GET /api/projects/:id/policy\`** — the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile. Neither read carries project PROSE — a write naming \`projectFacts\` or \`projectFactsConfig\` is refused by name; the prose is the project's knowledge (\`GET /api/projects/:id/knowledge\`). It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
   ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
 
@@ -104,13 +104,13 @@ It stays one issue. A batch is never smaller than an issue, and one issue is nev
     title: 'Memory & knowledge',
     summary:
       'The two context tiers (memory and knowledge), recall-first discipline, and the verify-at-recall feedback loop.',
-    version: 1,
+    version: 2,
     body: `## Memory & knowledge
 
 Forge separates durable context into three tiers, each with a different job:
 
 - **Memory** — per-project semantic search over accumulated notes, decisions, fix-patterns, policies. Not auto-loaded into any prompt; you recall it deliberately. \`POST /api/memory/search\` \`{ projectId, query, topK, sourceFilter? }\` returns scored hits; \`POST /api/memory\` \`{ projectId, source, sourceRef, textContent, metadata? }\` upserts on the natural key \`(projectId, source, sourceRef)\` — reusing a \`sourceRef\` refines the existing entry instead of duplicating it. A learning about an issue sent as \`source: 'issue'\` with its id or key is kept as its own note linked to it (\`landedAs\` says where): the \`issue\`, \`comment\` and \`job\` rows are core's copies and a caller never writes over them.
-- **Knowledge** (\`/api/projects/:id/knowledge\`, \`forge knowledge\`) — curated, structured knowledge entries (overview / workflow / rule / reference kinds) with an explicit \`injection\` policy (\`always\` / \`on_demand\` / \`none\`). This is the project's authored knowledge base, distinct from the free-form memory stream.
+- **Knowledge** (\`/api/projects/:id/knowledge\`) — curated, structured knowledge entries (overview / workflow / rule / reference kinds) with an explicit \`injection\` policy (\`always\` / \`on_demand\` / \`none\`). This is the project's authored knowledge base, distinct from the free-form memory stream.
 - **Knowledge with \`injection: always\`** — entries rendered verbatim into every pipeline preamble for this project, as against \`on_demand\`, which reaches the prompt as a slug the agent fetches when it needs the text.
 
 ### Recall-first discipline
@@ -134,7 +134,7 @@ Only when it's reusable by a *different* agent on a *different* issue — a conv
     version: 2,
     body: `## Deploy safety
 
-Deploys (\`POST /api/projects/:id/integrations/coolify/deploy\`, or \`forge coolify\`) are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
+Deploys (\`POST /api/projects/:id/integrations/coolify/deploy\`) are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
 
 ### Before you deploy
 - Confirm you're targeting the intended environment. An explicit integration/service scope is a hard filter — don't rely on defaults picking the right one, especially near a release, when it's easy to accidentally redeploy production mid-pipeline instead of a staging target.
@@ -155,11 +155,11 @@ Verify liveness on the deployed environment before declaring success — a deplo
     title: 'Attachments & uploads',
     summary:
       'Presigned-URL upload flow vs base64, and how to read the content of an existing attachment.',
-    version: 1,
+    version: 2,
     body: `## Attachments & uploads
 
 ### Writing an attachment — presigned URL, not base64
-Upload the file from disk instead of inlining base64 bytes into a request: \`forge attach <issue|comment> <id> <file>\`, or a multipart \`POST /api/issues/:id/attachments\` / \`POST /api/comments/:commentId/attachments\` with the file in the \`file\` field. Base64 in a request body is slow to transmit and burns context tokens carrying bytes that don't need to pass through the model at all.
+Upload the file from disk instead of inlining base64 bytes into a request: a multipart \`POST /api/issues/:id/attachments\` / \`POST /api/comments/:commentId/attachments\` with the file in the \`file\` field. Base64 in a request body is slow to transmit and burns context tokens carrying bytes that don't need to pass through the model at all.
 
 ### Reading an attachment's content
 \`GET /api/issues/:id/attachments\` lists an issue's attachments (a comment carries its own \`attachments[]\`); \`GET /api/attachments/:id/download\` answers the bytes. Save them to a file and open that file, or read an image as a viewable block with \`forge_uploads\` \`action=fetch\` \`{ target: "issue" | "comment", attachmentId }\`. Never assume a filename or mime type tells you enough; read the content when it matters to the task.`,
@@ -185,14 +185,14 @@ against live code or git before you rely on it.
 ### What Forge owns, and the tool for each
 | You need | Call |
 |---|---|
-| Issues, status, tasks | \`forge issue\`, \`forge new\`, \`forge comment\`; REST \`/api/issues/:id\`, \`/api/issues/:id/comments\`, \`/api/projects/:id/issues\`. A chat session files no issue: it records Feedback or a Requirement draft or revision, and \`forge new\` is refused for it with CHAT_FILES_FEEDBACK_NOT_ISSUES, unless the project's gate profile turns \`chat_files_issue\` off (yolo) |
+| Issues, status, tasks | \`/api/issues/:id\`, \`/api/issues/:id/comments\`, \`/api/projects/:id/issues\`. A chat session files no issue: it records Feedback or a Requirement draft or revision, and an issue it files is refused with CHAT_FILES_FEEDBACK_NOT_ISSUES, unless the project's gate profile turns \`chat_files_issue\` off (yolo) |
 | Ordering between issues | \`relations\` on the create (\`POST /api/projects/:id/issues\`), or \`POST /api/issues/:id/dependencies\` once both exist |
 | Repo path, branches, preview URLs, test credentials | \`GET /api/projects/:id\` and \`GET /api/projects/:id/config\` |
-| Pipeline gates | \`GET /api/projects/:id/policy\` |
-| The project's own prose | \`forge knowledge\` (\`/api/projects/:id/knowledge\`) |
+| Gates and policy | \`GET /api/projects/:id/gates\`, \`GET /api/projects/:id/policy\` |
+| The project's own prose | \`/api/projects/:id/knowledge\` |
 | A decision, learning or convention worth keeping | \`POST /api/memory\` |
-| Deeper per-package detail | \`forge knowledge list|get|search\` |
-| How a Forge feature actually works | \`forge guide <slug>\`, or \`/api/guides/<slug>.md\` |
+| Deeper per-package detail | \`GET /api/projects/:id/knowledge/<slug>\`, \`POST /api/projects/:id/knowledge/search\` |
+| How a Forge feature actually works | \`/api/guides\`, then \`/api/guides/<slug>.md\` |
 
 ### draft vs open — the costly one
 \`open\` admits the issue to the backlog: the project's master is woken and builds it in its next

@@ -147,3 +147,21 @@ describe('verdicts come from the judge after landing, unless a gate holds them b
     );
   });
 });
+
+describe('a served guide names REST, never a command of the plugin CLI', () => {
+  it('names no `forge` CLI command in the guides that once did', async () => {
+    for (const slug of [
+      'project-settings-and-test-credentials',
+      'memory-and-knowledge',
+      'deploy-safety',
+      'attachments-and-uploads',
+      'agent-setup',
+    ]) {
+      const guide = await served(slug);
+      expect(guide, slug).not.toMatch(
+        /`forge (knowledge|coolify|attach|issue|new|comment|guide)\b/,
+      );
+    }
+    expect(await served('agent-setup')).toContain('`GET /api/projects/:id/gates`');
+  });
+});
