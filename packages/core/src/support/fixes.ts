@@ -221,9 +221,7 @@ export async function agreeTo(
     'fix_confirmed',
     fix,
     writer,
-    consent
-      ? { consent, ...(decider ? { ruling: decider.ruling } : {}) }
-      : null,
+    consent ? { consent, ...(decider ? { ruling: decider.ruling } : {}) } : null,
   );
   const settled = await settle(room, fix, conversationId, writer, config);
   if (!decider || !settled.ok) return settled;

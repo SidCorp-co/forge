@@ -124,7 +124,9 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
     expect(String(own.proposed.next)).toContain('ask them nothing');
     // the session reads the same source: the brief's record names her under the ruling
     expect(own.turn.text).toContain('Who decides, from the project');
-    expect(own.turn.text).toContain(`@tuyen decides recording work (a filing) [knowledge:${RULING}]`);
+    expect(own.turn.text).toContain(
+      `@tuyen decides recording work (a filing) [knowledge:${RULING}]`,
+    );
     expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({ recorded: true });
     // policy input, said where it is used: on the answer and on the audit fact
     expect(String(own.agreed.what)).toContain("It counted as @tuyen's agreement");
@@ -200,7 +202,9 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
     );
     expect(proposed, JSON.stringify(proposed)).toMatchObject({ pending: true });
     expect(code(agreed), JSON.stringify(agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
-    expect(JSON.stringify(agreed)).toContain("the project's rulings name nobody who decides a deploy");
+    expect(JSON.stringify(agreed)).toContain(
+      "the project's rulings name nobody who decides a deploy",
+    );
   });
 
   it('refuses the old room-typed decides by name, and a rule said in the room names nobody', async () => {
@@ -261,11 +265,7 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
   });
 
   it('stops counting her once the ruling is gone, and the brief stops naming her', async () => {
-    const gone = await api(
-      w.owner,
-      'DELETE',
-      `/api/projects/${w.projectId}/knowledge/${RULING}`,
-    );
+    const gone = await api(w.owner, 'DELETE', `/api/projects/${w.projectId}/knowledge/${RULING}`);
     expect(gone.status, JSON.stringify(gone.body)).toBe(200);
     const before = await filings();
     const own = await ownRecordRequest(tuyen, 'release trước 640');

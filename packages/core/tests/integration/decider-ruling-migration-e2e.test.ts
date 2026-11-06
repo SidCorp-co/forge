@@ -97,10 +97,31 @@ const carried = async (ruleId: string) =>
 
 describe('0611: who decides an act is the project’s ruling', () => {
   it('carries each live decider into a ruling, standing where its writer could name one', async () => {
-    const byOwner = await rule({ author: 'alice', authorKey: OWNER_KEY, decider: 'tuyen', acts: ['filing'] });
-    const byTech = await rule({ author: 'carol', authorKey: 'u-carol', decider: 'erin', acts: ['deploy', 'build'] });
-    const byProduct = await rule({ author: 'dave', authorKey: 'u-dave', decider: 'bob', acts: ['filing'] });
-    const removed = await rule({ author: 'alice', authorKey: OWNER_KEY, decider: 'zed', acts: ['fix'], removed: true });
+    const byOwner = await rule({
+      author: 'alice',
+      authorKey: OWNER_KEY,
+      decider: 'tuyen',
+      acts: ['filing'],
+    });
+    const byTech = await rule({
+      author: 'carol',
+      authorKey: 'u-carol',
+      decider: 'erin',
+      acts: ['deploy', 'build'],
+    });
+    const byProduct = await rule({
+      author: 'dave',
+      authorKey: 'u-dave',
+      decider: 'bob',
+      acts: ['filing'],
+    });
+    const removed = await rule({
+      author: 'alice',
+      authorKey: OWNER_KEY,
+      decider: 'zed',
+      acts: ['fix'],
+      removed: true,
+    });
     await m.migrate();
 
     expect(await carried(byOwner)).toMatchObject({

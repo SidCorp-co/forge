@@ -36,7 +36,8 @@ export async function decidersOfAct(
   act: SupportProposalKind,
 ): Promise<string> {
   const named = (await rulingDecidersOf(room.projectId)).filter((d) => d.acts.includes(act));
-  if (named.length === 0) return `the project's rulings name nobody who decides ${actsWords([act])}`;
+  if (named.length === 0)
+    return `the project's rulings name nobody who decides ${actsWords([act])}`;
   const who = [...new Set(named.map((d) => `@${d.member}`))].join(', ');
   return `${who}, whom the project's rulings name as deciding ${actsWords([act])}`;
 }
