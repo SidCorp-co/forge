@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.557] - 2026-11-06
+
+Issues close when their work is met in scope, not only through a release
+
+### Changed
+
+- **An issue closes when its criteria are met in scope.** Its holder closes it, moving each unmet criterion elsewhere; the next release carries it as it stands, and whether work is live is read from the release record.
+
 ## [0.4.0-dev.556] - 2026-11-06
 
 One Activity overview, a simpler Dashboard, and stuck reads that follow project policy

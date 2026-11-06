@@ -1,1 +1,0 @@
-**An issue closes when its criteria are met in scope.** Its holder closes it, moving each unmet criterion elsewhere; the next release carries it as it stands, and whether work is live is read from the release record.
