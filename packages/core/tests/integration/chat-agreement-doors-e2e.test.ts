@@ -207,7 +207,9 @@ describe('a session answering no room writes as before (ruled 2026-10-09)', () =
         title: 'From the Agents screen',
         body: 'Written by a session that answers no room.',
         injection: 'on_demand',
-        source: 'ISS-1064', scope: 'this test project', recheckWhen: 'the test changes',
+        source: 'ISS-1064',
+        scope: 'this test project',
+        recheckWhen: 'the test changes',
       },
     );
     expect(r.status, JSON.stringify(r.json).slice(0, 300)).toBeLessThan(300);
@@ -245,7 +247,9 @@ describe('a session answering no room writes as before (ruled 2026-10-09)', () =
         title: 'From an escalation',
         body: 'Written by a session that answers no room.',
         injection: 'on_demand',
-        source: 'ISS-1064', scope: 'this test project', recheckWhen: 'the test changes',
+        source: 'ISS-1064',
+        scope: 'this test project',
+        recheckWhen: 'the test changes',
       },
     );
     expect(r.status, JSON.stringify(r.json).slice(0, 300)).toBeLessThan(300);

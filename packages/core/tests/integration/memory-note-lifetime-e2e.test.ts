@@ -273,8 +273,14 @@ describe('retiring keeps the record: the decay purge deletes only what decay arc
     const longAgo = ago(100 * DAY_H);
     const rows: [string, object][] = [
       ['decayed', { archivedBy: 'decay: unused' }],
-      ['person-retired', { retired: { by: 'someone', at: longAgo.toISOString(), reason: 'owner retired it' } }],
-      ['issue-retired', { archivedBy: 'note: written for ISS-1, which reached closed, and not verified since' }],
+      [
+        'person-retired',
+        { retired: { by: 'someone', at: longAgo.toISOString(), reason: 'owner retired it' } },
+      ],
+      [
+        'issue-retired',
+        { archivedBy: 'note: written for ISS-1, which reached closed, and not verified since' },
+      ],
     ];
     for (const [ref, metadata] of rows) {
       await seed(w.projectId, ref, { written: longAgo, metadata });
@@ -286,7 +292,9 @@ describe('retiring keeps the record: the decay purge deletes only what decay arc
     await runMemoryDecay();
 
     const left = (await db.execute(sql`
-      SELECT source_ref AS ref FROM memories WHERE project_id = ${w.projectId}`)) as unknown as { ref: string }[];
+      SELECT source_ref AS ref FROM memories WHERE project_id = ${w.projectId}`)) as unknown as {
+      ref: string;
+    }[];
     const refs = left.map((r) => r.ref);
     expect(refs).not.toContain('decayed');
     expect(refs).toContain('person-retired');
