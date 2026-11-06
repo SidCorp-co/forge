@@ -25,6 +25,7 @@ import {
 import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import type { OpenPersonQuestion } from '../questions/index.js';
 import type { AttentionRow } from './needs-you.js';
+import { NameOf, nameOf } from './needs-you-named.js';
 
 const QUESTION_MAX = 2000;
 
@@ -173,11 +174,13 @@ function stewardDecision(
       : kind === 'requirement' && (d === 'merge' || d === 'drop');
   });
   const item = { kind, draft };
+  // the requirement the decision opens is named by its evidence, so its own words say "the requirement"
+  const named = nameOf(base.opens, itemKey);
   return {
     questionId: q.id,
     decision: {
       ...base,
-      ...stewardBrief(kind, draft, itemKey, waits),
+      ...stewardBrief(kind, draft, { key: itemKey, named }, waits),
       question: stewardDecisionQuestion(
         shown.map((o) => o.id),
         item,
@@ -197,7 +200,7 @@ function stewardDecision(
         const effect = decision
           ? stewardDecisionEffect(decision, {
               ...item,
-              key: itemKey,
+              key: named,
               option: o.id,
               shares: o.shares ?? null,
             })
@@ -218,37 +221,43 @@ function stewardDecision(
   };
 }
 
-/** What a steward decision changes and its impact, by the item it decides (REQ-68 BC-1). */
+/**
+ * What a steward decision changes and its impact, by the item it decides (REQ-68 BC-1): `named` is how
+ * the decision's own words call it (`nameOf`), `key` what a draft is called where that is its key.
+ */
 function stewardBrief(
   kind: StewardDecisionSubject,
   draft: boolean,
-  key: string,
+  { key, named }: { key: string; named: string },
   waits: string,
 ): { changes: string; impact: string } {
   if (kind === 'issue') {
     return draft
       ? {
-          changes: `Whether draft ${key} becomes open work`,
+          changes: `Whether draft ${named} becomes open work`,
           impact: clip(`${waits}; only open work is planned and built.`, 300),
         }
       : {
-          changes: `Whether ${key} stays open work`,
+          changes: `Whether ${named} stays open work`,
           impact: clip(`${waits}; no master serves it now.`, 300),
         };
   }
   if (kind === 'requirement') {
     return draft
       ? {
-          changes: `Whether draft ${key} stays a requirement of its own`,
+          changes:
+            named === key
+              ? `Whether draft ${key} stays a requirement of its own`
+              : 'Whether the draft stays a requirement of its own',
           impact: clip(`${waits}; its issues and criteria follow the answer.`, 300),
         }
       : {
-          changes: `Whether ${key} keeps its draft revision`,
+          changes: `Whether ${named} keeps its draft revision`,
           impact: clip(`${waits}; delivery goes on reading its current revision.`, 300),
         };
   }
   return {
-    changes: `How ${key} is handled`,
+    changes: `How ${named} is handled`,
     impact: clip(`${waits}; its reporter hears back once it is decided.`, 300),
   };
 }
@@ -347,8 +356,13 @@ export function questionDecision(
     question: isChoiceStep(step)
       ? clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX)
       : askedWithNeed(step.prompt.trim() || row.title || 'A run asked a question', step.needed),
-    changes: `What the run that asked ${opens ? `on ${opens.key} ` : ''}goes on with`,
-    impact: impactOf(row, 'it goes on once it has your answer', opens?.key ?? 'The run that asked'),
+    // the requirement it opens is named by its evidence, so these say "the requirement" (ISS-680 c5)
+    changes: `What the run that asked ${opens ? `on ${nameOf(opens, opens.key)} ` : ''}goes on with`,
+    impact: impactOf(
+      row,
+      'it goes on once it has your answer',
+      opens ? NameOf(opens, opens.key) : 'The run that asked',
+    ),
     touchedAt: q.at,
     // the asker's own words the person decides from, or null where it wrote none (ISS-1006)
     plain: step.plain ?? null,
@@ -356,7 +370,8 @@ export function questionDecision(
     ...(q.subject ? { subject: q.subject } : {}),
   };
   if (isChoiceStep(step) && isStewardDecisionQuestion(step.options)) {
-    return stewardDecision(base, q, step, path, waitsOn(row, base.opens?.key ?? row.key));
+    const waiting = base.opens ? NameOf(base.opens, base.opens.key) : row.key;
+    return stewardDecision(base, q, step, path, waitsOn(row, waiting));
   }
   if (isChoiceStep(step)) {
     const asked = step.options.find((o) => o.id === step.recommendedOptionId);

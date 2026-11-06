@@ -45,6 +45,7 @@ import {
 } from '../suggestions/waiting-read.js';
 import type { NeedsYouViewer, readAttention } from './needs-you.js';
 import { clip, type DecisionBody, filled, prefilledReason } from './needs-you-decision-builders.js';
+import { NameOf, nameOf } from './needs-you-named.js';
 import { issueItemsOf, type Placement, placeOn } from './needs-you-on-item.js';
 import {
   type BrokenDown,
@@ -128,8 +129,9 @@ function suggestionDecision(
     title: cutAtWord(place.title, 500),
     opens: place.opens,
     question: asked(proposal),
-    changes: `What happens to ${s.target.key}, as the agent proposes it`,
-    impact: `${s.target.key} waits on this; nothing the agent proposed is done until it is approved.`,
+    // the requirement it opens is named by its evidence, so its words say "the requirement" (ISS-680 c5)
+    changes: `What happens to ${nameOf(place.opens, s.target.key)}, as the agent proposes it`,
+    impact: `${NameOf(place.opens, s.target.key)} waits on this; nothing the agent proposed is done until it is approved.`,
     ...approveOrDecline(proposal, approve, decline),
     touchedAt: s.createdAt,
     id: `suggestion:${s.id}`,
@@ -145,11 +147,15 @@ const CONSEQUENCE_OF = {
   feedback: 'kept_on_feedback',
 } as const satisfies Record<MockupView['target']['type'], MockupAcceptConsequence>;
 
-const CONSEQUENCE_LINE: Record<MockupAcceptConsequence, (m: MockupView) => string> = {
-  pinned_next_baseline: (m) =>
-    `${m.target.key}'s next agree or re-pin pins it, for its issues' jobs`,
-  given_to_issue_jobs: (m) => `${m.target.key}'s jobs are given it`,
-  kept_on_feedback: (m) => `It is kept on ${m.target.key} as the agreed picture of its fix`,
+/** What accepting it does, its item called as `nameOf` calls it (`Named` opening the line). */
+const CONSEQUENCE_LINE: Record<
+  MockupAcceptConsequence,
+  (on: { named: string; Named: string }) => string
+> = {
+  pinned_next_baseline: ({ Named }) =>
+    `${Named}'s next agree or re-pin pins it, for its issues' jobs`,
+  given_to_issue_jobs: ({ Named }) => `${Named}'s jobs are given it`,
+  kept_on_feedback: ({ named }) => `It is kept on ${named} as the agreed picture of its fix`,
 };
 
 /** A mockup's round, what it revises and its open comments, as the peek's why lines. */
@@ -163,12 +169,14 @@ function standingOf(m: MockupView): { label: string; value: string }[] {
 
 function mockupDecision(place: Placement, projectId: string, m: MockupView): DecisionBody {
   const consequence = CONSEQUENCE_OF[m.target.type];
+  // the requirement it opens is named by its evidence, so its words say "the requirement" (ISS-680 c5)
+  const on = { named: nameOf(place.opens, m.target.key), Named: NameOf(place.opens, m.target.key) };
   const proposal: DecisionProposal = fitProposal({
     verb: 'Accept mockup',
     what: m.name,
     recommends: false,
     tags: [{ text: m.kind, tone: 'plain' }],
-    consequences: [`${m.key} is accepted for ${m.target.key}`, CONSEQUENCE_LINE[consequence](m)],
+    consequences: [`${m.key} is accepted for ${on.named}`, CONSEQUENCE_LINE[consequence](on)],
     why: standingOf(m),
     said: null,
     table: null,
@@ -207,8 +215,8 @@ function mockupDecision(place: Placement, projectId: string, m: MockupView): Dec
     title: cutAtWord(m.name, 500),
     opens: place.opens,
     question: asked(proposal),
-    changes: `Whether ${m.key} is the agreed picture for ${m.target.key}`,
-    impact: `${m.target.key} waits on this; round ${m.round} stays open until it is decided.`,
+    changes: `Whether ${m.key} is the agreed picture for ${on.named}`,
+    impact: `${on.Named} waits on this; round ${m.round} stays open until it is decided.`,
     ...approveOrDecline(proposal, approve, decline),
     touchedAt: m.createdAt,
     id: `mockup:${m.id}`,
@@ -315,10 +323,12 @@ function brokenDownOf(attention: Attention): Map<string, BrokenDown> {
   );
 }
 
+/** What a suggestion proposes, the record it is on called `named` (`nameOf`). */
 function proposalOf(
   s: WaitingSuggestion,
   items: ReadonlyMap<string, TriagedItem>,
   reqs: ReadonlyMap<string, BrokenDown>,
+  named: string,
 ): DecisionProposal {
   if (s.kind === 'feedback_triage') {
     const item = items.get(s.target.id);
@@ -328,9 +338,9 @@ function proposalOf(
   if (s.kind === 'breakdown') {
     const req = reqs.get(s.target.key);
     if (!req) throw new Error(`requirement ${s.target.key} the breakdown is on is not in the read`);
-    return breakdownProposal(s.payload, req);
+    return breakdownProposal(s.payload, req, named);
   }
-  return suggestionProposal(s.kind, s.payload, s.target.key);
+  return suggestionProposal(s.kind, s.payload, named);
 }
 
 /** A waiting record no decision could be made of, named by what its source row says of it. */
@@ -422,7 +432,13 @@ export async function foldedDecisions(
     if (!place) continue;
     checked(
       { ...place, touchedAt: s.createdAt },
-      () => suggestionDecision(place, projectId, s, fitProposal(proposalOf(s, items, reqs))),
+      () =>
+        suggestionDecision(
+          place,
+          projectId,
+          s,
+          fitProposal(proposalOf(s, items, reqs, nameOf(place.opens, s.target.key))),
+        ),
       out,
       projectId,
     );

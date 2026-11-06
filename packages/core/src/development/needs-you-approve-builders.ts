@@ -19,6 +19,7 @@ import {
   filled,
   impactOf,
 } from './needs-you-decision-builders.js';
+import { NameOf, nameOf } from './needs-you-named.js';
 import { wordlessRevision } from './needs-you-signoff-words.js';
 
 /**
@@ -34,6 +35,8 @@ export function revisionDecision(
   words: string | null,
 ): Built {
   const params = { projectId: projectId, key: row.key, n };
+  // its evidence names the requirement once; its own words call it "the requirement" (ISS-680 c5)
+  const opens = { kind: 'requirement' as const, key: row.key };
   return {
     questionId: null,
     decision: {
@@ -42,10 +45,10 @@ export function revisionDecision(
       entity: row.entity,
       key: row.key,
       title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Accept revision ${n} of ${row.key}, or return it to its author?`,
-      changes: `Which revision of ${row.key} is current`,
-      impact: impactOf(row, 'delivery plans from the current revision'),
+      opens,
+      question: `Accept revision ${n} of ${nameOf(opens, row.key)}, or return it to its author?`,
+      changes: `Which revision of ${nameOf(opens, row.key)} is current`,
+      impact: impactOf(row, 'delivery plans from the current revision', NameOf(opens, row.key)),
       recommended: words ? { answerId: 'accept', why: words, by: 'rule' } : null,
       noRecommendation: words ? null : wordlessRevision(n),
       answers: [
@@ -57,7 +60,7 @@ export function revisionDecision(
           body: {},
           // a sign-off records why (REQ-4 BC-16): prefilledReason sends the revision's own words
           needsReason: true,
-          effect: `Revision ${n} becomes the current revision of ${row.key}.`,
+          effect: `Revision ${n} becomes the current revision of ${nameOf(opens, row.key)}.`,
           recommended: words !== null,
         }),
         answer({
@@ -85,6 +88,7 @@ export function agreeDecision(
   words: string | null,
 ): Built {
   const params = { projectId: projectId, key: row.key };
+  const opens = { kind: 'requirement' as const, key: row.key };
   return {
     questionId: null,
     decision: {
@@ -93,10 +97,10 @@ export function agreeDecision(
       entity: row.entity,
       key: row.key,
       title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Agree ${row.key} at revision ${head}, or drop it?`,
-      changes: `Whether ${row.key} is built`,
-      impact: impactOf(row, 'only an agreed requirement goes to delivery'),
+      opens,
+      question: `Agree ${nameOf(opens, row.key)} at revision ${head}, or drop it?`,
+      changes: `Whether ${nameOf(opens, row.key)} is built`,
+      impact: impactOf(row, 'only an agreed requirement goes to delivery', NameOf(opens, row.key)),
       recommended: words ? { answerId: 'agree', why: words, by: 'rule' } : null,
       noRecommendation: words ? null : wordlessRevision(head),
       answers: [
@@ -108,7 +112,7 @@ export function agreeDecision(
           body: { revision: head },
           // an agree writes a baseline, and a baseline records why (REQ-4 BC-4)
           needsReason: true,
-          effect: `${row.key} is agreed at revision ${head} and goes to delivery.`,
+          effect: `${NameOf(opens, row.key)} is agreed at revision ${head} and goes to delivery.`,
           recommended: words !== null,
         }),
         answer({
@@ -119,7 +123,7 @@ export function agreeDecision(
           body: {},
           needsReason: true,
           declines: true,
-          effect: `${row.key} is dropped and will not be built.`,
+          effect: `${NameOf(opens, row.key)} is dropped and will not be built.`,
         }),
       ],
       touchedAt: row.touchedAt,

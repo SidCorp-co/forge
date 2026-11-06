@@ -5,6 +5,7 @@
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import type { AttentionRow } from './needs-you.js';
 import { answer, type Built, clip, filled, impactOf } from './needs-you-decision-builders.js';
+import { NameOf, nameOf } from './needs-you-named.js';
 
 /** The BA's check: accept the delivery of `revision`, or defer it with a reason. */
 export function acceptDecision(
@@ -16,6 +17,8 @@ export function acceptDecision(
 ): Built {
   const params = { projectId, key: row.key };
   const proven = criteria.passing === criteria.total;
+  // its evidence names the requirement once; its own words call it "the requirement" (ISS-680 c5)
+  const opens = { kind: 'requirement' as const, key: row.key };
   return {
     questionId: null,
     decision: {
@@ -24,10 +27,14 @@ export function acceptDecision(
       entity: row.entity,
       key: row.key,
       title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Accept the delivery of ${row.key} at revision ${revision}?`,
-      changes: `Whether ${row.key} at revision ${revision} reads as delivered`,
-      impact: impactOf(row, 'its readers see Delivered only once it is accepted'),
+      opens,
+      question: `Accept the delivery of ${nameOf(opens, row.key)} at revision ${revision}?`,
+      changes: `Whether ${nameOf(opens, row.key)} at revision ${revision} reads as delivered`,
+      impact: impactOf(
+        row,
+        'its readers see Delivered only once it is accepted',
+        NameOf(opens, row.key),
+      ),
       recommended: {
         answerId: proven ? 'accept' : 'defer',
         why: proven
@@ -43,7 +50,7 @@ export function acceptDecision(
           act: 'requirement.accept',
           path: filled('requirement.accept', params),
           body: { revision },
-          effect: `${row.key} is accepted as delivered.`,
+          effect: `${NameOf(opens, row.key)} is accepted as delivered.`,
           recommended: proven,
         }),
         answer({
@@ -54,7 +61,7 @@ export function acceptDecision(
           body: {},
           needsReason: true,
           declines: true,
-          effect: `${row.key} leaves the current release with your reason.`,
+          effect: `${NameOf(opens, row.key)} leaves the current release with your reason.`,
           recommended: !proven,
         }),
       ],
@@ -70,6 +77,7 @@ export function repinDecision(
   projectId: string,
   head: number,
 ): Built {
+  const opens = { kind: 'requirement' as const, key: row.key };
   return {
     questionId: null,
     decision: {
@@ -78,10 +86,14 @@ export function repinDecision(
       entity: row.entity,
       key: row.key,
       title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Follow the approved designs and contracts in ${row.key} at revision ${head}?`,
-      changes: `Which design and contract versions ${row.key} pins`,
-      impact: impactOf(row, 'its issues are planned against the versions it pins'),
+      opens,
+      question: `Follow the approved designs and contracts in ${nameOf(opens, row.key)} at revision ${head}?`,
+      changes: `Which design and contract versions ${nameOf(opens, row.key)} pins`,
+      impact: impactOf(
+        row,
+        'its issues are planned against the versions it pins',
+        NameOf(opens, row.key),
+      ),
       recommended: {
         answerId: 'repin',
         why: 'A new baseline pins the approved versions; the wording and criteria stay as they are.',
@@ -97,7 +109,7 @@ export function repinDecision(
           body: { revision: head },
           // a re-pin writes a baseline, and a baseline records why (REQ-4 BC-4)
           needsReason: true,
-          effect: `${row.key} follows the approved designs and contracts; delivery reads them next.`,
+          effect: `${NameOf(opens, row.key)} follows the approved designs and contracts; delivery reads them next.`,
           recommended: true,
         }),
       ],

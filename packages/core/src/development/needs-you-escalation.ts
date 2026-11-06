@@ -22,6 +22,7 @@ import {
   prefilledReason,
   questionDecision,
 } from './needs-you-decision-builders.js';
+import { NameOf, nameOf } from './needs-you-named.js';
 
 const ANSWERS_MAX = 8;
 
@@ -73,18 +74,21 @@ export function withEscalation(
   }
   const { key } = escalated.requirement;
   const params = { projectId, key };
-  const why = `No answer in ${ESCALATE_AFTER_DAYS} days, so the agent proposes deferring ${key} until someone can answer.`;
+  // the requirement the decision opens is named by its evidence, so its own words call it "the requirement" (ISS-680 c5)
+  const named = nameOf(built.decision.opens, key);
+  const Named = NameOf(built.decision.opens, key);
+  const why = `No answer in ${ESCALATE_AFTER_DAYS} days, so the agent proposes deferring ${named} until someone can answer.`;
   const proposed = [
     ...(acts.includes('requirement.defer')
       ? [
           answer({
             id: 'escalation.defer',
-            label: `Defer ${key}`,
+            label: `Defer ${named}`,
             act: 'requirement.defer',
             path: filled('requirement.defer', params),
             body: {},
             needsReason: true,
-            effect: `${key} leaves the current release and waits as deferred.`,
+            effect: `${Named} leaves the current release and waits as deferred.`,
             recommended: true,
           }),
         ]
@@ -93,13 +97,13 @@ export function withEscalation(
       ? [
           answer({
             id: 'escalation.drop',
-            label: `Drop ${key}`,
+            label: `Drop ${named}`,
             act: 'requirement.drop',
             path: filled('requirement.drop', params),
             body: {},
             needsReason: true,
             declines: true,
-            effect: `${key} is dropped and will not be built.`,
+            effect: `${Named} is dropped and will not be built.`,
             recommended: !acts.includes('requirement.defer'),
           }),
         ]
@@ -111,15 +115,15 @@ export function withEscalation(
     ...built,
     decision: {
       ...d,
-      changes: `Whether ${key} waits on this answer, leaves the current release, or is dropped`,
-      impact: `${key} has waited ${ESCALATE_AFTER_DAYS} days on this; an answer lets it go on.`,
+      changes: `Whether ${named} waits on this answer, leaves the current release, or is dropped`,
+      impact: `${Named} has waited ${ESCALATE_AFTER_DAYS} days on this; an answer lets it go on.`,
       recommended: lead
         ? {
             answerId: lead.id,
             why:
               lead.act === 'requirement.defer'
                 ? why
-                : `No answer in ${ESCALATE_AFTER_DAYS} days, and ${key} cannot be deferred from where it stands.`,
+                : `No answer in ${ESCALATE_AFTER_DAYS} days, and ${named} cannot be deferred from where it stands.`,
             by: 'rule',
           }
         : d.recommended,

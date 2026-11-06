@@ -205,8 +205,16 @@ export function triageProposal(payload: unknown, item: TriagedItem): DecisionPro
   };
 }
 
-/** A breakdown: recommended unless the requirement is already carried by issues, which it would double. */
-export function breakdownProposal(payload: unknown, req: BrokenDown): DecisionProposal {
+/**
+ * A breakdown: recommended unless the requirement is already carried by issues, which it would double.
+ * `named` is how its words call the requirement: "the requirement" where the decision's evidence names
+ * it (`needs-you-decision-builders.ts:nameOf`, ISS-680 c5).
+ */
+export function breakdownProposal(
+  payload: unknown,
+  req: BrokenDown,
+  named: string = req.key,
+): DecisionProposal {
   const p = parsePayload('breakdown', payload);
   const traced = new Set(p.issues.flatMap((i) => i.criteria.map((c) => c.tracesTo)));
   const n = p.issues.length;
@@ -224,7 +232,7 @@ export function breakdownProposal(payload: unknown, req: BrokenDown): DecisionPr
       `${n} draft ${n === 1 ? 'issue is' : 'issues are'} created, each tracing its criteria`,
       ...(req.carriedBy.length > 0
         ? [
-            `${req.key} is already carried by ${req.carriedBy.join(' and ')}; these trace the same criteria again`,
+            `${named.charAt(0).toUpperCase()}${named.slice(1)} is already carried by ${req.carriedBy.join(' and ')}; these trace the same criteria again`,
           ]
         : []),
       'The master picks them up in its next pass',
@@ -243,7 +251,10 @@ export function breakdownProposal(payload: unknown, req: BrokenDown): DecisionPr
   };
 }
 
-/** Every other suggestion kind: its act in a verb, what approving applies, and no recommendation of its own. */
+/**
+ * Every other suggestion kind: its act in a verb, what approving applies, and no recommendation of its
+ * own. `target` is how its words call the record it is on (`needs-you-decision-builders.ts:nameOf`).
+ */
 export function suggestionProposal(
   kind: SuggestionKind,
   payload: unknown,
