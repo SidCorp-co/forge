@@ -2,7 +2,8 @@
 // criteria read (`issues/criteria-weighing.ts`) and the steward's facts (`criteria-facts.ts`, ISS-1035:
 // adminhub-api's steward called earned passes missing while the read counted them). It calls the
 // release's own weighings and no other: a project with no production at the build it delivers, as its
-// landing record weighs it (`landed-build.ts:deliveredBuildsOf`, `landedStandings`); a project where nothing it judges on serves a change before its release (a promotion, or production
+// landing record weighs it (`landed-build.ts:deliveredBuildsOf`, `landedStandings`); a project where
+// nothing it judges on serves a change before its release (a promotion, or production
 // deployed only by a release: ISS-957, ISS-964) at the landing (`criteria-basis.ts:landingCriteriaReports`),
 // one judging on a `delivery.judgedOn` environment at what is served
 // (`issues/criteria-verdicts.ts:unearnedCriteriaReports`, that environment until the issue is released). Where no basis can be computed, every criterion says why.
