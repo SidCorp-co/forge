@@ -3,7 +3,11 @@
  * session a fire starts is completed through the session machine, as a box ending its turn does,
  * and the fire's settlement is read back.
  *
+ * ISS-1058: the ledger's window carries its newest fire, so Activity's cleanup row says a run going now,
+ * and a run that ended with no report, from the fire's own record.
+ *
  * @direct-test-of packages/core/src/schedules/fires.ts
+ * @direct-test-of packages/core/src/schedules/cleanup-window.ts
  */
 
 import { eq, sql } from 'drizzle-orm';
@@ -77,9 +81,11 @@ const reportCleanup = (body: Doc) =>
 // completed, and its fire read `success` with no report behind it, so every change rated high stayed
 // held with nothing saying why. A cleanup fire ends with its report posted or failed, naming the gap.
 describe('a cleanup fire whose session completes (BC-9, ISS-814)', () => {
-  async function liveFire(): Promise<{ fireId: string; sessionId: string }> {
+  async function liveFire(
+    on?: string,
+  ): Promise<{ fireId: string; sessionId: string; scheduleId: string }> {
     // ISS-1049: a window exists only where the project turned one on
-    const schedule = { id: await turnCleanupWindowOn(projectId, ownerId) };
+    const schedule = { id: on ?? (await turnCleanupWindowOn(projectId, ownerId)) };
     await debts({ items: [red('low')] });
     const [run] = await rows<{ id: string }>(sql`
       INSERT INTO pipeline_runs (project_id, kind, status, started_at, metadata)
@@ -91,7 +97,7 @@ describe('a cleanup fire whose session completes (BC-9, ISS-814)', () => {
       INSERT INTO schedule_runs (schedule_id, project_id, trigger, status, session_id, started_at)
       VALUES (${schedule.id}, ${projectId}, 'manual', 'running', ${session?.id}, now()) RETURNING id`);
     if (!fire || !session) throw new Error('no cleanup fire was opened');
-    return { fireId: fire.id, sessionId: session.id };
+    return { fireId: fire.id, sessionId: session.id, scheduleId: schedule.id };
   }
   const complete = (sessionId: string) =>
     transitionSessions(db, {
@@ -157,5 +163,28 @@ describe('a cleanup fire whose session completes (BC-9, ISS-814)', () => {
     expect((await reportFor({ fire: other.fireId })).status).toBe(201);
     await complete(sessionId);
     expect((await fireRow(fireId))?.status).toBe('failed');
+  });
+
+  // ISS-1058: forge's window fired 2026-11-06 18:00Z and its row read only "next run tomorrow" and the
+  // 11-04 report, though the run was going, and its 11-05 run had ended with no report at all
+  it('reads on the ledger as running while it runs, then as ended with no report, then as reported', async () => {
+    const { fireId, sessionId, scheduleId } = await liveFire();
+    const running = (await ledger()).body.window.lastRun;
+    expect(running).toMatchObject({ status: 'running', finishedAt: null, reported: false });
+    expect(Date.parse(running.startedAt)).not.toBeNaN();
+    await complete(sessionId);
+    const ended = (await ledger()).body.window.lastRun;
+    expect(ended).toMatchObject({ status: 'failed', reported: false });
+    expect(ended.error).toContain('ended without a report');
+    expect(ended.finishedAt).not.toBeNull();
+    const next = await liveFire(scheduleId);
+    expect((await reportFor({ fire: next.fireId, result: 'red' })).status).toBe(201);
+    await complete(next.sessionId);
+    expect((await ledger()).body.window.lastRun).toMatchObject({
+      status: 'success',
+      reported: true,
+      error: null,
+    });
+    expect(fireId).not.toBe(next.fireId);
   });
 });

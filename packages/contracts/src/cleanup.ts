@@ -9,6 +9,7 @@
 // rated high is no debt at all, it holds its issue (BC-3).
 
 import { z } from "zod";
+import type { ScheduleRunStatus } from "./schedules.js";
 import { wholeShaSchema } from "./check-runs.js";
 import {
 	LANDING_SURFACE_LABELS,
@@ -248,6 +249,19 @@ export const cleanupReportsQuerySchema = z.strictObject({
 });
 export type CleanupReportsQuery = z.infer<typeof cleanupReportsQuerySchema>;
 
+/**
+ * A cleanup window's newest fire (ISS-1058), from the schedule's own fire record: `running` since
+ * `startedAt`, or how it ended, and whether a cleanup report names it. `error` is why it failed, as
+ * the fire records it (a run that ended without its report says so there).
+ */
+export interface CleanupWindowRun {
+	status: ScheduleRunStatus;
+	startedAt: string;
+	finishedAt: string | null;
+	reported: boolean;
+	error: string | null;
+}
+
 /** `GET /api/projects/:id/debts`: the ledger and the window. */
 export interface DebtLedgerView {
 	fast: boolean;
@@ -259,6 +273,7 @@ export interface DebtLedgerView {
 		timeZone: string | null;
 		enabled: boolean;
 		nextRunAt: string | null;
+		lastRun: CleanupWindowRun | null;
 	} | null;
 	/** Where no window is on (none, or one disabled), that said plainly with who turns one on; null where it is on (ISS-1049). */
 	windowOff: string | null;

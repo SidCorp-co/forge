@@ -8,6 +8,9 @@
 // @direct-test-of packages/web-v2/src/features/activity/components/activity-peek.tsx
 // @direct-test-of packages/web-v2/src/features/activity/hooks.ts
 // @direct-test-of packages/web-v2/src/features/activity/api.ts
+//
+// ISS-1058: a window whose run is going now reads Running and since when, in place of its next run;
+// a run that ended with no report names that on its own row, so the older report is never read as its.
 
 import type { CleanupReportView, DebtLedgerView, DebtView } from "@forge/contracts/cleanup";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -47,7 +50,7 @@ const LEDGER_ON: DebtLedgerView = {
   fast: true,
   open: [debt(DEBT_IDS[1], "src/orders/export.ts", false), debt(DEBT_IDS[2], "src/catalog/sync.ts", false)],
   cleared: [debt(DEBT_IDS[0], "src/auth/session.ts", true)],
-  window: { scheduleId: "sch-1", cron: "0 18 * * *", timeZone: null, enabled: true, nextRunAt: new Date(Date.now() + 3_600_000).toISOString() },
+  window: { scheduleId: "sch-1", cron: "0 18 * * *", timeZone: null, enabled: true, nextRunAt: new Date(Date.now() + 3_600_000).toISOString(), lastRun: null },
   windowOff: null,
 };
 const REPORT: CleanupReportView = {
@@ -127,5 +130,58 @@ describe("ISS-1051 the Activity peek shows a release in flight and the project's
     expect(row.getAttribute("title")).toBe(LEDGER_NONE.windowOff);
     expect(within(peek).getByTestId("cleanup-no-report").textContent).toBe("No report");
     expect(within(peek).queryByTestId("cleanup-debts")).toBeNull();
+  });
+});
+
+describe("ISS-1058 the cleanup row says a run going now, and a run that ended with no report", () => {
+  const ranAt = ago(1_800);
+  const WHY = "ended without a report: the cleanup session completed, and no cleanup report names fire f-1.";
+  const withRun = (lastRun: NonNullable<DebtLedgerView["window"]>["lastRun"]): DebtLedgerView => ({
+    ...LEDGER_ON,
+    window: { ...(LEDGER_ON.window as NonNullable<DebtLedgerView["window"]>), lastRun },
+  });
+
+  it("a window running now reads Running and since when, in place of its next run", async () => {
+    serve(read([API, FE]), {
+      "p-api": { ledger: withRun({ status: "running", startedAt: ranAt, finishedAt: null, reported: false, error: null }), reports: [REPORT] },
+    });
+    renderWithQuery(<ActivityScreen />);
+    const peek = await peekOf("AdminHub API");
+    const row = await within(peek).findByTestId("cleanup-window");
+    expect(row.dataset.running).toBe("true");
+    expect(row.textContent).toMatch(/^Running/);
+    expect(row.textContent, "the next run is shown while a run goes").not.toMatch(/\d{2}:\d{2}$/);
+    expect(row.getAttribute("title")).toMatch(/^Running since /);
+    // a run going now is not one that ended unreported
+    expect(within(peek).queryByTestId("cleanup-unreported")).toBeNull();
+  });
+
+  it("a run that ended with no report says so on its own row, why on hover, beside the older report", async () => {
+    // the peek a test opens stays open in the router double, so this one opens the other project's
+    serve(read([API, FE]), {
+      "p-fe": { ledger: withRun({ status: "failed", startedAt: ranAt, finishedAt: ago(600), reported: false, error: WHY }), reports: [REPORT] },
+    });
+    renderWithQuery(<ActivityScreen />);
+    const peek = await peekOf("AdminHub FE");
+    const run = await within(peek).findByTestId("cleanup-unreported");
+    expect(run.textContent).toMatch(/^Last runNo report/);
+    expect(run.getAttribute("title")).toContain(WHY);
+    expect(run.getAttribute("title")).toMatch(/^Ended /);
+    const windowRow = within(peek).getByTestId("cleanup-window");
+    expect(windowRow.dataset.running).toBe("false");
+    expect(windowRow.textContent).toMatch(/^On\d{2}:\d{2}$/);
+    // the report shown is labelled the last report, after the run that left none
+    const order = [...peek.querySelectorAll("[data-testid^=cleanup-]")].map((e) => e.getAttribute("data-testid"));
+    expect(order.indexOf("cleanup-unreported")).toBeLessThan(order.indexOf("cleanup-report"));
+  });
+
+  it("a run that ended and reported shows no unreported row", async () => {
+    serve(read([API, FE]), {
+      "p-api": { ledger: withRun({ status: "success", startedAt: ranAt, finishedAt: ago(600), reported: true, error: null }), reports: [REPORT] },
+    });
+    renderWithQuery(<ActivityScreen />);
+    const peek = await peekOf("AdminHub API");
+    await within(peek).findByTestId("cleanup-report");
+    expect(within(peek).queryByTestId("cleanup-unreported")).toBeNull();
   });
 });
