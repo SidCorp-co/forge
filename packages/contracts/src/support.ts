@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 import { ISSUE_STATUSES } from "./issue-machine.js";
-import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
+import { REASON_LINE_MAX, REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type { OperationsScope, SupportRoomKind } from "./support-operations.js";
 
@@ -601,7 +601,7 @@ export const supportOwnerCredentialSchema = z.union([
 	z.strictObject({
 		ended: z.strictObject({
 			at: z.iso.datetime({ offset: true }),
-			reason: z.string().min(1).max(500),
+			reason: z.string().min(1).max(REASON_LINE_MAX),
 		}),
 	}),
 ]);

@@ -10,6 +10,7 @@
 // sends its result. A refresh the product refuses ends the credential by name, keeping no token,
 // and the act is refused saying who signs in again and where; a dead token is never sent.
 
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import type { SupportOwnerCredential, SupportOwnerOauth } from '@forge/contracts/support';
 import { db } from '../db/client.js';
 import {
@@ -132,7 +133,10 @@ function refreshUnderLock(input: {
     if (freshEnough(oauth, now)) return { ok: true, value: bearer(oauth) };
 
     const end = async (reason: string): Promise<Outcome<OwnerHeaders>> => {
-      const ended: SupportOwnerCredential = { ended: { at: new Date(now).toISOString(), reason } };
+      // held to the line the stored credential takes, so a long product answer never fails the write
+      const ended: SupportOwnerCredential = {
+        ended: { at: new Date(now).toISOString(), reason: reason.slice(0, REASON_LINE_MAX) },
+      };
       await rewriteOwnerCredential(tx, {
         projectId,
         bindingId: api.bindingId,
