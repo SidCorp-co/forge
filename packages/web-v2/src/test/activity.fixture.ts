@@ -169,7 +169,6 @@ export const LEDGER_NONE: DebtLedgerView = {
   fast: true,
   open: [],
   cleared: [],
-  waiting: [],
   window: null,
   windowOff: "No cleanup window is on for this project, so no cleanup run starts here.",
 };

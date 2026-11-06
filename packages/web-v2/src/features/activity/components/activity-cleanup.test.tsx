@@ -47,7 +47,6 @@ const LEDGER_ON: DebtLedgerView = {
   fast: true,
   open: [debt(DEBT_IDS[1], "src/orders/export.ts", false), debt(DEBT_IDS[2], "src/catalog/sync.ts", false)],
   cleared: [debt(DEBT_IDS[0], "src/auth/session.ts", true)],
-  waiting: [],
   window: { scheduleId: "sch-1", cron: "0 18 * * *", timeZone: null, enabled: true, nextRunAt: new Date(Date.now() + 3_600_000).toISOString() },
   windowOff: null,
 };
@@ -62,7 +61,6 @@ const REPORT: CleanupReportView = {
     { debt: DEBT_IDS[1], why: "needs the export rewrite" },
     { debt: DEBT_IDS[2], why: "waits on the sync contract" },
   ],
-  covers: [],
   reportedBy: null,
   reportedAt: ago(54_000),
   supersededBy: null,
