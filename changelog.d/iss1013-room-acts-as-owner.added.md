@@ -1,0 +1,1 @@
+**A support room acts in its product as the owner.** He consents once in his own words in his own room and withdraws with one; Forge keeps his credential per product and makes each act itself, refusing another room by name.
