@@ -92,7 +92,9 @@ describe('an orientation carries a revision that moves whenever what it is compo
 
   it('moves when an always-applied rule changes, and when an org guide is deleted', async () => {
     const first = orientationRevision(await servedCheckoutOrientation('p-1', 'forge'));
-    knowledge.rows[0] = { ...knowledge.rows[0], body: 'A label is 1-2 words.' };
+    knowledge.rows = knowledge.rows.map((r) =>
+      r.slug === 'ui-copy-rule' ? { ...r, body: 'A label is 1-2 words.' } : r,
+    );
     const ruleChanged = orientationRevision(await servedCheckoutOrientation('p-1', 'forge'));
     expect(ruleChanged).not.toBe(first);
     knowledge.rows = knowledge.rows.filter((r) => r.slug !== 'org-voice-guide');
