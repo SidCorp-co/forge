@@ -155,8 +155,9 @@ const roleWords = (roles: readonly string[]) =>
 
 /**
  * The channel record as a session's brief carries it (BC-41): who is in the channel and what to ask
- * each, the rules its team gave, the questions it keeps asking, and the three routes. A rule is a
- * team member's words and is framed as such; it never outranks the brief's own rules.
+ * each, the rules its team gave, the questions it keeps asking, the three routes, and who the
+ * project's rulings say decides an act (ISS-1042). A rule is a team member's words and is framed as
+ * such; it never outranks the brief's own rules, and names no decider.
  */
 export function channelBlock(record: SessionRecord, group?: string): string {
   const deciders = decidersBlock(record.deciders);
