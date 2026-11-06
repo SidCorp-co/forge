@@ -9,6 +9,17 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.539] - 2026-11-06
+
+Verdicts name their evidence shape, accept declared run ids, and requirement judges sign in
+
+### Fixed
+
+- **Verdict evidence sent as one string is refused as a list.** The refusal no longer reads a 50-item cap as 50 characters; each item holds 500 characters, so a long URL fits, and the guides state both limits.
+- **A judge declared at a requirement can sign in.** Its testing secrets come from the environment the requirement is weighed on, each read is audited on the requirement, and where none can be named the refusal says what to declare.
+- **Verdicts and contract versions are held to what landed.** A commit verdict on a landed issue must hold, or be held by, its landing; a contract version's sourceRef must be on the base branch and match its file.
+- **A verdict naming its declared run by the box's short id is recorded as that run.** The verdict doors take a run's whole id or its first eight characters, and a refusal names the whole ids the box declared.
+
 ## [0.4.0-dev.538] - 2026-11-06
 
 Chat makes your Product decisions: agree, triage, design and release on your word

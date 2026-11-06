@@ -1,1 +1,0 @@
-**A verdict naming its declared run by the box's short id is recorded as that run.** The verdict doors take a run's whole id or its first eight characters, and a refusal names the whole ids the box declared.

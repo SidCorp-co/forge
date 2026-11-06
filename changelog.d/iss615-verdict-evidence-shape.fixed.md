@@ -1,1 +1,0 @@
-**Verdict evidence sent as one string is refused as a list.** The refusal no longer reads a 50-item cap as 50 characters; each item holds 500 characters, so a long URL fits, and the guides state both limits.
