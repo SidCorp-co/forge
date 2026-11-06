@@ -4,6 +4,8 @@
 // @direct-test-of packages/core/src/release-batch/release-read.ts
 // @direct-test-of packages/core/src/permissions/holders-named.ts
 // @direct-test-of packages/core/src/release-page/sections.ts
+// @direct-test-of packages/core/src/development/needs-you-draft-approval.ts
+// @direct-test-of packages/core/src/release-batch/release-gates.ts
 /**
  * ISS-869 (FB-465): Autoflow's own rules ask its owner to approve a release before the master opens
  * the upstream MR. Its release 0.1.0 was a draft with no run, the project declaring no production, so
@@ -272,6 +274,45 @@ describe('ISS-1075: a record that a required approval holds', () => {
     expect(
       (await decide(world.token, before.version, { decision: 'approve', reason: 'ok' })).status,
     ).toBe(201);
+    expect((await recordOwner()).kind).toBe('agent');
+  });
+
+  // round 2: the act the approver owes is the approval, a decision their Needs you holds and presses;
+  // read live on dev.554, autoflow's owner had nothing in Needs you while the release waited on them
+  it('puts the approval in the approver’s Needs you, the gate naming it first, and pressing it frees the record', async () => {
+    await landedIssue(5, F4);
+    const { version } = await recordOwner();
+    const res = await api(
+      world.token,
+      'GET',
+      `/api/projects/${world.projectId}/releases/${version}`,
+    );
+    const gate = (
+      res.body.release as { gates: Array<{ code: string; detail: string; owner: { act: string } }> }
+    ).gates.find((g) => g.code === 'NO_RELEASE_GATE');
+    expect(gate?.owner.act, 'the approver was told to record, not to approve').toMatch(/^approve/i);
+    expect(gate?.detail, 'the gate sent the reader to record before the approval').toMatch(
+      /approv[^.]*before[^.]*record/i,
+    );
+
+    const read = await api(
+      world.token,
+      'GET',
+      `/api/projects/${world.projectId}/needs-you/decisions`,
+    );
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    type Answer = { id: string; act: string; path: string; body: Record<string, unknown> };
+    const decisions = read.body.decisions as Array<{ key: string; answers: Answer[] }>;
+    const mine = decisions.find((d) => d.key === version);
+    expect(mine, `no decision on ${version} in ${JSON.stringify(decisions)}`).toBeDefined();
+    const approve = mine?.answers.find((a) => a.id === 'approve') as Answer;
+    expect(approve.act).toBe('release.decideDraft');
+
+    const pressed = await api(world.token, 'POST', approve.path, {
+      ...approve.body,
+      reason: 'ok',
+    });
+    expect(pressed.status, JSON.stringify(pressed.body)).toBe(201);
     expect((await recordOwner()).kind).toBe('agent');
   });
 });

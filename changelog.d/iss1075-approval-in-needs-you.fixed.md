@@ -1,0 +1,1 @@
+**A required release approval reaches its approver.** On a project without production that requires release approval, the release waits on "approve or return", which now sits in the approver's Needs you; approving it hands the record to the master.

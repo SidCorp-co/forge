@@ -139,9 +139,12 @@ function gatedTurn(f: TurnFacts): Turn {
   };
   if (owner.kind === 'agent') return turn('waiting', 'agent', says);
   if (owner.kind === 'person') {
-    return f.viewer?.isAdmin
-      ? turn('needs_you', 'you', { ...says, who: YOU })
-      : turn('waiting', 'person', says);
+    // an approval is the approvers' to decide, every other act the admins' (ISS-1075)
+    const mine =
+      owner.says.act.key === 'standing.act.approveDraftOrReturn'
+        ? f.viewer?.mayApprove
+        : f.viewer?.isAdmin;
+    return mine ? turn('needs_you', 'you', { ...says, who: YOU }) : turn('waiting', 'person', says);
   }
   return turn('stuck', 'system', says);
 }

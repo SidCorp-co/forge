@@ -132,6 +132,12 @@ export const DECISION_ACTS = {
 		path: "/api/projects/:projectId/release-batches/:runId/approvals/:approvalId/decision",
 		reason: false,
 	},
+	// a drafted release's approve or return, on a project declaring no production that requires the
+	// approval before its landing is recorded (ISS-1075); a return asks its reason on its answer
+	"release.decideDraft": {
+		path: "/api/projects/:projectId/releases/:version/approval",
+		reason: false,
+	},
 	"preview.approve": {
 		path: "/api/previews/:previewId/approve",
 		reason: false,
@@ -557,6 +563,7 @@ export const DECISION_ACT_OF_SAID: Readonly<Record<string, DecisionActOfSaid>> =
 		"standing.act.agreeR": { act: "requirement.agree" },
 		"standing.act.check": { act: "requirement.accept" },
 		"standing.act.approveOrReturn": { act: "release.decide" },
+		"standing.act.approveDraftOrReturn": { act: "release.decideDraft" },
 		"designs.act.approveOrReturn": { act: "design.decide" },
 		"contracts.act.approveOrReturn": { act: "contract.decide" },
 		"standing.act.confirmAnswer": { act: "feedback.verify" },

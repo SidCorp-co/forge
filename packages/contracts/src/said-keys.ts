@@ -929,6 +929,9 @@ export const SAID = {
 		en: "approve or return {v}",
 		vars: { v: "version" },
 	},
+	"standing.act.approveDraftOrReturn": {
+		en: "approve or return the release",
+	},
 	"standing.act.approveReleaseV": {
 		en: "Approve release {v}",
 		vars: { v: "version" },

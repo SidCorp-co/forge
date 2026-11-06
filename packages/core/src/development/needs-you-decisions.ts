@@ -42,6 +42,7 @@ import {
   feedbackDecision,
   prefilledReason,
 } from './needs-you-decision-builders.js';
+import { draftApprovalDecision } from './needs-you-draft-approval.js';
 import { asked } from './needs-you-escalation.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { revisionWordsOf } from './needs-you-signoff-words.js';
@@ -97,6 +98,7 @@ const REPIN_BATCH = 'designs.act.repinBatch';
 
 /** A draft release no gate holds, which its admins cut where the master does not (`release-batch/release-view.ts:draftTurn`). */
 const RELEASE_CUT = 'standing.act.cut';
+const RELEASE_DRAFT_DECIDE = 'standing.act.approveDraftOrReturn';
 
 type Classified = Built | { reason: NeedsYouNotDecisionReason } | { folded: true };
 
@@ -219,6 +221,10 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     const cut = f.cutOf.get(row.key);
     if (!cut) return { reason: 'work' };
     return cutDecision(row, area, f.projectId, cut);
+  }
+  if (row.entity === 'release' && act.key === RELEASE_DRAFT_DECIDE) {
+    if (row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
+    return draftApprovalDecision(row, area, f.projectId);
   }
   if (row.entity === 'release' && act.key === 'standing.act.approveOrReturn') {
     const release = f.releaseOf.get(row.key);

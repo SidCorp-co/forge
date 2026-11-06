@@ -20,6 +20,7 @@ import {
 } from '../db/schema-release-ledger.js';
 import { peopleOf } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { readReleasePath } from '../project-config/index.js';
 import type { Carry } from './approval-carry.js';
@@ -174,17 +175,26 @@ export async function decideDraftApproval(input: {
   const refused = await draftDecisionRefusal(projectId, version);
   if (refused) throw refuseRelease(refused.code, refused.why, '/version');
   const roster = await waitingIssueIds(projectId);
-  const [row] = await db
-    .insert(releaseDraftApprovals)
-    .values({
+  // the decision settles its approver's Needs you row, which the workspace's Activity hears (ISS-1075)
+  const row = await db.transaction(async (tx) => {
+    const [written] = await tx
+      .insert(releaseDraftApprovals)
+      .values({
+        projectId,
+        version,
+        issueIds: roster,
+        decision: decision.decision === 'approve' ? 'approved' : 'returned',
+        decidedByUser: userId,
+        reason: decision.reason?.trim() || null,
+      })
+      .returning();
+    await emitEvent(tx, 'decision.settled', {
       projectId,
-      version,
-      issueIds: roster,
-      decision: decision.decision === 'approve' ? 'approved' : 'returned',
-      decidedByUser: userId,
-      reason: decision.reason?.trim() || null,
-    })
-    .returning();
+      act: 'release.decideDraft',
+      subject: version,
+    });
+    return written;
+  });
   if (!row) throw new Error('release-batch: the draft decision was not written');
   return viewOf(row);
 }

@@ -164,6 +164,12 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		personWhen: [STRICT, RELEASE_APPROVAL],
 		byContent: true,
 	},
+	"release.decideDraft": {
+		serious: false,
+		why: "approving a drafted release that carries only reversible changes is delivery; a project that requires a person's release approval keeps it theirs",
+		personWhen: [STRICT, RELEASE_APPROVAL],
+		byContent: true,
+	},
 	"preview.approve": {
 		serious: false,
 		why: "approving a preview of the agents' own change is delivery",
@@ -197,7 +203,7 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 	"release.record": {
 		serious: false,
 		why: "recording a landing as the delivery is bookkeeping on what already landed, which the master's record door takes outside strict (REQ-79 r6 BC-17); where the project requires a person's release approval it closes the release's issues, so it waits on that approval and is the master's once it stands",
-		personWhen: [STRICT, RELEASE_APPROVAL],
+		personWhen: [RELEASE_APPROVAL, STRICT],
 		byContent: true,
 	},
 	"release.split": {
@@ -243,7 +249,13 @@ export interface OwedContent {
 }
 
 export type OwedBy =
-	| { by: "person"; because: SeriousBecause | "policy"; why: string }
+	| {
+			by: "person";
+			because: SeriousBecause | "policy";
+			why: string;
+			/** Where policy keeps it a person's, the switch that does (the first on, in the rule's order). */
+			on?: OwedPolicySwitch["kind"];
+	  }
 	| { by: "master"; why: string };
 
 const switchOn = (s: OwedPolicySwitch, p: OwedPolicy): boolean => {
@@ -295,7 +307,12 @@ export function whoOwes(
 			!(s.kind === "release_approval" && content?.approved === true),
 	);
 	if (on)
-		return { by: "person", because: "policy", why: SWITCH_SAID[on.kind](on) };
+		return {
+			by: "person",
+			because: "policy",
+			why: SWITCH_SAID[on.kind](on),
+			on: on.kind,
+		};
 	return { by: "master", why: rule.why };
 }
 
@@ -307,6 +324,7 @@ const RELEASE_SAID: Readonly<Record<string, OwedActKind>> = {
 	"standing.act.reviewAndPromote": "release.decide",
 	"standing.act.approveReleaseV": "release.decide",
 	"standing.act.approveCarrierRelease": "release.decide",
+	"standing.act.approveDraftOrReturn": "release.decideDraft",
 	"issues.standing.act.approveOnReleases": "release.decide",
 	"standing.act.recordLanding": "release.record",
 	"standing.act.recordRelease": "release.record",

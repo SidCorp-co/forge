@@ -403,13 +403,29 @@ const masterTakes = (act: Said, owes: ReleaseOwes): boolean => {
 
 // an admin's act names the project's admins, and where none holds project.admin says where it is
 // granted; a routine one names the project's master (ISS-1058)
+/**
+ * Whether the release waits first on the approval its project requires (ISS-1075): with no
+ * production, the landing is recorded only once a listed approver approves the drafted roster, so
+ * what a person owes is that approval, a decision Needs you holds, and recording is the master's after.
+ */
+export const approvalFirst = (owes: ReleaseOwes): boolean => {
+  const record = owes('release.record');
+  return record.by === 'person' && record.because === 'policy' && record.on === 'release_approval';
+};
+
+const APPROVE_DRAFT: Owed = { by: 'admin', act: act('standing.act.approveDraftOrReturn') };
+
+/** The gate's own detail where the approval comes first: the approval, then the record. */
+const APPROVAL_FIRST_DETAIL =
+  "This project requires a person's release approval before its landing is recorded: an approver approves or returns the drafted release (`POST /api/projects/:id/releases/:version/approval`, `{ decision, reason }`), and once it is approved the master records the landing.";
+
 function ownerOf(
   code: ReleaseReasonCode,
   details: Details,
   admins: readonly string[],
   owes: ReleaseOwes,
 ): ReleaseGateOwner {
-  const owed = OWED[code];
+  const owed = code === 'NO_RELEASE_GATE' && approvalFirst(owes) ? APPROVE_DRAFT : OWED[code];
   const act = owed.act(details);
   const effect = owed.effect ? { effect: owed.effect(details) } : {};
   const by = owed.by === 'admin' && masterTakes(act, owes) ? 'master' : owed.by;
@@ -438,7 +454,10 @@ function gateView(
     kind,
     title: sayEn(title),
     sentence: sayEn(sentence),
-    detail: entry.message,
+    detail:
+      entry.code === 'NO_RELEASE_GATE' && approvalFirst(owes)
+        ? `${APPROVAL_FIRST_DETAIL} ${entry.message}`
+        : entry.message,
     issues: issuesNamed(entry.details),
     owner: ownerOf(entry.code, entry.details, admins, owes),
     says: { title, sentence },
@@ -463,6 +482,7 @@ export function gateViews(
 }
 
 /** Every act this table gives an admin, by its said key: what the who-owes test checks the one table names. */
-export const ADMIN_ACT_KEYS: readonly string[] = (Object.values(OWED) as Owed[]).flatMap((o) =>
-  o.by === 'admin' ? [o.act(undefined).key] : [],
-);
+export const ADMIN_ACT_KEYS: readonly string[] = [
+  ...(Object.values(OWED) as Owed[]),
+  APPROVE_DRAFT,
+].flatMap((o) => (o.by === 'admin' ? [o.act(undefined).key] : []));

@@ -24,6 +24,8 @@ export const SETTLED_BY: Readonly<Record<DecisionAct, OutboxEventType>> = {
   'feedback.reopen': 'feedback.verifySettled',
   'release.cut': 'release.cut',
   'release.decide': 'release.approvalDecided',
+  // a drafted release's decision settles its approver's row (`release-batch/draft-approval.ts`)
+  'release.decideDraft': 'decision.settled',
   'preview.approve': 'preview.transitioned',
   'design.decide': 'workflow.designDecided',
   'mockup.accept': 'mockup.transitioned',
