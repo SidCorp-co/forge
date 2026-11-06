@@ -21,6 +21,7 @@ import { granters, grantsOf, readersOf, supportConfigOf } from './grants.js';
 import { projectsInScope } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { issueInReach, questionRefusal } from './owner-ask-targets.js';
+import { ownerUsername } from './owner-consent.js';
 import { dayThreadFor } from './question-task.js';
 import { threadLink } from './record.js';
 import { isQuestionThread } from './rules.js';
@@ -40,23 +41,6 @@ interface AskInput {
   questionId?: string | null;
   /** The parked question's thread it was handed in (ISS-873), where it was asked in the day's thread. */
   handedIn?: string;
-}
-
-/** The username the owner writes under, as Forge saw it on one of their messages in this project. */
-async function ownerUsername(projectId: string, ownerId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ label: supportActions.actorLabel })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.projectId, projectId),
-        eq(supportActions.kind, 'message_in'),
-        eq(supportActions.actorKey, ownerId),
-      ),
-    )
-    .orderBy(asc(supportActions.createdAt))
-    .limit(1);
-  return row?.label ?? null;
 }
 
 /**

@@ -271,6 +271,50 @@ export const supportPromises = pgTable(
 );
 
 /**
+ * The owner's consent to a room acting as him in a product (ISS-1013, REQ-85 BC-3): who gave it (the
+ * chat account the binding names as owner, as the server signed his message), when, which product
+ * (the support-api binding), which room, and the message he said it in. Withdrawn by his word, it
+ * keeps the message and the time, and the room acts as him no more. One standing consent per room
+ * and product; a consent given again after a withdrawal is a new row, so the history is read whole.
+ */
+export const supportOwnerConsents = pgTable(
+  'support_owner_consents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    roomId: uuid('room_id')
+      .notNull()
+      .references(() => supportRooms.id, { onDelete: 'cascade' }),
+    /** The product: the project's support-api binding the room acts in. */
+    bindingId: uuid('binding_id')
+      .notNull()
+      .references(() => integrationBindings.id, { onDelete: 'cascade' }),
+    /** The owner's chat account id, as the server signed his message, and his name as the group shows it. */
+    ownerKey: text('owner_key').notNull(),
+    ownerLabel: text('owner_label'),
+    thread: text('thread').notNull(),
+    /** The owner's own message saying he agrees. */
+    givenMessage: text('given_message').notNull(),
+    givenAt: timestamp('given_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The owner's own message taking it back, and when; both null while it stands. */
+    withdrawnMessage: text('withdrawn_message'),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+  },
+  (t) => ({
+    standingUq: uniqueIndex('support_owner_consents_standing_uq')
+      .on(t.roomId, t.bindingId)
+      .where(sql`withdrawn_at IS NULL`),
+    projectIdx: index('support_owner_consents_project_idx').on(t.projectId),
+    withdrawnChk: check(
+      'support_owner_consents_withdrawn_chk',
+      sql`(${t.withdrawnAt} IS NULL) = (${t.withdrawnMessage} IS NULL)`,
+    ),
+  }),
+);
+
+/**
  * A bound group's channel record (REQ-75 r6 BC-41): one per project and group, read by every room
  * row of that project bound to the group, whichever bot answers it.
  */

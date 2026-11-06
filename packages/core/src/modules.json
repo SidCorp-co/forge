@@ -1262,6 +1262,7 @@
         "supportProposals",
         "supportFeedbackLinks",
         "supportPromises",
+        "supportOwnerConsents",
         "supportChannels",
         "supportChannelMembers",
         "supportChannelRules",

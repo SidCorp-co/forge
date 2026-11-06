@@ -4,7 +4,11 @@
 // each kind's own acts are refused in the other's room by name.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { SupportPromiseRequest, SupportRecordKind } from '@forge/contracts/support';
+import type {
+  SupportOwnerConsentRequest,
+  SupportPromiseRequest,
+  SupportRecordKind,
+} from '@forge/contracts/support';
 import type {
   ChannelRole,
   ChannelRoute,
@@ -32,6 +36,7 @@ import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-a
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
 import { askOwner } from './owner-ask.js';
+import { ownerConsent } from './owner-consent.js';
 import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
@@ -124,6 +129,7 @@ export type SupportActInput =
   | { action: 'link'; thread: string; member: string }
   | { action: 'image'; message: string; n?: number | undefined }
   | ({ action: 'promise' } & SupportPromiseRequest)
+  | ({ action: 'owner_consent' } & SupportOwnerConsentRequest)
   | {
       action: 'read';
       name: string;
@@ -343,6 +349,10 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     case 'promise': {
       const { action: _, ...request } = input;
       return makePromise(room, request);
+    }
+    case 'owner_consent': {
+      const { action: _, ...request } = input;
+      return ownerConsent(room, request);
     }
   }
 }

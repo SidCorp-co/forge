@@ -3907,6 +3907,13 @@
       "when": 1835827200000,
       "tag": "0612_a_steward_note_records_the_facts_it_was_written_under",
       "breakpoints": true
+    },
+    {
+      "idx": 613,
+      "version": "7",
+      "when": 1835913600000,
+      "tag": "0613_a_support_room_acts_as_the_owner_with_his_consent",
+      "breakpoints": true
     }
   ]
 }

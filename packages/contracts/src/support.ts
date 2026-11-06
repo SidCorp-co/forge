@@ -425,8 +425,13 @@ export const supportRoomConfigSchema = z.strictObject({
 });
 export type SupportRoomConfig = z.infer<typeof supportRoomConfigSchema>;
 
-/** A tool's kind: `diagnose` reads (GET or HEAD only) and runs at once; `fix` waits on the asker. */
-export const SUPPORT_TOOL_KINDS = ["diagnose", "fix"] as const;
+/**
+ * A tool's kind: `diagnose` reads (GET or HEAD only) and runs at once; `fix` waits on the asker;
+ * `owner` acts in the product as its owner (REQ-85, ISS-1013), only in the owner's room while his
+ * consent stands, and core calls it with the owner's credential it keeps for the binding, never the
+ * binding's own.
+ */
+export const SUPPORT_TOOL_KINDS = ["diagnose", "fix", "owner"] as const;
 export type SupportToolKind = (typeof SUPPORT_TOOL_KINDS)[number];
 
 export const SUPPORT_TOOL_METHODS = [
@@ -561,6 +566,19 @@ export const supportApiSecretsSchema = z.strictObject({
 		.refine((h) => Object.keys(h).length <= 10, "at most 10 headers"),
 });
 
+/**
+ * Where core keeps the owner's credential for one product (ISS-1013, REQ-85 BC-2, BC-4): a project
+ * secret under this scope, named for the support-api binding, holding `{ headers }` as
+ * `supportApiSecretsSchema` reads it. Written only at the owner-credential door, which checks the
+ * shape and the binding; never handed to a room's session or its box.
+ */
+export const SUPPORT_OWNER_CREDENTIAL_SCOPE = "owner-acts";
+export const supportOwnerCredentialName = (bindingId: string) =>
+	`binding-${bindingId.toLowerCase()}`;
+
+/** The owner-credential door's body: the headers core sends as the owner, on every owner act. */
+export const supportOwnerCredentialRequestSchema = supportApiSecretsSchema;
+
 /** The `support-api` binding's config: the tools this project grants its support session. */
 export const supportApiBindingConfigSchema = z.strictObject({
 	tools: z
@@ -613,6 +631,12 @@ export const SUPPORT_ACTION_KINDS = [
 	"promise_made",
 	/** Core told the session a promise's answer: reached, dropped, or no longer tracked (ISS-1012). */
 	"promise_told",
+	/** The owner consented, in his own words in his room, to the room acting as him in a product (ISS-1013). */
+	"owner_consented",
+	/** The owner withdrew that consent, and the room acts as him no more (ISS-1013). */
+	"owner_withdrew",
+	/** Core made an act in the product as the owner, with the credential it keeps (ISS-1013). */
+	"owner_act",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -710,6 +734,7 @@ export const SUPPORT_ACTIONS = [
 	"read",
 	"image",
 	"promise",
+	"owner_consent",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
@@ -917,6 +942,55 @@ export const supportReadRequestSchema = z.strictObject({
 		)
 		.optional(),
 });
+
+/** A Rocket.Chat message id, as the session was handed it. */
+const chatMessageIdSchema = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id");
+
+/**
+ * The owner's consent, or its withdrawal, as the session read it in his own words (ISS-1013, REQ-85
+ * BC-3): `message` is the owner's message saying so, in his room; `product` the support API binding
+ * it is for, by the name the `tools` list gives it, which may be omitted where the project binds
+ * one, and on a withdrawal, which then ends every consent standing in the room.
+ */
+export const supportOwnerConsentRequestSchema = z.strictObject({
+	thread: threadId,
+	message: chatMessageIdSchema.describe(
+		"the owner's own message saying he agrees, or that the room should stop (`message` in what you were handed)",
+	),
+	decision: z
+		.enum(["give", "withdraw"])
+		.describe(
+			"give: he agreed to the room acting as him; withdraw: he took it back",
+		),
+	product: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe(
+			"the product, by the binding name `tools` lists; omitted where the project binds one, or on a withdrawal meaning all",
+		),
+});
+export type SupportOwnerConsentRequest = z.infer<
+	typeof supportOwnerConsentRequestSchema
+>;
+
+/** An act in the product as its owner (ISS-1013): an `owner` tool by name, with its arguments. */
+export const supportOwnerActRequestSchema = z.strictObject({
+	thread: threadId,
+	tool: z.string().min(1).max(48),
+	args: z
+		.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+		.optional(),
+});
+export type SupportOwnerActRequest = z.infer<
+	typeof supportOwnerActRequestSchema
+>;
 
 /** What a declared read came back with: its name and what the program printed, scrubbed by core. */
 export interface SupportReadResult {
@@ -1229,6 +1303,16 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_PROMISE_ISSUE_DROPPED",
 	/** A promise naming an environment the project does not declare, or whose serving Forge cannot read (ISS-1012). */
 	"SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED",
+	/** An owner act, or his consent, outside the owner's own room (ISS-1013). */
+	"SUPPORT_OWNER_OTHER_ROOM",
+	/** An owner act in a product the owner has not consented to, or has withdrawn from (ISS-1013). */
+	"SUPPORT_OWNER_NO_CONSENT",
+	/** A consent cited from a message the owner did not write (ISS-1013). */
+	"SUPPORT_CONSENT_NOT_THE_OWNER",
+	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
+	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
+	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
+	"SUPPORT_OWNER_CREDENTIAL_MISSING",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1330,4 +1414,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_PROMISE_ISSUE_UNKNOWN: 404,
 	SUPPORT_PROMISE_ISSUE_DROPPED: 409,
 	SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED: 409,
+	SUPPORT_OWNER_OTHER_ROOM: 403,
+	SUPPORT_OWNER_NO_CONSENT: 403,
+	SUPPORT_CONSENT_NOT_THE_OWNER: 403,
+	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
+	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;
