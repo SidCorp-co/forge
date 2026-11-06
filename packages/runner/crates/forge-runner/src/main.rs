@@ -66,7 +66,7 @@ enum Command {
     Question(cmd::question::Args),
     /// Report to Forge what a release's commit range ships, from the checkout that cut it.
     Release(cmd::release::Args),
-    /// Pull the latest skills for bound projects now (on-demand, one-shot).
+    /// Pull the latest skills and write the orientation core serves into bound checkouts now (on-demand, one-shot).
     Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
     Update(cmd::update::Args),

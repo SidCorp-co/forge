@@ -12,12 +12,13 @@
 //! lock. The write is idempotent: a second start over what the first left
 //! writes nothing and records [`Outcome::Current`].
 //!
-//! The orientation carries project knowledge (`injection: always` entries),
-//! which changes while a daemon runs and moves no build, so the daemon also
-//! converges every checkout again on a steady interval ([`Point::Refresh`])
-//! from the same assignment read: a checkout already holding what core serves
-//! is left untouched, and a pass that could not reach core writes nothing and
-//! records why.
+//! The orientation carries project knowledge (rules, guides, lessons), which
+//! changes while a daemon runs and moves no build, so core names each
+//! project's orientation revision on every heartbeat answer and the daemon
+//! converges a checkout again ([`Point::Refresh`]) when its project's revision
+//! moved, from the same assignment read: a revision that has not moved reads
+//! and writes nothing, and a pass that could not reach core writes nothing and
+//! records why. `forge-runner sync` writes it on demand ([`Point::Sync`]).
 //!
 //! The level-triggered shape of a controller that reconciles the whole set it
 //! owns on start rather than waiting for the next event about each item
@@ -122,8 +123,10 @@ impl Outcome {
 pub enum Point {
     Start,
     Provision,
-    /// The daemon's steady re-convergence while it runs.
+    /// The daemon's re-convergence while it runs, when a heartbeat names a moved revision.
     Refresh,
+    /// `forge-runner sync`, asked by a person.
+    Sync,
 }
 
 impl Point {
@@ -132,6 +135,7 @@ impl Point {
             Point::Start => "at daemon start",
             Point::Provision => "at provision",
             Point::Refresh => "at refresh",
+            Point::Sync => "at sync",
         }
     }
 }
@@ -280,8 +284,8 @@ async fn converge_one(b: &Bound, lock_dir: Option<&Path>) -> Outcome {
     ))
 }
 
-/// Write every bound checkout's orientation once, at `point` (a daemon start
-/// or a refresh), and record a line for each. `census_from` is when the set was
+/// Write every bound checkout's orientation once, at `point` (a daemon start,
+/// a refresh or a sync), and record a line for each. `census_from` is when the set was
 /// read, and `None` where it is not the whole census, which then prunes nothing.
 pub async fn converge_every(
     point: Point,

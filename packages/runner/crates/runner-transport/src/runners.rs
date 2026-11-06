@@ -48,6 +48,10 @@ pub struct MeRunner {
     /// daemon's start writes what a provision would. `None` from an older core.
     #[serde(default)]
     pub orientation: Option<String>,
+    /// That orientation's revision, the one the heartbeat names for the project
+    /// (ISS-1066). `None` from an older core.
+    #[serde(default)]
+    pub orientation_revision: Option<String>,
 }
 
 impl MeRunner {

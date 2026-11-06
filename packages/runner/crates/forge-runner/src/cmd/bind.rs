@@ -460,6 +460,7 @@ mod tests {
             rate_limited_for_seconds: None,
             limit_reason: None,
             orientation: None,
+            orientation_revision: None,
         }
     }
 

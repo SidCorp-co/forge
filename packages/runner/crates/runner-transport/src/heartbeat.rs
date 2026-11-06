@@ -28,7 +28,13 @@ struct HeartbeatResponse {
     binaries: Option<GateAck>,
     #[serde(default)]
     disk: Option<GateAck>,
+    #[serde(default)]
+    orientations: Option<Revisions>,
 }
+
+/// Each assigned project's orientation revision, by project id: the sha256 of
+/// the body core serves it on `me/runners` (ISS-1066).
+pub type Revisions = std::collections::BTreeMap<String, String>;
 
 /// What core says it did with the gate condition. A refusal is carried back
 /// rather than swallowed: a box reporting into nothing and not knowing it is
@@ -77,6 +83,15 @@ pub struct Conditions {
     pub disk: Option<Vec<runner_proto::disk::Root>>,
 }
 
+/// What core answered a beat with.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Answer {
+    pub refused: Refused,
+    /// `None` where core named no revisions: one older than this runner, or one
+    /// that could not compose them for this beat.
+    pub orientations: Option<Revisions>,
+}
+
 /// Core's reasons for refusing either condition while taking the heartbeat.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Refused {
@@ -86,10 +101,10 @@ pub struct Refused {
     pub disk: Option<String>,
 }
 
-pub async fn beat(client: &CoreClient, conditions: &Conditions) -> Result<Refused> {
+pub async fn beat(client: &CoreClient, conditions: &Conditions) -> Result<Answer> {
     beat_with(client, conditions)
         .await
-        .map(|(_, refused)| refused)
+        .map(|(_, answer)| answer)
 }
 
 /// Like [`beat`] but returns the core's `serverTime` so callers (e.g. `doctor`)
@@ -101,7 +116,7 @@ pub async fn beat_verbose(client: &CoreClient) -> Result<String> {
         .map(|(time, _)| time)
 }
 
-async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(String, Refused)> {
+async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(String, Answer)> {
     // The RELEASED identity, not Cargo's — core compares a box against both halves,
     // and a box that answered with Cargo's number reported the same 0.17.0 as the
     // release while running seven commits of different code (ISS-1165).
@@ -112,15 +127,23 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
     );
     let req = client.post("/api/devices/heartbeat").json(&body);
     let parsed: HeartbeatResponse = status::fetch_within(req, "heartbeat", CALL_DEADLINE).await?;
-    Ok((
+    Ok(answer_of(parsed))
+}
+
+/// The answer a parsed beat carries, separated so it can be asserted without a server.
+fn answer_of(parsed: HeartbeatResponse) -> (String, Answer) {
+    (
         parsed.server_time.unwrap_or_default(),
-        Refused {
-            gate: gate_refusal(parsed.gate),
-            pool: gate_refusal(parsed.pool),
-            binaries: gate_refusal(parsed.binaries),
-            disk: gate_refusal(parsed.disk),
+        Answer {
+            refused: Refused {
+                gate: gate_refusal(parsed.gate),
+                pool: gate_refusal(parsed.pool),
+                binaries: gate_refusal(parsed.binaries),
+                disk: gate_refusal(parsed.disk),
+            },
+            orientations: parsed.orientations,
         },
-    ))
+    )
 }
 
 /// The gate object exactly as it rides on the heartbeat body, separated from
@@ -360,6 +383,32 @@ mod tests {
         assert_eq!(
             gate_refusal(parsed.binaries).as_deref(),
             Some("binaries.missing: too many")
+        );
+    }
+
+    /// ISS-1066: the revisions core names ride back to the daemon whole, and a
+    /// core that names none is told apart from one that names an empty set.
+    #[test]
+    fn the_orientation_revisions_core_names_are_carried_back() {
+        let parsed: HeartbeatResponse = serde_json::from_value(serde_json::json!({
+            "ok": true, "serverTime": "t",
+            "orientations": { "p-1": "aa", "p-2": "bb" }
+        }))
+        .unwrap();
+        let (time, answer) = answer_of(parsed);
+        assert_eq!(time, "t");
+        let want: Revisions = [("p-1".into(), "aa".into()), ("p-2".into(), "bb".into())].into();
+        assert_eq!(answer.orientations, Some(want));
+        assert_eq!(answer.refused, Refused::default());
+
+        let older: HeartbeatResponse =
+            serde_json::from_value(serde_json::json!({ "ok": true })).unwrap();
+        assert_eq!(answer_of(older).1.orientations, None);
+        let none_assigned: HeartbeatResponse =
+            serde_json::from_value(serde_json::json!({ "orientations": {} })).unwrap();
+        assert_eq!(
+            answer_of(none_assigned).1.orientations,
+            Some(Revisions::new())
         );
     }
 }

@@ -16,7 +16,7 @@ mod ancestry_read;
 mod box_frames;
 mod build_push;
 mod checkout_frame;
-mod checkout_passes;
+pub mod checkout_passes;
 pub mod control;
 pub mod dispatch;
 pub mod drain;
@@ -468,8 +468,10 @@ async fn reconcile_checkouts(
 /// bound to, once per checkout, so a box that upgraded onto a build that
 /// moves it converges without anybody re-binding each checkout. A start is
 /// the one moment every build change passes through: an update's handover
-/// execs a new process. A [`Point::Refresh`] runs it again while the daemon
-/// runs, for the project knowledge the orientation carries.
+/// execs a new process. While the daemon runs, a checkout whose project's
+/// orientation revision moved on the heartbeat is written again
+/// (`checkout_passes::refresh_orientations`), for the project knowledge the
+/// orientation carries.
 async fn converge_orientations(
     point: Point,
     server: Option<&[MeRunner]>,
@@ -478,7 +480,26 @@ async fn converge_orientations(
     record_dir: Option<&std::path::Path>,
     lock_dir: Option<&std::path::Path>,
 ) {
-    use runner_workspace::orientation_record::{converge_every, Bound};
+    use runner_workspace::orientation_record::converge_every;
+    let checkouts = orientation_targets(point, server, cfg);
+    converge_every(
+        point,
+        &checkouts,
+        lock_dir,
+        record_dir,
+        census_from.filter(|_| server.is_some()),
+    )
+    .await;
+}
+
+/// Every checkout this box is bound to, with the orientation core served for
+/// its project; `server` is `None` where core was not reached, which is said.
+fn orientation_targets(
+    point: Point,
+    server: Option<&[MeRunner]>,
+    cfg: &Config,
+) -> Vec<runner_workspace::orientation_record::Bound> {
+    use runner_workspace::orientation_record::Bound;
     let rows = server.unwrap_or_default();
     let bound = bound_checkouts(rows, cfg);
     if server.is_none() {
@@ -488,7 +509,7 @@ async fn converge_orientations(
             bound.checkouts.len()
         );
     }
-    let checkouts: Vec<Bound> = bound
+    bound
         .checkouts
         .into_iter()
         .map(|(slug, repo)| {
@@ -504,15 +525,7 @@ async fn converge_orientations(
                 repo,
             }
         })
-        .collect();
-    converge_every(
-        point,
-        &checkouts,
-        lock_dir,
-        record_dir,
-        census_from.filter(|_| server.is_some()),
-    )
-    .await;
+        .collect()
 }
 
 /// Where this daemon's WebSocket connects, as the device it is.
@@ -659,7 +672,9 @@ pub async fn run(
     rearm_given_up_releases();
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
-    checkout_passes::spawn_checkout_passes(answered, &client, &cfg, &cancel_rx);
+    // the orientation revisions each heartbeat answer names, read by the refresh (ISS-1066)
+    let (revisions_tx, revisions_rx) = watch::channel(None);
+    checkout_passes::spawn_checkout_passes(answered, &client, &cfg, revisions_rx, &cancel_rx);
     let (frame_tx, frame_rx) = mpsc::channel::<Frame>(256);
     let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
 
@@ -720,7 +735,12 @@ pub async fn run(
         cancel_rx.clone(),
     ));
     let disk = actors::spawn_headroom(cancel_rx.clone());
-    tokio::spawn(actors::heartbeat(client.clone(), disk, cancel_rx.clone()));
+    tokio::spawn(actors::heartbeat(
+        client.clone(),
+        disk,
+        revisions_tx,
+        cancel_rx.clone(),
+    ));
 
     spawn_ctrl_c(cancel_tx.clone());
 

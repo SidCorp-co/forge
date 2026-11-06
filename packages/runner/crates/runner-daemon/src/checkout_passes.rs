@@ -1,18 +1,21 @@
 //! The passes over every bound checkout that run after the daemon's start: the start's own
 //! again where core did not answer it, and the orientation refresh for as long as the daemon
-//! runs, so project knowledge edited after a start reaches the checkout.
+//! runs, so project knowledge edited after a start reaches the checkout within one heartbeat.
+//! `forge-runner sync` runs the same write on demand ([`sync_orientations`]).
 
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use runner_core::agent_activity;
 use runner_platform::config::Config;
 use runner_platform::error::Result;
+use runner_transport::heartbeat::Revisions;
 use runner_transport::runners::{self, MeRunner};
 use runner_transport::CoreClient;
-use runner_workspace::orientation_record::Point;
+use runner_workspace::orientation_record::{converge_every, Entry, Outcome, Point};
 use tokio::sync::watch;
 
-use crate::{actors, converge_orientations, reconcile_checkouts, repair_installed_hooks};
+use crate::{orientation_targets, reconcile_checkouts, repair_installed_hooks};
 
 /// Where a start's pass reads the bindings again and records what it did.
 pub(crate) struct StartPlaces {
@@ -118,67 +121,119 @@ pub(crate) async fn start_pass_once_core_answers(
     }
 }
 
-/// How often a running daemon converges every checkout's orientation again.
-const ORIENTATION_REFRESH: std::time::Duration = std::time::Duration::from_secs(15 * 60);
-
 /// The orientation core serves carries the project's knowledge, which a person edits while this
-/// daemon runs, and a start or a provision of that checkout were the only writes of it: a rule
-/// added on 2026-10-09 had reached no checkout on this box by 2026-10-22. So every `period` the
-/// assignment read is made again and every checkout converged over it, as the start does: one
-/// already holding what core serves is left untouched and recorded current, and a read core did
-/// not answer writes nothing, records why on each checkout, and waits for the next tick. Ends
-/// when `cancel` says stop.
+/// daemon runs: a rule added on 2026-10-09 had reached no checkout on this box by 2026-10-22, and
+/// on 2026-11-07 85 deleted entries stayed listed in both forge checkouts until a refresh came
+/// round. So every heartbeat answer names each assigned project's orientation revision (the
+/// sha256 of the body `me/runners` serves), and a project whose revision differs from the one
+/// this loop last wrote has `me/runners` read and its checkout converged over it, within the beat
+/// that named it. A revision that has not moved reads nothing and writes nothing. Nothing is
+/// written yet when the loop starts, so the first answer converges every checkout once, which
+/// also covers a start core did not answer. A read core did not answer writes nothing, records
+/// why on each checkout it owed, and is asked again on the next beat. Ends when `cancel` says
+/// stop or the heartbeat is gone.
 async fn refresh_orientations(
     client: &CoreClient,
     cfg: &Config,
     places: &StartPlaces,
-    period: std::time::Duration,
-    cancel: watch::Receiver<bool>,
+    mut revisions: watch::Receiver<Option<Revisions>>,
+    mut cancel: watch::Receiver<bool>,
 ) {
-    let mut ticks = actors::Ticks::new(period, cancel);
-    // The interval's first tick completes at once, and the start has just converged.
-    if ticks.next().await.is_none() {
-        return;
+    let mut written: HashMap<String, String> = HashMap::new();
+    let mut said_none = false;
+    loop {
+        tokio::select! {
+            beat = revisions.changed() => if beat.is_err() { return; },
+            stop = cancel.changed() => {
+                if stop.is_err() || *cancel.borrow() { return; }
+                continue;
+            }
+        }
+        let Some(served) = revisions.borrow_and_update().clone() else {
+            if !said_none {
+                tracing::warn!(
+                    "[orientation] core's heartbeat names no orientation revisions (a core older than this runner, or one that could not compose them), so no checkout's orientation is refreshed until it does; `forge-runner sync` writes it now"
+                );
+                said_none = true;
+            }
+            continue;
+        };
+        said_none = false;
+        let moved: BTreeSet<String> = served
+            .iter()
+            .filter(|(project, revision)| written.get(*project) != Some(*revision))
+            .map(|(project, _)| project.clone())
+            .collect();
+        if !moved.is_empty() {
+            refresh_moved(client, cfg, places, &served, &moved, &mut written).await;
+        }
     }
-    while ticks.next().await.is_some() {
-        let server = match runners::list_me(client).await {
-            Ok(rows) => Some(rows),
-            Err(e) => {
-                tracing::warn!(
-                    "[orientation] at refresh: me/runners failed ({e}) — every checkout keeps the orientation it holds, and the next refresh in {}s asks again",
-                    period.as_secs()
-                );
-                None
-            }
-        };
-        let census_from = agent_activity::now_ms();
-        let (fresh, census_from) = match (places.reload)() {
-            Ok(fresh) => (fresh, Some(census_from)),
-            Err(e) => {
-                tracing::warn!(
-                    "[orientation] at refresh: config.toml could not be read again ({e}), so this pass covers the bindings read at start and prunes no line of its record"
-                );
-                (cfg.clone(), None)
-            }
-        };
-        converge_orientations(
-            Point::Refresh,
-            server.as_deref(),
-            &fresh,
-            census_from,
-            places.record_dir.as_deref(),
-            places.lock_dir.as_deref(),
-        )
-        .await;
+}
+
+/// Converge the checkouts of the `moved` projects over what `me/runners` serves now, and note in
+/// `written` the revision each was converged at. A checkout whose provision lock could not be
+/// taken at all is left un-noted, so the next beat tries it again; a refusal is not, since the
+/// next beat would meet it again and the record already names it.
+async fn refresh_moved(
+    client: &CoreClient,
+    cfg: &Config,
+    places: &StartPlaces,
+    served: &Revisions,
+    moved: &BTreeSet<String>,
+    written: &mut HashMap<String, String>,
+) {
+    let rows = match runners::list_me(client).await {
+        Ok(rows) => Some(rows),
+        Err(e) => {
+            tracing::warn!(
+                "[orientation] at refresh: the heartbeat named a moved orientation revision for {} project(s) and me/runners failed ({e}) — every checkout keeps the orientation it holds, and the next beat asks again",
+                moved.len()
+            );
+            None
+        }
+    };
+    let fresh = (places.reload)().unwrap_or_else(|e| {
+        tracing::warn!(
+            "[orientation] at refresh: config.toml could not be read again ({e}), so this pass covers the bindings read at start"
+        );
+        cfg.clone()
+    });
+    let owed: Vec<_> = orientation_targets(Point::Refresh, rows.as_deref(), &fresh)
+        .into_iter()
+        .filter(|b| b.project_id.as_ref().is_some_and(|p| moved.contains(p)))
+        .collect();
+    let entries = converge_every(
+        Point::Refresh,
+        &owed,
+        places.lock_dir.as_deref(),
+        places.record_dir.as_deref(),
+        None,
+    )
+    .await;
+    let Some(rows) = rows else { return };
+    for row in rows.iter().filter(|r| moved.contains(&r.project_id)) {
+        let retry = owed.iter().zip(&entries).any(|(b, e)| {
+            b.project_id.as_deref() == Some(row.project_id.as_str())
+                && matches!(e.outcome, Outcome::Failed { .. })
+        });
+        let revision = row
+            .orientation_revision
+            .clone()
+            .or_else(|| served.get(&row.project_id).cloned());
+        if let (false, Some(revision)) = (retry, revision) {
+            written.insert(row.project_id.clone(), revision);
+        }
     }
 }
 
 /// The passes over every checkout that run after the start: the start's own again where core
-/// did not `answer` it, and the orientation refresh for as long as the daemon runs.
+/// did not `answer` it, and the orientation refresh, driven by the revisions each heartbeat
+/// answer names, for as long as the daemon runs.
 pub(crate) fn spawn_checkout_passes(
     answered: bool,
     client: &Arc<CoreClient>,
     cfg: &Config,
+    revisions: watch::Receiver<Option<Revisions>>,
     cancel_rx: &watch::Receiver<bool>,
 ) {
     if !answered {
@@ -191,8 +246,41 @@ pub(crate) fn spawn_checkout_passes(
     let (client, cfg, cancel) = (client.clone(), cfg.clone(), cancel_rx.clone());
     tokio::spawn(async move {
         let places = StartPlaces::this_box();
-        refresh_orientations(&client, &cfg, &places, ORIENTATION_REFRESH, cancel).await
+        refresh_orientations(&client, &cfg, &places, revisions, cancel).await
     });
+}
+
+/// `forge-runner sync`: write the orientation core serves now into every bound checkout, or only
+/// `only_slug`'s, whatever revision the daemon last wrote, and record each outcome where
+/// `forge-runner status` reads it. Fails only where `me/runners` cannot be read; a slug bound to
+/// no checkout here answers no entry, which the caller names.
+pub async fn sync_orientations(
+    client: &CoreClient,
+    cfg: &Config,
+    only_slug: Option<&str>,
+) -> Result<Vec<Entry>> {
+    sync_orientations_in(client, cfg, only_slug, &StartPlaces::this_box()).await
+}
+
+async fn sync_orientations_in(
+    client: &CoreClient,
+    cfg: &Config,
+    only_slug: Option<&str>,
+    places: &StartPlaces,
+) -> Result<Vec<Entry>> {
+    let rows = runners::list_me(client).await?;
+    let owed: Vec<_> = orientation_targets(Point::Sync, Some(&rows), cfg)
+        .into_iter()
+        .filter(|b| only_slug.is_none_or(|s| b.slug == s))
+        .collect();
+    Ok(converge_every(
+        Point::Sync,
+        &owed,
+        places.lock_dir.as_deref(),
+        places.record_dir.as_deref(),
+        None,
+    )
+    .await)
 }
 
 #[cfg(test)]
@@ -311,34 +399,31 @@ mod tests {
         assert!(!ran, "a pass core never answered is not reported as run");
     }
 
-    /// The forge rows core serves before a knowledge entry is added.
-    const BEFORE_THE_RULE: &str = r##"[{"projectId":"d1bb4907-74d9-4228-85ff-76121523af7d","runnerId":"r","slug":"forge","status":"online","orientation":"# Forge orientation — forge\n\n<!-- Generated by Forge on device provision. Forge-owned; manual edits are overwritten. -->\n\n- **projectId:** `d1bb4907-74d9-4228-85ff-76121523af7d`\n"}]"##;
-    /// The same rows once a person has added an `injection: always` entry.
-    const AFTER_THE_RULE: &str = r##"[{"projectId":"d1bb4907-74d9-4228-85ff-76121523af7d","runnerId":"r","slug":"forge","status":"online","orientation":"# Forge orientation — forge\n\n<!-- Generated by Forge on device provision. Forge-owned; manual edits are overwritten. -->\n\n- **projectId:** `d1bb4907-74d9-4228-85ff-76121523af7d`\n\n## ui-copy-rule\n"}]"##;
+    /// The forge rows core serves while a guide is still listed, and the revision it names.
+    const LISTED: &str = r##"[{"projectId":"d1bb4907-74d9-4228-85ff-76121523af7d","runnerId":"r","slug":"forge","status":"online","orientation":"# Forge orientation — forge\n\n<!-- Generated by Forge on device provision. Forge-owned; manual edits are overwritten. -->\n\n- **projectId:** `d1bb4907-74d9-4228-85ff-76121523af7d`\n\n## Project guides (fetch on demand)\n- dev-release\n- onboarding-code-map-jobs\n","orientationRevision":"r-listed"}]"##;
+    const LISTED_BEAT: &str =
+        r#"{"ok":true,"orientations":{"d1bb4907-74d9-4228-85ff-76121523af7d":"r-listed"}}"#;
+    /// The same once that guide's knowledge entry is deleted in core.
+    const DELETED: &str = r##"[{"projectId":"d1bb4907-74d9-4228-85ff-76121523af7d","runnerId":"r","slug":"forge","status":"online","orientation":"# Forge orientation — forge\n\n<!-- Generated by Forge on device provision. Forge-owned; manual edits are overwritten. -->\n\n- **projectId:** `d1bb4907-74d9-4228-85ff-76121523af7d`\n\n## Project guides (fetch on demand)\n- dev-release\n","orientationRevision":"r-deleted"}]"##;
+    const DELETED_BEAT: &str =
+        r#"{"ok":true,"orientations":{"d1bb4907-74d9-4228-85ff-76121523af7d":"r-deleted"}}"#;
 
-    static EDITED_READS: AtomicUsize = AtomicUsize::new(0);
-
-    /// A core whose knowledge is edited after the box's start read.
-    fn knowledge_edited_after_start(path: &str) -> (u16, &'static str) {
-        if path != "/api/devices/me/runners" {
-            return (200, "{}");
-        }
-        match EDITED_READS.fetch_add(1, Ordering::SeqCst) {
-            0 => (200, BEFORE_THE_RULE),
-            _ => (200, AFTER_THE_RULE),
-        }
-    }
-
-    static UNREACHED_READS: AtomicUsize = AtomicUsize::new(0);
-
-    /// A core that answers the start read and none after it.
-    fn unanswered_after_start(path: &str) -> (u16, &'static str) {
-        if path != "/api/devices/me/runners" {
-            return (200, "{}");
-        }
-        match UNREACHED_READS.fetch_add(1, Ordering::SeqCst) {
-            0 => (200, BEFORE_THE_RULE),
-            _ => (503, r#"{"error":"down"}"#),
+    /// A core that serves `LISTED` until `stage` turns 1 and `DELETED` after, counting its
+    /// `me/runners` reads in `reads`; `me/runners` answers 503 while `stage` is 2.
+    fn deletion_core(path: &str, stage: &AtomicUsize, reads: &AtomicUsize) -> (u16, &'static str) {
+        let stage = stage.load(Ordering::SeqCst);
+        match path {
+            "/api/devices/heartbeat" if stage == 0 => (200, LISTED_BEAT),
+            "/api/devices/heartbeat" => (200, DELETED_BEAT),
+            "/api/devices/me/runners" => {
+                reads.fetch_add(1, Ordering::SeqCst);
+                match stage {
+                    0 => (200, LISTED),
+                    1 => (200, DELETED),
+                    _ => (503, r#"{"error":"down"}"#),
+                }
+            }
+            _ => (200, "{}"),
         }
     }
 
@@ -384,53 +469,95 @@ mod tests {
         None
     }
 
+    fn local_of(co: &Path) -> (String, std::time::SystemTime) {
+        let local = co.join("CLAUDE.local.md");
+        (
+            std::fs::read_to_string(&local).unwrap(),
+            std::fs::metadata(&local).unwrap().modified().unwrap(),
+        )
+    }
+
+    static MOVED_STAGE: AtomicUsize = AtomicUsize::new(0);
+    static MOVED_READS: AtomicUsize = AtomicUsize::new(0);
+    fn moved_core(path: &str) -> (u16, &'static str) {
+        deletion_core(path, &MOVED_STAGE, &MOVED_READS)
+    }
+
+    /// ISS-1066 criterion 2: a beat naming a moved revision rewrites the checkout's orientation
+    /// before the next beat, and a beat naming the revision already written reads nothing from
+    /// `me/runners` and leaves the file as it stands.
     #[tokio::test]
-    async fn knowledge_core_serves_after_start_reaches_the_checkout_within_the_refresh_interval() {
-        let (root, co, cfg, places) = bound_forge("refresh");
+    async fn a_moved_revision_rewrites_the_orientation_within_one_beat_and_an_unmoved_one_touches_nothing(
+    ) {
+        let (root, co, cfg, places) = bound_forge("revision");
         let records = places.record_dir.clone().unwrap();
-        let (client, _seen) = crate::test_core::fake_core(knowledge_edited_after_start).await;
+        let (client, _seen) = crate::test_core::fake_core(moved_core).await;
         let rows = runners::list_me(&client).await.unwrap();
         start_pass(Some(&rows), &cfg, "boot", &places).await;
-        let local = co.join("CLAUDE.local.md");
-        assert!(!std::fs::read_to_string(&local)
-            .unwrap()
-            .contains("## ui-copy-rule"));
+        assert!(local_of(&co).0.contains("- onboarding-code-map-jobs"));
 
+        let (beats, revisions) = watch::channel(None);
         let (stop, cancel) = watch::channel(false);
-        let period = std::time::Duration::from_millis(20);
-        let refreshing = tokio::spawn(async move {
-            refresh_orientations(&client, &cfg, &places, period, cancel).await
-        });
+        let refreshing = {
+            let client = client.clone();
+            tokio::spawn(async move {
+                refresh_orientations(&client, &cfg, &places, revisions, cancel).await
+            })
+        };
+        let none = Default::default();
+        let beat = || crate::actors::beat_once(&client, &none, &beats);
 
+        // The first beat after start: nothing written by this loop yet, so it converges once.
+        beat().await;
+        let first = forge_line_once(&records, |e| {
+            e.point == Point::Refresh && e.outcome == Outcome::Current
+        })
+        .await;
+        assert!(
+            first.is_some(),
+            "the first beat converged nothing within 5 s"
+        );
+        assert_eq!(MOVED_READS.load(Ordering::SeqCst), 2);
+        let held = local_of(&co);
+
+        for _ in 0..3 {
+            beat().await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(
+            MOVED_READS.load(Ordering::SeqCst),
+            2,
+            "ORIENTATION_READ_UNMOVED: a beat naming the revision already written read me/runners again"
+        );
+        assert_eq!(
+            local_of(&co),
+            held,
+            "ORIENTATION_TOUCHED_UNMOVED: a beat naming the revision already written changed the file"
+        );
+
+        // A guide's knowledge entry is deleted in core: the next beat names a moved revision.
+        MOVED_STAGE.store(1, Ordering::SeqCst);
+        beat().await;
         let written = forge_line_once(&records, |e| {
             e.point == Point::Refresh && e.outcome == Outcome::Written
         })
         .await;
         assert!(
             written.is_some(),
-            "ORIENTATION_NOT_REFRESHED: core served a new orientation after start and no refresh wrote it within 5 s at a 20 ms interval"
+            "ORIENTATION_NOT_REFRESHED: the beat naming a moved revision wrote nothing within 5 s, with no later beat"
         );
+        let (now, _) = local_of(&co);
         assert!(
-            std::fs::read_to_string(&local)
-                .unwrap()
-                .contains("## ui-copy-rule"),
-            "ORIENTATION_NOT_REFRESHED: the checkout does not hold what core serves now"
+            !now.contains("onboarding-code-map-jobs") && now.contains("- dev-release"),
+            "ORIENTATION_NOT_REFRESHED: the checkout still lists the deleted guide:\n{now}"
         );
-        let current = forge_line_once(&records, |e| {
-            e.point == Point::Refresh && e.outcome == Outcome::Current
-        })
-        .await;
-        assert!(
-            current.is_some(),
-            "a refresh over an orientation already on disk records it current"
-        );
-        let held = std::fs::metadata(&local).unwrap().modified().unwrap();
-        tokio::time::sleep(period * 5).await;
-        assert_eq!(
-            std::fs::metadata(&local).unwrap().modified().unwrap(),
-            held,
-            "a refresh rewrote an orientation that had not changed"
-        );
+        assert_eq!(MOVED_READS.load(Ordering::SeqCst), 3);
+
+        let after = local_of(&co);
+        beat().await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(MOVED_READS.load(Ordering::SeqCst), 3);
+        assert_eq!(local_of(&co), after);
 
         let _ = stop.send(true);
         tokio::time::timeout(std::time::Duration::from_secs(5), refreshing)
@@ -440,27 +567,33 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    static DOWN_STAGE: AtomicUsize = AtomicUsize::new(0);
+    static DOWN_READS: AtomicUsize = AtomicUsize::new(0);
+    fn down_core(path: &str) -> (u16, &'static str) {
+        deletion_core(path, &DOWN_STAGE, &DOWN_READS)
+    }
+
+    /// A moved revision whose `me/runners` read core did not answer keeps the checkout, records
+    /// why, and is asked again on the next beat until core answers.
     #[tokio::test]
-    async fn a_refresh_core_did_not_answer_keeps_the_checkout_and_records_why() {
+    async fn a_refresh_core_did_not_answer_keeps_the_checkout_records_why_and_asks_again() {
         let (root, co, cfg, places) = bound_forge("refresh-unanswered");
         let records = places.record_dir.clone().unwrap();
-        let (client, _seen) = crate::test_core::fake_core(unanswered_after_start).await;
+        let (client, _seen) = crate::test_core::fake_core(down_core).await;
         let rows = runners::list_me(&client).await.unwrap();
         start_pass(Some(&rows), &cfg, "boot", &places).await;
-        let local = co.join("CLAUDE.local.md");
-        let before = std::fs::read_to_string(&local).unwrap();
+        let before = local_of(&co).0;
 
+        let (beats, revisions) = watch::channel(None);
         let (stop, cancel) = watch::channel(false);
-        let refreshing = tokio::spawn(async move {
-            refresh_orientations(
-                &client,
-                &cfg,
-                &places,
-                std::time::Duration::from_millis(20),
-                cancel,
-            )
-            .await
-        });
+        let refreshing = {
+            let client = client.clone();
+            tokio::spawn(async move {
+                refresh_orientations(&client, &cfg, &places, revisions, cancel).await
+            })
+        };
+        DOWN_STAGE.store(2, Ordering::SeqCst);
+        crate::actors::beat_once(&client, &Default::default(), &beats).await;
         let refused = forge_line_once(&records, |e| {
             e.point == Point::Refresh
                 && matches!(&e.outcome, Outcome::Refused { detail } if detail.starts_with("PROVISION_ORIENTATION_NOT_SERVED"))
@@ -471,15 +604,139 @@ mod tests {
             "REFRESH_FAILURE_UNRECORDED: a refresh whose read core did not answer recorded no refusal within 5 s"
         );
         assert_eq!(
-            std::fs::read_to_string(&local).unwrap(),
+            local_of(&co).0,
             before,
             "a refresh core did not answer changed the checkout"
         );
+
+        DOWN_STAGE.store(1, Ordering::SeqCst);
+        crate::actors::beat_once(&client, &Default::default(), &beats).await;
+        let written = forge_line_once(&records, |e| {
+            e.point == Point::Refresh && e.outcome == Outcome::Written
+        })
+        .await;
+        assert!(
+            written.is_some(),
+            "REFRESH_NOT_RETRIED: the beat after a failed read did not ask again"
+        );
+        assert!(!local_of(&co).0.contains("onboarding-code-map-jobs"));
         let _ = stop.send(true);
         tokio::time::timeout(std::time::Duration::from_secs(5), refreshing)
             .await
             .expect("REFRESH_OUTLIVED_STOP")
             .unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    static SILENT_READS: AtomicUsize = AtomicUsize::new(0);
+    /// A core older than ISS-1066: its heartbeat names no revisions.
+    fn names_no_revisions(path: &str) -> (u16, &'static str) {
+        match path {
+            "/api/devices/heartbeat" => (200, r#"{"ok":true}"#),
+            "/api/devices/me/runners" => {
+                SILENT_READS.fetch_add(1, Ordering::SeqCst);
+                (200, DELETED)
+            }
+            _ => (200, "{}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_heartbeat_naming_no_revisions_reads_and_writes_nothing() {
+        let (root, co, cfg, places) = bound_forge("refresh-silent");
+        std::fs::write(co.join("CLAUDE.local.md"), "mine\n").unwrap();
+        let (client, _seen) = crate::test_core::fake_core(names_no_revisions).await;
+        let (beats, revisions) = watch::channel(None);
+        let (stop, cancel) = watch::channel(false);
+        let refreshing = {
+            let client = client.clone();
+            tokio::spawn(async move {
+                refresh_orientations(&client, &cfg, &places, revisions, cancel).await
+            })
+        };
+        for _ in 0..3 {
+            crate::actors::beat_once(&client, &Default::default(), &beats).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(SILENT_READS.load(Ordering::SeqCst), 0);
+        assert_eq!(local_of(&co).0, "mine\n");
+        let _ = stop.send(true);
+        tokio::time::timeout(std::time::Duration::from_secs(5), refreshing)
+            .await
+            .expect("REFRESH_OUTLIVED_STOP")
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    static SYNC_STAGE: AtomicUsize = AtomicUsize::new(0);
+    static SYNC_READS: AtomicUsize = AtomicUsize::new(0);
+    fn sync_core(path: &str) -> (u16, &'static str) {
+        deletion_core(path, &SYNC_STAGE, &SYNC_READS)
+    }
+
+    /// ISS-1066 criterion 3: `forge-runner sync --project <slug>` writes what core serves now into
+    /// that checkout, with no daemon and whatever revision was last written, and only that one.
+    #[tokio::test]
+    async fn sync_for_a_project_rewrites_its_checkouts_orientation_and_no_other() {
+        let (root, co, mut cfg, _) = bound_forge("sync");
+        let epod = root.join("epod");
+        std::fs::create_dir_all(&epod).unwrap();
+        git(&epod, &["init", "-q"]);
+        cfg.bindings.insert(
+            "epod".into(),
+            Binding {
+                repo_path: epod.clone(),
+                branch: None,
+                project_id: Some("00000000-0000-4000-8000-0000000000e9".into()),
+            },
+        );
+        let records = root.join("config");
+        // never `Config::load`: that is this box's own config.toml, and a pass over it writes
+        // into the box's real checkouts
+        let reloaded = cfg.clone();
+        let places = StartPlaces {
+            reload: Box::new(move || Ok(reloaded.clone())),
+            record_dir: Some(records.clone()),
+            lock_dir: Some(records.join("locks")),
+        };
+        let (client, _seen) = crate::test_core::fake_core(sync_core).await;
+        let rows = runners::list_me(&client).await.unwrap();
+        start_pass(Some(&rows), &cfg, "boot", &places).await;
+        assert!(local_of(&co).0.contains("- onboarding-code-map-jobs"));
+
+        SYNC_STAGE.store(1, Ordering::SeqCst);
+        let said = sync_orientations_in(&client, &cfg, Some("forge"), &places)
+            .await
+            .unwrap();
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert_eq!(
+            (said[0].slug.as_str(), said[0].point),
+            ("forge", Point::Sync)
+        );
+        assert_eq!(said[0].outcome, Outcome::Written, "{said:?}");
+        let (now, _) = local_of(&co);
+        assert!(
+            !now.contains("onboarding-code-map-jobs") && now.contains("- dev-release"),
+            "SYNC_DID_NOT_REWRITE: {now}"
+        );
+        assert!(
+            !epod.join("CLAUDE.local.md").exists(),
+            "sync --project forge wrote another project's checkout"
+        );
+        let line = forge_line_once(&records, |e| e.point == Point::Sync).await;
+        assert!(
+            line.is_some(),
+            "the sync's write is not in the record status reads"
+        );
+
+        let again = sync_orientations_in(&client, &cfg, Some("forge"), &places)
+            .await
+            .unwrap();
+        assert_eq!(again[0].outcome, Outcome::Current);
+        let none = sync_orientations_in(&client, &cfg, Some("nope"), &places)
+            .await
+            .unwrap();
+        assert!(none.is_empty(), "{none:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

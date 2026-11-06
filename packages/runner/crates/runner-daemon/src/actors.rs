@@ -252,10 +252,13 @@ pub(crate) async fn cred_watch(
 }
 
 /// The heartbeat, carrying the gate, pool-read and binary conditions and the
-/// newest disk reading [`headroom`] took.
+/// newest disk reading [`headroom`] took, and publishing the orientation
+/// revisions each answer names to `revisions`, which the orientation refresh
+/// reads (ISS-1066).
 pub(crate) async fn heartbeat(
     client: Arc<CoreClient>,
     disk: watch::Receiver<Option<Vec<runner_proto::disk::Root>>>,
+    revisions: watch::Sender<Option<heartbeat::Revisions>>,
     cancel: watch::Receiver<bool>,
 ) {
     // The verdict this loop last shouted about, so a gate failing open says so
@@ -275,9 +278,24 @@ pub(crate) async fn heartbeat(
         if let Some(g) = conditions.gate.as_ref() {
             let _ = announce_gate(g, &mut shouted);
         }
-        match heartbeat::beat(&client, &conditions).await {
-            Err(e) => tracing::warn!("[heartbeat] {e}"),
-            Ok(refused) => warn_refused(&refused),
+        beat_once(&client, &conditions, &revisions).await;
+    }
+}
+
+/// One beat: what core refused is said, and the revisions it named are
+/// published on every answer, moved or not, so a refresh whose read of
+/// `me/runners` failed is asked again on the next beat. A beat core did not
+/// answer publishes nothing.
+pub(crate) async fn beat_once(
+    client: &CoreClient,
+    conditions: &heartbeat::Conditions,
+    revisions: &watch::Sender<Option<heartbeat::Revisions>>,
+) {
+    match heartbeat::beat(client, conditions).await {
+        Err(e) => tracing::warn!("[heartbeat] {e}"),
+        Ok(answer) => {
+            warn_refused(&answer.refused);
+            revisions.send_replace(answer.orientations);
         }
     }
 }
