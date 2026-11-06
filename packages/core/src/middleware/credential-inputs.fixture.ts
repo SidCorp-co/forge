@@ -189,7 +189,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:command field:json:stdout field:json:stderr`,
   'a structured part of a record core validates and stores; it admits nobody': words`
     field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
-    field:json:duties field:json:outsideBot
+    field:json:duties field:json:outsideBot field:json:decides
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category field:json:shippedIn
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks
