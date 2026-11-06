@@ -70,6 +70,9 @@ beforeAll(async () => {
   await enforceGates(projectId, ownerId, ['approval_designs']);
   agentId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agentId, 'member');
+  // the re-pins and the proposal are a person's decisions only where the designs gate asks a person
+  // (ISS-1058); off, the master takes them and the owner's Needs you lists none
+  await enforceGates(projectId, ownerId, ['approval_designs']);
   say = requester(app, {
     owner: await signUserToken(ownerId),
     master: (

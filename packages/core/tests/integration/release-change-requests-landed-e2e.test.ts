@@ -23,6 +23,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareControls, enforceGates } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 // the repository host as the binding reads it: which branches hold a commit, or a read that fails
@@ -93,6 +94,9 @@ async function seedWorld(release: Record<string, unknown>): Promise<void> {
     },
     extra: { release } as never,
   });
+  // the landing is witnessed by the wait a landed row reads: a run judging what landed, which a
+  // project declaring an independent judge alone owes (ISS-1068; elsewhere the master moves it on)
+  await enforceGates(world.projectId, world.ownerId, ['builder_verdict', 'independent_qa']);
   const connectionId = randomUUID();
   world.bindingId = randomUUID();
   await db.execute(sql`
@@ -466,6 +470,22 @@ describe('on any other project the stamp is the landing, as before', () => {
     expect(await standingsOf()).toContain(JUDGE_WHAT_LANDED);
     await reconcileIdleIssues(new Date(), { projectId: world.projectId });
     expect((await strandOf(id))?.evidence.merged).toBe(true);
+  });
+
+  // ISS-1068: forge's 21 reopened rows read "Next run · claim it and judge what landed" with no judge declared
+  it('asks no judge for landed ISS-12 where the project declares none and its release asks no verdict', async () => {
+    await declareControls(world.projectId, world.ownerId, {
+      gates: { profile: 'standard' },
+      delivery: { verdictsRequired: false },
+    });
+    const id = await iss12();
+    const standing = await standingsOf();
+    expect(standing).not.toContain(JUDGE_WHAT_LANDED);
+    expect(standing).toContain('re-run after reopen');
+    await reconcileIdleIssues(new Date(), { projectId: world.projectId });
+    const strand = await strandOf(id);
+    expect(strand?.evidence.merged).toBe(true);
+    expect(strand?.waitingFor ?? '').not.toMatch(/judge/);
   });
 
   it('takes ISS-12’s local mark, as before', async () => {
