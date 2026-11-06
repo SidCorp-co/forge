@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.541] - 2026-11-06
+
+A verdict right after declaring a run is told when the run opens
+
+### Fixed
+
+- **A verdict naming a run just declared records under it.** `forge-runner run declare` opens the run at core before it answers, and a run core does not hold is refused saying what core holds, never as undeclared.
+
 ## [0.4.0-dev.540] - 2026-11-06
 
 The steward weighs criteria proof the same way the issue's criteria read does
