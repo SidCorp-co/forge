@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { supportBrief, toolsLine } from './prompt.js';
+import { agentOpening, supportBrief, toolsLine } from './prompt.js';
 
 const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
 
@@ -18,6 +18,42 @@ describe('the support brief states goals, and the consent a change waits on', ()
     );
     expect(brief).toContain('never claim it ran or was recorded until agree says so');
     expect(brief).not.toContain('type a code');
+  });
+});
+
+// ISS-1032 (owner, 2026-11-06): where the agent has no permission it goes to the master and waits
+// for the master's answer, never answering first; #sid-email told a user a mailbox was shared.
+describe('the room brief teaches an ask it cannot do to wait on the master', () => {
+  const channel = supportBrief({
+    projectName: 'P',
+    product: null,
+    tools: [],
+    opening: agentOpening({
+      projectName: 'P',
+      product: null,
+      channels: ['#mail'],
+      ownerMode: false,
+    }),
+  });
+
+  it('routes it to the owning project’s master, holds once, and replies only with what was done', () => {
+    expect(channel).toContain(
+      'a request through support.record { project } to the master of the project that owns it',
+    );
+    expect(channel).toContain('post one reply that it went to the team');
+    expect(channel).toContain(
+      'reply again only with what that master did or decided once you are told it, never done before then and never options or steps the master has not given',
+    );
+    expect(channel).toContain('save the one reply that an ask went to the team');
+  });
+
+  it('tells a result as what the team said or shipped, never done before it', () => {
+    for (const text of [brief, channel]) {
+      expect(text).toContain(
+        'You are told once recorded work is answered, live or will not be done, with what the team said or shipped',
+      );
+      expect(text).toContain('never call it done before then');
+    }
   });
 });
 
