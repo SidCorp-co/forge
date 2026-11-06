@@ -3,6 +3,7 @@
 // running judge reads it at. A person reads a secret's name here and its value nowhere.
 
 import { secretRefOf } from '@forge/contracts/project-config';
+import { SUPPORT_OWNER_CREDENTIAL_SCOPE } from '@forge/contracts/support';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -53,6 +54,10 @@ const secretView = (s: { ref: string; scope: string; name: string; updatedAt: Da
 
 const READ = requiresOnParam('project.read', 'id');
 const ADMIN = requiresOnParam('project.admin', 'id');
+
+/** The owner's credential for a product is kept at its own door, which checks its shape (ISS-1013). */
+const ownerScopeSays = (id: string, done: 'written' | 'removed') =>
+  `\`${SUPPORT_OWNER_CREDENTIAL_SCOPE}\` holds the owner's credential a support room acts in a product with, and it is ${done} only at ${done === 'written' ? 'PUT' : 'DELETE'} /api/projects/${id}/support/owner-credentials/<support-api binding id>.`;
 
 const reserved = (detail: string) => [
   { code: 'SECRET_SCOPE_RESERVED' as const, path: '/scope', detail },
@@ -119,6 +124,9 @@ projectSecretRoutes.put(
         'CONFIG_REFUSED',
       );
     }
+    if (scope === SUPPORT_OWNER_CREDENTIAL_SCOPE) {
+      return refused(c, reserved(ownerScopeSays(id, 'written')), 'CONFIG_REFUSED');
+    }
     const actor = restActor(c);
     const outcome = await writeSecret({
       projectId: id,
@@ -158,6 +166,9 @@ projectSecretRoutes.delete(
         ),
         'CONFIG_REFUSED',
       );
+    }
+    if (scope === SUPPORT_OWNER_CREDENTIAL_SCOPE) {
+      return refused(c, reserved(ownerScopeSays(id, 'removed')), 'CONFIG_REFUSED');
     }
     const actor = restActor(c);
     const outcome = await deleteSecret({

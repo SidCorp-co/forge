@@ -18,6 +18,7 @@ import {
 import { supportApiSecretsOf } from '../integrations/support-api/index.js';
 import { findProjectSlugs } from '../projects/index.js';
 import { no, type Outcome } from './outcome.js';
+import { ownerSecretsOf } from './owner-credential.js';
 import { supportVenueId } from './rules.js';
 import type { RoomRow } from './store.js';
 
@@ -54,7 +55,12 @@ export async function threadConversationOf(
 
 /** Every value a line posted in this room must never carry: each of its support APIs' credentials. */
 export async function roomSecrets(room: RoomRow): Promise<string[]> {
-  return supportApiSecretsOf(room.projectId).catch(() => []);
+  const [apis, owner] = await Promise.all([
+    supportApiSecretsOf(room.projectId).catch(() => []),
+    // the owner's credential a room acts with (ISS-1013) is scrubbed out of every line too
+    ownerSecretsOf(room.projectId).catch(() => []),
+  ]);
+  return [...apis, ...owner];
 }
 
 /** Text with every secret the room holds, and every pattern the scrubber knows, taken out. */

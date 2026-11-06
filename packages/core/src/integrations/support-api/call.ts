@@ -108,7 +108,9 @@ export function planCall(input: {
       'SUPPORT_TOOL_KIND',
       tool.kind === 'fix'
         ? `${tool.name} is a fix: it runs only after the person who asked confirms it — propose it with propose_fix`
-        : `${tool.name} is a diagnose tool: run it with run, it needs no confirm`,
+        : tool.kind === 'owner'
+          ? `${tool.name} acts as the owner: ask for it with owner_act, in the owner's own room, once he has consented`
+          : `${tool.name} is a diagnose tool: run it with run, it needs no confirm`,
     );
   }
   const declared = tool.params ?? {};

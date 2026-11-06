@@ -5,6 +5,7 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type {
+  SupportOwnerActRequest,
   SupportOwnerConsentRequest,
   SupportPromiseRequest,
   SupportRecordKind,
@@ -35,6 +36,7 @@ import { endLastResortWait } from './last-resort.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
+import { ownerAct } from './owner-act.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
 import { readProjectFacts } from './project-read.js';
@@ -130,6 +132,7 @@ export type SupportActInput =
   | { action: 'image'; message: string; n?: number | undefined }
   | ({ action: 'promise' } & SupportPromiseRequest)
   | ({ action: 'owner_consent' } & SupportOwnerConsentRequest)
+  | ({ action: 'owner_act' } & SupportOwnerActRequest)
   | {
       action: 'read';
       name: string;
@@ -354,5 +357,7 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
       const { action: _, ...request } = input;
       return ownerConsent(room, request);
     }
+    case 'owner_act':
+      return ownerAct(room, { thread: input.thread, tool: input.tool, args: input.args });
   }
 }

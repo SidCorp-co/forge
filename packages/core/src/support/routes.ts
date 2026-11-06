@@ -46,6 +46,7 @@ import { requiresNoPermission, requiresOnParam } from '../permissions/index.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
+import { mountOwnerRoutes } from './owner-routes.js';
 import { mountPromiseRoutes } from './promise-routes.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
 import { act, SESSION_ONLY } from './session-door.js';
@@ -445,6 +446,7 @@ supportRoutes.post(
 
 mountChannelRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
+mountOwnerRoutes(supportRoutes);
 
 const SUPPORT_READ = requiresOnParam('project.read', 'id');
 

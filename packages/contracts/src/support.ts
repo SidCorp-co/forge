@@ -735,6 +735,7 @@ export const SUPPORT_ACTIONS = [
 	"image",
 	"promise",
 	"owner_consent",
+	"owner_act",
 ] as const;
 export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
 
