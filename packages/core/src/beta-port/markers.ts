@@ -160,18 +160,36 @@ export function portedComment(devKey: string): string {
   return `Ported to forge-dev: ${devKey}`;
 }
 
-const MARKER = /ported to forge-dev/i;
-const MARKER_KEY = /ported to forge-dev:?\s*([A-Za-z][A-Za-z0-9]*-\d+)/i;
+// a marker is a comment's own first non-empty line, never the phrase quoted or explained in prose
+// (ISS-1045: a beta master's prose quoting the phrase held sidpeak beta ISS-626 unported)
+const MARKER_LINE = /^ported to forge-dev(?![A-Za-z0-9-])/i;
+const MARKER_KEY = /^ported to forge-dev:?\s*([A-Za-z][A-Za-z0-9]*-\d+)(?![A-Za-z0-9-])/i;
 
-/** Whether a beta comment marks its issue ported, by hand or by this sweep (any key after it). */
+/** The first non-empty line of a comment, trimmed: the only line a port marker is read from. */
+function markerLineOf(body: string): string {
+  return (
+    body
+      .split(/\r?\n/)
+      .find((line) => line.trim() !== '')
+      ?.trim() ?? ''
+  );
+}
+
+/**
+ * Whether a beta comment marks its issue ported, by hand or by this sweep: its first non-empty line
+ * starts with "Ported to forge-dev", with a key after it or none.
+ */
 export function isPortedMarker(body: string): boolean {
-  return MARKER.test(body);
+  return MARKER_LINE.test(markerLineOf(body));
 }
 
-/** The dev key a marker comment names, where it names one. */
+/** The dev key a marker comment's first line names directly after the phrase, where it names one. */
 export function markerDevKey(body: string): string | null {
-  return MARKER_KEY.exec(body)?.[1]?.toUpperCase() ?? null;
+  return MARKER_KEY.exec(markerLineOf(body))?.[1]?.toUpperCase() ?? null;
 }
+
+/** The line a hand marker is written as, named to a person whose marker carries no readable key. */
+export const MARKER_LINE_TO_WRITE = '`Ported to forge-dev: <ISS-n|FB-n>`';
 
 /** The first line of a description, as stored. */
 export function firstLineOf(description: string | null): string {

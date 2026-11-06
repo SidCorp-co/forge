@@ -40,6 +40,7 @@ import {
   firstLineNamesBetaIssue,
   isPortedMarker,
   leftOnBeta,
+  MARKER_LINE_TO_WRITE,
   markerDevKey,
   portedComment,
   portedFeedbackBody,
@@ -295,9 +296,10 @@ async function afterRuling(
 }
 
 /**
- * Whether a beta issue is already ported, by the dev issue whose first line names it or by a
- * "Ported to forge-dev" comment on it: the pair it is adopted as where the dev issue is found, null
- * where it is not ported, and `unknown` where its comments could not be read (never ported blind).
+ * Whether a beta issue is already ported, by the dev issue whose first line names it or by a comment
+ * whose first line is a "Ported to forge-dev" marker: the pair it is adopted as where the key names a
+ * dev issue or item, null where it is not ported, and `unknown` where its comments could not be read
+ * (never ported blind) or a marker names nothing to adopt, which the report names as held.
  */
 async function knownPort(
   ctx: FireContext,
@@ -317,19 +319,40 @@ async function knownPort(
     );
     return 'unknown';
   }
-  const marker = comments.value.find(isPortedMarker);
-  if (marker === undefined) return null;
-  const devKey = markerDevKey(marker);
-  const fbSeq = devKey ? feedbackSeqOf(devKey) : null;
-  const devId = devKey && fbSeq === null ? await issueIdOfKey(devKey, twin.id) : null;
-  const feedbackId = fbSeq !== null ? await feedbackIdOfSeq(twin.id, fbSeq) : null;
-  const found = devId ?? feedbackId;
-  ctx.report.skipped.push(
-    `${beta.key} (marked ported${devKey ? ` to ${devKey}` : ''}${devKey && !found ? `, which names no ${fbSeq !== null ? 'item' : 'issue'} in ${twin.slug}: not mirrored` : ''})`,
+  const markers = comments.value.filter(isPortedMarker);
+  if (markers.length === 0) return null;
+  // among several markers a readable key naming something in the twin wins, whichever came first
+  const keys = [...new Set(markers.map(markerDevKey).filter((k): k is string => k !== null))];
+  for (const devKey of keys) {
+    const found = await devOfKey(devKey, twin.id);
+    if (!found) continue;
+    ctx.report.skipped.push(`${beta.key} (marked ported to ${devKey})`);
+    return adopt(beta, twin, found);
+  }
+  // a marker held: never ported (a person marked it) and never adopted (nothing to adopt), named
+  // with the line to write, so it is not mistaken for a port done
+  const said =
+    keys.length === 0
+      ? 'marked ported by hand but names no dev key'
+      : `marked ported to ${keys.join(', ')}, which names nothing in ${twin.slug}`;
+  ctx.report.held.push(
+    `${twin.slug}: beta ${beta.key}: ${said}; write ${MARKER_LINE_TO_WRITE} as the comment's first line`,
   );
-  if (devId) return adopt(beta, twin, { devIssueId: devId });
-  if (feedbackId) return adopt(beta, twin, { devFeedbackId: feedbackId });
   return 'unknown';
+}
+
+/** The dev issue or Feedback item a marker's key names in the twin, where it names one. */
+async function devOfKey(
+  devKey: string,
+  twinId: string,
+): Promise<{ devIssueId: string } | { devFeedbackId: string } | null> {
+  const fbSeq = feedbackSeqOf(devKey);
+  if (fbSeq !== null) {
+    const devFeedbackId = await feedbackIdOfSeq(twinId, fbSeq);
+    return devFeedbackId ? { devFeedbackId } : null;
+  }
+  const devIssueId = await issueIdOfKey(devKey, twinId);
+  return devIssueId ? { devIssueId } : null;
 }
 
 /** A port made before this sweep, recorded with no mirror yet: its first mirror reads beta's status. */

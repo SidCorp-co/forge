@@ -30,7 +30,7 @@ const CUTOFF = new Date('2026-11-03T04:00:00.000Z');
 const BETA = { id: '3f1c42a3-1111-4222-8333-944445555666', key: 'ISS-769' };
 
 describe('the ported marker (ISS-923)', () => {
-  it('reads the hand ports and its own comment, any case, any key after it', () => {
+  it('reads a port from a comment that opens with the phrase, by hand or by this sweep', () => {
     expect(isPortedMarker('Ported to forge-dev: ISS-4')).toBe(true);
     expect(isPortedMarker('ported to Forge-Dev as ISS-5, thanks')).toBe(true);
     expect(isPortedMarker(portedComment('SD-12'))).toBe(true);
@@ -41,8 +41,35 @@ describe('the ported marker (ISS-923)', () => {
   it('reads no other comment as a port', () => {
     expect(isPortedMarker('Will port to forge-dev tomorrow')).toBe(false);
     expect(isPortedMarker('Ported to forge-beta: ISS-4')).toBe(false);
+    expect(isPortedMarker('Ported to forge-devops: ISS-4')).toBe(false);
     expect(isPortedMarker('')).toBe(false);
     expect(markerDevKey('Ported to forge-dev')).toBeNull();
+  });
+});
+
+describe('a port marker is its comment first line (ISS-1045)', () => {
+  const prose =
+    "Decision: left for the automatic port | the port posts 'Ported to forge-dev:' here; none after 4 min";
+
+  it('takes the phrase quoted or explained in prose for no marker, and reads no key out of it', () => {
+    expect(isPortedMarker(prose)).toBe(false);
+    expect(markerDevKey(prose)).toBeNull();
+    expect(isPortedMarker('Note: this was ported to forge-dev: ISS-4')).toBe(false);
+    expect(isPortedMarker('Plan\nPorted to forge-dev: ISS-4')).toBe(false);
+    expect(markerDevKey('Plan\nPorted to forge-dev: ISS-4')).toBeNull();
+  });
+
+  it('reads the first non-empty line, so leading blank lines and indentation do not hide a marker', () => {
+    expect(isPortedMarker('\n\n  Ported to forge-dev: FB-10\nby hand')).toBe(true);
+    expect(markerDevKey('\r\n  Ported to forge-dev: FB-10\r\nby hand')).toBe('FB-10');
+  });
+
+  it("reads a first-line marker with no key as a marker with no key, and the sweep's own comment with its key", () => {
+    expect(isPortedMarker('Ported to forge-dev\n\nkey to follow')).toBe(true);
+    expect(markerDevKey('Ported to forge-dev\n\nkey to follow')).toBeNull();
+    expect(markerDevKey('Ported to forge-dev: here')).toBeNull();
+    expect(markerDevKey(portedComment('FB-10'))).toBe('FB-10');
+    expect(markerDevKey('Ported to forge-dev: FB-10')).toBe('FB-10');
   });
 });
 
@@ -156,6 +183,9 @@ describe('the fire report', () => {
     );
     report.held.push('sidpeak: ISS-1 at needs_info: beta ISS-621 keeps developed');
     expect(reportSaysSomething(report)).toBe(true);
+    expect(renderReport(report)).toContain(
+      'held (1):\n  sidpeak: ISS-1 at needs_info: beta ISS-621 keeps developed',
+    );
     report.held.length = 0;
     report.noTwin.push('lonely');
     expect(reportSaysSomething(report)).toBe(true);

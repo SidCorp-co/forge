@@ -8,7 +8,12 @@ export interface BetaPortReport {
   ported: string[];
   /** `twin: DEV-KEY: from → to (beta BETA-KEY)` */
   mirrored: string[];
-  /** A mirror move held because it would move beta backward: `twin: DEV-KEY at s: beta BETA-KEY keeps t`. */
+  /**
+   * A row the fire did not move, each line naming why: a mirror move that would move beta backward
+   * (`twin: DEV-KEY at s: beta BETA-KEY keeps t, not moved back to u`), or a beta issue a port marker
+   * holds with no dev key it can adopt (`twin: beta BETA-KEY: marked ported …; write … as the
+   * comment's first line`).
+   */
   held: string[];
   /** A ported item's triage outcome commented on beta with no status move: `twin: FB-n → beta BETA-KEY (outcome)`. */
   told: string[];
@@ -16,7 +21,7 @@ export interface BetaPortReport {
   leftOnBeta: string[];
   /** What was refused, with its code. */
   refused: string[];
-  /** Beta issues already ported, and how that was known. */
+  /** Beta issues already ported and adopted, and how that was known. */
   skipped: string[];
   /** Beta project slugs with no project of that slug here. */
   noTwin: string[];
@@ -79,7 +84,7 @@ export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): str
     ...backfillSections(report, cap),
     ...section('ported', report.ported, cap),
     ...section('mirrored', report.mirrored, cap),
-    ...(report.held.length > 0 ? section('held, never moved backward', report.held, cap) : []),
+    ...(report.held.length > 0 ? section('held', report.held, cap) : []),
     ...(report.told.length > 0 ? section('told on beta', report.told, cap) : []),
     ...(report.leftOnBeta.length > 0
       ? section('left on beta, in flight or landed there', report.leftOnBeta, cap)

@@ -211,7 +211,11 @@ describe('a beta port fire (ISS-923)', () => {
     expect(await devIssues()).toHaveLength(before);
     expect(await devFeedback()).toHaveLength(items);
     for (const settled of [first, second]) {
-      expect(settled.output).toContain('ISS-2 (marked ported to ISS-999');
+      // a marker naming nothing in the twin holds the row and says what to write (ISS-1045)
+      expect(settled.output).toContain(
+        `${twin.slug}: beta ISS-2: marked ported to ISS-999, which names nothing in ${twin.slug}`,
+      );
+      expect(settled.output).not.toContain('ISS-2 (marked ported');
       expect(settled.output).not.toMatch(/ISS-[23] → /);
     }
     expect(first.output).toContain('ISS-3 (named on ');

@@ -239,7 +239,7 @@ describe('the mirror never moves beta backward (ISS-982 4)', () => {
     const held = await fire();
     expect(movesOf(source)).toEqual([]);
     expect(source.status).toBe('developed');
-    expect(held.output).toContain('held, never moved backward (1):');
+    expect(held.output).toContain('held (1):');
     expect(held.output).toContain(
       `${twin.slug}: ${dev.key} at needs_info: beta ISS-60 keeps developed, not moved back to needs_info`,
     );
