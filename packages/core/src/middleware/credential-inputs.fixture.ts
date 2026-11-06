@@ -118,8 +118,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:x-request-id`,
   'whether a sign-in page follows a sign-out (`session=ended`), so a demo core shows its form': words`
     query:session`,
-  'a header core’s own clients send: what they render, the project an /mcp call names': words`
-    header:x-forge-capabilities header:x-forge-project-slug header:x-forge-unresolved-ref`,
+  'a header core’s own clients send: what they render, the project an /mcp call names, the run a box read is recorded against': words`
+    header:x-forge-capabilities header:x-forge-project-slug header:x-forge-run header:x-forge-unresolved-ref`,
   'a widget visitor, the page they are on and the origin that framed it, as the frame says, stored as data; the site key is public': words`
     field:json:context field:json:embeddedAt field:json:visitor field:json:visitorId field:param:siteKey`,
   [ROW_KEYS]: words`
@@ -144,7 +144,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:deviceId field:query:installation_id field:query:integrationId field:query:issue
     field:query:issueId field:query:memoryId field:query:orgId field:query:rid field:query:project
     field:query:pipelineRunId field:query:projectId field:query:requirement
-    field:query:resourceUuid field:query:rootIssueId field:query:runId field:query:sessionId
+    field:query:resourceUuid field:query:rootIssueId field:query:runId field:query:session field:query:sessionId
     field:query:sourceRef field:query:feedback field:query:workflow field:query:ref field:query:actor
     field:json:activeOrgId field:json:agentSessionId field:json:agent_id field:json:areaId
     field:json:assigneeId field:json:attachmentIds field:json:boundProjectId
@@ -178,7 +178,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:observedSteps field:json:plan field:json:plain field:json:prompt field:json:reason
     field:json:releaseNotes field:json:soul field:json:summary field:json:text
     field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen field:json:product
-    field:json:raw field:json:localGuide field:json:skillMd field:json:decision
+    field:json:raw field:json:localGuide field:json:skillMd field:json:decision field:json:recheckWhen
     field:json:suggestion field:json:evidence field:json:emoji field:json:name field:json:role
     field:json:displayName field:json:shortName field:json:request field:json:account
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
