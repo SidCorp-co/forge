@@ -25,7 +25,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { rowIn } from '../feedback/index.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import { activeIssuePrefix, closedUnreleasedSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type LinkRow, readFeedbackLines } from './feedback.js';
 import { stamp } from './read.js';
@@ -40,6 +40,8 @@ const QUEUED: readonly string[] = TAKEABLE_STATUSES;
  */
 export function workStateOf(
   statuses: readonly string[],
+  /** How many of them are closed met in scope with no shipped release holding them yet: landed, not shipped. */
+  unreleased = 0,
 ): Pick<FeedbackWork, 'state' | 'running' | 'total'> {
   const live = statuses.filter((s) => s !== 'dropped');
   const count = (pick: (s: string) => boolean) => live.filter(pick).length;
@@ -58,7 +60,7 @@ export function workStateOf(
             ? 'queued'
             : count((s) => s === 'draft') > 0
               ? 'drafted'
-              : count((s) => s === 'awaiting_release') > 0
+              : count((s) => s === 'awaiting_release') > 0 || unreleased > 0
                 ? 'landed'
                 : 'shipped';
   return { state, running, total };
@@ -139,6 +141,7 @@ interface WorkIssueRow {
   iss_seq: number;
   title: string;
   status: string;
+  unreleased: boolean;
 }
 
 /** The issues an issue route names, or every issue of the requirement a new-requirement route opened. */
@@ -146,7 +149,7 @@ async function issuesOf(
   projectId: string,
   route: 'issue' | 'new_requirement',
   link: LinkRow,
-): Promise<FeedbackWorkIssue[]> {
+): Promise<Array<FeedbackWorkIssue & { unreleased: boolean }>> {
   const ids = link.issue_ids ?? [];
   const where =
     route === 'new_requirement'
@@ -162,7 +165,7 @@ async function issuesOf(
   if (!where) return [];
   const [rows, prefix] = await Promise.all([
     db.execute(sql`
-      SELECT i.iss_seq, i.title, i.status FROM issues i
+      SELECT i.iss_seq, i.title, i.status, ${closedUnreleasedSql(sql`i`)} AS unreleased FROM issues i
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL AND ${where}
        ORDER BY i.iss_seq`),
     activeIssuePrefix(projectId),
@@ -171,6 +174,7 @@ async function issuesOf(
     key: formatIssueRef(prefix, r.iss_seq),
     title: r.title,
     status: r.status,
+    unreleased: r.unreleased,
   }));
 }
 
@@ -198,12 +202,22 @@ async function workOf(
   if (route !== 'issue' && route !== 'new_requirement') {
     return { ...base, state: 'no_work', running: 0, total: 0 };
   }
-  const issues = link ? await issuesOf(projectId, route, link) : [];
+  const read = link ? await issuesOf(projectId, route, link) : [];
+  const issues = read.map(({ unreleased: _, ...issue }) => issue);
   const requirement =
     route === 'new_requirement' && link?.routed_requirement_id
       ? await requirementOf(link.routed_requirement_id)
       : null;
-  return { ...base, requirement, issues, ...workStateOf(issues.map((i) => i.status)) };
+  const unreleased = read.filter((i) => i.unreleased).length;
+  return {
+    ...base,
+    requirement,
+    issues,
+    ...workStateOf(
+      issues.map((i) => i.status),
+      unreleased,
+    ),
+  };
 }
 
 export async function readFeedbackProgress(

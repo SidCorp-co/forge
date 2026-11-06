@@ -34,8 +34,12 @@ type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
 export interface PhaseFacts {
   status: FeedbackStatus;
   route: FeedbackRoute | null;
-  /** The own status of every issue an issue route names (ISS-265); empty on any other route. */
-  routedIssueStatuses: readonly string[];
+  /**
+   * Every issue an issue route names, by its own status (ISS-265), and whether it is closed met in
+   * scope with no shipped release holding it yet (`issues/waiting-for-release.ts:closedUnreleasedSql`);
+   * empty on any other route.
+   */
+  routedIssues: readonly { status: string; unreleased: boolean }[];
   suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
   routedRequirementStatus: string | null;
   /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
@@ -47,14 +51,18 @@ export interface PhaseFacts {
 // carrier died (issue dropped, suggestion rejected, requirement dropped) reads triaged, so a person
 // routes it again. An issue route reads every carrier: a dropped one carries nothing, a draft one
 // plans nothing yet (nothing takes a draft on by itself), and the item is resolved once each that
-// still carries it is closed. verified is only ever the stored decision of a person
+// still carries it is closed and released: `closed` says its criteria were met in scope, and one its
+// holder closed waits for the release that carries it, so its reporter is asked to confirm only once
+// the work is live (ISS-1062). verified is only ever the stored decision of a person
 export function phaseOf(f: PhaseFacts): FeedbackPhase {
   if (f.status !== 'triaged') return f.status;
   switch (f.route) {
     case 'issue': {
-      const carrying = f.routedIssueStatuses.filter((s) => s !== 'dropped');
-      if (carrying.length === 0 || carrying.includes('draft')) return 'triaged';
-      return carrying.every((s) => s === 'closed') ? 'resolved' : 'planned';
+      const carrying = f.routedIssues.filter((i) => i.status !== 'dropped');
+      if (carrying.length === 0 || carrying.some((i) => i.status === 'draft')) return 'triaged';
+      return carrying.every((i) => i.status === 'closed' && !i.unreleased)
+        ? 'resolved'
+        : 'planned';
     }
     case 'revision':
       if (!f.suggestion) return 'triaged';

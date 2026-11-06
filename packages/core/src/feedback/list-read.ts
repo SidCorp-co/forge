@@ -13,14 +13,14 @@ import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { whoOwes } from '@forge/contracts/who-owes';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import { activeIssuePrefix, closedUnreleasedSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { readOwedPolicy } from '../project-config/index.js';
@@ -51,7 +51,14 @@ export interface Linked extends StandingFacts {
   prefix: string | null;
   issues: Map<
     string,
-    { key: string; title: string; status: string; releaseVersion: string | null }
+    {
+      key: string;
+      title: string;
+      status: string;
+      releaseVersion: string | null;
+      /** Closed met in scope and no shipped release holds it yet (`closedUnreleasedSql`). */
+      unreleased: boolean;
+    }
   >;
   /** The issues each issue-routed item names as its carriers, by item id, oldest issue first. */
   routeIssues: Map<string, string[]>;
@@ -147,6 +154,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
               title: issues.title,
               status: issues.status,
               releaseVersion: pipelineRuns.releaseVersion,
+              unreleased: sql<boolean>`${closedUnreleasedSql(sql`${issues}`)}`,
             })
             .from(issues)
             .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
@@ -212,7 +220,10 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   );
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
-  const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
+  // a carrier closed met in scope waits for the release as one at the gate does
+  const atGate = issueRows.some(
+    (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
+  );
   const [owed, gate, windowDays, origins, standing, shippedReleases, policy] = await Promise.all([
     allRows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
@@ -248,6 +259,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           title: i.title,
           status: i.status,
           releaseVersion: i.releaseVersion ?? shippedReleases.get(i.id)?.version ?? null,
+          unreleased: i.unreleased,
         },
       ]),
     ),
@@ -315,7 +327,10 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
   return {
     status: r.status,
     route: r.route,
-    routedIssueStatuses: routeIssueViews(r, l).map((i) => i.status),
+    routedIssues: (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
+      const issue = l.issues.get(id);
+      return issue ? [{ status: issue.status, unreleased: issue.unreleased }] : [];
+    }),
     suggestion: s
       ? {
           status: s.status as SuggestionStatus,
@@ -369,12 +384,30 @@ export function routeView(r: Row, l: Linked): FeedbackRouteView | null {
   }
 }
 
-/** What a planned item still waits on: an issue route's carriers not yet closed or dropped, any other route's one carrier. */
-function owedCarriers(route: FeedbackRouteView | null): FeedbackCarrierView[] {
+/** The keys of an issue route's carriers closed met in scope that no shipped release holds yet. */
+function unreleasedCarrierKeys(r: Row, l: Linked): ReadonlySet<string> {
+  return new Set(
+    (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
+      const issue = l.issues.get(id);
+      return issue?.unreleased ? [issue.key] : [];
+    }),
+  );
+}
+
+/**
+ * What a planned item still waits on: an issue route's carriers not yet closed or dropped, and those
+ * closed that still wait for their release (`unreleased`); any other route's one carrier.
+ */
+function owedCarriers(
+  route: FeedbackRouteView | null,
+  unreleased: ReadonlySet<string>,
+): FeedbackCarrierView[] {
   if (!route) return [];
   if (route.route !== 'issue') return route.carriers;
   const finished: readonly (string | null)[] = ISSUE_TERMINAL_STATUSES;
-  return route.carriers.filter((c) => !finished.includes(c.status));
+  return route.carriers.filter(
+    (c) => !finished.includes(c.status) || (c.key !== null && unreleased.has(c.key)),
+  );
 }
 
 /** The snooze an item is still parked under: one that has run out reads as no snooze, so it is New again with nothing to clear. */
@@ -405,7 +438,8 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
   const snoozed = snoozeOf(r, now);
   const route = routeView(r, l);
   const reporter = l.names.get(r.reportedBy) ?? 'The reporter';
-  const owed = owedCarriers(route);
+  const unreleased = unreleasedCarrierKeys(r, l);
+  const owed = owedCarriers(route, unreleased);
   const carried = r.route === 'issue' ? carriersOf(r, l) : { carrier: null, draft: null };
   return feedbackStandingOf(
     phase,
@@ -427,7 +461,9 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
         phase === 'planned' &&
         r.route === 'issue' &&
         owed.length > 0 &&
-        owed.every((c) => c.status === AT_RELEASE_GATE)
+        owed.every(
+          (c) => c.status === AT_RELEASE_GATE || (c.key !== null && unreleased.has(c.key)),
+        )
           ? l.release
           : null,
       releaseHolders: l.releaseHolders,

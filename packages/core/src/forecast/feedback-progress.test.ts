@@ -81,6 +81,8 @@ describe('is work on it running', () => {
     expect(workStateOf(['draft']).state).toBe('drafted');
     expect(workStateOf(['awaiting_release', 'closed']).state).toBe('landed');
     expect(workStateOf(['closed', 'closed']).state).toBe('shipped');
+    // a closed issue its holder closed met in scope is landed until a release holds it (ISS-1062)
+    expect(workStateOf(['closed', 'closed'], 1).state).toBe('landed');
   });
 
   it('tells no issues apart from every issue dropped, and counts a dropped one nowhere', () => {

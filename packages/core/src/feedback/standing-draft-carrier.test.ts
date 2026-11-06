@@ -25,7 +25,7 @@ const reader = {
 const routedTo = (...statuses: string[]): PhaseFacts => ({
   status: 'triaged',
   route: 'issue',
-  routedIssueStatuses: statuses,
+  routedIssues: statuses.map((status) => ({ status, unreleased: false })),
   suggestion: null,
   routedRequirementStatus: null,
   routedRequirementDelivered: false,

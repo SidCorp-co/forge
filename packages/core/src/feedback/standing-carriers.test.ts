@@ -20,7 +20,7 @@ const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
 const routedTo = (...statuses: string[]): PhaseFacts => ({
   status: 'triaged',
   route: 'issue',
-  routedIssueStatuses: statuses,
+  routedIssues: statuses.map((status) => ({ status, unreleased: false })),
   suggestion: null,
   routedRequirementStatus: null,
   routedRequirementDelivered: false,
@@ -61,6 +61,30 @@ describe('an issue route carried by several issues reads every one of them (ISS-
 
   it('reads an issue route naming no carrier as triaged, never as planned', () => {
     expect(phaseOf(routedTo())).toBe('triaged');
+  });
+});
+
+describe('a carrier its holder closed met in scope resolves the item only once a release holds it (ISS-1062)', () => {
+  const closedUnreleased = (...others: string[]): PhaseFacts => ({
+    ...routedTo(...others),
+    routedIssues: [
+      { status: 'closed', unreleased: true },
+      ...others.map((status) => ({ status, unreleased: false })),
+    ],
+  });
+
+  it('stays planned while a closed carrier waits for its release', () => {
+    expect(phaseOf(closedUnreleased())).toBe('planned');
+    expect(phaseOf(closedUnreleased('closed'))).toBe('planned');
+    expect(phaseOf(closedUnreleased('dropped'))).toBe('planned');
+  });
+
+  it('resolves once every closed carrier is released, as before', () => {
+    expect(phaseOf(routedTo('closed', 'closed'))).toBe('resolved');
+  });
+
+  it('still re-triages on a draft carrier, whatever the closed ones wait for', () => {
+    expect(phaseOf(closedUnreleased('draft'))).toBe('triaged');
   });
 });
 
