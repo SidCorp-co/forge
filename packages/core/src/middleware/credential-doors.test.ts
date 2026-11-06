@@ -147,7 +147,7 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'exchanges GitHub’s code at its token endpoint; a PAT is no OAuth code',
   'integrations/identity/oidc.ts':
     'exchanges the provider’s code at its token endpoint; a PAT is no OAuth code',
-  'support/owner-oauth.ts':
+  'integrations/support-api/owner-oauth.ts':
     'trades a product’s code at its token endpoint for the owner’s tokens (ISS-1047); a PAT is no OAuth code',
   'support/owner-sign-in.ts':
     'finishOwnerSignIn looks a sign-in up by the SHA-256 of the state the product returns, spends it once, and trades its code with the PKCE verifier only core holds; a PAT is neither',

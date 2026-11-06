@@ -14,7 +14,13 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportOwnerConsents, supportOwnerSignIns } from '../db/schema-support.js';
 import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/index.js';
-import { readSupportApis, type SupportApi } from '../integrations/support-api/index.js';
+import {
+  ownerAuthorizationUrl,
+  ownerOauthClient,
+  readSupportApis,
+  type SupportApi,
+  tradeOwnerCode,
+} from '../integrations/support-api/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import {
@@ -26,7 +32,6 @@ import {
   standingConsent,
 } from './owner-consent.js';
 import { rewriteOwnerCredential } from './owner-credential.js';
-import { ownerAuthorizationUrl, ownerOauthClient, tradeOwnerCode } from './owner-oauth.js';
 import type { Refusal } from './refusals.js';
 import { insertAction, type RoomRow, roomById } from './store.js';
 
@@ -92,7 +97,7 @@ export async function startOwnerSignIn(
   const api = await signInApi(room.projectId, product.value.bindingId);
   if (!api.ok) return refusedWith(api);
   const client = ownerOauthClient(api.value.name, api.value.ownerSignIn, api.value.config);
-  if (!client.ok) return refusedWith(client);
+  if (!client.ok) return refusedWith(no(client.code, '/product', client.detail));
   if (!isVaultConfigured()) {
     return refusedWith(
       no(
@@ -223,8 +228,8 @@ async function trade(
   const api = await signInApi(row.projectId, row.bindingId);
   const client = api.ok
     ? ownerOauthClient(api.value.name, api.value.ownerSignIn, api.value.config)
-    : api;
-  if (!api.ok || !client.ok) {
+    : null;
+  if (!api.ok || !client?.ok) {
     await settle(row.id, 'the binding no longer declares a usable sign-in');
     return fail(409, `The product's sign-in is no longer set up in Forge. Nothing was kept.`);
   }

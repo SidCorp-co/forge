@@ -47,6 +47,9 @@ import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
 import { mountOwnerRoutes } from './owner-routes.js';
+
+export { ownerSignInCallbackRoutes } from './owner-routes.js';
+
 import { mountPromiseRoutes } from './promise-routes.js';
 import { supportActionsOf, supportRoomsOf } from './read.js';
 import { act, SESSION_ONLY } from './session-door.js';

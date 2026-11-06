@@ -12,7 +12,11 @@
 
 import type { SupportOwnerCredential, SupportOwnerOauth } from '@forge/contracts/support';
 import { db } from '../db/client.js';
-import type { SupportApi } from '../integrations/support-api/index.js';
+import {
+  ownerOauthClient,
+  refreshOwnerTokens,
+  type SupportApi,
+} from '../integrations/support-api/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../lib/logger.js';
 import { no, type Outcome } from './outcome.js';
@@ -21,7 +25,6 @@ import {
   readOwnerCredential,
   rewriteOwnerCredential,
 } from './owner-credential.js';
-import { ownerOauthClient, refreshOwnerTokens } from './owner-oauth.js';
 
 /** An access token with less than this left is refreshed before it is sent. */
 export const OWNER_REFRESH_MARGIN_MS = 60_000;
@@ -150,7 +153,7 @@ function refreshUnderLock(input: {
     const client = ownerOauthClient(api.name, api.ownerSignIn, api.config);
     if (!client.ok) {
       if (unexpired(oauth, now)) return { ok: true, value: bearer(oauth) };
-      return client;
+      return no(client.code, '/tool', client.detail);
     }
     const answer = await refreshOwnerTokens(client.value, oauth.refreshToken);
     if (answer.kind === 'transient') {

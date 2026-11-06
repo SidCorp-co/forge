@@ -273,7 +273,7 @@ export const CREDENTIAL_READS: Readonly<Record<string, string>> = {
     'the callback URL, its code exchanged with GitHub',
   'integrations/identity/oidc.ts URL handed to openid-client:authorizationCodeGrant in finish':
     'the callback URL, its code exchanged with the provider',
-  'support/owner-oauth.ts URL handed to openid-client:authorizationCodeGrant in tradeOwnerCode':
+  'integrations/support-api/owner-oauth.ts URL handed to openid-client:authorizationCodeGrant in tradeOwnerCode':
     'the callback URL core rebuilds from the product’s code and state, its code traded with the product',
   'integration-door/mcp-relay-routes.ts Headers.entries in module code':
     'an agent’s relayed MCP request headers, its relay ticket among them; only Mcp-Param-* go upstream',
@@ -315,7 +315,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/identity/github.ts URL.href in githubProvider
     integrations/identity/oidc.ts URL handed to openid-client:discovery in configFor
     integrations/identity/oidc.ts URL.href in start
-    support/owner-oauth.ts URL.href in ownerAuthorizationUrl
+    integrations/support-api/owner-oauth.ts URL.href in ownerAuthorizationUrl
     credentials/mcp-oauth-shape.ts URL.toString in redirectWith
     integrations/inbound-door.ts URL.search in sameEndpoint
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch

@@ -9,9 +9,8 @@
 
 import type { SupportApiConnectionConfig, SupportOwnerSignIn } from '@forge/contracts/support';
 import * as client from 'openid-client';
-import { grantedHosts, hostGranted } from '../integrations/support-api/index.js';
-import { env } from '../lib/env.js';
-import { no, type Outcome } from './outcome.js';
+import { env } from '../../lib/env.js';
+import { grantedHosts, hostGranted } from './call.js';
 
 const TOKEN_TIMEOUT_SECONDS = 10;
 
@@ -29,6 +28,11 @@ const insecureAllowed = (url: URL) =>
 const plainHttp = (url: URL): string | null =>
   url.protocol === 'http:' && !insecureAllowed(url) ? url.origin : null;
 
+/** The product's OAuth client, or why core cannot use what the binding declares, as the support door words it. */
+export type OwnerOauthClient =
+  | { ok: true; value: client.Configuration }
+  | { ok: false; code: 'SUPPORT_OWNER_SIGN_IN_UNDECLARED'; detail: string };
+
 /**
  * The product's OAuth client, or the refusal naming why core cannot use what the binding declares:
  * none declared, a token endpoint on a host the connection does not grant, or plain http.
@@ -37,13 +41,12 @@ export function ownerOauthClient(
   product: string,
   signIn: SupportOwnerSignIn | null,
   config: SupportApiConnectionConfig,
-): Outcome<client.Configuration> {
-  const refuse = (why: string) =>
-    no<client.Configuration>(
-      'SUPPORT_OWNER_SIGN_IN_UNDECLARED',
-      '/product',
-      `${why}, so Forge can neither start the owner's sign-in to ${product} nor refresh his token there, and nothing was sent. Its support-api binding declares ownerSignIn { authorizationUrl, tokenUrl, clientId, scopes? }, with the token endpoint on a host the connection grants and ${ownerSignInCallbackUrl()} registered as the client's redirect.`,
-    );
+): OwnerOauthClient {
+  const refuse = (why: string): OwnerOauthClient => ({
+    ok: false,
+    code: 'SUPPORT_OWNER_SIGN_IN_UNDECLARED',
+    detail: `${why}, so Forge can neither start the owner's sign-in to ${product} nor refresh his token there, and nothing was sent. Its support-api binding declares ownerSignIn { authorizationUrl, tokenUrl, clientId, scopes? }, with the token endpoint on a host the connection grants and ${ownerSignInCallbackUrl()} registered as the client's redirect.`,
+  });
   if (!signIn) return refuse(`the support-api binding of ${product} declares no ownerSignIn`);
   const token = new URL(signIn.tokenUrl);
   const authorize = new URL(signIn.authorizationUrl);
