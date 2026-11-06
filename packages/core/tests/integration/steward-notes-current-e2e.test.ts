@@ -68,6 +68,20 @@ let clock = Date.now();
 let seq = 1000;
 
 const said = (key: string) => ({ key }) as unknown as Said;
+/** The real sweep over one project, so another test's project spends nothing here. */
+const sweep = (projectId: string, now: Date) =>
+  steward.sweepProjectStandings(projectId, now, {
+    projects: 0,
+    stuck: 0,
+    changed: 0,
+    settledAsks: 0,
+    paced: 0,
+  });
+
+/** A run a test left queued is never taken up by the next test's dispatch. */
+const dropQueued = (projectId: string) =>
+  rows(sql`DELETE FROM steward_runs WHERE project_id = ${projectId} AND state = 'queued'`);
+
 const later = (from: Date) => new Date(from.getTime() + STEWARD_DEBOUNCE_MS + 30_000);
 
 /** A requirement drafted on `projectId`, read through the real standing read. */
@@ -103,6 +117,14 @@ const noteRunsOf = (subjectId: string) =>
   rows<{ id: string; state: string }>(sql`
     SELECT id, state FROM steward_runs WHERE subject_id = ${subjectId} AND 'note' = ANY(acts_to_run)
      ORDER BY queued_at`);
+
+/** The items the sweep emitted `standing.changed` for on `projectId`, as the outbox holds them. */
+const changedOn = async (projectId: string) =>
+  (
+    await rows<{ key: string }>(sql`
+      SELECT payload -> 'subject' ->> 'key' AS key FROM pipeline_outbox
+       WHERE payload ->> 'projectId' = ${projectId} AND type = 'standing.changed'`)
+  ).map((r) => r.key);
 
 const noteOf = async (projectId: string, subjectId: string): Promise<StewardNote | null> =>
   (await realStandings(projectId)).find((s) => s.subject.id === subjectId)?.note ?? null;
@@ -155,9 +177,11 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     const before = await noteOf(projectId, read.subject.id);
     expect(before?.basis).toBe(read.basis);
     expect(before?.stale).toBe(true);
-    const tally = await steward.sweepStandings(new Date());
-    expect(tally.changed).toBeGreaterThanOrEqual(1);
+    await sweep(projectId, new Date());
+    expect(await changedOn(projectId)).toEqual([read.subject.key]);
+    await settleOutbox();
     expect(await noteRunsOf(read.subject.id)).toHaveLength(1);
+    await dropQueued(projectId);
   });
 
   it('is rewritten by that run, and the note it writes is current and raises nothing more', async () => {
@@ -165,7 +189,7 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     const read = await requirement(projectId, 'Discharge letters in large type');
     await noteWrittenBefore(projectId, read, new Date(Date.now() - 86_400_000));
     const t0 = new Date();
-    await steward.sweepStandings(t0);
+    await sweep(projectId, t0);
     await settleOutbox();
     resetScript();
     const lines = [`${read.subject.key} is a draft its author has not finished.`];
@@ -179,7 +203,7 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     const after = await noteOf(projectId, read.subject.id);
     expect(after).toMatchObject({ lines, stale: false, basis: read.basis });
     // the business rule's other half: a current note asks for nothing on the next sweep
-    await steward.sweepStandings(later(later(t0)));
+    await sweep(projectId, later(later(t0)));
     expect(await noteRunsOf(read.subject.id)).toHaveLength(1);
   });
 
@@ -188,20 +212,20 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     const read = await requirement(projectId, 'Ward boards show the shift lead');
     await noteWrittenBefore(projectId, read, new Date(Date.now() - 86_400_000));
     const t0 = new Date();
-    await steward.sweepStandings(t0);
+    await sweep(projectId, t0);
     await settleOutbox();
     resetScript();
     script.steps = [{ text: 'Nothing to write.' }];
     await steward.dispatchStewardRuns(later(t0));
     expect((await noteRunsOf(read.subject.id)).map((r) => r.state)).toEqual(['done']);
-    await steward.sweepStandings(later(later(t0)));
+    await sweep(projectId, later(later(t0)));
     expect(await noteRunsOf(read.subject.id)).toHaveLength(1);
   });
 
   it("spends only the sweep's share, the oldest note first (boundary)", async () => {
     const projectId = (await createTestProject(ownerId)).id;
     const filler = await createTestIssue(projectId, ownerId, 1, {
-      status: 'open',
+      status: 'dropped',
       createdAt: new Date(),
     });
     const newer = await requirement(projectId, 'Night rounds list the nurse');
@@ -209,10 +233,11 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     await noteWrittenBefore(projectId, newer, new Date(Date.now() - 3_600_000));
     await noteWrittenBefore(projectId, older, new Date(Date.now() - 3 * 86_400_000));
     await leaveRoom(projectId, filler, 1);
-    const tally = await steward.sweepStandings(new Date());
-    expect([tally.changed, tally.paced]).toEqual([1, 1]);
-    expect(await noteRunsOf(older.subject.id)).toHaveLength(1);
-    expect(await noteRunsOf(newer.subject.id)).toHaveLength(0);
+    await sweep(projectId, new Date());
+    // room for one: the older note is rewritten today, the newer waits for a later sweep
+    expect(await changedOn(projectId)).toEqual([older.subject.key]);
+    await settleOutbox();
+    await dropQueued(projectId);
   });
 });
 
@@ -310,6 +335,7 @@ function staleNote(on: ItemStanding, stale: boolean): StewardNote {
     stale,
     writtenAt: '2026-11-06T09:30:00.000Z',
     writtenBy: { id: ownerId, name: 'steward', kind: 'agent' },
+    factsVersion: null,
     runId: null,
   };
 }

@@ -1,12 +1,17 @@
 // The standing read model's consumers, filled once at boot by the process entry: a note is vetted
 // against the standing, and the steward's sweep reads every open standing (REQ-48 BC-8), and neither
-// domain may import the read model (ADR 0008), so it is handed in here from its own face.
+// domain may import the read model (ADR 0008), so it is handed in here from its own face. A note also
+// records the steward's facts version it was written under (ISS-1044), which only the steward knows.
 
 import { openStandings, standingOfSubject, unknownCitesIn } from './standing/index.js';
-import { provideStewardStandings } from './steward/index.js';
+import { provideStewardStandings, stewardFactsVersion } from './steward/index.js';
 import { provideStewardNotesPorts } from './steward-notes/index.js';
 
 export function provideStandingPorts(): void {
-  provideStewardNotesPorts({ standingOf: standingOfSubject, unknownCites: unknownCitesIn });
+  provideStewardNotesPorts({
+    standingOf: standingOfSubject,
+    unknownCites: unknownCitesIn,
+    factsVersion: stewardFactsVersion,
+  });
   provideStewardStandings(openStandings);
 }

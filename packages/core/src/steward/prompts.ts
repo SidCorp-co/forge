@@ -107,20 +107,31 @@ export function actPrompt(act: StewardAct, observed = true): string {
   return `${COMMON}\n${how}\n\n${method}`;
 }
 
-/** What the act is about, as the turn reads it: the item, what started the run, and its standing. */
+/** What a stale note leaves the turn in its place: that one stood, and why its words are not given. */
+const STALE_NOTE =
+  'Its last note is out of date: the standing moved since it was written, or Forge has since reworded the facts it states. Its words are not given here; state nothing from them, only what the standing says now.';
+
+/**
+ * What the act is about, as the turn reads it: the item, what started the run, and its standing. A
+ * stale note's words never reach the turn (ISS-1044): ISS-192's run asked the master to settle
+ * ISS-191's test step, its note's premise, while ISS-191 had landed and the master owed a run.
+ */
 export function actContext(
   run: RunRow,
   standing: ItemStanding | null,
   releaseFacts: string | null = null,
 ): string {
   const events = run.events.map((e) => `${e.trigger} at ${e.at}`).join('; ');
-  const read = standing
-    ? markUntrusted(JSON.stringify(standing), { source: 'the item standing' })
+  const stale = standing?.note?.stale === true;
+  const shown = standing && stale ? { ...standing, note: null } : standing;
+  const read = shown
+    ? markUntrusted(JSON.stringify(shown), { source: 'the item standing' })
     : 'The standing read holds no open row for this item: it is not open, or the read does not cover it.';
   return [
     `Item: ${run.subjectKey} (${run.subjectKind} ${run.subjectId}).`,
     `Started by: ${events}.`,
     `Its standing now:\n${read}`,
+    ...(stale ? [STALE_NOTE] : []),
     ...(releaseFacts
       ? [`The project's release, as Forge reads it (state it no other way):\n${releaseFacts}`]
       : []),

@@ -15,6 +15,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { stewardNotes } from '../db/schema-steward-notes.js';
 import { peopleOf } from '../lib/people.js';
+import { factsVersion } from './ports.js';
 
 type NoteRow = typeof stewardNotes.$inferSelect;
 
@@ -37,13 +38,18 @@ export async function currentNoteRowsOf(
   return new Map(rows.map((r) => [r.subjectId, r]));
 }
 
-/** Rows as every page reads them; `basisOf` gives each subject's current basis, so a moved one reads stale. */
+/**
+ * Rows as every page reads them; `basisOf` gives each subject's current basis, so a moved one reads
+ * stale, as one written under facts core has since reworded does (ISS-1044): its words state what
+ * the steward is no longer told, though the item's basis never moved.
+ */
 export async function notesOf(
   rows: readonly NoteRow[],
   keyOf: (row: NoteRow) => string,
   basisOf: (subjectId: string) => string | null,
 ): Promise<Map<string, StewardNote>> {
   const people = await peopleOf(rows.map((r) => r.writtenBy));
+  const facts = rows.length > 0 ? factsVersion() : null;
   return new Map(
     rows.map((r) => {
       const who = people.get(r.writtenBy);
@@ -60,7 +66,8 @@ export async function notesOf(
           cites: r.cites as StewardCite[],
           claims: r.claims as StewardClaims,
           basis: r.basis,
-          stale: basisOf(r.subjectId) !== r.basis,
+          stale: basisOf(r.subjectId) !== r.basis || r.factsVersion !== facts,
+          factsVersion: r.factsVersion,
           writtenAt: r.writtenAt.toISOString(),
           writtenBy: { id: r.writtenBy, name: who?.name ?? null, kind: who?.kind ?? 'human' },
           runId: r.runId,
@@ -101,6 +108,7 @@ export async function writeNoteRow(input: {
         basis: input.write.basis,
         writtenBy: input.writtenBy,
         runId: input.write.runId,
+        factsVersion: factsVersion(),
         writtenAt: now,
       })
       .returning();

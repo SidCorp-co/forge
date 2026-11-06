@@ -294,8 +294,13 @@ export interface StewardNote {
 	cites: StewardCite[];
 	claims: StewardClaims;
 	basis: string;
-	/** The standing has moved since the note was written: no page draws it until the steward writes it again. */
+	/**
+	 * The standing has moved since the note was written, or core has reworded the facts it was written
+	 * under (`factsVersion`): no page draws it until the steward writes it again.
+	 */
 	stale: boolean;
+	/** The steward's facts version the note was written under; null for a note written before notes recorded one. */
+	factsVersion: string | null;
 	writtenAt: string;
 	writtenBy: { id: string; name: string | null; kind: "human" | "agent" };
 	runId: string | null;

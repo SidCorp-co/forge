@@ -16,7 +16,7 @@ import {
   type StewardSkipReason,
   type StewardTrigger,
 } from '@forge/contracts/steward';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { type StewardRunEvent, stewardRuns } from '../db/schema-steward-runs.js';
@@ -421,12 +421,15 @@ export async function spentSince(
  * same refusal; one whose turn or job did not finish counts for an hour, after which the sweep tries
  * again. A stuck diagnosis that finished counts only where it ended in an act, an ask, or why nobody
  * was asked (`diagnosis-end.ts`): one that ended on a note alone is diagnosed again (ISS-654), and
- * the diagnosis that follows always ends so, which bounds it to once.
+ * the diagnosis that follows always ends so, which bounds it to once. `queuedAfter` counts only the
+ * runs queued after it: a note written under facts core has since reworded is rewritten by a run
+ * queued after it was written, never the run that wrote it (ISS-1044).
  */
 export async function ranOnBasis(
   subject: StandingSubject,
   act: StewardAct,
   basis: string,
+  opts: { queuedAfter?: Date } = {},
 ): Promise<boolean> {
   const notAnEnd = sql.join(
     NOT_AN_END_DOORS.map((p) => sql`a.door NOT LIKE ${p}`),
@@ -445,6 +448,7 @@ export async function ranOnBasis(
         eq(stewardRuns.subjectId, subject.id),
         eq(stewardRuns.basis, basis),
         sql`${act} = ANY(${stewardRuns.actsToRun})`,
+        opts.queuedAfter ? gt(stewardRuns.queuedAt, opts.queuedAfter) : undefined,
         sql`(${stewardRuns.state} IN ('queued', 'running') OR (${stewardRuns.state} = 'done' AND ${ended}) OR (${stewardRuns.state} = 'failed' AND ((${stewardRuns.failureKind} = 'refused' AND ${ended}) OR ${stewardRuns.endedAt} > now() - interval '1 hour')))`,
       ),
     )

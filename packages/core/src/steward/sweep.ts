@@ -6,12 +6,15 @@
 // holds a note: an issue is noted once its diagnosis writes one, never on every sweep for being open.
 // A requirement or feedback item stuck through a carrier issue that is itself stuck is not diagnosed:
 // the carrier is, and the item is noted, its note citing the carrier it waits on.
+// A note written under facts core has since reworded reads stale though its basis never moved
+// (ISS-1044): it is emitted `standing.changed` too, a stuck item's as well once its diagnosis ran on
+// that basis, and only once, by a run queued after the note was written.
 // An ask of the master stands until its item's basis moves, its item waits on a person, or a reasoned
 // decision on the item, or on the item whose run asked, answers it; one answered since it was made
 // leaves the master's nudge at once, and the sweep settles it. The sweep spends only its share of the
 // day's budget (`policy.ts:sharesOf`): it raises no more runs than that share has room for, oldest
-// stuck first, and the rest wait for a later sweep, so a full backlog is paced across days and the
-// handoff share stays whole.
+// stuck first, then the oldest note, and the rest wait for a later sweep, so a full backlog is paced
+// across days and the handoff share stays whole.
 
 import type { ItemStanding, StandingSubjectKind } from '@forge/contracts/steward';
 import { isNull } from 'drizzle-orm';
@@ -49,11 +52,24 @@ async function sweepRoom(projectId: string, now: Date): Promise<number> {
   return sweep.gatewayTurns - spent.gatewayTurns - queued.gatewayTurns;
 }
 
-/** Stuck items first, longest stuck first, then the rest as read: the order the sweep's room is spent in. */
+/**
+ * Stuck items first, longest stuck first, then the rest by their note, oldest first, and those with
+ * none as read: the order the sweep's room is spent in.
+ */
 function byAge(rows: readonly ItemStanding[]): ItemStanding[] {
   const since = (r: ItemStanding) =>
     r.stuck ? Date.parse(r.stuck.since) : Number.POSITIVE_INFINITY;
-  return [...rows].sort((a, b) => since(a) - since(b));
+  const noted = (r: ItemStanding) =>
+    r.note ? Date.parse(r.note.writtenAt) : Number.POSITIVE_INFINITY;
+  return [...rows].sort((a, b) => since(a) - since(b) || noted(a) - noted(b));
+}
+
+/**
+ * The note on this basis written under facts core has since reworded (ISS-1044): its basis is the
+ * standing's, and it reads stale all the same. Null where the note is current or on another basis.
+ */
+function rewordedNote(row: ItemStanding): ItemStanding['note'] {
+  return row.note && row.note.basis === row.basis && row.note.stale ? row.note : null;
 }
 
 /**
@@ -76,29 +92,36 @@ async function sweepRow(
 ) {
   const subject = { kind: row.subject.kind, id: row.subject.id, key: row.subject.key };
   const stuck = row.stuck;
+  const reworded = rewordedNote(row);
   if (stuck && !stuckCarrierOf(row, stuckIssues)) {
-    if (await ranOnBasis(subject, 'stuck_diagnosis', row.basis)) return;
-    if (room.turns <= 0) {
-      tally.paced += 1;
+    const diagnosed = await ranOnBasis(subject, 'stuck_diagnosis', row.basis);
+    // a diagnosed item's note under reworded facts is rewritten by a note run, below
+    if (diagnosed && !reworded) return;
+    if (!diagnosed) {
+      if (room.turns <= 0) {
+        tally.paced += 1;
+        return;
+      }
+      room.turns -= 1;
+      await db.transaction((tx) =>
+        emitEvent(tx, 'standing.stuck', {
+          projectId,
+          subject,
+          code: stuck.code,
+          basis: row.basis,
+        }),
+      );
+      tally.stuck += 1;
       return;
     }
-    room.turns -= 1;
-    await db.transaction((tx) =>
-      emitEvent(tx, 'standing.stuck', {
-        projectId,
-        subject,
-        code: stuck.code,
-        basis: row.basis,
-      }),
-    );
-    tally.stuck += 1;
-    return;
   }
-  if (row.note?.basis === row.basis) return;
+  if (row.note?.basis === row.basis && !reworded) return;
   // an open issue takes its first note from its diagnosis, not from being open
   if (row.subject.kind === 'issue' && !row.note) return;
-  // a note this basis already had a run for is not asked again: a refused write says so on that run
-  if (await ranOnBasis(subject, 'note', row.basis)) return;
+  // a note this basis already had a run for is not asked again: a refused write says so on that run;
+  // a reworded note counts only the runs since it was written, so the run that wrote it is none
+  const since = reworded ? { queuedAfter: new Date(reworded.writtenAt) } : {};
+  if (await ranOnBasis(subject, 'note', row.basis, since)) return;
   if (room.turns <= 0) {
     tally.paced += 1;
     return;

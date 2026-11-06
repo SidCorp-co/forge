@@ -44,12 +44,16 @@ async function standingOf(run: RunRow): Promise<ItemStanding | null> {
   return rows.find((r) => r.subject.id === run.subjectId) ?? null;
 }
 
-/** The acts still owed after what the standing says: a note on an unchanged basis owes nothing. */
+/**
+ * The acts still owed after what the standing says: a note on an unchanged basis owes nothing, but
+ * one written under facts core has since reworded reads stale and is written again (ISS-1044).
+ */
 function actsAfterStanding(
   acts: readonly StewardAct[],
   standing: ItemStanding | null,
 ): StewardAct[] {
-  const noteCurrent = standing?.note != null && standing.note.basis === standing.basis;
+  const noteCurrent =
+    standing?.note != null && standing.note.basis === standing.basis && !standing.note.stale;
   return noteCurrent ? acts.filter((a) => a !== 'note') : [...acts];
 }
 

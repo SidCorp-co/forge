@@ -41,6 +41,11 @@ export const stewardNotes = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     /** The steward run that wrote it; null for a person's override. */
     runId: uuid('run_id'),
+    /**
+     * The steward's facts version it was written under (`steward/facts-version.ts`); null for a note
+     * written before notes recorded one. Another version than today's reads the note stale.
+     */
+    factsVersion: text('facts_version'),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
   },

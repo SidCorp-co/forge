@@ -10,6 +10,9 @@
 // the standing it reads now, or with a decision recorded on it or on the asking run's own item, is not
 // asked again: that is said to the turn, and nothing is written. The ask cites the item it is about,
 // which keys it (`asks.ts`).
+// The ask is weighed on the item's standing read when it is made: where the run's own item moved
+// since the run read it, nothing is asked on what it read, and the turn is told the wait it reads now
+// (ISS-1044).
 // An issue owing nothing of its own (every criterion earned, on a project with production) waits on
 // the release that carries it: an ask about it is raised on that release, once while the release's
 // wait reads the same, of whoever takes the release's act (`release-ask.ts`, ISS-1040).
@@ -41,11 +44,29 @@ const wakeParams = z.strictObject({
     .optional(),
 });
 
-/** The standing of the item the ask is about: this run's own, or another open item's by its key. */
+/**
+ * The standing of the item the ask is about, read now, whichever item it is: an ask states the
+ * standing it is raised on, never the one its run read when it began (ISS-1044).
+ */
 async function standingOfKey(about: string, ctx: DoorContext): Promise<ItemStanding | null> {
-  if (about === ctx.subject.key.toUpperCase() && ctx.standing) return ctx.standing;
   const rows = await openStandings(ctx.projectId);
   return rows.find((r) => r.subject.key.toUpperCase() === about) ?? null;
+}
+
+/**
+ * Why an ask about the run's own item is not made, where its standing moved since the run read it:
+ * what the turn read then is no premise any more, and it is told the wait it reads now. ISS-192's
+ * run asked the master to settle ISS-191's test step at 10:33:41Z, ISS-191 landed at 10:24Z and at
+ * awaiting_release since 10:30Z, while ISS-192 waited on the master to dispatch a run.
+ */
+function movedUnderRun(about: string, now: ItemStanding | null, ctx: DoorContext): string | null {
+  if (about !== ctx.subject.key.toUpperCase() || !ctx.standing) return null;
+  if (now && now.basis === ctx.standing.basis) return null;
+  const was = ctx.standing.waitingOn;
+  const reads = now
+    ? `it now waits on ${now.waitingOn.who}${now.waitingOn.act ? ` to ${now.waitingOn.act}` : ''} (${now.waitingOn.rule})`
+    : 'the standing read holds no open row for it any more';
+  return `${about}'s standing moved since this run read it, waiting on ${was.who}${was.act ? ` to ${was.act}` : ''}: ${reads}. Ask nothing from what it waited on before; write the note, and the next diagnosis reads it as it stands.`;
 }
 
 /** The issue a key names, from its standing where it has one, else the project's records; null for any other item. */
@@ -122,6 +143,8 @@ async function askOnce(
 ): Promise<WakeAnswer> {
   // keyed on the item asked about, whichever run asks (ISS-607: FB-runs asked on ISS-498 again)
   const standing = await standingOfKey(about, ctx);
+  const moved = movedUnderRun(about, standing, ctx);
+  if (moved) return { correct: moved };
   // an issue owing nothing of its own is shipped by the release carrying it, which is asked instead
   const issueId = await issueIdOf(about, standing, ctx.projectId);
   const release = issueId ? await stewardPorts().releaseHoldingAct(ctx.projectId, issueId) : null;

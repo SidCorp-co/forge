@@ -13,9 +13,15 @@ interface StewardNotesPorts {
   ): Promise<ItemStanding | null>;
   /** The cites no record of the project answers. */
   unknownCites(projectId: string, cites: readonly StewardCite[]): Promise<StewardCite[]>;
+  /**
+   * The steward's facts version today (`steward/facts-version.ts:stewardFactsVersion`): a note
+   * records the one it was written under, and reads stale under another.
+   */
+  factsVersion(): string;
 }
 
 const slot = portSlot<StewardNotesPorts>('steward-notes', 'provideStewardNotesPorts');
 export const provideStewardNotesPorts = slot.provide;
 export const standingOf = slot.port('standingOf');
 export const unknownCites = slot.port('unknownCites');
+export const factsVersion = slot.port('factsVersion');

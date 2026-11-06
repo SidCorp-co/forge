@@ -4,6 +4,7 @@ export { registerSteward } from './consumer.js';
 export { carryStewardDecision } from './decision-act.js';
 export { sweepDecisionUpkeep } from './decision-upkeep.js';
 export { dispatchStewardRuns } from './dispatch.js';
+export { stewardFactsVersion } from './facts-version.js';
 export { breakdownsHeldBySteward } from './holds.js';
 export { stewardJobCredential } from './job.js';
 export { type LessonsPassTally, runLessonsPass } from './lessons-pass.js';
