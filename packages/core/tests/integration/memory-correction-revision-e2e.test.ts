@@ -1,4 +1,6 @@
+import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { ago, issue, type World, world } from '../helpers/forecast-world.js';
@@ -6,7 +8,8 @@ import { ago, issue, type World, world } from '../helpers/forecast-world.js';
 // REQ-33 BC-4, ISS-434 criterion 3: a person corrects a memory from the item page with a reason, and
 // the item's own read (the Memory tab) still holds the old text as an earlier revision, still names
 // the agent that wrote it as its writer, and names the person who corrected it, with why. Every
-// source a person may correct there keeps its revision, a decision as much as a note.
+// source a person may correct there keeps its revision, a decision as much as a note. A decision
+// is no longer written to memory (ISS-1063), so the one here is a row written before that.
 //
 // @direct-test-of packages/core/src/memory/write-service.ts
 // @direct-test-of packages/core/src/memory/revisions-service.ts
@@ -54,11 +57,12 @@ describe('a memory corrected from the item it names', () => {
       'gotcha/rebase',
       'After a rebase, test:changed shows 24 failed files (ISS-1).',
     );
-    await agentWrites(
-      'decision',
-      'decision/board',
-      'The board stays flat (ISS-1), owner 2026-10-04.',
-    );
+    await db.execute(sql`
+      INSERT INTO memories (project_id, source, source_ref, text_content, metadata)
+      VALUES (${w.projectId}, 'decision', 'decision/board',
+              'The board stays flat (ISS-1), owner 2026-10-04.',
+              ${JSON.stringify({ writtenBy: agentId })}::jsonb)
+    `);
   });
 
   it('keeps the old text as an earlier revision on the item, the agent as its writer, and the person as its corrector', async () => {
@@ -141,7 +145,7 @@ describe('a memory corrected from the item it names', () => {
 // revision that kept the old text, and the entry reads back by its id.
 describe('a memory write over an existing ref says it replaced an entry', () => {
   let w: World;
-  const write = (sourceRef: string, textContent: string, source = 'decision') =>
+  const write = (sourceRef: string, textContent: string, source = 'knowledge') =>
     api(w.token, 'POST', '/api/memory', { projectId: w.projectId, source, sourceRef, textContent });
   const read = (id: string, projectId?: string) =>
     api(w.token, 'GET', `/api/memory/${id}?projectId=${projectId ?? w.projectId}`);
@@ -190,7 +194,7 @@ describe('a memory write over an existing ref says it replaced an entry', () => 
     expect(got.body).toMatchObject({
       id: put.body.id,
       sourceRef: 'REQ-16',
-      source: 'decision',
+      source: 'knowledge',
       textContent: 'Readable by id.',
       archivedAt: null,
     });
