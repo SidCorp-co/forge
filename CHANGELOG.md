@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.546] - 2026-11-06
+
+Release page names the master as cutter; beta port and room tests fixed
+
+### Fixed
+
+- **Support room tests now fail when a member message is dropped.** Their master is made as the product makes it, so a room's first message after the master joined lands, as it does live.
+- **A release draft names the project's master as its cutter where the master takes the cut.** The release page no longer says an admin cuts it while Needs you, the steward and the room read say the master does.
+- **A beta comment marks its issue ported only by its first line.** Prose quoting "Ported to forge-dev" no longer holds a row unported; a marker without a usable key is held with the line to write.
+
 ## [0.4.0-dev.545] - 2026-11-06
 
 Steward decisions keep answering overdue waits, and stale steward notes are rewritten
