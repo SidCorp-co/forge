@@ -96,6 +96,14 @@ pub struct Report<'a> {
     pub transcript: Option<&'a str>,
 }
 
+/// How long a background child whose end this box has not heard is still
+/// counted as running, from its start (ISS-858). A child's end reaches this box
+/// by a hook that can be lost, and only time tells a lost end from a child
+/// still running; three hours outlasts the builds and gates a direct-mode
+/// master runs in the background. Every reader of a held child reads this one
+/// bound: what the pane is doing (ISS-1054) and whether it may be replaced.
+pub const BACKGROUND_END_CEILING_MS: i64 = 3 * 60 * 60 * 1000;
+
 /// What a session is doing, as the session itself last reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Doing {
@@ -188,7 +196,20 @@ impl Activity {
         self.lead_ended_at
     }
 
+    /// What the session is doing now: [`Activity::doing_at`] read at the
+    /// wall clock.
     pub fn doing(&self) -> Doing {
+        self.doing_at(now_ms())
+    }
+
+    /// What the session is doing at `now` (wall-clock ms). A lead whose turn
+    /// is over while a background agent it started has reported no end is
+    /// `AwaitingChildren`, though its next turn stripped `children` (ISS-1054):
+    /// a direct-mode master builds through such an agent, and reading it idle
+    /// both shows its project idle and has the box nudge it with another pass
+    /// over its own running builder. Bounded as ISS-858 bounds it: an agent
+    /// started [`BACKGROUND_END_CEILING_MS`] or longer ago no longer counts.
+    pub fn doing_at(&self, now: i64) -> Doing {
         if self.awaiting_permission {
             return Doing::AwaitingPermission;
         }
@@ -196,10 +217,19 @@ impl Activity {
             return Doing::Working;
         }
         match (self.children.is_empty(), self.lead_ended) {
-            (true, _) => Doing::Idle,
             (false, true) => Doing::AwaitingChildren,
             (false, false) => Doing::Working,
+            (true, _) if self.background_running(now) => Doing::AwaitingChildren,
+            (true, _) => Doing::Idle,
         }
+    }
+
+    /// Whether a background child this conversation started has reported no
+    /// end and started less than [`BACKGROUND_END_CEILING_MS`] before `now`.
+    pub fn background_running(&self, now: i64) -> bool {
+        self.background
+            .values()
+            .any(|&at| now.saturating_sub(at) < BACKGROUND_END_CEILING_MS)
     }
 }
 
@@ -462,7 +492,7 @@ mod tests {
         lead(&a, Event::Stopped, 2_000);
         lead(&a, Event::PromptSubmitted, 3_000);
         let seen = lead(&a, Event::Stopped, 4_000);
-        assert_eq!(seen.doing(), Doing::Idle);
+        assert!(seen.children.is_empty(), "the next turn left children");
         assert_eq!(seen.background.get("agent-1"), Some(&1_100));
         assert_eq!(seen.lead_ended_at(), Some(4_000));
         let gone = child(&a, Event::SubagentStopped, 5_000);
@@ -480,5 +510,59 @@ mod tests {
         let seen = lead(&a, Event::StoppedFailed, 2_000);
         assert_eq!((seen.prompts, seen.turns), (1, 1));
         assert_eq!(seen.turn_began_at, Some(1_000));
+    }
+
+    /// ISS-1054's plant: a lead starts a background agent, ends its turn, takes
+    /// a new prompt and ends that turn too, with the agent still running. Its
+    /// next turn stripped `children`, and the pane read idle while its builder
+    /// worked; it is awaiting that child until the child ends.
+    #[test]
+    fn a_lead_whose_background_agent_runs_past_its_next_turn_awaits_it() {
+        const T0: i64 = 1_793_498_400_000;
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, T0);
+        child(&a, Event::SubagentStarted, T0 + 100);
+        lead(&a, Event::Stopped, T0 + 2_000);
+        lead(&a, Event::PromptSubmitted, T0 + 3_000);
+        let seen = lead(&a, Event::Stopped, T0 + 4_000);
+        assert!(seen.children.is_empty());
+        assert_eq!(
+            seen.doing_at(T0 + 10 * 60_000),
+            Doing::AwaitingChildren,
+            "a lead whose background agent still runs read idle"
+        );
+        let gone = child(&a, Event::SubagentStopped, T0 + 11 * 60_000);
+        assert_eq!(gone.doing_at(T0 + 12 * 60_000), Doing::Idle);
+    }
+
+    /// A background agent whose end was never heard holds its lead up to the
+    /// ceiling from its start, and no further (ISS-858's bound).
+    #[test]
+    fn a_background_agent_whose_end_is_never_heard_counts_until_the_ceiling() {
+        const T0: i64 = 1_793_498_400_000;
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, T0);
+        child(&a, Event::SubagentStarted, T0 + 100);
+        lead(&a, Event::Stopped, T0 + 2_000);
+        lead(&a, Event::PromptSubmitted, T0 + 3_000);
+        let seen = lead(&a, Event::Stopped, T0 + 4_000);
+        let ceiling = T0 + 100 + BACKGROUND_END_CEILING_MS;
+        assert_eq!(seen.doing_at(ceiling - 1), Doing::AwaitingChildren);
+        assert_eq!(seen.doing_at(ceiling), Doing::Idle);
+    }
+
+    /// A turn of its own still reads working, and a question still reads asked,
+    /// whatever runs in the background.
+    #[test]
+    fn a_running_turn_or_a_question_reads_as_itself_over_a_background_agent() {
+        const T0: i64 = 1_793_498_400_000;
+        let a = Activities::new();
+        lead(&a, Event::PromptSubmitted, T0);
+        child(&a, Event::SubagentStarted, T0 + 100);
+        lead(&a, Event::Stopped, T0 + 2_000);
+        let working = lead(&a, Event::PromptSubmitted, T0 + 3_000);
+        assert_eq!(working.doing_at(T0 + 3_500), Doing::Working);
+        let asked = lead(&a, Event::PermissionRequested, T0 + 4_000);
+        assert_eq!(asked.doing_at(T0 + 4_500), Doing::AwaitingPermission);
     }
 }

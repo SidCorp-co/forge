@@ -22,7 +22,7 @@ pub(crate) enum TurnRead {
 /// builds and gates a direct-mode master runs in the background, which are
 /// what a replacement kills, and bounds a lost end to one afternoon's drain.
 pub(crate) const BACKGROUND_END_CEILING: std::time::Duration =
-    std::time::Duration::from_secs(3 * 60 * 60);
+    std::time::Duration::from_millis(agent_activity::BACKGROUND_END_CEILING_MS.unsigned_abs());
 
 /// The most children a turn read names; the rest are counted.
 const NAMED_CHILDREN: usize = 5;
@@ -54,7 +54,7 @@ pub(crate) fn turn_of(
     now_ms: i64,
 ) -> TurnRead {
     use agent_activity::Doing;
-    match seen.map(agent_activity::Activity::doing) {
+    match seen.map(|a| a.doing_at(now_ms)) {
         Some(Doing::Idle | Doing::AwaitingChildren) => {}
         Some(Doing::Working) => return TurnRead::InTurn("its hooks say a turn is running".into()),
         Some(Doing::AwaitingPermission) => {
@@ -258,7 +258,11 @@ mod tests {
     #[test]
     fn a_master_whose_background_children_run_is_not_read_as_ended() {
         let seen = nudged_master();
-        assert_eq!(seen.doing(), agent_activity::Doing::Idle);
+        // its builder still runs, so the pane awaits it rather than reading idle (ISS-1054)
+        assert_eq!(
+            seen.doing_at(T0 + 10 * MIN),
+            agent_activity::Doing::AwaitingChildren
+        );
         let mut entries = launches();
         let path = transcript("running", &entries);
         let held = read(Some(&seen), &path, T0 + 10 * MIN);
