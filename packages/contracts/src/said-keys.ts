@@ -1549,10 +1549,10 @@ export const SAID = {
 		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
 	"feedback.rule.masterConfirms": {
-		en: "resolved: the master checks it on the running build, then confirms or reopens it; the reporter may reopen it",
+		en: "resolved: the master checks it live, then confirms or reopens it",
 	},
 	"feedback.rule.masterAnswersHeld": {
-		en: "resolved: past its window, the master answers from what the record reads: {why}",
+		en: "resolved: past its window, the master answers from the record: {why}",
 		vars: { why: "text" },
 	},
 	"feedback.rule.verifyHeld": {
@@ -1973,7 +1973,7 @@ export const SAID = {
 		en: "the project's master cuts releases, which is routine, so no date",
 	},
 	"forecast.reason.masterCutsPersonApproves": {
-		en: "the project's master cuts it, then a releases.approve holder{holders} approves it, as this project requires, so no date",
+		en: "the master cuts it, then an approver{holders} approves it, so no date",
 		vars: { holders: "said?" },
 	},
 	"forecast.reason.masterRecords": {

@@ -226,7 +226,7 @@ describe('who owes the release act, by the one rule', () => {
     });
     expect(leg).toMatchObject({ kind: 'master', who: "The project's master", act: 'cut 0.7.0' });
     expect(leg.kind === 'master' && leg.reason).toBe(
-      "the project's master cuts it, then a releases.approve holder (Dana Lee) approves it, as this project requires, so no date",
+      'the master cuts it, then an approver (Dana Lee) approves it, so no date',
     );
   });
 

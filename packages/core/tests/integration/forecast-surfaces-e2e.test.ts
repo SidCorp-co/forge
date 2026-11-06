@@ -183,7 +183,7 @@ describe('a release cut by hand is named, never dated', () => {
       who: "The project's master",
     });
     expect(release.act).toMatch(/^cut \d+\.\d+\.\d+$/);
-    expect(release.reason).toContain('then a releases.approve holder');
+    expect(release.reason).toContain('then an approver');
   });
 });
 

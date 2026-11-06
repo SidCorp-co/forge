@@ -215,7 +215,7 @@
     "forecast.reason.allLanded": "mọi issue trong phạm vi đã merge; {reason}",
     "forecast.reason.heldDevice": "{device} đang {reason}{detail}",
     "forecast.reason.masterCuts": "master của project cắt release, một việc thường lệ, nên không có ngày",
-    "forecast.reason.masterCutsPersonApproves": "master của project cắt bản này, rồi một người giữ quyền releases.approve{holders} duyệt nó như project yêu cầu, nên không có ngày",
+    "forecast.reason.masterCutsPersonApproves": "master cắt bản này, rồi người duyệt{holders} duyệt, nên không có ngày",
     "forecast.reason.masterDialog": "master của project đang dừng ở một hộp thoại ({rule})",
     "forecast.reason.masterRecords": "chưa khai báo môi trường production: master của project ghi nhận lần merge",
     "forecast.reason.masterSilent": "master của project im lặng từ {at}, nên không gì được điều phối",
