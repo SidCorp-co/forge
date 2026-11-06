@@ -7,6 +7,7 @@ import type { OrgKnowledgeEntry, OrgKnowledgeWrite } from '@forge/contracts/org-
 import { and, asc, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
+import { provenanceOf, provenanceRefusal } from './provenance.js';
 
 type Row = typeof orgKnowledgeEntries.$inferSelect;
 
@@ -17,6 +18,9 @@ const viewOf = (r: Row): OrgKnowledgeEntry => ({
   body: r.body,
   injection: r.injection,
   orderIndex: r.orderIndex,
+  source: r.source,
+  scope: r.scope,
+  recheckWhen: r.recheckWhen,
   updatedBy: r.updatedBy,
   createdAt: r.createdAt.toISOString(),
   updatedAt: r.updatedAt.toISOString(),
@@ -45,20 +49,28 @@ export async function orgKnowledgeEntryOf(
   return row ? viewOf(row) : null;
 }
 
-/** Create or replace the org's entry under `slug`, written by `userId`. */
+/**
+ * Create or replace the org's entry under `slug`, written by `userId`. Every org entry is a ruling or
+ * a guide, so each owes what it rests on, where it applies and when it needs re-checking, refused
+ * `KNOWLEDGE_PROVENANCE_MISSING` by name where one is left out (ISS-1064).
+ */
 export async function writeOrgKnowledge(
   orgId: string,
   slug: string,
   write: OrgKnowledgeWrite,
   userId: string,
 ): Promise<OrgKnowledgeEntry> {
+  const unsourced = provenanceRefusal(`org entry \`${slug}\``, write);
+  if (unsourced) throw unsourced;
   const now = new Date();
+  const { title, body, injection, orderIndex } = write;
+  const fields = { title, body, injection, orderIndex, ...provenanceOf(write) };
   const [row] = await db
     .insert(orgKnowledgeEntries)
-    .values({ orgId, slug, ...write, updatedBy: userId, updatedAt: now })
+    .values({ orgId, slug, ...fields, updatedBy: userId, updatedAt: now })
     .onConflictDoUpdate({
       target: [orgKnowledgeEntries.orgId, orgKnowledgeEntries.slug],
-      set: { ...write, updatedBy: userId, updatedAt: now },
+      set: { ...fields, updatedBy: userId, updatedAt: now },
     })
     .returning();
   if (!row) throw new Error('org knowledge: the upsert returned no row');
@@ -109,6 +121,18 @@ export async function orgOnDemandSlugsOf(projectId: string): Promise<string[]> {
     )
     .orderBy(asc(orgKnowledgeEntries.orderIndex), asc(orgKnowledgeEntries.slug));
   return rows.map((r) => r.slug);
+}
+
+/** What each on-demand entry of the org `projectId` belongs to rests on, by slug (ISS-1064). */
+export async function orgOnDemandSourcesOf(
+  projectId: string,
+): Promise<Record<string, string | null>> {
+  const rows = await db
+    .select({ slug: orgKnowledgeEntries.slug, source: orgKnowledgeEntries.source })
+    .from(orgKnowledgeEntries)
+    .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
+    .where(and(eq(projects.id, projectId), eq(orgKnowledgeEntries.injection, 'on_demand')));
+  return Object.fromEntries(rows.map((r) => [r.slug, r.source]));
 }
 
 /** The entry under `slug` of the org `projectId` belongs to, or null where it holds none. */

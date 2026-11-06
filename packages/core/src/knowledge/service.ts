@@ -1,10 +1,11 @@
+import type { KnowledgeProvenance } from '@forge/contracts/knowledge';
 import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, knowledgeEntries } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
 import type { knowledgeInjectionEnum, knowledgeKindEnum } from './entry-input.js';
 import { lessonOwnedRefusal, notALessonEntry } from './lesson-entries.js';
-import { orgAlwaysInjectOf, orgEntryForProject } from './org-knowledge.js';
+import { orgAlwaysInjectOf, orgEntryForProject, orgOnDemandSourcesOf } from './org-knowledge.js';
 import type { ReadWhenCondition } from './read-when.js';
 
 const MAX_RESPONSE_CHARS = 38_000;
@@ -20,7 +21,7 @@ export interface ListKnowledgeInput {
   status?: IssueStatus | undefined;
 }
 
-export interface KnowledgeListRow {
+export interface KnowledgeListRow extends KnowledgeProvenance {
   id: string;
   slug: string;
   kind: string;
@@ -104,6 +105,9 @@ export async function listKnowledgeEntries(
       orderIndex: knowledgeEntries.orderIndex,
       updatedAt: knowledgeEntries.updatedAt,
       readWhen: knowledgeEntries.readWhen,
+      source: knowledgeEntries.source,
+      scope: knowledgeEntries.scope,
+      recheckWhen: knowledgeEntries.recheckWhen,
       total: sql<number>`count(*) over ()`.mapWith(Number),
     })
     .from(knowledgeEntries)
@@ -121,7 +125,7 @@ export async function listKnowledgeEntries(
   return { rows: kept, truncated: kept.length < total, returned: kept.length, total };
 }
 
-export interface GetKnowledgeResult {
+export interface GetKnowledgeResult extends KnowledgeProvenance {
   /** `project` for the project's own entry; `org` where the project holds none under the slug and
    *  its org does (ISS-867), read through the same door so a project's agents need no org access. */
   origin: 'project' | 'org';
@@ -161,6 +165,9 @@ export async function getKnowledgeEntry(
       createdAt: knowledgeEntries.createdAt,
       updatedAt: knowledgeEntries.updatedAt,
       readWhen: knowledgeEntries.readWhen,
+      source: knowledgeEntries.source,
+      scope: knowledgeEntries.scope,
+      recheckWhen: knowledgeEntries.recheckWhen,
     })
     .from(knowledgeEntries)
     .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, slug)))
@@ -203,6 +210,9 @@ export async function readKnowledgeEntry(
     createdAt: org.createdAt,
     updatedAt: org.updatedAt,
     readWhen: null,
+    source: org.source,
+    scope: org.scope,
+    recheckWhen: org.recheckWhen,
   };
 }
 
@@ -320,6 +330,30 @@ export async function selectOnDemandSlugsFromKnowledge(projectId: string): Promi
     )
     .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));
   return rows.map((r) => r.slug);
+}
+
+/**
+ * What each on-demand entry a prompt's guide index names rests on, by slug: the project's own and its
+ * org's it does not shadow, null where the entry was written before a source was asked for (ISS-1064).
+ */
+export async function selectOnDemandSourcesFromKnowledge(
+  projectId: string,
+): Promise<Record<string, string | null>> {
+  const [own, org] = await Promise.all([
+    db
+      .select({ slug: knowledgeEntries.slug, source: knowledgeEntries.source })
+      .from(knowledgeEntries)
+      .where(
+        and(
+          eq(knowledgeEntries.projectId, projectId),
+          eq(knowledgeEntries.injection, 'on_demand'),
+          isNull(knowledgeEntries.archivedAt),
+          notALessonEntry,
+        ),
+      ),
+    orgOnDemandSourcesOf(projectId),
+  ]);
+  return { ...org, ...Object.fromEntries(own.map((r) => [r.slug, r.source])) };
 }
 
 /** A knowledge node's related issues and, when given, its metadata, written by a module refresh. */

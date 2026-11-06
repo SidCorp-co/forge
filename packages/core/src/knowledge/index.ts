@@ -38,5 +38,6 @@ export {
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,
+  selectOnDemandSourcesFromKnowledge,
   updateKnowledgeLinks,
 } from './service.js';

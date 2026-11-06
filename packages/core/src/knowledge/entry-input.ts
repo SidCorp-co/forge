@@ -1,3 +1,8 @@
+import {
+  KNOWLEDGE_RECHECK_WHEN_MAX,
+  KNOWLEDGE_SCOPE_MAX,
+  KNOWLEDGE_SOURCE_MAX,
+} from '@forge/contracts/knowledge';
 import { z } from 'zod';
 import type { knowledgeKinds } from '../db/schema.js';
 
@@ -61,6 +66,15 @@ export const upsertKnowledgeInputSchema = z.object({
    * than by a generic schema failure.
    */
   readWhen: z.unknown().optional(),
+  /**
+   * What the entry rests on, where it applies and the change that means it needs re-checking
+   * (ISS-1064). Optional here so that a kind owing them and leaving one out is refused by name,
+   * `KNOWLEDGE_PROVENANCE_MISSING` with the shape (`provenance.ts`), rather than as a generic body
+   * fault; a kind owing nothing may still carry them.
+   */
+  source: z.string().max(KNOWLEDGE_SOURCE_MAX).nullish(),
+  scope: z.string().max(KNOWLEDGE_SCOPE_MAX).nullish(),
+  recheckWhen: z.string().max(KNOWLEDGE_RECHECK_WHEN_MAX).nullish(),
 });
 
 export type UpsertKnowledgeInput = z.infer<typeof upsertKnowledgeInputSchema>;

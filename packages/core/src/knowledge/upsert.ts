@@ -11,6 +11,7 @@ import {
   type UpsertKnowledgeResult,
 } from './entry-input.js';
 import { lessonOwnedRefusal } from './lesson-entries.js';
+import { entryProvenanceRefusal, provenanceOf } from './provenance.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
 import { rulingDecidersRefusal } from './ruling-deciders.js';
 
@@ -81,6 +82,7 @@ const baseRow = (input: UpsertKnowledgeInput, embedding: number[] | null) => ({
   orderIndex: input.orderIndex,
   embedding,
   metadata: input.metadata ?? {},
+  ...provenanceOf(input),
 });
 
 /** A degraded write keeps the stored vector where neither title nor body moved. */
@@ -96,6 +98,9 @@ const baseSet = (degraded: boolean) => ({
     ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body AND ${knowledgeEntries.title} = excluded.title THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
     : sql`excluded.embedding`,
   metadata: sql`excluded.metadata`,
+  source: sql`excluded.source`,
+  scope: sql`excluded.scope`,
+  recheckWhen: sql`excluded.recheck_when`,
   archivedAt: sql`null`,
   updatedAt: sql`now()`,
 });
@@ -174,6 +179,11 @@ export async function upsertKnowledgeEntries(
       entries.filter((e) => e.projectId === projectId),
     );
     if (owned) throw owned;
+  }
+  // past the lessons' own refusal, so a write the lessons module owns is refused as theirs (ISS-1064)
+  for (const entry of entries) {
+    const unsourced = entryProvenanceRefusal(entry);
+    if (unsourced) throw unsourced;
   }
   const embedded = await embedEntries(entries);
   const rows = await writeEntries(entries, embedded);

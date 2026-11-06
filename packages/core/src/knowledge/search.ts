@@ -1,3 +1,4 @@
+import type { KnowledgeProvenance } from '@forge/contracts/knowledge';
 import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -6,7 +7,7 @@ import { identifierTsQuery } from '../db/schema-types.js';
 import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
 import { notAWithdrawnLesson } from './lesson-entries.js';
 
-export interface KnowledgeHit {
+export interface KnowledgeHit extends KnowledgeProvenance {
   id: string;
   slug: string;
   kind: string;
@@ -25,6 +26,9 @@ const HIT_COLUMNS = {
   body: knowledgeEntries.body,
   injection: knowledgeEntries.injection,
   confidence: knowledgeEntries.confidence,
+  source: knowledgeEntries.source,
+  scope: knowledgeEntries.scope,
+  recheckWhen: knowledgeEntries.recheckWhen,
 };
 
 function baseWhere(projectId: string) {

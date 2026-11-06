@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ read: vi.fn() }));
+const store = vi.hoisted(() => ({ read: vi.fn(), upsert: vi.fn() }));
 vi.mock('./service.js', () => ({
   readKnowledgeEntry: store.read,
   deleteKnowledgeEntry: vi.fn(),
   listKnowledgeEntries: vi.fn(),
 }));
 vi.mock('./unified-search.js', () => ({ runUnifiedSearch: vi.fn() }));
-vi.mock('./upsert.js', () => ({ upsertKnowledgeEntry: vi.fn() }));
+vi.mock('./upsert.js', () => ({ upsertKnowledgeEntry: store.upsert }));
 vi.mock('../lib/tool.js', async (load) => ({
   ...(await load<typeof import('../lib/tool.js')>()),
   projectReaderOf: () => ({ userId: 'u-1', fence: null }),
@@ -53,5 +53,33 @@ describe('forge_knowledge get', () => {
         permission: 'project.write',
         on: { arg: 'projectId' },
       });
+  });
+});
+
+// ISS-1064: the tool's upsert carries what an entry rests on, where it applies and when it needs
+// re-checking to the one write path, which refuses a kind owing them that leaves one out
+describe('forge_knowledge upsert', () => {
+  it('passes source, entryScope as scope, and recheckWhen to the write', async () => {
+    store.upsert.mockReset().mockResolvedValue({ id: 'k-1', slug: 'deploy-notes' });
+    await tool.handler({
+      action: 'upsert',
+      projectId: PROJECT,
+      slug: 'deploy-notes',
+      title: 'Deploy',
+      body: 'Deploy with the script.',
+      kind: 'reference',
+      source: 'scripts/deploy.sh:main',
+      entryScope: 'every deploy of this project',
+      recheckWhen: 'scripts/deploy.sh moves',
+      scope: 'knowledge',
+    });
+    expect(store.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'reference',
+        source: 'scripts/deploy.sh:main',
+        scope: 'every deploy of this project',
+        recheckWhen: 'scripts/deploy.sh moves',
+      }),
+    );
   });
 });
