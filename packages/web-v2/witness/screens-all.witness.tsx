@@ -21,7 +21,7 @@ import { type ChromeScreen, gatherScreens } from "@/test/vi-chrome-screens";
 import { firstScreenWords } from "./first-screen";
 import "./entry";
 import { InRouter } from "./router";
-import { Caught, FEEDBACK_TITLED, HomePage, ISSUE_TITLED, OPS_SEED, REQUIREMENTS_TITLED } from "./screens.fixture";
+import { Caught, FEEDBACK_TITLED, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED } from "./screens.fixture";
 import { SCREEN_PAGES } from "./screens.pages";
 
 const THEMES = (import.meta.env.VITE_WITNESS_THEMES ?? "light").split(",") as ("light" | "dark")[];
@@ -43,7 +43,7 @@ const vi = (name: string): ReactNode => {
   return s.render();
 };
 
-const PAGES = SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, FEEDBACK_TITLED, OPS_SEED });
+const PAGES = SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, FEEDBACK_TITLED });
 const only = import.meta.env.VITE_WITNESS_ONLY as string | undefined;
 const SHOWN = only ? PAGES.filter((p) => only.split(",").includes(p.name)) : PAGES;
 

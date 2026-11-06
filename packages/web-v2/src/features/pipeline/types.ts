@@ -164,13 +164,6 @@ export interface StepDurationRow {
   costUsd: number;
 }
 
-/** One `GET /api/pipeline/throughput` row: issues shipped on one UTC date, a day with none at 0. */
-export interface ThroughputRow {
-  projectId: string;
-  date: string;
-  count: number;
-}
-
 /** Options for the per-project runs list. */
 export interface ProjectRunsOpts {
   projectId: string;

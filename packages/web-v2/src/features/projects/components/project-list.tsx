@@ -12,10 +12,12 @@ import { PinStar } from './project-card';
 interface ProjectListProps {
   items: ProjectConsoleItem[];
   now: number;
+  /** Whether the Spend column says anything: not while every cost is $0 (ISS-1069). */
+  spend: boolean;
   onTogglePin: (id: string) => void;
 }
 
-export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
+export function ProjectList({ items, now, spend, onTogglePin }: ProjectListProps) {
   const router = useRouter();
   const t = useCopy();
   return (
@@ -28,7 +30,7 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
           <TH>{t('projects.col.runs')}</TH>
           <TH>{t('projects.col.issues')}</TH>
           <TH>{t('projects.col.runners')}</TH>
-          <TH className="text-right">{t('projects.col.spend')}</TH>
+          <TH className="text-right">{spend ? t('projects.col.spend') : null}</TH>
           <TH className="text-right">{t('projects.col.team')}</TH>
         </TR>
       </THead>
@@ -63,7 +65,7 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
                 <Stat icon="server">{p.runnerCount}</Stat>
               </TD>
               <TD className="text-right font-mono text-12 text-subtle">
-                {formatSpend(p.spend24hUsd)}
+                {spend ? formatSpend(p.spend24hUsd) : null}
                 <span className="ml-1.5 text-disabled">{formatRelativeTime(p.lastActivityAt, now)}</span>
               </TD>
               <TD>

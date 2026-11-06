@@ -28,7 +28,6 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
 export const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
   { key: "attention", label: en("nav.attention"), icon: "inbox", href: "/attention" },
   { key: "settings", label: en("nav.settings"), icon: "settings", href: "/settings" },
-  { key: "pipeline-ops", label: en("nav.pipeline-ops"), icon: "pipeline", href: "/ops" },
 ];
 
 /** A project-tier nav item. `sub` is appended to `/projects/[slug]`. The rail

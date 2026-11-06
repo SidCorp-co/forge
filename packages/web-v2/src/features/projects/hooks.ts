@@ -45,6 +45,17 @@ export function useProjectHealth() {
 }
 
 /**
+ * A project's live runs from the one read every surface counts them by (ISS-1069): the health rollup
+ * the rail and Projects already hold, so the rail, Activity, Projects and Agents say the same number
+ * and the screens open no read of their own for it. Null until the rollup has answered.
+ */
+export function useLiveRuns(projectId: string | null | undefined): number | null {
+  const health = useProjectHealth();
+  if (!projectId || !health.data) return null;
+  return health.data.find((h) => h.id === projectId)?.liveRuns ?? 0;
+}
+
+/**
  * Compose the projects console: the `['projects']` list + `['projects','health']`
  * rollup + client-only pins → fully-hydrated `ProjectConsoleItem[]` + workspace
  * totals. Query keys are unchanged, so the WS event-router invalidations drive

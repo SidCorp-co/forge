@@ -21,6 +21,7 @@ import {
   useUrlChoice,
   useUrlFlags,
 } from "@/design";
+import { useLiveRuns } from "@/features/projects";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -85,6 +86,8 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   const [scope, setScope] = useUrlChoice("scope", RUN_STANDING_SCOPES, "live");
   const [mode, setMode] = useUrlChoice<GroupMode>("group", GROUP_MODES, "attention");
   const q = useRunStanding(projectId, scope);
+  // Live counts what the rail, Activity and Projects count, from their one read (ISS-1069)
+  const live = useLiveRuns(projectId);
   const d = q.data;
   const [on, toggle] = useUrlFlags(FILTERS);
   useRunsCommands(mode, setMode, on, toggle);
@@ -110,7 +113,8 @@ export function RunsList({ access }: { access: AgentsAccess }) {
   return (
     <QueryBoundary query={q} loadingLabel={t("agents.loadingRuns")} height="50vh" retry="always">
       {(d) => {
-        const counts: Record<RunStandingScope, number> = { live: d.counts.live, finished: d.counts.finished, all: d.counts.live + d.counts.finished };
+        const liveCount = live ?? d.counts.live;
+        const counts: Record<RunStandingScope, number> = { live: liveCount, finished: d.counts.finished, all: d.counts.live + d.counts.finished };
         const groups = list.groups.filter((g) => g.rows.length > 0);
         const empty = list.search.value || on.size ? t("agents.empty.filters") : scope === "finished" ? t("agents.empty.finished") : t("agents.empty.live");
         return (

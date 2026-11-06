@@ -3,7 +3,6 @@
 
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { Component, type ReactNode, useState } from "react";
-import { pipelineKeys } from "@/features/pipeline/queries";
 import { Route as HomeRoute } from "@/routes/_workspace/projects/$slug/index";
 import { APPROVALS_PROJECT as PH, APPROVALS_READ } from "@/test/approvals-read";
 import { STATUS } from "@/test/project-status";
@@ -101,22 +100,6 @@ window.fetch = async (input: RequestInfo | URL) => {
   // a read no fixture answers stays in flight, as in the vi walking test
   return new Promise<Response>(() => {});
 };
-
-// ── the ops monitor's reads, seeded ──
-const OPS_PROJECTS = [
-  { id: "p1", slug: "hop", name: "Hop Clinic API", role: "admin", orgId: null },
-  { id: "p2", slug: "kho", name: "Warehouse", role: "member", orgId: null },
-];
-const healthRow = (id: string, name: string, live: number) => ({
-  id, projectName: name, projectSlug: name.toLowerCase(), throughput: 12, totalActive: 7, statusDistribution: {}, blockers: [], pendingEscalations: 1,
-  avgCycleTimeDays: 2, liveRuns: live, runnerCount: 2, spend24hUsd: 4.2, memberCount: 3, members: [], lastActivityAt: NOW,
-});
-export const OPS_SEED: [QueryKey, unknown][] = [
-  [["projects"], OPS_PROJECTS],
-  [["projects", "health"], [healthRow("p1", "Hop Clinic API", 2), healthRow("p2", "Warehouse", 0)]],
-  [pipelineKeys.stepDurations({ days: 7 }), ["plan", "code", "test", "code"].map((step, i) => ({ runId: `run-${i}`, issueId: null, projectId: i % 2 ? "p2" : "p1", step, startedAt: NOW, finishedAt: NOW, durationSeconds: 600 + i * 300, costUsd: 0.4 + i / 10 }))],
-  [pipelineKeys.throughput({ days: 30 }), [{ projectId: "p1", date: day(1), count: 4 }]],
-];
 
 /** A fixture list with titles of its own words: the vi fixtures' titles carry their keys ("Muc FB-1"), which would read as a key on the face. */
 const titled = (seed: [QueryKey, unknown][], family: string, field: string, names: string[], rows = 0): [QueryKey, unknown][] =>

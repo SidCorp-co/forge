@@ -21,8 +21,3 @@ export function useRun(runId: string | undefined, enabled = true) {
 export function useStepDurations(opts: AnalyticsOpts = {}) {
   return useQuery(pipelineQueries.stepDurations(opts));
 }
-
-/** Cross-project daily throughput. */
-export function useThroughput(opts: AnalyticsOpts = {}) {
-  return useQuery(pipelineQueries.throughput(opts));
-}

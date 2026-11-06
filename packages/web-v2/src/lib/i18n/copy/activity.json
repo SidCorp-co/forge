@@ -122,7 +122,8 @@
     "activity.cleanup.runningSince": "Running since {at}",
     "activity.cleanup.lastRun": "Last run",
     "activity.cleanup.unreported": "No report",
-    "activity.cleanup.endedAt": "Ended {at}"
+    "activity.cleanup.endedAt": "Ended {at}",
+    "activity.liveRuns": "{n} live"
   },
   "vi": {
     "activity.ago.h": "{n} giờ trước",
@@ -195,6 +196,7 @@
     "activity.cleanup.runningSince": "Đang chạy từ {at}",
     "activity.cleanup.lastRun": "Lần chạy gần nhất",
     "activity.cleanup.unreported": "Không có báo cáo",
-    "activity.cleanup.endedAt": "Kết thúc lúc {at}"
+    "activity.cleanup.endedAt": "Kết thúc lúc {at}",
+    "activity.liveRuns": "{n} đang chạy"
   }
 }

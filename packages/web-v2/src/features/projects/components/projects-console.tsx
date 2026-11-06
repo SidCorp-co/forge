@@ -20,7 +20,7 @@ import {
 import { useActiveOrg } from '@/features/orgs';
 import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';
-import { filterProjects, formatSpend, isAttention, sortProjects } from '../derive';
+import { filterProjects, formatSpend, isAttention, showSpend, sortProjects } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView, WorkspaceTotals } from '../types';
 import { NewProjectDialog } from './new-project-dialog';
@@ -82,7 +82,8 @@ function ConsoleBody({
   const query = params.get('q') ?? '';
   const setQuery = (q: string) => setParams({ q });
   const [sort, setSort] = useUrlChoice<ProjectSort>('sort', ['recent', 'name', 'health'], 'recent');
-  const [view, setView] = useUrlChoice<ProjectView>('view', ['cards', 'list'], 'cards');
+  // a flat list first, the owner's rule for every screen (ISS-1069); the cards stay one click away
+  const [view, setView] = useUrlChoice<ProjectView>('view', ['cards', 'list'], 'list');
   const attentionOnly = params.get('attention') === '1';
   const setAttentionOnly = (on: boolean) => setParams({ attention: on ? '1' : null });
   // The console is HARD-SCOPED to the global active org (ISS-469/470), never a
@@ -98,7 +99,7 @@ function ConsoleBody({
   return (
     <>
       <PageTitle>{scopeLabel ? t('projects.titleIn', { scope: scopeLabel }) : t('projects.title')}</PageTitle>
-      <StatsBand totals={totals} />
+      <StatsBand totals={totals} spend={showSpend(items)} />
       <ProjectsToolbar
         query={query}
         onQuery={setQuery}
@@ -128,6 +129,7 @@ function ConsoleBody({
         searching={query.trim() !== '' || attentionOnly || sort !== 'recent'}
         view={view}
         now={now}
+        spend={showSpend(items)}
         onTogglePin={onTogglePin}
         onNewProject={onNewProject}
       />
@@ -142,6 +144,7 @@ function ProjectSections({
   searching,
   view,
   now,
+  spend,
   onTogglePin,
   onNewProject,
 }: {
@@ -149,6 +152,7 @@ function ProjectSections({
   searching: boolean;
   view: ProjectView;
   now: number;
+  spend: boolean;
   onTogglePin: (id: string) => void;
   onNewProject: () => void;
 }) {
@@ -157,11 +161,11 @@ function ProjectSections({
   const rest = searching ? visible : visible.filter((p) => !p.pinned);
   const group = (rows: ProjectConsoleItem[]) =>
     view === 'list' ? (
-      <ProjectList items={rows} now={now} onTogglePin={onTogglePin} />
+      <ProjectList items={rows} now={now} spend={spend} onTogglePin={onTogglePin} />
     ) : (
       <div className={GRID}>
         {rows.map((p) => (
-          <ProjectTile key={p.id} project={p} now={now} onTogglePin={onTogglePin} />
+          <ProjectTile key={p.id} project={p} now={now} spend={spend} onTogglePin={onTogglePin} />
         ))}
       </div>
     );
@@ -226,7 +230,7 @@ function SectionLabel({
   );
 }
 
-function StatsBand({ totals }: { totals: WorkspaceTotals }) {
+function StatsBand({ totals, spend }: { totals: WorkspaceTotals; spend: boolean }) {
   const t = useCopy();
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line-subtle pb-3">
@@ -241,9 +245,11 @@ function StatsBand({ totals }: { totals: WorkspaceTotals }) {
         {t('projects.activeCount', { n: totals.openIssues })}
       </Stat>
       <Stat icon="server">{t('projects.runnersCount', { n: totals.runners })}</Stat>
-      <Stat icon="dollar" title={t('projects.spend24h')}>
-        {t('projects.spendPerDay', { spend: formatSpend(totals.spend24hUsd) })}
-      </Stat>
+      {spend ? (
+        <Stat icon="dollar" title={t('projects.spend24h')}>
+          {t('projects.spendPerDay', { spend: formatSpend(totals.spend24hUsd) })}
+        </Stat>
+      ) : null}
     </div>
   );
 }

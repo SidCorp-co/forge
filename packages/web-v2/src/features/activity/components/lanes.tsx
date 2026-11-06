@@ -21,6 +21,7 @@ import {
   Tooltip,
   type useGroupFold,
 } from "@/design";
+import { useLiveRuns } from "@/features/projects";
 import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { Link } from "@/lib/navigation/router";
@@ -68,11 +69,18 @@ function reasonOf(p: OrgActivityProject, t: Copy): string | null {
 function Lead({ p, href, onPeek }: { p: OrgActivityProject; href: string; onPeek: () => void }) {
   const t = useCopy();
   const reason = reasonOf(p, t);
+  // the one live-run count the rail, Projects and Agents read too (ISS-1069), never the lane's own
+  const live = useLiveRuns(p.projectId) ?? 0;
   const state = (
     <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 text-12 text-muted" data-testid="activity-state" data-standing={p.standing}>
       <i aria-hidden className={`inline-block size-2 flex-none rounded-full ${STANDING_DOT[p.standing]}`} />
       {t(`activity.group.${p.standing}`)}
       <span className="whitespace-nowrap text-subtle">· {t("activity.queued", { n: p.next.total })}</span>
+      {live > 0 ? (
+        <span className="whitespace-nowrap text-accent-text" data-testid="activity-live-runs">
+          · {t("activity.liveRuns", { n: live })}
+        </span>
+      ) : null}
     </span>
   );
   return (

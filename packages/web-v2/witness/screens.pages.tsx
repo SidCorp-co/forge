@@ -6,7 +6,6 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
-import { OpsMonitor } from "@/features/pipeline";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
 import { DocsScreen } from "@/features/docs/components/docs-screen";
@@ -43,7 +42,6 @@ interface Kit {
   ISSUE_TITLED: [QueryKey, unknown][];
   REQUIREMENTS_TITLED: [QueryKey, unknown][];
   FEEDBACK_TITLED: [QueryKey, unknown][];
-  OPS_SEED: [QueryKey, unknown][];
 }
 
 const P = "/projects/hop";
@@ -54,7 +52,7 @@ const routeOf = (route: { options: { component?: unknown } }) => {
   return <Page />;
 };
 
-export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, FEEDBACK_TITLED, OPS_SEED }: Kit): ScreenPage[] {
+export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, FEEDBACK_TITLED }: Kit): ScreenPage[] {
   return [
     { name: "project-home", path: P, pattern: "/projects/$slug", render: () => <HomePage /> },
     { name: "issues-list", path: `${P}/issues`, render: () => vi("Issues table") },
@@ -91,6 +89,5 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "sign-in", path: "/login", pattern: "/login", render: () => routeOf(LoginRoute), bare: true },
     { name: "register", path: "/register", pattern: "/register", render: () => routeOf(RegisterRoute), bare: true },
     { name: "not-found", path: "/nowhere", pattern: "/nowhere", render: () => <NotFoundBody />, bare: true },
-    { name: "ops", path: "/ops", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded>, tab: "Runs" },
   ];
 }

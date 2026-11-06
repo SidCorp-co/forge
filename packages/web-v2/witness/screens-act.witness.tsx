@@ -1,5 +1,5 @@
-// The six screens REQ-11 BC-18..BC-21 judge — project home, an issue, requirements, feedback,
-// releases and ops — each in the shell at 1440 by 900, in light then dark. Every stage counts the
+// The screens REQ-11 BC-18..BC-21 judge — project home, an issue, requirements, feedback and
+// releases (Ops went to Activity, ISS-1069) — each in the shell at 1440 by 900, in light then dark. Every stage counts the
 // words a person sees before scrolling (witness/first-screen.ts) and fails a screen over 300.
 //
 //   pnpm --filter web-v2 witness witness/screens-act.witness.tsx --out <dir>
@@ -10,7 +10,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TopBarSlotProvider } from "@/design";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
-import { OpsMonitor } from "@/features/pipeline";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
@@ -20,7 +19,7 @@ import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
 import { firstScreenWords } from "./first-screen";
 import "./entry";
 import { InRouter } from "./router";
-import { Caught, FEEDBACK_TITLED, HomePage, ISSUE_TITLED, OPS_SEED, REQUIREMENTS_TITLED } from "./screens.fixture";
+import { Caught, FEEDBACK_TITLED, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED } from "./screens.fixture";
 
 
 /** REQ-11 BC-21: the most words a screen's first view shows. */
@@ -33,7 +32,6 @@ const PAGES = [
   { name: "feedback", path: "/projects/hop/feedback", render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "releases", path: "/projects/hop/releases", render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },
   // Ops opens on its Monitor tab; the stage then opens Runs, the tab whose rows this change reads
-  { name: "ops", path: "/ops", pattern: "/ops", render: () => <Seeded data={OPS_SEED}><OpsMonitor /></Seeded>, tab: "Runs" },
 ] as const;
 
 

@@ -7,7 +7,6 @@ import type {
   PipelineRunSummary,
   ProjectRunsOpts,
   StepDurationRow,
-  ThroughputRow,
 } from "./types";
 
 /** Issues fetched for the kanban (one page is enough for a board view). */
@@ -40,9 +39,6 @@ export const pipelineApi = {
   stepDurations: (opts: AnalyticsOpts = {}) =>
     apiClient<StepDurationRow[]>(`/pipeline/step-durations?${analyticsParams(opts)}`),
 
-  /** `GET /api/pipeline/throughput?days&projectId` — daily closed/released. */
-  throughput: (opts: Omit<AnalyticsOpts, "step"> = {}) =>
-    apiClient<ThroughputRow[]>(`/pipeline/throughput?${analyticsParams(opts)}`),
 
   issuesForProject: (projectId: string) => {
     const params = new URLSearchParams({

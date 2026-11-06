@@ -37,10 +37,12 @@ export function PinStar({ pinned, size, onToggle }: { pinned: boolean; size: num
 interface ProjectTileProps {
   project: ProjectConsoleItem;
   now: number;
+  /** Whether the Spend figure says anything: not while every cost is $0 (ISS-1069). */
+  spend: boolean;
   onTogglePin: (id: string) => void;
 }
 
-export function ProjectTile({ project, now, onTogglePin }: ProjectTileProps) {
+export function ProjectTile({ project, now, spend, onTogglePin }: ProjectTileProps) {
   const t = useCopy();
   const glyph = projectGlyph(project.id);
   return (
@@ -79,9 +81,11 @@ export function ProjectTile({ project, now, onTogglePin }: ProjectTileProps) {
         <Stat icon="server" title={t('projects.onlineRunners')}>
           {project.runnerCount}
         </Stat>
-        <Stat icon="dollar" title={t('projects.spend24h')}>
-          {formatSpend(project.spend24hUsd)}
-        </Stat>
+        {spend ? (
+          <Stat icon="dollar" title={t('projects.spend24h')}>
+            {formatSpend(project.spend24hUsd)}
+          </Stat>
+        ) : null}
         <span className="ml-auto flex items-center gap-2.5">
           <MemberStack members={project.members} total={project.memberCount} />
           <span className="font-mono text-11 text-subtle">

@@ -1,9 +1,8 @@
 import type { Said } from "@forge/contracts/said";
-import { forecastWait, RULE, say, sentence, verbatim, waitingOn } from "./said";
+import { forecastWait, RULE, say, sentence, waitingOn } from "./said";
 
 import type { QueryKey } from "@tanstack/react-query";
 import type { DevelopmentOverview } from "@forge/contracts/development-overview";
-import type { PulseResponse } from "@forge/contracts/pulse";
 import { fireEvent } from "@testing-library/react";
 import { AwaitingRelease } from "@/features/development/activity/awaiting-release";
 import { DevelopmentActivity } from "@/features/development/activity/development-activity";
@@ -15,20 +14,14 @@ import { DevelopmentOverviewScreen } from "@/features/development/components/dev
 import { LeaseLanes } from "@/features/development/components/lease-lanes";
 import { ModuleBars } from "@/features/development/components/module-bars";
 import { needsYouKey } from "@/features/needs-you/hooks";
-import { ActionQueue } from "@/features/overview/components/action-queue";
-import { FlowFigures } from "@/features/overview/components/flow-section";
-import { LivenessBand } from "@/features/overview/components/liveness-band";
-import { QualityFigures } from "@/features/overview/components/quality-section";
-import { WorkSitting } from "@/features/overview/components/work-sitting";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
 import { Seeded } from "./vi-chrome-requirements";
 
-// The Development overview and the workspace Overview for the vi walking test. Content is
+// The Development overview for the vi walking test (the workspace Overview figures went with ISS-1069). Content is
 // placeholder words; core's sentences (a signal it cannot read, a turn's rule, a record's detail)
 // are said by their registry keys, as core says them.
 
 const unavailable = (reason: Said) => ({ available: false as const, reason: sentence(reason), says: { reason } });
-const detail = (s: Said) => ({ detail: sentence(s), says: { detail: s } });
 
 const P = "p1";
 const AT = "2026-10-07T08:00:00.000Z";
@@ -146,53 +139,6 @@ const runners = {
   total: 4,
 } as const;
 
-const PULSE: PulseResponse = {
-  generatedAt: NOW,
-  thresholds: { abandonedIssueSeconds: 3600, releaseWaitingSeconds: 3600, projectSilenceSeconds: 86400, silenceWarnSeconds: 600, silenceAlarmSeconds: 3600 * 6, identityCap: 20 },
-  liveness: {
-    jobsRunning: 2,
-    jobsQueued: 1,
-    jobsHeld: 1,
-    liveJobs: { total: 1, shown: [{ jobId: "j1", runId: "r1", type: "code", projectSlug: "hop", issueRef: "ISS-1", issueDocId: "i1", ageSeconds: 300 }] },
-    stuckRuns: { total: 2, shown: [{ runId: "r2", projectSlug: "hop", issueRef: null, issueDocId: null, ageSeconds: 7200 }] },
-    lastJobAt: AT,
-    silenceSeconds: 4000,
-    heartbeat: [{ date: "2026-10-06", issueRuns: 3 }, { date: "2026-10-07", issueRuns: 5 }],
-    devices: { online: 2, draining: 1, total: 4 },
-  },
-  work: {
-    buckets: { open: 4, inProgress: 3, awaitingRelease: 1, humanBlocked: 2 },
-    abandoned: { total: 0, shown: [] },
-    releaseWaiting: { total: 0, shown: [] },
-    notOnLive: { total: 0, shown: [] },
-    liveUnmeasured: { total: 0, shown: [] },
-    silentProjects: { total: 0, shown: [] },
-    neverRanProjects: { total: 0, shown: [] },
-    humanBlockedAges: [3600, 200000],
-    perProject: [
-      { id: "p1", slug: "hop", name: "Hop", open: 4, inProgress: 3, awaitingRelease: 1, humanBlocked: 2, stuckRuns: 0, abandonedIssues: 0, lastIssueRunAt: AT },
-      { id: "p2", slug: "kho", name: "Kho", open: 1, inProgress: 0, awaitingRelease: 0, humanBlocked: 0, stuckRuns: 0, abandonedIssues: 0, lastIssueRunAt: null },
-    ],
-  },
-  flow: [
-    { weekStart: "2026-09-28", created: 5, closed: 3, reopened: 0, backlog: 10 },
-    { weekStart: "2026-10-05", created: 2, closed: 4, reopened: 1, backlog: 9 },
-  ],
-  quality: {
-    finished: { merged: 6, closedUnmerged: 1, dropped: 1 },
-    reopened: { issues: 1, events: 2 },
-    rework: { fix: 2, code: 7 },
-    runFailure: { pipeline: { failed: 1, total: 9 }, other: { failed: 0, total: 3 } },
-    sessionFailures: [],
-    pipelineFlow: [{ type: "plan", count: 5, medianSeconds: 600 }, { type: "code", count: 4, medianSeconds: 3000 }, { type: "fix", count: 2, medianSeconds: null }],
-  },
-  actions: [
-    { key: "stuckRuns", label: "Runs claimed but empty", hint: "", owner: "machine", count: 2, oldestSeconds: 7200, records: [{ key: "r2", label: "Run", ...detail(verbatim("hop")), href: "/ops?run=r2", ageSeconds: 7200 }] },
-    { key: "neverRanProjects", label: "Projects holding a backlog with no pipeline", hint: "", owner: "person", count: 3, oldestSeconds: Number.MAX_SAFE_INTEGER, records: [{ key: "p2", label: "Kho", ...detail(say("overview.record.waiting", { n: 1, issues: "issue" })), href: "/projects/kho", ageSeconds: Number.MAX_SAFE_INTEGER }] },
-    { key: "notOnLive", label: "Closed, not on production", hint: "", owner: "person", count: 1, oldestSeconds: null, records: [{ key: "i5", label: "ISS-5", ...detail(say("overview.record.notOnLive", { title: "Muc nam", why: "no release names it" })), href: "/projects/hop/issues/i5", ageSeconds: 60 }] },
-  ],
-};
-
 const click = (selector: string, nth = 0) => () => {
   const el = document.querySelectorAll(selector)[nth];
   if (!el) throw new Error(`nothing to open at ${selector}`);
@@ -258,24 +204,4 @@ export const SCREENS = [
       </Seeded>
     ),
   },
-  {
-    name: "Workspace overview",
-    render: () => (
-      <>
-        <LivenessBand liveness={PULSE.liveness} thresholds={PULSE.thresholds} />
-        <LivenessBand liveness={{ ...PULSE.liveness, silenceSeconds: null, heartbeat: [] }} thresholds={PULSE.thresholds} />
-        <WorkSitting pulse={PULSE} nowMs={Date.parse(NOW)} />
-        <ActionQueue pulse={PULSE} />
-        <ActionQueue pulse={{ ...PULSE, actions: [] }} />
-        <FlowFigures flow={PULSE.flow} />
-        <FlowFigures flow={[]} />
-        <QualityFigures quality={PULSE.quality} />
-        <QualityFigures quality={{ ...PULSE.quality, finished: { merged: 0, closedUnmerged: 0, dropped: 0 }, pipelineFlow: [] }} />
-      </>
-    ),
-  },
-  { name: "Workspace overview · live jobs", render: () => <LivenessBand liveness={PULSE.liveness} thresholds={PULSE.thresholds} />, act: click("button", 0) },
-  { name: "Workspace overview · stuck runs", render: () => <LivenessBand liveness={PULSE.liveness} thresholds={PULSE.thresholds} />, act: click("button", 1) },
-  { name: "Workspace overview · action records", render: () => <ActionQueue pulse={PULSE} />, act: click("button", 1) },
-  { name: "Workspace overview · records not on live", render: () => <ActionQueue pulse={PULSE} />, act: click("button", 2) },
 ];

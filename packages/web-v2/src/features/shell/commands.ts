@@ -36,8 +36,8 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps, language = "e
     onRun: () => router.push(href),
   });
   const project = activeProjectName ?? slug;
-  // Where a run is dispatched or cancelled: the project's pipeline, else the ops view.
-  const pipelineHref = slug ? `/projects/${slug}/pipeline` : "/ops";
+  // Where a run is dispatched or cancelled: the project's pipeline, else Activity across projects (ISS-1069).
+  const pipelineHref = slug ? `/projects/${slug}/pipeline` : "/activity";
 
   // ISS-477 — project results are scoped to the active org, so the palette never surfaces projects
   // from another org while one is selected.

@@ -181,6 +181,8 @@ export function serve(
   return fakeCore((call) => {
     if (call.path === `/orgs/${ORG}/activity`) return { body };
     if (call.path === `/orgs/${ORG}/activity/p-forge/recent`) return { body: RECENT };
+    // the live-run count every surface shares (ISS-1069): none live unless a test says so
+    if (call.path === "/projects/health") return { body: [] };
     const at = /^\/projects\/([^/]+)\/(debts|cleanup-reports)$/.exec(call.path);
     if (at) {
       const c = cleanup[at[1] ?? ""] ?? { ledger: LEDGER_NONE, reports: [] };

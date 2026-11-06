@@ -11,7 +11,7 @@ export const INVENTORY = [
   { route: "/", component: "HomeScreen", feature: "overview", drawn: "owner-home" },
   { route: "/attention", component: "AttentionScreen", feature: "attention", files: ["features/attention/components/attention-screen.tsx"] },
   { route: "/projects", component: "ProjectsConsole", feature: "projects", files: ["features/projects/components/projects-console.tsx"] },
-  { route: "/ops", component: "OpsMonitor", feature: "pipeline", drawn: "ops" },
+  { route: "/ops", redirect: "Activity" },
   { route: "/runners", component: "RunnersScreen", feature: "runners", drawn: "runners" },
   { route: "/integrations", component: "IntegrationsScreen", feature: "integrations", drawn: "integrations" },
   { route: "/org", component: "OrgHome", feature: "orgs", drawn: "org-home" },

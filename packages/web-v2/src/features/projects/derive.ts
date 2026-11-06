@@ -118,6 +118,14 @@ export function filterProjects(
   });
 }
 
+/**
+ * Whether a Spend figure says anything (ISS-1069): not while every cost core holds is $0, as it is
+ * while every run goes through a subscription, where a column of `$0.00` only reads as broken.
+ */
+export function showSpend(items: readonly Pick<ProjectConsoleItem, 'spend24hUsd'>[]): boolean {
+  return items.some((p) => p.spend24hUsd > 0);
+}
+
 /** `$13.38` — trailing-24h spend, two decimals. */
 export function formatSpend(usd: number): string {
   return `$${usd.toFixed(2)}`;

@@ -1,8 +1,8 @@
 export { ProjectGate } from "./components/project-gate";
 export { CurrentProjectProvider, useCurrentProject } from "./current-project";
-export { inActiveOrg } from "./derive";
+export { inActiveOrg, showSpend } from "./derive";
 export { projectGlyph, projectInitials } from "./glyph";
-export { useOrgScopedProjects, useProject, useProjects, useProjectsConsole, useProjectsIncludingArchived } from "./hooks";
+export { useLiveRuns, useOrgScopedProjects, useProject, useProjects, useProjectsConsole, useProjectsIncludingArchived } from "./hooks";
 export type { ProjectDetail, ProjectListItem } from "./types";
 export { canManageProject, canWriteProject, isOrgAdmin } from "./write-access";
 export { deriveHealth } from "./derive";
