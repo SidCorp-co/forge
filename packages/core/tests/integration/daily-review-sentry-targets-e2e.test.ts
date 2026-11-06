@@ -36,7 +36,7 @@ const SENTRY_HOST = 'sentry.iss973.test';
 
 /** Sentry's own API answers an empty issue list; every other call goes where it went. */
 const realFetch = globalThis.fetch;
-vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) =>
+vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) =>
   String(input).includes(SENTRY_HOST)
     ? new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } })
     : realFetch(input, init),
