@@ -10,6 +10,7 @@ import { CONTENTS_LABEL, ContentsList, ContentsMenu, DetailLayout, DetailPane, E
 import { useProject, useProjectsIncludingArchived } from "@/features/projects";
 import type { ProjectDetail } from "@/features/projects";
 import { canManageProject, isOrgAdmin } from "@/features/projects";
+import { ProjectMemory } from "@/features/memory";
 import { ProjectRunnersScreen } from "@/features/runners";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -31,6 +32,7 @@ import { VariablesSettings } from "./variables-section";
 
 const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	general: "settings.project.section.general",
+	memory: "settings.project.section.memory",
 	people: "settings.project.section.people",
 	work: "settings.project.section.work",
 	delivery: "settings.project.section.delivery",
@@ -154,6 +156,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							</div>
 						</>
 					)}
+					{tab === "memory" && <ProjectMemory projectId={project.id} slug={project.slug} />}
 					{tab === "advanced" && <AdvancedSettings project={project} canEdit={canEdit} />}
 					</div>
 				</DetailPane>

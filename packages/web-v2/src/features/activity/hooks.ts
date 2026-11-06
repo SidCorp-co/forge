@@ -73,6 +73,11 @@ export function useProjectRecent(orgId: string | null, projectId: string, open: 
 /** The root of a project's cleanup row: its own, for the reason Recent has its own (ISS-1051). */
 export const ORG_ACTIVITY_CLEANUP_ROOT = "org-activity-cleanup";
 
+/** One project's debt ledger, its cleanup window and open debt: the project Dashboard's Audit line (ISS-1067). */
+export function useProjectLedger(projectId: string) {
+  return useQuery({ queryKey: [ORG_ACTIVITY_CLEANUP_ROOT, projectId, "ledger"], staleTime: 0, queryFn: () => activityApi.ledger(projectId) });
+}
+
 /**
  * One project's cleanup, read once its peek is open (ISS-1051): the ledger's window and open debt,
  * and its newest current report, from the two reads the project's own doors serve.

@@ -123,7 +123,9 @@
     "activity.cleanup.lastRun": "Last run",
     "activity.cleanup.unreported": "No report",
     "activity.cleanup.endedAt": "Ended {at}",
-    "activity.liveRuns": "{n} live"
+    "activity.liveRuns": "{n} live",
+    "activity.audit.title": "Audit",
+    "activity.audit.debt": "{n} open debt"
   },
   "vi": {
     "activity.ago.h": "{n} giờ trước",
@@ -197,6 +199,8 @@
     "activity.cleanup.lastRun": "Lần chạy gần nhất",
     "activity.cleanup.unreported": "Không có báo cáo",
     "activity.cleanup.endedAt": "Kết thúc lúc {at}",
-    "activity.liveRuns": "{n} đang chạy"
+    "activity.liveRuns": "{n} đang chạy",
+    "activity.audit.title": "Kiểm toán",
+    "activity.audit.debt": "{n} nợ kỹ thuật"
   }
 }

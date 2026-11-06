@@ -7,10 +7,10 @@
 
 import type { CleanupReportView, DebtLedgerView, DebtView } from "@forge/contracts/cleanup";
 import type { ReactNode } from "react";
-import { LEGEND, RowItem, RowList } from "@/design";
+import { LEGEND, RowItem, RowList, useNow } from "@/design";
 import { useCopy, useCopyLocale } from "@/lib/i18n/interface-language";
 import { formatAge } from "@/lib/utils/format";
-import { useProjectCleanup } from "../hooks";
+import { useProjectCleanup, useProjectLedger } from "../hooks";
 
 /** A row that opens on demand, as the peek's Recent does. */
 function Fold({ label, testId, trailing, children }: { label: string; testId: string; trailing: ReactNode; children: ReactNode }) {
@@ -123,6 +123,25 @@ const unreportedRun = (ledger: DebtLedgerView): WindowRun | null => {
   const run = ledger.window?.lastRun ?? null;
   return run && (run.status === "success" || run.status === "failed") && !run.reported ? run : null;
 };
+
+/**
+ * The project Dashboard's one Audit line (ISS-1067): drawn only where the project's cleanup window is
+ * on, saying when it next runs (or that it runs now) and the open debt it holds; the report and the
+ * debt itself open on Activity.
+ */
+export function AuditLine({ projectId }: { projectId: string }) {
+  const t = useCopy();
+  const ledger = useProjectLedger(projectId).data;
+  const now = useNow(60_000);
+  if (!ledger?.window?.enabled) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 px-5 text-13 text-muted" data-testid="dashboard-audit">
+      <span className="font-semibold text-fg">{t("activity.audit.title")}</span>
+      <Window ledger={ledger} now={now} />
+      <span>· {t("activity.audit.debt", { n: ledger.open.length })}</span>
+    </p>
+  );
+}
 
 export function CleanupPart({ projectId, now }: { projectId: string; now: number }) {
   const t = useCopy();

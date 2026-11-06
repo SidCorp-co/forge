@@ -190,7 +190,7 @@
     "shell.moved.decisions": "Decisions moved to the requirement, workflow or issue they decide.",
     "shell.moved.dismiss": "Dismiss",
     "shell.moved.lessons": "Lessons are internal to Forge, and no page shows them.",
-    "shell.moved.memory": "Memory moved to each requirement, workflow and issue's Memory tab.",
+    "shell.moved.memory": "Memory moved to Settings and each item's Memory tab.",
     "shell.moved.questions": "Questions moved to Approvals and to the item each one is about.",
     "shell.moved.roadmap": "Roadmap moved to the Requirements Map",
     "shell.needsHint.act": "act",
@@ -554,6 +554,7 @@
     "shell.thread.sending": "Đang gửi…",
     "shell.thread.tryAgain": "Thử lại",
     "nav.proj-approvals": "Phê duyệt",
-    "shell.approvalsCount": "{n} mục chờ bạn quyết định"
+    "shell.approvalsCount": "{n} mục chờ bạn quyết định",
+    "shell.moved.memory": "Bộ nhớ đã chuyển sang Cài đặt và thẻ Bộ nhớ của từng mục."
   }
 }

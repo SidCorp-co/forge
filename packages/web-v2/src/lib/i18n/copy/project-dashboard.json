@@ -45,7 +45,17 @@
     "dash.rel.shipped": "shipped",
     "dash.rel.toDo": "to do",
     "dash.requirements": "Requirements",
-    "dash.shippedIssues": "{n} issues"
+    "dash.shippedIssues": "{n} issues",
+    "dash.title": "Dashboard",
+    "dash.empty": "All quiet",
+    "dash.group.needs": "Needs you",
+    "dash.group.moving": "Moving",
+    "dash.group.shipped": "Shipped",
+    "dash.group.stuck": "Stuck",
+    "dash.decision.answer": "Answer",
+    "dash.decision.approve": "Approve",
+    "dash.decision.accept": "Accept",
+    "dash.decision.verify": "Verify"
   },
   "vi": {
     "dash.criteriaProven": "Tiêu chí đã chứng minh",
@@ -90,6 +100,16 @@
     "dash.rel.shipped": "đã phát hành",
     "dash.rel.toDo": "cần làm",
     "dash.requirements": "Yêu cầu",
-    "dash.shippedIssues": "{n} issue"
+    "dash.shippedIssues": "{n} issue",
+    "dash.title": "Tổng quan",
+    "dash.empty": "Yên ắng",
+    "dash.group.needs": "Cần bạn",
+    "dash.group.moving": "Đang chạy",
+    "dash.group.shipped": "Đã phát hành",
+    "dash.group.stuck": "Bị kẹt",
+    "dash.decision.answer": "Trả lời",
+    "dash.decision.approve": "Duyệt",
+    "dash.decision.accept": "Nghiệm thu",
+    "dash.decision.verify": "Xác nhận"
   }
 }

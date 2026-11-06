@@ -39,7 +39,8 @@ describe("an old Decisions, Roadmap or Memory link", () => {
     expect(movedTarget("hop", "decisions", new URLSearchParams("workflow=intake"))).toBe("/projects/hop/workflows/intake?tab=decisions&moved=decisions");
     expect(movedTarget("hop", "decisions", new URLSearchParams("issue=ISS-110"))).toBe("/projects/hop/issues/ISS-110?view=developer&moved=decisions");
     expect(movedTarget("hop", "roadmap", none)).toBe("/projects/hop/requirements?group=map&moved=roadmap");
-    expect(movedTarget("hop", "memory", none)).toBe("/projects/hop?moved=memory#project-memory");
+    // ISS-1067: memory is read in Settings, never on the Dashboard
+    expect(movedTarget("hop", "memory", none)).toBe("/projects/hop/settings?tab=memory&moved=memory");
     expect(movedTarget("hop", "questions", none)).toBe("/projects/hop/approvals?moved=questions");
     expect(movedTarget("hop", "lessons", none)).toBe("/projects/hop?moved=lessons");
   });
@@ -53,7 +54,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
     expect(replace).toHaveBeenLastCalledWith("/projects/hop/requirements?group=map&moved=roadmap");
     at("/projects/hop/memory");
     render(<MemoryPage />);
-    expect(replace).toHaveBeenLastCalledWith("/projects/hop?moved=memory#project-memory");
+    expect(replace).toHaveBeenLastCalledWith("/projects/hop/settings?tab=memory&moved=memory");
     at("/projects/hop/questions");
     render(<QuestionsPage />);
     expect(replace).toHaveBeenLastCalledWith("/projects/hop/approvals?moved=questions");

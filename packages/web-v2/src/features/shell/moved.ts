@@ -21,8 +21,8 @@ const withQuery = (href: string, query: Record<string, string>) => `${href}?${ne
 /**
  * Where an old link to a removed page lands: a decision-log link narrowed to one requirement,
  * workflow or issue opens that item's decisions (a requirement's under its Activity, an issue's in its developer view, where every fold is open), any other the Requirements list; the roadmap one
- * opens the list's Map, whose columns are Now, Next and Later; the memory one the Dashboard's Memory section,
- * where the memories naming no item are read (an item's own are on its Memory tab); the questions one
+ * opens the list's Map, whose columns are Now, Next and Later; the memory one Settings' Memory section,
+ * where the memories naming no item are read (an item's own are on its Memory tab), never the Dashboard (ISS-1067); the questions one
  * Approvals, where a question waiting on the reader is answered (each item shows its own); the lessons
  * one the Dashboard, saying that lessons are read by Forge's agents and shown to no one.
  */
@@ -36,7 +36,7 @@ export function movedTarget(slug: string, page: MovedPage, params: URLSearchPara
     if (issue) return withQuery(issueHref(slug, issue), { view: "developer", moved: page });
   }
   if (page === "roadmap") return withQuery(requirementsHref(slug), { group: "map", moved: page });
-  if (page === "memory") return `${withQuery(`/projects/${encodeURIComponent(slug)}`, { moved: page })}#project-memory`;
+  if (page === "memory") return `/projects/${encodeURIComponent(slug)}/settings?${new URLSearchParams({ tab: "memory", moved: page }).toString()}`;
   if (page === "questions") return withQuery(approvalsHref(slug), { moved: page });
   if (page === "lessons") return withQuery(`/projects/${encodeURIComponent(slug)}`, { moved: page });
   return withQuery(requirementsHref(slug), { moved: page });

@@ -465,7 +465,8 @@
     "settings.project.variables.approve": "Approve",
     "settings.project.variables.reject": "Reject",
     "settings.project.variables.decisionReason": "Reason for the decision",
-    "settings.project.variables.history": "History"
+    "settings.project.variables.history": "History",
+    "settings.project.section.memory": "Memory"
   },
   "vi": {
     "settings.project.advanced.archive": "Lưu trữ project",
@@ -741,6 +742,7 @@
     "settings.project.work.newModule": "Tên mô-đun mới",
     "settings.project.work.noParent": "Không có mô-đun cha",
     "settings.project.work.parentOf": "Mô-đun cha của {name}",
-    "settings.project.raw.writeFailed": "Không có gì được ghi: {error}"
+    "settings.project.raw.writeFailed": "Không có gì được ghi: {error}",
+    "settings.project.section.memory": "Bộ nhớ"
   }
 }
