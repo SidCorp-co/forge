@@ -34,7 +34,9 @@ beforeAll(async () => {
   await addProjectMember(projectId, ownerId, 'admin');
   token = await userToken(ownerId);
   plantLiveBuild(LIVE);
-  issueId = (await createTestIssue(projectId, ownerId, 1, { status: 'in_progress', createdAt: new Date() })).id;
+  issueId = (
+    await createTestIssue(projectId, ownerId, 1, { status: 'in_progress', createdAt: new Date() })
+  ).id;
   const put = await api(token, 'PUT', `/api/issues/${issueId}/criteria`, {
     criteria: [{ statement: 'The design read shows every step' }],
   });
@@ -51,7 +53,8 @@ const verdict = (evidence: unknown) =>
   });
 
 /** Everything the refusal says: its sentence and every row. */
-const said = (res: { body: unknown }): string => JSON.stringify((res.body as Doc).error ?? res.body);
+const said = (res: { body: unknown }): string =>
+  JSON.stringify((res.body as Doc).error ?? res.body);
 
 // the design read FB-205 could not cite, as long as a judge's real one
 const DESIGN_READ = `https://forge.example.test/api/projects/${'d1bb4907-74d9-4228-85ff-76121523af7d'}/workflows/${'0f6c1f8e-2b7a-4d39-9a51-3c4a8e2f1b77'}/design?view=steps&revision=3`;
