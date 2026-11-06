@@ -161,6 +161,7 @@ describe('an agent reporter’s confirm on the owed line', () => {
       home: false,
       reportedFrom: 'p',
       waitEnded: null,
+      waitMet: null,
     };
     const line = owedLine({ ...none, confirms: [elsewhere] });
     expect(line).toContain('FB-9 from catalog-fe, which only catalog-fe settles');
