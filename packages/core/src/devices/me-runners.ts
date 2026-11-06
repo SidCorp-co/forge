@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, projects, runners } from '../db/schema.js';
+import { orientationRevision } from './orientation-revision.js';
 import { devicesPorts } from './ports.js';
 
 /** Seconds left on this runner's rate limit: `null` unlimited, `0` expired. */
@@ -47,13 +48,19 @@ export async function listDeviceAssignments(deviceId: string) {
   // declared repository (whose host it checks the checkout's origin against), whether core mints for
   // it, and the relay URL its origin must name where git reaches that repository only through Forge
   return Promise.all(
-    declared.map(async (r) => ({
-      ...r,
-      hostCredential: credentialed.has(r.projectId),
-      relayRemote: r.repository
-        ? await devicesPorts().relayRemoteOf(r.projectId, r.repository)
-        : null,
-      orientation: await devicesPorts().checkoutOrientation(r.projectId, r.slug),
-    })),
+    declared.map(async (r) => {
+      const orientation = await devicesPorts().checkoutOrientation(r.projectId, r.slug);
+      return {
+        ...r,
+        hostCredential: credentialed.has(r.projectId),
+        relayRemote: r.repository
+          ? await devicesPorts().relayRemoteOf(r.projectId, r.repository)
+          : null,
+        orientation,
+        // what the heartbeat's `orientations` names for this project, so the box records the
+        // revision of the body it wrote (ISS-1066)
+        orientationRevision: orientationRevision(orientation),
+      };
+    }),
   );
 }

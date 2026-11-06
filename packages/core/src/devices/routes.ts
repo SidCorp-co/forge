@@ -19,6 +19,7 @@ import { heartbeatGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
+import { deviceOrientationRevisions } from './orientation-revision.js';
 import { pushDevice } from './push.js';
 import { deviceProjectAgentConfigs } from './read.js';
 import { refuseDevice } from './refusals.js';
@@ -87,9 +88,13 @@ deviceAuthRoutes.post(
       });
     }
 
+    // each assigned project's orientation revision: a box rewrites a checkout's orientation when it
+    // moved, within one beat and with no restart (ISS-1066); omitted where it could not be composed
+    const orientations = await deviceOrientationRevisions(device.id);
     return c.json({
       ok: true,
       serverTime: new Date().toISOString(),
+      ...(orientations ? { orientations } : {}),
       ...gate.ack,
       ...binaries.ack,
       ...disk.ack,
