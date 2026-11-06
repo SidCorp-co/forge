@@ -76,8 +76,8 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     audience: 'agent',
     title: 'Issue dependencies',
     summary:
-      'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
-    version: 10,
+      'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why an oversized issue stays one issue, built whole and released once.',
+    version: 11,
     body: `## Issue dependencies
 
 ### Relation kinds
@@ -93,14 +93,10 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 - Verify, don't assume: \`GET /api/issues/:id/dependencies\` lists the edges, each carrying \`expired\`; an edge holds the issue back only while its kind is \`blocks\` and it is not \`expired\` (its \`validUntil\` has passed). A \`relates\`, \`duplicates\`, \`parent\` or \`decomposes\` edge never blocks. Retract an edge with \`DELETE /api/issues/:id/dependencies/:edgeId\`, or by re-sending it with \`validUntil\` in the past.
 
 ### An issue bigger than one change
-Splitting is ordinary work, not a lifecycle. Nothing parks a parent, nothing promotes a draft for you, and no edge holds a parent's own work back.
+It stays one issue. A batch is never smaller than an issue, and one issue is never split across releases: a large issue is built whole, as ordered steps on one branch, in as many commits and builders as its files need, lands in one batch and is released once.
 
-- Most of the time the halves belong to ONE session: plan them as ordered steps and build them on one branch, in order.
-- When a half genuinely ships on its own, file it as its own issue at \`open\`, and if it must land first give the dependent a \`blocks\` edge naming it. Each issue then carries its own plan, criteria and review.
-- Never file the halves at \`draft\` expecting something to wake them. \`draft\` dispatches nothing, and no approval cascades it.
-
-### Recording a note without triggering a pipeline run
-Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spawns a pipeline run, burning a runner slot for something that was only meant to be a note.`,
+- Work that turns out to be a different deliverable is not a half of this one: it is work of its own, filed in its lane, and where this issue must not ship without it, a \`blocks\` edge names it.
+- Never file pieces at \`draft\` expecting something to wake them. \`draft\` dispatches nothing, and no approval cascades it.`,
   },
   {
     slug: 'memory-and-knowledge',
@@ -174,7 +170,7 @@ Upload the file from disk instead of inlining base64 bytes into a request: \`for
     title: 'Working in a Forge-managed repo',
     summary:
       'Start here: what Forge owns, the recall-first rule, draft vs open, and what is worth watching.',
-    version: 2,
+    version: 3,
     body: `## Working in a Forge-managed repo
 
 If a repo has a \`.forge/\` directory or an \`mcp.json\` naming a \`forge\` server, its issues, pipeline
@@ -199,8 +195,8 @@ against live code or git before you rely on it.
 | How a Forge feature actually works | \`forge guide <slug>\`, or \`/api/guides/<slug>.md\` |
 
 ### draft vs open — the costly one
-\`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. \`draft\` never
-dispatches. So:
+\`open\` admits the issue to the backlog: the project's master is woken and builds it in its next
+batch or wave. \`draft\` never dispatches. So:
 - Work you want an agent to pick up now → \`open\`.
 - Work for later, or a follow-up you just want recorded → \`draft\`.
 - A note, learning or decision → **not an issue at all**; write it to memory. Nobody browses the

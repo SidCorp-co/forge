@@ -155,7 +155,7 @@ export const PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE: CoreGuide = {
   body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
-\`draft\` never dispatches; \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
+\`draft\` never dispatches; \`open\` admits the issue to the backlog, wakes the project's master, and is built in its next batch or wave. Creating a note-only issue at \`open\` is the single most common way to start unwanted work.
 
 But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to project memory, \`POST /api/memory\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
@@ -166,7 +166,7 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 |---|---|---|
 | Finished the work entirely by hand; the pipeline has nothing left to do | claim it while \`draft\` (a lease in \`sessionContext.lease\`), move it straight to \`in_progress\`, mark merged, \`awaiting_release\`; a release closes it | Never through \`open\`: \`open\` wakes the project's masters (\`ws/master-wake.ts\`), and on a project whose policy dispatches on \`open\` it is theirs to take and build again. An issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
 | Started it yourself and are building it | \`in_progress\` holding a lease, from \`draft\` or \`open\` | \`in_progress\` is refused (\`NO_HOLDER\`) while nothing holds the issue, so a master cannot race an agent into the worktree you are in |
-| Not started it; you want the pipeline to do the whole thing | \`open\` | The driver takes it from there |
+| Not started it; you want the project's agents to build it | \`open\` | The project's master takes it in its next pass |
 | Decided against it; the work will not happen | \`dropped\` with a reason | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
 

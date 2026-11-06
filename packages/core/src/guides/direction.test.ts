@@ -97,3 +97,24 @@ describe('a person’s act that is a kernel step is described as that and nothin
     expect(guide).not.toContain("release stage's human-confirm gate");
   });
 });
+
+describe('an issue is admitted to the backlog a master works, and stays whole', () => {
+  it('open admits to the backlog the master builds, in every guide that says what open does', async () => {
+    for (const slug of ['agent-setup', 'pipeline-and-issue-lifecycle']) {
+      const guide = await served(slug);
+      expect(guide, slug).not.toContain('auto-triages');
+      expect(guide, slug).not.toContain('spawns a pipeline run');
+    }
+    expect(await served('agent-setup')).toContain(
+      "admits the issue to the backlog: the project's master is woken and builds it in its next batch or wave",
+    );
+  });
+
+  it('an oversized issue is built whole and released once, never split across releases', async () => {
+    const guide = await served('issue-dependencies');
+    expect(guide).toContain('It stays one issue.');
+    expect(guide).toContain('one issue is never split across releases');
+    expect(guide).not.toContain('When a half genuinely ships on its own');
+    expect(guide).not.toContain('Recording a note without triggering a pipeline run');
+  });
+});
