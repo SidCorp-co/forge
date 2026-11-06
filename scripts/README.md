@@ -1059,6 +1059,21 @@ tests file beside it (a module named `tests` or ending `_tests`), read from `car
 and run `--exact`, and a touched integration test file under a crate's tests directory as
 `--test <name>`.
 
+**A high-impact path widens the developer's run to its integration tests** (ISS-1061). `pnpm
+test:changed` runs the direct core integration tests only under `--integration`, except where the
+change touches a path `.forge/high-impact-paths.json` lists: the Drizzle migrations and schema, the
+permissions and token fences, the issue machine and its transition guards, and the core modules
+enforcing each rule `packages/contracts/src/gate-profiles.ts:KERNEL_RULES` names. There it runs them
+with no flag and prints each touched path, the pattern it matched and that entry's reason; a change
+touching none selects as before. It widens WHICH collections run, never which tests a collection
+selects. Each entry is `{ "pattern", "reason" }`, repo-relative with `*` and `**`
+(`lib/high-impact-paths.mjs`), and the run stops, exit 2, on a list that is missing
+(`HIGH_IMPACT_LIST_MISSING`), malformed (`HIGH_IMPACT_LIST_MALFORMED`, `HIGH_IMPACT_ENTRY_MALFORMED`),
+holds an entry with no reason (`HIGH_IMPACT_REASON_MISSING`) or one no tracked file matches
+(`HIGH_IMPACT_ENTRY_STALE`): a stale entry widens nothing and says nothing. A module that moves takes
+its entry with it. `pnpm merge-check` runs every direct integration test on the full lane and reads
+no list.
+
 **The declaration is how a miss widens.** A test that reaches its subject by URL, by table name or by
 reading a file reaches it by no import, so the merge check cannot see it. When the whole suite goes
 red and the bisect names a merge whose merge check passed (`rule-suite`), the fix declares the path
@@ -1109,7 +1124,7 @@ and verify's declaration to every workspace dependency of core that exports only
 
 | Command | When | What it runs | Exit |
 |---|---|---|---|
-| `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run |
+| `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, and the direct core integration tests under `--integration` or where a touched path is in `.forge/high-impact-paths.json`, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run, or the high-impact list refused |
 | `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` | before landing on dev (`--probes none` in `ci.yml`'s `merge-check` job, which names no issue) | refuses a full-lane run naming neither; fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests, the kept probe of each criterion the change claims, from the issue's criteria read `<file>` (`lib/merge-probes.mjs`; a criterion standing on a pass, short or fail at a commit the base carries, or skipped, owes none, and a fail standing so is printed and recorded as a standing fail, never rewritten (ISS-606); `--probe-origin <url>` names a build of the change for them), and `pnpm verify`, each timed; refuses `MERGE_PROBE_MISSING` and `MERGE_PROBE_RED` by name; writes the report, which on either lane carries the change's `patchId` (`git diff --binary <base> <head> \| git patch-id --stable`) — core records it and matches a feedback reporter's Fixed / Not fixed to it (REQ-41 BC-20). **Priced amnesty (REQ-41 BC-20):** a full-lane report from a checkout whose script predates patch ids is still taken, recorded `patch-id: absent (script predates patch ids)`, and answered with a `warnings` entry naming `PATCH_ID_ABSENT`. Traded: a full-lane fix landed from an old checkout cannot close a reporter's confirm. Cost: one extra ask of the reporter. Ends when no open dev branch's merge-base predates this merge — check on 2026-10-23, then make `patchId` required on every lane in `mergeCheckReportSchema` and drop `PATCH_ID_ABSENT` | 0 · 1 red or behind · 2 could not run |
 | `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed`; its `verify` runs under `FORGE_LANDED_SINCE=<sha>`, so the cargo gates, migration order and the baseline ratchets measure that range too (`lib/base-branch.mjs`) | as above |
 | `pnpm merge-check --lane fast` | a change a person approved in its live preview (REQ-39 BC-7) | the fast lane: `rebased-on-base`, the typecheck and the direct tests only — no integration tests, no `verify`; the report carries `lane: 'fast'`, and its `patchId`, which core also holds to the approved preview's and refuses `FAST_LANE_*` by name | as above |
