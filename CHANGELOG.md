@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.535] - 2026-11-06
+
+Daily review Sentry links answer on two-target bindings; approvals name requirements once
+
+### Fixed
+
+- **The Approvals peek names a requirement once.** Rests on links its key and revision; the head, the stakes and each answer call it "the requirement", and a question's row on Needs you names it by title.
+- **The daily review reads each Sentry target.** Its brief names one Sentry link per declared target, where a bare read is refused as ambiguous, says which room id the actions route takes, and posts into the project's thread.
+
 ## [0.4.0-dev.534] - 2026-11-06
 
 Merges never mark unrelated finished issues from a branch number

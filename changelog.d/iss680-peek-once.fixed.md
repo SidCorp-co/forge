@@ -1,1 +1,0 @@
-**The Approvals peek names a requirement once.** Rests on links its key and revision; the head, the stakes and each answer call it "the requirement", and a question's row on Needs you names it by title.
