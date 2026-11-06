@@ -30,7 +30,8 @@ export function principlesOf(vision) {
     };
   }
   const twice = names.filter((n, i) => names.indexOf(n) !== i);
-  if (twice.length > 0) return { error: `names ${twice.join(', ')} twice in its Principles section` };
+  if (twice.length > 0)
+    return { error: `names ${twice.join(', ')} twice in its Principles section` };
   return { names };
 }
 
