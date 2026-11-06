@@ -6,9 +6,10 @@ import { describe, expect, it } from 'vitest';
 import {
   cleanupBrief,
   debtRefusals,
-  landingRefusal,
+  reportOwed,
   reportRefusals,
   waitingOnCleanup,
+  windowOffWords,
 } from './rules.js';
 
 const impact = (rating: 'low' | 'medium' | 'high') =>
@@ -288,14 +289,7 @@ describe('a report green exactly when every debt it leaves is carried (REQ-79 BC
   });
 });
 
-describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
-  const window = {
-    scheduleId: 'sched-1',
-    cron: '0 18 * * *',
-    timeZone: null,
-    enabled: true,
-    nextRunAt: '2026-10-30T18:00:00.000Z',
-  };
+describe('what the base owes the audit after a change rated high landed (REQ-79 BC-5)', () => {
   const T = new Date('2026-10-30T10:00:00.000Z');
   const green = {
     id: 'r1',
@@ -304,76 +298,31 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
     sha: 'c'.repeat(40),
     reportedAt: T,
   };
-  const base = {
-    projectId: 'p-1',
-    fast: true,
-    onLand: true,
-    rating: impact('high'),
-    issueRef: 'ISS-9',
-    open,
-    ownHigh: 0,
-    last: green,
-    lastHighLandedAt: null,
-    window,
-  };
 
-  it('refuses an open debt rated high, naming it and the window, and never a medium one', () => {
-    const refused = landingRefusal(base);
-    expect(refused?.code).toBe('MERGE_CLEANUP_PENDING');
-    expect(refused?.detail).toContain(D1);
-    expect(refused?.detail).not.toContain(D2);
-    expect(refused?.detail).toContain('sched-1');
-    expect(refused?.detail).toContain('2026-10-30T18:00:00.000Z');
-    // the served run route, never a project-scoped one that answers 404
-    expect(refused?.detail).toContain('POST /api/schedules/sched-1/run');
-    expect(refused?.detail).not.toContain('/api/projects/:id/schedules');
-    const disabled = landingRefusal({ ...base, window: { ...window, enabled: false } });
-    expect(disabled?.detail).toContain('POST /api/schedules/sched-1/run');
-    expect(landingRefusal({ ...base, open: [open[1] as (typeof open)[number]] })).toBeNull();
+  it('owes a report after a red one, or where none follows the last high landing, and nothing else', () => {
+    expect(reportOwed({ ...green, result: 'red' }, null)).toBe('red');
+    expect(reportOwed(green, T)).toBe('stale');
+    expect(reportOwed(null, T)).toBe('stale');
+    expect(reportOwed(green, new Date(T.getTime() - 1000))).toBeNull();
+    expect(reportOwed(null, null)).toBeNull();
   });
 
-  it('refuses a red last report, and a green one no newer than the last high landing', () => {
-    const red = { ...green, result: 'red' as const };
-    expect(landingRefusal({ ...base, open: [], last: red })?.detail).toContain('report r1 is red');
-    const before = new Date(T.getTime() - 1000);
-    expect(landingRefusal({ ...base, open: [], lastHighLandedAt: before })).toBeNull();
-    expect(landingRefusal({ ...base, open: [], lastHighLandedAt: T })?.detail).toContain(
-      'since the last change rated high',
-    );
-    expect(landingRefusal({ ...base, open: [], last: null, lastHighLandedAt: T })).not.toBeNull();
-    expect(landingRefusal({ ...base, open: [], last: null })).toBeNull();
-  });
-
-  it('refuses the high debt the report would leave', () => {
-    expect(landingRefusal({ ...base, open: [], ownHigh: 2 })?.detail).toContain(
-      '2 new cleanup debt',
-    );
-  });
-
-  it('lets every other change land: lower or no rating, a project that promotes, fast off', () => {
-    expect(landingRefusal({ ...base, rating: impact('medium') })).toBeNull();
-    expect(landingRefusal({ ...base, rating: impact('low') })).toBeNull();
-    expect(landingRefusal({ ...base, rating: null })).toBeNull();
-    expect(landingRefusal({ ...base, onLand: false })).toBeNull();
-    expect(landingRefusal({ ...base, fast: false })).toBeNull();
-  });
-
-  it('says so where the window is missing or disabled, and names only the first debts of many', () => {
-    // ISS-1049: no window is ever made for the project; the refusal says who turns one on
-    const none = landingRefusal({ ...base, window: null })?.detail;
+  it('says where no window is on, and who turns one on, never making one (ISS-1049)', () => {
+    const window = {
+      scheduleId: 'sched-1',
+      cron: '0 18 * * *',
+      timeZone: null,
+      enabled: true,
+      nextRunAt: '2026-10-30T18:00:00.000Z',
+    };
+    expect(windowOffWords('p-1', window)).toBeNull();
+    const none = windowOffWords('p-1', null);
     expect(none).toContain('No cleanup window is on for this project');
     expect(none).toContain('a project admin turns one on');
     expect(none).toContain('projectId: "p-1"');
-    expect(none).not.toContain('rating a change high saves one');
-    expect(landingRefusal({ ...base, window: { ...window, enabled: false } })?.detail).toContain(
-      'is off, so no cleanup run starts here',
-    );
-    const many = Array.from({ length: 11 }, (_, i) => ({
-      id: `d${i}`,
-      where: 'x',
-      rating: 'high' as const,
-      carried: false,
-    }));
-    expect(landingRefusal({ ...base, open: many })?.detail).toContain('and 3 more');
+    const off = windowOffWords('p-1', { ...window, enabled: false });
+    expect(off).toContain('is off, so no cleanup run starts here');
+    expect(off).toContain('POST /api/schedules/sched-1/run');
+    expect(off).not.toContain('/api/projects/:id/schedules');
   });
 });

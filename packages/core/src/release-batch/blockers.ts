@@ -38,7 +38,6 @@ import {
   resolveReleaseDeviceIds,
 } from './channel.js';
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
-import { cleanupBlocker } from './cleanup-hold.js';
 import { criteriaHold } from './criteria-hold.js';
 import { endedRunBlocker } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
@@ -167,9 +166,6 @@ async function rosterBlockers(
   if (door !== 'record') {
     const owed = await evaluate('shipped-in', () => shippedInBlocker(projectId, issueIds), out);
     if (owed) out.push(owed);
-    // a record is a landing that already shipped, recorded as fact; a cut is what reaches production
-    const cleanup = await evaluate('cleanup', () => cleanupBlocker(projectId, issueIds), out);
-    if (cleanup) out.push(cleanup);
   }
   const gaps = await evaluate(
     'release-record',

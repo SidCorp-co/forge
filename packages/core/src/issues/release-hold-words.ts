@@ -196,11 +196,6 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseGateCheckUnread',
     actor: 'person',
   },
-  RELEASE_CLEANUP_PENDING: {
-    cause: 'issues.releaseHold.cause.releaseCleanupPending',
-    act: 'issues.releaseHold.act.releaseCleanupPending',
-    actor: 'agent',
-  },
 };
 
 /** A code this table lacks is still said plainly, by who owes it. */

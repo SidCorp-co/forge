@@ -13,8 +13,9 @@
 //
 // `fast` is fast delivery (REQ-79): every project's default, which `fast: false` turns off. Under it a
 // merge asks only build and the change's scoped tests, a red the building agent rates below high
-// passes as cleanup debt, and only a change rated high waits for a green cleanup before production
-// (`./cleanup.ts`). Off, every one of those doors behaves as it did before REQ-79.
+// passes as cleanup debt, and a change rated high is owed a cleanup report by the audit, which holds
+// neither its landing nor its release (`./cleanup.ts`). Off, every one of those doors behaves as it
+// did before REQ-79.
 
 import { z } from "zod";
 

@@ -21,11 +21,7 @@ import {
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import { provideAutomationPorts } from './automation/index.js';
 import { betaKeysOf, provideBetaPortPorts } from './beta-port/index.js';
-import {
-  cleanupLandingRefusal,
-  cleanupOwesLandingCheck,
-  recordMergeCheckCleanup,
-} from './cleanup/index.js';
+import { cleanupOwesLandingCheck, recordMergeCheckCleanup } from './cleanup/index.js';
 import { postIssueNotice, postIssueNoticeOnce, provideCommentPorts } from './comments/index.js';
 import {
   appendMessagesIn,
@@ -259,7 +255,7 @@ async function liveReachForIssue(issue: LiveReachIssue & { projectId: string }) 
 
 /** The issue kernel's one-purpose ports, and the beta port's reach into the design context (ISS-982). */
 function provideIssueSidePorts(): void {
-  provideCleanupLandingPort({ cleanupLandingRefusal, cleanupOwesLandingCheck });
+  provideCleanupLandingPort({ cleanupOwesLandingCheck });
   provideFailReturnPort({ requirementFailReturn });
   provideBetaProvenancePort({
     betaKeysOfIssue: async (issueId) => betaKeysOf(issueId, await feedbackIdsRoutingTo(issueId)),

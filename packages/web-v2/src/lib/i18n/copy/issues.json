@@ -1106,7 +1106,6 @@
     "issues.releaseHold.act.releaseHeldByEndedRun": "hủy bản phát hành đã dừng, ghi rõ thứ đã đẩy",
     "issues.releaseHold.act.releaseQueuedBehind": "đưa vào một lần phát hành sau",
     "issues.releaseHold.act.releaseHeadCarriesHeld": "gỡ giữ cho issue kia, hoặc tự cắt bản gồm cả hai",
-    "issues.releaseHold.act.releaseCleanupPending": "chạy đợt dọn dẹp và báo đạt cho issue này",
     "issues.releaseHold.act.releaseGateCheckRed": "sửa bước kiểm tra rồi cắt bản lại",
     "issues.releaseHold.act.releaseGateCheckPending": "phát hành khi bước kiểm tra đạt",
     "issues.releaseHold.act.releaseGateCheckSilent": "chạy bước kiểm tra trên commit này, hoặc bỏ cổng",

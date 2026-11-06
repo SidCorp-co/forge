@@ -90,7 +90,6 @@ const withSubject = (
     | 'standing.gate.unmerged'
     | 'standing.gate.changeRequestMissing'
     | 'standing.gate.shippedInOwed'
-    | 'standing.gate.cleanupPending'
     | 'standing.gate.heldByEndedRun',
   d: Details,
   verb: [string, string],
@@ -210,10 +209,6 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.shippedInOwed',
     plain: (d) => withSubject('standing.gate.shippedInOwed', d, ['was', 'were']),
   },
-  RELEASE_CLEANUP_PENDING: {
-    title: 'standing.gate.title.cleanupPending',
-    plain: (d) => withSubject('standing.gate.cleanupPending', d, ['is', 'are']),
-  },
   RELEASE_HELD_BY_ENDED_RUN: {
     title: 'standing.gate.title.heldByEndedRun',
     plain: (d) => withSubject('standing.gate.heldByEndedRun', d, ['is', 'are']),
@@ -295,7 +290,6 @@ const onThem =
       | 'standing.act.writeReleaseNote'
       | 'standing.act.markMerge'
       | 'standing.act.recordShippedIn'
-      | 'standing.act.runCleanup'
       | 'standing.act.openChangeRequest',
   ) =>
   (d: Details): Said => {
@@ -347,7 +341,6 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_DEPLOYED_OUTSIDE: { by: 'master', act: act('standing.act.recordExternalDeploy') },
   RELEASE_PROMOTION_MISSING: { by: 'master', act: act('standing.act.openPromotion') },
   RELEASE_SHIPPED_IN_OWED: { by: 'master', act: onThem('standing.act.recordShippedIn') },
-  RELEASE_CLEANUP_PENDING: { by: 'master', act: onThem('standing.act.runCleanup') },
   RELEASE_HELD_BY_ENDED_RUN: {
     by: 'master',
     act: (d) => say('standing.act.abortEndedRun', { v: endedVersionOf(d) }),

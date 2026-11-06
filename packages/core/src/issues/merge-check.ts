@@ -32,7 +32,7 @@ import { gateRefusal } from '../lib/gated.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import type { Actor } from './activity.js';
 import { checkRunSessionOf, writeCheckRuns } from './check-runs.js';
-import { cleanupLandingRefusal, cleanupOwesLandingCheck } from './cleanup-landing-port.js';
+import { cleanupOwesLandingCheck } from './cleanup-landing-port.js';
 import { readCriteriaWithDrafts } from './criteria/service.js';
 import { issueDisplayIds } from './display-ids.js';
 import { readIssueGates } from './gates.js';
@@ -68,12 +68,6 @@ export async function recordMergeCheck(args: {
   const fastDelivery = fastDeliveryOf(held?.document.delivery);
   const fault = checkRefusal(report, fastDelivery);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
-  const landing = await cleanupLandingRefusal({
-    issueId: issue.id,
-    projectId: issue.projectId,
-    report,
-  });
-  if (landing) throw refuse(landing.code, landing.detail, landing.path);
   const criteria = await readCriteriaWithDrafts(issue);
   const probes = probeRefusals(report, criteria);
   if (probes.length) throw new RefusalError(probes, 'MERGE_CHECK_REFUSED');

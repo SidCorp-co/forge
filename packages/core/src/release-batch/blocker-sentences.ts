@@ -113,8 +113,6 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project releases through its promotion: production is deployed outside Forge, and a release is the change request {promotion}. None is open, or merged and not yet released, so nothing would ship {named}. Open it at a head judged on the branch work lands on, then cut again naming it as `promotion.request`.',
   RELEASE_SHIPPED_IN_OWED:
     '{named} {have} a merged mark written only after release {versions} was cut, which may already hold {their} landing, so a new release could find nothing of {them} new. The agent checks with git which release holds each landing and records it (`POST /api/projects/:id/shipped-in-records` with `issueId`, `version` and `evidence`, `version: null` where none does), then cut again.',
-  RELEASE_CLEANUP_PENDING:
-    "{named} {are} rated high impact, and this project delivers fast (REQ-79): a change rated high reaches production only once a green cleanup run covers it, while every lower-rated change goes now. Cut the release without {them}, or have the cleanup run (the project's `cleanup` schedule, or `POST /api/schedules/:scheduleId/run`) report green with `covers` naming {them}: `POST /api/projects/:id/cleanup-reports`.",
   RELEASE_GATE_CHECK_RED:
     'Fix the check so it passes on a new commit; the release is cut again once it does.',
   RELEASE_GATE_CHECK_PENDING:
@@ -164,7 +162,6 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_DEPLOYED_OUTSIDE: [],
   RELEASE_PROMOTION_MISSING: [],
   RELEASE_SHIPPED_IN_OWED: [],
-  RELEASE_CLEANUP_PENDING: [],
   RELEASE_GATE_CHECK_RED: [],
   RELEASE_GATE_CHECK_PENDING: [],
   RELEASE_GATE_CHECK_SILENT: [],

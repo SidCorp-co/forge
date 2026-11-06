@@ -3,9 +3,9 @@
 // core keeps them and reads them where a release asks (VISION: Forge never infers what an agent did).
 //
 // A rating is the change's system impact by type: `type` is the landing surface it touches
-// (`./landing-artifacts.ts`), `rating` low, medium or high, high covering severe. Only a change rated
-// high waits for a green cleanup before production (BC-5); a red rated high is no debt at all, it
-// holds its issue (BC-3).
+// (`./landing-artifacts.ts`), `rating` low, medium or high, high covering severe. A change rated high
+// lands and ships on its build like any other, and the audit owes it a cleanup report (BC-5); a red
+// rated high is no debt at all, it holds its issue (BC-3).
 
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
@@ -41,7 +41,7 @@ export const IMPACT_TYPE_LABELS: Readonly<Record<PathSurface, string>> =
 export const IMPACT_RATINGS = ["low", "medium", "high"] as const;
 export type ImpactRating = (typeof IMPACT_RATINGS)[number];
 
-/** The rating that holds: a change rated so waits for a green cleanup, a red rated so holds its issue. */
+/** The rating that counts: a change rated so is owed a cleanup report by the audit, a red rated so holds its issue. */
 export const HOLDING_RATING: ImpactRating = "high";
 
 const LIMITS = {
@@ -259,7 +259,7 @@ export interface DebtLedgerView {
 	fast: boolean;
 	open: DebtView[];
 	cleared: DebtView[];
-	/** Issues rated high that no green cleanup covers yet: held from production (BC-5). */
+	/** Issues rated high that no green cleanup covers yet: owed a report by the audit, holding nothing (BC-5). */
 	waiting: {
 		issueId: string;
 		issueKey: string;
