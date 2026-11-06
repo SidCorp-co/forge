@@ -1,0 +1,1 @@
+**A knowledge entry now says what it rests on.** A reference, guide, workflow or rule, and every org entry, needs a source, a scope and when to re-check it; the prompt shows each source, and the anchor audit checks it first.
