@@ -8,10 +8,11 @@
  * /api/devices/me/run-sessions`, `devices/run-session.ts:openRunSession`, which writes the run and
  * its session in one transaction). The box's `run declare` sent core only the preflight, which
  * writes nothing, and left the open to its next sweep; so between the declare and that sweep core
- * knew of no such run. These cases replay both halves through the app's own routes, against real
- * Postgres: the declare as an older box sends it (preflight alone), which core can only refuse and
- * must refuse truthfully, and the declare as a box sends it from ISS-1036 (preflight, then the open
- * before `run declare` answers), which records with nothing dispatched under the run.
+ * knew of no such run. These cases replay it through the app's own routes, against real Postgres:
+ * forge-runner 0.18.0's declare (the preflight alone), which core cannot attribute, as nothing it
+ * holds names the run, and so refuses saying exactly that; the same verdict once that box's sweep
+ * opens the run, recorded with nothing dispatched under it; and the declare from ISS-1036, which
+ * opens the run before it answers.
  *
  * @direct-test-of packages/core/src/issues/pattern-runs.ts
  * @direct-test-of packages/core/src/issues/criteria/recording-session.ts
@@ -94,7 +95,7 @@ beforeAll(async () => {
   projectId = await projectBuiltFrom(admin.id, null);
   await addProjectMember(projectId, admin.id, 'admin');
   person = await userToken(admin.id);
-  for (const seq of [119, 120, 121, 122]) {
+  for (const seq of [119, 120, 121, 122, 123]) {
     const issue = await createTestIssue(projectId, admin.id, seq, {
       status: 'in_progress',
       createdAt: new Date(),
@@ -205,20 +206,45 @@ describe('ISS-1036 a verdict under a run its box declared and dispatched nothing
     expect(refusal?.detail).toContain(
       `core holds no run of this box on this project named ${unopened.runId}`,
     );
-    expect(refusal?.detail).toContain('opens its session at core');
+    expect(refusal?.detail).toContain(
+      `If this box declared run ${unopened.runId}, core does not hold it yet`,
+    );
+    expect(refusal?.detail).toContain('whether or not a subagent is dispatched under it');
     expect(refusal?.detail).toContain('leave `run` out');
   });
 
   let reviewer: Declared = { runId: '', sessionId: null };
 
-  it('records the verdict under the run as a box declares it from ISS-1036, nothing dispatched under it', async () => {
-    reviewer = await declare(box, ['ISS-119'], { opens: true });
+  it('records the same verdict once the 0.18.0 box’s sweep opens the run, nothing dispatched under it', async () => {
+    // What forge-runner 0.18.0's next sweep sends for the row its declare wrote: the open, by the declared id.
+    const opened = await ok(
+      api(box, 'POST', '/api/devices/me/run-sessions', {
+        projectId,
+        runId: unopened.runId,
+        issueKeys: ['ISS-119'],
+        name: 'iss-119-reviewer',
+        role: 'reviewer',
+      }),
+    );
+    reviewer = { runId: unopened.runId, sessionId: String(opened.sessionId) };
 
-    const res = await verdict(119, reviewer.runId);
+    const res = await verdict(119, unopened.runId);
 
     expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
     expect(await recorded(String((res.body as Doc).verdictId))).toEqual({
       session: reviewer.sessionId,
+      role: 'reviewer',
+    });
+  });
+
+  it('records at once under a run a box from ISS-1036 declares, its declare opening the session', async () => {
+    const declared = await declare(box, ['ISS-123'], { opens: true });
+
+    const res = await verdict(123, declared.runId);
+
+    expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
+    expect(await recorded(String((res.body as Doc).verdictId))).toEqual({
+      session: declared.sessionId,
       role: 'reviewer',
     });
   });
@@ -299,7 +325,7 @@ describe('ISS-1036 the requirement door reads a declared run the same way', () =
     const [refusal] = refusalsOf(res);
     expect(refusal?.code).toBe('VERDICT_RUN_UNKNOWN');
     expect(refusal?.detail).not.toContain('declared no live run');
-    expect(refusal?.detail).toContain('opens its session at core');
+    expect(refusal?.detail).toContain('core does not hold it yet');
   });
 
   it('records under a run opened at its declare, nothing dispatched under it', async () => {

@@ -26,6 +26,8 @@ pub use client::*;
 #[cfg(unix)]
 mod cut;
 #[cfg(unix)]
+mod declare_open;
+#[cfg(unix)]
 mod hooks;
 #[cfg(unix)]
 mod runs;

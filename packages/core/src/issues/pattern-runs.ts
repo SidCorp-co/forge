@@ -254,8 +254,8 @@ function notLiveDetail(
  * `forge-runner run declare` does before it answers from ISS-1036 and an older box does on its
  * next sweep.
  */
-const notOpenedYet = (fallback: string) =>
-  `A run \`forge-runner run declare\` writes is held at core only once its box opens its session at core: a box from ISS-1036 on opens it before the declare answers, an older box on its next sweep, within 30 seconds (up to five minutes while it is rate-limited). If the run was just declared, send this again once it has opened, or leave \`run\` out to ${fallback}`;
+const notOpenedYet = (run: string, fallback: string) =>
+  `If this box declared run ${run}, core does not hold it yet: \`forge-runner run declare\` tells core nothing of a run but the preflight, and core holds the run once its box opens the run's session at core. forge-runner 0.18.0 and earlier open it on the box's next sweep, within 30 seconds (up to five minutes while the box is rate-limited), whether or not a subagent is dispatched under it; a later one opens it before the declare answers (ISS-1036). Send this again once it has opened, or leave \`run\` out to ${fallback}`;
 
 /** The live runs a box declared over an issue, as a refusal offers them; null where it declared none. */
 function listedOver(over: { key: string; declared: string[] }): string | null {
@@ -348,7 +348,7 @@ export async function runOfCall(
         ? `the live runs this box declared on this project are ${onProject.join('; ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
         : `core holds no run of this box on this project named ${run}`;
     return unknownRun(
-      `\`run\` ${run} is no live session of this box on this project; ${way}. ${notOpenedYet(fallback)}`,
+      `\`run\` ${run} is no live session of this box on this project; ${way}. ${notOpenedYet(run, fallback)}`,
     );
   }
   const session = args.issueId
