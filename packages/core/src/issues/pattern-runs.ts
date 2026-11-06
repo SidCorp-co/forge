@@ -43,6 +43,50 @@ export function mintedRunKeys(run: string): string[] | null {
 type Named = { session: string } | { refusal: string };
 
 /**
+ * The fewest characters a box names one of its runs by (`runner-core` ledger `SHORT_ID_CHARS`):
+ * `forge-runner status` and a master's brief show a run by its first eight, and the box resolves any
+ * start that long to the one run it begins.
+ */
+const RUN_ID_START_MIN = 8;
+const RUN_ID_START = /^[0-9a-f-]+$/;
+
+/**
+ * The live run of `box` on the project whose declared id `run` begins, as the box itself resolves a
+ * short id (ISS-998, adminhub-fe FB-508: a reviewer sent run f5dc2591 as the box showed it and was
+ * refused, the brief's session id accepted). Null where `run` begins no declared id; refused where it
+ * is shorter than a box names a run by, or begins more than one, naming each whole id.
+ */
+async function declaredStartingWith(
+  executor: GateReader,
+  args: { projectId: string; box: string; run: string },
+): Promise<Named | null> {
+  const typed = args.run.trim().toLowerCase();
+  if (!RUN_ID_START.test(typed)) return null;
+  const held = (await executor.execute(sql`
+    SELECT s.id, r.metadata->>'boxRunId' AS declared
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+     WHERE s.device_id = ${args.box}
+       AND s.project_id = ${args.projectId}
+       AND s.status NOT IN (${terminalSessionList})
+       AND starts_with(lower(r.metadata->>'boxRunId'), ${typed})
+     ORDER BY s.created_at
+  `)) as unknown as Array<{ id: string; declared: string }>;
+  const [one, ...more] = held;
+  if (!one) return null;
+  const whole = held.map((h) => h.declared).join(', ');
+  if (typed.length < RUN_ID_START_MIN) {
+    return {
+      refusal: `\`run\` ${args.run} is shorter than the ${RUN_ID_START_MIN} characters a box names a run by, so it is not taken as ${whole}: send the run's first ${RUN_ID_START_MIN} characters or its whole id`,
+    };
+  }
+  if (more.length === 0) return { session: one.id };
+  return {
+    refusal: `\`run\` ${args.run} begins ${held.length} live runs this box declared on this project: ${whole}. Send enough of the id to name one, or its whole id`,
+  };
+}
+
+/**
  * A live session of `box` on the project that `run` names: its session id, core's run id, or the
  * box's run id; else, where `run` is the id the plugin minted for the run's tree, the one live run
  * of this box on the project whose declared group holds every issue it names (ISS-777: a dispatched
@@ -65,6 +109,8 @@ async function sessionNamed(
      LIMIT 1
   `)) as unknown as Array<{ id: string }>;
   if (rows[0]) return { session: rows[0].id };
+  const started = await declaredStartingWith(executor, args);
+  if (started) return started;
   const keys = mintedRunKeys(args.run);
   if (!keys) return null;
   const held = (await executor.execute(sql`
@@ -85,6 +131,29 @@ async function sessionNamed(
       ? `\`run\` ${args.run} is the id minted for a tree on ${named}, and ${held.length} live runs of this box on this project are declared over ${named}: ${held.map((h) => h.declared).join(', ')}. Send the run id this box declared for the run making the call`
       : `\`run\` ${args.run} is the id minted for a tree on ${named}, and no live run of this box on this project is declared over ${named}: send the run id this box declared for the run making the call, or core's id for its session or run`,
   };
+}
+
+/** The ids `box` declared for its live runs on the project, oldest first, each with the issues it was declared over. */
+async function declaredOnProject(
+  executor: GateReader,
+  args: { projectId: string; box: string },
+): Promise<string[]> {
+  const rows = (await executor.execute(sql`
+    SELECT COALESCE(r.metadata->>'boxRunId', r.id::text) AS declared,
+           r.metadata->${RUN_GROUP_METADATA_KEY} AS run_group
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+     WHERE s.device_id = ${args.box}
+       AND s.project_id = ${args.projectId}
+       AND s.status NOT IN (${terminalSessionList})
+     ORDER BY s.created_at
+  `)) as unknown as Array<{ declared: string; run_group: unknown }>;
+  return rows.map((r) => {
+    const keys = Array.isArray(r.run_group)
+      ? r.run_group.filter((k): k is string => typeof k === 'string')
+      : [];
+    return keys.length > 0 ? `${r.declared} (over ${keys.join(', ')})` : r.declared;
+  });
 }
 
 /**
@@ -158,11 +227,16 @@ export async function runOfCall(
     if (named && 'session' in named) return { ok: true, value: { box, session: named.session } };
     if (named) return unknownRun(named.refusal);
     const over = args.issueId ? await declaredOver(executor, { issueId: args.issueId, box }) : null;
+    const onProject = over
+      ? []
+      : await declaredOnProject(executor, { projectId: args.projectId, box });
     const way = over
       ? over.declared.length > 0
-        ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call`
+        ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
         : `this box has declared no live run over ${over.key} on this project: declare one (\`forge-runner run declare\`), or send core's id for its session or run`
-      : "send the run id this box declared for the run making the call, or core's id for its session or run";
+      : onProject.length > 0
+        ? `the live runs this box declared on this project are ${onProject.join('; ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
+        : "this box has declared no live run on this project: declare one (`forge-runner run declare`), or send core's id for its session or run";
     return unknownRun(`\`run\` ${run} is no live session of this box on this project; ${way}`);
   }
   const session = args.issueId

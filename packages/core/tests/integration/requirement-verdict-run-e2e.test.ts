@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/requirements/verdict-routes.ts
  * @direct-test-of packages/core/src/issues/criteria/recording-session.ts
  * @direct-test-of packages/core/src/db/schema-requirement-verdicts.ts
+ * @direct-test-of packages/core/src/issues/pattern-runs.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -134,10 +135,14 @@ async function recordedRuns(): Promise<Array<string | null>> {
   return rows.map((r) => r.run_session_id);
 }
 
+/** The judge the first case declares over ISS-808, which stays live: the issue holds one run at a time. */
+let declared = { runId: '', sessionId: '' };
+
 describe('a verdict at the requirement names the run that took it, as an issue verdict does', () => {
   it("records the declared run the box's call names, and the list answers it", async () => {
     const before = (await recordedRuns()).length;
-    const { runId, sessionId } = await declareJudge();
+    declared = await declareJudge();
+    const { runId, sessionId } = declared;
 
     const res = await judge(box, { run: runId });
 
@@ -161,6 +166,28 @@ describe('a verdict at the requirement names the run that took it, as an issue v
     expect([refusal?.code, refusal?.path]).toEqual(['VERDICT_RUN_UNKNOWN', '/run']);
     expect(refusal?.detail).toContain(`\`run\` ${stray} is no live session of this box`);
     expect(await recordedRuns()).toEqual(before);
+  });
+
+  // ISS-998: a box names a run by its first eight characters, and a refusal names the whole ids it wants
+  it('records the declared run its first eight characters name, as the box names it', async () => {
+    const before = (await recordedRuns()).length;
+    const { runId, sessionId } = declared;
+
+    const res = await judge(box, { run: runId.slice(0, 8) });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect((await recordedRuns()).slice(before)).toEqual([sessionId]);
+  });
+
+  it('refuses a run naming none, listing the live runs this box declared on this project', async () => {
+    const { runId } = declared;
+
+    const res = await judge(box, { run: 'iss-1-0a1b2c3d-stray' });
+
+    const [refusal] = refusalsOf(res);
+    expect(refusal?.code).toBe('VERDICT_RUN_UNKNOWN');
+    expect(refusal?.detail).toContain('the live runs this box declared on this project are ');
+    expect(refusal?.detail).toContain(`${runId} (over ISS-808)`);
   });
 
   it("refuses a run on a person's call: a person is no run", async () => {

@@ -322,8 +322,9 @@ in a screenshot, reopens it by hand: \`POST /api/issues/:id/transition\`
 ends and its release counts; a reopen without \`cause\` counts nowhere, and \`cause\` without
 \`evidence\` is refused \`DEFECT_EVIDENCE_REQUIRED\`. The building run is the one that took the issue before its work landed (it
 holds the lease or recorded the checks); each verdict names the run that wrote it, the run holding
-the issue on the caller's box unless the body names another in \`run\` (the box's run id), and an
-unknown \`run\` is refused \`VERDICT_RUN_UNKNOWN\`. A run sending its own latest verdict on a criterion
+the issue on the caller's box unless the body names another in \`run\` (the box's run id, whole or its
+first 8 characters as the box shows it), and an unknown \`run\` is refused \`VERDICT_RUN_UNKNOWN\`
+naming the whole ids of the runs the box declared. A run sending its own latest verdict on a criterion
 again, the same in every field, is answered \`200\` with that row and \`duplicate: true\`, and nothing
 is written; it is safe to resend after a lost answer.
 
