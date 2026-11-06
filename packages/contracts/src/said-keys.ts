@@ -1548,6 +1548,13 @@ export const SAID = {
 	"feedback.rule.agentConfirms": {
 		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
+	"feedback.rule.masterConfirms": {
+		en: "resolved: the master checks it on the running build, then confirms or reopens it; the reporter may reopen it",
+	},
+	"feedback.rule.masterAnswersHeld": {
+		en: "resolved: past its window, the master answers from what the record reads: {why}",
+		vars: { why: "text" },
+	},
 	"feedback.rule.verifyHeld": {
 		en: "resolved: past its window, a triager answers: {why}",
 		vars: { why: "text" },

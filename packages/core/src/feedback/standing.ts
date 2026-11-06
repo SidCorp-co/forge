@@ -145,6 +145,12 @@ export type CarrierRelease = ReleaseMode;
 export interface StandingFacts {
   /** An item the project's live master owes a triage (`owed-triage.ts:owedTriages`). */
   masterOwesTriage: boolean;
+  /**
+   * Whether the project's master owes a resolved item's confirm, by the one rule
+   * (`@forge/contracts/who-owes:whoOwes`, `feedback.verify`, ISS-1058): confirming an answer or a fix
+   * holds is routine, so it is the master's unless the project is strict.
+   */
+  masterVerifies?: boolean;
   /** Set only where the item is planned on issues every one still owed of which stands at `awaiting_release`. */
   carrierRelease: CarrierRelease | null;
   /** The version of the release a carrier issue is already cut into, when one is; else null. */
@@ -182,6 +188,8 @@ export interface FeedbackTimesFacts {
 export type Owed = { wait: FeedbackWaitingOn; yours: boolean };
 
 const TRIAGER = say('standing.who.holderOf', { perm: 'feedback.approve' });
+/** The project's master, which the one rule gives a routine act (ISS-1058). */
+const MASTER = say('standing.who.projectMaster');
 /** Who routes an item on this project: whom its `approvals.triage` asks (ISS-639). */
 const routerOf = (viewer: StandingViewer) =>
   say('standing.who.holderOf', { perm: viewer.routeAsks });
@@ -259,6 +267,16 @@ function waitingOf(
       }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
+      if (route === 'answer' && facts.masterVerifies) {
+        return theirs(
+          wait(
+            'agent',
+            MASTER,
+            say('standing.act.confirmAnswer'),
+            say('feedback.rule.masterConfirms'),
+          ),
+        );
+      }
       if (route === 'answer') {
         return {
           wait: wait(
@@ -273,6 +291,17 @@ function waitingOf(
       if (facts.relayOwed) return relayWait(reporter, viewer, facts);
       // Feedback lifecycle r14 loop-check: past the window the item waits on a holder of
       // feedback.approve, naming the question and what the record reads; nothing answers it for them
+      if (facts.verifyHeld && facts.masterVerifies) {
+        return theirs(
+          wait(
+            'agent',
+            MASTER,
+            say('standing.act.sayIfGone'),
+            say('feedback.rule.masterAnswersHeld', { why: facts.verifyHeld }),
+            { ref: facts.carrierVersion ?? null },
+          ),
+        );
+      }
       if (facts.verifyHeld) {
         return {
           wait: wait(
@@ -288,17 +317,19 @@ function waitingOf(
       return {
         // REQ-66 BC-8: an agent reporter is asked as a person is, and confirms or reopens through its own door
         wait: wait(
-          facts.reporterIsAgent ? 'agent' : 'person',
-          named(reporter),
+          facts.reporterIsAgent || facts.masterVerifies ? 'agent' : 'person',
+          facts.masterVerifies && !facts.reporterIsAgent ? MASTER : named(reporter),
           facts.carrierVersion
             ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
             : say('standing.act.verifyFix'),
           say(
             facts.reporterIsAgent
               ? 'feedback.rule.agentConfirms'
-              : facts.recordCanSay
-                ? 'feedback.rule.verifyByRecord'
-                : 'feedback.rule.verifyByPerson',
+              : facts.masterVerifies
+                ? 'feedback.rule.masterConfirms'
+                : facts.recordCanSay
+                  ? 'feedback.rule.verifyByRecord'
+                  : 'feedback.rule.verifyByPerson',
           ),
           { ref: facts.carrierVersion ?? null, dueAt: facts.recordCheckAt ?? null },
         ),

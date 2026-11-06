@@ -57,6 +57,7 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
+export { type ReleaseActOwed, releaseActsOwed } from './master-owed-acts.js';
 export { releaseApprovalsOwed, releaseMergesOwed } from './merges-owed.js';
 export {
   draftNaming,

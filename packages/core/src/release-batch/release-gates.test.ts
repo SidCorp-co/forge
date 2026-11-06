@@ -3,9 +3,18 @@ import { blocker } from './blocker-kit.js';
 import { NO_RELEASE_GATE_HOLD } from './hold.js';
 import { gateViews } from './release-gates.js';
 import { releaseOwesOf } from './release-owes.js';
+
 const POLICY = (strict: boolean) => ({
   strict,
-  gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+  gates: {
+    agree: false,
+    revisions: false,
+    breakdown: false,
+    admit: false,
+    accept: false,
+    designs: false,
+    triage: true,
+  },
   releaseApproval: false,
 });
 
@@ -17,7 +26,12 @@ const POLICY = (strict: boolean) => ({
 // gate names that act rather than one the project never asked for.
 
 describe('a project with no production environment, said by its gate', () => {
-  const [gate] = gateViews([blocker('NO_RELEASE_GATE')], [], ['orchestrator'], releaseOwesOf(POLICY(false), []));
+  const [gate] = gateViews(
+    [blocker('NO_RELEASE_GATE')],
+    [],
+    ['orchestrator'],
+    releaseOwesOf(POLICY(false), []),
+  );
 
   it('names what is missing, in the words the banner and the rail use', () => {
     expect(gate?.title).toBe('No production');

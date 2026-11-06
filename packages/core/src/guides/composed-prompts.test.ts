@@ -72,6 +72,7 @@ const none = {
   unnamedReleases: [] as { version: string }[],
   releaseMerges: [] as Parameters<typeof owedLine>[0]['releaseMerges'],
   releaseApprovals: [] as Parameters<typeof owedLine>[0]['releaseApprovals'],
+  releaseActs: [] as Parameters<typeof owedLine>[0]['releaseActs'],
   answers: [],
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
   questions: [],

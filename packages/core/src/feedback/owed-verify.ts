@@ -1,6 +1,7 @@
 /**
  * Which shipped feedback items owe an agent reporter's confirm, read for the master of the project that
- * agent reported from (REQ-66 BC-8). An agent has no bell: its fix shipping asks it through its own
+ * agent reported from (REQ-66 BC-8), and, where the one rule gives the confirm to the master
+ * (`@forge/contracts/who-owes`, ISS-1058), every item of its own project a person reported. An agent has no bell: its fix shipping asks it through its own
  * read of the item (`ship-notice.ts`), and the item waits on it (`standing.ts`). That project's master
  * is the one that acts for it, so its box reads these on every sweep, and the release that ships one
  * wakes it (`ws/master-wake.ts`). The project an item was reported from is its reporter's first
@@ -9,11 +10,13 @@
  */
 
 import { type FeedbackConfirmWaitMetView, feedbackKey } from '@forge/contracts/feedback';
-import { and, eq, inArray, isNotNull, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
+import { whoOwes } from '@forge/contracts/who-owes';
+import { and, eq, inArray, isNotNull, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { userNames } from '../lib/people.js';
+import { readOwedPolicy } from '../project-config/index.js';
 import { type ConfirmWaitEnd, confirmWaitEnded, confirmWaitMetOf } from './confirm-wait-facts.js';
 import { withdrawnSql } from './confirm-wait-read.js';
 import { linkedOf, phaseIn } from './list-read.js';
@@ -34,6 +37,8 @@ export interface OwedAgentConfirm {
   waitEnded: ConfirmWaitEnd | null;
   /** The room message that ended it (ISS-1038), named on the line; null where none did. */
   waitMet: FeedbackConfirmWaitMetView | null;
+  /** A person reported it: its confirm is the master's by the one rule (ISS-1058), not an agent's. */
+  person: boolean;
 }
 
 /**
@@ -61,7 +66,7 @@ export async function agentReportedFrom(feedbackId: string): Promise<string | nu
   return row?.from ?? null;
 }
 
-/** Agent-reported items the reporter may still settle, matching `where`; whether each reads resolved is derived after. */
+/** Items whose confirm may still be owed, matching `where`; whether each reads resolved is derived after. */
 type Candidate = Row & { from: string; withdrawn: boolean };
 
 async function candidates(where: SQL | undefined): Promise<Candidate[]> {
@@ -72,7 +77,6 @@ async function candidates(where: SQL | undefined): Promise<Candidate[]> {
     .where(
       and(
         eq(feedback.status, 'triaged'),
-        eq(feedback.reporterAgency, 'agent'),
         isNull(feedback.redactedAt),
         // a snoozed item is owed to nobody until its date
         or(isNull(feedback.snoozedUntil), lte(feedback.snoozedUntil, now)),
@@ -114,6 +118,7 @@ async function resolvedAmong(rows: Candidate[]): Promise<OwedAgentConfirm[]> {
         waitEnded: confirmWaitEnded(r, new Date(), r.withdrawn),
         // the master reads the item's words here as its own door does: the words are its to judge
         waitMet: confirmWaitMetOf(r, false),
+        person: r.reporterAgency !== 'agent',
       });
     }
   }
@@ -122,7 +127,14 @@ async function resolvedAmong(rows: Candidate[]): Promise<OwedAgentConfirm[]> {
 
 /** The shipped items agents of `projectId` reported, each owing that agent's confirm or reopen. */
 export async function owedAgentConfirms(projectId: string): Promise<OwedAgentConfirm[]> {
-  return resolvedAmong(await candidates(sql`${reportedFromSql} = ${projectId}`));
+  const agents = and(eq(feedback.reporterAgency, 'agent'), sql`${reportedFromSql} = ${projectId}`);
+  // ISS-1058: confirming a person's report holds is routine, so where the one rule gives it to the
+  // master the master is owed it too, for the items sitting in its own project
+  const people =
+    whoOwes('feedback.verify', await readOwedPolicy(projectId)).by === 'master'
+      ? and(ne(feedback.reporterAgency, 'agent'), eq(feedback.projectId, projectId))
+      : undefined;
+  return resolvedAmong(await candidates(people ? or(agents, people) : agents));
 }
 
 /**
@@ -135,5 +147,7 @@ export async function confirmsOwedByShip(issueIds: readonly string[]): Promise<O
     .select({ id: feedbackRouteIssues.feedbackId })
     .from(feedbackRouteIssues)
     .where(inArray(feedbackRouteIssues.issueId, [...issueIds]));
-  return resolvedAmong(await candidates(inArray(feedback.id, carried)));
+  return resolvedAmong(
+    await candidates(and(eq(feedback.reporterAgency, 'agent'), inArray(feedback.id, carried))),
+  );
 }

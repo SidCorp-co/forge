@@ -1,10 +1,16 @@
 // What waits at the release gate on the master's own record (ISS-774, ISS-888, ISS-961): the drafts
 // filed for an owed merge, every release hold whose act is the agent's, and every ended release run
-// still claiming gate issues, each named with its command.
+// still claiming gate issues, each named with its command; and what a release waits on the master
+// for: the routine act its standing names it for (ISS-1058), its approval request and its merges.
 
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { guideCall } from '../guides/index.js';
-import type { FilingRecordOwed, ReleaseHoldOwed } from './ports.js';
+import type {
+  FilingRecordOwed,
+  ReleaseActOwed,
+  ReleaseHoldOwed,
+  ReleaseMergeOwed,
+} from './ports.js';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -84,4 +90,37 @@ export function endedRunHoldsWork(holds: ReleaseEndedRunHold[]): string[] {
   return holds.flatMap((h) =>
     h.issues.map((i) => `ended-run-hold:${h.runId}|${h.act}|${i.issueId}`),
   );
+}
+
+/**
+ * ISS-1058: a release act its standing names the master for — a cut, a split over the roster cap, a
+ * landing to record — is routine, so it is yours whether or not a master stood when it fell due.
+ */
+function releaseActsLine(acts: readonly ReleaseActOwed[]): string {
+  if (acts.length === 0) return '';
+  const named = acts.map((a) => `${a.version}: ${a.act}`).join('; ');
+  return ` ${acts.length} release${plural(acts.length, ' waits', 's wait')} on an act that is yours (${named}): read each release's page (\`forge-runner api projects/<projectId>/releases/<version>\`, its \`waitingOn\` and gates name the act and its door) and take it; a release whose changes cannot be undone names a person instead, and is not on this line. ${method('issue-flow')} (Land, mark, move) is how.`;
+}
+
+const releaseName = (r: { runId: string; version: string | null }) =>
+  r.version ? `${r.version} (run ${r.runId})` : `run ${r.runId}`;
+
+/** The acts a running release owes the master: its approval request, then its merges in order. */
+export function releasesLine(
+  acts: readonly ReleaseActOwed[],
+  releaseApprovals: readonly { runId: string; version: string | null }[],
+  releaseMerges: readonly ReleaseMergeOwed[],
+): string {
+  let line = releaseActsLine(acts);
+  if (releaseApprovals.length > 0) {
+    line += ` ${releaseApprovals.length} running release${plural(releaseApprovals.length, ' waits', 's wait')} for an approval request, which this project requires before any production act (${releaseApprovals.map(releaseName).join(', ')}): ask for each with \`forge-runner api projects/<projectId>/release-batches/<runId>/approvals -X POST -d '{"evidence":{"environment":"<where the reading was taken, omitted on a release that merges change requests>","commit":"<the full sha read>","reading":"<what was read there>"}}'\`, and a project admin accepts or returns it.`;
+  }
+  if (releaseMerges.length > 0) {
+    const steps = releaseMerges.map(
+      (m) =>
+        `${releaseName(m)}: ${m.next.label} next, ${m.merged} of ${m.total} merged, through ${m.next.issueKey} ${m.next.issueId}`,
+    );
+    line += ` ${releaseMerges.length} accepted release${plural(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head moved since the owner accepted it, so abort the release and cut it again on the new head.`;
+  }
+  return line;
 }

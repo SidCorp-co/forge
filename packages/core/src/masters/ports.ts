@@ -29,6 +29,16 @@ export interface AgentConfirmOwed {
   waitEnded: 'met' | 'withdrawn' | 'lapsed' | null;
   /** The room message that ended it (ISS-1038): which, where, by whom, when, and its words. */
   waitMet: FeedbackConfirmWaitMetView | null;
+  /** A person reported it, and the one rule gives its confirm to this master (ISS-1058); absent on an agent's. */
+  person?: boolean;
+}
+
+/** A release act its release's standing names the master for (`release-batch/master-owed-acts.ts`). */
+export interface ReleaseActOwed {
+  version: string;
+  kind: string;
+  /** The act as the release page says it. */
+  act: string;
 }
 
 /** A merged change request delivering an issue that holds no merged mark (`issues/owed-merges.ts`). */
@@ -136,6 +146,12 @@ interface MastersPorts {
    * declared order: such a release runs no job, so its merges are the master's (REQ-71 BC-4).
    */
   releaseMergesOwed(projectId: string): Promise<ReleaseMergeOwed[]>;
+  /**
+   * The release acts the project's releases wait on its master for, as each release's standing names
+   * them by the one rule (`release-batch/master-owed-acts.ts`, ISS-1058): a cut, a split, a recorded
+   * landing, each routine and the master's whether or not one stands.
+   */
+  releaseActsOwed(projectId: string): Promise<ReleaseActOwed[]>;
   /** Running releases the project requires approval for that have asked none (ISS-591). */
   releaseApprovalsOwed(projectId: string): Promise<{ runId: string; version: string | null }[]>;
   /** Questions on the project's issues answered after `after`, with what each answer did to its park. */

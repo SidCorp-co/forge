@@ -107,6 +107,7 @@ import {
   owedReleaseNotes,
   provideReleaseBatchPorts,
   readEndedRunHolds,
+  releaseActsOwed,
   releaseApprovalsOwed,
   releaseMergesOwed,
   shippedReleaseRuns,
@@ -329,6 +330,7 @@ export function provideExecutionPorts(): void {
     releaseNamer: releaseNamerOf,
     releaseMergesOwed,
     releaseApprovalsOwed,
+    releaseActsOwed,
     answersSince: async (projectId, after) =>
       (await answeredOnIssuesSince(projectId, after)).map((a) => ({
         issueKey: formatIssueRef(a.issuePrefix, a.issSeq),

@@ -9,12 +9,12 @@
 // rated high is no debt at all, it holds its issue (BC-3).
 
 import { z } from "zod";
-import type { ScheduleRunStatus } from "./schedules.js";
 import { wholeShaSchema } from "./check-runs.js";
 import {
 	LANDING_SURFACE_LABELS,
 	type LandingSurface,
 } from "./landing-artifacts.js";
+import type { ScheduleRunStatus } from "./schedules.js";
 
 /** The surfaces a changed path can map to: every landing surface but `design` and `adoption`. */
 type PathSurface = Exclude<LandingSurface, "design" | "adoption">;

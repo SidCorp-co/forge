@@ -12,7 +12,10 @@
 // (`development/needs-you-agent-takes.ts`), the feedback standing (`feedback/standing.ts`), the
 // forecast's release leg and the master's owed work all ask `whoOwes`; none decides "who" itself.
 
-import { DECISION_ACT_OF_SAID, type DecisionAct } from "./needs-you-decisions.js";
+import {
+	DECISION_ACT_OF_SAID,
+	type DecisionAct,
+} from "./needs-you-decisions.js";
 import type { PersonGate } from "./person-gates.js";
 
 /** Why an act is serious: what a person alone may decide (VISION; owner 2026-10-31). */
@@ -30,7 +33,8 @@ export type SeriousBecause = (typeof SERIOUS_BECAUSE)[number];
  * The serious classes as one phrase, what a refusal names: the ask door's (`questions/owed.ts`) and
  * every other reader's, so the classes a question is judged by are the ones an act is.
  */
-export const SERIOUS = "irreversible, real money, credentials or product direction";
+export const SERIOUS =
+	"irreversible, real money, credentials or product direction";
 
 /** A switch of the project's own policy that keeps a routine act a person's while it is on. */
 export type OwedPolicySwitch =
@@ -88,13 +92,41 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		because: "asked",
 		why: "a question reaches a person only where its asker judged it serious or a project rule names the person's act; the ask door refuses any other (`questions/owed.ts`, REQ-79 BC-14)",
 	},
-	"revision.accept": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [gate("revisions")] },
-	"revision.return": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [STRICT] },
-	"requirement.agree": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [gate("agree")] },
-	"requirement.accept": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [gate("accept")] },
-	"requirement.drop": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [STRICT] },
-	"requirement.repin": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [gate("revisions")] },
-	"requirement.defer": { serious: false, why: ROUTINE_REQUIREMENT, personWhen: [STRICT] },
+	"revision.accept": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [gate("revisions")],
+	},
+	"revision.return": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [STRICT],
+	},
+	"requirement.agree": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [gate("agree")],
+	},
+	"requirement.accept": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [gate("accept")],
+	},
+	"requirement.drop": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [STRICT],
+	},
+	"requirement.repin": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [gate("revisions")],
+	},
+	"requirement.defer": {
+		serious: false,
+		why: ROUTINE_REQUIREMENT,
+		personWhen: [STRICT],
+	},
 	"suggestion.accept": {
 		serious: false,
 		why: "accepting a suggestion the agents wrote is the master's; a breakdown follows its own gate",
@@ -120,7 +152,12 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		why: "reopening a report its check found unsettled is the master's",
 		personWhen: [STRICT],
 	},
-	"release.cut": { serious: false, why: ROUTINE_CUT, personWhen: [STRICT], byContent: true },
+	"release.cut": {
+		serious: false,
+		why: ROUTINE_CUT,
+		personWhen: [STRICT],
+		byContent: true,
+	},
 	"release.decide": {
 		serious: false,
 		why: "approving a release that carries only reversible changes is delivery; a project that requires a person's release approval keeps it theirs",
@@ -132,8 +169,16 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		why: "approving a preview of the agents' own change is delivery",
 		personWhen: [STRICT],
 	},
-	"design.decide": { serious: false, why: ROUTINE_DESIGN, personWhen: [gate("designs")] },
-	"design.repin": { serious: false, why: ROUTINE_DESIGN, personWhen: [gate("designs")] },
+	"design.decide": {
+		serious: false,
+		why: ROUTINE_DESIGN,
+		personWhen: [gate("designs")],
+	},
+	"design.repin": {
+		serious: false,
+		why: ROUTINE_DESIGN,
+		personWhen: [gate("designs")],
+	},
 	"contract.decide": {
 		serious: false,
 		why: "approving the project's own contract version is the master's outside strict (REQ-79 r6 BC-11): it holds contracts.approve there",
@@ -209,10 +254,15 @@ const switchOn = (s: OwedPolicySwitch, p: OwedPolicy): boolean => {
 	}
 };
 
-const SWITCH_SAID: Record<OwedPolicySwitch["kind"], (s: OwedPolicySwitch) => string> = {
+const SWITCH_SAID: Record<
+	OwedPolicySwitch["kind"],
+	(s: OwedPolicySwitch) => string
+> = {
 	strict: () => "this project is strict (gates.profile)",
-	gate: (s) => `this project's ${(s as { gate: PersonGate }).gate} gate asks a person (approvals)`,
-	release_approval: () => "this project requires a person's release approval (release.approval.required)",
+	gate: (s) =>
+		`this project's ${(s as { gate: PersonGate }).gate} gate asks a person (approvals)`,
+	release_approval: () =>
+		"this project requires a person's release approval (release.approval.required)",
 };
 
 /**
@@ -220,9 +270,14 @@ const SWITCH_SAID: Record<OwedPolicySwitch["kind"], (s: OwedPolicySwitch) => str
  * project's policy keeps it a person's; the project's master otherwise. Whether a master stands now
  * is not asked: a routine act is the master's, and a project owing one gets a master placed for it.
  */
-export function whoOwes(kind: OwedActKind, policy: OwedPolicy, content?: OwedContent | null): OwedBy {
+export function whoOwes(
+	kind: OwedActKind,
+	policy: OwedPolicy,
+	content?: OwedContent | null,
+): OwedBy {
 	const rule = OWED_ACTS[kind];
-	if (rule.serious) return { by: "person", because: rule.because, why: rule.why };
+	if (rule.serious)
+		return { by: "person", because: rule.because, why: rule.why };
 	const irreversible = rule.byContent ? (content?.irreversible ?? []) : [];
 	if (irreversible.length > 0) {
 		return {
@@ -232,7 +287,8 @@ export function whoOwes(kind: OwedActKind, policy: OwedPolicy, content?: OwedCon
 		};
 	}
 	const on = rule.personWhen.find((s) => switchOn(s, policy));
-	if (on) return { by: "person", because: "policy", why: SWITCH_SAID[on.kind](on) };
+	if (on)
+		return { by: "person", because: "policy", why: SWITCH_SAID[on.kind](on) };
 	return { by: "master", why: rule.why };
 }
 
@@ -267,8 +323,13 @@ const RELEASE_SAID: Readonly<Record<string, OwedActKind>> = {
 };
 
 /** The act kind a decision's act is, read with the page group a breakdown is accepted under. */
-export function owedActOfDecision(act: DecisionAct, topic?: string | null): OwedActKind {
-	return act === "suggestion.accept" && topic === "breakdown" ? "breakdown.accept" : act;
+export function owedActOfDecision(
+	act: DecisionAct,
+	topic?: string | null,
+): OwedActKind {
+	return act === "suggestion.accept" && topic === "breakdown"
+		? "breakdown.accept"
+		: act;
 }
 
 /** The act kind a said act key names, or null where it names none an owner is asked for here. */

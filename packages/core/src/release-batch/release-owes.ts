@@ -5,12 +5,7 @@
 // irreversible change names a person, on every surface that reads the release.
 
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
-import {
-  type OwedActKind,
-  type OwedBy,
-  type OwedPolicy,
-  whoOwes,
-} from '@forge/contracts/who-owes';
+import { type OwedActKind, type OwedBy, type OwedPolicy, whoOwes } from '@forge/contracts/who-owes';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -44,8 +39,5 @@ export async function readReleaseOwes(
           .from(issues)
           .where(inArray(issues.id, [...issueIds])),
   ]);
-  return releaseOwesOf(
-    policy,
-    irreversibleOf(rows.map((r) => r.releaseNotes)),
-  );
+  return releaseOwesOf(policy, irreversibleOf(rows.map((r) => r.releaseNotes)));
 }

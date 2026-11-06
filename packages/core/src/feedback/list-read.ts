@@ -12,6 +12,7 @@ import {
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
+import { whoOwes } from '@forge/contracts/who-owes';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
@@ -22,6 +23,7 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
+import { readOwedPolicy } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
@@ -78,6 +80,8 @@ export interface Linked extends StandingFacts {
   names: Map<string, string>;
   /** Items of these rows the project's live master owes a triage; none where no master is live. */
   masterOwed: Set<string>;
+  /** Whether the project's master owes a resolved item's confirm (`who-owes.ts:whoOwes`, ISS-1058). */
+  masterVerifies: boolean;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
   release: CarrierRelease | null;
   /** Who holds the permission that release's person act takes, by name; empty where none is owed. */
@@ -209,7 +213,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
-  const [owed, gate, windowDays, origins, standing, shippedReleases] = await Promise.all([
+  const [owed, gate, windowDays, origins, standing, shippedReleases, policy] = await Promise.all([
     allRows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
@@ -221,6 +225,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       projectId,
       issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
     ),
+    readOwedPolicy(projectId),
   ]);
   const { release, releaseHolders } = gate;
   const linked: Linked = {
@@ -230,6 +235,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
+    masterVerifies: whoOwes('feedback.verify', policy).by === 'master',
     release,
     prefix,
     providers: new Map(providerRows.map((p) => [p.id, p.slug])),
@@ -412,6 +418,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       : null,
     {
       masterOwesTriage: l.masterOwed.has(r.id),
+      masterVerifies: l.masterVerifies,
       snoozedUntil: snoozed?.until ?? null,
       recordCheckAt: recordCheckOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,
       recordCanSay: r.violatedCriterionId !== null,

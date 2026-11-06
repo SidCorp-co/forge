@@ -10,7 +10,15 @@ import { turnOf } from './release-view.js';
 
 const POLICY = (strict: boolean) => ({
   strict,
-  gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+  gates: {
+    agree: false,
+    revisions: false,
+    breakdown: false,
+    admit: false,
+    accept: false,
+    designs: false,
+    triage: true,
+  },
   releaseApproval: false,
 });
 

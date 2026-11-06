@@ -32,6 +32,11 @@ vi.mock('../project-config/index.js', () => ({
 }));
 vi.mock('../projects/index.js', () => ({ missingProjectKnowledge: vi.fn(() => []) }));
 vi.mock('../permissions/index.js', () => ({ holderNames: vi.fn(async () => ['Ada']) }));
+// who owes each gate's act is the one rule's (ISS-1058): read here for a project with no gate on
+vi.mock('./queries.js', () => ({ waitingIssueIds: vi.fn(async () => []) }));
+vi.mock('./release-owes.js', () => ({
+  readReleaseOwes: vi.fn(async () => () => ({ by: 'master', why: 'routine' })),
+}));
 
 const { loadReleaseReadiness } = await import('./readiness.js');
 

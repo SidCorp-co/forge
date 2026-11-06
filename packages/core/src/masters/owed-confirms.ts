@@ -46,7 +46,23 @@ const listed = (c: AgentConfirmOwed): string => {
 };
 
 /** REQ-66 BC-8: an agent reporter has no bell, so the master that acts for it is asked to confirm. */
-export function confirmsLine(confirms: readonly AgentConfirmOwed[]): string {
+export function confirmsLine(all: readonly AgentConfirmOwed[]): string {
+  return (
+    agentConfirmsLine(all.filter((c) => !c.person)) +
+    personConfirmsLine(all.filter((c) => c.person))
+  );
+}
+
+/**
+ * ISS-1058: confirming that an answer or a fix holds is routine, so on a project that keeps no
+ * person's gate on it the master makes the check a person reported, and the reporter may still reopen.
+ */
+function personConfirmsLine(confirms: readonly AgentConfirmOwed[]): string {
+  if (confirms.length === 0) return '';
+  return ` ${confirms.length} resolved feedback item${plural(confirms.length, ' a person reported owes its', 's people reported owe their')} confirm, which is yours on this project (${confirms.map(listed).join('; ')}): its answer was given or its fix shipped. Check on the running build what each reported, then confirm it with what you ran and saw (\`{"note":…}\` on its project's door), or reopen it with \`/reopen\` and a \`reason\` where it does not hold; its reporter is told either way and may still reopen. \`${guideCall('feedback-triage')}\` (verify and reopen) is how.`;
+}
+
+function agentConfirmsLine(confirms: readonly AgentConfirmOwed[]): string {
   if (confirms.length === 0) return '';
   return ` ${confirms.length} shipped feedback item${plural(confirms.length, ' an agent of this project reported owes its', 's agents of this project reported owe their')} confirm (${confirms.map(listed).join('; ')}): each one's fix shipped and the item waits on the agent that reported it. Check on the running build what each reported, then confirm it for that agent with what you ran and saw (\`-d '{"evidence":"<what you ran and saw>"}'\` on the Forge door, \`{"note":…}\` on a project's), or reopen it the same way with \`/reopen\` (\`reason\` on a project's door) where it is not fixed. Where only a later event can test it, set a wait on it the same way with \`/confirm-wait\` (\`-d '{"until":"<ISO date>","on":"room_message","reason":"<why it waits>"}'\`, \`on\` optional; a room message counts only in the item's own room thread, or in the \`"rid"\` and \`"thread"\` you send): it leaves this line until the date passes or the event happens, and the item shows why it waits; \`${guideCall('feedback-triage')}\` (verify and reopen) is how.`;
 }

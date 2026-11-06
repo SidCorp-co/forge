@@ -1,5 +1,4 @@
 export { personGateOf, readApprovals } from './approvals.js';
-export { readOwedPolicy } from './owed-policy.js';
 export { encryptPlaintextBindingSecrets, setBindingInboundSecret } from './binding-store.js';
 export { planBinding, readBinding, writeBinding } from './bindings.js';
 export {
@@ -33,6 +32,7 @@ export {
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
 export { readMasterMode } from './master-mode.js';
+export { readOwedPolicy } from './owed-policy.js';
 export type { TestingProfile } from './policy-schema.js';
 export { provideProjectConfigPorts } from './ports.js';
 export {

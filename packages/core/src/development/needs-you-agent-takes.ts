@@ -14,12 +14,7 @@ import {
   type NeedsYouDecision,
   type NotDecisionItem,
 } from '@forge/contracts/needs-you-decisions';
-import {
-  OWED_ACTS,
-  type OwedContent,
-  owedActOfDecision,
-  whoOwes,
-} from '@forge/contracts/who-owes';
+import { OWED_ACTS, type OwedContent, owedActOfDecision, whoOwes } from '@forge/contracts/who-owes';
 import { readOwedPolicy } from '../project-config/index.js';
 
 /** A decision the agent takes, left out of a person's list by that reason and opened on its item. */

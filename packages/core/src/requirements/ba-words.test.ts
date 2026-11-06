@@ -15,7 +15,15 @@ import { deriveStanding, type StandingIssue } from './standing.js';
 const OPEN_OWES = releaseOwesOf(
   {
     strict: false,
-    gates: { agree: false, revisions: false, breakdown: false, admit: false, accept: false, designs: false, triage: true },
+    gates: {
+      agree: false,
+      revisions: false,
+      breakdown: false,
+      admit: false,
+      accept: false,
+      designs: false,
+      triage: true,
+    },
     releaseApproval: false,
   },
   [],
