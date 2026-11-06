@@ -76,8 +76,8 @@ Read these before judging anything, while whoever sent you can still equip you.
   whole profile. A job sends \`self\`. A run a master declared reads under
   its box's credential with \`forge-runner api 'jobs/self/testing-profiles/<profile>/secrets?actor=<actor>'\` from
   inside its own checkout, where the box sends the id of the run declared over that checkout in place
-  of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run on the box's next sweep,
-  seconds after \`forge-runner run declare\`: a read before it is refused
+  of \`self\` and says so on stderr; from anywhere else it sends that run id as \`<run>\` itself. Core learns of a declared run when its box opens the run's session there:
+  before \`forge-runner run declare\` answers (ISS-1036), or on an older box's next sweep, seconds after: a read before it is refused
   \`TESTING_SECRETS_RUN_NOT_RECORDED\`, and the same call answers once it has. Only the profile of the environment deploying the branch the
   issue's work landed on is answered, while the run runs; each read is audited on the issue and each
   value is scrubbed from what the run posts. A judge declared at a requirement

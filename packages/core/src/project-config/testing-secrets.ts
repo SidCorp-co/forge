@@ -184,7 +184,7 @@ export function boxCallRefusal(refused: Refused, asked: string): Refused {
   return refuse(
     409,
     'TESTING_SECRETS_RUN_NOT_RECORDED',
-    `core holds no run this box declared under ${asked}, and this credential runs no job. A run declared moments ago is recorded at core by the box's next sweep, seconds after \`forge-runner run declare\` (the runner log then says \`[run-record] run ${asked} is now core session …\`): read again with the same id once it has, and dispatch the judge after that read. An id that stays unrecorded is no run of this box: a run declared on another box is read under that box's credential. Nothing was read.`,
+    `core holds no run this box declared under ${asked}, and this credential runs no job. A run is recorded at core when its box opens its session: before \`forge-runner run declare\` answers (ISS-1036), or by an older box's next sweep, seconds after (the runner log then says \`[run-record] run ${asked} is now core session …\`): read again with the same id once it has, and dispatch the judge after that read. An id that stays unrecorded is no run of this box: a run declared on another box is read under that box's credential. Nothing was read.`,
     { asked },
   );
 }

@@ -2,9 +2,11 @@
 //!
 //! A master declares a run over the control socket, which writes a row in this
 //! box's registry, after asking core one read-only question (`control::runs::preflight_refusal`:
-//! would the open be refused by a hold?) and nothing else is written at core. This is the
-//! other half: once a sweep,
-//! every declared row core has not been told about gets a run session opened for
+//! would the open be refused by a hold?), and then opens the run's session at core before the
+//! declaration answers (`control::runs::open_at_declare`, ISS-1036), so a call naming the run
+//! just declared is that run's. This is the other half: once a sweep,
+//! every declared row core has not been told about (no core client at the declare, a core that
+//! did not answer, a hold it waits behind) gets a run session opened for
 //! it, and the session id core minted is written back onto the row.
 //!
 //! That write-back is what starts everything else. `recovery::reconcile` beats a

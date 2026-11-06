@@ -147,8 +147,9 @@ async function openSessionForBoxRun(
 
 /**
  * The refusals a run session's open would earn on its issues, asked before any run is declared: the
- * box's `run declare` writes its row without core, so the one place a master can be told its
- * dispatch cannot start is here, with the same function the open calls. Nothing is written.
+ * box's `run declare` asks this before it writes its row, and opens the session only after (ISS-1036),
+ * so the one place a master can be told its dispatch cannot start is here, with the same function
+ * the open calls. Nothing is written.
  */
 export async function preflightRunSession(args: {
   projectId: string;
