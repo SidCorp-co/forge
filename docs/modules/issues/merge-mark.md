@@ -353,8 +353,8 @@ design issue the table below holds:
 | `git` | any other mark | keeps it |
 
 A dropped, closed or archived issue, and a project with no project document, are not marked; the
-decision's answer says which (`designIssue.action` `none` with its `why`). A closed issue has shipped
-and its mark is what the release that closed it read, so an approval after the close leaves it as it
+decision's answer says which (`designIssue.action` `none` with its `why`). Today a closed issue was
+closed by a release, and its mark is what that release read, so an approval after the close leaves it as it
 shipped and posts a notice saying so. This is the one place a mark standing
 on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a landing written at
 propose names a revision that was not yet approved, and the approval is better evidence than that
@@ -494,8 +494,9 @@ call (owner, 2026-11-05, ISS-1017). Before that the shape decided which kinds co
 `asserted` or `observed`, outside git `landed` or `observed` — and the mark writer refused a `landing`
 on git (`LANDING_NOT_THIS_SHAPE`), a missing `target` on git (`TARGET_REQUIRED`), artifacts on git
 (`ARTIFACTS_NOT_THIS_SHAPE`) and a missing landing outside git (`LANDING_REQUIRED`); all four are
-gone with the code that computed them. A close is still only a release's
-(`CLOSE_ONLY_BY_RELEASE`), and an issue carrying no mark at all is refused `MERGE_NOT_RECORDED`
+gone with the code that computed them. A close is still only a release's today
+(`CLOSE_ONLY_BY_RELEASE`; the direction closes an issue when its criteria are met in scope, ADR
+0014), and an issue carrying no mark at all is refused `MERGE_NOT_RECORDED`
 into `awaiting_release` and `CLOSE_REQUIRES_SHIPPED` into `closed`. Under release mode `none` the
 recorded landing records an issue whose mark names no commit, saying its build is unread, where it
 refused `RELEASE_LANDING_UNRECORDED`.

@@ -14,7 +14,7 @@ export const FAST_DELIVERY_GUIDE: CoreGuide = {
   title: 'Fast delivery: rate the change, leave debt to the cleanup run',
   summary:
     "Every project delivers fast unless its document says `delivery.fast: false`: a change lands when it builds, deploys healthy and its scoped tests pass; the building run rates the change's impact and records what it leaves unclean as cleanup debt; no landing and no promotion waits on a cleanup report; Audit, the cleanup run in its own window, works the debt and reports what it cleared and what remains.",
-  version: 8,
+  version: 9,
   body: `## Fast delivery: rate the change, leave debt to the cleanup run
 
 Fast delivery is every project's default. A project turns it off with \`delivery.fast: false\` in its
@@ -23,7 +23,10 @@ project document, and then a merge check asks every check and a red is fixed in 
 ### The building run
 - **Land on build and scoped tests.** A merge check on a project delivering fast needs
   \`rebased-on-base\`, \`typecheck\` and \`direct-tests\`; integration tests, \`verify\` and the rest
-  are the cleanup run's. Deploy health stays the release's own gate.
+  are the cleanup run's. Deploy health stays the release's own gate. Which checks you run still
+  follows the blast radius: a change that touches shared logic, billing, permissions or data is
+  checked wide early, by you, before it lands; the merge check does not ask it, and line count is
+  only a secondary signal.
 - **Rate the change.** Before you mark the merge, record its system impact:
   \`POST /api/issues/:id/impact\` \`{ type, rating, reason, commit? }\`, \`type\` the surface it
   touches (${types}), \`rating\` \`low\`, \`medium\` or \`high\` (high covers severe), \`reason\` why.

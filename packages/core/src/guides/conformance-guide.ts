@@ -37,8 +37,8 @@ Exit \`2\` is the one agents get wrong. It does not mean "no problems found". It
 
 If verify or CI is red, the red goes to exactly one place:
 
-1. **Your change caused it, or your fix needs it** to bound its impact or to prove itself — fix it, whoever caused it.
-2. **It stands alone** — record it as debt for the Audit, with the check that ended red and its evidence (\`POST /api/projects/:id/debts\`, \`kind: red\`); it is not cleaned inside your fix. A red you rate high is refused as debt and stays the issue's to fix.
+1. **Your fix needs it** to bound its impact or to prove itself — fix it, whoever caused it.
+2. **It stands alone** — record it as debt for the Audit, with the check that ended red and its evidence (\`POST /api/projects/:id/debts\`, \`kind: red\`); it is not cleaned inside your fix. A red you rate high is refused as debt and stays the issue's to fix, and on a project that turned fast delivery off every red does.
 3. **Out of reach** — routed to whoever owns it: a comment carrying the evidence on the issue that owns it, or a \`blocks\` edge.
 
 What is never acceptable is mentioning it and moving on: a red recorded on the debt ledger is discharged to the Audit, one only mentioned in a comment is not.
