@@ -218,6 +218,7 @@ describe('planSupportCall: each tool on its own binding (ISS-1011)', () => {
         summary: 'list the machines of Moc',
       },
     ],
+    ownerSignIn: null,
     headers: { 'X-Api-Key': 'key_moc_0123456789' },
   };
   const sidcorp: SupportApi = {
@@ -233,6 +234,7 @@ describe('planSupportCall: each tool on its own binding (ISS-1011)', () => {
         summary: 'list the machines of SidCorp',
       },
     ],
+    ownerSignIn: null,
     headers: { 'X-Api-Key': 'key_sidcorp_9876543210' },
   };
   const apis: SupportApis = {

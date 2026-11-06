@@ -1,5 +1,6 @@
 import {
   type SupportApiConnectionConfig,
+  type SupportOwnerSignIn,
   type SupportTool,
   supportApiBindingConfigSchema,
   supportApiConnectionConfigSchema,
@@ -24,6 +25,8 @@ export interface SupportApi {
   name: string;
   config: SupportApiConnectionConfig;
   tools: readonly SupportTool[];
+  /** How the owner signs in to the product, where the binding declares it (ISS-1047). */
+  ownerSignIn: SupportOwnerSignIn | null;
   /** The credential: header name → value. Handed only to `callGranted`. */
   headers: Record<string, string>;
 }
@@ -66,7 +69,10 @@ function readOne(pair: BindingWithConnection): SupportApiRead {
     baseUrl: ctx.config.baseUrl,
     ...(ctx.config.hosts ? { hosts: ctx.config.hosts } : {}),
   });
-  const tools = supportApiBindingConfigSchema.safeParse({ tools: ctx.config.tools });
+  const tools = supportApiBindingConfigSchema.safeParse({
+    tools: ctx.config.tools,
+    ...(ctx.config.ownerSignIn !== undefined ? { ownerSignIn: ctx.config.ownerSignIn } : {}),
+  });
   const secrets = supportApiSecretsSchema.safeParse(ctx.secrets);
   // what a line must never carry is every credential value the row holds, even where it is malformed
   const held = (ctx.secrets as { headers?: unknown }).headers;
@@ -86,6 +92,7 @@ function readOne(pair: BindingWithConnection): SupportApiRead {
         name,
         config: config.data,
         tools: tools.data.tools,
+        ownerSignIn: tools.data.ownerSignIn ?? null,
         headers: secrets.data.headers,
       },
       secrets: values,

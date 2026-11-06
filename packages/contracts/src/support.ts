@@ -576,8 +576,80 @@ export const SUPPORT_OWNER_CREDENTIAL_SCOPE = "owner-acts";
 export const supportOwnerCredentialName = (bindingId: string) =>
 	`binding-${bindingId.toLowerCase()}`;
 
-/** The owner-credential door's body: the headers core sends as the owner, on every owner act. */
-export const supportOwnerCredentialRequestSchema = supportApiSecretsSchema;
+const ownerTokenSchema = z.string().min(1).max(4000);
+
+/**
+ * The owner's OAuth credential as core keeps it (ISS-1047, REQ-85 BC-2): the access token core
+ * sends as `Authorization: Bearer`, the refresh token it rotates the access token with, and when the
+ * access token expires (null where the product did not say, so it is refreshed before each act).
+ */
+export const supportOwnerOauthSchema = z.strictObject({
+	accessToken: ownerTokenSchema,
+	refreshToken: ownerTokenSchema.optional(),
+	expiresAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type SupportOwnerOauth = z.infer<typeof supportOwnerOauthSchema>;
+
+/**
+ * Everything the owner-acts scope may hold for one product: static `headers` (ISS-1013), an `oauth`
+ * credential core refreshes (ISS-1047), or an `ended` one, whose refresh the product refused: no
+ * token is kept, and the owner signs in again before the room acts as him there.
+ */
+export const supportOwnerCredentialSchema = z.union([
+	supportApiSecretsSchema,
+	z.strictObject({ oauth: supportOwnerOauthSchema }),
+	z.strictObject({
+		ended: z.strictObject({
+			at: z.iso.datetime({ offset: true }),
+			reason: z.string().min(1).max(500),
+		}),
+	}),
+]);
+export type SupportOwnerCredential = z.infer<
+	typeof supportOwnerCredentialSchema
+>;
+
+/**
+ * The owner-credential door's body: the headers core sends as the owner on every owner act, or the
+ * owner's OAuth tokens, which core refreshes before an act where the binding declares `ownerSignIn`.
+ */
+export const supportOwnerCredentialRequestSchema = z.union([
+	supportApiSecretsSchema,
+	z.strictObject({
+		oauth: z.strictObject({
+			accessToken: ownerTokenSchema,
+			refreshToken: ownerTokenSchema.optional(),
+			/** Seconds the access token lives from now, as the product's token answer gave it. */
+			expiresIn: z.number().int().positive().max(31_536_000).optional(),
+		}),
+	}),
+]);
+
+const oauthEndpoint = z
+	.url()
+	.max(500)
+	.regex(/^https?:\/\//, "an http(s) URL");
+
+/**
+ * How the owner signs in to the product (ISS-1047, REQ-85 BC-3): its OAuth 2.0 authorization
+ * endpoint (authorization code with PKCE, S256), its token endpoint, which must be on a host the
+ * connection grants, the public client Forge is registered as, and the scopes asked for. The product
+ * registers `<Forge API origin>/api/support/owner-sign-in/callback` as that client's redirect.
+ */
+export const supportOwnerSignInSchema = z.strictObject({
+	authorizationUrl: oauthEndpoint,
+	tokenUrl: oauthEndpoint,
+	clientId: z.string().min(1).max(200),
+	scopes: z
+		.array(
+			z
+				.string()
+				.regex(/^[\x21\x23-\x5B\x5D-\x7E]{1,100}$/, "an OAuth scope token"),
+		)
+		.max(20)
+		.optional(),
+});
+export type SupportOwnerSignIn = z.infer<typeof supportOwnerSignInSchema>;
 
 /** The `support-api` binding's config: the tools this project grants its support session. */
 export const supportApiBindingConfigSchema = z.strictObject({
@@ -589,6 +661,7 @@ export const supportApiBindingConfigSchema = z.strictObject({
 			(tools) => new Set(tools.map((t) => t.name)).size === tools.length,
 			"two tools share a name; a name names one tool",
 		),
+	ownerSignIn: supportOwnerSignInSchema.optional(),
 });
 export type SupportApiBindingConfig = z.infer<
 	typeof supportApiBindingConfigSchema
@@ -637,6 +710,10 @@ export const SUPPORT_ACTION_KINDS = [
 	"owner_withdrew",
 	/** Core made an act in the product as the owner, with the credential it keeps (ISS-1013). */
 	"owner_act",
+	/** Core started the owner's sign-in to a product, for the session to hand him (ISS-1047). */
+	"owner_sign_in",
+	/** The owner confirmed the sign-in core started, and core keeps the credential it gave (ISS-1047). */
+	"owner_signed_in",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -736,8 +813,9 @@ export const SUPPORT_ACTIONS = [
 	"promise",
 	"owner_consent",
 	"owner_act",
+	"owner_sign_in",
 ] as const;
-export type SupportAction = (typeof SUPPORT_ACTIONS)[number];
+export type SupportAction =(typeof SUPPORT_ACTIONS)[number];
 
 export const supportSearchRequestSchema = z.strictObject({
 	query: z.string().trim().min(2).max(300),
@@ -991,6 +1069,34 @@ export const supportOwnerActRequestSchema = z.strictObject({
 });
 export type SupportOwnerActRequest = z.infer<
 	typeof supportOwnerActRequestSchema
+>;
+
+/**
+ * How the owner gave his consent (REQ-85 BC-3): in his own words in his room (`message`, ISS-1013),
+ * or by confirming the sign-in core started for him in the product (`sign_in`, ISS-1047).
+ */
+export const SUPPORT_OWNER_CONSENT_ROUTES = ["message", "sign_in"] as const;
+export type SupportOwnerConsentRoute =
+	(typeof SUPPORT_OWNER_CONSENT_ROUTES)[number];
+
+/**
+ * The owner's sign-in to a product, started by core (ISS-1047, REQ-85 BC-3): the session is handed
+ * the link to give him in his room; `product` as in `owner_consent`.
+ */
+export const supportOwnerSignInRequestSchema = z.strictObject({
+	thread: threadId,
+	product: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.optional()
+		.describe(
+			"the product, by the binding name `tools` lists; omitted where the project binds one",
+		),
+});
+export type SupportOwnerSignInRequest = z.infer<
+	typeof supportOwnerSignInRequestSchema
 >;
 
 /** What a declared read came back with: its name and what the program printed, scrubbed by core. */
@@ -1314,6 +1420,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
 	"SUPPORT_OWNER_CREDENTIAL_MISSING",
+	/** The owner's credential ended (its refresh refused, or expired with none): he signs in again (ISS-1047). */
+	"SUPPORT_OWNER_SIGN_IN_AGAIN",
+	/** The binding declares no `ownerSignIn`, or one core cannot use, so no sign-in or refresh is made (ISS-1047). */
+	"SUPPORT_OWNER_SIGN_IN_UNDECLARED",
+	/** The product's token endpoint gave no answer, and the access token is spent; nothing was sent (ISS-1047). */
+	"SUPPORT_OWNER_TOKEN_UNANSWERED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 

@@ -7,6 +7,7 @@ import {
   SUPPORT_ACTION_KINDS,
   SUPPORT_ACTOR_KINDS,
   SUPPORT_FIX_STATES,
+  SUPPORT_OWNER_CONSENT_ROUTES,
   SUPPORT_PROMISE_STATES,
   SUPPORT_PROPOSAL_KINDS,
 } from '@forge/contracts/support';
@@ -16,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   jsonb,
@@ -295,8 +297,13 @@ export const supportOwnerConsents = pgTable(
     ownerKey: text('owner_key').notNull(),
     ownerLabel: text('owner_label'),
     thread: text('thread').notNull(),
-    /** The owner's own message saying he agrees. */
-    givenMessage: text('given_message').notNull(),
+    /**
+     * How he gave it (ISS-1047): `message`, in his own words in his room, or `sign_in`, by confirming
+     * the sign-in core started for him in the product.
+     */
+    route: text('route', { enum: SUPPORT_OWNER_CONSENT_ROUTES }).notNull().default('message'),
+    /** The owner's own message saying he agrees; null where he gave it by signing in. */
+    givenMessage: text('given_message'),
     givenAt: timestamp('given_at', { withTimezone: true }).notNull().defaultNow(),
     /** The owner's own message taking it back, and when; both null while it stands. */
     withdrawnMessage: text('withdrawn_message'),
@@ -310,6 +317,55 @@ export const supportOwnerConsents = pgTable(
     withdrawnChk: check(
       'support_owner_consents_withdrawn_chk',
       sql`(${t.withdrawnAt} IS NULL) = (${t.withdrawnMessage} IS NULL)`,
+    ),
+    routeChk: check(
+      'support_owner_consents_route_chk',
+      sql`${t.route} IN (${inList(SUPPORT_OWNER_CONSENT_ROUTES)}) AND (${t.route} = 'message') = (${t.givenMessage} IS NOT NULL)`,
+    ),
+  }),
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+/**
+ * A sign-in core started for the owner in a product (ISS-1047, REQ-85 BC-3): the room and thread
+ * it was asked in, the owner the binding named then, the hash of the OAuth `state` the product
+ * returns the browser with, and the PKCE verifier, sealed. Spent once: `completedAt` with what came
+ * of it. It holds no token; the credential it yields is kept as the owner-acts project secret.
+ */
+export const supportOwnerSignIns = pgTable(
+  'support_owner_sign_ins',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    roomId: uuid('room_id')
+      .notNull()
+      .references(() => supportRooms.id, { onDelete: 'cascade' }),
+    bindingId: uuid('binding_id')
+      .notNull()
+      .references(() => integrationBindings.id, { onDelete: 'cascade' }),
+    thread: text('thread').notNull(),
+    ownerKey: text('owner_key').notNull(),
+    stateHash: text('state_hash').notNull(),
+    verifierEnc: bytea('verifier_enc').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    /** `kept`, or why nothing was: the product's refusal, his decline, or the binding changed. */
+    outcome: text('outcome'),
+  },
+  (t) => ({
+    stateUq: uniqueIndex('support_owner_sign_ins_state_uq').on(t.stateHash),
+    projectIdx: index('support_owner_sign_ins_project_idx').on(t.projectId),
+    completedChk: check(
+      'support_owner_sign_ins_completed_chk',
+      sql`(${t.completedAt} IS NULL) = (${t.outcome} IS NULL)`,
     ),
   }),
 );

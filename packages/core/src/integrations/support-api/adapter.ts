@@ -23,8 +23,11 @@ import { verifyToolNames } from './tool-names.js';
 type SupportApiConfig = Record<string, unknown>;
 type SupportApiSecrets = Record<string, unknown>;
 
-/** The tools live on the binding: one connection (one API) may serve several projects' rooms. */
-export const SUPPORT_API_BINDING_CONFIG_KEYS = ['tools'] as const;
+/**
+ * The tools live on the binding: one connection (one API) may serve several projects' rooms. So does
+ * how the owner signs in (ISS-1047), whose credential core keeps per binding.
+ */
+export const SUPPORT_API_BINDING_CONFIG_KEYS = ['tools', 'ownerSignIn'] as const;
 
 const supportApiAdapterMethods: IntegrationAdapterMethods<SupportApiConfig, SupportApiSecrets> = {
   // a tool name calls one API across the project's bindings (ISS-1011)
@@ -42,7 +45,10 @@ const supportApiAdapterMethods: IntegrationAdapterMethods<SupportApiConfig, Supp
     });
     if (!config.success)
       faults.push(...config.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`));
-    const tools = supportApiBindingConfigSchema.safeParse({ tools: ctx.config.tools });
+    const tools = supportApiBindingConfigSchema.safeParse({
+      tools: ctx.config.tools,
+      ...(ctx.config.ownerSignIn !== undefined ? { ownerSignIn: ctx.config.ownerSignIn } : {}),
+    });
     if (ctx.bindingId && !tools.success) {
       faults.push(...tools.error.issues.map((i) => `tools.${i.path.join('.')}: ${i.message}`));
     }

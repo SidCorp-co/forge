@@ -21,8 +21,8 @@ import {
 import { holderNames } from '../permissions/index.js';
 import { supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
-import { ownerRoomOf, standingConsent, whoCanConsent } from './owner-consent.js';
-import { ownerHeadersOf } from './owner-credential.js';
+import { ownerRoomOf, standingConsent, whoCanConsent, whoSignsIn } from './owner-consent.js';
+import { ownerHeadersFor } from './owner-refresh.js';
 import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import { insertAction, type RoomRow } from './store.js';
@@ -85,27 +85,33 @@ export async function ownerAct(
       ),
     );
   }
-  const headers = await ownerHeadersOf(
-    room.projectId,
-    api.bindingId,
-    api.name,
-    await keeperOf(room.projectId),
-  );
-  if (!headers.ok) return refusedWith(headers);
+  // an OAuth credential is refreshed here first where it needs it (ISS-1047); a dead one is never sent
+  const owner = await ownerHeadersFor({
+    projectId: room.projectId,
+    api,
+    words: {
+      keeper: await keeperOf(room.projectId),
+      signsInAgain: await whoSignsIn(room, at.value),
+    },
+  });
+  if (!owner.ok) return refusedWith(owner);
   const called = await callGranted({
     plan,
     config: api.config,
-    headers: headers.value,
+    headers: owner.value.headers,
     maxBytes: limitsOf(await supportConfigOf(room)).responseMaxBytes,
   });
   if ('refusal' in called) {
     return refusedWith(no(called.refusal.code, '/tool', called.refusal.detail));
   }
-  // the owner's credential is scrubbed by the door that sent it; the binding's own is scrubbed too,
-  // so neither comes back whatever the product echoes
+  // the owner's access token is scrubbed by the door that sent it; his refresh token and the
+  // binding's own credential are scrubbed too, so none comes back whatever the product echoes
   const result: SupportCallResult = {
     ...called.result,
-    body: scrubSecretsDeep(called.result.body, credentialValuesOf(api.headers)),
+    body: scrubSecretsDeep(called.result.body, [
+      ...owner.value.secrets,
+      ...credentialValuesOf(api.headers),
+    ]),
   };
   const value: OwnerActResult = {
     ...result,

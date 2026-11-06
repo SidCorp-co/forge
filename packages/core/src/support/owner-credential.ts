@@ -2,19 +2,26 @@
 // support-api binding, a project secret under `owner-acts`, sealed in the project's vault and
 // written to its credential audit like every other secret. It is read only by the owner-act door,
 // which sends it from core; no turn, brief, answer or box ever carries it. A project admin keeps it
-// at its own door, which checks the binding and the shape before anything is stored.
+// at its own door, which checks the binding and the shape before anything is stored: static
+// headers, or the owner's OAuth tokens (ISS-1047), which core refreshes before an act
+// (`owner-refresh.ts`) and which the owner's own sign-in also keeps (`owner-sign-in.ts`).
 
 import { secretRefOf } from '@forge/contracts/project-config';
 import {
   SUPPORT_OWNER_CREDENTIAL_SCOPE,
-  supportApiSecretsSchema,
+  type SupportOwnerCredential,
+  type SupportOwnerSignIn,
   supportOwnerCredentialName,
+  supportOwnerCredentialRequestSchema,
+  supportOwnerCredentialSchema,
 } from '@forge/contracts/support';
+import type { Tx } from '../db/client.js';
 import { credentialValuesOf, readSupportApis } from '../integrations/support-api/index.js';
 import {
   deleteSecret,
   listSecretNames,
   readProjectSecrets,
+  rewriteSecretAsCore,
   writeSecret,
 } from '../project-config/index.js';
 import { no, type Outcome } from './outcome.js';
@@ -33,11 +40,17 @@ const refOf = (bindingId: string) =>
 async function productOf(
   projectId: string,
   bindingId: string,
-): Promise<Outcome<{ bindingId: string; name: string }>> {
+): Promise<Outcome<{ bindingId: string; name: string; ownerSignIn: SupportOwnerSignIn | null }>> {
   const reads = await readSupportApis(projectId);
   const found = reads.find((r) => (r.ok ? r.api.bindingId : r.bindingId) === bindingId);
-  if (found)
-    return { ok: true, value: { bindingId, name: found.ok ? found.api.name : found.name } };
+  if (found) {
+    return {
+      ok: true,
+      value: found.ok
+        ? { bindingId, name: found.api.name, ownerSignIn: found.api.ownerSignIn }
+        : { bindingId, name: found.name, ownerSignIn: null },
+    };
+  }
   const names = reads.map(
     (r) => `${r.ok ? r.api.bindingId : r.bindingId} (${r.ok ? r.api.name : r.name})`,
   );
@@ -53,7 +66,27 @@ export type KeepOutcome =
   | { ok: false; refusals: { code: string; path: string; detail: string }[] }
   | { ok: false; code: 'VAULT_NOT_CONFIGURED' };
 
-/** Keep the owner's credential for one product: the headers core sends as him, sealed. */
+/** What the door keeps for a body it took: headers as they are, OAuth tokens with their expiry. */
+function keptOf(
+  body: (typeof supportOwnerCredentialRequestSchema)['_output'],
+  now: number,
+): SupportOwnerCredential {
+  if ('headers' in body) return body;
+  const { accessToken, refreshToken, expiresIn } = body.oauth;
+  return {
+    oauth: {
+      accessToken,
+      ...(refreshToken ? { refreshToken } : {}),
+      expiresAt: expiresIn ? new Date(now + expiresIn * 1000).toISOString() : null,
+    },
+  };
+}
+
+/**
+ * Keep the owner's credential for one product, sealed: the headers core sends as him, or his OAuth
+ * tokens. A refresh token is kept only where the binding declares how to spend it (`ownerSignIn`):
+ * one stored where it never could be would be a credential nobody can use.
+ */
 export async function keepOwnerCredential(input: {
   projectId: string;
   bindingId: string;
@@ -62,19 +95,26 @@ export async function keepOwnerCredential(input: {
 }): Promise<KeepOutcome> {
   const product = await productOf(input.projectId, input.bindingId);
   if (!product.ok) return product;
-  const parsed = supportApiSecretsSchema.safeParse(input.body);
+  const parsed = supportOwnerCredentialRequestSchema.safeParse(input.body);
   if (!parsed.success) {
     return no(
       'SUPPORT_OWNER_CREDENTIAL_MISSING',
       '/headers',
-      `the body is { "headers": { "<header name>": "<value>" } }, at most 10 headers, each name letters, digits and dashes: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')}. Nothing was kept.`,
+      `the body is { "headers": { "<header name>": "<value>" } }, at most 10 headers, each name letters, digits and dashes; or { "oauth": { "accessToken", "refreshToken"?, "expiresIn"? } }: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')}. Nothing was kept.`,
+    );
+  }
+  if ('oauth' in parsed.data && parsed.data.oauth.refreshToken && !product.value.ownerSignIn) {
+    return no(
+      'SUPPORT_OWNER_SIGN_IN_UNDECLARED',
+      '/oauth/refreshToken',
+      `the support-api binding of ${product.value.name} declares no ownerSignIn { authorizationUrl, tokenUrl, clientId }, so a refresh token kept for it could never be spent; declare it on the binding first. Nothing was kept.`,
     );
   }
   const written = await writeSecret({
     projectId: input.projectId,
     scope: SUPPORT_OWNER_CREDENTIAL_SCOPE,
     name: supportOwnerCredentialName(input.bindingId),
-    value: JSON.stringify(parsed.data),
+    value: JSON.stringify(keptOf(parsed.data, Date.now())),
     actor: input.actor,
   });
   if (!written.ok) return written;
@@ -113,50 +153,51 @@ export async function dropOwnerCredential(input: {
   };
 }
 
-/** Each product of the project, and whether core keeps the owner's credential for it: names, never values. */
-export async function ownerCredentialsOf(
-  projectId: string,
-): Promise<{ bindingId: string; product: string; kept: boolean; updatedAt: string | null }[]> {
+/** Each product of the project, whether core keeps the owner's credential for it, and whether it ended: names, never values. */
+export async function ownerCredentialsOf(projectId: string): Promise<
+  {
+    bindingId: string;
+    product: string;
+    kept: boolean;
+    updatedAt: string | null;
+    ended: { at: string; reason: string } | null;
+  }[]
+> {
   const [reads, secrets] = await Promise.all([
     readSupportApis(projectId),
     listSecretNames(projectId),
   ]);
-  return reads.map((r) => {
-    const bindingId = r.ok ? r.api.bindingId : r.bindingId;
-    const held = secrets.find((s) => s.ref === refOf(bindingId));
-    return {
-      bindingId,
-      product: r.ok ? r.api.name : r.name,
-      kept: Boolean(held),
-      updatedAt: held?.updatedAt.toISOString() ?? null,
-    };
-  });
+  return Promise.all(
+    reads.map(async (r) => {
+      const bindingId = r.ok ? r.api.bindingId : r.bindingId;
+      const held = secrets.find((s) => s.ref === refOf(bindingId));
+      const read = held ? await readOwnerCredential(projectId, bindingId) : null;
+      const ended = read?.ok && 'ended' in read.value ? read.value.ended : null;
+      return {
+        bindingId,
+        product: r.ok ? r.api.name : r.name,
+        // an ended credential holds no token: nothing is kept that the room could act with
+        kept: Boolean(held) && !ended,
+        updatedAt: held?.updatedAt.toISOString() ?? null,
+        ended,
+      };
+    }),
+  );
 }
 
-/**
- * The owner's headers for one product, read for the one call core makes with them; or the refusal
- * naming why there are none. Only the owner-act door calls this.
- */
-export async function ownerHeadersOf(
+export type OwnerCredentialRead =
+  | { ok: true; value: SupportOwnerCredential }
+  | { ok: false; why: 'missing' | 'unreadable' | 'malformed' };
+
+/** The credential core keeps for one product, as stored; or why there is none it can read. */
+export async function readOwnerCredential(
   projectId: string,
   bindingId: string,
-  product: string,
-  keeper: string,
-): Promise<Outcome<Record<string, string>>> {
+): Promise<OwnerCredentialRead> {
   const ref = refOf(bindingId);
   const read = await readProjectSecrets(projectId, [ref]);
-  const missing = (why: string) =>
-    no<Record<string, string>>(
-      'SUPPORT_OWNER_CREDENTIAL_MISSING',
-      '/tool',
-      `${why}, so nothing was sent to ${product}. To keep it, ${keeper} at PUT /api/projects/${projectId}/support/owner-credentials/${bindingId}.`,
-    );
   if (!read.ok) {
-    return missing(
-      read.code === 'SECRET_VALUE_MISSING'
-        ? `Forge keeps no owner credential for ${product}`
-        : `the owner credential Forge keeps for ${product} cannot be opened with this core's vault key`,
-    );
+    return { ok: false, why: read.code === 'SECRET_VALUE_MISSING' ? 'missing' : 'unreadable' };
   }
   let value: unknown;
   try {
@@ -164,34 +205,57 @@ export async function ownerHeadersOf(
   } catch {
     value = null;
   }
-  const parsed = supportApiSecretsSchema.safeParse(value);
-  if (!parsed.success) {
-    return missing(
-      `the owner credential Forge keeps for ${product} is not { headers } as the door writes it`,
-    );
-  }
-  return { ok: true, value: parsed.data.headers };
+  const parsed = supportOwnerCredentialSchema.safeParse(value);
+  return parsed.success ? { ok: true, value: parsed.data } : { ok: false, why: 'malformed' };
 }
 
 /**
- * Every value of every owner credential the project keeps, for scrubbing a line before it is posted
- * or recorded: never a value read for any other use.
+ * Store what core made of the credential, inside the caller's transaction: the rotated OAuth pair
+ * after a refresh, or the ended mark after a refused one. `why` goes to the credential audit.
+ */
+export async function rewriteOwnerCredential(
+  tx: Tx,
+  input: { projectId: string; bindingId: string; value: SupportOwnerCredential; why: string },
+): Promise<void> {
+  await rewriteSecretAsCore(tx, {
+    projectId: input.projectId,
+    scope: SUPPORT_OWNER_CREDENTIAL_SCOPE,
+    name: supportOwnerCredentialName(input.bindingId),
+    value: JSON.stringify(input.value),
+    why: input.why,
+  });
+}
+
+/** Every value one kept credential holds that must never be posted or recorded. */
+export function ownerCredentialValuesOf(kept: SupportOwnerCredential): string[] {
+  if ('headers' in kept) return credentialValuesOf(kept.headers);
+  if ('oauth' in kept) {
+    return [kept.oauth.accessToken, ...(kept.oauth.refreshToken ? [kept.oauth.refreshToken] : [])];
+  }
+  return [];
+}
+
+/**
+ * Every value of every owner credential the project keeps, the access and the refresh token alike,
+ * for scrubbing a line before it is posted or recorded: never a value read for any other use.
  */
 export async function ownerSecretsOf(projectId: string): Promise<string[]> {
-  const kept = (await ownerCredentialsOf(projectId)).filter((c) => c.kept);
-  if (kept.length === 0) return [];
-  const refs = kept.map((c) => refOf(c.bindingId));
+  const secrets = await listSecretNames(projectId);
+  const refs = secrets.filter((s) => s.scope === SUPPORT_OWNER_CREDENTIAL_SCOPE).map((s) => s.ref);
+  if (refs.length === 0) return [];
   const read = await readProjectSecrets(projectId, refs);
   if (!read.ok) return [];
   const values: string[] = [];
   for (const raw of read.values.values()) {
+    let parsed: ReturnType<typeof supportOwnerCredentialSchema.safeParse> | null = null;
     try {
-      const parsed = supportApiSecretsSchema.safeParse(JSON.parse(raw));
-      if (parsed.success) values.push(...credentialValuesOf(parsed.data.headers));
+      parsed = supportOwnerCredentialSchema.safeParse(JSON.parse(raw));
     } catch {
-      // a value the door did not write is scrubbed whole
-      values.push(raw);
+      parsed = null;
     }
+    // a value the door did not write is scrubbed whole
+    if (parsed?.success) values.push(...ownerCredentialValuesOf(parsed.data));
+    else values.push(raw);
   }
   return values;
 }

@@ -22,7 +22,7 @@
 import { secretRefOf } from '@forge/contracts/project-config';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { projectVariableEvents } from '../db/schema-project-variables.js';
 import { type SignInAnswer, trySignIn } from '../integrations/deploy/index.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
@@ -187,6 +187,38 @@ export async function writeSecret(input: {
     secret: { scope: row.scope, name: row.name, updatedAt: row.updatedAt, ref },
     signIn,
   };
+}
+
+/**
+ * A secret core itself rewrites, inside the caller's transaction, its audit row naming no person
+ * (ISS-1047: the owner's OAuth credential, rotated by a refresh or ended by a refused one). No
+ * sign-in check runs: only a scope no testing profile names is written here, and `why` says what
+ * core did, never a value.
+ */
+export async function rewriteSecretAsCore(
+  tx: Tx,
+  input: { projectId: string; scope: string; name: string; value: string; why: string },
+): Promise<{ updatedAt: Date }> {
+  const stored = await drizzleConfigStore.putSecret(tx, {
+    projectId: input.projectId,
+    scope: input.scope,
+    name: input.name,
+    valueEnc: encryptSecret(input.value),
+  });
+  await insertEvents(tx, [
+    {
+      projectId: input.projectId,
+      variableId: null,
+      act: stored.created ? 'created' : 'updated',
+      key: secretRefOf(input.scope, input.name),
+      environment: null,
+      actorId: null,
+      actorTokenId: null,
+      agency: null,
+      detail: { secret: true, by: 'core', why: input.why },
+    },
+  ]);
+  return { updatedAt: stored.updatedAt };
 }
 
 /** Whether an actor's stored secret signs in, as the last write of it was checked. */

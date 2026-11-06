@@ -48,6 +48,13 @@ export async function whoCanConsent(room: RoomRow, at: OwnerRoom): Promise<strin
   return `only ${who}, the owner this binding names, can consent, in his own words in his own room ${at.ownerRoom}`;
 }
 
+/** Who signs in to the product as the owner, said the same way by every refusal that needs him to (ISS-1047). */
+export async function whoSignsIn(room: RoomRow, at: OwnerRoom): Promise<string> {
+  const name = await ownerUsername(room.projectId, at.owner);
+  const who = name ? `@${name}` : `the owner (Rocket.Chat account ${at.owner})`;
+  return `only ${who}, the owner this binding names, signs in, from his own room ${at.ownerRoom}`;
+}
+
 /**
  * The owner and his room, where `room` is that room; otherwise the refusal naming why and who can
  * consent. Only a channel agent's binding names an owner's room (ISS-872), and the binding's grant
@@ -77,13 +84,13 @@ export async function ownerRoomOf(room: RoomRow, act: string): Promise<Outcome<O
 }
 
 /** A product the room may act in: one of the project's support-api bindings, by its name. */
-interface Product {
+export interface Product {
   bindingId: string;
   name: string;
 }
 
 /** The project's products, as the `tools` list names them. */
-async function productsOf(projectId: string): Promise<Product[]> {
+export async function productsOf(projectId: string): Promise<Product[]> {
   return (await readSupportApis(projectId)).map((r) =>
     r.ok
       ? { bindingId: r.api.bindingId, name: r.api.name }
@@ -92,7 +99,7 @@ async function productsOf(projectId: string): Promise<Product[]> {
 }
 
 /** The product a consent names; the one product where it names none and the project binds one. */
-function productNamed(products: Product[], name: string | undefined): Outcome<Product> {
+export function productNamed(products: Product[], name: string | undefined): Outcome<Product> {
   const names = products.map((p) => p.name).join(', ') || 'none';
   if (name === undefined) {
     if (products.length === 1) return { ok: true, value: products[0] as Product };
@@ -140,7 +147,10 @@ export interface ConsentView {
   room: string;
   owner: { account: string; name: string | null };
   givenAt: string;
-  givenMessage: string;
+  /** How he gave it: his message in his room, or the sign-in core started for him (ISS-1047). */
+  route: ConsentRow['route'];
+  /** His message saying so; null where he gave it by signing in. */
+  givenMessage: string | null;
   withdrawnAt: string | null;
   withdrawnMessage: string | null;
 }
@@ -150,6 +160,7 @@ const viewOf = (row: ConsentRow, product: string, rid: string): ConsentView => (
   room: rid,
   owner: { account: row.ownerKey, name: row.ownerLabel },
   givenAt: row.givenAt.toISOString(),
+  route: row.route,
   givenMessage: row.givenMessage,
   withdrawnAt: row.withdrawnAt?.toISOString() ?? null,
   withdrawnMessage: row.withdrawnMessage,

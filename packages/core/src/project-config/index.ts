@@ -64,7 +64,7 @@ export {
   uuid,
 } from './schema.js';
 export { type ProjectSecretRead, readProjectSecrets } from './secret-read.js';
-export { writeSecret } from './secret-write.js';
+export { rewriteSecretAsCore, writeSecret } from './secret-write.js';
 /** The policy layer of the effective config, on its own: dispatch reads it before any project document. */
 export {
   deleteSecret,

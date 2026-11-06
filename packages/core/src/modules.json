@@ -1263,6 +1263,7 @@
         "supportFeedbackLinks",
         "supportPromises",
         "supportOwnerConsents",
+        "supportOwnerSignIns",
         "supportChannels",
         "supportChannelMembers",
         "supportChannelRules",
