@@ -125,7 +125,36 @@ describe('which changes wait for a green cleanup (REQ-79 BC-5, BC-6)', () => {
   });
 });
 
+const NOTHING_LANDED = { kind: 'none', branch: 'dev', head: 'c'.repeat(40) } as const;
+
 describe("a cleanup run's brief (REQ-79 BC-7)", () => {
+  // ISS-1050 (REQ-79 BC-20, BC-23): the run reviews what landed since the last report, by the audit
+  // guide, and the brief points to it rather than carrying the method itself
+  it('names the range that landed since the last report and the audit guide that reviews it', () => {
+    const from = 'a'.repeat(40);
+    const head = 'b'.repeat(40);
+    const brief = cleanupBrief({
+      projectId: 'p1',
+      fireId: 'f1',
+      debts: [],
+      waiting: [],
+      landed: { kind: 'landed', branch: 'dev', from, head },
+    });
+    expect(brief).toContain(`What landed on dev since the last cleanup report: ${from}..${head}`);
+    expect(brief).toContain(`git log ${from}..${head}`);
+    expect(brief).toContain('GET /api/guides/cleanup-audit.md');
+    expect(brief).not.toContain('simplify the code you touch');
+    const first = cleanupBrief({
+      projectId: 'p1',
+      fireId: 'f1',
+      debts: [],
+      waiting: [],
+      landed: { kind: 'landed', branch: 'dev', from: null, head },
+    });
+    expect(first).toContain('no cleanup report yet');
+    expect(first).toContain(head);
+  });
+
   it('names the debt, the changes waiting, its fire and the report it owes', () => {
     const brief = cleanupBrief({
       projectId: 'p1',
@@ -144,6 +173,7 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
         },
       ],
       waiting: [{ key: 'ISS-7', reason: 'a migration' }],
+      landed: NOTHING_LANDED,
     });
     expect(brief).toContain(D1);
     expect(brief).toContain('ISS-7');
@@ -154,7 +184,13 @@ describe("a cleanup run's brief (REQ-79 BC-7)", () => {
 
   // ISS-814: fire b4557dc7 ended its turn "I'll be notified when it finishes" and never reported
   it('forbids ending the turn to wait on CI, and blocks on a reused run inside it', () => {
-    const brief = cleanupBrief({ projectId: 'p1', fireId: 'f1', debts: [], waiting: [] });
+    const brief = cleanupBrief({
+      projectId: 'p1',
+      fireId: 'f1',
+      debts: [],
+      waiting: [],
+      landed: NOTHING_LANDED,
+    });
     expect(brief).toContain('This run is headless');
     expect(brief).toContain('never end your turn waiting on anything');
     expect(brief).toContain('your turn ends only after the report is posted');
@@ -233,6 +269,7 @@ describe('a report green exactly when every debt it leaves is carried (REQ-79 BC
         },
       ],
       waiting: [],
+      landed: NOTHING_LANDED,
     });
     expect(brief).toContain(
       'CARRIED, a priced amnesty by Decision Holder: trades Deploy dev stays red; costs hand deploys; ends when the token is set',

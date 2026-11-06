@@ -487,7 +487,14 @@ mod tests {
             // ISS-951: an in-pane build writes no step, so the master writes build when it starts
             "\"workState\":{\"step\":\"build\"}",
             "each assumption one line on the issue or in its commit body",
-            "**Once per batch: one landing.** **Land through the project's own landing route** once the merged batch builds, typecheck included",
+            // ISS-1050: "its own tests" read as the whole suite, which a master ran before landing
+            "**Once per batch: one landing.** **Land through the project's own landing route** once the merged batch builds (typecheck included) and the tests related to its changed files pass",
+            "The whole suite, lint and CI run after the push, and a red there is fixed forward",
+            "A project rule that asks for more before landing still holds",
+            // ISS-1050 (REQ-79 BC-21): what a batch leaves unclean is debt, for the cleanup run
+            "**What the batch leaves unclean is debt.**",
+            "is recorded as debt through the debts door (`forge-runner api projects/<projectId>/debts`, POST)",
+            "never fixed inside the batch and never filed as an issue",
             "fixed forward in the next batch",
             "**Once per batch: one release and one live judge pass.**",
             "Where the project lands by change request",
@@ -515,6 +522,8 @@ mod tests {
             "**Land on the base branch**",
             "Take each issue in this session",
             "once it builds and its own tests pass",
+            "its own tests pass",
+            "its build and its own tests",
         ] {
             assert!(
                 !prose.contains(gone),

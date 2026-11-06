@@ -13,6 +13,23 @@ describe('the dispatch guide teaches direct mode outside strict, landing by the 
     expect(prose).not.toContain('A project whose gate profile is `yolo`');
   });
 
+  // ISS-1050: "its own tests" read as the whole suite; only the build and the related tests come first
+  it('lands once the batch builds and its related tests pass, the whole suite after the push', () => {
+    expect(prose).toContain(
+      'when the merged batch builds (typecheck included) and the tests related to its changed files pass',
+    );
+    expect(prose).toContain('The whole suite, lint and CI run after the push');
+    expect(prose).toContain('A project rule that asks for more before landing still holds');
+    expect(prose).not.toContain('its own tests pass');
+  });
+
+  // ISS-1050 (REQ-79 BC-21): a batch leaves what it did not clean to the cleanup run, as debt
+  it('records what a batch leaves unclean as debt, never fixed in the batch nor filed as an issue', () => {
+    expect(prose).toContain(
+      'What the batch leaves unclean (duplicates, code not reused, workarounds, leftovers such as raw buttons or dead components) is recorded as debt through the debts door (`POST /api/projects/:id/debts`), never fixed inside the batch and never filed as an issue',
+    );
+  });
+
   it('lands through a change request where the project lands by one, and pushes only where it pushes', () => {
     expect(prose).toContain('Land the batch once, by the route its project lands by');
     expect(prose).toContain('`release.changeRequests`');

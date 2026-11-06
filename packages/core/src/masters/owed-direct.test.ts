@@ -61,11 +61,15 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge).not.toContain('dispatch skill');
     // ISS-845 (FB-453): a bare push to the base branch overrides a project that lands only by MR
     expect(direct.nudge).not.toContain('land it on the base branch');
+    expect(direct.nudge).not.toContain('its own tests pass');
     for (const said of [
       'Dispatch no runner role',
       'general-purpose subagents on disjoint files',
       'build the batch yourself',
-      "Land through the project's own landing route once the batch builds and its own tests pass",
+      // ISS-1050: "its own tests" read as the whole suite, which a master ran before every landing
+      "Land through the project's own landing route once the batch builds (typecheck included) and the tests related to its changed files pass",
+      'the whole suite, lint and CI run after the push, and a red there is fixed forward',
+      'A project rule that asks for more before landing still holds',
       'an MR where the project lands by change request',
       'a push to the base branch only where it lands by push',
       '`awaiting_release` without a recorded merge (`forge-runner api issues/<id>/merge -X POST` at the landing sha)',

@@ -6,7 +6,7 @@
  *     (await import('../helpers/cleanup-source.js')).mockedSourceHost(await original()));
  *
  * A project nothing planted resolves as the real resolver does. The planted host answers only the two
- * reads a base is checked with; any other verb answers as an unbound project does (`no_binding`), so a
+ * reads a base is checked with and a branch's head (its last planted commit); any other verb answers as an unbound project does (`no_binding`), so a
  * suite's other readers see the world they saw before a host was planted. Nothing calls a real host.
  */
 
@@ -56,6 +56,13 @@ function hostOf(projectId: string, project: PlantedProject, unavailable: Unavail
     branchContains: async (branch: string, sha: string) => {
       if (project.fail) throw project.fail;
       return project.branches.get(branch)?.has(sha.toLowerCase()) ?? false;
+    },
+    // the head of a branch is the last commit planted on it (ISS-1050: what landed since a report)
+    branchHead: async (branch: string) => {
+      if (project.fail) throw project.fail;
+      const head = [...(project.branches.get(branch) ?? [])].at(-1);
+      if (!head) throw new unavailable('no_binding', `the planted host holds no branch ${branch}`);
+      return head;
     },
   };
   return new Proxy(host, {
