@@ -296,6 +296,7 @@ describe('ISS-1013: core keeps the owner credential per product (BC-2)', () => {
       product: 'agenfold',
       kept: false,
       updatedAt: null,
+      ended: null,
     });
     // a person who is no project admin keeps nothing
     const stranger = await api(w.stranger, 'PUT', `${path}/${agenfold}`, {

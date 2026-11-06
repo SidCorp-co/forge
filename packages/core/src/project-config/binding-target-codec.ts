@@ -21,7 +21,7 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   gitlab: ['projectPath', 'projectId'],
   sentry: [],
   rocketchat: ['rids', 'support', 'operations', 'agent', 'outsideRids'],
-  'support-api': ['tools'],
+  'support-api': ['tools', 'ownerSignIn'],
   agent: [],
   widget: ['siteKey', 'allowedOrigins', 'identity', 'title', 'greeting', 'accent', 'limits'],
 };
