@@ -11,7 +11,10 @@
  * - a release still closes an issue it claims, and only a release makes the work read live: the
  *   issue's shippedIn, the forecast's progress and shipped leg (which Activity and the
  *   progress-by-requirement report read), a requirement's work counts, and the development
- *   overview's shipped per module each read an issue its holder closed as not live.
+ *   overview's shipped per module each read an issue its holder closed as not live;
+ * - a release carries an issue its holder closed: the roster lists it until a shipped release holds
+ *   it, the release records it without moving its status, the next release does not claim it again,
+ *   and a feedback item it carries reads resolved only once that release holds it.
  *
  * @direct-test-of packages/core/src/issues/close-in-scope.ts
  * @direct-test-of packages/core/src/issues/transition-guards.ts
@@ -25,12 +28,22 @@
  * @direct-test-of packages/core/src/forecast/progress.ts
  * @direct-test-of packages/core/src/product-progress/progress.ts
  * @direct-test-of packages/core/src/development/overview-read.ts
+ * @direct-test-of packages/core/src/issues/waiting-for-release.ts
+ * @direct-test-of packages/core/src/issues/release-claim.ts
+ * @direct-test-of packages/core/src/release-batch/queries.ts
+ * @direct-test-of packages/core/src/release-batch/blockers.ts
+ * @direct-test-of packages/core/src/release-batch/claim-conflicts.ts
+ * @direct-test-of packages/core/src/release-batch/recorded.ts
+ * @direct-test-of packages/core/src/feedback/standing.ts
+ * @direct-test-of packages/core/src/feedback/list-read.ts
+ * @direct-test-of packages/core/src/forecast/feedback-progress.ts
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { userToken } from '../helpers/api.js';
+import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 import {
   closeWorld,
   type Doc,
@@ -370,5 +383,94 @@ describe('whether the work is live is read from the release record, never from c
     ok(await close(id));
     expect(await statusOf(id)).toBe('closed');
     expect(await shippedIn(id)).toBeNull();
+  });
+});
+
+describe('a release carries an issue its holder closed (ISS-1062)', () => {
+  const recordRelease = (ids: string[], version: string) =>
+    call('owner', 'POST', `/api/projects/${projectId}/release-records`, {
+      issueIds: ids,
+      version,
+      account: `catalog-api ${version} deployed by its own pipeline; read live at /health.`,
+    });
+  const shippedIn = async (id: string) =>
+    (ok(await call('owner', 'GET', `/api/issues/${id}`)) as { shippedIn: unknown }).shippedIn;
+  const roster = async () => {
+    const { draftReleaseIssueIds } = await import('../../src/release-batch/index.js');
+    return draftReleaseIssueIds(projectId);
+  };
+  const closes = async (id: string) =>
+    (
+      await rows<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM kernel_transitions
+         WHERE entity = 'issue' AND entity_id = ${id} AND to_status = 'closed'`)
+    )[0]?.n;
+  const closedInScope = async () => {
+    const issue = await landed(['the catalog lists the new field']);
+    await lease(issue.id);
+    ok(await close(issue.id));
+    expect(await statusOf(issue.id)).toBe('closed');
+    return issue;
+  };
+
+  it('lists it on the roster, and the release records it as released, still closed, moving no status', async () => {
+    const { id } = await closedInScope();
+    expect(await roster()).toContain(id);
+    const recorded = ok(await recordRelease([id], '4.0.0'), 201) as { closed: string[] };
+    expect(recorded.closed).toEqual([id]);
+    expect(await statusOf(id)).toBe('closed');
+    expect(await closes(id)).toBe(1);
+    expect(await shippedIn(id)).toMatchObject({ version: '4.0.0' });
+    expect((await liveOf(id))?.version).toBe('4.0.0');
+    const [row] = await rows<{ release_batch_run_id: string | null }>(
+      sql`SELECT release_batch_run_id FROM issues WHERE id = ${id}`,
+    );
+    expect(row?.release_batch_run_id).toBeNull();
+  });
+
+  it('is not claimed again by the next release, which refuses it by name as already released', async () => {
+    const { id, key } = await closedInScope();
+    ok(await recordRelease([id], '4.1.0'), 201);
+    expect(await roster()).not.toContain(id);
+    const again = await recordRelease([id], '4.1.1');
+    expect(again.status, JSON.stringify(again.json)).toBe(409);
+    const [first] = refusalsOf(again);
+    expect(first?.code).toBe('CLAIM_CONFLICT');
+    expect(first?.detail).toContain(`${key} is \`closed\` and already released`);
+    const other = await landed(['another outcome']);
+    ok(await recordRelease([other.id], '4.1.2'), 201);
+    expect(await shippedIn(id)).toMatchObject({ version: '4.1.0' });
+  });
+
+  it('asks the reporter of feedback it carries to confirm only once a release holds it', async () => {
+    const carrier = await landed(['the catalog lists the new field']);
+    const filed = ok(
+      await call('owner', 'POST', `/api/projects/${projectId}/feedback`, {
+        kind: 'bug',
+        title: 'The catalog hides the new field',
+        screen: 'The catalog',
+      }),
+      201,
+    ) as { feedback: { key: string } };
+    const fb = filed.feedback.key;
+    ok(
+      await call('owner', 'POST', `/api/projects/${projectId}/feedback/${fb}/triage`, {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        issue: [carrier.key],
+      }),
+    );
+    const phase = async () =>
+      (
+        ok(await call('owner', 'GET', `/api/projects/${projectId}/feedback/${fb}`)) as {
+          feedback: { phase: string };
+        }
+      ).feedback.phase;
+    expect(await phase()).toBe('planned');
+    await lease(carrier.id);
+    ok(await close(carrier.id));
+    expect(await phase(), 'closed met in scope is not live').toBe('planned');
+    ok(await recordRelease([carrier.id], '4.2.0'), 201);
+    expect(await phase()).toBe('resolved');
   });
 });
