@@ -1071,8 +1071,9 @@ selects. Each entry is `{ "pattern", "reason" }`, repo-relative with `*` and `**
 (`HIGH_IMPACT_LIST_MISSING`), malformed (`HIGH_IMPACT_LIST_MALFORMED`, `HIGH_IMPACT_ENTRY_MALFORMED`),
 holds an entry with no reason (`HIGH_IMPACT_REASON_MISSING`) or one no tracked file matches
 (`HIGH_IMPACT_ENTRY_STALE`): a stale entry widens nothing and says nothing. A module that moves takes
-its entry with it. `pnpm merge-check` runs every direct integration test on the full lane and reads
-no list.
+its entry with it. `pnpm merge-check` runs every direct integration test on the full lane, and on every
+lane holds the list to the tree HEAD tracks before anything runs: a refused list is exit 1 by the same
+names (`lib/merge-check.mjs:highImpactVerdict`), a sound one a single line.
 
 **The declaration is how a miss widens.** A test that reaches its subject by URL, by table name or by
 reading a file reaches it by no import, so the merge check cannot see it. When the whole suite goes
