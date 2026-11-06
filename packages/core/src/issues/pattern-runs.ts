@@ -257,6 +257,36 @@ function notLiveDetail(
 const notOpenedYet = (fallback: string) =>
   `A run \`forge-runner run declare\` writes is held at core only once its box opens its session at core: a box from ISS-1036 on opens it before the declare answers, an older box on its next sweep, within 30 seconds (up to five minutes while it is rate-limited). If the run was just declared, send this again once it has opened, or leave \`run\` out to ${fallback}`;
 
+/** The live runs a box declared over an issue, as a refusal offers them; null where it declared none. */
+function listedOver(over: { key: string; declared: string[] }): string | null {
+  return over.declared.length > 0
+    ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
+    : null;
+}
+
+/**
+ * Why the run `run` named, resolved to `session`, may not record on the issue: it was declared over
+ * other issues (ISS-1036: a verdict on ISS-122 naming a run declared over ISS-119 was recorded as
+ * that run's). Null for a run over the issue, one declared at a requirement, and a session that is
+ * no declared run. Asked by a door whose record is a run's judgement of this issue; a pattern
+ * decision is not one, its reviewer being any run but the one that named the pattern.
+ */
+export async function runOverOtherIssues(
+  args: { issueId: string; box: string; run: string; session: string },
+  executor: GateReader = db,
+): Promise<string | null> {
+  const over = await declaredOver(executor, { issueId: args.issueId, box: args.box });
+  if (!over) return null;
+  const elsewhere = await declaredElsewhere(executor, { session: args.session, key: over.key });
+  if (!elsewhere) return null;
+  const sent =
+    args.run === elsewhere.declared ? '' : `\`run\` ${args.run} is run ${elsewhere.declared}; `;
+  const way =
+    listedOver(over) ??
+    `this box has no live run over ${over.key} that core holds: declare one over it (\`forge-runner run declare\`)`;
+  return `${sent}run ${elsewhere.declared} was declared over ${elsewhere.keys.join(', ')}, not ${over.key}, so it records nothing on ${over.key}; ${way}`;
+}
+
 /** The live session holding the issue's lease on `box`, or null where this box holds none. */
 async function leaseSessionOn(
   executor: GateReader,
@@ -283,8 +313,7 @@ async function leaseSessionOn(
  * The run this call is: on a person's credential none (and `run` is refused, a person being no run);
  * on a box's, the run `run` names, or else the run holding the issue on that box, or none. A call
  * about no issue (`issueId` null: a verdict at a requirement) has no lease to read a run off, so it
- * is the run `run` names or none. A run declared over other issues is no run of a call on this one.
- * Where core holds no live run of the box under `run`, the refusal says what core does hold: a run
+ * is the run `run` names or none. Where core holds no live run of the box under `run`, the refusal says what core does hold: a run
  * of the box that ended, another box's, or none yet, never that the box declared none (ISS-1036).
  */
 export async function runOfCall(
@@ -300,24 +329,10 @@ export async function runOfCall(
   }
   if (run !== undefined) {
     const named = await sessionNamed(executor, { projectId: args.projectId, box, run });
-    if (named && 'refusal' in named) return unknownRun(named.refusal);
+    if (named && 'session' in named) return { ok: true, value: { box, session: named.session } };
+    if (named) return unknownRun(named.refusal);
     const over = args.issueId ? await declaredOver(executor, { issueId: args.issueId, box }) : null;
-    const listed = over
-      ? over.declared.length > 0
-        ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
-        : null
-      : null;
-    if (named) {
-      const elsewhere = over
-        ? await declaredElsewhere(executor, { session: named.session, key: over.key })
-        : null;
-      if (!elsewhere) return { ok: true, value: { box, session: named.session } };
-      const sent =
-        run === elsewhere.declared ? '' : `\`run\` ${run} is run ${elsewhere.declared}; `;
-      return unknownRun(
-        `${sent}run ${elsewhere.declared} was declared over ${elsewhere.keys.join(', ')}, not ${over?.key}, so nothing it does is recorded on ${over?.key}; ${listed ?? `this box has no live run over ${over?.key} that core holds: declare one over it (\`forge-runner run declare\`)`}`,
-      );
-    }
+    const listed = over ? listedOver(over) : null;
     const found = await runNamedNotLive(executor, { projectId: args.projectId, box, run });
     if (found) return unknownRun(notLiveDetail(run, found));
     const fallback = over

@@ -12,7 +12,7 @@ import {
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { liveIssueLeasesSql } from '../../db/schema-issue-leases.js';
-import { runOfCall } from '../pattern-runs.js';
+import { runOfCall, runOverOtherIssues } from '../pattern-runs.js';
 import type { VerdictRefusal } from './verdict-input.js';
 import type { VerdictAuthor } from './verdict-record.js';
 
@@ -128,8 +128,8 @@ export async function requirementRecordingSessionOf(
 /**
  * The run session recording a verdict (ISS-475): the one a door already resolved, else the `run` the
  * call names, else the session holding the issue's lease on the author's box (`pattern-runs.ts:runOfCall`,
- * as a review resolves its reviewer). A `run` naming no live session of the box is refused, and so
- * is a session core has not admitted.
+ * as a review resolves its reviewer). A `run` naming no live session of the box is refused, as is
+ * one declared over other issues (ISS-1036) and a session core has not admitted.
  */
 export async function recordingSessionOf(
   tx: Tx,
@@ -155,7 +155,20 @@ export async function recordingSessionOf(
     },
     tx,
   );
-  if (resolved.ok) return admitted(resolved.value.session);
+  if (resolved.ok) {
+    const { box, session } = resolved.value;
+    const elsewhere =
+      args.run !== undefined && box !== null && session !== null
+        ? await runOverOtherIssues({ issueId: args.issue.id, box, run: args.run, session }, tx)
+        : null;
+    if (elsewhere) {
+      return {
+        ok: false,
+        refusal: { code: 'VERDICT_RUN_UNKNOWN', criterion: args.criterion, detail: elsewhere },
+      };
+    }
+    return admitted(session);
+  }
   const [first] = resolved.refusals;
   return {
     ok: false,
