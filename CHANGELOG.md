@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.549] - 2026-11-06
+
+Owner sign-in to a product stays fresh without signing in again
+
+### Added
+
+- **The owner signs in to his product through Forge.** His room hands him a sign-in link; Forge keeps the tokens, renews them before each act, and when the product refuses a renewal, says he must sign in again.
+
 ## [0.4.0-dev.548] - 2026-11-06
 
 Masters build a large issue whole and release it once
