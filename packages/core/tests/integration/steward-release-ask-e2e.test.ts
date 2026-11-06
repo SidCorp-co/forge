@@ -1,6 +1,7 @@
-// ISS-607 (REQ-48 BC-5): the steward asks whoever can take the act an item waits on. A release
-// approval the project's master may not give is asked of the release holders, never of the master;
-// a master that holds releases.approve is asked as before. On the standing it reads now an item is
+// ISS-607 (REQ-48 BC-5): the steward asks whoever can take the act an item waits on. ISS-1058: who
+// owes a release approval is the one rule's (`who-owes.ts:whoOwes`): where the project requires one,
+// it is asked of the release holders by name, never of the master, whatever the master's account
+// holds; where it requires none, the rule gives it the master. On the standing it reads now an item is
 // asked once, whichever run asks about it: a reasoned decision recorded on the item on that standing,
 // before the ask or after, answers it, the master is owed it no more, and nobody is asked again
 // until the standing moves; a moved standing asks again.
@@ -40,6 +41,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 import { pairTestBox } from '../helpers/paired-box.js';
+import { requireReleaseApproval } from '../helpers/project-controls.js';
 import { releaseWait } from '../helpers/release-wait.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
@@ -112,6 +114,11 @@ async function askRun(issue: { key: string }, emitFirst: 'sweep' | 'event' = 'sw
   await steward.dispatchStewardRuns(new Date(clock));
 }
 
+/** The grants the master's account holds on the project, as a SQL array. */
+const grantMaster = (grants: string) =>
+  rows(sql`UPDATE project_members SET grants = ${sql.raw(grants)}
+            WHERE project_id = ${projectId} AND user_id = ${masterId} RETURNING user_id`);
+
 const decide = (issueId: string, fields: { key: string; value: string }[]) =>
   say('owner', 'POST', `/api/issues/${issueId}/events`, { kind: 'decision', contract: 1, fields });
 
@@ -139,8 +146,14 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('a release approval the master may not give is asked of the release holders (c1)', () => {
+describe('a release approval the project requires is asked of the release holders (c1)', () => {
   let issue: { id: string; key: string };
+
+  // ISS-1058: the master's account holds releases.approve, and the rule still keeps it a person's
+  beforeAll(async () => {
+    await requireReleaseApproval(projectId, ownerId);
+    await grantMaster("ARRAY['releases.approve']");
+  });
 
   it('tells the release holders and asks the master nothing', async () => {
     issue = await createTestIssue(projectId, ownerId, 71, {
@@ -179,10 +192,9 @@ describe('a release approval the master may not give is asked of the release hol
 describe('a decision recorded on an unchanged wait answers the ask until the standing moves (c2)', () => {
   let issue: { id: string; key: string };
 
-  it('asks a master that holds releases.approve, as before (boundary)', async () => {
-    await rows(sql`
-      UPDATE project_members SET grants = ARRAY['releases.approve']
-       WHERE project_id = ${projectId} AND user_id = ${masterId} RETURNING user_id`);
+  // ISS-1058: a project requiring no approval leaves the approval routine, so the rule gives it the master
+  it('asks the master where the project requires no approval (boundary)', async () => {
+    await requireReleaseApproval(projectId, ownerId, false);
     issue = await createTestIssue(projectId, ownerId, 72, {
       status: 'awaiting_release',
       createdAt: new Date(),
@@ -249,7 +261,7 @@ describe('a decision recorded on an unchanged wait answers the ask until the sta
 describe("a decision's until ends it only on a date it names (c2)", () => {
   let n = 80;
 
-  /** A fresh issue at a release wait the master is asked about (it holds releases.approve above). */
+  /** A fresh issue at a release wait the master is asked about (the project requires no approval above). */
   async function askedWait(basis: string) {
     n += 1;
     const issue = await createTestIssue(projectId, ownerId, n, {
@@ -474,30 +486,13 @@ describe('an ask is keyed on the standing of the item it is about, whichever run
   });
 });
 
-// ISS-590 round 2: the account the master acts as is the one its pane writes under, the credential
-// its checkout carries, never the person who paired its box. forge-dev's box was paired by a person
-// admin who holds releases.approve, its pane writing as the project's agent, which does not.
-describe('a box a person admin paired, its pane writing as an agent without releases.approve', () => {
-  it('asks the release holders and never the master', async () => {
-    await rows(sql`
-      UPDATE project_members SET grants = ARRAY[]::text[]
-       WHERE project_id = ${projectId} AND user_id = ${masterId} RETURNING user_id`);
-    await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
-    ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: masterId }));
-    const issue = await createTestIssue(projectId, ownerId, 91, {
-      status: 'awaiting_release',
-      createdAt: new Date(),
-    });
-    standings = [releaseWait(issue, 'person-paired-1')];
-    await askRun(issue);
-    expect(await steward.openStewardAsks(projectId)).toEqual([]);
-    expect((await actsOn(issue.id)).map((a) => [a.door, a.master_ask])).toEqual([
-      ['NOTIFY release holders', null],
-    ]);
-    expect((await askedOf(issue.id)).map((r) => r.user_id)).toEqual([ownerId]);
-  });
+// ISS-590 round 2 read the account the master acts as for a release approval; ISS-1058's rule keeps
+// an approval the project requires a person's whatever that account holds, so none is read for it
+// (the pane's account still decides a triage: steward-feedback-triage-ask-e2e).
+describe('a box whose checkout carries no credential, on an approval the project requires', () => {
+  beforeAll(() => requireReleaseApproval(projectId, ownerId));
 
-  it('names the box whose checkout carries no credential, and asks the holders, not the master', async () => {
+  it('asks the holders, not the master, naming no unread box for an act the master never takes', async () => {
     await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
     ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: null }));
     const issue = await createTestIssue(projectId, ownerId, 92, {
@@ -509,7 +504,7 @@ describe('a box a person admin paired, its pane writing as an agent without rele
     expect(await steward.openStewardAsks(projectId)).toEqual([]);
     const acts = await actsOn(issue.id);
     expect(acts.map((a) => a.door)).toEqual(['NOTIFY release holders']);
-    expect(acts[0]?.did).toContain(`the account the master acts as on box ${deviceId} is unread`);
+    expect(acts[0]?.did).not.toContain('is unread');
     expect((await askedOf(issue.id)).map((r) => r.user_id)).toEqual([ownerId]);
     standings = [];
   });

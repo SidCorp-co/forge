@@ -3,9 +3,10 @@
 // release's own standing holds the act that ships it (a cut, an approval, a promotion) once for
 // every issue it carries. So an ask about such an issue is raised on the release, once while the
 // release's wait reads the same, of whoever takes its act: the master where its standing names the
-// master (the cut included, which the master takes outside strict), else
-// the holders of the permission the act asks, by name (FB-196's rule, `ask-addressee.ts:addresseeOfAct`),
-// else nobody, said by name. A release run or gate check that is Forge's own is asked of nobody.
+// master, else the holders of the permission the act asks, by name (FB-196's rule,
+// `ask-addressee.ts:addresseeOfAct`), else nobody, said by name. Its standing names whom by the one
+// rule, read with what the release carries (`release-view.ts:turnOf`, ISS-1058), so an act it names a
+// person for is never the master's, whatever the account the master acts as holds. A release run or gate check that is Forge's own is asked of nobody.
 // adminhub-api, 2026-11-06: the steward asked the master per issue (ISS-41, ISS-65, ISS-66) to cut
 // or approve 0.14.0, a master holding no releases.approve, while 0.14.0's own gate already named the
 // promotion it waited on.
@@ -69,9 +70,9 @@ function actKey(act: WaitingOn['says']['act']): string {
 export type ReleaseTaker = ActAddressee | { to: 'system' };
 
 /**
- * Who takes the act a release's own wait names: the master where its page names the master, the cut
- * it takes outside strict included; Forge's release run or gate check where it is theirs; otherwise
- * the holders of the permission it asks, the master where it holds that, by name, or nobody.
+ * Who takes the act a release's own wait names: the master where its page names the master; Forge's
+ * release run or gate check where it is theirs; otherwise the people holding the permission it asks,
+ * by name, or nobody (ISS-1058: the page named a person by the one rule).
  */
 export async function releaseTakerOf(
   projectId: string,
@@ -81,7 +82,7 @@ export async function releaseTakerOf(
   if (wait.kind === 'system' || wait.says.who.key === 'standing.who.releaseRun') {
     return { to: 'system' };
   }
-  // the page names the master for the cut it takes (`release-view.ts:draftTurn`, ISS-1043)
+  // the page names the master for an act the one rule gives it (`release-view.ts:turnOf`, ISS-1058)
   if (wait.kind === 'agent') return { to: 'master' };
   const key = actKey(wait.says.act);
   const act = APPROVE_KEYS.has(key)
@@ -89,7 +90,7 @@ export async function releaseTakerOf(
     : key === 'standing.act.cut'
       ? RELEASE_CUT
       : RELEASE_SETUP;
-  return addresseeOfAct(projectId, act, stewardId);
+  return addresseeOfAct(projectId, act, stewardId, { masterByGrant: false });
 }
 
 /** When the release's act was last asked on its wait as it reads now, or null where it was not. */

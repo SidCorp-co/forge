@@ -11,6 +11,7 @@ import { masterAccountsOf } from './master-accounts.js';
 import { getMockupAs } from './mockups/index.js';
 import {
   holdingReleaseOf,
+  masterTakesReleaseAct,
   releaseHoldingActOf,
   runningBuildObserved,
   stewardReleaseFacts,
@@ -30,7 +31,9 @@ export function provideStewardDomainPorts(
     releaseFacts: stewardReleaseFacts,
     runningBuildObserved,
     masterAccounts: masterAccountsOf,
-    masterTakes: masterTakesWait,
+    // a release act by the one rule read with what the release carries, any other by Needs you's (ISS-1058)
+    masterTakes: async (projectId, act) =>
+      (await masterTakesReleaseAct(projectId, act)) ?? masterTakesWait(projectId, act),
     releaseHoldingAct: (_projectId, issueId) => releaseHoldingActOf(issueId),
     holdingRelease: holdingReleaseOf,
   });

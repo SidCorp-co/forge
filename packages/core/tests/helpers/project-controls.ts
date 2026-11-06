@@ -47,6 +47,27 @@ export async function declareControls(
 }
 
 /**
+ * Declares whether the project requires a person's release approval (`release.approval.required`),
+ * seeding a bare document where it has none: where it does, the one rule keeps a release approval a
+ * person's (`who-owes.ts:whoOwes`, ISS-1058), and an issue's standing waits on it.
+ */
+export async function requireReleaseApproval(
+  projectId: string,
+  updatedBy: string,
+  required = true,
+): Promise<void> {
+  await declareControls(projectId, updatedBy, {});
+  await db.execute(sql`
+    UPDATE project_config_documents
+       SET document = jsonb_set(document, '{release}',
+                                coalesce(document->'release', '{}'::jsonb)
+                                  || jsonb_build_object('approval', jsonb_build_object('required', ${required}::boolean))),
+           revision = revision + 1
+     WHERE project_id = ${projectId}
+  `);
+}
+
+/**
  * Runs `body` with the project strict (REQ-79 BC-12), where a decision its asker marks serious is a
  * person's (BC-13), and gives the project back the gates it held before.
  */

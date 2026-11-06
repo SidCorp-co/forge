@@ -5,6 +5,8 @@
 
 import type { Said } from '@forge/contracts/said';
 import { type OwedActKind, owedActOfSaid } from '@forge/contracts/who-owes';
+import { waitingIssueIds } from './queries.js';
+import { readReleaseOwes } from './release-owes.js';
 import { listReleases } from './release-read.js';
 
 export interface ReleaseActOwed {
@@ -14,10 +16,31 @@ export interface ReleaseActOwed {
   act: string;
 }
 
-/** The act a gated release names first, read through "… and N more". */
+/** The wrappers a wait's act may sit in: an issue's act on a requirement, "… and N more", nobody holding it. */
+const WRAPS: ReadonlySet<string> = new Set([
+  'standing.act.andMore',
+  'standing.act.onIssue',
+  'standing.act.noHolder',
+]);
+
+/** The act a wait names, read through what wraps it. */
 function firstAct(act: Said): Said {
-  const inner = act.key === 'standing.act.andMore' ? act.vars?.act : undefined;
-  return inner && typeof inner === 'object' && 'key' in inner ? (inner as Said) : act;
+  const inner = WRAPS.has(act.key) ? act.vars?.act : undefined;
+  return inner && typeof inner === 'object' && 'key' in inner ? firstAct(inner as Said) : act;
+}
+
+/**
+ * Whether the project's master owes the release act a wait names, by the one rule read with the
+ * project's policy and what the next release carries that cannot be undone, as the forecast reads it
+ * (`forecast/release.ts:readReleaseFacts`); null where the wait names no release act. The steward
+ * asks by this (`steward/ask-addressee.ts`, ISS-1058), so a routine cut or record is asked of the
+ * master whoever the wait's words name.
+ */
+export async function masterTakesReleaseAct(projectId: string, act: Said): Promise<boolean | null> {
+  const kind = owedActOfSaid(firstAct(act).key);
+  if (!kind?.startsWith('release.')) return null;
+  const owes = await readReleaseOwes(projectId, await waitingIssueIds(projectId));
+  return owes(kind).by === 'master';
 }
 
 export async function releaseActsOwed(projectId: string): Promise<ReleaseActOwed[]> {

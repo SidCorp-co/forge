@@ -295,6 +295,21 @@ describe('a box a person admin paired, its pane writing as the project agent (IS
     expect(await openAbout(fb.key)).toEqual([]);
     expect((await toldOf(fb.key)).map((t) => t.user_id)).toEqual([ownerId]);
   });
+
+  // a triage is the gate's, which a master holding feedback.approve takes, so an unread account is
+  // named; a release approval the one rule keeps a person's reads no account (ISS-1058)
+  it('names the box whose checkout carries no credential, and asks the holders', async () => {
+    await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
+    ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: null }));
+    const fb = await feedbackItem();
+    standings = [triageAgain(fb, 'unread-holders')];
+    await sweepAndRun(noteOnly(fb));
+    const acts = await actsOn(fb.id);
+    expect(acts.map((a) => a.door)).toEqual(['NOTIFY feedback holders']);
+    expect(acts[0]?.did).toContain(`the account the master acts as on box ${deviceId} is unread`);
+    await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
+    ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: masterId }));
+  });
 });
 
 describe('where nobody holds feedback.approve, nobody is asked and the item says why (c3, negative)', () => {

@@ -12,6 +12,8 @@
 // @direct-test-of packages/core/src/steward/ask-addressee.ts
 // @direct-test-of packages/core/src/steward/door-wake.ts
 // @direct-test-of packages/core/src/masters/owed.ts
+// @direct-test-of packages/core/src/release-batch/master-owed-acts.ts
+// @direct-test-of packages/core/src/steward-ports.ts
 
 import type { Said } from '@forge/contracts/said';
 import type { WaitingKind } from '@forge/contracts/standing';
@@ -36,6 +38,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { requireReleaseApproval, underStrict } from '../helpers/project-controls.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -336,6 +339,10 @@ describe('a wait a person owes is not asked of the master (c3)', () => {
 });
 
 describe('a held act on a person wait is not read as their own act (c3 boundary)', () => {
+  // an issue waits on a release approval only where the project requires one (ISS-1058)
+  beforeAll(() => requireReleaseApproval(projectId, ownerId));
+  afterAll(() => requireReleaseApproval(projectId, ownerId, false));
+
   const RELEASE_APPROVAL = {
     kind: 'person' as const,
     who: 'release approvers',
@@ -360,6 +367,40 @@ describe('a held act on a person wait is not read as their own act (c3 boundary)
     standings = [standingOf(held, 'c3-4', RELEASE_APPROVAL)];
     expect((await sweep()).settledAsks).toBe(0);
     expect(await openAbout(held.key)).toHaveLength(1);
+    standings = [];
+  });
+});
+
+// ISS-1058: who owes the act a wait names is the one rule's (`who-owes.ts:whoOwes`), whoever its words
+// name: a routine release cut is the master's, so the steward asks the master it; on a strict
+// project it stays the person's, and the master is asked nothing.
+describe('a routine act a wait names a person for is asked of the master (ISS-1058)', () => {
+  const CUT_WAIT = {
+    kind: 'person' as const,
+    who: 'orchestrator',
+    act: 'cut 0.7.0',
+    actKey: 'standing.act.cut',
+  };
+
+  it('asks the master the routine cut, and the turn is not told a person owes it', async () => {
+    const landed = await issue();
+    standings = [standingOf(landed, 'routine-1', CUT_WAIT)];
+    await askRun(landed, landed);
+    expect(await masterAsksAbout(landed.key)).toHaveLength(1);
+    expect(lastTurn()).not.toContain("a person's act");
+    standings = [];
+  });
+
+  it('asks the master nothing where the project is strict, the cut then a person’s', async () => {
+    await underStrict(projectId, ownerId, async () => {
+      const landed = await issue();
+      standings = [standingOf(landed, 'routine-2', CUT_WAIT)];
+      await askRun(landed, landed);
+      expect(await masterAsksAbout(landed.key)).toEqual([]);
+      expect(lastTurn()).toContain(
+        `${landed.key} waits on orchestrator to cut 0.7.0: a person's act`,
+      );
+    });
     standings = [];
   });
 });

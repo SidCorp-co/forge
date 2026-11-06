@@ -40,10 +40,11 @@ interface StewardPorts {
    */
   masterAccounts(projectId: string): Promise<MasterAccounts>;
   /**
-   * Whether the project's master takes the act a wait names: an account it acts as holds the
-   * permission of every decision act the wait asks for (the development module's
-   * `needs-you-agent-takes.ts:masterTakesWait`, the rule Needs you leaves a row to the master by,
-   * ISS-758).
+   * Whether the project's master takes the act a wait names, by the one rule
+   * (`@forge/contracts/who-owes:whoOwes`, ISS-1058): a release act read with what the next release
+   * carries (the release module's `master-owed-acts.ts:masterTakesReleaseAct`), a decision act as
+   * Needs you leaves a row to the master by (the development module's
+   * `needs-you-agent-takes.ts:masterTakesWait`, ISS-758).
    */
   masterTakes(projectId: string, act: Said): Promise<boolean>;
   /**

@@ -1,15 +1,20 @@
-// Whom the steward's ask about an item goes to (REQ-48 BC-5, ISS-607, ISS-654): whoever can take the
-// act the item waits on. A release approval is taken by a holder of `releases.approve`, a feedback
-// item's triage by a holder of `feedback.approve`; where no account the project's master acts as
-// holds that permission, the master is not asked, and the holders are, by name, the steward's own
-// account never among them. Every other wait but a person's asks the master, as before. A release's naming is such
-// an act too (ISS-590): it takes project.admin (`release-batch/naming.ts:nameReleaseAs`), so the
-// release names its namer the same way, `releaseNamerOf`.
+// Whom the steward's ask about an item goes to (REQ-48 BC-5, ISS-607, ISS-654): whoever takes the act
+// the item waits on. A release approval the one rule keeps a person's is asked of the holders of
+// `releases.approve`, by name, the steward's own account never among them; a feedback item's triage
+// of the holders of `feedback.approve`, the master where an account it acts as holds that. Every
+// other wait but a person's asks the master, as before. A release's naming is such an act too
+// (ISS-590): it takes project.admin (`release-batch/naming.ts:nameReleaseAs`), so the release names
+// its namer the same way, `releaseNamerOf`.
 // A wait a person owes (a park's answer, a design re-pin) is that person's, read on their Needs you,
-// unless the master's account holds what the act asks: Needs you leaves such an act to the master
-// (REQ-68 BC-3), so the steward asks the master it, by the one rule both read, `masterTakesWait`
-// (ISS-758). Otherwise the master's account does not take a person's act for them
-// (`permissions/holders-named.ts`), so the master is not asked it (ISS-739).
+// unless the one rule gives its act to the master: Needs you leaves such an act to the master
+// (REQ-68 BC-3), so the steward asks the master it, by the rule both read (`ports.ts:masterTakes`,
+// ISS-758). Otherwise the master is not asked it (ISS-739).
+// ISS-1058: who owes an act is the one rule's (`@forge/contracts/who-owes:whoOwes`), never the grant
+// of the account the master acts as: a release approval the project's policy keeps a person's is asked
+// of its holders by name, the master never, whatever its account holds; one the rule gives the master
+// is the master's. A wait on a person naming a routine release act (a cut, a record) asks the master
+// (`ports.ts:masterTakes`). A triage is the gate's (`person-gates.ts`, triage): the holders of
+// feedback.approve, an agent holding it alike, so the master is asked it where its account holds that.
 // An issue that waits on a person's answer to its open question (kind `answer`) is asked nobody and
 // no master: the ask is that question itself, placed on the item the issue serves, so it reaches a
 // person as a decision on that item in Needs you (REQ-68 BC-4; `questions/on-item.ts`). Round 2 of
@@ -21,8 +26,10 @@ import type { ReleaseNamer } from '@forge/contracts/release-naming';
 import type { WaitingKind } from '@forge/contracts/standing';
 import type { ItemStanding } from '@forge/contracts/steward';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
+import { type OwedBy, owedActOfSaid, whoOwes } from '@forge/contracts/who-owes';
 import { innerActKey } from '../lib/standing-act-class.js';
 import { holds, masterFactsOf, type NamedHolder, namedHolders } from '../permissions/index.js';
+import { readOwedPolicy } from '../project-config/index.js';
 import { heldStewardOf } from './account.js';
 import { stewardPorts } from './ports.js';
 
@@ -159,25 +166,51 @@ export async function askAddresseeOf(
 ): Promise<AskAddressee> {
   if (standing && waitsOnAnswer(standing)) return { to: 'item', issueId: standing.subject.id };
   const act = heldActOf(standing);
-  if (act) return addresseeOfAct(projectId, act, stewardId);
+  if (act && standing) {
+    const owed = await owedByRule(projectId, standing);
+    if (owed?.by === 'master') return { to: 'master' };
+    // a person's by the rule: its holders, whatever the master's account holds
+    return addresseeOfAct(projectId, act, stewardId, { masterByGrant: owed === null });
+  }
   if (standing && (await waitsOnPerson(projectId, standing))) {
     return { to: 'person', who: standing.waitingOn.who, act: standing.waitingOn.act };
   }
   return { to: 'master' };
 }
 
-/** Whom an act only `act.permission`'s holders take goes to: the master, its holders by name, or nobody. */
+/**
+ * Who owes the held act a wait names by the one rule, or null where the table does not hold it (a
+ * triage, which its gate gives the holders of feedback.approve). Read with the project's policy:
+ * the wait carries no release's content, and an approval a wait names is one the policy requires.
+ */
+async function owedByRule(
+  projectId: string,
+  standing: Pick<ItemStanding, 'waitingOn'>,
+): Promise<OwedBy | null> {
+  const kind = owedActOfSaid(innerActKey(standing.waitingOn));
+  return kind ? whoOwes(kind, await readOwedPolicy(projectId)) : null;
+}
+
+/**
+ * Whom an act only `act.permission`'s holders take goes to: the master, its holders by name, or
+ * nobody. `masterByGrant: false` where the one rule keeps the act a person's: the master is not asked
+ * it whatever its account holds, and its holders are the people who hold the permission.
+ */
 export async function addresseeOfAct(
   projectId: string,
   act: HeldAct,
   stewardId: string | null,
+  opts: { masterByGrant?: boolean } = {},
 ): Promise<ActAddressee> {
-  const master = await masterStanding(projectId, act.permission);
+  const byGrant = opts.masterByGrant !== false;
+  const master = byGrant
+    ? await masterStanding(projectId, act.permission)
+    : { holds: false, unread: [] };
   if (master.holds) return { to: 'master' };
   const { unread } = master;
   const holders = (await namedHolders(act.permission, projectId)).filter((h) => h.id !== stewardId);
   if (holders.length === 0) {
-    const masterToo = unread.length === 0 ? ', the master included' : '';
+    const masterToo = byGrant && unread.length === 0 ? ', the master included' : '';
     const unreadToo = unread.length === 0 ? '' : `; ${unreadLine(unread)}`;
     return {
       to: 'nobody',
