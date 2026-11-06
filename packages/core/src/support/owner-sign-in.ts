@@ -193,7 +193,10 @@ export async function finishOwnerSignIn(query: {
   }
   if (query.error) {
     await settle(row.id, `declined: ${query.error}`);
-    return fail(400, `The sign-in was not confirmed (${query.error.slice(0, 100)}). Nothing was kept.`);
+    return fail(
+      400,
+      `The sign-in was not confirmed (${query.error.slice(0, 100)}). Nothing was kept.`,
+    );
   }
   if (!query.code) {
     await settle(row.id, 'no code');
@@ -218,7 +221,9 @@ async function trade(
     );
   }
   const api = await signInApi(row.projectId, row.bindingId);
-  const client = api.ok ? ownerOauthClient(api.value.name, api.value.ownerSignIn, api.value.config) : api;
+  const client = api.ok
+    ? ownerOauthClient(api.value.name, api.value.ownerSignIn, api.value.config)
+    : api;
   if (!api.ok || !client.ok) {
     await settle(row.id, 'the binding no longer declares a usable sign-in');
     return fail(409, `The product's sign-in is no longer set up in Forge. Nothing was kept.`);
@@ -279,7 +284,10 @@ async function keepSignedIn(
       actorLabel: label,
       tool: 'owner_sign_in',
     };
-    await insertAction({ ...base, kind: 'owner_signed_in', input: fact, output: { kept: true } }, tx);
+    await insertAction(
+      { ...base, kind: 'owner_signed_in', input: fact, output: { kept: true } },
+      tx,
+    );
     if (standing) return 'stood';
     // his word in the room may have been recorded while he signed in: that one stands, and this adds none
     const [made] = await tx

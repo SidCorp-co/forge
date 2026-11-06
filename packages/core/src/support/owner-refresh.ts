@@ -15,13 +15,13 @@ import { db } from '../db/client.js';
 import type { SupportApi } from '../integrations/support-api/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../lib/logger.js';
-import { ownerOauthClient, refreshOwnerTokens } from './owner-oauth.js';
+import { no, type Outcome } from './outcome.js';
 import {
   ownerCredentialValuesOf,
   readOwnerCredential,
   rewriteOwnerCredential,
 } from './owner-credential.js';
-import { no, type Outcome } from './outcome.js';
+import { ownerOauthClient, refreshOwnerTokens } from './owner-oauth.js';
 
 /** An access token with less than this left is refreshed before it is sent. */
 export const OWNER_REFRESH_MARGIN_MS = 60_000;
@@ -184,7 +184,10 @@ function refreshUnderLock(input: {
       value: {
         headers: bearer(next).headers,
         // the spent pair too: a product may echo either, and neither is ever handed on
-        secrets: [...ownerCredentialValuesOf({ oauth: next }), ...ownerCredentialValuesOf(kept.value)],
+        secrets: [
+          ...ownerCredentialValuesOf({ oauth: next }),
+          ...ownerCredentialValuesOf(kept.value),
+        ],
       },
     };
   });

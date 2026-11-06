@@ -1,0 +1,1 @@
+**The owner signs in to his product through Forge.** His room hands him a sign-in link; Forge keeps the tokens, renews them before each act, and when the product refuses a renewal, says he must sign in again.

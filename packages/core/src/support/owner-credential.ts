@@ -71,7 +71,8 @@ function keptOf(
   body: (typeof supportOwnerCredentialRequestSchema)['_output'],
   now: number,
 ): SupportOwnerCredential {
-  if ('headers' in body) return body;
+  if (body.headers) return { headers: body.headers };
+  if (!body.oauth) throw new Error('support: the owner-credential door took a body with neither');
   const { accessToken, refreshToken, expiresIn } = body.oauth;
   return {
     oauth: {
@@ -103,7 +104,14 @@ export async function keepOwnerCredential(input: {
       `the body is { "headers": { "<header name>": "<value>" } }, at most 10 headers, each name letters, digits and dashes; or { "oauth": { "accessToken", "refreshToken"?, "expiresIn"? } }: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')}. Nothing was kept.`,
     );
   }
-  if ('oauth' in parsed.data && parsed.data.oauth.refreshToken && !product.value.ownerSignIn) {
+  if ((parsed.data.headers === undefined) === (parsed.data.oauth === undefined)) {
+    return no(
+      'SUPPORT_OWNER_CREDENTIAL_MISSING',
+      '/headers',
+      'the body holds exactly one of headers (sent as they are) or oauth (an access token core refreshes); it holds both or neither. Nothing was kept.',
+    );
+  }
+  if (parsed.data.oauth?.refreshToken && !product.value.ownerSignIn) {
     return no(
       'SUPPORT_OWNER_SIGN_IN_UNDECLARED',
       '/oauth/refreshToken',

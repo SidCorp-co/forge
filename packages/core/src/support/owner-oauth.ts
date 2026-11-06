@@ -25,6 +25,10 @@ export function ownerSignInCallbackUrl(): string {
 const insecureAllowed = (url: URL) =>
   url.protocol === 'http:' && (env.NODE_ENV === 'development' || env.NODE_ENV === 'test');
 
+/** The origin of an endpoint on plain http where this core may not use one; null where it may. */
+const plainHttp = (url: URL): string | null =>
+  url.protocol === 'http:' && !insecureAllowed(url) ? url.origin : null;
+
 /**
  * The product's OAuth client, or the refusal naming why core cannot use what the binding declares:
  * none declared, a token endpoint on a host the connection does not grant, or plain http.
@@ -48,16 +52,13 @@ export function ownerOauthClient(
       `the token endpoint ${token.host} is on no host the ${product} connection grants (${[...grantedHosts(config)].join(', ')})`,
     );
   }
-  for (const url of [token, authorize]) {
-    if (url.protocol === 'http:' && !insecureAllowed(url)) {
-      return refuse(`${url.origin} is plain http, and the owner's tokens travel only over https`);
-    }
-  }
+  const plain = plainHttp(token) ?? plainHttp(authorize);
+  if (plain) return refuse(`${plain} is plain http, and the owner's tokens travel only over https`);
   const configuration = new client.Configuration(
     {
       issuer: token.origin,
-      authorization_endpoint: authorize.href,
-      token_endpoint: token.href,
+      authorization_endpoint: signIn.authorizationUrl,
+      token_endpoint: signIn.tokenUrl,
     },
     signIn.clientId,
     undefined,

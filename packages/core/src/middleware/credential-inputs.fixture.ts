@@ -235,7 +235,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:device_hostname field:json:device_label field:json:device_platform
     field:json:machine_id field:json:box`,
   'a third party’s token core stores or forwards to that service; it checks no caller': words`
-    field:json:apiToken field:json:authToken field:json:clientSecret field:json:headers field:json:secrets`,
+    field:json:apiToken field:json:authToken field:json:clientSecret field:json:headers field:json:oauth
+    field:json:secrets`,
   'an address: a mailbox, a service URL, a git host, where to go after sign-in': words`
     param:host field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
     field:json:email field:query:email field:query:redirect field:json:address`,
@@ -272,6 +273,8 @@ export const CREDENTIAL_READS: Readonly<Record<string, string>> = {
     'the callback URL, its code exchanged with GitHub',
   'integrations/identity/oidc.ts URL handed to openid-client:authorizationCodeGrant in finish':
     'the callback URL, its code exchanged with the provider',
+  'support/owner-oauth.ts URL handed to openid-client:authorizationCodeGrant in tradeOwnerCode':
+    'the callback URL core rebuilds from the product’s code and state, its code traded with the product',
   'integration-door/mcp-relay-routes.ts Headers.entries in module code':
     'an agent’s relayed MCP request headers, its relay ticket among them; only Mcp-Param-* go upstream',
   'integration-door/webhook-inbound-routes.ts HonoRequest.header(map.signatureHeader) in module code':
@@ -312,6 +315,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/identity/github.ts URL.href in githubProvider
     integrations/identity/oidc.ts URL handed to openid-client:discovery in configFor
     integrations/identity/oidc.ts URL.href in start
+    support/owner-oauth.ts URL.href in ownerAuthorizationUrl
     credentials/mcp-oauth-shape.ts URL.toString in redirectWith
     integrations/inbound-door.ts URL.search in sameEndpoint
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch

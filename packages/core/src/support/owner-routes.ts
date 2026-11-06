@@ -121,8 +121,7 @@ export function mountOwnerRoutes(app: Hono<{ Variables: AuthVars }>): void {
   );
 }
 
-const escape = (text: string) =>
-  text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 /** The one page the owner's browser lands on: signed in, or why not. */
 function signInPage(out: OwnerSignInFinished): string {
@@ -130,13 +129,13 @@ function signInPage(out: OwnerSignInFinished): string {
   const line = out.ok
     ? 'Forge keeps your sign-in for your assistant. You can close this page.'
     : out.why;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:48px 16px;background:#fff;color:#1a1a1a}main{max-width:32rem;margin:0 auto}@media (prefers-color-scheme:dark){body{background:#141414;color:#eee}}</style></head><body><main><h1>${escape(title)}</h1><p>${escape(line)}</p></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:48px 16px;background:#fff;color:#1a1a1a}main{max-width:32rem;margin:0 auto}@media (prefers-color-scheme:dark){body{background:#141414;color:#eee}}</style></head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(line)}</p></main></body></html>`;
 }
 
 const callbackQuery = zValidator(
   'query',
-  // the product adds keys of its own (iss, session_state); only these are read
-  z.looseObject({
+  // the product adds keys of its own (iss, session_state): accepted, and only these are read
+  z.object({
     code: z.string().max(4000).optional(),
     state: z.string().max(500).optional(),
     error: z.string().max(200).optional(),

@@ -147,6 +147,12 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'exchanges GitHub’s code at its token endpoint; a PAT is no OAuth code',
   'integrations/identity/oidc.ts':
     'exchanges the provider’s code at its token endpoint; a PAT is no OAuth code',
+  'support/owner-oauth.ts':
+    'trades a product’s code at its token endpoint for the owner’s tokens (ISS-1047); a PAT is no OAuth code',
+  'support/owner-sign-in.ts':
+    'finishOwnerSignIn looks a sign-in up by the SHA-256 of the state the product returns, spends it once, and trades its code with the PKCE verifier only core holds; a PAT is neither',
+  'support/owner-routes.ts':
+    'GET /api/support/owner-sign-in/callback takes a product’s code and a state core minted for one owner sign-in, with no session; the state is looked up by its SHA-256 and spent once, and a PAT is neither',
   'devices/login-routes.ts':
     'GET /login/poll answers a box credential, with no session, to whoever holds a pairing code core minted for that login and looks up by digest; a PAT is never one. Approving a code sits behind requireAuth, where the chat write rule runs',
   'lib/token-digest.ts':

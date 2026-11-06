@@ -612,18 +612,19 @@ export type SupportOwnerCredential = z.infer<
 /**
  * The owner-credential door's body: the headers core sends as the owner on every owner act, or the
  * owner's OAuth tokens, which core refreshes before an act where the binding declares `ownerSignIn`.
+ * Exactly one of the two; the door refuses both or neither by name.
  */
-export const supportOwnerCredentialRequestSchema = z.union([
-	supportApiSecretsSchema,
-	z.strictObject({
-		oauth: z.strictObject({
+export const supportOwnerCredentialRequestSchema = z.strictObject({
+	headers: supportApiSecretsSchema.shape.headers.optional(),
+	oauth: z
+		.strictObject({
 			accessToken: ownerTokenSchema,
 			refreshToken: ownerTokenSchema.optional(),
 			/** Seconds the access token lives from now, as the product's token answer gave it. */
 			expiresIn: z.number().int().positive().max(31_536_000).optional(),
-		}),
-	}),
-]);
+		})
+		.optional(),
+});
 
 const oauthEndpoint = z
 	.url()

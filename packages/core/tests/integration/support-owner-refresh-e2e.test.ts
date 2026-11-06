@@ -138,7 +138,10 @@ class OauthProduct {
           const state = this.refresh.get(presented);
           if (state !== 'live') {
             entry.answered = 400;
-            return json(400, { error: 'invalid_grant', error_description: `refresh token ${state ?? 'unknown'}` });
+            return json(400, {
+              error: 'invalid_grant',
+              error_description: `refresh token ${state ?? 'unknown'}`,
+            });
           }
           this.refresh.set(presented, 'spent');
           entry.answered = 200;
@@ -154,7 +157,11 @@ class OauthProduct {
         return json(401, { error: 'the access token is expired or unknown' });
       }
       // a careless API echoes the credential back
-      return json(201, { id: 'org-1', name: (JSON.parse(body) as { name: string }).name, debug: auth });
+      return json(201, {
+        id: 'org-1',
+        name: (JSON.parse(body) as { name: string }).name,
+        debug: auth,
+      });
     });
     await new Promise<void>((r) => this.server.listen(0, '127.0.0.1', () => r()));
     this.base = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
@@ -233,7 +240,9 @@ beforeAll(async () => {
               method: 'POST',
               path: '/organizations',
               summary: 'create an organization, as the owner',
-              params: { name: { in: 'body', description: 'the organization name', required: true } },
+              params: {
+                name: { in: 'body', description: 'the organization name', required: true },
+              },
             },
           ],
           ownerSignIn: {
@@ -289,27 +298,46 @@ describe('ISS-1047: core starts the owner sign-in, and his confirmation is his c
     expect(String(landed.body.text)).toContain('Signed in to agenfold');
     answers.push(landed.body);
     // the code was traded with the verifier only core held, at the redirect it was issued for
-    expect(product.codeTrades).toEqual([{ verifierOk: true, redirect: expect.stringMatching(/callback$/) }]);
+    expect(product.codeTrades).toEqual([
+      { verifierOk: true, redirect: expect.stringMatching(/callback$/) },
+    ]);
     const kept = await stored();
     expect('oauth' in kept && kept.oauth.refreshToken).toBe(product.issued.at(-1));
     const [sealed] = await rows<{ value: string }>(sql`
       SELECT encode(value_enc, 'escape') AS value FROM project_secrets
        WHERE project_id = ${w.projectId}::uuid AND scope = 'owner-acts'`);
     for (const t of product.issued) expect(sealed?.value).not.toContain(t);
-    const consents = await rows<{ route: string; owner_key: string; given_message: string | null; withdrawn: boolean }>(sql`
+    const consents = await rows<{
+      route: string;
+      owner_key: string;
+      given_message: string | null;
+      withdrawn: boolean;
+    }>(sql`
       SELECT route, owner_key, given_message, withdrawn_at IS NOT NULL AS withdrawn
         FROM support_owner_consents WHERE project_id = ${w.projectId}::uuid AND binding_id = ${agenfold}::uuid`);
     expect(consents).toEqual([
       { route: 'sign_in', owner_key: OWNER_ID, given_message: null, withdrawn: false },
     ]);
-    const facts = await rows<{ kind: string; actor_key: string; input: Record<string, unknown> }>(sql`
+    const facts = await rows<{
+      kind: string;
+      actor_key: string;
+      input: Record<string, unknown>;
+    }>(sql`
       SELECT kind, actor_key, input FROM support_actions
        WHERE project_id = ${w.projectId}::uuid AND kind IN ('owner_signed_in', 'owner_consented')
        ORDER BY kind`);
     // one transaction writes both, so they share a time: read in the order of their kind
     expect(facts).toEqual([
-      { kind: 'owner_consented', actor_key: OWNER_ID, input: expect.objectContaining({ route: 'sign_in', product: 'agenfold', citedBy: 'core' }) },
-      { kind: 'owner_signed_in', actor_key: OWNER_ID, input: expect.objectContaining({ route: 'sign_in', product: 'agenfold' }) },
+      {
+        kind: 'owner_consented',
+        actor_key: OWNER_ID,
+        input: expect.objectContaining({ route: 'sign_in', product: 'agenfold', citedBy: 'core' }),
+      },
+      {
+        kind: 'owner_signed_in',
+        actor_key: OWNER_ID,
+        input: expect.objectContaining({ route: 'sign_in', product: 'agenfold' }),
+      },
     ]);
   });
 
@@ -324,9 +352,15 @@ describe('ISS-1047: core starts the owner sign-in, and his confirmation is his c
     const out = await inOwnerRoom('tạo tổ chức SidCorp', (act, thread) =>
       createOrganization(act, thread, 'SidCorp'),
     );
-    expect(out, JSON.stringify(out)).toMatchObject({ isError: false, status: 201, asOwner: OWNER_ID });
+    expect(out, JSON.stringify(out)).toMatchObject({
+      isError: false,
+      status: 201,
+      asOwner: OWNER_ID,
+    });
     const kept = await stored();
-    expect(product.calls.at(-1)?.auth).toBe(`Bearer ${'oauth' in kept ? kept.oauth.accessToken : ''}`);
+    expect(product.calls.at(-1)?.auth).toBe(
+      `Bearer ${'oauth' in kept ? kept.oauth.accessToken : ''}`,
+    );
     expect(product.refreshes).toEqual([]);
   });
 
@@ -357,7 +391,10 @@ describe('ISS-1047: core refreshes the access token before an act (BC-2)', () =>
     expect(kept.oauth.refreshToken).toBe(product.issued.at(-1));
     expect(kept.oauth.refreshToken).not.toBe(pair.refreshToken);
     expect(product.calls.slice(before)).toEqual([
-      expect.objectContaining({ url: '/api/organizations', auth: `Bearer ${kept.oauth.accessToken}` }),
+      expect.objectContaining({
+        url: '/api/organizations',
+        auth: `Bearer ${kept.oauth.accessToken}`,
+      }),
     ]);
     // the expired token was never sent
     expect(product.calls.map((c) => c.auth)).not.toContain(`Bearer ${pair.accessToken}`);
@@ -382,7 +419,8 @@ describe('ISS-1047: core refreshes the access token before an act (BC-2)', () =>
       ]),
     );
     product.refreshDelayMs = 0;
-    for (const out of outs) expect(out, JSON.stringify(outs)).toMatchObject({ isError: false, status: 201 });
+    for (const out of outs)
+      expect(out, JSON.stringify(outs)).toMatchObject({ isError: false, status: 201 });
     expect(product.refreshes.slice(refreshed)).toEqual([
       { refreshToken: pair.refreshToken, answered: 200 },
     ]);
@@ -402,7 +440,9 @@ describe('ISS-1047: a refresh the product refuses ends the credential by name (B
     expect(code(out), JSON.stringify(out)).toBe('SUPPORT_OWNER_SIGN_IN_AGAIN');
     const says = JSON.stringify(out);
     expect(says).toContain('agenfold refused its refresh: invalid_grant');
-    expect(says).toContain(`only @alice, the owner this binding names, signs in, from his own room ${chat.rid}`);
+    expect(says).toContain(
+      `only @alice, the owner this binding names, signs in, from his own room ${chat.rid}`,
+    );
     expect(says).toContain('owner_sign_in');
     expect(product.calls.length).toBe(calls);
     expect(product.refreshes.at(-1)).toEqual({ refreshToken: pair.refreshToken, answered: 400 });
@@ -412,14 +452,20 @@ describe('ISS-1047: a refresh the product refuses ends the credential by name (B
     });
     const listed = await api(w.owner, 'GET', credentialsPath());
     expect(listed.body.credentials).toContainEqual(
-      expect.objectContaining({ bindingId: agenfold, kept: false, ended: expect.objectContaining({ reason: expect.any(String) }) }),
+      expect.objectContaining({
+        bindingId: agenfold,
+        kept: false,
+        ended: expect.objectContaining({ reason: expect.any(String) }),
+      }),
     );
   });
 
   it('refuses the next act too, without asking the product again', async () => {
     const refreshed = product.refreshes.length;
     const calls = product.calls.length;
-    const out = await inOwnerRoom('thử lại', (act, thread) => createOrganization(act, thread, 'Again'));
+    const out = await inOwnerRoom('thử lại', (act, thread) =>
+      createOrganization(act, thread, 'Again'),
+    );
     expect(code(out), JSON.stringify(out)).toBe('SUPPORT_OWNER_SIGN_IN_AGAIN');
     expect(product.refreshes.length).toBe(refreshed);
     expect(product.calls.length).toBe(calls);
@@ -446,7 +492,9 @@ describe('ISS-1047: neither token reaches the session (BC-4)', () => {
     const lines = JSON.stringify(await w.chat.botLines());
     for (const t of product.issued) expect(lines).not.toContain(t);
     const logged = JSON.stringify(
-      await rows(sql`SELECT input, output FROM support_actions WHERE project_id = ${w.projectId}::uuid`),
+      await rows(
+        sql`SELECT input, output FROM support_actions WHERE project_id = ${w.projectId}::uuid`,
+      ),
     );
     for (const t of product.issued) expect(logged).not.toContain(t);
   });
