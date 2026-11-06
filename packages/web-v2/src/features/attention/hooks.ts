@@ -6,13 +6,15 @@ import { attentionApi } from "./api";
  * Cross-project attention/inbox view: `/me/attention` as core's one attention read model serves it,
  * scoped to the active org, with the offline runners, each bucket's count and the total. The screen
  * renders those; it counts, merges and filters nothing. Keyed under `["attention"]` so the WS
- * invalidations refetch it.
+ * invalidations refetch it. It waits for the active org to resolve: sent before, it went once unscoped
+ * and again scoped, two of core's slowest reads on every route (ISS-1070).
  */
 export function useAttention() {
-  const { activeOrgId } = useActiveOrg();
+  const { activeOrgId, resolved } = useActiveOrg();
   const attentionQ = useQuery({
     queryKey: ["attention", activeOrgId],
     queryFn: () => attentionApi.list(activeOrgId),
+    enabled: resolved,
   });
   const view = attentionQ.data;
   return {
@@ -22,7 +24,8 @@ export function useAttention() {
     waitingOnYou: view?.waitingOnYou ?? 0,
     /** Whether core has answered, so a badge never reads 0 for "not read yet". */
     known: view !== undefined,
-    isLoading: attentionQ.isLoading,
+    /** Reading, the wait for the org included, so a screen never draws "unread" in that gap. */
+    isLoading: attentionQ.isLoading || !resolved,
     isError: attentionQ.isError,
     error: attentionQ.error,
     refetch: () => {

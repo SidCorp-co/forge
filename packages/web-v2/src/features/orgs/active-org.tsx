@@ -28,6 +28,9 @@ interface ActiveOrgContextValue {
   setActiveOrg: (orgId: string) => void;
   /** True when the caller has at most one org → render a static label. */
   isSingle: boolean;
+  /** Whether the orgs and the stored choice have both answered, so `activeOrgId` is the one a read
+   *  scoped by it should carry: a read sent before this goes again once it is known (ISS-1070). */
+  resolved: boolean;
 }
 
 const ActiveOrgContext = createContext<ActiveOrgContextValue | null>(null);
@@ -36,7 +39,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const t = useCopy();
-  const { data: orgsData } = useOrgs();
+  const { data: orgsData, isSuccess: orgsRead, isError: orgsFailed } = useOrgs();
   const { data: prefs, isSuccess: prefsRead, isError: prefsFailed } = usePreferences();
 
   const orgs = sortOrgs(orgsData ?? []);
@@ -79,6 +82,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
       if (prefsKnown && orgId !== activeOrg?.id) mutate(orgId);
     },
     isSingle: orgs.length <= 1,
+    resolved: prefsKnown && (orgsRead || orgsFailed),
   };
 
   return <ActiveOrgContext value={value}>{children}</ActiveOrgContext>;
@@ -89,5 +93,5 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
 export function useActiveOrg(): ActiveOrgContextValue {
   const ctx = use(ActiveOrgContext);
   if (ctx) return ctx;
-  return { orgs: [], activeOrg: null, activeOrgId: null, setActiveOrg: () => {}, isSingle: true };
+  return { orgs: [], activeOrg: null, activeOrgId: null, setActiveOrg: () => {}, isSingle: true, resolved: true };
 }
