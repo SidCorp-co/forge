@@ -1,1 +1,1 @@
-**`pnpm test:changed` runs integration tests for high-impact changes without a flag.** A change touching a migration, the schema, a permission, a token fence or a kernel rule path listed in `.forge/high-impact-paths.json` runs its direct integration tests and says why.
+**`pnpm test:changed` runs integration tests for high-impact changes without a flag.** A change touching a migration, permission, token fence or kernel rule path in `.forge/high-impact-paths.json` runs them and says why; the merge check refuses a stale list.

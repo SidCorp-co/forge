@@ -106,7 +106,8 @@ export function parseHighImpactPaths(text, tracked) {
 
 /**
  * This checkout's list, held to the files git tracks here. A missing file is refused
- * (HIGH_IMPACT_LIST_MISSING): without it nothing widens and nothing says so.
+ * (HIGH_IMPACT_LIST_MISSING): without it nothing widens and nothing says so. `unreadable` marks the
+ * one refusal that is not the list's fault: git could not say what it tracks.
  */
 export function readHighImpactPaths(root) {
   let text;
@@ -119,7 +120,10 @@ export function readHighImpactPaths(root) {
   }
   const tracked = gitOut(['ls-files'], root);
   if (tracked === null)
-    return { refusal: `git ls-files failed, so ${HIGH_IMPACT_FILE} cannot be held to the tree` };
+    return {
+      refusal: `git ls-files failed, so ${HIGH_IMPACT_FILE} cannot be held to the tree`,
+      unreadable: true,
+    };
   return parseHighImpactPaths(text, tracked.split('\n').filter(Boolean));
 }
 
