@@ -10,6 +10,10 @@
 import { WORK_STEPS } from '@forge/contracts/issue-vocabulary';
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
+import {
+  VERDICT_EVIDENCE_ITEM_MAX,
+  VERDICT_EVIDENCE_ITEMS_MAX,
+} from '@forge/contracts/verdict-identity';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
@@ -328,7 +332,8 @@ Judge each criterion at the head you will land and write its verdict as you judg
 the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was taken from: an attachment's
 name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
 box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a path inside the
-repository at that commit. A path on your own machine is refused. \`skipped\` cites nothing and
+repository at that commit. \`evidence\` is a list of strings, never one string: each item at most
+${VERDICT_EVIDENCE_ITEM_MAX} characters, so a URL fits, and at most ${VERDICT_EVIDENCE_ITEMS_MAX} items. A path on your own machine is refused. \`skipped\` cites nothing and
 says what was out of reach. A token, key or connection string in the reason or evidence is refused
 \`VERDICT_SECRET\` at its path, as a comment holding one is refused.
 
@@ -448,7 +453,8 @@ body its route accepts, so a guess costs one read of the refusal, not one call p
   asks why adding \`"reason": "<why>"\`
 - verdict: \`POST /api/issues/:id/verdicts\`
   \`{ "criterion": 1, "verdict": "pass", "reason": "<what you ran, what you saw>", "identity": { "kind": "commit", "sha": "<40 hex>" }, "evidence": ["<attachment name, URL or repo path>"] }\`;
-  \`identity\` is an object, never the sha as a string
+  \`identity\` is an object, never the sha as a string; \`evidence\` a list, each item at most ${VERDICT_EVIDENCE_ITEM_MAX}
+  characters and at most ${VERDICT_EVIDENCE_ITEMS_MAX} items
 - release notes: \`PATCH /api/issues/:id\`
   \`{ "releaseNotes": { "section": "Fixed", "title": "<at most 10 words>", "userFacing": "<one full sentence>" } }\`;
   \`adminSteps\` is an array of strings and \`technical\` is at most 500 characters

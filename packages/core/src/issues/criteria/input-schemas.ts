@@ -5,7 +5,10 @@
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
 import { CRITERION_JUDGES, ISSUE_CRITERIA_MAX } from '@forge/contracts/issue-design';
-import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity';
+import {
+  storefrontDraftIdentitySchema,
+  verdictEvidenceSchema,
+} from '@forge/contracts/verdict-identity';
 import { z } from 'zod';
 import { criterionLeadingNumber } from '../../messaging/criterion-named.js';
 import type { CriterionInput } from './store.js';
@@ -116,7 +119,7 @@ export const verdictPostSchema = z
     verdict: z.string().trim().min(1).max(32),
     reason: z.string().trim().max(REASON_TEXT_MAX).nullable().optional(),
     identity: verdictIdentitySchema.nullable().optional(),
-    evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
+    evidence: verdictEvidenceSchema.optional(),
     /** The path prefixes the criterion rests on; omitted, a pass carries on descent alone (ISS-845). */
     covers: z
       .array(coversPrefixSchema)

@@ -170,3 +170,42 @@ describe('noQuery', () => {
     );
   });
 });
+
+// ISS-615 (FB-205): zod measured a string sent for a list of at most 50 against the list's cap, and
+// the refusal read as a 50-character cap
+describe('zValidator json, a value of the wrong type', () => {
+  const app = new Hono();
+  app.post(
+    '/verdicts',
+    zValidator('json', z.object({ evidence: z.array(z.string().max(500)).max(50) })),
+    (c) => c.json({ ok: true }),
+  );
+  app.onError((err, c) => {
+    if (!(err instanceof HTTPException)) throw err;
+    return c.json({ message: err.message }, err.status);
+  });
+
+  it('says the type fault alone, never a bound measured on the wrong type', async () => {
+    const res = await app.request('/verdicts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ evidence: 'x'.repeat(60) }),
+    });
+    expect(res.status).toBe(400);
+    const { message } = (await res.json()) as { message: string };
+    expect(message).toContain('at /evidence, Invalid input: expected array, received string');
+    expect(message).not.toContain('characters');
+    expect(message).toContain('The body has one fault');
+  });
+
+  it('keeps a bound broken by a value of the right type', async () => {
+    const res = await app.request('/verdicts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ evidence: Array(51).fill('a') }),
+    });
+    expect(res.status).toBe(400);
+    const { message } = (await res.json()) as { message: string };
+    expect(message).toContain('at /evidence, Too big: expected array to have <=50 items');
+  });
+});

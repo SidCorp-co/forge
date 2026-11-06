@@ -48,6 +48,48 @@ const storefrontDraftPartSchema = z.strictObject({
 	draftVersion: z.string().max(200).optional(),
 });
 
+/** The longest one evidence item may be: a URL a judge cites, such as a design read, fits (ISS-615). */
+export const VERDICT_EVIDENCE_ITEM_MAX = 500;
+/** The most evidence items one verdict cites. */
+export const VERDICT_EVIDENCE_ITEMS_MAX = 50;
+
+/** What a verdict's `evidence` is, in the words its refusals and guides say it. */
+export const VERDICT_EVIDENCE_SHAPE = `\`evidence\` is a list of strings, never one string: each an attachment name, a URL or a repository path, each at most ${VERDICT_EVIDENCE_ITEM_MAX} characters, at most ${VERDICT_EVIDENCE_ITEMS_MAX} items, e.g. ["shot.webm", "https://…"]`;
+
+/**
+ * The list's own cap, measured on a list alone: zod runs a length check on a string sent in the list's
+ * place, and called a string of 51 characters "Too big: expected string to have <=50 characters"
+ * (FB-205). Its typed params take no `when`, which its definition holds.
+ */
+function evidenceListCap() {
+	const cap = z.maxLength(
+		VERDICT_EVIDENCE_ITEMS_MAX,
+		`\`evidence\` holds at most ${VERDICT_EVIDENCE_ITEMS_MAX} items. ${VERDICT_EVIDENCE_SHAPE}`,
+	);
+	cap._zod.def.when = (payload) => Array.isArray(payload.value);
+	return cap;
+}
+
+/**
+ * A verdict's evidence, at the issue and the requirement verdict doors alike, each bound refused in
+ * words that say the whole shape, so no cap is read as another (ISS-615).
+ */
+export const verdictEvidenceSchema = z
+	.array(
+		z
+			.string({
+				error: `an evidence item is a string. ${VERDICT_EVIDENCE_SHAPE}`,
+			})
+			.trim()
+			.min(1, `an evidence item is never empty. ${VERDICT_EVIDENCE_SHAPE}`)
+			.max(
+				VERDICT_EVIDENCE_ITEM_MAX,
+				`an evidence item is at most ${VERDICT_EVIDENCE_ITEM_MAX} characters; cite a longer one as an attachment. ${VERDICT_EVIDENCE_SHAPE}`,
+			),
+		{ error: VERDICT_EVIDENCE_SHAPE },
+	)
+	.check(evidenceListCap());
+
 export const storefrontDraftIdentitySchema = z.strictObject({
 	kind: z.literal(STOREFRONT_DRAFT_KIND),
 	workflows: z.array(storefrontDraftPartSchema).optional(),

@@ -197,6 +197,24 @@ export function refuseNestedField(
   throw new RefusalError(rows, 'BAD_REQUEST', detail);
 }
 
+/**
+ * zod runs a field's length bound on a value of the wrong type sent in its place: a string sent for a
+ * list of at most 50 items was refused "Too big: expected string to have <=50 characters" beside
+ * "expected array", and a judge read the list's cap as a 50-character cap on each item (ISS-615,
+ * FB-205). A bound on a path whose type is wrong measured nothing the schema asks for, so only the
+ * type fault is said there.
+ */
+export function dropBoundsOfWrongType(error: z.core.$ZodError): void {
+  const wrong = new Set(
+    error.issues.filter((i) => i.code === 'invalid_type').map((i) => jsonPointer(i.path)),
+  );
+  if (wrong.size === 0) return;
+  const kept = error.issues.filter(
+    (i) => !((i.code === 'too_big' || i.code === 'too_small') && wrong.has(jsonPointer(i.path))),
+  );
+  error.issues.splice(0, error.issues.length, ...kept);
+}
+
 // the API contract reads a route's inputs off its middleware, not off a second description
 export const zValidator = ((...args: Args) => {
   const [target, declaredSchema, hook, ...rest] = args;
@@ -204,6 +222,7 @@ export const zValidator = ((...args: Args) => {
   const shape = (hook && shapes.get(hook)) ?? (hook ? null : { code: 'BAD_REQUEST' });
   // a route's own hook answers first; one that lets a failure through gets the shared answer
   const answer = (async (r: Failed, c: Context) => {
+    if (r.error) dropBoundsOfWrongType(r.error);
     const own = shape ? undefined : await (hook as (r: Failed, c: Context) => unknown)(r, c);
     if (own !== undefined || r.success) return own;
     const unknown =

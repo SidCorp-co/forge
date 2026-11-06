@@ -1,4 +1,8 @@
 import { GOAL_LABEL_WORDS } from '@forge/contracts/requirement-goal';
+import {
+  VERDICT_EVIDENCE_ITEM_MAX,
+  VERDICT_EVIDENCE_ITEMS_MAX,
+} from '@forge/contracts/verdict-identity';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 import { TRACE_ACT } from './workflow-design-guide.js';
@@ -232,7 +236,8 @@ A requirement agreed over a capability that already shipped owes no issue whose 
 it (REQ-45 r3 BC-8). Judge each criterion on the running build at the requirement itself instead:
 **verdicts** \`{ criterion: 'BC-n', verdict, reason?, identity: { kind: 'commit', sha }, evidence, run? }\`
 (\`project.write\`), the commit the live build serves and what the verdict was taken from (a link, or a
-repository path at that commit). Where production declares no source probe, its releases are its
+repository path at that commit): \`evidence\` is a list of strings, each at most ${VERDICT_EVIDENCE_ITEM_MAX} characters, at
+most ${VERDICT_EVIDENCE_ITEMS_MAX} items. Where production declares no source probe, its releases are its
 agent's record by version and no commit is matched: name the release the app reported instead,
 \`identity: { kind: 'release', version: '0.76.0' }\`, one the project recorded as shipped. It counts
 while that release, or a later one at no lower a version, is the newest the record holds. A run sends its \`run\` as it does on an issue verdict, and the

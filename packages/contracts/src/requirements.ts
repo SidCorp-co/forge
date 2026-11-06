@@ -33,6 +33,7 @@ import type {
 	WaitingOn,
 } from "./standing.js";
 import type { StandingTimes } from "./steward.js";
+import { verdictEvidenceSchema } from "./verdict-identity.js";
 import type { CriterionTraceView } from "./workflow-health.js";
 import type { WrittenLang } from "./written-lang.js";
 
@@ -684,7 +685,7 @@ export const recordRequirementVerdictRequestSchema = z.strictObject({
 		])
 		.nullable()
 		.optional(),
-	evidence: z.array(z.string().trim().min(1).max(500)).max(50).optional(),
+	evidence: verdictEvidenceSchema.optional(),
 	/**
 	 * The run recording it, as on an issue verdict (core `issues/criteria/input-schemas.ts` `run`): the box's declared run id, or
 	 * core's session or run id, held to a live run of the calling box on this project.
