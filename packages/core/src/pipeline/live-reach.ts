@@ -17,7 +17,7 @@
 import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
-import { heldByEndedRelease } from '../issues/index.js';
+import { heldByEndedRelease, waitingForReleaseSql } from '../issues/index.js';
 import { shippedReleasesOf } from './release-runs.js';
 
 /** Where merged work waits for a release; a release also carries an issue closed met in scope
@@ -99,20 +99,33 @@ async function unshippedClaimsOf(
   );
 }
 
+/** Which of these issues wait for a release (`waitingForReleaseSql`): at the gate, or closed met in scope. */
+async function waitingAmong(ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(inArray(issues.id, [...ids]), waitingForReleaseSql(sql`${issues}`)));
+  return new Set(rows.map((r) => r.id));
+}
+
 /** Who owes the release that places work landed after the newest shipped one, by the issue's status. */
-function nextReleaseOwed(status: string): string {
+function nextReleaseOwed(status: string, waiting: boolean): string {
   if (status === AWAITING_RELEASE) {
     return 'the next release on this project, which takes it from `awaiting_release`';
   }
-  if (status === 'closed') {
+  if (status === 'closed' && waiting) {
     return 'the next release on this project: its criteria were met in scope and it closed outside a release, and a release carries such an issue as it stands at `closed`';
+  }
+  if (status === 'closed') {
+    return 'a release naming it: it was closed outside one, before a release could carry an issue closed met in scope, so only reopening it brings it back to a release';
   }
   return `its release, once it is at \`awaiting_release\`: it is \`${status}\``;
 }
 
 /** Who owes the record of which shipped release holds a landing no release names, by status. */
-function shippedInOwed(status: string): string {
-  if (status === AWAITING_RELEASE || status === 'closed') {
+function shippedInOwed(status: string, waiting: boolean): string {
+  if (waiting) {
     return 'its agent, who reads with git which shipped release holds the landing and records it: POST /api/projects/:id/shipped-in-records { issueId, version, evidence }, `version: null` where none does';
   }
   return `no door records it for a \`${status}\` issue: a shipped-in record is taken only for an issue waiting for a release, at \`awaiting_release\` or closed met in scope`;
@@ -120,7 +133,7 @@ function shippedInOwed(status: string): string {
 
 /** One issue's answer where no shipped release carries it, against the project's shipped cuts. */
 function offOrUnrecorded(
-  issue: LiveReachIssue,
+  issue: LiveReachIssue & { waiting: boolean },
   placed: Placed,
   landedAt: Date,
   cuts: readonly ShippedCut[],
@@ -150,7 +163,7 @@ function offOrUnrecorded(
       ...placed,
       state: 'not_on_live',
       why: `it landed at ${placed.landedAt}, after ${newest.version} (the newest release shipped) was cut at ${newest.cutAt.toISOString()}`,
-      owes: nextReleaseOwed(issue.status),
+      owes: nextReleaseOwed(issue.status, issue.waiting),
     };
   }
   const after = cuts.find((r) => r.cutAt >= landedAt) ?? newest;
@@ -159,7 +172,7 @@ function offOrUnrecorded(
     state: 'unrecorded',
     cause: 'not_named',
     missing: `a record of which release holds its landing: ${after.version} was cut after it landed and does not name it`,
-    owes: shippedInOwed(issue.status),
+    owes: shippedInOwed(issue.status, issue.waiting),
   };
 }
 
@@ -178,10 +191,11 @@ export async function liveReachOfIssues(
   );
   if (!deploysFrom || merged.length === 0) return out;
   const ids = merged.map((m) => m.issue.id);
-  const [shipped, cuts, claims] = await Promise.all([
+  const [shipped, cuts, claims, waiting] = await Promise.all([
     shippedReleasesOf(projectId, ids),
     shippedCuts(projectId),
     unshippedClaimsOf(ids),
+    waitingAmong(ids),
   ]);
   for (const { issue, landedAt } of merged) {
     const placed: Placed = {
@@ -198,7 +212,13 @@ export async function liveReachOfIssues(
             state: 'on_live',
             release: { version: release.version, shippedAt: release.at },
           }
-        : offOrUnrecorded(issue, placed, landedAt, cuts, claims.get(issue.id)),
+        : offOrUnrecorded(
+            { ...issue, waiting: waiting.has(issue.id) },
+            placed,
+            landedAt,
+            cuts,
+            claims.get(issue.id),
+          ),
     );
   }
   return out;
