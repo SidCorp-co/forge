@@ -9,7 +9,7 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-## [0.4.0-dev.551] - 2026-11-06
+## [0.4.0-dev.552] - 2026-11-07
 
 Activity clears settled decisions promptly, and contract approvals reach their approver's Needs you
 
