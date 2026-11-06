@@ -11,7 +11,7 @@ Maintains a project's curated product knowledge as Mermaid visual entries. Write
 
 ## Modes
 
-- **bootstrap** (default) — full sweep: read existing entries, read shipped issues for evidence, identify gaps, ask the human only for gaps that cannot be inferred. Write/refresh all entry kinds.
+- **bootstrap** (default) — full sweep: read existing entries, read closed issues for evidence, identify gaps, ask the human only for gaps that cannot be inferred. Write/refresh all entry kinds.
 - **refresh** — incremental: read recently closed/released issues since the last run, update existing entries that those issues affect, add missing scenarios.
 - **gap [scenarioName]** — produce or fill exactly ONE scenario entry. Ask the human for the scenario name if not provided.
 
@@ -22,7 +22,7 @@ Before writing ANY node into a scenario or workflow diagram:
 1. Every node must map to one of: a real issue id, an acceptance criterion phrase, or a user-facing route string (e.g. `/projects/:slug/library`).
 2. **NO** `file:line`, function names, module names, or source-code identifiers as nodes. If a node names a file or function, DELETE it — replace with the user-facing action it implements.
 3. Tag each entry:
-   - `confidence: "verified"` when a shipped (closed/released) issue directly backs the node.
+   - `confidence: "verified"` when a closed issue (its criteria met in scope) directly backs the node. Whether its change is live is the release's to say, not the issue's.
    - `confidence: "inferred"` when derived from comments, ACs, or reasonable inference.
 4. Store backing issue ids in `metadata.relatedIssueIds: string[]`.
 
@@ -33,7 +33,7 @@ Violating this gate produces diagrams that rot when the code changes. Product di
 Read sources in this order; later sources are used only when earlier ones are insufficient:
 
 1. **Existing knowledge entries** — `forge-runner api projects/$FORGE_PROJECT_ID/knowledge` (then `…/knowledge/<slug>` for full bodies). These are already curated; update rather than replace.
-2. **Shipped issues** — `forge-runner api 'projects/$FORGE_PROJECT_ID/issues?status=closed'`. Read `acceptanceCriteria`, `description`, and comments for evidence of real user flows.
+2. **Closed issues**, whose criteria were met — `forge-runner api 'projects/$FORGE_PROJECT_ID/issues?status=closed'`. Read `acceptanceCriteria`, `description`, and comments for evidence of real user flows.
 3. **Semantic search** — `forge-runner api projects/$FORGE_PROJECT_ID/knowledge/search -X POST -d '{"scope":"all","query":"<topic>"}'` for context not in the entry list.
 4. **The human** — ask ONLY for gaps that none of the above sources can fill. Batch all gap questions into a single message.
 
@@ -56,10 +56,10 @@ Each entry body is a Markdown document containing:
 ### bootstrap mode
 
 1. `forge-runner api projects/$FORGE_PROJECT_ID/knowledge` — read all existing entries.
-2. `forge-runner api 'projects/$FORGE_PROJECT_ID/issues?status=closed'` — read shipped issues (up to 50, newest first). For each, read `acceptanceCriteria` + comments to extract user flows.
+2. `forge-runner api 'projects/$FORGE_PROJECT_ID/issues?status=closed'` — read closed issues, whose criteria were met (up to 50, newest first). For each, read `acceptanceCriteria` + comments to extract user flows.
 3. Build a map: feature area → user journeys → nodes. Apply verification gate.
 4. Identify gaps (feature areas with no scenario entry, unclear workflows).
-5. If gaps remain, ask the human: "I found the following gaps I can't infer from shipped issues: [list]. Can you describe [gap1]? [gap2]?" — batch all questions.
+5. If gaps remain, ask the human: "I found the following gaps I can't infer from closed issues: [list]. Can you describe [gap1]? [gap2]?" — batch all questions.
 6. Write entries:
    - `overview` mindmap (upsert slug `product-overview`)
    - One `scenario` per identified user journey (slug: kebab of journey name, e.g. `issue-triage-flow`)

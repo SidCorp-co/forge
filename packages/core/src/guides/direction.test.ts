@@ -256,4 +256,16 @@ describe('an issue is one outcome, and each defect seen has one place', () => {
     expect(guide).toContain('**It stands alone** — record it as debt for the Audit');
     expect(guide).toContain('a red recorded on the debt ledger is discharged to the Audit');
   });
+
+  it('the release prompt writes the release mark, and closes issues only today', () => {
+    const prompt = flat(releaseBatchStatePrompt);
+    expect(prompt).not.toContain('`finish` is the ONLY thing in Forge that writes `closed`');
+    expect(prompt).toContain(
+      "`finish` writes the release's mark — this batch was released — on the release record",
+    );
+    expect(prompt).toContain(
+      'and today it is also the only thing in Forge that writes `closed` on the issues it claimed',
+    );
+    expect(prompt).toContain('Confirmed on the target environment is a separate mark');
+  });
 });
