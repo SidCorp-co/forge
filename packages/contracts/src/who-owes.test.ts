@@ -66,10 +66,8 @@ describe("who owes an act (ISS-1058): one table, serious or routine", () => {
 			by: "person",
 			because: "asked",
 		});
-		expect(whoOwes("mockup.accept", OPEN)).toMatchObject({
-			by: "person",
-			because: "direction",
-		});
+		// no act kind is serious by direction alone today: a person's direction reaches them as a question
+		expect(whoOwes("mockup.accept", OPEN).by).toBe("master");
 	});
 
 	it("names a person where what the act carries cannot be undone", () => {

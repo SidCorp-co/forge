@@ -27,6 +27,7 @@ import {
   createTestRunSession,
   createTestUser,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let app: Awaited<typeof import('../../src/index.js')>['app'];
 let ownerId: string;
@@ -83,6 +84,9 @@ interface World {
 /** A project holding one of each kind a person decides, the suggestion asked by the member. */
 async function world(): Promise<World> {
   const { id: projectId } = await createTestProject(ownerId);
+  // ISS-1058: a person decides these only where the project's policy keeps the gate on; routine
+  // acts on a project that turned none on are the master's (`who-owes.ts`)
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
   await addProjectMember(projectId, memberId, 'member');
   const say = as(projectId);
   const issue = await createTestIssue(projectId, ownerId, 1, {
@@ -247,18 +251,10 @@ describe('the Needs you read lists every approval waiting on the viewer, and onl
   it('lists to a member only what they may decide: never a suggestion, mockup, revision or preview', async () => {
     const w = await world();
     const read = ok(await as(w.projectId)('member', 'GET', READ));
-    // this project's approvals switch leaves a design to any writer, so the design is the member's to decide
-    expect(read.decisions.map((d: Doc) => `${d.entity} ${d.key}`)).toEqual([
-      'workflow post-discharge',
-    ]);
-    expect(read.total).toBe(1);
-    // and what it lists the member can press: the route agrees they may decide it
-    const approve = read.decisions[0].answers.find((a: Doc) => a.body?.decision === 'approve');
-    ok(await press('member', approve));
-    expect(ok(await as(w.projectId)('member', 'GET', READ))).toMatchObject({
-      decisions: [],
-      total: 0,
-    });
+    // ISS-1058: this world is strict, so its designs gate asks a holder of workflow-designs.approve,
+    // which the member is not: nothing here is theirs to decide
+    expect(read.decisions).toEqual([]);
+    expect(read.total).toBe(0);
   }, 60_000);
 
   // ISS-618 c3: /needs-you listed 17 asks while the decisions read counted 52, its 35 folded

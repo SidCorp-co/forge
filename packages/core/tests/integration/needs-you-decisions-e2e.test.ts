@@ -27,7 +27,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
-import { underStrict } from '../helpers/project-controls.js';
+import { declareControls, underStrict } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -116,6 +116,9 @@ beforeAll(async () => {
   ({ askQuestion: ask } = await import('../../src/questions/index.js'));
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // ISS-1058: a person decides these only where the project's policy keeps the gate on; routine
+  // acts on a project that turned none on are the master's (`who-owes.ts`)
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
   authorId = (await createTestUser({ verified: true })).id;
   askerId = (await createTestUser({ verified: true })).id;
   await addProjectMember(projectId, authorId, 'member');

@@ -205,6 +205,8 @@ describe('a draft release reads its gate as words', () => {
   });
 
   it('waits on an admin to cut it once nothing holds it, and offers the cut to an admin only', async () => {
+    // ISS-1058: a cut is a person's only where the project keeps that gate on (strict)
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     const owner = await detail('owner', '0.1.0');
     // only an admin cuts, so the cut is their one-click decision in Needs you (REQ-48 BC-11)
@@ -250,6 +252,8 @@ const decisions = async (who: keyof typeof tokens) => {
 // through the release page's own door (REQ-48 BC-11, `release.cut`)
 describe('a draft release nothing holds is its admin’s cut, in Needs you', () => {
   it('offers the holder the cut with the issues it carries, and the press cuts it', async () => {
+    // ISS-1058: a cut is a person's only where the project keeps that gate on (strict)
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     const id = await fx.insertIssue('awaiting_release', {
       section: 'Added',
       userFacing: 'A new thing',
@@ -281,6 +285,8 @@ describe('a draft release nothing holds is its admin’s cut, in Needs you', () 
   });
 
   it('is not offered to a member who may not cut, whose release waits on its holder', async () => {
+    // ISS-1058: a cut is a person's only where the project keeps that gate on (strict)
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     expect(await decisions('member')).toEqual([]);
     expect(await detail('member', '0.1.0')).toMatchObject({

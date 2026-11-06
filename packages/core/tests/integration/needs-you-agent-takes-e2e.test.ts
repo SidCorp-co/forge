@@ -1,7 +1,8 @@
 // REQ-68 BC-3, judged red on 0.4.0-dev.325 (K98): Needs you lists only decisions the agent may not
 // take. The decisions read left the master's out as `agent_takes`, but `GET /needs-you`, which
 // Development's Needs you list and the menu badges draw, still listed every one of them as the
-// person's. Both reads now list one set: what the agent takes is in neither. A mockup on an issue
+// person's. Both reads now list one set: what the agent takes is in neither. Who takes it is the
+// one rule's (ISS-1058, `who-owes.ts`): the project's policy, never whether a master stands. A mockup on an issue
 // is listed on the requirement the issue delivers, never as the issue's (REQ-68 BC-4, BC-6).
 //
 // @direct-test-of packages/core/src/development/needs-you-list.ts
@@ -19,6 +20,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 /** The project's master: the agent account its panes write under, when the test pairs one. */
 const master = vi.hoisted(() => ({ id: null as string | null }));
@@ -53,8 +55,9 @@ afterAll(async () => {
  * A project where the member proposed a mockup on an issue delivering REQ-1, which the owner approves
  * or declines on REQ-1.
  */
-async function proposed() {
+async function proposed(profile: 'standard' | 'strict' = 'standard') {
   const { id: projectId } = await createTestProject(ownerId);
+  await declareControls(projectId, ownerId, { gates: { profile } });
   await addProjectMember(projectId, memberId, 'member');
   await addProjectMember(projectId, agentId, 'admin');
   const issue = await createTestIssue(projectId, ownerId, 1, {
@@ -82,9 +85,10 @@ async function proposed() {
 const asks = (needs: Doc) => (needs.items as Doc[]).filter((i) => i.space === 'asks');
 
 describe('Needs you lists only decisions the agent may not take (REQ-68 BC-3)', () => {
-  it('lists the mockup as the owner’s on both reads while no master may take it', async () => {
+  // ISS-1058: whether a master stands no longer decides it; the project's own policy does
+  it('lists the mockup as the owner’s on both reads where the project’s policy keeps it theirs', async () => {
     master.id = null;
-    const { say, issueKey, reqKey } = await proposed();
+    const { say, issueKey, reqKey } = await proposed('strict');
     const read = ok(await say('owner', 'GET', '/needs-you/decisions'));
     const mockup = (read.decisions as Doc[]).find((d) => d.title === 'checkout.html');
     expect(mockup?.area).toBe('requirements');

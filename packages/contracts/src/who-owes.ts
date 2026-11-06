@@ -185,14 +185,14 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		personWhen: [STRICT],
 	},
 	"mockup.accept": {
-		serious: true,
-		because: "direction",
-		why: "a mockup decides what the product looks like to its users: product direction (REQ-49)",
+		serious: false,
+		why: "accepting a mockup of the agents' own work is a design approval, the master's unless the project's designs gate asks a person",
+		personWhen: [gate("designs")],
 	},
 	"mockup.return": {
-		serious: true,
-		because: "direction",
-		why: "returning a mockup decides what the product looks like to its users: product direction (REQ-49)",
+		serious: false,
+		why: "returning a mockup of the agents' own work is a design approval, the master's unless the project's designs gate asks a person",
+		personWhen: [gate("designs")],
 	},
 	"release.record": {
 		serious: false,

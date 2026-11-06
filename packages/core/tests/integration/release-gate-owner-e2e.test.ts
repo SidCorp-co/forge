@@ -148,8 +148,10 @@ describe('a draft release held by a missing release note', () => {
     const id = await fx.insertIssue('awaiting_release', null);
     await nameDraft();
     const { nudges, first, second } = await twoSweeps();
-    expect(first.work.owed).toBe(1);
+    // the note, and the draft's cut, which is routine and the master's (ISS-1058)
+    expect(first.work.owed).toBe(2);
     expect(first.work.owedLine).toContain(`with no release note (${await keyOf(id)} ${id})`);
+    expect(first.work.owedLine).toContain('0.1.0: cut 0.1.0');
     expect(first.work.owedLine).toContain('RELEASE_RECORD_MISSING');
     expect(second.work.digest).toBe(first.work.digest);
     expect(nudges).toBe(1);
@@ -167,19 +169,20 @@ describe('a draft release held by a missing release note', () => {
       },
     });
     const after = await sweep(before.work.digest);
-    expect(after.work.owed).toBe(0);
+    // what stays is the cut, routine and the master's on a project that keeps no person's gate on
+    // (ISS-1058), never the owner's one-click decision
+    expect(after.work.owed).toBe(1);
     expect(after.work.owedLine).not.toContain('release note');
-    expect(after.verdict.nudge).toBe(false);
-    // only an admin cuts, so the cut is their one-click decision in Needs you (REQ-48 BC-11)
+    expect(after.work.owedLine).toContain('0.1.0: cut 0.1.0');
     expect(await draft()).toMatchObject({
-      attentionGroup: 'needs_you',
-      waitingOn: { kind: 'you', act: 'cut 0.1.0' },
+      attentionGroup: 'waiting',
+      waitingOn: { kind: 'agent', who: 'Master', act: 'cut 0.1.0' },
     });
   });
 });
 
 describe('an issue at the gate that carries its note', () => {
-  it('is owed nothing, and wakes nobody across two sweeps', async () => {
+  it('owes the master nothing on the issue, only the draft’s cut, and wakes it once across two sweeps', async () => {
     const id = await fx.insertIssue('awaiting_release', {
       section: 'Added',
       title: 'A new thing',
@@ -187,9 +190,11 @@ describe('an issue at the gate that carries its note', () => {
     });
     await nameDraft();
     const { nudges, first } = await twoSweeps();
-    expect(first.work.owed).toBe(0);
+    // ISS-1058: the cut is routine, so it is the master's owed work and a master is placed for it
+    expect(first.work.owed).toBe(1);
+    expect(first.work.owedLine).toContain('0.1.0: cut 0.1.0');
     expect(first.work.owedLine).not.toContain(id);
-    expect(nudges).toBe(0);
+    expect(nudges).toBe(1);
   });
 });
 

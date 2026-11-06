@@ -37,6 +37,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -280,9 +281,11 @@ describe('a re-pin the master may take is asked of the master, and is on no pers
   });
 });
 
-describe('a re-pin the master may not take is the person’s, and the master is asked nothing (c2)', () => {
-  it('Needs you lists it for the owner once the master holds no write', async () => {
-    await setMasterRole('viewer');
+// ISS-1058: whether the master's account holds a write no longer decides who owes a routine act; the
+// project's own policy does, so the re-pin turns the person's once the project asks for control
+describe('a re-pin the project keeps for a person is the person’s, and the master is asked nothing (c2)', () => {
+  it('Needs you lists it for the owner once the project is strict', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     const read = await needsYou();
     expect(read.listed).toContain(repinPersonOwes);
     expect(read.masterTakes).not.toContain(repinPersonOwes);

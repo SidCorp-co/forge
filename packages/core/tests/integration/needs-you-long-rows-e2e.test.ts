@@ -27,6 +27,7 @@ import {
   createTestRunSession,
   createTestUser,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 const TITLE_MAX = 500;
 const words = (n: number, word: string) =>
@@ -85,6 +86,9 @@ function expectCutAtWord(title: string, source: string) {
  */
 async function world(n: number, opts: { longTitles: boolean }) {
   const { id: projectId } = await createTestProject(ownerId);
+  // ISS-1058: a person decides these only where the project's policy keeps the gate on; routine
+  // acts on a project that turned none on are the master's (`who-owes.ts`)
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
   await addProjectMember(projectId, memberId, 'member');
   const at = (p: string) => `/api/projects/${projectId}${p}`;
   const deviceId = await createTestDevice(ownerId);
