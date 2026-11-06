@@ -116,3 +116,69 @@ describe('a trim never leaves a cut timestamp, a dangling marker or a bare list 
     expect(cutHeldSentences(text, ['2.5 issues'])).toBe('ISS-5 is open.');
   });
 });
+
+describe('a stop that ends no sentence, and a span or list a cut would split (judge K66 on dev.304, REQ-41 BC-3)', () => {
+  it.each([
+    [
+      'Several decisions wait, e.g. 12 on drafts from last week. ISS-5 is open.',
+      '12 on drafts',
+      'ISS-5 is open.',
+    ],
+    [
+      'There are approx. 59 decisions waiting on you. ISS-5 is open.',
+      '59 decisions',
+      'ISS-5 is open.',
+    ],
+    [
+      'The steward holds the rest, i.e. 7 questions it asked today. ISS-5 is open.',
+      '7 questions',
+      'ISS-5 is open.',
+    ],
+    [
+      'Open drafts went from 3 vs. 9 last week to none now. ISS-5 is open.',
+      '9 last week',
+      'ISS-5 is open.',
+    ],
+    [
+      'ISS-1, ISS-2, v.v. đều chờ bạn, tổng cộng 59 quyết định. ISS-5 đang mở.', // i18n-allow: the Vietnamese abbreviation judge K66 planted
+      '59 quyết định', // i18n-allow: the Vietnamese claim judge K66 planted
+      'ISS-5 đang mở.', // i18n-allow: the Vietnamese sentence judge K66 planted
+    ],
+    ['Run `forge needs-you.` to see 59 decisions. ISS-5 is open.', '59', 'ISS-5 is open.'],
+  ])(
+    'cuts %j whole on its claim, never at the stop of an abbreviation or code',
+    (text, quote, kept) => {
+      expect(cutHeldSentences(text, [quote])).toBe(kept);
+    },
+  );
+
+  it('keeps a whole sentence an abbreviation sits in when another sentence holds the claim', () => {
+    const text =
+      'Several are waiting, e.g. ISS-5 and ISS-6. There are 12 decisions open. ISS-7 is open.';
+    expect(cutHeldSentences(text, ['12 decisions'])).toBe(
+      'Several are waiting, e.g. ISS-5 and ISS-6. ISS-7 is open.',
+    );
+  });
+
+  it('takes a bold span covering two sentences with both, and keeps the checked sentences beside it', () => {
+    expect(
+      cutHeldSentences('**Needs you holds 59 decisions. Most are old.** ISS-5 is open.', ['59']),
+    ).toBe('ISS-5 is open.');
+    expect(
+      cutHeldSentences(
+        'ISS-4 is open. **Needs you holds 59 decisions. Most are old.** ISS-5 is open.',
+        ['59'],
+      ),
+    ).toBe('ISS-4 is open. ISS-5 is open.');
+  });
+
+  it('drops the list a cut intro introduced, never leaving it bare', () => {
+    const text = 'The 9 issues agreed:\n- ISS-1\n- ISS-2\n  - its note\n\nISS-5 is open.';
+    expect(cutHeldSentences(text, ['9 issues'])).toBe('ISS-5 is open.');
+  });
+
+  it('keeps a list whose intro stands, and the intro of a list it cut an item of', () => {
+    const text = 'The issues agreed:\n- ISS-1 has 59 decisions\n- ISS-2\n\nISS-5 is open.';
+    expect(cutHeldSentences(text, ['59'])).toBe('The issues agreed:\n- ISS-2\n\nISS-5 is open.');
+  });
+});

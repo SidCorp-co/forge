@@ -155,6 +155,31 @@ describe('a sentence held by a rule naming no read is cut, and the rest still an
     );
     expect(part).toEqual({ shown: CHECKED, held: [{ claim: 'figure', count: 1 }] });
   });
+
+  // judge K66 on dev.304 (k66-c5-checked-part-265d782.txt): the held path showed "Several decisions
+  // wait, e.g. ISS-5 is open.", a broken sentence that also reads as a new claim
+  it.each([
+    ['Several decisions wait, e.g. 12 on drafts from last week.', '12'],
+    ['ISS-1, ISS-2, v.v. đều chờ bạn, tổng cộng 59 quyết định.', '59'], // i18n-allow: the Vietnamese reply judge K66 planted
+  ])(
+    'cuts %j whole, past its abbreviation, and shows the checked sentence only',
+    async (held, quote) => {
+      const { checkedPart } = await import('./screened-reply.js');
+      const refused = {
+        rule: 'figures-name-source',
+        why: `the reply states the figure ${quote} and names no read it came from`,
+        quote,
+        shape: 's',
+        example: 'e',
+      };
+      const part = await checkedPart(
+        `${held} ${CHECKED}`,
+        [refused],
+        async () => ({ ok: true }) as never,
+      );
+      expect(part).toEqual({ shown: CHECKED, held: [{ claim: 'figure', count: 1 }] });
+    },
+  );
 });
 
 describe('a false opening no rewrite drops is taken off, and the answer goes out whole (REQ-41 BC-30)', () => {

@@ -84,19 +84,55 @@ function itemAt(text: string, line: Span): Span {
   return { start: line.start, stop };
 }
 
-/** Where a sentence stops at `i`: its stop, then any closing marks, before a space or the line's end. */
-function sentenceStopAt(text: string, i: number, lineStop: number): number | null {
+/**
+ * Words whose own stop never ends a sentence: "e.g.", "i.e.", "vs.", "approx.", "cf." and
+ * Vietnamese "v.v." (etc.) or "vd." (e.g.). Judge K66 on dev.304: "Several decisions wait, e.g. 12 on
+ * drafts from last week." cut on its claim showed "Several decisions wait, e.g. ISS-5 is open."
+ */
+const ABBREVIATIONS: ReadonlySet<string> = new Set([
+  'e.g.',
+  'i.e.',
+  'vs.',
+  'approx.',
+  'cf.',
+  'incl.',
+  'v.v.',
+  'vd.',
+]);
+
+/** The word ending at `i` (its stop included), lowercased, without an opening bracket, quote or mark. */
+function wordEndingAt(text: string, i: number, lineStart: number): string {
+  let from = i;
+  while (from > lineStart && !/\s/.test(text.charAt(from - 1))) from -= 1;
+  return text
+    .slice(from, i + 1)
+    .replace(/^[([{"“‘'*_`]+/u, '')
+    .toLowerCase();
+}
+
+/** Whether `i` sits inside a code span its line opened before it: a stop there is code, not prose. */
+function inCode(text: string, i: number, lineStart: number): boolean {
+  return (text.slice(lineStart, i).match(/`/g) ?? []).length % 2 === 1;
+}
+
+/**
+ * Where a sentence stops at `i`: its stop, then any closing marks, before a space or the line's end.
+ * A stop inside a code span or closing an abbreviation is not one.
+ */
+function sentenceStopAt(text: string, i: number, line: Span): number | null {
   if (!/[.!?…]/.test(text.charAt(i))) return null;
+  if (inCode(text, i, line.start)) return null;
+  if (text.charAt(i) === '.' && ABBREVIATIONS.has(wordEndingAt(text, i, line.start))) return null;
   let j = i + 1;
-  while (j < lineStop && CLOSERS.test(text.charAt(j))) j += 1;
-  return j === lineStop || /\s/.test(text.charAt(j)) ? j : null;
+  while (j < line.stop && CLOSERS.test(text.charAt(j))) j += 1;
+  return j === line.stop || /\s/.test(text.charAt(j)) ? j : null;
 }
 
 /** The sentence holding `at`..`end` inside its line, with the space after it. */
 function sentenceAt(text: string, at: number, end: number, line: Span): Span {
   let start = line.start;
   for (let i = at - 1; i >= line.start; i -= 1) {
-    const stop = sentenceStopAt(text, i, line.stop);
+    const stop = sentenceStopAt(text, i, line);
     if (stop !== null && stop <= at) {
       start = stop;
       break;
@@ -104,7 +140,7 @@ function sentenceAt(text: string, at: number, end: number, line: Span): Span {
   }
   let stop = line.stop;
   for (let i = end; i < line.stop; i += 1) {
-    const found = sentenceStopAt(text, i, line.stop);
+    const found = sentenceStopAt(text, i, line);
     if (found !== null) {
       stop = found;
       break;
@@ -192,6 +228,102 @@ const without = (text: string, spans: readonly Span[]): string => {
   return out + text.slice(from);
 };
 
+/** An emphasis or code span of one line: where its opening and closing marks sit, and their width. */
+interface Pair {
+  open: number;
+  close: number;
+  width: number;
+}
+
+/** The bold and code spans of `line`, each opening mark paired with the next of its kind. */
+function pairsIn(text: string, line: Span): Pair[] {
+  const own = text.slice(line.start, line.stop);
+  const pairs: Pair[] = [];
+  for (const [re, width] of [
+    [/\*\*/g, 2],
+    [/`/g, 1],
+  ] as const) {
+    const at = [...own.matchAll(re)].map((m) => line.start + (m.index ?? 0));
+    for (let k = 0; k + 1 < at.length; k += 2) {
+      pairs.push({ open: at[k] as number, close: at[k + 1] as number, width });
+    }
+  }
+  return pairs;
+}
+
+/** Where the sentence holding `at` starts inside its line. */
+function sentenceStartOf(text: string, at: number, line: Span): number {
+  for (let i = at - 1; i >= line.start; i -= 1) {
+    const stop = sentenceStopAt(text, i, line);
+    if (stop !== null && stop <= at) return stop;
+  }
+  return line.start;
+}
+
+/** Where the sentence holding `from`..`past` stops inside its line: the first stop at or after `past`. */
+function sentenceStopOf(text: string, from: number, past: number, line: Span): number {
+  for (let i = from; i < line.stop; i += 1) {
+    const stop = sentenceStopAt(text, i, line);
+    if (stop !== null && stop >= past) return stop;
+  }
+  return line.stop;
+}
+
+/**
+ * A cut that splits a bold or code span widened to the sentences holding the whole span, so one span
+ * covering two sentences goes with both and no more (judge K66 on dev.304: "**Needs you holds 59
+ * decisions. Most are old.** ISS-5 is open." held on 59 took the whole line and showed nothing).
+ */
+function acrossSpans(text: string, cut: Span, line: Span): Span {
+  const pairs = pairsIn(text, line);
+  const out = { ...cut };
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const p of pairs) {
+      const opens = p.open >= out.start && p.open < out.stop;
+      const closes = p.close >= out.start && p.close < out.stop;
+      if (opens === closes) continue;
+      const start = Math.min(out.start, sentenceStartOf(text, p.open, line));
+      const stop = Math.max(out.stop, sentenceStopOf(text, out.stop - 1, p.close + p.width, line));
+      if (start !== out.start || stop !== out.stop) {
+        out.start = start;
+        out.stop = stop;
+        moved = true;
+      }
+    }
+  }
+  while (out.start < out.stop && /[ \t]/.test(text.charAt(out.start))) out.start += 1;
+  while (out.stop < line.stop && /[ \t]/.test(text.charAt(out.stop))) out.stop += 1;
+  return out;
+}
+
+/**
+ * The list a cut's colon introduced, where the cut took the line's last words and they end with
+ * one: the items (and the lines nested under them) right after it, blank lines before them
+ * skipped. A list is never left to open a reply with nothing saying what it is (judge K66 on
+ * dev.304: "The 9 issues agreed:" cut left "- ISS-1\n- ISS-2").
+ */
+function introducedList(text: string, cut: Span): Span | null {
+  const last = lineAt(text, Math.max(cut.start, cut.stop - 1));
+  if (text.slice(cut.stop, last.stop).trim() !== '') return null;
+  if (!text.slice(cut.start, cut.stop).trimEnd().endsWith(':')) return null;
+  let at = last.stop;
+  while (at < text.length && text.slice(at, lineAt(text, at).stop).trim() === '') {
+    at = lineAt(text, at).stop;
+  }
+  let stop = at;
+  while (stop < text.length) {
+    const next = lineAt(text, stop);
+    const body = text.slice(next.start, next.stop);
+    const item =
+      ITEM_LINE.test(body) && !HEADING_LINE.test(body) && !body.trimStart().startsWith('|');
+    if (!item && !(stop > at && body.trim() && indentOf(body) > 0)) break;
+    stop = next.stop;
+  }
+  return stop > at ? { start: last.stop, stop } : null;
+}
+
 /** A heading with nothing left under it before the next heading or the end goes too. */
 function withoutBareHeadings(text: string): string {
   const lines = text.split('\n');
@@ -229,14 +361,28 @@ export function cutHeldSentences(text: string, quotes: readonly string[]): strin
     const line = lineAt(text, s.start);
     lines.set(line.start, line);
   }
-  const widened = [...lines.values()].filter((line) => {
-    const inLine = cuts
+  const brokenIn = (line: Span, within: readonly Span[]): boolean => {
+    const inLine = within
       .filter((s) => s.start < line.stop && s.stop > line.start)
       .map((s) => ({ start: Math.max(s.start, line.start), stop: Math.min(s.stop, line.stop) }))
       .map((s) => ({ start: s.start - line.start, stop: s.stop - line.start }));
     return brokenRest(without(text.slice(line.start, line.stop), inLine));
-  });
+  };
+  const widened: Span[] = [];
+  for (const line of lines.values()) {
+    if (!brokenIn(line, cuts)) continue;
+    // a split span first takes the sentences holding it whole; only a line still broken goes whole
+    const spanned = cuts.map((c) =>
+      c.start >= line.start &&
+      c.start < line.stop &&
+      !ITEM_LINE.test(text.slice(line.start, line.stop))
+        ? acrossSpans(text, c, line)
+        : c,
+    );
+    widened.push(...(brokenIn(line, spanned) ? [line] : spanned));
+  }
   cuts = merged([...cuts, ...widened]);
+  cuts = merged([...cuts, ...cuts.flatMap((c) => introducedList(text, c) ?? [])]);
   return withoutBareHeadings(without(text, cuts))
     .split('\n')
     .map((line) => line.replace(/[ \t]{2,}/g, ' ').trimEnd())
