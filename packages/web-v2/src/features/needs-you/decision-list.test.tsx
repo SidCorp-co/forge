@@ -261,3 +261,39 @@ describe("a dense list", () => {
     for (const b of answers) expect(b.className, `${b.textContent} is drawn as a primary`).not.toContain("bg-primary");
   });
 });
+
+// ISS-680 c5: core's words call the requirement a decision opens "the requirement", its evidence
+// naming it once. A question is titled by its own prompt, so its row names the requirement it opens by
+// the evidence's title, its key the tooltip: the line saying "the requirement" reads whole beside it.
+describe("a question opening a requirement its evidence names", () => {
+  const asked = needsYouDecisionsSchema.parse({
+    ...READ,
+    total: 1,
+    decisions: [
+      {
+        ...READ.decisions[0],
+        id: `question:${Q}`,
+        entity: "question",
+        key: Q,
+        title: "Which format does the export keep?",
+        changes: "What the run that asked on the requirement goes on with",
+        impact: "The requirement waits on this; it goes on once it has your answer.",
+        evidence: { requirement: { key: "REQ-1", title: "Export keeps every column", revision: 2 }, criteria: { count: 2, codes: [] } },
+      },
+    ],
+  });
+
+  it("names the requirement by its title in the row, its key the tooltip, never visible text", () => {
+    renderWithQuery(<DecisionList read={asked} slug="hop" />);
+    const row = screen.getByTestId("needs-you-decision");
+    expect(within(row).getByRole("link", { name: "Export keeps every column" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-1");
+    expect(within(row).getByTestId("needs-you-decision-stakes")).toHaveTextContent("What the run that asked on the requirement goes on with");
+    expect(row.textContent).not.toContain("REQ-1");
+    expect(row.textContent).not.toContain("Which format does the export keep?");
+  });
+
+  it("names it so in the dense row's tooltip too", () => {
+    renderWithQuery(<DecisionList read={asked} slug="hop" dense />);
+    expect(screen.getByTestId("needs-you-decision-question")).toHaveAttribute("data-item", "Export keeps every column · REQ-1");
+  });
+});
