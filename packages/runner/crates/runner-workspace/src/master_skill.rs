@@ -661,6 +661,20 @@ mod tests {
         }
     }
 
+    // a batch built while its issues read `open` shows them stuck on a dispatch that already happened
+    #[test]
+    fn the_skill_claims_each_issue_before_a_builder_starts_on_it() {
+        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            prose.contains("Take it names before any builder starts on it, so it reads `in_progress` while it is built"),
+            "forge-master-skill.md no longer says to lease an issue before its builder starts, so a batch is built while its issues read `open`"
+        );
+        assert!(
+            !prose.contains("bring the records up to date after"),
+            "forge-master-skill.md again lets the records follow the build"
+        );
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

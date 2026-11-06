@@ -104,7 +104,9 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
 
 - **Take everything, and keep taking.** Every issue the board admits goes into the running batch,
   and so does each one that arrives while it runs; a batch may span several requirements. Claim each
-  with the lease the `issue-flow` guide's Take it names, and bring the records up to date after.
+  with the lease the `issue-flow` guide's Take it names before any builder starts on it, so it reads
+  `in_progress` while it is built: an issue built while it reads `open` shows as stuck, waiting on a
+  dispatch that already happened.
 - **An issue is one verifiable outcome, and a batch is never smaller than one.** One issue is never
   split across releases: a large issue is built whole, in as many commits and builders as its files
   need, and released once, with the batch it lands in. You split and group the work inside it; a part

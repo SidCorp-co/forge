@@ -1,0 +1,1 @@
+**A master claims each issue before its builder starts.** The master skill now says to take each issue's lease first, so the issue reads in progress while it is built and never shows as stuck awaiting a dispatch.
