@@ -64,6 +64,7 @@ import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-
 import {
   provideBetaProvenancePort,
   provideCleanupLandingPort,
+  provideCommitPlacement,
   provideFailReturnPort,
   provideIssuePorts,
   provideReleasedLineReads,
@@ -145,6 +146,7 @@ import {
 import {
   approvalRequired,
   approvalsOfRuns,
+  commitPlacedOnLanding,
   criteriaWeighingOf,
   deliveryHeadsOf,
   judgedBuildOf,
@@ -269,6 +271,7 @@ export function provideWorkPorts(): void {
   provideWorkPipelinePorts();
 
   provideReleasedLineReads(releasedLineReads);
+  provideCommitPlacement({ commitPlacedOnLanding });
   provideIssuePorts({
     projectCreatorOf,
     keepCorrection: recordCorrection,

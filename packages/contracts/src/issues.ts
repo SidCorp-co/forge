@@ -41,6 +41,10 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_CAPTURE_REQUIRED",
 	"VERDICT_IDENTITY_REQUIRED",
 	"VERDICT_COMMIT_NOT_FULL",
+	/** A commit verdict on an issue with a recorded merge, at a commit that neither holds the landing nor is one it descends from (ISS-981). */
+	"VERDICT_COMMIT_OFF_LANDING",
+	/** A commit verdict on an issue with a recorded merge, where whether its commit and the landing hold each other could not be read (ISS-981). */
+	"VERDICT_COMMIT_UNPLACED",
 	"VERDICT_RUNTIME_NOT_FULL",
 	"VERDICT_RUNTIME_UNOBSERVED",
 	/** A release that is no release version (ISS-900). */

@@ -37,6 +37,7 @@ export {
 } from './carriage.js';
 export { citedIssues, issueStandingsBySeq } from './cited-issues.js';
 export { provideCleanupLandingPort } from './cleanup-landing-port.js';
+export { provideCommitPlacement } from './commit-placement.js';
 export {
   assertContractWaitsSettledForIssue,
   type ContractWaitRow,

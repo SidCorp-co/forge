@@ -184,7 +184,12 @@ publishes and the versions of its contracts, and a person is not handed that wor
      \`{ tools: [{ name, description, inputSchema }] }\`; \`cli\` takes
      \`{ program, commands: [{ name, description?, options?: ["--flag"] }] }\`, a command's \`name\` being
      the words after the program (\`record verdict\`); \`openapi\` and \`json-schema\` their JSON.
-   - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`.
+   - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`, a commit on the project's base
+     branch (\`CONTRACT_SOURCE_NOT_LANDED\` otherwise). A \`graphql\`, \`openapi\` or \`json-schema\` artifact
+     is that file as it stands at that commit, byte for byte (\`CONTRACT_SOURCE_FILE_MISSING\`,
+     \`CONTRACT_SOURCE_DIGEST_MISMATCH\`); a \`cli\` or \`mcp-tools\` one is described from the source it
+     names. Both are read from the source host, and where it cannot be read the version is refused
+     \`CONTRACT_SOURCE_UNREAD\`; leave \`sourceRef\` out where the artifact was read from no commit.
    - \`version\` is in the interface's scheme and after the latest; on semver a breaking measurement owes a
      MAJOR and an additive one a MINOR, and a change measured unknown is recorded, unknown, at the
      version you name.

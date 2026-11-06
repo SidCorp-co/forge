@@ -1,4 +1,5 @@
 export { type AgentOwedHold, agentOwedHolds } from './agent-owed-holds.js';
+export { type AncestrySource, ancestrySourceFor } from './ancestry-source.js';
 export { registerReleaseApprovalWake } from './approval-wake.js';
 export {
   approvalRequired,
@@ -95,5 +96,6 @@ export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.j
 export { stewardReleaseFacts } from './steward-release-facts.js';
 export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
+export { type CommitPlacement, commitPlacedOnLanding } from './verdict-commit-placement.js';
 export { deploymentConfirms } from './verify.js';
 export { issueIdsOf } from './versions.js';

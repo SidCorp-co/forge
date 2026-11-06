@@ -109,6 +109,14 @@ const CONTRACT_REFUSAL_CODES = [
 	"CONTRACT_KIND_UNKNOWN",
 	"CONTRACT_KIND_MISMATCH",
 	"CONTRACT_ARTIFACT_NOT_MOCKABLE",
+	/** A version's `sourceRef` names a commit that is not on the project's base branch (ISS-981). */
+	"CONTRACT_SOURCE_NOT_LANDED",
+	/** A version's `sourceRef` names no file the source host holds at that commit (ISS-981). */
+	"CONTRACT_SOURCE_FILE_MISSING",
+	/** A version's artifact differs in sha256 from the file its `sourceRef` names at that commit (ISS-981). */
+	"CONTRACT_SOURCE_DIGEST_MISMATCH",
+	/** Whether a version's `sourceRef` landed, or what its file holds, cannot be read from the source host (ISS-981). */
+	"CONTRACT_SOURCE_UNREAD",
 ] as const;
 
 /** One adopted contract version as Forge read it off a consumer's interface and links (REQ-5 BC-17). */

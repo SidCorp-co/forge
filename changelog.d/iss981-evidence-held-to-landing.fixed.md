@@ -1,0 +1,1 @@
+**Verdicts and contract versions are held to what landed.** A commit verdict on a landed issue must hold, or be held by, its landing; a contract version's sourceRef must be on the base branch and match its file.

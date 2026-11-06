@@ -13,7 +13,6 @@ import {
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
 import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
-import { RefusalError } from '../../lib/refusal.js';
 import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
@@ -44,6 +43,8 @@ import {
   type VerdictRefusal,
   verdictDraftFault,
 } from './verdict-input.js';
+import { offLandingFault } from './verdict-landing.js';
+import { verdictRefused } from './verdict-refused.js';
 import { repeatedVerdict } from './verdict-repeat.js';
 import { declaredRunOf, judgeDoors, judgeRoleFault } from './verdict-role.js';
 
@@ -96,33 +97,6 @@ function verdictRecordFields(args: {
   if (withoutClip) fields.push({ key: 'without-clip', value: withoutClip });
   for (const cited of draft.evidence) fields.push({ key: 'evidence', value: cited });
   return fields;
-}
-
-const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
-  VERDICT_JUDGED_BY_REVIEW: '/judge',
-  VERDICT_JUDGED_BY_QA: '/judge',
-  VERDICT_JUDGE_NOT_RUN_ROLE: '/judge',
-  VERDICT_VALUE_UNKNOWN: '/verdict',
-  VERDICT_SKIP_REASON_REQUIRED: '/reason',
-  VERDICT_CLIP_REQUIRED: '/evidence',
-  VERDICT_CAPTURE_REQUIRED: '/evidence',
-  VERDICT_CRITERION_UNKNOWN: '/criterion',
-  VERDICT_RUN_UNKNOWN: '/run',
-  VERDICT_SESSION_NOT_ADMITTED: '/run',
-};
-
-/** A verdict refused by name, in the envelope both doors answer. */
-export function verdictRefused(refusal: VerdictRefusal): RefusalError {
-  return new RefusalError(
-    [
-      {
-        code: refusal.code,
-        path: refusal.path ?? VERDICT_PATHS[refusal.code] ?? '/identity',
-        detail: refusal.detail,
-      },
-    ],
-    'VERDICT_REFUSED',
-  );
 }
 
 export interface VerdictAuthor {
@@ -200,8 +174,12 @@ async function identityColumns(
   switch (identity.kind) {
     case 'storefront_draft':
       return storefrontColumns(projectId, draft.criterion, identity, readDraft);
-    case 'commit':
-      return { identityKind: 'commit', commitSha: identity.sha.trim().toLowerCase() };
+    case 'commit': {
+      const sha = identity.sha.trim().toLowerCase();
+      const off = await offLandingFault(tx, issue, draft.criterion, sha);
+      if (off) throw verdictRefused(off);
+      return { identityKind: 'commit', commitSha: sha };
+    }
     case 'release':
       return releaseColumns(projectId, draft.criterion, identity.version);
     case 'runtime': {

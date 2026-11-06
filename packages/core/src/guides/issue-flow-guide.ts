@@ -336,7 +336,10 @@ box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a p
 repository at that commit. \`evidence\` is a list of strings, never one string: each item at most
 ${VERDICT_EVIDENCE_ITEM_MAX} characters, so a URL fits, and at most ${VERDICT_EVIDENCE_ITEMS_MAX} items. A path on your own machine is refused. \`skipped\` cites nothing and
 says what was out of reach. A token, key or connection string in the reason or evidence is refused
-\`VERDICT_SECRET\` at its path, as a comment holding one is refused.
+\`VERDICT_SECRET\` at its path, as a comment holding one is refused. Once the issue's merge is
+recorded, a commit verdict names the landing, a later commit holding it, or an earlier commit it
+descends from: any other is refused \`VERDICT_COMMIT_OFF_LANDING\` naming the landing, and one whose
+place neither Forge's landings nor the project's ancestry reader can say \`VERDICT_COMMIT_UNPLACED\`.
 
 A verdict on a criterion the design classes \`observable\` sends the probe it ran, \`probe\` on the same
 body: \`{ kind: 'request', request: { method, path, headers?, body?, as, service? }, expect: { status, bodyIncludes? } }\`

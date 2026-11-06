@@ -33,7 +33,6 @@ const upload = (artifact: unknown, version: string) =>
   say('platform', 'POST', versions(), {
     kind: 'cli',
     artifact: typeof artifact === 'string' ? artifact : JSON.stringify(artifact),
-    sourceRef: 'plugin/src/commands.mjs@867ef128',
     version,
   });
 const file = (endpoint: string) =>

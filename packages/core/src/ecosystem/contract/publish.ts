@@ -5,6 +5,7 @@ import type { EcosystemRefusal } from '../refusals.js';
 import { projectsWhere } from '../store.js';
 import { isIndexed } from './elements.js';
 import { recordVersion } from './record.js';
+import { sourceRefRefusals } from './source-ref.js';
 import { versionsOf } from './store.js';
 import { type UploadBody, uploadRefusals } from './upload-rules.js';
 import type { ContractVersionDocument } from './version-schema.js';
@@ -79,6 +80,10 @@ export async function publishContractVersion(input: PublishInput): Promise<Publi
     ...uploadRefusals({ project, contract, iface: iface?.document ?? null, body, latest }),
   ];
   if (refusals.length > 0 || !pub || !iface) return refused(refusals);
+  const unheld = sourceRef
+    ? await sourceRefRefusals(projectId, sourceRef, body.artifact, pub.type)
+    : [];
+  if (unheld.length > 0) return refused(unheld);
   const origin = { uploadedBy: writer.userId, ...(sourceRef ? { sourceRef } : {}) };
   const out = await recordVersion({
     providerProjectId: projectId,

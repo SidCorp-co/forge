@@ -26,7 +26,8 @@ import {
 } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
 import { appendTracedCriteria } from './tie.js';
-import { recordVerdict, verdictRefused } from './verdict-record.js';
+import { recordVerdict } from './verdict-record.js';
+import { verdictRefused } from './verdict-refused.js';
 
 /**
  * An issue's live criteria with their latest verdicts and the storefront's current drafts, each with

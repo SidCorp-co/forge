@@ -33,7 +33,6 @@ const upload = (artifact: string, version?: string) =>
   say('platform', 'POST', versions(), {
     kind: 'graphql',
     artifact,
-    sourceRef: 'backend-go/internal/pkg/graphql@a376c3b',
     ...(version === undefined ? {} : { version }),
   });
 const levelOf = (doc: Doc, check: string) =>

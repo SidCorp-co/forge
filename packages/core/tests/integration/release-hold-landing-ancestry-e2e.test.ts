@@ -111,15 +111,21 @@ async function shipped(version: string, commit: string, shippedAgo: number): Pro
   `);
 }
 
-/** ISS-171: landed at LANDED 45 minutes ago, before 0.139.0 was stamped shipped, no verdict yet. */
-async function landedBeforeTheStamp(): Promise<string> {
-  const id = await fx.insertIssue('awaiting_release', undefined, true, ['works', 'still works']);
+/** ISS-171, its two criteria written, its merge not yet recorded. */
+const unlanded = () =>
+  fx.insertIssue('awaiting_release', undefined, true, ['works', 'still works']);
+
+/** Its merge recorded at LANDED 45 minutes ago, before 0.139.0 was stamped shipped. */
+async function land(id: string): Promise<string> {
   await db.execute(sql`
     UPDATE issues SET merged_commit_sha = ${LANDED}, merged_at = ${minutesAgo(45)}::timestamptz
      WHERE id = ${id}
   `);
   return id;
 }
+
+/** ISS-171: landed at LANDED 45 minutes ago, before 0.139.0 was stamped shipped, no verdict yet. */
+const landedBeforeTheStamp = async (): Promise<string> => land(await unlanded());
 
 describe('a release hold asks for verdicts only at a commit holding the landing (ISS-997)', () => {
   it('names no commit where production serves a shipped release that does not hold the landing', async () => {
@@ -154,11 +160,13 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
 
   it('earns nothing on passes judged at a served commit that does not hold the landing', async () => {
     await shipped('0.139.0', SERVED, 30);
-    const id = await landedBeforeTheStamp();
-    // what the old hold asked for: passes judged at 87a8c61
+    const id = await unlanded();
+    // what the old hold asked for: passes judged at 87a8c61, recorded before the merge was, since the
+    // verdict door refuses one at a commit the recorded landing does not hold (ISS-981)
     const block = (n: number) =>
       [`criterion: ${n}`, 'verdict: pass', `commit: ${SERVED}`, 'evidence: judge.txt'].join('\n');
     await fx.postVerdict(id, verdictComment([block(1), block(2)]), 'judge.txt');
+    await land(id);
 
     const result = await sweepAutomaticReleases();
 
