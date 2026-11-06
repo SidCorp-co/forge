@@ -18,7 +18,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
@@ -349,6 +349,8 @@ export interface IssueRow {
   status: IssueStatus;
   merged_at: string | null;
   requirement_id: string | null;
+  /** Its mark is a design approval's alone: no release carries it, so none says it is live. */
+  design_only?: boolean;
 }
 
 /** An issue outside the open set: landed by its status, or ended without landing whatever mark it carries. */
@@ -363,7 +365,8 @@ export function settledForecast(asOf: string, row: IssueRow): Forecast {
 async function issueRowsWhere(projectId: string, where: SQL): Promise<IssueRow[]> {
   return rowsOf<IssueRow>(
     await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.status, i.merged_at, i.requirement_id
+      SELECT i.id, i.iss_seq, i.status, i.merged_at, i.requirement_id,
+             ${designOnlyMarkSql(sql`i`)} AS design_only
         FROM issues i
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL AND ${where}
        ORDER BY i.iss_seq`),

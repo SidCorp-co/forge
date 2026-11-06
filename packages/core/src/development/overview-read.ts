@@ -16,6 +16,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
+import { releasedSql } from '../issues/release-evidence.js';
 import { listIssueStanding, STANDING_LIMIT } from '../issues/standing-read.js';
 import { readMasterStanding } from '../masters/read.js';
 import {
@@ -93,7 +94,9 @@ interface ModuleRaw {
 }
 
 async function moduleFacts(projectId: string) {
-  const [labels, shipped, loose] = await Promise.all([
+  // shipped is what a release record holds, never `closed`, which says only met in scope
+  const shipped = releasedSql(sql`i.id`, sql`i.project_id`);
+  const [labels, moduleShipped, loose] = await Promise.all([
     db.execute(sql`
       SELECT id, name, slug, parent_id FROM labels
        WHERE project_id = ${projectId} AND kind = 'module'`),
@@ -106,19 +109,20 @@ async function moduleFacts(projectId: string) {
          ORDER BY il.issue_id, il.is_primary DESC, l.name)
       SELECT att.module_id, count(*)::int AS shipped, max(i.merged_at) AS last_landing
         FROM att JOIN issues i ON i.id = att.issue_id
-       WHERE i.status = 'closed' AND i.archived_at IS NULL
+       WHERE i.status = 'closed' AND i.archived_at IS NULL AND ${shipped}
        GROUP BY att.module_id`),
     db.execute(sql`
       SELECT count(*)::int AS shipped, max(i.merged_at) AS last_landing
         FROM issues i
        WHERE i.project_id = ${projectId} AND i.status = 'closed' AND i.archived_at IS NULL
+         AND ${shipped}
          AND NOT EXISTS (SELECT 1 FROM issue_labels il JOIN labels l ON l.id = il.label_id
                           WHERE il.issue_id = i.id AND l.kind = 'module')`),
   ]);
   const all = rowsOf<ModuleRaw>(labels);
   const paths = modulePaths(all.map((m) => ({ id: m.id, slug: m.slug, parentId: m.parent_id })));
   const stat = new Map(
-    rowsOf<{ module_id: string; shipped: number; last_landing: string | null }>(shipped).map(
+    rowsOf<{ module_id: string; shipped: number; last_landing: string | null }>(moduleShipped).map(
       (s) => [s.module_id, s],
     ),
   );

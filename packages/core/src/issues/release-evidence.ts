@@ -2,7 +2,7 @@
 // issue's latest reopen has no current evidence from before it (`voidedUpTo`, ISS-845), and a release
 // that shipped an issue it later withdrew holds nothing.
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 
 /**
@@ -71,8 +71,9 @@ export function voidedUpTo(
 
 /**
  * Every move of each issue into `closed`, oldest first, from the move history (`kernel_transitions`);
- * an issue never closed is absent. Only a release closes an issue (`CLOSE_ONLY_BY_RELEASE`), so each
- * is the moment some release shipped it: the release page reads its own among them.
+ * an issue never closed is absent. A close is the issue met in scope, by the run holding it or by a
+ * release that claimed it; the release page reads its own among them, a release's close being the
+ * one inside that release's span.
  */
 export async function closedAtOf(
   executor: Pick<Tx, 'execute'>,
@@ -95,10 +96,40 @@ export async function closedAtOf(
 }
 
 /**
- * The issues whose ship was withdrawn: the newest move touching `closed` (`kernel_transitions`)
- * took the issue out of it. A release that closed such an issue shipped work its reopen rejected,
- * so no reader takes that release as where the issue's work is until a release closes it again.
- * The release's own roster record is untouched: it still names what that release shipped.
+ * The shipped release runs of `projectId` still holding the work of the issue `issueId` names: a
+ * shipped release whose roster names it (and did not leave it unclosed), or that closed it
+ * afterwards, less one a shipped-in correction moved it off (ISS-846), and less one that shipped
+ * before the issue last left `closed`: its reopen rejected the work that release carried. Whether an
+ * issue's work is live is read here, never off `closed`, which says only that its criteria were met
+ * in scope (`pipeline/release-runs.ts:shippedReleasesOf` lists them; `releasedSql` asks whether any).
+ */
+export function holdingReleaseRunsSql(issueId: SQL, projectId: SQL): SQL {
+  const listed = (key: string) =>
+    sql`coalesce(r.metadata -> ${key}, '[]'::jsonb) @> to_jsonb(${issueId}::text)`;
+  return sql`
+    SELECT r.id, r.release_version, r.release_released_at FROM pipeline_runs r
+     WHERE r.project_id = ${projectId}
+       AND r.release_version IS NOT NULL
+       AND r.release_released_at IS NOT NULL
+       AND ((${listed('issueIds')} AND NOT ${listed('rosterUnclosed')}) OR ${listed('rosterClosed')})
+       AND NOT ${listed('rosterSuperseded')}
+       AND NOT EXISTS (
+         SELECT 1 FROM kernel_transitions t
+          WHERE t.entity = 'issue' AND t.entity_id = ${issueId}::uuid
+            AND t.from_status = 'closed' AND t.created_at > r.release_released_at)`;
+}
+
+/** True where a shipped release still holds the work of the issue `issueId` names (`holdingReleaseRunsSql`). */
+export function releasedSql(issueId: SQL, projectId: SQL): SQL {
+  return sql`EXISTS (${holdingReleaseRunsSql(issueId, projectId)})`;
+}
+
+/**
+ * The issues whose ship was withdrawn: they left `closed` after the last release that carried them
+ * shipped, so that release shipped work their reopen rejected, and no reader takes it as where their
+ * work is until a release carries them again. An issue its holder closed again after the reopen
+ * stays withdrawn: closing says its criteria were met in scope, never that a release shipped it. The
+ * release's own roster record is untouched: it still names what that release shipped.
  */
 export async function shipsWithdrawnOf(
   executor: Pick<Tx, 'execute'>,
@@ -106,19 +137,19 @@ export async function shipsWithdrawnOf(
 ): Promise<Set<string>> {
   if (issueIds.length === 0) return new Set();
   const rows = (await executor.execute(sql`
-    SELECT DISTINCT ON (entity_id) entity_id::text AS issue_id, from_status = 'closed' AS withdrawn
-      FROM kernel_transitions
-     WHERE entity = 'issue'
-       AND (to_status = 'closed' OR from_status = 'closed')
-       AND entity_id IN (${sql.join(
+    SELECT DISTINCT t.entity_id::text AS issue_id
+      FROM kernel_transitions t
+      JOIN issues i ON i.id = t.entity_id
+     WHERE t.entity = 'issue'
+       AND t.from_status = 'closed'
+       AND t.entity_id IN (${sql.join(
          issueIds.map((id) => sql`${id}::uuid`),
          sql`, `,
        )})
-     ORDER BY entity_id, created_at DESC, (from_status = 'closed') DESC`)) as unknown as Array<{
+       AND NOT ${releasedSql(sql`i.id`, sql`i.project_id`)}`)) as unknown as Array<{
     issue_id: string;
-    withdrawn: boolean;
   }>;
-  return new Set([...rows].filter((r) => r.withdrawn).map((r) => r.issue_id));
+  return new Set([...rows].map((r) => r.issue_id));
 }
 
 /**

@@ -26,6 +26,7 @@ import {
 } from '@forge/contracts/run-standing';
 import { issueRowsOfRequirements, requirementBySeq } from '../forecast/index.js';
 import { issueDisplayIds } from '../issues/index.js';
+import { shippedReleasesOf } from '../pipeline/index.js';
 import { etaOf } from '../report-queries/index.js';
 import { listRunStanding } from '../runs/index.js';
 
@@ -68,10 +69,14 @@ export async function liveRunsByIssue(
   return byKey;
 }
 
-/** One issue of a requirement as progress reads it: its key and status. */
+/**
+ * One issue of a requirement as progress reads it: its key, its status, and whether a release
+ * record holds its work (`released`), which `closed` alone never says.
+ */
 export interface WorkIssue {
   key: string;
   status: string;
+  released: boolean;
 }
 
 /** Each requirement's issues by key and status, keyed by requirement id. */
@@ -80,13 +85,17 @@ export async function issuesOfRequirements(
   requirementIds: readonly string[],
 ): Promise<Map<string, WorkIssue[]>> {
   const rows = await issueRowsOfRequirements(projectId, requirementIds);
-  const keys = await issueDisplayIds([...rows.values()].flat().map((r) => r.id));
+  const ids = [...rows.values()].flat().map((r) => r.id);
+  const [keys, shipped] = await Promise.all([
+    issueDisplayIds(ids),
+    shippedReleasesOf(projectId, ids),
+  ]);
   return new Map(
     [...rows].map(([reqId, issues]) => [
       reqId,
       issues.flatMap((i) => {
         const key = keys.get(i.id);
-        return key ? [{ key, status: i.status }] : [];
+        return key ? [{ key, status: i.status, released: shipped.has(i.id) }] : [];
       }),
     ]),
   );

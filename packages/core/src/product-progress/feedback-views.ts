@@ -51,7 +51,13 @@ function rootOf(s: FeedbackSummary, reads: FeedbackReads): FeedbackSummary {
 function workOf(s: FeedbackSummary, reads: FeedbackReads): WorkIssue[] {
   const route = s.route;
   if (route?.route === 'issue') {
-    return route.carriers.flatMap((c) => (c.key ? [{ key: c.key, status: c.status ?? '' }] : []));
+    // a carrier's `release` is the release that shipped it, or the one cut over it: closed and
+    // carried by one is shipped; closed alone says only that its criteria were met in scope
+    return route.carriers.flatMap((c) =>
+      c.key
+        ? [{ key: c.key, status: c.status ?? '', released: c.status === 'closed' && !!c.release }]
+        : [],
+    );
   }
   if (route?.route === 'new_requirement') {
     const req = route.carriers[0]?.key;
@@ -99,7 +105,7 @@ export function feedbackProgress(s: FeedbackSummary, reads: FeedbackReads): Prog
   if (forecast?.triage) waits.push(pausedWait(forecast.triage));
   return progressOf({
     asOf: reads.asOf,
-    work: work.length > 0 ? issueProgressOf(work) : null,
+    work: work.length > 0 ? issueProgressOf(work, (w) => w.released) : null,
     runs: runsOn(
       reads.runs,
       work.map((w) => w.key),

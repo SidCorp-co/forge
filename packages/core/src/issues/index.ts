@@ -231,6 +231,8 @@ export {
   reopenedAtOf,
   reopenedRoundsOf,
   reworkedSince,
+  holdingReleaseRunsSql,
+  releasedSql,
   shipsWithdrawnOf,
   voidedUpTo,
 } from './release-evidence.js';

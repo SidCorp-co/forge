@@ -6,7 +6,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { pipelineRuns } from '../db/schema.js';
-import { shipsWithdrawnOf } from '../issues/index.js';
+import { holdingReleaseRunsSql } from '../issues/index.js';
 
 export interface ReleaseRunRow {
   id: string;
@@ -86,40 +86,29 @@ export interface ShippedRelease {
 }
 
 /**
- * The release that shipped each of `issueIds`: a shipped release-batch run whose roster names it,
- * or that closed it afterwards (`metadata.rosterClosed`, `release-batch/versions.ts:issueIdsOf`), less
- * one a shipped-in correction moved off it (`rosterSuperseded`) —
- * the latest ship where several carried it. An issue no shipped release carries is absent, and so is
- * one moved out of `closed` since it last closed (`issues/release-evidence.ts:shipsWithdrawnOf`): the
- * work those releases shipped is what its reopen rejected, so none of them is where its work is.
+ * The release that shipped each of `issueIds`: the latest of the shipped releases still holding its
+ * work (`issues/release-evidence.ts:holdingReleaseRunsSql`): a shipped release-batch run whose roster
+ * names it, or that closed it afterwards (`metadata.rosterClosed`, `release-batch/versions.ts:
+ * issueIdsOf`), less one a shipped-in correction moved it off (`rosterSuperseded`), and less one that
+ * shipped before the issue last left `closed`, whose work its reopen rejected. An issue no shipped
+ * release holds is absent, closed or not: `closed` says its criteria were met in scope, and whether
+ * its work is live is this record's to say.
  */
 export async function shippedReleasesOf(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<Map<string, ShippedRelease>> {
   if (issueIds.length === 0) return new Map();
-  const listed = (key: 'issueIds' | 'rosterClosed') =>
-    sql.raw(
-      `jsonb_array_elements_text(CASE WHEN jsonb_typeof(r.metadata -> '${key}') = 'array' THEN r.metadata -> '${key}' ELSE '[]'::jsonb END)`,
-    );
   const rows = rowsOf<{ issue_id: string; version: string; at: string | Date }>(
     await db.execute(sql`
-      SELECT DISTINCT ON (m.issue_id) m.issue_id, r.release_version AS version, r.release_released_at AS at
-        FROM pipeline_runs r
-        CROSS JOIN LATERAL (SELECT ${listed('issueIds')} UNION SELECT ${listed('rosterClosed')}) AS m(issue_id)
-       WHERE r.project_id = ${projectId}
-         AND r.release_version IS NOT NULL
-         AND r.release_released_at IS NOT NULL
-         AND m.issue_id IN (${idList(issueIds)})
-         AND (NOT coalesce(r.metadata -> 'rosterUnclosed', '[]'::jsonb) @> to_jsonb(m.issue_id::text)
-              OR coalesce(r.metadata -> 'rosterClosed', '[]'::jsonb) @> to_jsonb(m.issue_id::text))
-         AND NOT coalesce(r.metadata -> 'rosterSuperseded', '[]'::jsonb) @> to_jsonb(m.issue_id::text)
-       ORDER BY m.issue_id, r.release_released_at DESC`),
+      SELECT m.issue_id, h.release_version AS version, h.release_released_at AS at
+        FROM unnest(ARRAY[${idList(issueIds)}]::text[]) AS m(issue_id)
+        CROSS JOIN LATERAL (
+          ${holdingReleaseRunsSql(sql`m.issue_id`, sql`${projectId}::uuid`)}
+          ORDER BY r.release_released_at DESC LIMIT 1
+        ) h`),
   );
-  const withdrawn = await shipsWithdrawnOf(db, issueIds);
   return new Map(
-    rows
-      .filter((r) => !withdrawn.has(r.issue_id))
-      .map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),
+    rows.map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),
   );
 }

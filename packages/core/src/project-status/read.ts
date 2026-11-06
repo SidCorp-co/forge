@@ -305,8 +305,12 @@ const ON_ITS_WAY: ReadonlySet<ReleaseState> = new Set([
   'returned',
 ]);
 
+/** A release's issues: shipped once the release itself shipped, which `closed` alone never says. */
 const progressOfRelease = (r: ReleaseSummary): IssueProgress =>
-  issueProgressOf(r.contents.flatMap((g) => g.issues));
+  issueProgressOf(
+    r.contents.flatMap((g) => g.issues),
+    () => r.state === 'shipped',
+  );
 
 function nextReleaseOf(
   releases: ReleaseListResponse,

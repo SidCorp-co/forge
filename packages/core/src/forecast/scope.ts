@@ -31,7 +31,7 @@ import { issueProgressOf } from './progress.js';
 import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
 import { type ForecastViewer, readReleaseFacts, readShipped } from './release.js';
 
-/** One simulation, the release that follows it, and who shipped the closed issues in view. */
+/** One simulation, the release that follows it, and the release that shipped each landed issue in view. */
 export interface Reads {
   f: Facts;
   release: ReleaseFacts;
@@ -44,12 +44,14 @@ export async function readsFor(
   rows: readonly IssueRow[],
   viewer: ForecastViewer | null,
 ): Promise<Reads> {
-  const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
+  // whether landed work is live is the release record's to say, never `closed`'s: an issue closes
+  // when its criteria are met in scope, before any release carries it
+  const landed = rows.filter((r) => r.merged_at !== null).map((r) => r.id);
   const anchor = await readAnchor(projectId, now);
   const [f, release, shipped] = await Promise.all([
     simulate(projectId, now, anchor),
     readReleaseFacts(projectId, anchor.at, viewer),
-    readShipped(projectId, closed),
+    readShipped(projectId, landed),
   ]);
   return { f, release, shipped };
 }
@@ -109,7 +111,10 @@ export function scopeOf(
         : stuck
           ? pausedOf(f.run.asOf, stuck)
           : scopeForecast(f.run, openKeys, f.now);
-  const unshipped = members.filter((m) => m.status !== 'closed');
+  // unshipped until a release record holds it; a design-only close has no release to wait on
+  const released = (m: IssueRow) =>
+    Boolean(r.shipped.get(m.id)?.at) || (m.status === 'closed' && m.design_only === true);
+  const unshipped = members.filter((m) => !released(m));
   const lastLanding = latestLanding(
     f.run.asOf,
     unshipped.map((m) => m.merged_at),
@@ -134,7 +139,7 @@ export function scopeOf(
     scope,
     key,
     title,
-    progress: issueProgressOf(members),
+    progress: issueProgressOf(members, released),
     forecast,
     next: null,
     delivery,
