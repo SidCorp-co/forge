@@ -376,7 +376,9 @@ function main() {
   // A principle is cited from code comments as much as from documents, so this scan reads every
   // tracked text file, not only the `.md` ones — under the same exclusions, and never VISION
   // itself, which defines the names and quotes a citation by number as the form it forbids.
-  const read = principlesOf(existsSync(join(ROOT, VISION)) ? readFileSync(join(ROOT, VISION), 'utf8') : '');
+  const read = principlesOf(
+    existsSync(join(ROOT, VISION)) ? readFileSync(join(ROOT, VISION), 'utf8') : '',
+  );
   if (read.error) die(`${VISION} ${read.error}, so no \`VISION: <name>\` citation can be checked`);
   const textExt = new RegExp(`\\.(${cfg.pathExts.join('|')})$`);
   const cited = w.files
