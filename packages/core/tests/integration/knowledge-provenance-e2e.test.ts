@@ -62,7 +62,9 @@ describe('a project entry owes its source, scope and re-check condition (criteri
     const said = JSON.stringify(put.body);
     expect(codesOf(put.body)).toEqual(Array(3).fill('KNOWLEDGE_PROVENANCE_MISSING'));
     expect(pathsOf(put.body)).toEqual(['/source', '/scope', '/recheckWhen']);
-    expect(said).toContain('`zz-unsourced-reference` is a reference and names no `source`, `scope`, `recheckWhen`');
+    expect(said).toContain(
+      '`zz-unsourced-reference` is a reference and names no `source`, `scope`, `recheckWhen`',
+    );
     expect(said).toContain('recheckWhen: string (1-1000)');
     expect((await api(w.admin, 'GET', own('zz-unsourced-reference'))).status).toBe(404);
   });
@@ -96,7 +98,9 @@ describe('a project entry owes its source, scope and re-check condition (criteri
       source: SOURCED.source,
     });
     expect(put.status, JSON.stringify(put.body)).toBe(422);
-    expect(JSON.stringify(put.body)).toContain(`is a ${kind} and names no \`scope\`, \`recheckWhen\``);
+    expect(JSON.stringify(put.body)).toContain(
+      `is a ${kind} and names no \`scope\`, \`recheckWhen\``,
+    );
   });
 
   it('stores a reference carrying all three, and reads, lists and finds them back', async () => {
@@ -113,7 +117,9 @@ describe('a project entry owes its source, scope and re-check condition (criteri
     expect(read.body).toMatchObject({ origin: 'project', kind: 'reference', body, ...SOURCED });
     const list = await api(w.admin, 'GET', `/api/projects/${w.projectId}/knowledge`);
     expect(
-      (list.body as { rows: { slug: string }[] }).rows.find((r) => r.slug === 'zz-sourced-reference'),
+      (list.body as { rows: { slug: string }[] }).rows.find(
+        (r) => r.slug === 'zz-sourced-reference',
+      ),
     ).toMatchObject(SOURCED);
     const found = await api(w.admin, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
       query: 'Provenance-marker-zq7',
@@ -146,7 +152,12 @@ describe('a project entry owes its source, scope and re-check condition (criteri
       VALUES (${w.projectId}, 'zz-legacy-guide', 'guide', 'Legacy', 'Written before ISS-1064.')`);
     const read = await api(w.admin, 'GET', own('zz-legacy-guide'));
     expect(read.status).toBe(200);
-    expect(read.body).toMatchObject({ kind: 'guide', source: null, scope: null, recheckWhen: null });
+    expect(read.body).toMatchObject({
+      kind: 'guide',
+      source: null,
+      scope: null,
+      recheckWhen: null,
+    });
   });
 });
 
