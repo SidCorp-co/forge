@@ -155,12 +155,13 @@ describe('a box reporting its facts', () => {
     expect(row?.orientation).toBe(
       checkoutOrientation(project.id, project.slug, {
         entries: [{ key: 'ui-copy-rule', text: rule }],
-        guides: { project: ['build-commands'], org: [] },
+        guides: { project: ['build-commands'], org: [], sources: { 'build-commands': null } },
       }),
     );
     expect(row?.orientation).toContain(`### ui-copy-rule\n${rule}`);
-    // an on-demand entry is listed by its slug to fetch, never its body (ISS-867)
-    expect(row?.orientation).toContain('- build-commands');
+    // an on-demand entry is listed by its slug to fetch, never its body (ISS-867); one written with no
+    // source is said to record none, never shown as if it rested on something (ISS-1064)
+    expect(row?.orientation).toContain('- build-commands — source: none recorded');
     expect(row?.orientation).not.toContain('pnpm build');
   });
 
