@@ -153,11 +153,25 @@ describe("release state reads as a state, not an alarm", () => {
     expect(screen.queryByText(/PUT \/api|forge knowledge write/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Write build commands" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Build commands" }), { target: { value: "pnpm build" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save build commands" }));
+    // what the entry rests on, where it applies and when to re-check it are asked for before it saves (ISS-1064)
+    const save = screen.getByRole("button", { name: "Save build commands" });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Source" }), { target: { value: "package.json:scripts" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Applies to" }), { target: { value: "every release" } });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Re-check when" }), { target: { value: "the scripts change" } });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
     return waitFor(() => {
       const put = calls.find((c) => c.method === "PUT");
       expect(put?.path).toBe(`/projects/${P}/knowledge/build-commands`);
-      expect(put?.body).toMatchObject({ body: "pnpm build", authoredBy: "human" });
+      expect(put?.body).toMatchObject({
+        body: "pnpm build",
+        authoredBy: "human",
+        source: "package.json:scripts",
+        scope: "every release",
+        recheckWhen: "the scripts change",
+      });
     });
   });
 });

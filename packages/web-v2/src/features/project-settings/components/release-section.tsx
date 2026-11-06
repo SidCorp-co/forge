@@ -6,7 +6,7 @@
 // down yet is fixed here, in the page.
 import { Link } from "@/lib/navigation/router";
 import { useState, type ReactNode } from "react";
-import { Button, ErrorState, LEGEND, Skeleton, Textarea } from "@/design";
+import { Button, ErrorState, Input, LEGEND, Skeleton, Textarea } from "@/design";
 import { GateLine, type GateTone } from "@/features/releases";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -54,7 +54,12 @@ function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; 
 	const write = useWriteKnowledge(projectId);
 	const [open, setOpen] = useState(false);
 	const [body, setBody] = useState("");
+	// what the entry rests on, where it applies and when to re-check it: core refuses one without (ISS-1064)
+	const [source, setSource] = useState("");
+	const [scope, setScope] = useState("");
+	const [recheckWhen, setRecheckWhen] = useState("");
 	const name = t(gap.name);
+	const blank = [body, source, scope, recheckWhen].some((v) => v.trim() === "");
 	return (
 		<li className="flex items-start gap-2 py-2 text-13" data-gap={slug}>
 			<Dot tone="attention" />
@@ -65,6 +70,9 @@ function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; 
 				{open ? (
 					<div className="mt-2 space-y-2">
 						<Textarea aria-label={name} value={body} rows={5} className="font-mono" translate="no" placeholder={t(gap.placeholder)} onChange={(e) => setBody(e.target.value)} />
+						<Input aria-label={t("settings.project.release.gap.source")} value={source} placeholder={t("settings.project.release.gap.sourcePlaceholder")} onChange={(e) => setSource(e.target.value)} />
+						<Input aria-label={t("settings.project.release.gap.scope")} value={scope} placeholder={t("settings.project.release.gap.scopePlaceholder")} onChange={(e) => setScope(e.target.value)} />
+						<Input aria-label={t("settings.project.release.gap.recheckWhen")} value={recheckWhen} placeholder={t("settings.project.release.gap.recheckWhenPlaceholder")} onChange={(e) => setRecheckWhen(e.target.value)} />
 						{write.isError && (
 							<p role="alert" className="fg-caption" style={{ color: "var(--red-600)" }}>
 								{formatApiError(write.error)}
@@ -74,9 +82,9 @@ function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; 
 							<Button
 								variant="primary"
 								size="sm"
-								disabled={body.trim() === ""}
+								disabled={blank}
 								loading={write.isPending}
-								onClick={() => write.mutate({ slug, title: name, body }, { onSuccess: () => setOpen(false) })}
+								onClick={() => write.mutate({ slug, title: name, body, source, scope, recheckWhen }, { onSuccess: () => setOpen(false) })}
 							>
 								{t("settings.project.release.gap.save", { name: name.toLowerCase() })}
 							</Button>

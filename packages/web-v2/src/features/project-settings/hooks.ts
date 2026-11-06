@@ -8,7 +8,7 @@ import type { ProjectDetail } from "@/features/projects";
 import { projectSettingsApi } from "./api";
 import { releaseReadinessKey, useToastedMutation } from "@/features/project-config";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { GatesWrite, LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
+import type { GatesWrite, KnowledgeGapEntry, LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
 
 const project = (id: string | undefined) => ["project", id];
 const members = (id: string | undefined) => ["project", id, "members"];
@@ -172,8 +172,8 @@ export function useDeleteLabel(id: string | undefined) {
 export function useWriteKnowledge(id: string | undefined) {
 	const t = useCopy();
 	return useToastedMutation({
-		mutationFn: (entry: { slug: string; title: string; body: string }) =>
-			projectSettingsApi.putKnowledgeEntry(id as string, entry.slug, { title: entry.title, body: entry.body }),
+		mutationFn: ({ slug, ...entry }: KnowledgeGapEntry & { slug: string }) =>
+			projectSettingsApi.putKnowledgeEntry(id as string, slug, entry),
 		invalidates: [releaseReadinessKey(id)],
 		saved: (_row, entry) => t("settings.project.toast.knowledgeSaved", { name: entry.title }),
 	});

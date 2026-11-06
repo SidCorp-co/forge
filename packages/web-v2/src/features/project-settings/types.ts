@@ -197,3 +197,13 @@ export interface GatesWrite {
 	overrides: Partial<Record<string, GateMode>>;
 	reason: string;
 }
+
+/** A knowledge entry a release gap names, as a person writes it: its text, what it rests on, where it
+ *  applies and when to re-check it, each of the last three required by core (ISS-1064). */
+export interface KnowledgeGapEntry {
+	title: string;
+	body: string;
+	source: string;
+	scope: string;
+	recheckWhen: string;
+}

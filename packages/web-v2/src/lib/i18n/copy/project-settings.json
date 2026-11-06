@@ -452,6 +452,26 @@
     "settings.project.variables.reject": "Reject",
     "settings.project.variables.decisionReason": "Reason for the decision",
     "settings.project.variables.history": "History",
-    "settings.project.section.memory": "Memory"
+    "settings.project.section.memory": "Memory",
+    "settings.project.delivery.releaseApproval": "A person approves each release",
+    "settings.project.general.approvals.accept": "A person accepts each delivered requirement",
+    "settings.project.general.approvals.admit": "A person admits each new issue",
+    "settings.project.general.approvals.agree": "A person agrees each requirement",
+    "settings.project.general.approvals.breakdown": "A person accepts each breakdown",
+    "settings.project.general.approvals.designs": "A person approves each workflow design",
+    "settings.project.general.approvals.revisions": "A person accepts each requirement revision and re-pin",
+    "settings.project.general.approvals.triage": "Person approves triage",
+    "settings.project.general.keepTerms": "Keep in English",
+    "settings.project.general.keepTermsPlaceholder": "checkout, storefront",
+    "settings.project.general.language": "Content language",
+    "settings.project.general.languageGroup": "Language",
+    "settings.project.general.languageOther": "Other (BCP-47 tag)",
+    "settings.project.general.languageTag": "Language tag",
+    "settings.project.release.gap.recheckWhen": "Re-check when",
+    "settings.project.release.gap.recheckWhenPlaceholder": "The build scripts change",
+    "settings.project.release.gap.scope": "Applies to",
+    "settings.project.release.gap.scopePlaceholder": "Every release of this project",
+    "settings.project.release.gap.source": "Source",
+    "settings.project.release.gap.sourcePlaceholder": "package.json:scripts, ISS-12 or a link"
   }
 }

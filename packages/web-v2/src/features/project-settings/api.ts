@@ -13,6 +13,7 @@ import type {
 	ProjectInvitationRow,
 	ProjectRole,
 	ProjectUpdateInput,
+	KnowledgeGapEntry,
 	ReleaseReadiness,
 } from "./types";
 
@@ -47,8 +48,9 @@ export const projectSettingsApi = {
 	getReleaseReadiness: (id: string) =>
 		apiClient<ReleaseReadiness>(`/projects/${id}/release-readiness`),
 
-	/** `PUT /api/projects/:id/knowledge/:slug` — the entry a release gap names, written by a person. */
-	putKnowledgeEntry: (id: string, slug: string, entry: { title: string; body: string }) =>
+	/** `PUT /api/projects/:id/knowledge/:slug` — the entry a release gap names, written by a person, with
+	 *  what it rests on, where it applies and when to re-check it (ISS-1064). */
+	putKnowledgeEntry: (id: string, slug: string, entry: KnowledgeGapEntry) =>
 		apiClient<{ id: string; slug: string }>(`/projects/${id}/knowledge/${encodeURIComponent(slug)}`, {
 			method: "PUT",
 			body: JSON.stringify({ ...entry, kind: "guide", injection: "on_demand", confidence: "verified", authoredBy: "human" }),
