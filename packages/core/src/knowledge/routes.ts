@@ -10,6 +10,7 @@ import { gatedRoutes } from '../middleware/gated-routes.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { recordReached } from '../run-context/index.js';
 import {
   knowledgeInjectionEnum,
   knowledgeKindEnum,
@@ -114,9 +115,9 @@ knowledgeRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    return c.json(
-      await runUnifiedSearch({ projectId: id, reader: requestReader(userId), ...body }),
-    );
+    const found = await runUnifiedSearch({ projectId: id, reader: requestReader(userId), ...body });
+    recordReached(c, id, 'search', found);
+    return c.json(found);
   },
 );
 
@@ -132,6 +133,7 @@ knowledgeRoutes.get(
 
     const entry = await readKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
+    recordReached(c, id, 'get', { knowledge: [entry] });
     return c.json(entry);
   },
 );
