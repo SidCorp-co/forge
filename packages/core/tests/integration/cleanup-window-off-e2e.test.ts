@@ -103,7 +103,7 @@ describe('ISS-1049: no door that reads or records debt creates a cleanup window'
       recordMergeCheckCleanup(tx, {
         issueId: issue,
         projectId,
-        actor: { type: 'user', id: ownerId },
+        actor: { type: 'user', id: ownerId, agency: 'human' },
         report: passingReport({
           base: { branch: 'dev', sha: 'b'.repeat(40) },
           head: 'c'.repeat(40),

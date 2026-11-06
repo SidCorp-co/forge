@@ -60,8 +60,10 @@ promotes (any other production trigger), landing is not held: a release that wou
 is refused \`RELEASE_CLEANUP_PENDING\` until a green report \`covers\` it.
 
 ### The cleanup run
-The project's cleanup window is its \`cleanup\` schedule, saved at end of day (\`0 18 * * *\` UTC) the
-first time there is something to clean; a person re-times it like any schedule. Its fire starts one
+The project's cleanup window is its \`cleanup\` schedule, which exists only where a project admin
+turned one on (\`POST /api/schedules\` with \`kind: "cleanup"\`, end of day \`0 18 * * *\` UTC is the
+usual time); Forge never makes or enables one. Debt is recorded either way, and where no window is on
+the ledger says so (\`windowOff\`). A person re-times it like any schedule. Its fire starts one
 run on a slot of its own, never a delivery run's: a fire while the last cleanup run is live starts
 nothing (\`CLEANUP_RUN_LIVE\`), and a window with nothing open but carried debt starts nothing, unless a change waits or the base owes a report before the next change rated high lands. The run is briefed with
 the open debt and the changes waiting on it, and:

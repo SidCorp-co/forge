@@ -7,7 +7,6 @@
 import type { DebtItem } from '@forge/contracts/cleanup';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { ensureCleanupWindow } from '../schedules/index.js';
 import { insertDebts, openDebtStands } from './store.js';
 
 /** One reading of the declared gate that is not a pass, as the door that read it says it. */
@@ -52,6 +51,5 @@ export async function recordGateDebt(debt: GateDebt): Promise<boolean> {
     });
     return true;
   });
-  if (written) await ensureCleanupWindow(debt.projectId);
   return written;
 }

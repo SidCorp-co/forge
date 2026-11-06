@@ -27,6 +27,7 @@ import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js
 import { dispatchScheduleRun } from '../../src/schedules/dispatch.js';
 import { api, userToken } from '../helpers/api.js';
 import { plantSource } from '../helpers/cleanup-source.js';
+import { turnCleanupWindowOn } from '../helpers/cleanup-window.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 import { passingCheck, passingReport } from '../helpers/merge-check-report.js';
@@ -115,13 +116,13 @@ const reportCleanup = (body: Doc) =>
   });
 
 describe('the impact a building agent rates its change at (BC-4)', () => {
-  it('is kept with its type and reason, newest first, and a high one opens the cleanup window', async () => {
+  it('is kept with its type and reason, newest first, and a high one names the window, never making one', async () => {
     const issue = await fx.insertIssue('in_progress');
     expect((await rate(issue, 'medium')).status).toBe(201);
     const high = await rate(issue, 'high');
     expect(high.status).toBe(201);
     expect(high.body).toMatchObject({ waits: true, impact: { type: 'data', rating: 'high' } });
-    expect(high.body.window).toMatchObject({ cron: '0 18 * * *', enabled: true });
+    expect(high.body.window).toBeNull();
     const read = await call('GET', `/api/issues/${issue}/impact`);
     expect(read.body.current).toMatchObject({ rating: 'high', reason: 'rated high' });
     expect(read.body.history.map((h: Doc) => h.rating)).toEqual(['high', 'medium']);
@@ -140,7 +141,7 @@ describe('cleanup debt (BC-3, BC-1)', () => {
     const issue = await fx.insertIssue('in_progress');
     const res = await debts({ issue, items: [red('medium')] });
     expect(res.status).toBe(201);
-    expect(res.body.window).toMatchObject({ cron: '0 18 * * *' });
+    expect(res.body.window).toBeNull();
     const read = await ledger();
     expect(read.body.fast).toBe(true);
     expect(read.body.open).toHaveLength(1);
@@ -270,6 +271,7 @@ const carry = (debt: string) =>
 
 describe('a change rated high lands only on a green base where production deploys on land (BC-5 r4)', () => {
   it('is refused on an open debt rated high, naming it and the cleanup, while a low or medium one lands', async () => {
+    await turnCleanupWindowOn(projectId, ownerId);
     const owed = (await debts({ items: [highDebt] })).body.debts[0] as string;
     const [high, medium, low] = [
       await fx.insertIssue('in_progress', undefined, false),
@@ -486,6 +488,7 @@ describe('the cleanup window fires a run on a slot of its own (BC-7, BC-8)', () 
   });
 
   it('starts its run as a session, never a pool job, and one at a time', async () => {
+    await turnCleanupWindowOn(projectId, ownerId);
     await debts({ items: [red('low')] });
     const schedule = await windowRow();
     expect(schedule).toMatchObject({ kind: 'cleanup', cron: '0 18 * * *', ownerId });

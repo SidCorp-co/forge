@@ -27,12 +27,7 @@ import {
   readFastDelivery,
   readLandingBranches,
 } from '../project-config/index.js';
-import {
-  type CleanupWindow,
-  ensureCleanupWindow,
-  fireProjectOf,
-  readCleanupWindow,
-} from '../schedules/index.js';
+import { type CleanupWindow, fireProjectOf, readCleanupWindow } from '../schedules/index.js';
 import { checkReportBase } from './report-base.js';
 import {
   type CleanupRefusal,
@@ -44,6 +39,7 @@ import {
   reportOwed,
   reportRefusals,
   waitingOnCleanup,
+  windowOffWords,
 } from './rules.js';
 import {
   currentRatings,
@@ -89,7 +85,8 @@ async function issueOf(
 /**
  * The building agent's rating of its change (BC-4). A rating is kept whatever the project's setting:
  * it says something true about the change. Only on a project delivering fast does a high one hold the
- * change from production (BC-5), and then the project is given its cleanup window if it has none.
+ * change from production (BC-5). The answer names the project's cleanup window; it never makes one
+ * (ISS-1049).
  */
 export async function recordImpact(args: {
   issueRef: string;
@@ -109,10 +106,7 @@ export async function recordImpact(args: {
     ratedBy: args.userId,
   });
   const waits = impact.rating === HOLDING_RATING && (await readFastDelivery(issue.projectId));
-  const window = waits
-    ? await ensureCleanupWindow(issue.projectId)
-    : await readCleanupWindow(issue.projectId);
-  return { impact: kept, waits, window };
+  return { impact: kept, waits, window: await readCleanupWindow(issue.projectId) };
 }
 
 export async function readImpacts(args: {
@@ -127,12 +121,15 @@ export async function readImpacts(args: {
   return { issueId: issue.id, current: history[0] ?? null, history };
 }
 
-/** Debt an agent saw and leaves for the cleanup lane (BC-3), on a project delivering fast. */
+/**
+ * Debt an agent saw and leaves for the cleanup lane (BC-3), on a project delivering fast. It is
+ * recorded whether or not a window is on, and the answer says plainly where none is (ISS-1049).
+ */
 export async function recordDebts(args: {
   projectId: string;
   request: RecordDebtsRequest;
   userId: string;
-}): Promise<{ debts: string[]; window: CleanupWindow | null }> {
+}): Promise<{ debts: string[]; window: CleanupWindow | null; windowOff: string | null }> {
   const { projectId, request, userId } = args;
   if (!(await readFastDelivery(projectId))) {
     throw refuse('FAST_DELIVERY_OFF', FAST_DELIVERY_OFF_DETAIL, '/items');
@@ -157,7 +154,8 @@ export async function recordDebts(args: {
     items: request.items,
     recordedBy: userId,
   });
-  return { debts, window: await ensureCleanupWindow(projectId) };
+  const window = await readCleanupWindow(projectId);
+  return { debts, window, windowOff: windowOffWords(projectId, window) };
 }
 
 /**
@@ -219,13 +217,9 @@ export async function recordMergeCheckCleanup(
     const commit = report.head.toLowerCase();
     await insertImpact(tx, { projectId, issueId, impact: report.impact, commit, ratedBy: by });
   }
-  const debts = report.debts?.length
+  return report.debts?.length
     ? await insertDebts(tx, { projectId, issueId, items: report.debts, recordedBy: by })
     : [];
-  if (debts.length || report.impact?.rating === HOLDING_RATING) {
-    await ensureCleanupWindow(projectId);
-  }
-  return debts;
 }
 
 /**
@@ -318,7 +312,14 @@ export async function readLedger(projectId: string): Promise<DebtLedgerView> {
     waitingIssues(projectId),
     readCleanupWindow(projectId),
   ]);
-  return { fast, open: debts.open, cleared: debts.cleared, waiting: fast ? waiting : [], window };
+  return {
+    fast,
+    open: debts.open,
+    cleared: debts.cleared,
+    waiting: fast ? waiting : [],
+    window,
+    windowOff: windowOffWords(projectId, window),
+  };
 }
 
 /**
@@ -376,6 +377,7 @@ export async function cleanupLandingRefusal(args: {
     issueDisplayIds([issueId]),
   ]);
   return landingRefusal({
+    projectId,
     ...shape,
     rating,
     issueRef: key.get(issueId) ?? issueId,

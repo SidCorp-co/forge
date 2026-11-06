@@ -5,6 +5,7 @@
  */
 
 import {
+  CLEANUP_WINDOW_DEFAULT,
   type CleanupRefusalCode,
   type CleanupReportRequest,
   type DebtItem,
@@ -270,13 +271,27 @@ export interface LastReport {
 
 const NAMED_DEBTS = 8;
 
-function windowWords(w: WindowSaid | null): string {
-  if (!w) return 'The project has no cleanup window saved yet: rating a change high saves one.';
-  const at = `${w.cron}${w.timeZone ? ` ${w.timeZone}` : ' UTC'}`;
-  if (!w.enabled) {
-    return `The cleanup window (schedule ${w.scheduleId}, ${at}) is disabled: a person enables it, or runs the cleanup by hand (POST /api/schedules/${w.scheduleId}/run).`;
+const windowAt = (w: WindowSaid) => `${w.cron}${w.timeZone ? ` ${w.timeZone}` : ' UTC'}`;
+
+/**
+ * Where no cleanup window is on, that said plainly with who turns one on (ISS-1049, REQ-79 BC-19):
+ * none saved, or one a person disabled. Null where the project's window is on. Debt is recorded
+ * either way; no door makes or enables a window for the project.
+ */
+export function windowOffWords(projectId: string, w: WindowSaid | null): string | null {
+  const waits = 'so no cleanup run starts here; debt is still recorded and waits in this ledger.';
+  if (!w) {
+    const { cron, name } = CLEANUP_WINDOW_DEFAULT;
+    return `No cleanup window is on for this project, ${waits} Forge never makes one: a project admin turns one on (POST /api/schedules { projectId: "${projectId}", name: "${name}", cron: "${cron}", kind: "cleanup" }).`;
   }
-  return `The cleanup window is schedule ${w.scheduleId} (${at}), next run ${w.nextRunAt ?? 'not scheduled'}; it can be run now with POST /api/schedules/${w.scheduleId}/run.`;
+  if (w.enabled) return null;
+  return `The cleanup window (schedule ${w.scheduleId}, ${windowAt(w)}) is off, ${waits} A project admin turns it on (PUT /api/schedules/${w.scheduleId} { enabled: true }), or runs the cleanup once by hand (POST /api/schedules/${w.scheduleId}/run).`;
+}
+
+function windowWords(projectId: string, w: WindowSaid | null): string {
+  const off = windowOffWords(projectId, w);
+  if (off || !w) return off ?? '';
+  return `The cleanup window is schedule ${w.scheduleId} (${windowAt(w)}), next run ${w.nextRunAt ?? 'not scheduled'}; it can be run now with POST /api/schedules/${w.scheduleId}/run.`;
 }
 
 /** A landing the cleanup holds, refused by name. */
@@ -312,6 +327,7 @@ export function reportOwed(
 }
 
 export function landingRefusal(args: {
+  projectId: string;
   fast: boolean;
   onLand: boolean;
   rating: Impact | null;
@@ -350,6 +366,6 @@ export function landingRefusal(args: {
   return {
     code: MERGE_CLEANUP_PENDING,
     path: '/impact',
-    detail: `${args.issueRef} is rated high impact (${rating.type}: ${rating.reason}) and this project deploys on land, so landing it is reaching production (REQ-79 BC-5): a change rated high lands only once a cleanup has left the base green, and ${why.join('; ')}. ${windowWords(args.window)} Land after a green cleanup report on this base; a medium or low open debt does not block, and low and medium changes land without waiting. Nothing was recorded`,
+    detail: `${args.issueRef} is rated high impact (${rating.type}: ${rating.reason}) and this project deploys on land, so landing it is reaching production (REQ-79 BC-5): a change rated high lands only once a cleanup has left the base green, and ${why.join('; ')}. ${windowWords(args.projectId, args.window)} Land after a green cleanup report on this base; a medium or low open debt does not block, and low and medium changes land without waiting. Nothing was recorded`,
   };
 }

@@ -16,9 +16,9 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lastReport } from '../../src/cleanup/store.js';
 import { db } from '../../src/db/client.js';
-import { ensureCleanupWindow } from '../../src/schedules/index.js';
 import { api, userToken } from '../helpers/api.js';
 import { plantSource, resetPlantedSources } from '../helpers/cleanup-source.js';
+import { turnCleanupWindowOn } from '../helpers/cleanup-window.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 
@@ -33,6 +33,7 @@ const HEAD = '2d468189a87a618154af2c873a5e295a876d7901';
 const OFF_BRANCH = 'e'.repeat(40);
 
 let projectId: string;
+let ownerId: string;
 let token: string;
 
 beforeAll(async () => {
@@ -49,7 +50,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await truncateAll();
   resetPlantedSources();
-  const ownerId = (await createTestUser({ verified: true })).id;
+  ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   token = await userToken(ownerId);
 });
@@ -134,11 +135,10 @@ describe('two reports from one fire (ISS-912)', () => {
   });
 
   async function fire(): Promise<string> {
-    const window = await ensureCleanupWindow(projectId);
-    if (!window) throw new Error('the project was given no cleanup window');
+    const window = await turnCleanupWindowOn(projectId, ownerId);
     const [run] = await rows<{ id: string }>(sql`
       INSERT INTO schedule_runs (schedule_id, project_id, trigger, status, started_at)
-      VALUES (${window.scheduleId}, ${projectId}, 'manual', 'running', now()) RETURNING id`);
+      VALUES (${window}, ${projectId}, 'manual', 'running', now()) RETURNING id`);
     if (!run) throw new Error('no cleanup fire was opened');
     return run.id;
   }

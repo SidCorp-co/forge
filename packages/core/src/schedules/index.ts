@@ -1,8 +1,4 @@
-export {
-  type CleanupWindow,
-  ensureCleanupWindow,
-  readCleanupWindow,
-} from './cleanup-window.js';
+export { type CleanupWindow, readCleanupWindow } from './cleanup-window.js';
 export { nextRunFor } from './cron.js';
 export { redispatchScheduleSessionOnFailover } from './failover.js';
 export { fireProjectOf, lastFires, settleSessionFires } from './fires.js';

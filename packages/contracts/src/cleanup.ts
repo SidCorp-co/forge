@@ -190,7 +190,7 @@ export const CLEANUP_FIRE_REFUSALS = [
 	"CLEANUP_RUN_LIVE",
 ] as const;
 
-/** The default cleanup window: end of day, UTC, until a person re-times the schedule. */
+/** The cleanup window a project admin turns on, as the ledger suggests it: end of day, UTC (ISS-1049). */
 export const CLEANUP_WINDOW_DEFAULT = {
 	cron: "0 18 * * *",
 	timeZone: null,
@@ -271,4 +271,6 @@ export interface DebtLedgerView {
 		enabled: boolean;
 		nextRunAt: string | null;
 	} | null;
+	/** Where no window is on (none, or one disabled), that said plainly with who turns one on; null where it is on (ISS-1049). */
+	windowOff: string | null;
 }

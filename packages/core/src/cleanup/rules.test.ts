@@ -263,6 +263,7 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
     reportedAt: T,
   };
   const base = {
+    projectId: 'p-1',
     fast: true,
     onLand: true,
     rating: impact('high'),
@@ -316,9 +317,14 @@ describe('a landing the cleanup holds (REQ-79 r4 BC-5)', () => {
   });
 
   it('says so where the window is missing or disabled, and names only the first debts of many', () => {
-    expect(landingRefusal({ ...base, window: null })?.detail).toContain('no cleanup window');
+    // ISS-1049: no window is ever made for the project; the refusal says who turns one on
+    const none = landingRefusal({ ...base, window: null })?.detail;
+    expect(none).toContain('No cleanup window is on for this project');
+    expect(none).toContain('a project admin turns one on');
+    expect(none).toContain('projectId: "p-1"');
+    expect(none).not.toContain('rating a change high saves one');
     expect(landingRefusal({ ...base, window: { ...window, enabled: false } })?.detail).toContain(
-      'disabled',
+      'is off, so no cleanup run starts here',
     );
     const many = Array.from({ length: 11 }, (_, i) => ({
       id: `d${i}`,
