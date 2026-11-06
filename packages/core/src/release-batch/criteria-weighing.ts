@@ -36,12 +36,13 @@ async function atLanding(
   const weighedOn = { basis: 'landing', landing: report.landing, landsOn, deploysFrom } as const;
   const where = `${landingWhere(basis)}, so a criterion is earned at the landing${basis.byRecord ? ' or on a release that holds it' : ''}`;
   const criteria = new Map<number, CriterionWeighing>();
-  for (const { criterion, why } of report.unearned) {
+  for (const { criterion, why, liveOnly } of report.unearned) {
     criteria.set(criterion, {
       earned: false,
       standing: null,
       reason: `${why}; ${where}`,
       weighedOn,
+      ...(liveOnly ? { owedOn: 'live-release' as const } : {}),
     });
   }
   // live-only: it holds no release, and is owed on the one that carries the issue once it ships
@@ -51,6 +52,7 @@ async function atLanding(
       standing: null,
       reason: `${why}; it holds no release`,
       weighedOn,
+      owedOn: 'after-release',
     });
   }
   const landing = report.landing ?? '';
@@ -123,7 +125,14 @@ async function atDelivered(
   const criteria = new Map<number, CriterionWeighing>();
   for (const c of standing.criteria) {
     if (!c.counts) {
-      criteria.set(c.criterion, { earned: false, standing: null, reason: c.why, weighedOn });
+      const owedOn = c.afterRelease ? 'after-release' : c.liveOnly ? 'live-release' : null;
+      criteria.set(c.criterion, {
+        earned: false,
+        standing: null,
+        reason: c.why,
+        weighedOn,
+        ...(owedOn ? { owedOn } : {}),
+      });
       continue;
     }
     const own = c.at === sha;

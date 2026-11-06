@@ -52,6 +52,12 @@ export interface CriterionWeighing {
   readonly standing: VerdictStanding | 'carried' | null;
   readonly reason: string;
   readonly weighedOn: CriterionWeighedOn;
+  /**
+   * Where an unearned criterion only the running product shows is judged, never at a commit
+   * (`release-batch/landed-weighing.ts:weighLiveOnly`): on the live release now, or after the release
+   * that carries the issue ships, when it holds nothing until then.
+   */
+  readonly owedOn?: 'live-release' | 'after-release';
 }
 
 /** One issue's weighing: per criterion number, or why there is none for any of them. */

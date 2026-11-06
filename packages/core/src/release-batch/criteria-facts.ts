@@ -31,6 +31,14 @@ async function proofPlanned(issueId: string): Promise<number[]> {
   return rows.map((r) => Number(r.n));
 }
 
+/** `criterion 3` or `criteria 1, 2`. */
+const listed = (ns: readonly number[]) =>
+  ns.length === 1 ? `criterion ${ns[0]}` : `criteria ${ns.join(', ')}`;
+
+/** `Criterion 3 is` or `Criteria 1, 2 are`. */
+const named = (ns: readonly number[]) =>
+  `${listed(ns).replace(/^c/, 'C')} ${ns.length === 1 ? 'is' : 'are'}`;
+
 const word = (w: CriterionWeighing) =>
   w.earned === true ? 'earned' : w.earned === false ? 'owed' : 'undecided';
 
@@ -96,20 +104,38 @@ export async function criteriaWeighingFact(issueId: string): Promise<string | nu
   const read = `Its criteria, as \`GET /api/issues/${issueId}/criteria\` weighs them for the gate that decides it, read now: ${all
     .map(([n, w]) => `criterion ${n} ${word(w)}: ${w.reason}`)
     .join('; ')}.`;
-  const owed = all.filter(([, w]) => w.earned === false).map(([n]) => n);
+  const owedWhere = (on?: CriterionWeighing['owedOn']) =>
+    all.filter(([, w]) => w.earned === false && w.owedOn === on).map(([n]) => n);
+  const atCommit = owedWhere(undefined);
+  const onLive = owedWhere('live-release');
+  const afterRelease = owedWhere('after-release');
   const undecided = all.filter(([, w]) => w.earned === null).map(([n]) => n);
+  const after =
+    afterRelease.length > 0
+      ? ` ${named(afterRelease)} judged on the running product after the release that carries this issue ships: ${afterRelease.length === 1 ? 'it holds' : 'they hold'} nothing now, and no judge is owed before then.`
+      : '';
+  const owed = [...atCommit, ...onLive];
   if (owed.length > 0) {
     const standing = (await standingCriteriaOf([issueId])).get(issueId);
     const failed = (standing?.criteria ?? [])
       .filter((c) => owed.includes(c.criterion) && c.verdict?.verdict === 'fail')
       .map((c) => c.criterion);
     if (failed.length > 0) {
-      return `${read} Criteri${failed.length === 1 ? 'on' : 'a'} ${failed.join(', ')} judged fail reopen${failed.length === 1 ? 's' : ''} the issue that owns the work: that is code to fix, not a judge to dispatch.`;
+      return `${read} ${named(failed)} judged fail, which reopens the issue that owns the work: that is code to fix, not a judge to dispatch.${after}`;
     }
-    return `${read} What it lacks is a counting verdict on criteri${owed.length === 1 ? 'on' : 'a'} ${owed.join(', ')}, which is judging owed, not code to rebuild: it stays at awaiting_release. Wake the master to dispatch a judge ${owedAt(first.weighedOn)}.`;
+    const judge = [
+      atCommit.length > 0 ? ` Wake the master to dispatch a judge ${owedAt(first.weighedOn)}.` : '',
+      onLive.length > 0
+        ? ` ${named(onLive)} judged on the running product, on the release its reason names: wake the master to dispatch a judge there.`
+        : '',
+    ].join('');
+    return `${read} What it lacks is a counting verdict on ${listed(owed)}, which is judging owed, not code to rebuild: it stays at awaiting_release.${judge}${after}`;
   }
   if (undecided.length > 0) {
-    return `${read} Whether criteri${undecided.length === 1 ? 'on' : 'a'} ${undecided.join(', ')} count${undecided.length === 1 ? 's' : ''} is undecided until a release pass reads what is served: nothing is owed on this reading, and no judge is to be asked for.`;
+    return `${read} Whether ${listed(undecided)} ${undecided.length === 1 ? 'counts' : 'count'} is undecided until a release pass reads what is served: nothing is owed on this reading, and no judge is to be asked for.${after}`;
+  }
+  if (afterRelease.length > 0) {
+    return `${read} Every other live criterion is earned, and no verdict is missing now.${after}`;
   }
   if (first.weighedOn.basis === 'delivered') {
     return `${read} ${await deliveredAct(

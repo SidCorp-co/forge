@@ -193,7 +193,9 @@ describe("the steward's output check reads the same landed build", () => {
 
     const said = await factsAgree(issue);
     expect(said).toContain('criterion 2 owed:');
-    expect(said).toContain('Criterion 2 judged fail reopens the issue that owns the work');
+    expect(said).toContain(
+      'Criterion 2 is judged fail, which reopens the issue that owns the work',
+    );
     expect(said).not.toContain('dispatch a judge');
     expect(said).not.toContain('No evidence is missing');
     await sendsNothingBack(issue, 'ISS-5');

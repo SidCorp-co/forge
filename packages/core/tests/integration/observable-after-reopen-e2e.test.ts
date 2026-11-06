@@ -16,6 +16,7 @@
  * @direct-test-of packages/core/src/release-batch/landed-weighing.ts
  * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
  * @direct-test-of packages/core/src/release-batch/criteria-hold.ts
+ * @direct-test-of packages/core/src/release-batch/criteria-facts.ts
  * @direct-test-of packages/core/src/release-batch/hold.ts
  * @direct-test-of packages/core/src/release-batch/criteria-hold-words.ts
  * @direct-test-of packages/core/src/release-batch/blocker-sentences.ts
@@ -35,6 +36,7 @@ import type { ReleaseBlocker, ReleaseWarning } from '../../src/release-batch/blo
 import { criteriaBasisOf, landingCriteriaReports } from '../../src/release-batch/criteria-basis.js';
 import { criteriaHold } from '../../src/release-batch/criteria-hold.js';
 import { landingCriteriaHold } from '../../src/release-batch/criteria-hold-words.js';
+import { stewardReleaseFacts } from '../../src/release-batch/index.js';
 import { agenfold, designed, shipped, stored } from '../helpers/agenfold-world.js';
 import { api } from '../helpers/api.js';
 import { seedIssueStatus } from '../helpers/factories.js';
@@ -158,6 +160,12 @@ describe('a release holds an issue only for the round it carried (ISS-967)', () 
     ]);
     for (const said of [...out, ...warnings]) expect(said.message).not.toContain(R1);
     for (const [, w] of await weighed(fixed)) expect(w.reason).not.toContain(R1);
+    // the steward's facts read the same weighing (ISS-1035): owed after the release, no judge now
+    const facts = await stewardReleaseFacts(world.projectId, fixed);
+    expect(facts).toContain(
+      'Criterion 3 is judged on the running product after the release that carries this issue ships',
+    );
+    expect(facts).not.toContain('dispatch a judge');
     expect(reads.n).toBe(0);
   });
 
