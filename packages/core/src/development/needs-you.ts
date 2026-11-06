@@ -12,11 +12,13 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { say } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { StandingTimes } from '@forge/contracts/steward';
+import { whoOwes } from '@forge/contracts/who-owes';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
+import { readOwedPolicy } from '../project-config/index.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, repinRowOf } from './needs-you-design.js';
@@ -59,13 +61,14 @@ async function automationOf(projectId: string, userId: string, now: Date) {
 function designRowsOf(
   health: ReadonlyMap<string, WorkflowHealth>,
   repins: Awaited<ReturnType<typeof designRepinsOf>>,
+  settleBy: 'person' | 'master',
 ): AttentionRow[] {
   const grouped = new Set(repins.groups.flatMap((g) => g.ready.map((r) => r.flow)));
   return [
     ...repins.groups.map((g) => repinRowOf(g, repins.canDecide)),
     ...[...health.values()]
       .filter((h) => !grouped.has(h.flow))
-      .flatMap((h) => designRowOf(h) ?? []),
+      .flatMap((h) => designRowOf(h, settleBy) ?? []),
   ];
 }
 
@@ -96,6 +99,7 @@ export async function readAttention(
     health,
     detached,
     repins,
+    policy,
   ] = await Promise.all([
     listRequirementsAs(viewer, projectId),
     listFeedbackAs(viewer, projectId),
@@ -106,6 +110,7 @@ export async function readAttention(
     designHealthOf(viewer, projectId),
     questionRowsOf(projectId, viewer),
     designRepinsOf(viewer, projectId),
+    readOwedPolicy(projectId),
   ]);
   if (!feedback.ok) {
     throw new Error(
@@ -147,7 +152,7 @@ export async function readAttention(
       touchedAt: c.touchedAt,
     })),
     questions: detached,
-    designs: designRowsOf(health, repins),
+    designs: designRowsOf(health, repins, whoOwes('design.decide', policy).by),
     automation: [
       ...automation.schedules.map(
         (s): AttentionRow => ({

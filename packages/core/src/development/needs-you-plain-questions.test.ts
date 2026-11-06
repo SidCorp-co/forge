@@ -160,14 +160,14 @@ describe('a design row left out of the decisions', () => {
     }) as WorkflowHealth;
 
   it('is named by its title, with its next step in plain words', () => {
-    const r = designRowOf(health({}));
+    const r = designRowOf(health({}), 'person');
     expect(r?.title).toBe('Forge in context');
     expect(r?.standing.waitingOn.act).toBe('decide 20 places where the code and the design differ');
     expect(r?.standing.waitingOn.act).not.toMatch(/marker/);
   });
 
   it('says one place in the singular, and falls back to its key only where it has no title', () => {
-    const r = designRowOf(health({ title: null, needsYou: 1 }));
+    const r = designRowOf(health({ title: null, needsYou: 1 }), 'person');
     expect(r?.title).toBe('system-context');
     expect(r?.standing.waitingOn.act).toBe('decide 1 place where the code and the design differ');
   });
@@ -186,6 +186,7 @@ describe('a design row left out of the decisions', () => {
           }),
         },
       }),
+      'person',
     );
     expect(r?.title).toBe('Forge in context · revision 3 proposed');
   });

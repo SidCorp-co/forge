@@ -9,7 +9,9 @@
 
 import type { DesignOwed } from '@forge/contracts/design-owed';
 import type { DesignStatus } from '@forge/contracts/design-status';
+import { whoOwes } from '@forge/contracts/who-owes';
 import { requireDeclaredOn } from '../permissions/index.js';
+import { readOwedPolicy } from '../project-config/index.js';
 import { repinGroupsOf } from './design-repin-service.js';
 import { designView, rowIn } from './design-service.js';
 import { readWorkflowHealthAs } from './health-read.js';
@@ -25,9 +27,10 @@ export async function designOwedOf(
   projectId: string,
   row: StoredWorkflow,
 ): Promise<DesignOwed> {
-  const [groups, health] = await Promise.all([
+  const [groups, health, policy] = await Promise.all([
     repinGroupsOf(projectId),
     readWorkflowHealthAs(viewer, projectId, row.id),
+    readOwedPolicy(projectId),
   ]);
   const own = groups.find((g) => g.baseId === row.id) ?? null;
   const dependent = groups.some((g) => g.ready.some((d) => d.workflowId === row.id));
@@ -35,6 +38,7 @@ export async function designOwedOf(
     flow: row.flow,
     repin: own ? { flow: own.flow, revision: own.revision, n: own.ready.length } : null,
     settle: dependent ? 0 : health.needsYou,
+    settleBy: whoOwes('design.decide', policy).by,
   };
 }
 

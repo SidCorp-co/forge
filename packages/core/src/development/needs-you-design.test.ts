@@ -42,6 +42,7 @@ describe('the design row on Needs you', () => {
           waitingOn: wait('you'),
         },
       }),
+      'person',
     );
     expect(row).toMatchObject({
       entity: 'workflow',
@@ -73,15 +74,16 @@ describe('the design row on Needs you', () => {
             waitingOn: wait('person'),
           },
         }),
+        'person',
       ),
     ).toBeNull();
   });
 
   it('falls back to the markers a person owes, and is no row with none', () => {
-    expect(designRowOf(health({ needsYou: 2 }))?.standing.waitingOn.act).toBe(
+    expect(designRowOf(health({ needsYou: 2 }), 'person')?.standing.waitingOn.act).toBe(
       'decide 2 places where the code and the design differ',
     );
-    expect(designRowOf(health({}))).toBeNull();
+    expect(designRowOf(health({}), 'person')).toBeNull();
   });
 });
 

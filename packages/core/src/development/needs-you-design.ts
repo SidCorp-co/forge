@@ -45,7 +45,8 @@ export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignR
   };
 }
 
-export function designRowOf(h: WorkflowHealth): DesignRow | null {
+/** `settleBy`: who settles the places its code and design differ (`whoOwes('design.decide')`, ISS-1068). */
+export function designRowOf(h: WorkflowHealth, settleBy: 'person' | 'master'): DesignRow | null {
   const p = h.proposal;
   if (p && p.waitingOn.kind === 'you') {
     return {
@@ -64,8 +65,8 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
     key: h.flow,
     ...writtenTitle(h.title ?? h.flow, null),
     standing: {
-      attentionGroup: 'needs_you',
-      waitingOn: settleOwedWait(h.needsYou, h.flow),
+      attentionGroup: settleBy === 'person' ? 'needs_you' : 'waiting',
+      waitingOn: settleOwedWait(h.needsYou, h.flow, settleBy),
     },
     touchedAt: h.markers.reduce<string | null>(
       (at, m) => (m.since && (!at || m.since > at) ? m.since : at),

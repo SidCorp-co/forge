@@ -143,9 +143,9 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
   it('names the places to decide, as the Needs you row on the design does', () => {
     const line = designWaitingOn({
       ...approved,
-      owed: { flow: 'issue-lifecycle', repin: null, settle: 2 },
+      owed: { flow: 'issue-lifecycle', repin: null, settle: 2, settleBy: 'person' as const },
     });
-    const row = designRowOf(health)?.standing.waitingOn;
+    const row = designRowOf(health, 'person')?.standing.waitingOn;
     expect(line).toEqual(row);
     expect(`${line.who} · ${line.act}`).toBe(
       'A person · decide 2 places where the code and the design differ',
@@ -158,6 +158,7 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
       flow: 'issue-lifecycle',
       repin: { flow: 'issue-lifecycle', revision: 20, n: 4 },
       settle: 2,
+      settleBy: 'person' as const,
     };
     const line = designWaitingOn({ ...approved, owed });
     expect(line).toEqual(repinRowOf(group, true).standing.waitingOn);
@@ -167,14 +168,14 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
   it('reads Nobody · nothing only where nothing is owed, and a step that owes somebody keeps its own wait', () => {
     const none = designWaitingOn({
       ...approved,
-      owed: { flow: 'issue-lifecycle', repin: null, settle: 0 },
+      owed: { flow: 'issue-lifecycle', repin: null, settle: 0, settleBy: 'person' as const },
     });
     expect(none.kind).toBe('none');
     const proposed = designWaitingOn({
       ...approved,
       status: 'proposed',
       proposedRevision: 21,
-      owed: { flow: 'issue-lifecycle', repin: null, settle: 2 },
+      owed: { flow: 'issue-lifecycle', repin: null, settle: 2, settleBy: 'person' as const },
     });
     expect(proposed.act).toBe('approve or return the design');
   });
