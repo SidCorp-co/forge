@@ -1,0 +1,1 @@
+**The docs state one loop.** Vision, contributing and governance now read Product, Delivery, Release, Audit; an agent decides on the record, a person is asked only for money, credentials or product direction, and stale proposals are gone.
