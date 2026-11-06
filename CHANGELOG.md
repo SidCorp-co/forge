@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.542] - 2026-11-06
+
+Support rooms: named decider's go counts, waits end on own thread, no claims from silence
+
+### Fixed
+
+- **A room's named decider is no longer asked to agree twice.** When the owner or a confirmed technical member names who decides an act, that person's own request or plain go in any words is their agreement.
+- **A room message ends only its own item's wait, and the item keeps it.** A confirm waiting on a room message ends only on the next message in its thread; the item and the master's pass name that message.
+- **A room's agent no longer says work is not done because it sees no record.** It states an item only from what the record shows, and otherwise asks the owning master, posts one holding reply and waits.
+
 ## [0.4.0-dev.541] - 2026-11-06
 
 A verdict right after declaring a run is told when the run opens

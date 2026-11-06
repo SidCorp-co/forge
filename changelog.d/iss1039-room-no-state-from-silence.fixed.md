@@ -1,1 +1,0 @@
-**A room's agent no longer says work is not done because it sees no record.** It states an item only from what the record shows, and otherwise asks the owning master, posts one holding reply and waits.

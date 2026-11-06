@@ -1,1 +1,0 @@
-**A room message ends only its own item's wait, and the item keeps it.** A confirm waiting on a room message ends only on the next message in its thread; the item and the master's pass name that message.
