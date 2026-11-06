@@ -3,6 +3,7 @@
  * requirement's page reads is `history-read.ts`.
  */
 
+import { projectGate } from '@forge/contracts/gate-profiles';
 import { type IssueStatus, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueStanding } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
@@ -31,12 +32,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { masterServingOf } from '../masters/index.js';
-import {
-  gateOf,
-  readOwedPolicy,
-  readProjectDocument,
-  readVerifiedJudge,
-} from '../project-config/index.js';
+import { readOwedPolicy, readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { requirementDependents } from './dependents.js';
@@ -321,7 +317,7 @@ export async function standingsOf(
     runnerBound,
     master,
     owed,
-    criteriaGate,
+    verdictsRequired,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -373,7 +369,7 @@ export async function standingsOf(
     known.runnerBound ?? runnerBoundIn(projectId),
     masterServingOf(projectId),
     readOwedPolicy(projectId),
-    gateOf(projectId, 'release_criteria'),
+    verdictsRequiredIn(projectId),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
@@ -445,7 +441,7 @@ export async function standingsOf(
         updatedAt: row.updatedAt,
         master,
         owed,
-        verdictsRequired: criteriaGate.mode === 'enforce',
+        verdictsRequired,
         now,
       }),
     );
@@ -519,4 +515,14 @@ export async function criterionVerdictOf(
   const standing = (await standingsOf(projectId, rows, null)).get(requirementId);
   const found = standing?.coverage.find((c) => c.code === code);
   return found ? { verdict: found.verdict, why: found.why, clip: clipOf(found) } : null;
+}
+
+/**
+ * Whether the project's release asks a criterion's verdict: gate `release_criteria` enforced, read from
+ * the project document alone (its switch is `delivery.verdictsRequired`, never the policy), as the
+ * release's own checklist reads it (`release-batch/approval-checklist.ts`).
+ */
+async function verdictsRequiredIn(projectId: string): Promise<boolean> {
+  const document = (await readProjectDocument(projectId))?.document;
+  return projectGate(document, null, 'release_criteria').mode === 'enforce';
 }

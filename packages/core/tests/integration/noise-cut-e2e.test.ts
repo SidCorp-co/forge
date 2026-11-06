@@ -128,6 +128,9 @@ beforeAll(async () => {
   await enforceGates(projectId, ownerId, ['approval_revisions', 'approval_designs']);
   // a runner is online, so the master these waits name can act (FB-77)
   await bindTestRunner(projectId, await createTestDevice(ownerId));
+  // a re-pin is the signer's own act only where the revisions gate asks a person (ISS-1058, ISS-1068);
+  // off, the requirement's standing names the master for it
+  await enforceGates(projectId, ownerId, ['approval_revisions']);
   say = requester(app, { owner: await signUserToken(ownerId) });
 }, 120_000);
 

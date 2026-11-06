@@ -65,7 +65,7 @@ import {
   requirementsOf,
   tracedCodesOf,
 } from './standing-facts-read.js';
-import { ownerIdOf, stewardAccountsAmong } from './standing-owner.js';
+import { ownerIdOf } from './standing-owner.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
 import { stepFactsOf } from './step-facts-read.js';
@@ -94,6 +94,8 @@ interface IssueRowRaw {
   assignee_id: string | null;
   created_by_id: string | null;
   by_agent: boolean;
+  /** Filed by an account of the retired steward (`steward_accounts`). */
+  by_steward: boolean;
   requirement_id: string | null;
   planned_revision: number | null;
   plan: string | null;
@@ -149,6 +151,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
              (i.created_by_device_id IS NOT NULL OR EXISTS (
                SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent')) AS by_agent,
+             EXISTS (SELECT 1 FROM steward_accounts sa WHERE sa.user_id = i.created_by_id) AS by_steward,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
@@ -220,7 +223,6 @@ type Facts = {
   releaseHolds: Map<string, ReleaseHoldView>;
   master: MasterServing;
   judge: VerifiedJudge | null;
-  stewards: ReadonlySet<string>;
   now: Date;
 };
 
@@ -264,7 +266,11 @@ function requirementRef(
 
 function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
   const mine = f.criteria.filter((c) => c.issue_id === r.id);
-  const ownerId = ownerIdOf({ assignee: r.assignee_id, creator: r.created_by_id }, f.stewards);
+  const ownerId = ownerIdOf({
+    assignee: r.assignee_id,
+    creator: r.created_by_id,
+    creatorIsSteward: r.by_steward,
+  });
   const owner = ownerId ? f.people.get(ownerId) : undefined;
   return {
     status: r.status,
@@ -359,14 +365,13 @@ async function standingRows(
     readJudge(projectId),
     releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
-  const [requirements, people, changedTraced, stewards] = await Promise.all([
+  const [requirements, people, changedTraced] = await Promise.all([
     requirementsOf(
       [...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))],
       projectId,
     ),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
     changedTracedOf(db, ids),
-    stewardAccountsAmong(raws.map((r) => r.created_by_id)),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
   const facts: Facts = {
@@ -385,7 +390,6 @@ async function standingRows(
     releaseHolds,
     master,
     judge,
-    stewards,
     now,
   };
   // on a change-request project the issue's head is its request's, not a run's worklog capture

@@ -249,11 +249,14 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('the planted re-pin waits on a person kind, as REQ-65 did on dev.356', () => {
-  it('reads as a person wait naming the re-pin act', async () => {
+// ISS-1068: REQ-65's re-pin read as a person's wait on dev.356; the requirement's own standing now
+// asks the one rule (`whoOwes('requirement.repin')`), so where no gate asks a person it names the master
+describe('the planted re-pin names the master in its own wait, by the one rule', () => {
+  it('reads as a wait on the master naming the re-pin act', async () => {
     const { openStandings } = await import('../../src/standing/index.js');
     const row = (await openStandings(projectId)).find((r) => r.subject.key === repinMasterTakes);
-    expect(row?.waitingOn.kind).toBe('person');
+    expect(row?.waitingOn.kind).toBe('agent');
+    expect(row?.waitingOn.says.who.key).toBe('standing.who.master');
     expect(row?.waitingOn.says.act.key).toBe('standing.acts');
     expect(JSON.stringify(row?.waitingOn.says.act)).toContain('standing.act.updateToDesign');
   });
@@ -263,8 +266,9 @@ describe('a re-pin the master may take is asked of the master, and is on no pers
   it('Needs you leaves it to the master', async () => {
     await setMasterRole('member');
     const read = await needsYou();
-    expect(read.masterTakes).toContain(repinMasterTakes);
+    // the wait names the master itself, so no person's decision is built for it to leave out
     expect(read.listed).not.toContain(repinMasterTakes);
+    expect(read.masterTakes).not.toContain(repinMasterTakes);
   });
 
   it('the steward asks the master, never reading it as a person act', async () => {

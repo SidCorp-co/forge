@@ -9,19 +9,23 @@
 import { describe, expect, it } from 'vitest';
 import { ownerIdOf } from './standing-owner.js';
 
-const stewards = new Set(['steward-user']);
-
 describe('ownerIdOf', () => {
   it('names no owner for an unassigned issue a steward account filed', () => {
-    expect(ownerIdOf({ assignee: null, creator: 'steward-user' }, stewards)).toBeNull();
+    expect(
+      ownerIdOf({ assignee: null, creator: 'steward-user', creatorIsSteward: true }),
+    ).toBeNull();
   });
 
   it('names the assignee whoever filed it', () => {
-    expect(ownerIdOf({ assignee: 'lan', creator: 'steward-user' }, stewards)).toBe('lan');
+    expect(ownerIdOf({ assignee: 'lan', creator: 'steward-user', creatorIsSteward: true })).toBe(
+      'lan',
+    );
   });
 
   it('names the creator where it is not a steward account', () => {
-    expect(ownerIdOf({ assignee: null, creator: 'forge-agent' }, stewards)).toBe('forge-agent');
-    expect(ownerIdOf({ assignee: null, creator: null }, stewards)).toBeNull();
+    expect(ownerIdOf({ assignee: null, creator: 'forge-agent', creatorIsSteward: false })).toBe(
+      'forge-agent',
+    );
+    expect(ownerIdOf({ assignee: null, creator: null, creatorIsSteward: false })).toBeNull();
   });
 });
