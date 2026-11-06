@@ -8,7 +8,7 @@
 // asked keep or decline, a fix nobody verifies verify, reopen or keep. Nothing is asked where the
 // reading names an act somebody already owes, where the same question is open, where a person
 // kept the item on the standing it reads now, or where a reasoned decision answers that standing
-// (`asks.ts:answerOf`, ISS-1037): each is said to the turn to correct, and is no refusal of the run.
+// (`decide-answered.ts`): each is said to the turn to correct, and is no refusal of the run.
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { PLAIN_DECISION_RULE, plainDecisionSchema } from '@forge/contracts/plain-decision';
@@ -32,76 +32,14 @@ import {
   stewardRequirementDecisionsFor,
   stewardSharedTerms,
 } from '@forge/contracts/steward';
-import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
-import { answerOf } from './asks.js';
-import { fingerprintOf } from './decision-ask.js';
+import { answeredAlready } from './decide-answered.js';
 import { doorName } from './door-call.js';
 import { cite, type DoorContext, type DoorSpec, key, send } from './door-kit.js';
 import { openStandings } from './ports.js';
 
+export { choseKeep } from './decide-answered.js';
 export { decisionFingerprint, fingerprintOf } from './decision-ask.js';
-
-interface AskedRow {
-  id: string;
-  status: string;
-  chosen: string | null;
-  chosen_label: string | null;
-  answered_at: string | null;
-  fingerprint: string | null;
-}
-
-/**
- * Every question on the item, of every kind, newest first: the steward's own, a park's, a run's, and
- * the merge-or-drop question Forge asked on a draft before the steward took that job over. A
- * person's answer on any of them is read before the steward asks again (ISS-134 and ISS-284).
- */
-async function questionsAskedOn(subject: {
-  kind: StewardDecisionSubject;
-  id: string;
-}): Promise<AskedRow[]> {
-  const on =
-    subject.kind === 'issue'
-      ? sql`q.issue_id = ${subject.id}`
-      : subject.kind === 'requirement'
-        ? sql`q.requirement_id = ${subject.id}`
-        : sql`q.about ->> 'kind' = 'feedback' AND q.about ->> 'feedbackId' = ${subject.id}`;
-  return rowsOf<AskedRow>(
-    await db.execute(sql`
-      SELECT q.id, q.status,
-             q.steps -> -1 ->> 'chosenOptionId' AS chosen,
-             (SELECT o ->> 'label' FROM jsonb_array_elements(q.steps -> -1 -> 'options') o
-               WHERE o ->> 'id' = q.steps -> -1 ->> 'chosenOptionId' LIMIT 1) AS chosen_label,
-             q.steps -> -1 ->> 'answeredAt' AS answered_at,
-             q.steps -> -1 -> 'options' -> 0 ->> 'fingerprint' AS fingerprint
-        FROM agent_questions q
-       WHERE ${on}
-         AND q.status IN ('open', 'answered')
-       ORDER BY q.created_at DESC`),
-  );
-}
-
-/** Whether an answer chose to keep the item as it is, whichever question asked it. */
-export function choseKeep(chosen: string | null, label: string | null): boolean {
-  if (!chosen) return false;
-  return /(^|[._:-])keep([._:-]|$)/i.test(chosen) || /^\s*keep\b/i.test(label ?? '');
-}
-
-/**
- * The person's keep that still holds on the standing read now: the steward's own on this basis, or
- * a keep of any other question answered since the item came to read as it does.
- */
-function keptNow(asked: readonly AskedRow[], basis: string, since: string | null) {
-  return asked.find((q) => {
-    if (q.status !== 'answered' || !choseKeep(q.chosen, q.chosen_label)) return false;
-    const own = fingerprintOf(q.fingerprint ?? undefined);
-    if (own && q.chosen === STEWARD_DECISION_OPTION_IDS.keep) return own.basis === basis;
-    if (!since || !q.answered_at) return true;
-    return new Date(q.answered_at).getTime() >= new Date(since).getTime();
-  });
-}
 
 const candidate = z.strictObject({
   requirement: z
@@ -464,22 +402,8 @@ export const DECIDE: DoorSpec<DecideArgs> = {
     );
     if (!recommended) return correct(`${about} offers no ${args.recommended} here.`);
     const basis = standing?.basis ?? 'none';
-    const asked = await questionsAskedOn(offer.subject);
-    const open = asked.find((q) => q.status === 'open');
-    if (open) return correct(`question ${open.id} on ${about} already asks it; ask nothing more.`);
-    const kept = keptNow(asked, basis, standing?.since ?? null);
-    if (kept) {
-      return correct(
-        `${about} was kept on the standing it reads now (question ${kept.id}, answered ${kept.chosen_label ?? kept.chosen}): ask nothing until it moves.`,
-      );
-    }
-    // a reasoned decision answering its standing is the answer this question would ask for (ISS-1037)
-    const decided = standing ? await answerOf(ctx.projectId, standing, new Date()) : null;
-    if (decided) {
-      return correct(
-        `${about} has a decision recorded on this standing (${decided.at.toISOString()}: ${decided.decision ?? decided.why}): ask nothing while it holds; write the note.`,
-      );
-    }
+    const answered = await answeredAlready(ctx.projectId, about, offer.subject, standing ?? null);
+    if (answered) return correct(answered);
     const prompt = stewardDecisionQuestion(
       options.map((o) => o.id),
       { kind: offer.subject.kind, draft: offer.draft },
