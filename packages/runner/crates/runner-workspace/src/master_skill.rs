@@ -591,6 +591,40 @@ mod tests {
         }
     }
 
+    /// Owner direction, 2026-11-07 (ISS-1057): the loop is Product → Delivery → Release → Audit →
+    /// Product, agents decide and execute on the record, and a person is asked only for money,
+    /// credentials or product direction. A master that read a routine approval as a safeguard
+    /// parked work on people who had set the policy already.
+    #[test]
+    fn the_skill_places_the_master_in_the_loop_and_asks_no_routine_approval() {
+        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
+        for word in [
+            "Product → Delivery → Release → Audit → Product",
+            "Delivery conforms to it",
+            "Audit is a job of its own, the cleanup run in the project's cleanup window, never a step of a pass",
+            "what it finds goes back to Product",
+            "**You decide and execute, on the record; people set policy.**",
+            "money, credentials, product direction",
+            "A routine approval you ask for is a stall you made.",
+        ] {
+            assert!(
+                prose.contains(word),
+                "forge-master-skill.md no longer says {word:?}, so a master reads delivery as the end of the loop or parks routine work on a person"
+            );
+        }
+        for gone in [
+            "asks for human control",
+            "a ruling, an approval, an answer",
+            "Where the route is a person's call",
+            "backlog a person holding `issues.admit` put there",
+        ] {
+            assert!(
+                !prose.contains(gone),
+                "forge-master-skill.md again says {gone:?}, which makes a routine approval a person's safeguard"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [
