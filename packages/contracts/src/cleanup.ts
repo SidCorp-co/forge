@@ -1,6 +1,7 @@
 // Fast delivery's records (REQ-79): the impact the building agent rates its change at, the cleanup
 // debt it leaves for the cleanup lane, and the report a cleanup run writes. Agents record all three;
-// core keeps them and reads them where a release asks (VISION: Forge never infers what an agent did).
+// core keeps them and reads them where a release asks, and never infers what an agent did
+// (`VISION: state-never-lies`).
 //
 // A rating is the change's system impact by type: `type` is the landing surface it touches
 // (`./landing-artifacts.ts`), `rating` low, medium or high, high covering severe. A change rated high

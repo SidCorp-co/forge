@@ -3,7 +3,8 @@
 -- 0117 built this view when `job_events.kind='intervention'` had exactly one
 -- writer, so it hardcoded `'manual_cancel'`. A second writer (the operator
 -- resume for a held job) would have been counted correctly and labelled wrongly:
--- every resume charted as a cancel in VISION §1 metric ②, which is worse than
+-- every resume charted as a cancel in the interventions metric
+-- (`VISION: measured-together-never-apart`), which is worse than
 -- missing, because it reads as an operator killing work they actually rescued.
 --
 -- The label now comes from `data->>'action'`, which every writer already stamps.
