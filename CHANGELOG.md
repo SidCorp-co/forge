@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.536] - 2026-11-06
+
+Support rooms hear true outcomes, tools list every argument, cuts take named versions
+
+### Fixed
+
+- **A batch's one merge check records on every issue it lands.** The same check ids record on each issue and read back from each, so a high-impact issue later in the batch can be marked.
+- **A support room no longer tells an answered request as done.** Its agent is told an answered item with the team's answer, a shipped one with what shipped, a declined one with the reason, and waits for that before replying.
+- **A support room's agent can file on the project that owns the ask.** forge_describe and the room's brief now show support.record's project and whereSeen, and the registry refuses an action entry that hides an argument its request takes.
+- **A release cut can wear the version its owner names.** Send `version` (`1.15.0` or `v1.15.0`) on the cut; it is refused by name when another release wears it or it is not above the highest version claimed.
+- **Ask Agent acts on exactly the set you agreed.** A failed decision card says why, a decision refused twice is filed and not offered again, and a trimmed reply keeps whole sentences past abbreviations, bold spans and list intros.
+
 ## [0.4.0-dev.535] - 2026-11-06
 
 Daily review Sentry links answer on two-target bindings; approvals name requirements once

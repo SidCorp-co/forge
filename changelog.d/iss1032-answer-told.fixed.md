@@ -1,1 +1,0 @@
-**A support room no longer tells an answered request as done.** Its agent is told an answered item with the team's answer, a shipped one with what shipped, a declined one with the reason, and waits for that before replying.

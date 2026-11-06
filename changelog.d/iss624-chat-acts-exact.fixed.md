@@ -1,1 +1,0 @@
-**Ask Agent acts on exactly the set you agreed.** A failed decision card says why, a decision refused twice is filed and not offered again, and a trimmed reply keeps whole sentences past abbreviations, bold spans and list intros.

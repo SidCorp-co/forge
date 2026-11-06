@@ -1,1 +1,0 @@
-**A release cut can wear the version its owner names.** Send `version` (`1.15.0` or `v1.15.0`) on the cut; it is refused by name when another release wears it or it is not above the highest version claimed.
