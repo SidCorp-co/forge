@@ -2,7 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "agentGuidance": false,
   "globalDependencies": ["**/.env", "**/.env.local", "**/.env.*.local"],
-  "globalPassThroughEnv": ["FORGE_API", "FORGE_PAT"],
+  "globalPassThroughEnv": ["FORGE_API", "FORGE_PAT", "XDG_CONFIG_HOME"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
