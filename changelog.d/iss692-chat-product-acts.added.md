@@ -1,0 +1,1 @@
+**The chat does a person's Product acts on their word.** Requirement, feedback, design and release acts are put to you, made once you agree, and each item's new state or refusal is shown; the chat opens every page.
