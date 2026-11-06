@@ -3879,6 +3879,13 @@
       "when": 1835481600000,
       "tag": "0608_a_requirement_judge_reads_its_testing_secrets_audited_on_the_requirement",
       "breakpoints": true
+    },
+    {
+      "idx": 609,
+      "version": "7",
+      "when": 1835568000000,
+      "tag": "0609_a_channel_rule_names_who_decides_an_act",
+      "breakpoints": true
     }
   ]
 }

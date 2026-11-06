@@ -19,10 +19,13 @@ import { runConfirmed } from './ability-run.js';
 import { memberMessage } from './channel-store.js';
 import {
   changeWaitsOnRole,
+  DECIDER_WORDS,
   mayConfirmChange,
+  type RequestConsent,
   requestIsConsent,
   whoConfirms,
 } from './confirm-role.js';
+import { deciderNote } from './deciders.js';
 import { grantsOf, isNamedOwner, isOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
@@ -138,25 +141,30 @@ export async function agreeTo(
   const grants = grantsOf(config);
   // an asker the room lets confirm consents by their own request (ISS-915, ISS-953): never asked again
   const ownRequest = await ownRequestOf(room, grants, fix, writer, decision);
+  // a decider a standing channel rule names agrees by their own request for that act (ISS-1000)
+  const decider = ownRequest?.by === 'decider' ? ownRequest : null;
   // the owner's word in the proposal's thread settles it, whoever asked; an order he gave before the
   // proposal is his agreement to it (ISS-954). The owner the binding names settles a filing; any
   // other change takes his word only under owner mode, as builds, deploys and host changes are gated.
   const ownerWord = ownerSettles(grants, fix, writer.key);
-  const consent = ownRequest
-    ? 'own_request'
-    : ownerWord && decision === 'agree'
-      ? 'owner_order'
-      : null;
+  const consent = decider
+    ? 'named_decider'
+    : ownRequest
+      ? 'own_request'
+      : ownerWord && decision === 'agree'
+        ? 'owner_order'
+        : null;
   if (!consent && said.at.getTime() <= fix.createdAt.getTime()) {
     await audit('refused', fix, writer, { reason: 'before the proposal' });
     return no(
       'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
       '/message',
-      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Only the own request of an asker this room lets confirm (${whoConfirms(room, grants)}) counts as their agreement, and so does the owner's order in the thread (${ownerScope(grants)}). Nothing was done.`,
+      `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Only the own request of an asker this room lets confirm (${whoConfirms(room, grants)}), or of ${DECIDER_WORDS}, counts as their agreement, and so does the owner's order in the thread (${ownerScope(grants)}). Nothing was done.`,
     );
   }
   const allowed =
     ownerWord ||
+    decider !== null ||
     (gated
       ? (await mayConfirmChange(room, grants, writer)) ||
         (decision === 'decline' && writer.key === fix.askerKey)
@@ -200,8 +208,41 @@ export async function agreeTo(
   }
   // the claim: of two agreements racing, one moves the row and runs it
   if (!(await decideFix(fix.id, 'ran', now))) return gone(input.proposal);
-  // the audit fact: who consented, by which message, and whether by their own request or the owner's order
-  await audit('fix_confirmed', fix, writer, consent ? { consent } : null);
+  // the audit fact: who consented, by which message, and whether by their own request, the rule
+  // naming them decider (which rule, and who wrote it: policy input, said where it is used), or the
+  // owner's order
+  await audit(
+    'fix_confirmed',
+    fix,
+    writer,
+    consent
+      ? {
+          consent,
+          ...(decider
+            ? { rule: decider.rule, ruleAuthor: decider.author, ruleBy: decider.namedBy }
+            : {}),
+        }
+      : null,
+  );
+  const settled = await settle(room, fix, conversationId, writer, config);
+  if (!decider || !settled.ok) return settled;
+  return {
+    ok: true,
+    value: {
+      ...settled.value,
+      what: `${settled.value.what} ${deciderNote(writer, fix.kind, decider)}`,
+    },
+  };
+}
+
+/** Run or file what was agreed to. */
+async function settle(
+  room: RoomRow,
+  fix: ProposalRow,
+  conversationId: string,
+  writer: { key: string; label: string | null },
+  config: Awaited<ReturnType<typeof supportConfigOf>>,
+): Promise<Outcome<Agreed>> {
   if (fix.kind === 'filing') return recordAgreed(room, fix, conversationId);
   if (CONFIRMER_KINDS.has(fix.kind)) {
     const out = await runConfirmed(room, fix, conversationId, writer);
@@ -213,9 +254,11 @@ export async function agreeTo(
 /**
  * Whether the cited message is the asker's own request for this change, agreeing, from a writer the
  * room lets confirm (`confirm-role.ts:requestIsConsent`, by the id and username the chat server
- * signed): the owner under owner mode (ISS-915), a named confirmer, or a member the channel record
- * confirms in a confirm role (ISS-953). Such a message consents whenever it was written; every other
- * writer agrees only after the proposal. Who may confirm a gated change is still `mayConfirmChange`'s.
+ * signed): the owner under owner mode (ISS-915), a named confirmer, a member the channel record
+ * confirms in a confirm role (ISS-953), or the member a standing channel rule names as the one who
+ * decides this act (ISS-1000). Such a message consents whenever it was written; every other writer
+ * agrees only after the proposal. Who may confirm someone else's gated change is still
+ * `mayConfirmChange`'s: a decider's rule counts for their own request alone.
  */
 async function ownRequestOf(
   room: RoomRow,
@@ -223,9 +266,9 @@ async function ownRequestOf(
   fix: ProposalRow,
   writer: { key: string; label: string | null },
   decision: 'agree' | 'decline',
-): Promise<boolean> {
-  if (decision !== 'agree' || writer.key !== fix.askerKey) return false;
-  return requestIsConsent(room, grants, writer);
+): Promise<RequestConsent | null> {
+  if (decision !== 'agree' || writer.key !== fix.askerKey) return null;
+  return requestIsConsent(room, grants, writer, fix.kind);
 }
 
 /**

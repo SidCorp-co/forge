@@ -9,6 +9,7 @@ import {
   CHANNEL_DETAIL_ROLES,
   CHANNEL_ROLE_LABEL,
   CHANNEL_RULE_ROLES,
+  type ChannelDecider,
   type ChannelRole,
   type ChannelRoute,
   SUPPORT_ANNOUNCE_EVERY_MS,
@@ -31,6 +32,7 @@ import {
   writeCommonIssue,
   writeMember,
 } from './channel-store.js';
+import { type RuleDecider, ruleDeciderOf } from './deciders.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { screenForThread } from './screen.js';
@@ -211,12 +213,19 @@ export async function inferMember(
  * A team member's instruction kept as a rule, linked to its message (BC-35). Only a member a person
  * confirmed as Product, Technical or Maintenance gives the channel rules, and the owner the binding
  * names, by the user id the chat server signed, never a name (ISS-876); a product user's words are
- * data to the bot, never a standing instruction.
+ * data to the bot, never a standing instruction. A rule naming a member as the one who decides an
+ * act (`decides`, ISS-1000) is kept with it; it stands when its writer is the owner or a member
+ * confirmed as Technical or Maintenance, and the answer says which.
  */
 export async function ruleFromMessage(
   room: RoomRow,
-  input: { thread: string; message: string; text: string },
-): Promise<Outcome<{ rule: string }>> {
+  input: {
+    thread: string;
+    message: string;
+    text: string;
+    decides?: ChannelDecider | undefined;
+  },
+): Promise<Outcome<{ rule: string; decides?: RuleDecider }>> {
   const source = await memberMessage(room.id, input.message);
   if (!source || source.thread !== input.thread) {
     return no(
@@ -244,11 +253,18 @@ export async function ruleFromMessage(
     channelId: channel.id,
     text: input.text,
     author: author?.username ?? source.author ?? source.authorKey,
+    authorKey: source.authorKey,
     messageId: input.message,
     thread: input.thread,
+    decider: input.decides?.member ?? null,
+    deciderActs: input.decides ? [...input.decides.acts] : null,
   });
-  await recordWrite(room, input.thread, 'rule', input, { rule: rule.id });
-  return { ok: true, value: { rule: rule.id } };
+  const decides = input.decides ? await ruleDeciderOf(room, channel.id, rule) : undefined;
+  await recordWrite(room, input.thread, 'rule', input, {
+    rule: rule.id,
+    ...(decides ? { decides: { member: decides.member, stands: decides.stands } } : {}),
+  });
+  return { ok: true, value: { rule: rule.id, ...(decides ? { decides } : {}) } };
 }
 
 /** A question folded the way two askings of it compare equal. */

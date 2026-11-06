@@ -208,27 +208,33 @@ export async function rulesOf(channelId: string): Promise<RuleRow[]> {
     .orderBy(asc(supportChannelRules.createdAt));
 }
 
-/** Add a rule; the one already linked to the same message is answered instead of a second. */
+/**
+ * Add a rule; a rule already linked to the same message is that rule, read again from it: its text,
+ * its writer's account and whom it names as decider take this reading (ISS-1000), so a rule kept
+ * before it named a decider takes one when the session reads the message again.
+ */
 export async function addRule(values: typeof supportChannelRules.$inferInsert): Promise<RuleRow> {
+  if (values.messageId == null) {
+    const [row] = await db.insert(supportChannelRules).values(values).returning();
+    if (!row) throw new Error('support: a rule was not inserted');
+    return row;
+  }
   const [row] = await db
     .insert(supportChannelRules)
     .values(values)
-    .onConflictDoNothing()
+    .onConflictDoUpdate({
+      target: [supportChannelRules.channelId, supportChannelRules.messageId],
+      targetWhere: sql`removed_at IS NULL AND message_id IS NOT NULL`,
+      set: {
+        text: values.text,
+        authorKey: values.authorKey ?? null,
+        decider: values.decider ?? null,
+        deciderActs: values.deciderActs ?? null,
+      },
+    })
     .returning();
-  if (row) return row;
-  const [same] = await db
-    .select()
-    .from(supportChannelRules)
-    .where(
-      and(
-        eq(supportChannelRules.channelId, values.channelId),
-        eq(supportChannelRules.messageId, String(values.messageId)),
-        isNull(supportChannelRules.removedAt),
-      ),
-    )
-    .limit(1);
-  if (!same) throw new Error('support: a rule neither inserted nor read back');
-  return same;
+  if (!row) throw new Error('support: a rule neither inserted nor updated');
+  return row;
 }
 
 export async function removeRule(channelId: string, ruleId: string): Promise<boolean> {

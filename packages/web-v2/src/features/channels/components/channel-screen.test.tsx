@@ -22,7 +22,7 @@ const webmail: ChannelView = {
     { username: "thanhnh", roles: ["technical", "product"], state: "confirmed", askFor: "node changes, deploys", confirmedBy: "Owner", updatedAt: "2026-10-29T08:00:00Z" },
     { username: "tramnnh", roles: ["user"], state: "inferred", askFor: null, confirmedBy: null, updatedAt: "2026-10-29T08:00:00Z" },
   ],
-  ruleRows: [{ id: "r1", text: "Answer users in plain Vietnamese.", author: "chuongld", message: "m1", thread: "t1", createdAt: "2026-10-29T08:00:00Z" }],
+  ruleRows: [{ id: "r1", text: "Answer users in plain Vietnamese.", decides: null, author: "chuongld", message: "m1", thread: "t1", createdAt: "2026-10-29T08:00:00Z" }],
   commonIssueRows: [{ id: "c1", question: "How do I reset my password?", answer: "Settings, then Password.", threads: 3, feedbackKey: "FB-12", updatedAt: "2026-10-29T08:00:00Z" }],
   routes: [
     { route: "forge", members: [] },

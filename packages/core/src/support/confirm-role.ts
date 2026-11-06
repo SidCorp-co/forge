@@ -5,13 +5,14 @@
 // data, never a grant. A support group or an operations room has none of the third: its changes
 // wait on its asker or its named confirmers, as before.
 
-import type { SupportGrants } from '@forge/contracts/support';
+import type { SupportGrants, SupportProposalKind } from '@forge/contracts/support';
 import {
   CHANGE_CONFIRM_ROLES,
   CHANNEL_ROLE_LABEL,
   type ChannelRole,
 } from '@forge/contracts/support-channel';
 import { channelOf, memberOf } from './channel-store.js';
+import { type DeciderRuleFound, deciderRuleFor } from './deciders.js';
 import { isConfirmer } from './grants.js';
 import type { RoomRow } from './store.js';
 
@@ -39,18 +40,25 @@ export async function mayConfirmChange(
   );
 }
 
+/** Why an asker's own request is their consent: the room lets them confirm, or a rule names them decider. */
+export type RequestConsent = { by: 'confirmer' } | ({ by: 'decider' } & DeciderRuleFound);
+
 /**
  * Whether an asker's own request is their consent to the change it asked for, whenever it was
  * written (ISS-915, ISS-953): the room already lets that writer confirm — the owner under owner
- * mode, a confirmer the binding names, or a member the channel record confirms in a confirm role.
- * Who that is stays data on the binding and the record; a role the bot only inferred is no grant.
+ * mode, a confirmer the binding names, or a member the channel record confirms in a confirm role —
+ * or a standing channel rule names them the one who decides that act (ISS-1000). Who that is stays
+ * data on the binding and the record; a role the bot only inferred is no grant. Null otherwise.
  */
 export async function requestIsConsent(
   room: RoomRow,
   grants: SupportGrants,
   asker: { key: string | null; label: string | null },
-): Promise<boolean> {
-  return mayConfirmChange(room, grants, asker);
+  act: SupportProposalKind,
+): Promise<RequestConsent | null> {
+  if (await mayConfirmChange(room, grants, asker)) return { by: 'confirmer' };
+  const rule = await deciderRuleFor(room, act, asker);
+  return rule ? { by: 'decider', ...rule } : null;
 }
 
 /** Who can confirm, as the thread and the session are told it. */
@@ -64,3 +72,7 @@ export function whoConfirms(room: Pick<RoomRow, 'kind'>, grants: SupportGrants):
   }
   return who.join(' or ') || 'a confirmer this room names';
 }
+
+/** Who else's own request is their agreement, as a refusal teaches it (ISS-1000). */
+export const DECIDER_WORDS =
+  'the member a channel rule of the owner or of a confirmed Technical or Maintenance member names as the one who decides it';

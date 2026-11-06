@@ -16,6 +16,7 @@ import { scrubbedResult } from './ability-acts.js';
 import { boxOfRoom } from './box.js';
 import { buildBaseOf, buildKeyOf } from './build.js';
 import { mayConfirmChange } from './confirm-role.js';
+import { deciderRuleFor } from './deciders.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { threadLink } from './record.js';
 import {
@@ -128,7 +129,10 @@ async function runClaimed(
   if (still && !still.ok) {
     return failed(room, fix, conversationId, still.refusals[0]?.detail ?? 'no longer granted');
   }
-  if (!(await mayConfirmChange(room, grants, confirmer))) {
+  // a decider a standing channel rule names agrees to their own request for this act (ISS-1000)
+  const ownDecided =
+    confirmer.key === fix.askerKey && (await deciderRuleFor(room, fix.kind, confirmer)) !== null;
+  if (!ownDecided && !(await mayConfirmChange(room, grants, confirmer))) {
     return failed(
       room,
       fix,

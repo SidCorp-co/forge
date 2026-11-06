@@ -9,6 +9,8 @@ import { REASON_NOTE_MAX } from "./reason-text.js";
 import {
 	chatUsernameSchema,
 	ROOM_IMAGE_CAPS,
+	SUPPORT_PROPOSAL_KINDS,
+	type SupportProposalKind,
 	supportRoomConfigSchema,
 	supportThreadIdSchema,
 } from "./support.js";
@@ -124,11 +126,49 @@ export const supportMemberRequestSchema = z.strictObject({
 	message: supportThreadIdSchema,
 });
 
+/** What a decider may be named for: the acts a proposal waits on an agreement for. */
+export const CHANNEL_DECIDER_ACTS = SUPPORT_PROPOSAL_KINDS;
+
+/** Each act as the session's brief names it. */
+export const CHANNEL_DECIDER_ACT_LABEL: Record<SupportProposalKind, string> = {
+	filing: "recording work (a filing)",
+	fix: "a fix through the product's tools",
+	deploy: "a deploy",
+	build: "a build",
+	command: "a host command",
+};
+
+/**
+ * A rule's naming of one member as the person who decides an act (ISS-1000): read from the words of
+ * the message the rule links, and kept on the rule, so the brief and the agreement read one record.
+ * It stands while the rule's writer is the owner the binding names or a member a person confirmed in
+ * a role that may confirm a change (`CHANGE_CONFIRM_ROLES`); a Product member's rule names no decider.
+ */
+export const channelDeciderSchema = z.strictObject({
+	member: chatUsernameSchema,
+	acts: z
+		.array(z.enum(CHANNEL_DECIDER_ACTS))
+		.min(1)
+		.max(CHANNEL_DECIDER_ACTS.length)
+		.refine((a) => new Set(a).size === a.length, "an act is named once"),
+});
+export type ChannelDecider = z.infer<typeof channelDeciderSchema>;
+
 /** An instruction a member gave in the channel, kept as a rule linked to its message (BC-35). */
 export const supportRuleRequestSchema = z.strictObject({
 	thread: supportThreadIdSchema,
 	message: supportThreadIdSchema,
 	text: channelRuleTextSchema,
+	/**
+	 * Where the rule names a member as the one who decides an act (ISS-1000): that member, and the
+	 * acts. Their own request for one of them is their agreement, while the rule's writer is the owner
+	 * this binding names or a member a person confirmed as Technical or Maintenance.
+	 */
+	decides: channelDeciderSchema
+		.optional()
+		.describe(
+			"where the rule names a member as the one who decides an act: { member, acts: (filing | fix | deploy | build | command)[] }",
+		),
 });
 
 /** A question asked again, with its one answer (BC-36). */
@@ -344,9 +384,22 @@ export interface ChannelMemberView {
 	updatedAt: string;
 }
 
+/**
+ * Whom a rule names as decider, and whether it stands (ISS-1000): `by` is what makes it stand now,
+ * its writer being the owner the binding names or a member confirmed as Technical or Maintenance; null
+ * where its writer is neither, and the member's own request is then no agreement by it.
+ */
+export interface ChannelDeciderView {
+	member: string;
+	acts: SupportProposalKind[];
+	by: "owner" | "confirmer" | null;
+}
+
 export interface ChannelRuleView {
 	id: string;
 	text: string;
+	/** The member the rule names as decider for some acts; null for a rule naming none. */
+	decides: ChannelDeciderView | null;
 	/** The member whose message it came from; null for a rule a person added in Forge. */
 	author: string | null;
 	/** The message it is linked to; null for a rule a person added in Forge. */

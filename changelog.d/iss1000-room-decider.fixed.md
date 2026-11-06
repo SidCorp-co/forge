@@ -1,0 +1,1 @@
+**A room's named decider is no longer asked to agree twice.** A channel rule the owner or a confirmed technical member writes, naming who decides an act, makes that person's own request their agreement; anyone else is still asked.
