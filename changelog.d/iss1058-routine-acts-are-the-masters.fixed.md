@@ -1,1 +1,0 @@
-**A routine act is the master's on every surface.** Cutting, splitting or recording a release and confirming a report name the project's master and place one; the owner's Needs you and Activity keep irreversible changes and the project's own gates.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.554] - 2026-11-06
+
+Routine release acts go to the master; Forge texts follow the owner's loop
+
+### Fixed
+
+- **A routine act is the master's on every surface.** Cutting, splitting or recording a release and confirming a report name the project's master and place one; the owner's Needs you and Activity keep irreversible changes and the project's own gates.
+
 ## [0.4.0-dev.553] - 2026-11-06
 
 VISION citations are checked, and high-impact changes run their integration tests
