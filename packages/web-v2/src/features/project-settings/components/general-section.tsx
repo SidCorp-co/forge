@@ -1,23 +1,20 @@
 
-// Settings → General: what the project is called, the language its prose is written in, and the
-// rules its work follows. Every value is a field of the project document, held as one draft and
-// saved by one write at the revision read (`PUT /projects/:id/config`, the raw editor's own write).
+// Settings → General: what the project is called and the rules its work follows. Every value is a
+// field of the project document, held as one draft and saved by one write at the revision read
+// (`PUT /projects/:id/config`, the raw editor's own write). No step asks a person to approve it here
+// (routine approval is a defect, owner 2026-11-06) and no language is chosen (Forge is English only,
+// owner 2026-10-08): what the document already holds for either is kept as written and read by core,
+// and the raw editor under Advanced still writes it (ISS-1071).
 import { Link } from "@/lib/navigation/router";
-import { useId } from "react";
-import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem } from "@forge/contracts/content-language";
 import { SENSITIVE_DATA_LEVELS } from "@forge/contracts/data-policy";
 import { FEEDBACK_VERIFY_WINDOW } from "@forge/contracts/feedback";
-import { PERSON_GATE_STEPS, PERSON_GATES } from "@forge/contracts/person-gates";
 import { Input, SettingRow, SettingsGroup, Skeleton } from "@/design";
 import { useProjectDocument, useWriteProjectDocument } from "@/features/project-config";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
 import type { ProjectDetail } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { settingsHref } from "../sections";
-import { ChoiceSetting, optionsOf, Picker, refusalError, SaveBar, SwitchSetting, TextSetting } from "./setting-controls";
-
-const OTHER = "other";
-const isChoice = (tag: string) => CONTENT_LANGUAGE_CHOICES.some((c) => c.tag === tag);
+import { ChoiceSetting, optionsOf, refusalError, SaveBar, SwitchSetting, TextSetting } from "./setting-controls";
 
 /** The project document a section edits, read and held as one draft. */
 export function useProjectDraft(projectId: string): DocumentDraft & { loading: boolean } {
@@ -35,77 +32,6 @@ export function UndeclaredNotice({ slug }: { slug: string }) {
 				{t("settings.project.undeclaredAct")}
 			</Link>
 		</p>
-	);
-}
-
-function LanguageField({ draft, disabled }: { draft: DocumentDraft; disabled: boolean }) {
-	const t = useCopy();
-	const id = useId();
-	const raw = draft.get(["contentLanguage"]);
-	const tag = typeof raw === "string" ? raw : "en";
-	const choice = isChoice(tag) ? tag : OTHER;
-	const problem = choice === OTHER && tag !== "" ? contentLanguageProblem(tag) : null;
-	return (
-		<>
-			<SettingRow
-				label={t("settings.project.general.language")}
-				htmlFor={id}
-				error={refusalError(draft.refusedAt(["contentLanguage"]))}
-				control={
-					<Picker
-						id={id}
-						aria-label={t("settings.project.general.language")}
-						value={choice}
-						disabled={disabled}
-						width="sm:max-w-md"
-						onChange={(e) => draft.set(["contentLanguage"], e.target.value === OTHER ? "" : e.target.value === "en" ? undefined : e.target.value)}
-						options={[...CONTENT_LANGUAGE_CHOICES.map((c) => ({ value: c.tag, label: c.label })), { value: OTHER, label: t("settings.project.general.languageOther") }]}
-					/>
-				}
-			/>
-			{choice === OTHER && (
-				<SettingRow
-					label={t("settings.project.general.languageTag")}
-					hint={problem ?? (tag ? contentLanguageName(tag) : undefined)}
-					control={
-						<Input
-							aria-label={t("settings.project.general.languageTag")}
-							value={tag}
-							maxLength={35}
-							disabled={disabled}
-							placeholder="pt-BR"
-							onChange={(e) => draft.set(["contentLanguage"], e.target.value.trim())}
-						/>
-					}
-				/>
-			)}
-		</>
-	);
-}
-
-/** "checkout, storefront" ↔ ["checkout", "storefront"]; emptied, the key is removed. */
-function TermsField({ draft, disabled }: { draft: DocumentDraft; disabled: boolean }) {
-	const t = useCopy();
-	const raw = draft.get(["keepTermsInEnglish"]);
-	const terms = Array.isArray(raw) ? raw.join(", ") : "";
-	return (
-		<SettingRow
-			label={t("settings.project.general.keepTerms")}
-			error={refusalError(draft.refusedAt(["keepTermsInEnglish"]))}
-			control={
-				<Input
-					aria-label={t("settings.project.general.keepTerms")}
-					defaultValue={terms}
-					key={terms}
-					disabled={disabled}
-					placeholder={t("settings.project.general.keepTermsPlaceholder")}
-					onBlur={(e) => {
-						const next = [...new Set(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))];
-						if (next.join(", ") !== terms) draft.set(["keepTermsInEnglish"], next.length ? next : undefined);
-					}}
-				/>
-			}
-		/>
 	);
 }
 
@@ -164,10 +90,6 @@ export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; 
 					}
 				/>
 			</SettingsGroup>
-			<SettingsGroup id="language" title={t("settings.project.general.languageGroup")}>
-				<LanguageField draft={draft} disabled={off} />
-				<TermsField draft={draft} disabled={off} />
-			</SettingsGroup>
 			<SettingsGroup id="rules" title={t("settings.project.general.rules")}>
 				<SwitchSetting
 					draft={draft}
@@ -183,16 +105,6 @@ export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; 
 					label={t("settings.project.general.verdicts")}
 					disabled={off}
 				/>
-				{PERSON_GATES.map((gate) => (
-					<SwitchSetting
-						key={gate}
-						draft={draft}
-						path={["approvals", gate]}
-						fallback={PERSON_GATE_STEPS[gate].unset}
-						label={t(`settings.project.general.approvals.${gate}`)}
-						disabled={off}
-					/>
-				))}
 				<DaysField draft={draft} disabled={off} />
 				<ChoiceSetting
 					draft={draft}

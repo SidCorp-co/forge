@@ -1,7 +1,9 @@
-// REQ-34 r2 BC-25: each step's person gate is a switch on General, off where the document says
-// nothing but triage, which is on until a project turns it off (ISS-639), and the readiness choice it
-// replaced is gone.
+// Routine approval is a defect (owner, 2026-11-06) and Forge is English only (owner, 2026-10-08), so
+// project settings offer no "A person approves/accepts…" switch and no language of their own
+// (ISS-1071). The project document keeps what it holds: a project that had a step on still has it,
+// read by core's gate profile, and a save of another field writes it back unchanged.
 // @direct-test-of packages/web-v2/src/features/project-settings/components/general-section.tsx
+// @direct-test-of packages/web-v2/src/features/project-settings/components/delivery-section.tsx
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -9,45 +11,45 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProjectDetail } from "@/features/projects";
 import { fakeCore } from "@/test/render";
 import { Seeded } from "@/test/vi-chrome-requirements";
+import { DeliverySettings } from "./delivery-section";
 import { GeneralSettings } from "./general-section";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const P = "11111111-1111-4111-8111-111111111111";
-const DETAIL = { id: P, slug: "hop", name: "Hop", orgId: "o1", baseBranch: "dev", members: [], labels: [], archivedAt: null } as unknown as ProjectDetail;
-const DOC = { $schema: "https://forge.sidcorp.co/schemas/project-v1.json", version: 1, approvals: { designs: true } };
+const DETAIL = { id: P, slug: "hop", name: "Hop", orgId: "o1", baseBranch: "dev", members: [], labels: [], devicePool: [], archivedAt: null } as unknown as ProjectDetail;
+const SCHEMA = "https://forge.sidcorp.co/schemas/project-v1.json";
+const STORED = {
+  $schema: SCHEMA,
+  version: 1,
+  project: { name: "Hop" },
+  contentLanguage: "vi",
+  keepTermsInEnglish: ["checkout"],
+  approvals: { designs: true, triage: false },
+  release: { approval: { required: true } },
+};
 
-const LABELS = [
-  "A person agrees each requirement",
-  "A person accepts each requirement revision and re-pin",
-  "A person accepts each breakdown",
-  "A person admits each new issue",
-  "A person accepts each delivered requirement",
-  "A person approves each workflow design",
-  "Person approves triage",
-];
-const TRIAGE = "Person approves triage";
+/** Every switch or picker the two screens draw, by its accessible name. */
+const controls = () => [...screen.queryAllByRole("switch"), ...screen.queryAllByRole("combobox")].map((c) => c.getAttribute("aria-label") ?? c.textContent ?? "");
 
-describe("the person gates on General", () => {
-  it("shows one switch per step, on only where the document turns it on", () => {
+describe("project settings after the rulings of 2026-11-06 and 2026-10-08", () => {
+  it("offer no person-approval switch and no language on General or Delivery", () => {
     render(
-      <Seeded data={[[["project", P, "config"], { declared: true, revision: 3, document: DOC }]]}>
+      <Seeded data={[[["project", P, "config"], { declared: true, revision: 3, document: STORED }]]}>
         <GeneralSettings project={DETAIL} canEdit />
+        <DeliverySettings project={DETAIL} canEdit />
       </Seeded>,
     );
-    const on = LABELS.map((l) => screen.getByRole("switch", { name: l }).getAttribute("aria-checked"));
-    expect(on).toEqual(["false", "false", "false", "false", "false", "true", "true"]);
-    expect(screen.queryByText("Requirement readiness check")).toBeNull();
-    fireEvent.click(screen.getByRole("switch", { name: LABELS[0] }));
-    expect(screen.getByRole("switch", { name: LABELS[0] }).getAttribute("aria-checked")).toBe("true");
+    const text = document.body.textContent ?? "";
+    expect(controls().filter((n) => /A person (approves|accepts|agrees|admits)|approves triage/i.test(n))).toEqual([]);
+    expect(text).not.toMatch(/A person (approves|accepts|agrees|admits)|Person approves triage/);
+    expect(text).not.toMatch(/Content language|Keep in English|Keep these terms/i);
+    expect(screen.queryByRole("region", { name: /language/i })).toBeNull();
   });
-});
 
-describe("the triage gate on General (ISS-639)", () => {
-  it("reads on where the document sets nothing, and saves approvals.triage false at the revision read", async () => {
-    const bare = { $schema: DOC.$schema, version: 1 };
+  it("writes the stored approvals and language back unchanged when another field is saved", async () => {
     const calls = fakeCore((c) => {
-      if (c.method === "GET" && c.path === `/projects/${P}/config`) return { body: { declared: true, revision: 4, document: bare } };
+      if (c.method === "GET" && c.path === `/projects/${P}/config`) return { body: { declared: true, revision: 4, document: STORED } };
       if (c.method === "PUT" && c.path === `/projects/${P}/config`)
         return { body: { declared: true, revision: 5, document: (c.body as { document: unknown }).document, created: false } };
       return undefined;
@@ -58,12 +60,13 @@ describe("the triage gate on General (ISS-639)", () => {
         <GeneralSettings project={DETAIL} canEdit />
       </QueryClientProvider>,
     );
-    const triage = await screen.findByRole("switch", { name: TRIAGE });
-    expect(triage.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(triage);
-    expect(screen.getByRole("switch", { name: TRIAGE }).getAttribute("aria-checked")).toBe("false");
+    const name = await screen.findByRole("textbox", { name: "Name" });
+    fireEvent.change(name, { target: { value: "Hop Clinic" } });
     fireEvent.click(within(screen.getByTestId("save-bar")).getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
-    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ baseRevision: 4, document: { approvals: { triage: false } } });
+    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({
+      baseRevision: 4,
+      document: { project: { name: "Hop Clinic" }, contentLanguage: "vi", keepTermsInEnglish: ["checkout"], approvals: { designs: true, triage: false }, release: { approval: { required: true } } },
+    });
   });
 });

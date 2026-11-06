@@ -386,7 +386,6 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 				}
 			/>
 			<ChoiceSetting draft={draft} path={["rollback", "strategy"]} options={optionsOf(t, "settings.project.delivery.rollback", ROLLBACKS)} label={t("settings.project.delivery.rollbackLabel")} disabled={off} />
-			<SwitchSetting draft={draft} path={["release", "approval", "required"]} fallback={false} label={t("settings.project.delivery.releaseApproval")} disabled={off} />
 			<SwitchSetting draft={draft} path={["release", "changeRequests"]} fallback={false} label={t("settings.project.delivery.releaseChangeRequests")} disabled={off} />
 		</SettingsGroup>
 	);
