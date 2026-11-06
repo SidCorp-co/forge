@@ -8,13 +8,22 @@
  *   criterion and the three places it may go;
  * - a close naming a destination for each moves each one out on the record first, and each
  *   destination holds its criterion;
- * - a release still closes an issue it claims, and only a release makes the work read live.
+ * - a release still closes an issue it claims, and only a release makes the work read live: the
+ *   issue's shippedIn, the forecast's progress and shipped leg (which Activity and the
+ *   progress-by-requirement report read), a requirement's work counts, and the development
+ *   overview's shipped per module each read an issue its holder closed as not live.
  *
  * @direct-test-of packages/core/src/issues/close-in-scope.ts
  * @direct-test-of packages/core/src/issues/transition-guards.ts
  * @direct-test-of packages/core/src/issues/apply-transition.ts
  * @direct-test-of packages/core/src/issues/transition-body.ts
  * @direct-test-of packages/core/src/issues/merged-at.ts
+ * @direct-test-of packages/core/src/issues/release-evidence.ts
+ * @direct-test-of packages/core/src/pipeline/release-runs.ts
+ * @direct-test-of packages/core/src/forecast/scope.ts
+ * @direct-test-of packages/core/src/forecast/progress.ts
+ * @direct-test-of packages/core/src/product-progress/progress.ts
+ * @direct-test-of packages/core/src/development/overview-read.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -295,5 +304,70 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
       /cannot enter `closed` with no merged_at\. `closed` means its criteria were met in scope/,
     );
     expect(await statusOf(id)).toBe('open');
+  });
+});
+
+describe('whether the work is live is read from the release record, never from closed (ISS-1062)', () => {
+  const recordRelease = (ids: string[], version: string) =>
+    call('owner', 'POST', `/api/projects/${projectId}/release-records`, {
+      issueIds: ids,
+      version,
+      account: `catalog-api ${version} deployed by its own pipeline; read live at /health.`,
+    });
+  const shippedIn = async (id: string) =>
+    (ok(await call('owner', 'GET', `/api/issues/${id}`)) as { shippedIn: unknown }).shippedIn;
+  const looseShipped = async () => {
+    const { readDevelopmentOverview } = await import('../../src/development/overview-read.js');
+    return (await readDevelopmentOverview(projectId, null)).modules.unassigned.shipped;
+  };
+
+  it('reads an issue its holder closed as not live in every reader, and live once a release carries it', async () => {
+    const { id } = await landed([]);
+    const reqSeq = seq;
+    await completeIssueReadyRecord(projectId, ownerId, id, reqSeq);
+    const before = await looseShipped();
+    await lease(id);
+    ok(await close(id));
+    expect(await statusOf(id)).toBe('closed');
+
+    expect(await shippedIn(id)).toBeNull();
+    const { readRequirementForecast } = await import('../../src/forecast/index.js');
+    const forecast = await readRequirementForecast(projectId, reqSeq, null);
+    expect(forecast?.progress).toEqual({ total: 1, shipped: 0, awaitingRelease: 1, toDo: 0 });
+    expect(forecast?.delivery?.shipped ?? null).toBeNull();
+    const { issuesOfRequirements } = await import('../../src/product-progress/progress.js');
+    const [requirement] = await rows<{ id: string }>(
+      sql`SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${reqSeq}`,
+    );
+    const work = (await issuesOfRequirements(projectId, [requirement?.id ?? ''])).get(
+      requirement?.id ?? '',
+    );
+    expect(work?.map((w) => [w.status, w.released])).toEqual([['closed', false]]);
+    expect(await looseShipped()).toBe(before);
+  });
+
+  it('never revives a release its reopen rejected when the holder closes the issue again', async () => {
+    const { id } = await landed(['the catalog lists the new field']);
+    ok(await recordRelease([id], '3.2.0'), 201);
+    expect(await shippedIn(id)).toMatchObject({ version: '3.2.0' });
+    ok(
+      await call('owner', 'POST', `/api/issues/${id}/transition`, {
+        toStatus: 'reopen',
+        reason: 'the field is missing on the live catalog',
+      }),
+    );
+    expect(await shippedIn(id)).toBeNull();
+    // landed again, its run takes it to the gate and closes it met in scope; no release follows yet
+    await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${id}`);
+    await lease(id);
+    ok(await call('holder', 'POST', `/api/issues/${id}/transition`, { toStatus: 'in_progress' }));
+    ok(
+      await call('holder', 'POST', `/api/issues/${id}/transition`, {
+        toStatus: 'awaiting_release',
+      }),
+    );
+    ok(await close(id));
+    expect(await statusOf(id)).toBe('closed');
+    expect(await shippedIn(id)).toBeNull();
   });
 });
