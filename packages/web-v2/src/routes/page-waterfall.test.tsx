@@ -94,7 +94,9 @@ afterEach(() => {
 describe("a project page's first reads", () => {
   it("leave with the page on the project dashboard, and none goes twice", async () => {
     const { waterfall } = await load(OverviewRoute, "/projects/forge", "/projects/$slug");
-    expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(8);
+    // the Dashboard's own reads (ISS-1067): its decisions, the Issues list's standing and the releases
+    // leave by slug before the list answers; the Audit line reads its ledger once they have drawn
+    expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(3);
     expect(waterfall.serialDepth).toBe(1);
     expect(waterfall.sentTwice).toEqual([]);
   });

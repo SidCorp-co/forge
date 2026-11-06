@@ -9,7 +9,7 @@ import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { decisionLineOf } from "@forge/contracts/plain-decision";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { ReleaseSummary } from "@forge/contracts/releases";
-import { GroupedList, type ListGroup, type ListRowView, StatusBadge, StatusChip, useGroupFold } from "@/design";
+import { GroupedList, type ListGroup, type ListRowView, ProjectLoader, StatusBadge, StatusChip, useGroupFold } from "@/design";
 import { AuditLine } from "@/features/activity";
 import { issueRowView, useIssueStanding, useRowWords } from "@/features/issues";
 import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
@@ -23,9 +23,15 @@ import { useRouter } from "@/lib/navigation/router";
 /** How many shipped releases the Dashboard names: the newest, the rest on Releases. */
 export const DASHBOARD_SHIPPED = 5;
 
-type DashRow = { kind: "decision"; d: NeedsYouDecision } | { kind: "issue"; r: IssueStandingRow } | { kind: "release"; r: ReleaseSummary };
+type DashRow =
+  | { kind: "decision"; d: NeedsYouDecision }
+  /** The decisions the read counts past those it lists: one row to Approvals, where all of them are. */
+  | { kind: "more"; n: number }
+  | { kind: "issue"; r: IssueStandingRow }
+  | { kind: "release"; r: ReleaseSummary };
 
-const keyOf = (row: DashRow): string => (row.kind === "decision" ? `d:${row.d.id}` : row.kind === "issue" ? row.r.key : `r:${row.r.version}`);
+const keyOf = (row: DashRow): string =>
+  row.kind === "decision" ? `d:${row.d.id}` : row.kind === "more" ? "d:more" : row.kind === "issue" ? row.r.key : `r:${row.r.version}`;
 
 function decisionPlace(slug: string, d: NeedsYouDecision): string {
   if (d.entity === "question") return questionDecisionHref(slug, d.key);
@@ -47,6 +53,9 @@ function useRowView(slug: string): (row: DashRow) => ListRowView {
   const age = (at: string | null) => (at ? { text: time.age(at), title: time.dateTime(at) } : null);
   return (row) => {
     if (row.kind === "issue") return { ...issue(row.r), facts: [] };
+    if (row.kind === "more") {
+      return { key: keyOf(row), href: approvalsHref(slug), title: t("dash.decision.more", { n: row.n }), facts: [], state: null, waitingOn: null, owner: null, age: null };
+    }
     if (row.kind === "decision") {
       const d = row.d;
       const title = d.title || decisionLineOf(d).line;
@@ -75,11 +84,20 @@ function useRowView(slug: string): (row: DashRow) => ListRowView {
   };
 }
 
-function groupsOf(t: Copy, read: { decisions: NeedsYouDecision[]; issues: IssueStandingRow[]; shipped: ReleaseSummary[] }): ListGroup<DashRow>[] {
+interface DashRead {
+  /** The decisions the read lists, and how many it counts in all: the one Needs you number (REQ-48 BC-11). */
+  decisions: { listed: NeedsYouDecision[]; total: number };
+  issues: IssueStandingRow[];
+  shipped: ReleaseSummary[];
+}
+
+function groupsOf(t: Copy, read: DashRead): ListGroup<DashRow>[] {
   const issues = (g: IssueStandingRow["standing"]["attentionGroup"]): DashRow[] =>
     read.issues.filter((r) => r.standing.attentionGroup === g).map((r) => ({ kind: "issue", r }));
+  const more = read.decisions.total - read.decisions.listed.length;
+  const needs: DashRow[] = [...read.decisions.listed.map((d): DashRow => ({ kind: "decision", d })), ...(more > 0 ? [{ kind: "more", n: more } as const] : [])];
   return [
-    { id: "needs", label: t("dash.group.needs"), tone: "you", rows: read.decisions.map((d) => ({ kind: "decision", d })) },
+    { id: "needs", label: t("dash.group.needs"), tone: "you", rows: needs, total: read.decisions.total },
     { id: "moving", label: t("dash.group.moving"), tone: "run", rows: issues("moving") },
     { id: "shipped", label: t("dash.group.shipped"), tone: "done", rows: read.shipped.map((r) => ({ kind: "release", r })) },
     { id: "stuck", label: t("dash.group.stuck"), tone: "blocked", rows: issues("stuck") },
@@ -90,27 +108,40 @@ export function ProjectDashboard({ projectId, slug }: { projectId: string; slug:
   const t = useCopy();
   const router = useRouter();
   const fold = useGroupFold("web-v2:dashboard-fold");
-  const decisions = useNeedsYouDecisions(projectId).data?.decisions ?? [];
-  const issues = useIssueStanding(projectId, "open").data?.issues ?? [];
-  const shipped = shippedOf(useReleases(projectId).data?.releases);
+  const needsQ = useNeedsYouDecisions(projectId);
+  const issuesQ = useIssueStanding(projectId, "open");
+  const releasesQ = useReleases(projectId);
+  const needs = needsQ.data;
+  const decisions = { listed: needs?.decisions ?? [], total: needs?.total ?? 0 };
+  const issues = issuesQ.data?.issues ?? [];
+  const shipped = shippedOf(releasesQ.data?.releases);
   const view = useRowView(slug);
   const groups = groupsOf(t, { decisions, issues, shipped });
   const hrefs = new Map(groups.flatMap((g) => g.rows.map((r) => [keyOf(r), view(r).href] as const)));
+  // never "All quiet" over a list still being read: that would say nothing waits, which nobody has read yet
+  const reading = needsQ.isLoading || issuesQ.isLoading || releasesQ.isLoading;
   return (
-    <div className="flex flex-col gap-4" data-testid="dashboard">
-      <GroupedList
-        ariaLabel={t("dash.title")}
-        groups={groups}
-        fold={fold}
-        row={view}
-        selected={null}
-        onPeek={(key) => {
-          const href = hrefs.get(key);
-          if (href) router.push(href);
-        }}
-        keyColumn={false}
-        empty={t("dash.empty")}
-      />
+    <div className="flex flex-col gap-4" data-testid={reading ? "dashboard-reading" : "dashboard"}>
+      {reading ? (
+        <div className="grid place-items-center py-16">
+          <ProjectLoader label={t("dash.loading")} />
+        </div>
+      ) : (
+        <GroupedList
+          ariaLabel={t("dash.title")}
+          groups={groups}
+          fold={fold}
+          row={view}
+          selected={null}
+          onPeek={(key) => {
+            const href = hrefs.get(key);
+            if (href) router.push(href);
+          }}
+          keyColumn={false}
+          empty={t("dash.empty")}
+        />
+      )}
+      {/* mounted from the first paint, so its read leaves with the rest rather than after them */}
       <AuditLine projectId={projectId} />
     </div>
   );

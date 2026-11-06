@@ -1,38 +1,17 @@
 // The steward's surfaces that read a project as a whole, witnessed as drawn (REQ-48 lane A): the
-// Dashboard (Needs you capped at three with "+n more" to Approvals, at risk led by what is stuck, the
-// feedback figures counting stuck), the status report (Stuck and Needs you before Shipped), /attention
-// (each project's decisions read by its total) and the pipeline board (a card's stuck reason). The
-// Dashboard also says, under Needs you, when the steward is quiet for its budget (BC-1). The
-// records' pages are `steward-records.witness.tsx`. At 390 px nothing scrolls sideways.
+// status report (Stuck and Needs you before Shipped), /attention
+// (each project's decisions read by its total) and the pipeline board (a card's stuck reason); the
+// Dashboard is witnessed whole in `project-dashboard.witness.tsx` (ISS-1067). The records' pages are `steward-records.witness.tsx`. At 390 px nothing scrolls sideways.
 //
 //   pnpm --filter web-v2 witness witness/steward-surfaces.witness.tsx --out <dir>
 
 import { AttentionScreen } from "@/features/attention";
 import { PipelineBoard } from "@/features/pipeline";
-import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
-import { ProjectHome } from "@/features/project-home";
 import { StatusReport } from "@/features/project-status/components/status-report";
 import { APPROVALS_READ } from "@/test/approvals-read";
-import { clock, FP, has, ISSUE_STUCK, Live, mountSurfaces, PH, type Surface, WITNESS_STATUS } from "./steward.fixture";
+import { clock, FP, has, ISSUE_STUCK, Live, mountSurfaces, type Surface, WITNESS_STATUS } from "./steward.fixture";
 
 const SURFACES: Surface[] = [
-  {
-    name: "dashboard",
-    path: "/projects/hop",
-    render: () => (
-      <Live>
-        <BaFigures slug="hop" requirements={[{ state: "in_delivery", count: 4 }, { state: "agreed", count: 2 }] as never} criteria={null} feedback={{ open: 12, untriaged: 2, stuck: 1, moving: 9 }} release={null} />
-        <ProjectHome projectId={PH} slug="hop" />
-      </Live>
-    ),
-    check: () => [
-      ...has("Needs you", `+${APPROVALS_READ.total - 3} more`),
-      // a row is named by its title, its key the title's hover (ui-copy-rule 10)
-      ...has("at risk", "Checkout reaches the clinic"),
-      ...has("at risk", "no master serves"),
-      ...has("the steward's day", "27 stuck items wait for tomorrow; new feedback and requirements still run."),
-    ],
-  },
   {
     name: "status-report",
     path: "/projects/hop/status",

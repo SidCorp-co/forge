@@ -1,32 +1,10 @@
-import { say } from "./said";
-import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
-import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
-import type { PlanRow } from "@/features/project-dashboard/ba-derive";
 import { NavRail } from "@/design/patterns/nav-rail";
 import { PROJECT_ITEMS, WORKSPACE_ITEMS } from "@/features/shell";
 import type { ChromeScreen } from "./vi-chrome-screens";
 
-// The project dashboard and the navigation rail, for the vi walking test.
-
-const clock = { lang: "vi" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
-const row = (key: string, over: Partial<PlanRow> = {}): PlanRow => ({ kind: "requirement", key, title: `Muc ${key}`, release: null, href: `/projects/hop/requirements/${key}`, eta: null, late: null, ...over });
+// The navigation rail for the vi walking test (the old Dashboard figures went with ISS-1067).
 
 export const SCREENS: ChromeScreen[] = [
-  {
-    name: "Dashboard",
-    render: () => (
-      <>
-        <BaFigures
-          slug="hop"
-          requirements={[{ state: "in_delivery", count: 2 }, { state: "delivered", count: 1 }] as never}
-          criteria={{ proven: 3, total: 8 }}
-          feedback={{ open: 3, untriaged: 1, stuck: 1, moving: 1 }}
-          release={{ version: "0.1.0", progress: { total: 3, shipped: 1, awaitingRelease: 1, toDo: 1 } }}
-        />
-        <LandsThisWeek slug="hop" clock={clock} rows={[row("REQ-2"), row("REQ-3", { release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) } }), row("REQ-4", { release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) } })]} />
-      </>
-    ),
-  },
   {
     name: "Navigation rail",
     render: () => <NavRail workspaceItems={WORKSPACE_ITEMS} projectItems={PROJECT_ITEMS} activeKey="proj-overview" />,

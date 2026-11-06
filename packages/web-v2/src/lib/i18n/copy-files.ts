@@ -33,7 +33,6 @@ import pairingCopy from "./copy/pairing.json";
 import pipelineCopy from "./copy/pipeline.json";
 import previewsCopy from "./copy/previews.json";
 import projectDashboardCopy from "./copy/project-dashboard.json";
-import projectHomeCopy from "./copy/project-home.json";
 import projectSettingsCopy from "./copy/project-settings.json";
 import projectStatusCopy from "./copy/project-status.json";
 import projectsCopy from "./copy/projects.json";
@@ -95,7 +94,6 @@ export const COPY_FILES = {
   "lib/i18n/copy/pipeline.json": pipelineCopy,
   "lib/i18n/copy/previews.json": previewsCopy,
   "lib/i18n/copy/project-dashboard.json": projectDashboardCopy,
-  "lib/i18n/copy/project-home.json": projectHomeCopy,
   "lib/i18n/copy/project-settings.json": projectSettingsCopy,
   "lib/i18n/copy/project-status.json": projectStatusCopy,
   "lib/i18n/copy/projects.json": projectsCopy,

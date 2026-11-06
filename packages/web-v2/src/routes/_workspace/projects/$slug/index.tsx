@@ -10,7 +10,8 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 
 // The project Dashboard (ISS-1067): the one-project view of Activity, what needs the person and whether
-// the loop moves. Its reads are the project list it is found by and the Dashboard's own four.
+// the loop moves. Its reads are the project list it is found by and the Dashboard's own four, which
+// leave by the URL's slug at once rather than waiting on the list (`useProjectRef`).
 function ProjectOverviewPage() {
   const t = useCopy();
   const slug = useParams<{ slug: string }>()?.slug;
@@ -21,13 +22,6 @@ function ProjectOverviewPage() {
   // The page subscribes to THIS project's room so its reads refresh as work moves (ISS-379).
   useRoom(projectId ? projectRoom(projectId) : null);
 
-  if (projectsQ.isLoading || (row && !project)) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label={t("dash.loading")} />
-      </div>
-    );
-  }
   if (projectsQ.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
@@ -35,7 +29,14 @@ function ProjectOverviewPage() {
       </div>
     );
   }
-  if (!project) {
+  if (!projectId || !slug) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        {projectsQ.isLoading ? <ProjectLoader label={t("dash.loading")} /> : <EmptyState title={t("dash.notFound")} message={t("dash.notFoundMessage")} mascot />}
+      </div>
+    );
+  }
+  if (projectsQ.data && !project && !row) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <EmptyState title={t("dash.notFound")} message={t("dash.notFoundMessage")} mascot />
@@ -44,8 +45,8 @@ function ProjectOverviewPage() {
   }
   return (
     <PageContainer className="min-h-dvh">
-      <ProjectHomeHeader project={project} onSettings={() => router.push(`/projects/${project.slug}/settings`)} />
-      <ProjectDashboard projectId={project.id} slug={project.slug} />
+      {project ? <ProjectHomeHeader project={project} onSettings={() => router.push(`/projects/${project.slug}/settings`)} /> : null}
+      <ProjectDashboard projectId={projectId} slug={slug} />
     </PageContainer>
   );
 }

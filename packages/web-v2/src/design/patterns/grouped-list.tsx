@@ -37,6 +37,8 @@ export interface ListGroup<R> {
   summary?: { label: string; count: number; tone: LegendTone }[];
   collapsed?: boolean;
   rows: R[];
+  /** What the group holds in all where a read lists fewer rows than it counts (a capped read); its header says this, never the rows' length. */
+  total?: number;
 }
 
 export interface ListRowView {
@@ -137,7 +139,7 @@ function ListGroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: bool
     <GroupHeader
       id={g.id}
       label={g.label}
-      count={g.rows.length}
+      count={g.total ?? g.rows.length}
       tone={g.tone}
       mono={g.mono}
       open={open}
