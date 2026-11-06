@@ -2,7 +2,7 @@
  * What a mark said, as the agent said it, and who said it (ISS-1017).
  *
  * Whether work is done is the agent's call, not core's (owner, 2026-11-05,
- * `owner-2026-11-05-done-is-the-agents-call`). So the mark writer (`merge-marker.ts`) refuses no mark
+ * org rule `decision-authority-full`). So the mark writer (`merge-marker.ts`) refuses no mark
  * for the evidence it lacks: whatever evidence the call names — a commit, a target, a landing,
  * artifacts, the paths a box read, a live reading, a note — is recorded on the mark's trail record as
  * given, beside the actor and the run that held the issue, and a mark naming none records that.

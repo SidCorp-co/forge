@@ -1,4 +1,4 @@
-// ISS-979 (owner ruling owner-2026-11-05-group-hierarchy, revised 2026-11-05: the filled collapse
+// ISS-979 (owner ruling 2026-11-05, design README Grouping, revised 2026-11-05: the filled collapse
 // triangle was unpleasant to look at): every grouped list reads as a hierarchy, flat. The group header is set apart by type and
 // colour, never a tinted band: a dot, a semibold full-contrast label (amber where the group needs the
 // person), its count as a pill, and a thin chevron AFTER the count, shown only on hover or keyboard

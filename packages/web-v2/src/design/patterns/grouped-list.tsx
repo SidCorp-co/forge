@@ -2,7 +2,7 @@
 // Every entity list draws this one grid: [Key] · Title (with one secondary facts line) · State ·
 // Waiting on · [ETA] · Owner·age, grouped under sticky headers that read label-first ("Needs you 4") and
 // fold, as a hierarchy: each header is the shared `GroupHeader`, and its rows sit indented under its
-// label (owner-2026-11-05-group-hierarchy, ISS-979). A row is a link to its full page: a plain click opens the peek, a modified click (Cmd, Ctrl,
+// label (design README Grouping, ISS-979). A row is a link to its full page: a plain click opens the peek, a modified click (Cmd, Ctrl,
 // Shift, middle) goes to the page as the browser would. Folded groups live in session storage, so
 // back from a full page finds them as they were.
 

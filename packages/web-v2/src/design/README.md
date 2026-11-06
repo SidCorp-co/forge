@@ -16,6 +16,16 @@ Every piece on this page is rendered at `/dev/design`.
 
 A page that fits none of the five is a design question, not a sixth layout. Ask before building one.
 
+## Screens
+
+Owner rulings, 2026-11-05:
+
+- **No new screen.** Forge already has too many. A UI change for a person removes or merges screens and
+  reshapes what exists; it never adds a screen, a tab of its own or a separate backlog page.
+- **People work in Feedback, Requirements and Releases.** The owner, a BA and users decide there, and
+  their navigation leads with those three. Delivery surfaces (issues, runs, activity, the technical
+  backlog) are for agents and masters, and a person is never asked to act in one.
+
 ## Overlays
 
 | Overlay | Use it for |
@@ -61,7 +71,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 
 ## Grouping
 
-Grouped data reads as a hierarchy, and stays flat (owner ruling `owner-2026-11-05-group-hierarchy`):
+Grouped data reads as a hierarchy, and stays flat (owner ruling, 2026-11-05):
 
 - Every group header is `GroupHeader`: a dot in the group's tone, a semibold label one step larger than its rows at full contrast, and its count as a small pill. A group that needs the person (tone `you`) takes amber.
 - Its fold is a thin chevron after the count. It shows on hover or keyboard focus, and stays shown, turned, while the group is folded. Never a filled triangle before the label.

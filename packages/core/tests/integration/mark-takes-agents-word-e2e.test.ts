@@ -1,6 +1,6 @@
 /**
  * ISS-1017 — the merge mark takes the agent's word (owner, 2026-11-05,
- * `owner-2026-11-05-done-is-the-agents-call`: whether work is done is the agent's call, never a
+ * org rule `decision-authority-full`: whether work is done is the agent's call, never a
  * check hard-coded in core).
  *
  * Planted from epod ISS-74: its deliverable, the epod CLI guide (EN and VI) and What's New

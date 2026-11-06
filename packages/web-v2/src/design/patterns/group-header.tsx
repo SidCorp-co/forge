@@ -1,4 +1,4 @@
-// A group's header in any grouped list (owner ruling owner-2026-11-05-group-hierarchy, ISS-979): the
+// A group's header in any grouped list (owner ruling 2026-11-05, design README Grouping, ISS-979): the
 // grouping reads as a hierarchy, flat. The header is set apart by type and colour, never by a box or a
 // tinted band: a dot in the group's tone, a larger semibold full-contrast label (a group that needs the
 // person takes its amber), and its count as a small pill. The fold is a thin chevron after the count,
