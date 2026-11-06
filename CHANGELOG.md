@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.547] - 2026-11-06
+
+Support rooms can act in a connected product as the owner, with consent
+
+### Added
+
+- **A support room acts in its product as the owner.** He consents once in his own words in his room and withdraws with one; Forge keeps his credential per product and makes each act itself, refusing any other room.
+
 ## [0.4.0-dev.546] - 2026-11-06
 
 Release page names the master as cutter; beta port and room tests fixed
