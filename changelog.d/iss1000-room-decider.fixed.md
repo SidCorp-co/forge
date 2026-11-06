@@ -1,1 +1,1 @@
-**A room's named decider is no longer asked to agree twice.** When the owner or a confirmed technical member names who decides an act, that person's own request or plain go in any words is their agreement; nobody types a set word.
+**A room's named decider is no longer asked to agree twice.** When the owner or a confirmed technical member names who decides an act, that person's own request or plain go in any words is their agreement.
