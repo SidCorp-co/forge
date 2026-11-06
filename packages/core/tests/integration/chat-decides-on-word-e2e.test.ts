@@ -170,8 +170,7 @@ const decide = async (tool: string, latest: string, args: unknown, windowId = ra
 describe("the chat makes the agreed decisions on the person's word, as them (REQ-41 BC-25, BC-27, BC-24)", () => {
   const LATEST = 'Tôi bảo là mở giúp tôi đi'; // i18n-allow: the owner's word on dev
   const WORD = 'mở giúp tôi đi'; // i18n-allow: the owner's word on dev
-  const call = (latest: string, args: unknown, windowId?: string) =>
-    decide('act_on_decisions', latest, args, windowId);
+  const call = (latest: string, args: unknown) => decide('act_on_decisions', latest, args);
 
   it('refuses the earlier message as the word, and leaves every draft and its decision as it was', async () => {
     const issue = await readyDraft(194);

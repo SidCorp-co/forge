@@ -220,7 +220,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
     field:json:reportedBy field:json:resolves field:json:refused field:json:broken
-    field:json:key field:json:url
+    field:json:key field:json:url field:json:failure
     field:json:screenshot field:json:args
     field:json:impact field:json:debts field:json:cleared field:json:remains field:json:ci`,
   'a time, a version or a time zone': words`

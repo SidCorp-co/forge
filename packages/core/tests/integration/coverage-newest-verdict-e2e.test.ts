@@ -448,6 +448,16 @@ describe('every verdict identity is checked by a rule or named as not counting',
   });
 });
 
+/**
+ * A line saying why a verdict does not count, split at the landing clause ISS-1018 added: what the
+ * live build said, and whether the line goes on to say the landing does not count it either (these
+ * issues' marks record no commit, so the landing cannot place the verdict).
+ */
+const landingAside = (said: string | null | undefined): [string, boolean] => {
+  const [live = '', landing] = (said ?? '').split("; nor does it count at its issue's landing: ");
+  return [live, landing !== undefined && /merge records no commit/.test(landing)];
+};
+
 // ISS-489 r3: a commit or runtime pass whose hold nobody answered counted with inLiveBuild null and
 // nothing said why — the round-2 runtime case above passed that way, with no live build read here
 describe('a verdict nobody could check against the live build does not count', () => {
@@ -468,9 +478,10 @@ describe('a verdict nobody could check against the live build does not count', (
       [runtime, `runtime ${NEW.slice(0, 12)}, which served commit ${NEW.slice(0, 12)}`],
     ] as const) {
       expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
-      expect(c.issues[0]?.notCounted).toBe(
+      expect(landingAside(c.issues[0]?.notCounted)).toEqual([
         `judged at ${judged}, and whether the live build holds it could not be checked: the live build could not be read: the project declares no production environment, so no build is live`,
-      );
+        true,
+      ]);
       expect(c.why).toContain('no verdict counts yet:');
     }
     expect((await standingOf(req)).facts).toMatchObject({ passing: 0, judged: 0 });
@@ -495,9 +506,10 @@ describe('a verdict nobody could check against the live build does not count', (
     ] as const) {
       expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
       expect(c.issues[0]).toMatchObject({ inLiveBuild: null });
-      expect(c.issues[0]?.notCounted).toBe(
+      expect(landingAside(c.issues[0]?.notCounted)).toEqual([
         `judged at ${judged}, and whether the live build (888888888888) holds it could not be checked: no release Forge verified, and no answer the source host gave Forge, shows whether the live build \`${live}\` holds it`,
-      );
+        true,
+      ]);
     }
   });
 });
