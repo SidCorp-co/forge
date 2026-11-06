@@ -31,6 +31,7 @@ import {
   type OrgActivityNow,
   type OrgActivityPerson,
   type OrgActivityProject,
+  type OrgActivitySource,
 } from '@forge/contracts/org-activity';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { withoutRecordKeys } from '@forge/contracts/record-keys';
@@ -234,6 +235,28 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
 export const peopleGlances = glanceCache('the decisions owed', PEOPLE_FRESH_MS, readPeople, {
   concurrency: 1,
 });
+
+/** The projects a people key reads (`peopleKeyOf`). */
+const projectsOfPeopleKey = (key: string): string[] => {
+  const ids = key.split('|')[2];
+  return ids ? ids.split(',') : [];
+};
+
+/** The moves that can change a project's next release or the run releasing it. */
+const RELEASE_MOVES: ReadonlySet<OrgActivitySource> = new Set(['release', 'run', 'status']);
+
+/**
+ * One of a workspace's projects moved (ISS-1053): every held people glance that reads it is stale,
+ * and its release glance too where the move can change a release. `ws/broadcast-subscribers.ts:tellOrg`
+ * calls this for every move it frames, so the page's next read starts their refresh and answers
+ * `refreshing`, and a person's settled decision leaves "waiting on you" within one refresh rather than
+ * when the 30 s glance next ages out. Answers how many glances it marked.
+ */
+export function projectMoved(projectId: string, source: OrgActivitySource): number {
+  const people = peopleGlances.stale((key) => projectsOfPeopleKey(key).includes(projectId));
+  const release = RELEASE_MOVES.has(source) ? releaseGlances.stale((key) => key === projectId) : 0;
+  return people + release;
+}
 
 const KEY_SHAPE = /^([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,9})$/;
 

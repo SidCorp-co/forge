@@ -4,6 +4,7 @@ import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { PREVIEW_FAILURE_REASONS, type PreviewFailureReason } from '@forge/contracts/preview';
 import type { ProjectNowFrame } from '@forge/contracts/project-now';
 import type { WsFrameName, WsFramePayloads } from '@forge/contracts/ws-frames';
+import { projectMoved } from '../activity/index.js';
 import { refuser } from '../lib/refusal.js';
 import {
   deviceRoom,
@@ -63,15 +64,30 @@ function registerOrgActivityBroadcast(): void {
     const run = await runStatusView(p.id);
     if (run) await tellOrg(run.projectId, 'run');
   });
+  // a person's decision settled on its record (ISS-1053): each act Needs you offers reports itself
+  // by one of these (`activity/settle-events.ts:SETTLED_BY`), so the item leaves "waiting on you"
+  onOrg('requirement.transitioned', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('requirement.returned', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('feedback.verifySettled', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('preview.transitioned', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('mockup.transitioned', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('workflow.designDecided', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('decision.settled', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('release.cut', (p) => tellOrg(p.projectId, 'release'));
+  onOrg('release.approvalDecided', (p) => tellOrg(p.projectId, 'release'));
+  onOrg('release.shipped', (p) => tellOrg(p.projectId, 'release'));
 }
 
 /**
- * Tells the workspace's Activity page that one of its projects moved (ISS-951), naming the project
+ * Tells the workspace's Activity page that one of its projects moved (ISS-951), and marks the glances
+ * core holds of that project stale so the page's read starts their refresh (ISS-1053), naming the project
  * and what moved and nothing of it, so a member who cannot read the project learns no more than the
  * org's own project list says; the page reads its activity again, scoped to what the reader reads.
  */
 async function tellOrg(projectId: string | null, source: OrgActivitySource): Promise<void> {
   if (!projectId) return;
+  // what the page reads again must not be served from a glance held from before this move (ISS-1053)
+  projectMoved(projectId, source);
   const orgId = await findProjectOrgId(projectId);
   if (orgId) frame(orgRoom(orgId), 'org.activity.changed', { orgId, projectId, source });
 }

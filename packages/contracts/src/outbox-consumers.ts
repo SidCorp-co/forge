@@ -55,7 +55,11 @@ export const OUTBOX_CONSUMERS = {
 	"source.merged": [],
 	"source.reviewed": ["review-note"],
 	"integration.changed": ["ws-broadcast", "support-rooms"],
-	"workflow.designDecided": ["master-wake", "first-requirements"],
+	"workflow.designDecided": [
+		"master-wake",
+		"first-requirements",
+		"org-activity",
+	],
 	"channel.documentPublished": ["notify-ecosystem", "master-wake"],
 	"channel.gateAsked": ["notify-ecosystem"],
 	"channel.gateDecided": ["notify-ecosystem"],
@@ -65,25 +69,34 @@ export const OUTBOX_CONSUMERS = {
 	"ecosystem.buildOwed": ["master-wake"],
 	"requirement.created": ["intake-assistant"],
 	"requirement.agreed": ["master-wake", "steward"],
-	"requirement.returned": ["master-wake"],
-	"requirement.transitioned": ["notify-requirements", "support-results"],
+	"requirement.returned": ["master-wake", "org-activity"],
+	"requirement.transitioned": [
+		"notify-requirements",
+		"support-results",
+		"org-activity",
+	],
 	"requirement.delivered": ["notify-requirements"],
 	"requirement.accepted": ["notify-requirements"],
 	"feedback.filed": ["master-wake", "intake-assistant", "steward"],
 	"intake.answered": ["intake-assistant"],
 	"feedback.verifyAsked": ["notify-feedback"],
-	"feedback.verifySettled": ["notify-feedback", "support-results"],
+	"feedback.verifySettled": [
+		"notify-feedback",
+		"support-results",
+		"org-activity",
+	],
 	"feedback.reporterTold": ["notify-feedback"],
-	"release.cut": ["release-naming"],
+	"release.cut": ["release-naming", "org-activity"],
 	"release.shipped": [
 		"notify-feedback",
 		"steward",
 		"master-wake",
 		"support-results",
 		"support-release-notes",
+		"org-activity",
 	],
 	"release.committed": ["release-tag"],
-	"release.approvalDecided": ["release-approval-wake"],
+	"release.approvalDecided": ["release-approval-wake", "org-activity"],
 	"verdict.recorded": ["release-highlights", "issue-fail-reopen"],
 	"credential.tokenChanged": ["ws-broadcast"],
 	"runner.changed": ["ws-broadcast"],
@@ -95,9 +108,9 @@ export const OUTBOX_CONSUMERS = {
 	"session.pushed": ["ws-broadcast", "org-activity"],
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],
-	"preview.transitioned": ["ws-broadcast"],
+	"preview.transitioned": ["ws-broadcast", "org-activity"],
 	// the corrections a lesson learns from (REQ-50 BC-1, `core/src/lessons/`)
-	"mockup.transitioned": ["lessons-corrections"],
+	"mockup.transitioned": ["lessons-corrections", "org-activity"],
 	"chat.replied": ["lessons-chat"],
 	"room.replied": ["lessons-room"],
 	// the steward's own triggers (REQ-48 BC-1, `core/src/steward/consumer.ts`)
@@ -105,6 +118,8 @@ export const OUTBOX_CONSUMERS = {
 	"standing.stuck": ["steward"],
 	"standing.changed": ["steward"],
 	"release.held": ["steward"],
+	// a person's decision no other event reports, told to the workspace's Activity (ISS-1053)
+	"decision.settled": ["org-activity"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

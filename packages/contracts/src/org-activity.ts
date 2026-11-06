@@ -10,7 +10,10 @@
 import type { IssueStatus } from "./issue-machine.js";
 import type { WorkStep } from "./issue-vocabulary.js";
 import type { MasterPane, MasterState, MasterVerb } from "./master-standing.js";
-import type { DecisionOpens, NeedsYouDecisionGroup } from "./needs-you-decisions.js";
+import type {
+	DecisionOpens,
+	NeedsYouDecisionGroup,
+} from "./needs-you-decisions.js";
 import type { ProjectNowSource } from "./project-now.js";
 
 /**
@@ -19,12 +22,22 @@ import type { ProjectNowSource } from "./project-now.js";
  * a pass, busy by hand or has runs out; `paused` while it takes no new work (its box is silent, its pane
  * is stopped on a dialog, or its box takes no new run); `idle` otherwise; `none` where no master stands.
  */
-export const ORG_ACTIVITY_STANDINGS = ["working", "idle", "paused", "none"] as const;
+export const ORG_ACTIVITY_STANDINGS = [
+	"working",
+	"idle",
+	"paused",
+	"none",
+] as const;
 export type OrgActivityStanding = (typeof ORG_ACTIVITY_STANDINGS)[number];
 
 /** Why a master reads `paused`, for the tooltip on its state: never drawn as text on the row. */
-export const ORG_ACTIVITY_PAUSE_REASONS = ["silent", "dialog", "no_new_work"] as const;
-export type OrgActivityPauseReason = (typeof ORG_ACTIVITY_PAUSE_REASONS)[number];
+export const ORG_ACTIVITY_PAUSE_REASONS = [
+	"silent",
+	"dialog",
+	"no_new_work",
+] as const;
+export type OrgActivityPauseReason =
+	(typeof ORG_ACTIVITY_PAUSE_REASONS)[number];
 
 /**
  * The groups the page lists, in its order: `you` first, holding every project with something waiting
@@ -86,7 +99,11 @@ export interface OrgActivityPerson {
  * settled: `one_at_a_time` its runs were out or its slots full, `pool_closed` its box takes no new
  * run there, `busy_by_hand` the pass was a turn somebody started at the pane.
  */
-export const ORG_ACTIVITY_SKIP_REASONS = ["one_at_a_time", "pool_closed", "busy_by_hand"] as const;
+export const ORG_ACTIVITY_SKIP_REASONS = [
+	"one_at_a_time",
+	"pool_closed",
+	"busy_by_hand",
+] as const;
 export type OrgActivitySkipReason = (typeof ORG_ACTIVITY_SKIP_REASONS)[number];
 
 /** What the master is doing: the open pass's verb and issue, else the issue of its newest live run. */
@@ -141,7 +158,11 @@ export interface OrgActivityProject {
 	 * The backlog: `total` admissible issues, `items` the first of them in the master's order, and
 	 * `skip` why its last pass took none of them where it took nothing.
 	 */
-	next: { total: number; items: OrgActivityNext[]; skip: OrgActivitySkipReason | null };
+	next: {
+		total: number;
+		items: OrgActivityNext[];
+		skip: OrgActivitySkipReason | null;
+	};
 	/** `total` decisions waiting on the caller; `items` the first of them. */
 	people: { total: number; items: OrgActivityPerson[] };
 	/** True while the decisions it owes the reader are still being read, off the page's path. */
@@ -184,8 +205,14 @@ export interface OrgActivityBatch {
 }
 
 /** A release marker's state: `released` shipped or landed, `releasing` still running, `failed`, or `stopped` (aborted). */
-export const ORG_ACTIVITY_RELEASE_STATES = ["released", "releasing", "failed", "stopped"] as const;
-export type OrgActivityReleaseState = (typeof ORG_ACTIVITY_RELEASE_STATES)[number];
+export const ORG_ACTIVITY_RELEASE_STATES = [
+	"released",
+	"releasing",
+	"failed",
+	"stopped",
+] as const;
+export type OrgActivityReleaseState =
+	(typeof ORG_ACTIVITY_RELEASE_STATES)[number];
 
 /** A release cut, shipped or ended on the lane: at its ship, else its start while it runs, else its end. */
 export interface OrgActivityLaneRelease {
@@ -240,9 +267,17 @@ export interface OrgActivity {
 
 /**
  * What moved on one of the org's projects: what runs there now (`ProjectNowSource`), an issue's status,
- * a pipeline run's status, or a question asked or settled. The page reads its activity again.
+ * a pipeline run's status, a question asked or settled, a person's decision settled on its record, or
+ * a release cut, decided or shipped. The page reads its activity again, and core reads the project's
+ * held glances again behind it (ISS-1053).
  */
-export const ORG_ACTIVITY_SOURCES = ["status", "run", "question"] as const;
+export const ORG_ACTIVITY_SOURCES = [
+	"status",
+	"run",
+	"question",
+	"decision",
+	"release",
+] as const;
 export type OrgActivitySource =
 	| ProjectNowSource
 	| (typeof ORG_ACTIVITY_SOURCES)[number];

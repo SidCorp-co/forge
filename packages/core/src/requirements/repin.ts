@@ -7,6 +7,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { emitEvent } from '../outbox/index.js';
 import { personGateOf } from '../project-config/index.js';
 import { signoffReasonRefusal } from './acceptance-rules.js';
 import { acceptedMockupIds, latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
@@ -133,5 +134,11 @@ export async function repinIn(
     .update(requirements)
     .set({ updatedAt: new Date() })
     .where(eq(requirements.id, current.id));
+  // a re-pin moves no state, so it reports itself to the workspace's Activity (ISS-1053)
+  await emitEvent(tx, 'decision.settled', {
+    projectId: input.projectId,
+    act: 'requirement.repin',
+    subject: current.id,
+  });
   return null;
 }

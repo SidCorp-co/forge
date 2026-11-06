@@ -219,6 +219,12 @@ export async function acceptRevision(input: {
       await announceAgreed(tx, row, target.revision, seq);
     }
     await requirementDependents().revised(tx, row.id, target.revision);
+    // an accept that re-baselines no state move reports tells the workspace's Activity itself (ISS-1053)
+    await emitEvent(tx, 'decision.settled', {
+      projectId,
+      act: 'revision.accept',
+      subject: requirementKey(current.reqSeq),
+    });
     return null;
   });
   if (!refusals) embedRequirementHeadLater(row.id);

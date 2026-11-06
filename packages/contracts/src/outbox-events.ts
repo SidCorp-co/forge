@@ -73,6 +73,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"standing.stuck",
 	"standing.changed",
 	"release.held",
+	"decision.settled",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -707,6 +708,18 @@ export interface OutboxEventPayloads
 		userIds: string[];
 		event: string;
 		data: unknown;
+	};
+	/**
+	 * A person's decision settled through an act no other event reports (ISS-1053): a revision's
+	 * accept, a re-pin, a suggestion's accept or reject, a design re-pin, a contract version's decision.
+	 * `act` is the Needs you decision act (`needs-you-decisions.ts:DECISION_ACTS`), or a suggestion's
+	 * withdrawal, which clears one, and `subject` the record it settled, by key or id. Its one reader tells the workspace's Activity, so a settled item
+	 * leaves "waiting on you" without waiting out the held glance.
+	 */
+	"decision.settled": {
+		projectId: string;
+		act: string;
+		subject: string;
 	};
 }
 

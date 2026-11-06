@@ -7,6 +7,10 @@
  * only that delivery, which the outbox logs and retries alone, so the project room hears its frame
  * once and the org room is still told.
  *
+ * ISS-1053: a person's decision settled on its record reaches the org room too, and every move the
+ * room hears marks the project's held glances stale, so the page's read does not serve one from before
+ * it.
+ *
  * @direct-test-of packages/core/src/ws/broadcast-subscribers.ts
  * @direct-test-of packages/contracts/src/outbox-consumers.ts
  */
@@ -61,6 +65,14 @@ vi.mock('../pipeline/index.js', () => ({
   })),
 }));
 
+const moved = vi.hoisted(() => [] as Array<[string, string]>);
+vi.mock('../activity/index.js', () => ({
+  projectMoved: (projectId: string, source: string) => {
+    moved.push([projectId, source]);
+    return 0;
+  },
+}));
+
 const { registerWsBroadcastSubscribers } = await import('./broadcast-subscribers.js');
 
 const orgFrames = () => published.filter((p) => p.event === 'org.activity.changed');
@@ -99,6 +111,7 @@ describe('the org room hears what moved on its projects', () => {
   beforeEach(() => {
     consumers.clear();
     published.length = 0;
+    moved.length = 0;
     lookup.fails = 0;
     registerWsBroadcastSubscribers();
   });
@@ -215,5 +228,47 @@ describe('the org room hears what moved on its projects', () => {
         `${type} has no org-activity delivery`,
       ).toContain('org-activity');
     }
+  });
+
+  it.each([
+    ['requirement.transitioned', 'decision'],
+    ['requirement.returned', 'decision'],
+    ['feedback.verifySettled', 'decision'],
+    ['preview.transitioned', 'decision'],
+    ['mockup.transitioned', 'decision'],
+    ['workflow.designDecided', 'decision'],
+    ['decision.settled', 'decision'],
+    ['release.cut', 'release'],
+    ['release.approvalDecided', 'release'],
+    ['release.shipped', 'release'],
+  ] as const)(
+    'a %s reaches the org room as a %s move and marks the project stale (ISS-1053)',
+    async (type, source) => {
+      await deliver(type, { projectId: 'p1' } as never);
+      expect(orgFrames()).toEqual([
+        {
+          room: 'org:o1',
+          event: 'org.activity.changed',
+          data: { orgId: 'o1', projectId: 'p1', source },
+        },
+      ]);
+      expect(moved).toEqual([['p1', source]]);
+    },
+  );
+
+  it('every move the org room hears marks its project stale, before the org is looked up (ISS-1053)', async () => {
+    lookup.fails = 1;
+    await deliver('question.transitioned', {
+      id: 'q1',
+      projectId: 'p1',
+      issueId: null,
+      to: 'answered',
+    });
+    await deliver('run.transitioned', { id: 'r1' });
+    expect(moved).toEqual([
+      ['p1', 'question'],
+      ['p1', 'question'],
+      ['p2', 'run'],
+    ]);
   });
 });

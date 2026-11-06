@@ -36,6 +36,8 @@ export function glanceCache<V>(
 ) {
   const held = new Map<string, { value: V; readAt: number }>();
   const reading = new Map<string, Promise<void>>();
+  /** How many times each key was marked stale: a read that began before a mark lands stale. */
+  const marks = new Map<string, number>();
   const limiter = createLimiter(opts.concurrency);
 
   /**
@@ -45,13 +47,16 @@ export function glanceCache<V>(
   const refresh = (key: string): Promise<void> => {
     const running = reading.get(key);
     if (running) return running;
+    const markedAtStart = marks.get(key) ?? 0;
     // every promise of the read is made outside the asking request's timing, so its statements are
     // never counted as the request's own (`db/query-timing.ts:withoutQueryTiming`)
     const started = withoutQueryTiming(() =>
       new Promise<void>((next) => setImmediate(next))
         .then(() => limiter.run(() => readOne(key)))
         .then((value) => {
-          held.set(key, { value, readAt: Date.now() });
+          // a mark made while this read ran may postdate what it read: the answer is kept, stale
+          const stale = (marks.get(key) ?? 0) !== markedAtStart;
+          held.set(key, { value, readAt: stale ? Number.NEGATIVE_INFINITY : Date.now() });
         })
         .catch((err: unknown) => {
           logger.warn({ err, key }, `org activity: ${name} could not be read`);
@@ -93,6 +98,22 @@ export function glanceCache<V>(
         }),
       );
       return { values, refreshing: keys.some((key) => reading.has(key)) };
+    },
+    /**
+     * Marks every held or running key `affected` names stale (ISS-1053): the next read serves what is
+     * held, starts its refresh and says `refreshing`, so the page reads once more when it lands, and a
+     * read already running when the mark was made lands stale too. Answers how many keys it marked.
+     */
+    stale(affected: (key: string) => boolean): number {
+      let n = 0;
+      for (const key of new Set([...held.keys(), ...reading.keys()])) {
+        if (!affected(key)) continue;
+        marks.set(key, (marks.get(key) ?? 0) + 1);
+        const h = held.get(key);
+        if (h) h.readAt = Number.NEGATIVE_INFINITY;
+        n += 1;
+      }
+      return n;
     },
     /** How many keys are being read behind the page now, at most `concurrency` of them at once. */
     get inFlight(): number {

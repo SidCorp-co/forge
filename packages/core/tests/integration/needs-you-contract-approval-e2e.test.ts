@@ -11,6 +11,7 @@
  * @direct-test-of packages/core/src/development/needs-you-agent-takes.ts
  * @direct-test-of packages/core/src/ecosystem/standing/read.ts
  * @direct-test-of packages/contracts/src/needs-you-decisions.ts
+ * @direct-test-of packages/core/src/ecosystem/contract/decide.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -25,6 +26,7 @@ import {
   openWorld,
   seedContractVersion,
   sender,
+  settleOutbox,
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember } from '../helpers/factories.js';
@@ -135,11 +137,36 @@ describe('ISS-1055 a proposed contract version is its approver decision', () => 
     expect(next?.impact).toContain('10.0.0, 9.6.0, 9.5.0, 9.4.0 and 2 more');
   });
 
-  it('its approve button approves it, and nothing is left to decide on the contract', async () => {
+  it('its approve button approves it, nothing is left to decide, and Activity hears it at once (ISS-1053)', async () => {
+    const { readOrgActivity, peopleGlances } = await import('../../src/activity/read.js');
+    const viewer = { userId: w.user.platform, agency: 'human' as const };
+    const forgeRow = (read: Awaited<ReturnType<typeof readOrgActivity>>) =>
+      read.projects.find((p) => p.projectId === w.project.forge);
+    peopleGlances.forget();
+    // the glance is read just before the decision, well inside its 30 s
+    const warm = await readOrgActivity(w.org.platform, viewer, new Date(), { waitMs: 60_000 });
+    expect(forgeRow(warm)?.people.items.map((i) => i.opens)).toContainEqual({
+      kind: 'contract',
+      key: REF,
+    });
     const d = (await contractDecisionOf()) as Doc;
     const approve = (d.answers as Doc[]).find((a) => a.id === 'approve') as Doc;
     const out = ok(await send('platform', 'POST', approve.path, approve.body));
     expect(out.approval?.approval ?? out.version?.approval ?? 'approved').toBe('approved');
     expect(await contractDecisionOf()).toBeUndefined();
-  });
+    // the decision's own event (decision.settled) marks the held glance stale
+    await settleOutbox();
+    const next = await readOrgActivity(w.org.platform, viewer, new Date());
+    expect(next.refreshing, 'the read after the decision started no refresh').toBe(true);
+    const until = Date.now() + 30_000;
+    let after = next;
+    while (after.refreshing && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 100));
+      after = await readOrgActivity(w.org.platform, viewer, new Date());
+    }
+    expect(forgeRow(after)?.people.items.map((i) => i.opens)).not.toContainEqual({
+      kind: 'contract',
+      key: REF,
+    });
+  }, 90_000);
 });

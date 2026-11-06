@@ -34,6 +34,7 @@ vi.mock('../lifecycle/index.js', () => ({
   transition: vi.fn(async () => ({ rows: [{ id: 'r-9', projectId: 'p-9' }] })),
 }));
 vi.mock('../runners/runner-events.js', () => ({ insertRunnerEvent: vi.fn() }));
+vi.mock('../activity/index.js', () => ({ projectMoved: vi.fn() }));
 vi.mock('../pipeline/index.js', () => ({
   emitPipelineWedge: vi.fn(),
   resolvePipelineWedge: vi.fn(),

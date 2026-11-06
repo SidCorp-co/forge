@@ -3921,6 +3921,13 @@
       "when": 1836000000000,
       "tag": "0614_the_owner_signs_in_through_core_and_his_credential_is_refreshed",
       "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1836086400000,
+      "tag": "0615_a_settled_decision_tells_the_workspace_activity",
+      "breakpoints": true
     }
   ]
 }

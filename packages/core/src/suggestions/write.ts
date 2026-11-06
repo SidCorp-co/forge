@@ -15,6 +15,7 @@ import { lockFeedback, rowIn, triagedSince, unchangedTriageRefusal } from '../fe
 import { writeCoreRecord } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
+import { emitEvent } from '../outbox/index.js';
 import { lockRequirements } from '../requirements/index.js';
 import type { Effect } from './effects.js';
 import {
@@ -75,6 +76,17 @@ export async function recordDecision(
   outcome: string,
   reason?: string | null,
 ) {
+  // a suggestion decided moves no evented state, so it reports itself to the workspace's Activity (ISS-1053)
+  await emitEvent(tx, 'decision.settled', {
+    projectId: row.projectId,
+    act:
+      outcome === 'accepted'
+        ? 'suggestion.accept'
+        : outcome === 'rejected'
+          ? 'suggestion.reject'
+          : 'suggestion.withdraw',
+    subject: row.id,
+  });
   if (!row.issueId) return;
   await writeCoreRecord(tx, {
     issueId: row.issueId,
