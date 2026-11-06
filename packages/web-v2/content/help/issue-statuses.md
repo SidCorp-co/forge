@@ -84,8 +84,8 @@ own. An issue that reads *In progress · Test* is still with the agent.
 ## Dropped is final
 
 Dropping an issue records that the work is not going to happen. *Dropped* is its
-own ending rather than a kind of close: an issue closes only through the release
-that shipped it, so *Closed* is no way to record something you decided against. There is
+own ending rather than a kind of close: *Closed* says what the issue asked for was
+met, so it is no way to record something you decided against. There is
 no path back out of *Dropped* — if the work turns out to be wanted after all,
 file a new issue.
 Dropped issues are kept, and appear alongside closed ones under **Finished** on
