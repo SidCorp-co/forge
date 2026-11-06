@@ -5,7 +5,7 @@
  * the one the call's `run` names. A person's call is no run.
  */
 
-import { RUN_GROUP_METADATA_KEY } from '@forge/contracts/agent-sessions';
+import { RUN_GROUP_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type { PatternRefusal } from '@forge/contracts/patterns';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -183,6 +183,80 @@ async function declaredOver(
   return { key, declared: rows.map((r) => r.declared) };
 }
 
+/** The issue keys a run group names, from its metadata as read. */
+function groupKeys(runGroup: unknown): string[] {
+  return Array.isArray(runGroup) ? runGroup.filter((k): k is string => typeof k === 'string') : [];
+}
+
+/**
+ * Where `session` is a run declared over issues and the issue is none of them, the run as its box
+ * names it and the keys it was declared over (ISS-1036: a verdict on ISS-122 naming a run declared
+ * over ISS-119 was recorded as that run's). Null for a run over the issue, a run declared at a
+ * requirement (over no issue), and any session that is no declared run.
+ */
+async function declaredElsewhere(
+  executor: GateReader,
+  args: { session: string; key: string },
+): Promise<{ declared: string; keys: string[] } | null> {
+  const [row] = (await executor.execute(sql`
+    SELECT COALESCE(r.metadata->>'boxRunId', r.id::text) AS declared,
+           r.metadata->${RUN_GROUP_METADATA_KEY} AS run_group
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+     WHERE s.id = ${args.session} AND s.kind = ${RUN_SESSION_KIND}
+  `)) as unknown as Array<{ declared: string; run_group: unknown }>;
+  const keys = groupKeys(row?.run_group);
+  if (!row || keys.length === 0 || keys.includes(args.key)) return null;
+  return { declared: row.declared, keys };
+}
+
+/**
+ * A run of this project that `run` names (whole, or a box's short id) which is no live run of `box`:
+ * one of its own that has ended, or one of another box. Read only to say which, so a refusal never
+ * reports a run that exists as one never declared (ISS-1036). Null where core holds no such run.
+ */
+async function runNamedNotLive(
+  executor: GateReader,
+  args: { projectId: string; box: string; run: string },
+): Promise<{ ours: boolean; status: string; declared: string } | null> {
+  const typed = args.run.trim().toLowerCase();
+  const byStart = typed.length >= RUN_ID_START_MIN && RUN_ID_START.test(typed);
+  const [row] = (await executor.execute(sql`
+    SELECT s.device_id = ${args.box} AS ours, s.status,
+           COALESCE(r.metadata->>'boxRunId', r.id::text) AS declared
+      FROM agent_sessions s
+      JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+     WHERE s.project_id = ${args.projectId}
+       AND s.kind = ${RUN_SESSION_KIND}
+       AND (s.id::text = ${args.run} OR r.id::text = ${args.run} OR r.metadata->>'boxRunId' = ${args.run}
+            OR (${byStart} AND starts_with(lower(r.metadata->>'boxRunId'), ${typed})))
+     ORDER BY (s.device_id = ${args.box}) DESC, s.created_at DESC
+     LIMIT 1
+  `)) as unknown as Array<{ ours: boolean; status: string; declared: string }>;
+  return row ?? null;
+}
+
+/** Why a run of this project that `run` names is not one this call may be made from: its session ended, or it is another box's. */
+function notLiveDetail(
+  run: string,
+  found: { ours: boolean; status: string; declared: string },
+): string {
+  const named =
+    run === found.declared ? `run ${run}` : `\`run\` ${run} is run ${found.declared}, which`;
+  return found.ours
+    ? `${named} is this box's, and it ended (\`${found.status}\`), so it records nothing now: declare another run (\`forge-runner run declare\`), or leave \`run\` out`
+    : `${named} is a run of another box on this project, and a call names a run of the box whose credential sends it: send it under that box's credential, or leave \`run\` out`;
+}
+
+/**
+ * What a box is told where core holds no run under the id it sent: core holds a declared run only
+ * once its box opens the run's session at core (`devices/run-session.ts:openRunSession`), which
+ * `forge-runner run declare` does before it answers from ISS-1036 and an older box does on its
+ * next sweep.
+ */
+const notOpenedYet = (fallback: string) =>
+  `A run \`forge-runner run declare\` writes is held at core only once its box opens its session at core: a box from ISS-1036 on opens it before the declare answers, an older box on its next sweep, within 30 seconds (up to five minutes while it is rate-limited). If the run was just declared, send this again once it has opened, or leave \`run\` out to ${fallback}`;
+
 /** The live session holding the issue's lease on `box`, or null where this box holds none. */
 async function leaseSessionOn(
   executor: GateReader,
@@ -209,7 +283,9 @@ async function leaseSessionOn(
  * The run this call is: on a person's credential none (and `run` is refused, a person being no run);
  * on a box's, the run `run` names, or else the run holding the issue on that box, or none. A call
  * about no issue (`issueId` null: a verdict at a requirement) has no lease to read a run off, so it
- * is the run `run` names or none.
+ * is the run `run` names or none. A run declared over other issues is no run of a call on this one.
+ * Where core holds no live run of the box under `run`, the refusal says what core does hold: a run
+ * of the box that ended, another box's, or none yet, never that the box declared none (ISS-1036).
  */
 export async function runOfCall(
   args: { projectId: string; issueId: string | null; box: string | null; run?: string | undefined },
@@ -224,20 +300,41 @@ export async function runOfCall(
   }
   if (run !== undefined) {
     const named = await sessionNamed(executor, { projectId: args.projectId, box, run });
-    if (named && 'session' in named) return { ok: true, value: { box, session: named.session } };
-    if (named) return unknownRun(named.refusal);
+    if (named && 'refusal' in named) return unknownRun(named.refusal);
     const over = args.issueId ? await declaredOver(executor, { issueId: args.issueId, box }) : null;
+    const listed = over
+      ? over.declared.length > 0
+        ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
+        : null
+      : null;
+    if (named) {
+      const elsewhere = over
+        ? await declaredElsewhere(executor, { session: named.session, key: over.key })
+        : null;
+      if (!elsewhere) return { ok: true, value: { box, session: named.session } };
+      const sent =
+        run === elsewhere.declared ? '' : `\`run\` ${run} is run ${elsewhere.declared}; `;
+      return unknownRun(
+        `${sent}run ${elsewhere.declared} was declared over ${elsewhere.keys.join(', ')}, not ${over?.key}, so nothing it does is recorded on ${over?.key}; ${listed ?? `this box has no live run over ${over?.key} that core holds: declare one over it (\`forge-runner run declare\`)`}`,
+      );
+    }
+    const found = await runNamedNotLive(executor, { projectId: args.projectId, box, run });
+    if (found) return unknownRun(notLiveDetail(run, found));
+    const fallback = over
+      ? `record it under the run holding ${over.key}'s lease on this box`
+      : 'record it under no run';
     const onProject = over
       ? []
       : await declaredOnProject(executor, { projectId: args.projectId, box });
     const way = over
-      ? over.declared.length > 0
-        ? `the live runs this box declared over ${over.key} on this project are ${over.declared.join(', ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
-        : `this box has declared no live run over ${over.key} on this project: declare one (\`forge-runner run declare\`), or send core's id for its session or run`
+      ? (listed ??
+        `core holds no run of this box on this project named ${run}, and none over ${over.key}`)
       : onProject.length > 0
         ? `the live runs this box declared on this project are ${onProject.join('; ')}: send the one making the call, its whole id or its first ${RUN_ID_START_MIN} characters`
-        : "this box has declared no live run on this project: declare one (`forge-runner run declare`), or send core's id for its session or run";
-    return unknownRun(`\`run\` ${run} is no live session of this box on this project; ${way}`);
+        : `core holds no run of this box on this project named ${run}`;
+    return unknownRun(
+      `\`run\` ${run} is no live session of this box on this project; ${way}. ${notOpenedYet(fallback)}`,
+    );
   }
   const session = args.issueId
     ? await leaseSessionOn(executor, { issueId: args.issueId, box })
