@@ -191,7 +191,7 @@ describe('an issue that only adopted a contract version lands on its adoption re
     await pinLink('2026-09-20');
     try {
       const refused = refusalOf(await move(id, 'closed'));
-      expect(['CLOSE_ONLY_BY_RELEASE', 'CLOSE_REQUIRES_SHIPPED']).toContain(refused.code);
+      expect(refused.code).toBe('CLOSE_REQUIRES_SHIPPED');
       expect(await statusOf(id)).toBe('awaiting_release');
     } finally {
       await pinLink('2026-10-01');
@@ -252,13 +252,14 @@ describe('an adoption record never stands in for a commit (REQ-5 BC-18)', () => 
     expect((await markOf(id)).at).toBeNull();
   });
 
-  it('keeps an issue marked on a bare claim closing only through a release', async () => {
+  // ISS-1062: an issue closes when its criteria are met in scope, by the one holding it; whether its
+  // work is live is the release record's to say
+  it('closes an issue marked on a bare claim met in scope, with no release', async () => {
     const id = await issue(w.project.plugin);
     ok(await say('plugin', 'POST', `/api/issues/${id}/merge`, { target: 'dev' }));
     ok(await move(id, 'awaiting_release'));
-    const refused = refusalOf(await move(id, 'closed'));
-    expect(refused.code).toBe('CLOSE_ONLY_BY_RELEASE');
-    expect(await statusOf(id)).toBe('awaiting_release');
+    ok(await move(id, 'closed'));
+    expect(await statusOf(id)).toBe('closed');
   });
 });
 

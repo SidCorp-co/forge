@@ -5,7 +5,7 @@
 /**
  * REQ-79 r6 BC-17 (owner ruling 2026-10-31): a project's master alone takes a landed issue through
  * release to close. Outside strict its agent token cuts and records the release that closes it
- * (`CLOSE_ONLY_BY_RELEASE` is reachable by an agent), and an issue with no release note gets one
+ * (a release's close is reachable by an agent), and an issue with no release note gets one
  * drafted at that door, never a refusal. Under strict both stay as they were: the cut and the record
  * ask project.admin, and a missing note is refused RELEASE_RECORD_MISSING. Over REST, real Postgres,
  * on a project with no production environment, whose landing is its release.

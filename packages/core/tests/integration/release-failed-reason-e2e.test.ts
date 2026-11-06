@@ -195,8 +195,8 @@ describe('a recorded release none of whose issues will close (catalog-api 0.4.0,
   });
 
   // catalog-api ISS-34 (2026-11-02, on 5a9717d69): 0.4.0 repaired to shipped read landed, while its
-  // roster issue stayed at awaiting_release reading shippedIn 0.4.0, a close refused
-  // CLOSE_ONLY_BY_RELEASE. The repair settles its roster as its finish would have.
+  // roster issue stayed at awaiting_release reading shippedIn 0.4.0, nobody closing it. The repair
+  // settles its roster as its finish would have.
   const SENT = {
     outcome: 'shipped',
     reason: 'It landed on release/production and the deploy was healthy.',
@@ -209,19 +209,12 @@ describe('a recorded release none of whose issues will close (catalog-api 0.4.0,
       status: string;
       shippedIn: { version: string } | null;
     };
-  const closeByHand = (id: string) =>
-    api(world.token, 'POST', `/api/issues/${id}/transition`, {
-      toStatus: 'closed',
-      reason: 'it shipped in 0.4.0',
-    });
 
   it('closes its roster issue into the repaired release, as the finish would have', async () => {
     const { done: first, stuck } = await failedRecord();
     // what would not close is cleared, as catalog-api's was by the time it was repaired
     await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${PLANTED} ON issues`));
     expect((await issueRead(stuck)).status).toBe('awaiting_release');
-    const closed = await closeByHand(stuck);
-    expect(refusalsOf(closed.body)[0]?.code).toBe('CLOSE_ONLY_BY_RELEASE');
 
     const done = await repaired();
     expect(done.status, JSON.stringify(done.body)).toBe(201);

@@ -122,7 +122,7 @@ describe('BC-1: the gate catalog', () => {
     // REQ-79 r6: agents act first; scope_hold is strict's alone
     expect(scope?.defaults).toEqual({ strict: 'enforce', standard: 'off', yolo: 'off' });
     expect(body.kernel.map((k) => k.id)).toEqual(
-      expect.arrayContaining(['merged', 'close_by_release', 'pat_fence']),
+      expect.arrayContaining(['merged', 'close_in_scope', 'pat_fence']),
     );
     expect(body.gates.map((g) => g.id)).not.toContain('merged');
   });
@@ -339,7 +339,7 @@ describe('BC-10: the kernel holds under yolo', () => {
     expect((await setGates(owner, { profile: 'yolo' })).status).toBe(200);
   });
 
-  it('still refuses awaiting_release with no recorded merge, and a close no release made', async () => {
+  it('still refuses awaiting_release with no recorded merge, and a close with none either', async () => {
     const working = await issueAt('in_progress');
     const unmerged = await api(owner, 'POST', `/api/issues/${working}/transition`, {
       toStatus: 'awaiting_release',
@@ -350,7 +350,7 @@ describe('BC-10: the kernel holds under yolo', () => {
     const closed = await api(owner, 'POST', `/api/issues/${waiting}/transition`, {
       toStatus: 'closed',
     });
-    expect(codes(closed)).toContain('CLOSE_ONLY_BY_RELEASE');
+    expect(codes(closed)).toContain('CLOSE_REQUIRES_SHIPPED');
   });
 
   it('refuses an override naming a kernel rule, and a mode a gate cannot take', async () => {

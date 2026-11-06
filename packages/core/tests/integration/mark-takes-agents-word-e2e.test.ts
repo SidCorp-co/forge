@@ -295,11 +295,12 @@ describe('a close rests on the mark alone (outcome 4)', () => {
     expect((await row(id))?.status).toBe('in_progress');
   });
 
-  it('still closes only by a release', async () => {
+  // ISS-1062: a close is the issue met in scope, made with no release by one who may move it there
+  it('closes met in scope on the mark alone, with no release', async () => {
     const { id } = await issue(gitProject);
     ok(await mark(agent, id, { liveReading: READ_LIVE }));
     ok(await move(id, 'awaiting_release'));
-    expect(refusalOf(await move(id, 'closed')).code).toBe('CLOSE_ONLY_BY_RELEASE');
-    expect((await row(id))?.status).toBe('awaiting_release');
+    ok(await move(id, 'closed'));
+    expect((await row(id))?.status).toBe('closed');
   });
 });
