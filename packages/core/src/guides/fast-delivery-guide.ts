@@ -1,4 +1,5 @@
 import { CLEANUP_REFUSAL_CODES, IMPACT_TYPES } from '@forge/contracts/cleanup';
+import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
 const types = IMPACT_TYPES.map((t) => `\`${t}\``).join(', ');
@@ -13,7 +14,7 @@ export const FAST_DELIVERY_GUIDE: CoreGuide = {
   title: 'Fast delivery: rate the change, leave debt to the cleanup run',
   summary:
     "Every project delivers fast unless its document says `delivery.fast: false`: a change lands when it builds, deploys healthy and its scoped tests pass; the building run rates the change's impact and leaves a non-severe red as cleanup debt; only a change rated high waits for a green cleanup: it is held from landing where the project deploys on land, and from promotion where a person promotes; the cleanup run works the debt in its own window and reports what it cleared and what remains.",
-  version: 5,
+  version: 6,
   body: `## Fast delivery: rate the change, leave debt to the cleanup run
 
 Fast delivery is every project's default. A project turns it off with \`delivery.fast: false\` in its
@@ -65,11 +66,15 @@ turned one on (\`POST /api/schedules\` with \`kind: "cleanup"\`, end of day \`0 
 usual time); Forge never makes or enables one. Debt is recorded either way, and where no window is on
 the ledger says so (\`windowOff\`). A person re-times it like any schedule. Its fire starts one
 run on a slot of its own, never a delivery run's: a fire while the last cleanup run is live starts
-nothing (\`CLEANUP_RUN_LIVE\`), and a window with nothing open but carried debt starts nothing, unless a change waits or the base owes a report before the next change rated high lands. The run is briefed with
-the open debt and the changes waiting on it, and:
+nothing (\`CLEANUP_RUN_LIVE\`), and a window with nothing open but carried debt starts nothing, unless a change waits, the base owes a report before the next change rated high lands, or anything
+landed on the base since the last cleanup report. Where nothing else is owed and the base head cannot
+be read, the fire is refused \`CLEANUP_BASE_UNCHECKABLE\`, never called nothing to do. The run is
+briefed with the open debt, the changes waiting on it and the range that landed, works by
+${guideRef('cleanup-audit')}, and:
 1. reads the ledger, \`GET /api/projects/:id/debts\` (open and cleared debt, the changes rated high
    waiting, the window);
-2. clears debt and CI red, and simplifies, in its own worktree, landing as the project lands work;
+2. reviews what landed, merges and simplifies it, and clears debt and CI red, in its own worktree,
+   landing as the project lands work;
 3. reports once, last: \`POST /api/projects/:id/cleanup-reports\`
    \`{ fire, base: { branch, sha }, result: green | red, ci?, cleared: [{ debt, how }], remains: [{ debt, why }], covers }\`.
    \`base.sha\` is the full 40-hex sha of the head it left, which core reads on the project's source

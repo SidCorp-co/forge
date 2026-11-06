@@ -13,6 +13,7 @@ import { db } from '../../src/db/client.js';
 import { agentSessions } from '../../src/db/schema.js';
 import { api, userToken } from '../helpers/api.js';
 import { plantSource } from '../helpers/cleanup-source.js';
+import { turnCleanupWindowOn } from '../helpers/cleanup-window.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 
@@ -24,6 +25,7 @@ vi.mock('../../src/integrations/source-host/index.js', async (original) =>
 );
 
 let projectId: string;
+let ownerId: string;
 let token: string;
 
 beforeAll(async () => {
@@ -38,7 +40,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll();
-  const ownerId = (await createTestUser({ verified: true })).id;
+  ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   plantSource(projectId, {
     dev: ['b'.repeat(40), 'c'.repeat(40)],
@@ -76,10 +78,9 @@ const reportCleanup = (body: Doc) =>
 // held with nothing saying why. A cleanup fire ends with its report posted or failed, naming the gap.
 describe('a cleanup fire whose session completes (BC-9, ISS-814)', () => {
   async function liveFire(): Promise<{ fireId: string; sessionId: string }> {
+    // ISS-1049: a window exists only where the project turned one on
+    const schedule = { id: await turnCleanupWindowOn(projectId, ownerId) };
     await debts({ items: [red('low')] });
-    const [schedule] = await rows<{ id: string }>(
-      sql`SELECT id FROM schedules WHERE project_id = ${projectId} AND kind = 'cleanup'`,
-    );
     const [run] = await rows<{ id: string }>(sql`
       INSERT INTO pipeline_runs (project_id, kind, status, started_at, metadata)
       VALUES (${projectId}, 'system', 'running', now(), '{}'::jsonb) RETURNING id`);
@@ -88,7 +89,7 @@ describe('a cleanup fire whose session completes (BC-9, ISS-814)', () => {
       VALUES (${projectId}, ${run?.id}, 'chat', 'running') RETURNING id`);
     const [fire] = await rows<{ id: string }>(sql`
       INSERT INTO schedule_runs (schedule_id, project_id, trigger, status, session_id, started_at)
-      VALUES (${schedule?.id}, ${projectId}, 'manual', 'running', ${session?.id}, now()) RETURNING id`);
+      VALUES (${schedule.id}, ${projectId}, 'manual', 'running', ${session?.id}, now()) RETURNING id`);
     if (!fire || !session) throw new Error('no cleanup fire was opened');
     return { fireId: fire.id, sessionId: session.id };
   }

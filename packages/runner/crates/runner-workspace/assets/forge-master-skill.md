@@ -76,7 +76,7 @@ A project whose gate profile is not `strict` and that delivers fast (its `delive
 `false`) runs **direct**: its master builds and records afterwards. Nothing else selects it, and
 there is no switch of its own: outside `strict` the profile turns off every policy gate that asks a
 plan, a design, a review or a judge before a merge, and fast delivery already lands a change on its
-build and its own tests. A project that sets `strict` asks for human control, and that ends direct
+build and the tests related to what it changed. A project that sets `strict` asks for human control, and that ends direct
 mode. Every nudge on such a project says so; on a pass with no nudge in front of it, read
 `forge-runner api projects/<projectId>/gates` (its `profile`) and
 `forge-runner api projects/<projectId>/config` (its `document.delivery`).
@@ -106,14 +106,20 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   body. A project override that enforces one of those gates again still refuses by name, and that
   refusal is followed, not routed around.
 - **Once per batch: one landing.** **Land through the project's own landing route** once the merged
-  batch builds, typecheck included, each issue's key in its own commit subject. Where the project
+  batch builds (typecheck included) and the tests related to its changed files pass, each issue's key
+  in its own commit subject. Where the project
   lands by change request (its document's `release.changeRequests`, or a project rule that its
   branches change only through merged MRs), open one through core
   (`forge-runner api projects/<projectId>/integrations/source/change-requests`, POST): its merge is
   the landing, and the marks wait for it. Push to the base branch only where the project lands by
-  push; that push is yours to take, and a force-push still is not. Lint, tests and the merge-check
-  record run after the push, and a red there is fixed forward in the next batch, never by holding
-  this one.
+  push; that push is yours to take, and a force-push still is not. The whole suite, lint and CI run
+  after the push, and a red there is fixed forward in the next batch, never by holding this one, as
+  the merge-check record does. A project rule that asks for more before landing still holds: the gate
+  it names runs before the landing.
+- **What the batch leaves unclean is debt.** Duplicates, code not reused, workarounds and leftovers
+  such as raw buttons or dead components that the batch leaves behind: each is recorded as debt
+  through the debts door (`forge-runner api projects/<projectId>/debts`, POST), never fixed inside the
+  batch and never filed as an issue. The cleanup run reviews what landed and clears it.
 - **Then record each issue:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
   POST, naming the `commit` and its `target`), move it to `awaiting_release` with that sha as the
   reason, and comment what shipped. Rate each change's impact before its mark, as fast delivery

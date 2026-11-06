@@ -188,6 +188,8 @@ export type CleanupRefusalCode = (typeof CLEANUP_REFUSAL_CODES)[number];
 export const CLEANUP_FIRE_REFUSALS = [
 	"FAST_DELIVERY_OFF",
 	"CLEANUP_RUN_LIVE",
+	/** Nothing else is owed and what landed on the base since the last report cannot be read (ISS-1050). */
+	"CLEANUP_BASE_UNCHECKABLE",
 ] as const;
 
 /** The cleanup window a project admin turns on, as the ledger suggests it: end of day, UTC (ISS-1049). */

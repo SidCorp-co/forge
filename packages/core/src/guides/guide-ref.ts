@@ -27,6 +27,7 @@ const GUIDE_SLUGS = [
   'mockups',
   'release-tags',
   'fast-delivery',
+  'cleanup-audit',
   'link-chat-account',
 ] as const;
 

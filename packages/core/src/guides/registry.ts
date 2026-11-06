@@ -17,6 +17,7 @@ import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
 } from '@forge/contracts/knowledge';
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
+import { CLEANUP_AUDIT_GUIDE } from './cleanup-audit-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { DISPATCH_GUIDE } from './dispatch-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
@@ -315,6 +316,7 @@ section, which is why this migration is what turns the feature on.`,
   MOCKUPS_GUIDE,
   RELEASE_TAGS_GUIDE,
   FAST_DELIVERY_GUIDE,
+  CLEANUP_AUDIT_GUIDE,
   SUGGESTIONS_GUIDE,
   FEEDBACK_TRIAGE_GUIDE,
   RUNS_AND_MASTERS_GUIDE,

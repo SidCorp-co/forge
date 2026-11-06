@@ -13,6 +13,7 @@ import {
   type Impact,
 } from '@forge/contracts/cleanup';
 import { MERGE_CLEANUP_PENDING } from '@forge/contracts/merge-check';
+import { guideRef } from '../guides/index.js';
 
 export interface CleanupRefusal {
   code: CleanupRefusalCode;
@@ -213,16 +214,48 @@ function briefDebt(d: BriefDebt): string {
 }
 
 /**
- * The brief a cleanup run starts with (BC-7, BC-9): what is open, which changes rated high wait on it,
- * how to work it and the report it owes, with the fire it answers.
+ * What landed on the base since the project's last cleanup report (ISS-1050, REQ-79 BC-20): a range
+ * from the report's head (null where none was ever filed) to the branch head, nothing since, the
+ * window off (the trigger never reaches past it), or why the base could not be read.
+ */
+export type Landed =
+  | { kind: 'landed'; branch: string; from: string | null; head: string }
+  | { kind: 'none'; branch: string; head: string }
+  | { kind: 'off'; why: string }
+  | { kind: 'unread'; why: string };
+
+/** What landed, as the brief and a fire that starts nothing say it. */
+export function landedWords(landed: Landed): string {
+  switch (landed.kind) {
+    case 'landed':
+      return landed.from
+        ? `What landed on ${landed.branch} since the last cleanup report: ${landed.from}..${landed.head} (git log ${landed.from}..${landed.head}).`
+        : `This project has no cleanup report yet on ${landed.branch}: review what landed recently, up to its head ${landed.head}, and your report gives the next window its base.`;
+    case 'none':
+      return `nothing landed on ${landed.branch} since the last cleanup report (its head is ${landed.head})`;
+    case 'off':
+    case 'unread':
+      return landed.why;
+  }
+}
+
+/**
+ * The brief a cleanup run starts with (BC-7, BC-9, BC-20): what is open, which changes rated high wait
+ * on it, what landed since the last report, the audit guide that says how to work it (BC-23), and the
+ * report it owes, with the fire it answers.
  */
 export function cleanupBrief(args: {
   projectId: string;
   fireId: string;
   debts: readonly BriefDebt[];
   waiting: readonly { key: string; reason: string }[];
+  landed: Landed;
 }): string {
   const { projectId, fireId } = args;
+  const landed =
+    args.landed.kind === 'landed'
+      ? landedWords(args.landed)
+      : `Nothing to review: ${landedWords(args.landed)}.`;
   const debts = args.debts.length ? args.debts.map(briefDebt).join('\n') : '- none recorded';
   const waiting = args.waiting.length
     ? args.waiting.map((w) => `- ${w.key}: ${w.reason}`).join('\n')
@@ -236,8 +269,10 @@ export function cleanupBrief(args: {
     'Changes rated high impact waiting on a green cleanup before production:',
     waiting,
     '',
+    landed,
+    '',
     'Do this:',
-    "1. In a new worktree off the branch this project's work lands on, clear the debt above and any CI red on that branch, and simplify the code you touch. Land each fix the way this project lands work.",
+    `1. Read ${guideRef('cleanup-audit')} first: it is how this run works. In a new worktree off the branch this project's work lands on, review what landed above, clear the debt above and any CI red on that branch, as that guide says. Land each fix the way this project lands work.`,
     "2. Run the project's checks at the head you leave, and record any new debt you find but do not clear: POST /api/projects/" +
       `${projectId}/debts { items: [{ kind, check?, where, detail, impact: { type, rating, reason } }] }.`,
     `3. Report once, last: POST /api/projects/${projectId}/cleanup-reports { fire: "${fireId}", base: { branch, sha: <the full 40-hex sha of the head you leave, pushed to that branch> }, result: green | red, ci?: <run url>, cleared: [{ debt, how }], remains: [{ debt, why }], covers: [<each waiting key above whose merge the green head carries, checked with git merge-base --is-ancestor>] }. Core reads base.sha on the project's source host and refuses one that branch does not hold (CLEANUP_BASE_NOT_ON_BRANCH); a report you must correct is filed again with the same fire, and the later one supersedes it.`,

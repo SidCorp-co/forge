@@ -21,6 +21,8 @@ interface ScheduleNotice {
 export type CleanupFirePlan =
   | { kind: 'off'; why: string }
   | { kind: 'nothing'; why: string }
+  /** Nothing else is owed and what landed since the last report cannot be read (ISS-1050). */
+  | { kind: 'unread'; why: string }
   | { kind: 'run'; prompt: string };
 
 interface SchedulesPorts {

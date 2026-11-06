@@ -16,10 +16,12 @@ describe('the dispatch guide teaches direct mode outside strict, landing by the 
   // ISS-1050: "its own tests" read as the whole suite; only the build and the related tests come first
   it('lands once the batch builds and its related tests pass, the whole suite after the push', () => {
     expect(prose).toContain(
-      'when the merged batch builds (typecheck included) and the tests related to its changed files pass',
+      'as soon as the merged batch compiles with its typecheck and the tests covering the files it touched are green',
     );
-    expect(prose).toContain('The whole suite, lint and CI run after the push');
-    expect(prose).toContain('A project rule that asks for more before landing still holds');
+    expect(prose).toContain('Every other test, lint and CI follow the push');
+    expect(prose).toContain(
+      'Where a project rule asks for more before the landing, that rule holds',
+    );
     expect(prose).not.toContain('its own tests pass');
   });
 

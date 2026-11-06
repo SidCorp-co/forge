@@ -15,7 +15,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 7,
+  version: 8,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -187,14 +187,17 @@ approval, design record, review or judge before the landing. It works in batches
    its own plan, its own full suite or its own release. When an issue's build starts, move its step
    to build (\`PATCH /api/issues/:id\` \`{ workState: { step: 'build' } }\`): a builder here writes
    none, and core moves it on itself only at a plan, the merge check and the mark.
-3. Land the batch once, by the route its project lands by, when the merged batch builds with its
-   typecheck; each issue's key stays in its own commit subject, so each mark reads its commit as
-   that issue's. Where the project lands by change request (\`release.changeRequests\` on its
+3. Land the batch once, by the route its project lands by, as soon as the merged batch compiles with
+   its typecheck and the tests covering the files it touched are green; each issue's key stays in its
+   own commit subject, so each mark reads its commit as that issue's. Where the project lands by change request (\`release.changeRequests\` on its
    document, or a project rule that its branches change only through merged MRs), open one through
    core (\`POST /api/projects/:id/integrations/source/change-requests\`): its merge is the landing,
    and the marks wait for it. Push to the base branch only where the project lands by push; never
-   force-push. Lint, tests and the merge-check record follow the push; a red there is fixed forward
-   in the next batch.
+   force-push. Every other test, lint and CI follow the push, as the merge-check record does; a
+   red there is fixed forward in the next batch. Where a project rule asks for more before the
+   landing, that rule holds. What the batch leaves unclean (duplicates, code not reused, workarounds, leftovers
+   such as raw buttons or dead components) is recorded as debt through the debts door
+   (\`POST /api/projects/:id/debts\`), never fixed inside the batch and never filed as an issue.
 4. Record each issue. Rate its impact (${guideRef('fast-delivery')}) and mark it,
    \`POST /api/issues/:id/merge\` \`{ commit: <landing sha>, target: <the branch it landed on> }\`. Move it,
    \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release', reason: <landing sha> }\`.

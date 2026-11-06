@@ -57,6 +57,9 @@ export async function routeScheduleCleanupFire(
   if (plan.kind === 'off') {
     return refused({ code: 'FAST_DELIVERY_OFF', path: '', detail: plan.why });
   }
+  if (plan.kind === 'unread') {
+    return refused({ code: 'CLEANUP_BASE_UNCHECKABLE', path: '', detail: plan.why });
+  }
   if (plan.kind === 'nothing') {
     return {
       result: { ok: true, sessionId: null, status: 'skipped', resolvedProjectId: projectId },
