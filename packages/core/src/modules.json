@@ -1360,7 +1360,7 @@
   },
   "web": {
     "activity": {
-      "serves": ["REQ-15"]
+      "serves": ["REQ-15", "REQ-11"]
     },
     "agent-accounts": {
       "serves": ["REQ-27"]
@@ -1504,9 +1504,6 @@
     },
     "project-config": {
       "serves": ["via:project-settings"]
-    },
-    "project-dashboard": {
-      "serves": ["REQ-11"]
     },
     "project-settings": {
       "serves": ["issue-delivery#policy", "REQ-13", "REQ-80"]
