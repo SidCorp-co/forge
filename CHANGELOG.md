@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.555] - 2026-11-06
+
+Recording a release waits on its approver where a project requires one
+
+### Fixed
+
+- **A release's landing waits on its required approval.** Where a project requires a person's release approval, recording a release's landing is the approver's until they approve it, then the master's, so no master closes a release's issues first.
+
 ## [0.4.0-dev.554] - 2026-11-06
 
 Routine release acts go to the master; Forge texts follow the owner's loop
