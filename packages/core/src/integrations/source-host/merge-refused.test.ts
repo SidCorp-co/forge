@@ -17,6 +17,7 @@ const updateDelivery = vi.fn(async (_id: string, _patch: Record<string, unknown>
 vi.mock('../index.js', () => ({
   forgeReads: () => ({
     runProjectOf: async (runId: string) => (runId === 'r-other' ? 'p2' : null),
+    changeRequestLinkReadings: async () => [],
   }),
   recordDelivery: async () => 'd1',
   updateDelivery,

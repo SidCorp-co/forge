@@ -81,9 +81,9 @@ describe('a twin’s mark reads its landing commit against the beta key its pair
     expect((await issueRow(twin))?.merged_commit_sha).toBe(sha);
   });
 
-  it('refuses a commit declaring neither key, or another pair’s beta key', async () => {
-    const twin = await issue(2, 'in_progress');
-    await twinPair('ISS-620', twin);
+  // ISS-1017: the mark takes the agent's word, so a commit the repository does not vouch for as the
+  // twin's is the mark's claim and its reading, never its observed landing
+  it('reads a commit declaring neither key, or another pair’s beta key, as not the twin’s landing', async () => {
     const neither = 'b7'.repeat(20);
     messages.set(neither, 'fix(leave): an unrelated fix (ISS-777)');
     const other = 'c8'.repeat(20);
@@ -92,12 +92,21 @@ describe('a twin’s mark reads its landing commit against the beta key its pair
     // a body naming the key is no declaration: only the subject is read
     messages.set(named, 'chore: tidy\n\nRelated to ISS-620 on beta');
 
-    for (const sha of [neither, other, named]) {
+    for (const [seq, sha] of [
+      [20, neither],
+      [21, other],
+      [22, named],
+    ] as const) {
+      const twin = await issue(seq, 'in_progress');
+      await twinPair('ISS-620', twin);
       const res = await mark(twin, sha);
-      expect(res.status, sha).toBe(422);
-      expect(JSON.stringify(res.body)).toContain('COMMIT_NOT_THIS_ISSUE');
+      expect(res.status, sha).toBe(200);
+      expect((res.body as { commitReading: unknown }).commitReading, sha).toMatchObject({
+        commit: sha,
+        code: 'COMMIT_NOT_THIS_ISSUE',
+      });
+      expect((await issueRow(twin))?.merged_commit_sha, sha).toBeNull();
     }
-    expect((await issueRow(twin))?.merged_at).toBeNull();
   });
 
   it('takes a commit declaring the beta key of the Feedback item routed to the issue', async () => {

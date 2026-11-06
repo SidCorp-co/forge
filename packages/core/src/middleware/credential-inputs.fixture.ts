@@ -183,7 +183,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:displayName field:json:shortName field:json:request field:json:account
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
     field:json:statement field:json:askFor field:json:question field:json:words field:json:finding
-    field:json:opener
+    field:json:opener field:json:misread
     field:json:trades field:json:costs field:json:endsWhen`,
   'a command a support room runs on a host its grant names, and what the box answers it ran; core checks the grant before the box is asked, and the output is scrubbed before anyone reads it': words`
     field:json:command field:json:stdout field:json:stderr`,
@@ -197,7 +197,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:createIssue field:json:criteria field:json:cron field:json:designs
     field:json:dialog field:json:diff field:json:disk field:json:document field:json:drift
     field:json:ecosystem field:json:edges field:json:events field:json:expect field:json:facts
-    field:json:feedback field:json:fields field:json:files field:json:findings field:json:from
+    field:json:feedback field:json:fields field:json:files field:json:findings field:json:from field:json:mergedAt
     field:json:gate field:json:grants field:json:handle field:json:handles field:json:identity
     field:json:inputs field:json:items field:json:kind field:json:labels
     field:json:mergeRefused field:json:merged field:json:messages field:json:metadata
