@@ -7,6 +7,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type {
   SupportOwnerActRequest,
   SupportOwnerConsentRequest,
+  SupportOwnerSignInRequest,
   SupportPromiseRequest,
   SupportRecordKind,
 } from '@forge/contracts/support';
@@ -39,6 +40,7 @@ import { no } from './outcome.js';
 import { ownerAct } from './owner-act.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
+import { startOwnerSignIn } from './owner-sign-in.js';
 import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
@@ -133,6 +135,7 @@ export type SupportActInput =
   | ({ action: 'promise' } & SupportPromiseRequest)
   | ({ action: 'owner_consent' } & SupportOwnerConsentRequest)
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
+  | ({ action: 'owner_sign_in' } & SupportOwnerSignInRequest)
   | {
       action: 'read';
       name: string;
@@ -359,5 +362,10 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     }
     case 'owner_act':
       return ownerAct(room, { thread: input.thread, tool: input.tool, args: input.args });
+    case 'owner_sign_in':
+      return startOwnerSignIn(room, {
+        thread: input.thread,
+        ...(input.product !== undefined ? { product: input.product } : {}),
+      });
   }
 }

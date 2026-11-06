@@ -199,6 +199,7 @@ import { statusReportRoutes } from './status-reports/routes.js';
 import { stewardRoutes } from './steward/index.js';
 import { stewardNoteRoutes } from './steward-notes/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
+import { ownerSignInCallbackRoutes } from './support/owner-routes.js';
 import { supportRoutes } from './support/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { hostTheWeb } from './web-host/index.js';
@@ -324,6 +325,8 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', feedbackServerKeyRoutes);
   app.route('/api/projects', feedbackRoutes);
   app.route('/api/projects', supportRoutes);
+  // the owner's browser, back from the product's sign-in, with no Forge session (ISS-1047)
+  app.route('/api/support', ownerSignInCallbackRoutes);
   app.route('/api/projects', standingRoutes);
   app.route('/api/projects', stewardNoteRoutes);
   app.route('/api/projects', feedbackChecklistRoutes);
