@@ -251,11 +251,22 @@ pub(crate) async fn cred_watch(
     }
 }
 
+/// The disk reading and the heartbeat that carries it, which publishes the
+/// orientation revisions core names to `revisions`.
+pub(crate) fn spawn_heartbeat(
+    client: &Arc<CoreClient>,
+    revisions: watch::Sender<Option<heartbeat::Revisions>>,
+    cancel: &watch::Receiver<bool>,
+) {
+    let disk = spawn_headroom(cancel.clone());
+    tokio::spawn(heartbeat(client.clone(), disk, revisions, cancel.clone()));
+}
+
 /// The heartbeat, carrying the gate, pool-read and binary conditions and the
 /// newest disk reading [`headroom`] took, and publishing the orientation
 /// revisions each answer names to `revisions`, which the orientation refresh
 /// reads (ISS-1066).
-pub(crate) async fn heartbeat(
+async fn heartbeat(
     client: Arc<CoreClient>,
     disk: watch::Receiver<Option<Vec<runner_proto::disk::Root>>>,
     revisions: watch::Sender<Option<heartbeat::Revisions>>,

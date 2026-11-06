@@ -672,9 +672,7 @@ pub async fn run(
     rearm_given_up_releases();
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
-    // the orientation revisions each heartbeat answer names, read by the refresh (ISS-1066)
-    let (revisions_tx, revisions_rx) = watch::channel(None);
-    checkout_passes::spawn_checkout_passes(answered, &client, &cfg, revisions_rx, &cancel_rx);
+    let revisions = checkout_passes::spawn_checkout_passes(answered, &client, &cfg, &cancel_rx);
     let (frame_tx, frame_rx) = mpsc::channel::<Frame>(256);
     let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
 
@@ -734,13 +732,7 @@ pub async fn run(
         },
         cancel_rx.clone(),
     ));
-    let disk = actors::spawn_headroom(cancel_rx.clone());
-    tokio::spawn(actors::heartbeat(
-        client.clone(),
-        disk,
-        revisions_tx,
-        cancel_rx.clone(),
-    ));
+    actors::spawn_heartbeat(&client, revisions, &cancel_rx);
 
     spawn_ctrl_c(cancel_tx.clone());
 

@@ -13,8 +13,8 @@ use runner_platform::error::Result;
 use serde::{Deserialize, Deserializer};
 
 /// One `(device × project)` assignment as returned by `/me/runners`. Field
-/// casing mirrors the core JSON (camelCase) — keep in lockstep with the
-/// `MeRunnerAssignment` contract DTO in `packages/contracts`.
+/// casing mirrors the core JSON (camelCase) — keep in lockstep with what core
+/// answers (`packages/core/src/devices/me-runners.ts:listDeviceAssignments`).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeRunner {

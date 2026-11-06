@@ -228,14 +228,14 @@ async fn refresh_moved(
 
 /// The passes over every checkout that run after the start: the start's own again where core
 /// did not `answer` it, and the orientation refresh, driven by the revisions each heartbeat
-/// answer names, for as long as the daemon runs.
+/// answer names, for as long as the daemon runs. Answers where the heartbeat publishes them.
 pub(crate) fn spawn_checkout_passes(
     answered: bool,
     client: &Arc<CoreClient>,
     cfg: &Config,
-    revisions: watch::Receiver<Option<Revisions>>,
     cancel_rx: &watch::Receiver<bool>,
-) {
+) -> watch::Sender<Option<Revisions>> {
+    let (published, revisions) = watch::channel(None);
     if !answered {
         let (client, cfg, cancel) = (client.clone(), cfg.clone(), cancel_rx.clone());
         tokio::spawn(async move {
@@ -248,6 +248,7 @@ pub(crate) fn spawn_checkout_passes(
         let places = StartPlaces::this_box();
         refresh_orientations(&client, &cfg, &places, revisions, cancel).await
     });
+    published
 }
 
 /// `forge-runner sync`: write the orientation core serves now into every bound checkout, or only
