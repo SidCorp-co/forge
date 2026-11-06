@@ -67,15 +67,20 @@ describe('a step and a drive run are handed no output ritual', () => {
   });
 });
 
-describe('a drive run recalls by judgement and splits by judgement', () => {
+describe('a drive run recalls by judgement and builds its issue whole', () => {
   it('is not told to recall every time the work turns', () => {
     expect(DRIVE_RULES_TEXT).not.toContain('every time the work turns to a new area');
     expect(DRIVE_RULES_TEXT).toContain('before you design');
   });
 
-  it('is not told every split stays in its session on one branch', () => {
+  // ISS-1057 (owner direction, 2026-11-07): a batch is never smaller than an issue, and one issue
+  // is never split across releases; separate work is filed in its lane, never as a part of this one
+  it('builds its issue whole and never splits it across releases', () => {
     expect(DRIVE_RULES_TEXT).not.toContain('it stays inside this session');
-    expect(DRIVE_RULES_TEXT).toContain('Splitting is your judgement');
+    expect(DRIVE_RULES_TEXT).not.toContain('Splitting is your judgement');
+    expect(DRIVE_RULES_TEXT).not.toContain('Where a part genuinely ships separately');
+    expect(DRIVE_RULES_TEXT).toContain('**An issue is built whole.**');
+    expect(DRIVE_RULES_TEXT).toContain('one issue is never split across releases');
   });
 
   it('may give a defect an issue of its own, in its lane', () => {
