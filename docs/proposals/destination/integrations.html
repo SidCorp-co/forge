@@ -337,10 +337,10 @@ only in the dispatch path.</p>
 <rect x="620" y="36" width="350" height="156" rx="9" fill="var(--soft)" stroke="var(--line)"/>
 <text x="642" y="60" font-size="12" font-weight="700" fill="var(--fg)">The third one is the interesting one</text>
 <text x="642" y="84" font-size="11" fill="var(--mut)">Intent is the one primitive the kernel cannot</text>
-<text x="642" y="101" font-size="11" fill="var(--mut)">derive — and its owner must be a human.</text>
+<text x="642" y="101" font-size="11" fill="var(--mut)">derive — and its owner is named on the record.</text>
 <text x="642" y="126" font-size="11" fill="var(--fg)">So an inbound that becomes work is an Intent</text>
 <text x="642" y="143" font-size="11" fill="var(--fg)">with a <tspan font-weight="650">provisional</tspan> owner, and it does not</text>
-<text x="642" y="160" font-size="11" fill="var(--fg)">dispatch until a human accepts it.</text>
+<text x="642" y="160" font-size="11" fill="var(--fg)">dispatch until the master admits it.</text>
 <text x="642" y="182" font-size="10.5" fill="var(--bad)">Otherwise an alerting rule can commission work.</text>
 </svg>
 </div>
@@ -366,7 +366,7 @@ only in the dispatch path.</p>
 <tr><td>health check answers "is the provider up"</td><td>plus <b><code>reverify(witness_id)</code></b> with three answers, which is what lets the reconciler heal without a provider outage rewriting history</td></tr>
 <tr><td>a provider outage degrades a dispatch path</td><td>it makes a <b>claim class unsatisfiable</b>, and the refusal names the provider and the channel</td></tr>
 <tr><td><code>direct-mcp</code> is a reach decision</td><td>it is also a <b>provenance</b> decision: facts born there are agent-signed and cannot alone back a kernel claim</td></tr>
-<tr><td>an inbound that creates work creates it</td><td>it creates a <b>provisional Intent</b> that does not dispatch until a human owns it</td></tr>
+<tr><td>an inbound that creates work creates it</td><td>it creates a <b>provisional Intent</b> that does not dispatch until the project's master admits it, on the record</td></tr>
 </tbody>
 </table>
 
