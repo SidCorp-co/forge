@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.543] - 2026-11-06
+
+Release asks go once to their holder; rooms can say why a release waits
+
+### Fixed
+
+- **A support room can say why a release has not shipped.** Its release read names whose act a waiting release needs and since when, the approval owed and who may give it, and each issue not ready.
+- **The steward asks a release's act once, on the release.** An issue with every criterion earned names the release carrying it and what that release waits on, and the cut, approval or promotion goes to whoever can take it.
+
 ## [0.4.0-dev.542] - 2026-11-06
 
 Support rooms: named decider's go counts, waits end on own thread, no claims from silence

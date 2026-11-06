@@ -1,1 +1,0 @@
-**The steward asks a release's act once, on the release.** An issue with every criterion earned names the release carrying it and what that release waits on, and the cut, approval or promotion goes to whoever can take it.
