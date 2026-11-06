@@ -65,6 +65,7 @@ import {
   requirementsOf,
   tracedCodesOf,
 } from './standing-facts-read.js';
+import { ownerIdOf, stewardAccountsAmong } from './standing-owner.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
 import { stepFactsOf } from './step-facts-read.js';
@@ -219,6 +220,7 @@ type Facts = {
   releaseHolds: Map<string, ReleaseHoldView>;
   master: MasterServing;
   judge: VerifiedJudge | null;
+  stewards: ReadonlySet<string>;
   now: Date;
 };
 
@@ -262,7 +264,7 @@ function requirementRef(
 
 function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
   const mine = f.criteria.filter((c) => c.issue_id === r.id);
-  const ownerId = r.assignee_id ?? r.created_by_id;
+  const ownerId = ownerIdOf({ assignee: r.assignee_id, creator: r.created_by_id }, f.stewards);
   const owner = ownerId ? f.people.get(ownerId) : undefined;
   return {
     status: r.status,
@@ -357,13 +359,14 @@ async function standingRows(
     readJudge(projectId),
     releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
-  const [requirements, people, changedTraced] = await Promise.all([
+  const [requirements, people, changedTraced, stewards] = await Promise.all([
     requirementsOf(
       [...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))],
       projectId,
     ),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
     changedTracedOf(db, ids),
+    stewardAccountsAmong(raws.map((r) => r.created_by_id)),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
   const facts: Facts = {
@@ -382,6 +385,7 @@ async function standingRows(
     releaseHolds,
     master,
     judge,
+    stewards,
     now,
   };
   // on a change-request project the issue's head is its request's, not a run's worklog capture

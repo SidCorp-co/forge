@@ -186,7 +186,6 @@ type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   | 'judge'
 > & { issues: readonly I[] };
 
-
 const wait = (
   kind: RequirementWaitingKind,
   who: Said,
