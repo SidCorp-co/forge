@@ -10,6 +10,8 @@ vi.hoisted(() => {
 });
 
 import { readOwnerCredential } from '../../src/support/owner-credential.js';
+import { roomsOfProject } from '../../src/support/store.js';
+import { roomSecrets } from '../../src/support/thread.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld, OWNER_ID } from '../helpers/support-agent-world.js';
@@ -359,6 +361,12 @@ describe('ISS-1047: core refreshes the access token before an act (BC-2)', () =>
     ]);
     // the expired token was never sent
     expect(product.calls.map((c) => c.auth)).not.toContain(`Bearer ${pair.accessToken}`);
+    // every line the room posts is scrubbed of both tokens kept now (thread.ts:roomSecrets)
+    const [room] = await roomsOfProject(w.projectId);
+    if (!room) throw new Error('no support room');
+    expect(await roomSecrets(room)).toEqual(
+      expect.arrayContaining([kept.oauth.accessToken, kept.oauth.refreshToken]),
+    );
   });
 
   it('spends one refresh token once when two acts need it at the same moment', async () => {
