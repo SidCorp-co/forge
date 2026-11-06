@@ -9,9 +9,9 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-## [0.4.0-dev.536] - 2026-11-06
+## [0.4.0-dev.537] - 2026-11-06
 
-Support rooms hear true outcomes, tools list every argument, cuts take named versions
+Support rooms hear true outcomes, Ask Agent acts exactly, cuts take named versions
 
 ### Fixed
 
