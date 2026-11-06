@@ -27,6 +27,8 @@ vi.mock('../lib/rooms.js', async (importOriginal) => {
   };
 });
 vi.mock('../db/client.js', () => ({ db: {} }));
+// the org room's consumer marks the workspace Activity's glances stale (ISS-1053); none is held here
+vi.mock('../activity/index.js', () => ({ projectMoved: vi.fn() }));
 vi.mock('../pipeline/index.js', () => ({
   emitPipelineWedge: vi.fn(),
   resolvePipelineWedge: vi.fn(),
