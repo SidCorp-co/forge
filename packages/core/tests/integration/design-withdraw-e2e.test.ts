@@ -22,6 +22,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -53,6 +54,8 @@ beforeAll(async () => {
   const { mintPat } = await import('../../src/credentials/pat.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a design's approval and its re-pin are a person's only where the designs gate asks a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_designs']);
   const agent = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agent, 'member');
   const viewerId = (await createTestUser({ verified: true })).id;

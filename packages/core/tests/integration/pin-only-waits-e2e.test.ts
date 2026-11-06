@@ -24,6 +24,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, makeAgreeReady, rows } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -146,6 +147,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a design's approval and its re-pin are a person's only where the designs gate asks a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_designs']);
   await seedProjectDocument(projectId, ownerId, { environments: {} });
   say = requester(app, { owner: await signUserToken(ownerId) });
   await approvedAt1('access');

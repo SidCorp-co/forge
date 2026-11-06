@@ -28,6 +28,7 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 import { ago, feedback, issue, world } from '../helpers/forecast-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'ann' | 'bo';
@@ -189,6 +190,8 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
   it('promises no date, and past its window the sweep writes why on it and asks a holder of feedback.approve', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const w = await world();
+    // a fix's verify is a person's only where the project is strict; otherwise its master confirms (ISS-1058)
+    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
     const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
     const fb = await feedback(w, [carrier.id]);
     const get = async () =>

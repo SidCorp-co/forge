@@ -34,6 +34,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
@@ -123,6 +124,8 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a requirement's re-pin and a design's are a person's only where the revisions and designs gates ask a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_revisions', 'approval_designs']);
   // a runner is online, so the master these waits name can act (FB-77)
   await bindTestRunner(projectId, await createTestDevice(ownerId));
   say = requester(app, { owner: await signUserToken(ownerId) });

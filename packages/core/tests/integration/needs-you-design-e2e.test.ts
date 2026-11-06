@@ -15,7 +15,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let projectId: string;
 let ownerId: string;
@@ -73,13 +73,31 @@ describe('readNeedsYou with a proposed design revision', () => {
       }),
     );
 
-    const owner = await readNeedsYou(projectId, {
-      userId: ownerId,
-      agency: 'human',
-      isAdmin: true,
-      mayApprove: true,
-      mayWrite: true,
-    });
+    const asOwner = () =>
+      readNeedsYou(projectId, {
+        userId: ownerId,
+        agency: 'human',
+        isAdmin: true,
+        mayApprove: true,
+        mayWrite: true,
+      });
+    const asMember = () =>
+      readNeedsYou(projectId, {
+        userId: memberId,
+        agency: 'human',
+        isAdmin: false,
+        mayApprove: false,
+        mayWrite: true,
+      });
+
+    // with approvals.designs off (the default) approving a design is the master's, so no person is
+    // asked: neither the owner nor a member who may write (ISS-1058, who-owes `design.decide`)
+    expect((await asOwner()).items.filter((i) => i.area === 'designs')).toHaveLength(0);
+    expect((await asMember()).items.filter((i) => i.area === 'designs')).toHaveLength(0);
+
+    // with it on, a holder of workflow-designs.approve decides it, and the member is asked nothing
+    await enforceGates(projectId, ownerId, ['approval_designs']);
+    const owner = await asOwner();
     const rows = owner.items.filter((i) => i.area === 'designs');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -93,26 +111,6 @@ describe('readNeedsYou with a proposed design revision', () => {
     for (const [area, read] of Object.entries(owner.areas)) {
       expect(owner.items.filter((i) => i.area === area)).toHaveLength(read.you);
     }
-
-    // with approvals.designs off (the default) the decision needs no person: whoever may write the
-    // design decides it by its checklist, so a member who may write is asked too (ISS-453)
-    const asMember = () =>
-      readNeedsYou(projectId, {
-        userId: memberId,
-        agency: 'human',
-        isAdmin: false,
-        mayApprove: false,
-        mayWrite: true,
-      });
-    expect((await asMember()).items.filter((i) => i.area === 'designs')).toHaveLength(1);
-
-    // with it on, only a holder of workflow-designs.approve decides, and the member is asked nothing
-    await seedProjectDocument(projectId, ownerId, {
-      environments: {
-        beta: { tier: 'staging', deploysFrom: 'main', deployment: { mode: 'external' } },
-      } as never,
-      extra: { approvals: { designs: true } },
-    });
     expect((await asMember()).items.filter((i) => i.area === 'designs')).toHaveLength(0);
   });
 });

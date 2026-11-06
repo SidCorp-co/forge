@@ -35,6 +35,7 @@ import {
   createTestUser,
   makeAgreeReady,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let projectId = '';
 let say: (who: 'owner' | 'master', method: string, path: string, body?: Doc) => Promise<Reply>;
@@ -112,6 +113,8 @@ beforeAll(async () => {
   const { mintPat } = await import('../../src/credentials/pat.js');
   const ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a requirement's re-pin and a design's are a person's only where the revisions and designs gates ask a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_revisions', 'approval_designs']);
   const agentId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agentId, 'member');
   say = requester(app, {

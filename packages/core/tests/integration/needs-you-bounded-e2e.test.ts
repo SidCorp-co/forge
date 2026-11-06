@@ -18,6 +18,7 @@ import {
   createTestRelease,
   createTestUser,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 /**
@@ -85,6 +86,8 @@ async function projectAt(n: Scale): Promise<string> {
     source: { type: 'storefront', storefront: { provider: 'autoflow', binding: randomUUID() } },
     extra: { workspace: { isolation: 'remote-draft' } },
   });
+  // a proposed revision waits on its approver only where the designs gate asks a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_designs']);
 
   const workflows: string[] = [];
   for (let i = 0; i < n.designs; i++) {
