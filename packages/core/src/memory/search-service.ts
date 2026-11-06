@@ -1,4 +1,4 @@
-import type { RerankReport } from '@forge/contracts/memory';
+import type { MemoryStanding, RerankReport } from '@forge/contracts/memory';
 import { z } from 'zod';
 import { type MemorySource, memorySources } from '../db/schema.js';
 import {
@@ -11,6 +11,7 @@ import { logger } from '../lib/logger.js';
 import { RETRIEVAL_FLAGS, type RetrievalFlags } from '../lib/retrieval-flags.js';
 import { clampTopK } from '../lib/search-fusion.js';
 import { expandIssueRelations } from './expand-relations.js';
+import { noteWindowDays, standingOf } from './note-lifetime.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import {
   hybridSearchMemories,
@@ -70,8 +71,14 @@ interface RunMemorySearchInput {
   queryVec?: number[] | undefined;
 }
 
+/**
+ * A hit as a search answers it, with its standing (ISS-1063): `verified` when checked after its last
+ * write and within the project's note window, `unverified` otherwise — a lead to check, never a fact.
+ */
+export type MemorySearchHit = MemoryHit & { standing: MemoryStanding };
+
 interface MemorySearchResult {
-  hits: MemoryHit[];
+  hits: MemorySearchHit[];
   model: string;
   took_ms: number;
   /** What the query's embedding took, over every attempt; absent when none was made here (a keyword search, or a vector the caller supplied). */
@@ -262,6 +269,10 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     }
   }
 
+  const windowDays = await noteWindowDays(input.projectId);
+  const now = Date.now();
+  const standing = hits.map((h) => ({ ...h, standing: standingOf(h, windowDays, now) }));
+
   const tookMs = Date.now() - startedAt;
   if (hits.length > 0) {
     const hitIds = hits.map((h) => h.id);
@@ -276,7 +287,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   }
 
   return {
-    hits,
+    hits: standing,
     model: env.EMBEDDINGS_MODEL,
     took_ms: tookMs,
     ...(retrieved.embedMs !== undefined ? { embedMs: retrieved.embedMs } : {}),

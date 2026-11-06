@@ -28,7 +28,7 @@ type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
 
 /**
  * Sources where agents author free-form content, so a near-duplicate is worth
- * reporting back to the caller. Lifecycle mirrors (issue/decision/policy)
+ * reporting back to the caller. Lifecycle mirrors (issue/policy)
  * track their source records 1:1 — a near-duplicate there is expected.
  */
 const NEAR_DUPLICATE_PROBE_SOURCES = new Set<string>(['note', 'knowledge']);
@@ -140,10 +140,25 @@ export interface MemoryReplaced {
 /** What a write answers: the row, where it landed when that is not the ref it named, and that it replaced one. */
 export type MemoryWriteResult = IndexResult & { landedAs?: LandedAs; replaced?: MemoryReplaced };
 
+/**
+ * A decision in force has one home, and memory is not it (ISS-1063): memory holds findings and leads
+ * that lapse, so a decision written here would be served beside unverified notes and retire with
+ * them. The rows written before stay readable; a new one is refused, naming the doors that hold one.
+ */
+function refuseDecision(input: WriteMemoryInput): void {
+  if (input.source !== 'decision') return;
+  throw refuse(
+    'MEMORY_DECISION_NOT_MEMORY',
+    `memory does not hold decisions in force: write a decision as a rule, a knowledge entry of kind rule (PUT /api/projects/${input.projectId}/knowledge/<slug>, or PUT /api/orgs/<orgId>/knowledge/<slug> for the organisation), or as a requirement (POST /api/projects/${input.projectId}/requirements); a finding or lead goes to memory with source note`,
+    '/source',
+  );
+}
+
 export async function runMemoryWrite(
   given: WriteMemoryInput,
   by: WriteBy = {},
 ): Promise<MemoryWriteResult> {
+  refuseDecision(given);
   const { input, landedAs } = await landingOfMirrorWrite(given);
   assertAgentMemoryQuality(input);
   const { carried, existing } = await carriedFromExisting(input);

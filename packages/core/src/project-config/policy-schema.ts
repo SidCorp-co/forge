@@ -5,6 +5,7 @@ import {
   AUTONOMOUS_DRIVER_STATUSES,
   ISSUE_TERMINAL_STATUSES,
 } from '@forge/contracts/issue-machine';
+import { MEMORY_NOTE_WINDOW_DAYS_MAX } from '@forge/contracts/memory';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { VARIABLE_REF } from '@forge/contracts/variables';
 import { z } from 'zod';
@@ -60,6 +61,11 @@ export const policyDocumentSchema = z.strictObject({
     ),
     { min: 1 },
   ),
+  // How many days a note naming no issue lives without a check, and how long a check keeps a memory
+  // hit `verified`; absent, `MEMORY_NOTE_WINDOW_DAYS` (ISS-1063).
+  memory: z
+    .strictObject({ noteWindowDays: z.number().int().min(1).max(MEMORY_NOTE_WINDOW_DAYS_MAX) })
+    .optional(),
 });
 
 export type PolicyDocument = z.infer<typeof policyDocumentSchema>;

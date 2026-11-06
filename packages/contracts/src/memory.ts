@@ -11,6 +11,7 @@ export const MEMORY_REFUSAL_CODES = [
 	"MEMORY_MIRROR_READ_ONLY",
 	"MEMORY_ALREADY_RETIRED",
 	"MEMORY_UNCHANGED",
+	"MEMORY_DECISION_NOT_MEMORY",
 ] as const;
 
 export type MemoryRefusalCode = (typeof MEMORY_REFUSAL_CODES)[number];
@@ -27,6 +28,17 @@ export const MEMORY_MIRROR_SOURCES = ["issue", "comment", "job"] as const;
 // The sources a memory list reads unless asked otherwise: what agents and people wrote down, not
 // the issue mirrors the tracker already shows.
 export const MEMORY_AUTHORED_SOURCES = ["note", "knowledge", "policy", "decision"] as const;
+
+// What a memory hit stands as, beside its text: `verified` when someone checked it after its last
+// write and within the project's note window, `unverified` otherwise. An unverified hit is a lead to
+// check against what is live, never a fact.
+export const MEMORY_STANDINGS = ["verified", "unverified"] as const;
+export type MemoryStanding = (typeof MEMORY_STANDINGS)[number];
+
+// How long a note naming no issue lives unverified, and how long a check keeps a hit `verified`,
+// unless the project's policy sets `memory.noteWindowDays`.
+export const MEMORY_NOTE_WINDOW_DAYS = 14;
+export const MEMORY_NOTE_WINDOW_DAYS_MAX = 365;
 
 // A record a memory names that no longer resolves in the project: the reason it reads stale.
 export const MEMORY_STALE_WHYS = ["missing", "dropped", "archived"] as const;

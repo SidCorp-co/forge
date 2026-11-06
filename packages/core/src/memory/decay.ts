@@ -2,6 +2,7 @@ import { and, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { retireLapsedNotes } from './note-lifetime.js';
 
 const DECAY_SOURCES: MemorySource[] = ['note', 'knowledge'];
 const PRUNE_ZERO_RETRIEVAL_DAYS = 30;
@@ -27,12 +28,16 @@ function daysAgoParam(days: number): SQL {
 
 interface DecayResult {
   archived: number;
+  /** Notes retired by the note rules (ISS-1063): their issue ended, or their window passed unchecked. */
+  notesRetired: { issueEnded: number; expired: number };
   purged: number;
   durationMs: number;
 }
 
 export async function runMemoryDecay(): Promise<DecayResult> {
   const t0 = Date.now();
+  // the note rules first, so a note they retire carries their reason rather than "unused"
+  const notesRetired = await retireLapsedNotes(t0);
 
   // A confirmed verification (last_verified_at, ISS-603) counts as activity: an agent just proved
   // the row correct, so it must not be archived as "unused" even with a low retrieval count.
@@ -79,6 +84,7 @@ export async function runMemoryDecay(): Promise<DecayResult> {
 
   return {
     archived: archivedRows.count,
+    notesRetired,
     purged: purgedRows.count,
     durationMs: Date.now() - t0,
   };

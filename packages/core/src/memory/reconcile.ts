@@ -15,6 +15,7 @@ import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';
 import { indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
 import { firstItems, parseFencedJson, type ScriptRefuser, scriptRefuser } from './model-output.js';
+import { retireNotesForMovedIssue } from './note-lifetime.js';
 import { memoryIssueReads, type ReleasedIssue } from './ports.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
@@ -365,14 +366,16 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
 }
 
 /**
- * Whenever an issue move lands its `merged_at` (leaving {@link BASE_MERGE_STATE}, or reaching
- * `closed` — the "code landed" predicate `merged-at.ts` uses), enqueue a durable pg-boss reconcile
- * job, once per issue by its singleton key.
+ * Memory's answer to an issue's move. At `closed` or `dropped`, the notes written for the issue
+ * retire (ISS-1063, `note-lifetime.ts`). Whenever the move lands its `merged_at` (leaving
+ * {@link BASE_MERGE_STATE}, or reaching `closed` — the "code landed" predicate `merged-at.ts` uses),
+ * a durable pg-boss reconcile job is enqueued, once per issue by its singleton key.
  */
 export function registerMemoryReconcileTrigger(): void {
   consume('issue.transitioned', {
     name: 'memory-reconcile',
     handle: async (p) => {
+      await retireNotesForMovedIssue(p);
       const mergeLanded =
         (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
       if (!mergeLanded) return;
