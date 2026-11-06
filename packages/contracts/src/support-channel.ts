@@ -172,20 +172,11 @@ export const rulingDecidersSchema = z
 export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username>, acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[] }], on an entry of kind rule`;
 
 /** An instruction a member gave in the channel, kept as a rule linked to its message (BC-35). */
-export const supportRuleRequestSchema = z.strictObject(
-	{
-		thread: supportThreadIdSchema,
-		message: supportThreadIdSchema,
-		text: channelRuleTextSchema,
-	},
-	{
-		// ISS-1000's room-typed decider is gone (ISS-1042): a caller still sending it is told where it went
-		error: (iss) =>
-			iss.code === "unrecognized_keys" && iss.keys.includes("decides")
-				? "`decides` is gone: a channel rule names no decider. Who decides an act comes from the project's rulings, which its master records; keep the rule's words, and send the instruction to the project's master with support.record"
-				: undefined,
-	},
-);
+export const supportRuleRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	message: supportThreadIdSchema,
+	text: channelRuleTextSchema,
+});
 
 /** A question asked again, with its one answer (BC-36). */
 export const supportCommonIssueRequestSchema = z.strictObject({
