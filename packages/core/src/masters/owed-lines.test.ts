@@ -100,6 +100,25 @@ describe('an agent reporter’s confirm on the owed line', () => {
     expect(one).toContain('confirm it for that agent');
   });
 
+  // ISS-1058 fix forward: a person's item that sits in Forge's own project was named at the Forge
+  // door, which admits only its reporter, so all 55 of forge's confirms were refused FORGE_FEEDBACK_NOT_YOURS
+  it('names a person’s confirm at the door of the project the item sits in, never the Forge door', () => {
+    const person: AgentConfirmOwed = {
+      key: 'FB-135',
+      feedbackId: 'f135',
+      reporter: 'orchestrator',
+      itemProjectId: 'forge',
+      home: true,
+      reportedFrom: 'forge',
+      waitEnded: null,
+      waitMet: null,
+      person: true,
+    };
+    const line = owedLine({ ...none, confirms: [person] });
+    expect(line).toContain('`forge-runner api projects/forge/feedback/FB-135/verify -X POST`');
+    expect(line).not.toContain('`forge-runner api forge/feedback/FB-135/verify');
+  });
+
   it('names an item again once its wait ended, saying how, and the wait door to set one (ISS-902)', () => {
     const base: AgentConfirmOwed = {
       key: 'FB-470',

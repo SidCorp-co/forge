@@ -9,9 +9,14 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
  * an item about Forge, which admits the master of the project the item was reported from
  * (`feedback/reporter-master.ts`); its own project's door for an item that sits there, where the
  * master is a member. An item sitting in any other project is no door of the master's, so its line
- * names the reporter that owes it instead of a command that would be refused.
+ * names the reporter that owes it instead of a command that would be refused. A person's item the
+ * one rule gives this master is always its own project's door.
  */
 const confirmDoor = (c: AgentConfirmOwed): string | null => {
+  // a person's item is confirmed on its own project's door, where this master is a member; the Forge
+  // door admits only a person reporter, so naming it there sent every confirm to a refusal (ISS-1058)
+  if (c.person)
+    return `forge-runner api projects/${c.itemProjectId}/feedback/${c.key}/verify -X POST`;
   if (c.home) return `forge-runner api forge/feedback/${c.key}/verify -X POST`;
   if (c.itemProjectId === c.reportedFrom)
     return `forge-runner api projects/${c.itemProjectId}/feedback/${c.key}/verify -X POST`;
