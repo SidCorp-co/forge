@@ -24,7 +24,7 @@ holds the other two.
 | **Approved** | an agent | Nothing. Its plan is agreed, and the next run goes straight to building it. |
 | **Needs info** | **you** | **Answer the question**, make the decision or supply what it asks for. It then resumes where it stopped. |
 | **On hold** | **you** | **Resume it.** Nothing moves until you do — this is a brake, not a question. |
-| **Awaiting release** | **you** | **Release it** with **Release now**, or let the next scheduled release take it — the issue page says which. |
+| **Awaiting release** | the release | Nothing. The next release takes it. Only where your project asks a person to approve releases is it yours: **Release now**. |
 | **Reopened** | an agent | Nothing. It was sent back with a reason, and an agent takes it up again. |
 | **Closed** | nobody | Done — see [Tell when an issue is done](?path=what-done-means). |
 | **Dropped** | nobody | Decided against. It has no way back — file a new issue instead. |
@@ -37,7 +37,7 @@ flowchart LR
   open --> prog[In progress]:::bot
   prog --> appr[Approved]:::bot
   appr --> prog
-  prog --> gate[Awaiting release]:::you
+  prog --> gate[Awaiting release]:::bot
   gate --> closed[Closed]:::over
   prog -.-> info[Needs info]:::you
   info -.answer.-> prog
@@ -71,10 +71,11 @@ An issue also lands on hold **whenever a run is cancelled**. That is on purpose:
 it parks somewhere nothing will pick up, so a cancel actually stops the work
 instead of a fresh run starting seconds later.
 
-**Awaiting release is not finished.** The work is built and every check passed, and
-it is waiting to be released — by a person choosing **Release now**, or by the next
-scheduled release, whichever the issue page names. It stays under the **Open** tab
-for that reason — counting it as done is how a gate stops being noticed.
+**Awaiting release is not finished.** The work is built and its checks passed, and
+it is waiting for the next release to take it. Where your project asks a person to
+approve releases, it waits for someone who can release to choose **Release now**;
+the issue page says which. It stays under the **Open** tab for that reason —
+counting it as done is how a gate stops being noticed.
 
 **In progress is one status, whatever step it is at.** Planning, building and
 testing are steps of a single run, shown after the status, not statuses of their
