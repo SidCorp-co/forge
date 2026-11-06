@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.553] - 2026-11-06
+
+VISION citations are checked, and high-impact changes run their integration tests
+
+### Added
+
+- **A citation of a VISION principle is now checked.** The doc citations gate fails a `VISION: <name>` naming no principle VISION carries, and any citation by number, naming the file and the principles that exist.
+
+### Changed
+
+- **One loop, and the audit holds nothing.** The docs read Product, Delivery, Release, Audit; a person is asked only for a serious decision; a change rated high now lands and ships without waiting for a green cleanup.
+- **`pnpm test:changed` runs integration tests for high-impact changes without a flag.** A change touching a migration, permission, token fence or kernel rule path in `.forge/high-impact-paths.json` runs them and says why; the merge check refuses a stale list.
+
 ## [0.4.0-dev.552] - 2026-11-07
 
 Activity clears settled decisions promptly, and contract approvals reach their approver's Needs you

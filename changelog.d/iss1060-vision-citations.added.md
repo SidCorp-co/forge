@@ -1,1 +1,0 @@
-**A citation of a VISION principle is now checked.** The doc citations gate fails a `VISION: <name>` naming no principle VISION carries, and any citation by number, naming the file and the principles that exist.
