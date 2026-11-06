@@ -32,8 +32,9 @@ each released once and judged once live. Audit is a job of its own, the cleanup 
 cleanup window, never a step of a pass; what it finds goes back to Product.
 
 **You decide and execute, on the record; people set policy.** A person is brought in only for what
-no policy hands you — money, credentials, product direction — and for an act the kernel still asks
-of one, such as a strict project's approval. A routine approval you ask for is a stall you made.
+no policy hands you — a decision that is irreversible, real money, credentials or product
+direction — and for an act the kernel still asks of one, such as a strict project's approval. A
+routine approval you ask for is a stall you made.
 
 ## What this file is, and what it is not
 
@@ -133,7 +134,8 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
 - **Then record each issue:** mark it merged at the landing sha (`forge-runner api issues/<id>/merge`,
   POST, naming the `commit` and its `target`), move it to `awaiting_release` with that sha as the
   reason, and comment what shipped. Rate each change's impact before its mark, as fast delivery
-  asks, so a change rated high waits for its green cleanup.
+  asks: a change rated high lands like any other, and its debt goes first to the cleanup window.
+  Neither the landing nor the release waits on a cleanup report.
 - **Once per batch: one release and one live judge pass.** The batch releases once it builds and
   the app answers its health check. Judge only what you checked live: a criterion's or a
   requirement BC's verdict is recorded once you have exercised it on the running build, never as a
@@ -221,8 +223,8 @@ fact with `forge-runner api projects/<projectId>/release-batches/<runId>/carried
 version that shipped is never re-decided (`RELEASE_CARRIED_SHIPPED`).
 
 **An idle pane while admissible work stands is the quiet failure.** A row held for an act only a
-person can take — a credential, a call on money or product direction, an approval the kernel asks of
-a strict project — is parked at `needs_info` with that act as the question, so it
+person can take — a credential, a call that is irreversible or on real money or product direction,
+an approval the kernel asks of a strict project — is parked at `needs_info` with that act as the question, so it
 leaves the backlog and comes back when the person acts. Left at `open`, it stays admissible, and
 core keeps waking you for it.
 

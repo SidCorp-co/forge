@@ -281,8 +281,8 @@ the mark or the decision answers it, so the business question is asked on its ow
   change before you mark it, \`POST /api/issues/:id/impact\` \`{ type, rating, reason }\`; the merge
   check asks only \`rebased-on-base\`, \`typecheck\` and \`direct-tests\`; a red you rate below
   high passes as cleanup debt (\`debts\` in the report, or \`POST /api/projects/:id/debts\`), and
-  one rated high is fixed here. Only a change rated high waits for a green cleanup: held from
-  landing where production deploys on land (\`MERGE_CLEANUP_PENDING\`), from promotion elsewhere.
+  one rated high is fixed here. A change rated high lands as any other does, and what it leaves is
+  debt the cleanup window (Audit) takes: no landing and no promotion waits on a cleanup report.
   The whole method: ${guideRef('fast-delivery')}.
 - **The fast lane.** Where a person approved the issue's live preview, \`GET /api/issues/:id/lane\`
   reads \`lane: 'fast'\` or says, in \`refusal\`, why the change is on the full lane — the file and

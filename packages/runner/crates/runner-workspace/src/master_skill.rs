@@ -604,8 +604,9 @@ mod tests {
             "Audit is a job of its own, the cleanup run in the project's cleanup window, never a step of a pass",
             "what it finds goes back to Product",
             "**You decide and execute, on the record; people set policy.**",
-            "money, credentials, product direction",
+            "irreversible, real money, credentials or product direction",
             "A routine approval you ask for is a stall you made.",
+            "Neither the landing nor the release waits on a cleanup report.",
         ] {
             assert!(
                 prose.contains(word),
@@ -617,6 +618,7 @@ mod tests {
             "a ruling, an approval, an answer",
             "Where the route is a person's call",
             "backlog a person holding `issues.admit` put there",
+            "a change rated high waits for its green cleanup",
         ] {
             assert!(
                 !prose.contains(gone),

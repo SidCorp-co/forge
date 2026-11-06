@@ -3,7 +3,8 @@
 // @direct-test-of packages/core/src/prompt/state-prompts/release-batch.ts
 // The owner's direction of 2026-11-07 (ISS-1057), as the texts core serves teach it: the loop is
 // Product → Delivery → Release → Audit → Product, agents decide and execute on the record, and a
-// person is asked only for what a person owns (money, credentials, product direction, policy). Each
+// person is asked only for what a person owns (irreversible, real money, credentials, product direction,
+// policy). Each
 // served text is read as a reader gets it, so a sentence put back in its old shape goes red here.
 
 import { describe, expect, it } from 'vitest';
@@ -24,7 +25,7 @@ describe('a decision inside the work is the agent’s, never parked on a person'
     const guide = await served('what-is-an-issue');
     for (const said of [
       'A decision inside the work — a tradeoff, a scope call, a choice between two designs | yours | make it, and record the choice',
-      'A decision only a person owns — money, credentials, product direction, standing policy',
+      'A decision only a person owns — irreversible, real money, credentials, product direction, standing policy',
       'Any other decision is yours: make it and record it.',
     ])
       expect(guide).toContain(said);
@@ -35,7 +36,7 @@ describe('a decision inside the work is the agent’s, never parked on a person'
   it('the lifecycle guide keeps needs_decision for what only a person owns', async () => {
     const guide = await served('pipeline-and-issue-lifecycle');
     expect(guide).toContain(
-      'a person must decide what only a person owns: money, product direction, standing policy',
+      'a person must decide what only a person owns: an irreversible act, real money, product direction, standing policy',
     );
     expect(guide).toContain(
       'A tradeoff or a scope call inside agreed work is not: the agent decides it',
@@ -48,7 +49,7 @@ describe('a decision inside the work is the agent’s, never parked on a person'
     const rules = flat(renderFact('pipeline-rules'));
     expect(rules).toContain('A tradeoff or a scope call inside the work is yours');
     expect(rules).toContain(
-      'a decision only a person owns — money, product direction, standing policy',
+      'a decision only a person owns — irreversible, real money, product direction, standing policy',
     );
     expect(rules).not.toContain('a decision between tradeoffs');
   });
@@ -86,6 +87,14 @@ describe('Audit is its own job, and what it finds goes back to Product', () => {
   it('fast delivery ends at the landing and the release, and hands Audit to the cleanup run', async () => {
     const guide = await served('fast-delivery');
     expect(guide).toContain('### The cleanup run: Audit');
+    expect(guide).toContain('### Nothing waits on Audit');
+    expect(guide).toContain(
+      'No landing waits on a cleanup report, and no promotion or release does either',
+    );
+    expect(guide).toContain('A change rated high lands as any other does');
+    expect(guide).not.toContain('MERGE_CLEANUP_PENDING');
+    expect(guide).not.toContain('RELEASE_CLEANUP_PENDING');
+    expect(guide).not.toContain('waits for a green cleanup');
     expect(guide).toContain('returns what would change the product to Product as Feedback');
   });
 });
@@ -124,7 +133,9 @@ describe('an issue is admitted to the backlog a master works, and stays whole', 
 describe('a release run hands a person only what a person owns', () => {
   it('names a credential, an access grant or a decision only a person owns as the blocker it owes a human', () => {
     const prompt = flat(releaseBatchStatePrompt);
-    expect(prompt).toContain('a decision only a person owns (money, product direction)');
+    expect(prompt).toContain(
+      'a decision only a person owns (irreversible, real money, product direction)',
+    );
     expect(prompt).not.toMatch(/an access grant, a decision — say so/);
   });
 });
@@ -163,5 +174,16 @@ describe('a served guide names REST, never a command of the plugin CLI', () => {
       );
     }
     expect(await served('agent-setup')).toContain('`GET /api/projects/:id/gates`');
+  });
+});
+
+describe('Audit does not gate delivery', () => {
+  it('issue-flow and the Audit guide hold no landing or promotion on a cleanup report', async () => {
+    const flow = await served('issue-flow');
+    expect(flow).toContain('no landing and no promotion waits on a cleanup report');
+    expect(flow).not.toContain('MERGE_CLEANUP_PENDING');
+    const audit = await served('cleanup-audit');
+    expect(audit).toContain('Delivery never waits on it');
+    expect(audit).not.toContain('when a change rated high waits');
   });
 });

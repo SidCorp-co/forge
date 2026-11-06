@@ -14,23 +14,24 @@ export const CLEANUP_AUDIT_GUIDE: CoreGuide = {
   title: 'Audit: the cleanup run reads what landed and how it ran',
   summary:
     "The Audit stage, worked by the cleanup run in the project's cleanup window: review the range that landed since the last cleanup report for defects, duplicates, code not reused, patterns that no longer fit, workarounds and leftovers, and read how it ran in real use; merge, reuse and simplify; clear the recorded debt and CI red; record what stays as debt, return what changes the product to Product as Feedback, keep each lesson for retrieval; and report once.",
-  version: 2,
+  version: 3,
   body: `## Audit: the cleanup run reads what landed and how it ran
 
 Forge's loop is Product → Delivery → Release → Audit → Product, and this is Audit: a job of its own,
 never a step of delivery. Delivery builds fast, lands batches on the minimum bar and leaves what it
 did not clean as recorded debt; Release ships each batch once. Audit runs in the project's cleanup
-window, after a period of running: a cleanup run starts there when debt is open, when a change rated
-high waits, or when anything landed on the base since the last cleanup report. It cleans what landed
-while the product keeps running, and returns what it finds that the product should change to Product.
+window, after a period of running: a cleanup run starts there when debt is open or when anything
+landed on the base since the last cleanup report. Delivery never waits on it: a change rated high
+lands as any other does, and its debt is taken here first. It cleans what landed while the product
+keeps running, and returns what it finds that the product should change to Product.
 
 ### 1. Read what you were handed
 - **The range.** Your brief names what landed since the last report, \`<from>..<head>\` on the base
   branch. Read it whole before you change anything: \`git log --stat <from>..<head>\`, then the diff
   of each change. Where no report was ever filed, review the recent landings up to the head.
 - **The debt.** \`GET /api/projects/:id/debts\` reads every open debt, the evidence kept on each, and
-  the changes rated high waiting on a green cleanup. A debt carried under a priced amnesty stays
-  until its condition ends; it is not yours to clear or to carry.
+  the window, debt rated high first. A debt carried under a priced amnesty stays until its condition
+  ends; it is not yours to clear or to carry.
 
 ### 2. Audit the range
 Look for these, in this order, and note each with the file and the change that brought it:
@@ -79,7 +80,7 @@ Land each fix the way the project lands work, with the project's checks run at t
 - Never file an issue for cleanup work: the ledger is where it waits for the next run.
 
 ### 6. Report once, last
-\`POST /api/projects/:id/cleanup-reports\` \`{ fire, base: { branch, sha }, result, ci?, cleared, remains, covers? }\`,
+\`POST /api/projects/:id/cleanup-reports\` \`{ fire, base: { branch, sha }, result, ci?, cleared, remains }\`,
 as your brief words it: \`base.sha\` is the head you leave, which becomes the next window's
 \`<from>\`. Every open debt is named once, cleared with how or remaining with why. The report is
 green exactly when every debt it leaves is carried; core refuses any other result
