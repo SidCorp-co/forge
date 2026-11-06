@@ -129,10 +129,9 @@ async function runClaimed(
   if (still && !still.ok) {
     return failed(room, fix, conversationId, still.refusals[0]?.detail ?? 'no longer granted');
   }
-  // a decider a standing channel rule names agrees to their own request for this act (ISS-1000)
-  const ownDecided =
-    confirmer.key === fix.askerKey && (await deciderRuleFor(room, fix.kind, confirmer)) !== null;
-  if (!ownDecided && !(await mayConfirmChange(room, grants, confirmer))) {
+  // the member a standing channel rule names as the one who decides this act agrees to it (ISS-1000)
+  const decides = (await deciderRuleFor(room, fix.kind, confirmer)) !== null;
+  if (!decides && !(await mayConfirmChange(room, grants, confirmer))) {
     return failed(
       room,
       fix,

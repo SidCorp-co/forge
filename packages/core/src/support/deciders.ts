@@ -119,7 +119,7 @@ export function deciderNote(
   found: DeciderRuleFound,
 ): string {
   const who = found.namedBy === 'owner' ? 'the owner' : 'a confirmed team member';
-  return `It counted as agreed by @${writer.label ?? writer.key}'s own request: the channel rule ${found.author ? `@${found.author}` : who} (${who}) wrote names them the one who decides ${actsWords([act])}.`;
+  return `It counted as @${writer.label ?? writer.key}'s agreement: the channel rule ${found.author ? `@${found.author}` : who} (${who}) wrote names them the one who decides ${actsWords([act])}.`;
 }
 
 /** What the session is told of a rule's decider when it keeps the rule: whom it names, and whether it stands. */

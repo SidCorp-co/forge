@@ -137,13 +137,48 @@ describe('ISS-1000: the member a room names as decider agrees by their own reque
     expect(own.turn.text).toContain('Forge holds it: @tuyen decides recording work (a filing)');
     expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({ recorded: true });
     // policy input, said where it is used: on the answer and on the audit fact
-    expect(String(own.agreed.what)).toContain("agreed by @tuyen's own request");
+    expect(String(own.agreed.what)).toContain("It counted as @tuyen's agreement");
     expect(await consentIn(own.thread)).toMatchObject({
       actor_key: tuyen.userId,
       output: { consent: 'named_decider', ruleAuthor: 'alice', ruleBy: 'owner' },
     });
     expect(await filings()).toBe(before + 1);
     expect(OWNER_ID).toBe(w.stand.alice.userId);
+  });
+
+  it('counts the decider’s plain go on a proposal put to her, and nobody else’s', async () => {
+    // sidpeak, 2026-11-06: the agent put a release to her, she answered "lên luôn nha", and it asked
+    // her to type a set word; her plain go on a proposal of the act she decides is her agreement
+    const before = await filings();
+    let proposed: Record<string, unknown> = {};
+    const asked = await w.hear(
+      () => chat.say(chat.bob, 'cần release bản sửa bảng lương'),
+      async (_t, act, message) => {
+        const m = message();
+        proposed = await act({
+          action: 'record',
+          thread: m.thread,
+          kind: 'request',
+          title: 'Release the payslip fix',
+          summary: 'Release the payslip fix',
+          asker: chat.bob.userId,
+        });
+      },
+    );
+    expect(proposed, JSON.stringify(proposed)).toMatchObject({ pending: true });
+    const proposal = String(proposed.proposal);
+    // dave, a Product member no rule names, answers first: refused, naming who may
+    const daveSays = await w.agreeBy(dave, 'ok release', asked.id, proposal);
+    expect(code(daveSays.out), JSON.stringify(daveSays.out)).toBe('SUPPORT_NOT_A_CONFIRMER');
+    expect(JSON.stringify(daveSays.out)).toContain('names as the one who decides it');
+    const tuyenSays = await w.agreeBy(tuyen, 'lên luôn nha', asked.id, proposal);
+    expect(tuyenSays.out, JSON.stringify(tuyenSays.out)).toMatchObject({ recorded: true });
+    expect(String(tuyenSays.out.what)).toContain("It counted as @tuyen's agreement");
+    expect(await consentIn(asked.id)).toMatchObject({
+      actor_key: tuyen.userId,
+      output: { consent: 'named_decider', ruleAuthor: 'alice', ruleBy: 'owner' },
+    });
+    expect(await filings()).toBe(before + 1);
   });
 
   it('still refuses anyone else’s earlier request by name, teaching who counts', async () => {

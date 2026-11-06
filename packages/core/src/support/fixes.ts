@@ -25,7 +25,7 @@ import {
   requestIsConsent,
   whoConfirms,
 } from './confirm-role.js';
-import { deciderNote } from './deciders.js';
+import { deciderNote, deciderRuleFor } from './deciders.js';
 import { grantsOf, isNamedOwner, isOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
@@ -141,20 +141,18 @@ export async function agreeTo(
   const grants = grantsOf(config);
   // an asker the room lets confirm consents by their own request (ISS-915, ISS-953): never asked again
   const ownRequest = await ownRequestOf(room, grants, fix, writer, decision);
-  // a decider a standing channel rule names agrees by their own request for that act (ISS-1000)
-  const decider = ownRequest?.by === 'decider' ? ownRequest : null;
   // the owner's word in the proposal's thread settles it, whoever asked; an order he gave before the
   // proposal is his agreement to it (ISS-954). The owner the binding names settles a filing; any
   // other change takes his word only under owner mode, as builds, deploys and host changes are gated.
   const ownerWord = ownerSettles(grants, fix, writer.key);
-  const consent = decider
-    ? 'named_decider'
-    : ownRequest
-      ? 'own_request'
-      : ownerWord && decision === 'agree'
-        ? 'owner_order'
-        : null;
-  if (!consent && said.at.getTime() <= fix.createdAt.getTime()) {
+  const early = ownRequest
+    ? ownRequest.by === 'decider'
+      ? 'named_decider'
+      : 'own_request'
+    : ownerWord && decision === 'agree'
+      ? 'owner_order'
+      : null;
+  if (!early && said.at.getTime() <= fix.createdAt.getTime()) {
     await audit('refused', fix, writer, { reason: 'before the proposal' });
     return no(
       'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
@@ -162,13 +160,23 @@ export async function agreeTo(
       `message ${input.message} was written before ${input.proposal} was proposed, so it answers something else: ask, and cite the answer that follows. Only the own request of an asker this room lets confirm (${whoConfirms(room, grants)}), or of ${DECIDER_WORDS}, counts as their agreement, and so does the owner's order in the thread (${ownerScope(grants)}). Nothing was done.`,
     );
   }
-  const allowed =
+  const allowedByRoom =
     ownerWord ||
-    decider !== null ||
     (gated
       ? (await mayConfirmChange(room, grants, writer)) ||
         (decision === 'decline' && writer.key === fix.askerKey)
       : writer.key === fix.askerKey);
+  // the member a standing channel rule names as the one who decides this act (ISS-1000): their own
+  // request, or their answer in plain words to a proposal put to them, settles it; recorded as such
+  // only where nothing else lets them, so the item says the rule was used
+  const decider =
+    ownRequest?.by === 'decider'
+      ? ownRequest
+      : allowedByRoom
+        ? null
+        : await deciderRuleFor(room, fix.kind, writer);
+  const consent = decider ? 'named_decider' : early;
+  const allowed = allowedByRoom || decider !== null;
   if (!allowed) {
     const asker = `@${fix.askerLabel ?? fix.askerKey}`;
     const who = gated
@@ -184,7 +192,7 @@ export async function agreeTo(
     return no(
       'SUPPORT_NOT_A_CONFIRMER',
       '/message',
-      `@${writer.label ?? writer.key} wrote ${input.message}, and only ${who} can agree to ${changeName(fix)}. ${nothingDone(fix)}`,
+      `@${writer.label ?? writer.key} wrote ${input.message}, and only ${who} can agree to ${changeName(fix)}, besides ${DECIDER_WORDS}. ${nothingDone(fix)}`,
     );
   }
   const now = new Date();
