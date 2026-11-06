@@ -91,23 +91,27 @@
     },
     {
       "pattern": "packages/core/src/issues/release-evidence.ts",
-      "reason": "kernel rule close_by_release: no close without a release that claimed the issue (CLOSE_ONLY_BY_RELEASE)"
+      "reason": "kernel rule close_in_scope: whether a closed issue's work is live is read from the release record here (holdingReleaseRunsSql), never from closed"
+    },
+    {
+      "pattern": "packages/core/src/issues/close-in-scope.ts",
+      "reason": "kernel rule close_in_scope: only the holder or a claiming release closes, and an unmet criterion with nowhere to go is refused (NOT_THE_HOLDER, CLOSE_CRITERION_UNPLACED)"
     },
     {
       "pattern": "packages/core/src/issues/filing-close-guard.ts",
-      "reason": "kernel rule close_by_release: a filing cannot close an issue that has not shipped (CLOSE_ONLY_BY_RELEASE)"
+      "reason": "kernel rule close_in_scope: a filing cannot close an issue that has not shipped (CLOSE_ONLY_BY_RELEASE)"
     },
     {
       "pattern": "packages/core/src/issues/design-delivered-guard.ts",
-      "reason": "kernel rule close_by_release: a design-only issue closes only once its design is approved (DESIGN_NOT_DELIVERED)"
+      "reason": "kernel rule close_in_scope: a design-only issue closes only once its design is approved (DESIGN_NOT_DELIVERED)"
     },
     {
       "pattern": "packages/core/src/release-batch/recorded-landing.ts",
-      "reason": "kernel rule close_by_release: the recorded landing a release claims before it closes an issue"
+      "reason": "kernel rule close_in_scope: the recorded landing a release claims before it closes an issue"
     },
     {
       "pattern": "packages/core/src/beta-port/mirror.ts",
-      "reason": "kernel rule close_by_release: a beta mirror closes only what shipped (CLOSE_REQUIRES_SHIPPED)"
+      "reason": "kernel rule close_in_scope: a beta mirror closes only what carries its merge (CLOSE_REQUIRES_SHIPPED)"
     },
     {
       "pattern": "packages/core/src/issues/review-rules.ts",
