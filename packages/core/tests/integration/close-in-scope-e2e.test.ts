@@ -21,6 +21,7 @@
  * @direct-test-of packages/core/src/issues/release-evidence.ts
  * @direct-test-of packages/core/src/pipeline/release-runs.ts
  * @direct-test-of packages/core/src/forecast/scope.ts
+ * @direct-test-of packages/core/src/forecast/facts.ts
  * @direct-test-of packages/core/src/forecast/progress.ts
  * @direct-test-of packages/core/src/product-progress/progress.ts
  * @direct-test-of packages/core/src/development/overview-read.ts
