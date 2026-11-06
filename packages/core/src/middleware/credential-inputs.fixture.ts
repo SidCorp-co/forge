@@ -235,7 +235,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:device_hostname field:json:device_label field:json:device_platform
     field:json:machine_id field:json:box`,
   'a third party’s token core stores or forwards to that service; it checks no caller': words`
-    field:json:apiToken field:json:authToken field:json:clientSecret field:json:secrets`,
+    field:json:apiToken field:json:authToken field:json:clientSecret field:json:headers field:json:secrets`,
   'an address: a mailbox, a service URL, a git host, where to go after sign-in': words`
     param:host field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
     field:json:email field:query:email field:query:redirect field:json:address`,
