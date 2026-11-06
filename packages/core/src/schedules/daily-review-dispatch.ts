@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { projectThreadsOf } from '../integrations/rocketchat/index.js';
+import { sentryReadTargets } from '../integrations/sentry/index.js';
 import { deliverDailyReview } from '../masters/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 
@@ -32,6 +33,8 @@ export async function routeScheduleDailyReviewFire(
     at: new Date(),
     // the project's own Forge-Communicate thread the review is posted in (ISS-934)
     threads: await projectThreadsOf(projectId, project.slug),
+    // the Sentry read's target labels, resolved as the read resolves them (ISS-973)
+    sentryTargets: await sentryReadTargets(projectId),
   });
   if (delivery.kind === 'missed') {
     const refusal = { code: delivery.code, path: '', detail: delivery.detail };

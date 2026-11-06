@@ -12,6 +12,7 @@ import { scrubLogText } from '@forge/observability';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
+  effectiveConfig,
   getIntegration,
   grantHolds,
   listBindingsForProject,
@@ -128,6 +129,25 @@ async function resolveGrantedSentryBinding(projectId: string): Promise<BindingWi
     throw refuseSentry('SENTRY_NOT_GRANTED', notGrantedMessage('sentry', usable.binding.id));
   }
   return usable;
+}
+
+/**
+ * The target labels the issues read takes on this project, resolved as the read resolves them
+ * (ISS-973): null where no Sentry binding exists, so there is nothing to read; the labels where the
+ * binding declares several, each read by `?target=<label>`; empty where one bare read answers,
+ * whether one target or a refusal the read names (switched off, not granted, an old shape).
+ */
+export async function sentryReadTargets(projectId: string): Promise<string[] | null> {
+  try {
+    const pair = await resolveGrantedSentryBinding(projectId);
+    const labels = resolveSentryTargets(effectiveConfig<SentryConfig>(pair)).map((t) => t.label);
+    return labels.length > 1 ? labels : [];
+  } catch (err) {
+    const code = sentryRefusalCode(err);
+    if (code === 'SENTRY_NO_BINDING') return null;
+    if (code !== null) return [];
+    throw err;
+  }
 }
 
 /**

@@ -3,6 +3,7 @@ export {
   readProjectSentryIssue,
   readProjectSentryIssues,
   type SentryAgentListRequest,
+  sentryReadTargets,
 } from './agent-read.js';
 export type { SentryAdapterContext } from './call.js';
 export { listSentryIssues } from './issues.js';

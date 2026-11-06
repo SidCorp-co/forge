@@ -1,0 +1,1 @@
+**The daily review reads each Sentry target.** Its brief names one Sentry link per declared target, where a bare read is refused as ambiguous, says which room id the actions route takes, and posts into the project's thread.

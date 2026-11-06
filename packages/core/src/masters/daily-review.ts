@@ -53,6 +53,18 @@ async function liveMasters(projectId: string): Promise<MasterRow[]> {
   );
 }
 
+/**
+ * Where the project's Sentry issues are read (ISS-973): one link per target where the binding declares
+ * several, since a bare read is refused SENTRY_TARGET_AMBIGUOUS there; the bare route where one read
+ * answers; none where no Sentry is bound (`integrations/sentry/agent-read.ts:sentryReadTargets`).
+ */
+function sentryLinks(at: (path: string) => string, targets: readonly string[] | null): string[] {
+  const door = at('/integrations/sentry/issues');
+  if (targets === null) return [];
+  if (targets.length === 0) return [door];
+  return targets.map((label) => `${door}?target=${encodeURIComponent(label)}`);
+}
+
 /** The brief: a goal, the window and where its facts are read. Never the report itself. */
 export function dailyReviewBrief(args: {
   projectId: string;
@@ -60,14 +72,26 @@ export function dailyReviewBrief(args: {
   since: Date;
   until: Date;
   threads: readonly ProjectThreadRef[];
+  /** The Sentry read's target labels (`sentryReadTargets`): null with no binding, empty for one bare read. */
+  sentryTargets: readonly string[] | null;
 }): string {
   const at = (path: string) => `/api/projects/${args.projectId}${path}`;
+  const facts = [
+    at('/releases'),
+    at('/runs/standing?scope=finished'),
+    at('/runs/standing?scope=live'),
+    at('/issues/standing?scope=open'),
+    ...sentryLinks(at, args.sentryTargets),
+    at('/support/rooms'),
+    at('/support/turns'),
+    `${at('/support/rooms/<roomId>/actions')} (<roomId> the room's id from /support/rooms, never a Rocket.Chat rid)`,
+  ];
   return [
     `Daily review for ${args.slug}, ${args.since.toISOString()} to ${args.until.toISOString()} (ISS-862).`,
     "Goal: tell the owner how the project's day went, short, in Vietnamese, in your own words, in the project's Forge-Communicate thread: what shipped and is live, what is in flight, what is blocked and on whom, and what you found and folded into the next batch.",
     'Then hunt on your own for what to fix, optimise or build: Sentry errors, production logs and slow endpoints, failed or flaky runs, UX rough edges, debt, and your own backlog. File or fix what you find, and fold it into the running batch.',
     "Audit (owner, 2026-11-02, product-delivery-audit-loop): read the day's channel conversations and how each ended (who asked, what the agent answered, what was left open or answered wrong), turn what you find into product items (feedback, a requirement revision) folded into the next batch, and raise a decision only the owner can take in this project's Forge-Communicate thread, never in a room its users read.",
-    `Facts: ${at('/releases')} · ${at('/runs/standing?scope=finished')} · ${at('/runs/standing?scope=live')} · ${at('/issues/standing?scope=open')} · ${at('/integrations/sentry/issues')} · ${at('/support/rooms')} · ${at('/support/turns')} · ${at('/support/rooms/<roomId>/actions')}.`,
+    `Facts: ${facts.join(' · ')}.`,
     `Learning (ISS-867): say what the day taught, the lessons approved and the approved lessons whose mistake was made again, from ${at(`/lessons/learned?since=${args.since.toISOString()}&until=${args.until.toISOString()}`)}; read a lesson by its slug at ${at('/knowledge/<slug>')}. A repeat is a lesson an agent did not apply: find why (not read, unclear, wrongly scoped) and fix that, or report a confusion on it.`,
     postLine(at('/support/master-posts'), args.slug, args.threads),
   ].join('\n');
@@ -80,10 +104,10 @@ export function dailyReviewBrief(args: {
  */
 function postLine(door: string, slug: string, threads: readonly ProjectThreadRef[]): string {
   if (threads.length === 0) {
-    return `Post: no Forge-Communicate thread is recorded for ${slug}, so a post there is refused SUPPORT_PROJECT_THREAD_UNRECORDED and never lands at its top level: record it first as \`operations.threads["<rid>"]["${slug}"]\` on this project's binding that names the room (GET then PUT /api/projects/<id>/bindings/<bindingId>), then POST ${door} { text, rid }. Never post in a room whose readers are users.`;
+    return `Post: no Forge-Communicate thread is recorded for ${slug}, so a post there is refused SUPPORT_PROJECT_THREAD_UNRECORDED and never lands at its top level: record it first as \`operations.threads["<rid>"]["${slug}"]\` on this project's binding that names the room (GET then PUT /api/projects/<id>/bindings/<bindingId>), then POST ${door} { text, rid, thread }. Never post in a room whose readers are users.`;
   }
   const where = threads.map((t) => `thread ${t.thread} of room ${t.rid}`).join(', or ');
-  return `Post: POST ${door} { text, rid }, rid naming the Forge-Communicate room: it lands in this project's own ${where}, never at the room's top level and never in a room whose readers are users.`;
+  return `Post: POST ${door} { text, rid, thread }, rid naming the Forge-Communicate room and thread this project's own there: it lands in ${where}, never at the room's top level and never in a room whose readers are users.`;
 }
 
 /** Hand the project's master its review brief, or say by name why no master took it. */
@@ -93,6 +117,7 @@ export async function deliverDailyReview(args: {
   fireId: string;
   at: Date;
   threads: readonly ProjectThreadRef[];
+  sentryTargets: readonly string[] | null;
 }): Promise<DailyReviewDelivery> {
   const masters = await liveMasters(args.projectId);
   const master = masters[0];
@@ -120,6 +145,7 @@ export async function deliverDailyReview(args: {
       since: new Date(args.at.getTime() - WINDOW_MS),
       until: args.at,
       threads: args.threads,
+      sentryTargets: args.sentryTargets,
     }),
   });
   return { kind: 'delivered', sessionId: master.id, published };
