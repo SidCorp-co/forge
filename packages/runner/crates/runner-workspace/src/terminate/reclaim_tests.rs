@@ -314,6 +314,19 @@ async fn close_and_release(led: &mut Ledger, root: &Path) -> Release {
     .expect("the release answers")
 }
 
+/// Whether `git worktree list` at `root` names `wt`, each side resolved to its real path: git prints
+/// macOS's `/private/var/...` behind the `/var/...` temp dir, and Windows' forward-slashed long name
+/// behind a backslashed one, so a spelling match fails there with the tree still listed.
+async fn lists_worktree(root: &Path, wt: &Path) -> bool {
+    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let want = real(wt);
+    git(root, &["worktree", "list", "--porcelain"])
+        .await
+        .lines()
+        .filter_map(|l| l.strip_prefix("worktree "))
+        .any(|listed| real(Path::new(listed)) == want)
+}
+
 /// What `git` says at `dir`, trimmed.
 async fn said(dir: &Path, args: &[&str]) -> String {
     git(dir, args).await.trim().to_string()
@@ -346,9 +359,7 @@ async fn a_tree_that_stood_before_its_run_outlives_the_runs_close() {
         "iss-23"
     );
     assert!(
-        git(&root, &["worktree", "list", "--porcelain"])
-            .await
-            .contains(&format!("worktree {}", wt.display())),
+        lists_worktree(&root, &wt).await,
         "git no longer lists the adopted tree"
     );
     assert!(forced.close.is_closed(), "{:?}", forced.close);
