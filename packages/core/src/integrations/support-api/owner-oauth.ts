@@ -5,7 +5,9 @@
 // code with PKCE (S256), the code traded and the refresh token spent at the token endpoint. Every
 // answer of the token endpoint is read into one of three: tokens, a refusal the product means for
 // good (the refresh token is spent or revoked), or no answer worth trusting yet (network, 429, 5xx).
-// No token is ever logged or put in a refusal's words.
+// No token is ever logged or put in a refusal's words. ISS-1052: who signed in is read from the
+// id_token the code trade returns (its `iss` the binding's `issuer`, else the token endpoint's
+// origin, and its `aud` Forge's client) or from the userinfo endpoint the binding declares.
 
 import type { SupportApiConnectionConfig, SupportOwnerSignIn } from '@forge/contracts/support';
 import * as client from 'openid-client';
@@ -35,7 +37,7 @@ export type OwnerOauthClient =
 
 /**
  * The product's OAuth client, or the refusal naming why core cannot use what the binding declares:
- * none declared, a token endpoint on a host the connection does not grant, or plain http.
+ * none declared, a token or userinfo endpoint on a host the connection does not grant, or plain http.
  */
 export function ownerOauthClient(
   product: string,
@@ -50,25 +52,37 @@ export function ownerOauthClient(
   if (!signIn) return refuse(`the support-api binding of ${product} declares no ownerSignIn`);
   const token = new URL(signIn.tokenUrl);
   const authorize = new URL(signIn.authorizationUrl);
-  if (!hostGranted(token, grantedHosts(config))) {
+  const userinfo = signIn.userinfoUrl ? new URL(signIn.userinfoUrl) : null;
+  const hosts = grantedHosts(config);
+  const ungranted = !hostGranted(token, hosts)
+    ? `the token endpoint ${token.host}`
+    : userinfo && !hostGranted(userinfo, hosts)
+      ? `the userinfo endpoint ${userinfo.host}`
+      : null;
+  if (ungranted) {
     return refuse(
-      `the token endpoint ${token.host} is on no host the ${product} connection grants (${[...grantedHosts(config)].join(', ')})`,
+      `${ungranted} is on no host the ${product} connection grants (${[...hosts].join(', ')})`,
     );
   }
-  const plain = plainHttp(token) ?? plainHttp(authorize);
+  const plain = plainHttp(token) ?? plainHttp(authorize) ?? (userinfo && plainHttp(userinfo));
   if (plain) return refuse(`${plain} is plain http, and the owner's tokens travel only over https`);
   const configuration = new client.Configuration(
     {
-      issuer: token.origin,
+      issuer: signIn.issuer ?? token.origin,
       authorization_endpoint: signIn.authorizationUrl,
       token_endpoint: signIn.tokenUrl,
+      ...(signIn.userinfoUrl ? { userinfo_endpoint: signIn.userinfoUrl } : {}),
     },
     signIn.clientId,
     undefined,
     client.None(),
   );
   configuration.timeout = TOKEN_TIMEOUT_SECONDS;
-  if (token.protocol === 'http:' || authorize.protocol === 'http:') {
+  if (
+    token.protocol === 'http:' ||
+    authorize.protocol === 'http:' ||
+    userinfo?.protocol === 'http:'
+  ) {
     client.allowInsecureRequests(configuration);
   }
   return { ok: true, value: configuration };
@@ -80,6 +94,20 @@ export interface OwnerTokens {
   refreshToken: string | undefined;
   expiresAt: string | null;
 }
+
+/** Who the product says signed in, as its id_token or userinfo endpoint names the account. */
+export interface SignedInClaims {
+  sub: string;
+  email: string | undefined;
+  /** False only where the product says the email is not verified. */
+  emailVerified: boolean | undefined;
+}
+
+const claimsOf = (raw: Record<string, unknown>): SignedInClaims => ({
+  sub: String(raw.sub),
+  email: typeof raw.email === 'string' ? raw.email : undefined,
+  emailVerified: typeof raw.email_verified === 'boolean' ? raw.email_verified : undefined,
+});
 
 export type TokenAnswer =
   | { kind: 'ok'; tokens: OwnerTokens }
@@ -120,7 +148,10 @@ function reasonOf(err: unknown): string {
   return `unreachable: ${message.slice(0, 200)}`;
 }
 
-function answerOfError(err: unknown): TokenAnswer {
+/** A token endpoint's or userinfo endpoint's error, as the refusal or the wait it means. */
+type NoAnswer = Exclude<TokenAnswer, { kind: 'ok' }>;
+
+function answerOfError(err: unknown): NoAnswer {
   const status = statusOf(err);
   if (status === null || status === 429 || status >= 500) {
     return { kind: 'transient', reason: reasonOf(err) };
@@ -142,11 +173,19 @@ export async function refreshOwnerTokens(
   }
 }
 
-/** Trade the code the product returned with, checked against the sign-in's own state and verifier. */
+/** A code trade's answer: the tokens, and who its id_token names where it returned one. */
+export type CodeAnswer =
+  | { kind: 'ok'; tokens: OwnerTokens; idClaims: SignedInClaims | null }
+  | NoAnswer;
+
+/**
+ * Trade the code the product returned with, checked against the sign-in's own state and verifier;
+ * an id_token it returns is checked for its issuer and audience, and its claims handed back.
+ */
 export async function tradeOwnerCode(
   configuration: client.Configuration,
   input: { code: string; state: string; verifier: string },
-): Promise<TokenAnswer> {
+): Promise<CodeAnswer> {
   const now = Date.now();
   const back = new URL(ownerSignInCallbackUrl());
   back.searchParams.set('code', input.code);
@@ -156,7 +195,29 @@ export async function tradeOwnerCode(
       pkceCodeVerifier: input.verifier,
       expectedState: input.state,
     });
-    return { kind: 'ok', tokens: tokensOf(answer, now) };
+    const id = answer.claims();
+    return { kind: 'ok', tokens: tokensOf(answer, now), idClaims: id ? claimsOf(id) : null };
+  } catch (err) {
+    return answerOfError(err);
+  }
+}
+
+/**
+ * Who the access token belongs to, as the userinfo endpoint the binding declares answers; where an
+ * id_token named a `sub`, the userinfo answer must name the same one.
+ */
+export async function readOwnerUserinfo(
+  configuration: client.Configuration,
+  accessToken: string,
+  expectedSub: string | null,
+): Promise<{ kind: 'ok'; claims: SignedInClaims } | NoAnswer> {
+  try {
+    const answer = await client.fetchUserInfo(
+      configuration,
+      accessToken,
+      expectedSub ?? client.skipSubjectCheck,
+    );
+    return { kind: 'ok', claims: claimsOf(answer) };
   } catch (err) {
     return answerOfError(err);
   }

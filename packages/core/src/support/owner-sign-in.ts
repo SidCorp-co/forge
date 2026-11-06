@@ -7,9 +7,12 @@
 // confirmation as his consent, the same fact his words in his room are (ISS-1013), naming the route
 // `sign_in`. A sign-in is spent once; one past its time, refused by the product, declined by him, or
 // whose binding no longer names the owner or the room is refused by name, and nothing is kept.
+// ISS-1052: only the owner's own account at the product signs in for him (`owner-identity.ts`). A
+// binding naming no owner account starts no sign-in, and a sign-in completed by any other account
+// keeps nothing, records no consent, and is refused by name in his room's record.
 
 import { createHash } from 'node:crypto';
-import type { SupportOwnerSignInRequest } from '@forge/contracts/support';
+import type { SupportOwnerAccount, SupportOwnerSignInRequest } from '@forge/contracts/support';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportOwnerConsents, supportOwnerSignIns } from '../db/schema-support.js';
@@ -32,6 +35,7 @@ import {
   standingConsent,
 } from './owner-consent.js';
 import { rewriteOwnerCredential } from './owner-credential.js';
+import { accountWords, isOwnerAccount, ownerIdentityFault, signedInAs } from './owner-identity.js';
 import type { Refusal } from './refusals.js';
 import { insertAction, type RoomRow, roomById } from './store.js';
 
@@ -98,6 +102,9 @@ export async function startOwnerSignIn(
   if (!api.ok) return refusedWith(api);
   const client = ownerOauthClient(api.value.name, api.value.ownerSignIn, api.value.config);
   if (!client.ok) return refusedWith(no(client.code, '/product', client.detail));
+  const signIn = api.value.ownerSignIn;
+  const unread = signIn ? ownerIdentityFault(api.value.name, signIn) : null;
+  if (unread) return refusedWith(no('SUPPORT_OWNER_IDENTITY_UNDECLARED', '/product', unread));
   if (!isVaultConfigured()) {
     return refusedWith(
       no(
@@ -147,11 +154,11 @@ export async function startOwnerSignIn(
 /** What the owner's browser lands on: whether Forge keeps his sign-in now, and if not, why. */
 export type OwnerSignInFinished =
   | { ok: true; product: string; consent: 'recorded' | 'stood' }
-  | { ok: false; status: 400 | 404 | 409 | 410 | 502; why: string };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 410 | 502; why: string };
 
 type SignInRow = typeof supportOwnerSignIns.$inferSelect;
 
-const fail = (status: 400 | 404 | 409 | 410 | 502, why: string): OwnerSignInFinished => ({
+const fail = (status: 400 | 403 | 404 | 409 | 410 | 502, why: string): OwnerSignInFinished => ({
   ok: false,
   status,
   why,
@@ -226,11 +233,12 @@ async function trade(
     );
   }
   const api = await signInApi(row.projectId, row.bindingId);
-  const client = api.ok
-    ? ownerOauthClient(api.value.name, api.value.ownerSignIn, api.value.config)
-    : null;
-  if (!api.ok || !client?.ok) {
-    await settle(row.id, 'the binding no longer declares a usable sign-in');
+  const signIn = api.ok ? api.value.ownerSignIn : null;
+  const owner = signIn?.owner;
+  const client =
+    api.ok && signIn ? ownerOauthClient(api.value.name, signIn, api.value.config) : null;
+  if (!api.ok || !signIn || !owner || !client?.ok || ownerIdentityFault(api.value.name, signIn)) {
+    await settle(row.id, 'the binding no longer declares a usable sign-in naming the owner');
     return fail(409, `The product's sign-in is no longer set up in Forge. Nothing was kept.`);
   }
   const answer = await tradeOwnerCode(client.value, {
@@ -238,15 +246,72 @@ async function trade(
     state,
     verifier: decryptSecret(row.verifierEnc),
   });
+  const name = api.value.name;
   if (answer.kind !== 'ok') {
     await settle(row.id, `${answer.kind}: ${answer.reason}`);
     return fail(
       502,
-      `${api.value.name} did not complete the sign-in (${answer.reason}). ${again} Nothing was kept.`,
+      `${name} did not complete the sign-in (${answer.reason}). ${again} Nothing was kept.`,
     );
   }
+  const who = await signedInAs(client.value, signIn, {
+    accessToken: answer.tokens.accessToken,
+    idClaims: answer.idClaims,
+  });
+  if (!who.ok) {
+    await settle(row.id, `unread: ${who.reason}`);
+    return fail(
+      502,
+      `${name} did not say who signed in: ${who.reason}. ${again} Nothing was kept.`,
+    );
+  }
+  if (!isOwnerAccount(owner, who.claims)) {
+    return notTheOwner(room, at.value, row, name, owner, accountWords(who.claims));
+  }
   const consent = await keepSignedIn(room, at.value, row, api.value, answer.tokens);
-  return { ok: true, product: api.value.name, consent };
+  return { ok: true, product: name, consent };
+}
+
+/**
+ * Somebody other than the owner's own account completed his sign-in: nothing is kept and no consent
+ * recorded, the sign-in is settled saying so, and his room's record holds the refusal by name, naming
+ * the account that signed in and the one the binding names. The page names the owner by his Forge
+ * name only, so a link handed on does not show anybody his account at the product.
+ */
+async function notTheOwner(
+  room: RoomRow,
+  at: OwnerRoom,
+  row: SignInRow,
+  product: string,
+  owner: SupportOwnerAccount,
+  signedIn: string,
+): Promise<OwnerSignInFinished> {
+  const expected = `${owner.claim} ${owner.value}`;
+  await settle(row.id, `not the owner: signed in as ${signedIn}, the binding names ${expected}`);
+  const conversationId = await knownThread(room, row.thread);
+  if (conversationId) {
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId,
+      thread: row.thread,
+      kind: 'refused',
+      actorKind: 'core',
+      tool: 'owner_sign_in',
+      input: { product, signIn: row.id },
+      output: {
+        code: 'SUPPORT_OWNER_SIGN_IN_NOT_THE_OWNER',
+        detail: `the sign-in to ${product} was completed by ${signedIn}, not by the owner's account the binding names (${expected}); no credential was kept and no consent recorded. Only the owner signs in, with his own ${product} account.`,
+        posted: false,
+      },
+    });
+  }
+  const label = await ownerUsername(room.projectId, at.owner);
+  const him = label ? `@${label}` : 'the owner of this room';
+  return fail(
+    403,
+    `You signed in to ${product} as ${signedIn}, which is not the ${product} account of ${him}, for whom this link was made. Nothing was kept. Only he signs in, with his own ${product} account.`,
+  );
 }
 
 /** Keep the tokens and record his consent by sign-in, in one transaction under the binding's lock. */

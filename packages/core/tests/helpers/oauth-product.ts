@@ -21,7 +21,10 @@ export interface ProductAccount {
 /** The owner's account at the product, the one his binding names. */
 export const OWNER_ACCOUNT: ProductAccount = { sub: 'agf-user-1001', email: 'Alice@Agenfold.test' };
 /** Somebody else's account at the same product: whoever opened a forwarded link. */
-export const OTHER_ACCOUNT: ProductAccount = { sub: 'agf-user-2002', email: 'mallory@agenfold.test' };
+export const OTHER_ACCOUNT: ProductAccount = {
+  sub: 'agf-user-2002',
+  email: 'mallory@agenfold.test',
+};
 
 /**
  * Agenfold as its owner acts see it: an OAuth server (authorization code with PKCE, and refresh
@@ -179,7 +182,11 @@ export class OauthProduct {
       if (url.pathname === '/oauth/userinfo') {
         this.userinfoAsks.push(presented);
         if (!live || live.until < Date.now()) return json(401, { error: 'invalid_token' });
-        return json(200, { sub: live.account.sub, email: live.account.email, email_verified: true });
+        return json(200, {
+          sub: live.account.sub,
+          email: live.account.email,
+          email_verified: true,
+        });
       }
       this.calls.push({ url: url.pathname, auth, body });
       if (!live || live.until < Date.now()) {

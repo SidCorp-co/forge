@@ -22,12 +22,15 @@ export {
   type SupportCallResult,
 } from './call.js';
 export {
+  type CodeAnswer,
   type OwnerOauthClient,
   type OwnerTokens,
   ownerAuthorizationUrl,
   ownerOauthClient,
   ownerSignInCallbackUrl,
+  readOwnerUserinfo,
   refreshOwnerTokens,
+  type SignedInClaims,
   type TokenAnswer,
   tradeOwnerCode,
 } from './owner-oauth.js';

@@ -1,0 +1,1 @@
+**Only the owner's own account signs in for him.** A product's sign-in now names the owner's account there; anyone else completing his link keeps nothing and records no consent, and a binding naming no owner starts no sign-in.

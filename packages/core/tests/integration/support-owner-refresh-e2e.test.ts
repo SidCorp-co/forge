@@ -11,7 +11,7 @@ import { roomsOfProject } from '../../src/support/store.js';
 import { roomSecrets } from '../../src/support/thread.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
-import { CLIENT_ID, OauthProduct } from '../helpers/oauth-product.js';
+import { CLIENT_ID, OauthProduct, OWNER_ACCOUNT } from '../helpers/oauth-product.js';
 import { AgentWorld, OWNER_ID } from '../helpers/support-agent-world.js';
 import { type Act, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
@@ -106,6 +106,9 @@ beforeAll(async () => {
             tokenUrl: `${product.base}/oauth/token`,
             clientId: CLIENT_ID,
             scopes: ['organizations:write', 'offline_access'],
+            // ISS-1052: his own account there, read at the userinfo endpoint after the code trade
+            userinfoUrl: `${product.base}/oauth/userinfo`,
+            owner: { claim: 'sub', value: OWNER_ACCOUNT.sub },
           },
         },
       },
