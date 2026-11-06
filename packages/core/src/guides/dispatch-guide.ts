@@ -178,7 +178,9 @@ document leaves \`delivery.fast\` on runs direct, and its nudge says so. Its mas
 dispatching, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
 approval, design record, review or judge before the landing. It works in batches, as §4 splits them:
 1. Take every issue the order admits, and each that arrives mid-batch. Claim each with a lease, as
-   ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`.
+   ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`. A batch is never smaller
+   than an issue: one issue is never split across releases, and a large issue is built whole, in as
+   many commits and builders as its files need, and released once with the batch it lands in.
 2. Build in this session, or hand each file-disjoint part to a general-purpose subagent: its issues,
    its tree, the base branch and the standing rules. A gap a loose issue leaves is filled by
    judgement, the assumption written as one line on the issue or in the commit body. No issue gets
@@ -199,7 +201,8 @@ approval, design record, review or judge before the landing. It works in batches
    Comment what shipped, then hand the lease back.
 5. Release the batch once, on the minimum bar: it builds and the app answers its health check. Then
    one live judge pass over the batch: a criterion's or a requirement BC's verdict is recorded only
-   once it was checked on the running build.
+   once it was checked on the running build. A criterion found red there reopens its issue, which
+   goes into the next batch, never a release of its own.
 
 The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`
 only on a recorded merge, the holder alone moving the issue into \`in_progress\` and

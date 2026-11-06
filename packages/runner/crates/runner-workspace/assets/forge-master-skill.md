@@ -86,6 +86,9 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
 - **Take everything, and keep taking.** Every issue the board admits goes into the running batch,
   and so does each one that arrives while it runs; a batch may span several requirements. Claim each
   with the lease the `issue-flow` guide's Take it names, and bring the records up to date after.
+- **A batch is never smaller than an issue.** One issue is never split across releases: a large
+  issue is built whole, in as many commits and builders as its files need, and released once, with
+  the batch it lands in. A batch is the issues in it, never a slice of one.
 - **Split it by files.** Build it in this session, or hand parts of it to general-purpose subagents,
   each with a short prompt: its issues, its tree, the base branch and the standing rules. Builders
   that run side by side hold disjoint files; issues that touch the same files go to one builder.
@@ -124,7 +127,8 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   `{ toStatus: "reopen", reason, cause: "defect", evidence: { liveRead } }`, or `{ verdictId }` or
   `{ attachmentId }` on the issue): that reopen is the defect stall its release counts. A reopen
   without the cause counts nowhere, and core refuses the cause without evidence
-  (`DEFECT_EVIDENCE_REQUIRED`).
+  (`DEFECT_EVIDENCE_REQUIRED`). The reopened issue, like any criterion found red at the live judge,
+  goes into the next batch, never a release of its own.
 
 **The kernel does not relax with the mode.** Whatever the profile, core still refuses:
 
