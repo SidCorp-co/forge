@@ -190,8 +190,6 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
   it('promises no date, and past its window the sweep writes why on it and asks a holder of feedback.approve', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const w = await world();
-    // a fix's verify is a person's only where the project is strict; otherwise its master confirms (ISS-1058)
-    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
     const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
     const fb = await feedback(w, [carrier.id]);
     const get = async () =>
@@ -217,7 +215,14 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
     expect(inside.phase).toBe('resolved');
     expect(inside.recordCheck, 'no criterion: the record can never say').toBeNull();
     expect(inside.verifyHeld).toBeNull();
+    // outside strict a fix's verify is routine, so the project's master confirms it (ISS-1058, who-owes `feedback.verify`)
     expect(inside.waitingOn).toMatchObject({
+      kind: 'agent',
+      says: { rule: { key: 'feedback.rule.masterConfirms' } },
+    });
+    // a strict project keeps it a person's, and with no criterion only a person can say it is gone
+    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
+    expect((await get()).waitingOn).toMatchObject({
       says: { rule: { key: 'feedback.rule.verifyByPerson' } },
     });
 
