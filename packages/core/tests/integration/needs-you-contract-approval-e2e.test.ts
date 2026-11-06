@@ -30,6 +30,7 @@ import {
   writeInterfaces,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let w: EcosystemWorld;
 let send: ReturnType<typeof sender>;
@@ -49,6 +50,8 @@ beforeAll(async () => {
   w = await openWorld();
   send = sender(w);
   await formEcosystem(w);
+  // a contract decision is a person's only where the project is strict (ISS-1058, REQ-68 BC-3)
+  await declareControls(w.project.forge, w.user.platform, { gates: { profile: 'strict' } });
   await writeInterfaces(w);
   await addProjectMember(w.project.forge, w.user.viewer, 'viewer');
   await recordedDaysAgo('2026-09-20', 20);

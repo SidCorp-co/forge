@@ -35,6 +35,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { enforceGates } from '../helpers/project-controls.js';
 
 let say: (who: 'owner' | 'member', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
@@ -111,6 +112,8 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   const memberId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a mockup's accept is a person's decision only where the designs gate asks a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_designs']);
   await addProjectMember(projectId, memberId, 'member');
   say = requester(app, {
     owner: await signUserToken(ownerId),

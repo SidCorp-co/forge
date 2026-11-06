@@ -101,6 +101,8 @@ beforeAll(async () => {
   const { mintPat } = await import('../../src/credentials/pat.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  // a re-pin is a person's decision only where the designs gate asks a person (ISS-1058)
+  await enforceGates(projectId, ownerId, ['approval_designs']);
   const agentId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agentId, 'member');
   say = requester(app, {
