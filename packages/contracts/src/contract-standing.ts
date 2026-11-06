@@ -26,23 +26,24 @@ export const CONTRACT_ATTENTION_GROUPS = [
 ] as const satisfies readonly StandingGroup[];
 export type ContractAttentionGroup = (typeof CONTRACT_ATTENTION_GROUPS)[number];
 
-export const CONTRACT_ATTENTION_LABELS: StandingGroupLabels<ContractAttentionGroup> = {
-	needs_you: {
-		label: "Needs you",
-		tone: "you",
-		collapsed: false,
-	},
-	waiting: {
-		label: "Waiting on others",
-		tone: "blocked",
-		collapsed: false,
-	},
-	steady: {
-		label: "Steady",
-		tone: "done",
-		collapsed: false,
-	},
-};
+export const CONTRACT_ATTENTION_LABELS: StandingGroupLabels<ContractAttentionGroup> =
+	{
+		needs_you: {
+			label: "Needs you",
+			tone: "you",
+			collapsed: false,
+		},
+		waiting: {
+			label: "Waiting on others",
+			tone: "blocked",
+			collapsed: false,
+		},
+		steady: {
+			label: "Steady",
+			tone: "done",
+			collapsed: false,
+		},
+	};
 
 export const CONTRACT_STATES = [
 	"unpublished",
@@ -82,15 +83,23 @@ export const CONTRACT_STATE_GLYPHS: Record<ContractState, string> = {
 };
 
 export const CONTRACT_STATE_HINTS: Record<ContractState, string> = {
-	unpublished: "unpublished: declared in the interface document, with no approved version",
+	unpublished:
+		"unpublished: declared in the interface document, with no approved version",
 	proposed: "proposed: a recorded version waits on its approver",
-	breaking_pending: "breaking_pending: a breaking version is approved and its commitment window is counting down",
-	behind: "behind: this project is built against an older version than the provider's current one",
+	breaking_pending:
+		"breaking_pending: a breaking version is approved and its commitment window is counting down",
+	behind:
+		"behind: this project is built against an older version than the provider's current one",
 	published: "published: an approved version is current",
 	deprecated: "deprecated: the provider takes no new consumers on it",
 };
 
-export const CONTRACT_ADOPTIONS = ["current", "owes", "behind", "unpublished"] as const;
+export const CONTRACT_ADOPTIONS = [
+	"current",
+	"owes",
+	"behind",
+	"unpublished",
+] as const;
 export type ContractAdoption = (typeof CONTRACT_ADOPTIONS)[number];
 
 export const CONTRACT_ADOPTION_LABELS: Record<ContractAdoption, string> = {
@@ -100,7 +109,10 @@ export const CONTRACT_ADOPTION_LABELS: Record<ContractAdoption, string> = {
 	unpublished: "No version",
 };
 
-export const CONTRACT_ADOPTION_TONES: Record<ContractAdoption, IssueStatusTone> = {
+export const CONTRACT_ADOPTION_TONES: Record<
+	ContractAdoption,
+	IssueStatusTone
+> = {
 	current: "ready",
 	owes: "you",
 	behind: "blocked",
@@ -173,6 +185,12 @@ export interface ContractStandingRow
 	lifecycle: string;
 	current: ContractVersionRef | null;
 	pending: ContractVersionRef | null;
+	/**
+	 * The other versions proposed after the current one, newest first, waiting behind `pending` on
+	 * the same approver (ISS-1055): what a decision on `pending` names as still to come. Empty on a
+	 * consumed contract, whose reader sees approved versions only.
+	 */
+	queued: string[];
 	ours: string | null;
 	window: ContractWindow | null;
 	noticeDays: number | null;

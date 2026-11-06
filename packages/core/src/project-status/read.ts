@@ -15,7 +15,8 @@ import type {
   ScopeForecast,
 } from '@forge/contracts/forecast';
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
-import { NEEDS_YOU_AREA_SPACE, type NeedsYouAreaKey } from '@forge/contracts/needs-you';
+import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
+import { rowSpaceOf } from '@forge/contracts/needs-you-decisions';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   PROJECT_STATUS_ROWS,
@@ -195,14 +196,16 @@ const personKey = (w: StatusWait['waitingOn']) => `${w.kind}:${JSON.stringify(w.
 
 /**
  * The member asks whose turn is a person's, grouped by that person: the one owing most first, each
- * person's oldest row first. A row of an ops area (`NEEDS_YOU_AREA_SPACE`) is Development's — an
+ * person's oldest row first. A row of an ops area (`rowSpaceOf`) is Development's — an
  * agent report's triage is Forge upkeep, not something a project member was asked — and is not here.
  */
 export function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWaits {
   const all = Object.entries(rows).flatMap(([area, list]) =>
-    NEEDS_YOU_AREA_SPACE[area as NeedsYouAreaKey] === 'asks'
-      ? list.map((r) => ({ area: area as NeedsYouAreaKey, row: r }))
-      : [],
+    list.flatMap((r) =>
+      rowSpaceOf(area as NeedsYouAreaKey, r.entity, r.standing.waitingOn.says.act) === 'asks'
+        ? [{ area: area as NeedsYouAreaKey, row: r }]
+        : [],
+    ),
   );
   const owed = all
     .filter(({ row }) => PERSON_KINDS.has(row.standing.waitingOn.kind))

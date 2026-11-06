@@ -13,6 +13,7 @@ import {
 	type NeedsYouDecision,
 	needsYouDecisionSchema,
 	needsYouDecisionsSchema,
+	rowSpaceOf,
 } from "./needs-you-decisions.js";
 
 const answer = (over: Partial<DecisionAnswer>): DecisionAnswer => ({
@@ -434,7 +435,9 @@ describe("the act a wait names is taken by a decision act (ISS-758)", () => {
 			vars: { acts: [repin.vars.acts[0], { key: "standing.act.cut" }] },
 		};
 		expect(decisionActsOf(mixed)).toBeNull();
-		expect(decisionActsOf({ key: "standing.acts", vars: { acts: [] } })).toBeNull();
+		expect(
+			decisionActsOf({ key: "standing.acts", vars: { acts: [] } }),
+		).toBeNull();
 		expect(decisionActsOf({ key: "standing.act.nothingKnown" })).toBeNull();
 	});
 
@@ -450,5 +453,42 @@ describe("the act a wait names is taken by a decision act (ISS-758)", () => {
 		);
 		expect(isDecisionAct(repin)).toBe(true);
 		expect(isDecisionAct({ key: "standing.act.cut" })).toBe(false);
+	});
+});
+
+describe("a proposed contract version is its approver's decision (ISS-1055)", () => {
+	const proposed = {
+		key: "contracts.act.approveOrReturn",
+		vars: { v: "11.0.0" },
+	};
+
+	it("is taken by the contract version decide act, so Needs you and the steward read it alike", () => {
+		expect(decisionActsOf(proposed)).toEqual([{ act: "contract.decide" }]);
+		expect(isDecisionActOn("contract", proposed)).toBe(true);
+	});
+
+	it("posts to the version decide route its page calls", () => {
+		expect(
+			decisionPath("contract.decide", {
+				projectId: "p",
+				contract: "admin-rest-v1",
+				version: "11.0.0",
+			}),
+		).toEqual({
+			ok: true,
+			path: "/api/projects/p/contracts/admin-rest-v1/versions/11.0.0/decision",
+		});
+	});
+
+	it("is a member's ask though the contracts area is upkeep; a consumer's adaptation stays upkeep", () => {
+		expect(rowSpaceOf("contracts", "contract", proposed)).toBe("asks");
+		expect(
+			rowSpaceOf("contracts", "contract", { key: "contracts.act.adaptBy" }),
+		).toBe("ops");
+		expect(
+			rowSpaceOf("requirements", "requirement", {
+				key: "standing.act.proposeR",
+			}),
+		).toBe("asks");
 	});
 });

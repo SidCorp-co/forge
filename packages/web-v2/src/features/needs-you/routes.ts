@@ -41,6 +41,8 @@ export function decisionHref(slug: string, opens: DecisionOpens | null): string 
       return workflowHref(slug, opens.key);
     case "release":
       return releaseHref(slug, opens.key);
+    case "contract":
+      return contractHref(slug, opens.key);
   }
 }
 

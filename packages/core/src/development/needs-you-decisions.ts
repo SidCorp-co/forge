@@ -10,17 +10,14 @@
  * here, never a button that posts to nowhere.
  */
 
-import {
-  NEEDS_YOU_AREA_SPACE,
-  NEEDS_YOU_AREAS,
-  type NeedsYouAreaKey,
-} from '@forge/contracts/needs-you';
+import { NEEDS_YOU_AREAS, type NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import {
   type DecisionOpens,
   isDecisionActOn,
   type NeedsYouDecision,
   type NeedsYouNotDecisionReason,
   type NotDecisionItem,
+  rowSpaceOf,
 } from '@forge/contracts/needs-you-decisions';
 import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
@@ -29,7 +26,9 @@ import { type AttentionRow, owedOf, type readAttention } from './needs-you.js';
 import { acceptDecision, repinDecision } from './needs-you-accept-builders.js';
 import {
   agreeDecision,
+  type ContractFacts,
   type CuttableRelease,
+  contractDecision,
   cutDecision,
   designDecision,
   type ReleaseFacts,
@@ -65,6 +64,9 @@ const REQUIREMENT_ASKED = new Set(['standing.act.answerSteward', 'standing.act.a
 
 /** A design revision proposed to its approver (`workflows/design-standing.ts:proposedWait`). */
 const DESIGN_PROPOSED = 'designs.act.approveOrReturn';
+
+/** A contract version proposed to its approver (`ecosystem/standing/standing.ts:providedTurn`). */
+const CONTRACT_PROPOSED = 'contracts.act.approveOrReturn';
 
 /** The issue acts a requirement waits on as the answer to a run's question on one of its issues. */
 const ANSWER_ACTS: ReadonlySet<string> = new Set([
@@ -123,6 +125,8 @@ interface Facts {
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
   /** Each design whose proposed revision waits on a person, by flow. */
   designOf: ReadonlyMap<string, { workflowId: string; revision: number; title: string }>;
+  /** Each provided contract whose proposed version waits on a person, by its ref. */
+  contractOf: ReadonlyMap<string, ContractFacts>;
   projectId: string;
 }
 
@@ -238,6 +242,11 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     if (!design || row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
     return designDecision(row, area, f.projectId, design);
   }
+  if (row.entity === 'contract' && act.key === CONTRACT_PROPOSED) {
+    const contract = f.contractOf.get(row.key);
+    if (!contract || row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
+    return contractDecision(row, area, f.projectId, contract);
+  }
   if (row.entity === 'feedback' && act.key === 'standing.act.confirmAnswer') {
     return feedbackDecision(row, area, f.projectId, f.feedbackAnswerOf.get(row.key) ?? null);
   }
@@ -281,6 +290,7 @@ const OPENS_KIND: Partial<Record<AttentionRow['entity'], DecisionOpens['kind']>>
   feedback: 'feedback',
   workflow: 'workflow',
   release: 'release',
+  contract: 'contract',
 };
 
 /** A row that is not a decision, named in plain words with the step it waits on (REQ-48 r3 BC-17). */
@@ -294,6 +304,10 @@ function leftItem(row: AttentionRow): NotDecisionItem {
     opens: kind ? { kind, key: row.key } : null,
   };
 }
+
+/** Whose list one row is on (`rowSpaceOf`): its area's, or a member's ask where it is a person's decision. */
+export const spaceOf = (area: NeedsYouAreaKey, row: AttentionRow) =>
+  rowSpaceOf(area, row.entity, row.standing.waitingOn.says.act);
 
 /** One row the viewer owes, built into the decision it is. */
 export interface OwedDecision {
@@ -363,6 +377,24 @@ export async function decisionsOf(
     ),
     approvalOf: new Map(approvals.filter((a) => a.decision === null).map((a) => [a.runId, a.id])),
     feedbackAnswerOf: new Map(attention.feedback.map((f) => [f.key, f.route?.answer ?? null])),
+    contractOf: new Map(
+      attention.contracts.contracts.flatMap((c) =>
+        c.direction === 'provided' && c.pending
+          ? [
+              [
+                c.ref,
+                {
+                  slug: c.slug,
+                  title: c.title.trim() || c.ref,
+                  version: c.pending.version,
+                  classification: c.pending.classification,
+                  queued: c.queued,
+                },
+              ],
+            ]
+          : [],
+      ),
+    ),
     designOf: new Map(
       [...attention.health.values()].flatMap((h) =>
         h.proposal
@@ -384,8 +416,8 @@ export async function decisionsOf(
   const listed: { area: NeedsYouAreaKey; row: AttentionRow }[] = [];
   const asked = new Set<string>();
   const left = new Map<NeedsYouNotDecisionReason, NotDecisionItem[]>();
-  const asks = NEEDS_YOU_AREAS.filter((a) => NEEDS_YOU_AREA_SPACE[a] === 'asks').flatMap((area) =>
-    owedRows[area].map((row) => ({ area, row })),
+  const asks = NEEDS_YOU_AREAS.flatMap((area) =>
+    owedRows[area].flatMap((row) => (spaceOf(area, row) === 'asks' ? [{ area, row }] : [])),
   );
   // a question's own row answers it before a requirement its issue holds up names the same one
   const heldUp = (r: AttentionRow) => actOf(r).key === 'standing.act.onIssue';

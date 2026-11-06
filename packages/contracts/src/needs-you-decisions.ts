@@ -12,9 +12,12 @@ import {
 	MOCKUP_LIMITS,
 } from "./mockups.js";
 import {
+	NEEDS_YOU_AREA_SPACE,
 	NEEDS_YOU_AREAS,
 	NEEDS_YOU_ENTITIES,
+	type NeedsYouAreaKey,
 	type NeedsYouEntity,
+	type NeedsYouSpace,
 } from "./needs-you.js";
 import {
 	decisionProposalSchema,
@@ -149,6 +152,11 @@ export const DECISION_ACTS = {
 		path: "/api/projects/:projectId/workflows/:workflowId/design/repins",
 		reason: false,
 	},
+	// a proposed contract version's approve or return (ISS-1055); a return asks its reason on its answer
+	"contract.decide": {
+		path: "/api/projects/:projectId/contracts/:contract/versions/:version/decision",
+		reason: false,
+	},
 } as const;
 export type DecisionAct = keyof typeof DECISION_ACTS;
 export const DECISION_ACT_NAMES = Object.keys(DECISION_ACTS) as [
@@ -231,7 +239,7 @@ export const decisionRecommendationSchema = z.strictObject({
  * issue, which the agents work (REQ-68 BC-6).
  */
 export const decisionOpensSchema = z.strictObject({
-	kind: z.enum(["requirement", "feedback", "workflow", "release"]),
+	kind: z.enum(["requirement", "feedback", "workflow", "release", "contract"]),
 	key: z.string().min(1).max(200),
 });
 export type DecisionOpens = z.infer<typeof decisionOpensSchema>;
@@ -550,6 +558,7 @@ export const DECISION_ACT_OF_SAID: Readonly<Record<string, DecisionActOfSaid>> =
 		"standing.act.check": { act: "requirement.accept" },
 		"standing.act.approveOrReturn": { act: "release.decide" },
 		"designs.act.approveOrReturn": { act: "design.decide" },
+		"contracts.act.approveOrReturn": { act: "contract.decide" },
 		"standing.act.confirmAnswer": { act: "feedback.verify" },
 		"standing.act.verifyFix": { act: "feedback.verify" },
 		"standing.act.verifyFixIn": { act: "feedback.verify" },
@@ -617,6 +626,23 @@ export function isDecisionActOn(entity: NeedsYouEntity, act: SaidAct): boolean {
 	return (
 		isDecisionAct(act) || (DECISION_ACT_KEYS_ON[entity]?.has(act.key) ?? false)
 	);
+}
+
+/**
+ * Whose list one row belongs on: its area's space (`NEEDS_YOU_AREA_SPACE`), except that a person's
+ * decision is a member's ask whatever area lists it (ISS-1055): a proposed contract version waits on
+ * its approver like a design revision does, while the rest of the contracts area (a consumer's
+ * adaptation) stays Forge's upkeep. Needs you, the decisions read and the status report read this one
+ * rule, so they count one set.
+ */
+export function rowSpaceOf(
+	area: NeedsYouAreaKey,
+	entity: NeedsYouEntity,
+	act: SaidAct,
+): NeedsYouSpace {
+	return NEEDS_YOU_AREA_SPACE[area] === "asks" || isDecisionActOn(entity, act)
+		? "asks"
+		: "ops";
 }
 
 /**

@@ -149,6 +149,23 @@ interface Read {
   consumers: ConsumerFact[];
 }
 
+/** The proposed versions after the current one other than the pending one, newest first. */
+const queuedOf = (
+  versions: readonly VersionRow[],
+  current: Standing['current'],
+  pending: Standing['pending'],
+): string[] =>
+  pending
+    ? versions
+        .filter(
+          (v) =>
+            v.approval === 'proposed' &&
+            v.version !== pending.version &&
+            (!current || v.recordedAt > current.recordedAt),
+        )
+        .map((v) => v.version)
+    : [];
+
 function readOf(w: World, e: Entry): Read {
   const provider = w.named.get(e.providerId) ?? {
     id: e.providerId,
@@ -201,6 +218,7 @@ function readOf(w: World, e: Entry): Read {
     lifecycle: facts.lifecycle,
     current: s.current ? versionRef(s.current) : null,
     pending: s.pending ? versionRef(s.pending) : null,
+    queued: queuedOf(versions, s.current, s.pending),
     ours: s.ours,
     window: s.window,
     noticeDays: doc?.document.commitments.deprecationNoticeDays ?? null,

@@ -12,7 +12,6 @@ import {
   type FeedbackPhase,
 } from '@forge/contracts/feedback';
 import {
-  NEEDS_YOU_AREA_SPACE,
   NEEDS_YOU_AREAS,
   type NeedsYouAct,
   type NeedsYouArea,
@@ -26,6 +25,7 @@ import { say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { ProjectAccess } from '../lib/authz.js';
 import { type AttentionRow, type NeedsYouViewer, newestFirst, readAttention } from './needs-you.js';
+import { spaceOf } from './needs-you-decisions.js';
 import { needsYouListOf } from './needs-you-decisions-read.js';
 import type { Folded } from './needs-you-fold.js';
 import { writtenTitle } from './row-title.js';
@@ -85,7 +85,7 @@ function rowsOfList(
   folded: Folded,
 ): Record<NeedsYouAreaKey, AttentionRow[]> {
   const rows = Object.fromEntries(
-    NEEDS_YOU_AREAS.map((a) => [a, NEEDS_YOU_AREA_SPACE[a] === 'asks' ? [] : owedRows[a]]),
+    NEEDS_YOU_AREAS.map((a) => [a, owedRows[a].filter((r) => spaceOf(a, r) === 'ops')]),
   ) as Record<NeedsYouAreaKey, AttentionRow[]>;
   for (const { area, row } of listed) rows[area].push(row);
   const taken = new Set(listed.map(({ row }) => row));
@@ -119,7 +119,7 @@ export async function readNeedsYou(
     rows[area].map(
       (r): NeedsYouItem => ({
         area,
-        space: NEEDS_YOU_AREA_SPACE[area],
+        space: spaceOf(area, r),
         entity: r.entity,
         key: r.key,
         title: r.title,

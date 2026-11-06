@@ -75,7 +75,7 @@ export function needsYouOf(
       stuck: d.stuck,
       dueAt: d.dueAt,
       href:
-        d.opens && d.opens.kind !== 'workflow' && d.opens.kind !== 'release'
+        d.opens && (d.opens.kind === 'requirement' || d.opens.kind === 'feedback')
           ? statusItemHref(slug, d.opens.kind, d.opens.key)
           : null,
     })),

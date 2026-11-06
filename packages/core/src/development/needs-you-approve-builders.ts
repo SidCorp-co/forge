@@ -399,3 +399,89 @@ export function designDecision(
     },
   };
 }
+
+/** A provided contract whose proposed version waits on the viewer (ISS-1055). */
+export interface ContractFacts {
+  /** The publication slug the version decide route takes. */
+  slug: string;
+  title: string;
+  version: string;
+  classification: string;
+  /** The other proposed versions behind it, newest first. */
+  queued: readonly string[];
+}
+
+/** How many of the versions queued behind a contract decision its impact names before it counts the rest. */
+const QUEUED_NAMED = 4;
+
+function queuedLine(queued: readonly string[]): string {
+  if (queued.length === 0) return 'consumers build against the version you approve';
+  const named = queued.slice(0, QUEUED_NAMED).join(', ');
+  const more = queued.length - QUEUED_NAMED;
+  const rest = more > 0 ? ` and ${more} more` : '';
+  const verb = queued.length === 1 ? 'waits' : 'wait';
+  return `${named}${rest} also ${verb} behind it, read once this one is decided`;
+}
+
+/**
+ * A proposed contract version's approve or return (ISS-1055), through the version decide route its
+ * page calls: it names the version and its classification, and the other proposed versions behind
+ * it, which the contract's standing offers next once this one is decided.
+ */
+export function contractDecision(
+  row: AttentionRow,
+  area: NeedsYouAreaKey,
+  projectId: string,
+  contract: ContractFacts,
+): Built {
+  const v = contract.version;
+  const named = `"${clip(contract.title, 200)}"`;
+  const path = filled('contract.decide', { projectId, contract: contract.slug, version: v });
+  return {
+    questionId: null,
+    decision: {
+      group: 'approve',
+      area,
+      entity: row.entity,
+      key: row.key,
+      title: clip(row.title, 500),
+      opens: { kind: 'contract', key: row.key },
+      question: `Approve version ${v} of ${named}, a ${contract.classification} change, or return it?`,
+      changes: `Which version of ${named} is current for its consumers`,
+      impact: impactOf(row, queuedLine(contract.queued)),
+      recommended: {
+        answerId: 'approve',
+        why:
+          contract.classification === 'breaking'
+            ? `Its provider proposed ${v} as a breaking change; approving opens its consumers' window to adapt, so return it with a reason if they cannot.`
+            : `Its provider proposed ${v} for approval; return it with a reason if it is not what its consumers should build against.`,
+        by: 'rule',
+      },
+      noRecommendation: null,
+      answers: [
+        answer({
+          id: 'approve',
+          label: `Approve ${clip(v, 60)}`,
+          act: 'contract.decide',
+          path,
+          body: { decision: 'approve' },
+          effect: `${v} becomes the current version of ${named}.`,
+          recommended: true,
+        }),
+        answer({
+          id: 'return',
+          label: 'Return with a reason',
+          act: 'contract.decide',
+          path,
+          body: { decision: 'return' },
+          needsReason: true,
+          declines: true,
+          effect: 'Sends it back to whoever proposed it, with your reason.',
+        }),
+      ],
+      touchedAt: row.touchedAt,
+      // a contract is the interface a design commits to: read under the designs (no topic of its own)
+      topic: 'design',
+    },
+  };
+}

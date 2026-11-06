@@ -160,7 +160,7 @@ export async function readAttention(
       ),
     ],
   };
-  return { rows, requirements, releases, issues, feedback: items, health, repins };
+  return { rows, requirements, releases, issues, feedback: items, health, repins, contracts };
 }
 
 /** Each area's rows that wait on the viewer, newest first: the one filter every Needs you read takes. */

@@ -45,6 +45,7 @@ const NEED: Readonly<Record<DecisionAct, Need>> = {
   'design.repin': { gate: 'designs' },
   'mockup.accept': { permission: 'mockups.approve' },
   'mockup.return': { permission: 'mockups.approve' },
+  'contract.decide': { permission: 'contracts.approve' },
 };
 
 /**
