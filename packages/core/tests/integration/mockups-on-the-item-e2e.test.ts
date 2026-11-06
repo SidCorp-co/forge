@@ -315,9 +315,11 @@ describe('Needs you lists a proposed mockup with its preview and what accepting 
     });
     if (!d) throw new Error(`${mk} is not among the decisions`);
     const proposal = d.proposal as Doc;
+    // the requirement is named once, by the decision's evidence; its own words call it "the requirement" (ISS-680)
+    expect(d.evidence).toMatchObject({ requirement: { key: req } });
     expect(proposal.consequences).toEqual([
-      `${mk} is accepted for ${req}`,
-      `${req}'s next agree or re-pin pins it, for its issues' jobs`,
+      `${mk} is accepted for the requirement`,
+      "The requirement's next agree or re-pin pins it, for its issues' jobs",
     ]);
     expect((d.answers as Doc[]).map((a) => [a.act, a.needsReason])).toEqual([
       ['mockup.accept', false],

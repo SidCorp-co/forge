@@ -80,10 +80,12 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
       .waitingOn as Doc;
     expect(standing).toMatchObject({ kind: 'you', act: "answer the steward's question" });
     const d = await decisionOf(req.key);
+    // the requirement is named once, by the decision's evidence; its own words call it "the requirement" (ISS-680)
+    expect(d?.evidence).toMatchObject({ requirement: { key: req.key } });
     expect(((d?.answers as Doc[] | undefined) ?? []).map((a) => a.effect)).toEqual([
-      `Drops ${req.key} as you, with your reason.`,
-      `Proposes what ${req.key} adds as a revision of ${target.key}, then drops ${req.key}, as you. Both are about exporting the call list.`,
-      `Keeps ${req.key} as it is until its standing moves, with your reason; the steward does not ask again until then.`,
+      'Drops the requirement as you, with your reason.',
+      `Proposes what the requirement adds as a revision of ${target.key}, then drops the requirement, as you. Both are about exporting the call list.`,
+      'Keeps the requirement as it is until its standing moves, with your reason; the steward does not ask again until then.',
     ]);
     ok(await answer(q?.id ?? '', { optionId: IDS.drop, note: 'Nobody faxes any more.' }));
     const move = await lastMove('requirement', req.id);
