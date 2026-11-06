@@ -10,6 +10,16 @@ vi.mock('../../permissions/index.js', async (original) => ({
   ...(await original<typeof import('../../permissions/index.js')>()),
   requireCan: async () => undefined,
 }));
+// the project writes in English, as the held text here is (REQ-69 BC-10)
+vi.mock('../../project-config/index.js', async (original) => ({
+  ...(await original<typeof import('../../project-config/index.js')>()),
+  readContentLanguage: async () => ({
+    contentLanguage: 'en',
+    keepTermsInEnglish: [],
+    source: 'default',
+    revision: null,
+  }),
+}));
 vi.mock('./store.js', () => ({
   failedProposalsOf: async () => [],
   recordProposal: async (p: { kind: string }) => {

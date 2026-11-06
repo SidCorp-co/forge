@@ -224,7 +224,7 @@ describe("the chat makes a person's Product acts on their word, one per item kin
       /^Undefer on REQ-801 was refused by its own door: [A-Z][A-Z0-9_]+: /,
     );
     expect(String(r?.next)).toMatch(/^Open REQ-801, fix what the refusal names/);
-    expect((r?.state as Doc).status).toBe('draft');
+    expect((r?.state as Doc | undefined)?.status).toBe('draft');
     const kept = await rows<{ item_key: string; via: string; code: string }>(sql`
       SELECT item_key, via, code FROM chat_decision_failures WHERE conversation_id = ${room.id}`);
     expect(kept).toHaveLength(1);

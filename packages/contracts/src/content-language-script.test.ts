@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	contentLanguageMisfit,
 	contentLanguageScriptWarning,
 	SCRIPT_CHECK_MIN_WORDS,
 } from "./content-language.js";
@@ -38,5 +39,36 @@ describe("a note whose script disagrees with the content language", () => {
 	it("guesses no language but vi", () => {
 		expect(contentLanguageScriptWarning("en", vietnamese, "x")).toBeNull();
 		expect(contentLanguageScriptWarning("fr", english, "x")).toBeNull();
+	});
+});
+
+// REQ-69 BC-10: what a chat saves for a project is in the project's language, whichever language the
+// person asked in, checked both ways before its card is offered
+describe("a chat's saved text against the project's language", () => {
+	it("finds Vietnamese text unfit for an English project, naming the count and the language", () => {
+		const said = contentLanguageMisfit("en", vietnamese);
+		expect(said).toContain(
+			"of its 12 words are spelled with Vietnamese letters",
+		);
+		expect(said).toContain("English (`en`)");
+	});
+	it("lets an English sentence carry a Vietnamese name", () => {
+		expect(
+			contentLanguageMisfit(
+				"en",
+				"Nguyễn asked for the export to keep its filters on reload",
+			),
+		).toBeNull();
+	});
+	it("finds English text unfit for a Vietnamese project, and Vietnamese fit", () => {
+		expect(contentLanguageMisfit("vi", english)).toContain(
+			"no Vietnamese letter",
+		);
+		expect(contentLanguageMisfit("vi", vietnamese)).toBeNull();
+		expect(contentLanguageMisfit("en", english)).toBeNull();
+	});
+	it("says nothing below the word floor, or for a language it does not guess", () => {
+		expect(contentLanguageMisfit("en", "Sửa trang đăng nhập")).toBeNull();
+		expect(contentLanguageMisfit("fr", vietnamese)).toBeNull();
 	});
 });
