@@ -4,8 +4,9 @@
 // Reads the run's `attempts[]` and renders the lifecycle record: Verb · Object ·
 // Outcome per line, failures first-class, silence and queueing rendered rather
 // than left blank. There is deliberately NO input, no reply, nothing typeable:
-// VISION §5 is that the primary surface is an auditable lifecycle, not a
-// conversation, and a text box here would make it the thing §5 forbids.
+// VISION's boundary "not a chat UI" is that the primary surface is an auditable
+// lifecycle, not a conversation, and a text box here would make it the thing that
+// boundary forbids.
 //
 // Grouping + labels are pure and live in `../activity`; this file is render only.
 

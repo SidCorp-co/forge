@@ -1,8 +1,8 @@
 -- ISS-452 (ISS-442 C6 / invariant I7, amendment 1) — queryable interventions
 -- metric. Hand-written migration (applied from meta/_journal.json).
 --
--- One row per intervention-class event so VISION §1 metric ② (interventions
--- per issue closed) is CHARTABLE, not aspirational. Three sources:
+-- One row per intervention-class event so the interventions metric (interventions
+-- per issue closed, `VISION: measured-together-never-apart`) is CHARTABLE, not aspirational. Three sources:
 --   - wedge          — a `pipeline_wedge` notification: the loop monitor (or a
 --                      demoted sweeper alarm) surfaced a non-progressing hop.
 --   - manual_cancel  — C0's audited single-job cancel escape hatch

@@ -5,12 +5,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { checkerConfig } from './lib/checker-config.mjs';
 import { dieAs, globToRegExp, ROOT } from './lib/gate.mjs';
+import { judgeVision, principlesOf, visionCitationsIn } from './lib/vision-citations.mjs';
 
 const die = dieAs('check-doc-citations');
 
 const MANIFESTS = ['package.json', 'Cargo.toml'];
 const MARKER = /<!--\s*doc-citation:\s*unchecked\s+(.*?)\s*\u2014\s*(\S.*?)\s*-->/;
 const MARKER_REACH = 3;
+/** The document whose bold principle names every `VISION: <name>` citation is read against. */
+const VISION = 'docs/VISION.md';
 const DEFAULTS = {
   skipDocs: [],
   pathExts: [
@@ -304,7 +307,28 @@ function reportDrift(drift, listAll, shallow) {
   if (!listAll) console.log('  (--drift lists each one)');
 }
 
+function reportVision({ unknown, byNumber }, names) {
+  if (unknown.length + byNumber.length === 0) return;
+  console.error(
+    `check-doc-citations: ${unknown.length} VISION citation(s) name a principle ${VISION} does not ` +
+      `carry, ${byNumber.length} cite one by number:\n`,
+  );
+  for (const c of unknown) console.error(`  ${at(c)} — ${c.token} is not a principle in ${VISION}`);
+  for (const c of byNumber) {
+    console.error(
+      `  ${at(c)} — ${c.token} cites by number, which ${VISION} forbids: the numbers are reading order and move`,
+    );
+  }
+  console.error(
+    `\nThe principles ${VISION} carries, by the bold name that is each one's identifier:\n` +
+      `  ${names.join(', ')}\n` +
+      'Cite one as `VISION: <name>`. A principle renamed there is renamed at every citation in the\n' +
+      'same change; a principle removed there takes the sentences that leaned on it with it.',
+  );
+}
+
 function reportFaults({ dead, numbered, badAnchor, markerFaults }) {
+  if (dead.length + numbered.length + badAnchor.length + markerFaults.length === 0) return;
   console.error(
     `check-doc-citations: ${dead.length} citation(s) name a file that is not there, ` +
       `${numbered.length} cite a line number, ${badAnchor.length} name a symbol its file does not hold, ` +
@@ -349,6 +373,19 @@ function main() {
   citations.markerFaults = perDoc.flatMap((one) => one.markerFaults);
   const verdict = judge(citations, w);
 
+  // A principle is cited from code comments as much as from documents, so this scan reads every
+  // tracked text file, not only the `.md` ones — under the same exclusions, and never VISION
+  // itself, which defines the names and quotes a citation by number as the form it forbids.
+  const read = principlesOf(existsSync(join(ROOT, VISION)) ? readFileSync(join(ROOT, VISION), 'utf8') : '');
+  if (read.error) die(`${VISION} ${read.error}, so no \`VISION: <name>\` citation can be checked`);
+  const textExt = new RegExp(`\\.(${cfg.pathExts.join('|')})$`);
+  const cited = w.files
+    .filter((p) => p !== VISION && textExt.test(p))
+    .filter((p) => !cfg.skipPrefixes.some((pre) => p.startsWith(pre) || p.includes(`/${pre}`)))
+    .filter((p) => !skip.some((re) => re.test(p)))
+    .flatMap((rel) => visionCitationsIn(rel, readFileSync(join(ROOT, rel), 'utf8')));
+  const vision = judgeVision(cited, read.names);
+
   reportSilences(verdict);
   reportDrift(verdict.drift, args.includes('--drift'), w.shallow);
 
@@ -356,8 +393,11 @@ function main() {
     verdict.dead.length +
     verdict.numbered.length +
     verdict.badAnchor.length +
-    verdict.markerFaults.length;
+    verdict.markerFaults.length +
+    vision.unknown.length +
+    vision.byNumber.length;
   if (faults > 0) {
+    reportVision(vision, read.names);
     reportFaults(verdict);
     // The count a red run carries too: `pnpm verify` proves a checker ran by this line, and one
     // printed only on a pass turns every red into "cannot prove it ran".
@@ -368,7 +408,8 @@ function main() {
   const unmeasured = verdict.ambiguous.length + verdict.unverifiable.length;
   console.log(
     `\ndoc-citations: ${docs.length} document(s) scanned, ${citations.length} citation(s), ` +
-      `${citations.length - unmeasured} checked`,
+      `${citations.length - unmeasured} checked; ${cited.length} VISION citation(s) checked ` +
+      `against ${read.names.length} principle(s)`,
   );
   // One line a passing run carries out of here: `pnpm verify` prints a checker's output
   // only when it fails, so a worklist reported nowhere else is a worklist nobody reads.
