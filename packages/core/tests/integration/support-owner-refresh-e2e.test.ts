@@ -481,6 +481,23 @@ describe('ISS-1047: a refresh the product refuses ends the credential by name (B
     expect(refused.status, JSON.stringify(refused.body)).toBe(422);
     expect(JSON.stringify(refused.body)).toContain('SUPPORT_OWNER_SIGN_IN_UNDECLARED');
   });
+
+  it('keeps one credential of one kind: headers and oauth together, or neither, are refused', async () => {
+    const path = `${credentialsPath()}/${agenfold}`;
+    for (const body of [
+      {
+        headers: { 'X-Api-Key': 'agf_both_0123456789' },
+        oauth: { accessToken: 'agf_both_at_0123' },
+      },
+      {},
+    ]) {
+      const refused = await api(w.owner, 'PUT', path, body);
+      expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+      expect(JSON.stringify(refused.body)).toContain('exactly one of headers');
+    }
+    // the ended credential stood through both
+    expect(await stored()).toHaveProperty('ended');
+  });
 });
 
 describe('ISS-1047: neither token reaches the session (BC-4)', () => {
