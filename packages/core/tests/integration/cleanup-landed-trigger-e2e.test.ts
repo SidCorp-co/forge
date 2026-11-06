@@ -9,6 +9,7 @@
  * @direct-test-of packages/core/src/cleanup/landed.ts
  * @direct-test-of packages/core/src/cleanup/rules.ts
  * @direct-test-of packages/core/src/schedules/cleanup-dispatch.ts
+ * @direct-test-of packages/core/src/schedules/ports.ts
  */
 
 import { sql } from 'drizzle-orm';
