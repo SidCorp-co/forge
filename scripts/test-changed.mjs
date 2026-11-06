@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 // A developer's run before a push (REQ-36 BC-7, BC-17): the typecheck and the DIRECT tests of what
 // this checkout changed against the branch it lands on, committed or not, in every package, and a
-// line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s; nothing widens it.
+// line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s. One thing widens
+// it: a touched path `.forge/high-impact-paths.json` lists runs the direct core integration tests
+// too, as `--integration` does, printing the path and its reason (`lib/high-impact-paths.mjs`,
+// ISS-1061). A list that cannot be read, or holds an entry stale or malformed, stops the run.
 //
-//   pnpm test:changed                    typecheck and direct unit tests
+//   pnpm test:changed                    typecheck and direct unit tests, and the direct core
+//                                        integration tests where a high-impact path is touched
 //   pnpm test:changed --integration      the direct core integration tests too (a throwaway Postgres)
 //   pnpm test:changed --report <path>    where the checks' report goes (default: the OS temp directory)
 //
@@ -26,6 +30,7 @@ import {
   touchedBetween,
 } from './lib/direct-test-run.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
+import { describeWidening, readHighImpactPaths, widenedBy } from './lib/high-impact-paths.mjs';
 import { describeBuilds, installRefusal } from './lib/package-builds.mjs';
 
 const die = dieAs('test-changed');
@@ -44,10 +49,13 @@ const unknown = args.find(
   (a, i) => a !== '--integration' && a !== '--report' && !(reportAt !== -1 && i === reportAt + 1),
 );
 if (unknown) die(`unknown argument ${unknown}; takes --integration, --report <path>`);
-const integration = args.includes('--integration');
+const flagged = args.includes('--integration');
 
 const notInstalled = installRefusal(ROOT);
 if (notInstalled) die(notInstalled);
+
+const highImpact = readHighImpactPaths(ROOT);
+if (highImpact.refusal) die(highImpact.refusal);
 
 const target = baseRef(ROOT);
 if (target.refusal) die(`no base to measure against: ${target.refusal}`);
@@ -63,6 +71,13 @@ if (touched.length === 0) {
   console.log('test-changed: nothing changed, so nothing to run');
   process.exit(0);
 }
+
+const widening = widenedBy(
+  touched.map((t) => t.path),
+  highImpact.entries,
+);
+for (const line of describeWidening(widening, { flagged })) console.log(line);
+const integration = flagged || widening.length > 0;
 
 const ran = runTypecheck(ROOT, { baseRef: target.ref, touched: touched.map((t) => t.path) });
 const direct = runDirectTests(ROOT, { touched, integration, narrow: true });
