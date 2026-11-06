@@ -46,7 +46,7 @@ import { readProjectEvents } from './events.js';
 import { glanceCache } from './glance-cache.js';
 import { doingOf, groupOf, pauseOf, skipOf, standingOf } from './group.js';
 import { laneOf, lastActivityOf } from './lane.js';
-import { readLaneReleases } from './lane-releases.js';
+import { readLaneReleases, readReleasing } from './lane-releases.js';
 import { releaseGlances } from './release-glance.js';
 
 /** How many of each source's events a lane reads per project over its two hours. */
@@ -338,6 +338,7 @@ export const ORG_ACTIVITY_LEGS = [
   'releases',
   'lanes',
   'shipped',
+  'releasing',
 ] as const;
 export type OrgActivityLeg = (typeof ORG_ACTIVITY_LEGS)[number];
 
@@ -372,7 +373,7 @@ export async function readOrgActivity(
   const waitMs = opts.waitMs ?? 0;
   const peopleKey = peopleKeyOf(viewer.userId, viewer.agency, ids);
   const laneFrom = new Date(now.getTime() - ORG_ACTIVITY_LANE_MINUTES * 60_000);
-  const [inFlight, awaiting, admissible, people, masters, releases, events, shipped] =
+  const [inFlight, awaiting, admissible, people, masters, releases, events, shipped, releasing] =
     await Promise.all([
       timed('inflight', () => readInFlight(ids)),
       timed('awaiting', () => readAwaitingRelease(ids)),
@@ -385,6 +386,7 @@ export async function readOrgActivity(
       timed('releases', () => releaseGlances.read(ids, waitMs)),
       timed('lanes', () => readProjectEvents(ids, { since: laneFrom, limit: LANE_EVENTS_LIMIT })),
       timed('shipped', () => readLaneReleases(ids, laneFrom, now)),
+      timed('releasing', () => readReleasing(ids)),
     ]);
   const owed = people.values.get(peopleKey);
   const rows = projects.map((p): OrgActivityProject => {
@@ -422,6 +424,7 @@ export async function readOrgActivity(
       peoplePending: !owed?.read,
       release: release?.read ? release.value : null,
       releasePending: !release?.read,
+      releasing: releasing.get(p.id) ?? null,
       awaitingRelease: awaiting.get(p.id) ?? 0,
       lane: laneOf(projectEvents, laneFrom, now, shipped.get(p.id) ?? [], owedHere),
       lastActivityAt: lastActivityOf(projectEvents, master.lastPassEndedAt),

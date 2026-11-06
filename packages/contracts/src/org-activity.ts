@@ -127,6 +127,26 @@ export interface OrgActivityRelease {
 	total: number;
 }
 
+/**
+ * How far a release run that was cut has got while it is still in flight (ISS-1051): `cut` until it
+ * deploys (an approval it waits on included), `deploying` once a deploy or its reading is under way,
+ * `shipped` once it shipped and its run has not yet ended.
+ */
+export const ORG_ACTIVITY_RELEASING_STAGES = [
+	"cut",
+	"deploying",
+	"shipped",
+] as const;
+export type OrgActivityReleasingStage =
+	(typeof ORG_ACTIVITY_RELEASING_STAGES)[number];
+
+/** A release run cut and still in flight: the version it wears, how far it got, and since when it runs. */
+export interface OrgActivityReleasing {
+	version: string;
+	stage: OrgActivityReleasingStage;
+	since: string;
+}
+
 export interface OrgActivityMaster {
 	state: MasterState;
 	/** When it entered that state, by the state's own record; null where it has none. */
@@ -170,6 +190,8 @@ export interface OrgActivityProject {
 	release: OrgActivityRelease | null;
 	/** True while its next release is still being read, off the page's path. */
 	releasePending: boolean;
+	/** The release run cut and in flight, read on the page's path; null where none runs (ISS-1051). */
+	releasing: OrgActivityReleasing | null;
 	/** Issues landed and waiting for a release. */
 	awaitingRelease: number;
 	/** What the project recorded over the last {@link ORG_ACTIVITY_LANE_MINUTES} minutes, drawn as its timeline lane. */

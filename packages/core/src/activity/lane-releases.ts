@@ -8,6 +8,8 @@ import {
   ORG_ACTIVITY_RELEASE_ISSUES,
   type OrgActivityLaneRelease,
   type OrgActivityReleaseState,
+  type OrgActivityReleasing,
+  type OrgActivityReleasingStage,
 } from '@forge/contracts/org-activity';
 import { withoutRecordKeys } from '@forge/contracts/record-keys';
 import { sql } from 'drizzle-orm';
@@ -116,6 +118,57 @@ export async function readLaneReleases(
           },
         ];
       }),
+    });
+  }
+  return out;
+}
+
+interface ReleasingRow {
+  project_id: string;
+  version: string;
+  started_at: string | Date;
+  released_at: string | Date | null;
+  attempt: string | null;
+}
+
+/** How far a release run in flight got: shipped once it shipped, deploying once an attempt began, else cut. */
+export function releasingStageOf(
+  r: Pick<ReleasingRow, 'released_at' | 'attempt'>,
+): OrgActivityReleasingStage {
+  if (r.released_at) return 'shipped';
+  return r.attempt ? 'deploying' : 'cut';
+}
+
+/**
+ * Each project's release run that was cut and still runs (ISS-1051): the newest running or paused
+ * release run, with how far it got by its own records, its ship and its deploy attempts. One
+ * statement however many projects, read on the page's path, so a run deploying is never hidden
+ * behind a held forecast that reads only the next release.
+ */
+export async function readReleasing(
+  projectIds: readonly string[],
+): Promise<Map<string, OrgActivityReleasing>> {
+  const out = new Map<string, OrgActivityReleasing>();
+  if (projectIds.length === 0) return out;
+  const runs = rowsOf<ReleasingRow>(
+    await db.execute(sql`
+      SELECT DISTINCT ON (r.project_id)
+             r.project_id, r.release_version AS version, r.started_at,
+             r.release_released_at AS released_at,
+             (SELECT a.stage FROM release_attempts a
+               WHERE a.run_id = r.id ORDER BY a.started_at DESC LIMIT 1) AS attempt
+        FROM pipeline_runs r
+       WHERE r.project_id IN (${uuids(projectIds)})
+         AND r.release_version IS NOT NULL
+         AND r.metadata ->> 'source' IN ('release-batch', 'release-record')
+         AND r.status IN ('running', 'paused')
+       ORDER BY r.project_id, r.started_at DESC`),
+  );
+  for (const r of runs) {
+    out.set(String(r.project_id), {
+      version: r.version,
+      stage: releasingStageOf(r),
+      since: iso(r.started_at),
     });
   }
   return out;

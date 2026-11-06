@@ -68,6 +68,7 @@
         "masterPasses",
         "pipelineRuns",
         "projects",
+        "releaseAttempts",
         "repoPullRequestIssues",
         "repoPullRequests"
       ],
