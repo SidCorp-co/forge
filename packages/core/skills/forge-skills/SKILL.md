@@ -69,7 +69,7 @@ dispatched by a status.
 
 | Skill | Delivered as | Owns |
 |---|---|---|
-| issue-flow | plugin (the project's `plugins`) | the whole walk from `open` to `closed` |
+| issue-flow | plugin (the project's `plugins`) | the whole walk from `open` to `awaiting_release`, where the release takes it |
 | forge-product-map | project copy, `installOnly` | seed the product map |
 | forge-skills | this one | author and ship project skills |
 
