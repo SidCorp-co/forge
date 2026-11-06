@@ -37,6 +37,7 @@ const contract: ContractStandingRow = {
   lifecycle: "active",
   current: version("1.1.0", { recordedAt: EARLIER, decidedAt: EARLIER }),
   pending: version("2.0.0", { classification: "breaking", approval: "proposed", decidedAt: null }),
+  queued: [],
   ours: "1.1.0",
   window: null,
   noticeDays: 14,
