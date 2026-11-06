@@ -1,6 +1,8 @@
 // forge-core-61 — one issue's criteria weighed as the gate that will decide it weighs them, for the
-// criteria read (`issues/criteria-weighing.ts`). It calls the release's own weighings and no other:
-// a project where nothing it judges on serves a change before its release (a promotion, or production
+// criteria read (`issues/criteria-weighing.ts`) and the steward's facts (`criteria-facts.ts`, ISS-1035:
+// adminhub-api's steward called earned passes missing while the read counted them). It calls the
+// release's own weighings and no other: a project with no production at the build it delivers, as its
+// landing record weighs it (`landed-build.ts:deliveredBuildsOf`, `landedStandings`); a project where nothing it judges on serves a change before its release (a promotion, or production
 // deployed only by a release: ISS-957, ISS-964) at the landing (`criteria-basis.ts:landingCriteriaReports`),
 // one judging on a `delivery.judgedOn` environment at what is served
 // (`issues/criteria-verdicts.ts:unearnedCriteriaReports`, that environment until the issue is released). Where no basis can be computed, every criterion says why.
@@ -15,6 +17,8 @@ import {
   landingCriteriaReports,
   landingWhere,
 } from './criteria-basis.js';
+import { type Delivery, deliveredBuildsOf, deliveryOf, landedStandings } from './landed-build.js';
+import { earlierCarriageOf } from './landed-build-holds.js';
 import { READ_PATH_HELD_ONLY, readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
@@ -74,6 +78,72 @@ async function atLanding(
   return { kind: 'weighed', criteria };
 }
 
+/**
+ * Each live criterion at the build a project with no production delivers, as its landing record and
+ * the steward weigh it (`landedStandings`): judged at that commit, carried to it from an earlier one it
+ * descends from (ISS-845), or, on an open change request, at its unchanged head.
+ */
+async function atDelivered(
+  issue: { id: string; projectId: string },
+  delivery: Delivery,
+): Promise<IssueCriteriaWeighing> {
+  const build = (await deliveredBuildsOf(issue.projectId, delivery, [issue.id])).get(
+    issue.id.toLowerCase(),
+  );
+  if (!build) return { kind: 'none', why: 'the issue was not found' };
+  if (build.sha === null) {
+    const unread = build.unread
+      ? ': whether its work is on that branch is unknown, not absent, so read it again once the host answers'
+      : '';
+    return { kind: 'none', why: `${build.why}${unread}` };
+  }
+  const sha = build.sha;
+  // what the delivered build holds of each other commit its verdicts name, from Forge's records
+  const builds = new Map([[issue.id.toLowerCase(), build]]);
+  const [standing] = await landedStandings(
+    [issue.id],
+    () => sha,
+    () => build.via ?? null,
+    () => build.head ?? null,
+    undefined,
+    (judged, judgedOnFor) => earlierCarriageOf(issue.projectId, builds, judged, judgedOnFor),
+  );
+  if (!standing)
+    return { kind: 'none', why: 'the delivered weighing returned nothing for this issue' };
+  if (!standing.owes) {
+    return { kind: 'none', why: "this project's document owes no verdict on its issues" };
+  }
+  const weighedOn = {
+    basis: 'delivered',
+    delivery,
+    build: sha,
+    from: build.from,
+    said: build.basis,
+  } as const;
+  const criteria = new Map<number, CriterionWeighing>();
+  for (const c of standing.criteria) {
+    if (!c.counts) {
+      criteria.set(c.criterion, { earned: false, standing: null, reason: c.why, weighedOn });
+      continue;
+    }
+    const own = c.at === sha;
+    const reason = c.release
+      ? `${c.carried ?? `judged on live release ${c.release}`}, read on this project's release record, which counts there`
+      : own
+        ? `judged at \`${short(sha)}\`, the build it delivers, which counts there`
+        : c.carried
+          ? `${c.carried}, which counts there`
+          : `judged at \`${short(c.at)}\`, the head that merged as \`${short(sha)}\` with an identical tree, which counts there`;
+    criteria.set(c.criterion, {
+      earned: true,
+      standing: own || (!c.carried && !c.release) ? 'stands' : 'carried',
+      reason,
+      weighedOn,
+    });
+  }
+  return { kind: 'weighed', criteria };
+}
+
 async function atServed(issue: { id: string; projectId: string }): Promise<IssueCriteriaWeighing> {
   const serving = await readServingNow(issue.projectId);
   const weighing = await readWeighingNow(issue.projectId, serving, [issue.id], {
@@ -112,6 +182,9 @@ export async function criteriaWeighingOf(issue: {
         why: "this project's `release_criteria` gate is off, so no gate weighs its criteria before a release",
       };
     }
+    // a project with no production delivers at its landing or its change request: weighed there
+    const delivery = await deliveryOf(issue.projectId);
+    if (delivery) return await atDelivered(issue, delivery);
     const basis = await criteriaBasisOf(issue.projectId);
     if (basis.kind === 'unread') {
       return {

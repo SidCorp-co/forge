@@ -3,8 +3,8 @@
  * no production environment. Landing on the project's working branch IS the delivery there (owner
  * ruling 2026-10-22), so the build its verdicts count on is the landing, never a production probe
  * that cannot exist. One definition, read by the record that closes the issue (`recorded.ts`), a
- * requirement's coverage (`requirements/standing-coverage.ts`), the steward's release facts
- * (`landed-facts.ts`) and the build a verdict defaults to (`judged-build.ts`).
+ * requirement's coverage (`requirements/standing-coverage.ts`), the criteria read and the steward's
+ * facts (`criteria-weighing.ts`, `criteria-facts.ts`) and the build a verdict defaults to (`judged-build.ts`).
  *
  * The landed build is, first found: the merge commit Forge observed (`merged_commit_sha`) where it
  * was stamped after the landing record that closed the issue (a host merge supersedes a landing

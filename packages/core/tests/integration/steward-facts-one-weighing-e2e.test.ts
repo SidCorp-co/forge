@@ -10,7 +10,7 @@
  * its landing) and ISS-112 (runtime passes recorded after its landing) were read the same way.
  *
  * @direct-test-of packages/core/src/release-batch/steward-release-facts.ts
- * @direct-test-of packages/core/src/release-batch/landed-facts.ts
+ * @direct-test-of packages/core/src/release-batch/criteria-facts.ts
  * @direct-test-of packages/core/src/release-batch/criteria-weighing.ts
  */
 

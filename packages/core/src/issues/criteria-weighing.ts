@@ -1,5 +1,6 @@
 // What each criterion's verdict is worth to the gate that will decide its issue, as the criteria read
-// shows it (forge-core-61). A promotion project weighs at the landing; any other at what is served:
+// shows it (forge-core-61), and as the steward's facts state it (ISS-1035). A project with no
+// production weighs at the build it delivers; a promotion project at the landing; any other at what is served:
 // the judged-on environment until the issue is released, production after (`runtime-standing.ts:
 // weighedOn`). The weighing is the release's (`release-batch/criteria-weighing.ts`), reached here
 // through a port; this module only places its answer on each criterion.
@@ -15,6 +16,16 @@ export type CriterionWeighedOn =
       readonly landing: string | null;
       readonly landsOn: string;
       readonly deploysFrom: string;
+    }
+  /** At the build a project with no production delivers (`release-batch/landed-build.ts:deliveredBuildsOf`):
+   *  its landing on its working branch, a later head holding it, or a change request's head or merge.
+   *  `said` names that build as its reading does. */
+  | {
+      readonly basis: 'delivered';
+      readonly delivery: 'landing' | 'change-request';
+      readonly build: string;
+      readonly from: 'record' | 'merge' | 'mark' | 'ahead' | 'change-request' | 'landed';
+      readonly said: string;
     }
   /** At what is served: `environment` is the judged-on environment read in production's place, or
    *  null where production's reading was weighed; `runtime` the declared release runtime that

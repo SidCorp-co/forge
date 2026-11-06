@@ -1,8 +1,8 @@
 /**
  * The facts the steward's acts read about an issue at the release gate, which it may not restate
  * otherwise: where its running build is, what the delivery policy owes, whether a live release batch
- * claims it, its head on a change-request project, and on a project with no production environment
- * whether its landed work is missing nothing or which verdicts it still owes at the landing. The
+ * claims it, its head on a change-request project, and each criterion as the one weighing the
+ * criteria read serves reads it (`criteria-facts.ts`). The
  * steward moves no issue back (`steward/door-writes.ts`): what an issue lacks goes in its note.
  */
 
@@ -14,9 +14,10 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { readProjectDocument } from '../project-config/index.js';
+import { criteriaBasisOf, landingWhere } from './criteria-basis.js';
+import { criteriaWeighingFact } from './criteria-facts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { deliveryHeadsOf } from './landed-build.js';
-import { landedCompleteFact, landedVerdictsOwedFact } from './landed-facts.js';
 
 /**
  * What the steward is told of the project's release and of the issue's place in it, as facts its
@@ -52,18 +53,29 @@ export async function stewardReleaseFacts(
         ? `It names every criterion with no counting verdict as a warning on the release, and holds nothing for it. ${gateSays(criteriaGate)}`
         : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';
   const judgedOn = judgedOnOf(document?.document.delivery);
-  const testing = judgedOn
-    ? `Its releases are proven on its testing environment \`${judgedOn}\` (delivery.judgedOn): a release criterion counts only a pass judged on the build \`${judgedOn}\` serves, a runtime verdict at the release's commit; a commit verdict gates the merge and proves no release criterion but a code property, which the review's commit pass proves.`
-    : null;
+  const testing = judgedOn ? await testingFact(projectId, judgedOn) : null;
   const claim = issueId ? await liveClaimOf(issueId) : null;
   const member = claim
     ? `This issue is a member of release batch ${claim.run}, still ${claim.status}: its code ships with that release whatever its status says.`
     : null;
   const head = issueId ? await headFact(projectId, issueId) : null;
-  const landed = issueId
-    ? ((await landedCompleteFact(issueId)) ?? (await landedVerdictsOwedFact(issueId)))
-    : null;
-  return [where, owes, testing, member, head, landed].filter(Boolean).join('\n');
+  const weighed = issueId ? await criteriaWeighingFact(issueId) : null;
+  return [where, owes, testing, member, head, weighed].filter(Boolean).join('\n');
+}
+
+/**
+ * What the project's testing environment decides, by the basis its criteria are weighed on: where a
+ * promotion stands between the landing and production, criteria are earned at the landing, whatever
+ * the testing environment serves now (ISS-1035: adminhub-api's steward, told only that a pass counts on
+ * what `stg` serves, called ISS-189's passes at its landing missing). A project naming `judgedOn`
+ * reads its basis from its document alone, so this reaches no network.
+ */
+async function testingFact(projectId: string, judgedOn: string): Promise<string> {
+  const basis = await criteriaBasisOf(projectId);
+  if (basis.kind === 'landing') {
+    return `Its changes are judged on its testing environment \`${judgedOn}\` (delivery.judgedOn), but ${landingWhere(basis)}: a criterion is earned at the issue's landing commit, or at a later build that holds it, by a commit or a runtime verdict there, and what \`${judgedOn}\` serves now decides nothing on its own.`;
+  }
+  return `Its releases are proven on its testing environment \`${judgedOn}\` (delivery.judgedOn): a release criterion counts only a pass judged on the build \`${judgedOn}\` serves, a runtime verdict at the release's commit; a commit verdict gates the merge and proves no release criterion but a code property, which the review's commit pass proves.`;
 }
 
 /**

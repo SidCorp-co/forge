@@ -11,6 +11,9 @@
  * ISS-845 turned the default delivery policy's verdicts off and left this red, unselected: a change to
  * what a project asks by default selects it now.
  *
+ * ISS-1035: those facts are the weighing the criteria read serves (`criteria-weighing.ts`), which on
+ * this project weighs at the landed build too, so the read and the facts agree criterion by criterion.
+ *
  * @direct-test-of packages/contracts/src/delivery-policy.ts
  * @direct-test-of packages/contracts/src/gate-profiles.ts
  */
@@ -20,6 +23,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { stewardReleaseFacts } from '../../src/release-batch/index.js';
+import { api } from '../helpers/api.js';
 import {
   ASIDE,
   D9,
@@ -95,12 +99,33 @@ async function sendsNothingBack(issueId: string, issueKey: string) {
 
 const facts = (issueId: string) => stewardReleaseFacts(projectId, issueId);
 
+/**
+ * The facts name each criterion as `GET /api/issues/:id/criteria` weighs it, word and reason, at the
+ * landed build (ISS-1035): one weighing, never a second reader beside it.
+ */
+async function factsAgree(issueId: string): Promise<string> {
+  const res = await api(token, 'GET', `/api/issues/${issueId}/criteria`);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  const criteria = res.body.criteria as Array<{
+    n: number;
+    weighing: { earned: boolean | null; reason: string; weighedOn: { basis: string } };
+  }>;
+  const said = await facts(issueId);
+  for (const { n, weighing } of criteria) {
+    expect(weighing.weighedOn.basis).toBe('delivered');
+    const word =
+      weighing.earned === true ? 'earned' : weighing.earned === false ? 'owed' : 'undecided';
+    expect(said).toContain(`criterion ${n} ${word}: ${weighing.reason}`);
+  }
+  return said;
+}
+
 describe("the steward's output check reads the same landed build", () => {
   it('says ISS-5 misses nothing when every criterion passes at the landed head', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, F4);
 
-    expect(await facts(issue)).toContain(
+    expect(await factsAgree(issue)).toContain(
       'No evidence is missing: wake the master to record the landing',
     );
     await sendsNothingBack(issue, 'ISS-5');
@@ -114,10 +139,11 @@ describe("the steward's output check reads the same landed build", () => {
 
     const said = await facts(issue);
     expect(said).toContain(
-      'its work has landed, and what it lacks is a counting verdict at that landing',
+      'What it lacks is a counting verdict on criteria 1, 2, 3, which is judging owed, not code to rebuild',
     );
-    expect(said).toContain('criterion 1:');
+    expect(said).toContain('criterion 1 owed:');
     expect(said).toContain(`dispatch a judge at \`${F4.slice(0, 12)}\``);
+    await factsAgree(issue);
     await sendsNothingBack(issue, 'ISS-5');
   });
 
@@ -145,9 +171,9 @@ describe("the steward's output check reads the same landed build", () => {
     await verdict(issue, 2, 'pass', LATER);
     await verdict(issue, 3, 'pass', LATER);
 
-    const said = await facts(issue);
-    expect(said).toContain('criterion 2:');
-    expect(said).not.toContain('criterion 1:');
+    const said = await factsAgree(issue);
+    expect(said).toContain('criterion 2 owed:');
+    expect(said).toContain('criterion 1 earned:');
     await sendsNothingBack(issue, 'ISS-1');
   });
 
@@ -155,18 +181,20 @@ describe("the steward's output check reads the same landed build", () => {
     const issue = await landedIssue(1, F4);
     await judgedAll(issue, ASIDE);
 
-    expect(await facts(issue)).toContain('owing: criterion 1:');
+    expect(await factsAgree(issue)).toContain('criterion 1 owed:');
     await sendsNothingBack(issue, 'ISS-1');
   });
 
-  it('names no verdict owed where a verdict at the landed head fails: the fail reopens it, not the steward', async () => {
+  it('asks no judge where a verdict at the landed head fails: the fail reopens it, not the steward', async () => {
     const issue = await landedIssue(5, F4);
     await verdict(issue, 1, 'pass', F4);
     await verdict(issue, 2, 'fail', F4);
     await verdict(issue, 3, 'pass', F4);
 
-    const said = await facts(issue);
-    expect(said).not.toContain('owing:');
+    const said = await factsAgree(issue);
+    expect(said).toContain('criterion 2 owed:');
+    expect(said).toContain('Criterion 2 judged fail reopens the issue that owns the work');
+    expect(said).not.toContain('dispatch a judge');
     expect(said).not.toContain('No evidence is missing');
     await sendsNothingBack(issue, 'ISS-5');
   });
@@ -209,9 +237,9 @@ describe("the steward's second reason, the design's proof plan, reads the landed
     for (let n = 1; n <= 16; n += 1) await verdict(issue, n, 'pass', HEAD);
     await verdict(issue, 17, 'pass', BEFORE);
 
-    const said = await facts(issue);
-    expect(said).toContain('criterion 17:');
-    expect(said).not.toContain('criterion 16:');
+    const said = await factsAgree(issue);
+    expect(said).toContain('criterion 17 owed:');
+    expect(said).toContain('criterion 16 earned:');
     await sendsNothingBack(issue, 'ISS-1');
   });
 });
