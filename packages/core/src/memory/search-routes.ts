@@ -7,6 +7,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireDeclaredOn, requiresOnResolved } from '../permissions/index.js';
+import { recordReached } from '../run-context/index.js';
 import { memorySearchInputSchema, runMemorySearch } from './search-service.js';
 
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
@@ -46,6 +47,7 @@ memorySearchRoutes.post(
       }
       throw err;
     }
+    recordReached(c, body.projectId, 'search', { memory: result.hits });
     return c.json(result);
   },
 );
