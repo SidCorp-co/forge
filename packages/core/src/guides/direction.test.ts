@@ -128,3 +128,22 @@ describe('a release run hands a person only what a person owns', () => {
     expect(prompt).not.toMatch(/an access grant, a decision — say so/);
   });
 });
+
+describe('verdicts come from the judge after landing, unless a gate holds them before', () => {
+  it('issue-flow names the release_criteria gate as the only place verdicts are owed before the merge', async () => {
+    const guide = await served('issue-flow');
+    expect(guide).toContain(
+      "where the project's gate `release_criteria` is enforced (`strict`, or `delivery.verdictsRequired` under `standard`), the verdicts are owed before the merge or the cut",
+    );
+    expect(guide).toContain("elsewhere the batch's one judge records them once it has landed");
+    expect(guide).not.toContain('Verdicts are owed before the merge, never after it');
+  });
+
+  it('pipeline rules say a recorded landing refuses no landing that happened', () => {
+    const rules = flat(renderFact('pipeline-rules'));
+    expect(rules).toContain('refuses no landing that happened');
+    expect(rules).not.toContain(
+      'asks a pass on each live criterion judged at the very commit it records',
+    );
+  });
+});
