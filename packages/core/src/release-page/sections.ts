@@ -41,9 +41,14 @@ export function approvalOf(detail: ReleaseDetail): ReleasePageApproval {
   if (asked?.decision && asked.decidedBy) {
     return { required, state: asked.decision, by: asked.decidedBy, at: asked.decidedAt };
   }
-  // a release that went ahead where an approval was only advised says no person approved it (REQ-79 r6)
-  if (detail.unapproved)
-    return { required, state: 'unapproved', by: null, at: detail.unapproved.at };
+  // a release that went ahead with no person approving says so only where the project requires an
+  // approval (REQ-79 r6, as the owner ruled routine approval a defect on 2026-11-06, ISS-1071): where
+  // none is required nobody was asked, whatever the advising gate recorded on the run
+  if (detail.unapproved) {
+    return required
+      ? { required, state: 'unapproved', by: null, at: detail.unapproved.at }
+      : { required, state: 'not_asked', by: null, at: null };
+  }
   if (asked) return { required, state: 'pending', by: null, at: null };
   const owed = required && detail.state !== 'shipped';
   return { required, state: owed ? 'pending' : 'not_asked', by: null, at: null };

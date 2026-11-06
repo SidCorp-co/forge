@@ -1,5 +1,6 @@
-// A release that went ahead where a person's approval was only advised says so under Needs attention
-// (REQ-79 r6, ISS-1001): outside strict an agent ships it, and nobody reading it mistakes it for approved.
+// A release that went ahead with no person approving, on a project that requires an approval, says so
+// under Needs attention (REQ-79 r6, ISS-1001); where none is required core reads it not asked
+// (`release-page/sections.ts:approvalOf`, ISS-1071), so the page has nothing to flag.
 
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -13,11 +14,11 @@ const withApproval = (state: "unapproved" | "approved" | "not_asked") =>
   releasePage({
     header: {
       ...releasePage().header,
-      approval: { required: false, state, by: null, at: state === "unapproved" ? "2026-10-31T10:00:00.000Z" : null },
+      approval: { required: state === "unapproved", state, by: null, at: state === "unapproved" ? "2026-10-31T10:00:00.000Z" : null },
     },
   });
 
-describe("a release no person approved, where approval was advised", () => {
+describe("a release no person approved, where approval is required", () => {
   it("says it was not approved by a person, to a reader who is not signed in", () => {
     renderWithQuery(<ReleaseReport page={withApproval("unapproved")} />);
     const item = screen.getAllByTestId("page-attention-item").find((i) => i.dataset.kind === "unapproved");

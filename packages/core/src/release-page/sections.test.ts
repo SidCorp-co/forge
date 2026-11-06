@@ -83,17 +83,25 @@ describe('who approved the release (BC-1, BC-12)', () => {
     ).toEqual({ required: false, state: 'approved', by: OWNER, at });
   });
 
-  // REQ-79 r6: where release approval is advised, a release that went ahead unapproved says so
-  it('reads unapproved where it went ahead with no person approving, pending request or not', () => {
+  // REQ-79 r6 as the owner ruled on 2026-11-06 (routine approval is a defect, ISS-1071): a release
+  // that went ahead with no person approving says so only where the project requires an approval;
+  // where none is required nobody was asked, whatever the gate recorded
+  it('reads unapproved only where an approval is required, and not asked where none is', () => {
     const at = '2026-10-09T10:00:00.000Z';
-    expect(approvalOf(detail({ unapproved: { at } }))).toEqual({
-      required: false,
+    expect(approvalOf(detail({ unapproved: { at }, approvalRequired: true }))).toEqual({
+      required: true,
       state: 'unapproved',
       by: null,
       at,
     });
+    expect(approvalOf(detail({ unapproved: { at } }))).toEqual({
+      required: false,
+      state: 'not_asked',
+      by: null,
+      at: null,
+    });
     expect(approvalOf(detail({ unapproved: { at }, approval: approval({}) })).state).toBe(
-      'unapproved',
+      'not_asked',
     );
     const decided = approval({ decision: 'approved', decidedBy: OWNER, decidedAt: at });
     expect(approvalOf(detail({ unapproved: { at }, approval: decided })).state).toBe('approved');
