@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.534] - 2026-11-06
+
+Merges never mark unrelated finished issues from a branch number
+
+### Fixed
+
+- **A merge no longer stamps a shipped issue it merely names.** A branch names one key, so a run suffix is no second issue; closed or dropped links are skipped and named, and a misread landing is correctable.
+
 ## [0.4.0-dev.533] - 2026-11-05
 
 Room posts from a master can carry up to four screenshots
