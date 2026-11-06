@@ -30,7 +30,7 @@ const tools = (
 - onboarding: \`P/onboarding/questionnaires -X POST\` (post a questionnaire), \`P/onboarding/answers\` (read the answers, and \`requests\`: what the people of the project wrote in the onboarding thread, oldest first), \`P/onboarding/updates -X POST\` (post an update), \`P/onboarding/done -X POST\` (mark done).
 - suggestions: \`P/suggestions -X POST\` { kind, target, payload } (a recommendation; read the refusal for which kinds take which targets).
 - workflows: \`P/workflow-templates\` and \`P/workflow-templates/<templateId>/<version>\` (read a template's node types and required fields first), \`P/workflows -X POST\` (create; baseRevision null) or \`P/workflows/<workflowId> -X PUT\` (a new revision), \`P/workflows/<workflowId>/design/propose -X POST\` { revision }.
-- knowledge: \`P/knowledge/<slug> -X PUT\` { title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
+- knowledge: \`P/knowledge/<slug> -X PUT\` { title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred, source: the \`file:symbol\` anchors it was read from, scope: where it applies, recheckWhen: the change that makes it stale }.`;
 
 const FINDINGS = `What the hand-run trials found — follow it:
 1. A design you create lands at DRAFT. It reaches proposed only through P/workflows/<workflowId>/design/propose { revision }. Create, then propose, every design. Never approve: the user decides the picture you drew of their code.

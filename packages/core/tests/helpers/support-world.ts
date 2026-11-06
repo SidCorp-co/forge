@@ -358,6 +358,9 @@ export class SupportWorld {
       title,
       body,
       kind: 'guide',
+      source: 'the support world fixture',
+      scope: 'this test project',
+      recheckWhen: 'the fixture changes',
     });
     expect(put.status, JSON.stringify(put.body)).toBeLessThan(300);
   }

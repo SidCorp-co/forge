@@ -436,6 +436,7 @@ describe('the monthly figures core keeps (BC-8)', () => {
         body: 'Written by hand.',
         kind: 'reference',
         injection: 'on_demand',
+        source: 'ISS-1064', scope: 'this test project', recheckWhen: 'the test changes',
       }),
     );
     const { projectsWithLessonWork, recordLessonsMonths } = await import(

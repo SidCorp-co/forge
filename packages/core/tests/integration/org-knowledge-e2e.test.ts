@@ -22,6 +22,12 @@ import { api, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 
 const RULING = 'The agent is the only voice: core composes no words a person reads.';
+// what every entry rests on, where it applies and when it needs re-checking (ISS-1064)
+const SOURCED = {
+  source: 'owner ruling 2026-11-01, ISS-861',
+  scope: 'every project of the org',
+  recheckWhen: 'the owner rules again on who speaks',
+};
 const w = { orgId: '', projectId: '', otherId: '', slug: '', admin: '', member: '' };
 const entry = (slug: string) => `/api/orgs/${w.orgId}/knowledge/${slug}`;
 const preambleOf = async (projectId: string) =>
@@ -57,6 +63,7 @@ describe('org knowledge (ISS-861)', () => {
     const put = await api(w.admin, 'PUT', entry('agent-is-the-voice'), {
       title: 'Voice',
       body: RULING,
+      ...SOURCED,
     });
     expect(put.status, JSON.stringify(put.body)).toBe(200);
     expect(put.body).toMatchObject({
@@ -69,6 +76,7 @@ describe('org knowledge (ISS-861)', () => {
       title: 'Build',
       body: 'Build with pnpm build.',
       injection: 'always',
+      ...SOURCED,
     });
     expect(own.status, JSON.stringify(own.body)).toBe(200);
     const preamble = await preambleOf(w.projectId);
@@ -89,6 +97,7 @@ describe('org knowledge (ISS-861)', () => {
         title: 'Voice here',
         body: narrowed,
         injection: 'always',
+        ...SOURCED,
       },
     );
     expect(own.status, JSON.stringify(own.body)).toBe(200);
@@ -115,6 +124,7 @@ describe('org knowledge (ISS-861)', () => {
       title: 'Release notes',
       body: guide,
       injection: 'on_demand',
+      ...SOURCED,
     });
     expect(put.status, JSON.stringify(put.body)).toBe(200);
     const preamble = await preambleOf(w.otherId);
@@ -143,11 +153,18 @@ describe('org knowledge (ISS-861)', () => {
       w.admin,
       'PUT',
       `/api/projects/${w.projectId}/knowledge/release-notes-voice`,
-      { kind: 'reference', title: 'Ours', body: 'Here notes are terse.', injection: 'on_demand' },
+      {
+        kind: 'reference',
+        title: 'Ours',
+        body: 'Here notes are terse.',
+        injection: 'on_demand',
+        ...SOURCED,
+        source: 'ISS-867',
+      },
     );
     expect(own.status, JSON.stringify(own.body)).toBe(200);
     const mine = await preambleOf(w.projectId);
-    expect(mine).toMatch(/^- release-notes-voice$/m);
+    expect(mine).toMatch(/^- release-notes-voice — source: ISS-867$/m);
     expect(mine).not.toContain('- release-notes-voice (org)');
     const ours = await api(
       w.admin,

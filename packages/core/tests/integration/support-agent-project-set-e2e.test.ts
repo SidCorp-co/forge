@@ -137,6 +137,9 @@ beforeAll(async () => {
     title: 'Order detail page',
     body: 'The mark valid button sits in the order detail header, beside the status badge.',
     kind: 'guide',
+    source: 'the order detail screen',
+    scope: 'the storefront order detail page',
+    recheckWhen: 'the order detail header changes',
   });
   expect(put.status, JSON.stringify(put.body)).toBeLessThan(300);
   // an admin of the home project alone, who may not name the projects it does not administer

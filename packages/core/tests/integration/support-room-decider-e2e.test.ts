@@ -43,6 +43,9 @@ const putRuling = (slug: string, body: Record<string, unknown>) =>
     body: 'Owner ruling 2026-11-05: in the support room, a release goes ahead on tuyen’s word.',
     kind: 'rule',
     confidence: 'verified',
+    source: 'owner ruling 2026-11-05, ISS-1042',
+    scope: 'the support room of this project',
+    recheckWhen: 'the owner rules again on who decides a release',
     ...body,
   });
 
