@@ -11,6 +11,8 @@
 // writes one (ISS-654). An ask about another item than its run's own (a stuck issue asking about its
 // blocker) is answered on either, and a decision recorded since the ask leaves the master's nudge at
 // once, not at the next sweep (ISS-739). A wait a person owes is never the master's, so its ask settles.
+// An ask raised on a release (ISS-1040, `release-ask.ts`) cites the release and is keyed on the issue
+// whose run raised it: a decision there answers it, and it settles once the release's wait moves.
 
 import type { ItemStanding, StandingSubjectKind, StewardCite } from '@forge/contracts/steward';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
@@ -25,6 +27,7 @@ import {
 import { heldStewardOf } from './account.js';
 import { waitsOnPerson } from './ask-addressee.js';
 import { decisionSubjectOf } from './decision-subject-of.js';
+import { stewardPorts } from './ports.js';
 import { questionOfBasis } from './standing-question.js';
 
 /** The act door a wake of the master is logged under. */
@@ -61,6 +64,8 @@ export interface AskRow {
   masterAsk: string | null;
   settledAt: Date | null;
   wrote: StewardCite | null;
+  /** What the act did, in its own words: an ask on a release names the release's wait it was raised on. */
+  did: string;
 }
 
 const askColumns = {
@@ -74,6 +79,7 @@ const askColumns = {
   masterAsk: stewardActs.masterAsk,
   settledAt: stewardActs.askSettledAt,
   wrote: stewardActs.wrote,
+  did: stewardActs.did,
 };
 
 /**
@@ -87,8 +93,25 @@ export function aboutKeyOf(ask: Pick<AskRow, 'wrote' | 'masterAsk' | 'subjectKey
 }
 
 /** The kind of item an ask is about, by its key: REQ-n, FB-n, or an issue. */
-export function aboutKindOf(key: string): StandingSubjectKind {
+function aboutKindOf(key: string): StandingSubjectKind {
   return key.startsWith('REQ-') ? 'requirement' : key.startsWith('FB-') ? 'feedback' : 'issue';
+}
+
+/** Whether an ask was raised on a release, which holds the act its carried issues wait on (ISS-1040). */
+export const isReleaseAsk = (ask: Pick<AskRow, 'wrote'>): boolean => ask.wrote?.kind === 'release';
+
+/**
+ * The item an ask stands on: the one it is about, or for an ask raised on a release the issue whose
+ * run raised it, which its master ask opens with, so a decision there answers it.
+ */
+export function askItemOf(ask: Pick<AskRow, 'wrote' | 'masterAsk' | 'subjectKey'>): AnsweredOn {
+  if (!isReleaseAsk(ask)) {
+    const about = aboutKeyOf(ask);
+    return { kind: aboutKindOf(about), key: about };
+  }
+  const carried = ask.masterAsk ? /^([A-Z]+-\d+): /i.exec(ask.masterAsk)?.[1] : undefined;
+  const key = (carried ?? ask.subjectKey).toUpperCase();
+  return { kind: aboutKindOf(key), key };
 }
 
 /** An item a decision on answers an ask. */
@@ -104,10 +127,10 @@ export interface AnsweredOn {
 export function answeredOnOf(
   ask: Pick<AskRow, 'wrote' | 'masterAsk' | 'subjectKey' | 'subjectKind'>,
 ): AnsweredOn[] {
-  const about = aboutKeyOf(ask);
+  const about = askItemOf(ask);
   const own = ask.subjectKey.toUpperCase();
-  const items: AnsweredOn[] = [{ kind: aboutKindOf(about), key: about }];
-  if (own !== about) items.push({ kind: ask.subjectKind, key: own });
+  const items: AnsweredOn[] = [about];
+  if (own !== about.key) items.push({ kind: ask.subjectKind, key: own });
   return items;
 }
 
@@ -363,7 +386,18 @@ export async function asksToSettle(
   const since = await answeredAsks(projectId, open, now);
   const out: string[] = [];
   const answered = new Map<string, boolean>();
+  const waits = new Map<string, string | null>();
   for (const ask of open) {
+    if (isReleaseAsk(ask)) {
+      // raised on a release: it stands while the release's wait reads as it was raised on
+      const version = ask.wrote?.ref ?? '';
+      if (!waits.has(version)) {
+        waits.set(version, (await stewardPorts().holdingRelease(projectId, version))?.line ?? null);
+      }
+      const line = waits.get(version);
+      if (since.has(ask.id) || !line || !ask.did.includes(line)) out.push(ask.id);
+      continue;
+    }
     const standing = byKey.get(aboutKeyOf(ask));
     if (!standing || since.has(ask.id) || (await waitsOnPerson(projectId, standing))) {
       out.push(ask.id);

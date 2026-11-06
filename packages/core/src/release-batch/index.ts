@@ -7,6 +7,7 @@ export {
   decideApprovalOfVersion,
   parseDecision,
 } from './approvals.js';
+export { holdingReleaseOf } from './carrying-release.js';
 export { admitChangeRequestMerge } from './change-request-merge.js';
 export { releaseEndsRun } from './change-request-roster.js';
 export { settleChangeRequestRelease } from './change-request-settle.js';
@@ -30,6 +31,7 @@ export {
 export { deleteCoolifyEnv, listCoolifyEnv, setCoolifyEnv } from './coolify-env.js';
 export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
+export { releaseHoldingActOf } from './criteria-facts.js';
 export { criteriaWeighingOf } from './criteria-weighing.js';
 export { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
 export { cutReleaseAs } from './cut-as.js';

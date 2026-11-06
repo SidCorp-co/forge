@@ -21,10 +21,9 @@ import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import {
   type AnsweredOn,
-  aboutKeyOf,
-  aboutKindOf,
   answeredAsks,
   answeredOnOf,
+  askItemOf,
   asksToSettle,
   openMasterAsks,
   settleAsks,
@@ -179,13 +178,10 @@ export async function openStewardAsks(projectId: string, now = new Date()): Prom
   const answered = await answeredAsks(projectId, open, now);
   return open
     .filter((r) => !answered.has(r.id))
-    .map((r) => {
-      const key = aboutKeyOf(r);
-      return {
-        actId: r.id,
-        ask: r.masterAsk ?? '',
-        subject: { kind: aboutKindOf(key), key },
-        answeredOn: answeredOnOf(r),
-      };
-    });
+    .map((r) => ({
+      actId: r.id,
+      ask: r.masterAsk ?? '',
+      subject: askItemOf(r),
+      answeredOn: answeredOnOf(r),
+    }));
 }

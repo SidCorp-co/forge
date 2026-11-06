@@ -6,7 +6,11 @@
  * given no weighing on a promotion project, weighed ISS-189's runtime passes at its landing against
  * what `stg` served and called them missing three minutes after the read counted them. Then the act
  * that follows: a judge where a criterion is owed, and on a project with no production the record or
- * release its delivery owes once nothing is. It sends no issue anywhere.
+ * release its delivery owes once nothing is. On a project with production an issue owing nothing
+ * names the release that carries it and that release's own wait, which holds the act that ships it
+ * once for every issue it carries (ISS-1040: adminhub-api's steward, told only that every criterion
+ * was earned, asked the master per issue to cut or approve 0.14.0, whose standing already held the
+ * promotion). It sends no issue anywhere.
  */
 
 import { eq, sql } from 'drizzle-orm';
@@ -14,6 +18,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { CriterionWeighing } from '../issues/index.js';
 import { standingCriteriaOf } from '../issues/index.js';
+import { carryingReleaseOf, type HoldingRelease } from './carrying-release.js';
 import { criteriaWeighingOf } from './criteria-weighing.js';
 
 const short = (sha: string) => sha.slice(0, 12);
@@ -145,5 +150,35 @@ export async function criteriaWeighingFact(issueId: string): Promise<string | nu
       all.map(([n]) => n),
     )}`;
   }
-  return `${read} Every live criterion is earned: no verdict is missing, and no judge is owed.`;
+  return `${read} Every live criterion is earned: no verdict is missing, and no judge is owed. ${carriedBy(
+    await carryingReleaseOf(row.projectId, issueId),
+  )}`;
+}
+
+/** What an issue owing nothing on a project with production waits on: the release that carries it. */
+function carriedBy(release: HoldingRelease | null): string {
+  if (!release) {
+    return 'No release that has not shipped carries it yet: the release that takes it in holds the act that ships it, so nothing is asked on this issue.';
+  }
+  return `It ships with release ${release.version} (${release.state.replace('_', ' ')}), whose own standing holds the act that ships it (a cut, an approval or a promotion) once for every issue it carries: ${release.line}, since ${release.since}. Nothing is asked on this issue: write the note naming that release. An ask about that act is raised once on the release, of whoever takes it, never once per issue it carries.`;
+}
+
+/**
+ * The release an issue at `awaiting_release` waits on for its next act, where it owes nothing of its
+ * own: every live criterion earned on a project with production, the reading `criteriaWeighingFact`
+ * ends on. Null where the issue owes anything, sits elsewhere, or no release carries it.
+ */
+export async function releaseHoldingActOf(issueId: string): Promise<HoldingRelease | null> {
+  const [row] = await db
+    .select({ projectId: issues.projectId, status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (row?.status !== 'awaiting_release') return null;
+  const weighing = await criteriaWeighingOf({ id: issueId, projectId: row.projectId });
+  if (weighing.kind === 'none' || weighing.criteria.size === 0) return null;
+  const all = [...weighing.criteria.values()];
+  // a project with no production delivers at its landing: its act is the record or cut `deliveredAct` names
+  if (!all.every((w) => w.earned === true) || all[0]?.weighedOn.basis === 'delivered') return null;
+  return carryingReleaseOf(row.projectId, issueId);
 }

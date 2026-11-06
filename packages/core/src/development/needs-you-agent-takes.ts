@@ -152,3 +152,13 @@ export async function masterTakesWait(
   const takes = await masterTakesOf(projectId);
   return acts.every((a) => takes(a.act, a.topic));
 }
+
+/**
+ * Whether the project's master cuts its releases (`release.cut`), by the same reading: outside strict
+ * its accounts writing the project take the cut whatever their role (REQ-79 r6 BC-11). A draft's page
+ * names the admins who may cut it, and the steward and a room's release read say the master takes it
+ * where it does (ISS-1040, ISS-1009), as Needs you leaves the cut to it.
+ */
+export async function masterTakesCut(projectId: string): Promise<boolean> {
+  return (await masterTakesOf(projectId))('release.cut');
+}

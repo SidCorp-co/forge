@@ -5,6 +5,7 @@
 // needed it and names the provide it lacked.
 
 import type { Said } from '@forge/contracts/said';
+import type { WaitingOn } from '@forge/contracts/standing';
 import type { OpenStandingsRead } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -45,6 +46,30 @@ interface StewardPorts {
    * ISS-758).
    */
   masterTakes(projectId: string, act: Said): Promise<boolean>;
+  /**
+   * Whether the project's master cuts its releases: outside strict its accounts take the cut whatever
+   * their role (the development module's `needs-you-agent-takes.ts:masterTakesCut`).
+   */
+  masterCuts(projectId: string): Promise<boolean>;
+  /**
+   * The release not yet shipped that holds the next act of an issue owing nothing of its own (every
+   * criterion earned, on a project with production), or null (the release module's
+   * `criteria-facts.ts:releaseHoldingActOf`, ISS-1040).
+   */
+  releaseHoldingAct(projectId: string, issueId: string): Promise<HoldingRelease | null>;
+  /** The release `version` names while it has not shipped (`carrying-release.ts:holdingReleaseOf`). */
+  holdingRelease(projectId: string, version: string): Promise<HoldingRelease | null>;
+}
+
+/** A release that has not shipped and its own wait, as its page reads it. */
+export interface HoldingRelease {
+  version: string;
+  state: string;
+  waitingOn: WaitingOn;
+  /** Since when it has waited so. */
+  since: string;
+  /** Its wait in one line, which an ask on it is keyed on. */
+  line: string;
 }
 
 /** The accounts a project's master acts as, and the serving boxes whose account cannot be read. */

@@ -10,6 +10,9 @@
 // the standing it reads now, or with a decision recorded on it or on the asking run's own item, is not
 // asked again: that is said to the turn, and nothing is written. The ask cites the item it is about,
 // which keys it (`asks.ts`).
+// An issue owing nothing of its own (every criterion earned, on a project with production) waits on
+// the release that carries it: an ask about it is raised on that release, once while the release's
+// wait reads the same, of whoever takes the release's act (`release-ask.ts`, ISS-1040).
 
 import type { ItemStanding } from '@forge/contracts/steward';
 import { z } from 'zod';
@@ -21,9 +24,11 @@ import { heldStewardOf } from './account.js';
 import { recordAct } from './acts-store.js';
 import { askAddresseeOf, unreadLine } from './ask-addressee.js';
 import { ASK_ON_ITEM_DOOR, askedAlready, lockAsksOn, WAKE_DOOR } from './asks.js';
+import { decisionSubjectOf } from './decision-subject-of.js';
 import type { DoorAnswer, DoorRequest } from './door-call.js';
 import { type ActOf, type DoorContext, type DoorSpec, key } from './door-kit.js';
 import { openStandings, stewardPorts } from './ports.js';
+import { askOnRelease } from './release-ask.js';
 
 const wakeParams = z.strictObject({
   about: key,
@@ -41,6 +46,24 @@ async function standingOfKey(about: string, ctx: DoorContext): Promise<ItemStand
   if (about === ctx.subject.key.toUpperCase() && ctx.standing) return ctx.standing;
   const rows = await openStandings(ctx.projectId);
   return rows.find((r) => r.subject.key.toUpperCase() === about) ?? null;
+}
+
+/** The issue a key names, from its standing where it has one, else the project's records; null for any other item. */
+async function issueIdOf(
+  about: string,
+  standing: ItemStanding | null,
+  projectId: string,
+): Promise<string | null> {
+  if (standing) return standing.subject.kind === 'issue' ? standing.subject.id : null;
+  if (/^(REQ|FB)-\d+$/i.test(about)) return null;
+  try {
+    const subject = await decisionSubjectOf(projectId, about);
+    return subject.kind === 'issue' ? subject.id : null;
+  } catch (err) {
+    // a key naming no item of the project: the ask below goes on as it always has
+    if (isRefusal(err)) return null;
+    throw err;
+  }
 }
 
 const answered = (json: Record<string, unknown>): DoorAnswer => ({
@@ -99,6 +122,10 @@ async function askOnce(
 ): Promise<WakeAnswer> {
   // keyed on the item asked about, whichever run asks (ISS-607: FB-runs asked on ISS-498 again)
   const standing = await standingOfKey(about, ctx);
+  // an issue owing nothing of its own is shipped by the release carrying it, which is asked instead
+  const issueId = await issueIdOf(about, standing, ctx.projectId);
+  const release = issueId ? await stewardPorts().releaseHoldingAct(ctx.projectId, issueId) : null;
+  if (release) return askOnRelease(args.ask, ctx, about, release, tx);
   if (standing) {
     // the run's own item answers an ask about its blocker too (ISS-739: ISS-748 asking about ISS-746)
     const asker = about === ctx.subject.key.toUpperCase() ? null : ctx.standing;
