@@ -31,7 +31,12 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { masterServingOf } from '../masters/index.js';
-import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
+import {
+  gateOf,
+  readOwedPolicy,
+  readProjectDocument,
+  readVerifiedJudge,
+} from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { requirementDependents } from './dependents.js';
@@ -315,6 +320,8 @@ export async function standingsOf(
     judge,
     runnerBound,
     master,
+    owed,
+    criteriaGate,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -365,6 +372,8 @@ export async function standingsOf(
     readVerifiedJudge(projectId),
     known.runnerBound ?? runnerBoundIn(projectId),
     masterServingOf(projectId),
+    readOwedPolicy(projectId),
+    gateOf(projectId, 'release_criteria'),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
@@ -435,6 +444,8 @@ export async function standingsOf(
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
         updatedAt: row.updatedAt,
         master,
+        owed,
+        verdictsRequired: criteriaGate.mode === 'enforce',
         now,
       }),
     );

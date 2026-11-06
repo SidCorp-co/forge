@@ -43,6 +43,11 @@ export interface TimesFacts {
   draftCarrier?: string | null;
   /** The live issue whose own stuck reading the item rolls up (BC-9). */
   carried?: Carried | null;
+  /**
+   * The wait is cleanup the audit reads in its window, not delivery (REQ-79 r6): a criterion's verdict
+   * on a project whose release asks none. It falls due by no clock, so it never reads overdue.
+   */
+  cleanupOnly?: boolean;
   now: Date;
 }
 
@@ -146,7 +151,10 @@ export function withTimes<G extends StandingGroup>(
   const actClass = actClassOf(turn.waitingOn);
   const own = turn.waitingOn.dueAt ? new Date(turn.waitingOn.dueAt) : null;
   const days = STANDING_DUE_WORKING_DAYS[actClass];
-  const due = resting ? null : (own ?? (days === null ? null : addWorkingDays(f.since, days)));
+  const due =
+    resting || f.cleanupOnly
+      ? null
+      : (own ?? (days === null ? null : addWorkingDays(f.since, days)));
   const stuck = resting ? null : stuckOf(turn, f, due);
   const group = stuck && turn.group !== 'needs_you' ? 'stuck' : turn.group;
   const times = {

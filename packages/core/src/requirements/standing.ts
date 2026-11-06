@@ -25,7 +25,9 @@ import { type Said, type SaidKey, say } from '@forge/contracts/said';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
+import type { OwedPolicy } from '@forge/contracts/who-owes';
 import type { RequirementStatus } from '../db/schema-requirements.js';
+import { actClassOf } from '../lib/standing-act-class.js';
 import { withTimes } from '../lib/standing-times.js';
 import { stateSinceOf, touchedAt } from './standing-age.js';
 import {
@@ -40,12 +42,7 @@ import {
   type RequirementViewer,
   type StandingRevision,
 } from './standing-draft.js';
-import {
-  reviseForDesignAct,
-  type TracedChange,
-  updateToApprovedAct,
-  updateToApprovedEffect,
-} from './standing-follow.js';
+import { pinBehindTurn, reviseForDesignAct, type TracedChange } from './standing-follow.js';
 import {
   actWait,
   askedTurn,
@@ -159,6 +156,18 @@ export interface StandingInput {
   master: MasterServing;
   /** Where its accept waived the acceptance checklist's blocking items, what and why; else null or absent. */
   acceptedByDecision?: RequirementAcceptanceDecision | null;
+  /**
+   * The project's policy as `whoOwes` reads it (`project-config:readOwedPolicy`), which decides whether
+   * a routine act (a re-pin) is a person's or the master's (ISS-1058, ISS-1068). The read always sets
+   * it; absent, a person's act stays a person's.
+   */
+  owed?: OwedPolicy;
+  /**
+   * Whether the project's release asks a criterion's verdict (gate `release_criteria` enforced).
+   * Where it asks none, a verdict owed is cleanup the audit reads (REQ-79 r6), which falls due by no
+   * delivery clock. The read always sets it; absent reads as asked.
+   */
+  verdictsRequired?: boolean;
   now: Date;
 }
 
@@ -177,7 +186,6 @@ type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   | 'judge'
 > & { issues: readonly I[] };
 
-const SIGNER = say('standing.who.baOrOwner');
 
 const wait = (
   kind: RequirementWaitingKind,
@@ -192,7 +200,6 @@ const wait = (
     { dueAt: more.dueAt ?? null },
   );
 
-const YOU = say('standing.who.you');
 const MASTER = say('standing.who.master');
 const NONE = say('standing.who.dash');
 const BA = say('requirements.who.ba');
@@ -311,25 +318,8 @@ function turnOf(
       ),
     };
   }
-  if (input.stalePins.length > 0 || input.staleContractPins.length > 0) {
-    const act = updateToApprovedAct(input.stalePins, input.staleContractPins);
-    const rule = say('requirements.rule.pinBehind');
-    const effect = updateToApprovedEffect(input.stalePins, input.staleContractPins);
-    if (viewer?.canSignOff) {
-      return { group: 'needs_you', waitingOn: wait('you', YOU, act, rule, { effect }) };
-    }
-    const owner = input.owner?.kind === 'human' ? input.owner.name : null;
-    return {
-      group: 'waiting',
-      waitingOn: wait(
-        'person',
-        owner ? say('standing.who.named', { name: owner }) : SIGNER,
-        act,
-        rule,
-        { effect },
-      ),
-    };
-  }
+  const pinned = pinBehindTurn(input, viewer);
+  if (pinned) return pinned;
   const move = moveTurn(input, live, coverage);
   if (move) return move;
   const check = checkTaskOf(input, live);
@@ -483,6 +473,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       ownerless,
       draftCarrier: turn.draftCarrier ?? null,
       carried: turn.carried ?? null,
+      cleanupOnly: input.verdictsRequired === false && actClassOf(waitingOn) === 'judge',
       now: input.now,
     },
     'waiting',

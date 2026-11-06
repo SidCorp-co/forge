@@ -3,7 +3,15 @@
  * signer does, and what doing it changes. Split from `standing.ts` to keep that file one read.
  */
 
+import type {
+  RequirementAttentionGroup,
+  RequirementWaitingOn,
+} from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
+import { whoOwes } from '@forge/contracts/who-owes';
+import type { StandingInput } from './standing.js';
+import type { RequirementViewer } from './standing-draft.js';
 
 /** What a signer does about a pin that fell behind, in the words a BA reads: the design's own name and revision. */
 export function updateToApprovedAct(
@@ -60,4 +68,36 @@ export function reviseForDesignAct(changes: readonly TracedChange[]): Said {
     r: first.approved,
     steps: unique(same.map((c) => `${c.node} ${c.change}`)).join(', '),
   });
+}
+
+/**
+ * A requirement pinned behind an approved design or a current contract: re-pinning it to what was
+ * approved is routine, the master's unless the project's gate asks a person (`whoOwes`, ISS-1068);
+ * a person's, it is the signer's Needs you where the viewer signs off, else waits on its owner.
+ */
+export function pinBehindTurn(
+  input: Pick<StandingInput, 'stalePins' | 'staleContractPins' | 'owner' | 'owed'>,
+  viewer: RequirementViewer | null,
+): { group: RequirementAttentionGroup; waitingOn: RequirementWaitingOn } | null {
+  if (input.stalePins.length === 0 && input.staleContractPins.length === 0) return null;
+  const says = {
+    act: updateToApprovedAct(input.stalePins, input.staleContractPins),
+    rule: say('requirements.rule.pinBehind'),
+    effect: updateToApprovedEffect(input.stalePins, input.staleContractPins),
+  };
+  if (input.owed && whoOwes('requirement.repin', input.owed).by === 'master') {
+    return {
+      group: 'waiting',
+      waitingOn: waitingOn('agent', { who: say('standing.who.master'), ...says }),
+    };
+  }
+  if (viewer?.canSignOff) {
+    return {
+      group: 'needs_you',
+      waitingOn: waitingOn('you', { who: say('standing.who.you'), ...says }),
+    };
+  }
+  const owner = input.owner?.kind === 'human' ? input.owner.name : null;
+  const who = owner ? say('standing.who.named', { name: owner }) : say('standing.who.baOrOwner');
+  return { group: 'waiting', waitingOn: waitingOn('person', { who, ...says }) };
 }
