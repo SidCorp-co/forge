@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.574] - 2026-11-07
+
+Dashboard, Needs you, Home and What's new load faster with far fewer queries
+
+### Fixed
+
+- **Needs you, the attention count, Home and the newest releases send fewer database queries.** Each read asks a fact once however many of its parts need it, and the newest releases read only the few they show.
+
 ## [0.4.0-dev.573] - 2026-11-07
 
 Aborted releases say why they stopped, who stopped them and what they carried
