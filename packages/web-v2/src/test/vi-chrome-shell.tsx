@@ -45,6 +45,7 @@ const needsYou = {
   items: [],
   requirementsInDelivery: 1,
   untriagedFeedback: 0,
+  decisions: 0,
 };
 const noop = () => {};
 

@@ -97,6 +97,9 @@ export interface NeedsYouResponse {
 	items: NeedsYouItem[];
 	requirementsInDelivery: number;
 	untriagedFeedback: number;
+	/** How many decisions the viewer owes: the `total` the decisions read counts, from the same list,
+	 *  so the nav's badges read one Needs you read and never the decisions read too (ISS-1070). */
+	decisions: number;
 }
 
 /** The workspace pulse's queue of conditions a person or the machine owes (`GET /api/me/pulse`), in

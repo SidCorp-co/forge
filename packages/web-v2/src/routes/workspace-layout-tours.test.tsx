@@ -34,7 +34,8 @@ function serve() {
     if (call.method === "GET" && call.path.startsWith("/projects") && !call.path.startsWith("/projects/")) return { body: [project] };
     if (call.path === "/me/product-state") return { body: { items: [] } };
     if (call.path.startsWith("/me/whats-new")) return { body: { environment: "dev", release: null } };
-    if (call.path.endsWith("/releases")) return { body: { releases: [{ version: "0.4.0", current: true }], counts: {} } };
+    // the newest shipped release, read once the tour list opens; the whole list is no route's but Releases' (ISS-1070)
+    if (call.path.endsWith("/releases/shipped?limit=1")) return { body: { releases: [{ version: "0.4.0", current: true }] } };
     if (call.method === "POST" || call.method === "PUT") return { body: {} };
     return { status: 404, body: { code: "NOT_SERVED" } };
   });

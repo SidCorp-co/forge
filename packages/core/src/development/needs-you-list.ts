@@ -107,7 +107,7 @@ export async function readNeedsYou(
   now: Date = new Date(),
 ): Promise<NeedsYouResponse> {
   const attention = await readAttention(projectId, viewer, now);
-  const { listed, owedRows, folded } = await needsYouListOf(
+  const { listed, owedRows, folded, decisions } = await needsYouListOf(
     projectId,
     viewer,
     access,
@@ -141,5 +141,6 @@ export async function readNeedsYou(
       .length,
     untriagedFeedback: attention.feedback.filter((f) => UNTRIAGED.has(f.phase) && countsAsReport(f))
       .length,
+    decisions: decisions.length,
   };
 }

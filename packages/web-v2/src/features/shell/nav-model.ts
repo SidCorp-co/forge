@@ -90,7 +90,7 @@ export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isNavGroup
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
   needsYou?: NeedsYouResponse | undefined;
-  /** The one Needs you decisions read: the Approvals page, the Dashboard and /attention count its `total` (REQ-48 BC-11). */
+  /** The decisions the viewer owes: the Needs you read's `decisions`, the `total` the decisions read counts (REQ-48 BC-11). */
   decisions?: Pick<NeedsYouDecisions, "total"> | undefined;
 }
 

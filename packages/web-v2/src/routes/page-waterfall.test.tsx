@@ -49,7 +49,7 @@ function reply(method: string, path: string): unknown {
   if (path.endsWith("/workflow-templates")) return { templates: [] };
   if (path.includes("/mockups?")) return { mockups: [], returned: 0 };
   if (path.includes("/suggestions?")) return { suggestions: [] };
-  if (path.endsWith("/needs-you")) return { generatedAt: "", areas: {}, items: [], requirementsInDelivery: 0, untriagedFeedback: 0 };
+  if (path.endsWith("/needs-you")) return { generatedAt: "", areas: {}, items: [], requirementsInDelivery: 0, untriagedFeedback: 0, decisions: 0 };
   return undefined;
 }
 

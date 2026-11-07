@@ -51,7 +51,7 @@ import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/chat-dock";
 import { MockupFeedback } from "@/features/feedback";
-import { useNeedsYou, useNeedsYouDecisions } from "@/features/needs-you";
+import { useNeedsYou } from "@/features/needs-you";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
@@ -209,8 +209,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const dock = useChatDockState(railProject?.id ?? null);
   const pageColumnRef = useRef<HTMLDivElement>(null);
   const tourRelease = useTourRelease(railRef);
+  // the rail's badges read one Needs you read, its decisions count included: the decisions read is
+  // the pages' that list them, never every route's (ISS-1070)
   const needsYou = useNeedsYou(railRef).data;
-  const decisions = useNeedsYouDecisions(railRef).data;
+  const decisions = needsYou ? { total: needsYou.decisions } : undefined;
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);

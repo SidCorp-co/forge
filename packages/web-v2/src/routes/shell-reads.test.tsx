@@ -1,10 +1,12 @@
 // What the shell reads on every route (ISS-1070): the attention count once, whatever the active org
-// resolves to, and never the project's whole release list outside Releases. Each route is mounted
+// resolves to, never the project's whole release list outside Releases, and one Needs you read for
+// the rail's badges, the decisions read being the Dashboard's own. Each route is mounted
 // under the workspace layout over a fake core that answers the org and the stored preference, so the
 // active org resolves the way it does in the browser: after the first paint, not before it.
 // @direct-test-of packages/web-v2/src/routes/_workspace/route.tsx
 // @direct-test-of packages/web-v2/src/features/attention/hooks.ts
 // @direct-test-of packages/web-v2/src/features/orgs/active-org.tsx
+// @direct-test-of packages/web-v2/src/features/shell/nav-model.ts
 
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -45,7 +47,8 @@ function reply(method: string, path: string): unknown {
   if (path.startsWith("/questions")) return { questions: [] };
   if (path.endsWith("/members") || path.endsWith("/labels")) return [];
   if (/\/releases(\?|$)/.test(path)) return { releases: [], counts: {} };
-  if (path.endsWith("/needs-you")) return { generatedAt: "", areas: {}, items: [], requirementsInDelivery: 0, untriagedFeedback: 0 };
+  if (path.endsWith("/needs-you")) return { generatedAt: "", areas: {}, items: [], requirementsInDelivery: 0, untriagedFeedback: 0, decisions: 0 };
+  if (path.endsWith("/needs-you/decisions")) return { generatedAt: "", decisions: [], total: 0, notDecisions: [] };
   return undefined;
 }
 
@@ -84,5 +87,12 @@ describe("the shell's reads on each route", () => {
   it.each(ROUTES)("%s never reads the project's whole release list", async (_name, route, at, pattern) => {
     const sent = await load(route, at, pattern);
     expect(wholeReleaseList(sent)).toEqual([]);
+  });
+
+  it.each(ROUTES)("%s reads Needs you once for the rail, and the decisions read only where the page lists them", async (name, route, at, pattern) => {
+    const sent = await load(route, at, pattern);
+    const paths = sent.map((s) => s.path);
+    expect(paths.filter((p) => /\/needs-you$/.test(p))).toHaveLength(1);
+    expect(paths.filter((p) => p.endsWith("/needs-you/decisions"))).toHaveLength(name === "the project Dashboard" ? 1 : 0);
   });
 });

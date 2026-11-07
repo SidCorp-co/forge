@@ -6,6 +6,7 @@
 // app on a throwaway Postgres: the route, the buttons pressed as the viewer, the device ask door.
 // @direct-test-of packages/core/src/lib/standing-times.ts
 // @direct-test-of packages/core/src/development/needs-you-decisions.ts
+// @direct-test-of packages/core/src/development/needs-you-list.ts
 // @direct-test-of packages/core/src/development/needs-you-approve-builders.ts
 
 import { randomUUID } from 'node:crypto';
@@ -246,6 +247,8 @@ describe('GET /api/projects/:id/needs-you/decisions (REQ-41 BC-1)', () => {
       r.total +
       r.notDecisions.filter((x) => x.reason !== 'agent_takes').reduce((n, x) => n + x.count, 0);
     expect(counted).toBe(asks.length);
+    // the nav reads the decisions count off this read, the one the decisions read totals (ISS-1070)
+    expect(needs.body.decisions).toBe(r.total);
   });
 
   it('refuses a reader outside the project', async () => {
