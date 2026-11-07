@@ -69,4 +69,13 @@ describe("a deadline reads as owed now, the date as the latest day", () => {
 		])
 			expect(s).not.toMatch(/\b(due|by) 2026-11-13/);
 	});
+
+	it("says a contract's adoption and adaptation are owed now, the window's end the latest day", () => {
+		expect(
+			sayEn(say("contracts.act.adoptBy", { v: "2.0.0", date: "2026-11-13" })),
+		).toBe("adopt 2.0.0 now; latest 2026-11-13");
+		expect(
+			sayEn(say("contracts.act.adaptBy", { v: "2.0.0", date: "2026-11-13" })),
+		).toBe("adapt to 2.0.0 now; latest 2026-11-13");
+	});
 });

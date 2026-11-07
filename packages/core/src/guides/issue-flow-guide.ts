@@ -15,6 +15,7 @@ import {
   VERDICT_EVIDENCE_ITEMS_MAX,
 } from '@forge/contracts/verdict-identity';
 import { guideRef } from './guide-ref.js';
+import { OWED_NOW_RULE } from './owed-now.js';
 import type { CoreGuide } from './types.js';
 
 export const ISSUE_FLOW_GUIDE: CoreGuide = {
@@ -29,7 +30,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
 can claim. An issue is one verifiable outcome, and one run may carry it end to end: investigate,
 fix, check, and bring the fix to the integration mark. While a decision waits on a person, go on with
-the part that does not depend on it. Every act on the tracker below is a REST call to the core that holds the project. On a
+the part that does not depend on it. ${OWED_NOW_RULE} Every act on the tracker below is a REST call to the core that holds the project. On a
 runner box \`forge-runner api <path>\` makes it with the pane's credential: \`-d -\` reads the JSON body
 from stdin, and its \`-h\` lists the exit codes. A long body is written to a file outside the
 checkout and sent on stdin — a payload left in the working tree is one the project's own checkers

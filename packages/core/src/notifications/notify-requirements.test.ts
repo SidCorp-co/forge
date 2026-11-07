@@ -58,6 +58,14 @@ describe('the BA notice of a delivered requirement', () => {
     });
   });
 
+  // ISS-1113: the check is owed from the delivery on; the SLA is only its latest day
+  it('says the check is owed now, with its latest day, never a day to wait for', async () => {
+    const body = String(state.notices[0]?.body);
+    expect(body).toContain('against the traceability matrix now');
+    expect(body).toContain('at the latest 5 working days after its last evidence');
+    expect(body).not.toMatch(/\b(due|by) /);
+  });
+
   it('is resolved by the accept of that revision', async () => {
     await consumerOf('requirement.accepted', 'notify-requirements')?.handle(
       { projectId: 'p1', requirementId: 'r1', key: 'REQ-3', revision: 2, acceptedBy: 'u1' },

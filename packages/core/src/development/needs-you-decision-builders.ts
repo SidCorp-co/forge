@@ -101,11 +101,12 @@ export function prefilledReason<T extends Pick<DecisionBody, 'answers' | 'recomm
 
 /**
  * What waits on a decision, the first half of its impact (REQ-68 BC-1): its item stuck until it is
- * decided, due on a day, or waiting on it.
+ * decided, owed now with a latest day, or waiting on it.
  */
 export function waitsOn(row: Pick<AttentionRow, 'key' | 'due'>, item: string = row.key): string {
   if (row.due?.stuck) return `${item} is stuck until this is decided`;
-  if (row.due?.dueAt) return `${item} is due ${row.due.dueAt.slice(0, 10)}`;
+  // owed from now on, the date only the latest day: "due {date}" read as a day to start on (ISS-1113)
+  if (row.due?.dueAt) return `${item} is owed now, latest ${row.due.dueAt.slice(0, 10)}`;
   return `${item} waits on this`;
 }
 

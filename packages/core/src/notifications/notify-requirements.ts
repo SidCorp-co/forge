@@ -8,7 +8,7 @@
 // step (REQ-74 BC-8), so a linked issue's move tells nothing.
 
 import type { OutboxEventPayload as Payload } from '@forge/contracts/outbox-events';
-import { REQUIREMENT_STATE_LABELS } from '@forge/contracts/requirements';
+import { CHECK_SLA_WORKING_DAYS, REQUIREMENT_STATE_LABELS } from '@forge/contracts/requirements';
 import { userLabel } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
@@ -35,7 +35,8 @@ async function delivered(p: Payload<'requirement.delivered'>): Promise<void> {
     projectId: p.projectId,
     type: 'requirement_delivered',
     title: `${p.key} r${p.revision} is delivered: ${p.title}`,
-    body: 'It was marked delivered: every live business criterion passes on the running build. Check the criteria against the traceability matrix, then accept the delivery or file feedback against it.',
+    // owed from the delivery on; the SLA is its latest day, never a day to wait for (ISS-1113)
+    body: `It was marked delivered: every live business criterion passes on the running build. Check the criteria against the traceability matrix now, at the latest ${CHECK_SLA_WORKING_DAYS} working days after its last evidence, then accept the delivery or file feedback against it.`,
     resolutionKey: checkKey(p.requirementId, p.revision),
     dedupeKey: `requirement-delivered:${p.requirementId}@r${p.revision}`,
   });

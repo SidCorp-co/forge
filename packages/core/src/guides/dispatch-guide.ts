@@ -7,6 +7,7 @@
 
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import { guideRef } from './guide-ref.js';
+import { OWED_NOW_RULE } from './owed-now.js';
 import type { CoreGuide } from './types.js';
 
 export const DISPATCH_GUIDE: CoreGuide = {
@@ -49,6 +50,7 @@ run out stands; \`GET /api/projects/:id/masters/standing\` how many slots this b
   \`GET /api/issues/:id/dependencies\` says whether a live \`blocks\` edge holds one back.
 - Take a lower-ranked issue whenever a reason the metadata cannot carry says so — a person's stated
   order, a file a running run holds, a chain being cleared — and the fold names the reason.
+- ${OWED_NOW_RULE}
 - An open question of this project with \`plain: null\` (\`GET /api/questions?projectId=<id>&status=open\`)
   reads "No summary" where its person decides: write it, \`PUT /api/questions/:id/plain\`
   \`{ plain }\`, ${PLAIN_DECISION_RULE}.

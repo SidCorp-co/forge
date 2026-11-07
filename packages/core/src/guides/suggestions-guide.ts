@@ -70,9 +70,9 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   \`breakdown\`): proposing or revising one takes \`suggestions.write\` (project member), and
   without it the call is \`PERMISSION_FORBIDDEN\`. A requirement revision holds one open breakdown; a
   second is \`SUGGESTION_BREAKDOWN_OPEN\`. Every issue carries at least one criterion and every
-  criterion names the BC it traces to (\`tracesTo\`). The master owes it within
-  ${BREAKDOWN_SLA_WORKING_DAYS} working days of the agree; the requirement's standing serves the task
-  with its due time.
+  criterion names the BC it traces to (\`tracesTo\`). The master owes it from the agree on,
+  at the latest ${BREAKDOWN_SLA_WORKING_DAYS} working days after it; the requirement's standing serves
+  the task with that latest day.
 - Accepting a \`breakdown\` is judged by the breakdown checklist: each issue's criteria trace a
   current BC, every current BC is traced or listed in \`uncovered\` with a reason, and each issue
   states its complexity; a gap is refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`,

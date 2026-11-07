@@ -2031,7 +2031,7 @@ export const SAID = {
 	"contracts.who.orgAdmin": { en: "An org admin" },
 	"contracts.who.consumers": { en: "{n} consumers", vars: { n: "count" } },
 	"contracts.act.adoptBy": {
-		en: "adopt {v} by {date}",
+		en: "adopt {v} now; latest {date}",
 		vars: { v: "version", date: "date" },
 	},
 	"contracts.rule.window": {
@@ -2050,7 +2050,7 @@ export const SAID = {
 		en: "providedTurn: nothing is proposed or owed inside a window",
 	},
 	"contracts.act.adaptBy": {
-		en: "adapt to {v} by {date}",
+		en: "adapt to {v} now; latest {date}",
 		vars: { v: "version", date: "date" },
 	},
 	"contracts.rule.breaking": {
