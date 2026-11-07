@@ -59,7 +59,9 @@ beforeAll(async () => {
       beta: { tier: 'staging', deploysFrom: 'main', deployment: { mode: 'external' } },
     } as never,
   });
-  w.billingIssue = (await createTestIssue(w.projectId, admin.id, 41, { status: 'open', createdAt: new Date() })).id;
+  w.billingIssue = (
+    await createTestIssue(w.projectId, admin.id, 41, { status: 'open', createdAt: new Date() })
+  ).id;
   const [label] = await rows<{ id: string }>(sql`
     INSERT INTO labels (project_id, name, color) VALUES (${w.projectId}, 'billing', '#cc0000') RETURNING id`);
   await db.execute(
