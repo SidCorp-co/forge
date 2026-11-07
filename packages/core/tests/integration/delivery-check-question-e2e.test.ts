@@ -119,6 +119,14 @@ async function agreedWithIssue(title: string): Promise<{ key: string; id: string
   return { key, id: row?.id ?? '' };
 }
 
+/** Its head agreed `ago` (a Postgres interval): the checks that count are those since. */
+async function agreedAgo(requirementId: string, ago: string): Promise<void> {
+  await rows(sql`
+    UPDATE requirement_revisions
+       SET created_at = now() - ${ago}::interval, decided_at = now() - ${ago}::interval
+     WHERE requirement_id = ${requirementId}`);
+}
+
 /**
  * A question comment a steward check posted before ISS-688, as `door-writes.ts` wrote it on
  * 2026-10-28 (its body's own format) with the act that cites it; nobody has replied to it.
@@ -281,6 +289,7 @@ describe('a check finishes on its own, and one owed is taken (FB-548)', () => {
   it('a check owed after its gap was answered is refused naming the sweep, then taken by it and finished', async () => {
     seq += 1;
     const req = await agreedWithIssue(`Owed check ${seq}`);
+    await agreedAgo(req.id, '3 hours');
     // the check asked about its one gap and its run failed on another act, two hours ago
     await rows(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
@@ -351,6 +360,7 @@ describe('a check finishes on its own, and one owed is taken (FB-548)', () => {
   it('a check that failed within the hour is not raised again yet', async () => {
     seq += 1;
     const req = await agreedWithIssue(`Fresh failure ${seq}`);
+    await agreedAgo(req.id, '1 hour');
     await rows(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
                                 acts_to_run, state, failure, failure_kind, not_before, queued_at,

@@ -3,9 +3,8 @@
 // answered, so a breakdown is never proposed against criteria the author is still settling. An undone
 // question holds nothing.
 // The check asks a question about the requirement (`door-ask.ts`). Before ISS-688 it posted a
-// question comment, answered by a reply from anyone but the steward; those still open on agreed
-// requirements are read here the same way until each is answered or its requirement ends (the
-// amnesty ISS-688 prices: no new one is written).
+// question comment, whose act cites the comment; migration 0623 asked each one still open as a
+// question under the comment's own id (ISS-1084), so either act is read by the question it names.
 
 import { requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
@@ -23,17 +22,10 @@ export async function breakdownsHeldBySteward(projectId: string): Promise<string
        AND a.undone_at IS NULL
        AND sr.subject_kind = 'requirement'
        AND r.status IN ('agreed', 'in_delivery', 'delivered')
-       AND (
-         (a.wrote->>'kind' = 'question' AND EXISTS (
-            SELECT 1 FROM agent_questions q
-             WHERE q.id::text = a.wrote->>'ref' AND q.status = 'open'))
-         OR (a.wrote->>'kind' = 'comment' AND EXISTS (
-            SELECT 1 FROM comments q
-             WHERE q.requirement_id = r.id AND q.id::text = a.wrote->>'ref'
-               AND q.intent = 'question'
-               AND NOT EXISTS (
-                 SELECT 1 FROM comments reply
-                  WHERE reply.parent_id = q.id AND reply.author_id <> q.author_id))))
+       AND a.wrote->>'kind' IN ('question', 'comment')
+       AND EXISTS (
+         SELECT 1 FROM agent_questions q
+          WHERE q.id::text = a.wrote->>'ref' AND q.status = 'open')
      ORDER BY r.req_seq
   `)) as unknown as { req_seq: number }[];
   return rows.map((r) => requirementKey(Number(r.req_seq)));

@@ -3,7 +3,9 @@
  * about it, the gaps the kernel can see, and whether the steward has checked it since its head was
  * agreed. One read serves the move's guard, which refuses naming each open question and a missing
  * check at once (`REQUIREMENT_CHECKED_GUARD`), the requirement's read and the steward's check, which
- * turns the gaps into the questions it needs about the requirement.
+ * turns the gaps into the questions it needs about the requirement. Each refusal names the act that
+ * clears it and its door (ISS-1084): a question's answer door, or where the steward's check stands
+ * and when the standing sweep starts it again (`checksOwedIn`).
  *
  * A gap is a fact, never a judgement: whether each criterion can be checked on the running product
  * is the steward's to judge, and it asks about what it finds.
@@ -17,14 +19,17 @@
  */
 
 import type {
+  DeliveryCheckAttempt,
+  DeliveryCheckAttemptState,
   DeliveryCheckQuestion,
   DeliveryGap,
   RequirementDeliveryCheck,
 } from '@forge/contracts/delivery-check';
 import { REQUIREMENT_LIFECYCLE, requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { readProjectDocument } from '../project-config/index.js';
 import type { RequirementRefusal } from './rules.js';
 
@@ -46,15 +51,20 @@ const liveStatus = (s: string) => (REQUIREMENT_LIFECYCLE as readonly string[]).i
 
 /**
  * The questions open about it: each asked of it or about it that a person or the master owes (outside
- * strict the master answers them, `questions/owed.ts`), but one its revisions
- * list as not blocking, and each question
- * comment a steward check posted before ISS-688 that nobody but the steward has replied to (the
- * amnesty `steward/holds.ts` prices; no new one is written).
+ * strict the master answers them, `questions/owed.ts`), but one its revisions list as not blocking.
+ * Each is a question row, so the refusal naming it names a door that serves it (ISS-1084): a question
+ * comment a steward check posted before ISS-688 was read here as one, named at a `questions/:id` that
+ * answered 404, until migration 0623 asked each still open as a question under its own id.
  */
 async function openQuestions(tx: Tx, row: CheckedRow): Promise<DeliveryCheckQuestion[]> {
-  const rows = rowsOf<{ id: string; prompt: string | null; asked_at: string | Date }>(
+  const rows = rowsOf<{
+    id: string;
+    prompt: string | null;
+    asked_at: string | Date;
+    blocker_kind: string;
+  }>(
     await tx.execute(sql`
-      SELECT q.id, q.steps -> -1 ->> 'prompt' AS prompt, q.created_at AS asked_at
+      SELECT q.id, q.steps -> -1 ->> 'prompt' AS prompt, q.created_at AS asked_at, q.blocker_kind
         FROM agent_questions q
        WHERE q.project_id = ${row.projectId}
          AND q.status = 'open'
@@ -62,16 +72,7 @@ async function openQuestions(tx: Tx, row: CheckedRow): Promise<DeliveryCheckQues
          AND q.batch_id IS NULL
          AND (q.requirement_id = ${row.id}
               OR (q.about ->> 'kind' = 'requirement' AND q.about ->> 'requirementId' = ${row.id}::text))
-      UNION ALL
-      SELECT c.id, split_part(c.body, E'\n', 1) AS prompt, c.created_at AS asked_at
-        FROM comments c
-        JOIN steward_acts a
-          ON a.wrote ->> 'kind' = 'comment' AND a.wrote ->> 'ref' = c.id::text AND a.undone_at IS NULL
-       WHERE c.requirement_id = ${row.id}
-         AND c.intent = 'question'
-         AND NOT EXISTS (
-           SELECT 1 FROM comments reply WHERE reply.parent_id = c.id AND reply.author_id <> c.author_id)
-       ORDER BY asked_at, id`),
+       ORDER BY q.created_at, q.id`),
   );
   const notBlocking = await notBlockingOf(tx, row);
   return rows
@@ -80,6 +81,7 @@ async function openQuestions(tx: Tx, row: CheckedRow): Promise<DeliveryCheckQues
       id: r.id,
       prompt: r.prompt ?? '',
       askedAt: new Date(r.asked_at).toISOString(),
+      owedBy: r.blocker_kind === 'human' ? ('person' as const) : ('master' as const),
     }));
 }
 
@@ -199,21 +201,62 @@ async function linkGaps(tx: Tx, row: CheckedRow): Promise<DeliveryGap[]> {
     }));
 }
 
-/** When the steward last finished checking it since its head was agreed; null where it has not. */
+/** The steward's acts that check a requirement before its delivery: a run ending done finished one. */
+const CHECK_ACTS = sql.raw(`ARRAY['intake_check', 'breakdown_check']::text[]`);
+
+/** When its head was agreed: the runs that count are those live or ended since. */
+const agreedAt = (row: CheckedRow) => sql`(
+  SELECT coalesce(rv.decided_at, rv.created_at) FROM requirement_revisions rv
+   WHERE rv.requirement_id = ${row.id} AND rv.revision = ${row.currentRevision})`;
+
+/**
+ * When the steward last finished checking it since its head was agreed; null where it has not. A run
+ * carrying a check takes the check alone (`steward/dispatch.ts:runOne`), so its end is the check's.
+ */
 async function checkedAt(tx: Tx, row: CheckedRow): Promise<string | null> {
   const [hit] = rowsOf<{ at: string | Date | null }>(
     await tx.execute(sql`
       SELECT max(sr.ended_at) AS at
         FROM steward_runs sr
-        JOIN requirement_revisions rv
-          ON rv.requirement_id = sr.subject_id AND rv.revision = ${row.currentRevision}
        WHERE sr.subject_kind = 'requirement'
          AND sr.subject_id = ${row.id}
          AND sr.state = 'done'
-         AND sr.acts_to_run && ARRAY['intake_check', 'breakdown_check']::text[]
-         AND sr.ended_at >= coalesce(rv.decided_at, rv.created_at)`),
+         AND sr.acts_to_run && ${CHECK_ACTS}
+         AND sr.ended_at >= ${agreedAt(row)}`),
   );
   return hit?.at ? new Date(hit.at).toISOString() : null;
+}
+
+/**
+ * The latest check of it tried since its head was agreed, none having finished: live (queued or
+ * running, the check in its acts or waiting behind them) or ended without finishing. Null where none
+ * has been tried, which the standing sweep raises (`steward/owed-checks.ts`).
+ */
+async function attemptOf(tx: Tx, row: CheckedRow): Promise<DeliveryCheckAttempt | null> {
+  const [hit] = rowsOf<{
+    state: DeliveryCheckAttemptState;
+    at: string | Date;
+    failure: string | null;
+    skip_reason: string | null;
+  }>(
+    await tx.execute(sql`
+      SELECT sr.state, coalesce(sr.ended_at, sr.started_at, sr.queued_at) AS at, sr.failure,
+             sr.skip_reason
+        FROM steward_runs sr
+       WHERE sr.subject_kind = 'requirement'
+         AND sr.subject_id = ${row.id}
+         AND (sr.acts_to_run && ${CHECK_ACTS}
+              OR (sr.state IN ('queued', 'running') AND sr.follow_up && ${CHECK_ACTS}))
+         AND coalesce(sr.ended_at, now()) >= ${agreedAt(row)}
+       ORDER BY sr.state IN ('queued', 'running') DESC, coalesce(sr.ended_at, sr.queued_at) DESC
+       LIMIT 1`),
+  );
+  if (!hit) return null;
+  return {
+    state: hit.state,
+    at: new Date(hit.at).toISOString(),
+    why: hit.failure ? (hit.failure.split('\n')[0] ?? null) : hit.skip_reason,
+  };
 }
 
 /** The delivery check of an agreed requirement, read inside `tx`; `owed` says whether the steward is on. */
@@ -226,38 +269,115 @@ export async function deliveryCheckIn(
   const workflows = await workflowGaps(tx, row);
   const links = await linkGaps(tx, row);
   const checked = owed && row.currentRevision !== null ? await checkedAt(tx, row) : null;
+  const attempt =
+    owed && row.currentRevision !== null && checked === null ? await attemptOf(tx, row) : null;
   const gaps = [...workflows, ...links];
   return {
     owed,
     checkedAt: checked,
+    attempt,
     questions,
     gaps,
     clear: questions.length === 0 && (!owed || checked !== null),
   };
 }
 
+/** How long after an ended check the standing sweep starts it again (`steward/owed-checks.ts`). */
+export const CHECK_RETRY_MS = 60 * 60_000;
+/** How long after its agree a requirement no check was tried on waits for the sweep to start one. */
+export const CHECK_UNTRIED_GRACE_MS = 5 * 60_000;
+
+/** Where its check stands and what takes it on, as the refusal says it. */
+function uncheckedDetail(attempt: DeliveryCheckAttempt | null, runs: string): string {
+  const read = `the steward's runs on it read at GET ${runs}; nothing of it is the master's to do`;
+  if (!attempt) {
+    return `the steward has not finished a check of it since its head was agreed, and none has been tried; the standing sweep starts one within 15 minutes of its agree (${read}).`;
+  }
+  if (attempt.state === 'queued' || attempt.state === 'running') {
+    return `the steward's check of it is ${attempt.state} since ${attempt.at}; delivery may start once it ends done (${read}).`;
+  }
+  const again = new Date(Date.parse(attempt.at) + CHECK_RETRY_MS).toISOString();
+  return `the steward's last check of it ended ${attempt.state} at ${attempt.at} (${attempt.why ?? 'no reason recorded'}); the standing sweep starts it again an hour after it ended, from ${again} (${read}).`;
+}
+
 /**
  * Every refusal the check holds the move into delivery with, at once; empty where it holds none. A
  * gap is never one (owner rulings 2026-10-31, 2026-11-01): it goes back as a question on the
  * requirement, which the steward's check asks and the master answers, so the move waits on the
- * question and on the check, never on a canned list.
+ * question and on the check, never on a canned list. Each names the act that clears it and its door.
  */
-export function deliveryCheckRefusals(check: RequirementDeliveryCheck): RequirementRefusal[] {
+export function deliveryCheckRefusals(
+  check: RequirementDeliveryCheck,
+  row: Pick<CheckedRow, 'projectId' | 'reqSeq'>,
+): RequirementRefusal[] {
+  const runs = `/api/projects/${row.projectId}/steward-runs?subject=${requirementKey(row.reqSeq)}`;
   return [
     ...check.questions.map((q) => ({
       code: 'REQUIREMENT_QUESTION_OPEN' as const,
       path: `/questions/${q.id}`,
-      detail: `delivery waits on the answer to: ${q.prompt}`,
+      detail: `delivery waits on the answer to: ${q.prompt} It is owed by ${q.owedBy === 'master' ? "the project's master" : 'a person'}, and answered at POST /api/questions/${q.id}/answer.`,
     })),
     ...(check.owed && check.checkedAt === null
       ? [
           {
             code: 'REQUIREMENT_UNCHECKED' as const,
             path: '',
-            detail:
-              'the steward has not finished a check of it since its head was agreed; it is checked within 5 minutes of its agree and of each breakdown proposed for it.',
+            detail: uncheckedDetail(check.attempt, runs),
           },
         ]
       : []),
   ];
+}
+
+/** An agreed requirement whose check the standing sweep starts: its id and key. */
+export interface OwedCheck {
+  id: string;
+  key: string;
+}
+
+/**
+ * The agreed requirements of `projectId` whose check is owed and nothing is taking (ISS-1084), oldest
+ * agreed first, at most `limit`: none finished since the head was agreed, none live, and the last one
+ * tried ended an hour ago (`CHECK_RETRY_MS`), or none was tried and the agree is past its grace. The
+ * steward's handoff starts a check on each agree and breakdown; this is what starts one where that
+ * check ended without finishing (adminhub-api REQ-22, forge REQ-45) or never ran.
+ */
+export async function checksOwedIn(
+  projectId: string,
+  now: Date,
+  limit: number,
+): Promise<OwedCheck[]> {
+  if (limit <= 0) return [];
+  const retry = new Date(now.getTime() - CHECK_RETRY_MS);
+  const grace = new Date(now.getTime() - CHECK_UNTRIED_GRACE_MS);
+  const rows = rowsOf<{ id: string; req_seq: number }>(
+    await db.execute(sql`
+      SELECT r.id, r.req_seq
+        FROM requirements r
+        JOIN requirement_revisions rv
+          ON rv.requirement_id = r.id AND rv.revision = r.current_revision
+        CROSS JOIN LATERAL (SELECT coalesce(rv.decided_at, rv.created_at) AS at) agreed
+        LEFT JOIN LATERAL (
+          SELECT max(sr.ended_at) AS at
+            FROM steward_runs sr
+           WHERE sr.subject_kind = 'requirement' AND sr.subject_id = r.id
+             AND sr.acts_to_run && ${CHECK_ACTS} AND sr.ended_at >= agreed.at) tried ON true
+       WHERE r.project_id = ${projectId}
+         AND r.status = 'agreed'
+         AND NOT EXISTS (
+           SELECT 1 FROM steward_runs sr
+            WHERE sr.subject_kind = 'requirement' AND sr.subject_id = r.id
+              AND sr.acts_to_run && ${CHECK_ACTS}
+              AND sr.state = 'done' AND sr.ended_at >= agreed.at)
+         AND NOT EXISTS (
+           SELECT 1 FROM steward_runs sr
+            WHERE sr.subject_kind = 'requirement' AND sr.subject_id = r.id
+              AND sr.state IN ('queued', 'running')
+              AND (sr.acts_to_run && ${CHECK_ACTS} OR sr.follow_up && ${CHECK_ACTS}))
+         AND (CASE WHEN tried.at IS NULL THEN agreed.at <= ${sqlTimestamp(grace)}
+                   ELSE tried.at <= ${sqlTimestamp(retry)} END)
+       ORDER BY agreed.at, r.id
+       LIMIT ${limit}`),
+  );
+  return rows.map((r) => ({ id: r.id, key: requirementKey(Number(r.req_seq)) }));
 }

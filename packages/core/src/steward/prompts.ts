@@ -35,7 +35,7 @@ const DELIVERY_CHECK = [
   'Check it is ready for delivery. Read the requirement (steward_read_requirement): its head revision, criteria, linked workflows, and its deliveryCheck, which lists the questions still open about it and the gaps Forge sees (no workflow named, a linked workflow no criterion traces a step of, a conflict or a repeat its intake draft found that nobody decided).',
   'Judge each criterion: can a person or a test check it on the running product, by what the product shows or does? One that names no observable result ("works well", "is fast", "is clear") is a gap.',
   'Look again for a live requirement it repeats or contradicts (steward_list_requirements, then steward_read_requirement).',
-  'Ask about the gaps that matter (steward_ask with `about` the REQ key), each with 2-4 options and the one you recommend; never ask again what an open question asks.',
+  "Ask about the gaps that matter (steward_ask with `about` the REQ key), each with 2-4 options and the one you recommend. Never ask again what a question in the requirement's `questions` asks, open or answered: an answer settled it, and is recorded on the requirement as a decision. A gap that stays only because its answer said so (no workflow, answered none) is settled; the check finishes with nothing to ask.",
   "Never move the requirement: its delivery waits on your questions' answers, which the project's master gives, and the master moves it.",
 ];
 
@@ -46,7 +46,7 @@ const METHODS: Record<StewardAct, string> = {
   intake_check: [
     'Act: intake check (BC-2). The requirement was just agreed.',
     ...DELIVERY_CHECK,
-    'If nothing is missing, post the breakdown brief as a note on the requirement (steward_comment_requirement): what each criterion asks, what is out of scope, and what the master should slice first.',
+    'If nothing is missing, post the breakdown brief as a note on the requirement (steward_comment_requirement): what each criterion asks, what is out of scope, and what the master should slice first; where a brief for its head is already posted, post none again.',
   ].join('\n'),
   breakdown_check: [
     'Act: breakdown check (BC-3). A breakdown was proposed for the requirement; delivery starts from it.',

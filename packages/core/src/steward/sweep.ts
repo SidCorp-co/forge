@@ -14,7 +14,9 @@
 // leaves the master's nudge at once, and the sweep settles it. The sweep spends only its share of the
 // day's budget (`policy.ts:sharesOf`): it raises no more runs than that share has room for, oldest
 // stuck first, then the oldest note, and the rest wait for a later sweep, so a full backlog is paced
-// across days and the handoff share stays whole.
+// across days and the handoff share stays whole. Before any of it, an agreed requirement whose check
+// ended without finishing an hour ago, or never ran, has its check queued again (`owed-checks.ts`):
+// its delivery waits on that check, and nothing else raises it.
 
 import type { ItemStanding, StandingSubjectKind } from '@forge/contracts/steward';
 import { isNull } from 'drizzle-orm';
@@ -31,6 +33,7 @@ import {
   openMasterAsks,
   settleAsks,
 } from './asks.js';
+import { raiseOwedChecks } from './owed-checks.js';
 import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
 import { ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
@@ -40,6 +43,8 @@ export interface SweepTally {
   stuck: number;
   changed: number;
   settledAsks: number;
+  /** Requirements whose owed check it queued again: it ended without finishing, or never ran. */
+  checks: number;
   /** Items the sweep would have raised and left for a later sweep, its share of the day spent. */
   paced: number;
 }
@@ -158,12 +163,23 @@ export async function sweepProjectStandings(
     rows.filter((r) => r.subject.kind === 'issue' && r.stuck).map((r) => r.subject.key),
   );
   const room = { turns: await sweepRoom(projectId, now) };
+  // a check owed holds a delivery, so it is raised before any note or diagnosis takes the room
+  const checks = await raiseOwedChecks(projectId, now, room.turns);
+  room.turns -= checks;
+  tally.checks += checks;
   for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, room);
   tally.settledAsks += await settleProjectAsks(projectId, rows, now);
 }
 
 export async function sweepStandings(now = new Date()): Promise<SweepTally> {
-  const tally: SweepTally = { projects: 0, stuck: 0, changed: 0, settledAsks: 0, paced: 0 };
+  const tally: SweepTally = {
+    projects: 0,
+    stuck: 0,
+    changed: 0,
+    settledAsks: 0,
+    checks: 0,
+    paced: 0,
+  };
   const live = await db
     .select({ id: projects.id })
     .from(projects)

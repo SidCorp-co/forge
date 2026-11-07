@@ -82,6 +82,24 @@ async function runGatewayActs(
   return { failures, kind };
 }
 
+/** The acts that check a requirement before its delivery (REQ-67): `delivery-check.ts` reads their end. */
+const CHECK_ACTS: readonly StewardAct[] = ['intake_check', 'breakdown_check'];
+
+/**
+ * A check finishes or fails on its own (ISS-1084): a run carrying one beside other acts takes the
+ * check now and carries the rest into the run its end queues, so the run's end is the check's. One
+ * run folding a stuck diagnosis into REQ-45's intake check (forge, 2026-11-07) ended failed on the
+ * diagnosis's refused note, and the check it had finished read as never done.
+ */
+function checkAlone(acts: readonly StewardAct[]): {
+  acts: StewardAct[];
+  apart: StewardAct[];
+} {
+  const checks = acts.filter((a) => CHECK_ACTS.includes(a));
+  if (checks.length === 0 || checks.length === acts.length) return { acts: [...acts], apart: [] };
+  return { acts: checks, apart: acts.filter((a) => !CHECK_ACTS.includes(a)) };
+}
+
 /** Where a run stands after a tick: ended, waiting on the job it started, or behind its project's live steward job. */
 type RunOutcome = 'ended' | 'job_started' | 'job_live';
 
@@ -94,11 +112,12 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     return 'ended';
   }
   const standing = await standingOf(run);
-  const acts = actsAfterStanding(owed, standing);
-  if (acts.length === 0) {
+  const after = actsAfterStanding(owed, standing);
+  if (after.length === 0) {
     await endRun(run.id, { state: 'skipped', reason: 'basis_unchanged' });
     return 'ended';
   }
+  const { acts, apart } = checkAlone(after);
   const gateway = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gateway_turn');
   // one steward job live per project: a run owing only a job waits, before it spends a turn; one
   // owing turns too starts with them, and its job waits in the run its end queues (ISS-618 c1)
@@ -145,11 +164,8 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   }
   const runner = taken.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
   await stampRun(run.id, { actsToRun: acts, basis: standing?.basis ?? run.basis });
-  if (taken.length < acts.length)
-    await carryActs(
-      run.id,
-      acts.filter((a) => !taken.includes(a)),
-    );
+  const carried = [...apart, ...acts.filter((a) => !taken.includes(a))];
+  if (carried.length > 0) await carryActs(run.id, carried);
   const end = (e: RunEnd) => endRun(run.id, e, new Date(), { followUpNotBefore: carriedUntil });
   const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
   if (ran && ran.failures.length > 0) {

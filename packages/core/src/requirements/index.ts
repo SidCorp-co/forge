@@ -65,5 +65,6 @@ export {
 export { completionStandingsOf } from './standing-share.js';
 export { type StepChange, stepChangeOf } from './step-notice.js';
 export { type StewardRequirementAct, stewardRequirementActIn } from './steward-decision.js';
+export { checksOwedIn, type OwedCheck } from './delivery-check.js';
 export { keepRefusedIn, refuseOnValueIn } from './value-refusal.js';
 export { lockRequirements } from './write-tx.js';

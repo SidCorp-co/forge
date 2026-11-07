@@ -27,10 +27,38 @@ export interface DeliveryGap {
 	detail: string;
 }
 
+/**
+ * A question still open about it: a question row, read at `questions/:id` and answered at
+ * `questions/:id/answer` by whoever owes it: the project's master (`master_or_peer`), or a person.
+ */
 export interface DeliveryCheckQuestion {
 	id: string;
 	prompt: string;
 	askedAt: string;
+	owedBy: "master" | "person";
+}
+
+/** Where the steward's check of it stands while none has finished since its head was agreed. */
+export const DELIVERY_CHECK_ATTEMPT_STATES = [
+	"queued",
+	"running",
+	"failed",
+	"skipped",
+] as const;
+export type DeliveryCheckAttemptState =
+	(typeof DELIVERY_CHECK_ATTEMPT_STATES)[number];
+
+/**
+ * The steward's latest check of it since its head was agreed, none having finished: queued or
+ * running, or ended without finishing and why. An ended one is started again by the standing sweep
+ * an hour after it ended (`steward/owed-checks.ts`).
+ */
+export interface DeliveryCheckAttempt {
+	state: DeliveryCheckAttemptState;
+	/** When it was queued (queued), started (running) or ended (failed, skipped). */
+	at: string;
+	/** Why an ended one did not finish: its failure's first line or its skip reason; null while live. */
+	why: string | null;
 }
 
 export interface RequirementDeliveryCheck {
@@ -38,6 +66,8 @@ export interface RequirementDeliveryCheck {
 	owed: boolean;
 	/** When the steward last finished a check of it since its head was agreed; null where none has. */
 	checkedAt: string | null;
+	/** Its check not finished where owed: the latest one tried, or null where none has been. */
+	attempt: DeliveryCheckAttempt | null;
 	/** The questions still open about it, oldest first. */
 	questions: DeliveryCheckQuestion[];
 	gaps: DeliveryGap[];

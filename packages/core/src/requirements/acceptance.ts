@@ -302,7 +302,7 @@ export async function moveDelivery(input: {
           checked?.mode === 'enforce'
             ? gateRefusals(
                 checked,
-                deliveryCheckRefusals(await deliveryCheckIn(moveTx, current, checkOwed)),
+                deliveryCheckRefusals(await deliveryCheckIn(moveTx, current, checkOwed), current),
               )
             : null,
         [REQUIREMENT_CRITERIA_PROVEN_GUARD]: async ({ tx: moveTx }) =>
