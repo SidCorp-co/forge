@@ -82,7 +82,6 @@ export const PREFIX_HOMES = {
   progress: 'lib/i18n/copy/forecast.json',
   projects: 'lib/i18n/copy/projects.json',
   pulse: 'lib/i18n/copy/overview.json',
-  questions: 'lib/i18n/copy/questions.json',
   releases: 'lib/i18n/copy/releases.json',
   requirements: 'lib/i18n/copy/requirements.json',
   roadmap: 'lib/i18n/copy/project-status.json',
@@ -129,6 +128,42 @@ export function readCopyFiles(src = SRC) {
   return Object.fromEntries(
     paths.sort().map((p) => [p, JSON.parse(readFileSync(join(src, p), 'utf8'))]),
   );
+}
+
+/**
+ * The homes the table names whose copy file is not on disk, each with the prefixes pointing at it. A
+ * carry would recreate one outside the list `copy-files.ts` reads, so its keys would go unread in
+ * silence; the table names only files that stand.
+ */
+export function goneHomes(files, homes = PREFIX_HOMES) {
+  const byHome = new Map();
+  for (const [prefix, home] of Object.entries(homes)) {
+    if (files[home]) continue;
+    byHome.set(home, [...(byHome.get(home) ?? []), prefix]);
+  }
+  return [...byHome]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([home, prefixes]) => `${home} (${prefixes.join(', ')})`);
+}
+
+/**
+ * Why a carry of `changes` is refused, empty where it may run: a home the table names that is gone,
+ * and an edit in a language other than English, which the copy no longer holds (ISS-1071: Forge is
+ * English only, so a copy file holding another language is refused when the copy is composed).
+ */
+export function refusalsOf(changes, files, homes = PREFIX_HOMES) {
+  const out = [];
+  const gone = goneHomes(files, homes);
+  if (gone.length)
+    out.push(
+      `these homes name a copy file that is gone; remove or repoint them in PREFIX_HOMES:\n  ${gone.join('\n  ')}`,
+    );
+  const foreign = changes.filter((c) => c.lang !== 'en').map((c) => `${c.lang} ${c.key}`);
+  if (foreign.length)
+    out.push(
+      `Forge is English only (owner, 2026-10-08; ISS-1071), so a copy file holds "en" alone; drop these edits from the old file:\n  ${foreign.join('\n  ')}`,
+    );
+  return out;
 }
 
 /** language → key → the copy file holding it; a key two files hold is refused, naming both. */
@@ -240,6 +275,8 @@ function split(old) {
 }
 
 function carry(old, base, files) {
+  const refused = refusalsOf(edits(base, old), files);
+  if (refused.length) fail(`nothing was written:\n${refused.join('\n')}`);
   const held = holders(files);
   const conflicts = [];
   const homeless = [];
@@ -287,6 +324,11 @@ function carry(old, base, files) {
 }
 
 function check(old, oldRel, files) {
+  const gone = goneHomes(files);
+  if (gone.length)
+    fail(
+      `these homes name a copy file that is gone; remove or repoint them in PREFIX_HOMES:\n  ${gone.join('\n  ')}`,
+    );
   const held = holders(files);
   const lines = [];
   let living = 0;

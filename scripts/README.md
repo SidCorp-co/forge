@@ -1345,31 +1345,23 @@ guides and docs, which REQ-43 scopes out, and the design gallery at `/dev/design
 renders the blocks for the people building pages. A skip naming a directory that no longer exists stops
 the check.
 
-## The web suite's language checks — Forge is not multilingual
+## The web suite's language checks — Forge is English only
 
-The owner ruled on 2026-10-08 that Forge is not multilingual: the Vietnamese already written stays,
-nothing more is translated, and new copy is English only. A key with no vi word reads its English on
-a vi page (`packages/web-v2/src/lib/i18n/product-copy.ts:productCopy`, `copyOr`,
-`productCopyTemplate`), proven on the Dashboard by `packages/web-v2/src/test/en-only-copy.test.tsx`.
-
-Retired by that ruling, so no check makes a new key, enum value or core sentence carry a vi word:
-
-- the vi walking test's English-word assertion (`packages/web-v2/src/test/vi-chrome.test.tsx`), its
-  word list and the `translate="no"` and tooltip parsing that only it needed, and the same
-  assertion over core's vi sentences in `packages/web-v2/src/lib/i18n/said.test.ts`;
-- every "each English key has its vi" requirement: in `packages/web-v2/src/lib/i18n/copy-files.test.ts`,
-  `packages/web-v2/src/lib/i18n/copy-readers.test.ts`, `packages/web-v2/src/lib/i18n/labels.test.ts`,
-  `packages/web-v2/src/design/vocabulary-common.test.ts`,
-  `packages/web-v2/src/features/workflows/template-words.test.ts` and
-  `packages/web-v2/src/features/conversations/membership.test.ts`.
+The owner ruled on 2026-10-08 that Forge is not multilingual, and ISS-1071 removed the Vietnamese
+chrome with every reader of it: a copy file holds `en` alone, and one holding another language is
+refused by name when the copy is composed (`packages/web-v2/src/lib/i18n/product-copy.ts:composeCopy`).
+A reader asked for another language (`productCopy`, `copyLocale`, `copyOr`, `productCopyTemplate`,
+`said`) throws naming it rather than drawing English in its place (`englishOnly`), proven by
+`packages/web-v2/src/lib/i18n/copy-files.test.ts` and `copy-readers.test.ts`. Text a person or a run
+wrote in Vietnamese is content, not chrome, and keeps its written-language mark.
 
 Kept, because they are about structure rather than language: the walking test still renders every
 screen and refuses one that draws no words, a raw copy key, the marker for a key this build lacks, or a
-blank label (`packages/web-v2/src/test/unread.ts:unreadIn`), and two rail rows whose English differs
-reading as one vi word; a key two copy files hold (`packages/web-v2/src/lib/i18n/product-copy.ts:composeCopy`);
-a re-added `product-copy.json` (`scripts/split-product-copy.mjs --check`); a vi word with no English, or
-blank where its English is not; and a vi template that fills a value its key does not declare. Where a
-vi word exists it is still read, and `check-source-language` still keeps Vietnamese out of source.
+blank label (`packages/web-v2/src/test/unread.ts:unreadIn`); a key two copy files hold
+(`composeCopy`); a re-added `product-copy.json` (`scripts/split-product-copy.mjs --check`), and a home
+its table names whose copy file is gone, or an edit in another language, which a carry refuses by
+name (`scripts/split-product-copy.mjs:refusalsOf`). `check-source-language` still keeps Vietnamese out
+of source.
 
 ## check-lazy-module-init.mjs — importing a core module does no work
 
