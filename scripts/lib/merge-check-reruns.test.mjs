@@ -7,11 +7,11 @@
 // share is refused as before.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { redChecks, reportOf } from './merge-check.mjs';
 import {
   baseWorktreePath,
@@ -31,9 +31,16 @@ const BASE = 'b'.repeat(40);
 const RED = 'packages/core/tests/integration/slow-reads-at-scale.test.ts';
 const GREEN = 'packages/core/tests/integration/other-e2e.test.ts';
 
+/** The throwaway repositories the cases made, removed once they have run. */
+const made = [];
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
+
 /** A throwaway repository for the worktree path, and a red integration check whose run left its JSON. */
 function world({ json = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'merge-check-reruns-'));
+  made.push(root);
   spawnSync('git', ['init', '-q'], { cwd: root });
   const check = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -197,7 +204,7 @@ describe('a red integration test is rerun, and only the red one (ISS-1120)', () 
 describe('what the reruns read and write', () => {
   it('has every vitest run write its JSON report, and records the files it was handed', () => {
     const seen = [];
-    const { exec, calls } = recordingExec((argv) => {
+    const { exec, calls, dispose } = recordingExec((argv) => {
       seen.push(argv);
       return { ok: true };
     }, '/r');
@@ -209,6 +216,8 @@ describe('what the reruns read and write', () => {
     );
     expect(seen[1]).toEqual(['pnpm', '--filter', 'x', 'run', 'build']);
     expect(calls).toEqual([{ cwd: '/r/packages/core', files: [RED], json: calls[0].json }]);
+    dispose();
+    expect(existsSync(dirname(calls[0].json))).toBe(false);
   });
 
   it('reads the red files of a vitest JSON report, and refuses one it cannot read by name', () => {

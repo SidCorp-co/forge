@@ -73,7 +73,7 @@ function rerunArgv(root, collection, file) {
 }
 
 const commandOf = (collection, file) =>
-  `(cd ${collection.cwd} && pnpm exec vitest run --config ${collection.config} ${file})`;
+  `(cd ${collection.cwd} && pnpm exec vitest run --config ${collection.config} ${relative(collection.cwd, file)})`;
 
 /** Where the merge base's worktree goes: the repository's own `.claude/worktrees/`, a name of its own. */
 export function baseWorktreePath(commonGitDir, base, pid = process.pid) {
