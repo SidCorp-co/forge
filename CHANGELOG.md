@@ -9,6 +9,17 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.590] - 2026-11-07
+
+Channel agent posts results, reads releases first; expired tokens leave the cap
+
+### Fixed
+
+- **A result Forge hands a channel agent now opens its post even when it arrived during the previous one.** Results for one thread waiting together reach the agent in one turn, answered in one post.
+- **A Vietnamese reply describing a state is no longer refused as an empty promise.** "Đang xử lý" or "chưa có" passes; the writer promising a later check or report, in either language, is still refused.
+- **A channel agent can no longer say a release is or is not live from memory.** Such a post is refused unless that turn read the releases or a deployment, and the refusal names the read to make.
+- **An expired personal access token no longer holds a seat under the token cap.** Only unrevoked, unexpired tokens count, and the PAT_LIMIT refusal names how many live ones it counted.
+
 ## [0.4.0-dev.589] - 2026-11-07
 
 Records the curated memory, release trigger and outside-git fixes 588 deployed

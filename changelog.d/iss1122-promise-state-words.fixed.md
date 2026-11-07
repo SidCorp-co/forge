@@ -1,1 +1,0 @@
-**A Vietnamese reply describing a state is no longer refused as an empty promise.** "Đang xử lý" or "chưa có" passes; the writer promising a later check or report, in either language, is still refused.
