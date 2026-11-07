@@ -70,3 +70,23 @@ describe('a glance marked stale is read again on the next read (ISS-1053)', () =
     expect((await cache.read(['a'])).values.get('a')).toEqual({ read: true, value: 3 });
   });
 });
+
+describe('a glance is read behind the page as a read of its own (ISS-1070 r6)', () => {
+  it("never answers from, or adds to, the asking request's read memo", async () => {
+    const { memoizedRead, withReadMemo } = await import('../db/read-memo.js');
+    const cache = glanceCache<string>(
+      'own memo',
+      30_000,
+      // the asking request held 'page' under this key: a glance in its memo would be handed that
+      async () => memoizedRead('shared', async () => 'glance'),
+      { concurrency: 1 },
+    );
+    await withReadMemo(async () => {
+      expect(await memoizedRead('shared', async () => 'page')).toBe('page');
+      const read = await cache.read(['k'], 5_000);
+      expect(read.values.get('k')).toEqual({ read: true, value: 'glance' });
+      // nor did the glance's read land in the request's memo
+      expect(await memoizedRead('shared', async () => 'again')).toBe('page');
+    });
+  });
+});

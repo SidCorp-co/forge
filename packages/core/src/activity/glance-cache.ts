@@ -11,7 +11,8 @@
 // statements, took the ten-connection pool from the page's own legs, and the read waited on the pool
 // for 12.6 s live (and a cold read of six projects took 1.06 s in the round's own test).
 
-import { withoutQueryTiming } from '../db/query-timing.js';
+import { newQueryTiming, withoutQueryTiming, withQueryTiming } from '../db/query-timing.js';
+import { withReadMemo } from '../db/read-memo.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { logger } from '../lib/logger.js';
 
@@ -49,10 +50,16 @@ export function glanceCache<V>(
     if (running) return running;
     const markedAtStart = marks.get(key) ?? 0;
     // every promise of the read is made outside the asking request's timing, so its statements are
-    // never counted as the request's own (`db/query-timing.ts:withoutQueryTiming`)
+    // never counted as the request's own (`db/query-timing.ts:withoutQueryTiming`), and the read is a
+    // read of its own (`db/read-memo.ts`): the projects it reads across batch at its quiet points,
+    // never declared in the asking request's memo, where they held the page's own reads (ISS-1070 r6)
     const started = withoutQueryTiming(() =>
       new Promise<void>((next) => setImmediate(next))
-        .then(() => limiter.run(() => readOne(key)))
+        .then(() =>
+          limiter.run(() =>
+            withReadMemo(() => withQueryTiming(newQueryTiming(), () => readOne(key))),
+          ),
+        )
         .then((value) => {
           // a mark made while this read ran may postdate what it read: the answer is kept, stale
           const stale = (marks.get(key) ?? 0) !== markedAtStart;

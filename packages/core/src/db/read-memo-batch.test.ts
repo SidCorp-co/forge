@@ -103,6 +103,16 @@ describe('a batch at the quiet point', () => {
     expect(partsOf(idOfParts('p', 'v1.2'))).toEqual(['p', 'v1.2']);
   });
 
+  it('outside a request, a read across projects batches in a scope of its own', async () => {
+    const r = perId();
+    const answers = await readAcross(['a', 'b', 'c'], String, (p) =>
+      memoizedPerId('k', [p], r.read),
+    );
+    expect(answers.map((m) => [...m.keys()])).toEqual([['a'], ['b'], ['c']]);
+    // one statement for the three projects, not one a project sent to the pool at once
+    expect(r.asked).toEqual([['a', 'b', 'c']]);
+  });
+
   describe('inside a read across projects', () => {
     const timed = <T>(fn: () => Promise<T>) =>
       withQueryTiming(newQueryTiming(), () => withReadMemo(fn));

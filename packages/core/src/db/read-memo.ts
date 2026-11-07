@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { frozen } from './frozen.js';
-import { whenQuiet } from './query-timing.js';
+import { currentQueryTiming, newQueryTiming, whenQuiet, withQueryTiming } from './query-timing.js';
 
 /**
  * One read request's answers to the lookups its handlers repeat: who the caller is in a project,
@@ -82,7 +82,7 @@ const inFlow = new AsyncLocalStorage<Flow>();
  * it, so a project that reaches it a step later than another asks in the same statement: the count
  * of statements does not grow with the projects (ISS-1070 r6). It admits nothing: a project's answer
  * is only ever handed to that project's own read, which its caller has already checked. Outside a
- * scope each project's read runs as it would alone.
+ * scope it opens one of its own for the call.
  */
 export function readAcross<P, T>(
   projects: readonly P[],
@@ -90,7 +90,12 @@ export function readAcross<P, T>(
   read: (project: P) => Promise<T>,
 ): Promise<T[]> {
   const memo = memos.getStore();
-  if (!memo) return Promise.all(projects.map(read));
+  // outside a request the read opens a scope of its own, so its projects still batch rather than
+  // each send its own hundred statements at once to the pool
+  if (!memo) {
+    const own = () => withReadMemo(() => readAcross(projects, idOf, read));
+    return currentQueryTiming() ? own() : withQueryTiming(newQueryTiming(), own);
+  }
   across.set(memo, new Set([...(across.get(memo) ?? []), ...projects.map(idOf)]));
   let running = flowsOf.get(memo);
   if (!running) {
