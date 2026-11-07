@@ -425,6 +425,24 @@ export interface RunExcluded {
 	says: { rule: Said };
 }
 
+/**
+ * An issue held under a live lease on its work state (`issue_work_state.lease`, read `live` or
+ * `shared`) at a status its standing reads as moving, with no live run over it: a build its
+ * holder runs outside any run record, as a direct-mode master's own subagents do (ISS-1102). The
+ * bar on every project page counts it as running, so it agrees with the row that reads "Run".
+ */
+export interface RunLeasedBuild {
+	issue: { key: string; title: string; status: IssueStatus };
+	/** The work step it is at; null where no step was set. */
+	step: WorkStep | null;
+	stepStartedAt: string | null;
+	/** The lease's holder as written; an identifier, kept off a face. */
+	holder: string;
+	/** The lease was written from the box the project's master is on: the master's own build. */
+	byMaster: boolean;
+	expiresAt: string | null;
+}
+
 export interface RunStandingList {
 	generatedAt: string;
 	projectId: string;
@@ -447,6 +465,8 @@ export interface RunStandingList {
 	};
 	excluded: RunExcluded[];
 	master: MasterStanding;
+	/** Leased builds no live run covers, newest step first (`runs/leased-builds.ts:leasedBuildsOf`). */
+	leased: RunLeasedBuild[];
 }
 
 export interface RunAttemptRow {

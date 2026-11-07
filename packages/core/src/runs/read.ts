@@ -26,6 +26,7 @@ import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
 import { peopleOf } from '../lib/people.js';
 import { BASE_COLUMNS, type BaseRun, gatherFacts, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts.js';
+import { leasedBuildsOf } from './leased-builds.js';
 import { runStandingOf, type StandingContext } from './standing.js';
 import { contextFor, type RunViewer } from './viewer-context.js';
 
@@ -88,14 +89,16 @@ export async function listRunStanding(
   viewer: RunViewer | null,
 ): Promise<RunStandingList> {
   const { master, ctx } = await contextFor(projectId, viewer);
-  const [counts, page, liveBase] = await Promise.all([
+  const [counts, page, liveBase, prefix] = await Promise.all([
     countsOf(projectId),
     baseRuns(projectId, SCOPE_SQL[opts.scope], opts.limit + 1, opts.offset),
     baseRuns(projectId, LIVE_SQL, 10_000, 0),
+    activeIssuePrefix(projectId),
   ]);
-  const [items, live] = await Promise.all([
+  const [items, live, leased] = await Promise.all([
     standingsOf(projectId, page.slice(0, opts.limit), ctx),
     standingsOf(projectId, liveBase, ctx),
+    leasedBuildsOf(projectId, prefix, master.device?.id ?? null, ctx.now),
   ]);
   const liveByState = Object.fromEntries(RUN_LIVE_STATES.map((s) => [s, 0])) as Record<
     RunLiveState,
@@ -144,6 +147,7 @@ export async function listRunStanding(
       },
     ],
     master,
+    leased,
   };
 }
 
