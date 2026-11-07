@@ -2,6 +2,7 @@ import { articleFor } from '@forge/contracts/articles';
 import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { memories, memoryWritableSources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
@@ -143,13 +144,20 @@ export type MemoryWriteResult = IndexResult & { landedAs?: LandedAs; replaced?: 
 /**
  * A decision in force has one home, and memory is not it (ISS-1063): memory holds findings and leads
  * that lapse, so a decision written here would be served beside unverified notes and retire with
- * them. The rows written before stay readable; a new one is refused, naming the doors that hold one.
+ * them. The rows written before stay readable; a new one is refused, naming the doors that hold one
+ * which its caller reaches: a token fenced to projects never opens the organisation's knowledge, so
+ * it is sent to the project's rule and a person to the organisation's.
  */
 function refuseDecision(input: WriteMemoryInput): void {
   if (input.source !== 'decision') return;
+  const rule = `PUT /api/projects/${input.projectId}/knowledge/<slug> with kind rule`;
+  const where =
+    fencedProjectIds() === null
+      ? `${rule}, or PUT /api/orgs/<orgId>/knowledge/<slug> for the organisation`
+      : rule;
   throw refuse(
     'MEMORY_DECISION_NOT_MEMORY',
-    `memory does not hold decisions in force: write a decision as a rule, a knowledge entry of kind rule (PUT /api/projects/${input.projectId}/knowledge/<slug>, or PUT /api/orgs/<orgId>/knowledge/<slug> for the organisation), or as a requirement (POST /api/projects/${input.projectId}/requirements); a finding or lead goes to memory with source note`,
+    `memory does not hold decisions in force: write a decision as a rule, a knowledge entry of kind rule (${where}), or as a requirement (POST /api/projects/${input.projectId}/requirements); a finding or lead goes to memory with source note`,
     '/source',
   );
 }

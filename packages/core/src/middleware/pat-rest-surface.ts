@@ -16,6 +16,7 @@ import {
   patPrefixForPath,
   patUngrantableFor,
 } from '../credentials/pat-permissions.js';
+import { askAPersonDoor } from '../credentials/pat-remedy.js';
 import type { PatScope } from '../credentials/pat-scope.js';
 import { patEffectiveProjectIds } from '../lib/tool.js';
 import { unservedRefusal } from './nearest-routes.js';
@@ -112,7 +113,7 @@ export async function beginPatRequest(
     });
   }
   const effectiveProjectIds = patEffectiveProjectIds(principal);
-  assertReach(c.req.method, c.req.path, effectiveProjectIds);
+  assertReach(c.req.method, c.req.path, effectiveProjectIds, principal.permissions);
   await refuseOutsideFence({
     tokenId: principal.tokenId,
     fence: effectiveProjectIds,
@@ -125,7 +126,7 @@ export async function beginPatRequest(
     path: c.req.path,
   });
   assertEpoch(principal, c.req.path);
-  assertGranted(principal, c.req.path, level, wanted);
+  assertGranted(principal, effectiveProjectIds, c.req.path, level, wanted);
   const resolution: PatRequestResolution = {
     token,
     principal,
@@ -153,15 +154,22 @@ const readsEcosystemBus = (method: string, path: string): boolean =>
 /**
  * An account-reach route resolves no project, so a token fenced to projects
  * cannot be fenced on it: only a token carrying its owner's whole reach may.
+ * The refusal sends its caller to a person, through a door its own token opens.
  */
-function assertReach(method: string, path: string, fence: readonly string[] | null): void {
+function assertReach(
+  method: string,
+  path: string,
+  fence: readonly string[] | null,
+  grant: readonly string[],
+): void {
   const match = patPrefixForPath(path);
   if (match?.reach !== 'account' || fence === null) return;
   if (readsEcosystemBus(method, path)) return;
   throw new HTTPException(403, {
     message:
       `${path} is an account route under '${match.resource}', which resolves no project, and ` +
-      'this token is fenced to projects. Use a token with no project list.',
+      'this token is fenced to projects, so no grant opens it to this token. A person signed in ' +
+      `to Forge makes this change: ${askAPersonDoor(grant)}.`,
     cause: { code: 'PAT_ACCOUNT_ROUTE', details: { resource: match.resource } },
   });
 }
@@ -206,20 +214,29 @@ export function mintEpochFor(c: Context): number {
   return principal ? Math.min(principal.grantEpoch ?? 1, PAT_GRANT_EPOCH) : PAT_GRANT_EPOCH;
 }
 
+/**
+ * A token is never granted more by its own hand: a token is minted and widened from a person's
+ * session, so an agent's or a fenced token is sent to a person, and a person's unfenced token to
+ * minting one.
+ */
 function assertGranted(
   principal: PatPrincipal,
+  fence: readonly string[] | null,
   path: string,
   level: PatPermissionLevel,
   wanted: PatPermission | null,
 ): void {
   if (patGrantCovers(principal.permissions, wanted)) return;
   const held = principal.permissions;
+  const remedy =
+    principal.agency === 'agent' || fence !== null
+      ? `A person signed in to Forge grants it, minting a token that holds it: ${askAPersonDoor(held)}.`
+      : `Mint a token that includes it, or one granted '${PAT_PERMISSION_ALL}', ` +
+        'which is full access chosen on purpose.';
   throw new HTTPException(403, {
     message:
       `this token was not granted '${wanted}', which is the permission ` +
-      `${path} needs for a ${level} request. It holds: ${held.join(', ')}. ` +
-      `Mint a token that includes it, or one granted '${PAT_PERMISSION_ALL}', ` +
-      'which is full access chosen on purpose.',
+      `${path} needs for a ${level} request. It holds: ${held.join(', ')}. ${remedy}`,
     cause: { code: 'PAT_PERMISSION_REQUIRED', details: { wanted, held } },
   });
 }

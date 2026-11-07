@@ -1,6 +1,7 @@
 import { and, eq, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { fencedProjectIds } from '../credentials/pat-scope.js';
+import { askAPersonDoor } from '../credentials/pat-remedy.js';
+import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { fenceReaches, fenceWhere } from '../credentials/token-fence.js';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
@@ -197,7 +198,7 @@ export function assertUnfenced(what: string): void {
   throw new HTTPException(403, {
     message:
       `${what} reaches beyond the projects this token is fenced to, so a fenced token may not ` +
-      'do it. Use a token with no project list, or a session.',
+      `do it. A person signed in to Forge does it: ${askAPersonDoor(currentPatScope()?.grant)}.`,
     cause: { code: 'PAT_ACCOUNT_ROUTE', details: { action: what } },
   });
 }
