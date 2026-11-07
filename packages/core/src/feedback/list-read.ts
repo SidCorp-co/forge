@@ -3,7 +3,6 @@
 import {
   FEEDBACK_VERIFY_WINDOW,
   type FeedbackCarrierView,
-  type FeedbackOriginView,
   type FeedbackPhase,
   type FeedbackRouteView,
   type FeedbackSummary,
@@ -26,7 +25,7 @@ import { readOwedPolicy } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
-import { forgeOriginsOf } from './forge-reads.js';
+import { type ForgeOrigins, forgeOriginsOf } from './forge-reads.js';
 import { carrierIssueRows, owedCarriers, unreleasedCarrierKeys } from './list-carriers.js';
 import { releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
@@ -97,8 +96,8 @@ export interface Linked extends StandingFacts {
   verifyWindowDays: number;
   /** Whose reporter nothing told among these rows (`ship-notice.ts:untoldAmong`). */
   untold: UntoldAmong;
-  /** Where each row reported through the Forge door came from (`forge-reads.ts:forgeOriginsOf`). */
-  origins: Map<string, FeedbackOriginView>;
+  /** Where each row reported through the Forge door came from, and which came only from archived projects (`forge-reads.ts:forgeOriginsOf`). */
+  origins: ForgeOrigins;
 }
 
 const AT_RELEASE_GATE = 'awaiting_release';
@@ -436,7 +435,12 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       draftCarrier: carried.draft,
       carrier: carried.carrier,
     },
-    { since: l.decidedAt.get(r.id) ?? r.createdAt, master: l.master, now },
+    {
+      since: l.decidedAt.get(r.id) ?? r.createdAt,
+      master: l.master,
+      now,
+      settled: phase === 'resolved' || l.origins.fromArchived.has(r.id),
+    },
   );
 }
 
@@ -467,7 +471,7 @@ export function summaryOf(
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
-    origin: l.origins.get(r.id) ?? null,
+    origin: l.origins.views.get(r.id) ?? null,
     dueAt: r.dueAt?.toISOString() ?? null,
     snoozed: withhold && snoozed ? { ...snoozed, reason: null } : snoozed,
     redacted: r.redactedAt !== null,

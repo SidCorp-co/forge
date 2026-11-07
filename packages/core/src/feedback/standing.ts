@@ -189,6 +189,11 @@ export interface FeedbackTimesFacts {
   since: Date;
   master: MasterServing;
   now: Date;
+  /**
+   * Its work is settled (`lib/standing-times.ts:TimesFacts.settled`): it reads resolved, its delivery
+   * shipped and only its confirm is owed, or every report of it came from a project since archived.
+   */
+  settled?: boolean;
 }
 
 export type Owed = { wait: FeedbackWaitingOn; yours: boolean };
@@ -496,6 +501,7 @@ export function feedbackStandingOf(
       draftCarrier: phase === 'triaged' ? (facts.draftCarrier ?? null) : null,
       carried,
       now: at.now,
+      settled: at.settled === true,
     },
     'waiting',
   );

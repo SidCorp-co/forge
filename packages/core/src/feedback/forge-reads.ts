@@ -82,11 +82,16 @@ export async function reportedForge(feedbackId: string, userId: string): Promise
   return row !== undefined;
 }
 
-/** Each item's reports through the Forge door: how many, and the first one's reporter and place. */
-export async function forgeOriginsOf(
-  feedbackIds: readonly string[],
-): Promise<Map<string, FeedbackOriginView>> {
-  if (feedbackIds.length === 0) return new Map();
+/** What `forgeOriginsOf` reads: each item's origin view, and the items every report of which came from an archived project. */
+export interface ForgeOrigins {
+  views: Map<string, FeedbackOriginView>;
+  /** Reported only from projects since archived: nobody delivers there, so the item's wait never reads stuck (ISS-1072). */
+  fromArchived: Set<string>;
+}
+
+/** Each item's reports through the Forge door: how many, the first one's reporter and place, and whether every place is archived. */
+export async function forgeOriginsOf(feedbackIds: readonly string[]): Promise<ForgeOrigins> {
+  if (feedbackIds.length === 0) return { views: new Map(), fromArchived: new Set() };
   const rows = await db
     .select({
       feedbackId: feedbackOccurrences.feedbackId,
@@ -95,6 +100,7 @@ export async function forgeOriginsOf(
       projectId: projects.id,
       projectSlug: projects.slug,
       projectName: projects.name,
+      projectArchivedAt: projects.archivedAt,
       issueId: issues.id,
       issueProjectId: issues.projectId,
       issueSeq: issues.issSeq,
@@ -109,6 +115,12 @@ export async function forgeOriginsOf(
     .orderBy(asc(feedbackOccurrences.createdAt), asc(feedbackOccurrences.id));
   const people = await peopleOf(rows.map((r) => r.reportedBy));
   const out = new Map<string, FeedbackOriginView>();
+  // an item stays live while one of its reports came from a live project, or from no project at all
+  const live = new Set(
+    rows
+      .filter((r) => r.projectId === null || r.projectArchivedAt === null)
+      .map((r) => r.feedbackId),
+  );
   for (const r of rows) {
     const had = out.get(r.feedbackId);
     if (had) {
@@ -136,5 +148,5 @@ export async function forgeOriginsOf(
       at: r.at.toISOString(),
     });
   }
-  return out;
+  return { views: out, fromArchived: new Set([...out.keys()].filter((id) => !live.has(id))) };
 }

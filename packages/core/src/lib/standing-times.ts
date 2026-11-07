@@ -48,6 +48,12 @@ export interface TimesFacts {
    * on a project whose release asks none. It falls due by no clock, so it never reads overdue.
    */
   cleanupOnly?: boolean;
+  /**
+   * The work it waits on is settled though its own group is not (ISS-1072): a feedback item that reads
+   * resolved owes only its confirm, and one reported only from archived projects has nobody delivering.
+   * It keeps its group and its wait, falls due by no clock and never reads stuck.
+   */
+  settled?: boolean;
   now: Date;
 }
 
@@ -147,7 +153,7 @@ export function withTimes<G extends StandingGroup>(
     given.group === 'needs_you' && elsewhere && !isDecisionAct(act)
       ? { ...given, group: notDecision }
       : given;
-  const resting = RESTING.includes(turn.group);
+  const resting = RESTING.includes(turn.group) || f.settled === true;
   const actClass = actClassOf(turn.waitingOn);
   const own = turn.waitingOn.dueAt ? new Date(turn.waitingOn.dueAt) : null;
   const days = STANDING_DUE_WORKING_DAYS[actClass];
