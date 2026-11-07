@@ -1,1 +1,0 @@
-**An owed delivery check runs whatever the sweep has left.** It bills the handoff share and names when the budget resumes; one stuck item no longer spends the day, and the budget read never shows a share overspent.

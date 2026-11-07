@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.578] - 2026-11-07
+
+Owed delivery checks run even when the steward's daily room is spent
+
+### Fixed
+
+- **An owed delivery check runs whatever the sweep has left.** It bills the handoff share and names when the budget resumes; one stuck item no longer spends the day, and the budget read never shows a share overspent.
+
 ## [0.4.0-dev.577] - 2026-11-07
 
 Names read whole on list screens; collapsed sidebar shows icons only
