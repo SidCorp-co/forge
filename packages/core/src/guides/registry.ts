@@ -130,8 +130,8 @@ Only when it's reusable by a *different* agent on a *different* issue — a conv
     audience: 'agent',
     title: 'Deploy safety',
     summary:
-      'Confirm before an outward-facing deploy, poll status in the foreground, and what a failed deployment means for status.',
-    version: 2,
+      'Confirm before an outward-facing deploy, a repeat answered with the deploy already sent, poll status in the foreground, and what a failed deployment means for status.',
+    version: 3,
     body: `## Deploy safety
 
 Deploys (\`POST /api/projects/:id/integrations/coolify/deploy\`) are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
@@ -139,6 +139,9 @@ Deploys (\`POST /api/projects/:id/integrations/coolify/deploy\`) are hard to rev
 ### Before you deploy
 - Confirm you're targeting the intended environment. An explicit integration/service scope is a hard filter — don't rely on defaults picking the right one, especially near a release, when it's easy to accidentally redeploy production mid-pipeline instead of a staging target.
 - Where the project's production does not deploy on land, a deploy reaching production parks on its run until a person confirms it. That confirm is the kernel's step for such a project, not a stall to route around: a production deploy made outside it is a bypass, however blocked you are.
+
+### A deploy is sent once
+A deploy of the same run, binding and commit is not sent again while one runs or after it finished. The answer is \`dispatched: false\`, \`reason: already-sent\`, and \`alreadySent\` names that deployment, its state, when and by whom. Poll that deployment; do not deploy again. Another commit, or a deploy after one failed, goes out. With no run, only a deploy of that commit still running answers it. To send it anyway, say so: \`{ "redeploy": true }\`, and the answer names what it went over in \`redeployedOver\`.
 
 ### While it runs — poll in the foreground
 A pipeline step is a single, one-shot turn: when it ends, the whole process group is killed, including anything you backgrounded. If you background the deploy-status poll and then end your turn, the job may report success or failure and you will never see it — the issue is left parked with no verification. Poll in the foreground so the turn blocks until you actually have the answer. If the wait would blow your time budget, hand off cleanly (comment + status) rather than backgrounding and exiting.

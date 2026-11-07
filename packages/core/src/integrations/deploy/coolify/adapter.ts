@@ -418,7 +418,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     bindingOnlyConfigKeys: COOLIFY_BINDING_ONLY_CONFIG_KEYS,
   },
   usage: {
-    hint: 'Deploy, poll status and read logs at `/api/projects/:id/integrations/coolify/…`, or `forge coolify`.',
+    hint: 'Deploy, poll status and read logs at `/api/projects/:id/integrations/coolify/…`, or `forge coolify`. A repeat of one run, binding and commit answers `alreadySent`; `redeploy: true` sends anyway.',
     guideSlug: 'deploy-safety',
   },
   presentation: {
