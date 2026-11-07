@@ -17,7 +17,7 @@ import type {
 } from '@forge/contracts/automation-standing';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { scheduleWritePermission } from '@forge/contracts/schedules';
-import type { ScriptRead } from '@forge/contracts/script-sandbox';
+import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
 import {
   holdersWho,
   nobodyHoldsAct,
@@ -60,6 +60,9 @@ export interface FireFacts extends LastFireFacts {
   pipelineRunId: string | null;
   runAs: AutomationPerson | null;
   reads: ScriptRead[] | null;
+  opsCalls: ScriptOpsCall[] | null;
+  filings: ScriptFiling[] | null;
+  stateAfter: Record<string, unknown> | null;
   issues: number;
   notifications: number;
 }
@@ -285,7 +288,11 @@ function fireWaitOf(
 function fireGroupOf(f: FireFacts, produced: FireProduced, wait: AutomationWaitingOn): FireGroup {
   if (wait.kind === 'you') return 'needs_you';
   if (f.status === 'running') return 'running';
-  if (f.status === 'success') return producedTotal(produced) > 0 ? 'produced' : 'nothing_produced';
+  // a monitor's filing is what it produced, though no count of FireProduced names it
+  const filed = (f.filings ?? []).some((x) => x.key !== null);
+  if (f.status === 'success') {
+    return producedTotal(produced) > 0 || filed ? 'produced' : 'nothing_produced';
+  }
   return 'failed_or_skipped';
 }
 
@@ -310,6 +317,9 @@ export function fireStandingOf(
     pipelineRunId: f.pipelineRunId,
     runAs: f.runAs,
     reads: f.reads,
+    opsCalls: f.opsCalls,
+    filings: f.filings,
+    stateAfter: f.stateAfter,
     startedAt: f.startedAt.toISOString(),
     finishedAt: iso(f.finishedAt),
     durationSeconds: f.finishedAt

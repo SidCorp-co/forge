@@ -8,7 +8,11 @@ import type {
 	ScheduleRunStatus,
 	ScheduleRunTrigger,
 } from "./schedules.js";
-import type { ScriptRead } from "./script-sandbox.js";
+import type {
+	ScriptFiling,
+	ScriptOpsCall,
+	ScriptRead,
+} from "./script-sandbox.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -174,6 +178,12 @@ export interface FireStanding
 	runAs: AutomationPerson | null;
 	/** Every read a script fire made through ctx.forge.get, refused ones included; null for a fire that ran no script. */
 	reads: ScriptRead[] | null;
+	/** Every ops call a script fire made, by name with its outcome (REQ-87 BC-4); null for a fire that ran no script. */
+	opsCalls: ScriptOpsCall[] | null;
+	/** Every feedback filing a script fire made: the item filed or joined, or why it was refused. */
+	filings: ScriptFiling[] | null;
+	/** The state a script fire left where it changed it; null where it did not. */
+	stateAfter: Record<string, unknown> | null;
 	startedAt: string;
 	finishedAt: string | null;
 	durationSeconds: number | null;

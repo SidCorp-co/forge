@@ -29,6 +29,7 @@ const GUIDE_SLUGS = [
   'fast-delivery',
   'cleanup-audit',
   'link-chat-account',
+  'script-schedules',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];

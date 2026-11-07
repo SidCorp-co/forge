@@ -3,7 +3,7 @@
 // proposals through the fire's session)
 
 import type { AutomationPerson, FireProducedItems } from '@forge/contracts/automation-standing';
-import type { ScriptRead } from '@forge/contracts/script-sandbox';
+import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -75,6 +75,9 @@ const fireColumns = {
   output: scheduleRuns.output,
   runAsId: scheduleRuns.runAs,
   reads: scheduleRuns.reads,
+  opsCalls: scheduleRuns.opsCalls,
+  filings: scheduleRuns.filings,
+  stateAfter: scheduleRuns.stateAfter,
   issues: sql<number>`(SELECT count(*)::int FROM issues i WHERE i.schedule_run_id = ${scheduleRuns.id} AND i.project_id = ${scheduleRuns.projectId})`,
   notifications: sql<number>`(SELECT count(*)::int FROM notifications n WHERE n.schedule_run_id = ${scheduleRuns.id})`,
 };
@@ -107,11 +110,14 @@ export async function fireFacts(scope: FireScope): Promise<{ fires: FireRow[]; t
   ]);
   const names = await ownersOf(rows.map((r) => r.runAsId));
   return {
-    fires: rows.map(({ scheduleId, runAsId, reads, ...f }) => ({
+    fires: rows.map(({ scheduleId, runAsId, reads, opsCalls, filings, stateAfter, ...f }) => ({
       ...f,
       scheduleId,
       runAs: runAsId ? (names.get(runAsId) ?? { id: runAsId, name: null }) : null,
       reads: reads as ScriptRead[] | null,
+      opsCalls: opsCalls as ScriptOpsCall[] | null,
+      filings: filings as ScriptFiling[] | null,
+      stateAfter: stateAfter as Record<string, unknown> | null,
       issues: Number(f.issues),
       notifications: Number(f.notifications),
     })),

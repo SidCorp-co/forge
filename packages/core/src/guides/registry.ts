@@ -36,6 +36,7 @@ import { RECORDS_GUIDE } from './records-guide.js';
 import { RELEASE_TAGS_GUIDE } from './release-tags-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
+import { SCRIPT_SCHEDULES_GUIDE } from './script-schedules-guide.js';
 import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
 import type { CoreGuide, ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
@@ -315,6 +316,7 @@ section, which is why this migration is what turns the feature on.`,
   REQUIREMENT_LIFECYCLE_GUIDE,
   MOCKUPS_GUIDE,
   RELEASE_TAGS_GUIDE,
+  SCRIPT_SCHEDULES_GUIDE,
   FAST_DELIVERY_GUIDE,
   CLEANUP_AUDIT_GUIDE,
   SUGGESTIONS_GUIDE,
