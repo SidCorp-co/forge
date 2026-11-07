@@ -1,9 +1,11 @@
 // ISS-1160: the shared `:id` resolver for issue-scoped REST reads — uuid or
 // display key (`ISS-1097`), key scoped by `?projectId=` since `issSeq` is
-// unique per project, not globally (ISS-992).
+// unique per project, not globally (ISS-992), or by the one project a token
+// is fenced to where it names none.
 
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
@@ -86,24 +88,35 @@ export async function resolveIssueRouteRef(
     throw badRequest(malformedRefMessage(shapeOnly));
   }
 
-  if (!projectIdQuery) {
+  const projectId = projectIdQuery ?? onlyFencedProject();
+  if (!projectId) {
     throw badRequest(needsProjectScopeMessage(rawId));
   }
-  if (!isUuid(projectIdQuery)) {
+  if (!isUuid(projectId)) {
     throw badRequest('`projectId` must be a uuid');
   }
 
-  requireDeclaredOr(await loadProjectAccess(projectIdQuery, userId), 'project.read');
+  requireDeclaredOr(await loadProjectAccess(projectId, userId), 'project.read');
 
   const parsed = parseIssueRef(
     rawId,
-    issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectIdQuery) : [],
+    issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectId) : [],
   );
   if (!parsed.ok) throw badRequest(malformedRefMessage(parsed));
 
-  const issue = await findIssueByDisplaySeq(projectIdQuery, parsed.issSeq);
+  const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
   return issue;
+}
+
+/**
+ * The one project a token fenced to exactly one reaches: a display key it names without
+ * `?projectId=` can only mean an issue there. A session, an unfenced token or a token fenced to
+ * several projects has none, and is told to name the project.
+ */
+function onlyFencedProject(): string | undefined {
+  const fence = fencedProjectIds();
+  return fence?.length === 1 ? fence[0] : undefined;
 }
 
 // Layer A: caller already asserted its own `projectId` (e.g. `issue-step-contexts`).
