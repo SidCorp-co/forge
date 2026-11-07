@@ -156,7 +156,12 @@ export async function reply(
   }
   const text = await scrubbedForRoom(room, input.text);
   const asker = await askerOf(room, input.thread);
-  const mentions = await mentionRefusal<{ messageId: string | null }>(room, text, asker.username);
+  const mentions = await mentionRefusal<{ messageId: string | null }>(
+    room,
+    text,
+    asker.username,
+    input.thread,
+  );
   if (mentions) {
     await insertAction({
       roomId: room.id,

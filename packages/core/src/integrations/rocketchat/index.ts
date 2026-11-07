@@ -41,6 +41,7 @@ export {
   fetchMessage,
   fetchMessagesBeside,
   fetchRoomHistory,
+  fetchRoomMembers,
   fetchThreadMessages,
   fetchUserProfile,
   type GroupKick,
@@ -50,6 +51,7 @@ export {
   type RocketChatImageRef,
   type RocketChatRestAuth,
   type RocketChatRestMessage,
+  type RocketChatRoomMember,
   reactToMessage,
 } from './rest-client.js';
 export { resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';

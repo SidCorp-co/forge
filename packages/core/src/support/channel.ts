@@ -33,6 +33,7 @@ import {
   writeMember,
 } from './channel-store.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
+import { inRoomReach } from './mention-reach.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { screenForThread } from './screen.js';
 import { insertAction, latestThreadWriter, type RoomRow } from './store.js';
@@ -116,13 +117,15 @@ export function readerOf(member: MemberRow | null): 'detail' | 'plain' | null {
  * A reply's mentions (BC-34): at most one person, who is the thread's asker or a member the record
  * says what to ask for; never the whole channel. A listed member is mentioned by the username the
  * room shows, whether the record lists them by it or by the user id the chat server signs, and the
- * refusal names them by username, so a reply never needs a raw id (ISS-1089). Null when it may be
- * posted.
+ * refusal names them by username, so a reply never needs a raw id (ISS-1089). The thread's starter
+ * and a member of the room are read from the room where core's record does not name them
+ * (ISS-1097, `mention-reach.ts`), so only a stranger is refused. Null when it may be posted.
  */
 export async function mentionRefusal<T>(
   room: RoomRow,
   text: string,
   asker: string | null,
+  thread: string,
 ): Promise<Outcome<T> | null> {
   const named = [...new Set(mentionsIn(text).map((m) => m.toLowerCase()))];
   if (named.length === 0) return null;
@@ -134,8 +137,8 @@ export async function mentionRefusal<T>(
     askable.flatMap((m) => [m.username.toLowerCase(), shown(m.username).toLowerCase()]),
   );
   const whom = listed.length
-    ? `the asker, or one of ${listed.map((u) => `@${u}`).join(', ')}`
-    : 'the asker only: no member of this channel lists what to ask them for';
+    ? `the thread's asker or a member of this room, such as ${listed.map((u) => `@${u}`).join(', ')}`
+    : "the thread's asker or a member of this room";
   const refuse = (why: string) =>
     no<T>(
       'SUPPORT_MENTION_REFUSED',
@@ -148,7 +151,8 @@ export async function mentionRefusal<T>(
   const one = named[0] as string;
   if (asker && one === asker.toLowerCase()) return null;
   if (answersTo.has(one)) return null;
-  return refuse(`@${one} is neither the asker nor a member this channel lists what to ask for`);
+  if (await inRoomReach(room, thread, one)) return null;
+  return refuse(`@${one} is neither the thread's asker nor a member of this room`);
 }
 
 async function membersAskable(room: RoomRow): Promise<MemberRow[]> {

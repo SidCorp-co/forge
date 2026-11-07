@@ -17,6 +17,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/routes.ts
 // @direct-test-of packages/contracts/src/support-channel.ts
 // @direct-test-of packages/core/src/support/screen.ts
+// @direct-test-of packages/core/src/support/mention-reach.ts
 // @direct-test-of packages/core/src/messaging/internal-codes.ts
 // @direct-test-of packages/core/src/support/dispatch.ts (ISS-977: two hand-overs racing one session collided minting its turn token)
 //
@@ -90,13 +91,48 @@ describe("ISS-943: a master posts in its project's support room", () => {
     expect(threadLines(asked).map((l) => l.text)).toEqual([RESULT]);
   });
 
-  it("refuses an internal code in the users' room, and a mention of anyone but the asker", async () => {
+  it("refuses an internal code in the users' room, and a mention of anyone outside the room", async () => {
     const asked = await asks('Khi nào sửa xong?');
     const coded = await post({ text: 'Đã xong ISS-12, commit 3971924c4.', thread: asked });
     expect(said(coded), JSON.stringify(coded.body)).toEqual([400, 'SUPPORT_INTERNAL_CODE']);
-    const mention = await post({ text: `@alice ${RESULT}`, thread: asked });
+    const mention = await post({ text: `@mallory ${RESULT}`, thread: asked });
     expect(said(mention), JSON.stringify(mention.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
+    expect(refusalOf(mention)?.detail).toContain('@mallory is neither');
     expect(threadLines(asked)).toEqual([]);
+  });
+
+  // ISS-1097 (3wCm4DDmvhsCHMkir): alice started the thread where core never heard her, so core held
+  // no turn of hers; the room's own record names her the starter and a member, and both may be named
+  it("mentions the thread's starter core never heard, and a member of the room no record lists", async () => {
+    const started = chat.wroteWhileAway(
+      chat.rid,
+      chat.alice,
+      'Hộp thư của tôi không nhận thư',
+      new Date(),
+    );
+    const reply = await chat.say(chat.bob, 'Của tôi cũng vậy', started);
+    await expect
+      .poll(
+        async () =>
+          (
+            await rows<{ n: number }>(sql`
+              SELECT count(*)::int AS n FROM support_actions
+               WHERE project_id = ${w.projectId}::uuid AND thread = ${started}
+                 AND kind = 'message_in' AND external_id = ${reply}`)
+          )[0]?.n,
+        { timeout: 20_000 },
+      )
+      .toBe(1);
+    const starter = await post({ text: `@alice ${RESULT}`, thread: started });
+    expect(starter.status, JSON.stringify(starter.body)).toBe(201);
+    const member = await post({ text: `@carol ${RESULT}`, thread: started });
+    expect(member.status, JSON.stringify(member.body)).toBe(201);
+    const stranger = await post({ text: `@mallory ${RESULT}`, thread: started });
+    expect(said(stranger), JSON.stringify(stranger.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
+    expect(threadLines(started).map((l) => l.text)).toEqual([
+      `@alice ${RESULT}`,
+      `@carol ${RESULT}`,
+    ]);
   });
 
   // ISS-1107 (FB-565): an issue key is read by a prefix Forge issues, never by its shape, so a

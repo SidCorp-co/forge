@@ -314,6 +314,36 @@ export async function fetchMessage(
   return raw ? mapMessage(raw, auth.serverUrl) : null;
 }
 
+/** A room's member as the chat server lists them. */
+export interface RocketChatRoomMember {
+  userId: string;
+  username: string;
+}
+
+/** The most members one read lists; a room past it is read as far as it goes. */
+const ROOM_MEMBERS_MAX = 1000;
+
+/**
+ * A room's members as the chat server lists them (`groups.members`, `channels.members`), whichever
+ * answers for the room's kind (ISS-1097); null where neither does.
+ */
+export async function fetchRoomMembers(
+  auth: RocketChatRestAuth,
+  rid: string,
+): Promise<RocketChatRoomMember[] | null> {
+  for (const endpoint of ['groups.members', 'channels.members']) {
+    const raw = (await rcGet(auth, endpoint, { roomId: rid, count: String(ROOM_MEMBERS_MAX) }))
+      ?.members;
+    if (!Array.isArray(raw)) continue;
+    return raw.flatMap((m: { _id?: unknown; username?: unknown }) =>
+      typeof m?._id === 'string' && typeof m.username === 'string'
+        ? [{ userId: m._id, username: m.username }]
+        : [],
+    );
+  }
+  return null;
+}
+
 /** Fetch a thread's messages (oldest-first). Null on any failure. */
 export async function fetchThreadMessages(
   auth: RocketChatRestAuth,

@@ -10,10 +10,11 @@
 //
 // A room the product's users read takes a master's words only in an asker's thread (a member wrote
 // in it), never at its top level (ISS-872, the owner's trial of 2026-11-02), naming nobody but the
-// asker or a member the channel lists, in plain words with no internal code (`screen.ts`). An
-// operations room every project of the organization shares takes a top-level post only in the
-// project's own thread its binding records (ISS-934). Images the post names follow its text into the
-// same room and thread, each checked before anything is posted (ISS-1024, `master-post-images.ts`).
+// thread's asker or a member of the room (ISS-1097, `mention-reach.ts`), in plain words with no
+// internal code (`screen.ts`). An operations room every project of the organization shares takes a
+// top-level post only in the project's own thread its binding records (ISS-934). Images the post
+// names follow its text into the same room and thread, each checked before anything is posted
+// (ISS-1024, `master-post-images.ts`).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
 import { findBindingWithConnectionById } from '../integrations/index.js';
@@ -277,11 +278,12 @@ async function postInNamedThread(
   const room = at.room;
   const text = await scrubbedForRoom(room, input.text);
   if (!at.team) {
-    // toward users a post names at most one person, the asker or a member the channel lists
+    // toward users a post names at most one person: the asker, the starter or a member of the room
     const mentions = await mentionRefusal<never>(
       room,
       text,
       (await askerOf(room, input.thread)).username,
+      input.thread,
     );
     if (mentions) return mentions;
   }

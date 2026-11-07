@@ -57,6 +57,8 @@ export class StandInRocketChat implements ChatServer {
   readonly bot = { userId: 'bot-support', authToken: `rc-bot-${randomUUID()}` };
   readonly alice: Member = { userId: 'u-alice', username: 'alice' };
   readonly bob: Member = { userId: 'u-bob', username: 'bob' };
+  /** A member of every group who has written nowhere (ISS-1097): `groups.members` lists her all the same. */
+  readonly carol: Member = { userId: 'u-carol', username: 'carol' };
   readonly lines: (BotLine & { at: number; rid: string })[] = [];
   readonly reactions: { messageId: string; emoji: string }[] = [];
   /** The address the server reports for an account (`users.info`), where a test set one. */
@@ -170,6 +172,26 @@ export class StandInRocketChat implements ChatServer {
                 }
               : null,
         });
+      case '/api/v1/groups.members': {
+        // every group's members as the server lists them: the bot and the three people (ISS-1097)
+        const asked = url.searchParams.get('roomId') ?? '';
+        if (!this.rooms().includes(asked))
+          return json(400, { success: false, error: 'error-room-not-found' });
+        const members = [
+          { _id: this.bot.userId, username: 'supportbot' },
+          ...[this.alice, this.bob, this.carol].map((m) => ({
+            _id: m.userId,
+            username: m.username,
+          })),
+        ];
+        return json(200, {
+          success: true,
+          members,
+          count: members.length,
+          offset: 0,
+          total: members.length,
+        });
+      }
       case '/api/v1/groups.kick':
         if (this.kickRefused) {
           return json(403, {
