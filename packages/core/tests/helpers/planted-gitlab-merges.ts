@@ -19,9 +19,28 @@ export const alreadyMerged = new Map<number, string>();
 /**
  * How the planted merge call fails, by request: `after` merges and then loses the answer, as the
  * relay did for adminhub-fe !1994; `before` loses it without merging; `unreadable` also fails the
- * read back; `host-error` is GitLab's 5xx refusal, which leaves the merge unknown.
+ * read back; `host-error` is GitLab's 5xx refusal, which leaves the merge unknown; `after-closed`
+ * merges, loses the answer, and from then on reads the request `closed` and merges it again when
+ * asked, as GitLab did for adminhub-api !5197 (346580aa, then 5077e8ae over the same head).
  */
-export const callFails = new Map<number, 'after' | 'before' | 'unreadable' | 'host-error'>();
+export const callFails = new Map<
+  number,
+  'after' | 'before' | 'unreadable' | 'host-error' | 'after-closed'
+>();
+/** Requests GitLab reads back `closed` although it merged them, and merges again when asked. */
+export const readsClosed = new Set<number>();
+/** Requests whose merge call was sent and lost: an `unreadable` one fails its read back from then. */
+const asked = new Set<number>();
+/** Every commit `release/stg` holds by a merge the planted host made: heads and merge commits. */
+export const onTarget = new Set<string>();
+/** Each merge commit the planted host made, with its parents: what a range past a head lists. */
+export const mergeCommits: Array<{ sha: string; parents: string[]; message: string }> = [];
+/** Whether the target's containment read fails, with what, and from which read on (1 = every read). */
+export const containment: { fails: Error | null; from: number; reads: number } = {
+  fails: null,
+  from: 1,
+  reads: 0,
+};
 
 export const mergeMessage = (number: number, headRef: string) =>
   `Merge branch '${headRef}' into 'release/stg'\n\nMR ${number}\n\nSee merge request acme/canawan-api!${number}`;
@@ -35,7 +54,17 @@ export function resetPlanted(): void {
   heads.clear();
   alreadyMerged.clear();
   callFails.clear();
+  readsClosed.clear();
+  asked.clear();
+  onTarget.clear();
+  mergeCommits.length = 0;
+  containment.fails = null;
+  containment.from = 1;
+  containment.reads = 0;
 }
+
+/** The head the planted host carries for request `number`. */
+export const headOf = (number: number) => `${String(number).padStart(4, '0')}${'a'.repeat(36)}`;
 
 const TIMEOUT = 'The operation was aborted due to timeout';
 
@@ -74,7 +103,7 @@ export const plantedSourceHost = () => ({
       };
     }
     const done = merged.get(number);
-    if (done) {
+    if (done && !readsClosed.has(number)) {
       // GitLab reads the request before merging, and answers one it already merged as that
       return {
         kind: 'already-merged',
@@ -85,8 +114,10 @@ export const plantedSourceHost = () => ({
       };
     }
     const fails = callFails.get(number);
-    if (fails === 'before' || fails === 'unreadable')
+    if (fails === 'before' || fails === 'unreadable') {
+      asked.add(number);
       throw new DOMException(TIMEOUT, 'TimeoutError');
+    }
     if (fails === 'host-error') {
       return {
         kind: 'refused',
@@ -95,12 +126,23 @@ export const plantedSourceHost = () => ({
       };
     }
     merges.push(number);
-    const commitSha = `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
+    // a second merge of one head (GitLab reading it closed) is a second merge commit
+    const commitSha = done
+      ? `${String(number).padStart(4, '0')}${'d'.repeat(36)}`
+      : `${String(number).padStart(4, '0')}${'c'.repeat(36)}`;
     merged.set(number, commitSha);
     const headRef = heads.get(number) ?? `mr-${number}`;
     if (!messages.has(commitSha)) messages.set(commitSha, mergeMessage(number, headRef));
-    if (fails === 'after') {
+    onTarget.add(headOf(number));
+    onTarget.add(commitSha);
+    mergeCommits.push({
+      sha: commitSha,
+      parents: ['f'.repeat(40), headOf(number)],
+      message: mergeMessage(number, headRef),
+    });
+    if (fails === 'after' || fails === 'after-closed') {
       callFails.delete(number);
+      if (fails === 'after-closed') readsClosed.add(number);
       throw new DOMException(TIMEOUT, 'TimeoutError');
     }
     // each request merges a minute after the one numbered below it, into release/stg, at its head
@@ -113,16 +155,21 @@ export const plantedSourceHost = () => ({
     };
   },
   readChangeRequest: async (number: number) => {
-    if (callFails.get(number) === 'unreadable') throw new Error('relay answered 502');
-    const landed = merged.get(number) ?? alreadyMerged.get(number) ?? null;
+    // the read before the merge answers; only the read back after the lost answer fails
+    if (callFails.get(number) === 'unreadable' && asked.has(number)) {
+      throw new Error('relay answered 502');
+    }
+    const landed = readsClosed.has(number)
+      ? null
+      : (merged.get(number) ?? alreadyMerged.get(number) ?? null);
     return {
       number,
       url: null,
       title: `MR ${number}`,
-      state: landed ? 'merged' : 'open',
+      state: readsClosed.has(number) ? 'closed' : landed ? 'merged' : 'open',
       draft: false,
       headRef: heads.get(number) ?? `mr-${number}`,
-      headSha: `${String(number).padStart(4, '0')}${'a'.repeat(36)}`,
+      headSha: headOf(number),
       baseRef: 'release/stg',
       baseSha: null,
       updatedAt: null,
@@ -135,4 +182,15 @@ export const plantedSourceHost = () => ({
     if (trees.same instanceof Error) throw trees.same;
     return trees.same;
   },
+  // the target holds what the planted host merged into it, and nothing else
+  branchContains: async (_branch: string, sha: string) => {
+    containment.reads += 1;
+    if (containment.fails && containment.reads >= containment.from) throw containment.fails;
+    return onTarget.has(sha.toLowerCase());
+  },
+  readRange: async (base: string) => ({
+    ok: true,
+    commits: mergeCommits.filter((c) => c.parents.includes(base.toLowerCase())),
+    complete: true,
+  }),
 });

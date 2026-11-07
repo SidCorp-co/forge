@@ -6,6 +6,7 @@ import { type ChangeRequestReading, repoPullRequests } from '../../db/schema-rep
 import { refuser } from '../../lib/refusal.js';
 import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
+import { type ReleasePin, readBeforeMerge } from './merge-landed.js';
 import { outcomeUnconfirmed, readBackMerge } from './merge-unknown.js';
 import { readMergedHead } from './merged-head.js';
 import { markPullRequestMerged } from './projection.js';
@@ -95,6 +96,12 @@ interface MergeRequest {
   runId?: string | null;
   /** The head the caller believed it was merging. A head that moved is refused, never re-aimed. */
   expectedHeadSha?: string | undefined;
+  /**
+   * The head a release step merges at, derived by core from the release's approval or cut, never
+   * from the caller (`release-batch/change-request-merge.ts:admitChangeRequestMerge`). A request
+   * carrying another head is refused `release-head-moved`, naming both and the commits between.
+   */
+  releasePin?: ReleasePin | undefined;
   method?: ChangeRequestMergeMethod | undefined;
 }
 
@@ -297,6 +304,10 @@ async function mergeOrReadBack(
 
 /**
  * Merge one stored change request through the host its binding serves, and record the landing.
+ * Before anything is sent the host is read (`merge-landed.ts:readBeforeMerge`): a head the target
+ * already holds answers already merged with the landing found there, and a release request whose
+ * head is not its pin is refused by name. After an unconfirmed merge the target is read again
+ * (`merge-unknown.ts:readBackMerge`), so a retry never merges twice.
  *
  * `expectBindingId` is how a caller authorised for ONE binding says so: a dispatch holding a context
  * for binding A and a row belonging to binding B would validate A and then MERGE on B's repository.
@@ -328,6 +339,7 @@ export async function mergeStoredChangeRequest(
       requestedBy: req.requestedBy,
       runId: req.runId ?? null,
       expectedHeadSha: req.expectedHeadSha ?? null,
+      releasePin: req.releasePin ?? null,
       method: req.method ?? 'merge',
     },
     status: 'pending',
@@ -354,13 +366,23 @@ export async function mergeStoredChangeRequest(
       );
     }
 
-    const result = await mergeOrReadBack(host, {
-      number: row.number,
-      expectedHeadSha: req.expectedHeadSha,
-      method,
-    });
+    // the target is read before anything is sent: a head it already holds is the landing, and a
+    // release request carrying another head than its pin is refused, so nothing merges twice or blind
+    const before = await readBeforeMerge(host, row.number, req.releasePin ?? null);
+    if (before.kind === 'refused') return refuse(deliveryId, before.reason, before.detail);
+    const result =
+      before.kind === 'already-merged'
+        ? before
+        : await mergeOrReadBack(host, {
+            number: row.number,
+            expectedHeadSha: req.releasePin?.sha ?? req.expectedHeadSha,
+            method,
+          });
     if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
-    const observedAfter = 'observedAfter' in result ? result.observedAfter : null;
+    const observedAfter =
+      'observedAfter' in result && typeof result.observedAfter === 'string'
+        ? result.observedAfter
+        : null;
 
     const head = await readMergedHead((a, b) => host.sameTree(a, b), result.head, result.commitSha);
     const evidence = await writeEvidence({
@@ -387,6 +409,7 @@ export async function mergeStoredChangeRequest(
         result.kind === 'already-merged'
           ? {
               alreadyMerged: true,
+              ...(before.kind === 'already-merged' ? { foundOnTarget: result.target } : {}),
               commitSha: result.commitSha,
               target: result.target,
               ...evidence,

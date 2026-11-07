@@ -9,8 +9,9 @@
  *
  * One reading, through `landed-build.ts:deliveredBuildsOf`, for the build a verdict defaults to
  * (`judged-build.ts`), the steward's release facts (`steward-release-facts.ts`) and a requirement's coverage;
- * the release's own admission reads it too, for its approval (`approval-checklist.ts`) and for each
- * merge (`change-request-merge.ts`), through `changeRequestHeadWhy`.
+ * the release's own admission reads it too, for its approval (`approval-checklist.ts`), through
+ * `changeRequestHeadWhy`. Each merge is held to the head its approval pinned, read from the host
+ * (`integrations/source-host/merge.ts:mergeStoredChangeRequest`).
  */
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';

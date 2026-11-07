@@ -10,8 +10,7 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { assertApprovalAllowsAttempt } from './approvals.js';
-import { changeRequestHeadWhy } from './change-request-build.js';
+import { approvalsOfRuns, assertApprovalAllowsAttempt } from './approvals.js';
 import { label, linksOf, mergeStepsOf } from './change-request-roster.js';
 import { resolveReleaseDeclaration } from './gate.js';
 
@@ -54,8 +53,30 @@ async function runPinning(pullRequestId: string) {
 
 type MergeAdmission =
   | { kind: 'free' }
-  /** A step of an approved release: merged at the head the release was cut and approved at. */
-  | { kind: 'release'; runId: string; headSha: string };
+  /**
+   * A step of an approved release, merged only at `headSha`: the commit its approval names for the
+   * release's last step (`evidence.commit`), else the head the step was cut at. Core derives it here;
+   * the merge refuses a request whose head is anything else (ISS-1114).
+   */
+  | { kind: 'release'; runId: string; headSha: string; pinnedBy: 'approval' | 'cut' };
+
+/**
+ * The commit a release step merges at. The approval's `evidence.commit` names the last step's head
+ * (a promotion is one step), so a head the owner approved again after it moved is the one merged; any
+ * other step merges at the head it was cut at.
+ */
+async function pinOf(
+  runId: string,
+  steps: readonly { headSha: string }[],
+  at: number,
+): Promise<{ headSha: string; pinnedBy: 'approval' | 'cut' }> {
+  const step = steps[at] as { headSha: string };
+  if (at !== steps.length - 1) return { headSha: step.headSha, pinnedBy: 'cut' };
+  const [latest] = await approvalsOfRuns([runId]);
+  return latest?.decision === 'approved'
+    ? { headSha: latest.evidenceCommit.toLowerCase(), pinnedBy: 'approval' }
+    : { headSha: step.headSha, pinnedBy: 'cut' };
+}
 
 /**
  * Whether this change request may merge now, on a project that releases through change requests:
@@ -77,7 +98,6 @@ export async function admitChangeRequestMerge(args: {
     .select({
       host: repoPullRequests.host,
       number: repoPullRequests.number,
-      headSha: repoPullRequests.headSha,
       state: repoPullRequests.state,
       baseRef: repoPullRequests.baseRef,
     })
@@ -117,15 +137,6 @@ export async function admitChangeRequestMerge(args: {
       '/pullRequest',
     );
   }
-  const step = steps[at] as (typeof steps)[number];
-  const moved = pr.state === 'merged' ? null : changeRequestHeadWhy(me, step.headSha, pr.headSha);
-  if (moved) {
-    throw refuseMerge(
-      'RELEASE_MERGE_HEAD_MOVED',
-      `${moved}: release run ${run.runId} was approved at the head it was cut at. Abort the release and cut it again on the new head.`,
-      '/pullRequest',
-    );
-  }
   const states = await db
     .select({ id: repoPullRequests.id, state: repoPullRequests.state })
     .from(repoPullRequests)
@@ -148,5 +159,6 @@ export async function admitChangeRequestMerge(args: {
       '/pullRequest',
     );
   }
-  return { kind: 'release', runId: run.runId, headSha: step.headSha };
+  // whether the head still is that commit is read from the host at the merge, never the projection
+  return { kind: 'release', runId: run.runId, ...(await pinOf(run.runId, steps, at)) };
 }

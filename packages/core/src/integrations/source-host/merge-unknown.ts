@@ -3,8 +3,11 @@
 // 2026-10-26: GitLab merged it at 8ab74c9f through the relay, the relay's answer timed out, and
 // `merge-pull-request` answered 500, which a caller reads as "retry" and so as "merge again".
 // Core asks the host what the request is now and answers from that: merged is the landing it
-// observed, anything else is a named refusal. Nothing here sends a second merge.
+// observed, anything else is a named refusal. Nothing here sends a second merge. A request read
+// back unmerged whose head the target already holds is merged (adminhub-api !5197, 2026-11-07: read
+// back `closed`, merged as 346580aa): the target is asked, never the request's state alone.
 
+import { type LandingOnTarget, landedOnTarget } from './merge-landed.js';
 import type { HostMergeResult, SourceHost } from './types.js';
 
 /** Refusals sent after the merge may have reached the host, so the request is read back. */
@@ -72,11 +75,39 @@ export async function readBackMerge(
       detail: `${host.provider} did not confirm the merge of ${named} (${failure}); read back, it is merged, but ${host.provider} named no merge commit, merge time or base branch, so there is no landing to record. Do not send the merge again: its merged event records the landing.`,
     };
   }
+  let landed: LandingOnTarget | null;
+  try {
+    landed = await landedOnTarget(host, read);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    return {
+      kind: 'refused',
+      reason: 'merge-outcome-unknown',
+      detail: `${host.provider} did not confirm the merge of ${named} (${failure}); read back it is \`${read.state}\`, and whether \`${read.baseRef}\` holds its head could not be read (${why}), so whether it merged is unknown. Do not send the merge again: read ${named} on ${host.provider}; another call to this verb reads the target first and never merges twice.`,
+    };
+  }
+  if (landed?.kind === 'found') {
+    return {
+      kind: 'merged',
+      commitSha: landed.commitSha,
+      mergedAt: landed.mergedAt,
+      target: landed.target,
+      head: landed.head,
+      observedAfter: failure,
+    };
+  }
+  if (landed?.kind === 'unread') {
+    return {
+      kind: 'refused',
+      reason: 'merged-without-evidence',
+      detail: `${host.provider} did not confirm the merge of ${named} (${failure}); read back it is \`${read.state}\`, yet \`${read.baseRef}\` holds its head, so it merged, and its landing cannot be named: ${landed.why}. Do not send the merge again.`,
+    };
+  }
   // a read can race a merge the host is still making, so what it shows is said, never promised
   const cause = refused ? `${refused.reason}: ${refused.detail}` : failure;
   return {
     kind: 'refused',
     reason: 'merge-unconfirmed',
-    detail: `${host.provider} did not confirm the merge of ${named} (${cause}). Read back, it is \`${read.state}\`, not merged, so it had not landed when read; a merge the host was still making can land after that read. Read ${named} again before merging: one that merged is answered merged by this verb, never merged twice.`,
+    detail: `${host.provider} did not confirm the merge of ${named} (${cause}). Read back, it is \`${read.state}\`, not merged, so it had not landed when read, and \`${read.baseRef}\` did not hold its head; a merge the host was still making can land after that read. Read ${named} again before merging: one that merged is answered merged by this verb, never merged twice.`,
   };
 }

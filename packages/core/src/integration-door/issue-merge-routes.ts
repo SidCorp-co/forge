@@ -104,7 +104,7 @@ const kernelMergeBodySchema = z
   .object({
     /** The pull request number or merge request iid as the host shows it. Absent resolves the issue's one open request. */
     pullRequest: z.number().int().positive().optional(),
-    /** The head the caller judged. A head that moved since is refused, never re-aimed. */
+    /** The head the caller judged. A head that moved since is refused, never re-aimed; on a release step, only the pinned head. */
     headSha: mergedCommitShaSchema.optional(),
     runId: z.uuid().optional(),
     method: z.enum(CHANGE_REQUEST_MERGE_METHODS).optional(),
@@ -132,13 +132,23 @@ issueMergePullRequestRoutes.post(
     }
 
     // on a project that releases through change requests, a merge is a step of an approved
-    // release, in its order, at the head it was approved at (REQ-63 BC-2); refused by name otherwise
+    // release, in its order, at the head core pinned from its approval (REQ-63 BC-2, ISS-1114);
+    // refused by name otherwise. The caller's `headSha` may narrow a merge, never move a pin.
     const admitted = await admitChangeRequestMerge({
       projectId: issue.projectId,
       pullRequestId: stored.id,
     });
-    const expectedHeadSha =
-      body.headSha ?? (admitted.kind === 'release' ? admitted.headSha : undefined);
+    const pin =
+      admitted.kind === 'release'
+        ? { sha: admitted.headSha, runId: admitted.runId, pinnedBy: admitted.pinnedBy }
+        : null;
+    if (pin && body.headSha && !pin.sha.startsWith(body.headSha.toLowerCase())) {
+      throw refuse(
+        'RELEASE_MERGE_HEAD_MOVED',
+        `\`headSha\` ${body.headSha} is not ${pin.sha}, the head release run ${pin.runId} merges at, and a caller cannot move it. Merge without \`headSha\`, or have the new head approved.`,
+        '/headSha',
+      );
+    }
 
     const actor = restActor(c);
     try {
@@ -147,14 +157,17 @@ issueMergePullRequestRoutes.post(
           pullRequestId: stored.id,
           requestedBy: `${actor.type}:${actor.id}`,
           runId: body.runId ?? null,
-          ...(expectedHeadSha ? { expectedHeadSha } : {}),
+          ...(pin ? { releasePin: pin } : body.headSha ? { expectedHeadSha: body.headSha } : {}),
           ...(body.method ? { method: body.method } : {}),
         },
         stampKernelMerge(actor, issue.projectId, issueId),
       );
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {
-        throw refuse('MERGE_REFUSED', `${outcome.detail} (${outcome.reason})`);
+        throw refuse(
+          outcome.reason === 'release-head-moved' ? 'RELEASE_MERGE_HEAD_MOVED' : 'MERGE_REFUSED',
+          `${outcome.detail} (${outcome.reason})`,
+        );
       }
       // the last request of a release closes it: its roster, its ship and its run
       const release =
