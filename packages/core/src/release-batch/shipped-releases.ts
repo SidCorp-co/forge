@@ -1,6 +1,7 @@
 // The releases a project shipped, as Forge recorded them: a release-batch run whose finish reads
-// `finished`, whose ship stamp is set, and whose `finish.commit` is the commit the probes verified
-// live. Read from Forge's own rows only; no source host is asked.
+// `finished`, whose ship stamp is set, and whose `finish.commit` is the commit it shipped, as its
+// finish named it, its deploy reported it or its agent attached it (`shipped-commit.ts`, ISS-1079).
+// Read from Forge's own rows only; no source host is asked.
 
 import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

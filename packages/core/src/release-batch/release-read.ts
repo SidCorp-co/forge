@@ -155,7 +155,7 @@ function placeParts(
   return { parts, groupOf };
 }
 
-/** The commit a finished release's probes verified; an attempt still in flight claims one only. */
+/** The commit a finished release shipped (`shipped-commit.ts`); an attempt still in flight claims one only. */
 function finishedCommit(metadata: unknown): string | null {
   const finish = readFinishRecord(metadata);
   return finish?.state === 'finished' ? finish.commit : null;
