@@ -256,6 +256,63 @@ describe('a full-lane report from a script that predates patch ids (priced amnes
   });
 });
 
+describe("an integration red that is not the change's (ISS-1120)", () => {
+  const RED = 'packages/core/tests/integration/slow-reads-at-scale.test.ts';
+  const rerunRun = (at: 'head' | 'base', result: 'pass' | 'fail') => ({
+    at,
+    sha: at === 'head' ? HEAD : BASE,
+    result,
+    command: `(cd packages/core && pnpm exec vitest run --config vitest.integration.config.ts ${RED})`,
+    startedAt: '2026-11-07T06:05:00.000Z',
+    durationMs: 9000,
+  });
+  const redReport = (verdict: 'base-red' | 'flaky' | 'branch-red') => {
+    const checks = REQUIRED_MERGE_CHECKS.map((n) =>
+      run(n, n === 'integration-tests' ? { result: 'fail', files: [RED] } : {}),
+    );
+    const integration = checks.find((c) => c.name === 'integration-tests');
+    const runs = {
+      'base-red': [rerunRun('head', 'fail'), rerunRun('base', 'fail')],
+      flaky: [rerunRun('head', 'pass')],
+      'branch-red': [rerunRun('head', 'fail'), rerunRun('base', 'pass')],
+    }[verdict];
+    return report({ checks, reruns: [{ check: integration?.id, file: RED, verdict, runs }] });
+  };
+
+  it('records a report whose only red is base-red as passing, naming it apart, and the mark takes it', async () => {
+    const issue = await issueIn(declared);
+    const res = await check(issue, redReport('base-red'));
+    expect(res.status).toBe(201);
+    const [record] = await verifications(issue);
+    const field = (key: string) =>
+      ((record?.fields ?? []) as Doc[]).find((f) => f.key === key)?.value;
+    expect(field('result')).toBe('pass');
+    expect(field('lead')).toContain('1 base-red');
+    expect(field('base-red')).toContain(RED);
+    // the red check is kept as it ran, never rewritten green
+    const read = (await call('GET', `/api/issues/${issue}/checks`)).body;
+    expect(read.checks.find((c: Doc) => c.name === 'integration-tests')?.result).toBe('fail');
+    // the mark finds the passing check, and asks only the review next
+    expect(codes(await mark(issue, HEAD))).toEqual(['MERGE_REVIEW_MISSING']);
+  });
+
+  it('records a flaky red apart too', async () => {
+    const issue = await issueIn(declared);
+    expect((await check(issue, redReport('flaky'))).status).toBe(201);
+    const [record] = await verifications(issue);
+    const fields = (record?.fields ?? []) as Doc[];
+    expect(fields.find((f) => f.key === 'flaky')?.value).toContain(RED);
+  });
+
+  it("refuses the change's own red, recording nothing", async () => {
+    const issue = await issueIn(declared);
+    const res = await check(issue, redReport('branch-red'));
+    expect([res.status, codes(res)]).toEqual([422, ['MERGE_CHECK_RED']]);
+    expect(res.body.error.refusals[0].detail).toContain('green at the merge base');
+    expect(await verifications(issue)).toEqual([]);
+  });
+});
+
 describe('the mark asks for a passing check where one is owed', () => {
   it('refuses a mark on a project that declares the check while none is recorded, marking nothing', async () => {
     const issue = await issueIn(declared);
