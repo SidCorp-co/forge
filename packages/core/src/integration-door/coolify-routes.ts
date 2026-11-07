@@ -25,6 +25,7 @@ import {
   type CoolifyConfig,
   type CoolifySecrets,
   credentialFromSecrets,
+  type DeployCaller,
   fetchCoolifyApplications,
 } from '../integrations/deploy/index.js';
 import {
@@ -59,6 +60,8 @@ const deployBodySchema = z
     integrationId: z.uuid().optional(),
     /** The fast lane's web-only deploy (REQ-39 BC-7): only these targets, behind its guard. */
     targets: z.array(z.string().min(1).max(100)).min(1).max(5).optional(),
+    /** Send it although the same run, binding and commit was already sent (ISS-1116). */
+    redeploy: z.boolean().optional(),
   })
   .strict()
   .refine((b) => !(b.targets && b.pipelineRunId), {
@@ -119,6 +122,22 @@ const projectMember = requiresOnParam('project.read', 'projectId');
 /** The one rule for a Coolify act that changes what is running: `deploys.run` on the project. */
 const coolifyRun = requiresOnParam('deploys.run', 'projectId');
 
+/**
+ * Who asks for a deploy, as the deploy records it (ISS-1116): a repeat is answered with the deploy
+ * already sent and by whom, a box's credential, a token or a person's session.
+ */
+function deployCaller(c: Context<{ Variables: AuthVars }>): DeployCaller {
+  const principal = c.get('principal');
+  const box = c.get('patDeviceId') ?? c.get('deviceId');
+  const token = c.get('patTokenId');
+  const via = box
+    ? `box ${box.slice(0, 8)}`
+    : principal === 'pat' && token
+      ? `token ${token.slice(0, 8)}`
+      : 'a signed-in session';
+  return { userId: c.get('userId'), agency: c.get('agency') ?? 'unknown', via };
+}
+
 /** Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346). */
 async function answer(c: Context, run: () => Promise<unknown>): Promise<Response> {
   try {
@@ -165,7 +184,7 @@ function registerCommandRoutes(routes: Routes): void {
               targets,
               ...given({ issueId: body.issueId, integrationId: body.integrationId }),
             })
-          : runCoolifyDeploy({ projectId, ...body }),
+          : runCoolifyDeploy({ projectId, ...body, sentBy: deployCaller(c) }),
       );
     },
   );

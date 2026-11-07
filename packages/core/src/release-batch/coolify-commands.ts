@@ -27,6 +27,7 @@ import { refuser } from '../lib/refusal.js';
 import { gateOf, readDeployMap } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { assertDeclaredGate, gateAtProduction } from './declared-gate.js';
+import type { DeployCaller } from './deploy-once.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { readRunMethod } from './method.js';
 import { isOpenReleaseBatchRun } from './queries.js';
@@ -116,6 +117,9 @@ const shape = (outcome: DispatchOutcome) => ({
   pendingHumanConfirm: outcome.pendingHumanConfirm,
   integrationIds: outcome.integrationIds,
   ...(outcome.reason ? { reason: outcome.reason } : {}),
+  // ISS-1116: the deploy already sent that answered this call, and one a redeploy went out over
+  ...(outcome.alreadySent ? { alreadySent: outcome.alreadySent } : {}),
+  ...(outcome.redeployedOver ? { redeployedOver: outcome.redeployedOver } : {}),
 });
 
 /**
@@ -147,9 +151,17 @@ export async function runCoolifyDeploy(input: {
    * every target of each binding deploys.
    */
   targetLabels?: readonly string[] | undefined;
+  /** Who asked, recorded on what is sent, so a repeat answers by whom it was sent (ISS-1116). */
+  sentBy?: DeployCaller | undefined;
+  /**
+   * Send it although the same deploy was already sent (`deploy-once.ts`): the caller's explicit ask,
+   * as after an env write, which the commit alone does not show.
+   */
+  redeploy?: boolean | undefined;
 }) {
   const { projectId } = input;
   const targetLabels = input.targetLabels ? { targetLabels: input.targetLabels } : {};
+  const ask = { sentBy: input.sentBy ?? null, redeploy: input.redeploy === true };
 
   if (input.pipelineRunId && !input.issueId) {
     if (!(await isOpenReleaseBatchRun(projectId, input.pipelineRunId))) {
@@ -181,6 +193,7 @@ export async function runCoolifyDeploy(input: {
         integrationId: input.integrationId ?? null,
         allowLive: true,
         takeEnvironmentLock: true,
+        ...ask,
       }),
     );
   }
@@ -211,6 +224,7 @@ export async function runCoolifyDeploy(input: {
         integrationId: input.integrationId ?? null,
         allowLive,
         ...targetLabels,
+        ...ask,
       }),
     );
   }
@@ -225,7 +239,7 @@ export async function runCoolifyDeploy(input: {
     };
   }
   return shape(
-    await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id, ...targetLabels }),
+    await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id, ...targetLabels, ...ask }),
   );
 }
 

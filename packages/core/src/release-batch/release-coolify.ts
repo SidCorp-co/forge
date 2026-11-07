@@ -24,6 +24,7 @@ import {
   markPendingHumanConfirm,
   reportUnwitnessedDeploy,
 } from './coolify-prod-gate.js';
+import { type AlreadySent, type DeployCaller, deployOnce } from './deploy-once.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import {
   deployLockIntent,
@@ -44,7 +45,58 @@ export interface DispatchOutcome {
   pendingHumanConfirm: boolean;
   integrationIds: string[];
   reason?: string;
+  /** Each binding this call did not send to because the same deploy was already sent (ISS-1116). */
+  alreadySent?: AlreadySent[];
+  /** Each deploy an explicit redeploy went out over, named so the answer says it was on purpose. */
+  redeployedOver?: AlreadySent[];
 }
+
+/** Who asked, and whether they asked to deploy again on purpose: the door's key (`deploy-once.ts`). */
+interface DeployAsk {
+  sentBy?: DeployCaller | null | undefined;
+  redeploy?: boolean | undefined;
+}
+
+/**
+ * Splits the bindings into those this deploy goes out to, each with the commit read for it, and
+ * those a deploy already sent answers. An explicit redeploy sends to every one, naming what it
+ * went out over.
+ */
+async function splitAlreadySent<T extends { binding: { id: string } }>(
+  projectId: string,
+  runId: string | null,
+  pairs: readonly T[],
+  ask: DeployAsk,
+): Promise<{
+  send: Array<T & { commit: string | null }>;
+  alreadySent: AlreadySent[];
+  redeployedOver: AlreadySent[];
+}> {
+  const send: Array<T & { commit: string | null }> = [];
+  const alreadySent: AlreadySent[] = [];
+  const redeployedOver: AlreadySent[] = [];
+  for (const pair of pairs) {
+    const once = await deployOnce({
+      projectId,
+      runId,
+      bindingId: pair.binding.id,
+      redeploy: ask.redeploy === true,
+    });
+    if (once.prior && ask.redeploy !== true) {
+      alreadySent.push(once.prior);
+      continue;
+    }
+    if (once.prior) redeployedOver.push(once.prior);
+    send.push({ ...pair, commit: once.commit.commit });
+  }
+  return { send, alreadySent, redeployedOver };
+}
+
+/** What a dispatch reports beside its own outcome: the deploys it did not repeat, or went over. */
+const keyed = (k: { alreadySent: AlreadySent[]; redeployedOver: AlreadySent[] }) => ({
+  ...(k.alreadySent.length > 0 ? { alreadySent: k.alreadySent } : {}),
+  ...(k.redeployedOver.length > 0 ? { redeployedOver: k.redeployedOver } : {}),
+});
 
 const noIntegration = (): DispatchOutcome => ({
   dispatched: false,
@@ -181,16 +233,18 @@ async function enqueueArmed(
     binding: { id: string; config: unknown };
     requestId: string;
     live: boolean;
+    commit: string | null;
   }>,
   ctx: {
     runId: string;
     issueId: string | null;
     envOf: (binding: { id: string }) => string | null;
     targetLabels?: readonly string[] | undefined;
+    ask: DeployAsk;
   },
   dispatched: string[],
 ): Promise<void> {
-  for (const { binding, requestId, live } of armed) {
+  for (const { binding, requestId, live, commit } of armed) {
     if (live) {
       await db
         .insert(releaseAttempts)
@@ -204,7 +258,7 @@ async function enqueueArmed(
       issueId: ctx.issueId,
       eventName: 'release.requested',
       requestId,
-      ...targetPayload(ctx.runId, ctx.issueId, ctx.targetLabels),
+      ...sentPayload(ctx.runId, ctx.issueId, commit, ctx.ask, ctx.targetLabels),
     });
     dispatched.push(binding.id);
     traceStep({
@@ -217,15 +271,27 @@ async function enqueueArmed(
 }
 
 /**
- * The job payload naming the targets a web-only deploy reaches (`adapter.ts:dispatchOutbound` deploys
- * those alone), or nothing, which deploys every target.
+ * The job payload, which the adapter writes onto each target's delivery: the run, the commit the door
+ * read and who asked, the door's own record of what it sent (`sent-deploys.ts`); and the targets a
+ * web-only deploy reaches (`adapter.ts:dispatchOutbound` deploys those alone), absent for every one.
  */
-function targetPayload(
+function sentPayload(
   runId: string | null,
   issueId: string | null,
+  commit: string | null,
+  ask: DeployAsk,
   targetLabels: readonly string[] | undefined,
-): { payload?: Record<string, unknown> } {
-  return targetLabels ? { payload: { runId, issueId, targetLabels: [...targetLabels] } } : {};
+): { payload: Record<string, unknown> } {
+  return {
+    payload: {
+      runId,
+      issueId,
+      commit,
+      sentBy: ask.sentBy ?? null,
+      ...(ask.redeploy === true ? { redeploy: true } : {}),
+      ...(targetLabels ? { targetLabels: [...targetLabels] } : {}),
+    },
+  };
 }
 
 /**
@@ -245,18 +311,28 @@ export async function tryDispatchCoolifyRelease(args: {
   takeEnvironmentLock?: boolean;
   /** Deploy only these targets of each binding: the fast lane's web-only deploy (REQ-39 BC-7). */
   targetLabels?: readonly string[] | undefined;
-}): Promise<DispatchOutcome> {
+} & DeployAsk): Promise<DispatchOutcome> {
   const { projectId, issueId, runId } = args;
   const takeEnvironmentLock = args.takeEnvironmentLock === true;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  const { pairs, reachesLive, envOf, reachedBy } = await deployTargets(
-    projectId,
-    args.integrationId ?? null,
-    args.allowLive ?? true,
-  );
-  if (pairs.length === 0) {
+  const targets = await deployTargets(projectId, args.integrationId ?? null, args.allowLive ?? true);
+  const { reachesLive, envOf, reachedBy } = targets;
+  if (targets.pairs.length === 0) {
     await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
     return noIntegration();
+  }
+  // ISS-1116: a deploy this run already sent at this commit answers the call, before any lock is
+  // taken, so a repeat never reaches Coolify, nor another run's deploy of a commit already running
+  const once = await splitAlreadySent(projectId, runId, targets.pairs, args);
+  const pairs = once.send;
+  if (pairs.length === 0) {
+    return {
+      dispatched: false,
+      pendingHumanConfirm: false,
+      integrationIds: [],
+      reason: 'already-sent',
+      ...keyed(once),
+    };
   }
 
   const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachedBy) : null;
@@ -276,10 +352,11 @@ export async function tryDispatchCoolifyRelease(args: {
     binding: (typeof pairs)[number]['binding'];
     requestId: string;
     live: boolean;
+    commit: string | null;
   }> = [];
   let witnessed = 0;
   try {
-    for (const { binding } of pairs) {
+    for (const { binding, commit } of pairs) {
       if (reachesLive(binding) && !autoProd && !(await prodConfirmed(binding.id, runId))) {
         await markPendingHumanConfirm({
           runId,
@@ -305,12 +382,18 @@ export async function tryDispatchCoolifyRelease(args: {
       });
       if (held) witnessed += 1;
       else reportUnwitnessedDeploy(runId, issueId, binding.id);
-      armed.push({ binding, requestId, live: reachesLive(binding) });
+      armed.push({ binding, requestId, live: reachesLive(binding), commit });
     }
 
     await enqueueArmed(
       armed,
-      { runId, issueId, envOf, targetLabels: args.targetLabels },
+      {
+        runId,
+        issueId,
+        envOf,
+        targetLabels: args.targetLabels,
+        ask: { sentBy: args.sentBy, redeploy: args.redeploy },
+      },
       dispatched,
     );
   } catch (err) {
@@ -334,10 +417,15 @@ export async function tryDispatchCoolifyRelease(args: {
   await freeLockIfNothingPending(lock, runId, dispatched, takenLocks);
 
   if (dispatched.length > 0 || !pendingHumanConfirm) {
-    return { dispatched: dispatched.length > 0, pendingHumanConfirm, integrationIds: dispatched };
+    return {
+      dispatched: dispatched.length > 0,
+      pendingHumanConfirm,
+      integrationIds: dispatched,
+      ...keyed(once),
+    };
   }
   const parked = pairs.filter((p) => reachesLive(p.binding)).map((p) => p.binding.id);
-  return awaitingConfirm(parked);
+  return { ...awaitingConfirm(parked), ...keyed(once) };
 }
 
 /** A uuid fixed by `key`: the same act always names the same job. */
@@ -356,7 +444,7 @@ export async function dispatchCoolifyDeployDirect(args: {
    * under an id derived from it, and a second send finds it there. Fresh where absent.
    */
   requestId?: string | undefined;
-}): Promise<DispatchOutcome> {
+} & DeployAsk): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
   const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const pair = pairs.find((p) => p.binding.id === integrationId);
@@ -364,6 +452,19 @@ export async function dispatchCoolifyDeployDirect(args: {
   const { binding } = pair;
 
   if (await liveActionNeedsHumanConfirm(projectId, binding)) return awaitingConfirm([binding.id]);
+
+  // ISS-1116: with no run, only a deploy of the same commit still running answers this one
+  const once = await splitAlreadySent(projectId, null, [pair], args);
+  const [send] = once.send;
+  if (!send) {
+    return {
+      dispatched: false,
+      pendingHumanConfirm: false,
+      integrationIds: [],
+      reason: 'already-sent',
+      ...keyed(once),
+    };
+  }
 
   const requestId =
     args.requestId ?? `direct:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -375,7 +476,7 @@ export async function dispatchCoolifyDeployDirect(args: {
       issueId: null,
       eventName: 'release.requested',
       requestId,
-      ...targetPayload(null, null, args.targetLabels),
+      ...sentPayload(null, null, send.commit, args, args.targetLabels),
     },
     args.requestId ? { jobId: jobIdOf(args.requestId) } : {},
   );
@@ -387,5 +488,10 @@ export async function dispatchCoolifyDeployDirect(args: {
     data: { bindingId: binding.id, runId: null },
   });
 
-  return { dispatched: true, pendingHumanConfirm: false, integrationIds: [binding.id] };
+  return {
+    dispatched: true,
+    pendingHumanConfirm: false,
+    integrationIds: [binding.id],
+    ...keyed(once),
+  };
 }

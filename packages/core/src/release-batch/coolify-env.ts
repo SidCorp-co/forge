@@ -166,9 +166,11 @@ async function redeployAfter(
   target: CoolifyTarget,
 ) {
   if (!input.redeploy) return null;
+  // the commit is unchanged and the env is not: a redeploy on purpose, never answered as sent
   return runCoolifyDeploy({
     projectId: input.projectId,
     integrationId: row.id,
     targetLabels: [target.label],
+    redeploy: true,
   });
 }
