@@ -1,0 +1,1 @@
+**Pages stop waiting on the shell's reads.** Each route reads attention once, only Releases reads the whole release list, live updates no longer restart slow reads, and the Dashboard shows its lists before Needs you answers.

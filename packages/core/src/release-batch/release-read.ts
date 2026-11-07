@@ -323,15 +323,16 @@ const wentOut = (parts: readonly Part[]): Part[] =>
     .sort((a, b) => (b.releasedAt?.getTime() ?? 0) - (a.releasedAt?.getTime() ?? 0));
 
 /**
- * The releases `choose` picks, summarised exactly as `listReleases` summarises them: every release is
- * placed as the list places it, and only the chosen are weighed, so a read that shows a few never
- * pays for the whole list (ISS-1070).
+ * The releases `choose` picks, summarised: every release is placed, and only the chosen are weighed,
+ * so a read that shows a few never pays for the whole list (ISS-1070). A release is listed once,
+ * under the version its last attempt wears: a version its roster went on from is one of that
+ * release's attempts, not a release of its own (ADR 0011).
  */
 async function summariseChosen(
   projectId: string,
   viewer: ViewerFacts | null,
   choose: (listed: Part[]) => Part[],
-): Promise<{ releases: ReleaseSummary[]; current: string | null }> {
+): Promise<{ releases: ReleaseSummary[]; current: string | null; required: boolean }> {
   const [required, current] = await Promise.all([
     approvalRequired(projectId),
     currentReleaseVersion(projectId),
