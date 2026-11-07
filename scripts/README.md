@@ -1075,6 +1075,17 @@ its entry with it. `pnpm merge-check` runs every direct integration test on the 
 lane holds the list to the tree HEAD tracks before anything runs: a refused list is exit 1 by the same
 names (`lib/merge-check.mjs:highImpactVerdict`), a sound one a single line.
 
+**A red integration test is rerun before it refuses** (ISS-1120). Each file that went red in a
+`pnpm merge-check` integration run (vitest's JSON report names it) runs once more at the head, and
+where it stays red, once at the merge base, in a detached worktree under the repository's
+`.claude/worktrees/`, installed and built there and removed after (`lib/merge-check-reruns.mjs:rerunReds`).
+Only the red files rerun, never the selection. Red at the base too is `base-red`, green on the rerun
+`flaky`: neither refuses the change, and the report's `reruns` names each apart with both runs, which
+core records as a passing check carrying `base-red` and `flaky` fields
+(`packages/core/src/issues/merge-check-rules.ts:checkRefusal`). Green at the base, absent there, or a
+base that cannot install or build is `branch-red`, refused `MERGE_CHECK_RED` as before; a run whose
+report names no red file stays the change's red.
+
 **The declaration is how a miss widens.** A test that reaches its subject by URL, by table name or by
 reading a file reaches it by no import, so the merge check cannot see it. When the whole suite goes
 red and the bisect names a merge whose merge check passed (`rule-suite`), the fix declares the path
