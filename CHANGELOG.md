@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.562] - 2026-11-07
+
+Settings drop routine approvals and second-language options; earlier releases hold their shipped issues
+
+### Changed
+
+- **Routine approval switches and the Vietnamese interface are gone.** Settings offer no person-approval toggles or language pickers, stored policy stays as it was, a release asks no approval its project never requires, and Approvals leaves the rail.
+- **Lists lead with names, and Stuck means stuck.** Integrations, Modules, Requirements, Feedback, Channels, Automation and Issues read names before keys on the shared list; queued issues, settled feedback and issues behind a moving blocker no longer read stuck.
+- **The rail is shorter.** Ecosystem is one row, Threads shows only while a thread exists, Pair opens Runners without a code, and Pipeline now opens Issues › Waves.
+
+### Fixed
+
+- **A pass at a later release's commit now counts for an issue an earlier release shipped**, where Forge's kept ancestry says that commit holds the issue's landing; a finished release run's read names what it shipped.
+
 ## [0.4.0-dev.561] - 2026-11-07
 
 A release records the commit production serves, so judged verdicts count

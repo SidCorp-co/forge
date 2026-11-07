@@ -1,1 +1,0 @@
-**A pass at a later release's commit now counts for an issue an earlier release shipped**, where Forge's kept ancestry says that commit holds the issue's landing; a finished release run's read names what it shipped.
