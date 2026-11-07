@@ -374,36 +374,40 @@ function sitesOf(m: Measure): string[] {
 
 /**
  * Each read, with the most statements it may send and the most shared buffers their plans may touch
- * together at this size, at what ISS-1070 r3 left it: a statement asked again, a model built twice
- * or a table read whole puts a read over one of them. At r3's base (1c38cc063) Needs you and its
- * decisions sent 167 over 78 thousand buffers, the attention read 176, the home read 157, the newest
- * shipped 81 over 18 thousand and What's new 76. The counts are the statements the request sends
- * (its `Server-Timing`), never the work it leaves running.
+ * together at this size, at what ISS-1070 r4 left it: a statement asked again, a model built twice
+ * or a table read whole puts a read over one of them. At r4's base (86309e274) Needs you and its
+ * decisions sent 107 over 72 thousand buffers, the attention read 116, the home read 138 over 42
+ * thousand, the newest shipped 82 over 23 thousand, What's new 77 over 17 thousand and its summary 3
+ * over 5 thousand. The counts are the statements the request sends (its `Server-Timing`), never the
+ * work it leaves running.
  */
 const READS = (p: string): { path: string; statements: number; buffers: number }[] => [
-  { path: `/api/projects/${p}/needs-you`, statements: 104, buffers: 58000 },
-  { path: `/api/projects/${p}/needs-you/decisions`, statements: 104, buffers: 58000 },
-  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 79, buffers: 17500 },
-  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 25, buffers: 3800 },
-  { path: '/api/me/attention', statements: 113, buffers: 58000 },
-  { path: '/api/me/home', statements: 135, buffers: 38500 },
-  { path: '/api/me/whats-new', statements: 74, buffers: 12000 },
-  { path: '/api/me/whats-new/summary', statements: 3, buffers: 5500 },
+  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 64000 },
+  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 64000 },
+  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 15000 },
+  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
+  { path: '/api/me/attention', statements: 115, buffers: 64000 },
+  { path: '/api/me/home', statements: 127, buffers: 27500 },
+  { path: '/api/me/whats-new', statements: 77, buffers: 4500 },
+  { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
 
 /**
  * The reads of a person across {@link PROJECTS_ACROSS} projects, with the most statements each may
- * send and the most shared buffers their plans may touch together. Before ISS-1070 r4 each read
- * each project in turn: the attention read sent ... (filled in by r4).
+ * send and the most shared buffers their plans may touch together, at what ISS-1070 r4 left them.
+ * At its base (86309e274) each read each project in turn: the attention read sent 1,184 statements
+ * over 304 thousand buffers and the home 1,492 over 240 thousand, What's new read 17 thousand
+ * buffers finding the release its build is, and Needs you sent 107. What's new and the ecosystems
+ * read send as many statements for twelve projects as for one.
  */
 const READS_ACROSS = (p: string): { path: string; statements: number; buffers: number }[] => [
-  { path: '/api/me/attention', statements: 100000, buffers: 10_000_000 },
-  { path: '/api/me/home', statements: 100000, buffers: 10_000_000 },
-  { path: '/api/me/whats-new', statements: 100000, buffers: 10_000_000 },
-  { path: '/api/ecosystems/mine', statements: 100000, buffers: 10_000_000 },
-  { path: `/api/projects/${p}/needs-you`, statements: 100000, buffers: 10_000_000 },
-  { path: `/api/projects/${p}/needs-you/decisions`, statements: 100000, buffers: 10_000_000 },
+  { path: '/api/me/attention', statements: 1117, buffers: 216000 },
+  { path: '/api/me/home', statements: 1315, buffers: 126000 },
+  { path: '/api/me/whats-new', statements: 77, buffers: 4500 },
+  { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
+  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 64000 },
+  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 64000 },
 ];
 
 beforeAll(async () => {
