@@ -280,15 +280,21 @@ export async function askParkQuestion(
     awaitsMerge?: AwaitedMerge | undefined;
     /** What the park's question is about, in the ask door's shapes; resolved and refused as that door does. */
     about?: QuestionAboutRequest | undefined;
+    /**
+     * Who owes it, by what the park waits on (`issues/park-owed.ts:parkOwedBy`, ISS-1127); absent
+     * reads `human`, as a comment's question is.
+     */
+    blockerKind?: QuestionBlockerKind | undefined;
   },
 ) {
+  const blockerKind = input.blockerKind ?? 'human';
   if (input.awaitsDesign && input.awaitsMerge) {
     throw new Error(
       'questions: a park question waits on one fact, a design decision or a merge mark, and this one names both',
     );
   }
   refuseAboutOnWait(input);
-  await refuseAboutMissing(executor, { ...input, blockerKind: 'human' });
+  await refuseAboutMissing(executor, { ...input, blockerKind });
   let needed = input.needed?.trim() ?? '';
   let prompt = input.prompt;
   if (input.awaitsDesign) {
@@ -318,7 +324,7 @@ export async function askParkQuestion(
       projectId: input.projectId,
       issueId: input.issueId,
       prompt,
-      blockerKind: 'human',
+      blockerKind,
       answer,
       ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
       ...(input.awaitsMerge ? { awaitsMerge: input.awaitsMerge } : {}),

@@ -176,14 +176,14 @@ interface IssuePorts {
       issueId: string;
       prompt: string;
       needed?: string | undefined;
-      /** The design revision whose decision answers the question (ISS-254). */
+      /** The design revision whose decision answers the question (ISS-254); `linkedUnderIssue`, core linked it. */
       awaitsDesign?: { workflowId: string; revision: number } | undefined;
-      /** Core linked `awaitsDesign` as the one revision proposed under this issue. */
       linkedUnderIssue?: boolean | undefined;
       /** The issue whose merge mark answers the question. */
       awaitsMerge?: { issueId: string } | undefined;
       /** What the question is about (ISS-583), in the ask door's shapes. */
       about?: QuestionAboutRequest | undefined;
+      blockerKind?: 'human' | 'machine' | 'master_or_peer' | undefined; // `park-owed.ts:parkOwedBy`
     },
   ) => Promise<{ id: string; steps: Array<{ prompt: string }> }>;
   /** Answer the open questions waiting on this issue's mark, in the stamp's transaction. */

@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
 import type { QuestionAboutRequest } from '@forge/contracts/questions';
-import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
+import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
+import { parkOwedBy } from './park-owed.js';
 import { askParkQuestion, pendingDesignOfPark, personOwesAnAnswer } from './ports.js';
 
 const DECISION_KIND: WaitingKind = 'needs_decision';
@@ -71,6 +75,7 @@ export async function mintParkQuestion(
   )
     return null;
   const prompt = input.options.transitionReason?.trim() || input.options.reason?.trim() || '';
+  const owed = await parkOwedOf(input, tx, needs);
   const ask = (
     awaited: Pick<Parameters<typeof askParkQuestion>[1], 'awaitsDesign' | 'awaitsMerge'>,
   ) =>
@@ -84,6 +89,8 @@ export async function mintParkQuestion(
       ...awaited,
       ...(about ? { about } : {}),
       ...(linked ? { linkedUnderIssue: true } : {}),
+      // a design revision's question is its approver's, whom the design's own standing names
+      ...(awaited.awaitsDesign ? {} : { blockerKind: owed }),
     });
   const first = (q: { id: string; steps: Array<{ prompt: string }> }): ParkQuestion => ({
     id: q.id,
@@ -98,6 +105,24 @@ export async function mintParkQuestion(
     minted ??= first(q);
   }
   return minted;
+}
+
+/** Who owes the question this park mints, by what it waits on (`park-owed.ts:parkOwedBy`, ISS-1127). */
+async function parkOwedOf(input: MintParkQuestionInput, tx: DrizzleTx, needs: string | undefined) {
+  const [own] = await tx
+    .select({ issSeq: issues.issSeq })
+    .from(issues)
+    .where(eq(issues.id, input.issue.id))
+    .limit(1);
+  const active = await activeIssuePrefix(input.issue.projectId, tx);
+  const held = await heldIssuePrefixes(input.issue.projectId, tx);
+  return parkOwedBy({
+    waitingKind: input.options.waitingKind,
+    needs,
+    awaitsMerge: input.options.awaitsMerge !== undefined,
+    prefixes: [LEGACY_ISSUE_PREFIX, ...(active ? [active] : []), ...held],
+    ownSeq: own?.issSeq ?? 0,
+  }).blockerKind;
 }
 
 /**
