@@ -1,1 +1,0 @@
-**A channel agent follows its box to a new checkout.** A turn runs where the binding names now, a missing checkout is refused by name, and a session whose turn failed is replaced instead of retried forever.

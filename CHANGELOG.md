@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.579] - 2026-11-07
+
+Channel assistants recover after their project moves to a new checkout
+
+### Fixed
+
+- **A channel agent follows its box to a new checkout.** A turn runs where the binding names now, a missing checkout is refused by name, and a session whose turn failed is replaced instead of retried forever.
+
 ## [0.4.0-dev.578] - 2026-11-07
 
 Owed delivery checks run even when the steward's daily room is spent
