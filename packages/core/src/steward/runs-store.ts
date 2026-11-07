@@ -466,13 +466,15 @@ export async function ranOnBasis(
 }
 
 /**
- * How many stuck diagnoses of the subject on `basis` ran to their end since `since`: done or failed,
- * a turn spent on each. A run skipped, or one still live, is none.
+ * How many stuck diagnoses of the subject on `basis` ended since `since`: done or failed, a turn spent
+ * on each, or with `finished` only those whose turn finished (done, or failed on a door's refusal).
+ * A run skipped, or one still live, is none.
  */
 export async function diagnosesOnBasis(
   subject: StandingSubject,
   basis: string,
   since: Date,
+  opts: { finished?: boolean } = {},
 ): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -483,7 +485,9 @@ export async function diagnosesOnBasis(
         eq(stewardRuns.subjectId, subject.id),
         eq(stewardRuns.basis, basis),
         sql`'stuck_diagnosis' = ANY(${stewardRuns.actsToRun})`,
-        inArray(stewardRuns.state, ['done', 'failed']),
+        opts.finished
+          ? sql`(${stewardRuns.state} = 'done' OR (${stewardRuns.state} = 'failed' AND ${stewardRuns.failureKind} = 'refused'))`
+          : inArray(stewardRuns.state, ['done', 'failed']),
         gte(stewardRuns.endedAt, since),
       ),
     );

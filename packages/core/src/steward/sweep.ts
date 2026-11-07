@@ -77,10 +77,11 @@ async function sweepRoom(projectId: string, now: Date): Promise<number> {
 export const DIAGNOSES_PER_BASIS_A_DAY = 2;
 
 /**
- * Whether the stuck item has been diagnosed enough on its basis though no run holds it: a diagnosis
- * ran on it and an ask or a decision already holds its standing, so another would end on a note alone
- * again, or the day's diagnoses of the basis are spent. An ask lifted or a decision's date passed lets
- * the next sweep diagnose it again, within the day's bound.
+ * Whether the stuck item has been diagnosed enough on its basis though no run holds it
+ * (`runs-store.ts:ranOnBasis`): a diagnosis on it finished on a note alone while an ask or a decision
+ * already holds its standing, so another would only note it again, or the day's diagnoses of the
+ * basis are spent. An ask lifted or a decision's date passed lets the next sweep diagnose it again,
+ * and a turn that did not finish is tried again within the hour, each within the day's bound.
  */
 async function diagnosedEnough(
   projectId: string,
@@ -90,8 +91,8 @@ async function diagnosedEnough(
 ): Promise<boolean> {
   const today = await diagnosesOnBasis(subject, row.basis, utcDayStart(now));
   if (today >= DIAGNOSES_PER_BASIS_A_DAY) return true;
-  const ever = today > 0 || (await diagnosesOnBasis(subject, row.basis, new Date(0))) > 0;
-  return ever && (await askedAlready(projectId, row, now)) !== null;
+  const noted = await diagnosesOnBasis(subject, row.basis, new Date(0), { finished: true });
+  return noted > 0 && (await askedAlready(projectId, row, now)) !== null;
 }
 
 /**
