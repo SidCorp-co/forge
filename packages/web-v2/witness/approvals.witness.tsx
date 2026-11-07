@@ -1,5 +1,5 @@
-// The Approvals page witnessed as drawn (REQ-48 BC-11): the one Needs you list beside the project menu
-// whose Approvals row carries the same count, grouped by topic, each row its subject, the agent's
+// The Approvals page witnessed as drawn (REQ-48 BC-11): the one Needs you list beside the project menu,
+// which holds no Approvals row (ISS-1071), grouped by topic, each row its subject, the agent's
 // proposal and its tags, with ✓ / ✕ on the right. Then a feedback item's peek (what the agent proposes,
 // if you approve, why, what the reporter said, and the footer that decides it), a design update's
 // peek with the designs that move, a selection's bar stating what approving makes, a decline's
@@ -108,7 +108,8 @@ function listed(): string[] {
   if (!h1 || h1.scrollWidth > h1.clientWidth + 0.5) wrong.push(`the page title is cut to ${h1?.clientWidth ?? 0} px of its ${h1?.scrollWidth ?? 0}`);
   if (!phone) {
     const rail = document.querySelector("[data-testid=witness-rail]")?.textContent ?? "";
-    if (!rail.includes(String(READ.total))) wrong.push(`the menu's Approvals row does not read ${READ.total}`);
+    // the rail holds no Approvals row: the serious decisions are read under the Dashboard's Needs you (ISS-1071)
+    if (/Approvals/.test(rail)) wrong.push("the menu holds an Approvals row");
   }
   for (const r of rows()) {
     for (const b of r.querySelectorAll("button")) if (b.getBoundingClientRect().right > window.innerWidth + 0.5) wrong.push(`a row's "${b.getAttribute("aria-label") ?? b.textContent}" runs past the window's right edge`);
@@ -211,8 +212,8 @@ window.__witness = {
       run: async () => {
         theme("dark");
         closePeek();
-        await search("ISS-41");
-        const row = rowOf("ISS-41");
+        await search("REQ-141");
+        const row = rowOf("REQ-141");
         const sends = row?.querySelector<HTMLElement>("[data-testid=approval-approve]");
         const wrong: string[] = [];
         if (!sends?.textContent?.includes("Keep the old order")) wrong.push(`the question's ✓ reads "${sends?.textContent ?? ""}", not the answer it sends`);
