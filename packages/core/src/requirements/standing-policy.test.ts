@@ -137,3 +137,42 @@ describe('a shipped requirement whose criteria hold no verdict', () => {
     expect(s.times.stuck?.code).toBe('overdue');
   });
 });
+
+// REQ-90 sat at "You: agree r1" for its owner on a project whose agree gate is off, though the owner
+// ruled agreeing is the master's there (ISS-1108; REQ-89 BC-8 traced it to `ownerWait`). A step no
+// gate asks a person is the master's by `whoOwes`, so it never reaches a person's Needs you.
+describe('a step whose gate asks no person (ISS-1108)', () => {
+  const owner = { userId: 'u1', canWrite: true, canSignOff: true, canApproveBreakdown: true };
+  const draft = (owed: OwedPolicy) =>
+    turn(base({ status: 'draft', agreedAt: null, stalePins: [], viewer: owner, owed }));
+
+  it("is the master's to agree, never its person owner's Needs you", () => {
+    const s = draft(routine);
+    expect(s.attentionGroup).not.toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'agree r1' });
+  });
+
+  it("stays a person's where the project's agree gate asks one", () => {
+    const s = draft({ ...routine, gates: { ...gatesOff, agree: true } });
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'agree r1' });
+  });
+
+  it("leaves a proposed revision's accept to the master where the revisions gate is off", () => {
+    const proposed = {
+      revision: 2,
+      state: 'proposed' as const,
+      authorId: 'u1',
+      authorName: 'orchestrator',
+      authorKind: 'human' as const,
+      authorAgency: 'human' as const,
+      createdAt: at('2026-10-02T00:00:00Z'),
+      proposedAt: at('2026-10-02T00:00:00Z'),
+      decidedAt: null,
+    };
+    const s = turn(
+      base({ stalePins: [], viewer: owner, revisions: [...base().revisions, proposed] }),
+    );
+    expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'accept r2' });
+  });
+});

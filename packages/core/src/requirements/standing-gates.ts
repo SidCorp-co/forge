@@ -14,6 +14,7 @@ import type {
 } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
+import { type OwedActKind, whoOwes } from '@forge/contracts/who-owes';
 import type { StandingInput } from './standing.js';
 
 const YOU = say('standing.who.you');
@@ -90,6 +91,14 @@ export function askedTurn(input: StandingInput, drafting: boolean) {
 /** The steps a project switch gates on a requirement's own turn (`@forge/contracts/person-gates`). */
 type TurnGate = Extract<PersonGate, 'agree' | 'revisions' | 'accept' | 'breakdown'>;
 
+/** The act each gated step is in the one table of who owes it (`@forge/contracts/who-owes`). */
+const OWED_ACT: Record<TurnGate, OwedActKind> = {
+  agree: 'requirement.agree',
+  revisions: 'revision.accept',
+  accept: 'requirement.accept',
+  breakdown: 'breakdown.accept',
+};
+
 /** Who the act falls to where a step's switch is on: the holders of its approve permission. */
 const GATE_HOLDER: Record<
   TurnGate,
@@ -107,10 +116,9 @@ const GATE_HOLDER: Record<
 /**
  * Whose act a gated step is, so a person's Needs you lists only what they must do (REQ-34 BC-22).
  * Where the project asks a person at this step (its `approvals` switch is on), every holder of the
- * step's approve permission may do it, and only they are asked. Where it does not, the move asks only
- * the write permission (`person-gates.ts:PERSON_GATE_STEPS`), so it is the requirement's owner's: a
- * holder of the approve permission who is not its owner is not asked, and an agent owner's act is
- * its master's.
+ * step's approve permission may do it, and only they are asked. Where it does not, the act is routine
+ * and the project's master's by `whoOwes` (ISS-1108: REQ-90 sat at "You: agree r1" for its owner on
+ * a project whose agree gate was off). Only a read that carries no policy falls back to the owner.
  */
 export function actWait(
   input: StandingInput,
@@ -130,6 +138,9 @@ export function actWait(
           group: 'waiting' as const,
           waitingOn: wait('person', more.holder ?? holder.who, act, rule, due),
         };
+  }
+  if (input.owed && whoOwes(OWED_ACT[gate], input.owed).by === 'master') {
+    return { group: 'waiting' as const, waitingOn: wait('agent', MASTER, act, rule, due) };
   }
   return ownerWait(input, act, rule, due);
 }
