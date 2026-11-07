@@ -1,0 +1,1 @@
+**Needs you, the attention count, Home and the newest releases send fewer database queries.** Each read asks a fact once however many of its parts need it, and the newest releases read only the few they show.
