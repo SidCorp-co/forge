@@ -13,6 +13,8 @@
  * @direct-test-of packages/contracts/src/verified-rule.ts
  * @direct-test-of packages/core/src/issues/criteria/service.ts
  * @direct-test-of packages/core/src/issues/criteria/verdict-counting.ts
+ * @direct-test-of packages/core/src/issues/standing-facts-read.ts
+ * @direct-test-of packages/core/src/issues/standing-read.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -212,6 +214,19 @@ async function latestRead(issueId: string): Promise<CriteriaLatest | null | unde
   return read.criteria[0]?.latest;
 }
 
+/** How many of ISS-1's criteria its standing counts met, read alone and on the list (the peek's strip, a row's Met n/total). */
+async function metOf(): Promise<{ one: unknown; listed: unknown }> {
+  type Row = { key: string; standing: { criteria: { met: number; total: number } } };
+  const one = (await ok(onProject('GET', '/issues/standing/ISS-1'))) as unknown as Row;
+  const list = (await ok(onProject('GET', '/issues/standing?scope=all'))) as unknown as {
+    issues: Row[];
+  };
+  return {
+    one: one.standing.criteria.met,
+    listed: list.issues.find((r) => r.key === 'ISS-1')?.standing.criteria.met,
+  };
+}
+
 async function statusOf(issueId: string): Promise<string> {
   await settleOutbox();
   const [row] = await rows<{ status: string }>(
@@ -238,6 +253,10 @@ describe('BC-2: a pass by the run that built the work never counts, whatever qa 
       code: 'VERDICT_BY_BUILDER',
     });
     expect(latest?.notCounted?.detail).toContain('recorded by the run that built this issue');
+    expect(await metOf(), 'the standing counts met only passes that count').toEqual({
+      one: 0,
+      listed: 0,
+    });
   });
 
   it('keeps counting the building run’s pass recorded before the cutover under qa: self, marked as the builder’s', async () => {
@@ -255,6 +274,7 @@ describe('BC-2: a pass by the run that built the work never counts, whatever qa 
     const latest = await latestRead(issue);
     expect(latest?.countedUnderCutover).toBe(true);
     expect(latest?.notCounted).toBeNull();
+    expect(await metOf()).toEqual({ one: 1, listed: 1 });
   });
 
   it('does not count the builder’s pass once a judge took its lease, by the run it was declared over', async () => {
@@ -305,6 +325,7 @@ describe('BC-2: a pass by the run that built the work never counts, whatever qa 
     // a fail counts whoever records it
     expect(two?.latest?.verdict).toBe('fail');
     expect(two?.latest?.notCounted).toBeNull();
+    expect(await metOf()).toEqual({ one: 0, listed: 0 });
   });
 
   it('answers the builder’s pass as not counted on the verdict write itself, never a silent 201', async () => {
