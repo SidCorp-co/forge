@@ -1,3 +1,3 @@
 // The face of the activity feature: what other features import of it (CODE-STANDARD.md, Structure).
 export { ActivityScreen } from "./components/activity-screen";
-export { ProjectDashboard } from "./dashboard/project-dashboard";
+export { ProjectDashboard, useProjectsAttention } from "./dashboard/project-dashboard";

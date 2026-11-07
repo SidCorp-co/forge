@@ -1,4 +1,4 @@
-export { useIssueStanding, useProjectMembers, useIssues } from "./hooks";
+export { issueStandingQuery, useIssueStanding, useProjectMembers, useIssues } from "./hooks";
 export { issueRowView, useRowWords } from "./components/issue-standing-bits";
 export { issuesApi } from "./api";
 export { BatchReleaseDialog, type BatchReleaseIssue } from "./components/batch-release-dialog";

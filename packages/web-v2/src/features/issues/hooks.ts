@@ -45,6 +45,9 @@ export function useIssueStanding(projectId: string | undefined, scope: IssueStan
   return useQuery(issueQueries.standing(projectId, scope));
 }
 
+/** The Issues list's read as query options, for a screen that reads it for several projects at once. */
+export const issueStandingQuery = (projectId: string, scope: IssueStandingScope) => issueQueries.standing(projectId, scope);
+
 export function useIssueStandingOf(projectId: string | undefined, key: string | undefined) {
   return useQuery(issueQueries.standingOf(projectId, key));
 }

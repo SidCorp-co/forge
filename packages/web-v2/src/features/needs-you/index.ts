@@ -2,7 +2,7 @@
 export { type DecisionSettled, DecisionList } from "./components/decision-list";
 export { NeedsYouList } from "./components/needs-you-list";
 export { needsYouHint } from "./hint";
-export { useNeedsYou, useNeedsYouDecisions } from "./hooks";
+export { needsYouDecisionsQuery, useNeedsYou, useNeedsYouDecisions } from "./hooks";
 export { decisionHref, needsYouHref, needsYouKeyLabel } from "./routes";
 export { type NeedsYouAreaKey, type NeedsYouResponse } from "./types";
 export { needsYouApi, prefillOf, pressBody, wordsAsItStands } from "./api";

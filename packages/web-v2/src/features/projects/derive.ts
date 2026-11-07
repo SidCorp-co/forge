@@ -15,16 +15,20 @@ export function isAttention(item: Pick<ProjectConsoleItem, 'health'>): boolean {
   return ATTENTION_HEALTH.has(item.health);
 }
 
-export function deriveHealth(
-  h: Pick<
-    ProjectHealthRow,
-    'blockers' | 'pendingEscalations' | 'runnerCount' | 'totalActive' | 'liveRuns'
-  >,
-): HealthKey {
-  if ((h.blockers?.length ?? 0) > 0 || (h.pendingEscalations ?? 0) > 0) return 'attention';
-  if (h.runnerCount === 0 && (h.totalActive > 0 || h.liveRuns > 0)) return 'attention';
+/**
+ * Whether a project has work: idle or healthy. Attention is never read here from parked statuses or a
+ * runner count: a project needs attention where its Dashboard says so, its Needs you or Stuck group
+ * holding anything (`features/activity/dashboard/project-dashboard.tsx:needsAttention`), which the
+ * Projects page lays over this as {@link withAttention} (ISS-1072).
+ */
+export function deriveHealth(h: Pick<ProjectHealthRow, 'totalActive' | 'liveRuns'>): HealthKey {
   if (h.totalActive === 0 && h.liveRuns === 0) return 'idle';
   return 'healthy';
+}
+
+/** The console's items with each project its Dashboard reads as needing attention marked so. */
+export function withAttention(items: ProjectConsoleItem[], attention: ReadonlyMap<string, boolean>): ProjectConsoleItem[] {
+  return items.map((p) => (attention.get(p.id) ? { ...p, health: 'attention' } : p));
 }
 
 /**

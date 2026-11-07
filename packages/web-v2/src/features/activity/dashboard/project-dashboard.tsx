@@ -9,10 +9,11 @@ import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { decisionLineOf } from "@forge/contracts/plain-decision";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { ReleaseSummary } from "@forge/contracts/releases";
+import { useQueries } from "@tanstack/react-query";
 import { GroupedList, type ListGroup, type ListRowView, ProjectLoader, StatusBadge, StatusChip, useGroupFold } from "@/design";
 import { AuditLine } from "../components/cleanup";
-import { issueRowView, useIssueStanding, useRowWords } from "@/features/issues";
-import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
+import { issueRowView, issueStandingQuery, useIssueStanding, useRowWords } from "@/features/issues";
+import { decisionHref, needsYouDecisionsQuery, useNeedsYouDecisions } from "@/features/needs-you";
 import { useShippedReleases } from "@/features/releases";
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { approvalsHref, questionDecisionHref } from "@/lib/routes/approvals";
@@ -90,6 +91,37 @@ function capped(id: string, rows: DashRow[], total: number, href: string): { row
   const named = rows.slice(0, id === "needs" ? NEEDS_YOU_PERSON_CAP : DASHBOARD_ROWS);
   const n = total - named.length;
   return { rows: n > 0 ? [...named, { kind: "more", group: id, n, href }] : named, total };
+}
+
+/** The groups a Dashboard draws that ask for someone: decisions waiting on the reader, and stuck work. */
+const ATTENTION_GROUPS = new Set(["needs", "stuck"]);
+
+/**
+ * Whether a project needs attention, read as its Dashboard reads it (ISS-1072): its Needs you or its
+ * Stuck group holds anything. The Projects page reads its Attention through this one reading, never
+ * a rule of its own over parked statuses, so the two never disagree.
+ */
+export function needsAttention(t: Copy, read: Pick<DashRead, "decisions" | "issues">): boolean {
+  return groupsOf(t, "", { ...read, shipped: [] }).some((g) => ATTENTION_GROUPS.has(g.id) && g.rows.length > 0);
+}
+
+/**
+ * Each project's attention by {@link needsAttention}, from the reads its Dashboard makes and shares:
+ * the Issues list's open standing and the decisions waiting on the reader. A project not yet read is
+ * absent, never read as calm or as needing attention.
+ */
+export function useProjectsAttention(projectIds: readonly string[]): ReadonlyMap<string, boolean> {
+  const t = useCopy();
+  const standing = useQueries({ queries: projectIds.map((id) => issueStandingQuery(id, "open")) });
+  const decisions = useQueries({ queries: projectIds.map((id) => needsYouDecisionsQuery(id)) });
+  const read = new Map<string, boolean>();
+  projectIds.forEach((id, i) => {
+    const issues = standing[i]?.data;
+    const owed = decisions[i]?.data;
+    if (!issues || !owed) return;
+    read.set(id, needsAttention(t, { decisions: { listed: owed.decisions, total: owed.total }, issues: issues.issues }));
+  });
+  return read;
 }
 
 function groupsOf(t: Copy, slug: string, read: DashRead): ListGroup<DashRow>[] {

@@ -11,6 +11,8 @@ export const useNeedsYou = (projectId: string | undefined) => useQuery(readOf(ne
 
 const needsYouDecisionsKey = (projectId: string) => [...NEEDS_YOU_ROOT, projectId, "decisions"] as const;
 
+/** The decisions read as query options, for a screen that reads it for several projects at once. */
+export const needsYouDecisionsQuery = (projectId: string) => readOf(needsYouDecisionsKey(projectId), () => needsYouApi.decisions(projectId));
+
 /** The decisions only the viewer can make (REQ-41 BC-1), the read the home and the chat share. */
-export const useNeedsYouDecisions = (projectId: string | undefined) =>
-  useQuery(readOf(needsYouDecisionsKey(projectId ?? ""), () => needsYouApi.decisions(projectId as string)));
+export const useNeedsYouDecisions = (projectId: string | undefined) => useQuery(needsYouDecisionsQuery(projectId ?? ""));

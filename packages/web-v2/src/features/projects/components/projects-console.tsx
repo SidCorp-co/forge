@@ -20,7 +20,7 @@ import {
 import { useActiveOrg } from '@/features/orgs';
 import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';
-import { filterProjects, formatSpend, isAttention, showSpend, sortProjects, workspaceTotals } from '../derive';
+import { filterProjects, formatSpend, isAttention, showSpend, sortProjects, withAttention, workspaceTotals } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView, WorkspaceTotals } from '../types';
 import { NewProjectDialog } from './new-project-dialog';
@@ -31,9 +31,14 @@ import { ProjectsToolbar } from './projects-toolbar';
 const GRID = 'grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4';
 const SKELETONS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
-export function ProjectsConsole() {
+/**
+ * `attention`: each project's attention as its Dashboard reads it, by id; the route composes it from
+ * the Dashboard's own reading, so Projects never says Attention where the Dashboard shows nothing.
+ */
+export function ProjectsConsole({ attention = new Map() }: { attention?: ReadonlyMap<string, boolean> }) {
   const t = useCopy();
-  const { items, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
+  const { items: read, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
+  const items = withAttention(read, attention);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [opened, setOpened] = useState(false);
