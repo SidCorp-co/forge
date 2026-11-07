@@ -10,7 +10,7 @@ import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
+import { rowsOf, uuidArray } from '../db/raw-sql.js';
 import { onePerProject, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
@@ -161,11 +161,12 @@ export function issueRowsIn(
     projectId,
     (ids) =>
       rowsWhere(sql`i.id IN (
-        SELECT id FROM (
-          SELECT i.id, row_number() OVER (PARTITION BY i.project_id ORDER BY i.updated_at DESC, i.iss_seq DESC) AS rank
-            FROM issues i
-           WHERE i.project_id IN ${uuids(ids)} AND i.archived_at IS NULL ${scopeSql(scope)}
-        ) ranked WHERE rank <= ${limit})`),
+        SELECT top.id FROM unnest(${uuidArray(ids)}) AS p(id)
+        CROSS JOIN LATERAL (
+          SELECT i.id FROM issues i
+           WHERE i.project_id = p.id AND i.archived_at IS NULL ${scopeSql(scope)}
+           ORDER BY i.updated_at DESC, i.iss_seq DESC
+           LIMIT ${limit}) top)`),
     (r) => r.project_id,
   );
 }
