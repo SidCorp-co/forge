@@ -1,0 +1,1 @@
+**A requirement's delivery check names only what can be cleared.** Its questions read and answer at their own doors, a check finishes on its own or the sweep restarts it, and its standing never asks a move the gate refuses.
