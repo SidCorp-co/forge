@@ -314,7 +314,7 @@ describe('a release that completes on a seen deploy records its shipped commit (
     const recorded = await recordObservedShippedCommit(runId);
 
     expect(recorded).toMatchObject({ commit: null, from: null });
-    expect(recorded.said).toContain('shipped-commit');
+    expect(recorded?.said).toContain('shipped-commit');
     const [row] = [
       ...(await db.execute<{ said: string | null }>(sql`
         SELECT metadata -> 'finish' -> 'shipped' ->> 'said' AS said FROM pipeline_runs WHERE id = ${runId}`)),
