@@ -8,6 +8,7 @@ import {
   offerRead,
   partsOf,
   perProjectRead,
+  readAcross,
   rowsPerId,
   rowsPerProject,
   withReadMemo,
@@ -340,5 +341,90 @@ describe('a batch at the quiet point', () => {
 
   it('joins and splits an id of several parts', () => {
     expect(partsOf(idOfParts('p', 'v1.2'))).toEqual(['p', 'v1.2']);
+  });
+
+  describe('inside a read across projects', () => {
+    const timed = <T>(fn: () => Promise<T>) =>
+      withQueryTiming(newQueryTiming(), () => withReadMemo(fn));
+
+    it("waits for a project's read that has yet to ask a key, so one a step behind still asks in the one statement", async () => {
+      const k = perId();
+      const j = perId();
+      await timed(() =>
+        readAcross(['a', 'b', 'c'], String, async (p) => {
+          // b asks j first, a step a and c do not take, then every read asks k
+          if (p === 'b') await memoizedPerId('j', [p], j.read);
+          return memoizedPerId('k', [p], k.read);
+        }),
+      );
+      expect(j.asked).toEqual([['b']]);
+      expect(k.asked).toEqual([['a', 'c', 'b']]);
+    });
+
+    it('reads it a step apart where the reads run side by side without it', async () => {
+      const k = perId();
+      const j = perId();
+      await timed(() =>
+        Promise.all(
+          ['a', 'b', 'c'].map(async (p) => {
+            if (p === 'b') await memoizedPerId('j', [p], j.read);
+            return memoizedPerId('k', [p], k.read);
+          }),
+        ),
+      );
+      expect(k.asked).toEqual([['a', 'c'], ['b']]);
+    });
+
+    it("stops waiting for a project's read once it ends without asking", async () => {
+      const k = perId();
+      const j = perId();
+      const answers = await timed(() =>
+        readAcross(['a', 'b'], String, async (p) =>
+          p === 'a' ? memoizedPerId('k', [p], k.read) : memoizedPerId('j', [p], j.read),
+        ),
+      );
+      expect(answers.map((m) => [...m.keys()])).toEqual([['a'], ['b']]);
+      expect(k.asked).toEqual([['a']]);
+    });
+
+    it('reads what every read waits on once nothing else can run, so two reads waiting on each other end', async () => {
+      const k = perId();
+      const j = perId();
+      const answers = await timed(() =>
+        readAcross(['a', 'b'], String, async (p) => {
+          const first = await memoizedPerId(
+            p === 'a' ? 'k' : 'j',
+            [p],
+            p === 'a' ? k.read : j.read,
+          );
+          const second = await memoizedPerId(
+            p === 'a' ? 'j' : 'k',
+            [p],
+            p === 'a' ? j.read : k.read,
+          );
+          return [...first.keys(), ...second.keys()];
+        }),
+      );
+      expect(answers).toEqual([
+        ['a', 'a'],
+        ['b', 'b'],
+      ]);
+    });
+
+    it('reads a key by project for every project declared, the first ask among them', async () => {
+      const asked: string[][] = [];
+      const fetch = async (ids: readonly string[]) => {
+        asked.push([...ids]);
+        return ids.map((project) => ({ project }));
+      };
+      const rows = await timed(() =>
+        readAcross(['p1', 'p2'], String, async (p) => {
+          if (p === 'p2') await turns(2);
+          return rowsPerProject('rows', p, fetch, (r) => r.project);
+        }),
+      );
+      expect(rows).toEqual([[{ project: 'p1' }], [{ project: 'p2' }]]);
+      expect(asked).toEqual([['p1', 'p2']]);
+    });
   });
 });

@@ -20,7 +20,7 @@ import type { MasterServing } from '@forge/contracts/steward';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { db } from '../db/client.js';
-import { memoizedPerId } from '../db/read-memo.js';
+import { memoizedInProject } from '../db/read-memo.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
@@ -237,7 +237,7 @@ async function standingRows(
     activeIssuePrefix(projectId),
     edgesPerIssue(projectId, ids),
     criteriaPerIssue(projectId, ids),
-    memoizedPerId(`modules:${projectId}`, ids, (some) => modulesOf(projectId, some)),
+    memoizedInProject('modules', projectId, ids, modulesOf),
     feedbackOf(ids),
     approvalRequired(projectId),
     withheldOf(projectId, raws),

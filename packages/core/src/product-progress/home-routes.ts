@@ -14,7 +14,7 @@ import {
 } from '@forge/contracts/owner-home';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { readingAcross } from '../db/read-memo.js';
+import { readAcross } from '../db/read-memo.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -73,11 +73,11 @@ meHomeRoutes.get(
     const viewer = viewerOf(c);
     const now = new Date();
     const projects = await readableProjects(viewer.userId, orgId ?? null);
-    // a read by project reads every one of them in its one statement (`db/read-memo.ts:readingAcross`)
-    readingAcross(projects.map((p) => p.id));
-    // every project read side by side, each fact read once for all of them (ISS-1070 r6)
-    const parts = await Promise.all(
-      projects.map(async (p) => {
+    // every project read side by side, each fact read once for all of them (`db/read-memo.ts:readAcross`)
+    const parts = await readAcross(
+      projects,
+      (p) => p.id,
+      async (p) => {
         const [part, releases] = await Promise.all([
           readHomeProject(viewer, p.id, now),
           liveReleasesOf(p.id),
@@ -87,7 +87,7 @@ meHomeRoutes.get(
           ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
         ]);
         return { ...(await homeItemsOf(p, part, now)), live: liveOf(p, releases, mine) };
-      }),
+      },
     );
     const moving = parts.flatMap((p) => p.moving).sort(byLastMove);
     const response: HomeResponse = {
@@ -115,16 +115,16 @@ meHomeRoutes.get(
     const { q, orgId } = c.req.valid('query');
     const viewer = viewerOf(c);
     const projects = await readableProjects(viewer.userId, orgId ?? null);
-    // a read by project reads every one of them in its one statement (`db/read-memo.ts:readingAcross`)
-    readingAcross(projects.map((p) => p.id));
-    const found = await Promise.all(
-      projects.map(async (p) => {
+    const found = await readAcross(
+      projects,
+      (p) => p.id,
+      async (p) => {
         const [part, releases] = await Promise.all([
           readHomeProject(viewer, p.id),
           releasesOf(p.id),
         ]);
         return findIn(p, part, releases, q);
-      }),
+      },
     );
     const items = found.flatMap((f) => f.items);
     const total = found.reduce((n, f) => n + f.total, 0);

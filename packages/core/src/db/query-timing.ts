@@ -14,7 +14,16 @@ export interface QueryTiming {
   /** Statements sent and not yet answered; a transaction waiting on its own body is not one. */
   sending: number;
   /** What waits for the request's next quiet point ({@link whenQuiet}). */
-  quiet: Array<() => void>;
+  quiet: QuietWait[];
+}
+
+/**
+ * One wait for a quiet point. `held` answers 0 where it may run now; otherwise it is kept back while
+ * any wait that may run now does, and where none may, the waits holding the least run first.
+ */
+interface QuietWait {
+  run: () => void;
+  held?: (() => number) | undefined;
 }
 
 const timings = new AsyncLocalStorage<QueryTiming>();
@@ -60,24 +69,31 @@ function open(t: QueryTiming): () => void {
  * those answers set going has run, so every read of the request is then waiting on something not yet
  * sent. A batched read (`db/read-memo.ts:memoizedPerId`) gathers there what all of a request's
  * concurrent reads ask, however many statements each sent before asking. A transaction's body
- * waiting on `fn` is not a statement in flight, so it never holds the point back. Outside a timed
- * request the point is the end of this turn.
+ * waiting on `fn` is not a statement in flight, so it never holds the point back. While `held`
+ * answers more than 0, `fn` waits past points where something else waiting runs ({@link QuietWait}).
+ * Outside a timed request the point is the end of this turn.
  */
-export function whenQuiet(fn: () => void): void {
+export function whenQuiet(fn: () => void, held?: () => number): void {
   const t = timings.getStore();
   if (!t) {
     setImmediate(fn);
     return;
   }
-  t.quiet.push(fn);
+  t.quiet.push({ run: fn, held });
   if (t.quiet.length === 1) setImmediate(() => settle(t));
 }
 
+// Every quiet point runs a wait, so holding one never stops the request: those free to run, else
+// those holding the least
 function settle(t: QueryTiming): void {
   if (t.sending > 0 || t.quiet.length === 0) return;
-  const due = t.quiet;
-  t.quiet = [];
-  for (const fn of due) fn();
+  const due = t.quiet.map((w) => ({ w, held: w.held?.() ?? 0 }));
+  const least = Math.min(...due.map((d) => d.held));
+  const run = due.filter((d) => d.held === least).map((d) => d.w);
+  t.quiet = due.filter((d) => d.held !== least).map((d) => d.w);
+  for (const w of run) w.run();
+  // what ran may have sent nothing (an answer already held): what it kept back waits for the next point
+  if (t.quiet.length > 0) setImmediate(() => settle(t));
 }
 
 /** Marks a statement of `t` sent; the function it returns marks it answered, once. */

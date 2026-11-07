@@ -33,7 +33,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { newQueryTiming, withQueryTiming } from '../../src/db/query-timing.js';
-import { withReadMemo } from '../../src/db/read-memo.js';
+import { readAcross, withReadMemo } from '../../src/db/read-memo.js';
 import { readNeedsYouDecisions } from '../../src/development/needs-you-decisions-read.js';
 import { readNeedsYou } from '../../src/development/needs-you-list.js';
 import { needsYouViewerOf } from '../../src/development/needs-you-viewer.js';
@@ -197,7 +197,7 @@ describe("inside one read across a person's projects, each project's reads answe
       for (const id of worlds) alone.push(await reads(id));
       // timed as a request is, so each batch waits for the request's quiet point as it does live
       const together = await withQueryTiming(newQueryTiming(), () =>
-        withReadMemo(() => Promise.all(worlds.map(reads))),
+        withReadMemo(() => readAcross(worlds, String, reads)),
       );
       // each world holds what the shared facts are about, so no read compares two empty answers
       for (const answer of alone as Awaited<ReturnType<typeof reads>>[]) {

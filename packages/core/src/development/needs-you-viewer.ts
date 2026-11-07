@@ -5,7 +5,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { readingAcross } from '../db/read-memo.js';
+import { readAcross } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';
@@ -48,13 +48,12 @@ export async function readNeedsYouAcross(
     .select({ id: projects.id, slug: projects.slug, name: projects.name })
     .from(projects)
     .where(inArray(projects.id, ids));
-  // a read by project reads every one of them in its one statement (`db/read-memo.ts:readingAcross`)
-  readingAcross(names.map((p) => p.id));
-  // every project read side by side: each fact they ask is read once for all of them
-  // at the request's quiet point (`db/read-memo.ts:memoizedPerId`), so twelve projects send the
-  // statements of one
-  const perProject = await Promise.all(
-    names.map(async (p): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
+  // every project read side by side, each fact they ask read once for all of them
+  // (`db/read-memo.ts:readAcross`), so twelve projects send the statements of one
+  const perProject = await readAcross(
+    names,
+    (p) => p.id,
+    async (p): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
       const access = await effectiveProjectRole(userId, p.id);
       if (!access || !holds(access, 'project.read')) return [];
       const { read, ids } = await readNeedsYouDecisionsBare(
@@ -75,7 +74,7 @@ export async function readNeedsYouAcross(
           ids,
         },
       ];
-    }),
+    },
   );
   // what every project's decisions rest on, in one read for all of them (REQ-48 r3 BC-15)
   const sections = perProject.flat();

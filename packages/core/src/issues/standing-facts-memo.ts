@@ -1,7 +1,7 @@
 // The facts of the issue standing read that are each issue's own, read once per issue in a request
 // however many of its reads ask (`db/read-memo.ts:memoizedPerId`, ISS-1070).
 
-import { memoizedPerId } from '../db/read-memo.js';
+import { memoizedInProject, memoizedPerId } from '../db/read-memo.js';
 import { type BlockingEdge, blockingEdgesAcross } from './blocked-by.js';
 import { type CriteriaRaw, criteriaOf } from './standing-facts-read.js';
 
@@ -14,9 +14,10 @@ export async function criteriaPerIssue(
   projectId: string,
   ids: readonly string[],
 ): Promise<CriteriaRaw[]> {
-  const byIssue = await memoizedPerId(`standingCriteria:${projectId}`, ids, async (some) => {
+  // one key for every project's read, each issue's criteria read within its project
+  const byIssue = await memoizedInProject('standingCriteria', projectId, ids, async (p, some) => {
     const out = new Map<string, CriteriaRaw[]>();
-    for (const c of await criteriaOf(projectId, some))
+    for (const c of await criteriaOf(p, some))
       out.set(c.issue_id, [...(out.get(c.issue_id) ?? []), c]);
     return out;
   });
