@@ -76,8 +76,20 @@ function innerAct(act: Said): Said {
   return inner && typeof inner === 'object' && 'key' in inner ? innerAct(inner) : act;
 }
 
+/**
+ * An agent's draft waiting on its master to propose or drop it is in the master's queue, as a
+ * dispatch is: never a fault (ISS-1072). The same act owed by a person (no runner bound, so a person
+ * acts) keeps their decision's clock.
+ */
+const MASTER_QUEUE: ReadonlySet<string> = new Set([
+  'standing.act.proposeOrDrop',
+  'standing.act.reviseThenProposeOrDrop',
+]);
+
 export function actClassOf(w: Pick<WaitingOn, 'kind' | 'says'>): StandingActClass {
-  return BY_KEY[innerActKey(w)] ?? BY_KIND[w.kind];
+  const key = innerActKey(w);
+  if (MASTER_QUEUE.has(key) && (w.kind === 'master' || w.kind === 'agent')) return 'queue';
+  return BY_KEY[key] ?? BY_KIND[w.kind];
 }
 
 /** The key of the act a wait names, read through a requirement's wait on one of its issues. */
