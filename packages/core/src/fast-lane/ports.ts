@@ -1,4 +1,4 @@
-// What the fast lane reads from the previews module (REQ-39, docs/proposals/live-preview.md): an
+// What the fast lane reads from the previews module (REQ-39): an
 // issue's approved preview, with the patch id and the files its approver saw. The previews module
 // owns that row and lands in its own lane; the composition root hands its reader in at boot, so the
 // fast lane names no table it does not own.

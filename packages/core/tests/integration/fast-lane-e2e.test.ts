@@ -1,5 +1,5 @@
 /**
- * The fast lane (REQ-39 BC-7, BC-8; docs/proposals/live-preview.md, "Fast lane"), over HTTP against
+ * The fast lane (REQ-39 BC-7, BC-8), over HTTP against
  * a throwaway Postgres: a merge check on the fast lane runs the typecheck and the touched tests only,
  * and stands only for the change a person approved in its preview — its patch id the approved one,
  * every file it touches fast. `GET /api/issues/:id/lane` says which lane an issue's change takes and

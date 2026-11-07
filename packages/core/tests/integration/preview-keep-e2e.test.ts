@@ -15,7 +15,7 @@ import { createTestFeedback, createTestUser } from '../helpers/factories.js';
 import { SubjectsWorld } from '../helpers/preview-subjects-world.js';
 import { atPreview, cookieOf } from '../helpers/preview-world.js';
 
-// REQ-41 r1 BC-14, BC-15, BC-16 (docs/proposals/chat-first.md "Idea preview"): an idea preview's
+// REQ-41 r1 BC-14, BC-15, BC-16: an idea preview's
 // pages answer Forge's ask for one rrweb snapshot (no recording is made), and keeping the preview
 // writes the requirement's picture of kind `preview` (the sketch branch's head, the patch id the
 // box reports, the page's still, scrubbed) and offers the criteria as a suggestion. Driven over real

@@ -1,4 +1,4 @@
-// The preview tunnel's frames (REQ-39 BC-5; docs/proposals/live-preview.md, "Tunnel"): how one
+// The preview tunnel's frames (REQ-39 BC-5): how one
 // WebSocket the runner opens to core carries many TCP connections to a preview's dev server, HTTP
 // and the dev server's hot-reload WebSocket alike. Core opens a stream per browser connection; the
 // runner connects it to the preview's loopback port and copies bytes both ways, parsing none of

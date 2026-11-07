@@ -1,5 +1,4 @@
-// What a member did in a reproduce preview (REQ-41 BC-18, BC-21; docs/proposals/chat-first.md
-// "Reproduce"): a recording starts when the relay serves a recording preview's page to a member,
+// What a member did in a reproduce preview (REQ-41 BC-18, BC-21): a recording starts when the relay serves a recording preview's page to a member,
 // takes the recorder's batches in order, stores them scrubbed, and keeps a short timeline. It is
 // read only by the project's members. Every move is RECORDING_MACHINE's, through the kernel.
 

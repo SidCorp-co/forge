@@ -1,5 +1,5 @@
 /**
- * REQ-41 r1 BC-19, BC-20 (docs/proposals/chat-first.md "Diagnosis", "Confirm"): the assistant reads
+ * REQ-41 r1 BC-19, BC-20: the assistant reads
  * what a reproduce recorded as its timeline only and proposes a cause and a fix that the item's own
  * issue route carries; the reporter's Fixed or Not fixed, said in the fix's preview, is the item's
  * loop close once that same change ships, and asks again where what shipped is not what they saw.

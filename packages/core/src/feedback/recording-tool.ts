@@ -1,5 +1,4 @@
-// The assistant's read of what a reproduce recorded (REQ-41 BC-19; docs/proposals/chat-first.md
-// "Diagnosis"): a feedback item's recordings as their short timelines, never the raw events, read
+// The assistant's read of what a reproduce recorded (REQ-41 BC-19): a feedback item's recordings as their short timelines, never the raw events, read
 // through the previews module's own reads so members only ever see them (BC-21). Called with the
 // cause and fix the assistant read there, it checks them against the item and answers the proposal
 // the chat draws under the reply, whose recommended answer is the item's own issue route, pressed by

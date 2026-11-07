@@ -1,4 +1,4 @@
-//! Live previews on this box (REQ-39; docs/proposals/live-preview.md): core asks the box to start
+//! Live previews on this box (REQ-39): core asks the box to start
 //! a run's dev server in the run's worktree (`preview.start`), to stop it (`preview.stop`), or to
 //! read what it serves (`preview.snapshot.read`); the box reports each outcome to
 //! `POST /api/previews/:id/report` and carries the browser's bytes over its tunnel. Core decides

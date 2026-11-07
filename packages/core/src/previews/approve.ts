@@ -1,4 +1,4 @@
-// A preview's approval and what reaches its run (REQ-39; docs/proposals/live-preview.md "Flow"):
+// A preview's approval and what reaches its run (REQ-39):
 // the box reads the change it serves, the preview closes approved with it and its lane, and the run
 // is told; a person's message for a change goes to the same run as an inject.
 

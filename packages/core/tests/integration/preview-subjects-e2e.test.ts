@@ -11,7 +11,7 @@ import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { createTestFeedback, createTestRequirement } from '../helpers/factories.js';
 import { LATER, SHIPPED, SubjectsWorld } from '../helpers/preview-subjects-world.js';
 
-// REQ-41 r1 (docs/proposals/chat-first.md "Idea preview", "Reproduce"): a preview no issue's run
+// REQ-41 r1: a preview no issue's run
 // holds. An idea is built by a sketch run on a branch its box cuts (BC-14) and edited from chat
 // (BC-15); a feedback item opens its reporter's build (BC-17) on demo data (BC-22); a fix preview
 // takes the reporter's word (BC-20). How a reproduce records: preview-recording-e2e.test.ts.

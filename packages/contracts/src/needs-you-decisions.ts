@@ -1,4 +1,4 @@
-// The needs-me read (REQ-41 BC-1, BC-2, BC-13; docs/proposals/chat-first.md, "Needs me"): the rows of
+// The needs-me read (REQ-41 BC-1, BC-2, BC-13): the rows of
 // the one Needs you read (`./needs-you.ts`) that are a decision only a person can make, grouped by
 // the act they ask for, each with its question, a recommended answer and the buttons that answer
 // it. The assistant answers "what waits on me" from this read and the project home draws it, so

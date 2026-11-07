@@ -1,4 +1,4 @@
-// A live preview (REQ-39 "See a change live before it ships"; docs/proposals/live-preview.md): the
+// A live preview (REQ-39 "See a change live before it ships"): the
 // dev server a run starts in its worktree, served to the project's members from a Forge link while
 // the change is being made. Core decides who may view it and for how long; the runner only starts
 // the dev server and carries its bytes (`./preview-tunnel.ts`). This module is the record, its
@@ -824,7 +824,7 @@ export const PREVIEW_ROUTES = {
 	keep: "/api/previews/:id/keep",
 } as const;
 
-// ---- REQ-41 (docs/proposals/chat-first.md, "Idea preview" and "Reproduce"): the requests a preview
+// ---- REQ-41: the requests a preview
 // of something other than an issue's run answers.
 
 export const PREVIEW_IDEA_LIMITS = {

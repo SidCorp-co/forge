@@ -1,4 +1,4 @@
-// The fast lane (REQ-39 BC-7, BC-8; docs/proposals/live-preview.md, "Fast lane"): a change a person
+// The fast lane (REQ-39 BC-7, BC-8): a change a person
 // approved in its live preview lands with typecheck, the touched files' direct tests and a merge,
 // then a web-only deploy. Forge picks the lane from the files the change touches, never the run:
 // a file in the kernel, a migration, permissions or security sends it down the full lane, and so

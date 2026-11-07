@@ -1,4 +1,4 @@
-// Keeping an idea preview (REQ-41 BC-16; docs/proposals/chat-first.md "Keep"): the sketch branch's
+// Keeping an idea preview (REQ-41 BC-16): the sketch branch's
 // head, the patch id the box reports and the page's one rrweb snapshot become the requirement's
 // picture of kind `preview`, and the assistant offers criteria drafted from what was asked. No
 // screenshot is taken anywhere: the page's still is rrweb's own snapshot, scrubbed as a recording's

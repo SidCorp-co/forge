@@ -14,7 +14,7 @@ import {
 } from "./merge-check.js";
 import { refusalStatusOf } from "./refusal-statuses.js";
 
-/** Forge's own declaration, as docs/proposals/live-preview.md writes it for forge-core. */
+/** Forge's own declaration for forge-core (REQ-39 BC-7). */
 const FORGE: FastLaneSettings = {
 	paths: ["packages/web-v2/src/**", "packages/web-v2/public/**"],
 	kernel: ["packages/core/**", "packages/contracts/**", "packages/runner/**"],

@@ -1,4 +1,4 @@
-// A preview no issue's run holds (REQ-41; docs/proposals/chat-first.md "Idea preview", "Reproduce"):
+// A preview no issue's run holds (REQ-41):
 // an idea is built by a sketch run on a throwaway branch its box cuts, about one requirement or
 // feedback item (BC-14), and edited from chat (BC-15); a reproduce serves a past build of a feedback
 // item, checked out with no run at all (BC-17), on demo data where the project names it (BC-22).

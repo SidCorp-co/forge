@@ -27,8 +27,8 @@ import { projects } from './schema-projects.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// A run's dev server served to the project's members from a Forge link (REQ-39,
-// docs/proposals/live-preview.md). `state` is PREVIEW_MACHINE's, written only by the kernel
+// A run's dev server served to the project's members from a Forge link (REQ-39).
+// `state` is PREVIEW_MACHINE's, written only by the kernel
 // transition (0477 guards it); `slug` is the host label under PREVIEW_DOMAIN. One open preview per
 // session: a run holds one preview at a time. What it serves is `subject_kind` (REQ-41, 0479): an
 // issue's run (`issue_id` and `session_id`), an idea's sketch run (`session_id`, no issue) or a past

@@ -4,7 +4,7 @@
  *
  * - several verdict fences, each tagged on its opening fence: every fence is recorded, all or
  *   nothing (ISS-608). Dev recorded all 16 and all 5 (`issue_record_events` carry the comment id);
- *   the reading of none was forge-plugin's (`docs/proposals/forge-plugin-reported.md`);
+ *   the reading of none was forge-plugin's;
  * - the tag line written above its fence: refused whole, naming the line and where it goes. Before,
  *   a single such fence was refused as naming no kind, and with two the first fence silently took the
  *   second fence's marker as its own while the refusal named the second.

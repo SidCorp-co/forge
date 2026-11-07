@@ -1,5 +1,5 @@
 /**
- * REQ-41 BC-23 (docs/proposals/chat-first.md): nothing approves itself, a pin-only design revision
+ * REQ-41 BC-23: nothing approves itself, a pin-only design revision
  * included (the owner's ruling of 2026-10-14). A proposal whose only change is its pins is read as
  * pin-only and waits inside its base's one "pin moved" act; its approver clears it there, or on its
  * own decision, and that approval names the person. The approval re-pins no requirement either

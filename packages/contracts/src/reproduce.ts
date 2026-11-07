@@ -1,5 +1,5 @@
-// A feedback item reproduced in a preview of the build its reporter used (REQ-41 BC-17..22;
-// docs/proposals/chat-first.md, "Reproduce"). The preview relay injects a recorder into every page
+// A feedback item reproduced in a preview of the build its reporter used (REQ-41 BC-17..22).
+// The preview relay injects a recorder into every page
 // it serves for a `reproduce` preview; the recorder is rrweb 2.x (MIT) with its console and network
 // plugins, set up by `RECORDER_OPTIONS`. Core keeps the scrubbed events for `RECORDING_LIMITS
 // .retentionDays` and a short timeline for as long as the feedback item keeps its reporter data,

@@ -1,5 +1,4 @@
-// The fast lane's web-only deploy (REQ-39 BC-7; docs/proposals/live-preview.md, "The web-only deploy
-// guard"): a deploy of the targets `fastLane.deployTargets` names, and no others, refused unless
+// The fast lane's web-only deploy (REQ-39 BC-7): a deploy of the targets `fastLane.deployTargets` names, and no others, refused unless
 // every commit between what each of them serves and the head its environment deploys from
 // classifies fast. Otherwise web would ship ahead of a core change it needs. What cannot be read
 // whole — the served commit, the range, a commit's files — refuses FAST_LANE_UNVERIFIED: unread is

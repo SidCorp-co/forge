@@ -1,5 +1,5 @@
 /**
- * REQ-41 BC-10, BC-11 (docs/proposals/chat-first.md, "Noise cut at the source"). A design
+ * REQ-41 BC-10, BC-11. A design
  * approval no traced step of a requirement's criteria failed to survive makes a re-pin due and moves
  * no pin: its mover re-pins it through the requirement's own re-pin act (nothing re-pins by itself,
  * the owner's ruling of 2026-10-14); one that removed a traced step waits on the assistant, never on

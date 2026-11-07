@@ -1,4 +1,4 @@
-// The fast lane's rules, pure (REQ-39 BC-7, BC-8; docs/proposals/live-preview.md, "Fast lane"): when
+// The fast lane's rules, pure (REQ-39 BC-7, BC-8): when
 // a merge check on the fast lane may stand for an issue, which lane an issue's approved change takes,
 // and when a web-only deploy may ship the commits between what web serves and the new head. Each
 // refusal names what failed: the declaration, the approval, the patch, or the file and the rule

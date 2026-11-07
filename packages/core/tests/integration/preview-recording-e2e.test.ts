@@ -16,7 +16,7 @@ import { createTestFeedback } from '../helpers/factories.js';
 import { SHIPPED, SubjectsWorld } from '../helpers/preview-subjects-world.js';
 import { atPreview, cookieOf } from '../helpers/preview-world.js';
 
-// REQ-41 r1 BC-18, BC-21 (docs/proposals/chat-first.md "Reproduce"): a reproduce preview records
+// REQ-41 r1 BC-18, BC-21: a reproduce preview records
 // what a member does in it with rrweb, inputs masked and every string scrubbed before it is
 // stored, read as a timeline, and opened only to the project's signed-in members. Driven over real
 // sockets: core, the project's app under its own `script-src 'self'`, and a box.

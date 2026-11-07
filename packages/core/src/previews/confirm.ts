@@ -1,4 +1,4 @@
-// The reporter's word on a fix preview (REQ-41 BC-20; docs/proposals/chat-first.md "Confirm"): the
+// The reporter's word on a fix preview (REQ-41 BC-20): the
 // preview of an issue a feedback item routes to, confirmed fixed or not fixed by whoever reported
 // it or anyone on the project for them, bound to the patch id the preview served at that moment.
 // The feedback item's loop close reads the latest word (`loopCloseFromConfirm`) when the issue

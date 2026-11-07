@@ -1,4 +1,4 @@
-// A preview's writes (REQ-39; docs/proposals/live-preview.md "Flow"): open and reopen, the box's
+// A preview's writes (REQ-39): open and reopen, the box's
 // reports, abandon, the viewer ticket and the sweep; approval and a person's message to the run are
 // in ./approve.ts. Every state is written by the kernel transition, and every frame the box is sent
 // rides the outbox in the same transaction as the move that owes it.
