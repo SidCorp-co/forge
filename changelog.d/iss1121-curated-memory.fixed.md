@@ -1,1 +1,0 @@
-**Memory and knowledge are curated: each save names its value, type, scope and re-check, a held subject is updated, logs leave memory, and a landing flags what it touched.** Org rulings are found by search (ISS-1121).

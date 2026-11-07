@@ -1,1 +1,0 @@
-**`forge-runner run brief` prints the run's `FORGE_RUN=<id>` line.** A dispatched run exports it as it stands, so its tracker calls name the run and `judge-login --run` has the id, with no hand-pasting.

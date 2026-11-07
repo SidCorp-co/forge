@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.588] - 2026-11-07
+
+Curated memory and knowledge, with a release cutoff and outside-git close fixes
+
+### Changed
+
+- **The Account page no longer shows your user id as text.** A Copy button beside the label copies it when support asks for it.
+- **`forge-runner run brief` prints the run's `FORGE_RUN=<id>` line.** A dispatched run exports it as it stands, so its tracker calls name the run and `judge-login --run` has the id, with no hand-pasting.
+- **A release is cut by a configured trigger, not once per recording.** `release.cutoff` names time, count, target and request triggers, defaulting to ten minutes; only whole outcomes ride, and each waiting issue's hold names its pending trigger.
+
+### Fixed
+
+- **Memory and knowledge are curated: each save names its value, type, scope and re-check, a held subject is updated, logs leave memory, and a landing flags what it touched.** Org rulings are found by search (ISS-1121).
+- **A closed issue marked outside git no longer holds a release draft.** Artifacts with no commit ship on their own record, and a closed issue is offered the correction door, never an unmark it refuses.
+- **A script schedule takes forge-ops named commands.** A vetted command such as `health` passes when the call says why it only reads, a logs tail past 2000 is refused at save, and a restart-orphaned fire closes as failed.
+
 ## [0.4.0-dev.587] - 2026-11-07
 
 Scheduled scripts watch production through declared read-only calls

@@ -1,1 +1,0 @@
-**A closed issue marked outside git no longer holds a release draft.** Artifacts with no commit ship on their own record, and a closed issue is offered the correction door, never an unmark it refuses.
