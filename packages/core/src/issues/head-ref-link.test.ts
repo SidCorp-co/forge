@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   branchIssueReferences,
+  CHANGE_REQUEST_LINK_RULE,
   deliveredDescriptionReferences,
   noIssueReason,
   readingOfLink,
@@ -128,6 +129,65 @@ describe('titleIssueReferences: the keys a title leads with, lists or closes (RE
     expect(titleIssueReferences('Port the work ISS-4 started')).toEqual([]);
     expect(titleIssueReferences('Call adminhub-api ISS-11 from the widget')).toEqual([]);
     expect(titleIssueReferences('chore: bump deps')).toEqual([]);
+  });
+});
+
+// ISS-980 (FB-500, epod !139 and !138): titled `Draft: ISS-70: …` on `batch-ISS-70`, it linked
+// nothing, and `batch-ISS-54-69` linked ISS-69 alone
+describe('ISS-980: a draft marker hides no key, and a batch branch links every key it lists', () => {
+  it('reads past each draft marker a host writes before the title', () => {
+    for (const title of [
+      'Draft: ISS-70: lift the hold',
+      '[Draft] ISS-70 lift the hold',
+      'WIP: ISS-70 lift the hold',
+      'Draft - ISS-70: lift the hold',
+      '(Draft) ISS-70: lift the hold',
+      'Draft: [WIP] ISS-70: lift the hold',
+      'draft:ISS-70 lift the hold',
+    ]) {
+      expect(keys(titleIssueReferences(title)), title).toEqual(['ISS-70']);
+    }
+  });
+
+  it('reads past a marker to a listed lead, and a key in prose after one stays prose', () => {
+    expect(keys(titleIssueReferences('Draft: ISS-54, ISS-69 — one batch'))).toEqual([
+      'ISS-54',
+      'ISS-69',
+    ]);
+    expect(titleIssueReferences('Draft: port the work ISS-4 started')).toEqual([]);
+    expect(titleIssueReferences('Drafting ISS-4 copy')).toEqual([]);
+  });
+
+  it('links every key a batch-<keys> branch lists, in order', () => {
+    expect(keys(branchIssueReferences('batch-ISS-70'))).toEqual(['ISS-70']);
+    expect(keys(branchIssueReferences('batch-ISS-54-69'))).toEqual(['ISS-54', 'ISS-69']);
+    expect(keys(branchIssueReferences('batch-iss-49-53-60'))).toEqual([
+      'ISS-49',
+      'ISS-53',
+      'ISS-60',
+    ]);
+    expect(keys(branchIssueReferences('batch-ISS-1-ISS-2'))).toEqual(['ISS-1', 'ISS-2']);
+    expect(keys(branchIssueReferences('ops/batch-ISS-103'))).toEqual(['ISS-103']);
+  });
+
+  it('reads the first batch key as the lead and the ones listed after it as the tail', () => {
+    expect(branchIssueReferences('batch-ISS-54-69').map((r) => r.from)).toEqual(['lead', 'tail']);
+    expect(readingOfLink('batch-ISS-54-69', 54, 'head-ref')).toBe('branch-lead');
+    expect(readingOfLink('batch-ISS-54-69', 69, 'head-ref')).toBe('branch-tail');
+  });
+
+  it('reads nothing from a batch branch that lists no key', () => {
+    expect(branchIssueReferences('batch-ui-b')).toEqual([]);
+    expect(branchIssueReferences('batch/iss1060-1061')).toEqual([]);
+    expect(branchIssueReferences('batch-ISS-54-69-ui')).toEqual([]);
+  });
+
+  it('names the branch shapes, the title lead past a draft marker and the description in its rule', () => {
+    for (const shape of ['batch-iss-n-m', 'Draft:', '[Draft]', 'WIP:', 'Closes ISS-n', 'fix/iss-n']) {
+      expect(CHANGE_REQUEST_LINK_RULE, shape).toContain(shape);
+    }
+    const why = noIssueReason({ headRef: 'chore/x', title: 'x', description: null, prefixes: ['ISS'] });
+    expect(why).toContain(CHANGE_REQUEST_LINK_RULE);
   });
 });
 
