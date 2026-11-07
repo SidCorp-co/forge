@@ -205,6 +205,37 @@ const by = <T extends { requirementId: string | null }>(list: readonly T[], id: 
   list.filter((x) => x.requirementId === id);
 
 /**
+ * {@link by}, each list grouped by requirement on its first ask: a page of requirements reads each
+ * list once, not once a row (ISS-1070 r7). One serves one page's lists, which do not change under it.
+ */
+function groupedBy() {
+  const grouped = new Map<readonly object[], Map<string | null, object[]>>();
+  return <T extends { requirementId: string | null }>(list: readonly T[], id: string): T[] => {
+    let groups = grouped.get(list);
+    if (!groups) {
+      groups = new Map();
+      for (const x of list) {
+        const of = groups.get(x.requirementId);
+        if (of) of.push(x);
+        else groups.set(x.requirementId, [x]);
+      }
+      grouped.set(list, groups);
+    }
+    return [...((groups.get(id) as T[] | undefined) ?? [])];
+  };
+}
+
+/** `criteria`'s entries on `issueIds`, in the order `criteria` holds them, read through `byIssue`. */
+function criteriaOn<C extends { issueId: string }>(
+  byIssue: ReadonlyMap<string, readonly number[]>,
+  criteria: readonly C[],
+  issueIds: Iterable<string>,
+): C[] {
+  const at = [...issueIds].flatMap((id) => byIssue.get(id) ?? []).sort((a, b) => a - b);
+  return at.map((i) => criteria[i] as C);
+}
+
+/**
  * What the turn of a requirement whose issues are worked reads beyond their statuses
  * (`standing-work.ts:workTurn`): each unshipped issue's own standing (its wait, since when, whether it
  * reads stuck), and what follows a landing, read once for the page and only where a requirement's
@@ -347,9 +378,16 @@ export async function standingsOf(
   const { issueWaits, release } = work;
   const liveBuild = await liveBuildOf(projectId, issueCriteria, own);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
+  const criteriaByIssue = new Map<string, number[]>();
+  issueCriteria.forEach((c, i) => {
+    const at = criteriaByIssue.get(c.issueId);
+    if (at) at.push(i);
+    else criteriaByIssue.set(c.issueId, [i]);
+  });
+  const of = groupedBy();
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
-    const mine = by(linked, row.id).map((i) =>
+    const mine = of(linked, row.id).map((i) =>
       standingIssueOf(i, row.currentRevision, {
         naming,
         releaseApproval: gates.releaseApproval,
@@ -366,7 +404,7 @@ export async function standingsOf(
         owner: ownerOf(row.ownerId, people),
         viewer,
         approvals: gates.approvals,
-        revisions: by(revisions, row.id).map((r) => ({
+        revisions: of(revisions, row.id).map((r) => ({
           revision: r.revision,
           state: r.state as RevisionState,
           authorId: r.authorId,
@@ -379,17 +417,17 @@ export async function standingsOf(
           decidedAt: r.decidedAt,
         })),
         currentRevision: row.currentRevision,
-        criteria: by(criteria, row.id),
+        criteria: of(criteria, row.id),
         issues: mine,
-        issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
-        requirementVerdicts: by(own, row.id),
-        openSuggestionKinds: by(open, row.id).map((s) => s.kind),
+        issueCriteria: criteriaOn(criteriaByIssue, issueCriteria, issueIds),
+        requirementVerdicts: of(own, row.id),
+        openSuggestionKinds: of(open, row.id).map((s) => s.kind),
         ...beside(row.id),
         deliveryHold: holds.get(row.id) ?? null,
         liveBuild,
-        stalePins: stalePinsOf(by(pins, row.id)),
-        staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),
-        unapprovedDesigns: by(unapproved, row.id).map(({ flow, title, designStatus }) => ({
+        stalePins: stalePinsOf(of(pins, row.id)),
+        staleContractPins: staleContractPinsOf(of(contracts, row.id), of(contractPins, row.id)),
+        unapprovedDesigns: of(unapproved, row.id).map(({ flow, title, designStatus }) => ({
           flow,
           title,
           designStatus,

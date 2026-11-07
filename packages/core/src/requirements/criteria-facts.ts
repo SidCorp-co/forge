@@ -248,9 +248,29 @@ const marksOn = async (ex: Executor, ids: readonly string[]): Promise<Set<string
   );
 
 /**
+ * What the live read answers for `issueIds`, inside a transaction it rolls back: a builder flag the
+ * read writes on its way (`issues/builder-facts.ts:readWithBuilderFacts`) would mark the issue and
+ * hide the very drift being weighed, so the weighing writes nothing.
+ */
+async function liveUnwritten(issueIds: readonly string[]): Promise<StandingIssueCriterion[]> {
+  let live: StandingIssueCriterion[] = [];
+  const weighed = new Error('criteria-facts: the weighing writes nothing');
+  try {
+    await db.transaction(async (tx) => {
+      live = await liveIssueCriteria(issueIds, tx, []);
+      throw weighed;
+    });
+  } catch (err) {
+    if (err !== weighed) throw err;
+  }
+  return live;
+}
+
+/**
  * The issues of `issueIds` whose stored fact is not what the live read answers now, or that hold no
  * fact and no mark, skipping issues marked before or during the weighing (a mark says the fact is
- * owed, not wrong). It repairs nothing: the sweep reports.
+ * owed, not wrong). It repairs nothing, and the live read it weighs against is rolled back: the sweep
+ * reports.
  */
 export async function criteriaFactDrift(
   ex: Executor,
@@ -273,7 +293,7 @@ export async function criteriaFactDrift(
     ).map((r) => [r.issue_id, r.criteria]),
   );
   const live = new Map<string, StandingIssueCriterion[]>([...stored.keys()].map((id) => [id, []]));
-  for (const c of await liveIssueCriteria([...stored.keys()], ex, [])) live.get(c.issueId)?.push(c);
+  for (const c of await liveUnwritten([...stored.keys()])) live.get(c.issueId)?.push(c);
   const after = await marksOn(ex, [...stored.keys()]);
   return [...stored]
     .filter(([id]) => !after.has(id))
