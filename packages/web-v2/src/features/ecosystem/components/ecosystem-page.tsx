@@ -6,11 +6,14 @@ import { ProjectGate } from "@/features/projects";
 import type { ProjectListItem } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
+import { useMyEcosystems } from "../hooks";
+import { hasOpenThread } from "../inbox";
 import { ecosystemRoutes } from "../routes";
 
 type Section = "channel" | "api";
 
-// Threads is the workspace inbox, so its tab leaves the project; Project API is this project's own page, and its contracts live under Delivery
+// Threads is the workspace inbox, so its tab leaves the project, and it is drawn only while a thread is
+// open for the person (ISS-1073); Project API is this project's own page, and its contracts live under Delivery
 const SECTIONS: { value: Section; label: "ecosystem.threads.title" | "ecosystem.page.api"; href: (slug: string) => string }[] = [
   { value: "channel", label: "ecosystem.threads.title", href: () => ecosystemRoutes.threads() },
   { value: "api", label: "ecosystem.page.api", href: ecosystemRoutes.apiPage },
@@ -32,6 +35,8 @@ export function EcosystemPage({
   children: (project: ProjectListItem) => ReactNode;
 }) {
   const t = useCopy();
+  const threads = useMyEcosystems().data;
+  const sections = SECTIONS.filter((s) => s.value !== "channel" || (threads ? hasOpenThread(threads) : false));
   return (
     <ProjectGate label={t("common.gate.loading")}>
       {(project) => (
@@ -44,7 +49,7 @@ export function EcosystemPage({
             {actions ? <div className="flex flex-wrap gap-2">{actions(project)}</div> : null}
           </header>
           <nav aria-label={t("ecosystem.page.sections")} className="flex flex-wrap gap-1 border-b border-line">
-            {SECTIONS.map((s) => (
+            {sections.map((s) => (
               <Link
                 key={s.value}
                 href={s.href(project.slug)}

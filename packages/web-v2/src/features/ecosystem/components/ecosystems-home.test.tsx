@@ -29,6 +29,13 @@ describe("the Ecosystem page", () => {
     expect(screen.getByRole("link", { name: /Threads/ })).toHaveAttribute("href", "/ecosystems/threads");
   });
 
+  // on forge-dev the link led to "Nothing here": every thread there was a closed test fixture (ISS-1073 round 2)
+  it("offers no Threads while every thread is closed", () => {
+    draw(read([{ ...thread, state: "closed", open: false }]));
+    expect(screen.getByText("Eco A")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Threads/ })).toBeNull();
+  });
+
   it("offers no Threads while none does", () => {
     draw(read([]));
     expect(screen.getByText("Eco A")).toBeInTheDocument();

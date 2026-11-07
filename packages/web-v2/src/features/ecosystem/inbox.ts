@@ -36,6 +36,15 @@ export function inView(view: InboxView, row: InboxRow, mine: ReadonlySet<string>
   }
 }
 
+/**
+ * Whether Threads has anything to open: a thread still open for the person. Closed and answered ones
+ * are its history, and a page of them read "Nothing here" on forge-dev, every one a test fixture
+ * (ISS-1073), so no row or link leads to Threads until one is open.
+ */
+export function hasOpenThread(read: WorkspaceRead): boolean {
+  return read.threads.some((r) => r.open);
+}
+
 export function needsMe(read: WorkspaceRead, ecosystem?: string): number {
   const mine = new Set(read.mine);
   return read.threads.filter((r) => (!ecosystem || r.ecosystem === ecosystem) && inView("needs-me", r, mine, read.drafts)).length;

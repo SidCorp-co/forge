@@ -5,7 +5,7 @@ import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { ecosystemApi } from "../api";
 import { useChannelWrite, useMyEcosystems } from "../hooks";
-import { joinedEcosystems, needsMe } from "../inbox";
+import { hasOpenThread, joinedEcosystems, needsMe } from "../inbox";
 import { ecosystemRoutes } from "../routes";
 import type { WorkspaceInvitation, WorkspaceRead } from "../types";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
@@ -63,10 +63,10 @@ function NewButton() {
   );
 }
 
-/** Threads, while a thread exists for the person: the rail has one Ecosystem row (ISS-1073), so this page opens it. */
+/** Threads, while a thread is open for the person: the rail has one Ecosystem row (ISS-1073), so this page opens it. */
 function ThreadsLink({ read }: { read: WorkspaceRead }) {
   const t = useCopy();
-  if (read.threads.length === 0) return null;
+  if (!hasOpenThread(read)) return null;
   const owed = needsMe(read);
   return (
     <Link href={ecosystemRoutes.threads()} className="inline-flex items-center gap-1.5 text-13 font-semibold text-link hover:underline">
