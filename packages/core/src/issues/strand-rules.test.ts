@@ -45,7 +45,9 @@ describe('landedWait on a reopen whose merge is recorded since that reopen', () 
   }
 
   it('reads a mark from before the reopen as a fix round still owed', () => {
-    expect(landedWait('reopen', { merged: true, mergedSinceReopen: false, judge: 'self' })).toBeNull();
+    expect(
+      landedWait('reopen', { merged: true, mergedSinceReopen: false, judge: 'self' }),
+    ).toBeNull();
     expect(landedWait('reopen', { merged: true, judge: 'self' })).toBeNull();
   });
 });

@@ -52,10 +52,10 @@ import {
   NOTHING_LIVE_ON_THIS_ISSUE,
 } from './idle-recovered.js';
 import { surface, unchangedStrand, writeStrand } from './idle-strand-write.js';
-import { mergeSinceLastReopenSql } from './wedge-landed.js';
 import { admittedRunner, projectAdminUserIdsFor } from './ports.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
+import { mergeSinceLastReopenSql } from './wedge-landed.js';
 
 type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
 
