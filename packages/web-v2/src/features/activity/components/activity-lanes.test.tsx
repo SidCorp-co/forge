@@ -3,7 +3,7 @@
 // bars (a live one solid), batches of status moves as numbered circles (summary on hover, each issue
 // from → to on click), releases as diamonds in their state's colour (version, time and count; its
 // issues and Open release) and what waits on the reader as amber pins (each item, Answer first and
-// Open all); on the right, the reader's amber count and when the project last moved. "Releases only"
+// Open all); on the right, the reader's amber count and when the project last moved. "Releases"
 // hides the batches.
 //
 // @direct-test-of packages/web-v2/src/features/activity/components/lanes.tsx
@@ -204,12 +204,12 @@ describe("the Activity tab's marks", () => {
     expect(p.getByText("+40 more")).toBeTruthy();
   });
 
-  it("Releases only hides the batches and the batch's legend; the diamonds and pins stay", async () => {
+  it("Releases hides the batches and the batch's legend; the diamonds and pins stay", async () => {
     serve(read([FORGE]));
     renderWithQuery(<ActivityScreen />);
     await screen.findByText("Forge");
     expect(screen.getByTestId("legend-batch")).toBeTruthy();
-    fireEvent.click(within(screen.getByTestId("activity-view")).getByText("Releases only"));
+    fireEvent.click(within(screen.getByTestId("activity-view")).getByText("Releases"));
     await waitFor(() => expect(within(rowOf("Forge")).queryByTestId("mark-batch")).toBeNull());
     expect(screen.queryByTestId("legend-batch")).toBeNull();
     expect(within(rowOf("Forge")).getAllByTestId("mark-release")).toHaveLength(2);

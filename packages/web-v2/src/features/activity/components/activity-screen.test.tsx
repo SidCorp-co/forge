@@ -4,7 +4,7 @@
 // those groups. A lane draws its runs as bars (a live one solid), its status moves in batches (a
 // numbered circle: its summary on hover, each issue from → to on click), its releases as diamonds in
 // their state's colour (version, time and count; its issues and Open release) and what waits on the
-// reader as amber pins (each item, Answer first and Open all), all as core read them. "Releases only"
+// reader as amber pins (each item, Answer first and Open all), all as core read them. "Releases"
 // hides the batches. Under the name: the state and what it has queued, why it stands so a tooltip; on
 // the right, the reader's amber count and when the project last moved. It opens one project's peek
 // (Now, Backlog, People, a dialog's text, both release counts, a Recent list read only when opened)

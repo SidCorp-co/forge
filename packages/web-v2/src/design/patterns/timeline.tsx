@@ -4,14 +4,19 @@
 // track and two trailing cells. The track draws light gridlines at each tick, a base line, runs as
 // light bars (a live one solid) and the marks a page places on it (`TimelineMark`), up to a dashed
 // "now" edge. The lanes keep a floor width and scroll sideways inside their own scroller below it, so
-// the page never does; on a phone the side columns step down.
+// the page never does. A phone keeps no floor: opened at its now end, the frame showed the last
+// quarter of the axis and every earlier mark sat off to the left (ISS-1072). There the whole axis fits
+// the screen, the lead narrows and the last trailing cell (when it last moved) steps out, so the
+// track is the most of the width.
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { GROUP_ROW_INDENT } from "./group-header";
 
 /** One grid for the column header and every lane: lead · track · two trailing cells. */
-const LANE_COLS = "grid grid-cols-[214px_minmax(0,1fr)_92px_100px] items-center max-md:grid-cols-[140px_minmax(0,1fr)_70px_80px]";
+const LANE_COLS = "grid grid-cols-[214px_minmax(0,1fr)_92px_100px] items-center max-md:grid-cols-[124px_minmax(0,1fr)_44px]";
+/** The second trailing cell, which a phone does not draw. */
+const LAST_CELL = "max-md:hidden";
 const CELL = "min-w-0 px-4 max-md:px-2.5";
 /**
  * On a phone the lanes scroll sideways under their names: the name column stays put, above the marks,
@@ -35,7 +40,7 @@ export function TimelineFrame({ label, children }: { label: string; children: Re
   }, []);
   return (
     <section ref={frameRef} aria-label={label} className="@container/frame overflow-x-auto" data-testid="timeline-frame">
-      <div className="min-w-[900px]">{children}</div>
+      <div className="min-w-[900px] max-md:min-w-0">{children}</div>
     </section>
   );
 }
@@ -56,7 +61,7 @@ export function TimelineHead({ lead, ticks, now, trail }: { lead: string; ticks:
         </span>
       </span>
       <span className={cn(CELL, "text-right")}>{trail[0]}</span>
-      <span className={cn(CELL, "text-right")}>{trail[1]}</span>
+      <span className={cn(CELL, LAST_CELL, "text-right")}>{trail[1]}</span>
     </div>
   );
 }
@@ -301,7 +306,7 @@ export function TimelineRow({ rowKey, selected, lead, track, you, last }: { rowK
       <span className={cn(CELL, GROUP_ROW_INDENT, STICKY_LEAD, selected ? "max-md:bg-sel" : "max-md:bg-surface", "flex flex-col py-1.5 max-md:pl-8")}>{lead}</span>
       <span className={CELL}>{track}</span>
       <span className={cn(CELL, "flex justify-end")}>{you}</span>
-      <span className={cn(CELL, "text-right text-12 text-subtle")}>{last}</span>
+      <span className={cn(CELL, LAST_CELL, "text-right text-12 text-subtle")}>{last}</span>
     </div>
   );
 }

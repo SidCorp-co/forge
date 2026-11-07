@@ -201,6 +201,26 @@ function sideways(): string[] {
   return main.scrollWidth <= main.clientWidth ? [] : [`main scrolls sideways: ${main.scrollWidth} px in ${main.clientWidth}`];
 }
 
+/**
+ * On a phone the whole axis is in view and the header's time reads whole (ISS-1072 round 2): the frame
+ * opened at its now end with three quarters of its marks off to the left, and the time read "10:2".
+ */
+function phoneReads(): string[] {
+  if (window.innerWidth >= 768) return [];
+  const wrong: string[] = [];
+  const frame = q("[data-testid=timeline-frame]");
+  if (frame && frame.scrollWidth > frame.clientWidth + 1) wrong.push(`the lanes scroll sideways on a phone: ${frame.scrollWidth} px in ${frame.clientWidth}`);
+  const box = frame?.getBoundingClientRect();
+  for (const m of document.querySelectorAll<HTMLElement>("[data-testid=timeline-frame] [data-testid^=mark-]")) {
+    const r = m.getBoundingClientRect();
+    if (box && r.width > 0 && (r.right < box.left + 124 || r.left > box.right)) wrong.push(`a ${m.dataset.testid} sits out of view, ${Math.round(r.left)}–${Math.round(r.right)} px in a ${Math.round(box.left)}–${Math.round(box.right)} px frame`);
+  }
+  const live = q("[data-testid=activity-live]");
+  const cut = live?.parentElement;
+  if (live && cut && (cut.scrollWidth > cut.clientWidth + 1 || live.getBoundingClientRect().right > cut.getBoundingClientRect().right + 1)) wrong.push(`the header's time is cut: "${live.textContent}" in ${cut.clientWidth} px`);
+  return wrong.slice(0, 6);
+}
+
 /** Every lane starts 32px into the frame as it shows, where its group's label starts: on a phone the frame opens scrolled to now, its lead column held in place. */
 function indented(): string[] {
   const frame = q("[data-testid=timeline-frame]");
@@ -298,7 +318,7 @@ const look = (t: "light" | "dark") => ({
     q("main")?.scrollTo(0, 0);
     await pause(500);
     words(`page-${t}`);
-    return [...sideways(), ...indented(), ...contrast("[data-witness=page]")];
+    return [...sideways(), ...indented(), ...phoneReads(), ...contrast("[data-witness=page]")];
   },
 });
 
@@ -347,6 +367,7 @@ window.__witness = {
   cases: [
     { name: "wide-1440", width: 1440 },
     { name: "phone-420", width: 420 },
+    { name: "phone-390", width: 390 },
   ],
   ready: () => Boolean(q("[data-testid=mark-batch]") && q("[data-testid=mark-wait]")),
   stages: [
@@ -381,11 +402,11 @@ window.__witness = {
       name: "releases-only-light",
       run: async () => {
         await closePop();
-        const releases = [...document.querySelectorAll<HTMLElement>("[data-testid=activity-view] button")].find((b) => b.textContent === "Releases only");
+        const releases = [...document.querySelectorAll<HTMLElement>("[data-testid=activity-view] button")].find((b) => b.textContent === "Releases");
         releases?.click();
         q("main")?.scrollTo(0, 0);
         await pause(500);
-        return q("[data-testid=mark-batch]") ? ["Releases only still draws batches"] : sideways();
+        return q("[data-testid=mark-batch]") ? ["Releases still draws batches"] : sideways();
       },
     },
   ],

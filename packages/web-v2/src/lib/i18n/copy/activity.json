@@ -82,7 +82,7 @@
     "activity.updating": "updating",
     "activity.view.batches": "Batches",
     "activity.view.label": "Show",
-    "activity.view.releases": "Releases only",
+    "activity.view.releases": "Releases",
     "activity.wait.answer": "Answer",
     "activity.wait.answerFirst": "Answer first",
     "activity.wait.count": "{n} waiting on you",
