@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.559] - 2026-11-07
+
+Pages load once instead of re-reading the same data on every route
+
+### Fixed
+
+- **Pages stop waiting on the shell's reads.** Each route reads attention once, only Releases reads the whole release list, live updates no longer restart slow reads, and the Dashboard shows its lists before Needs you answers.
+
 ## [0.4.0-dev.558] - 2026-11-07
 
 A release records the commit its deploy shipped, so verdicts there count
