@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { ReleaseCutoff } from '@forge/contracts/release-cutoff';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, vi } from 'vitest';
 import { insertComment } from '../../src/comments/service.js';
@@ -12,6 +11,7 @@ import { issueDisplayIds } from '../../src/issues/display-ids.js';
 import { type ProjectDocument, projectDocumentSchema } from '../../src/project-config/schema.js';
 import type { CreateReleaseBatchResult } from '../../src/release-batch/create.js';
 import { createTestDevice, rows, seedIssueStatus } from './factories.js';
+import { CUT_AT_ONCE } from './release-cutoff-world.js';
 
 export { registerAllIntegrations };
 
@@ -31,15 +31,6 @@ export interface StandingHold {
   waitingFor: string;
 }
 
-/**
- * A world's release sweep cuts as soon as an outcome is eligible, as every sweep did before ISS-1126
- * made the release triggers policy (`@forge/contracts/release-cutoff`); a world weighing the triggers
- * declares its own, or none.
- */
-export const CUT_AT_ONCE: ReleaseCutoff = {
-  triggers: [{ kind: 'time', minutes: 0 }, { kind: 'request' }],
-};
-
 /** A project-v1 document parsed by the real schema, so a fixture it refuses fails at the seed. */
 export async function seedProjectDocument(
   projectId: string,
@@ -52,17 +43,10 @@ export async function seedProjectDocument(
     /** The check the project's changes must pass; no fixture here binds a host, so none by default. */
     gate?: ProjectDocument['validation']['gate'];
     extra?: Partial<ProjectDocument>;
-    /** The release cutoff declared; absent, `CUT_AT_ONCE`; null, none, so Forge's default reads. */
-    cutoff?: ReleaseCutoff | null;
   },
 ): Promise<ProjectDocument> {
   const defaultBranch = opts.defaultBranch ?? 'main';
-  const cutoff =
-    opts.cutoff === undefined ? (opts.extra?.release?.cutoff ?? CUT_AT_ONCE) : opts.cutoff;
-  const release =
-    cutoff === null
-      ? opts.extra?.release
-      : { approval: { required: false }, ...opts.extra?.release, cutoff };
+  const cutoff = opts.extra?.release?.cutoff ?? CUT_AT_ONCE;
   const promotions = opts.promotions ?? [];
   const branches = [...new Set([defaultBranch, ...promotions.flatMap((p) => [p.from, p.to])])];
   const document = projectDocumentSchema.parse({
@@ -85,7 +69,7 @@ export async function seedProjectDocument(
       },
     },
     ...(opts.extra ?? {}),
-    ...(release ? { release } : {}),
+    release: { approval: { required: false }, ...opts.extra?.release, cutoff },
   });
   await db.execute(sql`
     INSERT INTO project_config_documents (project_id, revision, document, updated_by)

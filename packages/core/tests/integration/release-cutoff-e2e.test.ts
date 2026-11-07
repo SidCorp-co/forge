@@ -16,7 +16,6 @@
  * @direct-test-of packages/core/src/release-batch/hold.ts
  */
 
-import type { ReleaseCutoff } from '@forge/contracts/release-cutoff';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -29,6 +28,7 @@ import {
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { declareCutoff } from '../helpers/release-cutoff-world.js';
 import { declareProductionDocument, fakeCoolify, releaseWorld } from '../helpers/release-world.js';
 
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
@@ -49,18 +49,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await closeWorld();
 });
-
-/** The project document's `release.cutoff`, or none so Forge's default reads. */
-async function declareCutoff(cutoff: ReleaseCutoff | null): Promise<void> {
-  await db.execute(
-    cutoff === null
-      ? sql`UPDATE project_config_documents SET document = document #- '{release,cutoff}'
-             WHERE project_id = ${projectId}`
-      : sql`UPDATE project_config_documents
-               SET document = jsonb_set(document, '{release,cutoff}', ${JSON.stringify(cutoff)}::jsonb)
-             WHERE project_id = ${projectId}`,
-  );
-}
 
 beforeEach(async () => {
   await truncateAll();
@@ -85,12 +73,12 @@ async function recorded(requirement?: string): Promise<string> {
   return id;
 }
 
-const after = (minutes: number) => new Date(Date.now() + minutes * MINUTE);
+const minutesOn = (minutes: number) => new Date(Date.now() + minutes * MINUTE);
 const claimOf = async (id: string) => (await fx.stored(id)).claim;
 
 describe('the release cutoff (ISS-1126, REQ-71 BC-13..15)', () => {
   it("holds one recording on Forge's default time trigger, naming it, and cuts once it is met", async () => {
-    await declareCutoff(null);
+    await declareCutoff(projectId, null);
     const first = await recorded();
 
     const now = await sweepAutomaticReleases();
@@ -105,9 +93,9 @@ describe('the release cutoff (ISS-1126, REQ-71 BC-13..15)', () => {
 
     // a second recording inside the wait joins the batch rather than cutting its own
     const second = await recorded();
-    expect((await sweepAutomaticReleases(after(5))).issuesCut).toBe(0);
+    expect((await sweepAutomaticReleases(minutesOn(5))).issuesCut).toBe(0);
 
-    const cut = await sweepAutomaticReleases(after(11));
+    const cut = await sweepAutomaticReleases(minutesOn(11));
     expect(cut).toMatchObject({ issuesCut: 2, projectsCut: 1 });
     const run = await claimOf(first);
     expect(run).not.toBeNull();
@@ -116,7 +104,7 @@ describe('the release cutoff (ISS-1126, REQ-71 BC-13..15)', () => {
 
     // BC-15: work landing after the cut is not on the frozen roster; it waits for the next batch
     const late = await recorded();
-    await sweepAutomaticReleases(after(12));
+    await sweepAutomaticReleases(minutesOn(12));
     expect(await claimOf(late)).toBeNull();
   });
 
@@ -163,7 +151,7 @@ describe('the release cutoff (ISS-1126, REQ-71 BC-13..15)', () => {
   });
 
   it('a count trigger cuts at its count, and holds short of it until its maximum wait', async () => {
-    await declareCutoff({
+    await declareCutoff(projectId, {
       triggers: [{ kind: 'count', outcomes: 2, maxWaitMinutes: 20 }, { kind: 'request' }],
     });
     const one = await recorded();
@@ -173,19 +161,21 @@ describe('the release cutoff (ISS-1126, REQ-71 BC-13..15)', () => {
     expect(hold?.reason).toContain("this project's release triggers (`release.cutoff`)");
     expect(hold?.reason).toContain('count: 1 of 2 eligible outcomes; its maximum wait ends at');
 
-    expect((await sweepAutomaticReleases(after(19))).issuesCut).toBe(0);
-    expect((await sweepAutomaticReleases(after(21))).issuesCut).toBe(1);
+    expect((await sweepAutomaticReleases(minutesOn(19))).issuesCut).toBe(0);
+    expect((await sweepAutomaticReleases(minutesOn(21))).issuesCut).toBe(1);
   });
 
   it('a count trigger met cuts every eligible outcome at once', async () => {
-    await declareCutoff({ triggers: [{ kind: 'count', outcomes: 2 }, { kind: 'request' }] });
+    await declareCutoff(projectId, {
+      triggers: [{ kind: 'count', outcomes: 2 }, { kind: 'request' }],
+    });
     await recorded();
     await recorded();
     expect((await sweepAutomaticReleases()).issuesCut).toBe(2);
   });
 
   it('a target trigger cuts when its outcome is eligible', async () => {
-    await declareCutoff({
+    await declareCutoff(projectId, {
       triggers: [{ kind: 'target', outcome: 'REQ-90' }, { kind: 'request' }],
     });
     const other = await recorded();
