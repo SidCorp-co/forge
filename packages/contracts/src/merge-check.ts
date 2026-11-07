@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import {
+	CHECK_RUN_LIMITS,
 	CHECK_RUN_SHAPE,
 	type CheckKind,
 	checkRunsSchema,
@@ -105,14 +106,15 @@ export function rerunVerdictOf(
 	return head === "fail" && base === "fail" ? "base-red" : "branch-red";
 }
 
+/** One rerun of a red file, held to the bounds a check run is (`./check-runs.ts:CHECK_RUN_LIMITS`). */
 const rerunRunSchema = z.strictObject({
 	at: z.enum(["head", "base"]),
 	sha: wholeShaSchema("reruns[].runs[].sha"),
 	result: z.enum(RERUN_RESULTS),
-	command: z.string().max(500),
+	command: z.string().max(CHECK_RUN_LIMITS.text),
 	startedAt: z.iso.datetime({ offset: true }),
-	durationMs: z.number().int().nonnegative().max(86_400_000),
-	note: z.string().max(500).optional(),
+	durationMs: z.number().int().nonnegative().max(CHECK_RUN_LIMITS.durationMs),
+	note: z.string().max(CHECK_RUN_LIMITS.text).optional(),
 });
 
 /**
@@ -124,7 +126,7 @@ const rerunSchema = z.strictObject({
 	check: z.uuid(
 		"check is the id of the red `integration-tests` check in this report whose file was rerun",
 	),
-	file: z.string().min(1).max(1000),
+	file: z.string().min(1).max(CHECK_RUN_LIMITS.file),
 	verdict: z.enum(RERUN_VERDICTS),
 	runs: z.array(rerunRunSchema).min(1).max(2),
 });

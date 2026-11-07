@@ -5,7 +5,6 @@
 // files that went red are rerun, never the selection. `base-red` and `flaky` are named apart in the
 // report (`reruns`), which core records as passing; `branch-red` is refused as every red was before.
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative } from 'node:path';
@@ -89,12 +88,8 @@ export function baseWorktreePath(commonGitDir, base, pid = process.pid) {
  * The merge base, checked out detached and installed, with the packages `collections` load built;
  * `ready` is false with `note` naming the step that failed. `remove` takes the worktree away.
  */
-function baseCheckout(root, base, collections, exec, rebuild) {
-  const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
-    cwd: root,
-    encoding: 'utf8',
-  });
-  const path = baseWorktreePath(common.stdout.trim(), base);
+function baseCheckout({ root, commonGitDir, base, collections, exec, rebuild }) {
+  const path = baseWorktreePath(commonGitDir, base);
   const remove = () => {
     if (!existsSync(path)) return;
     const r = exec(['git', 'worktree', 'remove', '--force', path], root, { capture: true });
@@ -133,8 +128,19 @@ const runOf = (at, sha, result, command, r, note) => ({
  * as the report's `reruns` takes them, and the lines saying which reds could not be classed (a run
  * whose report names no red file stays the change's red, as before). `exec` runs one command as
  * `direct-test-run.mjs:run` does, and `rebuild` builds the base's packages, unless a test stands in.
+ * `commonGitDir` is the repository's own git directory (`git rev-parse --git-common-dir`), whose
+ * checkout holds the `.claude/worktrees/` the base worktree goes in.
  */
-export function rerunReds({ root, head, base, checks, calls, exec, rebuild = rebuildPackages }) {
+export function rerunReds({
+  root,
+  commonGitDir,
+  head,
+  base,
+  checks,
+  calls,
+  exec,
+  rebuild = rebuildPackages,
+}) {
   const reruns = [];
   const unclassed = [];
   const owed = [];
@@ -169,7 +175,7 @@ export function rerunReds({ root, head, base, checks, calls, exec, rebuild = reb
     console.log(
       `\nmerge-check: ${owed.length} file(s) stayed red; rerunning them at the merge base ${base.slice(0, 12)}`,
     );
-    const checkout = baseCheckout(root, base, collections, exec, rebuild);
+    const checkout = baseCheckout({ root, commonGitDir, base, collections, exec, rebuild });
     try {
       for (const { rerun, collection } of owed) {
         const command = `${commandOf(collection, rerun.file)} at ${base.slice(0, 12)}`;

@@ -250,6 +250,7 @@ checks.push(...direct.checks);
 const mergeBase = git('merge-base', baseSha, head);
 const rerun = rerunReds({
   root: ROOT,
+  commonGitDir: git('rev-parse', '--path-format=absolute', '--git-common-dir'),
   head,
   base: mergeBase,
   checks,

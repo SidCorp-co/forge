@@ -6,7 +6,6 @@
 // base too is base-red, green again is flaky, and neither refuses the change; a red the base does not
 // share is refused as before.
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -41,7 +40,6 @@ afterAll(() => {
 function world({ json = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'merge-check-reruns-'));
   made.push(root);
-  spawnSync('git', ['init', '-q'], { cwd: root });
   const check = {
     id: '11111111-1111-4111-8111-111111111111',
     kind: 'tests',
@@ -103,6 +101,7 @@ const rebuild = () => ({ built: [], refusal: null });
 const reran = (w, exec) =>
   rerunReds({
     root: w.root,
+    commonGitDir: join(w.root, '.git'),
     head: HEAD,
     base: BASE,
     checks: [w.check],
@@ -189,6 +188,7 @@ describe('a red integration test is rerun, and only the red one (ISS-1120)', () 
     expect(
       rerunReds({
         root: w.root,
+        commonGitDir: join(w.root, '.git'),
         head: HEAD,
         base: BASE,
         checks: [direct],
