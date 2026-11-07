@@ -26,6 +26,16 @@ function synthesizeAgentEmail(handle: string): string {
 }
 
 /**
+ * The handle an agent's minted address carries (`autoflow.27285ff18a5b@agents.forge.invalid` →
+ * `autoflow`), for a row minted before its handle was kept as its display name; null for any other
+ * address, which is never cut into a guess.
+ */
+export function handleOfAgentEmail(email: string): string | null {
+  const m = /^([a-z0-9][a-z0-9-]*[a-z0-9])\.[0-9a-f]{12}@agents\.forge\.invalid$/.exec(email);
+  return m?.[1] ?? null;
+}
+
+/**
  * The `users` row an agent account is minted with, wherever one is minted. Its handle is also the
  * label a reader is shown, so no renderer falls back to the synthesized address, which exists only
  * because the column is required and unique (ISS-1317).

@@ -163,9 +163,13 @@ export function MemberList({
       <RowList
         query={membersQ}
         row={(m) => (
-          <li key={m.userId} className={ROW}>
+          <li key={m.userId} className={ROW} data-testid={`org-member-${m.userId}`}>
             <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-fg">{m.email}</span>
+              {/* an agent's address is minted, never shown: its name and the Agent badge (ISS-1072) */}
+              <span className="min-w-0 truncate text-fg" title={m.agent ? undefined : m.email}>
+                {m.name}
+              </span>
+              {m.agent ? <Badge tone="neutral">{t("settings.orgs.agent")}</Badge> : null}
               {user?.id === m.userId && <Badge tone="accent">{t("common.nav.you")}</Badge>}
             </span>
             <span className="flex shrink-0 items-center gap-2">
@@ -193,7 +197,7 @@ export function MemberList({
               {canManage && (
                 <IconButton
                   icon="trash"
-                  aria-label={t("settings.orgs.removeNamed", { email: m.email })}
+                  aria-label={t("settings.orgs.removeNamed", { name: m.name })}
                   onClick={() => setMemberToRemove(m)}
                   disabled={removeMember.isPending && removeMember.variables === m.userId}
                 />
@@ -207,7 +211,7 @@ export function MemberList({
         title={t("settings.orgs.removeMember")}
         message={
           <>
-            {t("settings.orgs.removeLead")} <strong>{memberToRemove?.email}</strong>{" "}
+            {t("settings.orgs.removeLead")} <strong>{memberToRemove?.name}</strong>{" "}
             {t("settings.orgs.removeTail", { org: org.name })}
           </>
         }

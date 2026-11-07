@@ -23,6 +23,10 @@ export interface OrgListItem {
 /** One row of `GET /api/orgs/:orgId/members`. */
 export interface OrgMemberRow {
   userId: string;
+  /** What the page shows: an agent's handle, never its minted address; a person's name, or their email (ISS-1072). */
+  name: string;
+  /** An agent account, read as an Agent badge beside its name. */
+  agent: boolean;
   email: string;
   role: OrgRole;
   /** Assigned working lens(es) — empty = default (product/non-technical voice). */

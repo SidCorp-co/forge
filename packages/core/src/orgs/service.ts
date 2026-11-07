@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { handleOfAgentEmail } from '../credentials/agent-account.js';
 import { db, type Tx } from '../db/client.js';
 import {
   type OrgMemberRole,
@@ -93,6 +94,13 @@ export async function listOrgsForUser(userId: string): Promise<OrgMembership[]> 
 /** One member of an org, as both transports report them. */
 type OrgMember = {
   userId: string;
+  /**
+   * What a reader is shown (ISS-1072): an agent's handle, never its minted address; a person's
+   * display name, or their email where none is typed.
+   */
+  name: string;
+  /** Whether the member is an agent account (`users.kind`), read as an Agent badge beside its name. */
+  agent: boolean;
   email: string;
   /** The label a person reads, or null where nobody has typed one. */
   displayName: string | null;
@@ -105,9 +113,10 @@ type OrgMember = {
 
 /** The members of `orgId`. Authorization stays at the transport edge. */
 export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
-  return db
+  const rows = await db
     .select({
       userId: organizationMembers.userId,
+      kind: users.kind,
       email: users.email,
       displayName: users.displayName,
       handle: organizationMembers.handle,
@@ -118,6 +127,15 @@ export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(eq(organizationMembers.orgId, orgId));
+  return rows.map(({ kind, ...r }) => {
+    const agent = kind === 'agent';
+    const typed = r.displayName?.trim() || null;
+    // an agent's address is minted, never shown: past its handle, only the part before the @
+    const name = agent
+      ? (typed ?? r.handle ?? handleOfAgentEmail(r.email) ?? r.email.split('@')[0] ?? r.email)
+      : (typed ?? r.email);
+    return { ...r, name, agent };
+  });
 }
 
 const orgHead = {
