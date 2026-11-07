@@ -215,20 +215,19 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
         aria-current={selected === r.key ? "true" : undefined}
         data-testid="wave-card"
         data-key={r.key}
+        // the key is the card's tooltip: the title leads, as on the list (ISS-1072)
+        title={r.key}
         className={cn(
           "relative z-1 grid w-full gap-1 border-b border-line-subtle bg-app py-2.5 pl-3 pr-2.5 text-left hover:bg-hover",
           selected === r.key && "bg-info-2 hover:bg-info-2",
         )}
         style={{ borderLeft: `3px solid ${LEGEND[tone].dot}` }}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
-          {issueBadge(r)}
-        </span>
         <Written className={cn("text-13 font-medium text-fg", compact ? "truncate" : "line-clamp-2")} text={r.title} lang={r.writtenLang} />
+        <span className="flex min-w-0 items-center gap-2">{issueBadge(r)}</span>
         {compact ? null : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-12 text-subtle">
-            {r.standing.module ? <span className="font-mono underline decoration-dotted underline-offset-2">{r.standing.module.path}</span> : null}
+            {r.standing.module ? <span title={r.standing.module.path}>{r.standing.module.name}</span> : null}
             {r.standing.blocks.length > 1 ? <span>{t("issues.deps.blocks", { n: r.standing.blocks.length })}</span> : null}
           </span>
         )}

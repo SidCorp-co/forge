@@ -77,14 +77,14 @@ const ROWS = [
   issue(8, "bug", true, "Orders", "open"),
 ];
 
-function board() {
+function board(mode: "attention" | "waves" = "attention", issues: IssueStandingRow[] = ROWS) {
   window.history.replaceState(null, "", "/projects/demo/issues");
   fakeCore((c) =>
     c.path.startsWith("/projects/p1/issues/standing")
-      ? { body: { issues: ROWS, counts: { open: 8, closed: 0, all: 8, blocked: 0, blocking: 0 }, returned: 8, limit: 500, releaseApproval: false } }
+      ? { body: { issues, counts: { open: issues.length, closed: 0, all: issues.length, blocked: 0, blocking: 0 }, returned: issues.length, limit: 500, releaseApproval: false } }
       : { body: {} },
   );
-  return renderWithQuery(<IssuesBoard scope={{ projectId: "p1", slug: "demo" }} mode="attention" />);
+  return renderWithQuery(<IssuesBoard scope={{ projectId: "p1", slug: "demo" }} mode={mode} />);
 }
 
 const rows = () => screen.queryAllByTestId("list-row").map((r) => r.getAttribute("data-key"));
@@ -128,5 +128,21 @@ describe("the Issues list's rows", () => {
     expect(first?.textContent).not.toContain("ISS-");
     expect(first?.querySelector("[title^='ISS-']")).not.toBeNull();
     expect(screen.getByTestId("list-header").textContent).not.toContain("Key");
+  });
+});
+
+// The Waves view leads each card with the issue's title too, never its key (ISS-1072 round 2): the key
+// is the card's tooltip, as on the list.
+describe("the Waves view's cards", () => {
+  it("lead with the title, the key only in the card's tooltip", async () => {
+    const waved = ROWS.slice(0, 2).map((r) => ({ ...r, standing: { ...r.standing, wave: 0 } }));
+    board("waves", waved);
+    const cards = await screen.findAllByTestId("wave-card");
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      expect(card.textContent?.startsWith("Issue ")).toBe(true);
+      expect(card.textContent).not.toContain("ISS-");
+      expect(card.getAttribute("title")).toMatch(/^ISS-\d+$/);
+    }
   });
 });
