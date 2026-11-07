@@ -1,6 +1,6 @@
 
 import { useRouter } from "@/lib/navigation/router";
-import { HealthDot, ProjectMark, Stat, TBody, TD, TH, THead, TR, Table } from '@/design';
+import { HealthDot, ProjectMark, RowItem, RowList, Stat, TBody, TD, TH, THead, TR, Table, useMediaQuery } from '@/design';
 import { useCopy } from '@/lib/i18n/interface-language';
 import { formatRelativeTime, formatSpend } from '../derive';
 import { projectGlyph, projectInitials } from '../glyph';
@@ -17,7 +17,40 @@ interface ProjectListProps {
   onTogglePin: (id: string) => void;
 }
 
-export function ProjectList({ items, now, spend, onTogglePin }: ProjectListProps) {
+/** At phone width the table's eight columns wrapped each cell letter by letter: a phone reads the
+ *  shared row list, each project led by its name with its counts on one line (ISS-1072). */
+export function ProjectList(props: ProjectListProps) {
+  const phone = useMediaQuery('(max-width: 639.98px)');
+  return phone ? <ProjectRows {...props} /> : <ProjectTable {...props} />;
+}
+
+/** A row is one link to its project, so it carries no pin button inside it; the Cards view pins. */
+function ProjectRows({ items, spend }: ProjectListProps) {
+  const t = useCopy();
+  return (
+    <RowList testId="projects-rows" label={t('projects.all')}>
+      {items.map((p) => {
+        const glyph = projectGlyph(p.id);
+        return (
+          <RowItem
+            key={p.id}
+            href={`/projects/${p.slug}`}
+            lead={<ProjectMark tint={glyph.tint} ink={glyph.ink} initials={projectInitials(p.name)} size={28} radius="var(--r-sm)" />}
+            title={p.name}
+            facts={[
+              ...(p.liveRuns > 0 ? [t('projects.liveRuns', { n: p.liveRuns })] : []),
+              t('projects.activeCount', { n: p.openIssues }),
+              ...(spend ? [formatSpend(p.spend24hUsd)] : []),
+            ]}
+            trailing={<HealthDot health={p.health} />}
+          />
+        );
+      })}
+    </RowList>
+  );
+}
+
+function ProjectTable({ items, now, spend, onTogglePin }: ProjectListProps) {
   const router = useRouter();
   const t = useCopy();
   return (

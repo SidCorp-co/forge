@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useActiveOrg } from '@/features/orgs';
 import { projectApi } from './api';
-import { inActiveOrg, mergeProjects, workspaceTotals } from './derive';
+import { inActiveOrg, mergeProjects } from './derive';
 import { usePinnedProjects } from './pins';
 
 /** Project console list. Keyed `['projects']` — see the WS contract above. */
@@ -57,9 +57,10 @@ export function useLiveRuns(projectId: string | null | undefined): number | null
 
 /**
  * Compose the projects console: the `['projects']` list + `['projects','health']`
- * rollup + client-only pins → fully-hydrated `ProjectConsoleItem[]` + workspace
- * totals. Query keys are unchanged, so the WS event-router invalidations drive
- * live updates with no extra wiring.
+ * rollup + client-only pins → fully-hydrated `ProjectConsoleItem[]`. The console
+ * counts its totals over the set it lists, the active organization's, so its band
+ * and its list read one count (ISS-1072). Query keys are unchanged, so the WS
+ * event-router invalidations drive live updates with no extra wiring.
  */
 export function useProjectsConsole() {
   const projects = useProjects();
@@ -67,11 +68,9 @@ export function useProjectsConsole() {
   const { pinnedIds, toggle } = usePinnedProjects();
 
   const items = mergeProjects(projects.data ?? [], health.data, pinnedIds);
-  const totals = workspaceTotals(items);
 
   return {
     items,
-    totals,
     isLoading: projects.isLoading,
     isError: projects.isError,
     error: projects.error,

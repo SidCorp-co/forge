@@ -20,7 +20,7 @@ import {
 import { useActiveOrg } from '@/features/orgs';
 import { formatApiError } from '@/lib/api/error';
 import { useCopy } from '@/lib/i18n/interface-language';
-import { filterProjects, formatSpend, isAttention, showSpend, sortProjects } from '../derive';
+import { filterProjects, formatSpend, isAttention, showSpend, sortProjects, workspaceTotals } from '../derive';
 import { useProjectsConsole } from '../hooks';
 import type { ProjectConsoleItem, ProjectSort, ProjectView, WorkspaceTotals } from '../types';
 import { NewProjectDialog } from './new-project-dialog';
@@ -33,7 +33,7 @@ const SKELETONS = ['a', 'b', 'c', 'd', 'e', 'f'];
 
 export function ProjectsConsole() {
   const t = useCopy();
-  const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
+  const { items, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [opened, setOpened] = useState(false);
@@ -59,7 +59,7 @@ export function ProjectsConsole() {
       ) : items.length === 0 ? (
         <EmptyState message={t('projects.noProjects')} action={{ label: t('projects.new'), onClick: onNewProject }} />
       ) : (
-        <ConsoleBody items={items} totals={totals} onTogglePin={toggle} onNewProject={onNewProject} />
+        <ConsoleBody items={items} onTogglePin={toggle} onNewProject={onNewProject} />
       )}
       <NewProjectDialog open={createOpen} onClose={onCloseCreate} />
     </PageContainer>
@@ -68,12 +68,10 @@ export function ProjectsConsole() {
 
 function ConsoleBody({
   items,
-  totals,
   onTogglePin,
   onNewProject,
 }: {
   items: ProjectConsoleItem[];
-  totals: WorkspaceTotals;
   onTogglePin: (id: string) => void;
   onNewProject: () => void;
 }) {
@@ -93,13 +91,16 @@ function ConsoleBody({
   const scopeLabel = activeOrg ? (activeOrg.isPersonal ? t('projects.form.personal') : activeOrg.name) : null;
 
   const now = useNow(60_000);
-  const attentionCount = items.filter(isAttention).length;
-  const visible = sortProjects(filterProjects(items, query, attentionOnly, activeOrgId), sort);
+  // one set, the active organization's: the band counts what the list lists (ISS-1072)
+  const scoped = filterProjects(items, '', false, activeOrgId);
+  const totals = workspaceTotals(scoped);
+  const attentionCount = scoped.filter(isAttention).length;
+  const visible = sortProjects(filterProjects(scoped, query, attentionOnly, activeOrgId), sort);
 
   return (
     <>
       <PageTitle>{scopeLabel ? t('projects.titleIn', { scope: scopeLabel }) : t('projects.title')}</PageTitle>
-      <StatsBand totals={totals} spend={showSpend(items)} />
+      <StatsBand totals={totals} spend={showSpend(scoped)} />
       <ProjectsToolbar
         query={query}
         onQuery={setQuery}
@@ -129,7 +130,7 @@ function ConsoleBody({
         searching={query.trim() !== '' || attentionOnly || sort !== 'recent'}
         view={view}
         now={now}
-        spend={showSpend(items)}
+        spend={showSpend(scoped)}
         onTogglePin={onTogglePin}
         onNewProject={onNewProject}
       />
