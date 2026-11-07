@@ -25,6 +25,41 @@ const CELL = "min-w-0 px-4 max-md:px-2.5";
 const STICKY_LEAD = "max-md:sticky max-md:left-0 max-md:z-[4] max-md:self-stretch max-md:justify-center max-md:border-r max-md:border-line-divider";
 
 const clamp = (n: number) => Math.min(100, Math.max(0, n));
+
+/** An element's laid-out width in px, kept as it resizes; null until it is laid out (and where nothing lays out, as in jsdom). */
+export function useLaidOutWidth<T extends HTMLElement>(): [(el: T | null) => void, number | null] {
+  const [el, setEl] = useState<T | null>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!el || typeof ResizeObserver === "undefined") return;
+    // an observer reports the element's size once as it starts watching, then on each resize
+    const watch = new ResizeObserver(() => setWidth(el.getBoundingClientRect().width || null));
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [el]);
+  return [setEl, width];
+}
+
+/** The room an axis label takes, in px: "15:00" at 11px is about 30px, and a gap either side. */
+export const AXIS_LABEL_PX = 40;
+
+/**
+ * The tick labels an axis `widthPx` wide prints whole: none nearer "now" than a label's room, none
+ * nearer the label before it (ISS-1072: at 390 the axis is about 160px, and "15:00" eight minutes
+ * before now printed over "now"). Unmeasured, every tick but those within 6% of now, as on the
+ * widest axis.
+ */
+export function axisTicks<T extends { at: number }>(ticks: readonly T[], widthPx: number | null): T[] {
+  const room = widthPx ? (AXIS_LABEL_PX / widthPx) * 100 : 6;
+  const kept: T[] = [];
+  for (const tick of [...ticks].sort((a, b) => a.at - b.at)) {
+    const last = kept.at(-1);
+    if (100 - tick.at < room) continue;
+    if (last && tick.at - last.at < room) continue;
+    kept.push(tick);
+  }
+  return kept;
+}
 const left = (at: number) => ({ left: `${clamp(at)}%` });
 
 /** The lanes' frame: their own sideways scroller over a floor width, so the page itself never scrolls sideways. */
@@ -47,17 +82,20 @@ export function TimelineFrame({ label, children }: { label: string; children: Re
 
 /** The column header: the lead's name, the axis (a label at each tick, "now" at its end), the trailing names. */
 export function TimelineHead({ lead, ticks, now, trail }: { lead: string; ticks: { key: string; at: number; text: string }[]; now: string; trail: [string, string] }) {
+  const [axisRef, axisPx] = useLaidOutWidth<HTMLSpanElement>();
   return (
     <div className={cn(LANE_COLS, "min-h-[34px] border-b border-line-divider bg-sunken text-12 text-subtle")} data-testid="timeline-axis">
       <span className={cn(CELL, STICKY_LEAD, "max-md:bg-sunken")}>{lead}</span>
       <span className={cn(CELL, "relative h-[34px]")}>
-        <span className="absolute inset-y-0 right-4 left-4 max-md:right-2.5 max-md:left-2.5">
-          {ticks.map((t) => (
-            <span key={t.key} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-11 tabular-nums" style={left(t.at)}>
+        <span ref={axisRef} className="absolute inset-y-0 right-4 left-4 max-md:right-2.5 max-md:left-2.5">
+          {axisTicks(ticks, axisPx).map((t) => (
+            <span key={t.key} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-11 tabular-nums" style={left(t.at)} data-testid="axis-label">
               {t.text}
             </span>
           ))}
-          <span className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 text-11 font-semibold text-muted">{now}</span>
+          <span className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 text-11 font-semibold text-muted" data-testid="axis-label">
+            {now}
+          </span>
         </span>
       </span>
       <span className={cn(CELL, "text-right")}>{trail[0]}</span>
@@ -77,9 +115,9 @@ export interface TimelineRun {
 }
 
 /** One lane's track: gridlines at `ticks`, the base line, its runs, the marks a page places, the dashed now edge. */
-export function TimelineTrack({ ticks, runs, children }: { ticks: number[]; runs: TimelineRun[]; children?: ReactNode }) {
+export function TimelineTrack({ ticks, runs, children, measureRef }: { ticks: number[]; runs: TimelineRun[]; children?: ReactNode; measureRef?: (el: HTMLSpanElement | null) => void }) {
   return (
-    <span className="relative block h-8 min-w-0" data-testid="timeline-track">
+    <span ref={measureRef} className="relative block h-8 min-w-0" data-testid="timeline-track">
       {ticks.map((t) => (
         <span key={t} aria-hidden className="absolute inset-y-0 w-px bg-line-divider" style={left(t)} />
       ))}
@@ -187,7 +225,7 @@ export function TimelineMark({
         shape.kind === "pin"
           ? "top-[calc(50%+2px)] -translate-x-1/2 -translate-y-full"
           : lowered
-            ? "top-[calc(50%+3px)] -translate-x-1/2"
+            ? "top-[calc(50%+5px)] -translate-x-1/2"
             : "top-1/2 -translate-x-1/2 -translate-y-1/2",
       )}
       style={{ left: `calc(${clamp(at)}% + ${shift}px)` }}
@@ -216,55 +254,69 @@ export function TimelineMark({
   );
 }
 
+/** How wide a mark is at most, in px: a pin or a count circle. */
+const MARK_PX = 22;
+
 /**
  * How near two marks may stand, in percent of the track, before one would cover the other: a mark is
  * at most 22px across, and the lanes' floor width leaves the track about 590px, so 3.8% is the widest
- * a mark spans on the narrowest track.
+ * a mark spans on the narrowest track that floor allows.
  */
-export const MARK_GAP = 3.8;
+export const MARK_GAP = (MARK_PX / 590) * 100;
 
 /** How far apart two marks stand once spread, in px: a mark's width and a gap. */
 export const MARK_STEP = 24;
 
-/** The narrowest a lane's track gets: the lanes' floor width leaves it about this many px, and narrower screens scroll it. */
+/** The narrowest a lane's track gets where the lanes keep their floor width; a phone keeps none (`TimelineFrame`). */
 export const TRACK_FLOOR_PX = 590;
 
-/** {@link MARK_STEP} in percent of the narrowest track: two marks this far apart never touch at any width. */
-const STEP_PCT = (MARK_STEP / TRACK_FLOOR_PX) * 100;
-
-/** Where a mark stands once spread: hung below the line under a pin, and stepped aside in px. */
+/** Where a mark stands once spread: hung below the line under a pin or on the second row, and stepped aside in px. */
 export interface MarkSpot {
   lowered: boolean;
   shift: number;
 }
 
+/** Packs `ats` (sorted, in %) so each stands at least `step` past the one before, and none past the now edge. */
+function packed(ats: readonly number[], step: number): number[] {
+  const placed = [...ats];
+  for (let i = 1; i < placed.length; i++) placed[i] = Math.max(placed[i] ?? 0, (placed[i - 1] ?? 0) + step);
+  for (let i = placed.length - 1; i >= 0; i--) {
+    const room = i === placed.length - 1 ? 100 : (placed[i + 1] ?? 100) - step;
+    placed[i] = Math.min(placed[i] ?? 0, room);
+  }
+  return placed;
+}
+
 /**
- * Where each mark stands so none covers another. Pins stand above the line and never move. Every
- * other mark of the lane is packed in time order: each stands at least {@link MARK_STEP} px past the
- * one before it on the narrowest track, and marks that would pass the now edge are packed back
- * leftwards from it. A mark's `shift` is that move in px on the narrowest track; on a wider one the
- * distance between neighbours only grows, so no two marks touch at any width, and a crowd never steps
- * onto a neighbour outside it. A mark that ends within `gap` of a pin hangs just below the line.
- * Keyed by the marks' keys.
+ * Where each mark stands so none covers another, on a track `trackPx` wide: its laid-out width where it
+ * is narrower than the lanes' floor (a phone), else the floor, on which every wider track only spreads
+ * the marks further. Pins stand above the line and never move. Every other mark of the lane is packed
+ * in time order: each stands at least {@link MARK_STEP} px past the one before it, and marks that would
+ * pass the now edge are packed back leftwards from it. Where one line cannot hold them all (a phone's
+ * track of 160px under ten marks, ISS-1072), every second mark in time order hangs on a row below the
+ * line, each row packed on its own, so a batch never sits on a release. A mark that ends within a
+ * mark's width of a pin hangs below the line too. A mark's `shift` is its move in px. Keyed by the marks' keys.
  */
-export function spreadMarks(
-  marks: readonly { key: string; at: number; pin: boolean }[],
-  gap: number = MARK_GAP,
-): Map<string, MarkSpot> {
+export function spreadMarks(marks: readonly { key: string; at: number; pin: boolean }[], trackPx: number = TRACK_FLOOR_PX): Map<string, MarkSpot> {
+  const px = Math.max(MARK_STEP, Math.min(trackPx, TRACK_FLOOR_PX));
+  const step = (MARK_STEP / px) * 100;
+  const gap = (MARK_PX / px) * 100;
   const pins = marks.filter((m) => m.pin).map((m) => m.at);
   const spots = new Map<string, MarkSpot>(marks.filter((m) => m.pin).map((m) => [m.key, { lowered: false, shift: 0 }]));
   const line = [...marks].filter((m) => !m.pin).sort((a, b) => a.at - b.at);
-  const placed = line.map((m) => m.at);
-  for (let i = 1; i < placed.length; i++) placed[i] = Math.max(placed[i], placed[i - 1] + STEP_PCT);
-  for (let i = placed.length - 1; i >= 0; i--) {
-    const room = i === placed.length - 1 ? 100 : placed[i + 1] - STEP_PCT;
-    placed[i] = Math.min(placed[i], room);
-  }
-  line.forEach((m, i) => {
-    const at = placed[i];
-    // whole px, and `|| 0` so a mark that stays put reads 0, never -0
-    const shift = Math.round(((at - m.at) * TRACK_FLOOR_PX) / 100) || 0;
-    spots.set(m.key, { lowered: pins.some((p) => Math.abs(p - at) < gap), shift });
+  const oneRow = line.length <= 1 || (line.length - 1) * step <= 100;
+  const rows = oneRow ? [line] : [line.filter((_, i) => i % 2 === 0), line.filter((_, i) => i % 2 === 1)];
+  rows.forEach((row, r) => {
+    const placed = packed(
+      row.map((m) => m.at),
+      step,
+    );
+    row.forEach((m, i) => {
+      const at = placed[i] ?? m.at;
+      // whole px, and `|| 0` so a mark that stays put reads 0, never -0
+      const shift = Math.round(((at - m.at) * px) / 100) || 0;
+      spots.set(m.key, { lowered: r === 1 || pins.some((p) => Math.abs(p - at) < gap), shift });
+    });
   });
   return spots;
 }

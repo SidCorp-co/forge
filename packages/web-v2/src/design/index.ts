@@ -123,6 +123,8 @@ export {
   TRACK_FLOOR_PX,
   type MarkSpot,
   spreadMarks,
+  axisTicks,
+  useLaidOutWidth,
   TimelineMark,
   type TimelineMarkShape,
   TimelineRow,

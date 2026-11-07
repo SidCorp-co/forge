@@ -231,6 +231,35 @@ function phoneReads(): string[] {
   return [...wrong.filter((w) => !time.includes(w)).slice(0, 6), ...time];
 }
 
+/**
+ * No two marks of a lane cover each other and no two axis labels print over each other, at every width
+ * (ISS-1072 round 3): at 390 the "15:00" and "now" labels overlapped and batch circles sat on release
+ * diamonds, the marks spread for a 590px track the phone does not have.
+ */
+function apart(): string[] {
+  const wrong: string[] = [];
+  const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+  const axis = q("[data-testid=timeline-axis]");
+  const labels = [...(axis?.querySelectorAll<HTMLElement>("[data-testid=axis-label]") ?? [])].filter((l) => l.checkVisibility());
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const [a, b] = [labels[i], labels[j]] as [HTMLElement, HTMLElement];
+      if (hit(a.getBoundingClientRect(), b.getBoundingClientRect())) wrong.push(`axis labels "${a.textContent}" and "${b.textContent}" print over each other`);
+    }
+  }
+  for (const row of document.querySelectorAll<HTMLElement>("[data-testid=list-row]")) {
+    // each mark's own box, unrotated: a pin's or a diamond's rotated box is wider than the shape it draws
+    const marks = [...row.querySelectorAll<HTMLElement>("[data-testid=timeline-track] > button")].map((m) => ({ m, r: m.getBoundingClientRect() }));
+    for (let i = 0; i < marks.length; i++) {
+      for (let j = i + 1; j < marks.length; j++) {
+        const [a, b] = [marks[i], marks[j]] as [(typeof marks)[number], (typeof marks)[number]];
+        if (hit(a.r, b.r)) wrong.push(`in ${row.dataset.key}, a ${a.m.dataset.testid} sits on a ${b.m.dataset.testid}`);
+      }
+    }
+  }
+  return [...new Set(wrong)].slice(0, 8);
+}
+
 /** Every lane starts 32px into the frame as it shows, where its group's label starts: on a phone the frame opens scrolled to now, its lead column held in place. */
 function indented(): string[] {
   const frame = q("[data-testid=timeline-frame]");
@@ -328,7 +357,7 @@ const look = (t: "light" | "dark") => ({
     q("main")?.scrollTo(0, 0);
     await pause(500);
     words(`page-${t}`);
-    return [...sideways(), ...indented(), ...phoneReads(), ...contrast("[data-witness=page]")];
+    return [...sideways(), ...indented(), ...phoneReads(), ...apart(), ...contrast("[data-witness=page]")];
   },
 });
 

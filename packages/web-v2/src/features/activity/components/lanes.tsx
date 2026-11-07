@@ -14,6 +14,7 @@ import {
   TimelineFrame,
   TimelineHead,
   spreadMarks,
+  useLaidOutWidth,
   TimelineMark,
   TimelineRow,
   type TimelineRun,
@@ -127,13 +128,18 @@ function Track({ p, generatedAt, batches, open, onOpen }: { p: OrgActivityProjec
     live: r.to === null,
     title: r.to === null ? t("activity.run.live", { from: w.clock(r.from) }) : t("activity.run.past", { from: w.clock(r.from), to: w.clock(r.to) }),
   }));
-  const spots = spreadMarks([
-    ...(batches ? lane.batches.map((b) => ({ key: `b:${b.at}`, at: x(b.at), pin: false })) : []),
-    ...lane.releases.map((r) => ({ key: `r:${r.version}`, at: x(r.at), pin: false })),
-    ...lane.waits.map((wt) => ({ key: `w:${wt.at}`, at: x(wt.at), pin: true })),
-  ]);
+  // spread over the track as it is laid out: a phone's is a quarter of the floor's (ISS-1072)
+  const [trackRef, trackPx] = useLaidOutWidth<HTMLSpanElement>();
+  const spots = spreadMarks(
+    [
+      ...(batches ? lane.batches.map((b) => ({ key: `b:${b.at}`, at: x(b.at), pin: false })) : []),
+      ...lane.releases.map((r) => ({ key: `r:${r.version}`, at: x(r.at), pin: false })),
+      ...lane.waits.map((wt) => ({ key: `w:${wt.at}`, at: x(wt.at), pin: true })),
+    ],
+    trackPx ?? undefined,
+  );
   return (
-    <TimelineTrack ticks={halfHours(lane.from, generatedAt).map((h) => x(new Date(h).toISOString()))} runs={runs}>
+    <TimelineTrack ticks={halfHours(lane.from, generatedAt).map((h) => x(new Date(h).toISOString()))} runs={runs} measureRef={trackRef}>
       {batches
         ? lane.batches.map((b) => (
             <TimelineMark
@@ -235,10 +241,8 @@ export function ActivityLanes({
   const shown = groups.filter((g) => g.rows.length > 0);
   const from = new Date(Date.parse(generatedAt) - 120 * 60_000).toISOString();
   const end = Date.parse(generatedAt);
-  const ticks = halfHours(from, generatedAt)
-    // a label too near "now" would print over it
-    .filter((h) => (end - h) / (end - Date.parse(from)) > 0.06)
-    .map((h) => ({ key: String(h), at: ((h - Date.parse(from)) / (end - Date.parse(from))) * 100, text: new Date(h).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) }));
+  // which labels print whole is the axis's own reading, by its laid-out width (`timeline.tsx:axisTicks`)
+  const ticks = halfHours(from, generatedAt).map((h) => ({ key: String(h), at: ((h - Date.parse(from)) / (end - Date.parse(from))) * 100, text: new Date(h).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) }));
   return (
     <TimelineFrame label={ariaLabel}>
       <TimelineHead lead={t("activity.col.project")} ticks={ticks} now={t("activity.lane.now")} trail={[t("activity.col.you"), t("activity.col.last")]} />
