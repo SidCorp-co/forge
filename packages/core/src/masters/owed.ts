@@ -175,7 +175,7 @@ function stewardAsksLine(asks: Owed['stewardAsks']): string {
 function questionsLine(questions: Owed['questions']): string {
   if (questions.length === 0) return '';
   const named = questions.map((q) => (q.on ? `${q.id} on ${q.on}` : q.id));
-  return ` ${questions.length} question${plural(questions.length, ' is', 's are')} owed by you or a peer agent, not a person (${named.join('; ')}): read each (\`forge-runner api questions/<id>\`), then decide it and answer with your reason in \`note\` (\`forge-runner api questions/<id>/answer -X POST\`), or void it with its \`reason\` (\`forge-runner api questions/<id>/void -X POST\`); ${method('pipeline-and-issue-lifecycle')} (Who answers) is how.`;
+  return ` ${questions.length} question${plural(questions.length, ' is', 's are')} owed by you or a peer agent, not a person (${named.join('; ')}): read each (\`forge-runner api questions/<id>\`), then decide it and answer at \`forge-runner api questions/<id>/answer -X POST\` with the round it is on and exactly one of its options or a text (\`{"round":<n>,"optionId":"<id>"}\`, or \`"text"\` where the round asks for text); \`note\` travels only on a channel gate's or a steward decision's question and is refused \`QUESTION_NOTE_NOT_TAKEN\` on any other, so record your reason there as a decision on the issue it stands on (\`forge-runner api issues/<id>/events -X POST\` with \`{"kind":"decision","contract":1,"fields":[{"key":"decision","value":"…"},{"key":"why","value":"…"}]}\`); or void it with its \`reason\` (\`forge-runner api questions/<id>/void -X POST\`); ${method('pipeline-and-issue-lifecycle')} (Who answers) is how.`;
 }
 
 function answersLine(answers: Owed['answers']): string {

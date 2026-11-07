@@ -56,10 +56,20 @@ describe('questionsLine: the questions the master or a peer agent owes', () => {
     expect(line).toContain(
       '2 questions are owed by you or a peer agent, not a person (q1 on ISS-4; q2)',
     );
-    expect(line).toContain(
-      'answer with your reason in `note` (`forge-runner api questions/<id>/answer -X POST`)',
-    );
+    expect(line).toContain('answer at `forge-runner api questions/<id>/answer -X POST`');
     expect(line).toContain('`forge-runner api questions/<id>/void -X POST`');
+  });
+
+  // ISS-1079: the answer door refuses a note on a plain agent question (`QUESTION_NOTE_NOT_TAKEN`)
+  // and needs the round, so the nudge names the body the door takes and where the reason goes
+  it('names the body the answer door takes, and never tells an agent to send a note it refuses', () => {
+    const line = owedLine(owed);
+    expect(line).toContain('`{"round":<n>,"optionId":"<id>"}`');
+    expect(line).not.toContain('answer with your reason in `note`');
+    expect(line).toContain('refused `QUESTION_NOTE_NOT_TAKEN`');
+    expect(line).toContain(
+      'as a decision on the issue it stands on (`forge-runner api issues/<id>/events -X POST`',
+    );
   });
 
   it('counts as owed work, so a pass is nudged for it and its digest moves', () => {
