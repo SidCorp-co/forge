@@ -84,7 +84,7 @@ const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--
 export function TH({ className, style, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <TableHead
-      className={cn("fg-overline h-auto px-4 font-mono whitespace-normal text-subtle", className)}
+      className={cn("h-auto px-4 text-12 font-semibold whitespace-normal text-subtle", className)}
       style={{ ...DENSITY_PY, ...style }}
       {...props}
     />
@@ -126,7 +126,7 @@ export function SortableTH<TData>({ header, className, children, ...props }: Sor
         type="button"
         onClick={column.getToggleSortingHandler()}
         className={cn(
-          "inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-fg",
+          "inline-flex items-center gap-1 hover:text-fg",
           sorted && "text-fg",
         )}
       >
