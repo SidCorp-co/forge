@@ -163,8 +163,9 @@ export function MemberList({
       <RowList
         query={membersQ}
         row={(m) => (
-          <li key={m.userId} className={ROW} data-testid={`org-member-${m.userId}`}>
-            <span className="flex min-w-0 items-center gap-2">
+          // at phone width the controls wrap under the name, so the name is read whole, not cut to a letter
+          <li key={m.userId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-2" data-testid={`org-member-${m.userId}`}>
+            <span className="flex min-w-32 flex-1 items-center gap-2">
               {/* an agent's address is minted, never shown: its name and the Agent badge (ISS-1072) */}
               <span className="min-w-0 truncate text-fg" title={m.agent ? undefined : m.email}>
                 {m.name}
