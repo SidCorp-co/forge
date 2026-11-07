@@ -12,6 +12,7 @@ vi.hoisted(() => {
 
 import { ROOM_STILL_QUEUED_LINES, STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
+import { warmSupportRoom } from '../../src/support/warm.js';
 import { coreTimers } from '../../src/timer-registry.js';
 import { rows } from '../helpers/factories.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
@@ -131,33 +132,55 @@ describe('ISS-850: a turn core lost to its restart', () => {
     expect(await toldInThread(thread)).toBe(0);
   }, 90_000);
 
-  it('a message lost on every try is told once its tries ran out, and stays queued', async () => {
+  // A lost turn ends its session, and the room's next turn opens a fresh one (ISS-1101). A fresh
+  // session's warm-up that completes ends the back-off of what waits (ISS-977,
+  // `delivery.ts:endBackOff`, from `dispatch.ts:onSupportTurnEnded`): a completed turn shows the
+  // fault cleared, so a message whose tries ran out still goes with the room's next turn. Whether
+  // that warm-up comes at once is a race: the box coming back fires both the lost-turn recovery
+  // (`index.ts:registerSupportRooms`, onBoxListening) and its rooms' warm-up
+  // (`warm.ts:warmRoomsOfDevice`), and only a warm-up that runs after the recovery ended the lost
+  // session warms the fresh one; the sweep then skips the room for `WARM_RETRY_MS` after its last
+  // warm-up. So the witness warms the room as the box coming online does, and waits for the hand-over.
+  it('a message lost on every try is told once its tries ran out, stays queued, and goes once a fresh session completes a turn', async () => {
     const text = 'Where did my invoice go?';
     const thread = await lostMidTurn(text);
     await coreStarts();
-    // tried again after the short back-off, into a turn the next restart loses as well, twice
-    await expect.poll(() => handed(text), { timeout: 15_000 }).toBe(2);
+    await expect.poll(() => handed(text), { timeout: 30_000 }).toBe(2);
     await loseTheTurn();
     await boxReconnects();
     await expect.poll(() => handed(text), { timeout: 30_000 }).toBe(3);
     expect(await toldTheRoom()).toBe(0);
     await loseTheTurn();
+    // the third loss spends the last try; every turn after it answers what it is handed
+    answers = true;
+    w.box.finishTurns = true;
     await boxReconnects();
     // the room is told once, at its top level, and the thread itself nothing (ISS-1105)
     await expect.poll(() => toldTheRoom(), { timeout: 15_000 }).toBe(1);
-    await coreStarts();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(handed(text)).toBe(3);
+    const [spent] = await rows<{ tries: number }>(sql`
+      SELECT (output->>'tries')::int AS tries FROM support_actions
+       WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${text}`);
+    expect(spent?.tries).toBe(3);
+    // the box online warms the room's fresh session; its warm-up completing hands the queued
+    // message on once more, and this time it is answered
+    await warmSupportRoom(roomId, 'online');
+    await w.untilLines((ls) => ls.some((l) => l.tmid === thread && l.text === `Answered: ${text}`));
+    expect(handed(text)).toBe(4);
+    const fourth = seen.filter((t) => t.messages.some((m) => m.text === text))[3];
+    const warmed = w.box.turns.find(
+      (t) => t.warmUp && t.sessionId === fourth?.sessionId && t.at <= Number(fourth?.at),
+    );
+    expect(warmed, 'the fourth hand-over follows a completed warm-up of its session').toBeTruthy();
     expect(await toldTheRoom()).toBe(1);
     expect(await toldInThread(thread)).toBe(0);
     const told = (await w.actions(roomId)).filter(
       (a) => a.kind === 'refused' && a.tool === 'turn_failed' && a.thread === thread,
     );
     expect(told).toHaveLength(1);
-    const [row] = await rows<{ waiting: boolean }>(sql`
-      SELECT delivered_at IS NULL AS waiting FROM support_actions
-       WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${text}`);
-    expect(row?.waiting).toBe(true);
+    // answered, it is handed on no more
+    await coreStarts();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(handed(text)).toBe(4);
   }, 120_000);
 
   it('a message whose thread got the session’s reply before the turn was lost is not handed on', async () => {
