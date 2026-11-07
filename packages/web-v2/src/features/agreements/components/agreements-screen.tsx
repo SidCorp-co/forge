@@ -7,11 +7,10 @@
 import type { AgreementsView } from "@forge/contracts/agreements";
 import { useState } from "react";
 import { Button, DetailDrawer, ListSearch, ListToolbar, PageTitle, ToolbarSelect, useGroupFold, useUrlParams } from "@/design";
-import { useRunStanding } from "@/features/agents";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useAgreements, useRunAgreements } from "../hooks";
+import { useAgreements, useRecentRuns, useRunAgreements } from "../hooks";
 import { currentGroups, inState, receivedOf, searchText, STATE_FILTERS } from "../view";
 import { AgreementEdit } from "./agreement-edit";
 import { AgreementInspector } from "./agreement-inspector";
@@ -22,7 +21,7 @@ const RECENT_RUNS = 20;
 const CURRENT = "current";
 
 function useRunChoices(projectId: string, run: string | null, t: Copy) {
-  const runs = useRunStanding(projectId, "all");
+  const runs = useRecentRuns(projectId, RECENT_RUNS);
   const items = (runs.data?.items ?? []).filter((r) => r.sessionId).slice(0, RECENT_RUNS);
   const options = [{ value: CURRENT, label: t("agreements.run.current") }, ...items.map((r) => ({ value: r.sessionId as string, label: r.issue?.title ?? r.title }))];
   if (run && !options.some((o) => o.value === run)) options.push({ value: run, label: t("agreements.group.received") });

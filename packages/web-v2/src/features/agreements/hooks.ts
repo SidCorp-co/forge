@@ -11,16 +11,19 @@ export const agreementKeys = {
   list: (projectId: string) => [...agreementKeys.all(projectId), "list"] as const,
   detail: (projectId: string, slug: string | null) => [...agreementKeys.all(projectId), "detail", slug] as const,
   run: (projectId: string, session: string | null) => [...agreementKeys.all(projectId), "run", session] as const,
+  runs: (projectId: string) => [...agreementKeys.all(projectId), "runs"] as const,
 };
 
 export const agreementQueries = {
   list: (projectId: string) => readOf(agreementKeys.list(projectId), () => agreementsApi.list(projectId)),
   detail: (projectId: string, slug: string | null) => readOf(agreementKeys.detail(projectId, slug), () => agreementsApi.one(projectId, slug as string)),
+  runs: (projectId: string, limit: number) => readOf(agreementKeys.runs(projectId), () => agreementsApi.runs(projectId, limit), 60_000),
   run: (projectId: string, session: string | null) => readOf(agreementKeys.run(projectId, session), () => agreementsApi.runContext(projectId, session as string), 60_000),
 };
 
 export const useAgreements = (projectId: string) => useQuery(agreementQueries.list(projectId));
 export const useAgreement = (projectId: string, slug: string | null) => useQuery(agreementQueries.detail(projectId, slug));
+export const useRecentRuns = (projectId: string, limit: number) => useQuery(agreementQueries.runs(projectId, limit));
 export const useRunAgreements = (projectId: string, session: string | null) => useQuery(agreementQueries.run(projectId, session));
 
 /** A project admin's change, or a new agreement of the project's own under `slug`: its answer is the agreement as it now reads, and the list reads again. */
