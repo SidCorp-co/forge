@@ -13,7 +13,14 @@ import { approvalRequired } from '../project-config/index.js';
 import { readEndedRunHolds } from './ended-claims.js';
 import { landingRecordsOf } from './landing-records.js';
 import { fillCuts, releaseLinesOf } from './release-cuts.js';
-import { draftPart, placeParts, productionOf, runParts, sharedFor } from './release-read.js';
+import {
+  placeDraft,
+  placeParts,
+  productionOf,
+  runParts,
+  sharedFor,
+  weighDraft,
+} from './release-read.js';
 import { type Part, summaryOf } from './release-read-views.js';
 import type { ViewerFacts } from './release-view.js';
 import { currentReleaseVersion, readLineage } from './version-store.js';
@@ -72,7 +79,8 @@ const wentOut = (parts: readonly Part[]): Part[] =>
 
 /**
  * The releases `choose` picks, summarised: every release is placed, and only the chosen are weighed,
- * so a read that shows a few never pays for the whole list (ISS-1070). A release is listed once,
+ * the draft's gates and approval among them, so a read that shows a few never pays for the whole
+ * list (ISS-1070). A release is listed once,
  * under the version its last attempt wears: a version its roster went on from is one of that
  * release's attempts, not a release of its own (ADR 0011).
  */
@@ -87,19 +95,23 @@ async function summariseChosen(
   ]);
   const [runs, draft, lineage] = await Promise.all([
     runParts(projectId, undefined, required),
-    draftPart(projectId),
+    placeDraft(projectId),
     readLineage(projectId),
   ]);
   const placed = placeParts(releaseLinesOf(lineage), runs, draft);
   const parts = choose(placed.parts.filter((p) => p.continuedAs === null));
-  const shared = await sharedFor(
-    projectId,
-    parts,
-    viewer,
-    current,
-    required,
-    parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
-  );
+  // the draft's gates, naming and approval are read only where the draft is one of the chosen
+  const [shared] = await Promise.all([
+    sharedFor(
+      projectId,
+      parts,
+      viewer,
+      current,
+      required,
+      parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
+    ),
+    draft && parts.includes(draft.part) ? weighDraft(projectId, draft.part) : null,
+  ]);
   await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
   return { releases: parts.map((p) => summaryOf(p, shared)), current, required };
 }

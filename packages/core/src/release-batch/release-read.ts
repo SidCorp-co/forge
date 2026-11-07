@@ -71,25 +71,19 @@ export interface DraftPart {
   recutOf: string | null;
 }
 
-export async function draftPart(projectId: string): Promise<DraftPart | null> {
+/**
+ * The draft placed among the releases: its roster and the version it would wear, its gates, naming
+ * and approval left unread until `weighDraft` (ISS-1070). A read that never shows the draft, such as
+ * the newest shipped, places it, since the release it re-cuts folds into it, and weighs nothing more.
+ */
+export async function placeDraft(projectId: string): Promise<DraftPart | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
-  const [decision, report, admins, owes] = await Promise.all([
-    decideRosterVersion(projectId, ids),
-    collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
-    holderNames('project.admin', projectId),
-    readReleaseOwes(projectId, ids),
-  ]);
-  const version = draftVersionOf(decision);
-  const [naming, draftApproval, refused] = await Promise.all([
-    draftNaming(projectId, version),
-    standingDraftApproval(projectId, version, ids),
-    draftDecisionRefusal(projectId, version),
-  ]);
+  const decision = await decideRosterVersion(projectId, ids);
   return {
     recutOf: 'recutOf' in decision ? decision.recutOf.id : null,
     part: {
-      version,
+      version: draftVersionOf(decision),
       runId: null,
       state: 'draft',
       issueIds: ids,
@@ -97,21 +91,45 @@ export async function draftPart(projectId: string): Promise<DraftPart | null> {
       releasedAt: null,
       attempts: [],
       approvals: [],
-      gates: gateViews(report.blockers, report.warnings, admins, owes),
+      gates: [],
       verification: null,
       commit: null,
       cuts: [],
       continuedAs: null,
-      naming,
+      naming: null,
       mergeSteps: null,
       landedOn: null,
       shippedFailing: null,
       unapproved: null,
       tag: null,
-      draftApproval,
-      draftDecidable: refused === null,
+      draftApproval: null,
+      draftDecidable: false,
     },
   };
+}
+
+/** A placed draft's gates, naming and approval, read onto its part. */
+export async function weighDraft(projectId: string, part: Part): Promise<void> {
+  const ids = part.issueIds;
+  const [report, admins, owes, naming, draftApproval, refused] = await Promise.all([
+    collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
+    holderNames('project.admin', projectId),
+    readReleaseOwes(projectId, ids),
+    draftNaming(projectId, part.version),
+    standingDraftApproval(projectId, part.version, ids),
+    draftDecisionRefusal(projectId, part.version),
+  ]);
+  part.gates = gateViews(report.blockers, report.warnings, admins, owes);
+  part.naming = naming;
+  part.draftApproval = draftApproval;
+  part.draftDecidable = refused === null;
+}
+
+/** The draft placed and weighed: what one release's record reads. */
+async function draftPart(projectId: string): Promise<DraftPart | null> {
+  const draft = await placeDraft(projectId);
+  if (draft) await weighDraft(projectId, draft.part);
+  return draft;
 }
 
 /**

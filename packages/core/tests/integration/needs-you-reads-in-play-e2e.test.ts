@@ -5,6 +5,8 @@
 // - Needs you weighs only the releases that can still wait on someone
 //   (`release-read-list.ts:listReleasesInPlay`): each is summarised exactly as the whole list
 //   summarises it, and the rows and decisions Needs you lists are the ones the whole list gives.
+// - The newest shipped and the newest live place the draft without weighing it: each release they
+//   return is the whole list's.
 // @direct-test-of packages/core/src/issues/release-evidence.ts
 // @direct-test-of packages/core/src/pipeline/release-runs.ts
 // @direct-test-of packages/core/src/release-batch/release-read-list.ts
@@ -21,7 +23,12 @@ import { needsYouViewerOf } from '../../src/development/needs-you-viewer.js';
 import { holdingReleaseRunsSql } from '../../src/issues/index.js';
 import { loadProjectAccess } from '../../src/lib/authz.js';
 import { shippedReleasesOf } from '../../src/pipeline/index.js';
-import { listReleases, listReleasesInPlay } from '../../src/release-batch/index.js';
+import {
+  latestLiveReleases,
+  listReleases,
+  listReleasesInPlay,
+} from '../../src/release-batch/index.js';
+import { listShippedReleases } from '../../src/release-batch/release-read-list.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestIssue, createTestProject, createTestUser } from '../helpers/factories.js';
 
@@ -156,6 +163,10 @@ describe('Needs you weighs only the releases that can still wait on someone', ()
     expect(all.some((r) => ended.has(r.state))).toBe(true);
     expect(inPlay.length).toBeGreaterThan(0);
     expect(inPlay).toEqual(all.filter((r) => !ended.has(r.state)));
+    // the draft is weighed: the gate standing against its cut (no release target declared) is read
+    expect(inPlay.find((r) => r.state === 'draft')?.waitingOn.says.act.key).toBe(
+      'standing.act.declareTarget',
+    );
   });
 
   it('lists the same owed rows and decisions from either read', async () => {
@@ -173,5 +184,18 @@ describe('Needs you weighs only the releases that can still wait on someone', ()
     expect(fromWhole.left.get('agent_takes')?.map((t) => t.key)).toEqual(['1.6.0']);
     expect(fromInPlay.decisions).toEqual(fromWhole.decisions);
     expect([...fromInPlay.left]).toEqual([...fromWhole.left]);
+  });
+});
+
+describe('the newest shipped and the newest live place the draft without weighing it', () => {
+  it('return the releases the whole list returns, each summarised as it summarises them', async () => {
+    const all = (await listReleases(projectId, null)).releases;
+    expect(all.some((r) => r.state === 'draft')).toBe(true);
+    const wentOut = all
+      .filter((r) => r.releasedAt !== null)
+      .sort((a, b) => (b.releasedAt ?? '').localeCompare(a.releasedAt ?? ''));
+    expect((await listShippedReleases(projectId, null, 3)).releases).toEqual(wentOut.slice(0, 3));
+    const live = (await latestLiveReleases(projectId)).releases;
+    expect(live).toEqual([wentOut.find((r) => r.state === 'shipped')]);
   });
 });
