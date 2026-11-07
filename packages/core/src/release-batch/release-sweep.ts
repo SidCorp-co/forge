@@ -7,7 +7,8 @@
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
 // unattended path. ISS-1215: every way it declines a waiting row is a hold record on that row
 // (`release-batch/hold.ts`), never on the log alone — a row owing its agent a shipped-in record
-// (`shipped-in.ts`) included.
+// (`shipped-in.ts`) included. ISS-1126: what is eligible is cut only when the first of the project's
+// release triggers is met, and only whole outcomes (`release-cutoff.ts`), never once per recording.
 
 import type { ReleaseHoldOwer } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
@@ -33,10 +34,12 @@ import {
   clearStaleReleaseHolds,
   criteriaUnreadableHold,
   cutFailedHold,
+  cutoffPendingHold,
   gateUnreadableHold,
   heldFromUnattendedCut,
   NO_ACTOR_HOLD,
   noReleaseGateHold,
+  outcomeIncompleteHold,
   queuedBehindHold,
   type ReleaseHold,
   refusalHold,
@@ -47,6 +50,13 @@ import {
 } from './hold.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import { waitingIssueIds } from './queries.js';
+import {
+  carriedBy,
+  decideCutoff,
+  readCutoff,
+  readOutcomes,
+  soonestPending,
+} from './release-cutoff.js';
 import {
   reportClaimedFailure,
   reportEndedRunHolds,
@@ -78,6 +88,8 @@ export interface AutomaticReleaseSweepResult {
   endedRunClaims: number;
   /** How many eligible issues wait because the head production builds carries a held one (ISS-968). */
   issuesWaiting: number;
+  /** How many earned issues wait for a release trigger, or for the rest of an outcome (ISS-1126). */
+  issuesBatching: number;
 }
 
 interface CandidateRow {
@@ -345,6 +357,47 @@ async function waitsOnCarried(projectId: string, eligible: string[], base: Base)
   return true;
 }
 
+/**
+ * The eligible rows a cut carries now (ISS-1126, REQ-71 BC-13/14), or null where it waits: each row
+ * of an outcome another issue still owes is held naming that issue, and where no release trigger is
+ * met yet, every row an eligible outcome carries is held naming the trigger pending and when it ends.
+ */
+async function cutoffRoster(
+  projectId: string,
+  eligible: string[],
+  base: Base,
+): Promise<string[] | null> {
+  const outcomes = await readOutcomes(projectId, eligible);
+  const short = [...outcomes.incomplete.keys()];
+  if (short.length > 0) {
+    await hold({
+      ...base,
+      issueIds: short,
+      holdFor: (id) => outcomeIncompleteHold(outcomes.incomplete.get(id) ?? []),
+    });
+  }
+  const carried = carriedBy(outcomes.items, eligible);
+  const { cutoff, from } = await readCutoff(projectId);
+  const decision = decideCutoff(cutoff, outcomes.items, base.now);
+  if (decision.cut) {
+    base.result.issuesBatching += short.length;
+    logger.info(
+      { projectId, trigger: decision.by, carried: carried.length, incomplete: short.length },
+      `release-sweep: the ${decision.by} trigger is met (${decision.says})`,
+    );
+    return carried;
+  }
+  const reason = cutoffPendingHold({
+    projectId,
+    pending: decision.pending,
+    soonest: soonestPending(decision.pending),
+    from,
+  });
+  await holdAlike({ ...base, issueIds: carried }, reason);
+  base.result.issuesBatching += short.length + carried.length;
+  return null;
+}
+
 async function sweepProject(
   projectId: string,
   result: AutomaticReleaseSweepResult,
@@ -387,8 +440,10 @@ async function sweepProject(
     return;
   }
 
-  const eligible = await weighWaiting(projectId, waiting, base);
-  if (!eligible) return;
+  const earned = await weighWaiting(projectId, waiting, base);
+  if (!earned) return;
+  const eligible = await cutoffRoster(projectId, earned, base);
+  if (!eligible || eligible.length === 0) return;
   const excluded = waiting.length - eligible.length;
 
   if (!owner) {
@@ -442,6 +497,7 @@ export async function sweepAutomaticReleases(
     shippedInOwed: 0,
     endedRunClaims: 0,
     issuesWaiting: 0,
+    issuesBatching: 0,
   };
   await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);

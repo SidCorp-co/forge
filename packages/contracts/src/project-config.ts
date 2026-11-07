@@ -4,6 +4,7 @@ import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
 import { JUDGED_ON_REFUSAL_CODES } from "./delivery-policy.js";
 import { GATE_PROFILE_REFUSAL_CODES } from "./gate-profiles.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { RELEASE_CUTOFF_REFUSAL_CODES } from "./release-cutoff.js";
 import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
 
 const PURE_REFUSAL_CODES = [
@@ -67,6 +68,8 @@ export const CONFIG_REFUSAL_CODES = [
 	...CONTENT_LANGUAGE_REFUSAL_CODES,
 	/** `delivery.judgedOn` names no declared environment, or production (REQ-36 BC-18). */
 	...JUDGED_ON_REFUSAL_CODES,
+	/** `release.cutoff` names a trigger that is none, or one declared wrongly (REQ-71 BC-13). */
+	...RELEASE_CUTOFF_REFUSAL_CODES,
 ] as const;
 
 export type ConfigRefusalCode = (typeof CONFIG_REFUSAL_CODES)[number];

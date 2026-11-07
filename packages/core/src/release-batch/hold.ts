@@ -121,6 +121,54 @@ export function queuedBehindHold(carried: number): ReleaseHold {
 }
 
 /**
+ * ISS-1126 (REQ-71 BC-13): the rows an automatic release would carry wait for the first of the
+ * project's release triggers, none met yet. Names every trigger pending, and, as `waitingFor`, the
+ * one whose wait ends first. Its words move only when what it names moves: an arrival, a trigger
+ * met, or the policy changed.
+ */
+export function cutoffPendingHold(args: {
+  projectId: string;
+  pending: readonly { says: string }[];
+  soonest: { kind: string; says: string } | null;
+  from: 'project' | 'default';
+}): ReleaseHold {
+  const where =
+    args.from === 'project'
+      ? "this project's release triggers (`release.cutoff`)"
+      : "Forge's default release triggers, since this project's document declares no `release.cutoff`";
+  return {
+    code: 'RELEASE_CUTOFF_PENDING',
+    reason:
+      `Eligible and waiting for the next batch: an automatic release is cut when the first of ` +
+      `${where} is met, and none is yet. ${args.pending.map((p) => `${p.says}.`).join(' ')} A ` +
+      `direct request cuts now (\`POST /api/projects/${args.projectId}/release-batches\`).`,
+    owes: 'agent',
+    waitingFor: args.soonest
+      ? `the ${args.soonest.kind} trigger: ${args.soonest.says}`
+      : 'an eligible outcome to meet a release trigger',
+  };
+}
+
+/**
+ * ISS-1126 (REQ-71 BC-14): the row is earned, but an outcome it delivers is not eligible: another
+ * issue delivering it has not landed with its criteria earned, so no release carries part of it.
+ */
+export function outcomeIncompleteHold(
+  outcomes: readonly { key: string; missing: readonly string[] }[],
+): ReleaseHold {
+  const said = outcomes.map((o) => `${o.key} waits on ${o.missing.join(', ')}`).join('; ');
+  return {
+    code: 'RELEASE_OUTCOME_INCOMPLETE',
+    reason:
+      `Earned, and held with the outcome it delivers: an outcome is released whole, once every ` +
+      `issue delivering it has landed with its criteria earned, and ${said}. It goes in the first ` +
+      'batch cut after they land.',
+    owes: 'agent',
+    waitingFor: `every issue delivering ${outcomes.map((o) => o.key).join(' and ')} to land earned`,
+  };
+}
+
+/**
  * A project with no production environment: its landing is its delivery, recorded through the record
  * door, which the project's master holds outside strict and a project admin under it (REQ-79 r6 BC-17).
  */

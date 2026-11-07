@@ -1,3 +1,4 @@
+import { releaseCutoffSchema } from '@forge/contracts/release-cutoff';
 import { runtimePathPrefix } from '@forge/contracts/releases';
 import { z } from 'zod';
 
@@ -71,8 +72,8 @@ const releaseRuntimesSchema = z
       });
     });
   });
-// read by `release-batch/approvals.ts` (approval), `release-batch/version.ts` (prerelease)
-// and `release-batch/runtime-weighing.ts` (runtimes)
+// read by `release-batch/approvals.ts` (approval), `release-batch/version.ts` (prerelease),
+// `release-batch/runtime-weighing.ts` (runtimes) and `release-batch/release-cutoff.ts` (cutoff)
 export const releaseRuleSchema = z.strictObject({
   approval: z.strictObject({ required: z.boolean() }),
   prerelease: z
@@ -90,4 +91,9 @@ export const releaseRuleSchema = z.strictObject({
    * and a hosted git repository (`change-request-rule.ts:checkChangeRequestRelease`).
    */
   changeRequests: z.boolean().optional(),
+  /**
+   * REQ-71 BC-13: the triggers that cut an automatic release, the first met cutting it
+   * (`@forge/contracts/release-cutoff`). Absent, Forge's default (`RELEASE_CUTOFF_DEFAULT`).
+   */
+  cutoff: releaseCutoffSchema.optional(),
 });

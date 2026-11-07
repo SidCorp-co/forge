@@ -1,4 +1,5 @@
 import type { ProjectConfigRefusalCode } from '@forge/contracts/project-config';
+import { releaseCutoffRefusalCode } from '@forge/contracts/release-cutoff';
 import type { z } from 'zod';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { TOOL_PATTERN } from './policy-schema.js';
@@ -68,7 +69,9 @@ function issueRefusals(
       },
     ];
   }
-  return [{ code: 'SCHEMA_VIOLATION', path: pointer(issue.path), detail: issue.message }];
+  // REQ-71 BC-13: a release trigger is refused by its own name, an unknown one apart
+  const cutoff = releaseCutoffRefusalCode(issue);
+  return [{ code: cutoff ?? 'SCHEMA_VIOLATION', path: pointer(issue.path), detail: issue.message }];
 }
 
 export function parseVersionedDocument<T>(
