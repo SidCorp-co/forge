@@ -54,7 +54,7 @@ type Cut = {
   version: string;
   outcome: string;
   refusal: { code: string | null; text: string } | null;
-  abortReason: string | null;
+  abort: { recorded: true; reason: string } | { recorded: false; says: string } | null;
   failure: { code: string; detail: string; step: string | null } | null;
   repair: {
     at?: string;
@@ -77,7 +77,7 @@ async function releasePage(token: string, projectId: string, version: string) {
 async function ownCut(token: string, projectId: string, version: string) {
   const page = await releasePage(token, projectId, version);
   const cut = page.cuts.find((c) => c.version === version) as Cut;
-  return { state: page.state, cut, why: cut.refusal ?? cut.abortReason ?? cut.failure ?? null };
+  return { state: page.state, cut, why: cut.refusal ?? cut.abort ?? cut.failure ?? null };
 }
 
 const runStatus = async (runId: string) => {
@@ -414,7 +414,7 @@ describe('a release batch run closed without a ship or an abort', () => {
     const page = await releasePage(token, projectId, version);
     const own = page.cuts.find((c) => c.runId === runId) as Cut;
     expect(own.outcome).toBe('aborted');
-    expect(own.abortReason).toBe(reason);
+    expect(own.abort).toMatchObject({ recorded: true, reason });
     expect(own.decidedBy).toMatchObject({ id: ownerId });
     expect(own.failure).toBeNull();
     expect(await runStatus(runId)).toBe('cancelled');

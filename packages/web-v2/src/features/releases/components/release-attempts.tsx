@@ -7,7 +7,7 @@ import { Written } from "@/lib/i18n/written";
 import { issueHref } from "@/lib/routes/issues";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
-import type { ReleaseContinuation, ReleaseCutView, ReleaseDetail, ReleaseVersionCarrier } from "../types";
+import type { ReleaseAbortView, ReleaseContinuation, ReleaseCutView, ReleaseDetail, ReleaseVersionCarrier } from "../types";
 
 const carriersOf = (list: readonly ReleaseVersionCarrier[], t: Copy) => list.map((c) => t(`releases.carrier.${c.kind}`, { name: c.name })).join(", ");
 
@@ -32,6 +32,24 @@ function carriedLine(c: ReleaseCutView, t: Copy): string | null {
   if (c.carried === null) return t("releases.carried.unknown", { v: c.version });
   if (c.carried.length === 0) return t("releases.carried.none", { v: c.version });
   return t("releases.carried.some", { carriers: carriersOf(c.carried, t) });
+}
+
+/** The abort in one short line, who owes the next act where it named one; its reason opens on demand. */
+function AbortLine({ a, testId }: { a: ReleaseAbortView; testId: string }) {
+  const t = useCopy();
+  if (!a.recorded) {
+    return (
+      <span className="text-13 text-muted" data-testid={`${testId}-unrecorded`}>
+        {t("releases.abort.unrecorded")}
+      </span>
+    );
+  }
+  return (
+    <details className="text-13" data-testid={testId}>
+      <summary className="cursor-pointer text-muted">{a.blocker ? t(`releases.abort.owes.${a.blocker.owes}`, { what: a.blocker.waitingFor }) : t("releases.abort.reason")}</summary>
+      <Written className="mt-1 block text-12 text-muted" text={a.reason} lang={null} />
+    </details>
+  );
 }
 
 /** The failure's code and the step it stood at, for the tooltip: the sentence is what is read. */
@@ -75,11 +93,7 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
           <Written className="block text-12 text-muted" text={c.refusal.text} lang="en" />
         </span>
       ) : null}
-      {c.abortReason ? (
-        <span className="text-13" data-testid="cut-abort-reason">
-          <span className="text-muted">{t("releases.attemptAbortReason")}</span> {c.abortReason}
-        </span>
-      ) : null}
+      {c.abort ? <AbortLine a={c.abort} testId="cut-abort" /> : null}
       {c.failure ? (
         <span className="text-13" data-testid="cut-failure" title={failureTitle(c.failure)}>
           <span className="text-muted">{t("releases.attemptFailure")}</span> <Written text={c.failure.detail} lang="en" />
@@ -129,7 +143,7 @@ export function ContinuedAs({ to, slug, className }: { to: ReleaseContinuation; 
 
 /**
  * Why a version that did not ship ended, at the top of its own page: the attempt that wore it, the
- * refusal said in the reader's language with its words as recorded behind a fold, the abort reason,
+ * refusal said in the reader's language with its words as recorded behind a fold, the abort's line,
  * what carries the version, and the roster that attempt was cut with — not the release it went on as.
  */
 export function EndedAttempt({ r, slug }: { r: ReleaseDetail; slug: string }) {
@@ -153,17 +167,13 @@ export function EndedAttempt({ r, slug }: { r: ReleaseDetail; slug: string }) {
           </details>
         </div>
       ) : null}
-      {own.abortReason ? (
-        <p data-testid="release-ended-abort">
-          <span className="text-muted">{t("releases.attemptAbortReason")}</span> <Written text={own.abortReason} lang={null} />
-        </p>
-      ) : null}
+      {own.abort ? <AbortLine a={own.abort} testId="release-ended-abort" /> : null}
       {own.failure ? (
         <p data-testid="release-ended-failure" title={failureTitle(own.failure)}>
           <span className="text-muted">{t("releases.attemptFailure")}</span> <Written text={own.failure.detail} lang="en" />
         </p>
       ) : null}
-      {!own.refusal && !own.abortReason && !own.failure ? <p className="text-muted">{t("releases.ended.noReason")}</p> : null}
+      {!own.refusal && !own.abort && !own.failure ? <p className="text-muted">{t("releases.ended.noReason")}</p> : null}
       {carried ? <p className="text-13 text-muted">{carried}</p> : null}
       <div data-testid="release-ended-roster">
         <p className="text-13 text-muted">{t("releases.ended.roster", { n: own.roster.length })}</p>

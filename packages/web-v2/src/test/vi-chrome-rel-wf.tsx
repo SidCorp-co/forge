@@ -74,7 +74,7 @@ const draft = summary({
 });
 const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0, unproven: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT, cutCount: 3 });
 
-const cut = (n: number, version: string, over: Record<string, unknown>) => ({ n, runId: `r${n}`, version, cutAt: AT, cutBy: lan, outcome: "aborted", endedAt: AT, refusal: null, abortReason: null, failure: null, repair: null, decidedBy: lan, rule: { decided: "reused", from: null, carriers: [], line: null, taken: false }, carried: [], ...over });
+const cut = (n: number, version: string, over: Record<string, unknown>) => ({ n, runId: `r${n}`, version, cutAt: AT, cutBy: lan, outcome: "aborted", endedAt: AT, refusal: null, abort: null, failure: null, repair: null, decidedBy: lan, rule: { decided: "reused", from: null, carriers: [], line: null, taken: false }, carried: [], ...over });
 
 const detail = {
   ...draft,
@@ -132,7 +132,7 @@ const detail = {
   cutCount: 6,
   cuts: [
     cut(1, "0.0.7", { rule: { decided: "unrecorded", from: null, carriers: [], line: null, taken: false }, carried: null, decidedBy: null, outcome: "failed" }),
-    cut(2, "0.0.8", { rule: { decided: "first", from: null, carriers: [], line: null, taken: false }, refusal: { code: "RELEASE_NOT_VERIFIED", text: "Loi" }, abortReason: "ly do", carried: [{ kind: "tag", name: "v0.0.8" }, { kind: "notice", name: "thu" }] }),
+    cut(2, "0.0.8", { rule: { decided: "first", from: null, carriers: [], line: null, taken: false }, refusal: { code: "RELEASE_NOT_VERIFIED", text: "Loi" }, abort: { recorded: true, reason: "ly do", by: lan, at: AT, blocker: { owes: "human", waitingFor: "xac nhan" }, pushed: true, roster: "released", carried: [{ kind: "tag", name: "v0.0.8" }] }, carried: [{ kind: "tag", name: "v0.0.8" }, { kind: "notice", name: "thu" }] }),
     cut(3, "0.1.0", { rule: { decided: "bumped", from: "0.0.8", carriers: [{ kind: "tag", name: "v0.0.8" }, { kind: "commit", name: "abc" }, { kind: "artifact", name: "goi" }], line: null, taken: false } }),
     cut(4, "0.1.0", { rule: { decided: "reused", from: "0.1.0", carriers: [], line: null, taken: false } }),
     cut(5, "0.1.1", { rule: { decided: "bumped", from: "0.1.0", carriers: [], line: null, taken: true } }),

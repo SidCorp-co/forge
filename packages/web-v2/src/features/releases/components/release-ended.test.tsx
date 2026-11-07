@@ -20,7 +20,7 @@ const cut = (n: number, version: string, outcome: string, over: object = {}) => 
   outcome,
   endedAt: null,
   refusal: null,
-  abortReason: null,
+  abort: null,
   failure: null,
   repair: null,
   decidedBy: null,
@@ -40,7 +40,16 @@ const r040 = {
     cut(1, "0.3.0", "aborted"),
     cut(2, "0.4.0", "aborted", {
       refusal: { code: "RELEASE_NOT_VERIFIED", text: NOT_VERIFIED, says: say("releases.refused.notVerified") },
-      abortReason: "193 has never been published; ISS-110 owns it.",
+      abort: {
+        recorded: true,
+        reason: "193 has never been published; ISS-110 owns it.",
+        by: { id: "a1", name: "hop-release", kind: "agent" },
+        at: "2026-10-07T21:00:00.000Z",
+        blocker: { owes: "human", waitingFor: "publish workflow 193" },
+        pushed: false,
+        roster: "released",
+        carried: [],
+      },
       carried: [],
     }),
     cut(3, "0.5.0", "shipped"),
@@ -55,6 +64,22 @@ describe("a cancelled release's own page", () => {
     expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("could not be proven");
     expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("RELEASE_NOT_VERIFIED");
     expect(within(ended).getByTestId("release-ended-abort")).toHaveTextContent("ISS-110");
+  });
+
+  // ISS-1095, sidpeak 0.24.0: the abort recorded who owes the next act, and nothing showed it.
+  it("names who owes the next act in one line, the abort's reason opening on demand", () => {
+    renderWithQuery(<ReleaseAttempts r={r040 as never} slug="hop" />);
+    const abort = screen.getByTestId("cut-abort");
+    expect(abort.querySelector("summary")).toHaveTextContent("Waits on a person: publish workflow 193");
+    expect(abort).not.toHaveAttribute("open");
+    expect(abort).toHaveTextContent("ISS-110");
+  });
+
+  it("says a cancel recorded no abort, never reading as one that did", () => {
+    const unexplained = { ...r040, cuts: [cut(2, "0.4.0", "failed", { abort: { recorded: false, says: "no abort was recorded" } })] };
+    renderWithQuery(<EndedAttempt r={{ ...unexplained, state: "failed" } as never} slug="hop" />);
+    expect(screen.getByTestId("release-ended-abort-unrecorded")).toHaveTextContent("No abort recorded");
+    expect(screen.getByTestId("release-ended")).not.toHaveTextContent("No reason");
   });
 
   it("lists the roster that attempt was cut with", () => {

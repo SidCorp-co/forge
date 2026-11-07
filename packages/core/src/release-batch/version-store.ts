@@ -10,7 +10,7 @@
 // the highest version, never the stamp written last (`servingRelease`). The
 // partial unique index `pipeline_runs_release_version_uq` is only the backstop.
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -81,6 +81,21 @@ export async function readLineageRuns(
   projectId: string,
   except: string | null = null,
 ): Promise<LineageRun[]> {
+  return lineageRows(
+    executor,
+    sql`r.project_id = ${projectId} AND (${except}::uuid IS NULL OR r.id <> ${except}::uuid)`,
+  );
+}
+
+/** One release run as the rule reads it, or null where `runId` is no versioned release run. */
+export async function readLineageRun(
+  executor: Pick<Tx, 'execute'>,
+  runId: string,
+): Promise<LineageRun | null> {
+  return (await lineageRows(executor, sql`r.id = ${runId}`))[0] ?? null;
+}
+
+async function lineageRows(executor: Pick<Tx, 'execute'>, where: SQL): Promise<LineageRun[]> {
   const rows = await executor.execute<{
     id: string;
     release_version: string;
@@ -97,10 +112,9 @@ export async function readLineageRuns(
                      AND (j.dispatched_at IS NOT NULL OR j.held_by IS NOT NULL)) AS reached_box,
            EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id) AS has_job
     FROM pipeline_runs r
-    WHERE r.project_id = ${projectId}
+    WHERE ${where}
       AND r.release_version IS NOT NULL
       AND r.metadata ->> 'source' IN ('release-batch', ${RELEASE_RECORD_SOURCE})
-      AND (${except}::uuid IS NULL OR r.id <> ${except}::uuid)
   `);
   return rows.map((r) => {
     const metadata = r.metadata ?? {};

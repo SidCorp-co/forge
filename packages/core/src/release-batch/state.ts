@@ -1,9 +1,12 @@
 import type { ProbeReplayRecord } from '@forge/contracts/criterion-probes';
+import type { ReleaseAbortView } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
+import { peopleOf } from '../lib/people.js';
 import { type RunFailure, readRunFailure } from '../pipeline/index.js';
+import { abortActorOf, abortViewOf } from './abort-account.js';
 import { type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
@@ -11,6 +14,7 @@ import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { residueOf } from './residue.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
+import { readLineageRun } from './version-store.js';
 import { attemptsOf } from './versions.js';
 
 interface ReleaseRunState {
@@ -19,11 +23,18 @@ interface ReleaseRunState {
   runStatus: string;
   /** Why a run that ended `failed` failed, as its close recorded it; null on every other run (ISS-928). */
   failure: RunFailure | null;
+  /**
+   * How it was aborted, as its abort recorded it: the reason, who, the blocker, whether it pushed,
+   * where the roster went and what carries its version. `recorded: false` on a run cancelled with
+   * no abort on record; null where no abort began and nobody cancelled it (ISS-1095).
+   */
+  abort: ReleaseAbortView | null;
   /** The roster issues a release that shipped could not close, waiting to close into it (ISS-928). */
   residue: string[];
   /** The version this release cut. `null` only on a release row nothing versioned. */
   version: string | null;
   roster: ReleaseRoster;
+  /** The production acts the ledger recorded for this run (`deploy`, `verify`); none for a deploy still waiting on a person's confirm. */
   attempts: ReleaseAttemptRow[];
   /** Read at request time from the probes the close reads; `null` where there are none to read. */
   live: LiveState | null;
@@ -83,6 +94,16 @@ async function readRun(runId: string) {
   return run;
 }
 
+/** The run's abort as its release's attempts read it (`abort-account.ts`), its actor named. */
+async function abortOf(runId: string): Promise<ReleaseAbortView | null> {
+  const run = await readLineageRun(db, runId);
+  if (!run) return null;
+  const actor = abortActorOf(run.metadata);
+  const named = await peopleOf([actor]);
+  const people = new Map([...named].map(([id, person]) => [id, { id, ...person }]));
+  return abortViewOf(run, people);
+}
+
 /**
  * The whole of one release run, or `null` when the run is not one. The run row is read again
  * once the probes answer, so a probe that holds the call for its whole cap cannot hand back a
@@ -103,12 +124,14 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
   const run = (await readRun(runId)) ?? first;
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   const method = readMethod(meta);
+  const abort = await abortOf(runId);
 
   return {
     runId,
     projectId: run.projectId,
     runStatus: run.status,
     failure: readRunFailure(meta),
+    abort,
     residue: residueOf(meta),
     version: run.releaseVersion,
     roster,

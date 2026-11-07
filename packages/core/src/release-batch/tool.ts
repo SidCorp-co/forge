@@ -77,7 +77,7 @@ export const forgeReleaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: 'projects:read',
   permission: onArg('project.read'),
   description:
-    'One release (`version`: 0.3.0), for the one a person asks about — never once per listed release; the list and forge_project_status already say what each carries. As its page reads it: what users get (the user-facing notes by section; approved designs apart), the requirements it completes or advances, its issues with their proof, what stands in the way, the approval, and what was verified. `attempts` holds every cut of it, each with its roster, the refusal that ended it (code, meaning, words), the abort reason and what carries it; `attempt` is the one wearing the asked version and `continuedAs` where its roster went on — read them for why a version was cancelled or failed.',
+    'One release (`version`: 0.3.0), for the one a person asks about — never once per listed release; the list and forge_project_status already say what each carries. As its page reads it: what users get (the user-facing notes by section; approved designs apart), the requirements it completes or advances, its issues with their proof, what stands in the way, the approval, and what was verified. `attempts` holds every cut of it, each with its roster, the refusal that ended it (code, meaning, words), the abort account (its reason, who aborted it, who owes the next act, whether it pushed — or that a cancel recorded none) and what carries it; `attempt` is the one wearing the asked version and `continuedAs` where its roster went on — read them for why a version was cancelled or failed.',
   inputSchema: zodToMcpSchema(getInput),
   handler: async (args) => {
     const { projectId, version } = getInput.parse(args);

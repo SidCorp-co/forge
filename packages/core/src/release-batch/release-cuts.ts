@@ -19,6 +19,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readRunFailure } from '../pipeline/index.js';
+import { abortViewOf } from './abort-account.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
 import type { Part } from './release-read-views.js';
@@ -197,7 +198,7 @@ export function cutViewsOf(
       outcome,
       endedAt: ended ? ended.toISOString() : null,
       refusal: refusalOf(run),
-      abortReason: str(readAbortStamp(run.metadata)?.reason),
+      abort: abortViewOf(run, people),
       failure: readRunFailure(run.metadata),
       repair: repairOf(run, people),
       decidedBy: decider ? (people.get(decider) ?? null) : null,

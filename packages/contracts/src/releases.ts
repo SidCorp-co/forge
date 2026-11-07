@@ -268,6 +268,30 @@ export interface ReleaseVersionRule {
 	overtaken: string | null;
 }
 
+/**
+ * An attempt's abort as its run recorded it (`metadata.abort`, `metadata.carried`): what a run's
+ * `/state` and its release's attempts both read. `recorded: false` is a run cancelled with no abort
+ * on record, said by name so it never reads the same as an explained one.
+ */
+export type ReleaseAbortView =
+	| {
+			recorded: true;
+			/** The abort's own reason, word for word. */
+			reason: string;
+			/** Who aborted it: a person by name, an agent by its handle; null where the record names nobody Forge knows. */
+			by: ReleasePerson | null;
+			at: string | null;
+			/** Who must act before the roster can release, and what they owe; null where the abort named nobody. */
+			blocker: { owes: ReleaseHoldOwer; waitingFor: string } | null;
+			/** Whether it said it pushed anything for this release; null where it did not say. */
+			pushed: boolean | null;
+			/** Where the abort left the roster: `held` at the release step, still `returning` to the gate, or `released` there. */
+			roster: "held" | "returning" | "released";
+			/** What outside Forge carries this attempt's version: `[]` where it was said nothing does, `null` where nobody said. */
+			carried: ReleaseVersionCarrier[] | null;
+	  }
+	| { recorded: false; says: string };
+
 /** One attempt at a release: one cut of its roster, how it ended and who ended it. */
 export interface ReleaseCutView {
 	/** 1-based, in the order the attempts were cut. */
@@ -281,8 +305,8 @@ export interface ReleaseCutView {
 	endedAt: string | null;
 	/** The finish refusal that ended it: its code, its text word for word, and what it means said by key (`releases.refused.*`). */
 	refusal: { code: string | null; text: string; says: Said } | null;
-	/** The abort's own reason, word for word, where it was aborted. */
-	abortReason: string | null;
+	/** How it was aborted, as its run recorded it (`ReleaseAbortView`); null where it was neither aborted nor cancelled. */
+	abort: ReleaseAbortView | null;
 	/** Why it ended `failed`, as its close recorded it (`metadata.failure`): the condition's code, its sentence word for word, and the step the run stood at; null where no failed close recorded one (ISS-761). */
 	failure: { code: string; detail: string; step: string | null } | null;
 	/** The recorded act that settled it after it ended: who, when, why and the evidence they named; null where none did (ISS-761). */
@@ -891,8 +915,13 @@ export interface ReleaseDetail extends ReleaseSummary {
 	 * person's (`metadata.unapproved`, REQ-79 r6): when the first such act was recorded. Null elsewhere.
 	 */
 	unapproved: { at: string } | null;
+	/**
+	 * The production acts (`deploy`, `verify`) the ledger recorded for this release's own run, not its
+	 * attempts: a deploy that waited on a person's confirm records none. Each cut, aborted ones
+	 * included, is in `cuts`.
+	 */
 	attempts: ReleaseAttemptView[];
-	/** Every attempt at this release, first first (ADR 0011). */
+	/** Every attempt at this release, first first (ADR 0011), each with how it ended. */
 	cuts: ReleaseCutView[];
 	production: { name: string | null; url: string | null } | null;
 	/**

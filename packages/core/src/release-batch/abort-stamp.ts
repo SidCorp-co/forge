@@ -4,7 +4,7 @@
 // aborted to a finish from that write on.
 
 import { randomUUID } from 'node:crypto';
-import type { ReleaseHoldOwer } from '@forge/contracts/releases';
+import { RELEASE_HOLD_OWERS, type ReleaseHoldOwer } from '@forge/contracts/releases';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
@@ -53,8 +53,18 @@ export function readAbortStamp(metadata: unknown): AbortStamp | null {
     closed: Array.isArray(r.closed)
       ? r.closed.filter((id): id is string => typeof id === 'string')
       : null,
+    ...(blockerIn(r.blocker) ?? {}),
     ...(typeof r.pushed === 'boolean' ? { pushed: r.pushed } : {}),
   };
+}
+
+/** The blocker a stamp holds, as `{ blocker }`, or null where it holds none it can name. */
+function blockerIn(raw: unknown): { blocker: AbortBlocker } | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { owes, waitingFor } = raw as Record<string, unknown>;
+  if (!(RELEASE_HOLD_OWERS as readonly unknown[]).includes(owes)) return null;
+  if (typeof waitingFor !== 'string') return null;
+  return { blocker: { owes: owes as ReleaseHoldOwer, waitingFor } };
 }
 
 /** Whether a finish must treat this run as aborted: it is cancelled, or an abort has begun. */
