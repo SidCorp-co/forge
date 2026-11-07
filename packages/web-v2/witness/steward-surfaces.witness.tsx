@@ -23,7 +23,7 @@ const SURFACES: Surface[] = [
     check: () => [
       ...has("Stuck", "Checkout reaches the clinic"),
       ...has("Stuck", "Board loses a card on refresh"),
-      ...has("Needs you", WITNESS_STATUS.needsYou.decisions.find((d) => d.key === "FB-135")?.question ?? "FB-135"),
+      ...has("Needs you", WITNESS_STATUS.needsYou?.decisions.find((d) => d.key === "FB-135")?.question ?? "FB-135"),
       ...lacks("a row", "FB-135"),
       ...lacks("a row", "REQ-45"),
       ...lacks("a row", "FB-74"),
