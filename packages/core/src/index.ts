@@ -24,7 +24,6 @@ import {
 import { demoMemberId } from './auth/index.js';
 import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
 import { CHAT_PROVIDED_TOOLS } from './chat-tools.js';
-import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { recordTokenPluginVersion } from './credentials/pat-plugin-version.js';
 import { provideCredentialsPorts } from './credentials/ports.js';
@@ -35,11 +34,7 @@ import { recordDevicePluginVersion } from './devices/index.js';
 import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
-import {
-  embedFeedback,
-  provideFeedbackDependents,
-  requirementFeedbackAs,
-} from './feedback/index.js';
+import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import { releaseLegFor } from './forecast/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { valueCheckHeld } from './intake/index.js';
@@ -55,32 +50,17 @@ import { startRocketChatManager, stopRocketChatManager } from './integrations/ro
 import {
   activeIssuePrefix,
   advanceStepsOnChangeRequest,
-  allRelationDigests,
-  archivedIssueIdsSql,
   changeRequestLinkReadings,
   citedIssues,
   claimIssuePrefix,
   explainNoIssue,
   heldIssuePrefixes,
-  issueDisplayIds,
-  issueHead,
   issueIdOfKey,
-  issueStandingsBySeq,
   issueTaskOf,
-  landedChangeOf,
-  loadIssueRelationsForIssues,
   refuseUnresolvedIssueKey,
-  releasedIssueOf,
   resolveIssuesForChangeRequest,
-  statusChangesSince,
 } from './issues/index.js';
-import {
-  jobTypeOf,
-  recordSecretResolve,
-  rememberHandedOut,
-  resolvePipelineContext,
-} from './jobs/index.js';
-import { provideKnowledgePorts } from './knowledge/index.js';
+import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { loadProjectAccess, provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
@@ -93,12 +73,8 @@ import { logger } from './lib/logger.js';
 import { sourceCommit } from './lib/source-commit.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
 import { CHAT_RECORD_VETS } from './mcp/index.js';
-import {
-  flagMemoriesForChange,
-  provideMemoryIssueReads,
-  registerMemoryReconcileWorker,
-  runMemorySearch,
-} from './memory/index.js';
+import { registerMemoryReconcileWorker } from './memory/index.js';
+import { provideKnowledgeAndMemoryPorts } from './memory-ports.js';
 import { provideMessageReads } from './messaging/reads.js';
 import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
@@ -140,7 +116,6 @@ import {
   readContentLanguage,
   readDeclaredSource,
   readProjectDocument,
-  webUrlOf,
 } from './project-config/index.js';
 import { readProjectStatus, statusViewerOf } from './project-status/index.js';
 import {
@@ -149,7 +124,6 @@ import {
   findProjectSlugs,
   findVisibleProjectIds,
   listProjectHeads,
-  orgSiblingProjects,
   projectDocumentNames,
   projectHead,
   provideProjectsPorts,
@@ -161,7 +135,6 @@ import {
   registerDeployWorker,
   registerReleaseBatchFinish,
   releasedLineReads,
-  releaseVersionsAmong,
 } from './release-batch/index.js';
 import { releaseShareSource } from './release-page/index.js';
 import { provideReportPorts } from './report-ports.js';
@@ -175,10 +148,8 @@ import {
   templateShareSource,
 } from './reports/index.js';
 import {
-  embedRequirementHead,
   provideInterfaceContracts,
   provideRequirementDependents,
-  requirementStatusesBySeq,
   roomSettleWriter,
 } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
@@ -204,7 +175,7 @@ import { servedWebBuild } from './web-host/index.js';
 import { readServing } from './whats-new/index.js';
 import { registerWidgetConversationAdapter, widgetCors } from './widget/index.js';
 import { provideWorkPorts } from './work-ports.js';
-import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
+import { workflowDesign } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
@@ -256,40 +227,7 @@ providePreferencesPorts({
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideRunContextDomainPorts();
 provideAgreementsPorts({ issueTaskOf });
-provideKnowledgePorts({
-  searchMemory: runMemorySearch,
-  flagMemoryRecheck: (projectId, change) => flagMemoriesForChange(projectId, change),
-  reembedRequirement: embedRequirementHead,
-  reembedFeedback: embedFeedback,
-});
-provideMemoryIssueReads({
-  displayIds: issueDisplayIds,
-  relationEdges: async (issueIds, projectId) => {
-    const relations = await loadIssueRelationsForIssues(issueIds, projectId);
-    return new Map([...relations].map(([id, r]) => [id, allRelationDigests(r)]));
-  },
-  head: issueHead,
-  releasedIssue: releasedIssueOf,
-  landedChange: landedChangeOf,
-  recentCommentBodies,
-  commentsSince,
-  statusChangesSince,
-  jobType: jobTypeOf,
-  archivedIssueIds: archivedIssueIdsSql,
-  issuePrefixes: async (projectId) => ({
-    active: await activeIssuePrefix(projectId),
-    held: await heldIssuePrefixes(projectId),
-  }),
-  issueStandings: issueStandingsBySeq,
-  requirementStatuses: requirementStatusesBySeq,
-  workflowFlows: workflowFlowsOf,
-  siblingProjects: orgSiblingProjects,
-  repositoryWebUrl: async (projectId) => {
-    const repository = (await readDeclaredSource(projectId)).repository;
-    return repository ? webUrlOf(repository) : null;
-  },
-  releaseVersions: releaseVersionsAmong,
-});
+provideKnowledgeAndMemoryPorts();
 provideProjectsPorts({
   claimIssuePrefix,
   notifyInvitee: async (notice) => {

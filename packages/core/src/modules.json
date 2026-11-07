@@ -666,7 +666,12 @@
     "knowledge": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["itemEmbeddings", "knowledgeEntries", "knowledgeEntryRevisions", "orgKnowledgeEntries"],
+      "owns": [
+        "itemEmbeddings",
+        "knowledgeEntries",
+        "knowledgeEntryRevisions",
+        "orgKnowledgeEntries"
+      ],
       "serves": [
         "REQ-13",
         "project-onboarding#mapped",

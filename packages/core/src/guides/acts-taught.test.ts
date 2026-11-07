@@ -62,7 +62,13 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     ],
     [
       "a memory names another project's key by its slug, answers its curation, and is never a log",
-      ['`<its slug> ISS-n`', 'never written as a `decision`', '`recheckWhen`', '`updates`', '`landedOn`'],
+      [
+        '`<its slug> ISS-n`',
+        'never written as a `decision`',
+        '`recheckWhen`',
+        '`updates`',
+        '`landedOn`',
+      ],
     ],
     [
       'the fast lane is taken only for the approved change, and deploys web alone (REQ-39 BC-7)',

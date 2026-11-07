@@ -3,12 +3,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { MEMORY_EMBEDDING_DIM } from '../../src/db/schema-types.js';
 import { reconcileForReleasedIssue } from '../../src/memory/reconcile.js';
-import { api, type Body } from '../helpers/api.js';
+import { api } from '../helpers/api.js';
 import { createTestProject } from '../helpers/factories.js';
 import { ago, issue, type World, world } from '../helpers/forecast-world.js';
 
-// MJ-4: memory's upkeep records are bookkeeping — no caller writes one, no search or Memory list
-// returns one unless asked by name — and a release flags a memory possibly stale only with a reason.
+// MJ-4: a release flags a memory possibly stale only with a reason, and its upkeep record is history
+// in `memory_upkeep_records`, never a memory row (ISS-1121).
 // Cross-project keys and MJ-6: a key is read in the project the text places it in, never in this
 // one by default, and every source is linked.
 
@@ -39,60 +39,6 @@ async function seed(w: World, source: string, ref: string, text: string, metadat
   return (row as { id: string }).id;
 }
 
-async function search(w: World, body: Body) {
-  const res = await api(w.token, 'POST', '/api/memory/search', {
-    projectId: w.projectId,
-    strategy: 'keyword',
-    ...body,
-  });
-  expect(res.status, JSON.stringify(res.body)).toBe(200);
-  return (res.body.hits as { sourceRef: string }[]).map((h) => h.sourceRef);
-}
-
-describe('bookkeeping is its own kind', () => {
-  let w: World;
-  beforeAll(async () => {
-    w = await world();
-    await seed(
-      w,
-      'bookkeeping',
-      'reconcile:ISS-9',
-      'reconcile ISS-9: 0 contradicted, board decided',
-      {
-        cause: 'memory-reconcile',
-      },
-    );
-    await seed(w, 'decision', 'owner/board', 'The owner decided the board is flat');
-  });
-
-  it('refuses a caller writing it', async () => {
-    const res = await api(w.token, 'POST', '/api/memory', {
-      projectId: w.projectId,
-      source: 'bookkeeping',
-      sourceRef: 'reconcile:ISS-1',
-      textContent: 'x',
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it('is not a decision in a memory list, and is listed only by name', async () => {
-    expect((await entries(w)).map((e) => e.sourceRef)).toEqual(['owner/board']);
-    expect((await entries(w, '&sources=decision')).map((e) => e.sourceRef)).toEqual([
-      'owner/board',
-    ]);
-    expect((await entries(w, '&sources=bookkeeping')).map((e) => e.sourceRef)).toEqual([
-      'reconcile:ISS-9',
-    ]);
-  });
-
-  it('is not a search hit unless asked for by name', async () => {
-    expect(await search(w, { query: 'board' })).toEqual(['owner/board']);
-    expect(await search(w, { query: 'board', sourceFilter: ['bookkeeping'] })).toEqual([
-      'reconcile:ISS-9',
-    ]);
-  });
-});
-
 describe('a release flags a memory possibly stale only with a reason', () => {
   let w: World;
   let said: string;
@@ -118,7 +64,7 @@ describe('a release flags a memory possibly stale only with a reason', () => {
     });
   });
 
-  it('stamps the reason on the row it flags, leaves the reasonless one unflagged, and records both as bookkeeping', async () => {
+  it('stamps the reason on the row it flags, leaves the reasonless one unflagged, and records both as upkeep history', async () => {
     const result = await reconcileForReleasedIssue(w.projectId, issueId);
     expect(result.possiblyStale).toBe(1);
 
@@ -129,19 +75,23 @@ describe('a release flags a memory possibly stale only with a reason', () => {
     });
     expect(rows.find((r) => r.id === silent)?.flagged).toBeNull();
 
-    const kept = await db.execute<{ source: string; metadata: Record<string, unknown> }>(sql`
-      SELECT source, metadata FROM memories WHERE project_id = ${w.projectId} AND source_ref = 'reconcile:ISS-1'
+    const kept = await db.execute<{ kind: string; metadata: Record<string, unknown> }>(sql`
+      SELECT kind, metadata FROM memory_upkeep_records WHERE project_id = ${w.projectId} AND ref = 'reconcile:ISS-1'
     `);
     expect(kept).toHaveLength(1);
-    expect(kept[0]?.source).toBe('bookkeeping');
+    expect(kept[0]?.kind).toBe('reconcile');
     expect(kept[0]?.metadata.unexplainedRefs).toEqual(['gotcha/header']);
+    const asMemory = await db.execute(sql`
+      SELECT 1 FROM memories WHERE project_id = ${w.projectId} AND source_ref = 'reconcile:ISS-1'
+    `);
+    expect(asMemory).toHaveLength(0);
     const decisions = await db.execute(sql`
       SELECT 1 FROM memories WHERE project_id = ${w.projectId} AND source = 'decision'
     `);
     expect(decisions).toHaveLength(0);
   });
 
-  it('runs once per issue: a second reconcile reads its bookkeeping record and stops', async () => {
+  it('runs once per issue: a second reconcile reads its upkeep record and stops', async () => {
     expect((await reconcileForReleasedIssue(w.projectId, issueId)).skipped).toBe(
       'already-reconciled',
     );
