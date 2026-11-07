@@ -217,8 +217,18 @@ function phoneReads(): string[] {
   }
   const live = q("[data-testid=activity-live]");
   const cut = live?.parentElement;
-  if (live && cut && (cut.scrollWidth > cut.clientWidth + 1 || live.getBoundingClientRect().right > cut.getBoundingClientRect().right + 1)) wrong.push(`the header's time is cut: "${live.textContent}" in ${cut.clientWidth} px`);
-  return wrong.slice(0, 6);
+  if (live && cut) {
+    // the text's own extent, which a clipping box does not shorten
+    const text = document.createRange();
+    text.selectNodeContents(live);
+    let edge = q("[data-testid=activity-view]")?.getBoundingClientRect().left ?? window.innerWidth;
+    for (let el: HTMLElement | null = cut; el; el = el.parentElement) if (getComputedStyle(el).overflowX !== "visible") edge = Math.min(edge, el.getBoundingClientRect().right);
+    const over = text.getBoundingClientRect().right - edge;
+    if (over > 0.5) wrong.push(`the header's time is cut ${Math.round(over)} px short: "${live.textContent}"`);
+  }
+  // the time's sentence last in the list, never cut off by the marks' count
+  const time = wrong.filter((w) => w.startsWith("the header's time"));
+  return [...wrong.filter((w) => !time.includes(w)).slice(0, 6), ...time];
 }
 
 /** Every lane starts 32px into the frame as it shows, where its group's label starts: on a phone the frame opens scrolled to now, its lead column held in place. */
