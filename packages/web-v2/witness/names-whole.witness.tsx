@@ -247,7 +247,7 @@ function wrongOn(name: string): string[] {
     if (all("[data-testid=share-title]").length < SHARES.length) out.push("a share row draws no name");
   }
   if (name === "projects") {
-    for (const th of all("th")) if (!th.innerText.trim() && th.cellIndex > 0) out.push(`column ${th.cellIndex + 1} has no header`);
+    for (const th of document.querySelectorAll<HTMLTableCellElement>("th")) if (!th.innerText.trim() && th.cellIndex > 0) out.push(`column ${th.cellIndex + 1} has no header`);
     for (const row of all("tbody tr")) {
       const marks = [...row.querySelectorAll<HTMLElement>("td:last-child div > span")];
       for (let i = 1; i < marks.length; i++) {

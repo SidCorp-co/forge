@@ -182,7 +182,7 @@ describe("the issue's owner", () => {
     fakeCore(() => ({ body: {} }));
     renderWithQuery(
       <PropertiesRail
-        issue={issue()}
+        issue={issue({})}
         slug="hop"
         cost={undefined}
         deps={undefined}

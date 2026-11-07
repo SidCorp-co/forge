@@ -28,8 +28,8 @@ afterEach(cleanup);
 
 const AGENFOLD = "p-agenfold";
 const FORGE = "p-forge";
-/** An issue held on_hold waiting its turn, as agenfold's one active issue was: someone else's turn, never stuck. */
-const held = { ...STANDING_ROWS[1], standing: { ...STANDING_ROWS[1]?.standing, attentionGroup: "waiting" } } as IssueStandingRow;
+/** An issue held on_hold, as agenfold's one active issue was: paused, its master to resume it, never stuck. */
+const held = STANDING_ROWS.find((r) => r.status === "on_hold") as IssueStandingRow;
 const stuck = STANDING_ROWS.find((r) => r.standing.attentionGroup === "stuck") as IssueStandingRow;
 const standing = (rows: IssueStandingRow[]) => ({ issues: rows, counts: { open: rows.length, closed: 0, all: rows.length, blocked: 0, blocking: 0 }, returned: rows.length, limit: 200, releaseApproval: false });
 const noDecisions = { generatedAt: "2026-11-07T00:00:00.000Z", decisions: [], total: 0, notDecisions: [] };

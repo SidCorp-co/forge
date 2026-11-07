@@ -184,11 +184,11 @@ describe('an item planned on an issue at the release gate names who releases it'
 // agent's (a channel agent reporter, or the master verifying): a resolved item is shipped and waits
 // on its confirm, someone else's turn, never Moving.
 describe('a resolved item is never Moving', () => {
-  it.each([
-    ['an agent reporter confirms it', { reporterIsAgent: true }],
-    ['the master verifies it', { masterVerifies: true }],
-    ['the master confirms an answer', { masterVerifies: true }, 'answer' as const],
-  ])('waits, not moves, where %s', (_, facts, route = 'issue' as const) => {
+  it.each<[string, Record<string, boolean>, 'issue' | 'answer']>([
+    ['an agent reporter confirms it', { reporterIsAgent: true }, 'issue'],
+    ['the master verifies it', { masterVerifies: true }, 'issue'],
+    ['the master confirms an answer', { masterVerifies: true }, 'answer'],
+  ])('waits, not moves, where %s', (_, facts, route) => {
     const s = feedbackStandingOf(
       'resolved',
       route,
