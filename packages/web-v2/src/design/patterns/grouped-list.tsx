@@ -62,19 +62,23 @@ export interface ListRowView {
   note?: ReactNode;
 }
 
-/** One grid template for the header and every row, so the columns line up without a table. */
-const COLS =
-  "grid grid-cols-[104px_minmax(0,1fr)_168px_220px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_180px]";
-/** The same grid with the ETA column between Waiting on and Owner·age. */
-const COLS_ETA =
-  "grid grid-cols-[104px_minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[96px_minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[92px_minmax(0,1fr)_144px_164px_112px]";
-
-/** The two grids without the key column, for a list whose rows lead with their title (REQ-11 BC-19). */
-const COLS_TITLE =
-  "grid grid-cols-[minmax(0,1fr)_168px_220px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[minmax(0,1fr)_150px_196px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_180px]";
-const COLS_ETA_TITLE =
-  "grid grid-cols-[minmax(0,1fr)_168px_200px_128px_118px] gap-x-3.5 pr-5 max-xl:grid-cols-[minmax(0,1fr)_150px_180px_120px_104px] max-lg:grid-cols-[minmax(0,1fr)_144px_164px_112px]";
-const gridOf = (eta: boolean, keyed: boolean) => cn(keyed ? (eta ? COLS_ETA : COLS) : eta ? COLS_ETA_TITLE : COLS_TITLE, GROUP_ROW_INDENT);
+/**
+ * One grid for the header and every row, so the columns line up without a table: the list itself is
+ * the grid from 768px, and its header and rows lay their cells on its tracks (subgrid). The title takes
+ * what the other columns leave; each other column is as wide as its widest cell up to a cap, and the
+ * ETA and Owner·age columns as wide as their widest cell, so a name reads whole beside a long ETA
+ * ("orchestr…" beside "Tomorrow 17:06", ISS-1072) and a short column gives the title its room.
+ */
+const TRACKS = {
+  key: "md:grid-cols-[92px_minmax(0,1fr)_fit-content(144px)_fit-content(180px)] lg:grid-cols-[96px_minmax(0,1fr)_fit-content(150px)_fit-content(196px)_max-content] xl:grid-cols-[104px_minmax(0,1fr)_fit-content(168px)_fit-content(220px)_max-content]",
+  keyEta: "md:grid-cols-[92px_minmax(0,1fr)_fit-content(144px)_fit-content(164px)_max-content] lg:grid-cols-[96px_minmax(0,1fr)_fit-content(150px)_fit-content(180px)_max-content_max-content] xl:grid-cols-[104px_minmax(0,1fr)_fit-content(168px)_fit-content(200px)_max-content_max-content]",
+  title: "md:grid-cols-[minmax(0,1fr)_fit-content(144px)_fit-content(180px)] lg:grid-cols-[minmax(0,1fr)_fit-content(150px)_fit-content(196px)_max-content] xl:grid-cols-[minmax(0,1fr)_fit-content(168px)_fit-content(220px)_max-content]",
+  titleEta: "md:grid-cols-[minmax(0,1fr)_fit-content(144px)_fit-content(164px)_max-content] lg:grid-cols-[minmax(0,1fr)_fit-content(150px)_fit-content(180px)_max-content_max-content] xl:grid-cols-[minmax(0,1fr)_fit-content(168px)_fit-content(200px)_max-content_max-content]",
+};
+/** The list's own grid: its tracks, and the gap every row's cells keep. */
+const listGrid = (eta: boolean, keyed: boolean) => cn("md:grid md:gap-x-3.5", keyed ? (eta ? TRACKS.keyEta : TRACKS.key) : eta ? TRACKS.titleEta : TRACKS.title);
+/** A header or a row: its cells on the list's tracks from 768px. */
+const ROW_GRID = cn("grid md:col-span-full md:grid-cols-subgrid pr-5", GROUP_ROW_INDENT);
 
 /** Rows in each group ordered by `value`, lowest first and every row without one last, in their own order. */
 export function sortGroupsBy<R>(groups: readonly ListGroup<R>[], value: (r: R) => number | null): ListGroup<R>[] {
@@ -144,7 +148,7 @@ function ListGroupHeader<R>({ g, open, onToggle }: { g: ListGroup<R>; open: bool
       mono={g.mono}
       open={open}
       onToggle={onToggle}
-      className="sticky top-8 max-md:top-0"
+      className="sticky top-8 max-md:top-0 md:col-span-full"
       after={g.summary?.map((s) => (
         <span key={s.label} className="text-11-5 font-semibold" style={{ color: toneText(s.tone) }}>
           {s.label} {s.count}
@@ -169,7 +173,7 @@ function Row({ v, selected, onPeek, eta, keyed }: { v: ListRowView; selected: bo
       data-testid="list-row"
       data-key={v.key}
       className={cn(
-        gridOf(eta, keyed),
+        ROW_GRID,
         "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-divider py-[7px] text-left text-fg no-underline hover:bg-hover",
         "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:pr-3 max-md:py-2.5",
         selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
@@ -253,9 +257,9 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
   });
   useReportShown(drawn.flatMap((d) => d.views.map((v) => v.key)));
   return (
-    <section aria-label={ariaLabel} data-testid="grouped-list">
+    <section aria-label={ariaLabel} data-testid="grouped-list" className={listGrid(eta !== undefined, keyed)}>
       <div
-        className={cn(gridOf(eta !== undefined, keyed), "sticky top-0 z-[6] h-8 items-center border-b border-line-divider bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
+        className={cn(ROW_GRID, "sticky top-0 z-[6] h-8 items-center border-b border-line-divider bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
         data-testid="list-header"
       >
         {keyed ? <span aria-hidden>{columns?.key ?? t("list.col.key")}</span> : null}
@@ -275,13 +279,16 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
             <Icon name={eta.sort.sorted ? "arrowUp" : "chevronUpDown"} size={11} />
           </button>
         ) : eta ? (
-          <span aria-hidden>{eta.label}</span>
+          <span aria-hidden className="justify-self-end text-right">
+            {eta.label}
+          </span>
         ) : null}
         <span aria-hidden className="text-right max-lg:hidden">{columns?.meta ?? t("list.col.meta")}</span>
       </div>
-      {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? t("list.empty")}</p> : null}
+      {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle md:col-span-full">{empty ?? t("list.empty")}</p> : null}
       {drawn.map(({ g, open, views }) => (
-        <div key={g.id}>
+        // a group's header and rows sit on the list's own grid
+        <div key={g.id} className="md:contents">
           <ListGroupHeader g={g} open={open} onToggle={() => fold.toggle(g.id, g.collapsed)} />
           {views.map((v) => (
             <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} keyed={keyed} />
