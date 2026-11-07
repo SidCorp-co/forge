@@ -81,12 +81,12 @@ export async function readCriteriaAndRetired(issue: { id: string; projectId: str
 /**
  * Replaces an issue's criteria in one transaction, answering which verdicts already recorded it kept
  * and which it voided; null where the issue is gone. `writer` is who writes them: the one add after
- * landing is its holder's (`late-add.ts`).
+ * landing is its holder's (`late-add.ts`), so a write naming none never takes it.
  */
 export async function replaceCriteria(
   issueId: string,
   criteria: readonly CriterionInput[],
-  writer: CriteriaWriter,
+  writer: CriteriaWriter | null = null,
 ) {
   return db.transaction(async (tx) => {
     if (!(await lockIssue(tx, issueId))) return null;
