@@ -9,10 +9,11 @@ describe('frozen', () => {
     ]);
     expect(() => rows.push({ id: 'c', tags: [] })).toThrow(TypeError);
     expect(() => rows.sort((x, y) => x.id.localeCompare(y.id))).toThrow(TypeError);
+    const first = rows[0] as { id: string; tags: string[] };
     expect(() => {
-      (rows[0] as { id: string }).id = 'z';
+      first.id = 'z';
     }).toThrow(TypeError);
-    expect(() => (rows[0]?.tags as string[]).push('y')).toThrow(TypeError);
+    expect(() => first.tags.push('y')).toThrow(TypeError);
 
     const v = frozen({ m: new Map([['k', { d: 1 }]]), s: new Set([{ e: 1 }]) });
     expect(() => v.m.set('x', { d: 2 })).toThrow(/read answer shared across a request/);
