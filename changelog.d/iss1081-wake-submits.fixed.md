@@ -1,1 +1,0 @@
-**A master's wake no longer sits unsent at its prompt.** The runner types it once the pane draws its composer, presses Enter after the paste shows, presses again if needed, and tells core naming the pane if it still sits.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.566] - 2026-11-07
+
+A master's wake typed by the runner is now submitted
+
+### Fixed
+
+- **A master's wake no longer sits unsent at its prompt.** The runner types it once the pane draws its composer, presses Enter after the paste shows, presses again if needed, and tells core naming the pane if it still sits.
+
 ## [0.4.0-dev.565] - 2026-11-07
 
 Criteria written only in an issue description now reach the record
