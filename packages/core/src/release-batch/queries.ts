@@ -31,6 +31,7 @@ import { readEndedRunHolds } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
 import { uncheckedOf } from './range-outside.js';
+import { endedAccount, type ReleaseRunEnded } from './run-ended.js';
 import { carriersIn, carriersOf } from './version-rule.js';
 import { currentReleaseVersion } from './version-store.js';
 
@@ -261,7 +262,9 @@ interface ReleaseRunnerAccount {
 interface ReleaseBatchContext {
   runId: string;
   projectId: string;
-  gateStatus: IssueStatus;
+  gateStatus: IssueStatus | null;
+  /** How the run ended, its issues then read from its record and its gate null (`run-ended.ts`). */
+  ended: ReleaseRunEnded | null;
   /** The version this release cut, which the release agent writes into the tag it pushes. */
   version: string | null;
   /** Where work lands; `null` with no git source or where the project document cannot be read. */
@@ -357,6 +360,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       releaseVersion: pipelineRuns.releaseVersion,
       status: pipelineRuns.status,
       releasedAt: pipelineRuns.releaseReleasedAt,
+      finishedAt: pipelineRuns.finishedAt,
     })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
@@ -366,6 +370,7 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'release-batch') return null;
 
+  const { ended, issuesWhere } = endedAccount(runId, { ...run, metadata: meta });
   const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? RELEASE_GATE_STATUS;
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
   const promotePlanned = (meta.promotePlanned as boolean | undefined) ?? false;
@@ -384,13 +389,14 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       status: issues.status,
     })
     .from(issues)
-    .where(eq(issues.releaseBatchRunId, runId));
+    .where(issuesWhere);
 
   const claimedPrefix = await activeIssuePrefix(run.projectId);
   return {
     runId,
     projectId: run.projectId,
-    gateStatus,
+    gateStatus: ended ? null : gateStatus,
+    ended,
     version: run.releaseVersion,
     defaultBranch: branches.defaultBranch,
     deploysFrom: branches.deploysFrom,
