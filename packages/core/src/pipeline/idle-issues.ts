@@ -33,6 +33,7 @@ import {
   leaseIsReleasable,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
+  mergeSinceLastReopenSql,
   patternReviewPendingSql,
   readClaim,
   readJudge,
@@ -56,7 +57,6 @@ import { surface, unchangedStrand, writeStrand } from './idle-strand-write.js';
 import { admittedRunner, projectAdminUserIdsFor } from './ports.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
-import { mergeSinceLastReopenSql } from './wedge-landed.js';
 
 type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
 
@@ -84,7 +84,7 @@ export interface StrandRecord {
   lease: string;
   evidence: {
     merged: boolean;
-    /** The merge is recorded since the last reopen (`wedge-landed.ts:mergeSinceLastReopenSql`). */
+    /** The merge is recorded since the last reopen (`issues/host-landing.ts:mergeSinceLastReopenSql`). */
     mergedSinceReopen: boolean;
     everRan: boolean;
     poolHasRunner: boolean;

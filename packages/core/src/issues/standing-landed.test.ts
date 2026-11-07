@@ -29,6 +29,7 @@ const input = (
   holdsDependents: false,
   waitingKind: null,
   merged: true,
+  mergedSinceReopen: false,
   step: null,
   stepStartedAt: null,
   lease: null,
@@ -76,6 +77,7 @@ describe('a merged, reopened issue on a project with no independent judge', () =
     const rule = STRAND_RULES.reopen;
     const evidence = {
       merged: true,
+      mergedSinceReopen: false,
       everRan: true,
       poolHasRunner: true,
       lease: { verdict: 'none' as const, holder: null, expiresAt: null, fanout: 0 },

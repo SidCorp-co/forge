@@ -34,6 +34,7 @@ const input = (
   holdsDependents: false,
   waitingKind: null,
   merged: false,
+  mergedSinceReopen: false,
   step: null,
   stepStartedAt: null,
   lease: null,

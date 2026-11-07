@@ -67,3 +67,16 @@ export async function hostMergeNamed(
  */
 export const landedSql = (i: SQL): SQL => sql`coalesce((${i}.merged_at IS NOT NULL AND (
   NOT ${releasesThroughChangeRequestsSql(i)} OR ${hostLandedSql(i)} OR ${designOnlyMarkSql(i)})), false)`;
+
+/**
+ * Whether the issue row `i` carries a merge recorded after its last reopen: this round's mark, where
+ * a mark the issue was reopened after is the round a failing verdict sent back. The one reading of
+ * "merged since the last reopen": the wedge net's, a run's end's, the strand pass's and the board's.
+ */
+export const mergeSinceLastReopenSql = (i: SQL): SQL => sql`(${i}.merged_at IS NOT NULL
+  AND NOT EXISTS (
+        SELECT 1 FROM kernel_transitions k
+         WHERE k.entity = 'issue' AND k.entity_id = ${i}.id
+           AND k.to_status = 'reopen'
+           AND k.created_at > ${i}.merged_at
+      ))`;

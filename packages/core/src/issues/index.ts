@@ -115,7 +115,7 @@ export {
   resolveIssueForHeadRef,
   resolveIssuesForChangeRequest,
 } from './head-ref-link.js';
-export { landedSql } from './host-landing.js';
+export { landedSql, mergeSinceLastReopenSql } from './host-landing.js';
 export {
   type IssueLeaseRelease,
   issueRunDeclaredSql,

@@ -35,8 +35,8 @@ import { holderNames } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { deliveryHeads } from './delivery-head.js';
-import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
-import { landedSql } from './host-landing.js';
+import { designHoldPhrase, designOnlyMarkSql, designReturnedUnderSql } from './design-delivery.js';
+import { landedSql, mergeSinceLastReopenSql } from './host-landing.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { owedMarkSql } from './owed-merges.js';
@@ -89,6 +89,7 @@ interface IssueRowRaw {
   status: IssueStatus;
   waiting_kind: string | null;
   landed: boolean;
+  landed_since_reopen: boolean;
   release_noted: boolean;
   priority: string;
   category: string | null;
@@ -132,14 +133,6 @@ interface IssueRowRaw {
   status_since: string;
 }
 
-// The design revision drawn under this issue that its approver returned and nobody has redrawn yet.
-const designReturnedUnderSql = (issueId: SQL) => sql`(
-  SELECT jsonb_build_object('flow', w.flow, 'revision', d.revision)
-    FROM project_workflow_designs d JOIN project_workflows w ON w.id = d.workflow_id
-   WHERE d.design_issue_id = ${issueId} AND d.decision = 'return'
-     AND w.design_status = 'returned' AND d.revision = w.revision
-   ORDER BY d.decided_at DESC LIMIT 1)`;
-
 function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
   if (scope === 'one') return sql`AND i.iss_seq = ${key}`;
   if (scope === 'open') return sql`AND i.status NOT IN ${DONE_SQL}`;
@@ -152,6 +145,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
     await db.execute(sql`
       SELECT i.id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind,
              ${landedSql(sql`i`)} AS landed,
+             (${landedSql(sql`i`)} AND ${mergeSinceLastReopenSql(sql`i`)}) AS landed_since_reopen,
              (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
              i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
@@ -289,6 +283,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     holdsDependents: r.holds_dependents,
     waitingKind: r.waiting_kind,
     merged: r.landed,
+    mergedSinceReopen: r.landed_since_reopen,
     step: r.step,
     stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
     lease: leaseOf(r.lease, f.now),

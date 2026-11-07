@@ -111,7 +111,7 @@ export interface StrandEvidence {
   merged: boolean;
   /**
    * Whether the merge is recorded after the issue's last reopen, the reconciler's own reading
-   * (`pipeline/wedge-landed.ts:mergeSinceLastReopenSql`): a reopen carrying one is a fix round that
+   * (`host-landing.ts:mergeSinceLastReopenSql`): a reopen carrying one is a fix round that
    * landed. Absent where the reader did not ask, which reads every landed reopen as a round owed.
    */
   mergedSinceReopen?: boolean;

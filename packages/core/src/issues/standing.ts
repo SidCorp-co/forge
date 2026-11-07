@@ -76,6 +76,8 @@ export interface IssueStandingInput {
   holdsDependents: boolean;
   waitingKind: string | null;
   merged: boolean;
+  /** The merge is recorded since the last reopen (`host-landing.ts:mergeSinceLastReopenSql`). */
+  mergedSinceReopen: boolean;
   step: WorkStep | null;
   stepStartedAt: Date | null;
   lease: IssueLeaseView | null;

@@ -13,6 +13,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   holdsDependents: false,
   waitingKind: null,
   merged: false,
+  mergedSinceReopen: false,
   step: null,
   stepStartedAt: null,
   lease: null,

@@ -31,6 +31,7 @@ const input = (status: IssueStatus, writers: string[]): IssueStandingInput => ({
   holdsDependents: false,
   waitingKind: null,
   merged: false,
+  mergedSinceReopen: false,
   step: null,
   stepStartedAt: null,
   lease: null,
@@ -156,6 +157,7 @@ describe('a draft behind a live blocker', () => {
     title: 'The blocker',
     status: 'in_progress' as const,
     merged: false,
+    mergedSinceReopen: false,
     step: null,
     holds: true,
   };

@@ -9,6 +9,7 @@
  *
  * @direct-test-of packages/core/src/pipeline/idle-issues.ts
  * @direct-test-of packages/core/src/pipeline/wedge-landed.ts
+ * @direct-test-of packages/core/src/issues/standing-read.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -26,6 +27,7 @@ import {
 } from '../helpers/factories.js';
 
 let reconcileIdleIssues: typeof import('../../src/pipeline/idle-issues.js').reconcileIdleIssues;
+let readIssueStanding: typeof import('../../src/issues/standing-read.js').readIssueStanding;
 let projectId: string;
 let ownerId: string;
 let seq = 0;
@@ -37,6 +39,7 @@ beforeAll(async () => {
   await import('../../src/index.js');
   await startQueue();
   ({ reconcileIdleIssues } = await import('../../src/pipeline/idle-issues.js'));
+  ({ readIssueStanding } = await import('../../src/issues/standing-read.js'));
 }, 120_000);
 
 afterAll(async () => {
@@ -102,6 +105,25 @@ describe('the strand on a reopened issue that carries a merge', () => {
       waitingFor: 'a run to build it again',
       evidence: { merged: true, mergedSinceReopen: false },
     });
+  });
+});
+
+describe('the board on a reopened issue that carries a merge', () => {
+  const seqOf = async (id: string) =>
+    (await rows<{ iss_seq: number }>(sql`SELECT iss_seq FROM issues WHERE id = ${id}`))[0]
+      ?.iss_seq ?? 0;
+
+  it('names the master moving on a fix round that landed, as the strand does', async () => {
+    const id = await reopened({ reopenedHoursAgo: 40, mergedHoursAgo: 30 });
+    const read = await readIssueStanding(projectId, await seqOf(id));
+    const said = JSON.stringify(read?.standing.waitingOn);
+    expect(said).toContain('awaiting_release');
+  });
+
+  it('still names a run for a mark from before the reopen', async () => {
+    const id = await reopened({ reopenedHoursAgo: 30, mergedHoursAgo: 40 });
+    const read = await readIssueStanding(projectId, await seqOf(id));
+    expect(JSON.stringify(read?.standing.waitingOn)).not.toContain('awaiting_release');
   });
 });
 

@@ -12,6 +12,7 @@ const atGate = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => (
   holdsDependents: false,
   waitingKind: null,
   merged: true,
+  mergedSinceReopen: false,
   step: null,
   stepStartedAt: null,
   lease: null,
