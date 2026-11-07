@@ -13,9 +13,9 @@ import { uuidArray } from '../db/raw-sql.js';
 import { issueAttachments } from '../db/schema.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
 import {
-  builderCandidatesAcrossSql,
+  builderFactsMarkedSql,
+  readWithBuilderFacts,
   reopenedAtOf,
-  verdictByBuilderSql,
   voidedUpTo,
 } from '../issues/index.js';
 import { waivedOf } from './acceptance-waived.js';
@@ -46,6 +46,9 @@ type CriterionVerdictRow = {
   storefront_environment: string | null;
   covers: string[] | null;
   by_builder: boolean | null;
+  /** The builder fact is owed for its verdict (`issues/builder-facts.ts:builderFactsMarkedSql`). */
+  fact_owed?: boolean | null;
+  fact_missing?: boolean | null;
   authored: boolean | null;
   /** The class the issue's recorded design gives the criterion; null where none is recorded. */
   criterion_class?: string | null;
@@ -125,15 +128,18 @@ export async function issueCriteriaOf(
   asReturned: readonly string[] = [],
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
-  // one array parameter however many issues, so the statement neither builds nor plans a list per id
-  const issueSet = sql`(SELECT unnest(${uuidArray(issueIds)}))`;
   // a criterion's facts are read once per criterion, and a pin only for a verdict naming a design or
   // a contract: per verdict, they were read for every verdict ever recorded (ISS-1070 r4)
-  const rows = (await ex.execute(sql`
+  // the builder rule is read from the model each write keeps (`issues/builder-facts.ts`)
+  const rows = await readWithBuilderFacts(
+    ex,
+    async () =>
+      (await ex.execute(sql`
     WITH crit AS (
       SELECT c.id, c.issue_id, c.n, c.position, c.requirement_criterion_id, rc.requirement_id,
              (SELECT d.criterion_class FROM issue_design_criteria d
-               WHERE d.criterion_id = c.id LIMIT 1) AS criterion_class
+               WHERE d.criterion_id = c.id LIMIT 1) AS criterion_class,
+             ${builderFactsMarkedSql(sql`c.issue_id`)} AS issue_marked
         FROM issue_criteria c
         JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
        WHERE c.issue_id = ANY(${uuidArray(issueIds)})
@@ -165,14 +171,9 @@ export async function issueCriteriaOf(
               LIMIT 1) END AS contract_pinned,
            v.release_version, v.storefront_drafts,
            v.storefront_environment, v.covers,
-           (${verdictByBuilderSql({
-             issueId: sql`c.issue_id`,
-             authorUser: sql`v.author_user_id`,
-             authorDevice: sql`v.author_device_id`,
-             at: sql`v.verdict_at`,
-             runSession: sql`v.run_session_id`,
-             candidates: builderCandidatesAcrossSql(issueSet),
-           })}) AS by_builder,
+           v.by_builder,
+           (v.id IS NOT NULL AND (v.fact_missing OR c.issue_marked)) AS fact_owed,
+           coalesce(v.fact_missing, false) AS fact_missing,
            (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored,
            c.criterion_class
       FROM crit c
@@ -181,12 +182,16 @@ export async function issueCriteriaOf(
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
                cv.contract_version, cv.release_version, cv.storefront_drafts,
-               cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id, cv.run_session_id
+               cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id,
+               vb.by_builder, vb.verdict_id IS NULL AS fact_missing
           FROM criterion_verdicts cv
+          LEFT JOIN verdict_builder_facts vb ON vb.verdict_id = cv.id
          WHERE cv.criterion_id = c.id
       ) v ON true
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
-     ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
+     ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[],
+    (r) => (r.fact_owed ? { issueId: r.issue_id, missing: r.fact_missing === true } : null),
+  );
   // A verdict recorded at or before the issue's latest reopen, on a criterion that was not passing
   // then, is evidence about a build the reopen rejected (`issues/release-evidence.ts:voidedUpTo`,
   // ISS-845), so coverage reads it as not judged; a pass stands across the reopen

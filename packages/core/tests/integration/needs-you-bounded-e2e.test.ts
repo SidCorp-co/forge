@@ -247,6 +247,9 @@ describe('GET needs-you on a project the size of HOP', () => {
     const small = await projectAt(SMALL);
     const large = await projectAt(HOP);
     await measured(large); // the first request pays for the prepared statements
+    // and the first read after a project's verdicts were written writes their builder facts
+    // (`issues/builder-facts.ts`), two statements a reader: both are read once before measuring
+    await measured(small);
 
     const few = await measured(small);
     const many = await measured(large);

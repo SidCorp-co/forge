@@ -26,7 +26,7 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { memoizedPerId } from '../db/read-memo.js';
+import { memoizedPerId, memoizedPerSet } from '../db/read-memo.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -385,13 +385,13 @@ async function standingRows(
     ),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
-    memoizedPerId(
+    memoizedPerSet(
       `standingRequirements:${projectId}`,
-      [...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))],
+      raws.map((r) => r.requirement_id).filter((x): x is string => !!x),
       (some) => requirementsOf(some, projectId),
     ),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id, r.box_owner_id])),
-    memoizedPerId('changedTraced', ids, (some) => changedTracedOf(db, some)),
+    memoizedPerSet('changedTraced', ids, (some) => changedTracedOf(db, some)),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
   const facts: Facts = {

@@ -3984,6 +3984,13 @@
       "when": 1837036800000,
       "tag": "0626_a_caller_names_its_plugin",
       "breakpoints": true
+    },
+    {
+      "idx": 627,
+      "version": "7",
+      "when": 1837123200000,
+      "tag": "0627_verdict_builder_facts_kept_by_each_write",
+      "breakpoints": true
     }
   ]
 }

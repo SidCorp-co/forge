@@ -25,7 +25,19 @@ export {
   refuseBlockedTake,
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
-export { builderCandidatesAcrossSql, verdictByBuilderSql } from './built-by.js';
+export {
+  builderFactDrift,
+  builderFactMissingSql,
+  builderFactOwedSql,
+  builderFactSql,
+  builderFactsMarkedSql,
+  builderFactsTick,
+  drainStaleBuilderFacts,
+  keepBuilderFacts,
+  type OwedFact,
+  readWithBuilderFacts,
+  sweepBuilderFacts,
+} from './builder-facts.js';
 export {
   artifactsCarriedFor,
   type Carrier,

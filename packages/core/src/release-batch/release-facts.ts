@@ -16,13 +16,15 @@ import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
   activeIssuePrefix,
-  builderCandidatesAcrossSql,
+  builderFactMissingSql,
+  builderFactOwedSql,
+  builderFactSql,
   type CriterionWithVerdict,
   closedAtOf,
   criterionRoutesOf,
   listCriteriaOf,
+  readWithBuilderFacts,
   reopenedAtOf,
-  verdictByBuilderSql,
   voidedUpTo,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -142,39 +144,37 @@ async function carriedVerdictsOf(
   const out = new Map<string, CarriedVerdict[]>();
   if (criterionIds.length === 0) return out;
   const ids = [...new Set(criterionIds)];
-  // every carried issue's builder sessions, read once for the statement rather than per verdict
-  const candidates = builderCandidatesAcrossSql(
-    sql`(SELECT ic.issue_id FROM issue_criteria ic WHERE ic.id IN (${sql.join(
-      ids.map((id) => sql`${id}::uuid`),
-      sql`, `,
-    )}))`,
+  // the builder rule is read from the model each write keeps (`issues/builder-facts.ts`)
+  const rows = await readWithBuilderFacts(
+    db,
+    () =>
+      db
+        .select({
+          id: criterionVerdicts.id,
+          issueId: criterionVerdicts.issueId,
+          criterionId: criterionVerdicts.criterionId,
+          verdict: criterionVerdicts.verdict,
+          reason: criterionVerdicts.reason,
+          identityKind: criterionVerdicts.identityKind,
+          commitSha: criterionVerdicts.commitSha,
+          runtimeRef: criterionVerdicts.runtimeRef,
+          releaseVersion: criterionVerdicts.releaseVersion,
+          evidence: criterionVerdicts.evidence,
+          agency: criterionVerdicts.authorAgency,
+          createdAt: criterionVerdicts.createdAt,
+          byBuilder: builderFactSql(sql`${criterionVerdicts.id}`),
+          factOwed: builderFactOwedSql(
+            sql`${criterionVerdicts.issueId}`,
+            sql`${criterionVerdicts.id}`,
+          ),
+          factMissing: builderFactMissingSql(sql`${criterionVerdicts.id}`),
+          authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
+        })
+        .from(criterionVerdicts)
+        .where(inArray(criterionVerdicts.criterionId, ids))
+        .orderBy(asc(criterionVerdicts.createdAt)),
+    (v) => (v.factOwed ? { issueId: v.issueId, missing: v.factMissing } : null),
   );
-  const rows = await db
-    .select({
-      id: criterionVerdicts.id,
-      criterionId: criterionVerdicts.criterionId,
-      verdict: criterionVerdicts.verdict,
-      reason: criterionVerdicts.reason,
-      identityKind: criterionVerdicts.identityKind,
-      commitSha: criterionVerdicts.commitSha,
-      runtimeRef: criterionVerdicts.runtimeRef,
-      releaseVersion: criterionVerdicts.releaseVersion,
-      evidence: criterionVerdicts.evidence,
-      agency: criterionVerdicts.authorAgency,
-      createdAt: criterionVerdicts.createdAt,
-      byBuilder: verdictByBuilderSql({
-        issueId: sql`(SELECT ic.issue_id FROM issue_criteria ic WHERE ic.id = ${criterionVerdicts.criterionId})`,
-        authorUser: sql`${criterionVerdicts.authorUserId}`,
-        authorDevice: sql`${criterionVerdicts.authorDeviceId}`,
-        at: sql`${criterionVerdicts.createdAt}`,
-        runSession: sql`${criterionVerdicts.runSessionId}`,
-        candidates,
-      }),
-      authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
-    })
-    .from(criterionVerdicts)
-    .where(inArray(criterionVerdicts.criterionId, ids))
-    .orderBy(asc(criterionVerdicts.createdAt));
   for (const v of rows) {
     const held = out.get(v.criterionId) ?? [];
     held.push({

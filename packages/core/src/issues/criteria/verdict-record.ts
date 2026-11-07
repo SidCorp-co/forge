@@ -17,6 +17,7 @@ import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
+import { keepBuilderFacts } from '../builder-facts.js';
 import { criterionRoutesOf } from '../design-record.js';
 import { readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
@@ -402,6 +403,8 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
+  // the builder rule is computed as the verdict is written, inside its transaction (`builder-facts.ts`)
+  await keepBuilderFacts(tx, [issue.id]);
   // read through the same builder rule every count of proof reads, as the criteria read answers it
   const { notCounted, countedUnderCutover: underCutover } = await countingOfOne(
     tx,

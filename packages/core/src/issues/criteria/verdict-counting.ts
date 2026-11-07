@@ -9,10 +9,10 @@ import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contr
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
-  builderCandidatesAcrossSql,
-  declaredBeforeLandingSql,
-  verdictByBuilderSql,
-} from '../built-by.js';
+  builderFactColumnsSql,
+  builderFactJoinSql,
+  readWithBuilderFacts,
+} from '../builder-facts.js';
 import { readJudge } from '../ports.js';
 
 /** How one verdict counts: named where it never will, marked where it counts only by the amnesty. */
@@ -40,28 +40,27 @@ export async function countingOf(
     judged.map((v) => sql`${v.id}::uuid`),
     sql`, `,
   );
-  // every issue's builder candidates read once for the statement, not once per verdict
-  const issues = sql`(SELECT DISTINCT iv.issue_id FROM criterion_verdicts iv WHERE iv.id IN (${ids}))`;
-  const rows = (await executor.execute(sql`
-    SELECT v.id, v.verdict, v.created_at AS recorded_at, ${verdictByBuilderSql({
-      issueId: sql`v.issue_id`,
-      authorUser: sql`v.author_user_id`,
-      authorDevice: sql`v.author_device_id`,
-      at: sql`v.created_at`,
-      runSession: sql`v.run_session_id`,
-      candidates: sql`bc.candidates`,
-    })} AS by_builder,
-      CASE WHEN v.run_session_id IS NULL THEN NULL
-           ELSE ${declaredBeforeLandingSql(sql`v.issue_id`, sql`v.run_session_id`)} END AS opened_at
+  // the builder rule is read from the model each write keeps (`builder-facts.ts`), never computed here
+  const rows = await readWithBuilderFacts(
+    executor,
+    async () =>
+      (await executor.execute(sql`
+    SELECT v.id, v.issue_id, v.verdict, v.created_at AS recorded_at,
+           ${builderFactColumnsSql(sql`v.issue_id`)}
       FROM criterion_verdicts v
-     CROSS JOIN (SELECT ${builderCandidatesAcrossSql(issues)} AS candidates) bc
+      ${builderFactJoinSql(sql`v.id`)}
      WHERE v.id IN (${ids})`)) as unknown as {
-    id: string;
-    verdict: string;
-    recorded_at: string | Date;
-    by_builder: boolean | null;
-    opened_at: string | null;
-  }[];
+        id: string;
+        issue_id: string;
+        verdict: string;
+        recorded_at: string | Date;
+        by_builder: boolean | null;
+        fact_declared: string | null;
+        fact_owed: boolean;
+        fact_missing: boolean;
+      }[],
+    (r) => (r.fact_owed ? { issueId: r.issue_id, missing: r.fact_missing } : null),
+  );
   const judge = await readJudge(projectId);
   return new Map(
     rows.map((r) => {
@@ -74,7 +73,7 @@ export async function countingOf(
       return [
         r.id,
         {
-          notCounted: notCountedOf(read, judge, r.opened_at),
+          notCounted: notCountedOf(read, judge, r.fact_declared),
           countedUnderCutover: countedUnderCutover(read, judge),
         },
       ];

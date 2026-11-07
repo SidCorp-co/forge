@@ -1,4 +1,6 @@
+import { db } from './db/client.js';
 import {
+  drainStaleBuilderFacts,
   runActivityFieldChangesBackfillOnce,
   runCriteriaBackfillOnce,
   runRescueCapRehomeOnce,
@@ -89,4 +91,19 @@ export function startDeferredBackfills(): void {
       );
     })
     .catch((err) => logger.error({ err }, 'boot: activity field-changes backfill failed'));
+  void fillBuilderFacts()
+    .then((n) => {
+      if (n > 0) logger.info({ issues: n }, 'boot: builder facts written for the marked issues');
+    })
+    .catch((err) => logger.error({ err }, 'boot: writing the marked builder facts failed'));
+}
+
+/** Rewrites every issue marked for its builder facts, 0627's backfill among them, a batch at a time. */
+async function fillBuilderFacts(): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const n = await drainStaleBuilderFacts(db, 200);
+    total += n;
+    if (n === 0) return total;
+  }
 }

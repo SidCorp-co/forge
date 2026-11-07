@@ -379,16 +379,23 @@ function sitesOf(m: Measure): string[] {
  * decisions sent 107 over 72 thousand buffers, the attention read 116, the home read 138 over 42
  * thousand, the newest shipped 82 over 23 thousand, What's new 77 over 17 thousand and its summary 3
  * over 5 thousand. The counts are the statements the request sends (its `Server-Timing`), never the
- * work it leaves running.
+ * work it leaves running. ISS-1070 r5 reads the builder rule from the facts each write keeps
+ * (`issues/builder-facts.ts`): Needs you and attention fell from 62 to 24 thousand buffers, while a
+ * read over few verdicts pays about two buffers a verdict for the joined fact where the rule it
+ * replaced was cheaper (What's new 4.2 to 5.8 thousand, the home 26 to 28 thousand): that is the
+ * model's read price, and it stands while the fact is joined rather than kept on the verdict row.
  */
 const READS = (p: string): { path: string; statements: number; buffers: number }[] => [
-  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 64000 },
-  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 64000 },
+  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
+  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 15000 },
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
-  { path: '/api/me/attention', statements: 115, buffers: 64000 },
-  { path: '/api/me/home', statements: 127, buffers: 27500 },
-  { path: '/api/me/whats-new', statements: 77, buffers: 4500 },
+  { path: '/api/me/attention', statements: 115, buffers: 27000 },
+  // +1 a project since ISS-1102: the progress read lists the project's leased builds beside its runs
+  // (`runs/leased-builds.ts:leasedBuildsOf`). Priced: it ends when ISS-1070 r6 reads them across
+  // the person's projects in one statement.
+  { path: '/api/me/home', statements: 128, buffers: 30000 },
+  { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
@@ -402,12 +409,13 @@ const READS = (p: string): { path: string; statements: number; buffers: number }
  * read send as many statements for twelve projects as for one.
  */
 const READS_ACROSS = (p: string): { path: string; statements: number; buffers: number }[] => [
-  { path: '/api/me/attention', statements: 1117, buffers: 216000 },
-  { path: '/api/me/home', statements: 1315, buffers: 126000 },
-  { path: '/api/me/whats-new', statements: 77, buffers: 4500 },
+  { path: '/api/me/attention', statements: 1117, buffers: 135000 },
+  // +12 since ISS-1102, one leased-builds read a project; ends with ISS-1070 r6's set-based reads.
+  { path: '/api/me/home', statements: 1327, buffers: 150000 },
+  { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
-  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 64000 },
-  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 64000 },
+  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
+  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
 ];
 
 beforeAll(async () => {

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 
 /**
  * One read request's answers to the lookups its handlers repeat: who the caller is in a project,
@@ -142,6 +143,24 @@ export async function memoizedPerId<V>(
     if (held) out.set(id, structuredClone(held.value));
   });
   return out;
+}
+
+/**
+ * `read(ids)` once per distinct set of ids under `key` inside a {@link withReadMemo} scope. Unlike
+ * {@link memoizedPerId}, two asks over different but overlapping sets each read their own: how many
+ * statements a read sends then never hangs on which ask reached here first. `memoizedPerId` reads
+ * one set and the rest of the other, which is one statement where the second set falls inside the
+ * first and two where it does not, so the same read counted 111 or 113 by the order its concurrent
+ * halves came back in (`needs-you-bounded-e2e`, ISS-1070 r5).
+ */
+export function memoizedPerSet<V>(
+  key: string,
+  ids: readonly string[],
+  read: (ids: readonly string[]) => Promise<V>,
+): Promise<V> {
+  const set = [...new Set(ids)].sort();
+  const digest = createHash('sha1').update(set.join(',')).digest('hex');
+  return memoizedRead(`${key}\u0000${digest}`, () => read(set));
 }
 
 const producing = new AsyncLocalStorage<ReadonlySet<string>>();
