@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.571] - 2026-11-07
+
+Channel agreements file in linked projects; mentions by username work
+
+### Changed
+
+- **Project settings offer no routine approval and no language mark.** Gates keeps one choice, the profile, and lists each gate by name with its mode; General drops Plans need approval; no title carries a VI mark.
+- **Lists lead with names, never keys.** Waves, the status report and org members read titles and names; an agent-filed issue reads Unassigned; agent drafts queue; Projects and Activity fit a phone.
+
+### Fixed
+
+- **The collapsed rail is icons only and never scrolls sideways.** Threads appears only while a thread is open, and a project's Approvals page lights Overview, not Dashboard.
+- **A channel agent's agreed record for a followed project is filed there.** Its pictures attach to it, the answer names the key and project, and a failed filing leaves the proposal standing with a named refusal.
+- **A channel agent mentions a listed member by username.** A member the record lists by user id answers to their username, is shown by it, and is kept under it when next written.
+
 ## [0.4.0-dev.570] - 2026-11-07
 
 Judges sign in where the login answers its token as jwt
