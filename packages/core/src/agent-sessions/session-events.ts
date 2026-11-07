@@ -28,13 +28,20 @@ export interface SeedResult {
 export async function seedTurn(
   tx: DbOrTx,
   agentSessionId: string,
-  args: { priorMessages: unknown[]; entry: Record<string, unknown>; at: Date },
+  args: {
+    priorMessages: unknown[];
+    /** Core's own lines the turn carries before its entry, as a moved checkout (ISS-1101). */
+    notices?: readonly Record<string, unknown>[];
+    entry: Record<string, unknown>;
+    at: Date;
+  },
 ): Promise<SeedResult> {
   let seq = await nextSeq(tx, agentSessionId);
   const rows: Array<{ kind: 'seed' | 'snapshot'; data: Record<string, unknown> }> = [];
   if (seq === 1 && args.priorMessages.length > 0) {
     rows.push({ kind: 'snapshot', data: { entries: args.priorMessages } });
   }
+  for (const entry of args.notices ?? []) rows.push({ kind: 'seed', data: { entry } });
   rows.push({ kind: 'seed', data: { entry: args.entry } });
 
   const values = rows.map((row, i) => ({

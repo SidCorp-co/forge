@@ -160,7 +160,8 @@ beforeEach(() => {
     run: { status: 'running', kind: 'interactive' },
     delivered: 1,
     listening: true,
-    boundPath: '/bound',
+    // the binding names the checkout the session ran in, unless a test moves it
+    boundPath: '/r',
     preambleFails: false,
     transcript: [{ type: 'user', content: 'earlier' }],
     box: { name: 'box-1', capabilities: { confinedChatNetwork: true } },
@@ -209,7 +210,12 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
       { id: SESSION_ID, messages: [{ type: 'user', content: 'earlier' }, userEntry] },
     ]);
     expect(state.seeded).toEqual([
-      { priorMessages: [{ type: 'user', content: 'earlier' }], entry: userEntry, at: NOW },
+      {
+        priorMessages: [{ type: 'user', content: 'earlier' }],
+        notices: [],
+        entry: userEntry,
+        at: NOW,
+      },
     ]);
     expect(broadcastTurnAppended).toHaveBeenCalledTimes(1);
     expect(state.frames).toEqual([
@@ -233,7 +239,8 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
     expect(out.status).toBe('running');
     expect(broadcastSession).toHaveBeenCalledWith(out, 'agent-session.updated');
     expect(applyAutoTitleAsync).not.toHaveBeenCalled();
-    expect(state.calls).not.toContain('bindingCheckout');
+    // every turn reads the binding: it, not the session's stored path, names the checkout (ISS-1101)
+    expect(state.calls).toContain('bindingCheckout');
   });
 
   it('the client claudeSessionId wins over the row', async () => {
@@ -325,6 +332,7 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
   });
 
   it('a migrated turn re-resolves the checkout, drops claudeSessionId and replays history', async () => {
+    state.boundPath = '/bound';
     await dispatchChatTurn({
       session: sessionOf(),
       project,
@@ -341,6 +349,32 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
     expect(frame()?.data.repoPath).toBe('/bound');
     expect(frame()?.data.prompt).toContain('This is a cold start');
     expect(frame()?.data.prompt).toContain('User: earlier');
+  });
+
+  it('a session whose stored checkout is not the one its binding names now runs in the binding\'s, cold, and says so (ISS-1101)', async () => {
+    state.boundPath = '/srv/epodsystem-core';
+    await dispatchChatTurn({
+      session: sessionOf({ repoPath: '/srv/epod-webauto' }),
+      project,
+      client: { deviceId: 'd-1' },
+      message: 'still there?',
+    });
+    expect(state.calls).toContain('bindingCheckout');
+    expect(frame()?.data.repoPath).toBe('/srv/epodsystem-core');
+    // Claude Code keeps a conversation under the directory it ran in: the move starts a fresh one
+    expect(frame()?.event).toBe('agent:start');
+    expect(frame()?.data.prompt).toContain('User: earlier');
+    expect(state.set[0]).toMatchObject({
+      repoPath: '/srv/epodsystem-core',
+      claudeSessionId: null,
+    });
+    const said = {
+      type: 'system',
+      content:
+        'This session ran in the checkout /srv/epod-webauto; its binding names /srv/epodsystem-core now, so this turn and every one after it run there.',
+    };
+    expect(state.seeded[0]?.notices).toEqual([expect.objectContaining(said)]);
+    expect(state.written[0]?.messages).toContainEqual(expect.objectContaining(said));
   });
 
   it('a pre-built prompt reads no language and is sent as given', async () => {
@@ -444,7 +478,7 @@ describe('dispatchChatTurn: refusals write nothing', () => {
         message: 'x',
       }),
     ).rejects.toMatchObject(refused('NO_CLAUDE_CLIENT'));
-    expect(state.calls).toEqual(['boxIsListening']);
+    expect(state.calls).toEqual(['bindingCheckout', 'boxIsListening']);
     nothingWritten();
   });
 

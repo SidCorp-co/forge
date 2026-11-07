@@ -269,6 +269,13 @@ interface TurnPlan {
   deviceId: string;
   migrated: boolean;
   repoPath: string;
+  /**
+   * The checkout the session ran in on this box before its binding named another (ISS-1101); null
+   * where it runs where it ran. A moved session starts Claude Code fresh, as a migrated one does.
+   */
+  movedFrom: string | null;
+  /** What the session is told, before the user's entry, of a move. */
+  notices: TranscriptEntry[];
   /** The user text as the turn sends it. */
   message: string;
   attachments: SessionAttachmentRef[];
@@ -298,20 +305,33 @@ interface TurnPlan {
   checkout: CheckoutView | null;
 }
 
-/** The session's checkout, re-read from the device binding when the turn lands on another box. */
-async function turnCheckout(
-  session: AgentSessionRow,
+/**
+ * The checkout a turn runs in: the one its device's binding names now, read on every turn. The
+ * session's stored path is only what it ran in last: a box rebound to another checkout moves the
+ * session there, said by `movedFrom` (ISS-1101), where it used to keep the old path for good.
+ */
+export async function turnCheckout(
+  session: Pick<AgentSessionRow, 'repoPath' | 'deviceId'>,
   projectId: string,
   deviceId: string,
-  migrated: boolean,
-): Promise<string> {
-  const deviceChanged = migrated || deviceId !== (session.deviceId ?? null);
-  const repoPath =
-    session.repoPath && !deviceChanged
-      ? session.repoPath
-      : await resolveSessionRepoPathForDevice(projectId, deviceId);
+  migrated = false,
+): Promise<{ repoPath: string; movedFrom: string | null }> {
+  const repoPath = await resolveSessionRepoPathForDevice(projectId, deviceId);
   if (!repoPath) throw checkoutUnbound(projectId, deviceId);
-  return repoPath;
+  const sameBox = !migrated && deviceId === (session.deviceId ?? null);
+  const movedFrom =
+    sameBox && session.repoPath && session.repoPath !== repoPath ? session.repoPath : null;
+  return { repoPath, movedFrom };
+}
+
+/** The line a moved session's transcript carries before the turn that moved it. */
+function movedNotice(from: string, to: string, at: Date): TranscriptEntry {
+  return {
+    id: randomUUID(),
+    type: 'system',
+    content: `This session ran in the checkout ${from}; its binding names ${to} now, so this turn and every one after it run there.`,
+    timestamp: at.getTime(),
+  };
 }
 
 async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
@@ -320,7 +340,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   if (!deviceId) throw noClaudeClient('session');
   const migrated = !!client.migrated;
   const { message } = args;
-  const repoPath = await turnCheckout(session, args.project.id, deviceId, migrated);
+  const { repoPath, movedFrom } = await turnCheckout(session, args.project.id, deviceId, migrated);
   // a turn no socket of the box would receive is refused before anything is written
   requireListeningBox(deviceId);
   const confined = runsConfined(session);
@@ -337,6 +357,13 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
     : [];
   const prevMessages = await readTranscript(session.id);
   const now = new Date();
+  const notices = movedFrom ? [movedNotice(movedFrom, repoPath, now)] : [];
+  if (movedFrom) {
+    logger.info(
+      { sessionId: session.id, deviceId, from: movedFrom, to: repoPath },
+      'chat-turn: the binding names another checkout now; the session moves to it and starts fresh',
+    );
+  }
   const userMessage: TranscriptEntry = {
     id: randomUUID(),
     type: 'user',
@@ -347,7 +374,8 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
 
   // Resolved before the transaction so the ISS-733 `pendingSkillName` marker persists in it.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
-  const resumable = !!claudeSessionId && !migrated;
+  // Claude Code keeps a conversation under the directory it ran in, so a moved one cannot resume
+  const resumable = !!claudeSessionId && !migrated && !movedFrom;
   const model =
     args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
   if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
@@ -365,6 +393,8 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
     deviceId,
     migrated,
     repoPath,
+    movedFrom,
+    notices,
     message,
     attachments,
     prevMessages,
@@ -401,7 +431,7 @@ function sessionPatch(
     repoPath: plan.repoPath,
   };
   if (session.deviceId !== deviceId) patch.deviceId = deviceId;
-  if (plan.migrated) patch.claudeSessionId = null;
+  if (plan.migrated || plan.movedFrom) patch.claudeSessionId = null;
 
   const metadata: Record<string, unknown> = { deviceId };
   if (args.model !== undefined) metadata.model = args.model ?? 'default';
@@ -463,10 +493,12 @@ async function writeTurn(
     const updated = { ...written, status: 'running' as const };
     const { appended } = await writeTranscript(tx, updated.id, [
       ...plan.prevMessages,
+      ...plan.notices,
       plan.userMessage,
     ]);
     const seeded = await seedTurn(tx, updated.id, {
       priorMessages: plan.prevMessages,
+      notices: plan.notices,
       entry: plan.userMessage,
       at: plan.now,
     });
