@@ -1,0 +1,1 @@
+**Project settings offer no routine approval and no language mark.** Gates keeps one choice, the profile, and lists each gate by name with its mode; General drops Plans need approval; no title carries a VI mark.
