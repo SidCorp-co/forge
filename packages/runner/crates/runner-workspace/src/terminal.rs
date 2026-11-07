@@ -105,7 +105,20 @@ fn attach_command_on(socket: Option<&std::path::Path>, name: &str) -> String {
     }
 }
 
+#[cfg(all(test, unix))]
+thread_local! {
+    /// A test's own tmux server. The transport under test is driven on it, so a test run never
+    /// reaches the server this box's config names, which is the box's live one where the tests
+    /// run inside a box's pane.
+    static TEST_SOCKET: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 fn socket_args() -> Vec<String> {
+    #[cfg(all(test, unix))]
+    if let Some(own) = TEST_SOCKET.with(|s| s.borrow().clone()) {
+        return vec!["-S".into(), own.to_string_lossy().into_owned()];
+    }
     match socket_path() {
         Some(p) => vec!["-S".into(), p.to_string_lossy().into_owned()],
         None => Vec::new(),
@@ -780,3 +793,6 @@ async fn still_there(name: &str) -> Result<bool> {
 
 #[cfg(all(test, unix))]
 mod tests;
+
+#[cfg(all(test, unix))]
+mod wake_tests;

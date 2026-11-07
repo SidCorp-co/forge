@@ -25,12 +25,12 @@ fn runnable(dir: &Path, name: &str) {
 }
 
 /// The one named way a box without tmux skips a test that needs a real server.
-const SKIP_TMUX: &str = "FORGE_TEST_SKIP_TMUX";
+pub(super) const SKIP_TMUX: &str = "FORGE_TEST_SKIP_TMUX";
 
 /// Whether `test` may run: tmux on PATH says yes. Without it the test fails naming tmux, so a
 /// box that lacks it cannot pass having asserted nothing — unless [`SKIP_TMUX`] is `1`, which is
 /// reported on stderr past the harness's capture, so the skip is seen and not mistaken for a pass.
-fn tmux_or_skip(test: &str) -> bool {
+pub(super) fn tmux_or_skip(test: &str) -> bool {
     if which::which("tmux").is_ok() {
         return true;
     }
