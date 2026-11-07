@@ -18,7 +18,7 @@ import { automationViewerOf, readAutomationStanding } from '../automation/index.
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
-import { listReleases, listReleasesInPlay } from '../release-batch/release-read-list.js';
+import { listReleases, listReleasesInPlay } from '../release-batch/release-list-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, designSettlerOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
@@ -91,7 +91,7 @@ export function readAttention(projectId: string, viewer: NeedsYouViewer, now: Da
 
 /**
  * The attention read Needs you is built from: its releases are those that can still wait on
- * someone (`release-read.ts:listReleasesInPlay`), since a release shipped, failed or aborted is no
+ * someone (`release-list-read.ts:listReleasesInPlay`), since a release shipped, failed or aborted is no
  * row any reader of it keeps (ISS-1070).
  */
 export function readNeedsYouAttention(

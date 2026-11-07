@@ -6,8 +6,8 @@
 import type { Said } from '@forge/contracts/said';
 import { type OwedActKind, owedActOfSaid } from '@forge/contracts/who-owes';
 import { waitingIssueIds } from './queries.js';
+import { listReleases } from './release-list-read.js';
 import { readReleaseOwes } from './release-owes.js';
-import { listReleases } from './release-read-list.js';
 
 export interface ReleaseActOwed {
   version: string;

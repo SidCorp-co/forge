@@ -1,6 +1,6 @@
 /**
  * The release that still holds an act before an issue at the release gate ships, as the release list
- * reads it (`release-read.ts:listReleases`): its version, its state and its own standing, whom it
+ * reads it (`release-list-read.ts:listReleases`): its version, its state and its own standing, whom it
  * waits on and for what. The steward's facts and its asks read it (ISS-1040): an issue whose every
  * criterion is earned on a project with production owes nothing of its own, and the act that ships
  * it (cut, approve, promote) is that release's, raised once on the release and never per issue.
@@ -8,7 +8,7 @@
 
 import type { ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
 import type { WaitingOn } from '@forge/contracts/standing';
-import { listReleases } from './release-read-list.js';
+import { listReleases } from './release-list-read.js';
 
 /** A release that has not shipped yet, and the wait its own standing reads. */
 export interface HoldingRelease {

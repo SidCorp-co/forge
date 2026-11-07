@@ -3,13 +3,13 @@
 //   a whole list from the runs whose rosters name the issues, where it read every shipped run once
 //   per issue: each issue's answer is the one the per-issue rule (`holdingReleaseRunsSql`) gives.
 // - Needs you weighs only the releases that can still wait on someone
-//   (`release-read-list.ts:listReleasesInPlay`): each is summarised exactly as the whole list
+//   (`release-list-read.ts:listReleasesInPlay`): each is summarised exactly as the whole list
 //   summarises it, and the rows and decisions Needs you lists are the ones the whole list gives.
 // - The newest shipped and the newest live place the draft without weighing it: each release they
 //   return is the whole list's.
 // @direct-test-of packages/core/src/issues/release-evidence.ts
 // @direct-test-of packages/core/src/pipeline/release-runs.ts
-// @direct-test-of packages/core/src/release-batch/release-read-list.ts
+// @direct-test-of packages/core/src/release-batch/release-list-read.ts
 // @direct-test-of packages/core/src/development/needs-you.ts
 
 import { randomUUID } from 'node:crypto';
@@ -28,7 +28,7 @@ import {
   listReleases,
   listReleasesInPlay,
 } from '../../src/release-batch/index.js';
-import { listShippedReleases } from '../../src/release-batch/release-read-list.js';
+import { listShippedReleases } from '../../src/release-batch/release-list-read.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestIssue, createTestProject, createTestUser } from '../helpers/factories.js';
 

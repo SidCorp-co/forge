@@ -29,7 +29,7 @@ import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { newQueryTiming, withQueryTiming } from '../../src/db/query-timing.js';
-import { listReleases } from '../../src/release-batch/release-read-list.js';
+import { listReleases } from '../../src/release-batch/release-list-read.js';
 import {
   addProjectMember,
   createTestDevice,

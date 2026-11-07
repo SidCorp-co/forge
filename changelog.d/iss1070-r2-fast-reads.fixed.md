@@ -1,0 +1,1 @@
+**Needs you, the Dashboard and Home load faster on a project with hundreds of releases.** Which release shipped each issue is read once for a whole list, and Needs you weighs only the releases still waiting on someone.
