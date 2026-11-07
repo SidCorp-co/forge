@@ -36,9 +36,33 @@ describe("a note whose script disagrees with the content language", () => {
 			contentLanguageScriptWarning("vi", "- - - - - - - -", "x"),
 		).toBeNull();
 	});
-	it("guesses no language but vi", () => {
-		expect(contentLanguageScriptWarning("en", vietnamese, "x")).toBeNull();
+	it("warns on a Vietnamese note for an en project, naming the field and the language it should be in", () => {
+		const said = contentLanguageScriptWarning(
+			"en",
+			vietnamese,
+			"releaseNotes.userFacing",
+		);
+		expect(said).toContain("releaseNotes.userFacing");
+		expect(said).toContain("of its 12 words are spelled with Vietnamese letters");
+		expect(said).toContain("Rewrite it in English.");
+		expect(contentLanguageScriptWarning("en", english, "x")).toBeNull();
+	});
+	it("warns on a short Vietnamese title for an en project, where its letters decide it", () => {
+		expect(
+			contentLanguageScriptWarning("en", "Sửa trang đăng nhập", "releaseNotes.title"),
+		).toContain("releaseNotes.title");
+		// one Vietnamese name in a short English title decides nothing
+		expect(contentLanguageScriptWarning("en", "Login for Nguyễn", "x")).toBeNull();
+	});
+	it("is silent on a note with no letter that decides it, such as a version", () => {
+		expect(contentLanguageScriptWarning("en", "v1.31.1", "x")).toBeNull();
+		expect(contentLanguageScriptWarning("vi", "v1.31.1", "x")).toBeNull();
+		expect(contentLanguageScriptWarning("vi", "Fix login", "x")).toBeNull();
+	});
+	it("reads a tag by its language, and guesses no language but vi and en", () => {
+		expect(contentLanguageScriptWarning("vi-VN", english, "x")).not.toBeNull();
 		expect(contentLanguageScriptWarning("fr", english, "x")).toBeNull();
+		expect(contentLanguageScriptWarning("fr", vietnamese, "x")).toBeNull();
 	});
 });
 
