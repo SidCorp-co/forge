@@ -22,6 +22,12 @@ import type { Member } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/thread-messages.ts
 // @direct-test-of packages/core/src/knowledge/ruling-deciders.ts
 // @direct-test-of packages/core/src/knowledge/upsert.ts
+// @direct-test-of packages/core/src/support/brief-grant.ts
+// @direct-test-of packages/core/src/integrations/rocketchat/support-binding.ts
+//
+// REQ-90 BC-11, BC-12 (ISS-1110): a ruling scopes who agrees to an act by its target project, or names
+// any member of the room (`*`); and a persona that states a rule for who agrees which the grants and
+// rulings do not hold (FB-566) is refused at save, naming both and the act.
 //
 // ISS-1042 (owner ruling 2026-11-06, "read what the user means; never make them follow a text form"):
 // sidpeak's room decider is tuyendtb, from the project's 2026-11-05 ruling. ISS-1000 made her plain go
@@ -330,5 +336,59 @@ describe('ISS-1106: a request from before the session’s restart is cited, neve
     expect(agreed, JSON.stringify(agreed)).toMatchObject({ recorded: true });
     expect(await consentIn(asked.id)).toMatchObject({ actor_key: tuyen.userId });
     expect(await filings()).toBe(before + 1);
+  });
+
+describe('REQ-90 BC-11, BC-12: one rule for who agrees to an act, scoped by target', () => {
+  const FB_566 =
+    'A request for work from anyone in the room is yours: when it is clear, record it at once, and never end with if chuongld agrees.';
+  const home = async () =>
+    (
+      await rows<{ slug: string }>(sql`SELECT slug FROM projects WHERE id = ${w.projectId}::uuid`)
+    )[0]?.slug as string;
+
+  it('refuses a persona saying anyone may have work recorded at once, naming the persona, the grants and the act', async () => {
+    const set = await w.retarget({
+      agent: { ...agentBlock([w.devTarget], chat.rid), answers: 'every-message', persona: FB_566 },
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(422);
+    const said = JSON.stringify(set.body);
+    expect(said).toContain('SUPPORT_BRIEF_CONTRADICTS_GRANT');
+    expect(said).toContain('/agent/persona');
+    expect(said).toContain('recording work (a filing)');
+  });
+
+  it('records any member’s own request for a filing on the project a ruling scopes to any member, and the persona saying so saves', async () => {
+    const scoped = await putRuling('anyone-files-here', {
+      metadata: { deciders: [{ member: '*', acts: ['filing'], targets: [await home()] }] },
+    });
+    expect(scoped.status, JSON.stringify(scoped.body)).toBe(200);
+    const set = await w.retarget({
+      agent: { ...agentBlock([w.devTarget], chat.rid), answers: 'every-message', persona: FB_566 },
+    });
+    expect(set.status, JSON.stringify(set.body)).toBeLessThan(300);
+    const before = await filings();
+    const own = await ownRecordRequest(chat.bob, 'please record that the export button is missing');
+    expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({ recorded: true });
+    expect(await consentIn(own.thread)).toMatchObject({
+      output: { consent: 'named_decider', ruling: 'anyone-files-here' },
+    });
+    expect(await filings()).toBe(before + 1);
+  });
+
+  it('counts nobody where the ruling names another target, so the asker is asked as before', async () => {
+    const moved = await putRuling('anyone-files-here', {
+      metadata: { deciders: [{ member: '*', acts: ['filing'], targets: ['another-project'] }] },
+    });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const before = await filings();
+    const own = await ownRecordRequest(chat.bob, 'please record that the totals are rounded');
+    expect(code(own.agreed), JSON.stringify(own.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
+    expect(await filings()).toBe(before);
+    const gone = await api(
+      w.owner,
+      'DELETE',
+      `/api/projects/${w.projectId}/knowledge/anyone-files-here`,
+    );
+    expect(gone.status).toBe(200);
   });
 });

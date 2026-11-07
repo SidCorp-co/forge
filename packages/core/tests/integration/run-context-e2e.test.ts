@@ -15,6 +15,11 @@
  * @direct-test-of packages/core/src/jobs/prepare-claimed-job.ts
  * @direct-test-of packages/core/src/knowledge/routes.ts
  * @direct-test-of packages/core/src/memory/search-routes.ts
+ * @direct-test-of packages/core/src/agreements/routes.ts
+ * @direct-test-of packages/core/src/agreements/supply.ts
+ *
+ * REQ-90 (ISS-1112): each working agreement a run's prompt or orientation carried, or a read of the
+ * agreements made with its token returned, is recorded against it at the revision it was given.
  */
 
 import type { RunContextReach, RunContextView } from '@forge/contracts/run-context';
@@ -111,7 +116,14 @@ async function context(query: string, token = w.owner): Promise<RunContextView> 
 }
 
 const reaches = (view: RunContextView, how: string) =>
-  view.reached.filter((r) => r.how === how).map((r) => `${r.kind}:${r.ref}`);
+  view.reached
+    .filter((r) => r.how === how && r.kind !== 'agreement')
+    .map((r) => `${r.kind}:${r.ref}`);
+/** The working agreements a run was given by `how`, as `slug@revision` (REQ-90). */
+const agreementsGiven = (view: RunContextView, how: string) =>
+  view.reached
+    .filter((r) => r.how === how && r.kind === 'agreement')
+    .map((r) => `${r.ref}@${r.revision}`);
 
 beforeAll(async () => {
   const owner = await createTestUser({ verified: true });
@@ -161,6 +173,10 @@ describe('c1: a drive run records each rule and lesson its prompt carried', () =
     expect(rule.revision).toMatch(/^sha256:[0-9a-f]{16}$/);
     // an on-demand guide is named in the index, never given: it did not reach the run by its prompt
     expect(reaches(view, 'prompt')).not.toContain('knowledge:build-commands');
+    // every working agreement its map stated, at the revision in force (REQ-90 BC-7)
+    expect(agreementsGiven(view, 'prompt')).toEqual(
+      expect.arrayContaining(['lean-testing@forge@1', 'access@forge@1', 'gate-profile@forge@1']),
+    );
   });
 
   it("records the rules and lessons a declared run's orientation carries as it opens", async () => {
@@ -175,6 +191,7 @@ describe('c1: a drive run records each rule and lesson its prompt carried', () =
     expect(reaches(view, 'prompt').sort()).toEqual(
       ['lesson:lesson-1', 'rule:delete-by-literal-path'].sort(),
     );
+    expect(agreementsGiven(view, 'prompt')).toContain('lean-testing@forge@1');
     await kernel(sql`UPDATE agent_sessions SET status = 'completed' WHERE id = ${declared}`);
   });
 });
@@ -239,6 +256,16 @@ describe("c2: a knowledge get and a memory search made with a run's token record
     expect(after.reached.length).toBe(before.reached.length);
     expect(after.unrecorded.unattributed).toBe(before.unrecorded.unattributed + 1);
     await kernel(sql`UPDATE agent_sessions SET status = 'completed' WHERE id = ${named}`);
+  });
+});
+
+describe("c5: a read of the working agreements made with a run's token records each one it returned", () => {
+  it('records the agreements GET against the run, at the effective revision of each (REQ-90 BC-7)', async () => {
+    const got = await api(w.box, 'GET', `/api/projects/${w.projectId}/agreements/lean-testing`);
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    await backgroundSettled();
+    const view = await context(`session=${w.sessionId}`);
+    expect(agreementsGiven(view, 'get')).toEqual(['lean-testing@forge@1']);
   });
 });
 
