@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { registerAllIntegrations } from '../integration-registry.js';
-import { summarizeConnectionWithUsage } from './route-helpers.js';
+import { projectNameLookup, summarizeConnectionWithUsage } from './route-helpers.js';
 import type { IntegrationBindingRow, IntegrationConnectionRow } from './store.js';
 
 registerAllIntegrations();
@@ -85,5 +85,21 @@ describe('the connections directory row: what a person reads off one credential'
       'Deploy',
       'Deploy',
     ]);
+  });
+});
+
+// a binding is drawn by its project's name on the directory and on a connection's drawer alike
+// (ISS-1072); a binding whose project no row names is a broken row, refused by name, never drawn as an id
+describe('the project name a binding is drawn by', () => {
+  const nameOf = projectNameLookup([{ id: 'p1', name: 'Hop Clinic' }]);
+
+  it("reads the project row's name", () => {
+    expect(nameOf('p1')).toBe('Hop Clinic');
+  });
+
+  it('refuses a project no row names, naming its id', () => {
+    expect(() => nameOf('p9')).toThrow(
+      'integration binding names project p9, which no project row holds',
+    );
   });
 });

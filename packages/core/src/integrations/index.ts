@@ -109,6 +109,7 @@ export {
   defaultConnectionDisplayName,
   notFound,
   notifyConnectionChanged,
+  projectNameLookup,
   runInitialHealthcheck,
   summarizeBinding,
   summarizeConnection,

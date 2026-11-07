@@ -6,6 +6,7 @@
  * return is provably the person's own.
  *
  * @direct-test-of packages/core/src/integration-door/connection-routes.ts
+ * @direct-test-of packages/core/src/integrations/route-helpers.ts
  * @direct-test-of packages/core/src/integration-door/connection-declarations.ts
  */
 
@@ -65,6 +66,32 @@ const bindingsOf = (projectId: string) =>
   );
 
 const item = (projectId: string) => ({ projectId, role: 'service', target: { provider: 'agent' } });
+
+// a connection's drawer names each project it is bound on by that project's name, as the directory
+// does, so a project the reader does not list is never drawn by its id (ISS-1072)
+describe("a connection's bindings name their projects", () => {
+  it('reads each binding with its project name', async () => {
+    const res = await api(session, 'POST', '/api/integration-connections', {
+      provider: 'agent',
+      bindings: [item(first.id), item(second.id)],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const [connection] = await connections();
+    const read = await api(
+      session,
+      'GET',
+      `/api/integration-connections/${connection?.id}/bindings`,
+    );
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    const names = await rows<{ id: string; name: string }>(
+      sql`SELECT id, name FROM projects WHERE id IN (${first.id}, ${second.id})`,
+    );
+    const want = new Map(names.map((n) => [n.id, n.name]));
+    const items = read.body.items as { projectId: string; projectName?: string }[];
+    expect(items).toHaveLength(2);
+    for (const b of items) expect(b.projectName).toBe(want.get(b.projectId));
+  });
+});
 
 describe('one call adds a connection and binds its projects (FB-128 BC-1, BC-3)', () => {
   it('binds every chosen project with the connection it creates', async () => {

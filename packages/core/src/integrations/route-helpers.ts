@@ -252,3 +252,20 @@ export function toIso(d: Date | string | null): string | null {
   if (!d) return null;
   return d instanceof Date ? d.toISOString() : d;
 }
+
+/**
+ * The name a binding's project is drawn by, from the project rows read for it (ISS-1072): the directory
+ * and a connection's drawer alike. A binding's project is its foreign key, so a name missing here is a
+ * broken row, refused naming the project rather than drawn as an id.
+ */
+export function projectNameLookup(
+  heads: readonly { id: string; name: string }[],
+): (projectId: string) => string {
+  const names = new Map(heads.map((h) => [h.id, h.name] as const));
+  return (projectId) => {
+    const name = names.get(projectId);
+    if (name === undefined)
+      throw new Error(`integration binding names project ${projectId}, which no project row holds`);
+    return name;
+  };
+}

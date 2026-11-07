@@ -355,9 +355,14 @@ export interface BindingListResponse {
 	items: BindingSummary[];
 }
 
+/** A binding on a connection's drawer, drawn by its project's name, never its id (ISS-1072). */
+export interface ConnectionBindingView extends BindingSummary {
+	projectName: string;
+}
+
 /** A connection's bindings (`GET /integration-connections/:id/bindings`). */
 export interface ConnectionBindingsResponse {
-	items: BindingSummary[];
+	items: ConnectionBindingView[];
 }
 
 export type McpServerPreviewReason =

@@ -9,11 +9,10 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { useProjectsIncludingArchived } from "@/features/projects";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
-import type { BindingSummary, StatusCard } from "../types";
+import type { BindingSummary, ConnectionBindingView, StatusCard } from "../types";
 import { AgentAccessControl } from "./agent-access-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { BindingReleaseRunnerField } from "./release-runner-field";
@@ -69,7 +68,7 @@ function useBindingForCard(
   return bindingId ? rows.find((r) => r.id === bindingId) : rows[0];
 }
 
-function ConnectionBindings({
+export function ConnectionBindings({
   connectionId,
   currentProjectId,
 }: {
@@ -78,16 +77,11 @@ function ConnectionBindings({
 }) {
   const bindingsQ = useConnectionBindings(connectionId);
   const t = useCopy();
-  const projectsQ = useProjectsIncludingArchived();
   // Org-owned connections (shared across the org) get a badge so it's clear
   // the credential isn't personal; managing it requires org admin.
   const connectionsQ = useConnections();
   const isOrgOwned =
     connectionsQ.data?.items.find((c) => c.id === connectionId)?.ownerType === "org";
-
-  // Project-id -> display name for friendly rendering (falls back to the raw
-  // id so a missing/archived project still reads correctly).
-  const projectNames = new Map((projectsQ.data ?? []).map((p) => [p.id, p.name] as const));
 
   return (
     <section className="mt-4 flex flex-col gap-2">
@@ -112,7 +106,6 @@ function ConnectionBindings({
       ) : (
         <BindingsList
           items={bindingsQ.data?.items ?? []}
-          projectNames={projectNames}
           currentProjectId={currentProjectId}
         />
       )}
@@ -120,15 +113,8 @@ function ConnectionBindings({
   );
 }
 
-function BindingsList({
-  items,
-  projectNames,
-  currentProjectId,
-}: {
-  items: BindingSummary[];
-  projectNames: Map<string, string>;
-  currentProjectId: string;
-}) {
+/** Each project the connection is bound on, by the name core sends with it (ISS-1072), never its id. */
+function BindingsList({ items, currentProjectId }: { items: ConnectionBindingView[]; currentProjectId: string }) {
   const t = useCopy();
   if (items.length === 0) {
     return (
@@ -141,13 +127,12 @@ function BindingsList({
     <ul className="flex flex-col divide-y divide-line-subtle">
       {items.map((b) => {
         const isCurrent = b.projectId === currentProjectId;
-        const name = projectNames.get(b.projectId) ?? b.projectId;
         return (
           <li
             key={b.id}
             className="flex items-center gap-3 py-2"
           >
-            <span className="truncate text-fg">{name}</span>
+            <span className="truncate text-fg">{b.projectName}</span>
             <span className="fg-body-sm text-muted">{scopeLabel(b.role, t)}</span>
             {isCurrent && (
               <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">

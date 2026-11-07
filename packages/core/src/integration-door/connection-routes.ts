@@ -1,4 +1,4 @@
-import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
+import type { ConnectionBindingView, IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
@@ -27,6 +27,7 @@ import {
   notFound,
   notifyConnectionChanged,
   pendingConnectionRow,
+  projectNameLookup,
   raceWithTimeout,
   reportedBindingIdentities,
   softDeleteConnection,
@@ -146,15 +147,8 @@ integrationConnectionsRoutes.get('/', CONNECTIONS_LISTED, noQuery, async (c) => 
     ),
     projectIds.length ? listProjectHeads(projectIds) : [],
   ]);
-  // a binding is drawn by its project's name, never its id (ISS-1072); the binding's project row is
-  // its foreign key, so a name missing here is a broken row, refused by name rather than drawn as an id
-  const names = new Map(heads.map((h) => [h.id, h.name] as const));
-  const projectNameOf = (id: string): string => {
-    const name = names.get(id);
-    if (name === undefined)
-      throw new Error(`integration binding names project ${id}, which no project row holds`);
-    return name;
-  };
+  // a binding is drawn by its project's name, never its id (ISS-1072)
+  const projectNameOf = projectNameLookup(heads);
   const environmentOf = (b: { id: string; projectId: string }) =>
     deployMaps.get(b.projectId)?.environments.get(b.id)?.name ?? null;
   const reported = await reportedBindingIdentities(
@@ -297,8 +291,18 @@ integrationConnectionsRoutes.get('/:id/bindings', CONNECTION_READ, noQuery, asyn
   const pairs = (await listBindingsForConnection(id)).filter(
     (pair) => visible === null || visible.has(pair.binding.projectId),
   );
-  const bindings = await summarizeBindings(pairs);
-  return c.json({ items: bindings });
+  const projectIds = [...new Set(pairs.map((pair) => pair.binding.projectId))];
+  const [bindings, heads] = await Promise.all([
+    summarizeBindings(pairs),
+    projectIds.length ? listProjectHeads(projectIds) : [],
+  ]);
+  // the drawer names each project as the directory does, by its name (ISS-1072)
+  const projectNameOf = projectNameLookup(heads);
+  const items: ConnectionBindingView[] = bindings.map((b) => ({
+    ...b,
+    projectName: projectNameOf(b.projectId),
+  }));
+  return c.json({ items });
 });
 
 integrationConnectionsRoutes.post('/:id/test', CONNECTION_MANAGE, async (c) => {
