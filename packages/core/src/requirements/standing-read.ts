@@ -35,6 +35,7 @@ import { masterServingOf } from '../masters/index.js';
 import { readOwedPolicy, readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { type CriterionClip, clipOf } from './criterion-clip.js';
+import { deliveryHoldsOf } from './delivery-check.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { followReadsOf } from './follow-reads.js';
@@ -373,7 +374,7 @@ export async function standingsOf(
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
-  const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own, naming] =
+  const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own, naming, holds] =
     await Promise.all([
       peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
       issueCriteriaOf(linkedIds, db, known.asReturned),
@@ -383,6 +384,7 @@ export async function standingsOf(
       workFactsOf(projectId, rows, linked, viewer, now),
       requirementVerdictsIn(projectId, ids),
       issueNamingOf(projectId, prefix, linked),
+      deliveryHoldsOf(projectId, rows),
     ]);
   const { issueWaits, release } = work;
   const liveBuild = await liveBuildOf(projectId, issueCriteria, own);
@@ -425,6 +427,7 @@ export async function standingsOf(
         requirementVerdicts: by(own, row.id),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         ...beside(row.id),
+        deliveryHold: holds.get(row.id) ?? null,
         liveBuild,
         stalePins: stalePinsOf(by(pins, row.id)),
         staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),

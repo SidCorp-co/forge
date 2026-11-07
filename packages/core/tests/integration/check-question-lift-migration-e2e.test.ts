@@ -146,7 +146,7 @@ describe('0623: a check question comment still open', () => {
     ]);
   });
 
-  it("is lifted from a breakdown check and on an in-delivery, delivered or deferred requirement, a body with no options asked whole", async () => {
+  it('is lifted from a breakdown check and on an in-delivery, delivered or deferred requirement, a body with no options asked whole', async () => {
     const lifted = [
       await asked(await requirement('in_delivery'), { act: 'breakdown_check' }),
       await asked(await requirement('delivered')),

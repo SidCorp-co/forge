@@ -30,8 +30,9 @@ import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { readProjectDocument } from '../project-config/index.js';
+import { gateOf, readProjectDocument } from '../project-config/index.js';
 import type { RequirementRefusal } from './rules.js';
+import type { DeliveryHold } from './standing-held.js';
 
 /** The requirement the check reads: its id, key and head. */
 export interface CheckedRow {
@@ -49,56 +50,67 @@ export async function stewardOn(projectId: string): Promise<boolean> {
 /** A linked requirement still on the lifecycle line; dropped, deferred and refused have ended. */
 const liveStatus = (s: string) => (REQUIREMENT_LIFECYCLE as readonly string[]).includes(s);
 
+/** `ids` as a SQL list of uuids. */
+const idList = (ids: readonly string[]) =>
+  sql.join(
+    ids.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+
 /**
- * The questions open about it: each asked of it or about it that a person or the master owes (outside
- * strict the master answers them, `questions/owed.ts`), but one its revisions list as not blocking.
- * Each is a question row, so the refusal naming it names a door that serves it (ISS-1084): a question
- * comment a steward check posted before ISS-688 was read here as one, named at a `questions/:id` that
- * answered 404, until migration 0623 asked each still open as a question under its own id.
+ * The questions open about each of `ids`, oldest first: each asked of it or about it that a person or
+ * the master owes (outside strict the master answers them, `questions/owed.ts`), but one its
+ * revisions list as not blocking by that question's newest entry (asked, never required: REQ-34
+ * BC-17, so the delivery waits on it no more than the agree did). Each is a question row, so a
+ * refusal naming it names a door that serves it (ISS-1084): a question comment a steward check posted
+ * before ISS-688 was read here as one, named at a `questions/:id` that answered 404, until migration
+ * 0623 asked each still open as a question under its own id.
  */
-async function openQuestions(tx: Tx, row: CheckedRow): Promise<DeliveryCheckQuestion[]> {
+async function openQuestionsOf(
+  tx: Tx,
+  ids: readonly string[],
+): Promise<Map<string, DeliveryCheckQuestion[]>> {
+  const out = new Map<string, DeliveryCheckQuestion[]>();
+  if (ids.length === 0) return out;
   const rows = rowsOf<{
+    rid: string;
     id: string;
     prompt: string | null;
     asked_at: string | Date;
     blocker_kind: string;
   }>(
     await tx.execute(sql`
-      SELECT q.id, q.steps -> -1 ->> 'prompt' AS prompt, q.created_at AS asked_at, q.blocker_kind
-        FROM agent_questions q
-       WHERE q.project_id = ${row.projectId}
+      SELECT r.id AS rid, q.id, q.steps -> -1 ->> 'prompt' AS prompt, q.created_at AS asked_at,
+             q.blocker_kind
+        FROM requirements r
+        JOIN agent_questions q
+          ON q.project_id = r.project_id
          AND q.status = 'open'
          AND q.blocker_kind IN ('human', 'master_or_peer')
          AND q.batch_id IS NULL
-         AND (q.requirement_id = ${row.id}
-              OR (q.about ->> 'kind' = 'requirement' AND q.about ->> 'requirementId' = ${row.id}::text))
+         AND (q.requirement_id = r.id
+              OR (q.about ->> 'kind' = 'requirement' AND q.about ->> 'requirementId' = r.id::text))
+       WHERE r.id IN (${idList(ids)})
+         AND coalesce((
+           SELECT (e ->> 'blocking')::boolean
+             FROM requirement_revisions rv
+             CROSS JOIN LATERAL jsonb_array_elements(coalesce(rv.spec -> 'openQuestions', '[]'::jsonb)) e
+            WHERE rv.requirement_id = r.id AND e ->> 'questionId' = q.id::text
+            ORDER BY rv.revision DESC
+            LIMIT 1), true)
        ORDER BY q.created_at, q.id`),
   );
-  const notBlocking = await notBlockingOf(tx, row);
-  return rows
-    .filter((r) => !notBlocking.has(r.id))
-    .map((r) => ({
+  for (const r of rows) {
+    const list = out.get(r.rid) ?? [];
+    list.push({
       id: r.id,
       prompt: r.prompt ?? '',
       askedAt: new Date(r.asked_at).toISOString(),
-      owedBy: r.blocker_kind === 'human' ? ('person' as const) : ('master' as const),
-    }));
-}
-
-/**
- * The questions its revisions list as not blocking, by each question's newest entry: asked, never
- * required (its reason, REQ-34 BC-17), so the delivery waits on them no more than the agree did.
- */
-async function notBlockingOf(tx: Tx, row: CheckedRow): Promise<Set<string>> {
-  const entries = rowsOf<{ id: string; blocking: boolean | null }>(
-    await tx.execute(sql`
-      SELECT DISTINCT ON (e ->> 'questionId') e ->> 'questionId' AS id, (e ->> 'blocking')::boolean AS blocking
-        FROM requirement_revisions rv
-        CROSS JOIN LATERAL jsonb_array_elements(coalesce(rv.spec -> 'openQuestions', '[]'::jsonb)) e
-       WHERE rv.requirement_id = ${row.id} AND e ->> 'questionId' IS NOT NULL
-       ORDER BY e ->> 'questionId', rv.revision DESC`),
-  );
-  return new Set(entries.filter((e) => e.blocking === false).map((e) => e.id));
+      owedBy: r.blocker_kind === 'human' ? 'person' : 'master',
+    });
+    out.set(r.rid, list);
+  }
+  return out;
 }
 
 async function workflowGaps(tx: Tx, row: CheckedRow): Promise<DeliveryGap[]> {
@@ -210,21 +222,28 @@ const agreedAt = (row: CheckedRow) => sql`(
    WHERE rv.requirement_id = ${row.id} AND rv.revision = ${row.currentRevision})`;
 
 /**
- * When the steward last finished checking it since its head was agreed; null where it has not. A run
- * carrying a check takes the check alone (`steward/dispatch.ts:runOne`), so its end is the check's.
+ * When the steward last finished checking each of `ids` since its head was agreed; absent where it
+ * has not. A run carrying a check takes the check alone (`steward/dispatch.ts:runOne`), so its end is
+ * the check's.
  */
-async function checkedAt(tx: Tx, row: CheckedRow): Promise<string | null> {
-  const [hit] = rowsOf<{ at: string | Date | null }>(
+async function checkedAtOf(tx: Tx, ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = rowsOf<{ id: string; at: string | Date }>(
     await tx.execute(sql`
-      SELECT max(sr.ended_at) AS at
-        FROM steward_runs sr
-       WHERE sr.subject_kind = 'requirement'
-         AND sr.subject_id = ${row.id}
+      SELECT r.id, max(sr.ended_at) AS at
+        FROM requirements r
+        JOIN requirement_revisions rv
+          ON rv.requirement_id = r.id AND rv.revision = r.current_revision
+        JOIN steward_runs sr
+          ON sr.subject_kind = 'requirement'
+         AND sr.subject_id = r.id
          AND sr.state = 'done'
          AND sr.acts_to_run && ${CHECK_ACTS}
-         AND sr.ended_at >= ${agreedAt(row)}`),
+         AND sr.ended_at >= coalesce(rv.decided_at, rv.created_at)
+       WHERE r.id IN (${idList(ids)})
+       GROUP BY r.id`),
   );
-  return hit?.at ? new Date(hit.at).toISOString() : null;
+  return new Map(rows.map((r) => [r.id, new Date(r.at).toISOString()]));
 }
 
 /**
@@ -265,10 +284,13 @@ export async function deliveryCheckIn(
   row: CheckedRow,
   owed: boolean,
 ): Promise<RequirementDeliveryCheck> {
-  const questions = await openQuestions(tx, row);
+  const questions = (await openQuestionsOf(tx, [row.id])).get(row.id) ?? [];
   const workflows = await workflowGaps(tx, row);
   const links = await linkGaps(tx, row);
-  const checked = owed && row.currentRevision !== null ? await checkedAt(tx, row) : null;
+  const checked =
+    owed && row.currentRevision !== null
+      ? ((await checkedAtOf(tx, [row.id])).get(row.id) ?? null)
+      : null;
   const attempt =
     owed && row.currentRevision !== null && checked === null ? await attemptOf(tx, row) : null;
   const gaps = [...workflows, ...links];
@@ -280,6 +302,42 @@ export async function deliveryCheckIn(
     gaps,
     clear: questions.length === 0 && (!owed || checked !== null),
   };
+}
+
+/**
+ * What of the delivery check would refuse each agreed requirement's move into delivery now, read
+ * for the standing (ISS-1084, FB-561): the same questions and check the move's guard reads, where the
+ * project's gate `requirement_checked` enforces it. A requirement nothing holds is absent.
+ */
+export async function deliveryHoldsOf(
+  projectId: string,
+  rows: readonly { id: string; status: string; currentRevision: number | null }[],
+): Promise<Map<string, DeliveryHold>> {
+  const ids = rows
+    .filter((r) => r.status === 'agreed' && r.currentRevision !== null)
+    .map((r) => r.id);
+  if (ids.length === 0) return new Map();
+  const [gate, owed] = await Promise.all([
+    gateOf(projectId, 'requirement_checked'),
+    stewardOn(projectId),
+  ]);
+  if (gate.mode !== 'enforce') return new Map();
+  const [questions, checked] = await Promise.all([
+    openQuestionsOf(db, ids),
+    owed ? checkedAtOf(db, ids) : Promise.resolve(new Map<string, string>()),
+  ]);
+  const out = new Map<string, DeliveryHold>();
+  for (const id of ids) {
+    const open = questions.get(id) ?? [];
+    const unchecked = owed && !checked.has(id);
+    if (open.length === 0 && !unchecked) continue;
+    out.set(id, {
+      questions: open.length,
+      person: open.some((q) => q.owedBy === 'person'),
+      unchecked,
+    });
+  }
+  return out;
 }
 
 /** How long after an ended check the standing sweep starts it again (`steward/owed-checks.ts`). */

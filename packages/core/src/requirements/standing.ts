@@ -52,6 +52,7 @@ import {
   signerInsteadOfMaster,
   signerWait,
 } from './standing-gates.js';
+import { type DeliveryHold, heldTurn } from './standing-held.js';
 import { proofTurn, releaseAsksOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
@@ -129,6 +130,11 @@ export interface StandingInput {
   stewardAsked?: boolean;
   /** Whether any other open question asked of it waits on a person (REQ-68 BC-9). */
   questionAsked?: boolean;
+  /**
+   * What of its delivery check would refuse the move into delivery now
+   * (`delivery-check.ts:deliveryHoldsOf`). Absent or null where nothing would.
+   */
+  deliveryHold?: DeliveryHold | null;
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
@@ -434,7 +440,9 @@ function moveTurn(
     coverage.length > 0 &&
     coverage.every((c) => c.verdict === 'passing');
   const move = done ? MOVE_ASKED[input.status] : undefined;
-  return move ? actWait(input, 'accept', say(move[0]), say(move[1])) : null;
+  if (!move) return null;
+  const held = input.status === 'agreed' ? heldTurn(input.deliveryHold, input.viewer) : null;
+  return held ?? actWait(input, 'accept', say(move[0]), say(move[1]));
 }
 
 /** The live issues, their counts and BC coverage at `revision`: the one computation the standing, the moves and the accept read. */

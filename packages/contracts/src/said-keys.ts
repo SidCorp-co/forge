@@ -1134,6 +1134,12 @@ export const SAID = {
 		en: "answer the steward's question",
 	},
 	"standing.act.answerQuestion": { en: "answer a question" },
+	"standing.act.answerDeliveryQuestion": { en: "answer its question" },
+	"standing.act.answerDeliveryQuestions": {
+		en: "answer {n} questions",
+		vars: { n: "count" },
+	},
+	"standing.act.finishDeliveryCheck": { en: "finish its check" },
 	"standing.act.verdictsNotReread": { en: "verdicts not re-read" },
 	"standing.act.verifyFix": { en: "verify the fix" },
 	"standing.act.writeRevision": { en: "write a revision" },
@@ -1306,6 +1312,7 @@ export const SAID = {
 	"standing.who.linkedIssue": { en: "The linked issue" },
 	"standing.who.linkedWork": { en: "The linked work" },
 	"standing.who.master": { en: "Master" },
+	"standing.who.steward": { en: "Steward" },
 	"standing.who.runnerOwner": { en: "The runner's owner" },
 	"standing.who.projectAdmin": { en: "A project admin" },
 	"standing.who.newRequirement": { en: "The new requirement" },
@@ -1863,6 +1870,12 @@ export const SAID = {
 	},
 	"requirements.rule.startDelivery": {
 		en: "every issue closed and every criterion passes; an act moves it",
+	},
+	"requirements.rule.deliveryQuestionOpen": {
+		en: "the move into delivery is refused while a question about it stands open (REQUIREMENT_QUESTION_OPEN); each is answered at POST /api/questions/:id/answer",
+	},
+	"requirements.rule.deliveryUnchecked": {
+		en: "the move into delivery is refused until the steward finishes its check (REQUIREMENT_UNCHECKED), which the standing sweep starts again; its runs read at GET /api/projects/:id/steward-runs?subject=REQ-n",
 	},
 	"requirements.rule.markDelivered": {
 		en: "every criterion passes on the running build; an act marks it",
