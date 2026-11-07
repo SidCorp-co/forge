@@ -175,9 +175,8 @@ function stewardTimers(): Timer[] {
       ),
     },
     {
-      // REQ-68 BC-8: a decision that is no question (a sign-off, a release, a design, a proposal) is
-      // reminded on day 3 and its decline proposed on day 14, read from each person's Needs you;
-      // hourly, as each notice is sent once per decision and person
+      // REQ-68 BC-8: a non-question decision (sign-off, release, design, proposal) is reminded on day
+      // 3 and its decline proposed on day 14, from each Needs you; hourly, one notice per person
       kind: 'cluster',
       name: 'decision-ages',
       cron: '17 * * * *',
@@ -486,8 +485,7 @@ export function coreTimers(): Timer[] {
     ...requirementTimers(),
     ...stewardTimers(),
 
-    // Process timers: faster than a minute, or bound to this process's sockets, memory or disk.
-    // A preview idles, or fails when its box's tunnel is away: the tunnels are this process's sockets.
+    // Process timers: sub-minute, or bound to this process's sockets (preview tunnels), memory, disk.
     {
       kind: 'process',
       name: 'preview-sweep',
