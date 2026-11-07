@@ -58,6 +58,8 @@ pub enum Exit {
     Silent,
     /// What the pane printed cannot be read here, and why.
     Unread { why: String },
+    /// Core retired the pane, and the box ended it; `because` is core's reason.
+    Retired { because: String },
 }
 
 impl Exit {
@@ -97,6 +99,9 @@ impl std::fmt::Display for Exit {
             Self::Printed { last } => write!(f, "it exited having printed last: \"{last}\""),
             Self::Silent => write!(f, "it exited having printed nothing since it was placed"),
             Self::Unread { why } => write!(f, "why it exited is not known here: {why}"),
+            Self::Retired { because } => {
+                write!(f, "core retired it and this box ended it: {because}")
+            }
         }
     }
 }

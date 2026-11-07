@@ -87,18 +87,65 @@ pub(crate) fn record_exit(
     in_a_row: u32,
     exit: pane_exit::Exit,
 ) {
-    let record = pane_exit::Record {
+    let dir = runner_platform::config::master_dir(slug).map_err(|e| e.to_string());
+    keep_exit(slug, name, dir, &exit_record(name, lived, in_a_row, exit));
+}
+
+/// A pane core retired, kept as its last exit so `master status` never reads
+/// the exit before it as this one (ISS-1098). Not an early exit: core ended it.
+pub(crate) fn record_retired(
+    masters: &Masters,
+    project_id: &str,
+    slug: &str,
+    name: &str,
+    because: &str,
+) {
+    let dir = runner_platform::config::master_dir(slug).map_err(|e| e.to_string());
+    keep_exit(
+        slug,
+        name,
+        dir,
+        &retired_record(masters, project_id, name, because),
+    );
+}
+
+fn retired_record(
+    masters: &Masters,
+    project_id: &str,
+    name: &str,
+    because: &str,
+) -> pane_exit::Record {
+    let lived = masters.take_placed(project_id).map(|p| p.at.elapsed());
+    let exit = pane_exit::Exit::Retired {
+        because: because.to_string(),
+    };
+    exit_record(name, lived, 0, exit)
+}
+
+fn exit_record(
+    name: &str,
+    lived: Option<Duration>,
+    in_a_row: u32,
+    exit: pane_exit::Exit,
+) -> pane_exit::Record {
+    pane_exit::Record {
         pane: name.to_string(),
         read_gone_at: master_limit::now_unix(),
         lived_secs: lived.map(|l| l.as_secs()),
         in_a_row,
         exit,
-    };
-    let written = runner_platform::config::master_dir(slug)
-        .map_err(|e| e.to_string())
-        .and_then(|dir| {
-            pane_exit::write(&dir, &record).map_err(|e| format!("{}: {e}", dir.display()))
-        });
+    }
+}
+
+fn keep_exit(
+    slug: &str,
+    name: &str,
+    dir: Result<std::path::PathBuf, String>,
+    record: &pane_exit::Record,
+) {
+    let written = dir.and_then(|dir| {
+        pane_exit::write(&dir, record).map_err(|e| format!("{}: {e}", dir.display()))
+    });
     if let Err(e) = written {
         tracing::warn!(
             "[master] {slug}: could not keep why {name} exited ({e}), so `forge-runner master status {slug}` cannot say it"
@@ -126,4 +173,62 @@ pub(crate) async fn end_master(
         }
     }
     masters.forget(project_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ISS-1098, 2026-11-07: core retired sidpeak's pane at 09:30:14Z and
+    /// `master status` read "read gone 2d ago, 9607s after it was placed",
+    /// the exit before it, because a retirement kept nothing.
+    #[test]
+    fn a_retired_pane_is_kept_as_its_last_exit_over_the_one_before() {
+        let dir = std::env::temp_dir().join(format!("forge-retired-{}", uuid::Uuid::new_v4()));
+        let mut older = exit_record(
+            "forge-master-sidpeak",
+            Some(Duration::from_secs(9607)),
+            0,
+            pane_exit::Exit::Silent,
+        );
+        older.read_gone_at -= 2 * 86_400;
+        pane_exit::write(&dir, &older).expect("write the older exit");
+
+        let masters = Masters::new();
+        masters.note_placed("p1", None);
+        let record = retired_record(
+            &masters,
+            "p1",
+            "forge-master-sidpeak",
+            "idle, children done",
+        );
+        keep_exit("sidpeak", "forge-master-sidpeak", Ok(dir.clone()), &record);
+
+        let found = pane_exit::read(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        let pane_exit::Found::Record(kept) = found else {
+            panic!("no last exit kept");
+        };
+        assert_eq!(
+            kept.exit,
+            pane_exit::Exit::Retired {
+                because: "idle, children done".into()
+            }
+        );
+        assert!(
+            kept.read_gone_at > older.read_gone_at,
+            "the retirement is not the newest exit"
+        );
+        assert!(
+            kept.lived_secs.is_some_and(|s| s < 60),
+            "it lived {:?}",
+            kept.lived_secs
+        );
+        assert_eq!(kept.in_a_row, 0, "a retirement counted as an early exit");
+        assert!(
+            kept.exit.to_string().contains("core retired it"),
+            "{}",
+            kept.exit
+        );
+    }
 }

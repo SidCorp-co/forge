@@ -191,6 +191,7 @@ async fn retire(t: &Turn<'_>, because: &str) {
             "[master] {slug}: {name} was retired as idle and tmux would not end it: {e} — its row is closed all the same and the next sweep adopts whatever is still running under that name"
         );
     }
+    record_retired(masters, project_id, slug, &name, because);
     let client = t.sw.client;
     end_master(
         client,
