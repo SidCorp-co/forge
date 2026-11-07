@@ -11,6 +11,7 @@ import type { ProjectPermission } from '@forge/contracts/permissions';
 import { and, eq, inArray, isNull, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
+import { onePerId } from '../db/read-memo.js';
 import {
   type OrgMemberRole,
   organizationMembers,
@@ -49,6 +50,10 @@ export async function findProjectOrgId(
   projectId: string,
   executor: Tx = db,
 ): Promise<string | null> {
+  if (executor === db) {
+    // every project's asks before the quiet point are one read (ISS-1070 r6)
+    return (await onePerId('projectOrg', projectId, findProjectOrgIds)) ?? null;
+  }
   const [row] = await executor
     .select({ orgId: projects.orgId })
     .from(projects)

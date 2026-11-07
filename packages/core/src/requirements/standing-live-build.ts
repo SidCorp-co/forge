@@ -7,6 +7,7 @@
 
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { requirementDependents } from './dependents.js';
 import { recordedLandingsOf } from './recorded-landings.js';
@@ -52,14 +53,16 @@ const NOTHING_ASKED: LiveBuildHolds = {
 };
 
 /** The project of each issue named. */
-async function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string, string>> {
-  const ids = [...new Set(issueIds)];
-  if (ids.length === 0) return new Map();
-  const rows = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(inArray(issues.id, ids));
-  return new Map(rows.map((r) => [r.id, r.projectId]));
+function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string, string>> {
+  // an issue's project is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('issueProject', issueIds, async (ids) => {
+    if (ids.length === 0) return new Map();
+    const rows = await db
+      .select({ id: issues.id, projectId: issues.projectId })
+      .from(issues)
+      .where(inArray(issues.id, [...ids]));
+    return new Map(rows.map((r) => [r.id, r.projectId]));
+  });
 }
 
 /**

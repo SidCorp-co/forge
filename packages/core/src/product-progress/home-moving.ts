@@ -10,7 +10,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
-import { issueDisplayIds, issueWaitsOf, listIssues } from '../issues/index.js';
+import { issueDisplayIds, issueWaitsOf, ownedIssuesIn } from '../issues/index.js';
 import { type FeedbackReads, feedbackProgress, routedRequirements } from './feedback-views.js';
 import { feedbackEnded, feedbackStage, isIdle, issueStage, lastMoveOf } from './home-stage.js';
 import {
@@ -52,34 +52,12 @@ export interface HomeProjectReads {
   reads: FeedbackReads;
 }
 
-/** Issues read a page at a time; every page is read, so Moving's total counts every one. */
-const OWNED_PAGE = 200;
-
-type IssueFilters = Parameters<typeof listIssues>[1];
-
-/** Every issue of the project `filters` admits, page after page until a short one. */
-async function allIssues(projectId: string, filters: IssueFilters) {
-  const rows = [];
-  for (let offset = 0; ; offset += OWNED_PAGE) {
-    const page = await listIssues(projectId, filters, {
-      sort: 'updatedAt:desc',
-      limit: OWNED_PAGE,
-      offset,
-    });
-    if (!page.ok) {
-      throw new Error(`home: the issue list refused its own read (${page.field}: ${page.message})`);
-    }
-    rows.push(...page.rows);
-    if (page.rows.length < OWNED_PAGE) return rows;
-  }
-}
-
 async function ownedIssues(projectId: string, userId: string) {
-  const [created, held] = await Promise.all([
-    allIssues(projectId, { createdBy: userId }),
-    allIssues(projectId, { assigneeId: userId }),
-  ]);
-  const rows = new Map([...created, ...held].map((r) => [r.id, r]));
+  // the issues they filed, then those they hold, each newest write first, as the list reads them
+  const owned = await ownedIssuesIn(projectId, userId);
+  const rows = new Map(
+    [...owned.filter((r) => r.created), ...owned.filter((r) => r.held)].map((r) => [r.id, r]),
+  );
   const keys = await issueDisplayIds([...rows.keys()]);
   return [...rows.values()].flatMap((r) => {
     const key = keys.get(r.id);
@@ -91,7 +69,7 @@ async function ownedIssues(projectId: string, userId: string) {
             title: r.title,
             status: r.status,
             claimed: r.releaseBatchRunId !== null,
-            updatedAt: r.updatedAt.toISOString(),
+            updatedAt: new Date(r.updatedAt).toISOString(),
           },
         ]
       : [];

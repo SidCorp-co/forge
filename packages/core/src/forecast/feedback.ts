@@ -15,7 +15,8 @@ import type {
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
+import { idList, rowsOf } from '../db/raw-sql.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { type IssueRow, issueRowsByIds, issueRowsOfRequirements } from './facts.js';
 import { waitOn } from './model.js';
@@ -32,17 +33,24 @@ export interface LinkRow {
 }
 
 async function linksOf(projectId: string): Promise<Map<string, LinkRow>> {
-  const rows = rowsOf<LinkRow>(
-    await db.execute(sql`
-      SELECT f.id, f.routed_requirement_id, q.req_seq AS routed_requirement_seq, f.duplicate_of,
-             array_remove(array_agg(fri.issue_id::text), NULL) AS issue_ids
-        FROM feedback f
-        LEFT JOIN feedback_route_issues fri ON fri.feedback_id = f.id
-        LEFT JOIN requirements q ON q.id = f.routed_requirement_id
-       WHERE f.project_id = ${projectId}
-       GROUP BY f.id, q.req_seq`),
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const rows = await rowsPerProject(
+    'forecastFeedbackLinks',
+    projectId,
+    async (ids) =>
+      rowsOf<LinkRow & { project_id: string }>(
+        await db.execute(sql`
+          SELECT f.id, f.project_id, f.routed_requirement_id, q.req_seq AS routed_requirement_seq,
+                 f.duplicate_of, array_remove(array_agg(fri.issue_id::text), NULL) AS issue_ids
+            FROM feedback f
+            LEFT JOIN feedback_route_issues fri ON fri.feedback_id = f.id
+            LEFT JOIN requirements q ON q.id = f.routed_requirement_id
+           WHERE f.project_id IN (${idList(ids)})
+           GROUP BY f.id, q.req_seq`),
+      ),
+    (r) => r.project_id,
   );
-  return new Map(rows.map((r) => [r.id, r]));
+  return new Map(rows.map(({ project_id: _p, ...r }) => [r.id, r]));
 }
 
 // a snoozed item is parked out of New until its date, so no triage is owed it yet

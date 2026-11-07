@@ -21,6 +21,7 @@ import { say, sayEn } from '@forge/contracts/said';
 import { needsViewer } from '@forge/contracts/standing';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
@@ -61,6 +62,37 @@ async function baseRuns(
   );
 }
 
+/**
+ * A project's runs in `scope`, newest first, from `offset` for `limit`; every project asked with it
+ * read in one statement (ISS-1070 r6), each project's ranked inside it as its own read ranks them.
+ */
+function scopedRuns(
+  projectId: string,
+  scope: RunStandingScope,
+  limit: number,
+  offset: number,
+): Promise<BaseRun[]> {
+  return rowsPerProject(
+    `baseRuns:${scope}:${limit}:${offset}`,
+    projectId,
+    async (ids) =>
+      rowsOf<BaseRun>(
+        await db.execute(sql`
+          SELECT ${BASE_COLUMNS}
+            FROM pipeline_runs r LEFT JOIN issues i ON i.id = r.issue_id
+           WHERE r.id IN (
+             SELECT id FROM (
+               SELECT r.id, row_number() OVER (
+                        PARTITION BY r.project_id ORDER BY r.started_at DESC, r.id) AS rank
+                 FROM pipeline_runs r
+                WHERE r.project_id IN (${inList(ids)}) AND ${RUN_SCOPE_SQL} AND ${SCOPE_SQL[scope]}
+             ) ranked WHERE rank > ${offset} AND rank <= ${offset + limit})
+           ORDER BY r.started_at DESC, r.id`),
+      ),
+    (r) => r.project_id,
+  );
+}
+
 async function standingsOf(
   projectId: string,
   base: BaseRun[],
@@ -72,13 +104,28 @@ async function standingsOf(
 }
 
 async function countsOf(projectId: string) {
-  const [row] = rowsOf<{ live: number; finished: number; interactive: number; masters: number }>(
-    await db.execute(sql`
-      SELECT count(*) FILTER (WHERE ${RUN_SCOPE_SQL} AND ${LIVE_SQL})::int AS live,
-             count(*) FILTER (WHERE ${RUN_SCOPE_SQL} AND NOT (${LIVE_SQL}))::int AS finished,
-             count(*) FILTER (WHERE r.kind = 'interactive')::int AS interactive,
-             count(*) FILTER (WHERE r.kind <> 'interactive' AND ${MASTER_RUN_SQL})::int AS masters
-        FROM pipeline_runs r WHERE r.project_id = ${projectId}`),
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const [row] = await rowsPerProject(
+    'runCounts',
+    projectId,
+    async (ids) =>
+      rowsOf<{
+        project_id: string;
+        live: number;
+        finished: number;
+        interactive: number;
+        masters: number;
+      }>(
+        await db.execute(sql`
+          SELECT r.project_id,
+                 count(*) FILTER (WHERE ${RUN_SCOPE_SQL} AND ${LIVE_SQL})::int AS live,
+                 count(*) FILTER (WHERE ${RUN_SCOPE_SQL} AND NOT (${LIVE_SQL}))::int AS finished,
+                 count(*) FILTER (WHERE r.kind = 'interactive')::int AS interactive,
+                 count(*) FILTER (WHERE r.kind <> 'interactive' AND ${MASTER_RUN_SQL})::int AS masters
+            FROM pipeline_runs r WHERE r.project_id IN (${inList(ids)})
+           GROUP BY r.project_id`),
+      ),
+    (r) => r.project_id,
   );
   return row ?? { live: 0, finished: 0, interactive: 0, masters: 0 };
 }
@@ -91,8 +138,8 @@ export async function listRunStanding(
   const { master, ctx } = await contextFor(projectId, viewer);
   const [counts, page, liveBase, prefix] = await Promise.all([
     countsOf(projectId),
-    baseRuns(projectId, SCOPE_SQL[opts.scope], opts.limit + 1, opts.offset),
-    baseRuns(projectId, LIVE_SQL, 10_000, 0),
+    scopedRuns(projectId, opts.scope, opts.limit + 1, opts.offset),
+    scopedRuns(projectId, 'live', 10_000, 0),
     activeIssuePrefix(projectId),
   ]);
   const [items, live, leased] = await Promise.all([

@@ -1,6 +1,8 @@
 import type { FeedbackStatus } from '@forge/contracts/feedback';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
+import { idList } from '../../db/raw-sql.js';
+import { rowsPerProject } from '../../db/read-memo.js';
 import { holds, permissionFactsOf } from '../../permissions/index.js';
 import { versionsOf } from '../contract/store.js';
 import type { StandingViewer, VersionFact } from './standing.js';
@@ -52,13 +54,21 @@ export type VersionRow = VersionFact & {
 
 // every consumer's item for one version carries the same due date (`contract/announce.ts:fileBreakingIn` computes it once per approval), so the latest one stands for the provider's window
 export async function windowDues(providerId: string): Promise<Map<string, Date>> {
-  const found = rowsOf<{ contract_slug: string; contract_version: string; due: string }>(
-    await db.execute(sql`
-      SELECT contract_slug, contract_version, max(due_at) AS due
-        FROM feedback
-       WHERE contract_provider_project_id = ${providerId} AND kind = 'contract_change'
-         AND due_at IS NOT NULL
-       GROUP BY contract_slug, contract_version`),
+  // every provider's asks before the quiet point are one read (ISS-1070 r6)
+  const found = await rowsPerProject(
+    'windowDues',
+    providerId,
+    async (ids) =>
+      rowsOf<{ provider: string; contract_slug: string; contract_version: string; due: string }>(
+        await db.execute(sql`
+          SELECT contract_provider_project_id AS provider, contract_slug, contract_version,
+                 max(due_at) AS due
+            FROM feedback
+           WHERE contract_provider_project_id IN (${idList(ids)}) AND kind = 'contract_change'
+             AND due_at IS NOT NULL
+           GROUP BY contract_provider_project_id, contract_slug, contract_version`),
+      ),
+    (r) => r.provider,
   );
   return new Map(found.map((r) => [`${r.contract_slug}@${r.contract_version}`, new Date(r.due)]));
 }
@@ -87,12 +97,20 @@ export async function changeItems(projectId: string): Promise<ChangeRow[]> {
     due_at: string | null;
     created_at: string;
   }>(
-    await db.execute(sql`
-      SELECT fb_seq, title, status, contract_provider_project_id AS provider, contract_slug,
-             contract_version, due_at, created_at
-        FROM feedback
-       WHERE project_id = ${projectId} AND kind = 'contract_change'
-       ORDER BY created_at DESC`),
+    await rowsPerProject(
+      'contractChangeItems',
+      projectId,
+      async (ids) =>
+        rowsOf<{ project_id: string }>(
+          await db.execute(sql`
+            SELECT project_id, fb_seq, title, status, contract_provider_project_id AS provider,
+                   contract_slug, contract_version, due_at, created_at
+              FROM feedback
+             WHERE project_id IN (${idList(ids)}) AND kind = 'contract_change'
+             ORDER BY created_at DESC`),
+        ),
+      (r) => r.project_id,
+    ),
   );
   return found.map((f) => ({
     key: `FB-${f.fb_seq}`,

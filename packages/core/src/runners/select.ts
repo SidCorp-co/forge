@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { CLAIM_CAPABLE_DEVICE } from './device-cap.js';
 import {
   deviceNotDisabled,
@@ -36,11 +38,16 @@ export async function onlineCapableDeviceIds(
   const required = JSON.stringify(requiredCapabilities ?? {});
   const floorClause = opts?.includeBelowFloor ? sql`` : CLAIM_CAPABLE_DEVICE;
   const limitClause = opts?.includeLimited ? sql`` : sql`AND ${runnerUnlimited('runners')}`;
-  const rows = await db.execute<{ device_id: string }>(
-    sql`
-      SELECT DISTINCT device_id
+  // every project's asks before the quiet point are one read each way it is asked (ISS-1070 r6)
+  const rows = await rowsPerProject(
+    `onlineCapable:${required}:${opts?.includeLimited === true}:${opts?.includeBelowFloor === true}:${opts?.allowDeviceIds === undefined ? '' : JSON.stringify(opts.allowDeviceIds)}`,
+    projectId,
+    async (ids) => [
+      ...(await db.execute<{ project_id: string; device_id: string }>(
+        sql`
+      SELECT DISTINCT project_id, device_id
       FROM runners
-      WHERE project_id = ${projectId}
+      WHERE project_id IN (${idList(ids)})
         AND device_id IS NOT NULL
         AND capabilities @> ${required}::jsonb
         AND ${runnerFresh('runners', livenessSeconds())}
@@ -51,6 +58,9 @@ export async function onlineCapableDeviceIds(
         ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC
     `,
+      )),
+    ],
+    (r) => r.project_id,
   );
   return rows.map((r) => r.device_id).filter((id): id is string => Boolean(id));
 }

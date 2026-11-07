@@ -28,10 +28,11 @@ import {
   TOKEN_EXPLICIT_PERMISSIONS,
   TOKEN_GRANT_EXCLUSIONS,
 } from '@forge/contracts/permissions';
-import { and, eq, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { and, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { PAT_PERMISSION_ALL } from '../credentials/pat-permissions.js';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
+import { rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { type OrgMemberRole, organizationMembers, projectMembers } from '../db/schema.js';
 import {
   effectiveProjectRole,
@@ -278,15 +279,23 @@ export async function holdersOf(
 export async function holdersOfEach(
   projectId: string,
 ): Promise<Record<ProjectPermission, string[]>> {
+  // every project's asks before the quiet point are one read each (ISS-1070 r6)
   const [members, orgAdmins] = await Promise.all([
-    db
-      .select({
-        userId: projectMembers.userId,
-        role: projectMembers.role,
-        grants: projectMembers.grants,
-      })
-      .from(projectMembers)
-      .where(eq(projectMembers.projectId, projectId)),
+    rowsPerProject(
+      'projectMembers',
+      projectId,
+      (ids) =>
+        db
+          .select({
+            projectId: projectMembers.projectId,
+            userId: projectMembers.userId,
+            role: projectMembers.role,
+            grants: projectMembers.grants,
+          })
+          .from(projectMembers)
+          .where(inArray(projectMembers.projectId, [...ids])),
+      (m) => m.projectId,
+    ),
     orgAdminsOf([projectId]),
   ]);
   return Object.fromEntries(
@@ -304,7 +313,13 @@ export async function holdersOfEach(
 }
 
 /** The owners and admins of each project's org, one row per project and person. */
-async function orgAdminsOf(
+function orgAdminsOf(
+  projectIds: readonly string[],
+): Promise<Array<{ projectId: string; userId: string }>> {
+  return rowsPerId('orgAdmins', projectIds, orgAdminsRead, (a) => a.projectId);
+}
+
+async function orgAdminsRead(
   projectIds: readonly string[],
 ): Promise<Array<{ projectId: string; userId: string }>> {
   const orgOf = await permissionsPort('projectOrgIds')(projectIds);

@@ -13,6 +13,7 @@ import {
 import { KERNEL_DECIDER_NAME } from '@forge/contracts/workflows';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import {
   type RequirementStatus,
@@ -171,21 +172,28 @@ async function listAs(viewer: RequirementActor, projectId: string): Promise<Requ
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const [latest, standings] = await Promise.all([
-    db
-      .selectDistinctOn([requirementRevisions.requirementId], {
-        requirementId: requirementRevisions.requirementId,
-        revision: requirementRevisions.revision,
-        state: requirementRevisions.state,
-      })
-      .from(requirementRevisions)
-      // a withdrawn draft is not the revision that stands, so the newest one is the one before it
-      .where(
-        and(
-          inArray(requirementRevisions.requirementId, ids),
-          ne(requirementRevisions.state, 'withdrawn'),
-        ),
-      )
-      .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
+    // a requirement's revisions are its own: every project's asks are one read (ISS-1070 r6)
+    rowsPerId(
+      'standingRevision',
+      ids,
+      (some) =>
+        db
+          .selectDistinctOn([requirementRevisions.requirementId], {
+            requirementId: requirementRevisions.requirementId,
+            revision: requirementRevisions.revision,
+            state: requirementRevisions.state,
+          })
+          .from(requirementRevisions)
+          // a withdrawn draft is not the revision that stands, so the newest one is the one before it
+          .where(
+            and(
+              inArray(requirementRevisions.requirementId, [...some]),
+              ne(requirementRevisions.state, 'withdrawn'),
+            ),
+          )
+          .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
+      (r) => r.requirementId,
+    ),
     standingViewer(viewer, projectId).then((v) =>
       standingsOf(projectId, rows, v, undefined, { runnerBound }),
     ),

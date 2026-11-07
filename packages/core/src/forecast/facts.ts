@@ -18,7 +18,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { memoizedRead, onePerId, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
@@ -88,42 +88,46 @@ export function readAnchor(projectId: string, now: Date): Promise<Anchor> {
 
 async function readAnchorOnce(projectId: string, now: Date): Promise<Anchor> {
   const at = now.toISOString();
-  const [row] = rowsOf<EventRow>(
-    await db.execute(sql`
-      SELECT * FROM (
-        SELECT 'transition' AS kind, al.created_at AS at, i.iss_seq AS seq, NULL::int AS other,
-               al.payload ->> 'to' AS status
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const row = await onePerId(`forecastAnchor:${at}`, projectId, async (ids) => {
+    const inIds = idList(ids);
+    const rows = rowsOf<EventRow & { project_id: string }>(
+      await db.execute(sql`
+      SELECT DISTINCT ON (e.project_id) * FROM (
+        SELECT i.project_id, 'transition' AS kind, al.created_at AS at, i.iss_seq AS seq,
+               NULL::int AS other, al.payload ->> 'to' AS status
           FROM activity_log al JOIN issues i ON i.id = al.issue_id
-         WHERE i.project_id = ${projectId} AND al.action = 'issue.statusChanged'
+         WHERE i.project_id IN (${inIds}) AND al.action = 'issue.statusChanged'
            AND al.created_at <= ${at}::timestamptz
         UNION ALL
-        SELECT 'filed', i.created_at, i.iss_seq, NULL, NULL
-          FROM issues i WHERE i.project_id = ${projectId} AND i.created_at <= ${at}::timestamptz
+        SELECT i.project_id, 'filed', i.created_at, i.iss_seq, NULL, NULL
+          FROM issues i WHERE i.project_id IN (${inIds}) AND i.created_at <= ${at}::timestamptz
         UNION ALL
-        SELECT 'blocker_added', d.created_at, t.iss_seq, f.iss_seq, NULL
+        SELECT d.project_id, 'blocker_added', d.created_at, t.iss_seq, f.iss_seq, NULL
           FROM issue_dependencies d
           JOIN issues f ON f.id = d.from_issue_id JOIN issues t ON t.id = d.to_issue_id
-         WHERE d.project_id = ${projectId} AND d.kind = 'blocks' AND d.created_at <= ${at}::timestamptz
+         WHERE d.project_id IN (${inIds}) AND d.kind = 'blocks' AND d.created_at <= ${at}::timestamptz
         UNION ALL
-        SELECT 'blocker_ended', d.valid_until, t.iss_seq, f.iss_seq, NULL
+        SELECT d.project_id, 'blocker_ended', d.valid_until, t.iss_seq, f.iss_seq, NULL
           FROM issue_dependencies d
           JOIN issues f ON f.id = d.from_issue_id JOIN issues t ON t.id = d.to_issue_id
-         WHERE d.project_id = ${projectId} AND d.kind = 'blocks' AND d.valid_until <= ${at}::timestamptz
+         WHERE d.project_id IN (${inIds}) AND d.kind = 'blocks' AND d.valid_until <= ${at}::timestamptz
         UNION ALL
-        SELECT 'run_started', s.started_at, i.iss_seq, NULL, NULL
+        SELECT s.project_id, 'run_started', s.started_at, i.iss_seq, NULL, NULL
           FROM agent_sessions s JOIN pipeline_runs r ON r.id = s.pipeline_run_id
           LEFT JOIN issues i ON i.id = r.issue_id
-         WHERE s.project_id = ${projectId} AND s.kind = ${RUN_SESSION_KIND}
+         WHERE s.project_id IN (${inIds}) AND s.kind = ${RUN_SESSION_KIND}
            AND s.started_at <= ${at}::timestamptz
         UNION ALL
-        SELECT 'run_ended', r.finished_at, i.iss_seq, NULL, NULL
+        SELECT r.project_id, 'run_ended', r.finished_at, i.iss_seq, NULL, NULL
           FROM pipeline_runs r JOIN agent_sessions s ON s.pipeline_run_id = r.id AND s.kind = ${RUN_SESSION_KIND}
           LEFT JOIN issues i ON i.id = r.issue_id
-         WHERE r.project_id = ${projectId} AND r.finished_at <= ${at}::timestamptz
+         WHERE r.project_id IN (${inIds}) AND r.finished_at <= ${at}::timestamptz
       ) e
-      ORDER BY e.at DESC, e.kind
-      LIMIT 1`),
-  );
+      ORDER BY e.project_id, e.at DESC, e.kind`),
+    );
+    return new Map(rows.map((r) => [r.project_id, r]));
+  });
   if (!row) return { at: now, event: say('forecast.event.none') };
   return { at: new Date(row.at), event: eventSaid(row, await activeIssuePrefix(projectId)) };
 }
@@ -149,10 +153,15 @@ function eventSaid(e: EventRow, prefix: string | null): Said {
   }
 }
 
-async function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
-  return rowsOf<SampleRow>(
-    await db.execute(sql`
-      SELECT i.complexity, i.merged_at AS landed_at,
+function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  return rowsPerProject(
+    `landedRows:${now.toISOString()}`,
+    projectId,
+    async (ids) =>
+      rowsOf<SampleRow & { project_id: string }>(
+        await db.execute(sql`
+      SELECT i.project_id, i.complexity, i.merged_at AS landed_at,
              EXTRACT(EPOCH FROM (i.merged_at - s.started_at)) / 60 AS minutes
         FROM issues i
         JOIN LATERAL (
@@ -162,7 +171,7 @@ async function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
              AND al.action = 'issue.statusChanged'
              AND al.payload ->> 'to' = 'in_progress'
         ) s ON s.started_at IS NOT NULL AND s.started_at < i.merged_at
-       WHERE i.project_id = ${projectId}
+       WHERE i.project_id IN (${idList(ids)})
          AND i.status IN (${sql.join(
            LANDED_STATUSES.map((st) => sql`${st}`),
            sql`, `,
@@ -170,6 +179,8 @@ async function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
          AND i.merged_at IS NOT NULL
          AND i.merged_at >= ${now.toISOString()}::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
          AND i.merged_at <= ${now.toISOString()}::timestamptz`),
+      ),
+    (r) => r.project_id,
   );
 }
 
@@ -189,17 +200,24 @@ interface SpellRow {
 async function readPeakLiveRuns(projectId: string, now: Date): Promise<number | null> {
   const at = now.toISOString();
   const from = new Date(now.getTime() - FORECAST_PEAK_DAYS * DAY_MS).toISOString();
-  const spells = rowsOf<SpellRow>(
-    await db.execute(sql`
-      SELECT greatest(s.started_at, ${from}::timestamptz) AS started_at,
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const spells = await rowsPerProject(
+    `liveSpells:${at}`,
+    projectId,
+    async (ids) =>
+      rowsOf<SpellRow & { project_id: string }>(
+        await db.execute(sql`
+      SELECT s.project_id, greatest(s.started_at, ${from}::timestamptz) AS started_at,
              least(coalesce(r.finished_at, ${at}::timestamptz), ${at}::timestamptz) AS ended_at
         FROM agent_sessions s
         JOIN pipeline_runs r ON r.id = s.pipeline_run_id
-       WHERE s.project_id = ${projectId}
+       WHERE s.project_id IN (${idList(ids)})
          AND s.kind = ${RUN_SESSION_KIND}
          AND s.started_at IS NOT NULL
          AND s.started_at <= ${at}::timestamptz
          AND coalesce(r.finished_at, ${at}::timestamptz) > ${from}::timestamptz`),
+      ),
+    (r) => r.project_id,
   );
   if (spells.length === 0) return null;
   return peakOf(
@@ -218,22 +236,25 @@ interface WorkRow {
   released: boolean;
 }
 
-export async function readWork(projectId: string, ids: readonly string[]): Promise<WorkRow[]> {
-  if (ids.length === 0) return [];
-  return rowsOf<WorkRow>(
-    await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.status, i.complexity, i.created_at, i.merged_at,
+export async function readWork(projectId: string, issueIds: readonly string[]): Promise<WorkRow[]> {
+  // an issue's work is its own: every project's asks are one read (ISS-1070 r6)
+  const rows = await rowsPerId(
+    'forecastWork',
+    issueIds,
+    async (ids) =>
+      rowsOf<WorkRow & { project_id: string }>(
+        await db.execute(sql`
+      SELECT i.id, i.project_id, i.iss_seq, i.status, i.complexity, i.created_at, i.merged_at,
              (SELECT min(al.created_at) FROM activity_log al
                WHERE al.issue_id = i.id AND al.action = 'issue.statusChanged'
                  AND al.payload ->> 'to' = 'in_progress') AS started_at,
              coalesce(i.session_context ? 'runRelease', false) AS released
         FROM issues i
-       WHERE i.project_id = ${projectId}
-         AND i.id IN (${sql.join(
-           ids.map((id) => sql`${id}::uuid`),
-           sql`, `,
-         )})`),
+       WHERE i.id IN (${idList(ids)})`),
+      ),
+    (r) => r.id,
   );
+  return rows.filter((r) => r.project_id === projectId).map(({ project_id: _p, ...r }) => r);
 }
 
 const HOLD_ACT: Record<string, Said> = {
@@ -383,8 +404,31 @@ async function issueRowsWhere(projectId: string, where: SQL): Promise<IssueRow[]
 export const issueRowsBySeq = (projectId: string, issSeq: number) =>
   issueRowsWhere(projectId, sql`i.iss_seq = ${issSeq}`);
 
-export const issueRowsByIds = (projectId: string, ids: readonly string[]) =>
-  ids.length === 0 ? Promise.resolve([]) : issueRowsWhere(projectId, sql`i.id IN (${idList(ids)})`);
+/** Each issue of `ids` in `projectId`, by number; every project's asks are one read (ISS-1070 r6). */
+export const issueRowsByIds = async (projectId: string, ids: readonly string[]) =>
+  (
+    await rowsPerId(
+      'forecastIssueRows',
+      ids,
+      (some) => issueRowsIn(sql`i.id IN (${idList(some)})`),
+      (r) => r.id,
+    )
+  )
+    .filter((r) => r.project_id === projectId)
+    .sort((a, b) => a.iss_seq - b.iss_seq)
+    .map(({ project_id: _p, ...r }) => r);
+
+/** `issueRowsWhere` across projects, each row with its project. */
+async function issueRowsIn(where: SQL): Promise<(IssueRow & { project_id: string })[]> {
+  return rowsOf<IssueRow & { project_id: string }>(
+    await db.execute(sql`
+      SELECT i.id, i.project_id, i.iss_seq, i.status, i.merged_at, i.requirement_id,
+             ${designOnlyMarkSql(sql`i`)} AS design_only
+        FROM issues i
+       WHERE i.archived_at IS NULL AND ${where}
+       ORDER BY i.iss_seq`),
+  );
+}
 
 export interface RequirementRow {
   id: string;
@@ -421,10 +465,14 @@ export async function issueRowsOfRequirements(
 ): Promise<Map<string, IssueRow[]>> {
   const out = new Map<string, IssueRow[]>(requirementIds.map((id) => [id, []]));
   if (requirementIds.length === 0) return out;
-  const rows = await issueRowsWhere(
-    projectId,
-    sql`i.requirement_id IN (${idList(requirementIds)})`,
+  // a requirement's issues are its own: every project's asks are one read (ISS-1070 r6)
+  const rows = await rowsPerId(
+    'forecastRequirementIssues',
+    requirementIds,
+    (some) => issueRowsIn(sql`i.requirement_id IN (${idList(some)})`),
+    (r) => r.requirement_id as string,
   );
-  for (const r of rows) if (r.requirement_id) out.get(r.requirement_id)?.push(r);
+  for (const { project_id, ...r } of rows.sort((a, b) => a.iss_seq - b.iss_seq))
+    if (r.requirement_id && project_id === projectId) out.get(r.requirement_id)?.push(r);
   return out;
 }

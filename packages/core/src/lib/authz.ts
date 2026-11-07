@@ -1,10 +1,10 @@
-import { and, eq, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { and, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { askAPersonDoor } from '../credentials/pat-remedy.js';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { fenceReaches, fenceWhere } from '../credentials/token-fence.js';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { idOfParts, memoizedRead, onePerId, partsOf } from '../db/read-memo.js';
 import {
   type OrgMemberRole,
   organizationMembers,
@@ -129,12 +129,9 @@ async function readProjectRole(
   const orgId = await projectOrgOf(projectId);
   if (orgId === null) return null;
   if (!userId) return { projectId, orgId, role: null, orgRole: null, grants: [] };
-  const [[member], orgRole] = await Promise.all([
-    db
-      .select({ role: projectMembers.role, grants: projectMembers.grants })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-      .limit(1),
+  // a person read across their projects asks each once, all of them in one read (ISS-1070 r6)
+  const [member, orgRole] = await Promise.all([
+    onePerId('projectMember', idOfParts(projectId, userId), membersOf),
     loadOrgRole(orgId, userId),
   ]);
   return {
@@ -162,12 +159,46 @@ export async function loadOrgRole(
   userId: string | null | undefined,
 ): Promise<OrgMemberRole | null> {
   if (!userId) return null;
-  const [row] = await db
-    .select({ role: organizationMembers.role })
-    .from(organizationMembers)
-    .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
-    .limit(1);
-  return row?.role ?? null;
+  const role = await onePerId('orgRole', idOfParts(orgId, userId), async (keys) => {
+    const pairs = keys.map(partsOf);
+    const rows = await db
+      .select({
+        orgId: organizationMembers.orgId,
+        userId: organizationMembers.userId,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .where(
+        and(
+          inArray(organizationMembers.orgId, [...new Set(pairs.map(([o]) => o as string))]),
+          inArray(organizationMembers.userId, [...new Set(pairs.map(([, u]) => u as string))]),
+        ),
+      );
+    return new Map(rows.map((r) => [idOfParts(r.orgId, r.userId), r.role]));
+  });
+  return role ?? null;
+}
+
+/** Each person's membership of each project, by `idOfParts(project, user)`. */
+async function membersOf(keys: readonly string[]) {
+  const pairs = keys.map(partsOf);
+  const rows = await db
+    .select({
+      projectId: projectMembers.projectId,
+      userId: projectMembers.userId,
+      role: projectMembers.role,
+      grants: projectMembers.grants,
+    })
+    .from(projectMembers)
+    .where(
+      and(
+        inArray(projectMembers.projectId, [...new Set(pairs.map(([p]) => p as string))]),
+        inArray(projectMembers.userId, [...new Set(pairs.map(([, u]) => u as string))]),
+      ),
+    );
+  return new Map(
+    rows.map((r) => [idOfParts(r.projectId, r.userId), { role: r.role, grants: r.grants }]),
+  );
 }
 
 /**

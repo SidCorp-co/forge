@@ -29,6 +29,7 @@ import { REQUIREMENT_LIFECYCLE, requirementKey } from '@forge/contracts/requirem
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { gateOf, readProjectDocument } from '../project-config/index.js';
 import type { RequirementRefusal } from './rules.js';
@@ -66,7 +67,16 @@ const idList = (ids: readonly string[]) =>
  * before ISS-688 was read here as one, named at a `questions/:id` that answered 404, until migration
  * 0623 asked each still open as a question under its own id.
  */
-async function openQuestionsOf(
+function openQuestionsOf(
+  tx: Tx,
+  ids: readonly string[],
+): Promise<Map<string, DeliveryCheckQuestion[]>> {
+  if (tx !== db) return openQuestionsRead(tx, ids);
+  // a requirement's questions are its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('deliveryQuestions', ids, (some) => openQuestionsRead(db, some));
+}
+
+async function openQuestionsRead(
   tx: Tx,
   ids: readonly string[],
 ): Promise<Map<string, DeliveryCheckQuestion[]>> {
@@ -226,7 +236,12 @@ const agreedAt = (row: CheckedRow) => sql`(
  * has not. A run carrying a check takes the check alone (`steward/dispatch.ts:runOne`), so its end is
  * the check's.
  */
-async function checkedAtOf(tx: Tx, ids: readonly string[]): Promise<Map<string, string>> {
+function checkedAtOf(tx: Tx, ids: readonly string[]): Promise<Map<string, string>> {
+  if (tx !== db) return checkedAtRead(tx, ids);
+  return memoizedPerId('deliveryCheckedAt', ids, (some) => checkedAtRead(db, some));
+}
+
+async function checkedAtRead(tx: Tx, ids: readonly string[]): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();
   const rows = rowsOf<{ id: string; at: string | Date }>(
     await tx.execute(sql`

@@ -7,6 +7,8 @@ import {
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
+import { onePerId, rowsPerProject } from '../db/read-memo.js';
 import { notFound } from '../middleware/route-errors.js';
 import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf, readProjectDocument } from '../project-config/index.js';
@@ -55,9 +57,15 @@ interface ProjectHealthContext {
 }
 
 async function contextOf(projectId: string, viewer: HealthViewer): Promise<ProjectHealthContext> {
-  const [doc, slugRows, feedback, facts, held] = await Promise.all([
+  const [doc, slugRow, feedback, facts, held] = await Promise.all([
     readProjectDocument(projectId),
-    db.execute(sql`SELECT slug FROM projects WHERE id = ${projectId}`),
+    // every project's asks before the quiet point are one read (ISS-1070 r6)
+    onePerId('projectSlug', projectId, async (ids) => {
+      const rows = rowsOf<{ id: string; slug: string }>(
+        await db.execute(sql`SELECT id, slug FROM projects WHERE id IN (${idList(ids)})`),
+      );
+      return new Map(rows.map((r) => [r.id, r.slug]));
+    }),
     openFeedbackOf(viewer, projectId),
     permissionFactsOf(viewer.userId, projectId),
     workflowsRead(projectId),
@@ -65,7 +73,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
   const workflows = doc?.document.workflows;
   return {
     projectId,
-    slug: String(rowsOf<{ slug: string }>(slugRows)[0]?.slug ?? projectId),
+    slug: slugRow ?? projectId,
     viewer,
     canDecide: designApproverRefusal(facts, await personGateOf(projectId, 'designs')) === null,
     threshold: rewriteThresholdOf(workflows?.rewriteThreshold),
@@ -213,6 +221,21 @@ async function workflowRowsOf(projectId: string, ref?: string): Promise<Workflow
       : /^[0-9a-f-]{36}$/i.test(ref)
         ? sql`id = ${ref}`
         : sql`flow = ${ref.trim()}`;
+  if (ref === undefined) {
+    // every project's asks before the quiet point are one read (ISS-1070 r6)
+    return rowsPerProject(
+      'workflowRows',
+      projectId,
+      async (ids) =>
+        rowsOf<WorkflowRow & { project_id: string }>(
+          await db.execute(sql`
+            SELECT id, flow, revision, approved_revision, design_status, document, project_id
+              FROM project_workflows WHERE project_id IN (${idList(ids)}) AND ${where}
+             ORDER BY flow`),
+        ),
+      (r) => r.project_id,
+    ).then((rows) => rows.map(({ project_id: _p, ...r }) => r));
+  }
   return rowsOf<WorkflowRow>(
     await db.execute(sql`
       SELECT id, flow, revision, approved_revision, design_status, document

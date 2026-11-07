@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import type { Tx } from '../../db/client.js';
+import { db, type Tx } from '../../db/client.js';
+import { rowsPerId } from '../../db/read-memo.js';
 import { contractArtifacts, contractVersions } from '../../db/schema-ecosystem.js';
 import { storedAs } from '../ecosystem-service.js';
 import type { ContractApproval, DecidedAs } from './approval.js';
@@ -147,16 +148,24 @@ export async function versionsOf(
   contractSlug?: string,
 ): Promise<StoredVersion[]> {
   if (providerProjectIds.length === 0) return [];
-  const rows = await tx
-    .select(columns)
-    .from(contractVersions)
-    .where(
-      and(
-        inArray(contractVersions.providerProjectId, [...providerProjectIds]),
-        ...(contractSlug ? [eq(contractVersions.contractSlug, contractSlug)] : []),
-      ),
-    )
-    .orderBy(desc(contractVersions.recordedAt));
+  const read = (ids: readonly string[]) =>
+    tx
+      .select(columns)
+      .from(contractVersions)
+      .where(
+        and(
+          inArray(contractVersions.providerProjectId, [...ids]),
+          ...(contractSlug ? [eq(contractVersions.contractSlug, contractSlug)] : []),
+        ),
+      )
+      .orderBy(desc(contractVersions.recordedAt));
+  // a provider's versions are its own: every project's asks are one read (ISS-1070 r6), one order
+  const rows =
+    tx === db && !contractSlug
+      ? (
+          await rowsPerId('contractVersions', providerProjectIds, read, (r) => r.providerProjectId)
+        ).sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime())
+      : await read(providerProjectIds);
   return rows.map(held);
 }
 

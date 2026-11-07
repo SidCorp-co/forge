@@ -163,7 +163,7 @@ export { issueTaskOf, listModulesForIssues } from './label-service.js';
 export { carriedToLanding, filesNamed, type LandedCarriage } from './landed-carriage.js';
 export { landingShortfall } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
-export { listIssues } from './list-service.js';
+export { listIssues, ownedIssuesIn } from './list-service.js';
 export {
   currentMarkClaims,
   currentMarkTimes,

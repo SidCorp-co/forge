@@ -8,8 +8,9 @@
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { db, Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { requirementCriteria, requirementCriterionSteps } from '../db/schema-requirements.js';
 import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
 import type { TracedChange } from './standing-follow.js';
@@ -87,7 +88,21 @@ interface StaleDesignPin {
 }
 
 /** Each linked design the latest baseline of each requirement pins below its approved revision, or not at all. */
-async function staleDesignPinsOf(
+function staleDesignPinsOf(
+  executor: Tx | typeof db,
+  ids: readonly string[],
+): Promise<StaleDesignPin[]> {
+  if (executor !== db) return staleDesignPinsRead(executor, ids);
+  // a requirement's pins are its own: every project's asks are one read (ISS-1070 r6)
+  return rowsPerId(
+    'staleDesignPins',
+    ids,
+    (some) => staleDesignPinsRead(db, some),
+    (p) => p.requirementId,
+  );
+}
+
+async function staleDesignPinsRead(
   executor: Tx | typeof db,
   ids: readonly string[],
 ): Promise<StaleDesignPin[]> {

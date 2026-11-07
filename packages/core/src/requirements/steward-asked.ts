@@ -11,6 +11,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
+import { rowsPerId } from '../db/read-memo.js';
 
 export interface AskedRequirements {
   /** The requirements holding an open steward decision. */
@@ -22,7 +23,14 @@ export interface AskedRequirements {
 export async function askedOf(ids: readonly string[]): Promise<AskedRequirements> {
   const out: AskedRequirements = { steward: new Set(), person: new Set() };
   if (ids.length === 0) return out;
-  const rows = rowsOf<{ requirement_id: string; steward: boolean }>(
+  // a requirement's questions are its own: every project's asks are one read (ISS-1070 r6)
+  const rows = await rowsPerId('stewardAsked', ids, askedRowsOf, (r) => r.requirement_id);
+  for (const r of rows) (r.steward ? out.steward : out.person).add(r.requirement_id);
+  return out;
+}
+
+async function askedRowsOf(ids: readonly string[]) {
+  return rowsOf<{ requirement_id: string; steward: boolean }>(
     await db.execute(sql`
       SELECT DISTINCT q.requirement_id,
              coalesce(q.steps -> -1 -> 'options' -> 0 ->> 'fingerprint' LIKE 'steward:%', false) AS steward
@@ -43,6 +51,4 @@ export async function askedOf(ids: readonly string[]): Promise<AskedRequirements
                  LIMIT 1),
                true)`),
   );
-  for (const r of rows) (r.steward ? out.steward : out.person).add(r.requirement_id);
-  return out;
 }

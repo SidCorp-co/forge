@@ -12,8 +12,9 @@ import type {
 } from '@forge/contracts/releases';
 import { RELEASE_VERSION_DECISIONS } from '@forge/contracts/releases';
 import { type Said, say } from '@forge/contracts/said';
-import { and, eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -217,17 +218,31 @@ async function rosterIssues(
   const ids = [...new Set(runs.flatMap((r) => r.roster))];
   if (ids.length === 0) return new Map();
   const [rows, prefix] = await Promise.all([
-    db
-      .select({ id: issues.id, seq: issues.issSeq, title: issues.title })
-      .from(issues)
-      .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
+    // an issue's row is its own: every project's asks are one read (ISS-1070 r6)
+    rowsPerId(
+      'rosterIssues',
+      ids,
+      (some) =>
+        db
+          .select({
+            id: issues.id,
+            projectId: issues.projectId,
+            seq: issues.issSeq,
+            title: issues.title,
+          })
+          .from(issues)
+          .where(inArray(issues.id, [...some])),
+      (r) => r.id,
+    ),
     activeIssuePrefix(projectId),
   ]);
   return new Map(
-    rows.map((r) => [
-      r.id,
-      { key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id, title: r.title ?? '' },
-    ]),
+    rows
+      .filter((r) => r.projectId === projectId)
+      .map((r) => [
+        r.id,
+        { key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id, title: r.title ?? '' },
+      ]),
   );
 }
 

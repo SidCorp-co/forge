@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import {
   channelCounters,
@@ -157,6 +158,19 @@ export async function projectsWhere(
   const ids = by.ids ?? [];
   const slugs = by.slugs ?? [];
   if (ids.length === 0 && slugs.length === 0) return [];
+  if (tx === db && slugs.length === 0) {
+    // a project's row is its own: every project's asks are one read (ISS-1070 r6)
+    return rowsPerId(
+      'ecosystemProjectRows',
+      ids,
+      (some) =>
+        db
+          .select({ id: projects.id, slug: projects.slug, name: projects.name })
+          .from(projects)
+          .where(inArray(projects.id, [...some])),
+      (r) => r.id,
+    );
+  }
   return tx
     .select({ id: projects.id, slug: projects.slug, name: projects.name })
     .from(projects)

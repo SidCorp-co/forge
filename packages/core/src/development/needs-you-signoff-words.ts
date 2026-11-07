@@ -6,6 +6,7 @@
 import { hasVisibleText } from '@forge/contracts/reason-text';
 import { and, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idOfParts, memoizedPerId, partsOf } from '../db/read-memo.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { clipAtWord } from './needs-you-decision-builders.js';
 
@@ -27,32 +28,41 @@ export function revisionWords(r: {
 export const wordlessRevision = (n: number) =>
   `Revision ${n} says neither what it changes nor why.`;
 
-const keyOf = (requirementId: string, revision: number) => `${requirementId}:${revision}`;
+const keyOf = (requirementId: string, revision: number) =>
+  idOfParts(requirementId, String(revision));
 
 /** Reads each wanted revision's own words once, and answers them by requirement and revision. */
 export async function revisionWordsOf(
   wanted: readonly { requirementId: string; revision: number }[],
 ): Promise<(requirementId: string, revision: number | null) => string | null> {
-  const ids = [...new Set(wanted.map((w) => w.requirementId))];
-  const revisions = [...new Set(wanted.map((w) => w.revision))];
-  const rows =
-    ids.length === 0
-      ? []
-      : await db
-          .select({
-            requirementId: requirementRevisions.requirementId,
-            revision: requirementRevisions.revision,
-            changeSummary: requirementRevisions.changeSummary,
-            reason: requirementRevisions.reason,
-          })
-          .from(requirementRevisions)
-          .where(
-            and(
-              inArray(requirementRevisions.requirementId, ids),
-              inArray(requirementRevisions.revision, revisions),
-            ),
-          );
-  const words = new Map(rows.map((r) => [keyOf(r.requirementId, r.revision), revisionWords(r)]));
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const words = await memoizedPerId(
+    'revisionWords',
+    wanted.map((w) => keyOf(w.requirementId, w.revision)),
+    wordsOf,
+  );
   return (requirementId, revision) =>
     revision === null ? null : (words.get(keyOf(requirementId, revision)) ?? null);
+}
+
+async function wordsOf(keys: readonly string[]): Promise<Map<string, string | null>> {
+  const pairs = keys.map(partsOf);
+  const ids = [...new Set(pairs.map(([id]) => id as string))];
+  const revisions = [...new Set(pairs.map(([, n]) => Number(n)))];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({
+      requirementId: requirementRevisions.requirementId,
+      revision: requirementRevisions.revision,
+      changeSummary: requirementRevisions.changeSummary,
+      reason: requirementRevisions.reason,
+    })
+    .from(requirementRevisions)
+    .where(
+      and(
+        inArray(requirementRevisions.requirementId, ids),
+        inArray(requirementRevisions.revision, revisions),
+      ),
+    );
+  return new Map(rows.map((r) => [keyOf(r.requirementId, r.revision), revisionWords(r)]));
 }

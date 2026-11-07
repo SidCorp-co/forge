@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { ecosystemMembershipEvents, ecosystemMemberships } from '../db/schema-ecosystem.js';
 import type { MembershipRow, MembershipVerb } from './membership-rules.js';
 import type { MembershipState } from './schema.js';
@@ -133,18 +134,23 @@ export async function activeEcosystemIdsOf(
   projectIds: readonly string[],
 ): Promise<{ projectId: string; ecosystemId: string }[]> {
   if (projectIds.length === 0) return [];
-  return tx
-    .select({
-      projectId: ecosystemMemberships.projectId,
-      ecosystemId: ecosystemMemberships.ecosystemId,
-    })
-    .from(ecosystemMemberships)
-    .where(
-      and(
-        inArray(ecosystemMemberships.projectId, [...projectIds]),
-        eq(ecosystemMemberships.state, 'active'),
-      ),
-    );
+  const read = (ids: readonly string[]) =>
+    tx
+      .select({
+        projectId: ecosystemMemberships.projectId,
+        ecosystemId: ecosystemMemberships.ecosystemId,
+      })
+      .from(ecosystemMemberships)
+      .where(
+        and(
+          inArray(ecosystemMemberships.projectId, [...ids]),
+          eq(ecosystemMemberships.state, 'active'),
+        ),
+      );
+  // a project's memberships are its own: every project's asks are one read (ISS-1070 r6)
+  return tx === db
+    ? rowsPerId('activeEcosystems', projectIds, read, (r) => r.projectId)
+    : read(projectIds);
 }
 
 export async function isActiveMember(

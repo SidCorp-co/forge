@@ -14,6 +14,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import {
   type IssueComplexity,
   type IssueStatus,
@@ -257,5 +258,39 @@ export async function latestFailedJobByIssue(
           failedAt: r.finishedAt?.toISOString() ?? new Date(0).toISOString(),
         },
       ]),
+  );
+}
+
+/**
+ * Every unarchived issue of `projectId` `userId` filed (`created`) or holds (`held`), newest write
+ * first as the list sorts `updatedAt:desc`: what the home reads a person's own issues from, every
+ * project asked with it in one statement (ISS-1070 r6).
+ */
+export function ownedIssuesIn(projectId: string, userId: string) {
+  return rowsPerProject(
+    `ownedIssues:${userId}`,
+    projectId,
+    (ids) =>
+      db
+        .select({
+          id: issues.id,
+          projectId: issues.projectId,
+          title: issues.title,
+          status: issues.status,
+          releaseBatchRunId: issues.releaseBatchRunId,
+          updatedAt: issues.updatedAt,
+          created: sql<boolean>`coalesce(${buildCreatedByCondition(userId)}, false)`,
+          held: sql<boolean>`coalesce(${eq(issues.assigneeId, userId)}, false)`,
+        })
+        .from(issues)
+        .where(
+          and(
+            inArray(issues.projectId, [...ids]),
+            ...issueArchiveSide(false),
+            or(buildCreatedByCondition(userId), eq(issues.assigneeId, userId)),
+          ),
+        )
+        .orderBy(...buildIssueOrderBy('updatedAt:desc')),
+    (r) => r.projectId,
   );
 }

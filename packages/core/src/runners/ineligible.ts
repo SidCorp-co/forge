@@ -9,6 +9,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import type { RunnerStatus } from '../db/schema.js';
 import { atLeastVersion, CLAIM_MIN_RUNNER } from './device-cap.js';
 import { livenessSeconds } from './liveness-sql.js';
@@ -132,16 +134,24 @@ interface RunnerLivenessSqlRow extends Record<string, unknown> {
 const asDate = (raw: string | null): Date | null => (raw === null ? null : new Date(raw));
 
 async function readRunnerLiveness(projectId: string): Promise<RunnerLivenessRow[]> {
-  const rows = await db.execute<RunnerLivenessSqlRow>(sql`
-    SELECT d.name AS device_name,
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const rows = await rowsPerProject(
+    'runnerLiveness',
+    projectId,
+    async (ids) => [
+      ...(await db.execute<RunnerLivenessSqlRow & { project_id: string }>(sql`
+    SELECT r.project_id, d.name AS device_name,
            r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,
            r.limit_printed_reset_at, r.quarantined_until, r.provision_status,
            d.disabled_at AS device_disabled_at, d.agent_version AS device_agent_version
       FROM runners r
       JOIN devices d ON d.id = r.device_id
-     WHERE r.project_id = ${projectId}
+     WHERE r.project_id IN (${idList(ids)})
      ORDER BY d.name ASC
-  `);
+  `)),
+    ],
+    (r) => r.project_id,
+  );
   return rows.map((r) => ({
     deviceName: r.device_name,
     status: r.status,

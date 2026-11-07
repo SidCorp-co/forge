@@ -5,24 +5,32 @@
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { requirements } from '../db/schema-requirements.js';
 import { standingsOf } from './standing-read.js';
 
 export async function listRowsOf(projectId: string) {
-  const held = await db
-    .select({
-      row: requirements,
-      areaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
-                  WHERE a.id = ${requirements.areaId} AND a.project_id = ${projectId})`,
-      proposedAreaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
-                  WHERE a.id = ${requirements.proposedAreaId} AND a.project_id = ${projectId})`,
-      runnerBound: sql<boolean>`EXISTS (SELECT 1 FROM runners WHERE project_id = ${projectId})`,
-    })
-    .from(requirements)
-    .where(eq(requirements.projectId, projectId))
-    .orderBy(desc(requirements.reqSeq));
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const held = await rowsPerProject(
+    'requirementListRows',
+    projectId,
+    (ids) =>
+      db
+        .select({
+          row: requirements,
+          areaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
+                  WHERE a.id = ${requirements.areaId} AND a.project_id = ${requirements.projectId})`,
+          proposedAreaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
+                  WHERE a.id = ${requirements.proposedAreaId} AND a.project_id = ${requirements.projectId})`,
+          runnerBound: sql<boolean>`EXISTS (SELECT 1 FROM runners WHERE project_id = ${requirements.projectId})`,
+        })
+        .from(requirements)
+        .where(inArray(requirements.projectId, [...ids]))
+        .orderBy(desc(requirements.reqSeq)),
+    (h) => h.row.projectId,
+  );
   const areas = new Map<string, string>();
   for (const h of held) {
     if (h.row.areaId && h.areaName !== null) areas.set(h.row.areaId, h.areaName);

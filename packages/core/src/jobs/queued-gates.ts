@@ -3,6 +3,7 @@ import { deviceReach, fenceReaches } from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
 import { gateEnforcedSql } from '../db/gate-sql.js';
 import { actsAsTheBoxSql } from '../db/job-credential-sql.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { contractWaitUnsettledSql } from '../db/schema-contract-waits.js';
 import { patternReviewPendingSql } from '../db/schema-issue-patterns.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
@@ -202,8 +203,16 @@ async function runnersWhoseBoxReaches(projectIds: readonly string[]): Promise<st
 export async function gateReasonsForQueuedJobsIn(
   projectIds: readonly string[],
 ): Promise<Map<string, GateSkipReason>> {
-  const out = new Map<string, GateSkipReason>();
-  const ids = [...new Set(projectIds)];
+  // each project's jobs are read for every project asked before the quiet point (ISS-1070 r6):
+  // every arm is correlated on the job's own project, so a project read beside others reads alike
+  const held = await memoizedPerId('queuedGateReasons', projectIds, gateReasonsRead);
+  return new Map([...held.values()].flatMap((reasons) => [...reasons]));
+}
+
+async function gateReasonsRead(
+  ids: readonly string[],
+): Promise<Map<string, Map<string, GateSkipReason>>> {
+  const out = new Map<string, Map<string, GateSkipReason>>(ids.map((id) => [id, new Map()]));
   if (ids.length === 0) return out;
 
   const { ctes, predicates } = buildBarrierFragments({
@@ -212,9 +221,9 @@ export async function gateReasonsForQueuedJobsIn(
   });
 
   const reaching = await runnersWhoseBoxReaches(ids);
-  const rows = await db.execute<{ id: string; reason: string | null }>(sql`
+  const rows = await db.execute<{ id: string; project_id: string; reason: string | null }>(sql`
     WITH ${ctes}
-    SELECT j.id, ${buildGateReasonCase(predicates, reaching)} AS reason
+    SELECT j.id, j.project_id, ${buildGateReasonCase(predicates, reaching)} AS reason
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
     JOIN pipeline_runs r ON r.id = j.pipeline_run_id
@@ -226,7 +235,7 @@ export async function gateReasonsForQueuedJobsIn(
   `);
 
   for (const row of rows) {
-    if (row.reason !== null) out.set(row.id, row.reason as GateSkipReason);
+    if (row.reason !== null) out.get(row.project_id)?.set(row.id, row.reason as GateSkipReason);
   }
   return out;
 }

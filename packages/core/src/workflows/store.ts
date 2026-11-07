@@ -3,7 +3,7 @@ import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { Said } from '@forge/contracts/said';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import {
   projectWorkflowDesigns,
@@ -99,7 +99,18 @@ export async function workflowsOf(tx: Tx, projectId: string): Promise<StoredWork
 
 /** {@link workflowsOf} outside a transaction, read once a request however many reads ask it. */
 export function workflowsRead(projectId: string): Promise<StoredWorkflow[]> {
-  return memoizedRead(`workflows:${projectId}`, () => workflowsOf(db, projectId));
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  return rowsPerProject(
+    'workflows',
+    projectId,
+    (ids) =>
+      db
+        .select(columns)
+        .from(projectWorkflows)
+        .where(and(inArray(projectWorkflows.projectId, [...ids]), liveWorkflow))
+        .orderBy(asc(projectWorkflows.kind), asc(projectWorkflows.flow)),
+    (w) => w.projectId,
+  );
 }
 
 export async function insertWorkflow(
