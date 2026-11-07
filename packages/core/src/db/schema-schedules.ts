@@ -1,6 +1,7 @@
 import { SCHEDULE_KINDS } from '@forge/contracts/schedules';
+import type { ScriptOpsDeclaration } from '@forge/contracts/script-sandbox';
 import { relations, sql } from 'drizzle-orm';
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { projects } from './schema-projects.js';
 
@@ -26,6 +27,10 @@ export const schedules = pgTable(
     params: jsonb('params'),
     kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
     script: text('script'),
+    /** The read-only calls a script schedule declares on its project's forge-ops target (REQ-87 BC-1). */
+    ops: jsonb('ops').$type<ScriptOpsDeclaration>(),
+    /** The JSON object a script keeps between firings (ctx.state, REQ-87 BC-3); written by a firing that succeeded. */
+    scriptState: jsonb('script_state').$type<Record<string, unknown>>(),
     /** The IANA zone the cron is read in; null reads it in UTC. */
     timeZone: text('time_zone'),
     /**
@@ -39,6 +44,10 @@ export const schedules = pgTable(
   (t) => ({
     projectEnabledIdx: index('schedules_project_enabled_idx').on(t.projectId, t.enabled),
     nextRunAtIdx: index('schedules_next_run_at_idx').on(t.nextRunAt).where(sql`enabled = true`),
+    scriptDoorsChk: check(
+      'schedules_script_doors_chk',
+      sql`(${t.ops} IS NULL OR (${t.kind} = 'script' AND jsonb_typeof(${t.ops}) = 'object')) AND (${t.scriptState} IS NULL OR (${t.kind} = 'script' AND jsonb_typeof(${t.scriptState}) = 'object' AND octet_length(${t.scriptState}::text) <= 16384))`,
+    ),
   }),
 );
 

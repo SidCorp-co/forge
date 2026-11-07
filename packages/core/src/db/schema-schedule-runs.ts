@@ -50,6 +50,12 @@ export const scheduleRuns = pgTable(
     runAs: uuid('run_as').references(() => users.id, { onDelete: 'set null' }),
     /** Every read a script fire made through ctx.forge.get, with its status; null for any other fire. */
     reads: jsonb('reads'),
+    /** Every ops call a script fire made, by name with its outcome (REQ-87 BC-4); null for any other fire. */
+    opsCalls: jsonb('ops_calls'),
+    /** Every feedback filing a script fire made: the item filed or joined, or why it was refused. */
+    filings: jsonb('filings'),
+    /** The state a script fire left where it changed it; null where it did not. */
+    stateAfter: jsonb('state_after'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -78,6 +84,10 @@ export const scheduleRuns = pgTable(
     readsChk: check(
       'schedule_runs_reads_chk',
       sql`${t.reads} IS NULL OR jsonb_typeof(${t.reads}) = 'array'`,
+    ),
+    scriptRecordChk: check(
+      'schedule_runs_script_record_chk',
+      sql`(${t.opsCalls} IS NULL OR jsonb_typeof(${t.opsCalls}) = 'array') AND (${t.filings} IS NULL OR jsonb_typeof(${t.filings}) = 'array') AND (${t.stateAfter} IS NULL OR jsonb_typeof(${t.stateAfter}) = 'object')`,
     ),
     finishedChk: check(
       'schedule_runs_finished_chk',

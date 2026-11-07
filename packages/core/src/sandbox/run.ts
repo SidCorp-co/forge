@@ -1,11 +1,14 @@
 // The host side of the script sandbox (REQ-37 BC-1): one run of one script in a fresh worker that
 // holds a QuickJS isolate (`worker-entry.ts`). Schedule scripts and the chat's computations both run
-// here. The script's only capabilities are ctx.log, ctx.params, ctx.inputs, ctx.notify and
-// ctx.forge.get; a ctx.forge.get is answered by the `read` the caller hands in, in this thread, so
-// whatever it holds (the owner's token among it) never enters the worker or the isolate.
+// here. The script's capabilities are ctx.log, ctx.params, ctx.inputs, ctx.notify and ctx.forge.get,
+// and for a schedule script ctx.ops, ctx.feedback.file and ctx.state (REQ-87). Each ask is answered
+// by what the caller hands in (`read`, `ops`, `file`), in this thread, so whatever those hold (the
+// owner's token, the box, the project) never enters the worker or the isolate. A run handed no door
+// answers an ask of it refused by name.
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import { SCRIPT_STATE_CAP_BYTES } from '@forge/contracts/script-sandbox';
 import type {
   ReadAnswer,
   ScriptNotice,
@@ -31,6 +34,12 @@ export interface ScriptLimits {
   logChars: number;
 }
 
+/** Answers a script's ctx.ops.<name>(args); every name the script calls reaches it, declared or not. */
+export type ScriptOpsCaller = (name: string, args: unknown) => Promise<ReadOutcome>;
+
+/** Answers a script's ctx.feedback.file(payload), with the payload exactly as the script passed it. */
+export type ScriptFiler = (payload: unknown) => Promise<ReadOutcome>;
+
 export interface RunScriptInput {
   script: string;
   projectId: string;
@@ -39,6 +48,12 @@ export interface RunScriptInput {
   inputs?: readonly unknown[];
   limits: ScriptLimits;
   read: ScriptReader;
+  /** A schedule's declared calls (REQ-87 BC-1): the names, and who runs or refuses each call. */
+  ops?: { names: readonly string[]; call: ScriptOpsCaller };
+  /** A schedule's feedback door (REQ-87 BC-2). */
+  file?: ScriptFiler;
+  /** A schedule's state as the last firing left it (REQ-87 BC-3); absent, the run keeps none. */
+  state?: Record<string, unknown>;
 }
 
 export interface ScriptRunResult {
@@ -50,6 +65,8 @@ export interface ScriptRunResult {
   error: { name: string; message: string } | null;
   /** The cap that stopped it, when one did; its error names it. */
   stopped: ScriptStop | null;
+  /** The state the script last set with ctx.state.set; null where it set none. */
+  state: Record<string, unknown> | null;
   durationMs: number;
 }
 
@@ -87,6 +104,38 @@ function readValue(json: string | null): { ok: true; value: unknown } | { ok: fa
   }
 }
 
+function stateOf(json: string | null): Record<string, unknown> | null {
+  if (json === null) return null;
+  try {
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function argsOf(json: string): unknown {
+  try {
+    return JSON.parse(json) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+const noOps: ScriptOpsCaller = async (name) => ({
+  ok: false,
+  name: 'ScriptOpsRefused',
+  code: 'SCRIPT_OPS_UNDECLARED',
+  message: `SCRIPT_OPS_UNDECLARED: ctx.ops.${name} is refused: this script declares no ops call; only a script schedule reads its project's forge-ops target, through calls its schedule declares. Nothing ran.`,
+});
+
+const noFiling: ScriptFiler = async () => ({
+  ok: false,
+  name: 'ScriptFeedbackRefused',
+  code: 'SCRIPT_FEEDBACK_REFUSED',
+  message:
+    'SCRIPT_FEEDBACK_REFUSED: ctx.feedback.file is refused: only a script schedule files feedback, on its own project. Nothing was filed.',
+});
+
 function envelopeOf(outcome: ReadOutcome): string {
   try {
     return JSON.stringify(outcome);
@@ -114,7 +163,12 @@ export async function runScript(input: RunScriptInput): Promise<ScriptRunResult>
     stackBytes: STACK_BYTES,
     logChars: input.limits.logChars,
     notifyCap: NOTIFY_CAP,
+    opsNames: [...(input.ops?.names ?? [])],
+    stateJson: input.state ? JSON.stringify(input.state) : null,
+    stateCapBytes: SCRIPT_STATE_CAP_BYTES,
   };
+  const callOps = input.ops?.call ?? noOps;
+  const file = input.file ?? noFiling;
   const worker = new Worker(entry.code, {
     eval: entry.eval,
     workerData: start,
@@ -142,6 +196,7 @@ export async function runScript(input: RunScriptInput): Promise<ScriptRunResult>
       notifications: [],
       error,
       stopped,
+      state: null,
     });
 
     const timer = setTimeout(() => {
@@ -157,14 +212,19 @@ export async function runScript(input: RunScriptInput): Promise<ScriptRunResult>
     }, input.limits.wallMs + KILL_GRACE_MS);
 
     worker.on('message', (msg: WorkerMessage) => {
-      if (msg.type === 'read') {
-        void input
-          .read(msg.method, msg.path)
+      if (msg.type === 'read' || msg.type === 'ops' || msg.type === 'file') {
+        const asked =
+          msg.type === 'read'
+            ? input.read(msg.method, msg.path)
+            : msg.type === 'ops'
+              ? callOps(msg.name, argsOf(msg.argsJson))
+              : file(argsOf(msg.payloadJson));
+        void asked
           .catch(
             (err: unknown): ReadOutcome => ({
               ok: false,
-              name: 'ForgeReadFailed',
-              message: `the read could not be made: ${err instanceof Error ? err.message : String(err)}`,
+              name: msg.type === 'read' ? 'ForgeReadFailed' : 'ScriptDoorFailed',
+              message: `the ${msg.type === 'read' ? 'read' : msg.type === 'ops' ? 'ops call' : 'filing'} could not be made: ${err instanceof Error ? err.message : String(err)}`,
             }),
           )
           .then((outcome) => {
@@ -184,6 +244,7 @@ export async function runScript(input: RunScriptInput): Promise<ScriptRunResult>
           ...failed({ name: 'ScriptResultInvalid', message: value.why }),
           output: msg.output,
           notifications: msg.notifications,
+          state: stateOf(msg.stateJson),
         });
         return;
       }
@@ -194,6 +255,7 @@ export async function runScript(input: RunScriptInput): Promise<ScriptRunResult>
         notifications: msg.notifications,
         error: msg.error,
         stopped: msg.stopped,
+        state: stateOf(msg.stateJson),
       });
     });
 

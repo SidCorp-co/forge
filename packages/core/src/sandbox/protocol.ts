@@ -18,6 +18,12 @@ export interface WorkerStart {
   logChars: number;
   /** The most ctx.notify calls kept; past it the call throws, naming the cap. */
   notifyCap: number;
+  /** The names a schedule declares under ctx.ops (REQ-87 BC-1); a call of any other is still asked, and refused by the host. */
+  opsNames: string[];
+  /** JSON text of the schedule's state (ctx.state, REQ-87 BC-3); null where the run keeps none. */
+  stateJson: string | null;
+  /** The most bytes ctx.state.set takes, as JSON text. */
+  stateCapBytes: number;
 }
 
 export interface ScriptNotice {
@@ -38,9 +44,26 @@ export interface ReadAsk {
   path: string;
 }
 
+/** Worker → host: an ops call the script asked for through ctx.ops.<name>(args?) (REQ-87 BC-1). */
+export interface OpsAsk {
+  type: 'ops';
+  id: number;
+  name: string;
+  /** JSON text of what the script passed, `null` where it passed nothing. */
+  argsJson: string;
+}
+
+/** Worker → host: a filing the script asked for through ctx.feedback.file(payload) (REQ-87 BC-2). */
+export interface FileAsk {
+  type: 'file';
+  id: number;
+  payloadJson: string;
+}
+
 /**
- * Host → worker: the read's answer, as the JSON text handed into the script: `{ ok: true, body }`,
- * or `{ ok: false, name, code?, status?, message }` which the script sees as a rejected Error.
+ * Host → worker: the answer to a read, an ops call or a filing, as the JSON text handed into the
+ * script: `{ ok: true, body }`, or `{ ok: false, name, code?, status?, message }` which the script
+ * sees as a rejected Error.
  */
 export interface ReadAnswer {
   type: 'read-answer';
@@ -58,6 +81,8 @@ export interface WorkerDone {
   notifications: ScriptNotice[];
   error: { name: string; message: string } | null;
   stopped: ScriptStop | null;
+  /** JSON text of the state the script last set; null where it set none. */
+  stateJson: string | null;
 }
 
-export type WorkerMessage = ReadAsk | WorkerDone;
+export type WorkerMessage = ReadAsk | OpsAsk | FileAsk | WorkerDone;

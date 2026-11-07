@@ -3998,6 +3998,13 @@
       "when": 1837209600000,
       "tag": "0628_a_project_records_its_working_agreements",
       "breakpoints": true
+    },
+    {
+      "idx": 629,
+      "version": "7",
+      "when": 1837296000000,
+      "tag": "0629_a_script_schedule_declares_its_ops_calls_and_keeps_its_state",
+      "breakpoints": true
     }
   ]
 }

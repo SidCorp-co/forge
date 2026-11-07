@@ -1,7 +1,7 @@
 // Runs inside a dedicated worker thread spawned by run.ts, and holds the isolate: QuickJS compiled to
 // WebAssembly. The script runs inside that isolate, never in this thread's own JavaScript engine, so
 // no object of this thread is ever reachable from it: the isolate's globals are its own, and the only
-// way out is the three host functions below, each taking and answering strings. A memory limit, an
+// way out is the host functions below, each taking and answering strings. A memory limit, an
 // interrupt handler at the wall cap and a stack limit bound the isolate; the host terminates this
 // thread at the wall cap as well.
 //
@@ -24,7 +24,18 @@ import {
   type QuickJSDeferredPromise,
   type QuickJSHandle,
 } from 'quickjs-emscripten-core';
-import type { ReadAnswer, ScriptNotice, ScriptStop, WorkerDone, WorkerStart } from './protocol.js';
+import type {
+  FileAsk,
+  OpsAsk,
+  ReadAnswer,
+  ReadAsk,
+  ScriptNotice,
+  ScriptStop,
+  WorkerDone,
+  WorkerStart,
+} from './protocol.js';
+
+type AskMessage = Omit<ReadAsk, 'id'> | Omit<OpsAsk, 'id'> | Omit<FileAsk, 'id'>;
 
 // core's TypeScript libs do not declare WebAssembly.Memory, which Node has; its type is the engine's option
 const WasmMemory = (
@@ -51,6 +62,8 @@ let logLength = 0;
 let logCut = false;
 const output: string[] = [];
 const notifications: ScriptNotice[] = [];
+/** The state the script last set, as JSON text; null until it sets one. */
+let stateSet: string | null = null;
 
 function keepLog(line: string): void {
   if (logCut) return;
@@ -97,7 +110,29 @@ function notice(json: string): string | null {
   return null;
 }
 
-// The script's ctx, built inside the isolate out of the three host functions. Everything a script
+/** Why a ctx.state.set is refused, or null where it is kept: a plain JSON object within its cap. */
+function stateRefusal(json: string | null): string | null {
+  if (start.stateJson === null) {
+    return 'SCRIPT_STATE_REFUSED: only a schedule script keeps state between firings; this run keeps none';
+  }
+  let v: unknown;
+  try {
+    v = json === null ? undefined : JSON.parse(json);
+  } catch {
+    v = undefined;
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    return `SCRIPT_STATE_REFUSED: ctx.state.set takes a plain JSON object, and was given ${givenOf(v)}; write ctx.state.set({ ...ctx.state.get(), key: value })`;
+  }
+  const bytes = Buffer.byteLength(json as string, 'utf8');
+  if (bytes > start.stateCapBytes) {
+    return `SCRIPT_STATE_REFUSED: the state is ${bytes} bytes as JSON, past its cap of ${start.stateCapBytes}; keep only what the next firing needs (the last result per signal)`;
+  }
+  stateSet = json;
+  return null;
+}
+
+// The script's ctx, built inside the isolate out of the host functions. Everything a script
 // sees is the isolate's own; params and inputs arrive as JSON text and are frozen there.
 function preludeSource(): string {
   return `(() => {
@@ -113,8 +148,8 @@ const freeze = (v) => {
   return v;
 };
 const log = (...args) => { host.log(args.map(fmt).join(" ")); };
-const read = (method, path) =>
-  host.read(String(method), String(path)).then((text) => {
+const answered = (asked) =>
+  asked.then((text) => {
     const r = JSON.parse(text);
     if (r.ok) return r.body;
     const e = new Error(r.message);
@@ -123,6 +158,41 @@ const read = (method, path) =>
     if (r.status !== undefined) e.status = r.status;
     throw e;
   });
+const read = (method, path) => answered(host.read(String(method), String(path)));
+const json = (v) => JSON.stringify(v === undefined ? null : v) ?? "null";
+// every name reaches the host, which runs a declared call and refuses any other by name, on the record
+const ops = new Proxy(Object.freeze({}), {
+  get: (_, name) =>
+    typeof name !== "string" || name === "then" || name === "toJSON"
+      ? undefined
+      : (args) => answered(host.ops(name, json(args))),
+  set: () => false,
+  defineProperty: () => false,
+  deleteProperty: () => false,
+});
+let stateText = ${JSON.stringify(start.stateJson)};
+const state = Object.freeze({
+  get: () => {
+    if (stateText === null) {
+      const e = new Error("SCRIPT_STATE_REFUSED: only a schedule script keeps state between firings; this run keeps none");
+      e.name = "ScriptStateRefused";
+      e.code = "SCRIPT_STATE_REFUSED";
+      throw e;
+    }
+    return JSON.parse(stateText);
+  },
+  set: (value) => {
+    const text = JSON.stringify(value);
+    const why = host.state(text === undefined ? null : text);
+    if (why) {
+      const e = new Error(why);
+      e.name = "ScriptStateRefused";
+      e.code = "SCRIPT_STATE_REFUSED";
+      throw e;
+    }
+    stateText = text;
+  },
+});
 const refusedFetch = () => {
   throw new Error("ctx.http.fetch is refused: a script reaches no network. Read Forge with ctx.forge.get(path); use ctx.log and ctx.notify.");
 };
@@ -133,6 +203,9 @@ globalThis.ctx = Object.freeze({
   projectId: ${JSON.stringify(start.projectId)},
   notify: (payload) => { host.notify(JSON.stringify(payload === undefined ? null : payload)); },
   http: Object.freeze({ fetch: refusedFetch }),
+  ops,
+  state,
+  feedback: Object.freeze({ file: (payload) => answered(host.file(json(payload))) }),
   forge: Object.freeze({
     get: (path, init) => read(init && init.method !== undefined ? init.method : "GET", path),
     post: (path) => read("POST", path),
@@ -149,8 +222,16 @@ function wrapped(script: string): string {
   return `(async () => {\n${script}\n})().then((v) => (v === undefined ? null : JSON.stringify(v)))`;
 }
 
-function finish(done: Omit<WorkerDone, 'type' | 'output' | 'notifications'>): void {
-  const message: WorkerDone = { type: 'done', output: output.join('\n'), notifications, ...done };
+function finish(
+  done: Omit<WorkerDone, 'type' | 'output' | 'notifications' | 'stateJson'>,
+): void {
+  const message: WorkerDone = {
+    type: 'done',
+    output: output.join('\n'),
+    notifications,
+    stateJson: stateSet,
+    ...done,
+  };
   port?.postMessage(message);
 }
 
@@ -241,18 +322,27 @@ async function run(): Promise<void> {
     const refused = notice(stringArg(json) ?? 'null');
     if (refused) return { error: vm.newError(refused) };
   }).consume((fn) => vm.setProp(host, 'notify', fn));
-  vm.newFunction('read', (method, path) => {
+  // each ask is answered by the host thread later, by its id, as the JSON envelope the prelude reads
+  const ask = (message: AskMessage): QuickJSHandle => {
     const deferred = vm.newPromise();
     const id = nextId++;
     pending.set(id, deferred);
-    port?.postMessage({
-      type: 'read',
-      id,
-      method: stringArg(method) ?? '',
-      path: stringArg(path) ?? '',
-    });
+    port?.postMessage({ ...message, id });
     return deferred.handle;
-  }).consume((fn) => vm.setProp(host, 'read', fn));
+  };
+  vm.newFunction('read', (method, path) =>
+    ask({ type: 'read', method: stringArg(method) ?? '', path: stringArg(path) ?? '' }),
+  ).consume((fn) => vm.setProp(host, 'read', fn));
+  vm.newFunction('ops', (name, args) =>
+    ask({ type: 'ops', name: stringArg(name) ?? '', argsJson: stringArg(args) ?? 'null' }),
+  ).consume((fn) => vm.setProp(host, 'ops', fn));
+  vm.newFunction('file', (payload) =>
+    ask({ type: 'file', payloadJson: stringArg(payload) ?? 'null' }),
+  ).consume((fn) => vm.setProp(host, 'file', fn));
+  vm.newFunction('state', (text) => {
+    const why = stateRefusal(stringArg(text));
+    return why === null ? undefined : vm.newString(why);
+  }).consume((fn) => vm.setProp(host, 'state', fn));
   vm.setProp(vm.global, '__host', host);
   host.dispose();
 
