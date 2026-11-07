@@ -10,6 +10,43 @@ export const KNOWLEDGE_REFUSAL_CODES = [
 
 export type KnowledgeRefusalCode = (typeof KNOWLEDGE_REFUSAL_CODES)[number];
 
+// What an entry of knowledge or memory is (REQ-89 BC-4): a verified fact, a hypothesis, or a
+// convention the owner settled. A write that names none is stored as a `hypothesis` and answered
+// with a warning: an inference written down never becomes a fact by being written (ISS-1121).
+export const CURATED_ENTRY_TYPES = ["fact", "hypothesis", "convention"] as const;
+export type CuratedEntryType = (typeof CURATED_ENTRY_TYPES)[number];
+
+/** What a write that names no type is stored as. */
+export const CURATED_ENTRY_TYPE_DEFAULT: CuratedEntryType = "hypothesis";
+
+/** The shape a warning names for the type. */
+export const CURATED_ENTRY_TYPE_SHAPE =
+	'type: "fact" (verified against what is live, naming what verified it), "hypothesis" (inferred, to be checked) or "convention" (a way of working the owner settled)';
+
+/**
+ * A curation answer a write left out, said back on the write's answer (ISS-1121): the write is
+ * accepted as the owner ruled (teach, never block), stored with the default the warning names, and
+ * listed as owing it until a rewrite answers it.
+ */
+export interface CurationWarning {
+	code: "CURATION_OWED";
+	/** The field left out, as a JSON pointer into the write. */
+	path: string;
+	detail: string;
+}
+
+/**
+ * A re-check a change flagged on an entry (REQ-89 BC-5): a landing touching a path, route or config
+ * the entry names, or a rule the entry names being rewritten. A rewrite of the entry clears it.
+ */
+export interface RecheckDue {
+	since: string;
+	/** What changed: `ISS-12` for a landing, `rule <slug>` for a rule. */
+	by: string;
+	/** Each anchor of the entry the change met. */
+	matched: string[];
+}
+
 // What a knowledge entry rests on, where it applies and when it stops being true (ISS-1064). An entry
 // of one of these kinds, and every org entry, is written with all three or refused
 // `KNOWLEDGE_PROVENANCE_MISSING` naming each one left out. A lesson keeps its own provenance in the

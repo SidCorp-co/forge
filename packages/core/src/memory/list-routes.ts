@@ -1,4 +1,4 @@
-import { MEMORY_ENTRY_STATES } from '@forge/contracts/memory';
+import { MEMORY_AUTHORED_SOURCES, MEMORY_ENTRY_STATES } from '@forge/contracts/memory';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
@@ -77,13 +77,13 @@ memoryListRoutes.get(
 const entriesQuerySchema = paginationSchema
   .extend({
     projectId: z.uuid(),
-    /** Comma-separated sources; absent lists what agents and people wrote down. */
+    /** Comma-separated curated sources; absent lists all of them. A mirror is history, never listed as memory. */
     sources: z
       .string()
       .trim()
       .min(1)
       .transform((v) => v.split(',').map((s) => s.trim()))
-      .pipe(z.array(z.enum(memorySources)).min(1))
+      .pipe(z.array(z.enum(MEMORY_AUTHORED_SOURCES)).min(1))
       .optional(),
     state: z.enum(MEMORY_ENTRY_STATES).optional(),
     cites: memoryCitesSchema.optional(),

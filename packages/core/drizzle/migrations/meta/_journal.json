@@ -4005,6 +4005,13 @@
       "when": 1837296000000,
       "tag": "0629_a_script_schedule_declares_its_ops_calls_and_keeps_its_state",
       "breakpoints": true
+    },
+    {
+      "idx": 630,
+      "version": "7",
+      "when": 1837382400000,
+      "tag": "0630_memory_upkeep_leaves_memory_and_knowledge_keeps_its_revisions",
+      "breakpoints": true
     }
   ]
 }

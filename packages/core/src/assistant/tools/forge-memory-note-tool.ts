@@ -81,7 +81,7 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
       id: result.id,
       sourceRef,
       degraded: result.degraded,
-      nearDuplicateOf: result.nearDuplicateOf ?? null,
+      landedOn: result.landedOn ?? null,
     };
   },
 });

@@ -1,3 +1,4 @@
+import type { CuratedEntryType, CurationWarning } from "./knowledge.js";
 import type { RefusalStatuses } from "./refusal.js";
 
 // The codes a memory write, a recall verdict or a person's correct and retire refuse under.
@@ -25,8 +26,9 @@ export const MEMORY_REFUSAL_STATUSES = {
 // itself, and the copy follows it, so no memory list offers either act on them.
 export const MEMORY_MIRROR_SOURCES = ["issue", "comment", "job"] as const;
 
-// The sources a memory list reads unless asked otherwise: what agents and people wrote down, not
-// the issue mirrors the tracker already shows.
+// The sources curated memory holds: what agents and people wrote down. A memory list, count and
+// recall read these alone; the mirrors are history and a search index, read only by name (REQ-89
+// BC-3, ISS-1121).
 export const MEMORY_AUTHORED_SOURCES = ["note", "knowledge", "policy", "decision"] as const;
 
 // What a memory hit stands as, beside its text: `verified` when someone checked it after its last
@@ -102,6 +104,40 @@ export interface MemoryRevision {
 	replacedAt: string;
 }
 
+/**
+ * The answers a curated memory is written with (REQ-89 BC-1, BC-4, ISS-1121): how it helps later
+ * work, what it is, where it applies, the change that means re-checking it, and, for a temporary
+ * entry, what ends it. A write answers them as top-level fields; one it leaves out is stored as the
+ * default and named in `owed` until a rewrite answers it.
+ */
+export const MEMORY_CURATION_FIELDS = ["value", "type", "scope", "recheckWhen"] as const;
+export type MemoryCurationField = (typeof MEMORY_CURATION_FIELDS)[number];
+
+/** Each answer's own shape, as a warning names it. */
+export const MEMORY_CURATION_FIELD_SHAPES: Record<MemoryCurationField, string> = {
+	value: "value: string (1-500), how this helps later work; a save with no later-work value belongs in history (a comment on the issue), not memory",
+	type: 'type: "fact" (verified, naming what verified it), "hypothesis" (inferred) or "convention" (a way of working settled)',
+	scope: 'scope: string (1-500), where it applies, e.g. "every memory write of this project"',
+	recheckWhen:
+		'recheckWhen: string (1-1000), the change that means re-checking it; name paths (`packages/core/src/memory/indexer.ts`), routes (`POST /api/memory`), config keys or rule slugs so a landing touching one flags it',
+};
+
+/** What a write left out is stored as. */
+export const MEMORY_UNSCOPED = "unscoped";
+
+export interface MemoryCuration {
+	type: CuratedEntryType;
+	scope: string;
+	recheckWhen: string | null;
+	value: string | null;
+	/** What ends a temporary entry (a defect, a wait, a workaround); null on a standing one. */
+	endsWhen: string | null;
+	/** The answers its writer left out, in `MEMORY_CURATION_FIELDS` order; empty when curated. */
+	owed: MemoryCurationField[];
+}
+
+export type { CurationWarning };
+
 /** The earlier bodies an entry carries, newest first; `revisionCount` says how many there are in all. */
 export const MEMORY_REVISIONS_SHOWN = 20;
 
@@ -144,6 +180,8 @@ export interface MemoryEntry {
 	archivedAt: string | null;
 	/** Why the row is archived when no person retired it; null when nothing recorded why. */
 	archivedBy: MemoryArchiveCause | null;
+	/** Its type, scope, re-check and value; a mirror or an older row reads as owing them. */
+	curation: MemoryCuration;
 }
 
 /**
@@ -167,10 +205,10 @@ export const MEMORY_CHECK_AFTER_DAYS = 3;
 /**
  * Why a current memory needs a check, each a fact the reader can act on: nobody checked it for
  * `MEMORY_CHECK_AFTER_DAYS` days (`unchecked`), a record it cites changed after it was last written
- * or checked (`changed`), a record it cites no longer resolves (`gone`), or a release flagged it
- * (`flagged`). A memory with none of them holds; the `stale` list is every memory with one.
+ * or checked (`changed`), a record it cites no longer resolves (`gone`), a release or a landing flagged
+ * it (`flagged`), or its writer left out a curation answer (`uncurated`, ISS-1121). A memory with none of them holds; the `stale` list is every memory with one.
  */
-export const MEMORY_CHECK_REASONS = ["unchecked", "changed", "gone", "flagged"] as const;
+export const MEMORY_CHECK_REASONS = ["unchecked", "changed", "gone", "flagged", "uncurated"] as const;
 export type MemoryCheckReason = (typeof MEMORY_CHECK_REASONS)[number];
 
 export interface MemoryEntriesResponse {

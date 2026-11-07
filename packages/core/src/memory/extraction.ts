@@ -4,7 +4,8 @@ import { type JobType, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
-import { indexMemory } from './indexer.js';
+import { curationOf } from './curation.js';
+import { embedForIndex, heldSubject, indexMemory } from './indexer.js';
 import { factCategory, parseFencedJson, shortHash } from './model-output.js';
 import { memoryIssueReads } from './ports.js';
 import { foreignScriptChars } from './script-guard.js';
@@ -156,25 +157,37 @@ async function storeFacts(
   let factsWritten = 0;
   for (const f of facts) {
     try {
-      const result = await indexMemory(
-        {
-          projectId,
-          source: 'knowledge',
-          sourceRef: `extracted:${shortHash(f.fact)}`,
-          text: f.fact,
-          metadata: { category: f.category, origin: 'extraction', issueId },
+      const target = {
+        projectId,
+        source: 'knowledge' as const,
+        sourceRef: `extracted:${shortHash(f.fact)}`,
+        text: f.fact,
+      };
+      const vector = await embedForIndex(target);
+      // a subject already held is not written again beside it (REQ-89 BC-2): a model's reading never
+      // overwrites an entry someone wrote
+      const held = vector ? await heldSubject(target, vector) : null;
+      if (held) {
+        logger.info(
+          { projectId, issueId, heldBy: held.sourceRef, fact: f.fact.slice(0, 60) },
+          'memory.extraction: subject already held, fact not written',
+        );
+        continue;
+      }
+      await indexMemory({
+        ...target,
+        // a fact a model read out of comments is an inference: a hypothesis, owing the rest
+        metadata: {
+          category: f.category,
+          origin: 'extraction',
+          issueId,
+          curation: curationOf({ type: 'hypothesis' }).curation,
         },
-        { nearDuplicateProbe: true },
-      );
+        vector,
+      });
       factsWritten++;
       logger.info(
-        {
-          projectId,
-          issueId,
-          category: f.category,
-          nearDuplicateOf: result.nearDuplicateOf,
-          fact: f.fact.slice(0, 60),
-        },
+        { projectId, issueId, category: f.category, fact: f.fact.slice(0, 60) },
         'memory.extraction: fact stored',
       );
     } catch (err) {

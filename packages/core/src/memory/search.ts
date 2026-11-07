@@ -1,10 +1,16 @@
-import type { MemoryCite, MemoryStaleRef } from '@forge/contracts/memory';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import {
+  MEMORY_AUTHORED_SOURCES,
+  type MemoryCite,
+  type MemoryCuration,
+  type MemoryStaleRef,
+} from '@forge/contracts/memory';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
 import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
+import { storedCuration } from './curation.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 
 interface BaseSearchInput {
@@ -45,6 +51,8 @@ export interface MemoryHit {
   cites?: MemoryCite[];
   /** Why a release flagged this row possibly stale; present alongside `stale: true`. */
   staleReason?: string;
+  /** Its type, scope, re-check and value (REQ-89 BC-4); a hypothesis is a lead, never a fact. */
+  curation: MemoryCuration;
   /** True when `metadata.staleSince` is set — a later release may have
    *  contradicted this row (see `reconcileForReleasedIssue`). */
   stale: boolean;
@@ -106,6 +114,7 @@ export function toMemoryHit(r: MemoryHitRow, score: number): MemoryHit {
         ? r.lastVerifiedAt
         : r.updatedAt,
     verifiedAt: r.lastVerifiedAt,
+    curation: storedCuration(r.source, r.metadata),
     ...(typeof md.supersededBy === 'string' ? { stale, supersededBy: md.supersededBy } : { stale }),
     ...(typeof md.staleReason === 'string' ? { staleReason: md.staleReason } : {}),
   };
@@ -118,12 +127,16 @@ function baseWhereClauses(input: BaseSearchInput) {
     isNull(memories.archivedAt),
     memoryOfLiveIssue(input.projectId),
   ];
-  if (input.sourceFilter && input.sourceFilter.length > 0) {
-    whereClauses.push(inArray(memories.source, input.sourceFilter));
-  } else {
-    // Memory's own upkeep records are not what the team knows: a search returns them only by name.
-    whereClauses.push(ne(memories.source, 'bookkeeping'));
-  }
+  // Recall reads curated memory; core's copies of issues, comments and jobs are history and a search
+  // index, returned only when the filter names them (REQ-89 BC-3).
+  whereClauses.push(
+    inArray(
+      memories.source,
+      input.sourceFilter && input.sourceFilter.length > 0
+        ? input.sourceFilter
+        : [...MEMORY_AUTHORED_SOURCES],
+    ),
+  );
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
     whereClauses.push(sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`);
   }

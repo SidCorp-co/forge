@@ -26,9 +26,10 @@ import {
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { memories, memorySources } from '../db/schema.js';
+import { memories } from '../db/schema.js';
 import { memoryRevisions } from '../db/schema-memory-revisions.js';
 import { peopleOf } from '../lib/people.js';
+import { storedCuration } from './curation.js';
 import { DECAY_FLAGGED, DECAY_UNUSED } from './decay.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 import { memoryIssueReads } from './ports.js';
@@ -92,8 +93,9 @@ async function onlyCiting(projectId: string, ref: string, rows: Checked[]): Prom
 
 export const memoryEntriesInputSchema = z.object({
   projectId: z.uuid(),
+  /** Curated sources only: a mirror of an issue, comment or job is history, never listed or counted as memory (REQ-89 BC-3). */
   sources: z
-    .array(z.enum(memorySources))
+    .array(z.enum(MEMORY_AUTHORED_SOURCES))
     .min(1)
     .default([...MEMORY_AUTHORED_SOURCES]),
   /** `live` and `stale` hide retired and archived rows; `retired` lists only those; `stale` is every live row needing a check. */
@@ -129,6 +131,9 @@ function storedActs(v: unknown): StoredAct[] {
 // A key the text may cite: rows naming one are read in full, since whether a cite is gone or
 // changed is known only once it resolves.
 const CITES_A_KEY = sql`${memories.textContent} ~ '\\m[A-Z][A-Z0-9]{1,5}-[0-9]{1,6}\\M'`;
+
+// A row whose writer left out a curation answer, or written before they were asked for.
+const OWES_CURATION = sql`(${memories.metadata}->'curation' IS NULL OR jsonb_array_length(coalesce(${memories.metadata}->'curation'->'owed', '[]'::jsonb)) > 0)`;
 
 const CHECK_AFTER_MS = MEMORY_CHECK_AFTER_DAYS * 86_400_000;
 
@@ -170,7 +175,8 @@ function changedCites(r: Read, c: Citations): MemoryCite[] {
 /**
  * Why a current memory needs a check (`MEMORY_CHECK_REASONS`, in order): nobody checked it for
  * `MEMORY_CHECK_AFTER_DAYS` days since it was written or last checked, a cited record changed after
- * the memory was last written or checked, a cited record no longer resolves, or a release flagged it.
+ * the memory was last written or checked, a cited record no longer resolves, a release or a landing
+ * flagged it, or its writer left out a curation answer (ISS-1121).
  */
 function checkReasons(r: Read, c: Citations, changed: readonly MemoryCite[], now: number) {
   const held = {
@@ -178,6 +184,7 @@ function checkReasons(r: Read, c: Citations, changed: readonly MemoryCite[], now
     changed: changed.length > 0,
     gone: c.staleRefs.length > 0,
     flagged: typeof (r.metadata as Record<string, unknown> | null)?.staleSince === 'string',
+    uncurated: storedCuration(r.source, r.metadata).owed.length > 0,
   } satisfies Record<MemoryCheckReason, boolean>;
   return MEMORY_CHECK_REASONS.filter((k) => held[k]);
 }
@@ -252,7 +259,7 @@ export async function readMemoryEntries(
   const candidates = await ordered(
     and(
       live,
-      sql`(coalesce(${memories.lastVerifiedAt}, ${memories.createdAt}) < ${cutoff.toISOString()}::timestamptz OR ${memories.metadata}->>'staleSince' IS NOT NULL OR ${CITES_A_KEY})`,
+      sql`(coalesce(${memories.lastVerifiedAt}, ${memories.createdAt}) < ${cutoff.toISOString()}::timestamptz OR ${memories.metadata}->>'staleSince' IS NOT NULL OR ${CITES_A_KEY} OR ${OWES_CURATION})`,
     ),
   );
   const due = (await checked(input.projectId, candidates, now, reader)).filter(
@@ -384,6 +391,7 @@ async function entriesOf(page: Checked[]): Promise<MemoryEntry[]> {
       retired: retired ? act(retired) : null,
       archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
       archivedBy: r.archivedAt && !retired ? archivedByOf(m) : null,
+      curation: storedCuration(r.source, r.metadata),
     };
   });
   return rows;

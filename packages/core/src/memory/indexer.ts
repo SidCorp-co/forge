@@ -72,6 +72,8 @@ interface IndexInput {
   sourceRef: string;
   text: string;
   metadata?: Record<string, unknown>;
+  /** The text's vector, where the caller already embedded it to find the entry it lands on; null for an outage. */
+  vector?: number[] | null;
 }
 
 export interface IndexResult {
@@ -84,20 +86,6 @@ export interface IndexResult {
    */
   truncated: boolean;
   degraded: boolean;
-  /**
-   * Advisory only: the `sourceRef` of an existing same-source row whose text
-   * is near-identical (cosine > NEAR_DUPLICATE_THRESHOLD) to this write. The
-   * write still landed on the ref the caller named. A caller refining that
-   * other record should re-issue the write under THIS ref — an exact-key
-   * write is the only way one memory row ever replaces another's text.
-   */
-  nearDuplicateOf?: string;
-  /** Cosine score of `nearDuplicateOf`; set only alongside it. */
-  dedupeScore?: number;
-}
-
-interface IndexOptions {
-  nearDuplicateProbe?: boolean;
 }
 
 /** The stored row's own text and whether it holds a vector — the only two facts the skip reads. */
@@ -126,47 +114,38 @@ interface WriteOutcome {
   degraded: boolean;
   /** The skip was taken and the swap refused it: the text moved under the pre-read. */
   raceLost: boolean;
-  nearDuplicate: { sourceRef: string; score: number } | null;
 }
 
-async function writeOnce(
-  input: IndexInput,
-  opts: IndexOptions | undefined,
-  allowSkip: boolean,
-): Promise<WriteOutcome> {
+/** The text's vector for an index write, or null in an embeddings outage (the row is then degraded). */
+export async function embedForIndex(input: {
+  projectId: string;
+  source: string;
+  sourceRef: string;
+  text: string;
+}): Promise<number[] | null> {
+  const embedText =
+    input.text.length > MAX_EMBED_CHARS ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
+  try {
+    return await embed({ surface: 'memory' }, embedText);
+  } catch (err) {
+    if (!(err instanceof EmbeddingUnavailableError)) throw err;
+    logger.warn(
+      { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
+      'memory.indexer: embeddings unavailable, storing degraded row for backfill',
+    );
+    return null;
+  }
+}
+
+async function writeOnce(input: IndexInput, allowSkip: boolean): Promise<WriteOutcome> {
   const existing = allowSkip ? await readExisting(input) : null;
   const skip = existing !== null && existing.textContent === input.text && existing.hasEmbedding;
 
   let vector: number[] | null = null;
   let outage = false;
   if (!skip) {
-    const embedText =
-      input.text.length > MAX_EMBED_CHARS ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
-    try {
-      vector = await embed({ surface: 'memory' }, embedText);
-    } catch (err) {
-      if (!(err instanceof EmbeddingUnavailableError)) throw err;
-      outage = true;
-      logger.warn(
-        { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
-        'memory.indexer: embeddings unavailable, storing degraded row for backfill',
-      );
-    }
-  }
-
-  const nearDuplicate =
-    opts?.nearDuplicateProbe && vector !== null ? await findNearDuplicate(input, vector) : null;
-  if (nearDuplicate) {
-    logger.info(
-      {
-        projectId: input.projectId,
-        source: input.source,
-        sourceRef: input.sourceRef,
-        nearDuplicateOf: nearDuplicate.sourceRef,
-        score: nearDuplicate.score,
-      },
-      'memory.indexer: write is near-identical to an existing row, reporting it to the caller',
-    );
+    vector = input.vector !== undefined ? input.vector : await embedForIndex(input);
+    outage = vector === null;
   }
 
   const preserve = skip || outage;
@@ -184,15 +163,10 @@ async function writeOnce(
       'memory.indexer: the text moved under the skip, re-embedding the text that landed',
     );
   }
-  return {
-    row,
-    degraded: outage || raceLost,
-    raceLost,
-    nearDuplicate,
-  };
+  return { row, degraded: outage || raceLost, raceLost };
 }
 
-export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promise<IndexResult> {
+export async function indexMemory(input: IndexInput): Promise<IndexResult> {
   const truncated = input.text.length > MAX_EMBED_CHARS;
   if (truncated) {
     logger.warn(
@@ -206,78 +180,37 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
     );
   }
 
-  const first = await writeOnce(input, opts, true);
-  const outcome = first.raceLost ? await writeOnce(input, opts, false) : first;
+  const first = await writeOnce(input, true);
+  // the race re-embeds the text that landed: the caller's vector was of the text it lost to
+  const { vector: _lost, ...unembedded } = input;
+  const outcome = first.raceLost ? await writeOnce(unembedded, false) : first;
 
   return {
     id: outcome.row.id,
     embeddedAt: outcome.row.embeddedAt,
     truncated,
     degraded: outcome.degraded,
-    ...(outcome.nearDuplicate
-      ? {
-          nearDuplicateOf: outcome.nearDuplicate.sourceRef,
-          dedupeScore: outcome.nearDuplicate.score,
-        }
-      : {}),
   };
 }
 
 /**
- * Near-duplicate probe: skip when the exact natural key already exists (that
- * write refines its own row), otherwise return the closest same-source row
- * above NEAR_DUPLICATE_THRESHOLD. Read-only — the caller reports the hit and
- * writes its own ref regardless.
+ * The live entry of the same source already holding this subject (REQ-89 BC-2): the closest row
+ * above NEAR_DUPLICATE_THRESHOLD, other than the ref being written. A write on a held subject lands
+ * on that entry rather than beside it.
  */
-async function findNearDuplicate(
-  input: IndexInput,
+export async function heldSubject(
+  input: { projectId: string; source: MemorySource; sourceRef: string },
   vector: number[],
-): Promise<{ sourceRef: string; score: number } | null> {
-  const [exact] = await db
-    .select({ id: memories.id })
-    .from(memories)
-    .where(
-      and(
-        eq(memories.projectId, input.projectId),
-        eq(memories.source, input.source),
-        eq(memories.sourceRef, input.sourceRef),
-      ),
-    )
-    .limit(1);
-  if (exact) return null;
-
+): Promise<{ id: string; sourceRef: string; score: number } | null> {
   const similar = await searchMemories({
     projectId: input.projectId,
     queryVec: vector,
-    topK: 1,
+    topK: 2,
     sourceFilter: [input.source],
   });
-  const best = similar[0];
+  const best = similar.find((h) => h.sourceRef !== input.sourceRef);
   if (!best || best.score <= NEAR_DUPLICATE_THRESHOLD) return null;
-  return { sourceRef: best.sourceRef, score: best.score };
-}
-
-/**
- * Best-effort variant — swallows failures with structured logging, for a record
- * written beside work that must not fail on it. Embeddings OUTAGES never reach here —
- * `indexMemory` absorbs them as degraded writes — so anything caught is a DB
- * failure or a non-outage embed error (e.g. dimension mismatch).
- */
-export async function indexMemoryBestEffort(input: IndexInput): Promise<void> {
-  try {
-    await indexMemory(input);
-  } catch (err) {
-    // warn, not error, so a bursty outage doesn't flood error counters.
-    logger.warn(
-      {
-        err: (err as Error).message,
-        projectId: input.projectId,
-        source: input.source,
-        sourceRef: input.sourceRef,
-      },
-      'memory.indexer: write failed',
-    );
-  }
+  return { id: best.id, sourceRef: best.sourceRef, score: best.score };
 }
 
 /**

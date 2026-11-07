@@ -1,5 +1,5 @@
-import type { MemoryRefusalCode } from '@forge/contracts/memory';
-import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
+import { MEMORY_AUTHORED_SOURCES, type MemoryRefusalCode } from '@forge/contracts/memory';
+import { and, asc, desc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
@@ -59,7 +59,12 @@ export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResu
   if (!input.includeArchived) {
     conditions.push(isNull(memories.archivedAt), memoryOfLiveIssue(input.projectId));
   }
-  if (input.source) conditions.push(eq(memories.source, input.source));
+  // a listing reads curated memory; a mirror (issue, comment, job) is history, read by naming its source
+  conditions.push(
+    input.source
+      ? eq(memories.source, input.source)
+      : inArray(memories.source, [...MEMORY_AUTHORED_SOURCES]),
+  );
   if (input.sourceRef) conditions.push(eq(memories.sourceRef, input.sourceRef));
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
     conditions.push(sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`);

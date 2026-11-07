@@ -10,7 +10,8 @@ import {
 } from '../integrations/llm/index.js';
 import { searchKnowledge } from '../knowledge/index.js';
 import { logger } from '../lib/logger.js';
-import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
+import { curationOf } from './curation.js';
+import { indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 import {
   factCategory,
@@ -23,6 +24,7 @@ import {
 import { memoryIssueReads } from './ports.js';
 import { searchMemories } from './search.js';
 import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
+import { recordUpkeep } from './upkeep.js';
 
 /**
  * Nightly consolidation, adapted from forge-agents' "dream" (`services/memory-dream/`). Differences:
@@ -174,7 +176,13 @@ async function applyCreates(
         source: 'knowledge',
         sourceRef: `consolidated:${refHash}`,
         text,
-        metadata: { category, origin: 'consolidation' },
+        // a model's reading of recent work is an inference: stored as a hypothesis, owing the rest
+        metadata: {
+          category,
+          origin: 'consolidation',
+          curation: curationOf({ type: 'hypothesis' }).curation,
+        },
+        vector,
       });
       created++;
     } catch (err) {
@@ -318,10 +326,10 @@ async function recordConsolidation(
   archivedRefs: string[],
   skippedAsRecorded: string[],
 ): Promise<void> {
-  await indexMemoryBestEffort({
+  await recordUpkeep({
     projectId,
-    source: 'bookkeeping',
-    sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
+    kind: 'consolidation',
+    ref: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
     text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}${skippedAsRecorded.length > 0 ? `\nskipped, already recorded by: ${skippedAsRecorded.join(', ')}` : ''}`,
     metadata: { cause: 'memory-consolidation', archivedRefs, skippedAsRecorded },
   });

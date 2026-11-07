@@ -28,6 +28,9 @@ export const knowledgeKinds = [
   'lesson',
 ] as const;
 
+/** What a knowledge or memory entry is (REQ-89 BC-4): a verified fact, a hypothesis, or a convention the owner settled. */
+export const knowledgeEntryTypes = ['fact', 'hypothesis', 'convention'] as const;
+
 export const knowledgeEntries = pgTable(
   'knowledge_entries',
   {
@@ -61,6 +64,8 @@ export const knowledgeEntries = pgTable(
     source: text('source'),
     scope: text('scope'),
     recheckWhen: text('recheck_when'),
+    /** Whether the entry is a verified fact, a hypothesis or a convention (ISS-1121); null on a row owing it. */
+    entryType: text('entry_type', { enum: knowledgeEntryTypes }),
     confidence: text('confidence', { enum: ['verified', 'inferred', 'deprecated'] })
       .notNull()
       .default('inferred'),
@@ -100,6 +105,41 @@ export const knowledgeEntries = pgTable(
       'knowledge_entries_read_when_chk',
       sql`knowledge_read_when_ok(${t.readWhen})`,
     ),
+    entryTypeChk: check(
+      'knowledge_entries_entry_type_chk',
+      sql`${t.entryType} IS NULL OR ${t.entryType} IN ('fact', 'hypothesis', 'convention')`,
+    ),
+  }),
+);
+
+/**
+ * The text a rewrite of a knowledge entry replaced (ISS-1121, REQ-89 BC-2): kept by the
+ * `knowledge_entries_record_replacement` trigger (migration 0630) whenever a title or body changes,
+ * so a write on a subject already held updates that entry and its old text stays readable.
+ */
+export const knowledgeEntryRevisions = pgTable(
+  'knowledge_entry_revisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entryId: uuid('entry_id')
+      .notNull()
+      .references(() => knowledgeEntries.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    entryType: text('entry_type'),
+    scope: text('scope'),
+    recheckWhen: text('recheck_when'),
+    replacedAt: timestamp('replaced_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    entryReplacedIdx: index('knowledge_entry_revisions_entry_replaced_idx').on(
+      t.entryId,
+      t.replacedAt,
+    ),
   }),
 );
 
@@ -132,6 +172,8 @@ export const orgKnowledgeEntries = pgTable(
     source: text('source'),
     scope: text('scope'),
     recheckWhen: text('recheck_when'),
+    /** The re-check a landing or a rule change flagged on this entry; a rewrite clears it (ISS-1121). */
+    recheckDue: jsonb('recheck_due'),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

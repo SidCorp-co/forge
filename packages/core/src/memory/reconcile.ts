@@ -1,5 +1,5 @@
 import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import {
@@ -13,11 +13,12 @@ import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';
-import { indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
+import { MAX_EMBED_CHARS } from './indexer.js';
 import { firstItems, parseFencedJson, type ScriptRefuser, scriptRefuser } from './model-output.js';
 import { retireNotesForMovedIssue } from './note-lifetime.js';
 import { memoryIssueReads, type ReleasedIssue } from './ports.js';
 import { type MemoryHit, searchMemories } from './search.js';
+import { recordUpkeep, upkeepRecorded } from './upkeep.js';
 
 // Closes the code→memory loop that the nightly consolidation cannot:
 // that pass only reacts to comments/status-changes/reopens from the last
@@ -143,21 +144,6 @@ export async function reconcileForReleasedIssue(
   }
 }
 
-async function alreadyReconciled(projectId: string, recordRef: string): Promise<boolean> {
-  const [existing] = await db
-    .select({ id: memories.id })
-    .from(memories)
-    .where(
-      and(
-        eq(memories.projectId, projectId),
-        eq(memories.source, 'bookkeeping'),
-        eq(memories.sourceRef, recordRef),
-      ),
-    )
-    .limit(1);
-  return existing !== undefined;
-}
-
 function releaseTextOf(issueRow: ReleasedIssue): string {
   const releaseNotes = issueRow.releaseNotes;
   return [
@@ -217,7 +203,7 @@ async function archiveContradicted(
 /**
  * A "possibly stale" flag is a claim about the row, so it carries the model's reason — the release
  * fact and the claim it bears on — or it is not made: an item with no usable reason is counted as
- * unexplained in the bookkeeping record and the row is left unflagged (MJ-4).
+ * unexplained in the upkeep record and the row is left unflagged (MJ-4).
  */
 async function stampPossiblyStale(
   scope: ReconcileScope,
@@ -267,10 +253,10 @@ async function recordReconcile(
   staleRefs: string[],
   unexplained: string[],
 ): Promise<void> {
-  await indexMemoryBestEffort({
+  await recordUpkeep({
     projectId: scope.projectId,
-    source: 'bookkeeping',
-    sourceRef: recordRef,
+    kind: 'reconcile',
+    ref: recordRef,
     text: `${summary}${contradictedRefs.length > 0 ? `\ncontradicted: ${contradictedRefs.join(', ')}` : ''}${staleRefs.length > 0 ? `\nstale-stamped: ${staleRefs.join(', ')}` : ''}${unexplained.length > 0 ? `\nnot flagged, no reason given: ${unexplained.join(', ')}` : ''}`,
     metadata: {
       cause: 'memory-reconcile',
@@ -295,7 +281,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release
   // re-fires the transition hook; don't double-spend LLM cost or re-archive).
-  if (await alreadyReconciled(projectId, recordRef)) {
+  if (await upkeepRecorded(projectId, recordRef)) {
     return emptyReconcileResult('already-reconciled', `reconcile already recorded for ${issRef}`);
   }
 

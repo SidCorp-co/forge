@@ -21,6 +21,7 @@ import * as journalSchema from './schema-journal.js';
 import * as masterCharterSchema from './schema-master-charter.js';
 import * as masterPassesSchema from './schema-master-passes.js';
 import * as memoryRevisionsSchema from './schema-memory-revisions.js';
+import * as memoryUpkeepSchema from './schema-memory-upkeep.js';
 import * as projectConfigSchema from './schema-project-config.js';
 import * as questionsSchema from './schema-questions.js';
 import * as rateLimitsSchema from './schema-rate-limits.js';
@@ -52,6 +53,7 @@ const schema = {
   ...backfillMarkersSchema,
   ...sessionInboxSchema,
   ...memoryRevisionsSchema,
+  ...memoryUpkeepSchema,
   ...deployLocksSchema,
   ...issueLeasesSchema,
   ...issueWorkStateSchema,

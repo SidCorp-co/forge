@@ -1,12 +1,20 @@
 import { articleFor } from '@forge/contracts/articles';
-import type { MemoryRefusalCode } from '@forge/contracts/memory';
-import { and, eq } from 'drizzle-orm';
+import type { CurationWarning } from '@forge/contracts/knowledge';
+import { MEMORY_AUTHORED_SOURCES, type MemoryRefusalCode } from '@forge/contracts/memory';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
-import { memories, memoryWritableSources } from '../db/schema.js';
+import { memories, memorySources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
-import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
+import { curationOf, isCuratedSource, memoryCurationInputSchema } from './curation.js';
+import {
+  embedForIndex,
+  heldSubject,
+  type IndexResult,
+  indexMemory,
+  MAX_EMBED_CHARS,
+} from './indexer.js';
 import { type LandedAs, landingOfMirrorWrite } from './issue-learning.js';
 import { latestRevisionId } from './revisions-service.js';
 
@@ -17,22 +25,19 @@ import { latestRevisionId } from './revisions-service.js';
  * before invoking.
  */
 
-export const writeMemoryInputSchema = z.object({
-  projectId: z.uuid(),
-  source: z.enum(memoryWritableSources),
-  sourceRef: z.string().trim().min(1).max(512),
-  textContent: z.string().trim().min(1).max(100_000),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+export const writeMemoryInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    source: z.enum(memorySources),
+    sourceRef: z.string().trim().min(1).max(512),
+    textContent: z.string().trim().min(1).max(100_000),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+    /** The entry this write updates, by its id or its sourceRef (REQ-89 BC-1, BC-2). */
+    updates: z.string().trim().min(1).max(512).optional(),
+  })
+  .extend(memoryCurationInputSchema.shape);
 
 type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
-
-/**
- * Sources where agents author free-form content, so a near-duplicate is worth
- * reporting back to the caller. Lifecycle mirrors (issue/policy)
- * track their source records 1:1 — a near-duplicate there is expected.
- */
-const NEAR_DUPLICATE_PROBE_SOURCES = new Set<string>(['note', 'knowledge']);
 
 const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
 
@@ -138,8 +143,25 @@ export interface MemoryReplaced {
   revisionId: string | null;
 }
 
-/** What a write answers: the row, where it landed when that is not the ref it named, and that it replaced one. */
-export type MemoryWriteResult = IndexResult & { landedAs?: LandedAs; replaced?: MemoryReplaced };
+/**
+ * Said on a write that landed on the entry already holding its subject rather than on the ref it
+ * named (REQ-89 BC-2): the entry `updates` named, or the live entry of the same source whose text is
+ * near-identical (`score`, cosine). Its old text is kept as a revision (`replaced`).
+ */
+export interface MemoryLandedOn {
+  id: string;
+  sourceRef: string;
+  score: number | null;
+  reason: string;
+}
+
+/** What a write answers: the row, where it landed when that is not the ref it named, that it replaced one, and each curation answer it owes. */
+export type MemoryWriteResult = IndexResult & {
+  landedAs?: LandedAs;
+  landedOn?: MemoryLandedOn;
+  replaced?: MemoryReplaced;
+  warnings?: CurationWarning[];
+};
 
 /**
  * A decision in force has one home, and memory is not it (ISS-1063): memory holds findings and leads
@@ -162,34 +184,141 @@ function refuseDecision(input: WriteMemoryInput): void {
   );
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The entry `updates` names in this project, by id or sourceRef, among the curated sources; refused by name where none. */
+async function namedEntry(input: WriteMemoryInput, updates: string) {
+  const [row] = await db
+    .select({ id: memories.id, source: memories.source, sourceRef: memories.sourceRef })
+    .from(memories)
+    .where(
+      and(
+        eq(memories.projectId, input.projectId),
+        inArray(memories.source, [...MEMORY_AUTHORED_SOURCES]),
+        UUID.test(updates)
+          ? or(eq(memories.id, updates), eq(memories.sourceRef, updates))
+          : eq(memories.sourceRef, updates),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw refuse(
+      'MEMORY_NOT_FOUND',
+      `\`updates\` names ${updates.slice(0, 80)}, which is no memory of this project; name an entry by its id or sourceRef (GET /api/memory/entries), or leave \`updates\` out for a new subject`,
+      '/updates',
+    );
+  }
+  return row;
+}
+
+/** Whether the project already holds the ref this write names. */
+async function holdsRef(input: WriteMemoryInput): Promise<boolean> {
+  const [row] = await db
+    .select({ id: memories.id })
+    .from(memories)
+    .where(
+      and(
+        eq(memories.projectId, input.projectId),
+        eq(memories.source, input.source),
+        eq(memories.sourceRef, input.sourceRef),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Where a curated write lands (REQ-89 BC-2): on the entry `updates` names; on its own ref where the
+ * project holds it; else on the live entry of the same source already holding its subject, so a save
+ * on a held subject updates that entry instead of adding a second. The text's vector, where it was
+ * embedded to find that entry, is handed on so the write embeds it once.
+ */
+async function landingOfCuratedWrite(input: WriteMemoryInput): Promise<{
+  input: WriteMemoryInput;
+  vector?: number[] | null;
+  landedOn: MemoryLandedOn | null;
+}> {
+  if (input.updates) {
+    const row = await namedEntry(input, input.updates);
+    const moved = row.source !== input.source || row.sourceRef !== input.sourceRef;
+    return {
+      input: {
+        ...input,
+        source: row.source as WriteMemoryInput['source'],
+        sourceRef: row.sourceRef,
+      },
+      landedOn: moved
+        ? { id: row.id, sourceRef: row.sourceRef, score: null, reason: 'the entry `updates` named' }
+        : null,
+    };
+  }
+  if (await holdsRef(input)) return { input, landedOn: null };
+  const vector = await embedForIndex({ ...input, text: input.textContent });
+  if (vector === null) return { input, vector, landedOn: null };
+  const held = await heldSubject(input, vector);
+  if (!held) return { input, vector, landedOn: null };
+  return {
+    input: { ...input, sourceRef: held.sourceRef },
+    vector,
+    landedOn: {
+      ...held,
+      reason: `${held.sourceRef} already holds this subject (similarity ${held.score.toFixed(2)}), so the write updated it instead of adding a second entry; its earlier text is kept as a revision`,
+    },
+  };
+}
+
+const ISSUE_KEY = /\b([A-Z][A-Z0-9]{0,15}-[1-9]\d{0,8})\b/;
+
+/**
+ * A temporary note names what ends it (REQ-89 BC-5): one ending with an issue is written for that
+ * issue, so it retires when the issue closes or drops (`note-lifetime.ts`).
+ */
+function endsWithIssue(input: WriteMemoryInput): Record<string, unknown> {
+  const md = input.metadata ?? {};
+  if (input.source !== 'note' || !input.endsWhen || md.about || md.issueId) return {};
+  const key = ISSUE_KEY.exec(input.endsWhen)?.[1];
+  return key ? { about: key } : {};
+}
+
 export async function runMemoryWrite(
   given: WriteMemoryInput,
   by: WriteBy = {},
 ): Promise<MemoryWriteResult> {
   refuseDecision(given);
-  const { input, landedAs } = await landingOfMirrorWrite(given);
-  assertAgentMemoryQuality(input);
+  const mirrored = await landingOfMirrorWrite(given);
+  assertAgentMemoryQuality(mirrored.input);
+  const curated = isCuratedSource(mirrored.input.source);
+  const { input, vector, landedOn } = curated
+    ? await landingOfCuratedWrite(mirrored.input)
+    : { input: mirrored.input, vector: undefined, landedOn: null };
   const { carried, existing } = await carriedFromExisting(input);
   const revisionBefore = existing ? await latestRevisionId(existing.id) : null;
+  const said = curated ? curationOf(input) : null;
   const metadata = {
     ...(input.metadata ?? {}),
+    ...endsWithIssue(input),
     ...carried,
     ...(by.writtenBy ? { writtenBy: by.writtenBy } : {}),
+    ...(said ? { curation: said.curation } : {}),
   };
-  const written = await indexMemory(
-    {
-      projectId: input.projectId,
-      source: input.source,
-      sourceRef: input.sourceRef,
-      text: input.textContent,
-      metadata,
-    },
-    { nearDuplicateProbe: NEAR_DUPLICATE_PROBE_SOURCES.has(input.source) },
-  );
+  const written = await indexMemory({
+    projectId: input.projectId,
+    source: input.source,
+    sourceRef: input.sourceRef,
+    text: input.textContent,
+    metadata,
+    ...(vector !== undefined ? { vector } : {}),
+  });
   const replaced: MemoryReplaced | undefined = existing
     ? { revisionId: await keptRevision(written.id, revisionBefore) }
     : undefined;
-  return { ...written, ...(landedAs ? { landedAs } : {}), ...(replaced ? { replaced } : {}) };
+  return {
+    ...written,
+    ...(mirrored.landedAs ? { landedAs: mirrored.landedAs } : {}),
+    ...(landedOn ? { landedOn } : {}),
+    ...(replaced ? { replaced } : {}),
+    ...(said && said.warnings.length > 0 ? { warnings: said.warnings } : {}),
+  };
 }
 
 /** The revision this write made, or null when the newest one is the one that stood before it. */

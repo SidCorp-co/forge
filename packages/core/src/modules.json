@@ -666,7 +666,7 @@
     "knowledge": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["itemEmbeddings", "knowledgeEntries", "orgKnowledgeEntries"],
+      "owns": ["itemEmbeddings", "knowledgeEntries", "knowledgeEntryRevisions", "orgKnowledgeEntries"],
       "serves": [
         "REQ-13",
         "project-onboarding#mapped",
@@ -795,7 +795,7 @@
     "memory": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["memories", "memoryRevisions"],
+      "owns": ["memories", "memoryRevisions", "memoryUpkeepRecords"],
       "serves": ["personal-data-flow#pr-memory", "personal-data-flow#ds-memory"]
     },
     "messaging": {
