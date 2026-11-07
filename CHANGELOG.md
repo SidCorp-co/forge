@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.583] - 2026-11-07
+
+The live bar counts leased builds; shipped feedback says judgement is owed
+
+### Fixed
+
+- **The live bar counts a direct-mode build as running.** An issue held under a live lease with no run reads as the master's build, where it read "Nothing running" beside rows at In progress · Build.
+- **A shipped feedback ETA says when judgement is still owed.** A planned item whose work shipped reads "Shipped 0.4.0-dev.532" with "Awaiting judgement" under it, never a plain Shipped beside Planned.
+
 ## [0.4.0-dev.582] - 2026-11-07
 
 Admins name which Forge account a chat owner is, keeping his earlier answers
