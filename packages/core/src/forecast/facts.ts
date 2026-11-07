@@ -18,6 +18,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
@@ -79,7 +80,13 @@ export interface Anchor {
  * moves names the event that moved it (Jira Plans' "current vs new value" before a schedule is
  * accepted; Linear's prediction recomputed from velocity, not from the clock).
  */
-export async function readAnchor(projectId: string, now: Date): Promise<Anchor> {
+export function readAnchor(projectId: string, now: Date): Promise<Anchor> {
+  return memoizedRead(`forecast-anchor:${projectId}:${now.toISOString()}`, () =>
+    readAnchorOnce(projectId, now),
+  );
+}
+
+async function readAnchorOnce(projectId: string, now: Date): Promise<Anchor> {
   const at = now.toISOString();
   const [row] = rowsOf<EventRow>(
     await db.execute(sql`

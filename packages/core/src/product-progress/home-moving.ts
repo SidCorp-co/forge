@@ -98,16 +98,20 @@ async function ownedIssues(projectId: string, userId: string) {
   });
 }
 
-/** Reads one project's part as `viewer`; the caller has checked `project.read` on it. */
+/**
+ * Reads one project's part as `viewer`; the caller has checked `project.read` on it. Its forecasts
+ * read at `now`, the clock its Moving rows read the project's dates at, so one simulation answers both.
+ */
 export async function readHomeProject(
   viewer: HomeViewer,
   projectId: string,
+  now: Date = new Date(),
 ): Promise<HomeProjectReads> {
   const listed = await listFeedbackAs(viewer, projectId, {});
   const allFeedback = listed.ok ? listed.list.feedback : [];
   const fViewer = await forecastViewerOf(projectId, viewer.userId);
   const [forecasts, runs, reqIds, issues] = await Promise.all([
-    readFeedbackForecasts(viewer, projectId, fViewer),
+    readFeedbackForecasts(viewer, projectId, fViewer, now),
     liveRunsByIssue(projectId, viewer.userId),
     requirementIdsOf(projectId, routedRequirements(allFeedback)),
     ownedIssues(projectId, viewer.userId),
@@ -190,7 +194,7 @@ export async function homeItemsOf(
       open.map((i) => i.id),
       now,
     ),
-    readProjectForecast(project.id),
+    readProjectForecast(project.id, now),
   ]);
   const dates = new Map(forecast.issues.map((f) => [f.key, f.forecast]));
   for (const i of open) {

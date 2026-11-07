@@ -6,6 +6,7 @@
  */
 
 import { FORECAST_LABEL, type Forecast, type ProjectForecast } from '@forge/contracts/forecast';
+import { heldRead, offerRead } from '../db/read-memo.js';
 import { activeIssuePrefix, compareDispatchOrder, listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
@@ -58,7 +59,15 @@ export const clockOf = (anchor: Pick<Anchor, 'at'>, readAt: Date) => ({
  * read as of the anchor, so a read with no event since answers the same dates; lateness is measured
  * against `now`, so an item still grows late while nothing happens.
  */
-export async function simulate(projectId: string, now: Date, anchored?: Anchor): Promise<Facts> {
+export function simulate(projectId: string, now: Date, anchored?: Anchor): Promise<Facts> {
+  // a read request asks it of a project from each feedback line and from the project's own dates
+  // (the home), at one clock: simulated once. `anchored` is the anchor as of `now`, which the
+  // simulation reads itself where none is handed it, so the answer is the same either way.
+  const key = `forecast-simulation:${projectId}:${now.toISOString()}`;
+  return heldRead<Facts>(key) ?? offerRead(key, () => simulateOnce(projectId, now, anchored));
+}
+
+async function simulateOnce(projectId: string, now: Date, anchored?: Anchor): Promise<Facts> {
   const [anchor, master] = await Promise.all([
     anchored ? Promise.resolve(anchored) : readAnchor(projectId, now),
     readMasterStanding(projectId),
