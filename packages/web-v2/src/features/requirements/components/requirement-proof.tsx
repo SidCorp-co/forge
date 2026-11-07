@@ -15,7 +15,7 @@ import { said } from "@/lib/i18n/said";
 import type { RequirementDetail } from "../types";
 import { linkedIssueHref } from "@/lib/routes/issues";
 import { OwnVerdictRows } from "./requirement-own-verdicts";
-import { agreedTitle, diffColours, VERDICT_WORD, VerdictDot } from "./standing-bits";
+import { agreedTitle, diffColours, proofStarted, VERDICT_WORD, VerdictDot } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-3 px-0.75 no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -210,9 +210,11 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
   if (cov.length === 0) return <p className="py-1.5 text-13 text-subtle">{t("requirements.criteria.empty")}</p>;
   const shown = d.standing.shownRevision;
   const wording = new Map(d.criteria.map((c) => [c.code, c]));
+  // nothing built and nothing judged: the criteria are what is asked, with no verdict yet to filter by or mark
+  const proof = proofStarted(d.standing);
   return (
     <>
-    {cov.length >= FILTER_FROM ? <VerdictFilter coverage={cov} value={filter} onChange={setFilter} /> : null}
+    {proof && cov.length >= FILTER_FROM ? <VerdictFilter coverage={cov} value={filter} onChange={setFilter} /> : null}
     <ul className="border-t border-line-subtle" data-testid="criteria-checklist">
       {cov.filter((c) => filter === "all" || c.verdict === filter).map((c) => {
         const crit = wording.get(c.code);
@@ -225,8 +227,8 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 title={c.code}
                 data-testid="criterion-line"
               >
-                <span className="w-4 flex-none">
-                  <VerdictDot verdict={c.verdict} />
+                <span className="grid w-4 flex-none place-items-center">
+                  {proof ? <VerdictDot verdict={c.verdict} /> : <span aria-hidden className="size-1.5 rounded-full bg-neutral-8" data-testid="criterion-bullet" />}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-14">{firstLine(c.body)}</span>
                 <Icon name="chevronRight" size={14} className="flex-none text-subtle transition-transform group-open:rotate-90" />

@@ -89,14 +89,119 @@ function StoredPicture({ p, projectId, reqKey, slug, canWrite }: { p: Requiremen
   );
 }
 
-export function RequirementPicture({ d, projectId, slug, inset }: { d: RequirementDetail; projectId: string; slug: string; inset: string }) {
+/**
+ * A requirement with no picture and no linked workflow: one line saying so, never a tall empty box or a
+ * POC room's form at the top of the page (ISS-1109, FB-567). Drawing it is its one act; what it is and
+ * the POC room (`setUp`) open on demand.
+ */
+function AbsentPicture({
+  headingId,
+  inset,
+  kind,
+  wanted,
+  onDraw,
+  children: setUp,
+}: {
+  headingId: string;
+  inset: string;
+  kind: string | null;
+  wanted: string | null;
+  onDraw: (() => void) | null;
+  children: ReactNode;
+}) {
   const t = useCopy();
+  const [open, setOpen] = useState(false);
+  const what = wanted ? t(`requirements.picture.of.${wanted}` as never) : null;
+  return (
+    <section aria-labelledby={headingId} className={`border-b border-line-subtle py-3 ${inset}`} data-testid="requirement-picture" data-kind={kind ?? "none"} data-absent="">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 id={headingId} className="m-0 text-13 font-semibold text-fg">
+          {t("requirements.picture.heading")}
+        </h2>
+        <span className="text-13 text-muted" data-testid="picture-empty">
+          {what ? t("requirements.picture.empty", { picture: what }) : t("requirements.picture.noKind")}
+        </span>
+        {onDraw && what ? (
+          <Button type="button" size="sm" variant="secondary" onClick={onDraw}>
+            {t("requirements.picture.edit.draw", { picture: what })}
+          </Button>
+        ) : null}
+        {setUp ? (
+          <Button type="button" size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="picture-set-up">
+            {t("requirements.picture.setUp")}
+          </Button>
+        ) : null}
+      </div>
+      {open && setUp ? (
+        <div className="mt-3 grid max-w-2xl gap-3" data-testid="picture-setup">
+          {setUp}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+type Save = ReturnType<typeof useWriteRequirementPicture>;
+
+interface Model {
+  writer: boolean;
+  rev: ReturnType<typeof shownRevisionOf>;
+  traced: ReturnType<typeof tracedWorkflows>;
+  save: Save;
+  kindRefused: string | undefined;
+}
+
+export function RequirementPicture({ d, projectId, slug, inset }: { d: RequirementDetail; projectId: string; slug: string; inset: string }) {
   const headingId = useId();
   const [editing, setEditing] = useState(false);
   const role = useProjects().data?.find((p) => p.id === projectId)?.role;
   const writer = canWriteProject(role);
   const rev = shownRevisionOf(d);
   const traced = useMemo(() => tracedWorkflows(d), [d]);
+  const save = useWriteRequirementPicture(projectId, d.key);
+  const kindRefused = namedRefusals(save.error).find((r) => r.path === "/kind")?.detail;
+  const kind = rev?.kind ?? null;
+  const wanted = kind ? PICTURE_KIND_OF[kind] : null;
+  const picture = rev?.picture ?? null;
+  // no picture at all: one line saying so, its setting up opened on demand (ISS-1109, FB-567)
+  if (traced.length === 0 && !picture && !editing) {
+    return (
+      <AbsentPicture headingId={headingId} inset={inset} kind={kind} wanted={wanted} onDraw={writer && rev && wanted ? () => setEditing(true) : null}>
+        {writer && rev ? (
+          <>
+            <KindField projectId={projectId} reqKey={d.key} revision={rev.revision} kind={kind} picture={picture} held={editing} refused={kindRefused} />
+            {kind === null || kind === "screen" ? <OpenRoom projectId={projectId} slug={slug} about={d.key} canWrite={writer} /> : null}
+          </>
+        ) : null}
+      </AbsentPicture>
+    );
+  }
+  return (
+    <ShownPicture d={d} projectId={projectId} slug={slug} inset={inset} headingId={headingId} m={{ writer, rev, traced, save, kindRefused }} editing={editing} setEditing={setEditing} />
+  );
+}
+
+function ShownPicture({
+  d,
+  projectId,
+  slug,
+  inset,
+  headingId,
+  m,
+  editing,
+  setEditing,
+}: {
+  d: RequirementDetail;
+  projectId: string;
+  slug: string;
+  inset: string;
+  headingId: string;
+  m: Model;
+  editing: boolean;
+  setEditing: (on: boolean) => void;
+}) {
+  const t = useCopy();
+  const { writer, rev, traced, save, kindRefused } = m;
   const kind = rev?.kind ?? null;
   const picture = rev?.picture ?? null;
   const wanted = kind ? PICTURE_KIND_OF[kind] : null;
@@ -104,8 +209,6 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
   // linked design is its picture, and every other kind keeps its own beneath it
   const linked = traced.length > 0;
   const own = !(linked && kind === "process");
-  const save = useWriteRequirementPicture(projectId, d.key);
-  const kindRefused = namedRefusals(save.error).find((r) => r.path === "/kind")?.detail;
   const endRef = useRef<HTMLSpanElement>(null);
   const close = () => {
     setEditing(false);

@@ -5,13 +5,12 @@
 // The revision each is read from, where an answer came from and the intake assistant's draft are agent
 // text, drawn in the developer view (REQ-43 BC-7).
 
-import { FieldLabel, ViewHeading } from "@/design";
+import { Disclosure, FieldLabel, ViewHeading } from "@/design";
 import { RequirementChecklists } from "@/features/checklists";
 import { IntakeDraft, ValueCheck } from "@/features/intake";
 import { RequirementSuggestions } from "@/features/suggestions";
 import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { Copy } from "@/lib/i18n/product-copy";
 import { Written } from "@/lib/i18n/written";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { RequirementCriteria } from "./requirement-criteria";
@@ -28,7 +27,40 @@ function Bullets({ items }: { items: string[] }) {
   );
 }
 
-const NoneNamed = ({ t }: { t: Copy }) => <p className="text-13 text-subtle">{t("requirements.overview.noneNamed")}</p>;
+const SCOPE = [
+  ["personas", "requirements.overview.persona"],
+  ["scopeIn", "requirements.overview.inScope"],
+  ["scopeOut", "requirements.overview.outOfScope"],
+] as const;
+
+/**
+ * Whom it serves and its scope, folded to its heading and opened on demand: each list it names, and the
+ * ones it leaves out named once on one "Not stated" line, never a "None named." each (ISS-1109,
+ * FB-567); a revision naming none draws nothing.
+ */
+function ServesAndScope({ spec }: { spec: NonNullable<RequirementRevision["spec"]> }) {
+  const t = useCopy();
+  const named = SCOPE.filter(([k]) => spec[k]?.length);
+  const missing = SCOPE.filter(([k]) => !spec[k]?.length);
+  if (named.length === 0) return null;
+  return (
+    <Disclosure title={t("requirements.overview.servesAndScope")} testId="requirement-scope">
+      <div className="grid gap-x-10 gap-y-5 md:grid-cols-2">
+        {named.map(([k, label]) => (
+          <div key={k}>
+            <FieldLabel>{t(label)}</FieldLabel>
+            <Bullets items={spec[k] ?? []} />
+          </div>
+        ))}
+      </div>
+      {missing.length > 0 ? (
+        <p className="mt-3 text-13 text-subtle" data-testid="scope-missing">
+          {t("requirements.goal.notStated")}: {missing.map(([, label]) => t(label)).join(", ")}
+        </p>
+      ) : null}
+    </Disclosure>
+  );
+}
 
 /** What the requirement says first: the shown revision's TL;DR, else its goal, in the language it was
  *  written in. The Overview's summary and the peek read it here, so both say the same words. */
@@ -76,30 +108,11 @@ export function RequirementOverview({
       ) : null}
       <ValueCheck projectId={projectId} slug={slug} itemKey={d.key} />
       <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} developer={developer} />
-      <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
+      {/* nothing asked and nothing open: no empty section (ISS-1109) */}
+      {d.unclear > 0 || d.questions.length > 0 ? <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} /> : null}
       {spec.assumptions?.length ? <Assumptions assumptions={spec.assumptions} revision={developer ? (shown?.revision ?? null) : null} slug={slug} /> : null}
       {developer ? <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} /> : null}
-      {spec.personas?.length || spec.scopeIn?.length || spec.scopeOut?.length ? (
-        <section>
-          <ViewHeading>{t("requirements.overview.servesAndScope")}</ViewHeading>
-          <div className="grid gap-x-10 gap-y-5 md:grid-cols-2">
-            <div>
-              <FieldLabel>{t("requirements.overview.persona")}</FieldLabel>
-              {spec.personas?.length ? <Bullets items={spec.personas} /> : <NoneNamed t={t} />}
-            </div>
-            <div className="grid content-start gap-5">
-              <div>
-                <FieldLabel>{t("requirements.overview.inScope")}</FieldLabel>
-                {spec.scopeIn?.length ? <Bullets items={spec.scopeIn} /> : <NoneNamed t={t} />}
-              </div>
-              <div>
-                <FieldLabel>{t("requirements.overview.outOfScope")}</FieldLabel>
-                {spec.scopeOut?.length ? <Bullets items={spec.scopeOut} /> : <NoneNamed t={t} />}
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      <ServesAndScope spec={spec} />
       {waiting ? (
         <section>
           <ViewHeading>{t("requirements.overview.suggestionsWaiting")}</ViewHeading>

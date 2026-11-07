@@ -55,12 +55,13 @@ const WORKFLOW = {
 };
 
 const base = reqDetail.revisions.find((r) => r.state === "current") as RequirementDetail["revisions"][number];
+// compact titles, as FB-567 asks a criterion's line to read; the wording behind each opens on demand
 const CRITERIA = [
-  "A member sees which agreements the project inherits",
-  "A member sees where the project overrides a default",
-  "An agent receives the effective agreements for its task",
-  "Each run records the agreements it ran under",
-  "A change to an agreement names who made it and why",
+  "Members see inherited agreements",
+  "Members see project overrides",
+  "Agents get the effective agreements",
+  "Each run records its agreements",
+  "A change names who and why",
 ];
 const criterion = (body: string, i: number) => ({ id: `BC-${i + 1}`, code: `BC-${i + 1}`, body, form: "statement" as const, sinceRevision: 1, retiredRevision: null });
 const gap = (body: string, i: number) => ({ code: `BC-${i + 1}`, body, verdict: "gap", verdicts: [], issues: [], uncoveredReason: null });
@@ -211,7 +212,9 @@ function wrongOf(name: string): string[] {
   if (name === "no-picture") {
     const empty = q("[data-testid=picture-empty]");
     const section = q("[data-testid=requirement-picture]");
-    if (section && section.getBoundingClientRect().height > 72) out.push(`no-picture: an absent picture takes ${Math.round(section.getBoundingClientRect().height)} px at the top of the page`);
+    // one line wide; on a phone its two acts may take a second
+    const most = window.innerWidth < 768 ? 100 : 72;
+    if (section && section.getBoundingClientRect().height > most) out.push(`no-picture: an absent picture takes ${Math.round(section.getBoundingClientRect().height)} px at the top of the page`);
     if (!empty) out.push("no-picture: an absent picture is not said at all");
   }
   // every criterion stays reachable: one opens to its wording

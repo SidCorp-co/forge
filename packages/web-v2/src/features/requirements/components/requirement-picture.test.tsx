@@ -54,15 +54,16 @@ describe("the requirement page opens on its picture", () => {
     expect(follows(region, screen.getByTestId("view-overview"))).toBe(true);
   });
 
-  it("shows an empty slot, not prose, where no kind or no picture is named, and nothing to change for a viewer", async () => {
+  it("shows an empty slot, not prose, where no kind or no picture is named, and nothing to change for a viewer", () => {
     core("viewer");
     const none = picture(detail({}));
     expect(within(none.container).getByTestId("picture-empty")).toHaveTextContent("No picture");
     expect(screen.queryByRole("figure")).toBeNull();
     none.unmount();
     picture(detail({ kind: "screen" }));
+    // one line, its kind said by what is missing, nothing to set up for a viewer (ISS-1109)
     expect(screen.getByTestId("picture-empty")).toHaveTextContent("No wireframe");
-    await screen.findByText("Screen");
+    expect(screen.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("button", { name: /Draw/ })).toBeNull();
   });
@@ -127,6 +128,7 @@ describe("a project.write holder sets the kind and draws the picture on the page
     const calls = core("member", (c) => ({ body: detail({ kind: (c.body as { kind: "rule" }).kind }) }));
     page(detail({}));
     expect(await screen.findByTestId("picture-empty")).toHaveTextContent("No picture");
+    fireEvent.click(await screen.findByRole("button", { name: "Set up" }));
     fireEvent.change(await screen.findByRole("combobox", { name: "What this requirement is" }), { target: { value: "rule" } });
     await waitFor(() => expect(calls.filter((c) => c.method === "PUT")).toEqual([{ method: "PUT", path: `/projects/${PROJECT}/requirements/REQ-1/revisions/1/kind`, body: { kind: "rule" } }]));
     expect(await screen.findByText("No example table")).toBeInTheDocument();

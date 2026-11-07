@@ -101,6 +101,8 @@ describe("a kind change that would drop a drawn picture asks first (criteria 14,
   it("asks nothing where no picture is drawn", async () => {
     const calls = core("member", (c) => ({ body: detail({ kind: (c.body as { kind: "rule" }).kind }) }));
     picture(detail({ kind: "screen" }));
+    // no picture: what it is opens on demand, beside the one line saying none is drawn (ISS-1109)
+    fireEvent.click(await screen.findByRole("button", { name: "Set up" }));
     fireEvent.change(await screen.findByRole("combobox", { name: "What this requirement is" }), { target: { value: "rule" } });
     await waitFor(() => expect(puts(calls)).toEqual([{ path: "revisions/1/kind", body: { kind: "rule" } }]));
     expect(screen.queryByRole("alertdialog")).toBeNull();

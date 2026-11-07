@@ -88,6 +88,9 @@ describe("what a requirement still leaves unclear", () => {
 
   it("lists the assumptions with whose they are and how each is confirmed", () => {
     renderWithQuery(<Assumptions assumptions={[{ text: "Every referral names one referrer.", owner: "the BA", confirmBy: "a count over last month" }]} revision={3} />);
+    // folded to its heading and count, opened on demand (ISS-1109)
+    expect(screen.queryByTestId("assumption")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Assumptions/ }));
     const row = screen.getByTestId("assumption");
     expect(row).toHaveTextContent("Every referral names one referrer.");
     expect(row).toHaveTextContent("Owned by the BA · Confirmed by: a count over last month");
@@ -96,6 +99,7 @@ describe("what a requirement still leaves unclear", () => {
   it("links the record an assistant's assumption was taken from (REQ-34 BC-13)", () => {
     const filled = { text: "Persona: Referral clerk", owner: "BA assistant", confirmBy: "The author corrects the draft where it is wrong" };
     renderWithQuery(<Assumptions assumptions={[{ ...filled, source: "workflow:referral" }, { ...filled, text: "Goal: one match", source: "REQ-1" }]} revision={1} slug="hop" />);
+    fireEvent.click(screen.getByRole("button", { name: /Assumptions/ }));
     const sources = screen.getAllByTestId("assumption-source");
     expect(sources.map((s) => s.textContent)).toEqual(["From referral", "From REQ-1"]);
     expect(sources.map((s) => within(s).getByRole("link").getAttribute("href"))).toEqual(["/projects/hop/workflows/referral", "/projects/hop/requirements/REQ-1"]);

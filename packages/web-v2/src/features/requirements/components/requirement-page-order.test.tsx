@@ -73,11 +73,13 @@ describe("a requirement page, top to bottom", () => {
     expect(lastLit()).toEqual(["pay"]);
   });
 
-  it("names a label the goal leaves out as not stated, and reads an unlabelled goal as its problem", async () => {
+  // ISS-1109 (FB-567): the labels it leaves out are named once, on one "Not stated" line, never a row each
+  it("names the labels the goal leaves out once, as not stated, and reads an unlabelled goal as its problem", async () => {
     core("viewer");
     page(detail({ kind: "rule", spec: { ...spec, goal: "Buyers leave at a slow checkout." }, writtenLang: "en" }));
     const goal = await screen.findByTestId("requirement-goal");
-    expect(within(goal).getAllByRole("definition").map((x) => x.textContent)).toEqual(["Buyers leave at a slow checkout.", "Not stated", "Not stated"]);
+    expect(within(goal).getAllByRole("definition").map((x) => x.textContent)).toEqual(["Buyers leave at a slow checkout.", "Value, Measured by"]);
+    expect(within(goal).getAllByRole("term").map((x) => x.textContent)).toEqual(["Problem", "Not stated"]);
   });
 });
 

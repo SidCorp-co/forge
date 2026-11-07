@@ -48,6 +48,14 @@ export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
   );
 }
 
+/**
+ * Whether there is any proof to read: an issue built against it, or a verdict on a criterion. Before
+ * that a criterion has no verdict to show, so a proposal nobody has built reads as criteria, never as
+ * each one failed or a gap, and the strip counts nothing verified (ISS-1109, FB-567).
+ */
+export const proofStarted = (standing: RequirementStanding): boolean =>
+  standing.coverage.some((c) => c.issues.length > 0 || c.verdicts.length > 0) || standing.facts.issuesTotal > 0;
+
 const onLifecycle = (state: RequirementState) => REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
 
 /**
@@ -140,7 +148,8 @@ function RequirementBanner({ standing, slug, className }: { standing: Requiremen
  */
 export function RequirementProgress({ standing, slug, inset }: { standing: RequirementStanding; slug: string; inset: string }) {
   const t = useCopy();
-  const { passing: k, criteria: n } = criteriaCoverageOf(standing.coverage);
+  const { passing: k, criteria: total } = criteriaCoverageOf(standing.coverage);
+  const n = total > 0 && proofStarted(standing) ? total : 0;
   const line = onLifecycle(standing.state) >= 0 || standing.next !== null;
   return (
     <section aria-label={t("requirements.progress.label")} className="border-b border-line-subtle bg-surface" data-testid="requirement-progress">

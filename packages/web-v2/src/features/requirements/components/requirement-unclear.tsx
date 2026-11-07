@@ -5,7 +5,7 @@
 // Flat rows under hairline dividers; the counts and the blocking flag are core's.
 
 import { useState } from "react";
-import { Button, CountSection, Textarea, ToneBadge, ViewHeading } from "@/design";
+import { Button, CountSection, Disclosure, Textarea, ToneBadge } from "@/design";
 import { DecisionTarget } from "@/features/comments";
 import { IntakeSource } from "@/features/intake";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -114,12 +114,15 @@ export function OpenQuestions({
   );
 }
 
-/** What the revision takes as true without proof: each with whose it is and how it will be confirmed. */
+/**
+ * What the revision takes as true without proof: each with whose it is and how it will be confirmed,
+ * folded to its heading and count and opened on demand (ISS-1109, FB-567).
+ */
 export function Assumptions({ assumptions, revision, slug }: { assumptions: RequirementAssumption[]; revision: number | null; slug?: string }) {
   const t = useCopy();
   return (
     <section data-testid="requirement-assumptions">
-      <ViewHeading right={revision !== null ? <span className="text-13 text-muted">{t("requirements.overview.fromR", { r: revision })}</span> : undefined}>{t("requirements.assumptions.heading")}</ViewHeading>
+      <Disclosure title={t("requirements.assumptions.heading")} count={assumptions.length} summary={revision !== null ? t("requirements.overview.fromR", { r: revision }) : undefined} testId="assumptions-fold">
       {assumptions.length === 0 ? (
         <p className="text-13 text-subtle">{t("requirements.assumptions.none")}</p>
       ) : (
@@ -144,6 +147,7 @@ export function Assumptions({ assumptions, revision, slug }: { assumptions: Requ
           ))}
         </ul>
       )}
+      </Disclosure>
     </section>
   );
 }
