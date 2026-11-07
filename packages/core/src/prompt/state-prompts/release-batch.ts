@@ -40,8 +40,10 @@ text. Do not look for another credential on this machine.
 4. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
    \`accepted\`; your finish is the release's record, and the server closes every claimed
    issue its holder has not closed already. \`commit\` is the SHA production serves, never compared: it is
-   the commit a verdict judged live counts through. Without it the release records the one its deploy
-   reported, or \`finish.shipped\` says why; then send it to \`release-batches/<runId>/shipped-commit\`.
+   the commit a verdict judged live counts through. Without it, or where the deploy is seen serving a
+   descendant of it, the release records the one its deploy reported (yours kept as
+   \`finish.shipped.named\`), or \`finish.shipped\` says why; then send the served commit to
+   \`release-batches/<runId>/shipped-commit\`.
 5. \`release-batches/<runId>/state\` → \`finish.state\` ends at \`finished\` (report its
    closed/failed) or \`failed\` (report its \`refusal\`). Read it again while it says
    \`accepted\`, \`verifying\` or \`closing\`.

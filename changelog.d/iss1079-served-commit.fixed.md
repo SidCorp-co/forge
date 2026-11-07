@@ -1,0 +1,1 @@
+**A release ships the commit its deploy serves.** Where production serves a descendant of the commit a finish named, that one is recorded and the named one kept, and the shipped-commit door corrects a finish-named commit to it.
