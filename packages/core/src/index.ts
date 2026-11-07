@@ -61,6 +61,7 @@ import {
   resolveIssuesForChangeRequest,
 } from './issues/index.js';
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
+import { provideKnowledgeDomainPorts } from './knowledge-ports.js';
 import { loadProjectAccess, provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
@@ -74,7 +75,7 @@ import { sourceCommit } from './lib/source-commit.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
 import { CHAT_RECORD_VETS } from './mcp/index.js';
 import { registerMemoryReconcileWorker } from './memory/index.js';
-import { provideKnowledgeAndMemoryPorts } from './memory-ports.js';
+import { provideMemoryDomainPorts } from './memory-ports.js';
 import { provideMessageReads } from './messaging/reads.js';
 import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
@@ -227,7 +228,8 @@ providePreferencesPorts({
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideRunContextDomainPorts();
 provideAgreementsPorts({ issueTaskOf });
-provideKnowledgeAndMemoryPorts();
+provideKnowledgeDomainPorts();
+provideMemoryDomainPorts();
 provideProjectsPorts({
   claimIssuePrefix,
   notifyInvitee: async (notice) => {
