@@ -17,7 +17,7 @@ const STATES: ReadonlySet<string> = new Set([...IN_FLIGHT, 'finished', 'failed']
 /** Where a finished release's `commit` came from (ISS-1079), or, with `from: null`, why it names none. */
 export interface ShippedCommitSource {
   /** `finish`: the finish's caller named it; `deploy`: the deploy this run dispatched reported it;
-   *  `attached`: an agent attached it afterwards (`shipped-commit.ts:attachShippedCommit`). */
+   *  `attached`: a caller attached it afterwards (`shipped-commit.ts:attachShippedCommit`). */
   from: 'finish' | 'deploy' | 'attached' | null;
   said: string;
   /** The commit the finish named, kept where the release shipped a descendant of it instead: the one

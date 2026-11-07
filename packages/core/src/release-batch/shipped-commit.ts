@@ -273,7 +273,7 @@ async function replaceable(
   if (from !== 'finish') {
     throw refuseRelease(
       'RELEASE_SHIPPED_COMMIT_SETTLED',
-      `Release run ${runId} records \`${held}\` as the commit it shipped, ${from === 'deploy' ? 'which the deploy it dispatched was seen serving' : 'which its agent attached'} (${finish.shipped?.said ?? 'no account'}), and such a commit is never replaced: only a commit its finish named is corrected to the one production serves.`,
+      `Release run ${runId} records \`${held}\` as the commit it shipped, ${from === 'deploy' ? 'which the deploy it dispatched was seen serving' : 'which a caller attached through this door'} (${finish.shipped?.said ?? 'no account'}), and such a commit is never replaced: only a commit its finish named is corrected to the one production serves.`,
       '/commit',
     );
   }
@@ -342,7 +342,7 @@ export async function attachShippedCommit(args: {
     : '';
   const shipped: ShippedCommitSource = {
     from: 'attached',
-    said: `attached by its agent (${args.userId})${instead} as holding every landing it carried${evidence}`,
+    said: `attached by ${args.userId}${instead} as holding every landing it carried${evidence}`,
     ...(replaced ? { named: replaced } : {}),
   };
   if (!(await writeShipped(runId, commit, shipped, replaced))) {
