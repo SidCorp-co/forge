@@ -327,7 +327,7 @@ const SHELL_MS = 300;
  * twelve: a person's reads ask each fact once for every project they hold (ISS-1070 r6).
  */
 const ATTENTION_STATEMENTS = 111;
-const HOME_STATEMENTS = 109;
+const HOME_STATEMENTS = 110;
 
 const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },

@@ -11,7 +11,8 @@ import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import type { RunLeasedBuild } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
+import { rowsOf, uuidArray } from '../db/raw-sql.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { classifyLease } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
@@ -21,6 +22,7 @@ import { RUN_SCOPE_SQL } from './facts.js';
 const LEASE_MOVES: readonly IssueStatus[] = ['open', 'reopen', 'approved', 'in_progress'];
 
 interface LeasedRow {
+  project_id: string;
   iss_seq: number;
   title: string;
   status: IssueStatus;
@@ -43,12 +45,32 @@ export async function leasedBuildsOf(
   masterDeviceId: string | null,
   now: Date,
 ): Promise<RunLeasedBuild[]> {
-  const rows = rowsOf<LeasedRow>(
+  // every project of a person's read asks in one statement (`db/read-memo.ts:rowsPerProject`, ISS-1070 r6)
+  const rows = await rowsPerProject('leasedBuilds', projectId, leasedRowsIn, (r) => r.project_id);
+  return rows.flatMap((r): RunLeasedBuild[] => {
+    const read = classifyLease({ lease: r.lease, now, fanout: 1 });
+    if ((read.verdict !== 'live' && read.verdict !== 'shared') || !read.holder) return [];
+    return [
+      {
+        issue: { key: formatIssueRef(prefix, Number(r.iss_seq)), title: r.title, status: r.status },
+        step: r.step,
+        stepStartedAt: iso(r.step_started_at),
+        holder: read.holder,
+        byMaster: masterDeviceId !== null && r.lease_device_id === masterDeviceId,
+        expiresAt: read.expiresAt?.toISOString() ?? null,
+      },
+    ];
+  });
+}
+
+/** The leased rows of every project in `projectIds`, newest step first within each. */
+async function leasedRowsIn(projectIds: readonly string[]): Promise<LeasedRow[]> {
+  return rowsOf<LeasedRow>(
     await db.execute(sql`
-      SELECT i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease, w.lease_device_id
+      SELECT i.project_id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease, w.lease_device_id
         FROM issues i
         JOIN issue_work_state w ON w.issue_id = i.id
-       WHERE i.project_id = ${projectId} AND i.archived_at IS NULL
+       WHERE i.project_id = ANY(${uuidArray(projectIds)}) AND i.archived_at IS NULL
          AND i.status IN (${sql.join(
            LEASE_MOVES.map((s) => sql`${s}`),
            sql`, `,
@@ -65,18 +87,4 @@ export async function leasedBuildsOf(
               AND (r.issue_id = i.id OR ${runGroupHolds(sql`r.metadata`, canonicalIssueKeySql(sql`i.iss_seq`))}))
        ORDER BY w.step_started_at DESC NULLS LAST, i.iss_seq DESC`),
   );
-  return rows.flatMap((r): RunLeasedBuild[] => {
-    const read = classifyLease({ lease: r.lease, now, fanout: 1 });
-    if ((read.verdict !== 'live' && read.verdict !== 'shared') || !read.holder) return [];
-    return [
-      {
-        issue: { key: formatIssueRef(prefix, Number(r.iss_seq)), title: r.title, status: r.status },
-        step: r.step,
-        stepStartedAt: iso(r.step_started_at),
-        holder: read.holder,
-        byMaster: masterDeviceId !== null && r.lease_device_id === masterDeviceId,
-        expiresAt: read.expiresAt?.toISOString() ?? null,
-      },
-    ];
-  });
 }
