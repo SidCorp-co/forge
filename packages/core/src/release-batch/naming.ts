@@ -5,8 +5,20 @@
 // here; nothing derives one.
 
 import { type ReleaseNaming, ReleaseNamingSchema } from '@forge/contracts/release-notes';
-import { and, asc, desc, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  type Column,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  ne,
+  notInArray,
+  or,
+} from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { idOfParts, onePerId, partsOf } from '../db/read-memo.js';
 import { pipelineRuns, releaseDraftNamings } from '../db/schema.js';
 import { arrivedAfterOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
@@ -47,6 +59,10 @@ export async function runCutAs(
   executor: Tx = db,
   except?: string,
 ) {
+  if (executor === db && !except) {
+    // every project's asks before the quiet point are one read (ISS-1070 r6)
+    return (await onePerId('runCutAs', idOfParts(projectId, version), runsCutAs)) ?? null;
+  }
   const [run] = await executor
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
@@ -62,7 +78,34 @@ export async function runCutAs(
   return run ?? null;
 }
 
+/** The newest run cut as each project and version named (`idOfParts`). */
+async function runsCutAs(keys: readonly string[]) {
+  const rows = await db
+    .selectDistinctOn([pipelineRuns.projectId, pipelineRuns.releaseVersion], {
+      id: pipelineRuns.id,
+      metadata: pipelineRuns.metadata,
+      projectId: pipelineRuns.projectId,
+      version: pipelineRuns.releaseVersion,
+    })
+    .from(pipelineRuns)
+    .where(
+      or(...keys.map((k) => versionOf(k, pipelineRuns.projectId, pipelineRuns.releaseVersion))),
+    )
+    .orderBy(pipelineRuns.projectId, pipelineRuns.releaseVersion, desc(pipelineRuns.createdAt));
+  return new Map(
+    rows.map(({ projectId, version, ...run }) => [idOfParts(projectId, version ?? ''), run]),
+  );
+}
+
+const versionOf = (key: string, project: Column, version: Column) => {
+  const [projectId = '', name = ''] = partsOf(key);
+  return and(eq(project, projectId), eq(version, name));
+};
+
 async function pendingNaming(projectId: string, version: string, executor: Tx = db) {
+  if (executor === db) {
+    return (await onePerId('pendingNaming', idOfParts(projectId, version), pendingNamings)) ?? null;
+  }
   const [row] = await executor
     .select()
     .from(releaseDraftNamings)
@@ -71,6 +114,26 @@ async function pendingNaming(projectId: string, version: string, executor: Tx = 
     )
     .limit(1);
   return row ?? null;
+}
+
+/** The naming written for each project and version named (`idOfParts`). */
+async function pendingNamings(keys: readonly string[]) {
+  const rows = await db
+    .select()
+    .from(releaseDraftNamings)
+    .where(
+      or(
+        ...keys.map((k) =>
+          versionOf(k, releaseDraftNamings.projectId, releaseDraftNamings.version),
+        ),
+      ),
+    );
+  const out = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    const key = idOfParts(r.projectId, r.version);
+    if (!out.has(key)) out.set(key, r);
+  }
+  return out;
 }
 
 /**

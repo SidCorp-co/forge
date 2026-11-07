@@ -3,8 +3,9 @@
 // that shipped an issue it later withdrew holds nothing.
 
 import { type SQL, sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { idList } from '../db/raw-sql.js';
+import { memoizedPerId } from '../db/read-memo.js';
 
 /**
  * When each issue last entered `reopen`, read from the move history (`kernel_transitions`); an
@@ -19,10 +20,22 @@ import { idList } from '../db/raw-sql.js';
  * happened now: their reopens with no landed arrival since are undone too (the return's own guard,
  * `fail-return.ts`, which asks how the issue would stand once back).
  */
-export async function reopenedAtOf(
+export function reopenedAtOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
   asReturned: readonly string[] = [],
+): Promise<Map<string, Date>> {
+  if (executor !== db) return reopenedAtRead(executor, issueIds, asReturned);
+  // an issue's reopen is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId(`reopenedAt:${[...asReturned].sort().join(',')}`, issueIds, (some) =>
+    reopenedAtRead(db, some, asReturned),
+  );
+}
+
+async function reopenedAtRead(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+  asReturned: readonly string[],
 ): Promise<Map<string, Date>> {
   if (issueIds.length === 0) return new Map();
   const returned =
@@ -76,7 +89,15 @@ export function voidedUpTo(
  * release that claimed it; the release page reads its own among them, a release's close being the
  * one inside that release's span.
  */
-export async function closedAtOf(
+export function closedAtOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, Date[]>> {
+  if (executor !== db) return closedAtRead(executor, issueIds);
+  return memoizedPerId('issueClosedAt', issueIds, (some) => closedAtRead(db, some));
+}
+
+async function closedAtRead(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
 ): Promise<Map<string, Date[]>> {

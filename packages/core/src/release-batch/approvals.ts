@@ -9,6 +9,7 @@ import {
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-ledger.js';
 import { peopleOf } from '../lib/people.js';
@@ -141,12 +142,22 @@ export async function approvalViews(rows: readonly ReleaseApprovalRow[]): Promis
 }
 
 export async function approvalsOfRuns(runIds: readonly string[]): Promise<ReleaseApprovalRow[]> {
-  if (runIds.length === 0) return [];
-  return db
-    .select()
-    .from(releaseApprovals)
-    .where(inArray(releaseApprovals.runId, [...runIds]))
-    .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id));
+  // a run's approvals are its own: every project's asks are one read (ISS-1070 r6), in one order
+  const rows = await rowsPerId(
+    'releaseApprovals',
+    runIds,
+    (some) =>
+      db
+        .select()
+        .from(releaseApprovals)
+        .where(inArray(releaseApprovals.runId, [...some]))
+        .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id)),
+    (r) => r.runId,
+  );
+  return rows.sort(
+    (a, b) =>
+      b.requestedAt.getTime() - a.requestedAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+  );
 }
 
 /**

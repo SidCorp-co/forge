@@ -10,6 +10,7 @@
 import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
@@ -393,7 +394,12 @@ async function standingHolds(
  * has left the gate or been claimed reads none even before `clearStaleReleaseHolds` clears its
  * record, since the wait it describes is over (`VISION: state-never-lies`). A row with none is absent.
  */
-export async function releaseHoldsOf(
+export function releaseHoldsOf(issueIds: readonly string[]): Promise<Map<string, ReleaseHoldView>> {
+  // an issue's hold is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('releaseHolds', issueIds, releaseHoldsRead);
+}
+
+async function releaseHoldsRead(
   issueIds: readonly string[],
 ): Promise<Map<string, ReleaseHoldView>> {
   if (issueIds.length === 0) return new Map();

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { whenQuiet } from './query-timing.js';
 
 /**
  * One read request's answers to the lookups its handlers repeat: who the caller is in a project,
@@ -107,7 +108,7 @@ export function perProjectRead<R, V>(
   return memoizedRead(keyOf(projectId), one);
 }
 
-/** The ids asked under one key in this turn of the event loop, read together when it ends. */
+/** The ids asked under one key before the request's next quiet point, read together there. */
 interface PendingBatch {
   ids: Set<string>;
   read: (ids: readonly string[]) => Promise<ReadonlyMap<string, unknown>>;
@@ -117,9 +118,11 @@ interface PendingBatch {
 const batches = new WeakMap<Map<string, Promise<unknown>>, Map<string, PendingBatch>>();
 
 /**
- * The batch of `key` this turn gathers into, opened on its first ask and read once the turn's other
- * work has run (`setImmediate`), so every ask made before then, from any project's read, is one
- * statement. The first asker's `read` reads for all of them: a key names one read.
+ * The batch of `key` gathering now, opened on its first ask and read at the request's next quiet
+ * point (`db/query-timing.ts:whenQuiet`): every concurrent read has then asked what it can ask before
+ * an answer it waits on, so each project's read of a person's projects asks into one statement
+ * however many statements it sent before. The first asker's `read` reads for all of them: a key
+ * names one read.
  */
 function batchOf(
   memo: Map<string, Promise<unknown>>,
@@ -135,7 +138,7 @@ function batchOf(
   if (held) return held;
   const pending = { ids: new Set<string>(), read } as PendingBatch;
   pending.done = new Promise((resolve, reject) => {
-    setImmediate(() => {
+    whenQuiet(() => {
       open.delete(key);
       Promise.resolve(pending.read([...pending.ids])).then(resolve, reject);
     });
@@ -146,8 +149,8 @@ function batchOf(
 
 /**
  * `read(ids)` keyed per id inside a {@link withReadMemo} scope: an id an earlier ask under `key`
- * already read is answered from that read, and the rest of every ask made in the same turn of the
- * event loop are read together, in one statement. A read whose answer for an id does not depend on
+ * already read is answered from that read, and the rest of every ask made before the request's next
+ * quiet point are read together, in one statement. A read whose answer for an id does not depend on
  * which other ids it was asked with (a row per issue, filtered by the issue's own id) may take it, so
  * two reads over overlapping sets of issues in one request (Needs you's open issues and the issues
  * its requirements trace), and each project's read of a person's projects read side by side, send
@@ -208,11 +211,15 @@ export function heldRead<T>(key: string): Promise<T> | undefined {
   return memos.getStore()?.get(key) as Promise<T> | undefined;
 }
 
+/** How many reads {@link rowsPerId} has sent, so rows of an earlier one sort before a later's. */
+let statementsSent = 0;
+
 /**
  * The rows `fetch` answers for `ids`, where each row belongs to the one id `idOf` names and a row's
- * presence does not depend on which other ids were asked: asked by several reads in one turn (each
- * project's read of a person's projects), one statement answers all of them (`memoizedPerId`). The
- * rows come back in the order `fetch` sent them, as `fetch(ids)` alone would.
+ * presence does not depend on which other ids were asked: asked by several reads before a quiet
+ * point (each project's read of a person's projects), one statement answers all of them
+ * (`memoizedPerId`). Each id's rows come back in the order `fetch` sent them; an id read in an
+ * earlier statement comes before one read in a later.
  */
 export async function rowsPerId<R>(
   key: string,
@@ -222,20 +229,21 @@ export async function rowsPerId<R>(
 ): Promise<R[]> {
   if (ids.length === 0) return [];
   const byId = await memoizedPerId(key, ids, async (some) => {
-    const out = new Map<string, { at: number; row: R }[]>(some.map((id) => [id, []]));
+    const out = new Map<string, { sent: number; at: number; row: R }[]>(some.map((id) => [id, []]));
+    const sent = ++statementsSent;
     const rows = await fetch(some);
-    for (const [at, row] of rows.entries()) out.get(idOf(row))?.push({ at, row });
+    for (const [at, row] of rows.entries()) out.get(idOf(row))?.push({ sent, at, row });
     return out;
   });
   return [...byId.values()]
     .flat()
-    .sort((a, b) => a.at - b.at)
+    .sort((a, b) => a.sent - b.sent || a.at - b.at)
     .map((r) => r.row);
 }
 
 /**
- * The rows `fetch` answers for `projectId`, read for every project a read across projects declared
- * ({@link readingAcross}) in one statement (`perProjectRead`), in the order `fetch` sent them.
+ * The rows `fetch` answers for `projectId`, every project asked before the request's quiet point
+ * read in one statement ({@link rowsPerId}), in the order `fetch` sent them.
  */
 export function rowsPerProject<R>(
   key: string,
@@ -243,11 +251,23 @@ export function rowsPerProject<R>(
   fetch: (projectIds: readonly string[]) => PromiseLike<R[]>,
   projectOf: (row: R) => string,
 ): Promise<R[]> {
-  return perProjectRead(
-    key,
-    projectId,
-    async (ids) => fetch(ids),
-    projectOf,
-    (rows) => rows,
-  );
+  return rowsPerId(key, [projectId], fetch, projectOf);
 }
+
+/**
+ * What `read` answers for `id`, every id asked under `key` before the request's quiet point read in
+ * one statement ({@link memoizedPerId}); undefined where `read` holds no answer for it.
+ */
+export async function onePerId<V>(
+  key: string,
+  id: string,
+  read: (ids: readonly string[]) => Promise<ReadonlyMap<string, V>>,
+): Promise<V | undefined> {
+  return (await memoizedPerId(key, [id], read)).get(id);
+}
+
+/** One id for {@link onePerId} made of several parts, a project and a version say ({@link partsOf}). */
+export const idOfParts = (...parts: readonly string[]): string => parts.join('\u0001');
+
+/** The parts {@link idOfParts} joined. */
+export const partsOf = (id: string): string[] => id.split('\u0001');

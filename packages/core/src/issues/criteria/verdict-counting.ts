@@ -7,7 +7,8 @@
 
 import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
 import { sql } from 'drizzle-orm';
-import type { Tx } from '../../db/client.js';
+import { db, type Tx } from '../../db/client.js';
+import { rowsPerId } from '../../db/read-memo.js';
 import {
   builderFactColumnsSql,
   builderFactJoinSql,
@@ -36,12 +37,44 @@ export async function countingOf(
 ): Promise<Map<string, VerdictCounting>> {
   const judged = verdicts.filter((v) => v.verdict === 'pass' || v.verdict === 'short');
   if (judged.length === 0) return new Map();
+  // a verdict's builder facts are its own: every project's asks are one read (ISS-1070 r6)
+  const ids = judged.map((v) => v.id);
+  const rows =
+    executor === db
+      ? await rowsPerId(
+          'verdictCounting',
+          ids,
+          (some) => countingRows(db, some),
+          (r) => r.id,
+        )
+      : await countingRows(executor, ids);
+  const judge = await readJudge(projectId);
+  return new Map(
+    rows.map((r) => {
+      const read = {
+        verdict: r.verdict,
+        byBuilder: r.by_builder === true,
+        authored: true,
+        recordedAt: r.recorded_at,
+      };
+      return [
+        r.id,
+        {
+          notCounted: notCountedOf(read, judge, r.fact_declared),
+          countedUnderCutover: countedUnderCutover(read, judge),
+        },
+      ];
+    }),
+  );
+}
+
+async function countingRows(executor: Pick<Tx, 'execute'>, verdictIds: readonly string[]) {
   const ids = sql.join(
-    judged.map((v) => sql`${v.id}::uuid`),
+    verdictIds.map((id) => sql`${id}::uuid`),
     sql`, `,
   );
   // the builder rule is read from the model each write keeps (`builder-facts.ts`), never computed here
-  const rows = await readWithBuilderFacts(
+  return readWithBuilderFacts(
     executor,
     async () =>
       (await executor.execute(sql`
@@ -60,24 +93,6 @@ export async function countingOf(
         fact_missing: boolean;
       }[],
     (r) => (r.fact_owed ? { issueId: r.issue_id, missing: r.fact_missing } : null),
-  );
-  const judge = await readJudge(projectId);
-  return new Map(
-    rows.map((r) => {
-      const read = {
-        verdict: r.verdict,
-        byBuilder: r.by_builder === true,
-        authored: true,
-        recordedAt: r.recorded_at,
-      };
-      return [
-        r.id,
-        {
-          notCounted: notCountedOf(read, judge, r.fact_declared),
-          countedUnderCutover: countedUnderCutover(read, judge),
-        },
-      ];
-    }),
   );
 }
 

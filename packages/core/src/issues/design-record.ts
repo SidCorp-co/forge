@@ -24,6 +24,7 @@ import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { issueDesignCriteria, issueDesigns } from '../db/schema-issue-designs.js';
 import { labels } from '../db/schema-labels.js';
 import { gateRefusal } from '../lib/gated.js';
@@ -248,9 +249,18 @@ export async function recordDesign(args: {
 }
 
 /** Each classed criterion's class and the judge it routes to, by criterion id; an unclassed one is absent. */
-export async function criterionRoutesOf(
+export function criterionRoutesOf(
   criterionIds: readonly string[],
   executor: Pick<Tx, 'select'> = db,
+): Promise<Map<string, { class: CriterionClass; judge: CriterionJudge }>> {
+  if (executor !== db) return criterionRoutesRead(criterionIds, executor);
+  // a criterion's route is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('criterionRoutes', criterionIds, (some) => criterionRoutesRead(some, db));
+}
+
+async function criterionRoutesRead(
+  criterionIds: readonly string[],
+  executor: Pick<Tx, 'select'>,
 ): Promise<Map<string, { class: CriterionClass; judge: CriterionJudge }>> {
   if (criterionIds.length === 0) return new Map();
   const rows = await executor

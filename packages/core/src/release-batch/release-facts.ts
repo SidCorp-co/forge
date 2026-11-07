@@ -11,6 +11,7 @@ import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { issues, jobs } from '../db/schema.js';
 import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -145,7 +146,33 @@ async function carriedVerdictsOf(
   if (criterionIds.length === 0) return out;
   const ids = [...new Set(criterionIds)];
   // the builder rule is read from the model each write keeps (`issues/builder-facts.ts`)
-  const rows = await readWithBuilderFacts(
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const rows = await rowsPerId('carriedVerdicts', ids, carriedRowsOf, (v) => v.criterionId);
+  for (const v of rows) {
+    const held = out.get(v.criterionId) ?? [];
+    held.push({
+      id: v.id,
+      criterionId: v.criterionId,
+      verdict: v.verdict as CarriedVerdict['verdict'],
+      identityKind: v.identityKind,
+      commitSha: v.commitSha,
+      runtimeRef: v.runtimeRef,
+      releaseVersion: v.releaseVersion,
+      at: v.createdAt.toISOString(),
+      reason: v.reason,
+      evidence: v.evidence ?? [],
+      agency: v.agency,
+      byBuilder: v.byBuilder === true,
+      authored: v.authored === true,
+      recordedAt: v.createdAt.toISOString(),
+    });
+    out.set(v.criterionId, held);
+  }
+  return out;
+}
+
+const carriedRowsOf = (ids: readonly string[]) =>
+  readWithBuilderFacts(
     db,
     () =>
       db
@@ -171,32 +198,10 @@ async function carriedVerdictsOf(
           authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
         })
         .from(criterionVerdicts)
-        .where(inArray(criterionVerdicts.criterionId, ids))
+        .where(inArray(criterionVerdicts.criterionId, [...ids]))
         .orderBy(asc(criterionVerdicts.createdAt)),
     (v) => (v.factOwed ? { issueId: v.issueId, missing: v.factMissing } : null),
   );
-  for (const v of rows) {
-    const held = out.get(v.criterionId) ?? [];
-    held.push({
-      id: v.id,
-      criterionId: v.criterionId,
-      verdict: v.verdict as CarriedVerdict['verdict'],
-      identityKind: v.identityKind,
-      commitSha: v.commitSha,
-      runtimeRef: v.runtimeRef,
-      releaseVersion: v.releaseVersion,
-      at: v.createdAt.toISOString(),
-      reason: v.reason,
-      evidence: v.evidence ?? [],
-      agency: v.agency,
-      byBuilder: v.byBuilder === true,
-      authored: v.authored === true,
-      recordedAt: v.createdAt.toISOString(),
-    });
-    out.set(v.criterionId, held);
-  }
-  return out;
-}
 
 function criterionView(c: CriterionWithVerdict, voidedBy: Date | undefined): ReleaseCriterionView {
   const stale =
@@ -222,32 +227,47 @@ async function requirementFacts(
   ids: readonly string[],
 ): Promise<Map<string, CompletionFacts>> {
   if (ids.length === 0) return new Map();
-  const rows = await db
-    .select({
-      id: requirements.id,
-      projectId: requirements.projectId,
-      status: requirements.status,
-      currentRevision: requirements.currentRevision,
-      ownerId: requirements.ownerId,
-      updatedAt: requirements.updatedAt,
-      seq: requirements.reqSeq,
-      title: requirements.title,
-    })
-    .from(requirements)
-    .where(and(eq(requirements.projectId, projectId), inArray(requirements.id, [...ids])));
+  // a requirement's rows are its own: every project's asks are one read each (ISS-1070 r6)
+  const rows = (
+    await rowsPerId(
+      'releaseRequirements',
+      ids,
+      (some) =>
+        db
+          .select({
+            id: requirements.id,
+            projectId: requirements.projectId,
+            status: requirements.status,
+            currentRevision: requirements.currentRevision,
+            ownerId: requirements.ownerId,
+            updatedAt: requirements.updatedAt,
+            seq: requirements.reqSeq,
+            title: requirements.title,
+          })
+          .from(requirements)
+          .where(inArray(requirements.id, [...some])),
+      (r) => r.id,
+    )
+  ).filter((r) => r.projectId === projectId);
   const [standings, prefix, live] = await Promise.all([
     completionStandingsOf(projectId, rows),
     activeIssuePrefix(projectId),
-    db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        issSeq: issues.issSeq,
-        status: issues.status,
-        requirementId: issues.requirementId,
-      })
-      .from(issues)
-      .where(and(inArray(issues.requirementId, [...ids]), ne(issues.status, 'dropped'))),
+    rowsPerId(
+      'releaseRequirementIssues',
+      ids,
+      (some) =>
+        db
+          .select({
+            id: issues.id,
+            projectId: issues.projectId,
+            issSeq: issues.issSeq,
+            status: issues.status,
+            requirementId: issues.requirementId,
+          })
+          .from(issues)
+          .where(and(inArray(issues.requirementId, [...some]), ne(issues.status, 'dropped'))),
+      (i) => i.requirementId as string,
+    ),
   ]);
   const naming = await issueNamingOf(projectId, prefix, live);
   return new Map(
@@ -271,11 +291,17 @@ async function requirementFacts(
 
 async function cuttersOf(runIds: readonly string[]): Promise<Map<string, ReleasePerson>> {
   if (runIds.length === 0) return new Map();
-  const rows = await db
-    .select({ runId: jobs.pipelineRunId, createdBy: jobs.createdBy })
-    .from(jobs)
-    .where(and(inArray(jobs.pipelineRunId, [...runIds]), eq(jobs.type, 'release_batch')))
-    .orderBy(asc(jobs.queuedAt));
+  const rows = await rowsPerId(
+    'releaseCutters',
+    runIds,
+    (some) =>
+      db
+        .select({ runId: jobs.pipelineRunId, createdBy: jobs.createdBy })
+        .from(jobs)
+        .where(and(inArray(jobs.pipelineRunId, [...some]), eq(jobs.type, 'release_batch')))
+        .orderBy(asc(jobs.queuedAt)),
+    (r) => r.runId as string,
+  );
   const people = await peopleOf(rows.map((r) => r.createdBy));
   const out = new Map<string, ReleasePerson>();
   for (const r of rows) {
@@ -315,11 +341,14 @@ export async function loadReleaseFacts(
   const judgedOnRelease = released ? await issuesJudgedOnRelease(projectId) : [];
   const ids = [...new Set([...issueIds, ...judgedOnRelease])];
   const [rows, prefix, cutters, judge, held, landing] = await Promise.all([
-    ids.length === 0
-      ? Promise.resolve([])
-      : db
+    rowsPerId(
+      'releaseIssueRows',
+      ids,
+      (some) =>
+        db
           .select({
             id: issues.id,
+            projectId: issues.projectId,
             seq: issues.issSeq,
             title: issues.title,
             status: issues.status,
@@ -333,7 +362,9 @@ export async function loadReleaseFacts(
             mergedPaths: issues.mergedPaths,
           })
           .from(issues)
-          .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
+          .where(inArray(issues.id, [...some])),
+      (r) => r.id,
+    ).then((all) => all.filter((r) => r.projectId === projectId)),
     activeIssuePrefix(projectId),
     cuttersOf(runIds),
     readVerifiedJudge(projectId),
@@ -414,10 +445,18 @@ export async function loadReleaseFacts(
 
 /** The issues of `projectId` holding a verdict judged on a release (ISS-900). */
 async function issuesJudgedOnRelease(projectId: string): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ id: criterionVerdicts.issueId })
-    .from(criterionVerdicts)
-    .innerJoin(issues, eq(issues.id, criterionVerdicts.issueId))
-    .where(and(eq(issues.projectId, projectId), eq(criterionVerdicts.identityKind, 'release')));
+  const rows = await rowsPerProject(
+    'issuesJudgedOnRelease',
+    projectId,
+    (ids) =>
+      db
+        .selectDistinct({ id: criterionVerdicts.issueId, projectId: issues.projectId })
+        .from(criterionVerdicts)
+        .innerJoin(issues, eq(issues.id, criterionVerdicts.issueId))
+        .where(
+          and(inArray(issues.projectId, [...ids]), eq(criterionVerdicts.identityKind, 'release')),
+        ),
+    (r) => r.projectId,
+  );
   return rows.map((r) => r.id);
 }

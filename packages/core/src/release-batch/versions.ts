@@ -1,6 +1,7 @@
 import type { VersionStatus } from '@forge/contracts/releases';
 import { asc, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { type ReleaseAttemptRow, releaseAttempts } from '../db/schema-release-ledger.js';
 import { type ReleaseRunRow, releaseRunsByVersion, supersededIdsIn } from '../pipeline/index.js';
 import type { ApprovalView } from './approvals.js';
@@ -27,12 +28,22 @@ function byVersionDescending(a: string, b: string): number {
 }
 
 export async function attemptsOf(runIds: readonly string[]): Promise<ReleaseAttemptRow[]> {
-  if (runIds.length === 0) return [];
-  return db
-    .select()
-    .from(releaseAttempts)
-    .where(inArray(releaseAttempts.runId, [...runIds]))
-    .orderBy(asc(releaseAttempts.startedAt), asc(releaseAttempts.id));
+  // a run's attempts are its own: every project's asks are one read (ISS-1070 r6), in one order
+  const rows = await rowsPerId(
+    'releaseAttempts',
+    runIds,
+    (some) =>
+      db
+        .select()
+        .from(releaseAttempts)
+        .where(inArray(releaseAttempts.runId, [...some]))
+        .orderBy(asc(releaseAttempts.startedAt), asc(releaseAttempts.id)),
+    (r) => r.runId,
+  );
+  return rows.sort(
+    (a, b) =>
+      a.startedAt.getTime() - b.startedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
 }
 
 const idsIn = (list: unknown): string[] =>

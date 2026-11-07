@@ -6,7 +6,7 @@ import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { memoizedPerId, perProjectRead } from '../db/read-memo.js';
+import { memoizedPerId, perProjectRead, rowsPerId } from '../db/read-memo.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { countingOf } from './criteria/verdict-counting.js';
 
@@ -34,25 +34,10 @@ export async function criteriaOf(
   ids: readonly string[],
 ): Promise<CriteriaRaw[]> {
   if (ids.length === 0) return [];
-  const rows = rowsOf<Omit<CriteriaRaw, 'stands' | 'counts'> & { verdict_id: string | null }>(
-    await db.execute(sql`
-      SELECT c.issue_id, v.id AS verdict_id, v.verdict, rc.code AS bc_code, v.identity_kind,
-             v.storefront_drafts,
-             NOT (rc.since_revision <= r.current_revision
-                  AND (rc.retired_revision IS NULL OR rc.retired_revision > r.current_revision))
-               AS bc_stale
-        FROM issue_criteria c
-        LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
-        LEFT JOIN requirements r ON r.id = rc.requirement_id
-        LEFT JOIN LATERAL (
-          SELECT cv.id, cv.verdict, cv.identity_kind, cv.storefront_drafts
-            FROM criterion_verdicts cv
-           WHERE cv.criterion_id = c.id
-           ORDER BY cv.created_at DESC, cv.id DESC
-           LIMIT 1
-        ) v ON true
-       WHERE c.issue_id IN (${idList(ids)}) AND c.retired_at IS NULL
-       ORDER BY c.issue_id, c.position, c.n`),
+  // an issue's criteria are its own: every project's asks are one read, in the order one read sends
+  const byIssue = await rowsPerId('standingCriteriaRows', ids, criteriaRowsOf, (r) => r.issue_id);
+  const rows = byIssue.sort((a, b) =>
+    a.issue_id < b.issue_id ? -1 : a.issue_id > b.issue_id ? 1 : 0,
   );
   const drafts = rows.flatMap((r) =>
     r.identity_kind === 'storefront_draft'
@@ -76,6 +61,29 @@ export async function criteriaOf(
       r.identity_kind !== 'storefront_draft' ||
       current(r.storefront_drafts ?? []).corroboration === 'corroborated',
   }));
+}
+
+async function criteriaRowsOf(ids: readonly string[]) {
+  return rowsOf<Omit<CriteriaRaw, 'stands' | 'counts'> & { verdict_id: string | null }>(
+    await db.execute(sql`
+      SELECT c.issue_id, v.id AS verdict_id, v.verdict, rc.code AS bc_code, v.identity_kind,
+             v.storefront_drafts,
+             NOT (rc.since_revision <= r.current_revision
+                  AND (rc.retired_revision IS NULL OR rc.retired_revision > r.current_revision))
+               AS bc_stale
+        FROM issue_criteria c
+        LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
+        LEFT JOIN requirements r ON r.id = rc.requirement_id
+        LEFT JOIN LATERAL (
+          SELECT cv.id, cv.verdict, cv.identity_kind, cv.storefront_drafts
+            FROM criterion_verdicts cv
+           WHERE cv.criterion_id = c.id
+           ORDER BY cv.created_at DESC, cv.id DESC
+           LIMIT 1
+        ) v ON true
+       WHERE c.issue_id IN (${idList(ids)}) AND c.retired_at IS NULL
+       ORDER BY c.issue_id, c.position, c.n`),
+  );
 }
 
 const byCode = (rows: readonly CriteriaRaw[]) =>
@@ -160,14 +168,22 @@ export async function modulesOf(projectId: string, ids: readonly string[]) {
       (r) => r.project_id,
       (rows) => rows,
     ),
-    db.execute(sql`
-      SELECT il.issue_id, l.id, l.name, l.slug, l.parent_id, il.is_primary
-        FROM issue_labels il JOIN labels l ON l.id = il.label_id
-       WHERE il.issue_id IN (${idList(ids)}) AND l.kind = 'module'
-       ORDER BY il.is_primary DESC, l.name`),
+    rowsPerId(
+      'moduleLinks',
+      ids,
+      async (some) =>
+        rowsOf<ModuleRaw & { issue_id: string }>(
+          await db.execute(sql`
+            SELECT il.issue_id, l.id, l.name, l.slug, l.parent_id, il.is_primary
+              FROM issue_labels il JOIN labels l ON l.id = il.label_id
+             WHERE il.issue_id IN (${idList(some)}) AND l.kind = 'module'
+             ORDER BY il.is_primary DESC, l.name`),
+        ),
+      (l) => l.issue_id,
+    ),
   ]);
   const paths = modulePaths(all.map((m) => ({ id: m.id, slug: m.slug, parentId: m.parent_id })));
-  for (const l of rowsOf<ModuleRaw>(links)) {
+  for (const l of links) {
     if (!l.issue_id || out.has(l.issue_id)) continue;
     out.set(l.issue_id, { id: l.id, path: paths.get(l.id) ?? l.slug, name: l.name });
   }
@@ -183,10 +199,16 @@ export interface CarriedFeedback {
 export async function feedbackOf(ids: readonly string[]): Promise<Map<string, CarriedFeedback[]>> {
   const out = new Map<string, CarriedFeedback[]>();
   if (ids.length === 0) return out;
-  const rows = rowsOf<{ issue_id: string; fb_seq: number; status: string }>(
-    await db.execute(sql`
-      SELECT c.issue_id, f.fb_seq, f.status FROM feedback_route_issues c JOIN feedback f ON f.id = c.feedback_id
-       WHERE c.issue_id IN (${idList(ids)}) ORDER BY f.fb_seq`),
+  const rows = await rowsPerId(
+    'carriedFeedback',
+    ids,
+    async (some) =>
+      rowsOf<{ issue_id: string; fb_seq: number; status: string }>(
+        await db.execute(sql`
+          SELECT c.issue_id, f.fb_seq, f.status FROM feedback_route_issues c JOIN feedback f ON f.id = c.feedback_id
+           WHERE c.issue_id IN (${idList(some)}) ORDER BY f.fb_seq`),
+      ),
+    (r) => r.issue_id,
   );
   for (const r of rows)
     out.set(r.issue_id, [

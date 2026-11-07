@@ -101,20 +101,40 @@ export async function blockingEdgesIn(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<BlockingEdge[]> {
+  const edges = await edgesTouching(executor, issueIds, () => sql`d.project_id = ${projectId}`);
+  return edges.map(({ projectId: _project, ...e }) => e);
+}
+
+/**
+ * `blockingEdgesIn` for issues of any projects at once, each edge with its project: an edge never
+ * crosses projects, so each is read in the project of the issues it touches (ISS-1070 r6).
+ */
+export const blockingEdgesAcross = (issueIds: readonly string[]) =>
+  edgesTouching(
+    db,
+    issueIds,
+    (ids) => sql`d.project_id IN (SELECT i.project_id FROM issues i WHERE i.id IN (${ids}))`,
+  );
+
+async function edgesTouching(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+  inProjects: (ids: SQL) => SQL,
+): Promise<(BlockingEdge & { projectId: string })[]> {
   if (issueIds.length === 0) return [];
   const ids = sql.join(
     [...new Set(issueIds)].map((id) => sql`${id}::uuid`),
     sql`, `,
   );
   const rows = (await executor.execute(sql`
-    SELECT d.id AS edge_id, d.from_issue_id AS from_id, d.to_issue_id AS to_id,
+    SELECT d.id AS edge_id, d.project_id, d.from_issue_id AS from_id, d.to_issue_id AS to_id,
            b.iss_seq AS from_seq, t.iss_seq AS to_seq, b.title AS from_title, t.title AS to_title,
            b.status AS from_status, t.status AS to_status,
            ${landedSql(sql`b`)} AS from_merged, ${landedSql(sql`t`)} AS to_merged,
            bw.step AS from_step, tw.step AS to_step,
            ${blockerUnsettledSql(sql`b`)} AS holds
     ${liveBlockingEdges(
-      sql`d.project_id = ${projectId} AND (d.from_issue_id IN (${ids}) OR d.to_issue_id IN (${ids}))`,
+      sql`${inProjects(ids)} AND (d.from_issue_id IN (${ids}) OR d.to_issue_id IN (${ids}))`,
       sql`JOIN issues t ON t.id = d.to_issue_id
           LEFT JOIN issue_work_state bw ON bw.issue_id = b.id
           LEFT JOIN issue_work_state tw ON tw.issue_id = t.id`,
@@ -126,6 +146,7 @@ export async function blockingEdgesIn(
   );
   return rows.map((r) => ({
     edgeId: String(r.edge_id),
+    projectId: String(r.project_id),
     fromId: String(r.from_id),
     toId: String(r.to_id),
     fromSeq: Number(r.from_seq),

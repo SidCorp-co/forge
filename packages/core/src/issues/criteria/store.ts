@@ -19,7 +19,8 @@ import type {
   VerdictDraftReading,
 } from '@forge/contracts/verdict-identity';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { Tx } from '../../db/client.js';
+import { db, type Tx } from '../../db/client.js';
+import { memoizedPerId } from '../../db/read-memo.js';
 import { issues } from '../../db/schema.js';
 import {
   issueCriteria,
@@ -524,6 +525,16 @@ export async function listRetiredCriteria(
 }
 
 export async function listCriteriaOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, CriterionWithVerdict[]>> {
+  if (executor !== db) return listCriteriaRead(executor, issueIds);
+  // an issue's criteria are its own: every project's asks are one read (ISS-1070 r6)
+  const held = await memoizedPerId('listCriteria', issueIds, (some) => listCriteriaRead(db, some));
+  return new Map(issueIds.map((id) => [id, held.get(id) ?? []]));
+}
+
+async function listCriteriaRead(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
 ): Promise<Map<string, CriterionWithVerdict[]>> {

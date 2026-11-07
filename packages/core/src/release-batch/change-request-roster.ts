@@ -5,6 +5,7 @@
 import type { ChangeRequestState, ReleaseChangeRequest } from '@forge/contracts/releases';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import {
   type ChangeRequestHost,
   repoPullRequestIssues,
@@ -225,9 +226,20 @@ export async function readChangeRequestLinks(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<ChangeRequestLinkRow[]> {
-  if (issueIds.length === 0) return [];
-  return db
+  // an issue's requests are its own: every project's asks are one read (ISS-1070 r6)
+  const rows = await rowsPerId(
+    'changeRequestLinks',
+    issueIds,
+    (some) => changeRequestLinksOf(some),
+    (r) => r.issueId,
+  );
+  return rows.filter((r) => r.projectId === projectId).map(({ projectId: _p, ...r }) => r);
+}
+
+const changeRequestLinksOf = (issueIds: readonly string[]) =>
+  db
     .select({
+      projectId: repoPullRequests.projectId,
       issueId: repoPullRequestIssues.issueId,
       pullRequestId: repoPullRequests.id,
       host: repoPullRequests.host,
@@ -239,13 +251,7 @@ export async function readChangeRequestLinks(
     })
     .from(repoPullRequestIssues)
     .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
-    .where(
-      and(
-        eq(repoPullRequests.projectId, projectId),
-        inArray(repoPullRequestIssues.issueId, [...issueIds]),
-      ),
-    );
-}
+    .where(inArray(repoPullRequestIssues.issueId, [...issueIds]));
 
 /**
  * The one change request a release shows beside each issue (REQ-63 BC-5): the one the release

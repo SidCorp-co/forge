@@ -13,6 +13,7 @@ import { feedbackShippedPrefix } from '@forge/contracts/notifications';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { and, desc, eq, inArray, like, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId, onePerId, rowsPerId } from '../db/read-memo.js';
 import { issues, notificationDeliveryMembers, notifications, pipelineRuns } from '../db/schema.js';
 import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { pipelineOutbox } from '../db/schema-outbox.js';
@@ -41,26 +42,16 @@ export interface ShipNoticeItem {
  * closed by hand has no release).
  */
 async function shippedOf(feedbackIds: readonly string[]): Promise<Map<string, Shipped>> {
-  const carriers = await db
-    .select({
-      feedbackId: feedbackRouteIssues.feedbackId,
-      issueId: issues.id,
-      projectId: issues.projectId,
-      mergedAt: issues.mergedAt,
-      closedAt: issues.updatedAt,
-    })
-    .from(feedbackRouteIssues)
-    .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
-    .where(
-      and(inArray(feedbackRouteIssues.feedbackId, [...feedbackIds]), ne(issues.status, 'dropped')),
-    );
+  // an item's carriers are its own: every project's asks are one read (ISS-1070 r6)
+  const carriers = await rowsPerId('shipCarriers', feedbackIds, carriersOf, (c) => c.feedbackId);
   const byProject = new Map<string, string[]>();
   for (const c of carriers)
     byProject.set(c.projectId, [...(byProject.get(c.projectId) ?? []), c.issueId]);
   const releases = new Map<string, ShippedRelease>();
-  for (const [projectId, ids] of byProject) {
-    for (const [id, r] of await shippedReleasesOf(projectId, ids)) releases.set(id, r);
-  }
+  const read = await Promise.all(
+    [...byProject].map(([projectId, ids]) => shippedReleasesOf(projectId, ids)),
+  );
+  for (const shipped of read) for (const [id, r] of shipped) releases.set(id, r);
   const out = new Map<string, Shipped>();
   for (const c of carriers) {
     const latest = out.get(c.feedbackId) ?? { at: null, release: null };
@@ -73,18 +64,44 @@ async function shippedOf(feedbackIds: readonly string[]): Promise<Map<string, Sh
   return out;
 }
 
+const carriersOf = (feedbackIds: readonly string[]) =>
+  db
+    .select({
+      feedbackId: feedbackRouteIssues.feedbackId,
+      issueId: issues.id,
+      projectId: issues.projectId,
+      mergedAt: issues.mergedAt,
+      closedAt: issues.updatedAt,
+    })
+    .from(feedbackRouteIssues)
+    .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
+    .where(
+      and(inArray(feedbackRouteIssues.feedbackId, [...feedbackIds]), ne(issues.status, 'dropped')),
+    );
+
 /**
  * When this project's releases began telling reporters: the first `release.shipped` it put on the
  * outbox, the event every ship notice is sent from. Null while none has.
  */
 export async function noticesBeganIn(projectId: string): Promise<Date | null> {
-  const [first] = await db
-    .select({ at: sql<Date | null>`min(${pipelineOutbox.createdAt})` })
-    .from(pipelineOutbox)
-    .where(
-      and(eq(pipelineOutbox.type, 'release.shipped'), eq(pipelineOutbox.projectId, projectId)),
-    );
-  return first?.at == null ? null : new Date(first.at);
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const at = await onePerId('noticesBegan', projectId, async (ids) => {
+    const rows = await db
+      .select({
+        projectId: pipelineOutbox.projectId,
+        at: sql<Date | null>`min(${pipelineOutbox.createdAt})`,
+      })
+      .from(pipelineOutbox)
+      .where(
+        and(
+          eq(pipelineOutbox.type, 'release.shipped'),
+          inArray(pipelineOutbox.projectId, [...ids]),
+        ),
+      )
+      .groupBy(pipelineOutbox.projectId);
+    return new Map(rows.flatMap((r) => (r.projectId ? [[r.projectId, r.at] as const] : [])));
+  });
+  return at == null ? null : new Date(at);
 }
 
 const day = (at: Date) => at.toISOString().slice(0, 10);
@@ -97,7 +114,12 @@ interface SentNotice {
 }
 
 /** The latest release notice written for each item, with how many bells it reached and its release. */
-async function noticesOf(feedbackIds: readonly string[]): Promise<Map<string, SentNotice>> {
+function noticesOf(feedbackIds: readonly string[]): Promise<Map<string, SentNotice>> {
+  // an item's notices are its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('shipNotices', feedbackIds, noticesRead);
+}
+
+async function noticesRead(feedbackIds: readonly string[]): Promise<Map<string, SentNotice>> {
   const rows = await db
     .select({
       dedupeKey: notifications.dedupeKey,
@@ -139,7 +161,15 @@ interface SentMessage {
 
 /** Every message to reporters on these items, newest first: a bell's or, with no recipient, a relay. */
 async function reporterMessagesOf(feedbackIds: readonly string[]): Promise<SentMessage[]> {
-  const rows = await db
+  // an item's messages are its own: every project's asks are one read (ISS-1070 r6), newest first
+  const rows = (
+    await rowsPerId('reporterMessages', feedbackIds, messageRowsOf, (r) => r.feedbackId)
+  ).sort((a, b) => b.at.getTime() - a.at.getTime());
+  return rows.map((r) => ({ ...r, relayed: r.recipients.length === 0 }));
+}
+
+const messageRowsOf = (feedbackIds: readonly string[]) =>
+  db
     .select({
       feedbackId: feedbackMessages.feedbackId,
       at: feedbackMessages.createdAt,
@@ -154,8 +184,6 @@ async function reporterMessagesOf(feedbackIds: readonly string[]): Promise<SentM
       ),
     )
     .orderBy(desc(feedbackMessages.createdAt));
-  return rows.map((r) => ({ ...r, relayed: r.recipients.length === 0 }));
-}
 
 function untoldReason(notice: SentNotice | undefined, shipped: Shipped, began: Date | null): Said {
   if (began) return say('feedback.notice.before', { date: day(began) });

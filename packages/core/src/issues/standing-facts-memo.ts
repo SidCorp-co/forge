@@ -1,9 +1,8 @@
 // The facts of the issue standing read that are each issue's own, read once per issue in a request
 // however many of its reads ask (`db/read-memo.ts:memoizedPerId`, ISS-1070).
 
-import { db } from '../db/client.js';
 import { memoizedPerId } from '../db/read-memo.js';
-import { type BlockingEdge, blockingEdgesIn } from './blocked-by.js';
+import { type BlockingEdge, blockingEdgesAcross } from './blocked-by.js';
 import { type CriteriaRaw, criteriaOf } from './standing-facts-read.js';
 
 /**
@@ -32,13 +31,19 @@ export async function edgesPerIssue(
   projectId: string,
   ids: readonly string[],
 ): Promise<BlockingEdge[]> {
-  const byIssue = await memoizedPerId(`blockingEdges:${projectId}`, ids, async (some) => {
-    const out = new Map<string, BlockingEdge[]>();
-    for (const e of await blockingEdgesIn(db, projectId, some))
+  // every project's asks before the quiet point are one read, each edge kept to its own project
+  const byIssue = await memoizedPerId('blockingEdges', ids, async (some) => {
+    const out = new Map<string, (BlockingEdge & { projectId: string })[]>();
+    for (const e of await blockingEdgesAcross(some))
       for (const id of new Set([e.fromId, e.toId]))
         if (some.includes(id)) out.set(id, [...(out.get(id) ?? []), e]);
     return out;
   });
-  const edges = new Map([...byIssue.values()].flat().map((e) => [e.edgeId, e]));
+  const edges = new Map(
+    [...byIssue.values()]
+      .flat()
+      .filter((e) => e.projectId === projectId)
+      .map(({ projectId: _project, ...e }) => [e.edgeId, e] as const),
+  );
   return [...edges.values()].sort((a, b) => a.fromSeq - b.fromSeq || a.toSeq - b.toSeq);
 }

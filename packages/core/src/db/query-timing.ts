@@ -11,6 +11,10 @@ export interface QueryTiming {
   dbMs: number;
   inFlight: number;
   openedAt: number;
+  /** Statements sent and not yet answered; a transaction waiting on its own body is not one. */
+  sending: number;
+  /** What waits for the request's next quiet point ({@link whenQuiet}). */
+  quiet: Array<() => void>;
 }
 
 const timings = new AsyncLocalStorage<QueryTiming>();
@@ -20,6 +24,8 @@ export const newQueryTiming = (): QueryTiming => ({
   dbMs: 0,
   inFlight: 0,
   openedAt: 0,
+  sending: 0,
+  quiet: [],
 });
 
 /** The timing of the request this code runs inside, if any. */
@@ -49,6 +55,42 @@ function open(t: QueryTiming): () => void {
   };
 }
 
+/**
+ * Runs `fn` at the request's next quiet point: once every statement it has sent is answered and what
+ * those answers set going has run, so every read of the request is then waiting on something not yet
+ * sent. A batched read (`db/read-memo.ts:memoizedPerId`) gathers there what all of a request's
+ * concurrent reads ask, however many statements each sent before asking. A transaction's body
+ * waiting on `fn` is not a statement in flight, so it never holds the point back. Outside a timed
+ * request the point is the end of this turn.
+ */
+export function whenQuiet(fn: () => void): void {
+  const t = timings.getStore();
+  if (!t) {
+    setImmediate(fn);
+    return;
+  }
+  t.quiet.push(fn);
+  if (t.quiet.length === 1) setImmediate(() => settle(t));
+}
+
+function settle(t: QueryTiming): void {
+  if (t.sending > 0 || t.quiet.length === 0) return;
+  const due = t.quiet;
+  t.quiet = [];
+  for (const fn of due) fn();
+}
+
+function sent(t: QueryTiming): () => void {
+  t.sending += 1;
+  let answered = false;
+  return () => {
+    if (answered) return;
+    answered = true;
+    // what the answer sets going runs first; a read it starts keeps the point back
+    if (--t.sending === 0 && t.quiet.length > 0) setImmediate(() => settle(t));
+  };
+}
+
 type Unsafe = postgres.Sql['unsafe'];
 type Scoped = { unsafe: Unsafe; savepoint?: (...args: unknown[]) => Promise<unknown> };
 type LazyQuery = PromiseLike<unknown> & { executed?: boolean; handle: () => unknown };
@@ -63,7 +105,12 @@ function timedUnsafe(unsafe: Unsafe): Unsafe {
     query.handle = function (this: LazyQuery) {
       if (!this.executed) {
         const close = open(t);
-        Promise.prototype.then.call(this, close, close);
+        const answered = sent(t);
+        const done = () => {
+          close();
+          answered();
+        };
+        Promise.prototype.then.call(this, done, done);
       }
       return handle.call(this);
     };

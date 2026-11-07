@@ -2,11 +2,10 @@
 // wore (`release-batch/version-rule.ts:decideVersion`), several runs can carry one
 // `release_version`; every reader resolves it here, so a version names one run everywhere.
 
-import { createHash } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { idOfParts, memoizedPerId, partsOf, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { pipelineRuns } from '../db/schema.js';
 import { releaseRunsHoldingSql } from '../issues/index.js';
 
@@ -57,20 +56,46 @@ export async function releaseRunsByVersion(
   version?: string,
   opts: { placing?: boolean } = {},
 ): Promise<ReleaseRunRow[]> {
-  const rows = await db
-    .select(runColumns(opts.placing === true))
-    .from(pipelineRuns)
-    .where(
-      and(
-        eq(pipelineRuns.projectId, projectId),
-        sql`${pipelineRuns.releaseVersion} IS NOT NULL`,
-        // a recorded landing is a release with a version too (`release-batch/recorded-landing.ts`)
-        sql`${pipelineRuns.metadata}->>'source' IN ('release-batch', 'release-record')`,
-        ...(version ? [eq(pipelineRuns.releaseVersion, version)] : []),
-      ),
-    );
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const placing = opts.placing === true;
+  const read = (where: SQL) =>
+    db
+      .select({ ...runColumns(placing), projectId: pipelineRuns.projectId })
+      .from(pipelineRuns)
+      .where(
+        and(
+          where,
+          sql`${pipelineRuns.releaseVersion} IS NOT NULL`,
+          // a recorded landing is a release with a version too (`release-batch/recorded-landing.ts`)
+          sql`${pipelineRuns.metadata}->>'source' IN ('release-batch', 'release-record')`,
+        ),
+      );
+  const rows = version
+    ? await rowsPerId(
+        `releaseRunsOfVersion:${placing}`,
+        [idOfParts(projectId, version)],
+        (keys) =>
+          read(
+            or(
+              ...keys.map((k) => {
+                const [project = '', name = ''] = partsOf(k);
+                return and(
+                  eq(pipelineRuns.projectId, project),
+                  eq(pipelineRuns.releaseVersion, name),
+                );
+              }),
+            ) as SQL,
+          ),
+        (r) => idOfParts(r.projectId, r.version as string),
+      )
+    : await rowsPerProject(
+        `releaseRunsByVersion:${placing}`,
+        projectId,
+        (ids) => read(inArray(pipelineRuns.projectId, [...ids])),
+        (r) => r.projectId,
+      );
   const byVersion = new Map<string, ReleaseRunRow>();
-  for (const r of rows) {
+  for (const { projectId: _project, ...r } of rows) {
     const row = {
       ...r,
       version: r.version as string,
@@ -87,16 +112,27 @@ export async function releaseRunsByIds(
   projectId: string,
   ids: readonly string[],
 ): Promise<ReleaseRunRow[]> {
-  if (ids.length === 0) return [];
-  const rows = await db
-    .select(runColumns(false))
-    .from(pipelineRuns)
-    .where(and(eq(pipelineRuns.projectId, projectId), inArray(pipelineRuns.id, [...ids])));
-  return rows.map((r) => ({
-    ...r,
-    version: r.version as string,
-    metadata: (r.metadata ?? {}) as Record<string, unknown>,
-  }));
+  const rows = await rowsPerId(
+    'releaseRunsByIds',
+    ids,
+    (some) =>
+      db
+        .select({ ...runColumns(false), projectId: pipelineRuns.projectId })
+        .from(pipelineRuns)
+        .where(inArray(pipelineRuns.id, [...some])),
+    (r) => r.id,
+  );
+  return rows.flatMap(({ projectId: project, ...r }) =>
+    project === projectId
+      ? [
+          {
+            ...r,
+            version: r.version as string,
+            metadata: (r.metadata ?? {}) as Record<string, unknown>,
+          },
+        ]
+      : [],
+  );
 }
 
 /** The run that wears `version` in this project, or `null` when none does. */
@@ -138,25 +174,42 @@ export async function shippedReleasesOf(
   issueIds: readonly string[],
 ): Promise<Map<string, ShippedRelease>> {
   if (issueIds.length === 0) return new Map();
-  // a read asks it again of the same issues (the feedback list and its ship notices): once a request
-  const ids = [...new Set(issueIds)].sort();
-  const key = createHash('sha256').update(ids.join(',')).digest('base64url');
-  return memoizedRead(`shippedReleasesOf:${projectId}:${key}`, () =>
-    readShippedReleases(projectId, ids),
+  // a read asks it again of the same issues (the feedback list and its ship notices), and every
+  // project read beside this one asks its own: once a request, all of them in one read (ISS-1070 r6)
+  const held = await memoizedPerId(
+    'shippedReleases',
+    issueIds.map((id) => idOfParts(projectId, id)),
+    readShippedReleases,
   );
+  return new Map([...held].map(([key, shipped]) => [partsOf(key)[1] as string, shipped]));
 }
 
-async function readShippedReleases(
-  projectId: string,
-  issueIds: readonly string[],
-): Promise<Map<string, ShippedRelease>> {
-  const rows = rowsOf<{ issue_id: string; version: string; at: string | Date }>(
+/** The release that shipped each issue in its project, by `idOfParts(project, issue)`. */
+async function readShippedReleases(keys: readonly string[]): Promise<Map<string, ShippedRelease>> {
+  const pairs = keys.map(partsOf);
+  const projects = [...new Set(pairs.map(([p]) => p as string))];
+  const issueIds = [...new Set(pairs.map(([, i]) => i as string))];
+  const rows = rowsOf<{ issue_id: string; project_id: string; version: string; at: string | Date }>(
     await db.execute(sql`
-      SELECT DISTINCT ON (h.issue_id) h.issue_id, h.release_version AS version, h.release_released_at AS at
-        FROM (${releaseRunsHoldingSql(issueIds, sql`${projectId}::uuid`)}) h
-       ORDER BY h.issue_id, h.release_released_at DESC`),
+      SELECT DISTINCT ON (h.issue_id, p.project_id) h.issue_id, p.project_id,
+             h.release_version AS version, h.release_released_at AS at
+        FROM (${releaseRunsHoldingSql(
+          issueIds,
+          sql`ANY(ARRAY[${sql.join(
+            projects.map((id) => sql`${id}`),
+            sql`, `,
+          )}]::uuid[])`,
+        )}) h
+        JOIN pipeline_runs p ON p.id = h.id
+       ORDER BY h.issue_id, p.project_id, h.release_released_at DESC`),
   );
+  const asked = new Set(keys);
   return new Map(
-    rows.map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),
+    rows.flatMap((r) => {
+      const key = idOfParts(r.project_id, r.issue_id);
+      return asked.has(key)
+        ? [[key, { version: r.version, at: new Date(r.at).toISOString() }]]
+        : [];
+    }),
   );
 }

@@ -6,7 +6,6 @@
  * it and its last activity. One query per fact over the whole page, never one per row.
  */
 
-import { ISSUE_TERMINAL_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
 import type {
   IssueLeaseView,
   IssueStandingDetail,
@@ -15,41 +14,25 @@ import type {
   IssueStandingScope,
   IssueWithheld,
 } from '@forge/contracts/issue-standing';
-import type { WorkStep } from '@forge/contracts/issue-vocabulary';
-import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import type { MasterServing } from '@forge/contracts/steward';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
-import type { WrittenLang } from '@forge/contracts/written-lang';
-import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
-import { scopeHeldSql } from '../db/schema-issue-designs.js';
-import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
-import { type BlockingEdge, blockerUnsettledSql } from './blocked-by.js';
-import { contractWaitUnsettledSql } from './contract-waits.js';
+import type { BlockingEdge } from './blocked-by.js';
 import { deliveryHeads } from './delivery-head.js';
-import { designHoldPhrase, designOnlyMarkSql, designReturnedUnderSql } from './design-delivery.js';
-import { landedSql, mergeSinceLastReopenSql } from './host-landing.js';
-import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
+import { designHoldPhrase } from './design-delivery.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { owedMarkSql } from './owed-merges.js';
-import { parkSinceSql } from './park-since.js';
 import { loadIssuePark } from './park-view.js';
-import { patternReviewPendingSql } from './patterns.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
-  answeredSinceSql,
   approvalRequired,
   changedTracedOf,
-  designUnapprovedSql,
-  holdsOpenHumanQuestion,
   masterServingOf,
   readJudge,
   releaseHoldsOf,
@@ -68,6 +51,13 @@ import {
 } from './standing-facts-read.js';
 import { settledGroups } from './standing-groups.js';
 import { ownerIdOf } from './standing-owner.js';
+import {
+  type IssueRowRaw,
+  issueRowOf,
+  issueRowsById,
+  issueRowsIn,
+  scopeCounts,
+} from './standing-rows.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
 import { stepFactsOf } from './step-facts-read.js';
@@ -75,123 +65,6 @@ import { stepOutcomesOf } from './step-outcomes.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
-
-const DONE_SQL = sql`(${sql.join(
-  ISSUE_TERMINAL_STATUSES.map((s) => sql`${s}`),
-  sql`, `,
-)})`;
-
-interface IssueRowRaw {
-  id: string;
-  iss_seq: number;
-  title: string;
-  written_lang: WrittenLang | null;
-  status: IssueStatus;
-  waiting_kind: string | null;
-  landed: boolean;
-  landed_since_reopen: boolean;
-  release_noted: boolean;
-  priority: string;
-  category: string | null;
-  complexity: string | null;
-  assignee_id: string | null;
-  created_by_id: string | null;
-  by_agent: boolean;
-  /** Filed by an account of the retired steward (`steward_accounts`). */
-  by_steward: boolean;
-  /** Filed by an agent account (`users.kind = 'agent'`), whichever box it was filed from. */
-  by_agent_account: boolean;
-  /** The person who owns the box it was filed from; null where none filed it. */
-  box_owner_id: string | null;
-  requirement_id: string | null;
-  planned_revision: number | null;
-  plan: string | null;
-  created_at: string;
-  updated_at: string;
-  step: WorkStep | null;
-  step_started_at: string | null;
-  steps: WorkStepEntry[] | null;
-  lease: unknown;
-  branch: string | null;
-  head_sha: string | null;
-  left_status: IssueStatus | null;
-  design_only: boolean;
-  ws_updated_at: string | null;
-  last_activity: string | null;
-  moving: boolean;
-  run_live: boolean;
-  owes_answer: boolean;
-  holds_dependents: boolean;
-  park_entry: { reason: string | null; agency: string; actorType: string } | null;
-  answered_park: { hold: AnswerHold | null; resume: AnswerResume | null } | null;
-  design_returned: { flow: string; revision: number } | null;
-  design_unapproved: boolean;
-  contract_unsettled: boolean;
-  pattern_pending: boolean;
-  scope_held: boolean;
-  owed_mark: { number: number; commit: string } | null;
-  status_since: string;
-}
-
-function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
-  if (scope === 'one') return sql`AND i.iss_seq = ${key}`;
-  if (scope === 'open') return sql`AND i.status NOT IN ${DONE_SQL}`;
-  if (scope === 'closed') return sql`AND i.status IN ${DONE_SQL}`;
-  return sql``;
-}
-
-async function issueRows(projectId: string, where: SQL, limit: number): Promise<IssueRowRaw[]> {
-  return rowsOf<IssueRowRaw>(
-    await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind,
-             ${landedSql(sql`i`)} AS landed,
-             (${landedSql(sql`i`)} AND ${mergeSinceLastReopenSql(sql`i`)}) AS landed_since_reopen,
-             (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
-             i.priority, i.category, i.complexity,
-             i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
-             (i.created_by_device_id IS NOT NULL OR EXISTS (
-               SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent')) AS by_agent,
-             EXISTS (SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent') AS by_agent_account,
-             EXISTS (SELECT 1 FROM steward_accounts sa WHERE sa.user_id = i.created_by_id) AS by_steward,
-             (SELECT d.owner_id FROM devices d WHERE d.id = i.created_by_device_id) AS box_owner_id,
-             CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
-             i.created_at, i.updated_at,
-             w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
-             w.updated_at AS ws_updated_at, ${designOnlyMarkSql(sql`i`)} AS design_only,
-             (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
-             coalesce((SELECT max(kt.created_at) FROM kernel_transitions kt
-                        WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status),
-                      i.created_at) AS status_since,
-             ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
-             ${blockerUnsettledSql(sql`i`)} AS holds_dependents,
-             ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
-             CASE WHEN i.status = 'on_hold' THEN (
-               SELECT jsonb_build_object('reason', kt.reason, 'agency', kt.actor_agency, 'actorType', kt.actor_type)
-                 FROM kernel_transitions kt
-                WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = 'on_hold'
-                ORDER BY kt.created_at DESC LIMIT 1) END AS park_entry,
-             CASE WHEN i.status = 'needs_info' THEN ${answeredSinceSql(
-               sql`i.id`,
-               parkSinceSql(sql`i.id`),
-             )} END AS answered_park,
-             ${designReturnedUnderSql(sql`i.id`)} AS design_returned,
-             ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,
-             ${patternReviewPendingSql(sql`i.id`)} AS pattern_pending,
-             ${scopeHeldSql(sql`i.id`)} AS scope_held,
-             ${owedMarkSql(sql`i`)} AS owed_mark,
-             ${issueWorkMovingSql({
-               issueId: sql`i.id`,
-               projectId: sql`i.project_id`,
-               issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
-             })} AS moving,
-             ${issueRunLiveSql({ projectId: sql`i.project_id`, issueKey: sql`'ISS-' || i.iss_seq` })} AS run_live
-        FROM issues i
-        LEFT JOIN issue_work_state w ON w.issue_id = i.id
-       WHERE i.project_id = ${projectId} AND i.archived_at IS NULL ${where}
-       ORDER BY i.updated_at DESC
-       LIMIT ${limit}`),
-  );
-}
 
 function leaseOf(raw: unknown, now: Date): IssueLeaseView | null {
   if (raw === null || raw === undefined) return null;
@@ -339,12 +212,6 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
 /** How far a read follows live blockers outside the rows it was asked for; past it a blocker reads unread. */
 const BLOCKER_DEPTH = 4;
 
-const idsIn = (ids: readonly string[]) =>
-  sql`AND i.id IN (${sql.join(
-    ids.map((id) => sql`${id}`),
-    sql`, `,
-  )})`;
-
 async function standingRows(
   projectId: string,
   raws: readonly IssueRowRaw[],
@@ -371,18 +238,14 @@ async function standingRows(
     edgesPerIssue(projectId, ids),
     criteriaPerIssue(projectId, ids),
     memoizedPerId(`modules:${projectId}`, ids, (some) => modulesOf(projectId, some)),
-    memoizedPerId('carriedFeedback', ids, feedbackOf),
+    feedbackOf(ids),
     approvalRequired(projectId),
     withheldOf(projectId, raws),
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
     masterServingOf(projectId),
     readJudge(projectId),
-    memoizedPerId(
-      'releaseHolds',
-      raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id),
-      releaseHoldsOf,
-    ),
+    releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
     requirementsOf(
@@ -422,7 +285,7 @@ async function standingRows(
     inputs.map(([r, input]) => [r.id, input] as const),
     depth < BLOCKER_DEPTH
       ? async (outside) => {
-          const raws = await issueRows(projectId, idsIn(outside), outside.length);
+          const raws = await issueRowsById(projectId, outside);
           const read = await standingRows(projectId, raws, now, depth + 1);
           return new Map(read.map((r) => [r.id, r.standing.attentionGroup]));
         }
@@ -457,16 +320,6 @@ async function standingRows(
   }));
 }
 
-async function scopeCounts(projectId: string) {
-  const [row] = rowsOf<{ open: number; closed: number }>(
-    await db.execute(sql`
-      SELECT count(*) FILTER (WHERE status NOT IN ${DONE_SQL})::int AS open,
-             count(*) FILTER (WHERE status IN ${DONE_SQL})::int AS closed
-        FROM issues WHERE project_id = ${projectId} AND archived_at IS NULL`),
-  );
-  return { open: row?.open ?? 0, closed: row?.closed ?? 0 };
-}
-
 /** The list a project's Issues screen reads: one scope, newest write first, at most `limit` rows. */
 export async function listIssueStanding(
   projectId: string,
@@ -475,7 +328,7 @@ export async function listIssueStanding(
   limit: number = STANDING_LIMIT,
 ): Promise<IssueStandingList> {
   const [raws, counts, releaseApproval] = await Promise.all([
-    issueRows(projectId, scopeSql(scope, null), limit),
+    issueRowsIn(projectId, scope, limit),
     scopeCounts(projectId),
     approvalRequired(projectId),
   ]);
@@ -505,11 +358,7 @@ export async function issueWaitsOf(
   now: Date = new Date(),
 ): Promise<Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>> {
   if (ids.length === 0) return new Map();
-  const rows = await standingRows(
-    projectId,
-    await issueRows(projectId, idsIn(ids), ids.length),
-    now,
-  );
+  const rows = await standingRows(projectId, await issueRowsById(projectId, ids), now);
   return new Map(rows.map((r) => [r.id, { key: r.key, standing: r.standing }]));
 }
 
@@ -519,7 +368,7 @@ export async function readIssueStanding(
   issSeq: number,
   now: Date = new Date(),
 ): Promise<IssueStandingDetail | null> {
-  const raws = await issueRows(projectId, scopeSql('one', issSeq), 1);
+  const raws = await issueRowOf(projectId, issSeq);
   const raw = raws[0];
   if (!raw) return null;
   const [[row], releaseApproval, health, park, steps] = await Promise.all([

@@ -31,6 +31,7 @@ import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import {
   type Carriage,
@@ -125,7 +126,14 @@ export type Holding = boolean | { unread: string };
 const short = (sha: string) => sha.slice(0, 12);
 
 /** The commit the landing record that closed each issue names and when, for the issues standing closed. */
-async function recordedLandings(
+function recordedLandings(
+  ids: readonly string[],
+): Promise<Map<string, { commit: string; at: Date }>> {
+  // an issue's landing record is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('recordedLandings', ids, recordedLandingsRead);
+}
+
+async function recordedLandingsRead(
   ids: readonly string[],
 ): Promise<Map<string, { commit: string; at: Date }>> {
   const rows = (await db.execute(sql`
@@ -189,18 +197,24 @@ export async function landedBuildsOf(
   const out = new Map<string, LandedBuild>();
   const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
   if (ids.length === 0) return out;
-  const rows = await db
-    .select({
-      id: issues.id,
-      mergedAt: issues.mergedAt,
-      sha: issues.mergedCommitSha,
-      head: issues.mergedHead,
-      status: issues.status,
-      artifacts: issues.mergedArtifacts,
-      paths: issues.mergedPaths,
-    })
-    .from(issues)
-    .where(inArray(issues.id, ids));
+  const rows = await rowsPerId(
+    'landedBuildRows',
+    ids,
+    (some) =>
+      db
+        .select({
+          id: issues.id,
+          mergedAt: issues.mergedAt,
+          sha: issues.mergedCommitSha,
+          head: issues.mergedHead,
+          status: issues.status,
+          artifacts: issues.mergedArtifacts,
+          paths: issues.mergedPaths,
+        })
+        .from(issues)
+        .where(inArray(issues.id, [...some])),
+    (r) => r.id,
+  );
   const [recorded, claims, shown] = await Promise.all([
     recordedLandings(ids),
     currentMarkClaims(ids),

@@ -9,13 +9,18 @@ import type { FeedbackCarrierView, FeedbackRouteView } from '@forge/contracts/fe
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { closedUnreleasedSql } from '../issues/index.js';
 
 /** Each issue a page of feedback names, with the release claiming it and whether it waits for one. */
-export async function carrierIssueRows(issueIds: readonly string[]) {
-  if (issueIds.length === 0) return [];
-  return db
+export function carrierIssueRows(issueIds: readonly string[]) {
+  // an issue's row is its own: every project's asks are one read (ISS-1070 r6)
+  return rowsPerId('carrierIssueRows', issueIds, carrierRowsOf, (r) => r.id);
+}
+
+const carrierRowsOf = (issueIds: readonly string[]) =>
+  db
     .select({
       id: issues.id,
       seq: issues.issSeq,
@@ -27,7 +32,6 @@ export async function carrierIssueRows(issueIds: readonly string[]) {
     .from(issues)
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
     .where(inArray(issues.id, [...issueIds]));
-}
 
 /** The keys of an issue route's carriers closed met in scope that no shipped release holds yet. */
 export function unreleasedCarrierKeys(

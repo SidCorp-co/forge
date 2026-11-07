@@ -23,6 +23,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import type { CommitReading } from './commit-landing.js';
 import type { MarkSaid } from './mark-said.js';
@@ -115,9 +116,18 @@ export function markClaimsCommitSql(i: SQL): SQL {
  * unmark, or a mark naming no whole commit, is absent. On an exact tie the unmark is read as newer,
  * so a withdrawn claim is never the one that stands.
  */
-export async function currentMarkClaims(
+export function currentMarkClaims(
   issueIds: readonly string[],
   executor: Pick<Tx, 'execute'> = db,
+): Promise<Map<string, string>> {
+  if (executor !== db) return markClaimsRead(issueIds, executor);
+  // an issue's mark is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('currentMarkClaims', issueIds, (some) => markClaimsRead(some, db));
+}
+
+async function markClaimsRead(
+  issueIds: readonly string[],
+  executor: Pick<Tx, 'execute'>,
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (issueIds.length === 0) return out;

@@ -1,5 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 
 export interface DesignHold {
   readonly workflowId: string;
@@ -60,7 +61,16 @@ export function designHeldSql(issueId: SQL): SQL {
   )`;
 }
 
-export async function designHoldsOf(
+export function designHoldsOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, DesignHold[]>> {
+  if (executor !== db) return designHoldsRead(executor, issueIds);
+  // an issue's design holds are its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('designHolds', issueIds, (some) => designHoldsRead(db, some));
+}
+
+async function designHoldsRead(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
 ): Promise<Map<string, DesignHold[]>> {

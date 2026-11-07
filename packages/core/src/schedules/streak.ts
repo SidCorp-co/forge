@@ -3,8 +3,9 @@
 // schedule's streak here and judge it with `streakFails`, so an admin and a member see one answer
 
 import { SCHEDULE_RUN_STREAK_SKIP_REASONS } from '@forge/contracts/schedules';
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerProject } from '../db/read-memo.js';
 
 /** How recently a streak's last counted fire must have run for the streak to stand. */
 const SCHEDULE_ACTIVE_WINDOW_HOURS = 24 * 8;
@@ -20,6 +21,7 @@ export interface ScheduleStreak {
 }
 
 type StreakRow = {
+  project_id: string;
   schedule_id: string;
   streak: number;
   last_counted_at: string | Date;
@@ -37,36 +39,63 @@ const at = (v: string | Date): Date => (v instanceof Date ? v : new Date(v));
 export async function readScheduleStreaks(
   scope: { projectId?: string; scheduleId?: string; minStreak?: number } = {},
 ): Promise<ScheduleStreak[]> {
-  const project = scope.projectId ? sql`AND project_id = ${scope.projectId}` : sql``;
-  const schedule = scope.scheduleId ? sql`AND schedule_id = ${scope.scheduleId}` : sql``;
-  const rows = await db.execute<StreakRow>(sql`
-    WITH counted AS (
-      SELECT schedule_id, status = 'success' AS succeeded, created_at,
-             row_number() OVER (PARTITION BY schedule_id ORDER BY created_at DESC, id DESC) AS rn
-      FROM schedule_runs
-      WHERE (status IN ('success', 'failed')
-             OR (status = 'skipped' AND reason IN (${STREAK_SKIP_REASONS_SQL})))
-        ${project} ${schedule}
-    ),
-    heads AS (
-      SELECT schedule_id,
-             coalesce(min(rn) FILTER (WHERE succeeded) - 1, count(*))::int AS streak,
-             max(created_at) AS last_counted_at
-      FROM counted
-      GROUP BY schedule_id
-    )
-    SELECT h.schedule_id::text AS schedule_id, h.streak, h.last_counted_at,
-           (SELECT min(c.created_at) FROM counted c
-             WHERE c.schedule_id = h.schedule_id AND c.rn <= h.streak) AS streak_started_at
-    FROM heads h
-    WHERE h.streak >= ${scope.minStreak ?? 0}
-  `);
+  const { projectId, scheduleId } = scope;
+  const minStreak = scope.minStreak ?? 0;
+  // a project's alone are read for every project asked with it (ISS-1070 r6)
+  const rows =
+    projectId && !scheduleId
+      ? await rowsPerProject(
+          `scheduleStreaks:${minStreak}`,
+          projectId,
+          (ids) =>
+            streakRows(
+              sql`AND project_id IN (${sql.join(
+                ids.map((id) => sql`${id}::uuid`),
+                sql`, `,
+              )})`,
+              minStreak,
+            ),
+          (r) => r.project_id,
+        )
+      : await streakRows(
+          sql`${projectId ? sql`AND project_id = ${projectId}` : sql``} ${
+            scheduleId ? sql`AND schedule_id = ${scheduleId}` : sql``
+          }`,
+          minStreak,
+        );
   return rows.map((r) => ({
     scheduleId: r.schedule_id,
     streak: Number(r.streak),
     lastCountedAt: at(r.last_counted_at),
     streakStartedAt: r.streak_started_at === null ? null : at(r.streak_started_at),
   }));
+}
+
+async function streakRows(scope: SQL, minStreak: number): Promise<StreakRow[]> {
+  return [
+    ...(await db.execute<StreakRow>(sql`
+    WITH counted AS (
+      SELECT schedule_id, project_id, status = 'success' AS succeeded, created_at,
+             row_number() OVER (PARTITION BY schedule_id ORDER BY created_at DESC, id DESC) AS rn
+      FROM schedule_runs
+      WHERE (status IN ('success', 'failed')
+             OR (status = 'skipped' AND reason IN (${STREAK_SKIP_REASONS_SQL})))
+        ${scope}
+    ),
+    heads AS (
+      SELECT schedule_id, min(project_id::text) AS project_id,
+             coalesce(min(rn) FILTER (WHERE succeeded) - 1, count(*))::int AS streak,
+             max(created_at) AS last_counted_at
+      FROM counted
+      GROUP BY schedule_id
+    )
+    SELECT h.schedule_id::text AS schedule_id, h.project_id, h.streak, h.last_counted_at,
+           (SELECT min(c.created_at) FROM counted c
+             WHERE c.schedule_id = h.schedule_id AND c.rn <= h.streak) AS streak_started_at
+    FROM heads h
+    WHERE h.streak >= ${minStreak}
+  `)),
+  ];
 }
 
 /**

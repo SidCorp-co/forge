@@ -6,6 +6,7 @@ import type { AutomationPerson, FireProducedItems } from '@forge/contracts/autom
 import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { onePerId, rowsPerProject } from '../db/read-memo.js';
 import {
   agentSessions,
   issues,
@@ -23,9 +24,24 @@ export async function scheduleFacts(
   projectId: string,
   scheduleId?: string,
 ): Promise<ScheduleFacts[]> {
-  const where = [eq(schedules.projectId, projectId)];
-  if (scheduleId) where.push(eq(schedules.id, scheduleId));
-  const rows = await db
+  // a project's schedules alone are read for every project asked with it (ISS-1070 r6)
+  const rows = scheduleId
+    ? await scheduleRowsWhere(and(eq(schedules.projectId, projectId), eq(schedules.id, scheduleId)))
+    : await rowsPerProject(
+        'scheduleFacts',
+        projectId,
+        (ids) => scheduleRowsWhere(inArray(schedules.projectId, [...ids])),
+        (r) => r.projectId,
+      );
+  const owners = await ownersOf(rows.map((r) => r.ownerId));
+  return rows.map(({ ownerId, ...s }) => ({
+    ...s,
+    owner: ownerId ? (owners.get(ownerId) ?? null) : null,
+  }));
+}
+
+const scheduleRowsWhere = (where: SQL | undefined) =>
+  db
     .select({
       id: schedules.id,
       projectId: schedules.projectId,
@@ -39,14 +55,8 @@ export async function scheduleFacts(
       ownerId: schedules.ownerId,
     })
     .from(schedules)
-    .where(and(...where))
+    .where(where)
     .orderBy(asc(schedules.createdAt), asc(schedules.id));
-  const owners = await ownersOf(rows.map((r) => r.ownerId));
-  return rows.map(({ ownerId, ...s }) => ({
-    ...s,
-    owner: ownerId ? (owners.get(ownerId) ?? null) : null,
-  }));
-}
 
 /** Each owner by id with the name a person reads; an id whose account is gone reads as no owner. */
 async function ownersOf(ids: readonly (string | null)[]): Promise<Map<string, AutomationPerson>> {
@@ -92,25 +102,12 @@ interface FireScope {
 }
 
 export async function fireFacts(scope: FireScope): Promise<{ fires: FireRow[]; total: number }> {
-  const where: SQL[] = [eq(scheduleRuns.projectId, scope.projectId)];
-  if (scope.scheduleId) where.push(eq(scheduleRuns.scheduleId, scope.scheduleId));
-  if (scope.fireId) where.push(eq(scheduleRuns.id, scope.fireId));
-  const [rows, [tally]] = await Promise.all([
-    db
-      .select(fireColumns)
-      .from(scheduleRuns)
-      .innerJoin(schedules, eq(schedules.id, scheduleRuns.scheduleId))
-      .where(and(...where))
-      .orderBy(desc(scheduleRuns.createdAt), desc(scheduleRuns.id))
-      .limit(scope.limit),
-    db
-      .select({ n: count() })
-      .from(scheduleRuns)
-      .where(and(...where)),
-  ]);
+  const { rows, total } =
+    scope.scheduleId || scope.fireId ? await firesWhere(scope) : await latestFiresOf(scope);
   const names = await ownersOf(rows.map((r) => r.runAsId));
   return {
-    fires: rows.map(({ scheduleId, runAsId, reads, opsCalls, filings, stateAfter, ...f }) => ({
+    fires: rows.map(
+      ({ scheduleId, runAsId, reads, opsCalls, filings, stateAfter, projectId: _p, ...f }) => ({
       ...f,
       scheduleId,
       runAs: runAsId ? (names.get(runAsId) ?? { id: runAsId, name: null }) : null,
@@ -121,8 +118,67 @@ export async function fireFacts(scope: FireScope): Promise<{ fires: FireRow[]; t
       issues: Number(f.issues),
       notifications: Number(f.notifications),
     })),
-    total: Number(tally?.n ?? 0),
+    total,
   };
+}
+
+const firesQuery = (where: SQL | undefined) =>
+  db
+    .select({ ...fireColumns, projectId: scheduleRuns.projectId })
+    .from(scheduleRuns)
+    .innerJoin(schedules, eq(schedules.id, scheduleRuns.scheduleId))
+    .where(where)
+    .orderBy(desc(scheduleRuns.createdAt), desc(scheduleRuns.id));
+
+type FireQueryRow = Awaited<ReturnType<typeof firesQuery>>[number];
+
+async function firesWhere(scope: FireScope) {
+  const where: SQL[] = [eq(scheduleRuns.projectId, scope.projectId)];
+  if (scope.scheduleId) where.push(eq(scheduleRuns.scheduleId, scope.scheduleId));
+  if (scope.fireId) where.push(eq(scheduleRuns.id, scope.fireId));
+  const [rows, [tally]] = await Promise.all([
+    firesQuery(and(...where)).limit(scope.limit),
+    db
+      .select({ n: count() })
+      .from(scheduleRuns)
+      .where(and(...where)),
+  ]);
+  return { rows, total: Number(tally?.n ?? 0) };
+}
+
+/**
+ * A project's newest `limit` fires and how many it has, read for every project asked with it in one
+ * statement each (ISS-1070 r6): the newest of each project ranked inside it, as its own read ranks.
+ */
+async function latestFiresOf(scope: FireScope) {
+  const [rows, total] = await Promise.all([
+    rowsPerProject(
+      `latestFires:${scope.limit}`,
+      scope.projectId,
+      (ids) => {
+        const newest = sql`${scheduleRuns.id} IN (
+          SELECT id FROM (
+            SELECT id, row_number() OVER (
+                     PARTITION BY project_id ORDER BY created_at DESC, id DESC) AS rank
+              FROM schedule_runs WHERE project_id IN (${sql.join(
+                ids.map((id) => sql`${id}::uuid`),
+                sql`, `,
+              )})
+          ) ranked WHERE rank <= ${scope.limit})`;
+        return firesQuery(and(inArray(scheduleRuns.projectId, [...ids]), newest));
+      },
+      (r: FireQueryRow) => r.projectId,
+    ),
+    onePerId('fireCounts', scope.projectId, async (ids) => {
+      const tallies = await db
+        .select({ projectId: scheduleRuns.projectId, n: count() })
+        .from(scheduleRuns)
+        .where(inArray(scheduleRuns.projectId, [...ids]))
+        .groupBy(scheduleRuns.projectId);
+      return new Map(tallies.map((t) => [t.projectId, Number(t.n)]));
+    }),
+  ]);
+  return { rows, total: total ?? 0 };
 }
 
 function stewardActionsOf(report: unknown): StewardAction[] | null {

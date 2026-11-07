@@ -12,9 +12,9 @@ import {
   type FeedbackPhase,
   type FeedbackSummary,
 } from '@forge/contracts/feedback';
-import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { memoizedRead, rowsPerProject } from '../db/read-memo.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { requireDeclaredOn } from '../permissions/index.js';
@@ -122,6 +122,37 @@ export async function listFeedbackIn(
   return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
 }
 
+/**
+ * A project's newest `LIST_WINDOW` items, every project asked with it read in one statement
+ * (ISS-1070 r6): each project's newest ranked inside it, as its own read ranks them.
+ */
+const latestFeedbackOf = (projectId: string) =>
+  rowsPerProject(
+    'feedbackWindow',
+    projectId,
+    (ids) => {
+      const projects = sql.join(
+        ids.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      );
+      return db
+        .select()
+        .from(feedback)
+        .where(
+          and(
+            inArray(feedback.projectId, [...ids]),
+            sql`${feedback.id} IN (
+              SELECT id FROM (
+                SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at DESC) AS rank
+                  FROM feedback WHERE project_id IN (${projects})
+              ) ranked WHERE rank <= ${LIST_WINDOW})`,
+          ),
+        )
+        .orderBy(desc(feedback.createdAt));
+    },
+    (r) => r.projectId,
+  );
+
 /** Every item the query names, as `viewer` reads them, before the phase filter. */
 async function summariesOf(
   viewer: FeedbackActor,
@@ -134,19 +165,22 @@ async function summariesOf(
     ? await feedbackIdsOfRequirement(projectId, query.requirement)
     : null;
   const named = query.ids ? [...query.ids] : null;
-  const rows = await db
-    .select()
-    .from(feedback)
-    .where(
-      and(
-        eq(feedback.projectId, projectId),
-        query.q ? ilike(feedback.title, `%${query.q}%`) : undefined,
-        about ? inArray(feedback.id, about.length ? about : [NO_FEEDBACK]) : undefined,
-        named ? inArray(feedback.id, named.length ? named : [NO_FEEDBACK]) : undefined,
-      ),
-    )
-    .orderBy(desc(feedback.createdAt))
-    .limit(named ? Math.max(named.length, 1) : LIST_WINDOW);
+  const rows =
+    !query.q && !about && !named
+      ? await latestFeedbackOf(projectId)
+      : await db
+          .select()
+          .from(feedback)
+          .where(
+            and(
+              eq(feedback.projectId, projectId),
+              query.q ? ilike(feedback.title, `%${query.q}%`) : undefined,
+              about ? inArray(feedback.id, about.length ? about : [NO_FEEDBACK]) : undefined,
+              named ? inArray(feedback.id, named.length ? named : [NO_FEEDBACK]) : undefined,
+            ),
+          )
+          .orderBy(desc(feedback.createdAt))
+          .limit(named ? Math.max(named.length, 1) : LIST_WINDOW);
   const [linked, can] = await Promise.all([
     linkedOf(projectId, rows),
     viewerCanIn(viewer, projectId),

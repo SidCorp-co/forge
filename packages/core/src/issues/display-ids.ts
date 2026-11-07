@@ -1,20 +1,30 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
 /** `ISS-nn` for each of these in one read, on the caller's transaction where it has one; the uuid
  *  keying them is on no screen. */
-export async function issueDisplayIds(
+export function issueDisplayIds(
   issueIds: string[],
   executor: Tx = db,
+): Promise<Map<string, string>> {
+  if (executor !== db) return displayIdsRead(issueIds, executor);
+  // an issue's key is its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('issueDisplayIds', issueIds, (some) => displayIdsRead(some, db));
+}
+
+async function displayIdsRead(
+  issueIds: readonly string[],
+  executor: Tx,
 ): Promise<Map<string, string>> {
   if (issueIds.length === 0) return new Map();
   const rows = await executor
     .select({ id: issues.id, issSeq: issues.issSeq, issuePrefix: projects.issuePrefix })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(inArray(issues.id, issueIds));
+    .where(inArray(issues.id, [...issueIds]));
   return new Map(rows.map((r) => [r.id, formatIssueRef(r.issuePrefix, r.issSeq)]));
 }
 

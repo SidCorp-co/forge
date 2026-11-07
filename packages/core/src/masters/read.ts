@@ -27,7 +27,7 @@ import type { MasterServing } from '@forge/contracts/steward';
 import { type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { memoizedRead, onePerId } from '../db/read-memo.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import {
   masterLastBeatSql,
@@ -37,6 +37,7 @@ import {
   SESSION_SILENCE_TIMEOUT_S,
 } from '../devices/index.js';
 import { NOT_PARKED } from '../jobs/index.js';
+import { liveMaster, type MasterRow } from './live-master.js';
 import { slotsOf } from './rules.js';
 import { masterStateOf, storedPane } from './state.js';
 
@@ -148,8 +149,26 @@ async function closedPassWhere(executor: Tx, where: SQL): Promise<MasterClosedPa
   return row ? closedPassOf(row) : null;
 }
 
-function readLastPass(executor: Tx, projectId: string): Promise<MasterClosedPass | null> {
-  return closedPassWhere(executor, sql`project_id = ${projectId}`);
+async function readLastPass(executor: Tx, projectId: string): Promise<MasterClosedPass | null> {
+  if (executor !== db) return closedPassWhere(executor, sql`project_id = ${projectId}`);
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const pass = await onePerId('lastClosedPass', projectId, async (ids) => {
+    const rows = rowsOf<PassRow & { ended_at: string | Date; project_id: string }>(
+      await db.execute(sql`
+        WITH last AS (
+          SELECT DISTINCT ON (project_id) id FROM master_passes
+           WHERE project_id IN (${sql.join(
+             ids.map((id) => sql`${id}::uuid`),
+             sql`, `,
+           )}) AND ended_at IS NOT NULL
+           ORDER BY project_id, ended_at DESC, started_at DESC)
+        SELECT p.project_id, ${PASS_COLUMNS}, ${RECOVERY_COLUMNS}
+          FROM master_passes p ${RECOVERY_JOIN}
+         WHERE p.id IN (SELECT id FROM last)`),
+    );
+    return new Map(rows.map((r) => [r.project_id, closedPassOf(r)]));
+  });
+  return pass ?? null;
 }
 
 export function readClosedPass(
@@ -192,46 +211,6 @@ async function runsOutOf(projectId: string, deviceId: string): Promise<number> {
          AND ${NOT_PARKED}`),
   );
   return row?.runs ?? 0;
-}
-
-interface MasterRow {
-  id: string;
-  title: string | null;
-  device_id: string | null;
-  device_name: string | null;
-  max_job_panes: number | null;
-  started_at: string | Date | null;
-  last_beat: string | Date | null;
-  silent: boolean;
-  pane_dialog: MasterPaneDialog | null;
-  pane: unknown;
-  gate_report: unknown;
-  outdated: unknown;
-}
-
-async function liveMaster(projectId: string): Promise<MasterRow | null> {
-  const [row] = rowsOf<MasterRow>(
-    await db.execute(sql`
-      SELECT m.*
-        FROM (
-          SELECT s.id, COALESCE(s.metadata ->> 'terminalName', s.title) AS title, s.device_id, d.name AS device_name, d.max_job_panes,
-                 COALESCE(s.started_at, s.created_at) AS started_at,
-                 ${masterLastBeatSql('s')} AS last_beat,
-                 ${masterSilentSql('s')} AS silent,
-                 s.metadata -> 'paneDialog' AS pane_dialog,
-                 s.metadata -> 'pane' AS pane,
-                 s.metadata -> 'outdated' AS outdated,
-                 d.gate_report
-            FROM agent_sessions s
-            LEFT JOIN devices d ON d.id = s.device_id
-           WHERE s.project_id = ${projectId}
-             AND s.kind = ${MASTER_SESSION_KIND}
-             AND s.status NOT IN (${TERMINAL})
-        ) m
-       ORDER BY m.last_beat DESC NULLS LAST
-       LIMIT 1`),
-  );
-  return row ?? null;
 }
 
 /**

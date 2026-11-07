@@ -12,8 +12,9 @@ import {
   type ReleaseDraftApprovalView,
   releaseThroughChangeRequests,
 } from '@forge/contracts/releases';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idOfParts, onePerId, partsOf } from '../db/read-memo.js';
 import {
   type ReleaseDraftApprovalRow,
   releaseDraftApprovals,
@@ -113,19 +114,35 @@ export async function standingDraftApproval(
   version: string,
   roster: readonly string[],
 ): Promise<ReleaseDraftApprovalView | null> {
-  const [latest] = await db
-    .select()
-    .from(releaseDraftApprovals)
-    .where(
-      and(
-        eq(releaseDraftApprovals.projectId, projectId),
-        eq(releaseDraftApprovals.version, version),
-      ),
-    )
-    .orderBy(desc(releaseDraftApprovals.decidedAt), desc(releaseDraftApprovals.id))
-    .limit(1);
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const latest = await onePerId('draftApproval', idOfParts(projectId, version), latestDecisionsOf);
   if (!latest || !sameRoster(latest.issueIds, roster)) return null;
   return viewOf(latest);
+}
+
+/** The newest decision on each project and version named (`idOfParts`). */
+async function latestDecisionsOf(keys: readonly string[]) {
+  const pairs = keys.map((k) => partsOf(k));
+  const rows = await db
+    .selectDistinctOn([releaseDraftApprovals.projectId, releaseDraftApprovals.version])
+    .from(releaseDraftApprovals)
+    .where(
+      or(
+        ...pairs.map(([projectId = '', version = '']) =>
+          and(
+            eq(releaseDraftApprovals.projectId, projectId),
+            eq(releaseDraftApprovals.version, version),
+          ),
+        ),
+      ),
+    )
+    .orderBy(
+      releaseDraftApprovals.projectId,
+      releaseDraftApprovals.version,
+      desc(releaseDraftApprovals.decidedAt),
+      desc(releaseDraftApprovals.id),
+    );
+  return new Map(rows.map((r) => [idOfParts(r.projectId, r.version), r]));
 }
 
 /**
@@ -137,12 +154,19 @@ export async function rosterApproved(
   projectId: string,
   roster: readonly string[],
 ): Promise<boolean> {
-  const [latest] = await db
-    .select()
-    .from(releaseDraftApprovals)
-    .where(eq(releaseDraftApprovals.projectId, projectId))
-    .orderBy(desc(releaseDraftApprovals.decidedAt), desc(releaseDraftApprovals.id))
-    .limit(1);
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const latest = await onePerId('latestDraftDecision', projectId, async (ids) => {
+    const rows = await db
+      .selectDistinctOn([releaseDraftApprovals.projectId])
+      .from(releaseDraftApprovals)
+      .where(inArray(releaseDraftApprovals.projectId, [...ids]))
+      .orderBy(
+        releaseDraftApprovals.projectId,
+        desc(releaseDraftApprovals.decidedAt),
+        desc(releaseDraftApprovals.id),
+      );
+    return new Map(rows.map((r) => [r.projectId, r]));
+  });
   return !!latest && latest.decision === 'approved' && sameRoster(latest.issueIds, roster);
 }
 

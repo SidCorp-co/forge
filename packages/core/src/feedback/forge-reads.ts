@@ -6,6 +6,7 @@
 import type { FeedbackOriginView } from '@forge/contracts/feedback';
 import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues, projects } from '../db/schema.js';
 import { feedback, feedbackOccurrences } from '../db/schema-feedback.js';
 import { activeIssuePrefix } from '../issues/index.js';
@@ -82,18 +83,10 @@ export async function reportedForge(feedbackId: string, userId: string): Promise
   return row !== undefined;
 }
 
-/** What `forgeOriginsOf` reads: each item's origin view, and the items every report of which came from an archived project. */
-export interface ForgeOrigins {
-  views: Map<string, FeedbackOriginView>;
-  /** Reported only from projects since archived: nobody delivers there, so the item's wait never reads stuck (ISS-1072). */
-  fromArchived: Set<string>;
-}
-
-/** Each item's reports through the Forge door: how many, the first one's reporter and place, and whether every place is archived. */
-export async function forgeOriginsOf(feedbackIds: readonly string[]): Promise<ForgeOrigins> {
-  if (feedbackIds.length === 0) return { views: new Map(), fromArchived: new Set() };
-  const rows = await db
+const originRowsOf = (feedbackIds: readonly string[]) =>
+  db
     .select({
+      id: feedbackOccurrences.id,
       feedbackId: feedbackOccurrences.feedbackId,
       reportedBy: feedbackOccurrences.reportedBy,
       agency: feedbackOccurrences.reporterAgency,
@@ -113,6 +106,21 @@ export async function forgeOriginsOf(feedbackIds: readonly string[]): Promise<Fo
     .leftJoin(issues, eq(issues.id, feedbackOccurrences.sourceIssueId))
     .where(inArray(feedbackOccurrences.feedbackId, [...feedbackIds]))
     .orderBy(asc(feedbackOccurrences.createdAt), asc(feedbackOccurrences.id));
+
+/** What `forgeOriginsOf` reads: each item's origin view, and the items every report of which came from an archived project. */
+export interface ForgeOrigins {
+  views: Map<string, FeedbackOriginView>;
+  /** Reported only from projects since archived: nobody delivers there, so the item's wait never reads stuck (ISS-1072). */
+  fromArchived: Set<string>;
+}
+
+/** Each item's reports through the Forge door: how many, the first one's reporter and place, and whether every place is archived. */
+export async function forgeOriginsOf(feedbackIds: readonly string[]): Promise<ForgeOrigins> {
+  if (feedbackIds.length === 0) return { views: new Map(), fromArchived: new Set() };
+  // an item's reports are its own: every project's asks are one read (ISS-1070 r6), in one order
+  const rows = (
+    await rowsPerId('forgeOrigins', feedbackIds, originRowsOf, (r) => r.feedbackId)
+  ).sort((a, b) => a.at.getTime() - b.at.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const people = await peopleOf(rows.map((r) => r.reportedBy));
   const out = new Map<string, FeedbackOriginView>();
   // an item stays live while one of its reports came from a live project, or from no project at all

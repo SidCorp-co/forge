@@ -1,6 +1,7 @@
 import { type FeedbackRoute, type FeedbackStatus, feedbackKey } from '@forge/contracts/feedback';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { feedbackLinksOf, rowIn as requirementIn } from '../requirements/index.js';
@@ -20,12 +21,22 @@ export async function routeIssuesOf(
   const routed = rows.filter((r) => r.route === 'issue').map((r) => r.id);
   const out = new Map<string, string[]>();
   if (routed.length === 0) return out;
-  const links = await db
-    .select({ feedbackId: feedbackRouteIssues.feedbackId, issueId: feedbackRouteIssues.issueId })
-    .from(feedbackRouteIssues)
-    .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
-    .where(inArray(feedbackRouteIssues.feedbackId, routed))
-    .orderBy(asc(issues.issSeq));
+  // an item's route is its own: every project's asks are one read (ISS-1070 r6)
+  const links = await rowsPerId(
+    'routeIssues',
+    routed,
+    (some) =>
+      db
+        .select({
+          feedbackId: feedbackRouteIssues.feedbackId,
+          issueId: feedbackRouteIssues.issueId,
+        })
+        .from(feedbackRouteIssues)
+        .innerJoin(issues, eq(issues.id, feedbackRouteIssues.issueId))
+        .where(inArray(feedbackRouteIssues.feedbackId, [...some]))
+        .orderBy(asc(issues.issSeq)),
+    (l) => l.feedbackId,
+  );
   for (const l of links) out.set(l.feedbackId, [...(out.get(l.feedbackId) ?? []), l.issueId]);
   return out;
 }

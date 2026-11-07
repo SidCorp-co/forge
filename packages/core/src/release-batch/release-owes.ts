@@ -8,7 +8,7 @@ import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { type OwedActKind, type OwedBy, type OwedPolicy, whoOwes } from '@forge/contracts/who-owes';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { readOwedPolicy } from '../project-config/index.js';
 import { rosterApproved } from './draft-approval.js';
@@ -34,15 +34,17 @@ export async function readReleaseOwes(
 ): Promise<ReleaseOwes> {
   const [policy, rows] = await Promise.all([
     readOwedPolicy(projectId),
-    issueIds.length === 0
-      ? Promise.resolve([])
-      : // the draft's gates and each requirement's release leg read one roster's notes in one read
-        memoizedRead(`releaseNotesOf:${[...issueIds].sort().join(',')}`, () =>
-          db
-            .select({ releaseNotes: issues.releaseNotes })
-            .from(issues)
-            .where(inArray(issues.id, [...issueIds])),
-        ),
+    // the draft's gates, each requirement's release leg and every project's roster: one read
+    rowsPerId(
+      'issueReleaseNotes',
+      issueIds,
+      (some) =>
+        db
+          .select({ id: issues.id, releaseNotes: issues.releaseNotes })
+          .from(issues)
+          .where(inArray(issues.id, [...some])),
+      (r) => r.id,
+    ),
   ]);
   // a required approval that already stands for this roster frees what waited on it (ISS-1075)
   const approved = policy.releaseApproval && (await rosterApproved(projectId, issueIds));

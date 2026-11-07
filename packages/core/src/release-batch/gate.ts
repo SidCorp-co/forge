@@ -1,7 +1,7 @@
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
-import { eq } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { onePerId } from '../db/read-memo.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
@@ -91,10 +91,15 @@ async function productionBinding(
 export async function resolveReleaseDeclaration(
   projectId: string,
 ): Promise<ReleaseDeclaration | null> {
-  // a read asks this of each release it weighs and each landing it reads: the project is asked once
-  const [row] = await memoizedRead(`projectRow:${projectId}`, () =>
-    db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).limit(1),
-  );
+  // a read asks this of each release it weighs and each landing it reads, and of every project it
+  // reads beside this one: each is asked once, all of them in one statement (ISS-1070 r6)
+  const row = await onePerId('projectExists', projectId, async (ids) => {
+    const rows = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(inArray(projects.id, [...ids]));
+    return new Map(rows.map((r) => [r.id, r]));
+  });
   if (!row) return null;
   const read = await readReleasePath(projectId);
   if (!read.ok) return { kind: 'undeclared-target', reason: read.reason };

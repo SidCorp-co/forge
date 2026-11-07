@@ -8,6 +8,7 @@ import type { IssueStanding } from '@forge/contracts/issue-standing';
 import type { MasterServing } from '@forge/contracts/steward';
 import { inArray, max } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { feedbackDecisions } from '../db/schema-feedback.js';
 import { issueWaitsOf } from '../issues/index.js';
 import { masterServingOf } from '../masters/index.js';
@@ -47,13 +48,15 @@ export async function standingFactsOf(
 
 /** Each item's newest triage decision, by item id. */
 async function decidedAtOf(feedbackIds: readonly string[]): Promise<Map<string, Date>> {
-  if (feedbackIds.length === 0) return new Map();
-  const rows = await db
-    .select({ id: feedbackDecisions.feedbackId, at: max(feedbackDecisions.decidedAt) })
-    .from(feedbackDecisions)
-    .where(inArray(feedbackDecisions.feedbackId, [...feedbackIds]))
-    .groupBy(feedbackDecisions.feedbackId);
-  return new Map(rows.flatMap((r) => (r.at ? [[r.id, new Date(r.at)] as const] : [])));
+  // an item's decisions are its own: every project's asks are one read (ISS-1070 r6)
+  return memoizedPerId('feedbackDecidedAt', feedbackIds, async (some) => {
+    const rows = await db
+      .select({ id: feedbackDecisions.feedbackId, at: max(feedbackDecisions.decidedAt) })
+      .from(feedbackDecisions)
+      .where(inArray(feedbackDecisions.feedbackId, [...some]))
+      .groupBy(feedbackDecisions.feedbackId);
+    return new Map(rows.flatMap((r) => (r.at ? [[r.id, new Date(r.at)] as const] : [])));
+  });
 }
 
 /**

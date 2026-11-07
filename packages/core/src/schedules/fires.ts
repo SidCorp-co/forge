@@ -13,8 +13,9 @@ import type {
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
 import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { scheduleRuns, schedules } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 
@@ -177,14 +178,29 @@ export async function lastFires(
   projectId: string,
   scheduleIds?: readonly string[],
 ): Promise<Map<string, LastFire>> {
-  const where = [eq(scheduleRuns.projectId, projectId)];
-  if (scheduleIds) {
-    if (scheduleIds.length === 0) return new Map();
-    where.push(inArray(scheduleRuns.scheduleId, [...scheduleIds]));
-  }
-  const rows = await db
+  if (scheduleIds?.length === 0) return new Map();
+  // a project's alone are read for every project asked with it (ISS-1070 r6)
+  const rows = scheduleIds
+    ? await lastFiresWhere(
+        and(
+          eq(scheduleRuns.projectId, projectId),
+          inArray(scheduleRuns.scheduleId, [...scheduleIds]),
+        ),
+      )
+    : await rowsPerProject(
+        'lastFires',
+        projectId,
+        (ids) => lastFiresWhere(inArray(scheduleRuns.projectId, [...ids])),
+        (r) => r.projectId,
+      );
+  return new Map(rows.map(({ scheduleId, projectId: _p, ...f }) => [scheduleId, f]));
+}
+
+const lastFiresWhere = (where: SQL | undefined) =>
+  db
     .selectDistinctOn([scheduleRuns.scheduleId], {
       scheduleId: scheduleRuns.scheduleId,
+      projectId: scheduleRuns.projectId,
       id: scheduleRuns.id,
       status: scheduleRuns.status,
       trigger: scheduleRuns.trigger,
@@ -195,10 +211,8 @@ export async function lastFires(
       sessionId: scheduleRuns.sessionId,
     })
     .from(scheduleRuns)
-    .where(and(...where))
+    .where(where)
     .orderBy(scheduleRuns.scheduleId, desc(scheduleRuns.createdAt), desc(scheduleRuns.id));
-  return new Map(rows.map(({ scheduleId, ...f }) => [scheduleId, f]));
-}
 
 /**
  * The fires whose schedule kind owes a record, matched where that record is missing (ISS-814): a

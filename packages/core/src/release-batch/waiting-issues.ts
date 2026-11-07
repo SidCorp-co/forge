@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { waitingForReleaseSql } from '../issues/index.js';
 
@@ -11,19 +11,24 @@ import { waitingForReleaseSql } from '../issues/index.js';
  * them; `ended-claims.ts:readEndedRunHolds` is the read that names it, beside each of these (ISS-961).
  */
 export async function waitingIssueIds(projectId: string): Promise<string[]> {
-  // the draft, each requirement's release leg and the release facts each ask it in one read
-  return memoizedRead(`waitingIssueIds:${projectId}`, async () => {
-    const rows = await db
-      .select({ id: issues.id })
-      .from(issues)
-      .where(
-        and(
-          eq(issues.projectId, projectId),
-          waitingForReleaseSql(sql`${issues}`),
-          isNull(issues.releaseBatchRunId),
-        ),
-      )
-      .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
-    return rows.map((r) => r.id);
-  });
+  // the draft, each requirement's release leg and the release facts each ask it, and every project
+  // asked with it, in one read (ISS-1070 r6)
+  const rows = await rowsPerProject(
+    'waitingIssueIds',
+    projectId,
+    (ids) =>
+      db
+        .select({ id: issues.id, projectId: issues.projectId })
+        .from(issues)
+        .where(
+          and(
+            inArray(issues.projectId, [...ids]),
+            waitingForReleaseSql(sql`${issues}`),
+            isNull(issues.releaseBatchRunId),
+          ),
+        )
+        .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id)),
+    (r) => r.projectId,
+  );
+  return rows.map((r) => r.id);
 }
