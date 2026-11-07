@@ -4,6 +4,7 @@ export { runEmbeddingBackfill } from './embedding-backfill.js';
 export { registerMemoryExtraction } from './extraction.js';
 export { deleteMemory, registerMemoryIndexer } from './indexer.js';
 export { provideMemoryIssueReads } from './ports.js';
+export { flagMemoriesForChange } from './recheck.js';
 export { registerMemoryReconcileTrigger, registerMemoryReconcileWorker } from './reconcile.js';
 export { foreignScriptChars } from './script-guard.js';
 export { runMemorySearch } from './search-service.js';

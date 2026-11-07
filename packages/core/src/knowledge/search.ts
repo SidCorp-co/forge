@@ -1,25 +1,32 @@
-import type { KnowledgeProvenance } from '@forge/contracts/knowledge';
-import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import type { CuratedEntryType, KnowledgeProvenance, RecheckDue } from '@forge/contracts/knowledge';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { knowledgeEntries } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
 import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
 import { notAWithdrawnLesson } from './lesson-entries.js';
+import { recheckDueOf } from './recheck.js';
 
 export interface KnowledgeHit extends KnowledgeProvenance {
   id: string;
+  projectId: string;
   slug: string;
   kind: string;
   title: string;
   body: string;
   injection: string;
   confidence: string;
+  /** fact, hypothesis or convention; null on an entry owing it (ISS-1121). */
+  type: CuratedEntryType | null;
+  /** A re-check a landing or a rule change flagged on it; null where none stands. */
+  recheckDue: RecheckDue | null;
   score: number;
 }
 
 const HIT_COLUMNS = {
   id: knowledgeEntries.id,
+  projectId: knowledgeEntries.projectId,
   slug: knowledgeEntries.slug,
   kind: knowledgeEntries.kind,
   title: knowledgeEntries.title,
@@ -29,20 +36,32 @@ const HIT_COLUMNS = {
   source: knowledgeEntries.source,
   scope: knowledgeEntries.scope,
   recheckWhen: knowledgeEntries.recheckWhen,
+  type: knowledgeEntries.entryType,
+  metadata: knowledgeEntries.metadata,
 };
 
-function baseWhere(projectId: string) {
+type HitRow = { metadata: unknown } & Omit<KnowledgeHit, 'recheckDue' | 'score'>;
+
+const hitOf = ({ metadata, ...r }: HitRow, score: number): KnowledgeHit => ({
+  ...r,
+  recheckDue: recheckDueOf((metadata as Record<string, unknown> | null)?.recheckDue),
+  score,
+});
+
+function baseWhere(projectId: string | readonly string[]) {
   // a held or retired lesson is never retrieved as if it applied; it stays readable by its slug
   return [
-    eq(knowledgeEntries.projectId, projectId),
+    typeof projectId === 'string'
+      ? eq(knowledgeEntries.projectId, projectId)
+      : inArray(knowledgeEntries.projectId, [...projectId]),
     isNull(knowledgeEntries.archivedAt),
     notAWithdrawnLesson,
   ];
 }
 
-/** Semantic (dense vector) cosine search over the HNSW index. */
+/** Semantic (dense vector) cosine search over the HNSW index, of one project or several. */
 export async function searchKnowledge(
-  projectId: string,
+  projectId: string | readonly string[],
   queryVec: number[],
   topK?: number,
 ): Promise<KnowledgeHit[]> {
@@ -56,7 +75,7 @@ export async function searchKnowledge(
     .where(and(...baseWhere(projectId), isNotNull(knowledgeEntries.embedding)))
     .orderBy(asc(sql`distance`))
     .limit(k);
-  return rows.map((r) => ({ ...r, score: 1 - Number(r.distance) }));
+  return rows.map(({ distance, ...r }) => hitOf(r, 1 - Number(distance)));
 }
 
 /** Keyword search — Postgres FTS over the generated text_search column. */
@@ -87,7 +106,7 @@ export async function keywordSearchKnowledge(
     )
     .orderBy(desc(sql`rank`))
     .limit(k);
-  return rows.map((r) => ({ ...r, score: Number(r.rank) }));
+  return rows.map(({ rank, ...r }) => hitOf(r, Number(rank)));
 }
 
 /** Hybrid search — dense + keyword fused with weighted RRF. */

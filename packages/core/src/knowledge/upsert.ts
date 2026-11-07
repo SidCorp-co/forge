@@ -1,3 +1,4 @@
+import { CURATED_ENTRY_TYPE_SHAPE, type CurationWarning } from '@forge/contracts/knowledge';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema.js';
@@ -11,9 +12,12 @@ import {
   type UpsertKnowledgeResult,
 } from './entry-input.js';
 import { lessonOwnedRefusal } from './lesson-entries.js';
-import { entryProvenanceRefusal, provenanceOf } from './provenance.js';
+import { knowledgePort } from './ports.js';
+import { entryProvenanceRefusal, owesProvenance, provenanceOf } from './provenance.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
+import { flagKnowledgeForChange, ruleChange } from './recheck.js';
 import { rulingDecidersRefusal } from './ruling-deciders.js';
+import { retireReplaced, subjectHeldRefusal } from './subject-held.js';
 
 export async function upsertKnowledgeEntry(
   input: UpsertKnowledgeInput,
@@ -82,6 +86,7 @@ const baseRow = (input: UpsertKnowledgeInput, embedding: number[] | null) => ({
   orderIndex: input.orderIndex,
   embedding,
   metadata: input.metadata ?? {},
+  entryType: input.type ?? null,
   ...provenanceOf(input),
 });
 
@@ -101,6 +106,8 @@ const baseSet = (degraded: boolean) => ({
   source: sql`excluded.source`,
   scope: sql`excluded.scope`,
   recheckWhen: sql`excluded.recheck_when`,
+  // a rewrite sending no type keeps the one the entry had
+  entryType: sql`coalesce(excluded.entry_type, ${knowledgeEntries.entryType})`,
   archivedAt: sql`null`,
   updatedAt: sql`now()`,
 });
@@ -186,17 +193,56 @@ export async function upsertKnowledgeEntries(
     if (unsourced) throw unsourced;
   }
   const embedded = await embedEntries(entries);
+  const held = await subjectHeldRefusal(entries, embedded.vectors);
+  if (held) throw held;
   const rows = await writeEntries(entries, embedded);
+  const replaced = await retireReplaced(entries);
+  await recheckForRules(rulesOf(entries));
   const idByKey = new Map(rows.map((r) => [entryKey(r), r.id]));
   return inputs.map((input) => {
     const id = idByKey.get(entryKey(input));
     if (!id) throw new Error(`knowledge.service: upsert returned no row for ${input.slug}`);
     const embedText = knowledgeEmbedText(input.title, input.body);
+    const retired = replaced.get(input.slug);
+    const warnings = typeWarnings(input);
     return {
       id,
       slug: input.slug,
       degraded: embedded.degraded,
       truncated: embedText.length > MAX_EMBED_CHARS,
+      ...(retired ? { replaced: retired } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   });
+}
+
+/** A rule's rewrite flags the project's entries and memories that name it (REQ-89 BC-5). */
+export async function recheckForRules(rules: { projectId: string; slug: string }[]): Promise<void> {
+  for (const { projectId, slug } of rules) {
+    const change = ruleChange(slug);
+    await flagKnowledgeForChange(projectId, change);
+    await knowledgePort('flagMemoryRecheck')(projectId, change);
+  }
+}
+
+/** The rule entries a batch rewrote, by project: a rule change flags what names the rule (BC-5). */
+function rulesOf(entries: UpsertKnowledgeInput[]): { projectId: string; slug: string }[] {
+  return entries
+    .filter((e) => e.kind === 'rule' || e.injection === 'always')
+    .map((e) => ({ projectId: e.projectId, slug: e.slug }));
+}
+
+/**
+ * A kind owing provenance that names no type is written and told so (ISS-1121): the owner ruled that
+ * a missing curation answer teaches rather than blocks, until every writer sends it.
+ */
+function typeWarnings(input: UpsertKnowledgeInput): CurationWarning[] {
+  if (input.type !== undefined || !owesProvenance(input.kind)) return [];
+  return [
+    {
+      code: 'CURATION_OWED',
+      path: '/type',
+      detail: `\`${input.slug}\` names no \`type\`, so it keeps the type it had, or reads as owing one. Send it on the next write: ${CURATED_ENTRY_TYPE_SHAPE}.`,
+    },
+  ];
 }

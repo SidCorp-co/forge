@@ -1,12 +1,13 @@
-import type { KnowledgeProvenance } from '@forge/contracts/knowledge';
-import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
+import type { CuratedEntryType, KnowledgeProvenance, RecheckDue } from '@forge/contracts/knowledge';
+import { and, asc, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, knowledgeEntries } from '../db/schema.js';
+import { type IssueStatus, knowledgeEntries, knowledgeEntryRevisions } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
 import type { knowledgeInjectionEnum, knowledgeKindEnum } from './entry-input.js';
 import { lessonOwnedRefusal, notALessonEntry } from './lesson-entries.js';
 import { orgAlwaysInjectOf, orgEntryForProject, orgOnDemandSourcesOf } from './org-knowledge.js';
 import type { ReadWhenCondition } from './read-when.js';
+import { recheckDueOf } from './recheck.js';
 
 const MAX_RESPONSE_CHARS = 38_000;
 
@@ -23,6 +24,8 @@ export interface ListKnowledgeInput {
 
 export interface KnowledgeListRow extends KnowledgeProvenance {
   id: string;
+  /** fact, hypothesis or convention; null on an entry owing it (ISS-1121). */
+  type: CuratedEntryType | null;
   slug: string;
   kind: string;
   title: string;
@@ -108,6 +111,7 @@ export async function listKnowledgeEntries(
       source: knowledgeEntries.source,
       scope: knowledgeEntries.scope,
       recheckWhen: knowledgeEntries.recheckWhen,
+      type: knowledgeEntries.entryType,
       total: sql<number>`count(*) over ()`.mapWith(Number),
     })
     .from(knowledgeEntries)
@@ -143,6 +147,28 @@ export interface GetKnowledgeResult extends KnowledgeProvenance {
   createdAt: Date;
   updatedAt: Date;
   readWhen: ReadWhenCondition | null;
+  /** fact, hypothesis or convention; an org ruling is a convention; null on an entry owing it (ISS-1121). */
+  type: CuratedEntryType | null;
+  /** A re-check a landing or a rule change flagged on it (REQ-89 BC-5); null where none stands. */
+  recheckDue: RecheckDue | null;
+  /** The text each rewrite replaced, newest first, at most `KNOWLEDGE_REVISIONS_SHOWN`; empty on an org entry. */
+  revisions: { title: string; body: string; replacedAt: Date }[];
+}
+
+/** The earlier texts a single read answers. */
+export const KNOWLEDGE_REVISIONS_SHOWN = 20;
+
+async function revisionsOf(entryId: string) {
+  return db
+    .select({
+      title: knowledgeEntryRevisions.title,
+      body: knowledgeEntryRevisions.body,
+      replacedAt: knowledgeEntryRevisions.replacedAt,
+    })
+    .from(knowledgeEntryRevisions)
+    .where(eq(knowledgeEntryRevisions.entryId, entryId))
+    .orderBy(desc(knowledgeEntryRevisions.replacedAt))
+    .limit(KNOWLEDGE_REVISIONS_SHOWN);
 }
 
 export async function getKnowledgeEntry(
@@ -168,6 +194,7 @@ export async function getKnowledgeEntry(
       source: knowledgeEntries.source,
       scope: knowledgeEntries.scope,
       recheckWhen: knowledgeEntries.recheckWhen,
+      type: knowledgeEntries.entryType,
     })
     .from(knowledgeEntries)
     .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, slug)))
@@ -177,6 +204,8 @@ export async function getKnowledgeEntry(
     origin: 'project',
     ...row,
     readWhen: (row.readWhen as ReadWhenCondition | null) ?? null,
+    recheckDue: recheckDueOf((row.metadata as Record<string, unknown> | null)?.recheckDue),
+    revisions: await revisionsOf(row.id),
   };
 }
 
@@ -213,6 +242,9 @@ export async function readKnowledgeEntry(
     source: org.source,
     scope: org.scope,
     recheckWhen: org.recheckWhen,
+    type: 'convention',
+    recheckDue: recheckDueOf(org.recheckDue),
+    revisions: [],
   };
 }
 

@@ -5,7 +5,9 @@
 --    them beside what people and agents wrote. They move to `memory_upkeep_records`, owned by
 --    `memory` (`packages/core/src/db/schema-memory-upkeep.ts:memoryUpkeepRecords`), which is history
 --    only: no memory list, count or recall reads it. A reconcile's idempotency reads its record there
---    (`memory/reconcile.ts:alreadyReconciled`). A bookkeeping row whose cause is neither upkeep job
+--    (`memory/upkeep.ts:upkeepRecorded`), and a memory a person deletes for good leaves its reason
+--    there (`kind` `deletion`), never in memory; and a landing's re-check (BC-5) records what it
+--    flagged there once per issue (`kind` `recheck`). A bookkeeping row whose cause is neither upkeep job
 --    aborts the deploy naming it, and no row is deleted that was not first copied.
 -- 2. A knowledge entry records its type, `fact`, `hypothesis` or `convention` (`entry_type`). Rows
 --    written before stay null and read as owing it.
@@ -34,7 +36,7 @@ CREATE TABLE IF NOT EXISTS "memory_upkeep_records" (
 	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "memory_upkeep_records_project_fk" FOREIGN KEY ("project_id") REFERENCES "projects"("id") ON DELETE cascade,
-	CONSTRAINT "memory_upkeep_records_kind_chk" CHECK ("kind" IN ('reconcile', 'consolidation'))
+	CONSTRAINT "memory_upkeep_records_kind_chk" CHECK ("kind" IN ('reconcile', 'consolidation', 'deletion', 'recheck'))
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "memory_upkeep_records_project_ref_uq" ON "memory_upkeep_records" USING btree ("project_id", "ref");--> statement-breakpoint
 DO $$

@@ -1,4 +1,6 @@
 import {
+  CURATED_ENTRY_TYPES,
+  type CurationWarning,
   KNOWLEDGE_RECHECK_WHEN_MAX,
   KNOWLEDGE_SCOPE_MAX,
   KNOWLEDGE_SOURCE_MAX,
@@ -75,6 +77,18 @@ export const upsertKnowledgeInputSchema = z.object({
   source: z.string().max(KNOWLEDGE_SOURCE_MAX).nullish(),
   scope: z.string().max(KNOWLEDGE_SCOPE_MAX).nullish(),
   recheckWhen: z.string().max(KNOWLEDGE_RECHECK_WHEN_MAX).nullish(),
+  /**
+   * Whether the entry is a verified fact, a hypothesis or a convention (REQ-89 BC-4, ISS-1121). A
+   * kind owing provenance that leaves it out is written and answered with a warning naming it, and
+   * reads as owing it until a rewrite sends it.
+   */
+  type: z.enum(CURATED_ENTRY_TYPES).optional(),
+  /**
+   * The slug of the entry this one replaces (REQ-89 BC-2): written, that entry is retired as
+   * superseded by this one. A new slug whose text is near-identical to a live entry's is refused
+   * `KNOWLEDGE_SUBJECT_HELD` unless it names that entry here.
+   */
+  replaces: slugSchema.optional(),
 });
 
 export type UpsertKnowledgeInput = z.infer<typeof upsertKnowledgeInputSchema>;
@@ -84,4 +98,8 @@ export interface UpsertKnowledgeResult {
   slug: string;
   degraded: boolean;
   truncated: boolean;
+  /** The entry this write retired as superseded, by its slug; present only where `replaces` named one. */
+  replaced?: string;
+  /** Each curation answer the write left out (ISS-1121); absent when none. */
+  warnings?: CurationWarning[];
 }

@@ -17,6 +17,7 @@ import { MAX_EMBED_CHARS } from './indexer.js';
 import { firstItems, parseFencedJson, type ScriptRefuser, scriptRefuser } from './model-output.js';
 import { retireNotesForMovedIssue } from './note-lifetime.js';
 import { memoryIssueReads, type ReleasedIssue } from './ports.js';
+import { recheckForLanding } from './recheck.js';
 import { type MemoryHit, searchMemories } from './search.js';
 import { recordUpkeep, upkeepRecorded } from './upkeep.js';
 
@@ -353,7 +354,8 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
 
 /**
  * Memory's answer to an issue's move. At `closed` or `dropped`, the notes written for the issue
- * retire (ISS-1063, `note-lifetime.ts`). Whenever the move lands its `merged_at` (leaving
+ * retire (ISS-1063, `note-lifetime.ts`). Whenever the move lands its `merged_at`, the entries naming
+ * what the landing touched are flagged for a re-check (`recheck.ts`, REQ-89 BC-5), and (leaving
  * {@link BASE_MERGE_STATE}, or reaching `closed` — the "code landed" predicate `merged-at.ts` uses),
  * a durable pg-boss reconcile job is enqueued, once per issue by its singleton key.
  */
@@ -365,6 +367,8 @@ export function registerMemoryReconcileTrigger(): void {
       const mergeLanded =
         (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
       if (!mergeLanded) return;
+      // what names a path, route, config key or rule this landing touched is flagged for a re-check
+      await recheckForLanding(p.projectId, p.id);
       // the sender declares its queue: a process running this consumer without the worker (the
       // integration harness) otherwise fails every delivery behind the outbox's backoff
       await declareMemoryReconcileQueue();

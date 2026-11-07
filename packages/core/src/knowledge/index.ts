@@ -25,6 +25,13 @@ export { orgKnowledgeCreatedAt, orgOnDemandSlugsOf } from './org-knowledge.js';
 export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
 export { provideKnowledgePorts } from './ports.js';
 export {
+  type Anchors,
+  anchorsMet,
+  anchorsOf,
+  flagKnowledgeForChange,
+  type RecheckChange,
+} from './recheck.js';
+export {
   type RulingDeciderRead,
   rulingDecidersOf,
 } from './ruling-deciders.js';
@@ -41,3 +48,4 @@ export {
   selectOnDemandSourcesFromKnowledge,
   updateKnowledgeLinks,
 } from './service.js';
+export { recallKnowledgeAcross } from './unified-search.js';

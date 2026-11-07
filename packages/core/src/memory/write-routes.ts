@@ -94,7 +94,7 @@ memoryWriteRoutes.post(
   },
 );
 
-// MJ-1: a person retires a memory that is wrong or no longer useful, with a reason; nothing is deleted.
+// MJ-1: a person retires a memory that is wrong or no longer useful, with a reason; `delete: true` removes it for good (ISS-1121).
 memoryWriteRoutes.post(
   '/:memoryId/retire',
   zValidator('param', memoryActParam),
@@ -120,9 +120,11 @@ memoryWriteRoutes.post(
   requiresOnResolved('project.write', 'the project the query names as projectId'),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const { ids, reason } = c.req.valid('json');
+    const { ids, reason, delete: remove } = c.req.valid('json');
     const userId = c.get('userId');
     await requireDeclaredOn(projectId, userId, 'project.write');
-    return c.json(await retireMemories({ projectId, memoryIds: ids, userId, reason }));
+    return c.json(
+      await retireMemories({ projectId, memoryIds: ids, userId, reason, delete: remove }),
+    );
   },
 );

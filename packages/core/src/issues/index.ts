@@ -174,6 +174,7 @@ export {
 export {
   archivedIssueIdsSql,
   issueHead,
+  landedChangeOf,
   releasedIssueOf,
   statusChangesSince,
 } from './memory-reads.js';

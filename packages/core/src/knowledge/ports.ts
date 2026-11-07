@@ -1,6 +1,7 @@
 import type { ItemEmbeddingStatus } from '../db/schema-item-embeddings.js';
 import type { ProjectReader } from '../lib/authz.js';
 import { portSlot } from '../lib/port-slot.js';
+import type { RecheckChange } from './recheck.js';
 
 interface MemorySearchInput {
   projectId: string;
@@ -21,6 +22,8 @@ interface MemorySearchInput {
 export interface KnowledgePorts {
   /** Memory search; knowledge labels each hit and reads nothing else of it. */
   searchMemory(input: MemorySearchInput): Promise<{ hits: { id: string }[]; degraded?: boolean }>;
+  /** Flags the project's curated memories a change meets (REQ-89 BC-5); how many were flagged. */
+  flagMemoryRecheck(projectId: string, change: RecheckChange): Promise<number>;
   /** Re-embeds a requirement from its owner's current head; null when it has none. */
   reembedRequirement(requirementId: string): Promise<ItemEmbeddingStatus | null>;
   /** Re-embeds a feedback item from its stored text; null when it is gone or redacted. */

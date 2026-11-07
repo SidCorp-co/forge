@@ -8,6 +8,8 @@ import { and, asc, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { provenanceOf, provenanceRefusal } from './provenance.js';
+import { recheckDueOf } from './recheck.js';
+import { recheckForRules } from './upsert.js';
 
 type Row = typeof orgKnowledgeEntries.$inferSelect;
 
@@ -21,6 +23,7 @@ const viewOf = (r: Row): OrgKnowledgeEntry => ({
   source: r.source,
   scope: r.scope,
   recheckWhen: r.recheckWhen,
+  recheckDue: recheckDueOf(r.recheckDue),
   updatedBy: r.updatedBy,
   createdAt: r.createdAt.toISOString(),
   updatedAt: r.updatedAt.toISOString(),
@@ -64,7 +67,8 @@ export async function writeOrgKnowledge(
   if (unsourced) throw unsourced;
   const now = new Date();
   const { title, body, injection, orderIndex } = write;
-  const fields = { title, body, injection, orderIndex, ...provenanceOf(write) };
+  // a rewrite answers any re-check flagged on the entry
+  const fields = { title, body, injection, orderIndex, ...provenanceOf(write), recheckDue: null };
   const [row] = await db
     .insert(orgKnowledgeEntries)
     .values({ orgId, slug, ...fields, updatedBy: userId, updatedAt: now })
@@ -74,6 +78,12 @@ export async function writeOrgKnowledge(
     })
     .returning();
   if (!row) throw new Error('org knowledge: the upsert returned no row');
+  // a ruling's rewrite flags what names it in every project of the org (REQ-89 BC-5)
+  const inOrg = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.orgId, orgId));
+  await recheckForRules(inOrg.map((p) => ({ projectId: p.id, slug })));
   return viewOf(row);
 }
 

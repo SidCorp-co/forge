@@ -1,3 +1,5 @@
+import type { RefusalStatuses } from "./refusal.js";
+
 // The codes a knowledge entry write refuses under.
 
 export const KNOWLEDGE_REFUSAL_CODES = [
@@ -6,9 +8,14 @@ export const KNOWLEDGE_REFUSAL_CODES = [
 	"KNOWLEDGE_LESSON_OWNED",
 	"KNOWLEDGE_DECIDERS_SHAPE",
 	"KNOWLEDGE_PROVENANCE_MISSING",
+	"KNOWLEDGE_SUBJECT_HELD",
 ] as const;
 
 export type KnowledgeRefusalCode = (typeof KNOWLEDGE_REFUSAL_CODES)[number];
+
+export const KNOWLEDGE_REFUSAL_STATUSES = {
+	KNOWLEDGE_SUBJECT_HELD: 409,
+} as const satisfies RefusalStatuses<KnowledgeRefusalCode>;
 
 // What an entry of knowledge or memory is (REQ-89 BC-4): a verified fact, a hypothesis, or a
 // convention the owner settled. A write that names none is stored as a `hypothesis` and answered

@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm';
 import { check, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { projects } from './schema-projects.js';
 
-/** What memory's own upkeep did: a release's reconcile or a consolidation sweep (ISS-1121). */
-export const memoryUpkeepKinds = ['reconcile', 'consolidation'] as const;
+/** What memory's upkeep did: a release's reconcile, a consolidation sweep, a person deleting a memory for good, or a landing's re-check (ISS-1121). */
+export const memoryUpkeepKinds = ['reconcile', 'consolidation', 'deletion', 'recheck'] as const;
 
 /**
  * Core's record of its own memory upkeep, kept as history and never as memory (REQ-89 BC-3): no
@@ -26,7 +26,7 @@ export const memoryUpkeepRecords = pgTable(
     projectRefUq: uniqueIndex('memory_upkeep_records_project_ref_uq').on(t.projectId, t.ref),
     kindChk: check(
       'memory_upkeep_records_kind_chk',
-      sql`${t.kind} IN ('reconcile', 'consolidation')`,
+      sql`${t.kind} IN ('reconcile', 'consolidation', 'deletion', 'recheck')`,
     ),
   }),
 );

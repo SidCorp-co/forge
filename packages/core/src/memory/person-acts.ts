@@ -6,7 +6,8 @@
 //    the writer stays the one who wrote it, and the row counts as verified now: a person just read it
 //    against what they know. A release's "possibly stale" flag is cleared with it.
 //  - Retire: the row leaves every read surface (archived), and who retired it and why stays on it,
-//    so the retired list on the record it names says so. Nothing is deleted here. One row, or up to
+//    so the retired list on the record it names says so. With `delete: true` the row is removed for
+//    good instead, and the reason stays as upkeep history (`upkeep.ts`, kind `deletion`). One row, or up to
 //    a hundred under one reason, each retired or refused by name on its own.
 //  - Verify ("still true"): the row counts as checked now, by this person. The check is stamped on
 //    the row (`last_verified_at`, who on `metadata.verifiedBy`), kept in `metadata.checks`, and the
@@ -24,6 +25,7 @@ import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { indexMemory } from './indexer.js';
+import { recordUpkeep } from './upkeep.js';
 
 const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
 
@@ -38,7 +40,11 @@ export const memoryVerifyInputSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(200),
 });
 
-export const memoryRetireInputSchema = z.object({ reason: REASON });
+/** `delete: true` removes the row for good; its reason is kept as upkeep history, never as memory. */
+export const memoryRetireInputSchema = z.object({
+  reason: REASON,
+  delete: z.boolean().default(false),
+});
 
 /** The most rows one retirement names: a sweep of a project's stale notes in one call, not one per row. */
 export const MEMORY_RETIRE_MANY_MAX = 100;
@@ -46,6 +52,7 @@ export const MEMORY_RETIRE_MANY_MAX = 100;
 export const memoryRetireManyInputSchema = z.object({
   ids: z.array(z.uuid()).min(1).max(MEMORY_RETIRE_MANY_MAX),
   reason: REASON,
+  delete: z.boolean().default(false),
 });
 
 /** The last acts kept on a row's `metadata.corrections`. */
@@ -57,7 +64,7 @@ const CHECK_HISTORY_CAP = 20;
 
 const FLAG_KEYS = ['staleSince', 'supersededBy'] as const;
 
-async function rowOf(projectId: string, memoryId: string) {
+async function rowOf(projectId: string, memoryId: string, retiredToo = false) {
   const [row] = await db
     .select({
       id: memories.id,
@@ -84,7 +91,7 @@ async function rowOf(projectId: string, memoryId: string) {
       '/memoryId',
     );
   }
-  if (row.archivedAt !== null) {
+  if (row.archivedAt !== null && !retiredToo) {
     throw refuse(
       'MEMORY_ALREADY_RETIRED',
       `memory ${memoryId} was retired at ${row.archivedAt.toISOString()}; a retired memory is read, not changed`,
@@ -134,9 +141,30 @@ export async function retireMemory(args: {
   memoryId: string;
   userId: string;
   reason: string;
-}): Promise<{ id: string; retiredAt: string }> {
-  const row = await rowOf(args.projectId, args.memoryId);
+  delete?: boolean | undefined;
+}): Promise<{ id: string; retiredAt: string; deleted?: true }> {
+  // a retired row may still be deleted for good: retiring is what it waits in until then
+  const row = await rowOf(args.projectId, args.memoryId, args.delete === true);
   const at = new Date();
+  if (args.delete) {
+    // retired memory is not kept (owner, 2026-11-07): the row goes, with its revisions, and the reason
+    // stays as upkeep history beside the memories table, naming the ref and never the text
+    await db.delete(memories).where(eq(memories.id, row.id));
+    await recordUpkeep({
+      projectId: args.projectId,
+      kind: 'deletion',
+      ref: `deleted:${row.id}`,
+      text: `deleted ${row.source} ${row.sourceRef}: ${args.reason}`,
+      metadata: {
+        by: args.userId,
+        at: at.toISOString(),
+        reason: args.reason,
+        source: row.source,
+        sourceRef: row.sourceRef,
+      },
+    });
+    return { id: row.id, retiredAt: at.toISOString(), deleted: true };
+  }
   const md = {
     ...((row.metadata ?? {}) as Record<string, unknown>),
     retired: { by: args.userId, at: at.toISOString(), reason: args.reason },
@@ -150,7 +178,7 @@ export async function retireMemory(args: {
 
 /** What one retirement of many answers: each row it retired, and each it refused with the refusal's code. */
 export interface MemoryRetirements {
-  retired: { id: string; retiredAt: string }[];
+  retired: { id: string; retiredAt: string; deleted?: true }[];
   refused: { id: string; code: string; detail: string }[];
 }
 
@@ -163,6 +191,7 @@ export async function retireMemories(args: {
   memoryIds: readonly string[];
   userId: string;
   reason: string;
+  delete?: boolean | undefined;
 }): Promise<MemoryRetirements> {
   const out: MemoryRetirements = { retired: [], refused: [] };
   for (const memoryId of new Set(args.memoryIds)) {

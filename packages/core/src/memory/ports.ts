@@ -43,6 +43,14 @@ interface MemoryIssueReads {
   head(issueId: string): Promise<IssueHead | null>;
   /** The issue in this project, unarchived, with its project's prefix; null otherwise. */
   releasedIssue(projectId: string, issueId: string): Promise<ReleasedIssue | null>;
+  /**
+   * What the issue's landing changed (REQ-89 BC-5): its key, its text, and the paths of its landed
+   * commit, or why none were read; null when no such live issue.
+   */
+  landedChange(
+    projectId: string,
+    issueId: string,
+  ): Promise<{ key: string; text: string; paths: string[] | null; why?: string } | null>;
   /** The newest `limit` comment bodies on the issue, newest first. */
   recentCommentBodies(issueId: string, limit: number): Promise<string[]>;
   /** The project's comments on unarchived issues since `since`, newest first, at most `limit`. */

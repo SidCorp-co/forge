@@ -75,6 +75,8 @@ export interface CommitHost {
   branchContains(branch: string, sha: string): Promise<boolean>;
   /** A file's text at `ref`, or why there is none (`integrations/source-host/types.ts:SourceHost`). */
   readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
+  /** The files one commit changed, or why they were not read (memory's landing re-check, ISS-1121). */
+  commitFiles(sha: string): Promise<{ readonly files: readonly string[] } | { readonly why: string }>;
 }
 
 export interface RunnerAvailability {

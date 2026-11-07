@@ -4,12 +4,12 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoryUpkeepRecords } from '../db/schema-memory-upkeep.js';
+import { type memoryUpkeepKinds, memoryUpkeepRecords } from '../db/schema-memory-upkeep.js';
 import { logger } from '../lib/logger.js';
 
 interface UpkeepRecord {
   projectId: string;
-  kind: 'reconcile' | 'consolidation';
+  kind: (typeof memoryUpkeepKinds)[number];
   ref: string;
   text: string;
   metadata: Record<string, unknown>;

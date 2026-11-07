@@ -67,6 +67,7 @@ import {
   issueIdOfKey,
   issueStandingsBySeq,
   issueTaskOf,
+  landedChangeOf,
   loadIssueRelationsForIssues,
   refuseUnresolvedIssueKey,
   releasedIssueOf,
@@ -93,6 +94,7 @@ import { sourceCommit } from './lib/source-commit.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
 import { CHAT_RECORD_VETS } from './mcp/index.js';
 import {
+  flagMemoriesForChange,
   provideMemoryIssueReads,
   registerMemoryReconcileWorker,
   runMemorySearch,
@@ -256,6 +258,7 @@ provideRunContextDomainPorts();
 provideAgreementsPorts({ issueTaskOf });
 provideKnowledgePorts({
   searchMemory: runMemorySearch,
+  flagMemoryRecheck: (projectId, change) => flagMemoriesForChange(projectId, change),
   reembedRequirement: embedRequirementHead,
   reembedFeedback: embedFeedback,
 });
@@ -267,6 +270,7 @@ provideMemoryIssueReads({
   },
   head: issueHead,
   releasedIssue: releasedIssueOf,
+  landedChange: landedChangeOf,
   recentCommentBodies,
   commentsSince,
   statusChangesSince,

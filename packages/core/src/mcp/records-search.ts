@@ -13,20 +13,22 @@ import type { Refusal } from '@forge/contracts/refusal';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, knowledgeEntries, projects } from '../db/schema.js';
+import { issues, knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
+import { recallKnowledgeAcross } from '../knowledge/index.js';
 import { type EgressSurface, egressShown } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
 import { loadVisibleProjectIdsForPrincipal } from '../lib/tool.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 
-const KINDS = ['issue', 'requirement', 'knowledge'] as const;
+const KINDS = ['issue', 'requirement', 'knowledge', 'org'] as const;
 type Kind = (typeof KINDS)[number];
 const SURFACE: Record<Kind, EgressSurface> = {
   issue: 'issue',
   requirement: 'requirement',
   knowledge: 'knowledge',
+  org: 'knowledge',
 };
 const PER_KIND = 8;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,7 +54,12 @@ async function slugsOf(projectIds: readonly string[]): Promise<Map<string, strin
   return new Map(rows.map((r) => [r.id, r.slug]));
 }
 
-/** The issues, requirements and knowledge entries of the caller's projects whose title or text holds `query`. */
+/**
+ * The issues and requirements of the caller's projects whose title or text holds `query`, and the
+ * knowledge they recall for it (REQ-89 BC-7, ISS-1121): their entries and lessons and their orgs'
+ * rulings, ranked by meaning through the read `knowledge/search` serves, so a paraphrase or a
+ * Vietnamese question finds the ruling it asks about. A retired or superseded entry is never a hit.
+ */
 export async function searchRecords(
   principal: McpPrincipal,
   query: string,
@@ -88,23 +95,16 @@ export async function searchRecords(
       .where(and(inArray(requirements.projectId, visible), ilike(requirements.title, words)))
       .orderBy(desc(requirements.updatedAt))
       .limit(PER_KIND),
-    db
-      .select({
-        id: knowledgeEntries.id,
-        projectId: knowledgeEntries.projectId,
-        title: knowledgeEntries.title,
-      })
-      .from(knowledgeEntries)
-      .where(
-        and(
-          inArray(knowledgeEntries.projectId, visible),
-          or(ilike(knowledgeEntries.title, words), ilike(knowledgeEntries.body, words)),
-        ),
-      )
-      .limit(PER_KIND),
+    recallKnowledgeAcross(visible, query.trim(), PER_KIND),
   ]);
   const slugs = await slugsOf([
-    ...new Set([...issueRows, ...requirementRows, ...knowledgeRows].map((r) => r.projectId)),
+    ...new Set(
+      [
+        ...issueRows,
+        ...requirementRows,
+        ...knowledgeRows.flatMap((r) => ('projectId' in r ? [r] : [])),
+      ].map((r) => r.projectId),
+    ),
   ]);
   const shown = async (kind: Kind, projectId: string, title: string) =>
     (await egressShown(projectId, SURFACE[kind], { title }, `${kind} title`)).title;
@@ -126,10 +126,19 @@ export async function searchRecords(
     });
   }
   for (const r of knowledgeRows) {
+    if (r.origin === 'org') {
+      // an org ruling reaches every project of its org; the org page is where it is read
+      results.push({
+        id: `org:${r.id}`,
+        title: `${r.slug} · ${r.title} (org ${r.type})`,
+        url: link('/org'),
+      });
+      continue;
+    }
     const slug = slugs.get(r.projectId) ?? '';
     results.push({
       id: `knowledge:${r.id}`,
-      title: await shown('knowledge', r.projectId, r.title),
+      title: `${await shown('knowledge', r.projectId, r.title)}${r.type ? ` (${r.type})` : ''}`,
       url: link(`/projects/${slug}/memory`),
     });
   }
@@ -146,7 +155,7 @@ function parseId(id: string): { kind: Kind; uuid: string } {
   if (!KINDS.includes(kind as Kind) || !uuid || !UUID.test(uuid)) {
     return refused(
       'MCP_FETCH_ID_INVALID',
-      `\`${id.slice(0, 80)}\` is not an id search returns; an id is issue:<uuid>, requirement:<uuid> or knowledge:<uuid>`,
+      `\`${id.slice(0, 80)}\` is not an id search returns; an id is issue:<uuid>, requirement:<uuid>, knowledge:<uuid> or org:<uuid>`,
     );
   }
   return { kind: kind as Kind, uuid };
@@ -199,14 +208,45 @@ export async function fetchRecord(principal: McpPrincipal, id: string): Promise<
       status: row.status,
       revision: revision?.revision ?? null,
     };
-  } else {
+  } else if (kind === 'knowledge') {
     const [row] = await db.select().from(knowledgeEntries).where(eq(knowledgeEntries.id, uuid));
     if (!row || !visible.has(row.projectId)) return notFound(id);
     projectId = row.projectId;
     title = row.title;
     text = row.body;
     path = () => '/memory';
-    metadata = { kind: row.kind, slug: row.slug };
+    metadata = {
+      origin: 'project',
+      kind: row.kind,
+      slug: row.slug,
+      type: row.entryType,
+      scope: row.scope,
+      recheckWhen: row.recheckWhen,
+      current: row.archivedAt === null,
+    };
+  } else {
+    // an org ruling, read whole (an on-demand `-full` guide included) where a visible project is of its org
+    const [row] = await db
+      .select({ entry: orgKnowledgeEntries, projectId: projects.id })
+      .from(orgKnowledgeEntries)
+      .innerJoin(projects, eq(projects.orgId, orgKnowledgeEntries.orgId))
+      .where(and(eq(orgKnowledgeEntries.id, uuid), inArray(projects.id, [...visible])))
+      .limit(1);
+    if (!row) return notFound(id);
+    projectId = row.projectId;
+    title = `${row.entry.slug} · ${row.entry.title}`;
+    text = row.entry.body;
+    path = () => '/org';
+    metadata = {
+      origin: 'org',
+      kind: 'rule',
+      slug: row.entry.slug,
+      type: 'convention',
+      scope: row.entry.scope,
+      recheckWhen: row.entry.recheckWhen,
+      injection: row.entry.injection,
+      current: true,
+    };
   }
   const slug = (await slugsOf([projectId])).get(projectId) ?? '';
   const content = await egressShown(projectId, SURFACE[kind], { title, text }, kind);
@@ -216,7 +256,7 @@ export async function fetchRecord(principal: McpPrincipal, id: string): Promise<
     id,
     title: content.title,
     text: content.text,
-    url: link(at.startsWith('/projects/') ? at : `/projects/${slug}${at}`),
+    url: link(at.startsWith('/projects/') || at === '/org' ? at : `/projects/${slug}${at}`),
     metadata: { project: slug, ...metadata },
   });
 }

@@ -9,6 +9,7 @@ import {
 	KNOWLEDGE_SCOPE_MAX,
 	KNOWLEDGE_SOURCE_MAX,
 	type KnowledgeProvenance,
+	type RecheckDue,
 } from "./knowledge.js";
 
 export const ORG_KNOWLEDGE_INJECTIONS = ["always", "on_demand"] as const;
@@ -45,4 +46,6 @@ export interface OrgKnowledgeEntry extends KnowledgeProvenance {
 	updatedBy: string | null;
 	createdAt: string;
 	updatedAt: string;
+	/** A re-check a landing or a rule change flagged on it (REQ-89 BC-5); null where none stands. */
+	recheckDue: RecheckDue | null;
 }

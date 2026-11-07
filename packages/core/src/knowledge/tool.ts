@@ -1,4 +1,5 @@
 import {
+  CURATED_ENTRY_TYPES,
   KNOWLEDGE_RECHECK_WHEN_MAX,
   KNOWLEDGE_SCOPE_MAX,
   KNOWLEDGE_SOURCE_MAX,
@@ -35,6 +36,8 @@ const inputSchema = z
     // the entry's `scope` at the REST door; `scope` here already names the stores a search reads
     entryScope: z.string().max(KNOWLEDGE_SCOPE_MAX).optional(),
     recheckWhen: z.string().max(KNOWLEDGE_RECHECK_WHEN_MAX).optional(),
+    type: z.enum(CURATED_ENTRY_TYPES).optional(),
+    replaces: z.string().min(1).max(512).optional(),
     kindFilter: z.enum(knowledgeKindEnum).optional(),
     injectionFilter: z.enum(knowledgeInjectionEnum).optional(),
     query: z.string().min(1).max(4000).optional(),
@@ -67,7 +70,7 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
       const title = required(input.title, 'title', 'upsert');
       const body = required(input.body, 'body', 'upsert');
       const { projectId, kind, injection, confidence, authoredBy, orderIndex, metadata } = input;
-      const { source, entryScope, recheckWhen } = input;
+      const { source, entryScope, recheckWhen, type, replaces } = input;
       return upsertKnowledgeEntry(
         upsertKnowledgeInputSchema.parse({
           projectId,
@@ -83,6 +86,8 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
           source,
           scope: entryScope,
           recheckWhen,
+          type,
+          replaces,
         }),
       );
     },
@@ -124,10 +129,11 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Actions: `list` — project entries (body-free index; use `get` for the full body). ' +
     "`get` — full entry by slug: the project's own or, where it holds none under that slug, its organisation's (`origin: org`). " +
     '`upsert` — create or replace an entry; embeds body for semantic search; tolerates embeddings outage (degraded write). ' +
-    'A reference, guide, workflow or rule carries `source` (what it rests on: `file.ts:symbol` anchors, an issue or requirement key, a URL), `entryScope` (where it applies; `scope` at the REST door) and `recheckWhen` (the change that means it needs re-checking), or is refused naming the one left out. ' +
+    'A reference, guide, workflow or rule carries `source` (what it rests on: `file.ts:symbol` anchors, an issue or requirement key, a URL), `entryScope` (where it applies; `scope` at the REST door) and `recheckWhen` (the change that means it needs re-checking: name paths, routes, config keys or rule slugs, so a landing touching one flags it), or is refused naming the one left out; and `type` (fact | hypothesis | convention), answered with a warning where left out. ' +
+    'A new slug whose text a live entry already holds is refused KNOWLEDGE_SUBJECT_HELD naming it: update that entry, or send `replaces: <its slug>` to retire it as superseded. A rewrite keeps the text it replaced as a revision (`get` answers `revisions`). ' +
     '`delete` — idempotent remove. ' +
     '`search` — semantic/keyword/hybrid search; `scope` controls which store(s): ' +
-    '"knowledge" (default), "memory", or "all" (both, each hit labeled with `origin`). ' +
+    '"knowledge" (default: the project\'s entries and lessons and its organisation\'s rulings, ranked together, each with `origin` project or org, `type`, `scope`, `recheckWhen` and `recheckDue`), "memory" (curated memory), or "all" (both lists). A retired or superseded entry is never a hit. ' +
     'list/get/search require project membership; upsert/delete require writer access.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
