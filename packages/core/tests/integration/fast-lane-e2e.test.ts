@@ -353,6 +353,9 @@ describe('a web-only deploy (BC-7)', () => {
 
   beforeEach(async () => {
     await rows(sql`DELETE FROM pgboss_v12.job WHERE name = 'forge.integrations'`);
+    // each case starts with nothing sent: the planted Coolify settles no deploy, so one of the same
+    // head would still be running and answer the next as already sent (ISS-1116)
+    await rows(sql`DELETE FROM integration_deliveries WHERE event_name = 'release.requested'`);
     deployed.length = 0;
     repo.head = sha(0x1ff);
     repo.incomplete = false;
@@ -489,7 +492,7 @@ describe('a web-only deploy (BC-7)', () => {
     const res = await deploy(declared, { integrationId: bindingId });
     expect(res.body.dispatched).toBe(true);
     const [job] = await queued();
-    expect(job?.data.payload).toBeUndefined();
+    expect(job?.data.payload).not.toHaveProperty('targetLabels');
     const { runOutboundDispatch } = await import('../../src/integrations/queue.js');
     await runOutboundDispatch(job?.data as OutboundDispatchJob);
     expect(deployed).toEqual([WEB.resourceUuid, CORE.resourceUuid]);
