@@ -138,8 +138,19 @@ ISS-1027): an issue that is over takes no landing from another issue's merge. It
 `skippedStamps` with its status and the reading that named it, and `linkedIssues` names, for every
 issue the request links, that reading — `branch-lead` (`fix/iss-n-…`), `branch-tail`
 (`feat/…-iss-n`), `title` or `body` — and whether it was stamped, skipped, refused or already held.
-A branch names one key: a digit suffix after it (`fix/x-iss-50-2`, a run's attempt number) is no
-second key (REQ-63 BC-4 r11). adminhub-api MR 5162 had stamped ISS-2, closed and unrelated, that way.
+A delivery branch names one key: a digit suffix after it (`fix/x-iss-50-2`, a run's attempt number)
+is no second key (REQ-63 BC-4 r11). adminhub-api MR 5162 had stamped ISS-2, closed and unrelated,
+that way. A `batch-iss-54-69` branch names every key it lists, the first read as `branch-lead` and
+each after it as `branch-tail`, and a title's host draft marker (`Draft:`, `[Draft]`, `WIP:`, `Draft -`)
+hides no key after it (ISS-980). The whole rule is
+`packages/core/src/issues/head-ref-link.ts:CHANGE_REQUEST_LINK_RULE`.
+
+A request named by `pullRequest` that the projection does not hold for the issue is read from the host
+once and re-projected before the merge refuses it, so a request whose title changed on the host, or
+whose create answer could not be written, is linked by that read
+(`packages/core/src/integration-door/stored-pull-request.ts:resolveStoredPullRequest`). Refused,
+`NO_PULL_REQUEST` names what the projection holds for that request — its branch, its title and the
+issues it links — and the linking rule (ISS-980).
 
 A closed issue whose mark holds such a misread commit is corrected in place by
 `POST /api/issues/:id/merge/correction` `{ commit, reason, misread?, mergedAt? }`
