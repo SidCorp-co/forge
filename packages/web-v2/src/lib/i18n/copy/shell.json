@@ -26,6 +26,8 @@
     "nav.proj-workflows": "Workflows",
     "nav.runners": "Runners",
     "nav.settings": "Settings",
+    "shell.account.copied": "Copied",
+    "shell.account.copy": "Copy",
     "shell.account.email": "Email",
     "shell.account.preferences": "Preferences",
     "shell.account.profile": "Profile",

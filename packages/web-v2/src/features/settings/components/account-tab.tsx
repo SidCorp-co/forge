@@ -9,7 +9,6 @@ import {
   PageSection,
   PageSectionBody,
   Field,
-  MonoTag,
   SectionTitle,
   Select,
   Skeleton,
@@ -38,7 +37,7 @@ export function AccountTab() {
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="fg-label">{t("shell.account.userId")}</dt>
-              <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
+              <dd>{user?.id ? <CopyUserId id={user.id} /> : "—"}</dd>
             </div>
           </dl>
         </PageSectionBody>
@@ -46,6 +45,27 @@ export function AccountTab() {
       <AccountPreferences />
       <AssistantPreferences />
     </div>
+  );
+}
+
+/** The id is support's to ask for, never text on the page (ui-copy-rule): one action copies it. */
+function CopyUserId({ id }: { id: string }) {
+  const t = useCopy();
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      icon={copied ? "check" : "link"}
+      onClick={() =>
+        void navigator.clipboard?.writeText(id).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+      }
+    >
+      {copied ? t("shell.account.copied") : t("shell.account.copy")}
+    </Button>
   );
 }
 
