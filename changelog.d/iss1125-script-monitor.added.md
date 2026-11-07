@@ -1,0 +1,1 @@
+**A script schedule can watch production with no agent session.** It calls only the read-only forge-ops calls it declares, keeps a small state between firings, and files one feedback item for a breach seen twice in a row.
