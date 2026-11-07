@@ -1,12 +1,18 @@
 /**
  * The turns of an issue something else holds (`standing.ts:turnOf`): a live blocker first, worded as
  * waiting on its judge where its change landed or on a design where one holds it, and a takeable row
- * the dispatch door withholds, its refusal named. Both read `stuck`, and `withTimes` says `blocked`.
+ * the dispatch door withholds, its refusal named. A withheld row reads `stuck`; one behind a blocker
+ * reads `stuck` only where that blocker is itself stuck or its own standing was not read, and
+ * `queued` behind one that moves or waits its turn (ISS-1072), and `withTimes` says `blocked`.
  */
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
-import type { IssueWithheld, IssueWithheldCode } from '@forge/contracts/issue-standing';
+import type {
+  IssueAttentionGroup,
+  IssueWithheld,
+  IssueWithheldCode,
+} from '@forge/contracts/issue-standing';
 import { type Said, say } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
@@ -47,11 +53,20 @@ export const LIVE_BLOCKER_ACT_KEYS: ReadonlySet<string> = new Set(
   [RUNNING, NEEDS_PERSON, PAUSED, CAME_BACK, NOT_STARTED, LANDED_WAITS_JUDGE].map((s) => s.key),
 );
 
-export function blockerTurn(blocker: StandingEdge, judge: VerifiedJudge | null): Turn {
+/**
+ * A dependent's turn behind `blocker`, whose own group is `blockerGroup` (undefined where its standing
+ * was not read). It waits on a blocker that moves, waits its turn or is paused; it is stuck where the
+ * blocker is stuck (nobody holds it, or its own wait fell overdue) or where nothing says it is not.
+ */
+export function blockerTurn(
+  blocker: StandingEdge,
+  judge: VerifiedJudge | null,
+  blockerGroup: IssueAttentionGroup | undefined,
+): Turn {
   const design = SETTLED.includes(blocker.status) ? blocker.designHold : null;
   const judged = awaitsJudge(blocker, judge);
   return {
-    group: 'stuck',
+    group: blockerGroup === undefined || blockerGroup === 'stuck' ? 'stuck' : 'queued',
     waitingOn: wait(
       'issue',
       named(blocker.key),

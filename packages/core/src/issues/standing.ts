@@ -50,6 +50,9 @@ const OWED: Record<string, Said> = {
 };
 const ANSWER = say('issues.standing.who.answer');
 
+/** The attention group each issue reads, by id: what a dependent's turn reads its blocker by. */
+type EdgeGroups = ReadonlyMap<string, IssueAttentionGroup>;
+
 export interface StandingEdge {
   /** The other issue's id, key, title and status. */
   id: string;
@@ -252,7 +255,7 @@ function answeredParkTurn(answered: Pick<ParkAnsweredView, 'hold' | 'resume'>): 
 }
 
 /** A status the run cannot move on from by itself: done, paused, a question owed, a draft. */
-function personTurn(input: IssueStandingInput): Turn | null {
+function personTurn(input: IssueStandingInput, edgeGroups: EdgeGroups): Turn | null {
   const { status } = input;
   if (status === 'closed' || status === 'dropped') {
     return {
@@ -289,7 +292,7 @@ function personTurn(input: IssueStandingInput): Turn | null {
   if (status === 'draft') {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
     const blocker = input.blockedBy.find((b) => b.holds);
-    if (blocker) return blockerTurn(blocker, input.judge);
+    if (blocker) return blockerTurn(blocker, input.judge, edgeGroups.get(blocker.id));
     // the master takes a draft on or drops it (REQ-68: admission is an agent act), never its reader
     return {
       group: 'queued',
@@ -401,8 +404,8 @@ function owedMarkTurn(owed: { number: number; commit: string }, running: boolean
     : { group: 'queued', waitingOn: wait('master', MASTER, act, rule) };
 }
 
-function turnOf(input: IssueStandingInput): Turn {
-  const person = personTurn(input);
+function turnOf(input: IssueStandingInput, edgeGroups: EdgeGroups): Turn {
+  const person = personTurn(input, edgeGroups);
   if (person) return person;
   const running = held(input.lease) || input.inFlight;
   if (input.owedMark) return owedMarkTurn(input.owedMark, running);
@@ -412,7 +415,7 @@ function turnOf(input: IssueStandingInput): Turn {
   }
   if (running) return runningTurn(input);
   const blocker = input.blockedBy.find((b) => b.holds);
-  if (blocker) return blockerTurn(blocker, input.judge);
+  if (blocker) return blockerTurn(blocker, input.judge, edgeGroups.get(blocker.id));
   const returned = input.designReturned;
   if (returned && TAKEABLE_STATUSES.includes(input.status)) {
     return {
@@ -449,7 +452,7 @@ export function deriveIssueStanding(
   edgeGroups: ReadonlyMap<string, IssueAttentionGroup> = new Map(),
   wave: number | null = null,
 ): IssueStanding {
-  const turn = turnOf(input);
+  const turn = turnOf(input, edgeGroups);
   const { waitingOn } = turn;
   const { group, times } = withTimes(
     turn,

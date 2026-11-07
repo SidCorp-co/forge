@@ -130,23 +130,13 @@ describe("REQ-45's shape: a reopened carrier no master serves", () => {
     expect(s.times.stuck?.reason).toContain('gone silent');
   });
 
-  it('reads an open carrier stuck too once its take falls a working day overdue, a master serving', () => {
+  // a queue is not stuck (ISS-1072): a carrier waiting its turn in a serving master's queue holds no
+  // clock, however long it has waited, so the requirement it carries is moving, never stuck by it
+  it('keeps an open carrier a serving master has not yet taken moving, a week on', () => {
     const s = deriveStanding(requirement([carrier('open', 'serves')], 'serves'));
-    expect(s.attentionGroup).toBe('stuck');
-    expect(s.times.stuck).toMatchObject({ code: 'overdue', via: 'ISS-498' });
-  });
-
-  it('keeps a carrier a serving master took within the day moving, its due named', () => {
-    const fresh = { ...requirement([], 'serves'), now: at('2026-10-14T12:00:00Z') };
-    const own = deriveIssueStanding({ ...issueInput('open', 'serves'), now: fresh.now });
-    const issue = {
-      ...carrier('open', 'serves'),
-      own: { waitingOn: own.waitingOn, since: SENT_BACK, stuck: own.times.stuck },
-    } as StandingIssue;
-    const s = deriveStanding({ ...fresh, issues: [issue] });
     expect(s.attentionGroup).toBe('moving');
     expect(s.times.stuck).toBeNull();
-    expect(s.times.dueAt).toBe('2026-10-15T08:00:00.000Z');
+    expect(s.times.dueAt).toBeNull();
   });
 });
 

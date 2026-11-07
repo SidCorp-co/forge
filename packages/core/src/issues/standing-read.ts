@@ -331,10 +331,61 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
   };
 }
 
+/** How far a read follows live blockers outside the rows it was asked for; past it a blocker reads unread. */
+const BLOCKER_DEPTH = 4;
+
+const idsIn = (ids: readonly string[]) =>
+  sql`AND i.id IN (${sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  )})`;
+
+/**
+ * Each row's attention group, and each live blocker's outside the rows, read by its own standing: a
+ * dependent waits on a blocker that moves or waits its turn and is stuck only behind a stuck one
+ * (`standing-held.ts:blockerTurn`, ISS-1072). A blocker's group may turn on its own blocker's, so the
+ * rows are settled in passes until none changes.
+ */
+async function groupsOf(
+  projectId: string,
+  inputs: readonly (readonly [IssueRowRaw, IssueStandingInput])[],
+  now: Date,
+  depth: number,
+): Promise<Map<string, IssueAttentionGroup>> {
+  const asked = new Set(inputs.map(([r]) => r.id));
+  const outside = [
+    ...new Set(
+      inputs.flatMap(([, i]) =>
+        i.blockedBy.filter((b) => b.holds && !asked.has(b.id)).map((b) => b.id),
+      ),
+    ),
+  ];
+  const groups = new Map<string, IssueAttentionGroup>();
+  if (outside.length > 0 && depth < BLOCKER_DEPTH) {
+    const raws = await issueRows(projectId, idsIn(outside), outside.length);
+    for (const r of await standingRows(projectId, raws, now, depth + 1)) {
+      groups.set(r.id, r.standing.attentionGroup);
+    }
+  }
+  for (let pass = 0; pass <= inputs.length; pass++) {
+    let changed = false;
+    for (const [r, input] of inputs) {
+      const group = deriveIssueStanding(input, groups).attentionGroup;
+      if (groups.get(r.id) !== group) {
+        groups.set(r.id, group);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return groups;
+}
+
 async function standingRows(
   projectId: string,
   raws: readonly IssueRowRaw[],
   now: Date,
+  depth = 0,
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
@@ -399,9 +450,7 @@ async function standingRows(
     const r = head ? { ...raw, branch: head.branch, head_sha: head.sha } : raw;
     return [r, standingInputOf(r, facts)];
   });
-  const groups = new Map<string, IssueAttentionGroup>(
-    inputs.map(([r, input]) => [r.id, deriveIssueStanding(input).attentionGroup]),
-  );
+  const groups = await groupsOf(projectId, inputs, now, depth);
   const waves = wavesOf([
     ...inputs.map(([r, input]) => ({
       id: r.id,
@@ -479,11 +528,11 @@ export async function issueWaitsOf(
   now: Date = new Date(),
 ): Promise<Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>> {
   if (ids.length === 0) return new Map();
-  const where = sql`AND i.id IN (${sql.join(
-    ids.map((id) => sql`${id}`),
-    sql`, `,
-  )})`;
-  const rows = await standingRows(projectId, await issueRows(projectId, where, ids.length), now);
+  const rows = await standingRows(
+    projectId,
+    await issueRows(projectId, idsIn(ids), ids.length),
+    now,
+  );
   return new Map(rows.map((r) => [r.id, { key: r.key, standing: r.standing }]));
 }
 

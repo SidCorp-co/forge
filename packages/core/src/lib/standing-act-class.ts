@@ -41,6 +41,11 @@ const BY_KEY: Readonly<Record<string, StandingActClass>> = {
   'standing.act.check': 'ba_check',
   // a draft parks work that never started: overdue only once it has sat as long as any other wait
   'issues.standing.act.takeOnOrDrop': 'other',
+  // an issue waiting its turn in the master's queue: the queue has no clock (ISS-1072)
+  'issues.standing.act.dispatch': 'queue',
+  'issues.standing.act.buildNext': 'queue',
+  'issues.standing.act.rerun': 'queue',
+  'standing.act.takeNext': 'queue',
   'standing.act.cut': 'release_cut',
   'standing.act.cutCarrierRelease': 'release_cut',
   'standing.act.cutThenApprove': 'release_cut',

@@ -74,6 +74,7 @@ export const STANDING_ACT_CLASSES = [
 	"judge",
 	"run",
 	"reporter",
+	"queue",
 	"other",
 ] as const;
 export type StandingActClass = (typeof STANDING_ACT_CLASSES)[number];
@@ -100,6 +101,12 @@ export const STANDING_DUE_WORKING_DAYS: Readonly<
 	judge: 1,
 	run: null,
 	reporter: null,
+	/**
+	 * Wait in the master's queue for a dispatch or a re-run: no clock. The master takes one at a time
+	 * by its own order, so time in the queue is no fault; the wait reads stuck only where no master
+	 * serves the project (ISS-1072).
+	 */
+	queue: null,
 	other: 10,
 };
 
