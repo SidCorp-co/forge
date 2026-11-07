@@ -10,7 +10,7 @@ export const RELEASE_TAGS_GUIDE: CoreGuide = {
   title: 'Release tags: how a build reads its release version',
   summary:
     'Forge tags the commit a release names v<version> on the project source host before anything is deployed from it: the promotion merge, or the cut commit. How a project deployed outside Forge reads that version at build time with no redeploy, and what the release says when it could not tag.',
-  version: 3,
+  version: 4,
   body: `## Release tags: how a build reads its release version
 
 Forge puts the lightweight tag \`v<version>\` (release \`0.5.0\` → \`v0.5.0\`) on the commit a
@@ -57,6 +57,15 @@ the tag's name. Where there is none, it says why, by one of ${codes}, and the de
 the sentence. A host that failed is asked again by itself, with backoff, for some hours; past that
 its delivery is kept dead, and a platform admin replays it (\`GET /api/admin/outbox/dead\`,
 \`POST /api/admin/outbox/deliveries/:did/replay\`).
+
+### Merging a release
+- A release merges its request only at the head its approval names (\`evidence.commit\`), or
+  the head it was cut at. Core pins it; a \`headSha\` you send cannot move it.
+- A request whose head moved is refused \`RELEASE_MERGE_HEAD_MOVED\`, naming both heads and the
+  commits between. Abort and cut again, or have the new head approved.
+- Before it merges, and after a merge the host never confirmed, Forge asks whether the target
+  already holds the head. One that does answers \`alreadyMerged: true\` with the commit found
+  there, so a retry never merges twice, whatever state the request reads.
 
 ### What the binding needs
 - GitHub: the App's \`contents: write\`, which merging already asks.
