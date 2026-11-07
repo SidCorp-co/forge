@@ -92,13 +92,17 @@ describe("the feedback item's progress block", () => {
     expect(within(shipped).queryByTestId("feedback-progress-owes")).toBeNull();
   });
 
-  // ISS-1103: a planned item whose carrier shipped reads shipped and that judgement is owed, never shipped alone
-  it("shipped work its item still owes judgement on says so beside the release", async () => {
+  // ISS-1103: a planned item whose carrier shipped reads shipped and that judgement is owed, never shipped alone;
+  // UI-E residual 3 (ISS-1109): said on the Work row beside its Shipped pill, once, never a bare pill there
+  it("shipped work its item still owes judgement on says so on the Work row, once", async () => {
     const p = CASE("FB-16");
     await shown({ ...p, forecast: { ...p.forecast, owes: "judgement" } });
+    const work = screen.getByTestId("feedback-progress-work");
+    expect(work.textContent).toContain("Shipped");
+    expect(within(work).getByTestId("feedback-progress-owes").textContent).toBe("Awaiting judgement");
     const shipped = screen.getByTestId("feedback-progress-shipped");
     expect(shipped.textContent).toContain("Shipped in 0.3.0");
-    expect(within(shipped).getByTestId("feedback-progress-owes").textContent).toBe(" · awaiting judgement");
+    expect(screen.getAllByTestId("feedback-progress-owes")).toHaveLength(1);
   });
 
   it("a duplicate follows its original, linked", async () => {

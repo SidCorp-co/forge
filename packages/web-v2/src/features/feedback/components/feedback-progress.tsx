@@ -3,8 +3,8 @@
 // (`GET …/forecast/feedback/:fb`, `core forecast/feedback-progress.ts`) and this only says it. The
 // Estimate row stands only where there is one, a date or the release that shipped it: why core gives
 // no date is its own working, not the reader's, and the row is dropped rather than say it (ISS-903);
-// the two that are state — snoozed until when, and fixed work waiting on a release cut — are the Work
-// row's one status line.
+// the three that are state — snoozed until when, fixed work waiting on a release cut, and shipped work
+// still owed its judgement — are the Work row's one status line.
 // Whose turn it is stays the banner's, said once (REQ-43 BC-5).
 
 import type { FeedbackProgress as Progress, FeedbackWork, FeedbackWorkState } from "@forge/contracts/forecast";
@@ -50,6 +50,14 @@ function WorkLine({ p, slug, clock }: { p: Progress; slug: string; clock: EtaClo
   const t = useCopy();
   const time = useTimeFormat();
   const e = p.estimate;
+  // shipped while the item still owes its verdicts (ISS-1103): said beside the pill, never a bare Shipped (ISS-1109)
+  if (p.work.state === "shipped" && p.forecast.owes === "judgement") {
+    return (
+      <span className="text-13 text-muted" data-testid="feedback-progress-owes">
+        {t("eta.awaitingJudgement")}
+      </span>
+    );
+  }
   if (e.kind !== "none") return null;
   if (e.reason === "snoozed" && e.until) {
     return (
@@ -133,13 +141,6 @@ function Estimate({ p, slug, clock }: { p: Progress; slug: string; clock: EtaClo
           t("feedback.progress.state.shipped")
         )}
         {e.at ? <span className="text-muted"> · {time.date(e.at)}</span> : null}
-        {/* shipped while the item still owes its verdicts (ISS-1103): never read as finished */}
-        {p.forecast.owes === "judgement" ? (
-          <span className="text-muted" data-testid="feedback-progress-owes">
-            {" "}
-            · {t("eta.awaitingJudgementInline")}
-          </span>
-        ) : null}
       </span>
     );
   }
