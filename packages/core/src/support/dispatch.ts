@@ -14,6 +14,7 @@ import type { SupportDeliveryPath, SupportRoomConfig } from '@forge/contracts/su
 import type { ChatRole } from '@forge/contracts/support-operations';
 import {
   type CheckoutView,
+  checkoutMovedFrom,
   dispatchChatTurn,
   mintFencedSessionCredential,
   pushProjectNow,
@@ -21,9 +22,7 @@ import {
   turnCredentialChatDevice,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import type { agentSessions } from '../db/schema.js';
-import { findBindingWithConnectionById, forgeReads } from '../integrations/index.js';
-import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
+import { forgeReads } from '../integrations/index.js';
 import { type BoundSupportTool, supportApisOf } from '../integrations/support-api/index.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
@@ -38,6 +37,7 @@ import {
   unansweredOfLastTurn,
   unclaim,
   undeliveredThreads,
+  waitingMessages,
 } from './delivery.js';
 import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { injectWaiting, settleInjects } from './inject.js';
@@ -47,9 +47,10 @@ import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
-import { agentMarkerOf, ensureSupportRoom, roomIsBound } from './rooms.js';
+import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
+import { agentMarkerOf } from './rooms.js';
 import { insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
-import { retryOrTell } from './turn-retry.js';
+import { retryOrTell, tellUnanswered } from './turn-retry.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
 const SUPPORT_SESSION_GRANT = ['projects:write'] as const;
@@ -97,43 +98,7 @@ export function noteRole(roomId: string, role: ChatRole): void {
   briefedTools.set(roomId, roleKey(role));
 }
 
-export type SessionRow = typeof agentSessions.$inferSelect;
 export type TurnClient = Awaited<ReturnType<typeof turnCredentialChatDevice>>;
-
-export async function sessionOf(room: RoomRow): Promise<SessionRow | null> {
-  return room.sessionId ? sessionRowById(room.sessionId) : null;
-}
-
-/**
- * The room as it stands, its session declared if its binding is on and still names it as it was
- * declared. A room its binding no longer answers gets none: the sweep released it (ISS-933).
- */
-export async function roomWithSession(roomId: string): Promise<RoomRow | null> {
-  const room = await roomById(roomId);
-  if (!room || room.sessionId || !(await roomIsBound(room))) return room;
-  const pair = await findBindingWithConnectionById(room.bindingId);
-  const config = (pair?.binding.config ?? null) as RocketChatBindingConfig | null;
-  const declared =
-    room.kind === 'operations'
-      ? config?.operations
-        ? ({ kind: 'operations', scope: config.operations.scope } as const)
-        : null
-      : room.kind === 'agent'
-        ? config?.agent
-          ? ({ kind: 'agent', agent: config.agent } as const)
-          : null
-        : config?.support
-          ? ({ kind: 'support', support: config.support } as const)
-          : null;
-  if (!declared) return room;
-  return ensureSupportRoom({
-    projectId: room.projectId,
-    bindingId: room.bindingId,
-    connectionId: room.connectionId,
-    rid: room.rid,
-    room: declared,
-  });
-}
 
 /**
  * A cold session's brief: a support group's (the product, its granted tools), or an operations
@@ -277,9 +242,20 @@ async function ownerModeSession(room: RoomRow): Promise<boolean> {
   return agentMarkerOf(session?.metadata)?.ownerMode === true;
 }
 
-/** Whether a turn of this session starts Claude Code cold (no session of its own to resume). */
-export const startsCold = (session: SessionRow, client: TurnClient) =>
-  !session.claudeSessionId || Boolean(client.migrated);
+/**
+ * Whether a turn of this session starts Claude Code cold: no session of its own to resume, a box
+ * other than the one it ran on, or a checkout other than the one it ran in (ISS-1101), which
+ * `chat-turn.ts` starts fresh, so the turn is briefed as a first one.
+ */
+export async function startsCold(
+  session: SessionRow,
+  client: TurnClient & { deviceId: string },
+  projectId: string,
+): Promise<boolean> {
+  if (!session.claudeSessionId || client.migrated) return true;
+  const bound = await resolveSessionRepoPathForDevice(projectId, client.deviceId);
+  return checkoutMovedFrom(session, client.deviceId, bound) !== null;
+}
 
 /**
  * Hand `body` to the session as one turn, under a token fenced to the project and revoked when the
@@ -296,7 +272,7 @@ export async function handTurn(
   if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
   const parts: string[] = [];
   const followed = await followedCheckouts(room, client.deviceId);
-  if (startsCold(session, client)) {
+  if (await startsCold(session, client, room.projectId)) {
     parts.push(await briefOf(room, project.name, followed));
     // a channel agent re-reads every group it answers, each thread naming its channel
     const rooms = room.kind === 'agent' ? await roomsOfSession(session.id) : [room];
@@ -341,7 +317,8 @@ export type DeliverOutcome =
   | 'backing-off'
   | 'no-box'
   | 'dispatched'
-  | 'dispatch-failed';
+  | 'dispatch-failed'
+  | 'held';
 
 /**
  * Hand every message waiting in a room to its session at once: written into the running turn when
@@ -362,8 +339,9 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   return outcome;
 }
 
-async function handOn(room: RoomRow): Promise<DeliverOutcome> {
-  const session = await sessionOf(room);
+async function handOn(found: RoomRow): Promise<DeliverOutcome> {
+  const { room, session, held } = await sessionToHand(found);
+  if (held) return holdWaiting(room, held);
   if (!session) return 'nothing-waiting';
   if (session.status === 'running') return injectWaiting(room, session);
   if (!(await hasReady(room.id))) return 'backing-off';
@@ -375,19 +353,15 @@ async function handOn(room: RoomRow): Promise<DeliverOutcome> {
   }
 
   const at = new Date();
-  const path: SupportDeliveryPath = startsCold(session, client) ? 'start' : 'send';
+  const box = { ...client, deviceId: client.deviceId };
+  const path: SupportDeliveryPath = (await startsCold(session, box, room.projectId))
+    ? 'start'
+    : 'send';
   const rows = await claimUndelivered(room.id, at, path);
   if (rows.length === 0) return 'nothing-waiting';
   noteTurn(room.id, at);
   try {
-    await handTurn(
-      room,
-      session,
-      { ...client, deviceId: client.deviceId },
-      {
-        messages: await roomMessages(room, rows),
-      },
-    );
+    await handTurn(room, session, box, { messages: await roomMessages(room, rows) });
     return 'dispatched';
   } catch (err) {
     // a turn started since the session was read: the messages go into it, and spend no try (ISS-977)
@@ -406,6 +380,17 @@ async function handOn(room: RoomRow): Promise<DeliverOutcome> {
     await retryOrTell(room, rows, `the turn did not reach its box: ${errorText(err)}`, { at });
     return 'dispatch-failed';
   }
+}
+
+/**
+ * The room's session ended on a cause its checkout meets again (`room-session.ts`): nothing is
+ * handed to a turn, and each waiting message's thread is told it is not answered, once; the
+ * messages wait for the binding to name another checkout.
+ */
+async function holdWaiting(room: RoomRow, held: SessionRow): Promise<DeliverOutcome> {
+  const why = `the session's checkout ${held.repoPath ?? '(none)'} failed its last turn (${held.failureReason}) and the binding still names it`;
+  await tellUnanswered(room, await waitingMessages(room.id), why);
+  return 'held';
 }
 
 const refusedAs = (err: unknown, code: string) =>

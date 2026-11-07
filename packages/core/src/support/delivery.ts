@@ -368,6 +368,21 @@ export async function undeliveredThreads(
   return [...seen].map(([thread, conversationId]) => ({ thread, conversationId }));
 }
 
+/** Every inbound message of a room no turn has taken, backing off or not, oldest first. */
+export async function waitingMessages(roomId: string): Promise<ActionRow[]> {
+  return db
+    .select()
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        isNull(supportActions.deliveredAt),
+      ),
+    )
+    .orderBy(asc(supportActions.createdAt));
+}
+
 /** Rooms holding an inbound message no turn has taken and no back-off holds (ISS-977). */
 export async function roomsWithUndelivered(): Promise<string[]> {
   const rows = await db

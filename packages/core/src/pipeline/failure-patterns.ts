@@ -46,6 +46,9 @@ export const TERMINAL_INFRA_PATTERNS: ReadonlyArray<RegExp> = [
   /\bpreflight[ _-]?failed:\s*origin_remote\b/i,
   /\bpreflight[ _-]?failed:\s*work_tree\b/i,
   /\bpreflight[ _-]?failed:\s*repo_path\b/i,
+  // the runner's refusal of a chat turn whose checkout is not on its box (ISS-1101,
+  // `runner-agent/src/chat_checkout.rs:missing_checkout`): a retry runs in the same gone checkout
+  /\bchat turn for \S+ refused: checkout .+ does not exist\b/i,
 ];
 
 export const DUPLEX_SESSION_PATTERNS: ReadonlyArray<RegExp> = [
@@ -58,7 +61,19 @@ export const BOX_SATURATION_PATTERNS: ReadonlyArray<RegExp> = [/\bsession_permit
 
 export const REPO_CONTENTION_PATTERNS: ReadonlyArray<RegExp> = [/\brepo_lock_timeout\b/i];
 
-export const PREFLIGHT_PATTERNS: ReadonlyArray<RegExp> = [/\bpreflight[ _-]?failed\b/i];
+export const PREFLIGHT_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bpreflight[ _-]?failed\b/i,
+  // a process whose working directory is gone (`runner-agent/src/claude_code/mod.rs:spawn_failure`)
+  /\bcannot start \S+: its working directory .+ does not exist\b/i,
+];
+
+/**
+ * A process whose program is not on the box (`runner-agent/src/claude_code/mod.rs:spawn_failure`,
+ * ISS-1101), which used to read as `failed to spawn claude` beside a gone working directory.
+ */
+export const PROGRAM_MISSING_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bcannot start \S+ in .+: the program was not found\b/i,
+];
 
 export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bECONN(RESET|REFUSED|ABORTED)\b/i,

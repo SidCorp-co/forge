@@ -3,6 +3,7 @@ export type { CheckoutView } from './chat-checkout.js';
 export { boxLacks } from './chat-device.js';
 export { boxSessionOfToken, type ChatDoor, chatDoorOfToken } from './chat-door.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
+export { checkoutMovedFrom } from './chat-turn-checkout.js';
 export {
   dispatchInteractiveTurn,
   type InteractiveAuthority,

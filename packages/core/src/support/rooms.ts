@@ -26,6 +26,7 @@ import {
   agentRoomsOfBinding,
   insertRoom,
   type RoomRow,
+  releaseSession,
   roomOfBinding,
   roomsHoldingSessions,
   roomsOfProject,
@@ -331,6 +332,19 @@ export async function releaseUnboundRooms(projectId?: string): Promise<string[]>
     );
   }
   return released;
+}
+
+/**
+ * A room whose session ended lets go of it (ISS-1101): every room holding it, a channel agent's
+ * groups included, holds none, and the session is told closed on its box, so the next declaration
+ * places a new one.
+ */
+export async function letGoOfEndedSession(room: RoomRow, sessionId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockXact(tx, 'supportRoom', lockKey(room.bindingId, room.rid, room.kind));
+    await releaseSession(tx, sessionId);
+  });
+  await letGoOfSession(sessionId);
 }
 
 /**

@@ -93,6 +93,14 @@ export async function setRoomsSession(
     .where(and(eq(supportRooms.bindingId, bindingId), eq(supportRooms.kind, 'agent')));
 }
 
+/** Every room holding session `sessionId` holds none (ISS-1101: the session ended). */
+export async function releaseSession(tx: Exec, sessionId: string): Promise<void> {
+  await tx
+    .update(supportRooms)
+    .set({ sessionId: null })
+    .where(eq(supportRooms.sessionId, sessionId));
+}
+
 /** Every room on group `rid`, of any project and binding, oldest first. */
 export async function roomsOnRid(rid: string): Promise<RoomRow[]> {
   return db

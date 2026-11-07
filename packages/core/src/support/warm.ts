@@ -19,8 +19,6 @@ import {
   noteTools,
   noteTurn,
   roleKey,
-  roomWithSession,
-  sessionOf,
   toldTools,
   toolsKey,
 } from './dispatch.js';
@@ -30,6 +28,7 @@ import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
 import { followedLine, grantsLine, roomsLine, toolsLine } from './prompt.js';
 import { replayPlacedRooms } from './replay.js';
+import { roomWithSession, sessionToHand } from './room-session.js';
 import {
   declareSupportRooms,
   projectsWithUndeclaredRooms,
@@ -56,6 +55,7 @@ export type WarmOutcome =
   | 'messages-waiting'
   | 'no-box'
   | 'unbound'
+  | 'held'
   | 'none';
 
 /**
@@ -79,9 +79,13 @@ async function warmOnce(roomId: string, why: WarmReason): Promise<WarmOutcome> {
   if (!found) return 'none';
   // a room whose binding is off or no longer names its group is not answered, so it is not warmed
   if (!(await roomIsBound(found))) return 'unbound';
-  const room = await roomWithSession(roomId);
-  const session = room ? await sessionOf(room) : null;
-  if (!room || !session) return 'none';
+  const declared = await roomWithSession(roomId);
+  if (!declared) return 'none';
+  // a session that ended is never warmed again; one ended on a cause its checkout meets again is
+  // not replaced until a person's act (a binding saved, a box online) may have cleared it (ISS-1101)
+  const { room, session, held } = await sessionToHand(declared, { lift: why !== 'sweep' });
+  if (held) return 'held';
+  if (!session) return 'none';
   if (session.status === 'running' || session.status === 'queued') return 'busy';
   // a member's message beats a warm-up: it is the turn that warms the session; one backing off from
   // a failed try does not hold the warm-up back, whose completing ends that back-off (ISS-977)

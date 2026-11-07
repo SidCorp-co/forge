@@ -9,9 +9,7 @@ import { isSlashCommandSkillName } from '@forge/contracts/skills';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, type MemberLens, type ModelTier, memberLenses } from '../db/schema.js';
-import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
-import type { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow } from '../lifecycle/index.js';
 import { assertRunAcceptsWork, insertOneShotRun, openOneShotRun } from '../pipeline/index.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
@@ -25,6 +23,7 @@ import {
   requireListeningBox,
 } from './chat-device.js';
 import { runsConfined } from './chat-door.js';
+import { movedNotice, turnCheckout } from './chat-turn-checkout.js';
 import { credentialOf, failUndelivered } from './chat-turn-unsent.js';
 import { stripSystemNoise } from './content-filter.js';
 import { agentSessionsPorts } from './ports.js';
@@ -198,14 +197,6 @@ export interface DispatchChatTurnArgs {
   checkout?: CheckoutView | undefined;
 }
 
-/** A remote turn runs in its device binding's checkout; a binding that names none is refused by name. */
-function checkoutUnbound(projectId: string, deviceId: string | null): RefusalError {
-  return refuseSession(
-    'CHECKOUT_UNBOUND',
-    `device ${deviceId ?? '(none)'}'s binding to project ${projectId} names no checkout, so no turn runs there. The binding is the only place a checkout is named: set it with \`forge-runner bind <slug> --path <dir>\` on the box, or PATCH /api/projects/${projectId}/runners/:runnerId { repoPath }.`,
-  );
-}
-
 /**
  * A cold start carries the tool reference and project preamble; after a migration it also
  * re-injects the prior transcript, since the on-disk `--resume` state stayed on the old box.
@@ -303,35 +294,6 @@ interface TurnPlan {
    */
   keepResident: boolean;
   checkout: CheckoutView | null;
-}
-
-/**
- * The checkout a turn runs in: the one its device's binding names now, read on every turn. The
- * session's stored path is only what it ran in last: a box rebound to another checkout moves the
- * session there, said by `movedFrom` (ISS-1101), where it used to keep the old path for good.
- */
-export async function turnCheckout(
-  session: Pick<AgentSessionRow, 'repoPath' | 'deviceId'>,
-  projectId: string,
-  deviceId: string,
-  migrated = false,
-): Promise<{ repoPath: string; movedFrom: string | null }> {
-  const repoPath = await resolveSessionRepoPathForDevice(projectId, deviceId);
-  if (!repoPath) throw checkoutUnbound(projectId, deviceId);
-  const sameBox = !migrated && deviceId === (session.deviceId ?? null);
-  const movedFrom =
-    sameBox && session.repoPath && session.repoPath !== repoPath ? session.repoPath : null;
-  return { repoPath, movedFrom };
-}
-
-/** The line a moved session's transcript carries before the turn that moved it. */
-function movedNotice(from: string, to: string, at: Date): TranscriptEntry {
-  return {
-    id: randomUUID(),
-    type: 'system',
-    content: `This session ran in the checkout ${from}; its binding names ${to} now, so this turn and every one after it run there.`,
-    timestamp: at.getTime(),
-  };
 }
 
 async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
@@ -498,7 +460,7 @@ async function writeTurn(
     ]);
     const seeded = await seedTurn(tx, updated.id, {
       priorMessages: plan.prevMessages,
-      notices: plan.notices,
+      ...(plan.notices.length > 0 ? { notices: plan.notices } : {}),
       entry: plan.userMessage,
       at: plan.now,
     });

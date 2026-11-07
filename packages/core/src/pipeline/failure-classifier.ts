@@ -10,6 +10,7 @@ import {
   PERMANENT_PATTERNS,
   PERMISSION_PATTERNS,
   PREFLIGHT_PATTERNS,
+  PROGRAM_MISSING_PATTERNS,
   REPO_CONTENTION_PATTERNS,
   STOPPED_ON_QUESTION_PATTERNS,
   TERMINAL_INFRA_PATTERNS,
@@ -18,7 +19,7 @@ import {
 } from './failure-patterns.js';
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-export const CLASSIFIER_VERSION = 13;
+export const CLASSIFIER_VERSION = 14;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -156,6 +157,12 @@ const PRE_SPAWN_RULES: readonly PatternRule[] = [
     'infra',
     'workspace_preflight_failed',
     'workspace preflight (pattern match)',
+  ),
+  rule(
+    PROGRAM_MISSING_PATTERNS,
+    'infra',
+    'runner_unsupported_type',
+    'the program the runner starts is not on its box',
   ),
   rule(
     BOX_SATURATION_PATTERNS,

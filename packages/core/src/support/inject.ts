@@ -21,8 +21,9 @@ import {
   unclaim,
   unsettledInjects,
 } from './delivery.js';
-import { type DeliverOutcome, deliverWaiting, type SessionRow } from './dispatch.js';
+import { type DeliverOutcome, deliverWaiting } from './dispatch.js';
 import { roomMessages } from './prompt.js';
+import type { SessionRow } from './room-session.js';
 import { type RoomRow, roomById } from './store.js';
 
 const INJECT_LEAD = 'More messages arrived in the group while you were working:';

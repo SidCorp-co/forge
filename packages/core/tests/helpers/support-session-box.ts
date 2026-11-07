@@ -64,6 +64,8 @@ export interface Turn {
   ownHosts: string[] | null;
   /** The followed projects' checkouts the frame told the box to show read-only (ISS-874). */
   siblingCheckouts: string[] | null;
+  /** The checkout the frame told the box to run the turn in (ISS-1101). */
+  repoPath: string | null;
   /** When the box heard it. */
   at: number;
 }
@@ -141,6 +143,11 @@ export class SessionBox {
   }
   /** How the box reports a turn's end: completed, or failed as a crashed process is. */
   turnEnd: 'completed' | 'failed' = 'completed';
+  /**
+   * What a failed turn says, as the runner's `turnError`: a turn it refused before spawning names
+   * why (ISS-1101). Null, a failed turn says nothing, as a crashed process.
+   */
+  failWith: string | null = null;
   /** What core asked the box to do outside a session (REQ-75 r5): commands on hosts, builds pushed. */
   readonly acts: { event: BoxActEvent; data: Record<string, unknown> }[] = [];
   /** How the box answers a `host.command`: as its SSH would, or `{ error }` where it could not run. */
@@ -277,6 +284,7 @@ export class SessionBox {
       buildBase: (d.buildBase as string | undefined) ?? null,
       ownHosts: (d.ownHosts as string[] | undefined) ?? null,
       siblingCheckouts: (d.siblingCheckouts as string[] | undefined) ?? null,
+      repoPath: (d.repoPath as string | undefined) ?? null,
       warmUp: messages.length === 0 && text.includes('reply with the single word: ready'),
       at: Date.now(),
     };
@@ -371,7 +379,9 @@ export class SessionBox {
         throw new Error(`the box could not end the turn: ${res.status} ${await res.text()}`);
     };
     if (this.turnEnd === 'failed') {
-      await patch({ status: 'failed' });
+      await patch(
+        this.failWith ? { status: 'failed', turnError: this.failWith } : { status: 'failed' },
+      );
       return;
     }
     for (const i of running?.injected ?? []) {
