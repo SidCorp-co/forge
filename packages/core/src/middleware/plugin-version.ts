@@ -15,11 +15,10 @@ import {
   type PluginVersion,
   parsePluginVersion,
 } from '@forge/contracts/plugin-version';
-import { eq, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
-import { devices, personalAccessTokens } from '../db/schema.js';
+import { recordTokenPluginVersion } from '../credentials/pat-plugin-version.js';
+import { recordDevicePluginVersion } from '../devices/plugin-version-record.js';
 import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -65,14 +64,8 @@ function recordPluginVersion(caller: PluginCaller, version: string): void {
   writes.start(
     () =>
       caller.kind === 'device'
-        ? db
-            .update(devices)
-            .set({ pluginVersion: version, pluginSeenAt: sql`now()` })
-            .where(eq(devices.id, caller.id))
-        : db
-            .update(personalAccessTokens)
-            .set({ pluginVersion: version, pluginSeenAt: sql`now()` })
-            .where(eq(personalAccessTokens.id, caller.id)),
+        ? recordDevicePluginVersion(caller.id, version)
+        : recordTokenPluginVersion(caller.id, version),
     (err) => {
       lastRecorded.delete(key);
       logger.warn({ err, caller }, 'plugin-version: the version heard was not written');

@@ -1,5 +1,5 @@
 /**
- * ISS-1104, migration 0624: a plugin client names its version in `x-forge-plugin` and core records
+ * ISS-1104, migration 0625: a plugin client names its version in `x-forge-plugin` and core records
  * it, with when it heard it, on the row the request authenticated as: the paired box for a box's
  * token, else the personal token itself. The owner reads it on `/api/me/devices` and `/api/pat`. A
  * value that is not a version is refused by name at the gate, whatever credential carried it; a
@@ -16,7 +16,7 @@ import { api, userToken } from '../helpers/api.js';
 import { createTestDevice, createTestUser, truncateAll } from '../helpers/factories.js';
 import { groundBefore, type MigrationGround } from '../helpers/migration-ground.js';
 
-const TAG = '0624_a_caller_names_its_plugin';
+const TAG = '0625_a_caller_names_its_plugin';
 
 describe('the migration', () => {
   let ground: MigrationGround;
