@@ -77,6 +77,7 @@ const none = {
   stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
   questions: [],
   landedWork: [] as Parameters<typeof owedLine>[0]['landedWork'],
+  wedgedWork: [] as Parameters<typeof owedLine>[0]['wedgedWork'],
   marks: [] as Parameters<typeof owedLine>[0]['marks'],
   filings: [] as Parameters<typeof owedLine>[0]['filings'],
   recordings: [] as Parameters<typeof owedLine>[0]['recordings'],
@@ -130,6 +131,10 @@ const OWED_KINDS = {
       status: 'in_progress',
     },
     guide: 'issue-flow',
+  },
+  wedgedWork: {
+    item: { issueId: 'u11', key: 'ISS-11', since: '2026-11-07T07:54:00.000Z' },
+    guide: 'pipeline-and-issue-lifecycle',
   },
   requests: { item: { kind: 'requirement', key: 'REQ-9' }, guide: 'requirement-lifecycle' },
   carriers: { item: { key: 'ISS-26' }, guide: 'issue-flow' },

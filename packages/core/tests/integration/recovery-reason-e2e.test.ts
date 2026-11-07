@@ -1,7 +1,8 @@
 /**
  * The kernel's recovery moves are kept (forge-core-eb's ruling of 2026-10-14), and each says why on
  * the issue: a Sentry regression's reopen and a rescue-capped park post their reason as the move's
- * own comment (`transition-reason.ts:requiresAuthoredReason`), and the wedge reset posts its notice.
+ * own comment (`transition-reason.ts:requiresAuthoredReason`). The reconciler's wedge net moves no
+ * status (ISS-1104): it says on the issue that it left it, and why.
  * The hand-back when a run session ends wrote its reason only on the audit row where it went back to
  * `open` or `approved`, so the thread read an issue moved back with no word of why
  * (`transition-reason.ts:postRecoveryNotice`). A person's explicit hand-back (`recovery: true`) to
@@ -109,7 +110,7 @@ describe('a kernel hand-back says why on the issue', () => {
   });
 });
 
-describe('the reconciler says why it reset a wedge', () => {
+describe('the reconciler says why it left a wedge, and moves nothing', () => {
   it('posts its notice on an in_progress issue nothing has held for the grace', async () => {
     const issue = await createTestIssue(projectId, ownerId, 1, {
       status: 'in_progress',
@@ -119,15 +120,16 @@ describe('the reconciler says why it reset a wedge', () => {
       sql`UPDATE issues SET updated_at = now() - interval '30 minutes' WHERE id = ${issue.id}`,
     );
 
-    expect((await runReconcilerOnce()).autonomousReset).toBe(1);
+    expect((await runReconcilerOnce()).wedgesTold).toBe(1);
 
     const [row] = await rows<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issue.id}`,
     );
-    expect(row?.status).toBe('open');
+    expect(row?.status).toBe('in_progress');
     const said = (await thread(issue.id)).map((c) => c.body);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('Moved by the reconciler: `in_progress` -> `open`');
+    expect(said[0]).toContain('Left at `in_progress` by the reconciler: nothing holds it');
+    expect(said[0]).toContain('no status was moved');
   });
 });
 

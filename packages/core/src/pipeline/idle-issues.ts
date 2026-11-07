@@ -8,8 +8,9 @@
  * exactly where it was.
  *
  * This pass has two arms. One reads every non-terminal status that is not declared at rest, writes
- * what it found onto the row itself, and releases a lease that has lapsed by its own terms. The
- * other clears a finding that has stopped holding, so a recovered row stops claiming to be stuck.
+ * what it found onto the row itself, and releases a lease that has lapsed by its own terms unless
+ * the work merged this round. The other clears a finding that has stopped holding, so a recovered
+ * row stops claiming to be stuck.
  */
 
 import type { ReleaseHoldView } from '@forge/contracts/releases';
@@ -164,7 +165,9 @@ export async function reconcileIdleIssues(
     // The row already saying this is a reason not to write it again, never a reason to go quiet:
     // the condition behind the notification is re-derived from what is still being emitted, so a
     // pass that stopped emitting would let an alert resolve under a row that is still stranded.
-    const release = leaseIsReleasable(judged.lease);
+    // work merged this round keeps its claim: the finding is recorded and the master moves it on,
+    // where a released claim would read as work handed back (ISS-1104)
+    const release = leaseIsReleasable(judged.lease) && !row.landed_since_reopen;
     const rewrite = release || !unchangedStrand(row.strand, judged.record);
     const stands = rewrite ? await writeStrand({ row, record: judged.record, release, now }) : true;
     if (stands && release) result.leasesReleased += 1;

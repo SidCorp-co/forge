@@ -183,6 +183,11 @@ interface MastersPorts {
     }[]
   >;
   /**
+   * `in_progress` issues the wedge pass found nothing holding and left where they stand, told once
+   * per stretch at `in_progress`, each owed the master's decision (ISS-1104).
+   */
+  wedgedWorkOwed(projectId: string): Promise<{ issueId: string; key: string; since: string }[]>;
+  /**
    * The merges the host reported that no Forge record carries (ISS-774): issues owing their mark, and,
    * under a profile with `issue_before_code` off, merges owing an issue. Forge writes neither.
    */

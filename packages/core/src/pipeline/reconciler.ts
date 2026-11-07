@@ -1,28 +1,13 @@
-import {
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-} from '@forge/contracts/agent-sessions';
-import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import {
-  issueRunDeclaredSql,
-  issueWorkInFlightSql,
-  transitionIssueStatus,
-} from '../issues/index.js';
+import { issueRunDeclaredSql, issueWorkInFlightSql } from '../issues/index.js';
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { countOverdueDeliveries, emitEvent } from '../outbox/index.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
 import { checkAutonomousRescueCap } from './autonomous-rescue-cap.js';
-import {
-  holdsOpenHumanQuestion,
-  personOwesAnAnswer,
-  postIssueNotice,
-  postIssueNoticeOnce,
-  wakeMastersForProject,
-} from './ports.js';
+import { holdsOpenHumanQuestion, postIssueNoticeOnce, wakeMastersForProject } from './ports.js';
 import { mintReconcilerActor, reconcilerActorFor } from './reconciler-actor.js';
 import {
   RESCUE_DELIVERY_LIMIT,
@@ -32,26 +17,25 @@ import {
 import { type LandedWork, landedWorkStands } from './wedge-landed.js';
 import {
   buildWedgeLeftLandedBody,
-  buildWedgeResetBody,
+  buildWedgeLeftUnheldBody,
   readWedgeLease,
   wedgeLeaseHoldsTheIssue,
-  wedgeLeaseUnderLock,
   wedgeLeftLandedMarker,
+  wedgeLeftUnheldMarker,
 } from './wedge-lease.js';
+import { inProgressSinceSql } from './wedge-owed.js';
 
 const STALE_OUTBOX_MS = 5 * 60_000;
 const STUCK_ISSUE_INTERVAL = '60 seconds';
 const STUCK_ISSUE_LIMIT = 100;
 
 const WEDGE_GRACE = '10 minutes';
-const WEDGE_RESET_LIMIT = 50;
+/** Findings one pass tells; a finding already told for its basis is passed over and not counted. */
+const WEDGE_TELL_LIMIT = 50;
 const WEDGE_SCAN_PAGE = 200;
 
-/** The status a wedge stands at, and where the issue machine's recovery edges may hand it back. */
+/** The status a wedge stands at. The net reads it and never moves it (issue-delivery `rule-wedge`). */
 const WEDGE_STATUS: IssueStatus = 'in_progress';
-const RECOVERY_TARGETS: readonly IssueStatus[] = ISSUE_MACHINE.edges
-  .filter((e) => e.recovery && e.from === WEDGE_STATUS)
-  .map((e) => e.to);
 
 type RescueCandidate = {
   id: string;
@@ -104,11 +88,12 @@ export async function selectRescueCandidates(
 export async function runReconcilerOnce(): Promise<{
   rescued: number;
   stale: number;
-  autonomousReset: number;
+  /** Wedges this pass told on their issue and woke the master for: it moves none of them. */
+  wedgesTold: number;
 }> {
   let rescued = 0;
   let stale = 0;
-  let autonomousReset = 0;
+  let wedgesTold = 0;
 
   // An issue is rescued only when a wake for it may have been lost: never once a decision recorded
   // on it post-dates its last change (its master has read it as it stands and held it), and a
@@ -172,53 +157,35 @@ export async function runReconcilerOnce(): Promise<{
   }
 
   try {
-    autonomousReset = await resetAutonomousWedgesOnce();
+    wedgesTold = await tellAutonomousWedgesOnce();
   } catch (err) {
     logger.error({ err }, 'reconciler: autonomous wedge pass failed');
   }
 
-  return { rescued, stale, autonomousReset };
+  return { rescued, stale, wedgesTold };
 }
-
-/** Committed between the wedge read and the reset's row lock: a question, a lease, an agent account,
- *  a merge mark. */
-type StoodSinceSelected = 'asked' | 'lease' | 'minted' | 'landed';
-
-const STOOD_SAID: Record<StoodSinceSelected, string> = {
-  asked: 'reconciler: a person was asked since the wedge read, so it stays',
-  lease: 'reconciler: a lease was renewed since the wedge read, so it stays',
-  minted:
-    'reconciler: the project gained an agent account since the wedge read, so the next pass resets it',
-  landed:
-    'reconciler: its merge was recorded since the wedge read, so it stays for its agent to move to awaiting_release',
-};
 
 type WedgeCandidate = {
   id: string;
   project_id: string;
   status: string;
-  reopen_count: number;
   lease: unknown;
-  /** The status the last run session naming the issue took it from, or null. */
-  claimed_from: string | null;
+  /** When it entered `in_progress` (`wedge-owed.ts:inProgressSinceSql`): what an unheld notice is told once per. */
+  since: Date | string;
 };
 
 /**
  * Candidates are issues at `in_progress` that nothing holds: no live job, pipeline run or run
  * session lease (issue-delivery `rule-wedge`). Read in id order a page at a time, so rows a live
- * work-state lease holds cannot fill every slot of {@link WEDGE_RESET_LIMIT}.
+ * work-state lease holds, or rows already told, cannot fill every slot of {@link WEDGE_TELL_LIMIT}.
+ * Only `in_progress` is read: an `on_hold` row is a declared hold, and no sweep reads it.
  */
 async function selectWedgeCandidates(after: string | null): Promise<WedgeCandidate[]> {
   const past = after === null ? sql`` : sql`AND i.id > ${after}::uuid`;
   return (await db.execute<WedgeCandidate>(sql`
-    SELECT i.id, i.project_id, i.status, i.reopen_count,
+    SELECT i.id, i.project_id, i.status,
            (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease,
-           (SELECT r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY} ->> ('ISS-' || i.iss_seq)
-              FROM pipeline_runs r
-             WHERE r.project_id = i.project_id
-               AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} ? ('ISS-' || i.iss_seq)
-             ORDER BY r.created_at DESC
-             LIMIT 1) AS claimed_from
+           ${inProgressSinceSql(sql`i`)} AS since
     FROM issues i
     WHERE i.status = ${WEDGE_STATUS}
       AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
@@ -234,31 +201,39 @@ async function selectWedgeCandidates(after: string | null): Promise<WedgeCandida
   `)) as unknown as WedgeCandidate[];
 }
 
-/** Back to the status the run took it from; the entry status where no run recorded one. */
-function wedgeTarget(row: WedgeCandidate): IssueStatus {
-  const named = row.claimed_from as IssueStatus | null;
-  return named !== null && RECOVERY_TARGETS.includes(named) ? named : AUTONOMOUS_ENTRY_STATUS;
-}
-
-async function resetAutonomousWedgesOnce(): Promise<number> {
-  let reset = 0;
+/**
+ * The wedge net detects and wakes; it never moves a status (ISS-1104, FB-553). A sweep reading "no
+ * job, run or live lease for ten minutes" reads a proxy, and acting on it handed held work away
+ * (ISS-1063..1066; ISS-1071..1073, whose lapsed lease outlived a landing still in flight). Each
+ * finding is told once per basis on the issue, and the project's master is woken to decide.
+ */
+async function tellAutonomousWedgesOnce(): Promise<number> {
+  let told = 0;
   let after: string | null = null;
 
-  while (reset < WEDGE_RESET_LIMIT) {
+  while (told < WEDGE_TELL_LIMIT) {
     const page = await selectWedgeCandidates(after);
     for (const row of page) {
-      if (reset >= WEDGE_RESET_LIMIT) break;
-      if (await resetOneWedge(row)) reset++;
+      if (told >= WEDGE_TELL_LIMIT) break;
+      try {
+        if (await tellOneWedge(row)) told++;
+      } catch (err) {
+        logger.error(
+          { err, issueId: row.id, status: row.status },
+          'reconciler: telling a wedge failed',
+        );
+      }
     }
     const last = page.at(-1);
     if (page.length < WEDGE_SCAN_PAGE || !last) break;
     after = last.id;
   }
 
-  return reset;
+  return told;
 }
 
-async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
+/** Whether this pass told the wedge: a live lease, or a finding already told, tells nothing. */
+async function tellOneWedge(row: WedgeCandidate): Promise<boolean> {
   if (wedgeLeaseHoldsTheIssue(readWedgeLease(row.lease, new Date()))) {
     logger.info(
       { issueId: row.id, status: row.status },
@@ -266,86 +241,23 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     );
     return false;
   }
-  let stood = null as StoodSinceSelected | null;
-  try {
-    // Landed work is left before the rescue cap too: parked, it would wait on its master, not on
-    // the move to awaiting_release its agent owes (REQ-45 BC-7).
-    const landed = await landedWorkStands(db, row.id);
-    if (landed) {
-      await leaveLandedWork(row, landed);
-      return false;
-    }
-    const { capped } = await checkAutonomousRescueCap({
-      projectId: row.project_id,
-      issueId: row.id,
-      status: row.status as IssueStatus,
-      reopenCount: row.reopen_count,
-    });
-    if (capped) return false;
+  const landed = await landedWorkStands(db, row.id);
+  if (landed) return leaveLandedWork(row, landed);
+  return leaveUnheldWork(row, new Date(row.since));
+}
 
-    const target = wedgeTarget(row);
-    const actor = await reconcilerActorFor(row.project_id);
-    await transitionIssueStatus(
-      {
-        id: row.id,
-        projectId: row.project_id,
-        status: row.status as IssueStatus,
-        reopenCount: row.reopen_count,
-      },
-      target,
-      actor,
-      {
-        reason: 'reconciler_autonomous_wedge_reset',
-        recovery: true,
-        beforeStatusWrite: async (tx) => {
-          // Each throw rolls the move back; `stood` says which re-check stopped it.
-          const stop = (why: StoodSinceSelected) => {
-            stood = why;
-            return new Error(STOOD_SAID[why]);
-          };
-          if (await personOwesAnAnswer(tx, row.id)) throw stop('asked');
-          const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
-          if (wedgeLeaseHoldsTheIssue(reading)) throw stop('lease');
-          if (await landedWorkStands(tx, row.id)) throw stop('landed');
-          if (!(await mintReconcilerActor(tx, row.project_id, actor))) throw stop('minted');
-          await postIssueNotice(
-            {
-              issueId: row.id,
-              authorId: actor.id,
-              body: buildWedgeResetBody({
-                from: row.status,
-                to: target,
-                grace: WEDGE_GRACE,
-                reading,
-              }),
-            },
-            tx,
-          );
-        },
-      },
+/** The reconciler's account, minted for the project where it has none; null where the mint lost. */
+async function noticeAuthor(projectId: string) {
+  const actor = await reconcilerActorFor(projectId);
+  const minted = await db.transaction((tx) => mintReconcilerActor(tx, projectId, actor));
+  if (!minted) {
+    logger.info(
+      { projectId },
+      'reconciler: the project gained an agent account since the wedge read, so the next pass tells it',
     );
-
-    logger.warn(
-      { issueId: row.id, from: row.status, to: target },
-      'reconciler: handed a wedge nothing holds back to the status its run took it from',
-    );
-    traceStep({
-      category: 'pipeline.reconciler.autonomous_wedge_reset',
-      level: 'warning',
-      data: { issueId: row.id, from: row.status },
-    });
-    return true;
-  } catch (err) {
-    if (stood) {
-      logger.info({ issueId: row.id, projectId: row.project_id }, STOOD_SAID[stood]);
-      return false;
-    }
-    logger.error(
-      { err, issueId: row.id, status: row.status },
-      'reconciler: autonomous wedge reset failed',
-    );
-    return false;
+    return null;
   }
+  return actor;
 }
 
 /**
@@ -355,13 +267,9 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
  * names the move to (`masters/owed.ts`); both commit together, and a later pass over the same mark
  * writes neither. A new mark (a round landed again after a reopen) is told anew.
  */
-async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise<void> {
-  const actor = await reconcilerActorFor(row.project_id);
-  const minted = await db.transaction((tx) => mintReconcilerActor(tx, row.project_id, actor));
-  if (!minted) {
-    logger.info({ issueId: row.id, projectId: row.project_id }, STOOD_SAID.minted);
-    return;
-  }
+async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise<boolean> {
+  const actor = await noticeAuthor(row.project_id);
+  if (!actor) return false;
   const body = buildWedgeLeftLandedBody({
     grace: WEDGE_GRACE,
     reading: readWedgeLease(row.lease, new Date()),
@@ -382,7 +290,7 @@ async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise
     });
     return true;
   });
-  if (!told) return;
+  if (!told) return false;
   logger.warn(
     { issueId: row.id, mergedAt: landed.mergedAt, commit: landed.commit },
     'reconciler: left landed work at in_progress and woke its master to move it to awaiting_release',
@@ -392,4 +300,44 @@ async function leaveLandedWork(row: WedgeCandidate, landed: LandedWork): Promise
     level: 'warning',
     data: { issueId: row.id },
   });
+  return true;
+}
+
+/**
+ * Work that did not land, with nothing holding it, stays at `in_progress` too: a held issue and a
+ * dead run read the same from here, so the master decides which it is, never this pass. Once per
+ * stretch at `in_progress` one notice says so on the issue, and the project's master is woken and
+ * finds it named on its sweep (`wedge-owed.ts:wedgedWorkOwed`). The wake follows the notice's
+ * commit: one lost to a crash between them is made good by that sweep naming it on any later pass.
+ */
+async function leaveUnheldWork(row: WedgeCandidate, since: Date): Promise<boolean> {
+  const actor = await noticeAuthor(row.project_id);
+  if (!actor) return false;
+  const body = buildWedgeLeftUnheldBody({
+    grace: WEDGE_GRACE,
+    reading: readWedgeLease(row.lease, new Date()),
+    since,
+  });
+  const posted = await postIssueNoticeOnce({
+    issueId: row.id,
+    authorId: actor.id,
+    body,
+    marker: wedgeLeftUnheldMarker(since),
+  });
+  if (posted === null) return false;
+  await wakeMastersForProject({
+    projectId: row.project_id,
+    issueId: row.id,
+    status: WEDGE_STATUS,
+  });
+  logger.warn(
+    { issueId: row.id, since },
+    'reconciler: left unheld work at in_progress and woke its master to decide on it',
+  );
+  traceStep({
+    category: 'pipeline.reconciler.autonomous_wedge_left_unheld',
+    level: 'warning',
+    data: { issueId: row.id },
+  });
+  return true;
 }

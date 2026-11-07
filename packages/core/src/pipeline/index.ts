@@ -136,3 +136,4 @@ export {
   landedWorkOwed,
   landedWorkStands,
 } from './wedge-landed.js';
+export { type WedgedWorkOwed, wedgedWorkOwed } from './wedge-owed.js';

@@ -76,6 +76,8 @@ interface Owed {
     mergedAt: string;
     status: 'in_progress' | 'open';
   }[];
+  /** `in_progress` issues the wedge pass found nothing holding and left where they stand, each owed a decision (ISS-1104). */
+  wedgedWork: { issueId: string; key: string; since: string }[];
   /** Issues a merged change request delivered that hold no merged mark, owed the mark (ISS-774). */
   marks: MarkOwed[];
   /** Merges into the default branch delivering no issue, owed an issue (REQ-76 BC-8, ISS-774). */
@@ -214,10 +216,17 @@ function mergeFiledLine(filed: Owed['landedWork']): string {
   return ` ${filed.length} issue${plural(filed.length, '', 's')} Forge filed from a merge naming no issue ${plural(filed.length, 'sits', 'sit')} at \`open\` with ${plural(filed.length, 'its', 'their')} landing already recorded (${keys.join('; ')}): this project's gate profile lets code come first (gate issue_before_code off). Read what each merge changed and give the issue the title and release note it ships under, then claim it as you claim any issue and move it \`in_progress\` → \`awaiting_release\` (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`); a release ships and closes it.`;
 }
 
+/** Unlanded work nothing holds: the wedge pass moved none of it, so whether it is held or lost is the master's call. */
+function wedgedWorkLine(wedged: Owed['wedgedWork']): string {
+  if (wedged.length === 0) return '';
+  const keys = wedged.map((w) => `${w.key} ${w.issueId} since ${w.since}`);
+  return ` ${wedged.length} issue${plural(wedged.length, ' sits', 's sit')} at \`in_progress\` with no job, run or live lease on ${plural(wedged.length, 'it', 'them')} and no landing (${keys.join('; ')}): the reconciler moved none of ${plural(wedged.length, 'it', 'them')}. Decide each: hand it back for the next dispatch (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"open","recovery":true,"reason":"<why>"}'\`), hold it (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"on_hold","reason":"<why, and what ends the hold>"}'\`), or claim it and carry it on; a run working it renews its lease. ${method('pipeline-and-issue-lifecycle')} holds the recovery move.`;
+}
+
 function wedgeLandedLine(landed: Owed['landedWork']): string {
   if (landed.length === 0) return '';
   const keys = landed.map((l) => `${l.key} ${l.issueId}${l.commit ? ` at ${l.commit}` : ''}`);
-  return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the next reconciler pass hands the issue back.`;
+  return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the issue is then yours to hand back or carry on.`;
 }
 
 /** The drafts a feedback triage routed an item to (ISS-840): the master takes each on, or drops it. */
@@ -253,6 +262,7 @@ export function owedLine(owed: Owed): string {
     stewardAsksLine(owed.stewardAsks) +
     questionsLine(owed.questions) +
     landedWorkLine(owed.landedWork) +
+    wedgedWorkLine(owed.wedgedWork) +
     mergesLine(owed.marks, owed.filings) +
     recordingsLine(owed.recordings) +
     releaseHoldsLine(owed.releaseHolds, owed.endedRunHolds) +
@@ -333,6 +343,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
     ...owed.questions.map((q) => `question:${q.id}`),
     ...owed.landedWork.map((l) => `landed-work:${l.issueId}|${l.mergedAt}`),
+    ...owed.wedgedWork.map((w) => `wedged-work:${w.issueId}|${w.since}`),
     ...owed.marks.map((m) => `mark:${m.issueId}|${m.commit}`),
     ...owed.filings.map((f) => `filing:${f.commit}`),
     ...owed.recordings.map((r) => `filing-record:${r.issueId}|${r.release ?? ''}`),
@@ -417,6 +428,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releaseMerges,
     releaseApprovals,
     landedWork,
+    wedgedWork,
     merges,
     releaseActs,
   ] = await Promise.all([
@@ -436,6 +448,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.releaseMergesOwed(projectId),
     ports.releaseApprovalsOwed(projectId),
     ports.landedWorkOwed(projectId),
+    ports.wedgedWorkOwed(projectId),
     ports.mergesOwed(projectId),
     ports.releaseActsOwed(projectId),
   ]);
@@ -476,6 +489,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       stewardAsks,
       questions,
       landedWork,
+      wedgedWork,
       marks: merges.marks,
       filings: merges.filings,
       recordings: merges.recordings,

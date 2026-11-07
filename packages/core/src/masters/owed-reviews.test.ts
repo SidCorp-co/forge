@@ -24,6 +24,7 @@ const none: Parameters<typeof owedLine>[0] = {
   stewardAsks: [],
   questions: [],
   landedWork: [],
+  wedgedWork: [],
   marks: [],
   filings: [],
   recordings: [],

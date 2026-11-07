@@ -3,7 +3,9 @@
  * pass read it "waiting for a run to build it again" with `merged: true` beside it. A reopen whose
  * merge is recorded since that reopen is a fix round that landed: the master's to move on to
  * `awaiting_release`, as an open or approved landed row is (issue-delivery `rule-wedge`). A mark from
- * before the reopen is still the round sent back. Against real Postgres, through the pass itself.
+ * before the reopen is still the round sent back. The pass never releases the lapsed lease of work
+ * merged this round: it records the finding and leaves the claim to the master. Against real
+ * Postgres, through the pass itself.
  *
  * @direct-test-of packages/core/src/pipeline/idle-issues.ts
  * @direct-test-of packages/core/src/pipeline/wedge-landed.ts
@@ -100,5 +102,54 @@ describe('the strand on a reopened issue that carries a merge', () => {
       waitingFor: 'a run to build it again',
       evidence: { merged: true, mergedSinceReopen: false },
     });
+  });
+});
+
+describe('the lapsed lease on in_progress work', () => {
+  /** An `in_progress` row untouched for three hours under a lease that lapsed an hour ago. */
+  async function lapsed(mergedHoursAgo: number | null) {
+    const id = randomUUID();
+    seq += 1;
+    await db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, updated_at,
+                          merged_at, merged_commit_sha)
+      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'in_progress', ${ownerId},
+              now() - interval '1 day', now() - interval '3 hours',
+              ${mergedHoursAgo === null ? null : sql`now() - make_interval(hours => ${mergedHoursAgo})`},
+              ${mergedHoursAgo === null ? null : COMMIT})
+    `);
+    const lease = {
+      holder: 'forge-master-sid-xeon-1',
+      renewedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+      minutes: 60,
+    };
+    await db.execute(sql`
+      INSERT INTO issue_work_state (issue_id, lease) VALUES (${id}, ${JSON.stringify(lease)}::jsonb)
+    `);
+    return id;
+  }
+
+  const leaseOf = async (id: string) =>
+    (
+      await rows<{ lease: Record<string, unknown> }>(
+        sql`SELECT lease FROM issue_work_state WHERE issue_id = ${id}`,
+      )
+    )[0]?.lease;
+
+  it('is left unreleased where the work merged this round, and the finding is recorded', async () => {
+    const id = await lapsed(2);
+
+    await reconcileIdleIssues(new Date(), { projectId });
+
+    expect(await leaseOf(id), 'the sweep released merged work').not.toHaveProperty('stopped');
+    expect(await strandOf(id)).toMatchObject({ status: 'in_progress', lease: 'expired' });
+  });
+
+  it('is released where nothing merged, as before', async () => {
+    const id = await lapsed(null);
+
+    await reconcileIdleIssues(new Date(), { projectId });
+
+    expect(await leaseOf(id)).toHaveProperty('stopped');
   });
 });

@@ -44,6 +44,7 @@ const none = {
     mergedAt: string;
     status: 'in_progress' | 'open';
   }[],
+  wedgedWork: [] as { issueId: string; key: string; since: string }[],
   marks: [] as MarkOwed[],
   filings: [] as FilingOwed[],
   recordings: [] as FilingRecordOwed[],
@@ -479,5 +480,25 @@ describe('owedLine: a marked filing waits on its release record', () => {
     expect(workDigest([], { ...none, recordings: [ready] })).not.toBe(
       workDigest([], { ...none, recordings: [waiting] }),
     );
+  });
+});
+
+describe('unheld work the wedge net left', () => {
+  // ISS-1104: the wedge net moves no status, so the master is told what it left and owns the call
+  it('names unheld work left at in_progress with the decision it owes, counts it, and moves the digest', () => {
+    const left = { issueId: 'u2', key: 'ISS-1071', since: '2026-11-07T07:44:00.000Z' };
+    const line = owedLine({ ...none, wedgedWork: [left] });
+    expect(line).toContain('1 issue sits at `in_progress` with no job, run or live lease on it');
+    expect(line).toContain(`ISS-1071 u2 since ${left.since}`);
+    expect(line).toContain('the reconciler moved none of it');
+    expect(line).toContain('"recovery":true');
+    expect(line).toContain('"toStatus":"on_hold"');
+    expect(dispatched([], { ...none, wedgedWork: [left] }).owed).toBe(1);
+    const once = workDigest([], { ...none, wedgedWork: [left] });
+    expect(once).not.toBe(workDigest([], none));
+    expect(
+      workDigest([], { ...none, wedgedWork: [{ ...left, since: '2026-11-07T09:00:00.000Z' }] }),
+      'a new claim is new work',
+    ).not.toBe(once);
   });
 });

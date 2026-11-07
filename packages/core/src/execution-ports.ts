@@ -64,7 +64,7 @@ import { provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
 import { currentOnboardingBrief } from './onboarding/index.js';
-import { landedWorkOwed } from './pipeline/index.js';
+import { landedWorkOwed, wedgedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
 import {
   dispatchStateOf,
@@ -349,6 +349,7 @@ export function provideExecutionPorts(): void {
     questionsOwed: questionsOwedToAgents,
     breakdownsHeldBySteward,
     landedWorkOwed,
+    wedgedWorkOwed,
     mergesOwed: async (projectId) => ({
       marks: (await owedMarks(projectId)).map((m) => ({
         issueId: m.issueId,

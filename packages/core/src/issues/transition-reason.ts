@@ -93,8 +93,7 @@ export async function postLeaveComment(
  * Whether this move is a hand-back of an issue nothing holds, along a recovery edge, to a status that
  * posts no reason of its own (`requiresAuthoredReason`): its reason is otherwise only on the audit
  * row, and the thread reads an issue moved back with no word of why. The kernel's carries its reason;
- * a person's must (`transition-faults.ts:reasonFault`). The reconciler's wedge reset, which posts its
- * own notice, gives no `transitionReason` and is not this.
+ * a person's must (`transition-faults.ts:reasonFault`).
  */
 function announcesRecovery(
   from: IssueStatus,

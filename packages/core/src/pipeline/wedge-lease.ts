@@ -1,6 +1,8 @@
-/** What the autonomous wedge pass reads off a candidate's lease (`issue_work_state.lease`), and the comment a
- *  reset leaves, or the one it leaves on landed work it does not reset (ISS-564). The pass decides "nothing is working this issue" from the job table; a run holding
- *  a live lease is working it whatever the job table says (ISS-1317). */
+/** What the wedge net reads off a candidate's lease (`issue_work_state.lease`), and the notice it
+ *  leaves on the `in_progress` work it finds nothing holding: landed work (ISS-564), or work that did
+ *  not land, which it leaves where it stands for its master (ISS-1104). The net decides "nothing is
+ *  working this issue" from the job table; a run holding a live lease is working it whatever the job
+ *  table says (ISS-1317). */
 
 import { sql } from 'drizzle-orm';
 import type { IssueDependencyExecutor } from '../issues/index.js';
@@ -34,7 +36,9 @@ function seconds(ms: number | null): string {
 }
 
 function leaseSentence(reading: LeaseReading): string {
-  const held = reading.holder === null ? 'the lease' : `the lease held by \`${reading.holder}\``;
+  const session = reading.session === null ? '' : ` session \`${reading.session}\``;
+  const held =
+    reading.holder === null ? 'the lease' : `the lease held by \`${reading.holder}\`${session}`;
   switch (reading.verdict) {
     case 'none':
       return 'no run held a lease on it';
@@ -51,18 +55,27 @@ function leaseSentence(reading: LeaseReading): string {
   }
 }
 
-export function buildWedgeResetBody(args: {
-  from: string;
-  to: string;
+const LEFT_UNHELD_HEADING = '**Left at `in_progress` by the reconciler: nothing holds it**';
+
+/**
+ * What makes the unheld notice once per stretch at `in_progress`: its heading and when the issue
+ * entered the status (`wedge-owed.ts:inProgressSinceSql`), which a pass over the same stretch writes
+ * the same and a new claim writes anew. Nothing read off the lease is in it.
+ */
+export function wedgeLeftUnheldMarker(since: Date): string {
+  return `${LEFT_UNHELD_HEADING}\n\nIt has stood at \`in_progress\` since ${since.toISOString()}.`;
+}
+
+/** The notice on unlanded work the net finds nothing holding, opening on its marker. */
+export function buildWedgeLeftUnheldBody(args: {
   grace: string;
   reading: LeaseReading;
+  since: Date;
 }): string {
   return [
-    `**Moved by the reconciler: \`${args.from}\` -> \`${args.to}\`**`,
+    `${wedgeLeftUnheldMarker(args.since)} Nothing has written to it for ${args.grace}, no job or run is live on it, and ${leaseSentence(args.reading)}; no status was moved.`,
     '',
-    `The reconciler's autonomous wedge pass made this move, not a person. It found nothing working the issue: its latest job is a \`drive\` job that is no longer live, no job is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
-    '',
-    `The issue is back at \`${args.to}\`, where the next dispatch takes it up again.`,
+    'Its master is woken to decide: hand it back for the next dispatch (a `recovery: true` move to `open` with the reason), hold it (`on_hold` with the reason and what ends the hold), or claim it and carry it on.',
   ].join('\n');
 }
 
@@ -97,6 +110,6 @@ export function buildWedgeLeftLandedBody(args: {
     '',
     `Nothing has written to this issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
     '',
-    'Its master is woken to move it to `awaiting_release`. If this mark is not this work, clear it with `DELETE /api/issues/:id/merge`; the next pass then hands the issue back.',
+    'Its master is woken to move it to `awaiting_release`. If this mark is not this work, clear it with `DELETE /api/issues/:id/merge`; the next pass then tells it as unheld work for its master to decide on.',
   ].join('\n');
 }

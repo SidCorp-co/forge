@@ -62,8 +62,8 @@ issue standing) and the row chip each read status OR marker.
   park returns to (`pipeline/answer-resume.ts:answerThePark`). What each answer did is recorded on
   its answered round as `resume`, a refused move included, and the park view and the standing word
   it (`issues/answered-wait.ts:answeredWait`).
-- **The wedge reset** (`pipeline/reconciler.ts:resetAutonomousWedgesOnce`) leaves an issue holding
-  the marker at its rung: its next move is a person's, so it is not wedged.
+- **The wedge net** (`pipeline/reconciler.ts:tellAutonomousWedgesOnce`) leaves an issue holding
+  the marker out of its findings: its next move is a person's, so it is not wedged.
 
 ## The writers, and what each one produces
 
