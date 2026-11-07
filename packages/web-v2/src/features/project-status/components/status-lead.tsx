@@ -11,7 +11,8 @@ import { ReportPart } from "./report-part";
 
 const ROW = "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-13";
 const LIST = "border-t border-line-subtle";
-const KEY_LINK = "font-mono text-12 text-link hover:underline";
+/** A row leads with its title as the link; the key is the link's tooltip, never text on the face (ISS-1072). */
+const TITLE_LINK = "min-w-0 flex-1 text-fg hover:text-link hover:underline";
 
 export function StuckPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }) {
   const t = useCopy();
@@ -26,10 +27,9 @@ export function StuckPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }) {
         <ul className={LIST}>
           {stuck.items.map((i) => (
             <li key={`${i.kind}:${i.key}`} className={ROW} data-testid="status-stuck-row">
-              <Link href={i.href} className={KEY_LINK}>
-                {i.key}
+              <Link href={i.href} className={TITLE_LINK} title={i.key}>
+                {i.title}
               </Link>
-              <span className="min-w-0 flex-1">{i.title}</span>
               <span className="w-full text-13 text-danger">{said(i.says.reason, language)}</span>
               {i.note ? <span className="w-full text-13 text-muted" data-testid="status-stuck-note">{i.note}</span> : null}
             </li>
@@ -54,13 +54,14 @@ export function NeedsYouPart({ s, clock }: { s: ProjectStatus; clock: EtaClock }
           {needs.decisions.map((d) => (
             <li key={`${d.group}:${d.key}`} className={ROW} data-testid="status-needs-you-row">
               {d.href ? (
-                <Link href={d.href} className={KEY_LINK}>
-                  {d.key}
+                <Link href={d.href} className={TITLE_LINK} title={d.key}>
+                  {d.question}
                 </Link>
               ) : (
-                <span className="font-mono text-12">{d.key}</span>
+                <span className="min-w-0 flex-1" title={d.key}>
+                  {d.question}
+                </span>
               )}
-              <span className="min-w-0 flex-1">{d.question}</span>
               {d.recommended ? <span className="text-13 text-muted">{t("status.recommended", { answer: d.recommended })}</span> : null}
             </li>
           ))}

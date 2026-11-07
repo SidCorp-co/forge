@@ -43,3 +43,24 @@ describe("the status page quoting what someone wrote", () => {
     expect(within(screen.getByTestId("status-in-flight")).queryByTestId("written-mark")).toBeNull();
   });
 });
+
+// Raw keys never lead a row (ISS-1072 round 2): each row of the report leads with its title, the title
+// is the link, and the key is the link's tooltip, never text on the face.
+describe("the status page's rows", () => {
+  it("lead with the title, each key only in its link's tooltip", () => {
+    const stuck = { asOf: AT, count: 1, items: [{ kind: "requirement" as const, key: "REQ-71", title: "Each project releases on the owner's accept", code: "overdue" as never, reason: "r", via: null, since: AT, note: null, href: "/projects/hop/requirements/REQ-71", says: { reason: verbatim("Master owed it") } }] };
+    const needsYou = { asOf: AT, decisions: [{ group: "approve" as never, key: "REQ-9", title: "Export to a sheet", question: "Agree Export to a sheet?", recommended: null, stuck: false, dueAt: null, href: "/projects/hop/requirements/REQ-9" }], more: 0, total: 1 };
+    renderWithQuery(<StatusReport s={{ ...STATUS, stuck, needsYou }} slug="hop" clock={clock} window="7" onWindow={() => {}} />);
+    const page = document.body.textContent ?? "";
+    expect(page).not.toMatch(/\b(REQ|ISS)-\d+/);
+    for (const [title, key] of [
+      ["Each project releases on the owner's accept", "REQ-71"],
+      ["Agree Export to a sheet?", "REQ-9"],
+      ["Referral screens", "ISS-20"],
+    ] as const) {
+      const link = screen.getAllByRole("link", { hidden: true, name: new RegExp(`^${title.replace(/[?']/g, ".")}`) })[0];
+      expect(link, title).toHaveAttribute("title", key);
+    }
+    expect(within(screen.getByTestId("status-requirements")).getByRole("link", { hidden: true, name: "Referrals" })).toHaveAttribute("title", "REQ-4");
+  });
+});

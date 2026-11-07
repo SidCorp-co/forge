@@ -9,7 +9,7 @@ import type { ProjectStatus, RoadmapItem } from "@forge/contracts/project-status
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo, useState } from "react";
-import { MonoTag, SegmentedControl, StatusBadge, usePageCommands, WaitingOn } from "@/design";
+import { SegmentedControl, StatusBadge, usePageCommands, WaitingOn } from "@/design";
 import { IssueProgressText } from "@/features/forecast";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast";
 import { honestyLine } from "@/features/forecast";
@@ -32,7 +32,10 @@ type StatusWindow = (typeof STATUS_WINDOWS)[number];
 
 const ROW = "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-13";
 const LIST = "border-t border-line-subtle";
-const KEY_LINK = "font-mono text-12 text-link hover:underline";
+/** A row leads with its title as the link; the key is the link's tooltip, never text on the face (ISS-1072). */
+const TITLE_LINK = "min-w-0 flex-1 text-fg hover:text-link hover:underline";
+/** A title named inline in a sentence, linked, its key the tooltip. */
+const NAME_LINK = "text-link hover:underline";
 
 const Quiet = ({ children }: { children: React.ReactNode }) => <p className="text-13 text-muted">{children}</p>;
 
@@ -65,10 +68,9 @@ function Roadmap({ s, slug, clock }: { s: Pick<ProjectStatus, "roadmap">; slug: 
             <ul className={LIST}>
               {s.roadmap[h].map((i) => (
                 <li key={i.key} className={ROW}>
-                  <Link href={requirementHref(slug, i.key)} className={KEY_LINK}>
-                    {i.key}
+                  <Link href={requirementHref(slug, i.key)} className={TITLE_LINK} title={i.key}>
+                    {i.title}
                   </Link>
-                  <span className="min-w-0 flex-1">{i.title}</span>
                   {eta(i.delivery, clock)}
                   <Honesty d={i.delivery} moved={i.moved} clock={clock} />
                   {i.deferral ? (
@@ -138,8 +140,8 @@ function ShippedPart({ s, slug, clock }: PartProps) {
         {s.shipped.requirementsShipped.map((r, i) => (
           <span key={r.key}>
             {i > 0 ? ", " : ""}
-            <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
-              {r.key}
+            <Link href={requirementHref(slug, r.key)} className={NAME_LINK} title={r.key}>
+              {r.title}
             </Link>
           </span>
         ))}
@@ -151,8 +153,8 @@ function ShippedPart({ s, slug, clock }: PartProps) {
         {(s.shipped.requirementsAwaitingProof ?? []).map((r, i) => (
           <span key={r.key}>
             {i > 0 ? ", " : ""}
-            <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
-              {r.key}
+            <Link href={requirementHref(slug, r.key)} className={NAME_LINK} title={r.key}>
+              {r.title}
             </Link>{" "}
             <span className="text-13 text-muted">{t("status.criteriaProven", { proven: r.proven, total: r.total })}</span>
           </span>
@@ -180,10 +182,9 @@ function InFlightPart({ s, slug, clock }: PartProps) {
       <ul className={LIST}>
         {s.inFlight.running.map((i) => (
           <li key={i.key} className={ROW}>
-            <Link href={issueHref(slug, i.key)} className={KEY_LINK}>
-              {i.key}
+            <Link href={issueHref(slug, i.key)} className={TITLE_LINK} title={i.key}>
+              <Written text={i.title} lang={i.titleLang} />
             </Link>
-            <Written className="min-w-0 flex-1" text={i.title} lang={i.titleLang} />
             <StatusBadge family="issue" value={i.status} />
           </li>
         ))}
@@ -209,10 +210,9 @@ function WaitsPart({ s, slug, clock }: PartProps) {
             <ul className={LIST}>
               {g.rows.map((x) => (
                 <li key={`${x.area}:${x.key}`} className={ROW}>
-                  <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
-                    {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
+                  <Link href={needsYouHref(slug, x)} className={TITLE_LINK} title={needsYouKeyLabel(x, (a) => label("needsYouArea", a))}>
+                    <Written text={said(x.says.title, language)} lang={x.titleLang} />
                   </Link>
-                  <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
                   <span className="text-13 text-muted">{said(x.waitingOn.says.act, language)}</span>
                 </li>
               ))}
@@ -246,10 +246,9 @@ function RequirementsPart({ s, slug, clock }: PartProps) {
       <ul className={LIST}>
         {s.requirements.items.map((r) => (
           <li key={r.key} className={ROW}>
-            <Link href={requirementHref(slug, r.key)} className={KEY_LINK}>
-              {r.key}
+            <Link href={requirementHref(slug, r.key)} className={TITLE_LINK} title={r.key}>
+              {r.title}
             </Link>
-            <span className="min-w-0 flex-1">{r.title}</span>
             <StatusBadge family="requirement" value={r.state} />
             <span className="text-13 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
             <IssueProgressText progress={r.progress} className="text-13 text-muted" />
@@ -300,8 +299,9 @@ function LatePart({ s, clock }: Omit<PartProps, "slug">) {
       <ul className={LIST}>
         {s.late.items.map((l) => (
           <li key={`${l.kind}:${l.key}`} className={ROW}>
-            <MonoTag>{l.key}</MonoTag>
-            <span className="min-w-0 flex-1">{l.title}</span>
+            <span className="min-w-0 flex-1" title={l.key}>
+              {l.title}
+            </span>
             <span className="text-13 text-danger">{t(`status.late.${l.late.reason}`, { by: spanText(l.late.byMinutes, clock.lang) })}</span>
           </li>
         ))}

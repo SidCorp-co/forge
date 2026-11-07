@@ -72,7 +72,9 @@ describe("what a person reads on /status", () => {
 
   it("never calls a shipped requirement with unproven criteria delivered in full", () => {
     shown();
-    expect(screen.getByTestId("status-awaiting-proof")).toHaveTextContent("REQ-23");
+    // named by its title, its key the link's tooltip (ISS-1072)
+    expect(screen.getByTestId("status-awaiting-proof")).toHaveTextContent("Derived state");
+    expect(screen.getByTestId("status-awaiting-proof").querySelector("a")).toHaveAttribute("title", "REQ-23");
     expect(screen.getByTestId("status-awaiting-proof")).toHaveTextContent("0 of 7 criteria proven");
   });
 
