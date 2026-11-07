@@ -13,7 +13,7 @@
 import type { DebtLedgerView } from "@forge/contracts/cleanup";
 import { act, cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Call, fakeCore } from "@/test/render";
+import { type Call, fakeCore, HANG } from "@/test/render";
 import { componentOf, renderRoute } from "@/test/route-tree";
 import { STANDING_LIST } from "@/test/vi-chrome-issues";
 
@@ -58,11 +58,11 @@ const LEDGER_ON: DebtLedgerView = {
   windowOff: null,
 };
 
-function serve(n: number): Call[] {
+function serve(n: number | "unanswered"): Call[] {
   return fakeCore((c) => {
     const path = c.path.split("?")[0] ?? "";
     if (path === "/projects") return { body: [project] };
-    if (path.endsWith("/needs-you/decisions")) return { body: decisions(n) };
+    if (path.endsWith("/needs-you/decisions")) return n === "unanswered" ? HANG : { body: decisions(n) };
     if (path.endsWith("/issues/standing")) return { body: STANDING_LIST };
     if (path.endsWith("/releases/shipped") && c.path.endsWith("?limit=3")) return { body: SHIPPED };
     if (path.endsWith("/debts")) return { body: LEDGER_ON };
@@ -71,7 +71,7 @@ function serve(n: number): Call[] {
   });
 }
 
-async function open(n = 0) {
+async function open(n: number | "unanswered" = 0) {
   const calls = serve(n);
   await renderRoute({ at: "/projects/forge", pattern: "/projects/$slug", page: componentOf(DashboardRoute, "routes/_workspace/projects/$slug/index.tsx") });
   await act(async () => {
@@ -100,6 +100,14 @@ describe("the project Dashboard (ISS-1067)", () => {
     await open(1);
     await screen.findByText("Which login provider ships first?");
     expect(sections()).toEqual(["needs", "moving", "shipped", "stuck"]);
+  });
+
+  // ISS-1070: Needs you is core's slowest read (5 s on forge-dev); the page never waits on it
+  it("draws Moving, Shipped and Stuck while Needs you is still being read, saying Needs you is reading", async () => {
+    await open("unanswered");
+    await screen.findByTestId("dashboard");
+    expect(sections()).toEqual(["moving", "shipped", "stuck"]);
+    expect(screen.getByTestId("dashboard-needs-reading")).toBeTruthy();
   });
 
   it("counts Stuck as the Issues list's Stuck group counts it, from the same read", async () => {

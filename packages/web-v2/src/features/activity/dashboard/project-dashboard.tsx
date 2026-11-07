@@ -121,10 +121,19 @@ export function ProjectDashboard({ projectId, slug }: { projectId: string; slug:
   const view = useRowView(slug);
   const groups = groupsOf(t, slug, { decisions, issues, shipped });
   const hrefs = new Map(groups.flatMap((g) => g.rows.map((r) => [keyOf(r), view(r).href] as const)));
-  // never "All quiet" over a list still being read: that would say nothing waits, which nobody has read yet
-  const reading = needsQ.isLoading || issuesQ.isLoading || releasesQ.isLoading;
+  // The list draws once the issues and the releases answer; Needs you, core's slowest read (5 s on
+  // forge-dev), joins it when it answers, so the page never waits on it (ISS-1070). Never "All quiet"
+  // over a list still being read: that would say nothing waits, which nobody has read yet.
+  const needsReading = needsQ.isLoading;
+  const othersEmpty = groups.every((g) => g.id === "needs" || g.rows.length === 0);
+  const reading = issuesQ.isLoading || releasesQ.isLoading || (needsReading && othersEmpty);
   return (
     <div className="flex flex-col gap-4" data-testid={reading ? "dashboard-reading" : "dashboard"}>
+      {!reading && needsReading ? (
+        <div className="grid place-items-center" data-testid="dashboard-needs-reading">
+          <ProjectLoader label={t("dash.group.needs")} size={40} />
+        </div>
+      ) : null}
       {reading ? (
         <div className="grid place-items-center py-16">
           <ProjectLoader label={t("dash.loading")} />
