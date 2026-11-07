@@ -340,6 +340,18 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
   return outcome;
 }
 
+/**
+ * Hand each room what core recorded for it, once each: a room told several notes in one pass takes
+ * them as one turn, so the notes one thread holds are answered in one post (ISS-1117).
+ */
+export async function handOnRooms(rooms: ReadonlySet<string>): Promise<void> {
+  for (const roomId of rooms) {
+    await deliverWaiting(roomId).catch((err) =>
+      logger.error({ err, roomId }, 'support: a note waits for the next turn'),
+    );
+  }
+}
+
 async function handOn(found: RoomRow): Promise<DeliverOutcome> {
   const { room, session, held } = await sessionToHand(found);
   // a message held past the age bound goes to no turn and is told nowhere (ISS-1105)

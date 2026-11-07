@@ -257,15 +257,18 @@ export async function threadWritings(
 }
 
 /**
- * Whether a thread holds a message that arrived since the session's last reply in it, or no reply
+ * Whether a thread holds a message handed to the session since its last reply in it, or no reply
  * yet: what a request is, for the one result each gets (REQ-77 BC-8). An answer, a note core
  * tells the session and a member's message all count; the session's own checks and posts do not.
+ * A message counts from when the session was handed it, never only from when it was recorded: a
+ * result note core recorded while the session wrote its last reply, and handed it in the next
+ * turn, is a request of its own (ISS-1117).
  */
 export async function unansweredInThread(roomId: string, thread: string): Promise<boolean> {
   const [row] = await db
     .select({
       lastReply: sql<Date | null>`max(${supportActions.createdAt}) filter (where ${supportActions.kind} = 'reply')`,
-      lastIn: sql<Date | null>`max(${supportActions.createdAt}) filter (where ${supportActions.kind} = 'message_in')`,
+      lastIn: sql<Date | null>`max(greatest(${supportActions.createdAt}, ${supportActions.deliveredAt})) filter (where ${supportActions.kind} = 'message_in')`,
     })
     .from(supportActions)
     .where(and(eq(supportActions.roomId, roomId), eq(supportActions.thread, thread)));

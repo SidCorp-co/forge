@@ -23,7 +23,7 @@ import {
   servedCarries,
   servedOnEnvironment,
 } from '../release-batch/index.js';
-import { deliverWaiting } from './dispatch.js';
+import { handOnRooms } from './dispatch.js';
 import { environmentNamed, promiseNote, untrackedWhy } from './promise-rules.js';
 import { insertAction, roomById, threadConversation } from './store.js';
 
@@ -53,6 +53,7 @@ export async function projectsWithOpenPromises(): Promise<string[]> {
 export async function tellProjectPromises(
   projectId: string,
   deps: PromiseWatchDeps = LIVE,
+  handOn?: Set<string>,
 ): Promise<number> {
   const open = await db
     .select()
@@ -73,6 +74,7 @@ export async function tellProjectPromises(
   // one reading of each environment per pass, whichever promises name it
   const servedNow = new Map<string, Promise<Reading<string>>>();
   let told = 0;
+  const rooms = handOn ?? new Set<string>();
   for (const promise of open) {
     const issue = issueOf.get(promise.issueId);
     const facts = {
@@ -82,12 +84,12 @@ export async function tellProjectPromises(
       asker: promise.askerLabel ?? promise.askerKey,
     };
     if (!issue || issue.status === 'dropped') {
-      if (await answer(promise, 'dropped', promiseNote('dropped', facts))) told++;
+      if (await answer(rooms, promise, 'dropped', promiseNote('dropped', facts))) told++;
       continue;
     }
     const env = held ? environmentNamed(held.document.environments, promise.environment) : null;
     if (!env || untrackedWhy(env.name, env.declaration)) {
-      if (await answer(promise, 'untracked', promiseNote('untracked', facts))) told++;
+      if (await answer(rooms, promise, 'untracked', promiseNote('untracked', facts))) told++;
       continue;
     }
     const landing = landed.get(promise.issueId.toLowerCase())?.sha ?? null;
@@ -108,16 +110,21 @@ export async function tellProjectPromises(
       continue;
     }
     if (!carried.value) continue;
-    if (await answer(promise, 'reached', promiseNote('reached', facts), served.value)) told++;
+    if (await answer(rooms, promise, 'reached', promiseNote('reached', facts), served.value))
+      told++;
   }
+  // every note of the pass is recorded before any is handed: one thread's go as one turn (ISS-1117)
+  if (!handOn) await handOnRooms(rooms);
   return told;
 }
 
 /**
- * Close a promise from `open` and hand its room's session the note, once: the guarded write is the
- * only claim, so a second watch reading the same promise finds it answered and tells nothing.
+ * Close a promise from `open` and record its room's session the note, once: the guarded write is the
+ * only claim, so a second watch reading the same promise finds it answered and tells nothing. The
+ * room joins `rooms`, to be handed the note with the rest of the pass.
  */
 async function answer(
+  rooms: Set<string>,
   promise: PromiseRow,
   state: 'reached' | 'dropped' | 'untracked',
   note: string,
@@ -153,9 +160,7 @@ async function answer(
     input: { promise: promise.id, environment: promise.environment },
     output: { state, ...(servedCommit ? { servedCommit } : {}) },
   });
-  await deliverWaiting(room.id).catch((err) =>
-    logger.error({ err, roomId: room.id }, 'support: a promise note waits for the next turn'),
-  );
+  rooms.add(room.id);
   return true;
 }
 

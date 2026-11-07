@@ -9,7 +9,7 @@
 import { externalItemResults } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
-import { deliverWaiting } from './dispatch.js';
+import { handOnRooms } from './dispatch.js';
 import { tellProjectPromises } from './promise-watch.js';
 import { resultNote } from './rules.js';
 import {
@@ -21,8 +21,13 @@ import {
   threadConversation,
 } from './store.js';
 
-/** Read every open link of a project again; hand the session each result that is final. */
-export async function tellProjectResults(projectId: string): Promise<number> {
+/**
+ * Read every open link of a project again; hand the session each result that is final. Every note
+ * of the pass is recorded before any is handed, so the notes one thread holds go to the session as
+ * one turn and are answered in one post (ISS-1117). Given `handOn`, the rooms told are added to it
+ * and handed on by the caller, with whatever else it tells them.
+ */
+export async function tellProjectResults(projectId: string, handOn?: Set<string>): Promise<number> {
   const links = await openLinksOfProject(projectId);
   if (links.length === 0) return 0;
   const results = await externalItemResults(
@@ -30,6 +35,7 @@ export async function tellProjectResults(projectId: string): Promise<number> {
     links.map((l) => l.feedbackId),
   );
   let told = 0;
+  const rooms = handOn ?? new Set<string>();
   for (const link of links) {
     const now = results.get(link.feedbackId);
     if (!now) continue;
@@ -62,10 +68,9 @@ export async function tellProjectResults(projectId: string): Promise<number> {
       feedbackId: link.feedbackId,
     });
     told++;
-    await deliverWaiting(room.id).catch((err) =>
-      logger.error({ err, roomId: room.id }, 'support: a result note waits for the next turn'),
-    );
+    rooms.add(room.id);
   }
+  if (!handOn) await handOnRooms(rooms);
   return told;
 }
 
@@ -86,8 +91,10 @@ export function registerSupportResults(): void {
   // the same events answer a room's promises about the project's issues (ISS-1012): a landing, a
   // drop and a release each move one
   const handle = async (p: { projectId: string }) => {
-    await tellProjectResults(p.projectId);
-    await tellProjectPromises(p.projectId);
+    const rooms = new Set<string>();
+    await tellProjectResults(p.projectId, rooms);
+    await tellProjectPromises(p.projectId, undefined, rooms);
+    await handOnRooms(rooms);
   };
   consume('issue.created', { name, handle });
   consume('issue.transitioned', { name, handle });
