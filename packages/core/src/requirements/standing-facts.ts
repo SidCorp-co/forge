@@ -9,6 +9,7 @@ import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contrac
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { issueAttachments } from '../db/schema.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
 import {
@@ -124,16 +125,45 @@ export async function issueCriteriaOf(
   asReturned: readonly string[] = [],
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
-  const issueList = sql.join(
-    issueIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
+  // one array parameter however many issues, so the statement neither builds nor plans a list per id
+  const issueSet = sql`(SELECT unnest(${uuidArray(issueIds)}))`;
+  // a criterion's facts are read once per criterion, and a pin only for a verdict naming a design or
+  // a contract: per verdict, they were read for every verdict ever recorded (ISS-1070 r4)
   const rows = (await ex.execute(sql`
+    WITH crit AS (
+      SELECT c.id, c.issue_id, c.n, c.position, c.requirement_criterion_id, rc.requirement_id,
+             (SELECT d.criterion_class FROM issue_design_criteria d
+               WHERE d.criterion_id = c.id LIMIT 1) AS criterion_class
+        FROM issue_criteria c
+        JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
+       WHERE c.issue_id = ANY(${uuidArray(issueIds)})
+         AND c.retired_at IS NULL
+    )
     SELECT c.id AS criterion_id, c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
            v.identity_kind,
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
-           v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
-           v.contract_version, cp.contract_version AS contract_pinned, v.release_version, v.storefront_drafts,
+           v.design_revision,
+           CASE WHEN v.design_workflow_id IS NOT NULL THEN (
+             SELECT p.design_revision FROM requirement_baseline_pins p
+              WHERE (p.requirement_id, p.revision, p.baseline_seq) = (
+                      SELECT b.requirement_id, b.revision, b.seq FROM requirement_baselines b
+                       WHERE b.requirement_id = c.requirement_id
+                       ORDER BY b.revision DESC, b.seq DESC LIMIT 1)
+                AND p.workflow_id = v.design_workflow_id
+              LIMIT 1) END AS design_pinned,
+           v.contract_ref,
+           v.contract_version,
+           CASE WHEN v.contract_ref IS NOT NULL THEN (
+             SELECT p.contract_version FROM requirement_baseline_pins p
+               JOIN projects pp ON pp.id = p.provider_project_id
+              WHERE (p.requirement_id, p.revision, p.baseline_seq) = (
+                      SELECT b.requirement_id, b.revision, b.seq FROM requirement_baselines b
+                       WHERE b.requirement_id = c.requirement_id
+                       ORDER BY b.revision DESC, b.seq DESC LIMIT 1)
+                AND p.contract_slug IS NOT NULL
+                AND pp.slug || '/' || p.contract_slug = v.contract_ref
+              LIMIT 1) END AS contract_pinned,
+           v.release_version, v.storefront_drafts,
            v.storefront_environment, v.covers,
            (${verdictByBuilderSql({
              issueId: sql`c.issue_id`,
@@ -141,13 +171,11 @@ export async function issueCriteriaOf(
              authorDevice: sql`v.author_device_id`,
              at: sql`v.verdict_at`,
              runSession: sql`v.run_session_id`,
-             candidates: builderCandidatesAcrossSql(sql`(${issueList})`),
+             candidates: builderCandidatesAcrossSql(issueSet),
            })}) AS by_builder,
            (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored,
-           (SELECT d.criterion_class FROM issue_design_criteria d
-             WHERE d.criterion_id = c.id LIMIT 1) AS criterion_class
-      FROM issue_criteria c
-      JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
+           c.criterion_class
+      FROM crit c
       LEFT JOIN LATERAL (
         SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
                cv.commit_sha,
@@ -158,27 +186,6 @@ export async function issueCriteriaOf(
          WHERE cv.criterion_id = c.id
       ) v ON true
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
-      LEFT JOIN LATERAL (
-        SELECT b.revision, b.seq FROM requirement_baselines b
-         WHERE b.requirement_id = rc.requirement_id
-         ORDER BY b.revision DESC, b.seq DESC LIMIT 1
-      ) lb ON true
-      LEFT JOIN LATERAL (
-        SELECT p.design_revision FROM requirement_baseline_pins p
-         WHERE p.requirement_id = rc.requirement_id AND p.revision = lb.revision
-           AND p.baseline_seq = lb.seq AND p.workflow_id = v.design_workflow_id
-         LIMIT 1
-      ) dp ON true
-      LEFT JOIN LATERAL (
-        SELECT p.contract_version FROM requirement_baseline_pins p
-          JOIN projects pp ON pp.id = p.provider_project_id
-         WHERE p.requirement_id = rc.requirement_id AND p.revision = lb.revision
-           AND p.baseline_seq = lb.seq AND p.contract_slug IS NOT NULL
-           AND pp.slug || '/' || p.contract_slug = v.contract_ref
-         LIMIT 1
-      ) cp ON true
-     WHERE c.issue_id IN (${issueList})
-       AND c.retired_at IS NULL
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
   // A verdict recorded at or before the issue's latest reopen, on a criterion that was not passing
   // then, is evidence about a build the reopen rejected (`issues/release-evidence.ts:voidedUpTo`,
