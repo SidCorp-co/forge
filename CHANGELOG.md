@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.587] - 2026-11-07
+
+Scheduled scripts watch production through declared read-only calls
+
+### Added
+
+- **A script schedule can watch production with no agent session.** It calls only the read-only forge-ops calls it declares, keeps a small state between firings, and files one feedback item for a breach seen twice in a row.
+
+### Changed
+
+- **Four proposals whose issues closed are deleted** (chat-first, live-preview, release-run-state, forge-plugin-reported), and the code comments that cited them keep only their requirement (ISS-1121).
+
 ## [0.4.0-dev.586] - 2026-11-07
 
 Working agreements per project, safer release merges and deploys, and chat-room fixes
