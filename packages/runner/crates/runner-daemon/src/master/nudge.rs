@@ -91,19 +91,25 @@ impl NudgePass<'_> {
 /// reason for it. A pane parked behind its account limit is asked with the
 /// same line, which submits straight through Claude Code's armed
 /// wait-for-reset (captured 2026-09-24: `Usage limit reached again after you
-/// continued`), so no key is sent ahead of it.
+/// continued`), so no key is sent ahead of it. `prompts` is what the pane's
+/// hooks had reported submitted when it was nudged.
 pub(crate) async fn nudge_master(
     masters: &Arc<Masters>,
     project_id: &str,
     slug: &str,
     because: &str,
     line: &str,
+    prompts: Option<u64>,
 ) {
-    let Some((_, name)) = masters.get(project_id) else {
+    let Some((session, name)) = masters.get(project_id) else {
         return;
     };
     tracing::info!("[master] {slug}: nudging {name}: {because}");
-    if let Err(e) = terminal::send_line(&name, line).await {
+    let typed = terminal::send_line(&name, line).await;
+    if note_wake(masters, (project_id, slug, &session), &typed, prompts) {
+        return;
+    }
+    if let Err(e) = typed {
         // A pane that exited before the nudge reached it is reported by the
         // sweep that reads it gone, with why; a warning here too would be the
         // second line per placement ISS-1343 counted on sid-desk.
@@ -115,6 +121,33 @@ pub(crate) async fn nudge_master(
             tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
         }
     }
+}
+
+/// Keep what a wake this box typed into a master's pane was seen to do, so a
+/// wake not seen submitted is read again by the sweep and, while it sits at
+/// the prompt, told to core as what the pane waits on (ISS-1081). One the pane
+/// was read holding unsent after every Enter is said here, naming the pane;
+/// `true` for that one, which the caller then says nothing more about.
+pub(crate) fn note_wake(
+    masters: &Masters,
+    (project_id, slug, session): (&str, &str, &str),
+    typed: &std::result::Result<terminal::Prompt, terminal::NotTyped>,
+    prompts: Option<u64>,
+) -> bool {
+    match typed {
+        Ok(terminal::Prompt::Empty) => masters.clear_wake_left(project_id),
+        Ok(terminal::Prompt::Unread) => masters.note_wake_left(project_id, session, prompts),
+        Err(terminal::NotTyped::Unsubmitted(why)) => {
+            masters.note_wake_left(project_id, session, prompts);
+            tracing::error!(
+                "[master] {slug}: WAKE_UNSENT {why} Core is told the pane waits on a person until \
+it is."
+            );
+            return true;
+        }
+        Err(_) => {}
+    }
+    false
 }
 
 #[cfg(test)]

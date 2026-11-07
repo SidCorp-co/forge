@@ -419,8 +419,17 @@ surface it reads",
         carry.lifted.map(stood_up_brief),
         carry.owed,
     );
-    match terminal::brief_new_pane(name, &brief).await {
-        Ok(()) => {
+    let typed = terminal::brief_new_pane(name, &brief).await;
+    let (masters, project_id) = (t.sw.shared.masters, t.runner.project_id.as_str());
+    if let Some((session, _)) = masters.get(project_id) {
+        let prompts = t.sw.shared.activity.get(&session).map(|a| a.prompts);
+        let at = (project_id, resolved.slug.as_str(), session.as_str());
+        if note_wake(masters, at, &typed, prompts) {
+            return;
+        }
+    }
+    match typed {
+        Ok(_) => {
             let carried = carry.lifted.is_some();
             carry
                 .stood_down_told

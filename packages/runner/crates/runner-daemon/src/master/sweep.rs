@@ -1,4 +1,5 @@
 use super::*;
+use runner_workspace::composer::{self, Composer};
 
 #[derive(Debug, Clone)]
 pub enum Wake {
@@ -325,6 +326,23 @@ pub(crate) fn dialog_of(
         })
 }
 
+/// What a master's pane shows that only a person answers, off its prompt: a
+/// choice list, or the wake this box typed there and did not see submitted,
+/// still sitting at it (`wake_left`). The second is said naming the pane, so
+/// a master that sat an hour with its wake unsent is core's to read rather
+/// than this box's log's (ISS-1081).
+pub(crate) fn stopped_on(name: &str, seen: &Composer, wake_left: bool) -> Option<String> {
+    match seen {
+        Composer::Menu { highlighted } => Some(composer::excerpt(highlighted, 200)),
+        Composer::Holds(held) if wake_left => Some(format!(
+            "{name}: the wake this box typed sits unsent at its prompt \u{ab}{}\u{bb}; Enter at \
+the pane submits it",
+            composer::excerpt(held, 200)
+        )),
+        _ => None,
+    }
+}
+
 /// Tell core what this project's master pane is stopped on, once per change:
 /// a pane frozen at a dialog reads `waiting_person` on `masters/standing` and on
 /// the runs it hosts, instead of reaching only this box's log.
@@ -338,7 +356,16 @@ pub(crate) async fn report_pane_dialog(
         return;
     };
     let reported = activity.get(&session_id);
-    let dialog = dialog_of(terminal::pane_dialog(&name).await, reported.as_ref());
+    let seen = terminal::pane_prompt(&name).await;
+    let wake_left = masters.wake_left(
+        project_id,
+        &session_id,
+        reported.as_ref().map(|a| a.prompts),
+    );
+    if wake_left && seen == Composer::Empty {
+        masters.clear_wake_left(project_id);
+    }
+    let dialog = dialog_of(stopped_on(&name, &seen, wake_left), reported.as_ref());
     let text = dialog.as_ref().map(|(t, _)| t.as_str());
     if !masters.claim_dialog_report(project_id, &session_id, text) {
         return;
@@ -360,5 +387,118 @@ pub(crate) async fn report_pane_dialog(
                 "[master] {project_id}: could not tell core what {name}'s pane is stopped on: {e} — the next sweep sends it again"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PANE: &str = "forge-master-forge-plugin";
+
+    /// ISS-1081: forge-master-forge-plugin sat an hour with its wake at the
+    /// prompt, and the box said so only in its own log, once a nudge.
+    #[test]
+    fn a_wake_this_box_left_unsent_is_what_the_pane_waits_on_naming_the_pane() {
+        let seen = Composer::Holds("[Pasted text #1 +21 lines]".into());
+        let said = stopped_on(PANE, &seen, true).expect("an unsent wake was not reported");
+        assert!(
+            said.starts_with(PANE) && said.contains("unsent") && said.contains("+21 lines"),
+            "{said}"
+        );
+        assert!(
+            said.chars().count() <= 400,
+            "core refuses a dialog over 400 characters: {said}"
+        );
+        assert_eq!(dialog_of(Some(said.clone()), None), Some((said, "pane")));
+    }
+
+    #[test]
+    fn a_draft_at_the_prompt_that_is_no_wake_of_this_boxs_is_not_reported() {
+        let seen = Composer::Holds("a person typing".into());
+        assert_eq!(stopped_on(PANE, &seen, false), None);
+    }
+
+    #[test]
+    fn an_empty_or_unread_prompt_stops_nothing_and_a_menu_still_does() {
+        assert_eq!(stopped_on(PANE, &Composer::Empty, true), None);
+        assert_eq!(stopped_on(PANE, &Composer::Unrecognised, true), None);
+        let menu = Composer::Menu {
+            highlighted: "1. Yes".into(),
+        };
+        assert_eq!(stopped_on(PANE, &menu, false), Some("1. Yes".into()));
+    }
+
+    #[test]
+    fn a_long_wake_is_said_within_cores_dialog_limit() {
+        let seen = Composer::Holds("x".repeat(5000));
+        let name = "forge-master-".to_string() + &"p".repeat(83);
+        let said = stopped_on(&name, &seen, true).unwrap();
+        assert!(
+            said.chars().count() <= 400,
+            "{} characters",
+            said.chars().count()
+        );
+    }
+
+    #[test]
+    fn a_wake_left_is_forgotten_once_a_prompt_is_submitted_or_another_session_holds_the_pane() {
+        let m = Masters::new();
+        m.note_wake_left("p", "s1", Some(4));
+        assert!(
+            m.wake_left("p", "s1", Some(4)),
+            "no prompt since, so it may still sit there"
+        );
+        assert!(
+            !m.wake_left("p", "s1", Some(5)),
+            "a prompt submitted since is the wake taken"
+        );
+        assert!(!m.wake_left("p", "s1", Some(4)), "a taken wake came back");
+        m.note_wake_left("p", "s1", None);
+        assert!(m.wake_left("p", "s1", None));
+        assert!(
+            !m.wake_left("p", "s2", None),
+            "another session's pane is not the one typed into"
+        );
+        m.note_wake_left("p", "s1", None);
+        m.clear_wake_left("p");
+        assert!(!m.wake_left("p", "s1", None));
+    }
+
+    #[test]
+    fn a_wake_said_unsent_is_noted_and_one_submitted_clears_it() {
+        let m = Masters::new();
+        let unsent = Err(terminal::NotTyped::Unsubmitted(format!(
+            "{PANE}: the message was typed and Enter pressed 3 times, and its prompt still holds it unsent"
+        )));
+        assert!(note_wake(&m, ("p", "forge-plugin", "s1"), &unsent, Some(2)));
+        assert!(m.wake_left("p", "s1", Some(2)));
+        assert!(!note_wake(
+            &m,
+            ("p", "forge-plugin", "s1"),
+            &Ok(terminal::Prompt::Empty),
+            Some(2)
+        ));
+        assert!(
+            !m.wake_left("p", "s1", Some(2)),
+            "a submitted wake left the note standing"
+        );
+        assert!(!note_wake(
+            &m,
+            ("p", "forge-plugin", "s1"),
+            &Ok(terminal::Prompt::Unread),
+            None
+        ));
+        assert!(
+            m.wake_left("p", "s1", None),
+            "a wake typed where nothing could be read was trusted"
+        );
+        let refused = Err(terminal::NotTyped::Refused("a draft stands".into()));
+        m.clear_wake_left("p");
+        assert!(!note_wake(&m, ("p", "forge-plugin", "s1"), &refused, None));
+        assert!(
+            !m.wake_left("p", "s1", None),
+            "nothing typed was noted as a wake left"
+        );
     }
 }

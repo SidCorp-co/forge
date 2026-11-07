@@ -3,10 +3,17 @@
 //! Enter sent the instant a paste lands can be taken by Claude Code as more of
 //! the paste, so the message stays in the composer unsent while tmux reported
 //! both keystrokes accepted. Seen on dev 2026-10-07: a message sat typed at a
-//! pane's prompt for ten minutes and the box had told core `delivered`. So the
-//! paste settles before Enter, and the composer is read back: a message still
-//! held there is pressed again, and one that never leaves is said, never
-//! called delivered.
+//! pane's prompt for ten minutes and the box had told core `delivered`. So
+//! Enter waits until the composer shows the paste, and the composer is read
+//! back: a message still held there is pressed again, and one that never
+//! leaves is said, never called delivered.
+//!
+//! A pane whose composer could not be read before the paste used to get one
+//! Enter and no read-back. That is a pane still starting, and what is typed
+//! there lands in a tty the program has not yet made raw: the line discipline
+//! turns Enter's CR into an LF, which Claude Code reads as a newline in the
+//! draft (ISS-1081, seen five times on 2026-11-07). So such a pane is read
+//! back too, once its composer shows the message.
 
 use std::future::Future;
 use std::time::Duration;
@@ -14,22 +21,85 @@ use std::time::Duration;
 use super::{read_prompt, tmux, NotTyped, Prompt};
 use crate::composer::{self, Composer};
 
-/// Submit what `send_line` just pasted into `name`. Only a composer read empty before the paste
-/// can say the text it holds now is this message, so a pane read `Unread` gets one Enter and no
-/// read-back.
+/// Submit what `send_line` just pasted into `name`.
+///
+/// Enter waits until the composer shows the paste, and goes as a key event of
+/// its own. A composer read empty before the paste holds only this message,
+/// and so does one that could not be read before and shows text now: nothing
+/// was there to read. Either is read back after each Enter. A pane whose
+/// composer never shows the paste gets one Enter and no read-back, since what
+/// it holds, if anything, cannot be told to be this message.
 pub(super) async fn after_paste(name: &str, target: &str, prompt: Prompt) -> Result<(), NotTyped> {
-    let readable = prompt == Prompt::Empty;
+    submit(
+        name,
+        prompt,
+        || press_enter(name, target),
+        || read_prompt(target),
+        Pace::LIVE,
+    )
+    .await
+}
+
+/// How a submit is paced: the poll for the paste to show, and the settle
+/// either side of each Enter.
+#[derive(Debug, Clone, Copy)]
+struct Pace {
+    poll: Duration,
+    polls: usize,
+    settle: Duration,
+}
+
+impl Pace {
+    /// The paste is looked for every 50 ms for five seconds.
+    const LIVE: Pace = Pace {
+        poll: Duration::from_millis(50),
+        polls: 100,
+        settle: SETTLE,
+    };
+}
+
+async fn submit<E, EF, R, RF>(
+    name: &str,
+    prompt: Prompt,
+    enter: E,
+    mut read: R,
+    pace: Pace,
+) -> Result<(), NotTyped>
+where
+    E: FnMut() -> EF,
+    EF: Future<Output = Result<(), String>>,
+    R: FnMut() -> RF,
+    RF: Future<Output = Composer>,
+{
+    let shown = until_read(
+        &mut read,
+        |c| matches!(c, Composer::Holds(_)),
+        pace.poll,
+        pace.polls,
+    )
+    .await
+    .is_some();
+    if !shown {
+        tracing::warn!(
+            "[terminal] {name}: the paste never showed at its prompt within {:?}; Enter is \
+pressed regardless",
+            pace.poll * pace.polls as u32
+        );
+    }
+    let readable = prompt == Prompt::Empty || shown;
     let enters = if readable { ENTERS } else { 1 };
     until_cleared(
-        || press_enter(name, target),
-        || async {
-            if readable {
-                read_prompt(target).await
-            } else {
-                Composer::Unrecognised
+        enter,
+        || {
+            let next = if readable { Some(read()) } else { None };
+            async move {
+                match next {
+                    Some(next) => next.await,
+                    None => Composer::Unrecognised,
+                }
             }
         },
-        SETTLE,
+        pace.settle,
         enters,
     )
     .await
@@ -40,6 +110,30 @@ pub(super) async fn after_paste(name: &str, target: &str, prompt: Prompt) -> Res
 holds it unsent: \u{ab}{held}\u{bb}. It was not delivered; submit or clear it at the pane."
         )),
     })
+}
+
+/// Read the composer every `poll` until `want` holds of what it shows, at
+/// most `polls` times; what it showed then, or `None`.
+pub(super) async fn until_read<R, RF>(
+    read: &mut R,
+    want: impl Fn(&Composer) -> bool,
+    poll: Duration,
+    polls: usize,
+) -> Option<Composer>
+where
+    R: FnMut() -> RF,
+    RF: Future<Output = Composer>,
+{
+    for i in 0..polls.max(1) {
+        if i > 0 {
+            tokio::time::sleep(poll).await;
+        }
+        let seen = read().await;
+        if want(&seen) {
+            return Some(seen);
+        }
+    }
+    None
 }
 
 async fn press_enter(name: &str, target: &str) -> Result<(), String> {
@@ -148,6 +242,106 @@ mod tests {
             Err(NotSubmitted::StillHeld("[Pasted text #1 +3 lines]".into()))
         );
         assert_eq!(pressed, ENTERS);
+    }
+
+    /// What `submit` did at a composer that shows the paste on its `shows_on`th
+    /// read and keeps it until the `clears_on`th Enter: the answer, and each
+    /// event in order, `E` an Enter and `H`/`-` a read holding the message or not.
+    async fn submitted(
+        prompt: Prompt,
+        shows_on: Option<usize>,
+        clears_on: usize,
+    ) -> (Result<(), NotTyped>, String) {
+        let events = std::cell::RefCell::new(String::new());
+        let (reads, pressed) = (Cell::new(0usize), Cell::new(0usize));
+        let out = submit(
+            "forge-master-p",
+            prompt,
+            || {
+                pressed.set(pressed.get() + 1);
+                events.borrow_mut().push('E');
+                async { Ok(()) }
+            },
+            || {
+                reads.set(reads.get() + 1);
+                let shown = shows_on.is_some_and(|n| reads.get() >= n);
+                let now = if shown && pressed.get() < clears_on {
+                    Composer::Holds("[Pasted text #1 +20 lines]".into())
+                } else if shows_on.is_some() {
+                    Composer::Empty
+                } else {
+                    Composer::Unrecognised
+                };
+                events
+                    .borrow_mut()
+                    .push(if matches!(now, Composer::Holds(_)) {
+                        'H'
+                    } else {
+                        '-'
+                    });
+                async move { now }
+            },
+            Pace {
+                poll: Duration::ZERO,
+                polls: 5,
+                settle: Duration::ZERO,
+            },
+        )
+        .await;
+        (out, events.into_inner())
+    }
+
+    #[tokio::test]
+    async fn enter_waits_until_the_composer_shows_the_paste() {
+        let (out, events) = submitted(Prompt::Empty, Some(3), 1).await;
+        assert_eq!(out.map_err(|e| e.to_string()), Ok(()));
+        assert_eq!(
+            events, "--HE-",
+            "Enter was pressed before the composer showed the paste, or never"
+        );
+    }
+
+    /// ISS-1081: a pane read before the paste as no composer at all was given
+    /// one Enter and never read back, and its wake sat unsent.
+    #[tokio::test]
+    async fn a_pane_unread_before_the_paste_that_shows_it_after_is_read_back_and_pressed_again() {
+        let (out, events) = submitted(Prompt::Unread, Some(1), 2).await;
+        assert_eq!(out.map_err(|e| e.to_string()), Ok(()));
+        assert_eq!(
+            events, "HEHE-",
+            "the unread pane's wake was not pressed again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pane_unread_before_the_paste_and_after_it_takes_one_enter_and_no_read_back() {
+        let (out, events) = submitted(Prompt::Unread, None, 1).await;
+        assert_eq!(out.map_err(|e| e.to_string()), Ok(()));
+        assert_eq!(events, "-----E");
+    }
+
+    #[tokio::test]
+    async fn a_wake_still_held_after_every_enter_is_said_unsent_naming_the_pane() {
+        let (out, events) = submitted(Prompt::Unread, Some(1), usize::MAX).await;
+        assert_eq!(events, "HEHEHEH", "the Enters were not bounded at {ENTERS}");
+        match out {
+            Err(NotTyped::Unsubmitted(why)) => assert!(
+                why.starts_with("forge-master-p: ") && why.contains("unsent"),
+                "{why}"
+            ),
+            other => panic!("a wake left at the prompt was answered {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_read_for_a_paste_is_bounded() {
+        let reads = Cell::new(0usize);
+        let mut read = || {
+            reads.set(reads.get() + 1);
+            async { Composer::Empty }
+        };
+        let seen = until_read(&mut read, |c| *c != Composer::Empty, Duration::ZERO, 4).await;
+        assert_eq!((seen, reads.get()), (None, 4));
     }
 
     #[tokio::test]

@@ -317,7 +317,15 @@ async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: Option<&str>) {
     };
     pass.open(ledger, typed.is_some()).await;
     if let Some(because) = typed {
-        nudge_master(masters, project_id, t.slug(), because, &t.work.nudge).await;
+        nudge_master(
+            masters,
+            project_id,
+            t.slug(),
+            because,
+            &t.work.nudge,
+            prompts,
+        )
+        .await;
     }
 }
 

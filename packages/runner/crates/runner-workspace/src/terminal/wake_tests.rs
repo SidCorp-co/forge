@@ -125,7 +125,10 @@ fn stand_in(test: &str, args: &str) -> Option<Pane> {
         }
         panic!("PYTHON3_NOT_ON_PATH: {test} runs a stand-in for Claude Code's composer in python3, which is not on PATH — install it, or set {SKIP_TMUX}=1 to skip it by name");
     }
-    let dir = std::env::temp_dir().join(format!("fwk-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]));
+    let dir = std::env::temp_dir().join(format!(
+        "fwk-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..12]
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     let script = dir.join("stand_in.py");
     std::fs::write(&script, STAND_IN).unwrap();
@@ -144,7 +147,17 @@ fn stand_in(test: &str, args: &str) -> Option<Pane> {
     let started = std::process::Command::new("tmux")
         .arg("-S")
         .arg(pane.dir.join("s"))
-        .args(["new-session", "-d", "-x", "120", "-y", "50", "-s", &pane.name, &command])
+        .args([
+            "new-session",
+            "-d",
+            "-x",
+            "120",
+            "-y",
+            "50",
+            "-s",
+            &pane.name,
+            &command,
+        ])
         .output()
         .unwrap();
     assert!(
@@ -184,7 +197,10 @@ async fn a_wake_typed_while_the_pane_is_still_starting_is_submitted_once_it_draw
         log.contains("SUBMITTED on enter 1"),
         "the wake was left unsubmitted at the prompt of a pane still starting (typed: {typed:?}); the stand-in logged: {log:?}"
     );
-    assert!(typed.is_ok(), "a submitted wake was said not delivered: {typed:?}");
+    assert!(
+        typed.is_ok(),
+        "a submitted wake was said not delivered: {typed:?}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -199,7 +215,10 @@ async fn a_wake_whose_first_enter_is_swallowed_is_pressed_again_and_submits() {
         log.contains("SUBMITTED on enter 2"),
         "a wake whose first Enter was swallowed was not pressed again (typed: {typed:?}); the stand-in logged: {log:?}"
     );
-    assert!(typed.is_ok(), "a submitted wake was said not delivered: {typed:?}");
+    assert!(
+        typed.is_ok(),
+        "a submitted wake was said not delivered: {typed:?}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -212,7 +231,9 @@ async fn a_wake_that_never_submits_is_said_unsent_naming_the_pane() {
     let log = logged(&pane, "swallowed 3", Duration::from_secs(5));
     let said = match &typed {
         Err(e) => e.to_string(),
-        Ok(_) => panic!("a wake the pane never took was said delivered; the stand-in logged: {log:?}"),
+        Ok(_) => {
+            panic!("a wake the pane never took was said delivered; the stand-in logged: {log:?}")
+        }
     };
     assert!(
         said.contains(&pane.name) && said.contains("unsent"),

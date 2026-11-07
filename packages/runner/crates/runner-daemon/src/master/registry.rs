@@ -73,6 +73,11 @@ pub(crate) struct Registry {
     /// Per project, the master session and the dialog last reported to core
     /// for its pane, so a dialog standing for an hour is one report.
     pub(crate) dialog_said: HashMap<String, (String, Option<String>)>,
+    /// Per project, the master session whose pane holds a wake this box typed
+    /// and did not see submitted, and the prompts its hooks had reported by
+    /// then: the sweep reads that pane's prompt and tells core where the wake
+    /// still sits there (ISS-1081).
+    pub(crate) wake_left: HashMap<String, (String, u64)>,
     /// Per project, the master session and its turn count when its last
     /// pass settled: a turn started past it with no pass open is one the
     /// runner did not nudge, and is recorded as an unprompted pass.
@@ -287,6 +292,39 @@ impl Masters {
     pub(crate) fn forget_dialog_report(&self, project_id: &str) {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.dialog_said.remove(project_id);
+    }
+
+    /// Remember that the wake this box typed into `session`'s pane was not
+    /// seen submitted, `prompts` being what its hooks had reported by then.
+    pub(crate) fn note_wake_left(&self, project_id: &str, session: &str, prompts: Option<u64>) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.wake_left.insert(
+            project_id.to_string(),
+            (session.to_string(), prompts.unwrap_or(0)),
+        );
+    }
+
+    /// Forget the project's unsent wake: it was submitted, or another took
+    /// its place.
+    pub(crate) fn clear_wake_left(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.wake_left.remove(project_id);
+    }
+
+    /// Whether a wake this box left unsent in `session`'s pane may still sit
+    /// at its prompt. A prompt its hooks report submitted since is the wake
+    /// taken, and a pane of another session is not the one it was typed
+    /// into: either forgets it.
+    pub(crate) fn wake_left(&self, project_id: &str, session: &str, prompts: Option<u64>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some((typed_into, then)) = reg.wake_left.get(project_id) else {
+            return false;
+        };
+        if typed_into == session && prompts.unwrap_or(0) <= *then {
+            return true;
+        }
+        reg.wake_left.remove(project_id);
+        false
     }
 
     pub(crate) fn note_turns_settled(&self, project_id: &str, session: &str, turns: u64) {
