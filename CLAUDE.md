@@ -17,19 +17,14 @@ number.
 
 ## Commands
 
-**Work lands in batches, on the minimum bar, and a batch is gated once** (`batch-delivery`; owner,
-2026-11-01). The bar is that the merged batch builds, typecheck included, and the app answers its
-health check; the wide checks run on the integrated build after the push (here, the whole suite on
-`dev` once a day, below), and a red there is fixed forward in the next batch. A batch spans whatever issues are open, across requirements; new work is folded in as it arrives, and
-the batch splits into parallel builders on disjoint files. Each builder proves what it built by
+**Work lands in batches, gated once.** The rule is the org's `batch-delivery` (its bar, how a batch
+forms and splits, when wide checks run); what follows is only how this repo runs it. Each builder proves what it built by
 running it and runs `pnpm test:changed` over its own tree: `pnpm tc:changed`'s typecheck and only
 the DIRECT tests of what it touched (a test touched, a test importing a touched file, a test
 declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
-the same way), never a whole suite. Verification follows the blast radius, not the line count: a
-change that touches shared logic, billing, permissions or data is checked wide early, by its builder
-— `--integration` and the whole suite of the module it shares — instead of waiting for the wide check
-at the release mark. In this repo the batch's ONE gate is still wider than that bar, because the
-script runs more than the bar asks: `pnpm verify` — the conformance entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` over the batch rebased onto
+the same way), never a whole suite; a change touching shared logic, billing, permissions or data adds
+`--integration` and the whole suite of the module it shares. The batch's ONE gate is wider than the
+org's bar, because the script runs more than the bar asks: `pnpm verify` — the conformance entrypoint — and `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>` over the batch rebased onto
 the latest `dev`, which refuses a branch behind its base (`MERGE_BEHIND_BASE`) and a claimed
 criterion's probe missing or red (`MERGE_PROBE_MISSING`, `MERGE_PROBE_RED`). Its report is recorded
 with `POST /api/issues/:id/merge-check` on each issue the batch lands, a high-impact mark is refused

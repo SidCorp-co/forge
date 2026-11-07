@@ -74,6 +74,10 @@ export async function putLessonEntry(
     orderIndex: input.meta.number,
     embedding: null,
     metadata: input.meta as unknown as Record<string, unknown>,
+    // a lesson the steward decided is a way of working settled from a correction, scoped where it
+    // applies (REQ-89 BC-4, ISS-1121)
+    entryType: 'convention' as const,
+    scope: lessonScopeText(input.meta.scope),
   };
   await tx
     .insert(knowledgeEntries)
@@ -89,10 +93,19 @@ export async function putLessonEntry(
         // a rewritten sentence is embedded again by the backfill; an unchanged one keeps its vector
         embedding: sql`CASE WHEN ${knowledgeEntries.body} = ${row.body} THEN ${knowledgeEntries.embedding} ELSE NULL END`,
         metadata: row.metadata,
+        entryType: row.entryType,
+        scope: row.scope,
         archivedAt: null,
         updatedAt: new Date(),
       },
     });
+}
+
+/** Where a lesson applies, in words: the project, one area, or one kind of item. */
+function lessonScopeText(scope: LessonEntryMeta['scope']): string {
+  if (scope.kind === 'area') return `work in the area ${scope.areaName ?? scope.areaId ?? 'named'}`;
+  if (scope.kind === 'item_kind') return `every ${scope.itemKind ?? 'item'} of this project`;
+  return 'every piece of work in this project';
 }
 
 /**

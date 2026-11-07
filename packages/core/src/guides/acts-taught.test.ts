@@ -8,7 +8,7 @@ import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import { DESIGN_REFUSAL_CODES } from '@forge/contracts/workflows';
 import { describe, expect, it } from 'vitest';
-import { memorySources, memoryWritableSources } from '../db/schema-vocabulary.js';
+import { memorySources } from '../db/schema-vocabulary.js';
 import { getGuide } from './registry.js';
 
 const CODES = new Set<string>([...QUESTION_REFUSAL_CODES, ...MERGE_REFUSAL_CODES]);
@@ -61,8 +61,8 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       ],
     ],
     [
-      "a memory names another project's key by its slug, and is never bookkeeping",
-      ['`<its slug> ISS-n`', 'never written as a `decision`'],
+      "a memory names another project's key by its slug, answers its curation, and is never a log",
+      ['`<its slug> ISS-n`', 'never written as a `decision`', '`recheckWhen`', '`updates`', '`landedOn`'],
     ],
     [
       'the fast lane is taken only for the approved change, and deploys web alone (REQ-39 BC-7)',
@@ -107,12 +107,11 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     for (const word of words) expect(flow, `issue-flow no longer names ${word}`).toContain(word);
   });
 
-  it('a memory hit says why it was flagged, and bookkeeping is read only when asked for', () => {
+  it('a memory hit says why it was flagged and what it is, and a copy is history read only by name (ISS-1121)', () => {
     expect(flow.replace(/\s+/g, ' ')).toContain(
-      'A hit carrying `staleReason` was flagged possibly stale by a release for the reason it gives, so check that claim before relying on it; a `bookkeeping` row is the upkeep record core keeps of memory itself, never written by a run, and returned only when `sourceFilter` names it.',
+      "A hit carrying `staleReason` was flagged for a re-check, by a release or by a landing touching what it names, for the reason it gives, so check that claim before relying on it; a hit's `curation` says its type, and a `hypothesis` is a lead, never a fact. Recall reads curated memory; an issue, comment or job copy is history, returned only when `sourceFilter` names it.",
     );
-    expect(memorySources).toContain('bookkeeping');
-    expect(memoryWritableSources).not.toContain('bookkeeping');
+    expect(memorySources).not.toContain('bookkeeping');
   });
 
   it('the lifecycle guide points ordering at a blocks edge, and lets a park name only its own mark (ISS-738)', () => {

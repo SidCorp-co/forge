@@ -508,12 +508,22 @@ Each defect you see goes to exactly one place (guide \`what-is-an-issue\`, *Wher
   expect, is Feedback, never an issue you file. A technical one needing its own priority, a handoff
   or independent tracking is an issue of its own in its module's technical backlog: its kind as
   \`category\`, its module as the primary label, and \`Found in:\` this issue with the evidence.
-- A lesson a different issue would reuse: \`POST /api/memory\`. Another project's issue key is
-  written \`<its slug> ISS-n\`, never bare, since a bare key is read as this project's. What a sweep, a
-  reconcile or a consolidation did is bookkeeping, not a lesson, and is never written as a \`decision\`.
-  A hit carrying \`staleReason\` was flagged possibly stale by a release for the reason it gives, so
-  check that claim before relying on it; a \`bookkeeping\` row is the upkeep record core keeps of
-  memory itself, never written by a run, and returned only when \`sourceFilter\` names it.
+- A lesson a different issue would reuse: \`POST /api/memory\`, answering four things before you
+  save (\`curated-memory\`): \`value\` (how it helps later work; with none, it is history, a comment
+  on the issue), \`type\` (\`fact\` verified against what is live, \`hypothesis\` inferred, or
+  \`convention\` a way of working settled), \`scope\` (where it applies) and \`recheckWhen\` (the
+  paths, routes, config keys or rule slugs whose change means re-checking it: a landing touching one
+  flags the entry). A temporary entry (a defect, a wait, a workaround) names what ends it in
+  \`endsWhen\`. A write leaving one out is stored as a hypothesis, unscoped, answered with
+  \`warnings\` and listed as owing it. A subject already held is updated, never added beside: name
+  it in \`updates\`, or the write lands on the near-identical entry and answers \`landedOn\`.
+  Another project's issue key is written \`<its slug> ISS-n\`, never bare, since a bare key is read
+  as this project's. What a sweep, a reconcile or a consolidation did is core's own history, never a
+  memory, and a decision in force is never written as a \`decision\`.
+  A hit carrying \`staleReason\` was flagged for a re-check, by a release or by a landing touching
+  what it names, for the reason it gives, so check that claim before relying on it; a hit's
+  \`curation\` says its type, and a \`hypothesis\` is a lead, never a fact. Recall reads curated
+  memory; an issue, comment or job copy is history, returned only when \`sourceFilter\` names it.
 
 ### 8. Clean up and report
 Remove what this run made and no longer needs: scratch files, servers it started. A workspace

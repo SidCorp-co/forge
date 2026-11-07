@@ -7,7 +7,7 @@ import { MEMORY_REFUSAL_CODES } from '@forge/contracts/memory';
 import { QUESTION_REFUSAL_CODES, questionAboutRequestSchema } from '@forge/contracts/questions';
 import { RELEASE_BLOCKER_CODES, RELEASE_REFUSAL_CODES } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
-import { memorySources, memoryWritableSources } from '../../db/schema-vocabulary.js';
+import { memorySources } from '../../db/schema-vocabulary.js';
 import { ISSUE_FLOW_GUIDE } from '../../guides/issue-flow-guide.js';
 import { releaseBatchStatePrompt } from '../state-prompts/release-batch.js';
 import {
@@ -132,7 +132,7 @@ describe('a release run says what left when it stops', () => {
 });
 
 describe('a run writes memory another reader can trust', () => {
-  it('names a foreign key by its project, keeps bookkeeping out, and gives an outdated verdict its reason', () => {
+  it('names a foreign key by its project, keeps logs out, and gives an outdated verdict its reason', () => {
     for (const word of [
       '`<its slug> ISS-n`',
       'never as a `decision`',
@@ -147,14 +147,16 @@ describe('a run writes memory another reader can trust', () => {
   });
 
   // REQ-23 BC-2: the prompt names the guide that says it, and the guide says it
-  it('says a flagged hit carries its reason and bookkeeping is read only when asked for', () => {
+  it('says a flagged hit carries its reason and its curation, and a write carries its four answers (ISS-1121)', () => {
     expect(DRIVE_RULES_TEXT).toContain(
-      "What a hit's `staleReason` and a `bookkeeping` row mean: `GET /api/guides/issue-flow.md`.",
+      "What a hit's `staleReason` and `curation` mean: `GET /api/guides/issue-flow.md`.",
     );
+    for (const word of ['"value":', '"type":', '"scope":', '"recheckWhen":', '`updates`']) {
+      expect(DRIVE_RULES_TEXT).toContain(word);
+    }
     expect(ISSUE_FLOW_GUIDE.body.replace(/\s+/g, ' ')).toContain(
-      'A hit carrying `staleReason` was flagged possibly stale by a release for the reason it gives, so check that claim before relying on it; a `bookkeeping` row is the upkeep record core keeps of memory itself, never written by a run, and returned only when `sourceFilter` names it.',
+      "a hit's `curation` says its type, and a `hypothesis` is a lead, never a fact",
     );
-    expect(memorySources).toContain('bookkeeping');
-    expect(memoryWritableSources).not.toContain('bookkeeping');
+    expect(memorySources).not.toContain('bookkeeping');
   });
 });
