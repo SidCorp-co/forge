@@ -22,7 +22,7 @@ import {
 import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
 import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
-import { type AttentionRow, owedOf, type readAttention } from './needs-you.js';
+import { type Attention, type AttentionRow, owedOf } from './needs-you.js';
 import { acceptDecision, repinDecision } from './needs-you-accept-builders.js';
 import {
   agreeDecision,
@@ -322,7 +322,7 @@ export interface OwedDecision {
   decision: NeedsYouDecision;
 }
 
-export type Attention = Awaited<ReturnType<typeof readAttention>>;
+export type { Attention };
 
 /** The owed rows listed (each a decision or left out by why) and every owed row, ops ones too. */
 interface Classification {

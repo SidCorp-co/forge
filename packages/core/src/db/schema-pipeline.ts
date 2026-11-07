@@ -44,6 +44,14 @@ export const pipelineRuns = pgTable(
     metadata: jsonb('metadata').notNull().default({}),
     /** A release's version and its ship (ISS-1120); both NULL on every other kind of run. */
     ...axes.releaseRunVersionColumns,
+    /**
+     * The four roster lists of a run wearing a version, kept beside `metadata` by Postgres so the
+     * holding rule (`issues/release-evidence.ts:holdingReleaseRunsSql`) never detoasts the whole
+     * document per issue it asks about (ISS-1070, migration 0622); NULL on every other run.
+     */
+    releaseRoster: jsonb('release_roster').generatedAlwaysAs(
+      sql`CASE WHEN release_version IS NOT NULL THEN jsonb_set(jsonb_set(jsonb_set(jsonb_set('{}'::jsonb, '{issueIds}', coalesce(metadata -> 'issueIds', '[]'::jsonb)), '{rosterUnclosed}', coalesce(metadata -> 'rosterUnclosed', '[]'::jsonb)), '{rosterClosed}', coalesce(metadata -> 'rosterClosed', '[]'::jsonb)), '{rosterSuperseded}', coalesce(metadata -> 'rosterSuperseded', '[]'::jsonb)) END`,
+    ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

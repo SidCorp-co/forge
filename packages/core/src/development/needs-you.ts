@@ -9,6 +9,7 @@
 import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
 import type { NeedsYouAreaKey, NeedsYouEntity } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { ReleaseListResponse } from '@forge/contracts/releases';
 import { say } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { StandingTimes } from '@forge/contracts/steward';
@@ -17,7 +18,7 @@ import { automationViewerOf, readAutomationStanding } from '../automation/index.
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
-import { listReleases } from '../release-batch/release-read.js';
+import { listReleases, listReleasesInPlay } from '../release-batch/release-read-list.js';
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, designSettlerOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
@@ -80,12 +81,35 @@ export const newestFirst = (a: AttentionRow, b: AttentionRow) =>
 
 /**
  * Every area's rows with their standing, and the lists they were read from: the one derivation
- * needs-you filters to the viewer and the project status reads whom each row waits on from.
+ * needs-you filters to the viewer and the project status reads whom each row waits on from. The
+ * project status reads every release (`listReleases`); Needs you only those that can still wait on
+ * someone (`readNeedsYouAttention`), and lists the same rows either way.
  */
-export async function readAttention(
+export function readAttention(projectId: string, viewer: NeedsYouViewer, now: Date = new Date()) {
+  return attentionOf(projectId, viewer, now, listReleases(projectId, viewer));
+}
+
+/**
+ * The attention read Needs you is built from: its releases are those that can still wait on
+ * someone (`release-read.ts:listReleasesInPlay`), since a release shipped, failed or aborted is no
+ * row any reader of it keeps (ISS-1070).
+ */
+export function readNeedsYouAttention(
   projectId: string,
   viewer: NeedsYouViewer,
   now: Date = new Date(),
+) {
+  return attentionOf(projectId, viewer, now, listReleasesInPlay(projectId, viewer));
+}
+
+/** One attention read, as `readNeedsYouAttention` makes it; the project status's is wider and fits it. */
+export type Attention = Awaited<ReturnType<typeof readNeedsYouAttention>>;
+
+async function attentionOf<R extends Pick<ReleaseListResponse, 'releases'>>(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  now: Date,
+  releasesRead: Promise<R>,
 ) {
   const [
     requirements,
@@ -101,7 +125,7 @@ export async function readAttention(
   ] = await Promise.all([
     listRequirementsAs(viewer, projectId),
     listFeedbackAs(viewer, projectId),
-    listReleases(projectId, viewer),
+    releasesRead,
     listIssueStanding(projectId, 'open', now),
     readContractStanding(projectId, viewer.userId, now),
     automationOf(projectId, viewer.userId, now),

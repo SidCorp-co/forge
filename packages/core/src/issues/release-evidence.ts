@@ -4,6 +4,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 
 /**
  * When each issue last entered `reopen`, read from the move history (`kernel_transitions`); an
@@ -106,14 +107,22 @@ export async function closedAtOf(
  * in scope (`pipeline/release-runs.ts:shippedReleasesOf` lists them; `releasedSql` asks whether any).
  */
 export function holdingReleaseRunsSql(issueId: SQL, projectId: SQL): SQL {
-  const listed = (key: string) =>
-    sql`coalesce(r.metadata -> ${key}, '[]'::jsonb) @> to_jsonb(${issueId}::text)`;
   return sql`
     SELECT r.id, r.release_version, r.release_released_at FROM pipeline_runs r
      WHERE r.project_id = ${projectId}
        AND r.release_version IS NOT NULL
        AND r.release_released_at IS NOT NULL
-       AND ((${listed('issueIds')} AND NOT ${listed('rosterUnclosed')}) OR ${listed('rosterClosed')})
+       AND ${holdsWorkSql(issueId)}`;
+}
+
+/**
+ * Whether the release run aliased `r` holds the work of the issue `issueId` names: the rule
+ * `holdingReleaseRunsSql` states, for a run already known to wear a version and to have shipped.
+ */
+function holdsWorkSql(issueId: SQL): SQL {
+  // the lists `metadata` holds, as the generated `release_roster` keeps them (migration 0622)
+  const listed = (key: string) => sql`(r.release_roster -> ${key}) @> to_jsonb(${issueId}::text)`;
+  return sql`((${listed('issueIds')} AND NOT ${listed('rosterUnclosed')}) OR ${listed('rosterClosed')})
        AND NOT ${listed('rosterSuperseded')}
        AND NOT EXISTS (
          SELECT 1 FROM kernel_transitions t
@@ -125,6 +134,32 @@ export function holdingReleaseRunsSql(issueId: SQL, projectId: SQL): SQL {
                      AND u.to_status IN ('awaiting_release', 'closed')
                      AND u.created_at > t.created_at
                    ORDER BY u.created_at, u.id LIMIT 1), false))`;
+}
+
+/**
+ * Every shipped release run of `projectId` holding the work of each issue `issueIds` lists, as rows
+ * `(issue_id, id, release_version, release_released_at)`: `holdingReleaseRunsSql` read once for the
+ * whole list. Each run is read once and offers only the issues its roster names (an issue no roster
+ * names is held by no run, since the rule asks the roster to name it), and the rule is then asked of
+ * those pairs alone, where asking it per issue read every shipped run once for each (ISS-1070).
+ */
+export function releaseRunsHoldingSql(issueIds: readonly string[], projectId: SQL): SQL {
+  // the ids a roster list names: each string of a list, or the list itself where it is one string
+  const named = (key: string) => sql`
+    SELECT jsonb_array_elements_text(r.release_roster -> ${key})
+     WHERE jsonb_typeof(r.release_roster -> ${key}) = 'array'
+    UNION ALL
+    SELECT r.release_roster ->> ${key} WHERE jsonb_typeof(r.release_roster -> ${key}) = 'string'`;
+  // the asked ids are joined before the rule reads them, so it casts only an id that was asked
+  return sql`
+    SELECT DISTINCT a.issue_id, r.id, r.release_version, r.release_released_at
+      FROM pipeline_runs r
+      CROSS JOIN LATERAL (${named('issueIds')} UNION ALL ${named('rosterClosed')}) AS n(issue_id)
+      JOIN unnest(ARRAY[${idList(issueIds)}]::text[]) AS a(issue_id) ON a.issue_id = n.issue_id
+     WHERE r.project_id = ${projectId}
+       AND r.release_version IS NOT NULL
+       AND r.release_released_at IS NOT NULL
+       AND ${holdsWorkSql(sql`a.issue_id`)}`;
 }
 
 /** True where a shipped release still holds the work of the issue `issueId` names (`holdingReleaseRunsSql`). */

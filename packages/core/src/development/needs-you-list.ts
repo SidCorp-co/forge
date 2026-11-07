@@ -24,7 +24,12 @@ import type { DecisionOpens } from '@forge/contracts/needs-you-decisions';
 import { say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { ProjectAccess } from '../lib/authz.js';
-import { type AttentionRow, type NeedsYouViewer, newestFirst, readAttention } from './needs-you.js';
+import {
+  type AttentionRow,
+  type NeedsYouViewer,
+  newestFirst,
+  readNeedsYouAttention,
+} from './needs-you.js';
 import { spaceOf } from './needs-you-decisions.js';
 import { needsYouListOf } from './needs-you-decisions-read.js';
 import type { Folded } from './needs-you-fold.js';
@@ -106,7 +111,7 @@ export async function readNeedsYou(
   access: ProjectAccess,
   now: Date = new Date(),
 ): Promise<NeedsYouResponse> {
-  const attention = await readAttention(projectId, viewer, now);
+  const attention = await readNeedsYouAttention(projectId, viewer, now);
   const { listed, owedRows, folded, decisions } = await needsYouListOf(
     projectId,
     viewer,

@@ -14,7 +14,7 @@ import {
   questionDecisionId,
 } from '@forge/contracts/needs-you-decisions';
 import type { ProjectAccess } from '../lib/authz.js';
-import { type NeedsYouViewer, readAttention } from './needs-you.js';
+import { type NeedsYouViewer, readNeedsYouAttention } from './needs-you.js';
 import { agentTakesItem, agentTakesOf } from './needs-you-agent-takes.js';
 import { type Attention, decisionsOf } from './needs-you-decisions.js';
 import { declineProposed, waitedToPropose } from './needs-you-escalation.js';
@@ -110,7 +110,7 @@ export async function readNeedsYouDecisionsBare(
   access: ProjectAccess,
   now: Date = new Date(),
 ): Promise<{ read: NeedsYouDecisions; ids: EvidenceGroup['ids'] }> {
-  const attention = await readAttention(projectId, viewer, now);
+  const attention = await readNeedsYouAttention(projectId, viewer, now);
   const { decisions, left, ids } = await needsYouListOf(projectId, viewer, access, attention, now);
   const read = needsYouDecisionsSchema.parse({
     generatedAt: now.toISOString(),

@@ -2,11 +2,13 @@
 // wore (`release-batch/version-rule.ts:decideVersion`), several runs can carry one
 // `release_version`; every reader resolves it here, so a version names one run everywhere.
 
+import { createHash } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { idList, rowsOf } from '../db/raw-sql.js';
+import { rowsOf } from '../db/raw-sql.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { pipelineRuns } from '../db/schema.js';
-import { holdingReleaseRunsSql } from '../issues/index.js';
+import { releaseRunsHoldingSql } from '../issues/index.js';
 
 export interface ReleaseRunRow {
   id: string;
@@ -99,14 +101,23 @@ export async function shippedReleasesOf(
   issueIds: readonly string[],
 ): Promise<Map<string, ShippedRelease>> {
   if (issueIds.length === 0) return new Map();
+  // a read asks it again of the same issues (the feedback list and its ship notices): once a request
+  const ids = [...new Set(issueIds)].sort();
+  const key = createHash('sha256').update(ids.join(',')).digest('base64url');
+  return memoizedRead(`shippedReleasesOf:${projectId}:${key}`, () =>
+    readShippedReleases(projectId, ids),
+  );
+}
+
+async function readShippedReleases(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, ShippedRelease>> {
   const rows = rowsOf<{ issue_id: string; version: string; at: string | Date }>(
     await db.execute(sql`
-      SELECT m.issue_id, h.release_version AS version, h.release_released_at AS at
-        FROM unnest(ARRAY[${idList(issueIds)}]::text[]) AS m(issue_id)
-        CROSS JOIN LATERAL (
-          ${holdingReleaseRunsSql(sql`m.issue_id`, sql`${projectId}::uuid`)}
-          ORDER BY r.release_released_at DESC LIMIT 1
-        ) h`),
+      SELECT DISTINCT ON (h.issue_id) h.issue_id, h.release_version AS version, h.release_released_at AS at
+        FROM (${releaseRunsHoldingSql(issueIds, sql`${projectId}::uuid`)}) h
+       ORDER BY h.issue_id, h.release_released_at DESC`),
   );
   return new Map(
     rows.map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),

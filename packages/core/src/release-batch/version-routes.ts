@@ -17,7 +17,8 @@ import {
 import { decideDraftApproval } from './draft-approval.js';
 import { nameReleaseAs } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
-import { listReleases, listShippedReleases, readRelease } from './release-read.js';
+import { readRelease } from './release-read.js';
+import { listReleases, listShippedReleases } from './release-read-list.js';
 import { repairRelease } from './release-repair.js';
 import type { ViewerFacts } from './release-view.js';
 

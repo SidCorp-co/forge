@@ -8,9 +8,7 @@
 
 import type { NeedsYouAreaKey, NeedsYouEntity } from '@forge/contracts/needs-you';
 import type { DecisionOpens } from '@forge/contracts/needs-you-decisions';
-import type { readAttention } from './needs-you.js';
-
-type Attention = Awaited<ReturnType<typeof readAttention>>;
+import type { Attention } from './needs-you.js';
 
 /** The product item an issue serves, as a decision about it is listed. */
 export interface IssueItem {

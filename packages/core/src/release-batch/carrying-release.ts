@@ -8,7 +8,7 @@
 
 import type { ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
 import type { WaitingOn } from '@forge/contracts/standing';
-import { listReleases } from './release-read.js';
+import { listReleases } from './release-read-list.js';
 
 /** A release that has not shipped yet, and the wait its own standing reads. */
 export interface HoldingRelease {

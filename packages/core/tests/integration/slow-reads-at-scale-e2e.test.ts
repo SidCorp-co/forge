@@ -190,7 +190,7 @@ async function explained(s: Statement): Promise<string> {
   try {
     const plan = await client.unsafe(`EXPLAIN (ANALYZE, BUFFERS) ${s.text}`, s.params);
     const lines = plan.map((r) => r['QUERY PLAN']);
-    return [...lines.slice(0, 6), ...lines.filter((l) => /Execution Time|Planning Time/.test(l))]
+    return [...lines.slice(0, Number(process.env.SLOW_READS_PLAN_LINES ?? 6)), ...lines.filter((l) => /Execution Time|Planning Time/.test(l))]
       .map((l) => `      | ${l.slice(0, 200)}`)
       .join('\n');
   } catch (err) {

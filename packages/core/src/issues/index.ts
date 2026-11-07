@@ -231,6 +231,7 @@ export {
   closedAtOf,
   holdingReleaseRunsSql,
   releasedSql,
+  releaseRunsHoldingSql,
   reopenedAtOf,
   reopenedRoundsOf,
   reworkedSince,

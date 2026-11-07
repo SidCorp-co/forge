@@ -86,13 +86,12 @@ export {
 export { bindingReachesProduction, dispatchCoolifyDeployDirect } from './release-coolify.js';
 export type { CarriedVerdict, IssueFact } from './release-facts.js';
 export { readReleaseOwes } from './release-owes.js';
+export { type ReleaseRecord, readRelease, readReleaseRecord } from './release-read.js';
 export {
   latestLiveReleases,
   listReleases,
-  type ReleaseRecord,
-  readRelease,
-  readReleaseRecord,
-} from './release-read.js';
+  listReleasesInPlay,
+} from './release-read-list.js';
 export type { WeighedIssue } from './release-read-views.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { registerReleaseTag } from './release-tag.js';

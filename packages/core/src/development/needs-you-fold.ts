@@ -43,7 +43,7 @@ import {
   type WaitingSuggestion,
   waitingSuggestionsFor,
 } from '../suggestions/waiting-read.js';
-import type { NeedsYouViewer, readAttention } from './needs-you.js';
+import type { Attention, NeedsYouViewer } from './needs-you.js';
 import { clip, type DecisionBody, filled, prefilledReason } from './needs-you-decision-builders.js';
 import { NameOf, nameOf } from './needs-you-named.js';
 import { issueItemsOf, type Placement, placeOn } from './needs-you-on-item.js';
@@ -54,8 +54,6 @@ import {
   type TriagedItem,
   triageProposal,
 } from './needs-you-proposals.js';
-
-type Attention = Awaited<ReturnType<typeof readAttention>>;
 
 const TOPIC_OF: Partial<Record<string, NeedsYouTopic>> = {
   feedback_triage: 'feedback',

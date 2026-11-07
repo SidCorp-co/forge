@@ -4,7 +4,8 @@ import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { holds, onArg } from '../permissions/index.js';
-import { listReleases, readRelease } from './release-read.js';
+import { readRelease } from './release-read.js';
+import { listReleases } from './release-read-list.js';
 import { releaseToolView } from './tool-view.js';
 
 const RELEASES_LIST_MAX = 50;
