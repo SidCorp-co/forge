@@ -28,6 +28,25 @@ vi.mock('../knowledge/index.js', () => {
   };
 });
 
+// the working agreements a project inherits from Forge, read as a project that changed none (REQ-90)
+vi.mock('../agreements/index.js', async (actual) => {
+  const real = await actual<typeof import('../agreements/index.js')>();
+  const { resolveAgreements } = await import('../agreements/resolve.js');
+  return {
+    ...real,
+    readAgreements: async (projectId: string) => {
+      if (knowledge.fail) throw new Error('knowledge store down');
+      return resolveAgreements({
+        projectId,
+        forge: real.FORGE_AGREEMENTS,
+        rows: [],
+        represented: [],
+        task: null,
+      });
+    },
+  };
+});
+
 /** The runner rows this device is assigned, as the heartbeat's query reads them. */
 const assigned = vi.hoisted(() => ({
   rows: [] as { projectId: string; slug: string }[],
