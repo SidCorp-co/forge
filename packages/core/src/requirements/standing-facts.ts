@@ -7,6 +7,7 @@
 import type { ChecklistAnswer } from '@forge/contracts/checklists';
 import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contracts/requirements';
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
+import { BUILDER_PASS_CUTOVER } from '@forge/contracts/verified-rule';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { uuidArray } from '../db/raw-sql.js';
@@ -116,11 +117,36 @@ async function filesOf(issueIds: readonly string[]): Promise<Map<string, Coverag
 }
 
 /**
+ * What makes two verdicts on one criterion alike to every reader of its history: what it says, the
+ * identity it names, who recorded it (the builder, an author, before the builder cutover:
+ * `@forge/contracts/verified-rule:judgesVerdict`), and which side of the issue's latest reopen it
+ * fell (`issues/release-evidence.ts:voidedUpTo`, read in milliseconds as the history is). Each reader
+ * takes the newest verdict meeting a test of these, or the set of identities they name, so the
+ * newest of each class answers as every verdict does (ISS-1070 r6): a criterion judged six hundred
+ * times on two commits reads a handful of rows.
+ */
+const VERDICT_CLASS_SQL = sql`cv.verdict, cv.identity_kind, cv.commit_sha, cv.runtime_ref,
+  cv.design_workflow_id, cv.design_revision, cv.contract_ref, cv.contract_version,
+  cv.release_version, cv.storefront_drafts, cv.storefront_environment, cv.covers,
+  vb.by_builder, vb.verdict_id IS NULL,
+  (cv.author_user_id IS NOT NULL OR cv.author_device_id IS NOT NULL),
+  cv.created_at < ${BUILDER_PASS_CUTOVER}::timestamptz,
+  date_trunc('milliseconds', cv.created_at) <= c.reopened_at`;
+
+/**
+ * Where set, every verdict is read rather than the newest of each class: the answer the classes are
+ * proven equal to (`tests/integration/coverage-verdict-classes-e2e.test.ts`). Nothing else sets it.
+ */
+export const everyVerdictRead = { on: false };
+
+/**
  * Each live traced criterion of `issueIds` with its latest verdict and what that verdict names: a
  * design or contract identity beside the revision or version the traced requirement's latest
- * baseline pins for it, the anchor coverage holds it to (`standing-coverage.ts:resolve`). Every
- * earlier verdict since the issue's latest reopen comes with it, newest first, so coverage can read
- * past a newer one that is not the judge's (`standing-coverage.ts:judgesOf`).
+ * baseline pins for it, the anchor coverage holds it to (`standing-coverage.ts:resolve`). Its
+ * earlier verdicts come with it, newest first, so coverage can read past a newer one that is not the
+ * judge's (`standing-coverage.ts:judgesOf`), set aside one nothing places (`withoutUnplaced`) and
+ * ask the live build of each commit they name (`standing-live-build.ts:commitBuildOf`). Of earlier
+ * verdicts alike in all those read, only the newest comes ({@link VERDICT_CLASS_SQL}).
  */
 export function issueCriteriaOf(
   issueIds: readonly string[],
@@ -148,6 +174,14 @@ async function issueCriteriaRead(
   // a criterion's facts are read once per criterion, and a pin only for a verdict naming a design or
   // a contract: per verdict, they were read for every verdict ever recorded (ISS-1070 r4)
   // the builder rule is read from the model each write keeps (`issues/builder-facts.ts`)
+  // A verdict recorded at or before the issue's latest reopen, on a criterion that was not passing
+  // then, is evidence about a build the reopen rejected (`issues/release-evidence.ts:voidedUpTo`,
+  // ISS-845), so coverage reads it as not judged; a pass stands across the reopen
+  const reopened = await reopenedAtOf(ex, issueIds, asReturned);
+  const reopenedJson = JSON.stringify(
+    Object.fromEntries([...reopened].map(([id, at]) => [id, at.toISOString()])),
+  );
+  const kept = everyVerdictRead.on ? sql`true` : sql`k.kept = 1`;
   const rows = await readWithBuilderFacts(
     ex,
     async () =>
@@ -156,7 +190,8 @@ async function issueCriteriaRead(
       SELECT c.id, c.issue_id, c.n, c.position, c.requirement_criterion_id, rc.requirement_id,
              (SELECT d.criterion_class FROM issue_design_criteria d
                WHERE d.criterion_id = c.id LIMIT 1) AS criterion_class,
-             ${builderFactsMarkedSql(sql`c.issue_id`)} AS issue_marked
+             ${builderFactsMarkedSql(sql`c.issue_id`)} AS issue_marked,
+             (${reopenedJson}::jsonb ->> c.issue_id::text)::timestamptz AS reopened_at
         FROM issue_criteria c
         JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
        WHERE c.issue_id = ANY(${uuidArray(issueIds)})
@@ -195,24 +230,24 @@ async function issueCriteriaRead(
            c.criterion_class
       FROM crit c
       LEFT JOIN LATERAL (
-        SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
-               cv.commit_sha,
-               cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
-               cv.contract_version, cv.release_version, cv.storefront_drafts,
-               cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id,
-               vb.by_builder, vb.verdict_id IS NULL AS fact_missing
-          FROM criterion_verdicts cv
-          LEFT JOIN verdict_builder_facts vb ON vb.verdict_id = cv.id
-         WHERE cv.criterion_id = c.id
+        SELECT k.* FROM (
+          SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
+                 cv.commit_sha,
+                 cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
+                 cv.contract_version, cv.release_version, cv.storefront_drafts,
+                 cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id,
+                 vb.by_builder, vb.verdict_id IS NULL AS fact_missing,
+                 row_number() OVER (PARTITION BY ${VERDICT_CLASS_SQL}
+                                    ORDER BY cv.created_at DESC, cv.id DESC) AS kept
+            FROM criterion_verdicts cv
+            LEFT JOIN verdict_builder_facts vb ON vb.verdict_id = cv.id
+           WHERE cv.criterion_id = c.id
+        ) k WHERE ${kept}
       ) v ON true
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[],
     (r) => (r.fact_owed ? { issueId: r.issue_id, missing: r.fact_missing === true } : null),
   );
-  // A verdict recorded at or before the issue's latest reopen, on a criterion that was not passing
-  // then, is evidence about a build the reopen rejected (`issues/release-evidence.ts:voidedUpTo`,
-  // ISS-845), so coverage reads it as not judged; a pass stands across the reopen
-  const reopened = await reopenedAtOf(ex, issueIds, asReturned);
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
