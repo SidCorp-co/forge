@@ -6,7 +6,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { roomWithSession } from '../../src/support/dispatch.js';
+import { roomWithSession } from '../../src/support/room-session.js';
 import { warmColdRooms } from '../../src/support/index.js';
 import { ensureSupportRoom } from '../../src/support/rooms.js';
 import { api } from '../helpers/api.js';
