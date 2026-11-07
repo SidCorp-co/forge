@@ -204,7 +204,7 @@ export const ISSUE_LINK_SHAPE: MessageRule = {
  * subject dropped. The Vietnamese "not yet" is a state too, and no arm here reads it.
  */
 const EMPTY_PROMISE_RE =
-  /(?:^|[^\p{L}])(?:mình|tôi|em|chúng\s+tôi|bọn\s+mình|bên\s+mình)(?:\s+(?:cũng|vẫn))?\s+(?:sẽ\s+(?:kiểm\s+tra|báo|cập\s+nhật|xem)|đang\s+(?:kiểm\s+tra|xử\s+lý|xem))|sẽ\s+(?:phản\s+hồi|báo\s+lại)|^\s*(?:đang\s+)?(?:kiểm\s+tra|xem)(?:\s+xong)?\s+(?:rồi|sẽ)\s+báo|để\s+(?:mình|tôi)\s+(?:kiểm\s+tra|xem)|chờ\s+(?:mình|tôi)|\bI(?:'?ll|\s+will)\s+(?:check|look\s+into|get\s+back|investigate)\b|\bI(?:'m|\s+am)\s+(?:checking|looking\s+into|investigating)\b|\blet\s+me\s+(?:check|look\s+into|investigate)\b|\bget\s+back\s+to\s+you\b/iu; // i18n-allow: matches the Vietnamese/English "future promise, no result" phrasing being policed
+  /(?:^|[^\p{L}])(?:mình|tôi|em|chúng\s+tôi|bọn\s+mình|bên\s+mình)(?:\s+(?:cũng|vẫn))?\s+(?:sẽ\s+(?:kiểm\s+tra|báo|cập\s+nhật|xem)|đang\s+(?:kiểm\s+tra|xử\s+lý))|sẽ\s+(?:phản\s+hồi|báo\s+lại)|^\s*(?:đang\s+)?(?:kiểm\s+tra|xem)(?:\s+xong)?\s+(?:rồi|sẽ)\s+báo|để\s+(?:mình|tôi)\s+(?:kiểm\s+tra|xem)|chờ\s+(?:mình|tôi)|\bI(?:'?ll|\s+will)\s+(?:check|look\s+into|get\s+back|investigate)\b|\bI(?:'m|\s+am)\s+(?:checking|looking\s+into|investigating)\b|\blet\s+me\s+(?:check|look\s+into|investigate)\b|\bget\s+back\s+to\s+you\b/iu; // i18n-allow: matches the Vietnamese/English "future promise, no result" phrasing being policed
 
 const READER_ANSWERS_RE =
   /\b(?:bạn|anh|chị|you)\s+(?:(?:chỉ\s+cần\s+|just\s+|can\s+)?(?:trả\s+lời|xác\s+nhận|chọn|đồng\s+ý|nói|cho\s+(?:mình|tôi)\s+biết|confirm|answer|reply|choose|pick|say|tell\s+me|agree|approve))(?![\p{L}\p{N}])/iu; // i18n-allow: matches the Vietnamese/English phrasing of the reader being asked to answer

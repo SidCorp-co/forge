@@ -31,6 +31,7 @@ describe('ISS-1122: a state described in Vietnamese is no promise', () => {
     'Đơn này chưa được giao.', // i18n-allow: an absent state
     'Yêu cầu đang chờ duyệt.', // i18n-allow: a state the brief names as passing
     'The order is being processed and has no tracking number yet.',
+    'Mình đang xem hai đơn RIV-68493 và RIV-68340 của bạn nhé.', // i18n-allow: a sentence the rule never refused, kept passing
   ])('passes "%s"', (text) => {
     expect(refused(text)).toBe(false);
   });
