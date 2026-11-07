@@ -143,7 +143,7 @@ describe('an issue with no release hold (ISS-577 criterion 3)', () => {
     [
       'a criterion no longer met',
       { criteria: { total: 2, met: 1, failing: 0, skipped: 0 } },
-      { group: 'stuck', kind: 'master', act: 'judge it again' },
+      { group: 'queued', kind: 'master', act: 'record its verdicts at the landing' },
     ],
     [
       'no release note',
@@ -169,5 +169,39 @@ describe('an issue with no release hold (ISS-577 criterion 3)', () => {
     const s = derive(atGate({ status: 'reopen', merged: false, releaseHold: personHold }));
     expect(s.releaseHold).toBeNull();
     expect(s.waitingOn.rule).not.toContain('NO_RELEASE_GATE');
+  });
+});
+
+// "Master · judge it again" stood beside Awaiting release on agenfold, aged now, its project's qa self
+// (ISS-1072, the coordinator's live check of 2026-11-07): a criterion no longer met at the gate is
+// owed by the project's judge as `strand-rules.ts:landedWait` reads it, and falls stuck by the judge's
+// clock, never the moment it is read
+describe('an issue at the gate a criterion of which is no longer met', () => {
+  const stale = { criteria: { total: 3, met: 1, failing: 0, skipped: 0 } };
+
+  it('waits on the master to record its verdicts again where the project judges its own work', () => {
+    for (const judge of ['self', 'builder'] as const) {
+      const s = derive(atGate({ ...stale, judge }));
+      expect(s.attentionGroup).toBe('queued');
+      expect(s.waitingOn).toMatchObject({
+        kind: 'master',
+        who: 'Master',
+        act: 'record its verdicts at the landing',
+      });
+      expect(s.times.stuck).toBeNull();
+    }
+  });
+
+  it('waits on a judging run where the project judges independently', () => {
+    const s = derive(atGate({ ...stale, judge: 'independent' }));
+    expect(s.attentionGroup).toBe('queued');
+    expect(s.waitingOn).toMatchObject({ kind: 'judge', who: 'Next run', act: 'judge it again' });
+  });
+
+  it('reads stuck once the judge day has passed', () => {
+    const since = new Date('2026-10-20T00:00:00Z');
+    const s = derive(atGate({ ...stale, statusSince: since, touchedAt: since }));
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.times.stuck?.code).toBe('overdue');
   });
 });

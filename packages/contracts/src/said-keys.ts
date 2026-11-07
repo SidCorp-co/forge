@@ -723,6 +723,9 @@ export const SAID = {
 	"issues.standing.act.paused": { en: "paused" },
 	"issues.standing.act.readAnswer": { en: "read the answer" },
 	"issues.standing.act.readAnswerBack": { en: "read the answer back" },
+	"issues.standing.act.recordVerdictsAtLanding": {
+		en: "record its verdicts at the landing",
+	},
 	"issues.standing.act.rerun": { en: "re-run after reopen" },
 	"issues.standing.act.resume": { en: "resume it" },
 	"issues.standing.act.resumeOnce": {
