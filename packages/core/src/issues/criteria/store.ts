@@ -37,8 +37,8 @@ import {
 } from './criteria-text.js';
 import { droppedTraceDetail, droppedTraces } from './dropped-traces.js';
 import { failureOwnedElsewhere } from './fail-owner.js';
-import { ambiguousDetail, matchCriteria, sameCriteria } from './match.js';
 import { type CriteriaWriter, lockReading, recordAddedAfterLanding } from './late-add.js';
+import { ambiguousDetail, matchCriteria, sameCriteria } from './match.js';
 import { foreignTraceFault } from './own-requirement.js';
 import { liveWordingAt } from './trace-wording.js';
 
@@ -134,9 +134,7 @@ async function applyCriteria(
   const live = await liveRows(tx, issue.id);
   const same = sameCriteria(live, desired);
   const lock =
-    !same && LOCKED_STATUSES.has(issue.status)
-      ? await lockReading(tx, issue, writer, path)
-      : null;
+    !same && LOCKED_STATUSES.has(issue.status) ? await lockReading(tx, issue, writer, path) : null;
   if (lock?.kind === 'locked') throw refuseCriteria('CRITERIA_LOCKED', lock.detail);
   const match = matchCriteria(live, desired);
   if (match.ambiguous.length > 0) {

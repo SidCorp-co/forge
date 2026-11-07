@@ -16,11 +16,26 @@ const EPOD_SHAPE = `Owner, 2026-11-07: the screen shows too much.
 describe('criteria-list-in-description: a heading naming criteria over a list', () => {
   it.each([
     ['a bold label with its colon inside', EPOD_SHAPE, 'Outcome', 3],
-    ['a markdown heading', '## Acceptance criteria\n\n1. the list loads\n2. a clerk signs in', 'Acceptance criteria', 2],
+    [
+      'a markdown heading',
+      '## Acceptance criteria\n\n1. the list loads\n2. a clerk signs in',
+      'Acceptance criteria',
+      2,
+    ],
     ['a label alone ending in a colon', 'Criteria:\n- [ ] the page answers 200', 'Criteria', 1],
     ['a bold label with its colon outside', '**Done when**:\n* the cut is green', 'Done when', 1],
-    ["the writing guide's own block", '### What to do\n- the board shows the gate\n- the gate names its owner', 'What to do', 2],
-    ['a loose list with continuation lines', '**Outcome**\n\n- one\n  still one\n\n- two', 'Outcome', 2],
+    [
+      "the writing guide's own block",
+      '### What to do\n- the board shows the gate\n- the gate names its owner',
+      'What to do',
+      2,
+    ],
+    [
+      'a loose list with continuation lines',
+      '**Outcome**\n\n- one\n  still one\n\n- two',
+      'Outcome',
+      2,
+    ],
   ])('reads %s', (_, text, heading, count) => {
     const list = criteriaListOf(text);
     expect(list?.heading).toBe(heading);
@@ -34,9 +49,15 @@ describe('criteria-list-in-description: a heading naming criteria over a list', 
   it.each([
     ['no description', null],
     ['prose with no heading', 'The page is slow.\n- a stray bullet'],
-    ['a heading over prose, as ISS-1079 wrote its Outcome', 'Outcome: a release that completes records the commit.'],
+    [
+      'a heading over prose, as ISS-1079 wrote its Outcome',
+      'Outcome: a release that completes records the commit.',
+    ],
     ['another heading over a list', '**Screens:**\n- Integrations\n- Modules'],
-    ['a heading whose list a paragraph interrupts', '**Outcome:**\nWe want this.\n- a list after it'],
+    [
+      'a heading whose list a paragraph interrupts',
+      '**Outcome:**\nWe want this.\n- a list after it',
+    ],
     ['an Outcome word inside a sentence', 'The outcome: is not a heading here\n- item'],
   ])('reads none in %s', (_, text) => {
     expect(criteriaListOf(text)).toBeNull();
@@ -60,6 +81,8 @@ describe('the warning a filing or a lease-take is told', () => {
   });
 
   it('says nothing where the description lists no criteria', () => {
-    expect(unrecordedCriteriaWarning({ id, description: 'a slow page', liveCriteria: 0 })).toBeNull();
+    expect(
+      unrecordedCriteriaWarning({ id, description: 'a slow page', liveCriteria: 0 }),
+    ).toBeNull();
   });
 });

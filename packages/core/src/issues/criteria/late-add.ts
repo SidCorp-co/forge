@@ -78,7 +78,9 @@ export async function lockReading(
   const holders = await runHoldersOf(tx, issue);
   if (!writer?.box || !callerHolds(holders, writer.box)) {
     const held =
-      holders.length > 0 ? `${holders.map(holderSentence).join(' and ')} holds it` : 'no run holds it';
+      holders.length > 0
+        ? `${holders.map(holderSentence).join(' and ')} holds it`
+        : 'no run holds it';
     throw refuse(
       'CRITERIA_LATE_ADD_NOT_HOLDER',
       `${lockedAt} with no criteria on the record, and the one add after landing is the move of the run holding it: ${held}, and this caller is not that run's box or the token that wrote its lease. Add them from the holding run, or claim it first by writing its lease (PATCH /api/issues/${issue.id} with \`sessionContext.lease\`)`,

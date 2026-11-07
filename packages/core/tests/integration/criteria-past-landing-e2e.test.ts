@@ -166,9 +166,10 @@ describe('criteria only in the description are told before the lock (ISS-1080)',
     );
     const taken = await call('holder', 'PATCH', `/api/issues/${filed.id}`, leaseBody('holder'));
     ok(taken);
-    expect(warningsOf(taken).some((w) => w.startsWith(RULE)), JSON.stringify(taken.json)).toBe(
-      true,
-    );
+    expect(
+      warningsOf(taken).some((w) => w.startsWith(RULE)),
+      JSON.stringify(taken.json),
+    ).toBe(true);
     const renewed = await call('holder', 'PATCH', `/api/issues/${filed.id}`, {
       ...leaseBody('holder'),
       expect: { sessionContext: (taken.json as Doc).sessionContext },
@@ -185,7 +186,9 @@ describe('the run holding a landed issue with no criteria adds them once (ISS-10
     const r = await put(id, ['The order list loads in under 2 s.', 'A clerk sees the new column.']);
     ok(r);
     expect(await liveStatements(id)).toHaveLength(2);
-    const [status] = await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${id}`);
+    const [status] = await rows<{ status: string }>(
+      sql`SELECT status FROM issues WHERE id = ${id}`,
+    );
     expect(status?.status).toBe('awaiting_release');
     const added = await addedAfterLanding(id);
     expect(added).toHaveLength(1);

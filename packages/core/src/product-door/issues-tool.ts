@@ -192,10 +192,7 @@ async function create(ctx: McpContext, i: Input) {
     title: result.issue.title,
     status: result.issue.status,
     relations: result.relations,
-    warnings: [
-      ...result.bodyWarnings,
-      ...(result.criteriaWarning ? [result.criteriaWarning] : []),
-    ],
+    warnings: [...result.bodyWarnings, ...(result.criteriaWarning ? [result.criteriaWarning] : [])],
   };
 }
 
