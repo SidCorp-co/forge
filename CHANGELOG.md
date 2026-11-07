@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.558] - 2026-11-07
+
+A release records the commit its deploy shipped, so verdicts there count
+
+### Changed
+
+- **A master claims each issue before its builder starts.** The master skill now says to take each issue's lease first, so the issue reads in progress while it is built and never shows as stuck awaiting a dispatch.
+
+### Fixed
+
+- **An agent never reads a person's release approval as its own.** Where a release's approval is a person's, an agent holding the approval permission now sees it waiting on that person, and the release offers it no decision.
+- **A release finished without a commit now records the one production serves.** Its deploy's reported commit is kept, or an agent attaches it through a door that checks the landings, so verdicts judged there count.
+
 ## [0.4.0-dev.557] - 2026-11-06
 
 Issues close when their work is met in scope, not only through a release

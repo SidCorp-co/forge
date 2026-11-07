@@ -1,1 +1,0 @@
-**An agent never reads a person's release approval as its own.** Where a release's approval is a person's, an agent holding the approval permission now sees it waiting on that person, and the release offers it no decision.
