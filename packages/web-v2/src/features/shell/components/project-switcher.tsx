@@ -44,16 +44,20 @@ function Trigger({ compact, project, open, onClick }: { compact: boolean; projec
   const t = useCopy();
   const label = t("shell.switcher.trigger", { name: project.name });
   if (compact) {
+    // the collapsed rail is icons only (ISS-1073): its live runs are a dot on the mark, counted on hover, never "3 live" under it
+    const live = project.liveRuns > 0 ? t("shell.switcher.live", { n: project.liveRuns }) : null;
     return (
       <button
         type="button"
         onClick={onClick}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={label}
-        className={cn("flex w-19 flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors", open ? "bg-hover" : "hover:bg-hover")}
+        aria-label={live ? `${label}, ${live}` : label}
+        title={live ? `${project.name} · ${live}` : project.name}
+        className={cn("flex size-11 items-center justify-center rounded-md transition-colors", open ? "bg-hover" : "hover:bg-hover")}
       >
         <span className="relative">
+          {live ? <span aria-hidden data-testid="switcher-live" className="absolute -right-1 -top-1 size-2 rounded-pill ring-2 ring-shell" style={{ background: "var(--accent)" }} /> : null}
           <ProjectMark tint={project.tint} ink={project.ink} initials={project.initials} size={30} radius="var(--r-md)" />
           <span
             className="absolute -bottom-0.75 -right-1 inline-flex size-3.75 items-center justify-center rounded-pill text-subtle"
@@ -62,7 +66,6 @@ function Trigger({ compact, project, open, onClick }: { compact: boolean; projec
             <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
           </span>
         </span>
-        {project.liveRuns > 0 && <span className="font-mono text-9-5 font-semibold text-accent-text">{t("shell.switcher.live", { n: project.liveRuns })}</span>}
       </button>
     );
   }

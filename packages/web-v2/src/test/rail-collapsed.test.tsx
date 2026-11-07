@@ -11,6 +11,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NavRail, type NavEntry, RailButton } from "@/design";
 import { OrgSwitcher } from "@/features/orgs";
+import { ProjectSwitcher } from "@/features/shell/components/project-switcher";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { Seeded } from "@/test/vi-chrome-requirements";
@@ -45,6 +46,19 @@ function rail(compact: boolean) {
         compact={compact}
         workspaceItems={ITEMS}
         projectItems={ITEMS.map((i) => ({ ...i, key: "proj" }))}
+        projectSwitcher={
+          <ProjectSwitcher
+            compact={compact}
+            project={{ name: "Hop", initials: "HO", tint: "#eef", ink: "#336", liveRuns: 3 }}
+            projects={[]}
+            activeSlug="hop"
+            onSelect={() => {}}
+            onSettings={() => {}}
+            onTogglePin={() => {}}
+            onAllProjects={() => {}}
+            onNewProject={() => {}}
+          />
+        }
         activeKey="overview"
         orgSwitcher={<OrgSwitcher variant={compact ? "compact" : "brand"} />}
         search={<SidebarSearch onOpen={() => {}} compact={compact} icon={!compact} />}
@@ -67,13 +81,15 @@ describe("the collapsed rail", () => {
     const { container } = rail(true);
     const nav = container.querySelector("nav") as HTMLElement;
     // the org's avatar letters and the reader's own initials are pictures, not words
-    expect(words(nav).filter((w) => !["SI", "QA"].includes(w))).toEqual([]);
+    expect(words(nav).filter((w) => !["SI", "HO", "QA"].includes(w))).toEqual([]);
     expect(screen.getByTestId("org-avatar")).toHaveTextContent("SI");
   });
 
   it("names every control it draws to a reader and on hover, the version on the Docs button's", () => {
     rail(true);
     expect(screen.getByRole("button", { name: "Docs · Forge v0.4.0-dev.571" })).toBeTruthy();
+    // the project's live runs: a dot on its mark, counted in its name
+    expect(screen.getByRole("button", { name: /Hop.*3 live/ })).toBeTruthy();
     for (const name of ["What's new", "Help", "Search"]) {
       const b = screen.getByRole("button", { name: new RegExp(name, "i") });
       expect(b.getAttribute("title") ?? "", name).toMatch(new RegExp(name, "i"));
@@ -85,6 +101,6 @@ describe("the collapsed rail", () => {
   it("keeps every word where the rail is expanded", () => {
     const { container } = rail(false);
     const said = words(container.querySelector("nav") as HTMLElement).join(" ");
-    for (const w of ["What's new", "Help", "Forge v0.4.0-dev.571"]) expect(said).toContain(w);
+    for (const w of ["What's new", "Help", "Forge v0.4.0-dev.571", "3 live"]) expect(said).toContain(w);
   });
 });
