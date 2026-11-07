@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { scriptOpsSchema } from '@forge/contracts/script-sandbox';
 import { z } from 'zod';
 import { scheduleKinds } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -30,6 +31,8 @@ const scheduleFields = {
   targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
   params: z.record(z.string(), z.unknown()).nullable().optional(),
   timeZone: z.string().trim().min(1).max(64).nullable().optional(),
+  /** A script schedule's read-only calls on its project's forge-ops target (REQ-87 BC-1); null clears them. */
+  ops: scriptOpsSchema.nullable().optional(),
 };
 
 const SELF_NAMED: Record<

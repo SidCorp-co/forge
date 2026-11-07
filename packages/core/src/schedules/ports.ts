@@ -25,7 +25,30 @@ export type CleanupFirePlan =
   | { kind: 'unread'; why: string }
   | { kind: 'run'; prompt: string };
 
+/** A script schedule's filing, checked against its shape (`script-feedback.ts`). */
+interface ScriptFilingAsk {
+  projectId: string;
+  schedule: { id: string; name: string };
+  fireId: string;
+  request: {
+    kind: 'bug' | 'change_request' | 'question' | 'idea';
+    title: string;
+    body?: string | undefined;
+    severity?: 'low' | 'medium' | 'high' | 'critical' | undefined;
+    signalKey: string;
+  };
+}
+
 interface SchedulesPorts {
+  /** Whether a command a forge-ops `exec_command` runs only reads (support's classifier, REQ-75 r5 BC-27). */
+  commandReads(command: string): { reads: true } | { reads: false; why: string };
+  /**
+   * File a script schedule's feedback on its own project as the project's own agent, joined by its
+   * signal key (REQ-87 BC-2): the item's key, and whether it was filed new or joined.
+   */
+  fileScriptFeedback(
+    ask: ScriptFilingAsk,
+  ): Promise<{ ok: true; key: string; created: boolean } | { ok: false; why: string }>;
   /** Whether the project's cleanup run has anything to do, and its brief where it has. */
   cleanupFire(args: { projectId: string; fireId: string }): Promise<CleanupFirePlan>;
   emitNotification(input: ScheduleNotice): Promise<unknown>;

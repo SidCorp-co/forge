@@ -25,7 +25,7 @@ import {
   renderContractContext,
   unansweredDocuments,
 } from './ecosystem/index.js';
-import { owedAgentConfirms, owedTriages } from './feedback/index.js';
+import { fileSignalFeedback, owedAgentConfirms, owedTriages } from './feedback/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
 import {
   applyGrantedMcpServers,
@@ -139,6 +139,7 @@ import {
   releaseNamerOf,
   stewardJobCredential,
 } from './steward/index.js';
+import { classifyCommand } from './support/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -319,6 +320,27 @@ export function provideExecutionPorts(): void {
     heldFromUnattendedCut,
     createReleaseBatch,
     sendStatusReport,
+    commandReads: classifyCommand,
+    fileScriptFeedback: async ({ projectId, schedule, request }) => {
+      // the project's own agent files it, seen on the schedule: the filing is the schedule's, never a person's
+      const agent = await db.transaction((tx) => resolveProjectHandle(tx, projectId));
+      const filed = await fileSignalFeedback({
+        projectId,
+        actor: { userId: agent.userId, agency: 'agent' },
+        request: {
+          kind: request.kind,
+          title: request.title,
+          screen: `schedule ${schedule.name}`,
+          ...(request.body !== undefined ? { body: request.body } : {}),
+          ...(request.severity ? { severity: request.severity } : {}),
+        },
+        signalKey: request.signalKey,
+        source: { projectId, issueId: null, runId: null, clientVersion: null },
+      });
+      return filed.ok
+        ? { ok: true, key: filed.key, created: filed.created }
+        : { ok: false, why: filed.refusals.map((r) => `${r.code}: ${r.detail}`).join('; ') };
+    },
   });
 
   provideMastersPorts({

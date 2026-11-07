@@ -1,4 +1,5 @@
 import { type ScheduleRefusalCode, scheduleWritePermission } from '@forge/contracts/schedules';
+import type { ScriptOpsDeclaration } from '@forge/contracts/script-sandbox';
 import { and, asc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { SessionAsker } from '../agent-sessions/index.js';
@@ -12,9 +13,35 @@ import { requireDeclared, requireHeld } from '../permissions/index.js';
 import { isTimeZone, nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { type LastFire, lastFires } from './fires.js';
+import { opsRefusals } from './script-ops.js';
 import { statusReportParamsOf } from './status-report-params.js';
 
 const refuse = refuser<ScheduleRefusalCode>('SCHEDULE_REFUSED');
+
+/**
+ * A script schedule's ops declaration (REQ-87 BC-1), held where it is saved: only on a script
+ * schedule of its own project, and every call read-only on the forge-ops target, each refused by name.
+ */
+function assertOps(
+  ops: ScriptOpsDeclaration | null | undefined,
+  kind: ScheduleKind,
+  targetProjectSlug: string | null | undefined,
+): void {
+  if (ops == null) return;
+  if (kind !== 'script') throw badRequest(`ops must be omitted when kind is "${kind}": only a script schedule calls its project's forge-ops target`);
+  if (targetProjectSlug) {
+    throw badRequest(
+      "ops and targetProjectSlug do not go together: a script schedule reads its own project's forge-ops target and files on its own project",
+    );
+  }
+  const refusals = opsRefusals(ops);
+  if (refusals.length > 0) {
+    throw new RefusalError(
+      refusals.map((r) => ({ code: r.code, path: r.path, detail: r.detail })),
+      'SCHEDULE_REFUSED',
+    );
+  }
+}
 
 /** A zone the cron is read in, refused by name where this runtime cannot read one. */
 function assertTimeZone(timeZone: string | null | undefined): void {
@@ -115,6 +142,7 @@ interface CreateScheduleInput {
   targetProjectSlug?: string | null | undefined;
   params?: Record<string, unknown> | null | undefined;
   timeZone?: string | null | undefined;
+  ops?: ScriptOpsDeclaration | null | undefined;
 }
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
@@ -161,6 +189,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       'targetProjectSlug must be omitted when kind is "daily_review": it hands its own project\'s master the review',
     );
   }
+  assertOps(input.ops, kind, input.targetProjectSlug);
   const params =
     kind === 'status_report'
       ? await statusReportParamsOf(input.projectId, input.params)
@@ -183,6 +212,7 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       nextRunAt,
       params: (params as never) ?? null,
       timeZone: input.timeZone ?? null,
+      ops: input.ops ?? null,
       ownerId: actorUserId,
     })
     .returning();
@@ -201,6 +231,7 @@ interface UpdateSchedulePatch {
   targetProjectSlug?: string | null | undefined;
   params?: Record<string, unknown> | null | undefined;
   timeZone?: string | null | undefined;
+  ops?: ScriptOpsDeclaration | null | undefined;
 }
 
 export async function updateSchedule(id: string, patch: UpdateSchedulePatch, actorUserId: string) {
@@ -242,6 +273,10 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
           patch.params !== undefined ? patch.params : row.params,
         )
       : patch.params;
+  // the declaration as it will stand is read again whole: a patch that only moves the kind or the
+  // target must not leave ops a script schedule could not keep
+  const effectiveOps = patch.ops !== undefined ? patch.ops : row.ops;
+  assertOps(effectiveOps, effectiveKind, effectiveTarget);
   assertTimeZone(patch.timeZone);
   const timeZone = patch.timeZone !== undefined ? patch.timeZone : row.timeZone;
 
@@ -255,6 +290,9 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
     updates.params = effectiveParams ?? null;
   }
   if (patch.timeZone !== undefined) updates.timeZone = patch.timeZone;
+  if (patch.ops !== undefined) updates.ops = patch.ops;
+  // a schedule that is no longer a script keeps no script state
+  if (effectiveKind !== 'script') updates.scriptState = null;
 
   const cron = patch.cron ?? row.cron;
   const enabled = patch.enabled ?? row.enabled;

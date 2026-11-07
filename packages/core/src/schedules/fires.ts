@@ -12,16 +12,23 @@ import type {
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
-import type { ScriptRead } from '@forge/contracts/script-sandbox';
+import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { scheduleRuns } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 
-/** A script fire's record (REQ-37 BC-9): who it read Forge as, and every read with its status. */
+/**
+ * A script fire's record (REQ-37 BC-9, REQ-87 BC-4): who it read Forge as and every read with its
+ * status; every ops call by name with its outcome, every filing, and the state it left where it
+ * changed it.
+ */
 interface ScriptFireRecord {
   runAs?: string | null;
   reads?: ScriptRead[];
+  opsCalls?: ScriptOpsCall[];
+  filings?: ScriptFiling[];
+  stateAfter?: Record<string, unknown> | null;
 }
 
 export type FireSettlement =
@@ -36,7 +43,13 @@ export type FireSettlement =
       refusal?: string | null;
       output?: string | null;
     }
-  | ({ status: 'failed'; error: string; output?: string | null } & ScriptFireRecord);
+  | ({
+      status: 'failed';
+      error: string;
+      output?: string | null;
+      /** The code a fire core refused before it ran anything carries (`SCRIPT_OPS_NOT_READ_ONLY`). */
+      refusal?: string | null;
+    } & ScriptFireRecord);
 
 interface FireSession {
   id: string;
@@ -77,13 +90,18 @@ export async function settleFire(fireId: string, settlement: FireSettlement): Pr
   const set: Partial<typeof scheduleRuns.$inferInsert> = {
     finishedAt: new Date(),
     reason: settlement.status === 'skipped' ? settlement.reason : null,
-    refusal: settlement.status === 'skipped' ? (settlement.refusal ?? null) : null,
+    refusal: settlement.status === 'success' ? null : (settlement.refusal ?? null),
     error: settlement.status === 'failed' ? settlement.error : null,
   };
   if (settlement.output !== undefined) set.output = settlement.output;
   if (settlement.status !== 'skipped' && settlement.reads !== undefined) {
     set.runAs = settlement.runAs ?? null;
     set.reads = settlement.reads;
+  }
+  if (settlement.status !== 'skipped') {
+    if (settlement.opsCalls !== undefined) set.opsCalls = settlement.opsCalls;
+    if (settlement.filings !== undefined) set.filings = settlement.filings;
+    if (settlement.stateAfter !== undefined) set.stateAfter = settlement.stateAfter;
   }
   if (settlement.status === 'success' && settlement.pipelineRunId) {
     set.pipelineRunId = settlement.pipelineRunId;

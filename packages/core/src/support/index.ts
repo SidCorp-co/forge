@@ -36,6 +36,7 @@ import { tellLinked } from './speaker-link.js';
 import { agentSwitchGate } from './switches.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
+export { classifyCommand } from './command-class.js';
 export { forgetMemberships } from './health.js';
 export { roomWriterUserId } from './ops-asker.js';
 export { supportRoutes } from './routes.js';
