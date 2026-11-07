@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.585] - 2026-11-07
+
+Chat threads: real-asker mentions, no late replies, citable message ids, order numbers pass
+
+### Fixed
+
+- **Proof reads no longer work out who built each issue on every read.** Each verdict keeps that answer, refreshed when a lease, run, check or landing changes it, and a sweep reports any mismatch.
+- **A master's post can name the person who started a thread.** The starter and the room's members are read from the room itself where core never heard them, so only a stranger is refused.
+- **A broken support session no longer floods old threads.** A message held past two hours is dropped with a record on the room, and a failure is told once, in one line at the room's top level.
+- **A channel agent cites an earlier request without asking again.** Reading a thread returns each message's id, and a filing whose asker's own request is their agreement names that message's id to cite.
+- **A store's order numbers reach its merchant as he reads them.** The room screen reads a token as an issue key only under a prefix Forge issues, so RIV-68493 passes; a colliding prefix is declared in the project document's `userFacingCodes`.
+- **A release merge takes only its approved head, and never merges twice.** A moved head is refused, naming both heads and the commits between. A head the target already holds answers already merged, even when the host reads closed.
+- **A deploy of one run, binding and commit goes out once.** A repeat, by hand or by the release job, answers with the deployment already sent, its state and who sent it. `redeploy: true` still sends it, and says so.
+
 ## [0.4.0-dev.584] - 2026-11-07
 
 Sweeps leave deliberately held work alone; leases name the session holding them

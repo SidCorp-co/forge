@@ -1,1 +1,0 @@
-**A deploy of one run, binding and commit goes out once.** A repeat, by hand or by the release job, answers with the deployment already sent, its state and who sent it. `redeploy: true` still sends it, and says so.

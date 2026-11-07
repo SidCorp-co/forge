@@ -1,1 +1,0 @@
-**A release merge takes only its approved head, and never merges twice.** A moved head is refused, naming both heads and the commits between. A head the target already holds answers already merged, even when the host reads closed.
