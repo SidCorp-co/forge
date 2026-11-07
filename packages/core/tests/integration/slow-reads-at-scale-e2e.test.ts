@@ -324,10 +324,11 @@ const SHELL_MS = 300;
 
 /**
  * The statements the shell's attention and home reads send, the one ceiling at one project and at
- * twelve: a person's reads ask each fact once for every project they hold (ISS-1070 r6).
+ * twelve: a person's reads ask each fact once for every project they hold (ISS-1070 r6). One project
+ * sends a few more than twelve: alone, it reads each set as asked rather than wait to batch them.
  */
-const ATTENTION_STATEMENTS = 111;
-const HOME_STATEMENTS = 110;
+const ATTENTION_STATEMENTS = 114;
+const HOME_STATEMENTS = 112;
 
 const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
