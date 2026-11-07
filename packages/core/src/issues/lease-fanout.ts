@@ -4,13 +4,15 @@ import { db } from '../db/client.js';
 import {
   classifyLease,
   type LeaseReading,
+  leaseClaimantOf,
   leaseHolderOf,
   leaseIsUnexpired,
 } from './session-claim.js';
 
 /**
- * How many open issues each holder holds an unexpired claim on — `classifyLease`'s `shared` test.
- * Counted here, not in SQL: a cast would throw on the first unreadable lease a caller must name.
+ * How many open issues each claimant — a holder, and the session its lease names
+ * (`session-claim.ts:leaseClaimantOf`) — holds an unexpired claim on: `classifyLease`'s `shared`
+ * test. Counted here, not in SQL: a cast would throw on the first unreadable lease a caller must name.
  */
 export async function holderFanout(
   leases: readonly unknown[],
@@ -33,9 +35,9 @@ export async function holderFanout(
        )})
   `)) as unknown as Array<{ lease: unknown }>;
   for (const row of rows) {
-    const holder = leaseHolderOf(row.lease);
-    if (holder === null || !leaseIsUnexpired(row.lease, now)) continue;
-    counts.set(holder, (counts.get(holder) ?? 0) + 1);
+    const claimant = leaseClaimantOf(row.lease);
+    if (claimant === null || !leaseIsUnexpired(row.lease, now)) continue;
+    counts.set(claimant, (counts.get(claimant) ?? 0) + 1);
   }
   return counts;
 }
@@ -46,6 +48,10 @@ export function readClaim(
   now: Date,
   fanout: ReadonlyMap<string, number>,
 ): LeaseReading {
-  const holder = leaseHolderOf(lease);
-  return classifyLease({ lease, now, fanout: holder === null ? 0 : (fanout.get(holder) ?? 1) });
+  const claimant = leaseClaimantOf(lease);
+  return classifyLease({
+    lease,
+    now,
+    fanout: claimant === null ? 0 : (fanout.get(claimant) ?? 1),
+  });
 }

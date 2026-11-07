@@ -19,6 +19,8 @@ export type IssueWorker =
   | {
       lane: 'claim';
       holder: string;
+      /** The holder's session the lease names, `null` where it names none. */
+      session: string | null;
       verdict: LeaseVerdict;
       expiresAt: string | null;
       silentMs: number | null;
@@ -53,6 +55,7 @@ export function classifyIssueWorker(input: {
     return {
       lane: 'claim',
       holder: claim.holder,
+      session: claim.session,
       verdict: claim.verdict,
       expiresAt: claim.expiresAt === null ? null : claim.expiresAt.toISOString(),
       silentMs: claim.silentMs,
@@ -81,7 +84,8 @@ function sessionClause(sessions: readonly WorkerSession[]): string {
 
 function claimClause(claim: LeaseReading | null): string {
   if (claim === null || claim.verdict === 'none') return 'its record carries no claim';
-  const holder = claim.holder === null ? 'an unnamed holder' : claim.holder;
+  const named = claim.holder === null ? 'an unnamed holder' : claim.holder;
+  const holder = claim.session === null ? named : `${named} session ${claim.session}`;
   const why = claim.detail === '' ? '' : `: ${claim.detail}`;
   return `the claim by ${holder} reads ${claim.verdict}${why}`;
 }

@@ -5,8 +5,9 @@
 //   word `issue-lease`. Grepping either name must reach only one of them.
 
 // contract -> github.com/SidCorp-co/forge-plugin:plugin/src/flow/lease.mjs — that file owns
-//   the blob: `holder`, `renewedAt`, `minutes`, optional `stopped` and `heartbeat: { at,
-//   everySeconds }`; expiry `renewedAt + minutes`, any other shape `malformed`, report-only.
+//   the blob: `holder`, `renewedAt`, `minutes`, optional `stopped`, `heartbeat: { at,
+//   everySeconds }` and `session` (the holder's session name, a string of 1 to 100 characters);
+//   expiry `renewedAt + minutes`, any other shape `malformed`, report-only.
 const LEASE_VERDICTS = ['none', 'live', 'shared', 'expired', 'abandoned', 'malformed'] as const;
 export type LeaseVerdict = (typeof LEASE_VERDICTS)[number];
 
@@ -19,9 +20,14 @@ function leaseSilenceToleranceMs(everySeconds: number): number {
   return Math.max(everySeconds * 1000 * MISSED_BEATS, MIN_SILENCE_MS);
 }
 
+/** The longest session name a lease may carry beside its holder id. */
+const LEASE_SESSION_MAX = 100;
+
 export interface LeaseReading {
   verdict: LeaseVerdict;
   holder: string | null;
+  /** The holder's session the lease names, `null` where it names none. */
+  session: string | null;
   expiresAt: Date | null;
   fanout: number;
   stopped: boolean;
@@ -36,6 +42,27 @@ export function leaseHolderOf(lease: unknown): string | null {
   if (typeof lease !== 'object' || lease === null || Array.isArray(lease)) return null;
   const holder = (lease as Record<string, unknown>).holder;
   return typeof holder === 'string' && holder.length > 0 ? holder : null;
+}
+
+/** The session a lease names beside its holder, where it names a readable one. */
+export function leaseSessionOf(lease: unknown): string | null {
+  if (typeof lease !== 'object' || lease === null || Array.isArray(lease)) return null;
+  const session = (lease as Record<string, unknown>).session;
+  return sessionIsReadable(session) ? session : null;
+}
+
+function sessionIsReadable(session: unknown): session is string {
+  return typeof session === 'string' && session.length >= 1 && session.length <= LEASE_SESSION_MAX;
+}
+
+/**
+ * Who a claim is counted under for `shared`: its holder, and the session where the lease names one.
+ * Every pane of one box leases under one holder id, so the session is what tells two panes apart;
+ * a lease naming none is counted under its holder alone, as every lease was before it could.
+ */
+export function leaseClaimantOf(lease: unknown): string | null {
+  const holder = leaseHolderOf(lease);
+  return holder === null ? null : JSON.stringify([holder, leaseSessionOf(lease)]);
 }
 
 /** Separate from {@link classifyLease}: a fanout consulting one would be mutually recursive. Base
@@ -59,6 +86,7 @@ export function classifyLease(args: { lease: unknown; now: Date; fanout: number 
     return {
       verdict: 'none',
       holder: null,
+      session: null,
       expiresAt: null,
       fanout: 0,
       stopped: false,
@@ -73,6 +101,7 @@ export function classifyLease(args: { lease: unknown; now: Date; fanout: number 
 
   const rest = {
     holder,
+    session: read.session,
     expiresAt: read.expiresAt,
     fanout,
     silentMs: null,
@@ -102,6 +131,7 @@ function malformed(args: { holder: string | null; fanout: number; detail: string
   return {
     verdict: 'malformed',
     holder: args.holder,
+    session: null,
     expiresAt: null,
     fanout: args.fanout,
     stopped: false,
@@ -128,7 +158,7 @@ export function leaseIsReleasable(reading: LeaseReading): boolean {
 }
 
 type LeaseFields =
-  | { ok: true; expiresAt: Date; stopped: string | null }
+  | { ok: true; expiresAt: Date; stopped: string | null; session: string | null }
   | { ok: false; detail: string };
 
 function readLeaseFields(lease: unknown): LeaseFields {
@@ -156,10 +186,18 @@ function readLeaseFields(lease: unknown): LeaseFields {
     return { ok: false, detail: 'stopped is neither null nor a string' };
   }
 
+  // optional, and refused by name where present and not a name: absorbed, a session that is not
+  // one would count its claims under the bare holder and read a pane's work as another's
+  const session = obj.session;
+  if (session !== undefined && !sessionIsReadable(session)) {
+    return { ok: false, detail: `session is not a string of 1 to ${LEASE_SESSION_MAX} characters` };
+  }
+
   return {
     ok: true,
     expiresAt: new Date(Date.parse(renewedAt) + minutes * 60_000),
     stopped: typeof stopped === 'string' ? stopped : null,
+    session: session ?? null,
   };
 }
 

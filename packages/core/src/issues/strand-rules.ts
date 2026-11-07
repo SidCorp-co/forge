@@ -92,6 +92,13 @@ export function strandRuleFor(status: string): StrandRule | null {
   return Object.hasOwn(STRAND_RULES, status) ? (STRAND_RULES[status as IssueStatus] ?? null) : null;
 }
 
+/** The holder a reason names, with its session where the lease names one. */
+function claimant(lease: LeaseReading): string {
+  const holder =
+    lease.holder === null ? 'the lease holder' : `the lease holder \`${lease.holder}\``;
+  return lease.session === null ? holder : `${holder}, session \`${lease.session}\`,`;
+}
+
 function silence(lease: LeaseReading): string {
   const minutes = Math.floor((lease.silentMs ?? 0) / 60_000);
   if (minutes < 1) return 'less than a minute ago';
@@ -276,7 +283,7 @@ export function strandReason(args: {
   // Ahead of the status-keyed answers below, alone among the readings: it measures the holder.
   if (lease.verdict === 'abandoned') {
     return {
-      reason: `the lease has not run out, and its holder stopped reporting ${silence(lease)} against a heartbeat it declared, so it has been released`,
+      reason: `the lease has not run out, and ${claimant(lease)} stopped reporting ${silence(lease)} against a heartbeat it declared, so it has been released`,
       owes: fallbackOwner,
     };
   }
@@ -311,7 +318,7 @@ export function strandReason(args: {
   }
   if (lease.verdict === 'shared') {
     return {
-      reason: `the lease holder id is on ${lease.fanout} issues at once, which is not evidence that a run is on this one`,
+      reason: `${claimant(lease)} is on ${lease.fanout} issues at once, which is not evidence that a run is on this one`,
       owes: fallbackOwner,
     };
   }
