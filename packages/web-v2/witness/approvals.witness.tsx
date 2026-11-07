@@ -20,7 +20,7 @@ import { createRoot } from "react-dom/client";
 import { NavRail, TopBarSlotProvider } from "@/design";
 import { ApprovalsScreen } from "@/features/approvals";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
-import { projectMenu, workspaceNavItems } from "@/features/shell/nav-model";
+import { buildActiveKey, projectMenu, workspaceNavItems } from "@/features/shell/nav-model";
 import { APPROVALS_PROJECT as P, APPROVALS_READ as READ } from "@/test/approvals-read";
 import "./entry";
 import { InRouter } from "./router";
@@ -64,7 +64,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
               compact={false}
               workspaceItems={workspaceNavItems(0, undefined)}
               projectItems={projectMenu({})}
-              activeKey="proj-overview"
+              activeKey={buildActiveKey("/projects/hop/approvals", "hop")}
               onNavigate={noop}
               groupOpen={{}}
               onToggleGroup={noop}
@@ -108,8 +108,11 @@ function listed(): string[] {
   if (!h1 || h1.scrollWidth > h1.clientWidth + 0.5) wrong.push(`the page title is cut to ${h1?.clientWidth ?? 0} px of its ${h1?.scrollWidth ?? 0}`);
   if (!phone) {
     const rail = document.querySelector("[data-testid=witness-rail]")?.textContent ?? "";
-    // the rail holds no Approvals row: the serious decisions are read under the Dashboard's Needs you (ISS-1071)
+    // the rail holds no Approvals row: the serious decisions are read under Needs you (ISS-1071), and the
+    // page lights the workspace Overview that counts them, never Dashboard (ISS-1073)
     if (/Approvals/.test(rail)) wrong.push("the menu holds an Approvals row");
+    const lit = document.querySelector("[data-testid=witness-rail] [aria-current=page]")?.textContent?.trim() ?? "";
+    if (!lit.startsWith("Overview")) wrong.push(`the rail lights "${lit}", not Overview`);
   }
   for (const r of rows()) {
     for (const b of r.querySelectorAll("button")) if (b.getBoundingClientRect().right > window.innerWidth + 0.5) wrong.push(`a row's "${b.getAttribute("aria-label") ?? b.textContent}" runs past the window's right edge`);
