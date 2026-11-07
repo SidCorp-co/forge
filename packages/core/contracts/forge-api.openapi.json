@@ -61568,6 +61568,11 @@
                                   "pattern": "^[a-z][A-Za-z0-9_]{0,39}$",
                                   "type": "string"
                                 },
+                                "readOnlyBecause": {
+                                  "maxLength": 300,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
                                 "timeoutMs": {
                                   "maximum": 120000,
                                   "minimum": 1000,
@@ -61818,6 +61823,11 @@
                                 },
                                 "name": {
                                   "pattern": "^[a-z][A-Za-z0-9_]{0,39}$",
+                                  "type": "string"
+                                },
+                                "readOnlyBecause": {
+                                  "maxLength": 300,
+                                  "minLength": 1,
                                   "type": "string"
                                 },
                                 "timeoutMs": {
