@@ -1334,6 +1334,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_ROOM_AMBIGUOUS",
 	/** A channel agent's second reply to one request: one result per request (REQ-77 BC-8). */
 	"SUPPORT_ONE_RESULT_PER_REQUEST",
+	/** A channel agent's post says what is live with no release read in its turn (ISS-1123). */
+	"SUPPORT_LIVE_CLAIM_UNREAD",
 	/** The binding names no owner to ask (REQ-77 BC-12). */
 	"SUPPORT_OWNER_NOT_NAMED",
 	/** An owner question's `record` names no issue of this project (REQ-77 BC-12). */
@@ -1504,6 +1506,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CHANNEL_NOT_OUTSIDE: 409,
 	SUPPORT_ROOM_AMBIGUOUS: 400,
 	SUPPORT_ONE_RESULT_PER_REQUEST: 409,
+	SUPPORT_LIVE_CLAIM_UNREAD: 409,
 	SUPPORT_OWNER_NOT_NAMED: 409,
 	SUPPORT_OWNER_RECORD_UNKNOWN: 404,
 	SUPPORT_OWNER_QUESTION_UNKNOWN: 404,

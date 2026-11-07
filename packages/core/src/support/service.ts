@@ -15,6 +15,7 @@ import {
 } from '../integrations/support-api/index.js';
 import { askerOf, mentionRefusal, readerOf } from './channel.js';
 import { readersOf } from './grants.js';
+import { unreadLiveClaim } from './live-claims.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
@@ -137,7 +138,7 @@ async function roomConfig(room: RoomRow) {
  */
 export async function reply(
   room: RoomRow,
-  input: { thread: string; text: string },
+  input: { thread: string; text: string; turn?: string | null | undefined },
 ): Promise<Outcome<{ messageId: string | null }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
@@ -162,6 +163,15 @@ export async function reply(
     );
   }
   const text = await scrubbedForRoom(room, input.text);
+  // what is live is said from a release read of this turn, never from memory (ISS-1123)
+  const unread = await unreadLiveClaim<{ messageId: string | null }>(room, {
+    thread: input.thread,
+    conversationId,
+    text,
+    turn: input.turn,
+    tool: 'reply',
+  });
+  if (unread) return unread;
   const asker = await askerOf(room, input.thread);
   const mentions = await mentionRefusal<{ messageId: string | null }>(
     room,

@@ -34,6 +34,7 @@ import { agreeTo } from './fixes.js';
 import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { readImage } from './images.js';
 import { endLastResortWait } from './last-resort.js';
+import { noteReleaseRead, unreadLiveClaim } from './live-claims.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
@@ -49,6 +50,7 @@ import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose } from './service.js';
 import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
+import { TOP_LEVEL } from './thread.js';
 
 export interface SupportCaller {
   userId: string;
@@ -157,12 +159,14 @@ export async function supportAct(
   const out = isOperation(input)
     ? await operationsAct(room, input)
     : room.kind === 'support' || room.kind === 'agent' || SHARED.has(input.action)
-      ? await act(room, input)
+      ? await act(room, input, caller.tokenId)
       : no(
           'SUPPORT_NOT_A_SUPPORT_ROOM',
           '/action',
           `${input.action} is a support group's and a channel agent's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
         );
+  // a release read is what a claim of what is live is held to, in this turn alone (ISS-1123)
+  if (out.ok) await noteReleaseRead(room, caller.tokenId, input);
   // a refusal, an ungranted ability's included, is the session's to read and say in its own words:
   // core posts nothing in the room (ISS-845), and records the ungranted one (BC-28); a read records
   // every refusal of its own (`ops-read.ts`)
@@ -261,7 +265,11 @@ const isOperation = (input: SupportActInput): input is OperationsActInput =>
 
 type SupportOnlyInput = Exclude<SupportActInput, OperationsActInput>;
 
-async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<unknown>> {
+async function act(
+  room: RoomRow,
+  input: SupportOnlyInput,
+  turn: string | null | undefined,
+): Promise<OpsOutcome<unknown>> {
   switch (input.action) {
     case 'search':
       return search(room, input.query, input.project);
@@ -270,7 +278,7 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
     case 'tools':
       return listTools(room);
     case 'reply':
-      return reply(room, { thread: input.thread, text: input.text });
+      return reply(room, { thread: input.thread, text: input.text, turn });
     case 'run':
       return runDiagnose(room, { thread: input.thread, tool: input.tool, args: input.args ?? {} });
     case 'propose_fix': {
@@ -328,8 +336,16 @@ async function act(room: RoomRow, input: SupportOnlyInput): Promise<OpsOutcome<u
       const { action: _, ...request } = input;
       return routeNeed(room, request);
     }
-    case 'announce':
-      return announce(room, { text: input.text });
+    case 'announce': {
+      const unread = await unreadLiveClaim(room, {
+        thread: TOP_LEVEL,
+        conversationId: null,
+        text: input.text,
+        turn,
+        tool: 'announce',
+      });
+      return unread ?? announce(room, { text: input.text });
+    }
     case 'ask_owner': {
       const { action: _, ...request } = input;
       return askOwner(room, request);
