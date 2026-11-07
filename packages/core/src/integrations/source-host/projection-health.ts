@@ -8,11 +8,11 @@
  * them apart, and it is the same reading the binding report serves to `GET /api/projects/:id/integrations/source`.
  */
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import { readInboundDoorTraffic } from '../index.js';
+import { getIntegration, listIntegrations, readInboundDoorTraffic } from '../index.js';
 
 /** How many inbound deliveries have come through one binding's door, and when the last one did. */
 interface InboundDeliveryReport {
@@ -24,8 +24,10 @@ interface ProjectionPipeReport {
   projectId: string;
   /** Rows in `repo_pull_requests` for this project, of any state. */
   rows: number;
-  /** GitHub bindings this project holds, active or not. */
+  /** Source host bindings this project holds, GitHub or GitLab, active or not. */
   bindings: number;
+  /** The hosts those bindings serve, as a person reads them (`GitHub`, `GitLab`), each once (ISS-980). */
+  hosts: string[];
   inbound: InboundDeliveryReport;
 }
 
@@ -49,13 +51,23 @@ export async function projectionPipeReport(projectId: string): Promise<Projectio
     .from(repoPullRequests)
     .where(eq(repoPullRequests.projectId, projectId));
 
-  const bindings = await db
-    .select({ id: integrationBindings.id })
-    .from(integrationBindings)
-    .where(
-      and(eq(integrationBindings.projectId, projectId), eq(integrationBindings.provider, 'github')),
-    )
-    .orderBy(desc(integrationBindings.createdAt));
+  // every provider a repository can live on, so a GitLab project's bindings and deliveries are its own
+  const providers = listIntegrations()
+    .filter((d) => d.sourceHost !== undefined)
+    .map((d) => d.provider);
+  const bindings =
+    providers.length === 0
+      ? []
+      : await db
+          .select({ id: integrationBindings.id, provider: integrationBindings.provider })
+          .from(integrationBindings)
+          .where(
+            and(
+              eq(integrationBindings.projectId, projectId),
+              inArray(integrationBindings.provider, providers),
+            ),
+          )
+          .orderBy(desc(integrationBindings.createdAt));
 
   let count = 0;
   let lastAt: Date | null = null;
@@ -69,6 +81,9 @@ export async function projectionPipeReport(projectId: string): Promise<Projectio
     projectId,
     rows: Number(rowCount?.n ?? 0),
     bindings: bindings.length,
+    hosts: [
+      ...new Set(bindings.map((b) => getIntegration(b.provider)?.sourceHost?.label ?? b.provider)),
+    ],
     inbound: { count, lastAt },
   };
 }
@@ -80,28 +95,32 @@ export async function projectionPipeReport(projectId: string): Promise<Projectio
  * holds no row is the same broken pipe wearing a different cause, so it gets this refusal with that
  * cause in it rather than falling back to a sentence about a pull request number.
  *
- * The count is of deliveries RECORDED, and the sentence says so rather than saying GitHub never
+ * The count is of deliveries RECORDED, and the sentence says so rather than saying the host never
  * called. `POST /api/webhooks/in/:slug` turns away a request whose signature does not verify before
  * anything records it, so a wrong or rotated webhook secret produces a zero here that is
- * indistinguishable from a door nobody knocked on. Telling an operator GitHub never called would
- * send them to the wrong half of the pipe.
+ * indistinguishable from a door nobody knocked on. Telling an operator the host never called would
+ * send them to the wrong half of the pipe. The host is the one the project bound, GitHub or GitLab
+ * (ISS-980): epod, on GitLab, was told it had bound no GitHub repository.
  */
 export function describeEmptyProjection(report: ProjectionPipeReport): string | null {
   if (report.rows > 0) return null;
+  const host = report.hosts.length > 0 ? report.hosts.join(' or ') : 'source host';
+  const on =
+    report.bindings === 1 ? `its ${host} binding` : `its ${report.bindings} ${host} bindings`;
   const door =
     report.inbound.count === 0
-      ? `Forge has recorded no webhook delivery at all on ${report.bindings === 1 ? 'its GitHub binding' : `any of its ${report.bindings} GitHub bindings`} — either GitHub has never called, or its calls are being turned away before they are recorded, which is what a wrong or rotated webhook secret looks like from here`
-      : `Forge has recorded ${report.inbound.count} inbound deliver${report.inbound.count === 1 ? 'y' : 'ies'} on its GitHub bindings, the last at ${report.inbound.lastAt?.toISOString() ?? 'a time nothing recorded'}, and none of them wrote a pull request`;
+      ? `Forge has recorded no webhook delivery at all on ${report.bindings === 1 ? on : `any of ${on}`} — either ${host} has never called, or its calls are being turned away before they are recorded, which is what a wrong or rotated webhook secret looks like from here`
+      : `Forge has recorded ${report.inbound.count} inbound deliver${report.inbound.count === 1 ? 'y' : 'ies'} on ${on}, the last at ${report.inbound.lastAt?.toISOString() ?? 'a time nothing recorded'}, and none of them wrote a change request`;
   const bound =
     report.bindings === 0
-      ? 'this project has bound no GitHub repository, so nothing could write one'
+      ? 'this project has bound no source host repository, so nothing could write one — bind it on the Integrations page'
       : door;
   return (
-    "Forge's projection of this repository holds no pull request at all for this project, so there is " +
-    'nothing here to merge. That is a projection nothing has written to, not a repository with no pull ' +
-    `requests: ${bound}. A row is written when Forge opens a pull request through \`POST ` +
-    '/api/projects/:id/integrations/source/change-requests`, and when a `pull_request` delivery reaches `POST /api/webhooks/in/<project ' +
-    'slug>`. A pull request opened before either of those wrote anything leaves no row, and Forge will ' +
-    'not merge what it has no record of.'
+    "Forge's projection of this repository holds no change request at all for this project, so there is " +
+    'nothing here to merge. That is a projection nothing has written to, not a repository with no change ' +
+    `requests: ${bound}. A row is written when Forge opens a change request through \`POST ` +
+    '/api/projects/:id/integrations/source/change-requests`, when Forge reads one from the host (`POST ' +
+    "…/change-requests/:number/refresh`, or a merge naming its number), and when the host's webhook " +
+    'delivers one to `POST /api/webhooks/in/<project slug>`. Forge will not merge what it has no record of.'
   );
 }

@@ -1,1 +1,1 @@
-**A change request links its issues as soon as it opens.** Draft titles and `batch-` branches now link every issue they name, merging a named request re-reads it first, and a refusal explains how linking works.
+**A change request links its issues as soon as it opens.** Draft and `Batch ISS-1/2` titles and `batch-` branches link every issue they name, a merge re-reads a named request first, and refusals explain linking and name the bound host.

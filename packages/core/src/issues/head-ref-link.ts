@@ -183,21 +183,56 @@ export function deliveredDescriptionReferences(description: string): IssueRefere
 const DRAFT_MARKERS =
   /^(?:\s*(?:\[\s*(?:draft|wip)\s*\]|\(\s*(?:draft|wip)\s*\)|(?:draft|wip)\s*(?::|\s-)))+\s*/i;
 
-/** Where a title's key stands to be delivered: the title's start or a clause's (`;`, `,`, `|`, `(`, `[`). */
-const TITLE_LEAD_KEYS = new RegExp(`(?:^|[;,|([])\\s*(${KEY}(?:${BETWEEN_KEYS}${KEY})*)`, 'gi');
+/** One issue prefix, as a key spells it. */
+const PREFIX = '[A-Za-z][A-Za-z0-9]{1,5}';
+/**
+ * A title's key with the slash shorthand after it (ISS-980, FB-546): `ISS-103/105/107`, where a bare
+ * number after a slash takes the prefix of the key before it, and `ISS-7/AH-3`, a whole key.
+ */
+const SLASHED_KEYS = `${PREFIX}-\\d{1,10}(?:\\/(?:${PREFIX}-)?\\d{1,10})*(?![A-Za-z0-9-])`;
+const SLASHED_GLOBAL = new RegExp(
+  `(${PREFIX})-(\\d{1,10})((?:\\/(?:${PREFIX}-)?\\d{1,10})*)(?![A-Za-z0-9-])`,
+  'gi',
+);
+
+/**
+ * Where a title's key stands to be delivered: the title's start, past a `Batch` lead word
+ * (`Batch ISS-103/105: …`, FB-546), or a clause's (`;`, `,`, `|`, `(`, `[`).
+ */
+const TITLE_LEAD_KEYS = new RegExp(
+  `(?:^(?:\\s*batch\\b\\s*:?)?|[;,|([])\\s*(${SLASHED_KEYS}(?:${BETWEEN_KEYS}${SLASHED_KEYS})*)`,
+  'gi',
+);
+
+/** The keys of a title's lead list, each slash shorthand number under the prefix before it. */
+function slashedKeysIn(text: string): IssueReference[] {
+  const out: IssueReference[] = [];
+  for (const hit of text.matchAll(SLASHED_GLOBAL)) {
+    let prefix = (hit[1] ?? '').toUpperCase();
+    const parts = [`${prefix}-${hit[2]}`, ...(hit[3] ?? '').split('/').filter(Boolean)];
+    for (const part of parts) {
+      const [named, seq] = part.includes('-') ? part.split('-') : [prefix, part];
+      prefix = (named ?? prefix).toUpperCase();
+      const issSeq = Number(seq);
+      if (inRange(issSeq)) out.push({ prefix, issSeq });
+    }
+  }
+  return out;
+}
 
 /**
  * The keys a title delivers, in the order it gives them (ISS-855): a key leading the title, past any
- * host draft marker (`Draft: ISS-70: …`, ISS-980), or one of its clauses, with any keys listed after it (`ISS-31: …; ISS-24: …`, `[ISS-12] …`, `ISS-1, ISS-2
- * and ISS-3 — …`), or right after a closing verb (`… (fixes ISS-9)`). A key inside a sentence is
- * prose, and one another project's slug qualifies (`adminhub-api ISS-11`) sits in neither form
- * (FB-295).
+ * host draft marker (`Draft: ISS-70: …`) or a `Batch` lead word (`Batch ISS-103/105: …`, ISS-980), or
+ * one of its clauses, with any keys listed after it (`ISS-31: …; ISS-24: …`, `[ISS-12] …`, `ISS-1,
+ * ISS-2 and ISS-3 — …`, the slash shorthand `ISS-103/105/107`), or right after a closing verb
+ * (`… (fixes ISS-9)`). A bare number outside a slash list and a key inside a sentence are prose,
+ * and a key another project's slug qualifies (`adminhub-api ISS-11`) sits in neither form (FB-295).
  */
 export function titleIssueReferences(title: string): IssueReference[] {
   const line = title.replace(EMPHASIS, '').trim().replace(DRAFT_MARKERS, '');
   const hits: Array<{ at: number; refs: IssueReference[] }> = [];
   for (const hit of line.matchAll(TITLE_LEAD_KEYS)) {
-    hits.push({ at: hit.index ?? 0, refs: keysIn(hit[1] ?? '') });
+    hits.push({ at: hit.index ?? 0, refs: slashedKeysIn(hit[1] ?? '') });
   }
   for (const hit of line.matchAll(VERB_THEN_KEYS)) {
     hits.push({ at: hit.index ?? 0, refs: keysIn(hit[1] ?? '') });
@@ -214,8 +249,9 @@ export const CHANGE_REQUEST_LINK_RULE =
   'A change request links the issues its branch, its title and its description name: a branch ' +
   'segment opening with the key (`fix/iss-n-…`, `iss-n-…`), a `feat/…-iss-n` or `fix/…-iss-n` branch ' +
   'ending with it, or a `batch-iss-n-m` branch listing every key; a title leading with the key or a ' +
-  'list of keys (`ISS-n: …`, `[ISS-n] …`, `ISS-n, ISS-m …`), after any `Draft:`, `[Draft]`, `WIP:` ' +
-  'or `Draft -` marker, or naming it after a closing verb (`… (fixes ISS-n)`); or a description line ' +
+  'list of keys (`ISS-n: …`, `[ISS-n] …`, `ISS-n, ISS-m …`, `Batch ISS-n/m: …`, where a bare number ' +
+  'after a slash takes the prefix before it), after any `Draft:`, `[Draft]`, `WIP:` or `Draft -` ' +
+  'marker, or naming it after a closing verb (`… (fixes ISS-n)`); or a description line ' +
   'holding only keys, or `Closes ISS-n`. A key elsewhere in a title or description is prose and ' +
   'links nothing.';
 

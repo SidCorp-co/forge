@@ -141,8 +141,9 @@ issue the request links, that reading — `branch-lead` (`fix/iss-n-…`), `bran
 A delivery branch names one key: a digit suffix after it (`fix/x-iss-50-2`, a run's attempt number)
 is no second key (REQ-63 BC-4 r11). adminhub-api MR 5162 had stamped ISS-2, closed and unrelated,
 that way. A `batch-iss-54-69` branch names every key it lists, the first read as `branch-lead` and
-each after it as `branch-tail`, and a title's host draft marker (`Draft:`, `[Draft]`, `WIP:`, `Draft -`)
-hides no key after it (ISS-980). The whole rule is
+each after it as `branch-tail`. A title's host draft marker (`Draft:`, `[Draft]`, `WIP:`, `Draft -`)
+hides no key after it, and a `Batch` lead word takes the key list after it, where the slash shorthand
+`ISS-103/105` gives a bare number the prefix before it (ISS-980, FB-546). The whole rule is
 `packages/core/src/issues/head-ref-link.ts:CHANGE_REQUEST_LINK_RULE`.
 
 A request named by `pullRequest` that the projection does not hold for the issue is read from the host

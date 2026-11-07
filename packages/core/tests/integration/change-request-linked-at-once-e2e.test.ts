@@ -394,5 +394,6 @@ describe('PROJECTION_EMPTY names the host the project bound', () => {
     expect(refusal?.code).toBe('PROJECTION_EMPTY');
     expect(refusal?.detail).toContain('its GitLab binding');
     expect(refusal?.detail).not.toContain('GitHub');
+    expect(refusal?.detail).toContain('Reading !999 from the host failed');
   });
 });

@@ -37,10 +37,11 @@ type Resolved = { id: string } | { refusal: string; code: NoRowCode };
 async function noRowRefusal(
   projectId: string,
   about: string,
+  reread = '',
 ): Promise<{ refusal: string; code: NoRowCode }> {
   const empty = describeEmptyProjection(await projectionPipeReport(projectId));
   return empty
-    ? { refusal: empty, code: 'PROJECTION_EMPTY' }
+    ? { refusal: `${empty}${reread}`, code: 'PROJECTION_EMPTY' }
     : { refusal: about, code: 'NO_PULL_REQUEST' };
 }
 
@@ -124,6 +125,9 @@ async function namedRequestRefusal(
     `this issue has no pull request ${reread.label} on Forge's projection of the repository. ${held} ` +
       `${CHANGE_REQUEST_LINK_RULE} Name this issue in one of those places — ` +
       `\`PATCH /api/projects/${projectId}/integrations/source/change-requests/${number}\` edits its title or description and re-records it — then merge again.`,
+    reread.failed === null
+      ? ''
+      : ` Reading ${reread.label} from the host failed: ${reread.failed}.`,
   );
 }
 
