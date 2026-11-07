@@ -14,6 +14,7 @@ import {
 } from '@forge/contracts/owner-home';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { readingAcross } from '../db/read-memo.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -76,12 +77,14 @@ meHomeRoutes.get(
     const viewer = viewerOf(c);
     const now = new Date();
     const projects = await readableProjects(viewer.userId, orgId ?? null);
+    // what each project's part reads one project at a time, read for all of them at once
+    readingAcross(projects.map((p) => p.id));
     const limiter = createLimiter(HOME_CONCURRENCY);
     const parts = await Promise.all(
       projects.map((p) =>
         limiter.run(async () => {
           const [part, releases] = await Promise.all([
-            readHomeProject(viewer, p.id),
+            readHomeProject(viewer, p.id, now),
             liveReleasesOf(p.id),
           ]);
           const mine = new Set([
@@ -118,6 +121,7 @@ meHomeRoutes.get(
     const { q, orgId } = c.req.valid('query');
     const viewer = viewerOf(c);
     const projects = await readableProjects(viewer.userId, orgId ?? null);
+    readingAcross(projects.map((p) => p.id));
     const limiter = createLimiter(HOME_CONCURRENCY);
     const found = await Promise.all(
       projects.map((p) =>

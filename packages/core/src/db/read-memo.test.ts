@@ -4,7 +4,9 @@ import {
   memoizedPerId,
   memoizedRead,
   offerRead,
+  perProjectRead,
   primeReads,
+  readingAcross,
   withReadMemo,
 } from './read-memo.js';
 
@@ -147,6 +149,93 @@ describe('primeReads', () => {
       );
       await expect(memoizedRead('rows:a', async () => [])).rejects.toThrow('statement failed');
       expect(await memoizedRead('rows:a', async () => [rows[0]])).toEqual([rows[0]]);
+    });
+  });
+});
+
+describe('perProjectRead', () => {
+  const rows = [
+    { projectId: 'a', n: 1 },
+    { projectId: 'b', n: 2 },
+    { projectId: 'a', n: 3 },
+  ];
+  /** One statement over the projects it is asked for; records what it was asked. */
+  const across = () => {
+    const asked: string[][] = [];
+    return {
+      asked,
+      readAll: async (ids: readonly string[]) => {
+        asked.push([...ids]);
+        return rows.filter((r) => ids.includes(r.projectId));
+      },
+    };
+  };
+  const ns = (list: { n: number }[]) => list.map((r) => r.n);
+  const read = (r: ReturnType<typeof across>, id: string) =>
+    perProjectRead('rows', id, r.readAll, (x) => x.projectId, ns);
+
+  it('reads the one project asked, every time, outside a request scope', async () => {
+    const r = across();
+    expect(await read(r, 'a')).toEqual([1, 3]);
+    expect(await read(r, 'a')).toEqual([1, 3]);
+    expect(r.asked).toEqual([['a'], ['a']]);
+  });
+
+  it('reads each project once in a scope that declared none across', async () => {
+    const r = across();
+    await withReadMemo(async () => {
+      expect(await read(r, 'a')).toEqual([1, 3]);
+      expect(await read(r, 'a')).toEqual([1, 3]);
+      expect(await read(r, 'b')).toEqual([2]);
+    });
+    expect(r.asked).toEqual([['a'], ['b']]);
+  });
+
+  it('reads every declared project in one statement, each answered from its own rows as alone', async () => {
+    const r = across();
+    const alone = across();
+    const [a, b, c] = [await read(alone, 'a'), await read(alone, 'b'), await read(alone, 'c')];
+    await withReadMemo(async () => {
+      readingAcross(['a', 'b', 'c']);
+      expect(await Promise.all([read(r, 'b'), read(r, 'a'), read(r, 'c')])).toEqual([b, a, c]);
+      expect(await read(r, 'a')).toEqual(a);
+    });
+    expect(r.asked).toEqual([['a', 'b', 'c']]);
+  });
+
+  it('admits no project the declaration left out: it is read on its own', async () => {
+    const r = across();
+    await withReadMemo(async () => {
+      readingAcross(['a']);
+      expect(await read(r, 'b')).toEqual([2]);
+      expect(await read(r, 'a')).toEqual([1, 3]);
+    });
+    expect(r.asked).toEqual([['b'], ['a']]);
+  });
+
+  it('keeps no failed statement, so the next ask reads again and fails or answers on its own', async () => {
+    let calls = 0;
+    const flaky = async (ids: readonly string[]) => {
+      calls += 1;
+      if (calls === 1) throw new Error('statement failed');
+      return rows.filter((r) => ids.includes(r.projectId));
+    };
+    await withReadMemo(async () => {
+      readingAcross(['a', 'b']);
+      const ask = (id: string) => perProjectRead('rows', id, flaky, (x) => x.projectId, ns);
+      await expect(ask('a')).rejects.toThrow('statement failed');
+      expect(await ask('b')).toEqual([2]);
+    });
+    expect(calls).toBe(2);
+  });
+
+  it('hands each caller its own copy', async () => {
+    const r = across();
+    await withReadMemo(async () => {
+      readingAcross(['a', 'b']);
+      const first = await read(r, 'a');
+      first.push(99);
+      expect(await read(r, 'a')).toEqual([1, 3]);
     });
   });
 });

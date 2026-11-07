@@ -12,7 +12,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { perProjectRead } from '../db/read-memo.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { stampReleaseVersion, writeRunMetadata } from '../pipeline/index.js';
 import { readProjectDocument, readReleasePath } from '../project-config/index.js';
@@ -81,10 +81,29 @@ export async function readLineageRuns(
   projectId: string,
   except: string | null = null,
 ): Promise<LineageRun[]> {
-  return lineageRows(
+  // a read request asks it from the version decision and the lineage both, and a read across
+  // projects for each project: one statement for all of them (`db/read-memo.ts:perProjectRead`)
+  if (executor === db && except === null) {
+    return perProjectRead(
+      'release-lineage-runs',
+      projectId,
+      (ids) =>
+        lineageRows(
+          db,
+          sql`r.project_id IN (${sql.join(
+            ids.map((id) => sql`${id}::uuid`),
+            sql`, `,
+          )})`,
+        ),
+      (r) => r.projectId,
+      (rows) => rows.map(({ projectId: _, ...r }) => r),
+    );
+  }
+  const rows = await lineageRows(
     executor,
     sql`r.project_id = ${projectId} AND (${except}::uuid IS NULL OR r.id <> ${except}::uuid)`,
   );
+  return rows.map(({ projectId: _, ...r }) => r);
 }
 
 /** One release run as the rule reads it, or null where `runId` is no versioned release run. */
@@ -92,12 +111,20 @@ export async function readLineageRun(
   executor: Pick<Tx, 'execute'>,
   runId: string,
 ): Promise<LineageRun | null> {
-  return (await lineageRows(executor, sql`r.id = ${runId}`))[0] ?? null;
+  const [row] = await lineageRows(executor, sql`r.id = ${runId}`);
+  if (!row) return null;
+  const { projectId: _, ...run } = row;
+  return run;
 }
 
-async function lineageRows(executor: Pick<Tx, 'execute'>, where: SQL): Promise<LineageRun[]> {
+/** The release runs `where` names, oldest cut first within each project. */
+async function lineageRows(
+  executor: Pick<Tx, 'execute'>,
+  where: SQL,
+): Promise<(LineageRun & { projectId: string })[]> {
   const rows = await executor.execute<{
     id: string;
+    project_id: string;
     release_version: string;
     status: string;
     started_at: Date | string;
@@ -107,7 +134,7 @@ async function lineageRows(executor: Pick<Tx, 'execute'>, where: SQL): Promise<L
     reached_box: boolean;
     has_job: boolean;
   }>(sql`
-    SELECT r.id, r.release_version, r.status, r.started_at, r.finished_at, r.release_released_at, r.metadata,
+    SELECT r.id, r.project_id, r.release_version, r.status, r.started_at, r.finished_at, r.release_released_at, r.metadata,
            EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id
                      AND (j.dispatched_at IS NOT NULL OR j.held_by IS NOT NULL)) AS reached_box,
            EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id) AS has_job
@@ -115,11 +142,13 @@ async function lineageRows(executor: Pick<Tx, 'execute'>, where: SQL): Promise<L
     WHERE ${where}
       AND r.release_version IS NOT NULL
       AND r.metadata ->> 'source' IN ('release-batch', ${RELEASE_RECORD_SOURCE})
+    ORDER BY r.project_id, r.started_at, r.id
   `);
   return rows.map((r) => {
     const metadata = r.metadata ?? {};
     return {
       id: r.id,
+      projectId: r.project_id,
       version: r.release_version,
       startedAt: new Date(r.started_at),
       status: r.status,
@@ -170,33 +199,44 @@ export interface StampedRelease {
 
 /**
  * Every release of the project whose ship stamp is set, in stamp order (oldest first). Read once per
- * read request (`db/read-memo.ts:memoizedRead`): the serving release and the released line both ask
- * it, and a cross-project read asks both for every project.
+ * read request: the serving release and the released line both ask it, and a read across projects
+ * asks both for every project, once for all of them (`db/read-memo.ts:perProjectRead`).
  */
 export function readStampedReleases(projectId: string): Promise<StampedRelease[]> {
-  return memoizedRead(`stampedReleases:${projectId}`, async () => {
-    const rows = await db.execute<{
-      id: string;
-      release_version: string;
-      release_released_at: Date | string;
-      started_at: Date | string;
-      metadata: Record<string, unknown> | null;
-    }>(sql`
-      SELECT r.id, r.release_version, r.release_released_at, r.started_at, r.metadata
-      FROM pipeline_runs r
-      WHERE r.project_id = ${projectId}
-        AND r.release_version IS NOT NULL
-        AND r.release_released_at IS NOT NULL
-      ORDER BY r.release_released_at ASC, r.id ASC
-    `);
-    return rows.map((r) => ({
-      runId: r.id,
-      version: r.release_version,
-      at: new Date(r.release_released_at),
-      openedAt: new Date(r.started_at),
-      metadata: r.metadata ?? {},
-    }));
-  });
+  return perProjectRead(
+    'stampedReleases',
+    projectId,
+    (ids) =>
+      db
+        .execute<{
+          id: string;
+          project_id: string;
+          release_version: string;
+          release_released_at: Date | string;
+          started_at: Date | string;
+          metadata: Record<string, unknown> | null;
+        }>(sql`
+        SELECT r.id, r.project_id, r.release_version, r.release_released_at, r.started_at, r.metadata
+        FROM pipeline_runs r
+        WHERE r.project_id IN (${sql.join(
+          ids.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )})
+          AND r.release_version IS NOT NULL
+          AND r.release_released_at IS NOT NULL
+        ORDER BY r.project_id, r.release_released_at ASC, r.id ASC
+      `)
+        .then((rows) => [...rows]),
+    (r) => r.project_id,
+    (rows) =>
+      rows.map((r) => ({
+        runId: r.id,
+        version: r.release_version,
+        at: new Date(r.release_released_at),
+        openedAt: new Date(r.started_at),
+        metadata: r.metadata ?? {},
+      })),
+  );
 }
 
 /**

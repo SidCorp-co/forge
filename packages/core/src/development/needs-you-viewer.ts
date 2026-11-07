@@ -5,6 +5,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { readingAcross } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
@@ -59,6 +60,7 @@ export async function readNeedsYouAcross(
     .from(projects)
     .where(inArray(projects.id, ids));
   // the rows every project's read sends once, read for all of them at once
+  readingAcross(names.map((p) => p.id));
   primeNeedsYouAcross(names.map((p) => p.id));
   primeRequirementVerdicts(names.map((p) => p.id));
   primeEndedRunClaims(names.map((p) => p.id));

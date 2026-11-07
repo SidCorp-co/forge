@@ -59,6 +59,54 @@ export function primeReads<R>(
   }
 }
 
+/** The projects a read across projects declared in each memo ({@link readingAcross}). */
+const across = new WeakMap<Map<string, Promise<unknown>>, ReadonlySet<string>>();
+
+/**
+ * Declares, inside a {@link withReadMemo} scope, the projects a read across projects assembles one
+ * by one (`development/needs-you-viewer.ts:readNeedsYouAcross`, the home): each
+ * {@link perProjectRead} any of them asks then reads every one of them in one statement, where it
+ * would otherwise send one a project. It admits nothing: a project's rows are only ever handed to
+ * that project's own read, which its caller has already checked. Outside a scope it does nothing.
+ */
+export function readingAcross(projectIds: readonly string[]): void {
+  const memo = memos.getStore();
+  if (!memo) return;
+  across.set(memo, new Set([...(across.get(memo) ?? []), ...projectIds]));
+}
+
+/**
+ * One project's answer to a read that `readAll` makes for any set of projects, one statement each:
+ * inside a scope where {@link readingAcross} declared this project, the first ask reads every declared
+ * project not yet held and answers each from its own rows; inside any other scope, once per key; and
+ * every time outside one. `answer` is handed the project's rows in the order `readAll` sent them, so a
+ * project read alone and read beside others answers alike.
+ */
+export function perProjectRead<R, V>(
+  key: string,
+  projectId: string,
+  readAll: (projectIds: readonly string[]) => Promise<R[]>,
+  projectOf: (row: R) => string,
+  answer: (rows: R[]) => V,
+): Promise<V> {
+  const memo = memos.getStore();
+  const keyOf = (id: string) => `${key}\u0000${id}`;
+  const one = async () => answer(await readAll([projectId]));
+  if (!memo) return one();
+  const declared = across.get(memo);
+  if (declared?.has(projectId) && !memo.has(keyOf(projectId))) {
+    const ids = [...declared].filter((id) => !memo.has(keyOf(id)));
+    // a query builder is a thenable that sends its statement again on every `then`: send it once
+    const all = Promise.resolve(readAll(ids));
+    for (const id of ids) {
+      const held = all.then((rows) => answer(rows.filter((r) => projectOf(r) === id)));
+      memo.set(keyOf(id), held);
+      held.catch(() => memo.delete(keyOf(id)));
+    }
+  }
+  return memoizedRead(keyOf(projectId), one);
+}
+
 /**
  * `read(ids)` keyed per id inside a {@link withReadMemo} scope: an id an earlier ask under `key`
  * already read is answered from that read, and only the rest are read, in one statement. A read
