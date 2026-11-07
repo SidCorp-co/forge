@@ -6,10 +6,11 @@ import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { countingOf } from './criteria/verdict-counting.js';
 
-interface CriteriaRaw {
+export interface CriteriaRaw {
   issue_id: string;
   verdict: 'pass' | 'short' | 'fail' | 'skipped' | null;
   bc_code: string | null;
@@ -139,18 +140,20 @@ export async function modulesOf(projectId: string, ids: readonly string[]) {
   const out = new Map<string, { id: string; path: string; name: string }>();
   if (ids.length === 0) return out;
   const [all, links] = await Promise.all([
-    db.execute(sql`
-      SELECT NULL::uuid AS issue_id, id, name, slug, parent_id, NULL::boolean AS is_primary
-        FROM labels WHERE project_id = ${projectId} AND kind = 'module'`),
+    memoizedRead(`moduleLabels:${projectId}`, async () =>
+      rowsOf<ModuleRaw>(
+        await db.execute(sql`
+          SELECT NULL::uuid AS issue_id, id, name, slug, parent_id, NULL::boolean AS is_primary
+            FROM labels WHERE project_id = ${projectId} AND kind = 'module'`),
+      ),
+    ),
     db.execute(sql`
       SELECT il.issue_id, l.id, l.name, l.slug, l.parent_id, il.is_primary
         FROM issue_labels il JOIN labels l ON l.id = il.label_id
        WHERE il.issue_id IN (${idList(ids)}) AND l.kind = 'module'
        ORDER BY il.is_primary DESC, l.name`),
   ]);
-  const paths = modulePaths(
-    rowsOf<ModuleRaw>(all).map((m) => ({ id: m.id, slug: m.slug, parentId: m.parent_id })),
-  );
+  const paths = modulePaths(all.map((m) => ({ id: m.id, slug: m.slug, parentId: m.parent_id })));
   for (const l of rowsOf<ModuleRaw>(links)) {
     if (!l.issue_id || out.has(l.issue_id)) continue;
     out.set(l.issue_id, { id: l.id, path: paths.get(l.id) ?? l.slug, name: l.name });

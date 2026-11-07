@@ -35,6 +35,8 @@ import { endedAccount, type ReleaseRunEnded } from './run-ended.js';
 import { carriersIn, carriersOf } from './version-rule.js';
 import { currentReleaseVersion } from './version-store.js';
 
+export { waitingIssueIds } from './waiting-issues.js';
+
 export interface ReleaseRosterEntry {
   id: string;
   displayId: string;
@@ -517,27 +519,6 @@ export async function warnedReleaseNotes(
         ]
       : [];
   });
-}
-
-/**
- * Every issue waiting unclaimed for a release on this project (`waitingForReleaseSql`: at the gate, or
- * closed met in scope with no shipped release holding it), oldest merge first: the roster a cut, the
- * draft and the sweep read. An issue a release run still claims after it ended is in none of
- * them; `ended-claims.ts:readEndedRunHolds` is the read that names it, beside each of these (ISS-961).
- */
-export async function waitingIssueIds(projectId: string): Promise<string[]> {
-  const rows = await db
-    .select({ id: issues.id })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        waitingForReleaseSql(sql`${issues}`),
-        isNull(issues.releaseBatchRunId),
-      ),
-    )
-    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
-  return rows.map((r) => r.id);
 }
 
 /** Which of these versions the project has a release run for, as `release_version` holds them. */

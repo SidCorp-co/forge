@@ -50,6 +50,7 @@ import { criterionView, revisionBase, revisionView } from './revision-view.js';
 import { type LinkedDesign, liveAt, signoffRefusal } from './rules.js';
 import { type Delivered, deliveredOf, releasesOf } from './shipped-read.js';
 import { documentGatesIn, standingsOf } from './standing-read.js';
+import { offerStandings } from './standing-share.js';
 import { standingViewer } from './viewer.js';
 
 export interface RequirementActor {
@@ -157,10 +158,14 @@ export function summaryOf(
   };
 }
 
-export async function listRequirementsAs(
+export function listRequirementsAs(
   viewer: RequirementActor,
   projectId: string,
 ): Promise<RequirementSummary[]> {
+  return offerStandings(projectId, () => listAs(viewer, projectId));
+}
+
+async function listAs(viewer: RequirementActor, projectId: string): Promise<RequirementSummary[]> {
   await requireDeclaredOn(projectId, viewer.userId, 'project.read');
   const { rows, areas, runnerBound } = await listRowsOf(projectId);
   if (rows.length === 0) return [];

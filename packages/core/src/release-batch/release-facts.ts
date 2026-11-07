@@ -28,7 +28,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
-import { issueNamingOf, namedIssue, standingsOf } from '../requirements/index.js';
+import { completionStandingsOf, issueNamingOf, namedIssue } from '../requirements/index.js';
 import { criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
 import type { CompletionFacts } from './release-view.js';
 import { releasedLineOf } from './released-line.js';
@@ -236,7 +236,7 @@ async function requirementFacts(
     .from(requirements)
     .where(and(eq(requirements.projectId, projectId), inArray(requirements.id, [...ids])));
   const [standings, prefix, live] = await Promise.all([
-    standingsOf(projectId, rows, null),
+    completionStandingsOf(projectId, rows),
     activeIssuePrefix(projectId),
     db
       .select({

@@ -26,12 +26,13 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
-import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
+import { type BlockingEdge, blockerUnsettledSql } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { deliveryHeads } from './delivery-head.js';
 import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
@@ -56,8 +57,9 @@ import {
 import { classifyLease } from './session-claim.js';
 import { deriveIssueStanding, type IssueStandingInput, type StandingEdge } from './standing.js';
 import { issueBlockerOf } from './standing-blocker.js';
+import { criteriaPerIssue, edgesPerIssue } from './standing-facts-memo.js';
 import {
-  criteriaOf,
+  type criteriaOf,
   feedbackOf,
   modulesOf,
   type RequirementRaw,
@@ -371,25 +373,30 @@ async function standingRows(
     releaseHolds,
   ] = await Promise.all([
     activeIssuePrefix(projectId),
-    blockingEdgesIn(db, projectId, ids),
-    criteriaOf(projectId, ids),
-    modulesOf(projectId, ids),
-    feedbackOf(ids),
+    edgesPerIssue(projectId, ids),
+    criteriaPerIssue(projectId, ids),
+    memoizedPerId(`modules:${projectId}`, ids, (some) => modulesOf(projectId, some)),
+    memoizedPerId('carriedFeedback', ids, feedbackOf),
     approvalRequired(projectId),
     withheldOf(projectId, raws),
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
     masterServingOf(projectId),
     readJudge(projectId),
-    releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
+    memoizedPerId(
+      'releaseHolds',
+      raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id),
+      releaseHoldsOf,
+    ),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
-    requirementsOf(
+    memoizedPerId(
+      `standingRequirements:${projectId}`,
       [...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))],
-      projectId,
+      (some) => requirementsOf(some, projectId),
     ),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id, r.box_owner_id])),
-    changedTracedOf(db, ids),
+    memoizedPerId('changedTraced', ids, (some) => changedTracedOf(db, some)),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
   const facts: Facts = {

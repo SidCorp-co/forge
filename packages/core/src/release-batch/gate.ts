@@ -1,6 +1,7 @@
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
@@ -90,11 +91,10 @@ async function productionBinding(
 export async function resolveReleaseDeclaration(
   projectId: string,
 ): Promise<ReleaseDeclaration | null> {
-  const [row] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
+  // a read asks this of each release it weighs and each landing it reads: the project is asked once
+  const [row] = await memoizedRead(`projectRow:${projectId}`, () =>
+    db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).limit(1),
+  );
   if (!row) return null;
   const read = await readReleasePath(projectId);
   if (!read.ok) return { kind: 'undeclared-target', reason: read.reason };

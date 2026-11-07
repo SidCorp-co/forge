@@ -57,7 +57,7 @@ import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
 import { askedOf } from './steward-asked.js';
 import { requirementVerdictsIn } from './verdicts-read.js';
 
-interface StandingRow {
+export interface StandingRow {
   id: string;
   projectId: string;
   status: string;
