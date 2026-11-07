@@ -10,6 +10,7 @@
  */
 
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
@@ -197,7 +198,7 @@ const namingBody = zValidator(
     /** The Forge account the chat account is, by its id: never matched from a name or an address. */
     userId: z.uuid(),
     /** Why the admin names it, kept with the naming. */
-    reason: z.string().trim().min(1).max(500),
+    reason: z.string().trim().min(1).max(REASON_LINE_MAX),
   }),
   invalid(
     'invalid body: { source, externalId, userId, reason }. "externalId" is the chat server\'s own user id for the speaker, "userId" the Forge account\'s id, and "reason" why you name it.',
@@ -206,7 +207,7 @@ const namingBody = zValidator(
 
 const undoBody = zValidator(
   'json',
-  z.object({ reason: z.string().trim().min(1).max(500) }),
+  z.object({ reason: z.string().trim().min(1).max(REASON_LINE_MAX) }),
   invalid('invalid body: { reason }, why the naming is undone.'),
 );
 

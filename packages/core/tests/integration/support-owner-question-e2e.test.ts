@@ -123,7 +123,7 @@ describe("ISS-871: a master's question asked of the owner through the channel", 
     expect(outs.shape?.isError, JSON.stringify(outs.shape)).toBe(true);
   });
 
-  it('keeps the answer of an owner linked to no Forge account as a refusal, tells the agent, and leaves the question open', async () => {
+  it('keeps the answer of an owner linked to no Forge account, tells the agent who owes the setup, and leaves the question open', async () => {
     const id = await masterAsks('Resend PO 1453 now?');
     const { thread, out } = await agentAsks(id, 'can the master resend PO 1453?');
     expect(out, JSON.stringify(out)).toMatchObject({ isError: false, forgeQuestion: id });
@@ -139,7 +139,13 @@ describe("ISS-871: a master's question asked of the owner through the channel", 
       .toHaveLength(1);
     expect((await question(id))?.status).toBe('open');
     const told = answer.turn.messages.find((m) => m.from === 'forge' && m.text.includes(id));
-    expect(told?.text).toContain('linked to no Forge account');
+    // ISS-976: the answer is kept to record once his account is named, and the agent never asks him
+    expect(told?.text).toContain('no Forge account yet');
+    expect(told?.text).toContain('noted and waits on a setup step its admins own');
+    expect(told?.text).not.toContain('ask them to link');
+    const kept = await rows<{ input: { questionId: string; message: string } }>(sql`
+      SELECT input FROM support_actions WHERE kind = 'answer_kept' AND input ->> 'questionId' = ${id}`);
+    expect(kept.map((k) => k.input.message)).toEqual([answer.id]);
   });
 
   it("records the linked owner's answer on the question, as the owner, and the master's wait ends", async () => {

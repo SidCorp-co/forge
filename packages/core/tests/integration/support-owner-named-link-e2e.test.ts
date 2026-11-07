@@ -20,6 +20,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/assistant/identity/routes.ts
 // @direct-test-of packages/core/src/assistant/identity/named-links.ts
 // @direct-test-of packages/core/src/assistant/identity/speaker-link.ts
+// @direct-test-of packages/core/src/db/schema-speaker-links.ts
 //
 // ISS-976 (FB-499, FB-563): the agenfold owner, named on the binding by his chat id, answered two
 // parked questions in his own room, and neither was recorded: his chat account was linked to no Forge
