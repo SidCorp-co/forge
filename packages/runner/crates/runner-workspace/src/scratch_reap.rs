@@ -219,13 +219,29 @@ fn tree_is_older_than(top: &Path, age: Duration) -> bool {
 mod tests {
     use super::*;
 
-    fn scratch() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("forge-scratch-reap-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&d).unwrap();
-        d
+    /// A temp directory removed when the test ends.
+    struct Scratch(PathBuf);
+
+    impl std::ops::Deref for Scratch {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.0
+        }
     }
 
-    fn no_procs() -> PathBuf {
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn scratch() -> Scratch {
+        let d = std::env::temp_dir().join(format!("forge-scratch-reap-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&d).unwrap();
+        Scratch(d)
+    }
+
+    fn no_procs() -> Scratch {
         scratch()
     }
 
@@ -333,7 +349,8 @@ mod tests {
     #[tokio::test]
     async fn a_symlink_is_never_followed_or_removed() {
         let root = scratch();
-        let target = aged(&scratch(), "forge-run-real", 5);
+        let elsewhere = scratch();
+        let target = aged(&elsewhere, "forge-run-real", 5);
         std::os::unix::fs::symlink(&target, root.join("forge-run-link")).unwrap();
         let swept = reap_scratch_in(&root, MIN_AGE, &HeldTrees::default(), &no_procs()).await;
         assert!(swept.removed.is_empty() && target.exists());

@@ -289,6 +289,8 @@ mod tests {
     }
 
     struct World {
+        /// The temp tree holding the other three, removed when the test ends.
+        root: PathBuf,
         seed: PathBuf,
         bare: PathBuf,
         checkout: PathBuf,
@@ -296,6 +298,12 @@ mod tests {
         one: String,
         two: String,
         side: String,
+    }
+
+    impl Drop for World {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
     }
 
     fn world() -> World {
@@ -330,6 +338,7 @@ mod tests {
             ],
         );
         World {
+            root,
             seed,
             bare,
             checkout,

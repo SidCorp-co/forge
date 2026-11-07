@@ -330,10 +330,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(record_path(&dir), r#"{"version":9,"entries":[]}"#).unwrap();
         let err = record(&dir, vec![], Merge::Upsert).unwrap_err();
+        let left = read(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
         assert!(
             err.contains("newer build's record") && err.contains("version 9"),
             "{err}"
         );
-        assert!(matches!(read(&dir), Read::Unreadable(w) if w.contains("version 9")));
+        assert!(matches!(left, Read::Unreadable(w) if w.contains("version 9")));
     }
 }

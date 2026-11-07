@@ -269,8 +269,36 @@ mod tests {
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
+    /// A path in a temp tree that is removed, root and all, when the test ends.
+    struct Scratch {
+        root: PathBuf,
+        at: PathBuf,
+    }
+
+    impl std::ops::Deref for Scratch {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.at
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn scratch(tag: &str) -> Scratch {
+        let root = std::env::temp_dir().join(format!("forge-head-{tag}{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        Scratch {
+            at: root.clone(),
+            root,
+        }
+    }
+
     /// A clone whose origin is a local bare repository holding `dev` one commit ahead of the clone.
-    fn clone_of_local_bare() -> (PathBuf, String) {
+    fn clone_of_local_bare() -> (Scratch, String) {
         let root = std::env::temp_dir().join(format!("forge-head-{}", uuid::Uuid::new_v4()));
         let seed = root.join("seed");
         std::fs::create_dir_all(&seed).unwrap();
@@ -303,7 +331,7 @@ mod tests {
         git(&seed, &["commit", "-q", "-am", "two"]);
         git(&seed, &["push", "-q", bare.to_str().unwrap(), "dev"]);
         let head = git(&seed, &["rev-parse", "HEAD"]);
-        (checkout, head)
+        (Scratch { root, at: checkout }, head)
     }
 
     #[tokio::test]
@@ -335,8 +363,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_path_that_is_no_checkout_is_said() {
-        let dir = std::env::temp_dir().join(format!("forge-head-none-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = scratch("none-");
         let why = read_head(&dir, "dev").await.unwrap_err();
         assert!(why.contains(&dir.display().to_string()), "{why}");
         let missing = dir.join("gone");
@@ -456,9 +483,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_checkout_with_no_origin_is_said() {
-        let dir =
-            std::env::temp_dir().join(format!("forge-head-noorigin-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = scratch("noorigin-");
         git(&dir, &["init", "-q"]);
         let why = read_head(&dir, "dev").await.unwrap_err();
         assert!(why.contains("origin"), "{why}");

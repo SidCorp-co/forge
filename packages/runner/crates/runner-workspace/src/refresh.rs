@@ -316,8 +316,27 @@ mod tests {
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
+    /// A path in a temp tree that is removed, root and all, when the test ends.
+    struct Scratch {
+        root: PathBuf,
+        at: PathBuf,
+    }
+
+    impl std::ops::Deref for Scratch {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.at
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
     /// A checkout of a local bare origin on `dev`, where origin is one unrelated commit ahead.
-    fn checkout_with(files: &[(&str, &str)]) -> PathBuf {
+    fn checkout_with(files: &[(&str, &str)]) -> Scratch {
         let root = std::env::temp_dir().join(format!("forge-refresh-{}", uuid::Uuid::new_v4()));
         let seed = root.join("seed");
         std::fs::create_dir_all(&seed).unwrap();
@@ -359,7 +378,7 @@ mod tests {
         run(&seed, &["add", "upstream.txt"]);
         run(&seed, &["commit", "-q", "-m", "two"]);
         run(&seed, &["push", "-q", bare.to_str().unwrap(), "dev"]);
-        checkout
+        Scratch { root, at: checkout }
     }
 
     fn read(repo: &Path, path: &str) -> String {

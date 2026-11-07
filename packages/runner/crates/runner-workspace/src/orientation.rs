@@ -538,7 +538,7 @@ mod tests {
     const DEV: &str = "d1bb4907-74d9-4228-85ff-76121523af7d";
 
     /// A seed repository committing `files`, and a clone of it.
-    fn cloned(name: &str, files: &[(&str, &str)]) -> (PathBuf, PathBuf) {
+    fn cloned(name: &str, files: &[(&str, &str)]) -> (Scratch, PathBuf) {
         let seed = repo_with(name, files);
         let co = seed.with_file_name(format!(
             "{}-co",
@@ -687,11 +687,32 @@ mod tests {
         assert_eq!(pull(&co), Ok(()));
     }
 
-    fn scratch(name: &str) -> PathBuf {
-        let dir =
+    /// A path in a temp tree that is removed, root and all, when the test ends.
+    struct Scratch {
+        root: PathBuf,
+        at: PathBuf,
+    }
+
+    impl std::ops::Deref for Scratch {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.at
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    /// `root/<name>`, so a clone cut beside it (`<name>-co`) goes with the root.
+    fn scratch(name: &str) -> Scratch {
+        let root =
             std::env::temp_dir().join(format!("forge-orient-{name}-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+        let at = root.join(name);
+        std::fs::create_dir_all(&at).unwrap();
+        Scratch { root, at }
     }
 
     fn git(dir: &Path, args: &[&str]) -> String {
@@ -713,7 +734,7 @@ mod tests {
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 
-    fn repo_with(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    fn repo_with(name: &str, files: &[(&str, &str)]) -> Scratch {
         let repo = scratch(name);
         git(&repo, &["init", "-q"]);
         for (path, body) in files {
