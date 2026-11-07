@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.560] - 2026-11-07
+
+Change requests opened through Forge link their issues at once
+
+### Fixed
+
+- **A change request links its issues as soon as it opens.** Draft and `Batch ISS-1/2` titles and `batch-` branches link every issue they name, a merge re-reads a named request first, and refusals explain linking and name the bound host.
+
 ## [0.4.0-dev.559] - 2026-11-07
 
 Pages load once instead of re-reading the same data on every route
