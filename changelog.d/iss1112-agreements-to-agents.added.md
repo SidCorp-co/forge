@@ -1,0 +1,1 @@
+**Agents receive the working agreements in force for their task.** Every orientation and job prompt carries the map, resolved for the issue's labels, and each run records the agreement revisions it got (ISS-1112).
