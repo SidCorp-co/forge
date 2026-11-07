@@ -1,5 +1,6 @@
 // @direct-test-of packages/core/src/support/lost-turns.ts
 // @direct-test-of packages/core/src/support/turn-retry.ts
+// @direct-test-of packages/core/src/support/room-session.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -65,6 +66,9 @@ async function lostMidTurn(text: string, reply = false): Promise<string> {
 }
 
 async function loseTheTurn(): Promise<void> {
+  // the room's session now: one a lost turn ended is let go and the room takes a fresh one (ISS-1101)
+  const [room] = await w.rooms();
+  sessionId = String(room?.sessionId);
   w.box.lose(sessionId);
   await db.execute(sql`UPDATE agent_sessions
     SET last_heartbeat_at = now() - interval '10 minutes', updated_at = now() - interval '10 minutes'
