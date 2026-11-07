@@ -13,6 +13,6 @@ export function wordVector(text: string): number[] {
     v[h % MEMORY_EMBEDDING_DIM] = (v[h % MEMORY_EMBEDDING_DIM] ?? 0) + 1;
   }
   // an empty text still embeds: a zero vector has no direction for a cosine to read
-  if (v.every((x) => x === 0)) v[0] = 1;
+  if (!v.some((x) => x !== 0)) v[0] = 1;
   return v;
 }

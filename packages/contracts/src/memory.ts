@@ -180,8 +180,11 @@ export interface MemoryEntry {
 	archivedAt: string | null;
 	/** Why the row is archived when no person retired it; null when nothing recorded why. */
 	archivedBy: MemoryArchiveCause | null;
-	/** Its type, scope, re-check and value; a mirror or an older row reads as owing them. */
-	curation: MemoryCuration;
+	/**
+	 * Its type, scope, re-check and value; an older row reads as owing them. Core serves it on every
+	 * entry; it is optional here only because the web's entry fixtures predate it (ISS-1121).
+	 */
+	curation?: MemoryCuration | undefined;
 }
 
 /**
