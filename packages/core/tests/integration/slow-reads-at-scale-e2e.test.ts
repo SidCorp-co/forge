@@ -79,6 +79,11 @@ interface Statement {
   text: string;
   params: unknown;
   ms: number;
+  /** The rows it answered, each one the process parses and maps. */
+  rows?: number;
+  /** Its plan's planning and execution time, run again alone (`buffersOf`). */
+  planMs?: number;
+  execMs?: number;
   /** The `src/` frames that sent it, when SLOW_READS_STACKS asks for them. */
   site?: string | undefined;
 }
@@ -160,10 +165,11 @@ async function measured(path: string, as: string = token): Promise<Measure> {
         // kept in the order sent, its time filled in when it answers
         const sent: Statement = { text: String(args[0]), params: args[1], ms: 0, site };
         statements.push(sent);
-        const done = () => {
+        const done = (result?: unknown) => {
           sent.ms = performance.now() - started;
+          if (Array.isArray(result)) sent.rows = result.length;
         };
-        Promise.prototype.then.call(this, done, done);
+        Promise.prototype.then.call(this, done, () => done());
       }
       return handle.call(this);
     };
@@ -231,7 +237,14 @@ async function buffersOf(s: Statement): Promise<number | null> {
     }
   ).$client;
   const [row] = await client.unsafe(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${s.text}`, s.params);
-  const [top] = (row?.['QUERY PLAN'] ?? []) as { Plan: Record<string, number> }[];
+  const [top] = (row?.['QUERY PLAN'] ?? []) as {
+    Plan: Record<string, number>;
+    'Planning Time'?: number;
+    'Execution Time'?: number;
+  }[];
+  // what the database spends on it alone, planning and running, kept beside the statement
+  s.planMs = top?.['Planning Time'] ?? 0;
+  s.execMs = top?.['Execution Time'] ?? 0;
   return (top?.Plan['Shared Hit Blocks'] ?? 0) + (top?.Plan['Shared Read Blocks'] ?? 0);
 }
 
@@ -312,16 +325,37 @@ function report(label: string, m: Measure): string {
 
 /** The statements touching the most shared buffers, by the code that sent them where it is named. */
 function heaviestSites(heaviest: { own: number; s: Statement }[]): string[] {
-  const by = new Map<string, { n: number; own: number }>();
+  const by = new Map<string, { n: number; own: number; rows: number; plan: number }>();
   for (const { own, s } of heaviest) {
     const at = s.site?.split(' < ')[0] ?? s.text.replace(/\s+/g, ' ').slice(0, 120);
-    const was = by.get(at) ?? { n: 0, own: 0 };
-    by.set(at, { n: was.n + 1, own: was.own + own });
+    const was = by.get(at) ?? { n: 0, own: 0, rows: 0, plan: 0 };
+    by.set(at, {
+      n: was.n + 1,
+      own: was.own + own,
+      rows: was.rows + (s.rows ?? 0),
+      plan: was.plan + (s.planMs ?? 0),
+    });
   }
-  return [...by]
-    .sort((a, b) => b[1].own - a[1].own)
-    .slice(0, Number(process.env.SLOW_READS_HEAVIEST ?? 8))
-    .map(([at, { n, own }]) => `  ${String(own).padStart(8)} buf in ${n}  ${at}`);
+  const top = (of: (v: { own: number; rows: number; plan: number }) => number) =>
+    [...by]
+      .sort((a, b) => of(b[1]) - of(a[1]))
+      .slice(0, Number(process.env.SLOW_READS_HEAVIEST ?? 8));
+  const rows = heaviest.reduce((n, { s }) => n + (s.rows ?? 0), 0);
+  const plan = heaviest.reduce((n, { s }) => n + (s.planMs ?? 0), 0);
+  const exec = heaviest.reduce((n, { s }) => n + (s.execMs ?? 0), 0);
+  return [
+    `  alone, the database plans them in ${plan.toFixed(0)} ms and runs them in ${exec.toFixed(0)} ms`,
+    ...top((v) => v.own).map(
+      ([at, { n, own, rows }]) => `  ${String(own).padStart(8)} buf in ${n} (${rows} rows)  ${at}`,
+    ),
+    ...top((v) => v.plan).map(
+      ([at, { n, plan }]) => `  ${plan.toFixed(1).padStart(8)} ms planning ${n}  ${at}`,
+    ),
+    `  ${rows} rows in all`,
+    ...top((v) => v.rows).map(
+      ([at, { n, own, rows }]) => `  ${String(rows).padStart(8)} rows in ${n} (${own} buf)  ${at}`,
+    ),
+  ];
 }
 
 /** Each call site's statements: how many, and their summed time, the most first. */
@@ -416,15 +450,18 @@ async function judged(
     const runs = [await measured(path, as), await measured(path, as), await measured(path, as)];
     if (process.env.SLOW_READS_PROFILE) await profiled(path, process.env.SLOW_READS_PROFILE, as);
     const median = [...runs].sort((a, b) => a.ms - b.ms)[1] as Measure;
-    const plans = process.env.SLOW_READS_EXPLAIN
+    // SLOW_READS_EXPLAIN=1 plans the three slowest; any other value is a pattern naming the statements to plan
+    const explain = process.env.SLOW_READS_EXPLAIN;
+    const match = explain && explain !== '1' ? new RegExp(explain) : null;
+    const plans = explain
       ? await Promise.all(
-          [...median.statements]
-            .sort((a, b) => b.ms - a.ms)
-            .slice(0, 3)
-            .map(
-              async (s) =>
-                `    plan of ${s.text.replace(/\s+/g, ' ').slice(0, 120)}\n${await explained(s)}`,
-            ),
+          (match
+            ? median.statements.filter((s) => match.test(s.text)).slice(0, 2)
+            : [...median.statements].sort((a, b) => b.ms - a.ms).slice(0, 3)
+          ).map(
+            async (s) =>
+              `    plan of ${s.text.replace(/\s+/g, ' ').slice(0, 120)}\n${await explained(s)}`,
+          ),
         )
       : [];
     // each statement's plan stays within the ceiling: no read pays once per row for what one read answers
