@@ -18,23 +18,23 @@ import {
 const declaring = async <T>(projects: readonly string[], fn: () => Promise<T>): Promise<T> =>
   (await readAcross(projects, String, async (p) => (p === projects[0] ? fn() : undefined)))[0] as T;
 
-describe('a batch at the quiet point', () => {
-  const perId = () => {
-    const asked: string[][] = [];
-    return {
-      asked,
-      read: async (ids: readonly string[]) => {
-        asked.push([...ids]);
-        return new Map(ids.map((id) => [id, id]));
-      },
-    };
+const perId = () => {
+  const asked: string[][] = [];
+  return {
+    asked,
+    read: async (ids: readonly string[]) => {
+      asked.push([...ids]);
+      return new Map(ids.map((id) => [id, id]));
+    },
   };
-  const turns = (n: number) =>
-    Array.from({ length: n }).reduce<Promise<void>>(
-      (p) => p.then(() => new Promise((ok) => setImmediate(ok))),
-      Promise.resolve(),
-    );
+};
+const turns = (n: number) =>
+  Array.from({ length: n }).reduce<Promise<void>>(
+    (p) => p.then(() => new Promise((ok) => setImmediate(ok))),
+    Promise.resolve(),
+  );
 
+describe('a batch at the quiet point', () => {
   it('waits while a statement of the request is out, then reads every ask made meanwhile at once', async () => {
     const r = perId();
     const timing = newQueryTiming();
@@ -101,41 +101,6 @@ describe('a batch at the quiet point', () => {
 
   it('joins and splits an id of several parts', () => {
     expect(partsOf(idOfParts('p', 'v1.2'))).toEqual(['p', 'v1.2']);
-  });
-
-  it('drops every id of a batch that failed, so the next ask reads them again', async () => {
-    let calls = 0;
-    const flaky = async (ids: readonly string[]) => {
-      calls += 1;
-      if (calls === 1) throw new Error('statement failed');
-      return new Map(ids.map((id) => [id, { id }]));
-    };
-    await withReadMemo(() =>
-      declaring(['p', 'q'], async () => {
-        await expect(memoizedPerId('k', ['a', 'b'], flaky)).rejects.toThrow('statement failed');
-        expect([...(await memoizedPerId('k', ['b', 'a'], flaky)).keys()]).toEqual(['b', 'a']);
-      }),
-    );
-    expect(calls).toBe(2);
-  });
-
-  it("hands every asker of a batch the one answer, read-only down to each id's value", async () => {
-    const r = perId();
-    await withReadMemo(() =>
-      declaring(['p', 'q'], async () => {
-        const [first, second] = await Promise.all([
-          memoizedPerId('k', ['a', 'b'], async (ids) => {
-            await r.read(ids);
-            return new Map(ids.map((id) => [id, { id, rows: [id] }]));
-          }),
-          memoizedPerId('k', ['b'], async () => new Map()),
-        ]);
-        const b = first.get('b') as { rows: string[] };
-        expect(second.get('b')).toBe(b);
-        expect(() => b.rows.push('changed')).toThrow(TypeError);
-      }),
-    );
-    expect(r.asked).toEqual([['a', 'b']]);
   });
 
   describe('inside a read across projects', () => {
@@ -221,5 +186,42 @@ describe('a batch at the quiet point', () => {
       expect(rows).toEqual([[{ project: 'p1' }], [{ project: 'p2' }]]);
       expect(asked).toEqual([['p1', 'p2']]);
     });
+  });
+});
+
+describe('a batch answer', () => {
+  it('drops every id of a batch that failed, so the next ask reads them again', async () => {
+    let calls = 0;
+    const flaky = async (ids: readonly string[]) => {
+      calls += 1;
+      if (calls === 1) throw new Error('statement failed');
+      return new Map(ids.map((id) => [id, { id }]));
+    };
+    await withReadMemo(() =>
+      declaring(['p', 'q'], async () => {
+        await expect(memoizedPerId('k', ['a', 'b'], flaky)).rejects.toThrow('statement failed');
+        expect([...(await memoizedPerId('k', ['b', 'a'], flaky)).keys()]).toEqual(['b', 'a']);
+      }),
+    );
+    expect(calls).toBe(2);
+  });
+
+  it("hands every asker of a batch the one answer, read-only down to each id's value", async () => {
+    const r = perId();
+    await withReadMemo(() =>
+      declaring(['p', 'q'], async () => {
+        const [first, second] = await Promise.all([
+          memoizedPerId('k', ['a', 'b'], async (ids) => {
+            await r.read(ids);
+            return new Map(ids.map((id) => [id, { id, rows: [id] }]));
+          }),
+          memoizedPerId('k', ['b'], async () => new Map()),
+        ]);
+        const b = first.get('b') as { rows: string[] };
+        expect(second.get('b')).toBe(b);
+        expect(() => b.rows.push('changed')).toThrow(TypeError);
+      }),
+    );
+    expect(r.asked).toEqual([['a', 'b']]);
   });
 });
