@@ -9,6 +9,7 @@ import {
   patGrantCovers,
   patPrefixForPath,
 } from '../credentials/pat-permissions.js';
+import { askAPersonDoor } from '../credentials/pat-remedy.js';
 import type {
   ToolGrant,
   ToolGrantEntry,
@@ -97,11 +98,17 @@ function assertToolDeclaresGrant(tool: GrantedTool): void {
   if (problem) refuse(problem);
 }
 
+/**
+ * Why a tool call is refused for want of a grant, or null where its grant covers it. A token is
+ * never widened by its own hand, so one fenced to projects (every agent's) is sent to a person
+ * through a door it opens, and an unfenced one to minting a token that holds it.
+ */
 export function toolGrantRefusal(
   tool: GrantedTool,
   args: Record<string, unknown>,
   granted: readonly string[] | null,
   holder = 'this token',
+  fence: readonly string[] | null = null,
 ): string | null {
   const grant = tool.grant;
   if (grant === undefined || grant === null) {
@@ -118,10 +125,13 @@ export function toolGrantRefusal(
   const what = byAction ? `${tool.name} action '${action}'` : tool.name;
   if (isNone(entry)) return null;
   if (patGrantCovers(granted, entry)) return null;
+  const remedy =
+    fence === null
+      ? `Mint a token that includes '${entry}', or one granted '${PAT_PERMISSION_ALL}'.`
+      : `A person signed in to Forge grants it, minting a token that holds it: ${askAPersonDoor(granted)}.`;
   return (
     `FORBIDDEN: ${what} needs '${entry}', and ${holder} was not granted it ` +
-    `(it holds: ${(granted ?? []).join(', ')}). Nothing was done. Mint a token that includes ` +
-    `'${entry}', or one granted '${PAT_PERMISSION_ALL}'.`
+    `(it holds: ${(granted ?? []).join(', ')}). Nothing was done. ${remedy}`
   );
 }
 

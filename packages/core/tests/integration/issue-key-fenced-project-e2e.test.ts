@@ -29,9 +29,8 @@ beforeAll(async () => {
   // the same key in both projects: only the fence says which one is meant
   homeIssue = (await createTestIssue(home, userId, 7, { status: 'open', createdAt: new Date() }))
     .id;
-  otherIssue = (
-    await createTestIssue(other, userId, 7, { status: 'open', createdAt: new Date() })
-  ).id;
+  otherIssue = (await createTestIssue(other, userId, 7, { status: 'open', createdAt: new Date() }))
+    .id;
 });
 
 describe('a display key read without ?projectId=', () => {
@@ -52,7 +51,11 @@ describe('a display key read without ?projectId=', () => {
   });
 
   it('still asks a token fenced to several projects which one', async () => {
-    const res = await api(await patToken(userId, [home, other], 'both'), 'GET', '/api/issues/ISS-7');
+    const res = await api(
+      await patToken(userId, [home, other], 'both'),
+      'GET',
+      '/api/issues/ISS-7',
+    );
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(JSON.stringify(res.body)).toContain('?projectId=<project uuid>');
   });

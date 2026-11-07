@@ -18,7 +18,7 @@ interface ToolCallBound {
 function accountRefusal(work: string | null, bound: ToolCallBound): string | null {
   if (work === null) return null;
   try {
-    runWithPatScope({ projectIds: bound.fence, tokenId: bound.tokenId }, () =>
+    runWithPatScope({ projectIds: bound.fence, tokenId: bound.tokenId, grant: bound.grant }, () =>
       assertUnfenced(work),
     );
     return null;
@@ -42,6 +42,6 @@ export function toolCallRefusal(
   return (
     accountRefusal(toolAccountWork(tool, args), bound) ??
     toolEpochRefusal(tool, args, bound.grantEpoch) ??
-    toolGrantRefusal(tool, args, bound.grant, holder)
+    toolGrantRefusal(tool, args, bound.grant, holder, bound.fence)
   );
 }
