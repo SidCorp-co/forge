@@ -4,9 +4,6 @@
     "channels.loading": "Loading channels",
     "channels.none": "No channels",
     "channels.col.channel": "Channel",
-    "channels.col.members": "Members",
-    "channels.col.rules": "Rules",
-    "channels.col.commonIssues": "Common issues",
     "channels.members": "Members",
     "channels.rules": "Rules",
     "channels.commonIssues": "Common issues",
@@ -34,6 +31,14 @@
     "channels.edit": "Edit",
     "channels.confirm": "Confirm",
     "channels.cancel": "Cancel",
-    "channels.saveFailed": "Not saved: {reason}"
+    "channels.saveFailed": "Not saved: {reason}",
+    "channels.unnamed": "Unnamed channel",
+    "channels.group.bound": "Bound",
+    "channels.count.members.one": "{n} member",
+    "channels.count.members.many": "{n} members",
+    "channels.count.rules.one": "{n} rule",
+    "channels.count.rules.many": "{n} rules",
+    "channels.count.commonIssues.one": "{n} common issue",
+    "channels.count.commonIssues.many": "{n} common issues"
   }
 }

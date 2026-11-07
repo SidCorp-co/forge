@@ -37,8 +37,26 @@ describe("a bound channel's page (REQ-75 r6)", () => {
   it("lists the project's bound channels by name with their counts", async () => {
     fakeCore((c) => (c.path === "/projects/p1/support/channels" ? { body: { channels: [{ rid: webmail.rid, name: "webmail", members: 2, rules: 1, commonIssues: 1 }] } } : undefined));
     renderWithQuery(<ChannelsScreen projectId="p1" slug="mail" />);
-    const link = await screen.findByRole("link", { name: "#webmail" });
+    const link = await screen.findByRole("link", { name: /#webmail/ });
     expect(link.getAttribute("href")).toContain(`/projects/mail/channels/${webmail.rid}`);
+  });
+
+  it("lists the channels on the shared grouped list, a name leading each row and only the counts that hold something (ISS-1072)", async () => {
+    fakeCore((c) =>
+      c.path === "/projects/p1/support/channels"
+        ? { body: { channels: [{ rid: webmail.rid, name: "webmail", members: 2, rules: 0, commonIssues: 1 }, { rid: "GENERAL-rid-1", name: null, members: 0, rules: 0, commonIssues: 0 }] } }
+        : undefined,
+    );
+    renderWithQuery(<ChannelsScreen projectId="p1" slug="mail" />);
+    const list = await screen.findByTestId("grouped-list");
+    expect(screen.queryByRole("table")).toBeNull();
+    const rows = within(list).getAllByTestId("list-row");
+    expect(rows.map((r) => r.querySelector(".truncate")?.textContent)).toEqual(["#webmail", "Unnamed channel"]);
+    expect(within(rows[0]).getByTestId("row-facts").textContent).toBe("2 members·1 common issue");
+    expect(within(rows[1]).queryByTestId("row-facts")).toBeNull();
+    expect(list.textContent).not.toContain("GENERAL-rid-1");
+    fireEvent.click(rows[0]);
+    await waitFor(() => expect(window.location.pathname).toBe(`/projects/mail/channels/${webmail.rid}`));
   });
 
   it("shows Members, Rules, Common issues and Routes as four flat tables", async () => {
