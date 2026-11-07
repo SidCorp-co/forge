@@ -2,6 +2,7 @@
 // socket, the room routing and the dedupe; deciding what a message means is the assistant's and
 // the conversations' work, handed in at boot so this directory imports neither.
 
+import type { SupportRoomConfig } from '@forge/contracts/support';
 import { portSlot } from '../../lib/port-slot.js';
 import type { ActiveConnection } from './connection-manager.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
@@ -96,3 +97,21 @@ export interface AgentProjectsGate {
 const projectsGateSlot = portSlot<AgentProjectsGate>('rocketchat', 'provideAgentProjectsGate');
 export const provideAgentProjectsGate = projectsGateSlot.provide;
 export const agentProjectsGate = projectsGateSlot.get;
+
+/**
+ * What the support domain answers the binding door with for a block's persona (REQ-90 BC-11): the
+ * refusals where the persona and the grants or the project's rulings say different things about who
+ * agrees to one act. Handed in at boot, so this directory reads no knowledge table.
+ */
+export interface BriefGrantGate {
+  refusals(args: {
+    projectId: string;
+    /** The block's path, `/support` or `/agent`, and the block as written. */
+    at: '/support' | '/agent';
+    block: SupportRoomConfig;
+  }): Promise<{ path: string; detail: string }[]>;
+}
+
+const briefGateSlot = portSlot<BriefGrantGate>('rocketchat', 'provideBriefGrantGate');
+export const provideBriefGrantGate = briefGateSlot.provide;
+export const briefGrantGate = briefGateSlot.get;

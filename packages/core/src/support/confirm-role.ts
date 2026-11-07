@@ -56,9 +56,11 @@ export async function requestIsConsent(
   grants: SupportGrants,
   asker: { key: string | null; label: string | null },
   act: SupportProposalKind,
+  /** The project the proposal names by slug; the room's home where it names none (REQ-90 BC-12). */
+  target?: string | null,
 ): Promise<RequestConsent | null> {
   if (await mayConfirmChange(room, grants, asker)) return { by: 'confirmer' };
-  const ruling = await deciderFor(room, act, asker);
+  const ruling = await deciderFor(room, act, asker, target);
   return ruling ? { by: 'decider', ...ruling } : null;
 }
 

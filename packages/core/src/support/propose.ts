@@ -179,7 +179,13 @@ async function ownRequestConsents(
 ): Promise<RequestConsent | null> {
   const grants = grantsOf(await supportConfigOf(room));
   if (fix.kind === 'filing' && isNamedOwner(grants, asker.key)) return { by: 'confirmer' };
-  return requestIsConsent(room, grants, asker, fix.kind);
+  return requestIsConsent(
+    room,
+    grants,
+    asker,
+    fix.kind,
+    (fix.args as { project?: string } | null)?.project,
+  );
 }
 
 export async function proposeFix(input: {

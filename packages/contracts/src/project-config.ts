@@ -99,6 +99,8 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_AGENT_PROJECT_NOT_ADMIN",
 	/** `projects` on a block other than a channel agent's (ISS-874). */
 	"SUPPORT_AGENT_PROJECTS_NOT_AGENT",
+	/** A room's persona and its grants or rulings state contradicting rules for who agrees to one act (REQ-90 BC-11). */
+	"SUPPORT_BRIEF_CONTRADICTS_GRANT",
 	/** A group another active binding already answers: two sessions would answer it (ISS-874). */
 	"SUPPORT_ROOM_ANSWERED_TWICE",
 	/** A channel agent's `rooms` names a group the binding does not answer, sits on another block, or makes the owner's room a users' room (ISS-874). */

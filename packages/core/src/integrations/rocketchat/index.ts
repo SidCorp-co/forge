@@ -58,8 +58,10 @@ export { resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';
 export {
   type AgentProjectsGate,
   type AgentSwitchGate,
+  type BriefGrantGate,
   provideAgentProjectsGate,
   provideAgentSwitchGate,
+  provideBriefGrantGate,
   provideRoomHandlers,
   provideSupportRoomHandler,
 } from './room-handlers.js';

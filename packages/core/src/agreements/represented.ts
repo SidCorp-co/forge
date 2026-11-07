@@ -165,12 +165,12 @@ export function languageAgreement(projectId: string, held: LanguageHeld): Repres
   };
 }
 
-/** `@thanhnh agrees to recording work (a filing) on sid-desk`, or `any member of the room`. */
+/** `@thanhnh decides recording work (a filing) on sid-desk`; `*` reads `any member of the room`. */
 export function deciderWords(d: Pick<RulingDecider, 'member' | 'acts' | 'targets'>): string {
   const who = d.member === ANY_ROOM_MEMBER ? 'any member of the room' : `@${d.member}`;
   const acts = d.acts.map((a) => CHANNEL_DECIDER_ACT_LABEL[a] ?? a).join(', ');
   const where = d.targets?.length ? ` on ${d.targets.join(', ')}` : '';
-  return `${who} agrees to ${acts}${where}`;
+  return `${who} decides ${acts}${where}`;
 }
 
 /**

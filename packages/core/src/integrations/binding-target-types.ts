@@ -23,7 +23,8 @@ export interface BindingTargetRefusal {
     | 'SUPPORT_AGENT_PROJECTS_NOT_AGENT'
     | 'SUPPORT_ROOM_ANSWERED_TWICE'
     | 'SUPPORT_ROOM_OVERRIDE_UNKNOWN'
-    | 'SUPPORT_TOOL_NAME_TAKEN';
+    | 'SUPPORT_TOOL_NAME_TAKEN'
+    | 'SUPPORT_BRIEF_CONTRADICTS_GRANT';
   path: string;
   detail: string;
 }

@@ -9,12 +9,14 @@ import { provideChannelAgentQuestions, provideSpeakerLinkedListener } from '../a
 import {
   provideAgentProjectsGate,
   provideAgentSwitchGate,
+  provideBriefGrantGate,
   provideSupportRoomHandler,
 } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
 import { onBoxListening } from '../lib/ws-listening.js';
 import { consume } from '../outbox/index.js';
 import { agentProjectsGate } from './agent-projects.js';
+import { briefGrantRefusals } from './brief-grant.js';
 import { fireDueChecks } from './checks.js';
 import { deliverWaiting, drainSupportRooms, onSupportTurnEnded } from './dispatch.js';
 import { expireSupportFixes } from './fixes.js';
@@ -78,6 +80,8 @@ export function registerSupportRooms(): void {
   // a group an outside bot answers joins the channel agent only through its switch (REQ-77 BC-16)
   provideAgentSwitchGate(agentSwitchGate);
   provideAgentProjectsGate(agentProjectsGate);
+  // a persona and its grants never state two rules for who agrees to one act (REQ-90 BC-11)
+  provideBriefGrantGate({ refusals: briefGrantRefusals });
   provideTerminalSessionBridge(SUPPORT_SESSION_MARKER, onSupportTurnEnded);
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
   // a link confirmed on the link page is told to the sessions of the rooms its account wrote in

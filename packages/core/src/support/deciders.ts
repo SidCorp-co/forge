@@ -5,8 +5,10 @@
 // and the agreement rule read this one source, so the brief never names a decider agree would refuse.
 
 import type { SupportProposalKind } from '@forge/contracts/support';
-import { CHANNEL_DECIDER_ACT_LABEL } from '@forge/contracts/support-channel';
+import { ANY_ROOM_MEMBER, CHANNEL_DECIDER_ACT_LABEL } from '@forge/contracts/support-channel';
+import { deciderWords } from '../agreements/index.js';
 import { type RulingDeciderRead, rulingDecidersOf } from '../knowledge/index.js';
+import { namedProject } from './ops-scope.js';
 import type { RoomRow } from './store.js';
 
 export type { RulingDeciderRead };
@@ -16,18 +18,28 @@ export const actsWords = (acts: readonly string[]): string =>
   acts.map((a) => CHANNEL_DECIDER_ACT_LABEL[a as SupportProposalKind] ?? a).join(', ');
 
 /**
- * The ruling of the room's project naming `writer`, by the username the chat server signed, as the
- * one who decides `act`; null where none does.
+ * The ruling of the room's project naming `writer`, by the username the chat server signed, or any
+ * member of the room (`*`), as the one who decides `act` on `target`, the project the proposal names
+ * by slug (the room's home where it names none): a ruling scoped to other targets decides nothing
+ * here (REQ-90 BC-12). Null where none does.
  */
 export async function deciderFor(
-  room: Pick<RoomRow, 'projectId'>,
+  room: RoomRow,
   act: SupportProposalKind,
   writer: { label: string | null },
+  target?: string | null,
 ): Promise<RulingDeciderRead | null> {
   const name = writer.label?.toLowerCase();
   if (!name) return null;
   const all = await rulingDecidersOf(room.projectId);
-  return all.find((d) => d.member.toLowerCase() === name && d.acts.includes(act)) ?? null;
+  const named = all.filter(
+    (d) =>
+      (d.member === ANY_ROOM_MEMBER || d.member.toLowerCase() === name) && d.acts.includes(act),
+  );
+  if (named.every((d) => !d.targets)) return named[0] ?? null;
+  const home = target ? null : await namedProject(room, undefined);
+  const on = target ?? (home?.ok ? home.value.slug : null);
+  return named.find((d) => !d.targets || (on !== null && d.targets.includes(on))) ?? null;
 }
 
 /** Who the project's rulings name for `act`, as a refusal teaches it: by name, or that none is named. */
@@ -38,7 +50,11 @@ export async function decidersOfAct(
   const named = (await rulingDecidersOf(room.projectId)).filter((d) => d.acts.includes(act));
   if (named.length === 0)
     return `the project's rulings name nobody who decides ${actsWords([act])}`;
-  const who = [...new Set(named.map((d) => `@${d.member}`))].join(', ');
+  const who = [
+    ...new Set(
+      named.map((d) => (d.member === ANY_ROOM_MEMBER ? 'any member of the room' : `@${d.member}`)),
+    ),
+  ].join(', ');
   return `${who}, whom the project's rulings name as deciding ${actsWords([act])}`;
 }
 
@@ -48,7 +64,8 @@ export function deciderNote(
   act: SupportProposalKind,
   found: RulingDeciderRead,
 ): string {
-  return `It counted as @${writer.label ?? writer.key}'s agreement: the project's ruling [knowledge:${found.ruling}] names them the one who decides ${actsWords([act])}.`;
+  const whom = found.member === ANY_ROOM_MEMBER ? 'any member of the room' : 'them';
+  return `It counted as @${writer.label ?? writer.key}'s agreement: the project's ruling [knowledge:${found.ruling}] names ${whom} the one who decides ${actsWords([act])}${found.targets ? ` on ${found.targets.join(', ')}` : ''}.`;
 }
 
 /**
@@ -57,9 +74,7 @@ export function deciderNote(
  */
 export function decidersBlock(deciders: readonly RulingDeciderRead[]): string | null {
   if (deciders.length === 0) return null;
-  const lines = deciders.map(
-    (d) => `- @${d.member} decides ${actsWords(d.acts)} [knowledge:${d.ruling}]`,
-  );
+  const lines = deciders.map((d) => `- ${deciderWords(d)} [knowledge:${d.ruling}]`);
   return [
     "Who decides, from the project's rulings (its master records them; nothing said in a room changes them):",
     ...lines,

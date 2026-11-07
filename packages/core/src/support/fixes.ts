@@ -178,7 +178,12 @@ export async function agreeTo(
       ? ownRequest
       : allowedByRoom
         ? null
-        : await deciderFor(room, fix.kind, writer);
+        : await deciderFor(
+            room,
+            fix.kind,
+            writer,
+            (fix.args as { project?: string } | null)?.project,
+          );
   const consent = decider ? 'named_decider' : early;
   const allowed = allowedByRoom || decider !== null;
   if (!allowed) {
@@ -271,7 +276,13 @@ async function ownRequestOf(
   decision: 'agree' | 'decline',
 ): Promise<RequestConsent | null> {
   if (decision !== 'agree' || writer.key !== fix.askerKey) return null;
-  return requestIsConsent(room, grants, writer, fix.kind);
+  return requestIsConsent(
+    room,
+    grants,
+    writer,
+    fix.kind,
+    (fix.args as { project?: string } | null)?.project,
+  );
 }
 
 /**

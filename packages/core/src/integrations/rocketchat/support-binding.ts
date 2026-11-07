@@ -1,6 +1,7 @@
+import type { SupportRoomConfig } from '@forge/contracts/support';
 import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../index.js';
 import { listActiveBindingsNamingRid, listActiveDeployBindingsForProvider } from '../index.js';
-import { agentProjectsGate, agentSwitchGate } from './room-handlers.js';
+import { agentProjectsGate, agentSwitchGate, briefGrantGate } from './room-handlers.js';
 
 type Settled =
   | { ok: true; config: Record<string, unknown> }
@@ -312,6 +313,18 @@ async function switchRefusals(args: VerifyBindingTargetArgs): Promise<BindingTar
   return refused.map((r) => ({ code: 'AGENT_SWITCH_NOT_READY' as const, ...r }));
 }
 
+/** A block's persona against its grants and the project's rulings (REQ-90 BC-11), by the support domain. */
+async function briefRefusals(args: VerifyBindingTargetArgs): Promise<BindingTargetRefusal[]> {
+  const out: BindingTargetRefusal[] = [];
+  for (const at of ['/support', '/agent'] as const) {
+    const block = args.config[at.slice(1)] as SupportRoomConfig | null | undefined;
+    if (!block?.persona) continue;
+    const refused = await briefGrantGate().refusals({ projectId: args.projectId, at, block });
+    out.push(...refused.map((r) => ({ code: 'SUPPORT_BRIEF_CONTRADICTS_GRANT' as const, ...r })));
+  }
+  return out;
+}
+
 /**
  * A support group's grant names deploy targets by the project's own deploy bindings (REQ-75 r5
  * BC-27): one that is not an active Coolify binding of this project is refused by name at bind, so
@@ -327,6 +340,8 @@ export async function verifySupportGrant(
   if (following.length > 0) return following;
   const switching = await switchRefusals(args);
   if (switching.length > 0) return switching;
+  const contradicting = await briefRefusals(args);
+  if (contradicting.length > 0) return contradicting;
   type Granting = { grants?: { deployTargets?: string[] } } | undefined;
   const block = args.config.agent ? 'agent' : 'support';
   const named = (args.config[block] as Granting)?.grants?.deployTargets ?? [];
