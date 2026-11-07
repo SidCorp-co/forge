@@ -6,7 +6,12 @@
  */
 
 import { FEEDBACK_UNTRIAGED_PHASES, type FeedbackSummary } from '@forge/contracts/feedback';
-import type { FeedbackForecast, FeedbackForecasts } from '@forge/contracts/forecast';
+import type {
+  DeliveryForecast,
+  FeedbackForecast,
+  FeedbackForecasts,
+  FeedbackShippedOwes,
+} from '@forge/contracts/forecast';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -109,7 +114,19 @@ export async function readFeedbackForecastsOver(
  * is never late.
  */
 export const noWorkLine = (s: Pick<FeedbackSummary, 'key' | 'phase'>): FeedbackForecast | null =>
-  s.phase === 'declined' ? { key: s.key, triage: null, delivery: null } : null;
+  s.phase === 'declined' ? { key: s.key, triage: null, delivery: null, owes: null } : null;
+
+/**
+ * What an item whose work shipped still owes (ISS-1103): its phase is the feedback list's
+ * (`feedback/standing.ts:phaseOf`), resolved only once its requirement is delivered or its issues are
+ * closed, so a shipped line beside any other phase waits on the verdicts that deliver it. FB-512 on
+ * forge-dev read "Shipped 0.4.0-dev.532" beside "Planned" while REQ-86 waited on its judgement.
+ */
+export const owedAfterShip = (
+  phase: FeedbackSummary['phase'],
+  delivery: DeliveryForecast | null,
+): FeedbackShippedOwes | null =>
+  delivery?.shipped && phase !== 'resolved' && phase !== 'verified' ? 'judgement' : null;
 
 async function feedbackLinesOver(
   listedItems: readonly FeedbackSummary[],
@@ -163,6 +180,7 @@ async function feedbackLinesOver(
           waitOn({ who: w.says.who, act: w.says.act, reason: w.says.rule }, null, s.updatedAt),
         ),
         delivery: null,
+        owes: null,
       });
       continue;
     }
@@ -180,12 +198,19 @@ async function feedbackLinesOver(
     // a stuck item waits on what its standing names, never on a landing date the simulation guesses
     const stuck = stuckWaitOf({ stuck: s.times.stuck, waitingOn: s.waitingOn });
     const scope = rows ? scopeOf(reads, rows, 'requirement', scopeKey, null, stuck) : null;
-    own.set(s.id, { key: s.key, triage: null, delivery: scope?.delivery ?? null });
+    const delivery = scope?.delivery ?? null;
+    own.set(s.id, { key: s.key, triage: null, delivery, owes: owedAfterShip(s.phase, delivery) });
   }
   for (const s of pending) {
     const root = links.get(s.id)?.duplicate_of;
     const of = root ? own.get(root) : undefined;
-    own.set(s.id, { key: s.key, triage: of?.triage ?? null, delivery: of?.delivery ?? null });
+    const delivery = of?.delivery ?? null;
+    own.set(s.id, {
+      key: s.key,
+      triage: of?.triage ?? null,
+      delivery,
+      owes: owedAfterShip(s.phase, delivery),
+    });
   }
   return { asOf: reads.f.run.asOf, items, links, lines: own };
 }

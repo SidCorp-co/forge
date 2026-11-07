@@ -346,12 +346,22 @@ export function deliveryDatesOf(
 	return null;
 }
 
+/**
+ * What an item whose work shipped still owes before it reads done (ISS-1103): `judgement` while its
+ * phase is short of resolved, its requirement not yet delivered or its issues not yet closed, so the
+ * verdicts that deliver it are owed. Never set before the work shipped.
+ */
+export const FEEDBACK_SHIPPED_OWES = ["judgement"] as const;
+export type FeedbackShippedOwes = (typeof FEEDBACK_SHIPPED_OWES)[number];
+
 /** One feedback item: who triages it while untriaged, else its linked work's delivery. */
 export interface FeedbackForecast {
 	key: string;
 	triage: ForecastPaused | null;
 	/** Null where the item carries no work that ships: answered, declined, revision-routed. */
 	delivery: DeliveryForecast | null;
+	/** Set once `delivery.shipped` stands while the item is not resolved; null otherwise. */
+	owes: FeedbackShippedOwes | null;
 }
 
 export interface FeedbackForecasts extends ForecastStamp {
