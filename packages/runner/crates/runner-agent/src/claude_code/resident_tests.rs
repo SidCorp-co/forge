@@ -52,6 +52,7 @@ async fn try_stand_in(
                 project_slug: None,
                 checkout: crate::CheckoutView::Write,
                 siblings: Vec::new(),
+                repo_path: std::env::temp_dir(),
             },
             tx,
         )

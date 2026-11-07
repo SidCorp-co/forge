@@ -131,6 +131,68 @@ pub(crate) async fn resolve(
     }
 }
 
+/// The working dir for a chat turn: the checkout this device's binding names, which core sends
+/// on the frame and refuses the turn without. Nothing on this box stands in for it.
+fn resolve_repo(
+    repo_path: Option<&str>,
+    slug: Option<&str>,
+) -> std::result::Result<String, String> {
+    if let Some(p) = repo_path.map(str::trim).filter(|s| !s.is_empty()) {
+        return Ok(p.to_string());
+    }
+    let slug = slug.unwrap_or("<no slug>");
+    Err(format!(
+        "chat turn for {slug} refused: core sent no checkout, and the device binding for {slug} must name one — run `forge-runner bind {slug} --path <dir>`"
+    ))
+}
+
+/// Why a turn may not run in `repo_path`: it is not a directory on this box (ISS-1101). Named with
+/// what this box's binding for the project names now, read by `bound`; nothing stands in for it.
+fn missing_checkout(
+    slug: Option<&str>,
+    repo_path: &str,
+    bound: impl FnOnce(&str) -> Option<PathBuf>,
+) -> Option<String> {
+    if Path::new(repo_path).is_dir() {
+        return None;
+    }
+    let slug = slug.unwrap_or("<no slug>");
+    let names = bound(slug).map_or_else(
+        || "no checkout on this box".to_string(),
+        |p| p.display().to_string(),
+    );
+    Some(format!(
+        "chat turn for {slug} refused: checkout {repo_path} does not exist; the binding names {names}"
+    ))
+}
+
+/// The checkout this box's own config binds `slug` to, as the file reads now.
+fn box_binding(slug: &str) -> Option<PathBuf> {
+    let config = runner_platform::config::Config::load().ok()?;
+    config.bindings.get(slug).map(|b| b.repo_path.clone())
+}
+
+/// The checkout a turn runs in, or `None` once the turn is failed at core naming why: core sent
+/// none, or the one it sent is not on this box. Checked before anything is spawned, so a gone
+/// checkout never reads as a missing `claude`.
+pub(crate) async fn turn_checkout(
+    client: &runner_transport::CoreClient,
+    session_id: &str,
+    repo_path: Option<&str>,
+    slug: Option<&str>,
+) -> Option<String> {
+    let refused = match resolve_repo(repo_path, slug) {
+        Ok(repo) => match missing_checkout(slug, &repo, box_binding) {
+            None => return Some(repo),
+            Some(why) => why,
+        },
+        Err(why) => why,
+    };
+    tracing::error!("[chat {session_id}] {refused}");
+    crate::chat::patch_failed(client, session_id, None, &refused).await;
+    None
+}
+
 /// [`resolve`], with a view this box cannot honour failing the turn by name: `None`, and nothing
 /// is spawned with more of the checkout than the room was granted.
 pub(crate) async fn turn_view(
@@ -378,6 +440,24 @@ pub(crate) async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_checkout_that_is_there_is_not_refused_and_one_that_is_gone_names_the_binding() {
+        let here = std::env::temp_dir();
+        let bound = |_: &str| Some(PathBuf::from("/srv/epodsystem-core"));
+        assert_eq!(
+            missing_checkout(Some("epod"), &here.to_string_lossy(), bound),
+            None
+        );
+        assert_eq!(
+            missing_checkout(Some("epod"), "/srv/epod-webauto", bound).as_deref(),
+            Some("chat turn for epod refused: checkout /srv/epod-webauto does not exist; the binding names /srv/epodsystem-core")
+        );
+        assert_eq!(
+            missing_checkout(Some("epod"), "/srv/epod-webauto", |_| None).as_deref(),
+            Some("chat turn for epod refused: checkout /srv/epod-webauto does not exist; the binding names no checkout on this box")
+        );
+    }
 
     #[test]
     fn no_view_named_is_the_writable_checkout_every_chat_door_had() {

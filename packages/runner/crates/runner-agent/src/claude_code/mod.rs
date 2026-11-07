@@ -78,6 +78,8 @@ struct Session {
     checkout: crate::CheckoutView,
     /// The followed projects' checkouts it was spawned to read (ISS-874); another set respawns.
     siblings: Vec<std::path::PathBuf>,
+    /// The working directory it was spawned in; a turn for another checkout respawns (ISS-1101).
+    repo_path: std::path::PathBuf,
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
     project_slug: Option<String>,
     /// Raised by the completion task once it has reaped the process and removed this entry: what
@@ -234,6 +236,8 @@ pub struct Resident {
     pub checkout: crate::CheckoutView,
     /// The followed projects' checkouts it reads (ISS-874), fixed by its mounts at spawn.
     pub siblings: Vec<std::path::PathBuf>,
+    /// The checkout it was spawned in (ISS-1101), fixed as its working directory at spawn.
+    pub repo_path: std::path::PathBuf,
 }
 
 /// `plugins` is the checkout this runner loads its plugins from, empty where it loads the
@@ -316,6 +320,7 @@ impl ClaudeCodeRunner {
             refreshable: s.bearer_dir.is_some(),
             checkout: s.checkout.clone(),
             siblings: s.siblings.clone(),
+            repo_path: s.repo_path.clone(),
         })
     }
 
@@ -612,6 +617,7 @@ pub(crate) struct Spawned {
     pub(crate) project_slug: Option<String>,
     pub(crate) checkout: crate::CheckoutView,
     pub(crate) siblings: Vec<std::path::PathBuf>,
+    pub(crate) repo_path: std::path::PathBuf,
 }
 
 impl ClaudeCodeRunner {
@@ -636,17 +642,11 @@ impl ClaudeCodeRunner {
             project_slug,
             checkout,
             siblings,
+            repo_path,
         } = spawned;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| Error::Other("no stdout".into()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| Error::Other("no stderr".into()))?;
+        let (stdout, stderr) = output_pipes(&mut child)?;
 
         let (ended_tx, ended) = tokio::sync::watch::channel(false);
         let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
@@ -678,6 +678,7 @@ impl ClaudeCodeRunner {
                 head_sha: None,
                 checkout,
                 siblings,
+                repo_path,
                 permit,
                 project_slug,
                 ended,
@@ -795,6 +796,7 @@ impl Runner for ClaudeCodeRunner {
                     .as_ref()
                     .map(|c| c.siblings.clone())
                     .unwrap_or_default(),
+                repo_path: spec.repo_path.clone(),
             },
             tx,
         )
@@ -898,9 +900,48 @@ async fn spawn_claude(
         .stderr(std::process::Stdio::piped());
     let child = cmd.spawn().map_err(|e| {
         let _ = std::fs::remove_file(mcp_path);
-        Error::Other(format!("failed to spawn claude: {e}"))
+        Error::Other(spawn_failure(cmd.as_std(), repo, &e))
     })?;
     Ok((child, egress))
+}
+
+/// A spawned process's stdout and stderr, which the session reads.
+fn output_pipes(
+    child: &mut tokio::process::Child,
+) -> Result<(tokio::process::ChildStdout, tokio::process::ChildStderr)> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| Error::Other("no stdout".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| Error::Other("no stderr".into()))?;
+    Ok((stdout, stderr))
+}
+
+/// Why `cmd` did not start, naming the program and the working directory it was to start in
+/// (`repo` where the command sets none): a working directory that is not there, a program that is
+/// not, or the error as the OS gave it. A gone checkout and a missing binary both fail `ENOENT`,
+/// and used to read alike as "failed to spawn claude" (ISS-1101).
+pub(crate) fn spawn_failure(cmd: &std::process::Command, repo: &str, e: &std::io::Error) -> String {
+    let program = cmd.get_program().to_string_lossy();
+    let cwd = cmd
+        .get_current_dir()
+        .unwrap_or_else(|| std::path::Path::new(repo));
+    if !cwd.is_dir() {
+        format!(
+            "cannot start {program}: its working directory {} does not exist ({e})",
+            cwd.display()
+        )
+    } else if e.kind() == std::io::ErrorKind::NotFound {
+        format!(
+            "cannot start {program} in {}: the program was not found ({e})",
+            cwd.display()
+        )
+    } else {
+        format!("cannot start {program} in {}: {e}", cwd.display())
+    }
 }
 
 /// What one session is spawned from.
@@ -1148,6 +1189,48 @@ mod confine_elsewhere_tests {
         assert!(
             err.to_string().contains("CHAT_CONFINEMENT_UNAVAILABLE"),
             "the refusal does not name itself: {err}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod spawn_failure_tests {
+    //! ISS-1101: a gone checkout read as "failed to spawn claude: No such file or directory" on
+    //! 1,086 turns. The real spawn's error is named by what failed.
+    use super::spawn_failure;
+
+    fn spawned(program: &str, cwd: &std::path::Path) -> (std::process::Command, std::io::Error) {
+        let mut cmd = std::process::Command::new(program);
+        cmd.current_dir(cwd);
+        let e = cmd.spawn().expect_err("the command started");
+        (cmd, e)
+    }
+
+    #[test]
+    fn a_working_directory_that_is_gone_is_named_not_the_program() {
+        let gone = std::env::temp_dir().join(format!("forge-gone-{}", uuid::Uuid::new_v4()));
+        let (cmd, e) = spawned("sh", &gone);
+        let said = spawn_failure(&cmd, "/unused", &e);
+        assert!(
+            said.starts_with(&format!(
+                "cannot start sh: its working directory {} does not exist",
+                gone.display()
+            )),
+            "{said}"
+        );
+    }
+
+    #[test]
+    fn a_program_that_is_not_there_is_named_with_the_directory() {
+        let here = std::env::temp_dir();
+        let (cmd, e) = spawned("forge-no-such-program-1101", &here);
+        let said = spawn_failure(&cmd, "/unused", &e);
+        assert!(
+            said.starts_with(&format!(
+                "cannot start forge-no-such-program-1101 in {}: the program was not found",
+                here.display()
+            )),
+            "{said}"
         );
     }
 }

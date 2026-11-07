@@ -168,18 +168,6 @@ struct Turn {
     siblings: Vec<PathBuf>,
 }
 
-/// The working dir for a chat turn: the checkout this device's binding names, which core sends
-/// on the frame and refuses the turn without. Nothing on this box stands in for it.
-fn resolve_repo(repo_path: Option<&str>, slug: Option<&str>) -> Result<String> {
-    if let Some(p) = repo_path.map(str::trim).filter(|s| !s.is_empty()) {
-        return Ok(p.to_string());
-    }
-    let slug = slug.unwrap_or("<no slug>");
-    Err(Error::Other(format!(
-        "chat turn for {slug} refused: core sent no checkout, and the device binding for {slug} must name one — run `forge-runner bind {slug} --path <dir>`"
-    )))
-}
-
 /// Handle `agent:start`: begin a fresh chat turn.
 pub async fn handle_start(
     client: &CoreClient,
@@ -193,7 +181,16 @@ pub async fn handle_start(
         .prompt
         .filter(|s| !s.is_empty())
         .ok_or_else(|| Error::Other("agent:start has no prompt".into()))?;
-    let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let Some(repo_path) = chat_checkout::turn_checkout(
+        client,
+        &f.session_id,
+        f.repo_path.as_deref(),
+        f.project_slug.as_deref(),
+    )
+    .await
+    else {
+        return Ok(());
+    };
     let Some((checkout, repo_path)) =
         chat_checkout::turn_view(client, &f.session_id, &f.view, f.confined, repo_path).await
     else {
@@ -250,7 +247,16 @@ pub async fn handle_send(
 ) -> Result<()> {
     let f: SendFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:send: {e}")))?;
-    let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let Some(repo_path) = chat_checkout::turn_checkout(
+        client,
+        &f.session_id,
+        f.repo_path.as_deref(),
+        f.project_slug.as_deref(),
+    )
+    .await
+    else {
+        return Ok(());
+    };
     let Some((checkout, repo_path)) =
         chat_checkout::turn_view(client, &f.session_id, &f.view, f.confined, repo_path).await
     else {
@@ -362,6 +368,11 @@ fn resident_disposition(resident: Option<&Resident>, turn: &Turn) -> Disposition
     match resident {
         None => Disposition::Spawn,
         // its mounts were fixed at spawn: another view is another process
+        // its working directory was fixed at spawn: a turn core sends for another checkout (the
+        // binding names another now) is another process (ISS-1101)
+        Some(r) if r.repo_path != Path::new(&turn.repo_path) => {
+            Disposition::Close("checkout moved")
+        }
         Some(r) if r.checkout != turn.checkout => Disposition::Close("checkout view changed"),
         Some(r) if r.siblings != turn.siblings => {
             Disposition::Close("followed projects' checkouts changed")
@@ -957,6 +968,7 @@ mod tests {
             refreshable,
             checkout: CheckoutView::Write,
             siblings: Vec::new(),
+            repo_path: PathBuf::from("/repo"),
         }
     }
 
@@ -1261,6 +1273,56 @@ mod tests {
             vec![10, 11]
         );
         assert_eq!(last, 11);
+    }
+
+    /// ISS-1101: a turn whose checkout is gone (the box was rebound to another) is refused by
+    /// name before anything is spawned, naming the path and what the box's binding names; it
+    /// never reads as a missing `claude`.
+    #[tokio::test]
+    async fn a_turn_whose_checkout_is_gone_is_refused_by_name_and_nothing_is_spawned() {
+        let (client, seen) = fake_core(200, "").await;
+        let runner = Arc::new(ClaudeCodeRunner::new(
+            "http://127.0.0.1:9",
+            "device-token",
+            1,
+        ));
+        let gone = std::env::temp_dir().join(format!("forge-gone-{}", uuid::Uuid::new_v4()));
+        let frame = serde_json::json!({
+            "sessionId": "s-gone", "prompt": "hi", "eventSeqBase": 4,
+            "projectSlug": "epod", "repoPath": gone.to_string_lossy(),
+        });
+        handle_start(&client, runner.clone(), frame, None)
+            .await
+            .unwrap();
+        let failed = outcome_patches(&seen)
+            .into_iter()
+            .find(|p| p["status"] == "failed")
+            .expect("the turn ended with no failure written");
+        let said = failed["turnError"].as_str().unwrap_or_default().to_string();
+        assert!(
+            said.starts_with(&format!(
+                "chat turn for epod refused: checkout {} does not exist; the binding names ",
+                gone.display()
+            )),
+            "{said}"
+        );
+        assert!(!said.contains("spawn"), "{said}");
+        assert!(runner.resident(&"s-gone".to_string()).await.is_none());
+    }
+
+    /// A resident spawned in one checkout never takes a turn core sends for another (ISS-1101).
+    #[test]
+    fn a_turn_in_another_checkout_closes_the_resident() {
+        let frame = serde_json::json!({ "sessionId": "s1", "message": "hi" });
+        let turn = turn_of(frame, None);
+        let mut held = resident(false);
+        held.repo_path = PathBuf::from("/old");
+        assert_eq!(
+            resident_disposition(Some(&held), &turn),
+            Disposition::Close("checkout moved")
+        );
+        held.repo_path = PathBuf::from("/repo");
+        assert_eq!(resident_disposition(Some(&held), &turn), Disposition::Reuse);
     }
 
     #[tokio::test]

@@ -46,6 +46,7 @@ fn session(unreplayed: u32) -> Session {
         head_sha: None,
         checkout: crate::CheckoutView::Write,
         siblings: Vec::new(),
+        repo_path: std::path::PathBuf::new(),
         permit: None,
         project_slug: None,
         ended: tokio::sync::watch::channel(false).1,
