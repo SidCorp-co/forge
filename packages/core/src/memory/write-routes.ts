@@ -11,7 +11,9 @@ import {
   correctMemory,
   memoryCorrectInputSchema,
   memoryRetireInputSchema,
+  memoryRetireManyInputSchema,
   memoryVerifyInputSchema,
+  retireMemories,
   retireMemory,
   verifyMemories,
 } from './person-acts.js';
@@ -106,5 +108,21 @@ memoryWriteRoutes.post(
     const userId = c.get('userId');
     await requireDeclaredOn(projectId, userId, 'project.write');
     return c.json(await retireMemory({ projectId, memoryId, userId, ...body }));
+  },
+);
+
+// Many memories retired in one call under one reason, each answered retired or refused by name: a
+// sweep of stale notes spends one write, never one per row.
+memoryWriteRoutes.post(
+  '/retire',
+  zValidator('query', memoryActQuery),
+  zValidator('json', memoryRetireManyInputSchema),
+  requiresOnResolved('project.write', 'the project the query names as projectId'),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const { ids, reason } = c.req.valid('json');
+    const userId = c.get('userId');
+    await requireDeclaredOn(projectId, userId, 'project.write');
+    return c.json(await retireMemories({ projectId, memoryIds: ids, userId, reason }));
   },
 );

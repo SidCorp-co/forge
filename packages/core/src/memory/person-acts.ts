@@ -6,7 +6,8 @@
 //    the writer stays the one who wrote it, and the row counts as verified now: a person just read it
 //    against what they know. A release's "possibly stale" flag is cleared with it.
 //  - Retire: the row leaves every read surface (archived), and who retired it and why stays on it,
-//    so the retired list on the record it names says so. Nothing is deleted here.
+//    so the retired list on the record it names says so. Nothing is deleted here. One row, or up to
+//    a hundred under one reason, each retired or refused by name on its own.
 //  - Verify ("still true"): the row counts as checked now, by this person. The check is stamped on
 //    the row (`last_verified_at`, who on `metadata.verifiedBy`), kept in `metadata.checks`, and the
 //    reasons it needed a check fall away: a release's flag is cleared, and a cited record that
@@ -21,7 +22,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
-import { refuser } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { indexMemory } from './indexer.js';
 
 const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
@@ -38,6 +39,14 @@ export const memoryVerifyInputSchema = z.object({
 });
 
 export const memoryRetireInputSchema = z.object({ reason: REASON });
+
+/** The most rows one retirement names: a sweep of a project's stale notes in one call, not one per row. */
+export const MEMORY_RETIRE_MANY_MAX = 100;
+
+export const memoryRetireManyInputSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(MEMORY_RETIRE_MANY_MAX),
+  reason: REASON,
+});
 
 /** The last acts kept on a row's `metadata.corrections`. */
 const CORRECTION_HISTORY_CAP = 20;
@@ -137,6 +146,34 @@ export async function retireMemory(args: {
     .set({ archivedAt: at, metadata: md })
     .where(and(eq(memories.id, row.id), sql`${memories.archivedAt} IS NULL`));
   return { id: row.id, retiredAt: at.toISOString() };
+}
+
+/** What one retirement of many answers: each row it retired, and each it refused with the refusal's code. */
+export interface MemoryRetirements {
+  retired: { id: string; retiredAt: string }[];
+  refused: { id: string; code: string; detail: string }[];
+}
+
+/**
+ * Retires each row on its own: a row that cannot be retired (not in this project, a mirror, already
+ * retired) is refused by name in the answer and the others are retired all the same.
+ */
+export async function retireMemories(args: {
+  projectId: string;
+  memoryIds: readonly string[];
+  userId: string;
+  reason: string;
+}): Promise<MemoryRetirements> {
+  const out: MemoryRetirements = { retired: [], refused: [] };
+  for (const memoryId of new Set(args.memoryIds)) {
+    try {
+      out.retired.push(await retireMemory({ ...args, memoryId }));
+    } catch (err) {
+      if (!(err instanceof RefusalError)) throw err;
+      for (const r of err.refusals) out.refused.push({ id: memoryId, code: r.code, detail: r.detail });
+    }
+  }
+  return out;
 }
 
 export async function verifyMemories(args: {
