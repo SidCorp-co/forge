@@ -52,6 +52,7 @@ const LIMITS = {
 	touched: 2000,
 	probes: 200,
 	commits: 1000,
+	reruns: 200,
 } as const;
 
 /** One probe the merge check ran: the criterion, the kept probe's id, and the `probes` check that ran it. */
@@ -79,6 +80,55 @@ const standingSchema = z.strictObject({
 	),
 });
 export type MergeStanding = z.infer<typeof standingSchema>;
+
+/**
+ * How a rerun of one red integration test file ended (ISS-1120): `absent` is a file the merge base
+ * does not hold, `error` a run that could not be made (the base's install or build failed).
+ */
+export const RERUN_RESULTS = ["pass", "fail", "absent", "error"] as const;
+export type RerunResult = (typeof RERUN_RESULTS)[number];
+
+/**
+ * What a rerun makes of a red integration test file: `base-red` is red at the merge base too,
+ * `flaky` went green on its rerun at the head, and `branch-red` is the change's own red, refused as
+ * every red is. Base-red and flaky are not the change's: the record names them apart and passes.
+ */
+export const RERUN_VERDICTS = ["base-red", "flaky", "branch-red"] as const;
+export type RerunVerdict = (typeof RERUN_VERDICTS)[number];
+
+/** The verdict a rerun's outcomes bear: green again at the head is flaky, red at the base too is base-red. */
+export function rerunVerdictOf(
+	head: RerunResult,
+	base: RerunResult | null,
+): RerunVerdict {
+	if (head === "pass") return "flaky";
+	return head === "fail" && base === "fail" ? "base-red" : "branch-red";
+}
+
+const rerunRunSchema = z.strictObject({
+	at: z.enum(["head", "base"]),
+	sha: wholeShaSchema("reruns[].runs[].sha"),
+	result: z.enum(RERUN_RESULTS),
+	command: z.string().max(500),
+	startedAt: z.iso.datetime({ offset: true }),
+	durationMs: z.number().int().nonnegative().max(86_400_000),
+	note: z.string().max(500).optional(),
+});
+
+/**
+ * One red file of a red `integration-tests` check, rerun once at the head and, where it stayed red,
+ * once at the merge base (ISS-1120), with the evidence of each run. Which files went red, and which
+ * commit the merge base is, is the box's word, as `standing` is.
+ */
+const rerunSchema = z.strictObject({
+	check: z.uuid(
+		"check is the id of the red `integration-tests` check in this report whose file was rerun",
+	),
+	file: z.string().min(1).max(1000),
+	verdict: z.enum(RERUN_VERDICTS),
+	runs: z.array(rerunRunSchema).min(1).max(2),
+});
+export type MergeRerun = z.infer<typeof rerunSchema>;
 
 /**
  * The checks a report needs: on the fast lane, or on a project delivering fast (REQ-79 BC-2: a change
@@ -135,6 +185,12 @@ export const mergeCheckReportSchema = z
 		 * criterion is the change's, as a report from a script older than round 5 reads.
 		 */
 		standing: z.array(standingSchema).max(LIMITS.probes).optional(),
+		/**
+		 * Each red integration test file, rerun at the head and at the merge base (ISS-1120). A red
+		 * `integration-tests` check whose every rerun is `base-red` or `flaky` is not the change's red.
+		 * Absent is none rerun: every red is the change's, as a report before ISS-1120 reads.
+		 */
+		reruns: z.array(rerunSchema).max(LIMITS.reruns).optional(),
 		/** The lane the change takes; absent is the full lane, as every report written before the fast one. */
 		lane: z.enum(LANES).optional(),
 		/**
@@ -180,6 +236,63 @@ export const mergeCheckReportSchema = z
 				});
 			}
 		}
+		for (const [i, x] of (r.reruns ?? []).entries()) {
+			const at = (key: string | number) => ["reruns", i, key];
+			const red = r.checks.find((c) => c.id === x.check);
+			if (red?.name !== "integration-tests" || red.result !== "fail") {
+				ctx.addIssue({
+					code: "custom",
+					path: at("check"),
+					message: `check ${x.check} is not a red \`integration-tests\` check of this report, so it has no red file to rerun`,
+				});
+			} else if (!red.files.includes(x.file)) {
+				ctx.addIssue({
+					code: "custom",
+					path: at("file"),
+					message: `${x.file} is a file check ${x.check} did not run, so it cannot have gone red there`,
+				});
+			}
+			const twice = (r.reruns ?? []).findIndex(
+				(o) => o.check === x.check && o.file === x.file,
+			);
+			if (twice !== i) {
+				ctx.addIssue({
+					code: "custom",
+					path: at("file"),
+					message: `${x.file} is rerun twice for check ${x.check}; each red file is rerun once`,
+				});
+			}
+			const heads = x.runs.filter((run) => run.at === "head");
+			const bases = x.runs.filter((run) => run.at === "base");
+			const head = heads[0];
+			if (
+				heads.length !== 1 ||
+				!head ||
+				head.sha.toLowerCase() !== r.head.toLowerCase()
+			) {
+				ctx.addIssue({
+					code: "custom",
+					path: at("runs"),
+					message: `${x.file} is rerun once at the head checked, ${r.head.slice(0, 12)}, before anything is made of its red`,
+				});
+				continue;
+			}
+			if (bases.length > 1) {
+				ctx.addIssue({
+					code: "custom",
+					path: at("runs"),
+					message: `${x.file} is rerun at the merge base once at most`,
+				});
+			}
+			const bears = rerunVerdictOf(head.result, bases[0]?.result ?? null);
+			if (bears !== x.verdict) {
+				ctx.addIssue({
+					code: "custom",
+					path: at("verdict"),
+					message: `${x.file} is named ${x.verdict}, and its runs (head ${head.result}, base ${bases[0]?.result ?? "not run"}) make it ${bears}`,
+				});
+			}
+		}
 		for (const [i, b] of (r.probes ?? []).entries()) {
 			const ran = r.checks.find((c) => c.id === b.check);
 			if (ran?.kind !== "probes") {
@@ -198,7 +311,7 @@ export const mergeCheckReportSchema = z
 	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], reruns?: [{ check: <id of a red integration-tests check>, file, verdict: base-red | flaky | branch-red, runs: [{ at: head | base, sha, result: pass | fail | absent | error, command, startedAt, durationMs, note? }] }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
 
 /** A kept probe of a criterion the change claims that the report did not run, a claimed observable criterion keeping none, or a standing reading core does not hold. */
 export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;

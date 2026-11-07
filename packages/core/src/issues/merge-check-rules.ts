@@ -14,6 +14,7 @@ import {
   MERGE_CHECK_RECORD,
   type MergeCheckRefusalCode,
   type MergeCheckReport,
+  type MergeRerun,
   PATCH_ID_ABSENT,
   REQUIRED_MERGE_CHECKS,
   type RequiredMergeCheck,
@@ -104,8 +105,13 @@ export function checkRefusal(report: MergeCheckReport, fastDelivery = false): Ch
       : [],
   );
   const red = report.checks.filter(
-    (c) => c.result === 'fail' && c.kind !== 'probes' && !passed.has(c.name),
+    (c) =>
+      c.result === 'fail' &&
+      c.kind !== 'probes' &&
+      !passed.has(c.name) &&
+      !notTheChanges(report, c),
   );
+  const branchRed = (report.reruns ?? []).filter((x) => x.verdict === 'branch-red');
   if (red.length) {
     const how = fastDelivery
       ? ' Fix it, or, where you rate its impact below high, name it in `debts` as `{ kind: "red", check: <its name>, where, detail, impact: { type, rating, reason } }` so it passes as cleanup debt (REQ-79 BC-3); a red rated high is fixed in this change.'
@@ -113,10 +119,94 @@ export function checkRefusal(report: MergeCheckReport, fastDelivery = false): Ch
     return {
       code: 'MERGE_CHECK_RED',
       path: '/checks',
-      detail: `${red.map(described).join('; ')} ended red at ${report.head.slice(0, 12)}.${how} Nothing was recorded`,
+      detail: `${red.map(described).join('; ')} ended red at ${report.head.slice(0, 12)}${branchRedTail(branchRed)}.${how} Nothing was recorded`,
     };
   }
   return null;
+}
+
+/** The reruns of one check's red files. */
+const rerunsOf = (report: MergeCheckReport, check: CheckRun) =>
+  (report.reruns ?? []).filter((x) => x.check === check.id);
+
+/**
+ * Whether a red check is not the change's own (ISS-1120): an `integration-tests` check whose red
+ * files were each rerun, every one red at the merge base too (`base-red`) or green again at the head
+ * (`flaky`). A red no rerun classed, and every other check, stays the change's.
+ */
+function notTheChanges(report: MergeCheckReport, check: CheckRun): boolean {
+  if (check.name !== 'integration-tests') return false;
+  const reruns = rerunsOf(report, check);
+  return reruns.length > 0 && reruns.every((x) => x.verdict !== 'branch-red');
+}
+
+/** What the refusal adds for the red files the reruns found to be the change's own. */
+function branchRedTail(reruns: readonly MergeRerun[]): string {
+  if (!reruns.length) return '';
+  const named = reruns.map((x) => `${x.file} (red again at the head, ${baseOutcome(x)})`);
+  return `; rerun, ${named.join(', ')}`;
+}
+
+/** How a rerun ended at the merge base, in words. */
+function baseOutcome(x: MergeRerun): string {
+  const base = x.runs.find((r) => r.at === 'base');
+  if (!base) return 'not run at the merge base';
+  const at = base.sha.slice(0, 12);
+  return {
+    pass: `green at the merge base ${at}`,
+    fail: `fail at ${at}`,
+    absent: `absent at the merge base ${at}`,
+    error: `could not run at the merge base ${at}${base.note ? `: ${base.note}` : ''}`,
+  }[base.result];
+}
+
+/**
+ * The record fields naming the reds that are not the change's (ISS-1120), apart from its checks:
+ * `base-red`, each file with how it ended at the head and at the merge base, and `flaky`, each file
+ * that went green on its rerun at the head. None where there is none.
+ */
+function rerunFields(report: MergeCheckReport): { key: string; value: string }[] {
+  const of = (verdict: MergeRerun['verdict']) =>
+    (report.reruns ?? []).filter((x) => x.verdict === verdict);
+  const baseRed = of('base-red');
+  const flaky = of('flaky');
+  return [
+    ...(baseRed.length
+      ? [
+          {
+            key: 'base-red',
+            value:
+              `${baseRed.length} red at the merge base too, not this change's: ${baseRed.map((x) => `${x.file} (fail at ${report.head.slice(0, 12)}, ${baseOutcome(x)})`).join('; ')}`.slice(
+                0,
+                FIELD_MAX,
+              ),
+          },
+        ]
+      : []),
+    ...(flaky.length
+      ? [
+          {
+            key: 'flaky',
+            value:
+              `${flaky.length} green on a rerun at ${report.head.slice(0, 12)}, owed a fix of its own: ${flaky.map((x) => x.file).join('; ')}`.slice(
+                0,
+                FIELD_MAX,
+              ),
+          },
+        ]
+      : []),
+  ];
+}
+
+/** The lead's words for the reds a passing check carries that are not the change's, or nothing. */
+function rerunLead(report: MergeCheckReport): string {
+  const count = (verdict: MergeRerun['verdict']) =>
+    (report.reruns ?? []).filter((x) => x.verdict === verdict).length;
+  const parts = [
+    ...(count('base-red') ? [`${count('base-red')} base-red`] : []),
+    ...(count('flaky') ? [`${count('flaky')} flaky`] : []),
+  ];
+  return parts.length ? `; integration reds not this change's: ${parts.join(', ')}` : '';
 }
 
 /** One live criterion of the issue as the merge reads it: its class, its kept probe, its latest verdict. */
@@ -364,7 +454,7 @@ export function recordFields(
   return [
     {
       key: 'lead',
-      value: `Merge check passed at ${report.head.slice(0, 12)} on ${report.base.branch} ${report.base.sha.slice(0, 12)}: ${report.checks.length} checks${carried}`,
+      value: `Merge check passed at ${report.head.slice(0, 12)} on ${report.base.branch} ${report.base.sha.slice(0, 12)}: ${report.checks.length} checks${carried}${rerunLead(report)}`,
     },
     { key: 'check', value: MERGE_CHECK_RECORD },
     { key: 'result', value: 'pass' },
@@ -378,6 +468,7 @@ export function recordFields(
     { key: 'touched', value: `${report.touched.length} file(s)` },
     { key: 'checks', value: namedChecks(report.checks) },
     ...(debts.length ? [{ key: 'debts', value: debtField(debts) }] : []),
+    ...rerunFields(report),
     { key: 'probes', value: probesRan(report, criteria) },
     { key: 'not-checked', value: NOT_YET_CHECKED },
   ];
