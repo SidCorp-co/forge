@@ -1,6 +1,5 @@
 
 import type { DecisionMaker } from "@forge/contracts/comments";
-import { WrittenMark } from "@/lib/i18n/written";
 import { type ReactNode, useState } from "react";
 import { ActorChip, BodyView, Button, Input, Textarea } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -41,7 +40,6 @@ export function Decision({ c, onTarget }: { c: EntityCommentView; onTarget?: Rea
         <ActorChip name={c.author.name ?? t("common.decisions.unknownAuthor")} kind={c.author.agency} size={16} />
         <span aria-hidden>·</span>
         <span title={time.dateTime(c.createdAt)}>{time.relative(c.createdAt)}</span>
-        <WrittenMark lang={c.writtenLang} />
         {onTarget ? (
           <>
             <span aria-hidden>·</span>

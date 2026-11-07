@@ -9,7 +9,6 @@ import { ActorChip, Badge, BodyView, Button, SegmentedControl, Textarea } from "
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { WrittenMark } from "@/lib/i18n/written";
 import { useEntityComments, usePostEntityComment } from "../hooks";
 import type { EntityCommentScope, EntityCommentView } from "../types";
 import { DecisionComposer, Decision } from "./decisions";
@@ -64,7 +63,6 @@ function EntityComment({ c }: { c: EntityCommentView }) {
         <ActorChip name={c.author.name ?? t("common.decisions.unknownAuthor")} kind={c.author.agency} size={16} />
         {c.intent === "question" ? <Badge tone="accent">{t("common.intent.question")}</Badge> : null}
         <span title={time.dateTime(c.createdAt)}>{time.relative(c.createdAt)}</span>
-        <WrittenMark lang={c.writtenLang} />
       </span>
       {c.body ? (
         <BodyView body={c.body} format={c.format} className="text-14" />

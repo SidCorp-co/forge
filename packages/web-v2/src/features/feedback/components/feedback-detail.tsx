@@ -11,7 +11,7 @@
 // the agent text out — the assistant's draft, where an answer came from — and `?view=developer` draws
 // it (BC-7).
 
-import { Written, WrittenMark } from "@/lib/i18n/written";
+import { Written } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
 import {
   DetailDrawer,
@@ -74,10 +74,7 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
       ) : (
         <p className="max-w-2xl whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
           {f.body?.trim() ? (
-            <>
-              {f.body}
-              <WrittenMark lang={f.writtenLang} />
-            </>
+            f.body
           ) : (
             <span className="text-subtle">{t("feedback.body.none")}</span>
           )}

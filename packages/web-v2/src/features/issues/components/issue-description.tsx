@@ -5,7 +5,6 @@
 // `description`, and until now nothing in the browser sent it, so a description
 // typed wrong at create stayed wrong forever.
 
-import { WrittenMark } from "@/lib/i18n/written";
 import { useState } from "react";
 import { BodyView, Button } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -37,7 +36,6 @@ export function IssueDescription({ issue, attachments, canWrite }: IssueDescript
   return (
     <section aria-label={t("issues.description.title")} data-testid="issue-description">
       <div className="mb-2 flex items-center justify-end gap-2">
-        <WrittenMark lang={issue.writtenLang} />
         {canWrite && !editing ? (
           <Button variant="ghost" size="sm" onClick={() => (held ? setRefused(true) : setDraft(issue.description ?? ""))}>
             {t("issues.rail.edit")}

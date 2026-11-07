@@ -105,7 +105,6 @@ export const PREFIX_HOMES = {
   whatsNew: 'lib/i18n/copy/whats-new.json',
   widget: 'lib/i18n/copy/widget.json',
   workflows: 'lib/i18n/copy/workflows.json',
-  written: 'lib/i18n/copy/written.json',
 };
 
 export function prefixHome(key) {

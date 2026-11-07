@@ -54,7 +54,6 @@ import labelCopy from "./copy/label.json";
 import listCopy from "./copy/list.json";
 import standingCopy from "./copy/standing.json";
 import timeCopy from "./copy/time.json";
-import writtenCopy from "./copy/written.json";
 
 /**
  * Every copy file by its path under `src/`: each feature's own (`lib/i18n/copy/<feature>.json`) and
@@ -114,5 +113,4 @@ export const COPY_FILES = {
   "lib/i18n/copy/list.json": listCopy,
   "lib/i18n/copy/standing.json": standingCopy,
   "lib/i18n/copy/time.json": timeCopy,
-  "lib/i18n/copy/written.json": writtenCopy,
 };

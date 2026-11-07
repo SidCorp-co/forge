@@ -7,7 +7,6 @@ import { useState } from "react";
 import { FactsGroup, PeekExcerpt } from "@/design";
 import { AttachedImage, ImageLightbox, type LightboxImage } from "@/features/attachments";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { WrittenMark } from "@/lib/i18n/written";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { useItemRecordings } from "../hooks";
 import type { FeedbackView } from "../types";
@@ -35,7 +34,6 @@ export function FeedbackPeekSaid({ projectId, f }: { projectId: string; f: Feedb
             <PeekExcerpt>
               <p className="whitespace-pre-wrap leading-relaxed" lang={f.writtenLang ?? undefined}>
                 {body}
-                <WrittenMark lang={f.writtenLang} />
               </p>
             </PeekExcerpt>
           )}

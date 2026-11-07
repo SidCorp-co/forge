@@ -9,7 +9,8 @@ import { StatusReport } from "./status-report";
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 // hop /status, 2026-10-08: 25 of its lines were texts agents wrote in English, quoted with nothing
-// saying so. The page reads in English; a quoted text now carries its language where it is not English.
+// saying so. The page reads in English; a quoted text keeps its language as its `lang` attribute and
+// carries no mark on its face: the chrome is English only, and a language badge is chrome (ISS-1071).
 
 const clock = { lang: "en" as const, now: Date.parse(AT), timeZone: "UTC" };
 const report = (title: string, titleLang: "en" | "vi" | null) => ({
@@ -30,9 +31,9 @@ function shown() {
 }
 
 describe("the status page quoting what someone wrote", () => {
-  it("marks text written in Vietnamese as Vietnamese, and nothing else", () => {
+  it("keeps each text's language as its lang, and marks none", () => {
     const waits = shown();
-    expect(waits.getAllByTestId("written-mark")).toHaveLength(1);
+    expect(waits.queryAllByTestId("written-mark")).toHaveLength(0);
     expect(waits.getByText("Missing CLI verb: no verb links an issue to a requirement")).toHaveAttribute("lang", "en");
     expect(waits.getByText("Thiếu lệnh liên kết issue")).toHaveAttribute("lang", "vi"); // i18n-allow: Vietnamese text under test
   });

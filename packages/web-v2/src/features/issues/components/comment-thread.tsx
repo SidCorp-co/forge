@@ -4,7 +4,6 @@
 // `<BodyView>` (markdown or a `forge-*` component tree), author initials
 // resolved against the project members, and reply/add boxes.
 
-import { WrittenMark } from "@/lib/i18n/written";
 import { Avatar, Badge, BodyView, Button, Checkbox, EmptyState, Field, Icon, Select, Textarea } from "@/design";
 import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments";
 import { formatApiError } from "@/lib/api/error";
@@ -323,7 +322,6 @@ export function CommentItem({
             <span className="fg-caption" title={time.dateTime(node.createdAt)}>
               {time.relative(node.createdAt)}
             </span>
-            <WrittenMark lang={node.writtenLang} />
           </div>
           <div className="mt-1" lang={node.writtenLang ?? undefined}>
             <BodyView
