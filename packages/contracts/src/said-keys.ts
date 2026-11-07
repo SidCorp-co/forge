@@ -1872,10 +1872,10 @@ export const SAID = {
 		en: "every issue closed and every criterion passes; an act moves it",
 	},
 	"requirements.rule.deliveryQuestionOpen": {
-		en: "the move into delivery is refused while a question about it stands open (REQUIREMENT_QUESTION_OPEN); each is answered at POST /api/questions/:id/answer",
+		en: "start refused while a question stands open; answer at POST /api/questions/:id/answer",
 	},
 	"requirements.rule.deliveryUnchecked": {
-		en: "the move into delivery is refused until the steward finishes its check (REQUIREMENT_UNCHECKED), which the standing sweep starts again; its runs read at GET /api/projects/:id/steward-runs?subject=REQ-n",
+		en: "start refused until the steward's check ends; runs at GET /api/projects/:id/steward-runs?subject=REQ-n",
 	},
 	"requirements.rule.markDelivered": {
 		en: "every criterion passes on the running build; an act marks it",
