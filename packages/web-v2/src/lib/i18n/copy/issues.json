@@ -160,7 +160,7 @@
     "issues.facts.high": "High priority",
     "issues.facts.lease": "Lease",
     "issues.facts.leaseWord": "lease",
-    "issues.facts.noOwner": "No owner",
+    "issues.facts.noOwner": "Unassigned",
     "issues.facts.owner": "Owner",
     "issues.facts.plannedOnShort": "planned on r{planned}, now r{now}",
     "issues.facts.requirement": "Requirement",

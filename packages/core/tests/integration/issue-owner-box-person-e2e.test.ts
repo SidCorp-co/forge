@@ -1,8 +1,9 @@
 /**
  * The Issues list's Owner column names a person (ISS-1072): on dev, 2026-11-07, issues the project's
  * agent filed from the box read "forge", the agent's handle, beside its mark. An unassigned issue filed
- * from a box is owned by the person who owns the box; one filed with no box keeps its creator, and an
- * assignee always owns it.
+ * from a box is owned by the person who owns the box, and an assignee always owns it. Round 2: an
+ * agent account that filed one with no box owns nothing either: no person owns a project's agent
+ * account, so the issue reads Unassigned, never the agent's handle; a person who filed one owns it.
  *
  * @direct-test-of packages/core/src/issues/standing-owner.ts
  * @direct-test-of packages/core/src/issues/standing-read.ts
@@ -67,10 +68,15 @@ describe('the owner an issue names (ISS-1072)', () => {
     });
   });
 
-  it('is the agent that filed it where no box did', async () => {
-    expect(await ownerOf(await filedByAgent(2, null))).toMatchObject({
-      id: agentId,
-      kind: 'agent',
+  it('is nobody where an agent account filed it from no box, never the agent', async () => {
+    expect(await ownerOf(await filedByAgent(2, null))).toBeNull();
+  });
+
+  it('is the person who filed it, where a person did', async () => {
+    const issue = await createTestIssue(projectId, ownerId, 3, {
+      status: 'open',
+      createdAt: new Date(),
     });
+    expect(await ownerOf(issue.key)).toMatchObject({ id: ownerId, name: 'Lan', kind: 'human' });
   });
 });

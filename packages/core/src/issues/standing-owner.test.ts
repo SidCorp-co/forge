@@ -16,6 +16,7 @@ describe('ownerIdOf', () => {
         assignee: null,
         creator: 'steward-user',
         creatorIsSteward: true,
+        creatorIsAgent: false,
         boxOwner: null,
       }),
     ).toBeNull();
@@ -27,22 +28,39 @@ describe('ownerIdOf', () => {
         assignee: 'lan',
         creator: 'steward-user',
         creatorIsSteward: true,
+        creatorIsAgent: false,
         boxOwner: null,
       }),
     ).toBe('lan');
   });
 
-  it('names the creator where it is not a steward account', () => {
+  it('names a person who filed it, and no agent account that did from no box (ISS-1072)', () => {
+    expect(
+      ownerIdOf({
+        assignee: null,
+        creator: 'lan',
+        creatorIsSteward: false,
+        creatorIsAgent: false,
+        boxOwner: null,
+      }),
+    ).toBe('lan');
     expect(
       ownerIdOf({
         assignee: null,
         creator: 'forge-agent',
         creatorIsSteward: false,
+        creatorIsAgent: true,
         boxOwner: null,
       }),
-    ).toBe('forge-agent');
+    ).toBeNull();
     expect(
-      ownerIdOf({ assignee: null, creator: null, creatorIsSteward: false, boxOwner: null }),
+      ownerIdOf({
+        assignee: null,
+        creator: null,
+        creatorIsSteward: false,
+        creatorIsAgent: false,
+        boxOwner: null,
+      }),
     ).toBeNull();
   });
 
@@ -54,6 +72,7 @@ describe('ownerIdOf', () => {
         assignee: null,
         creator: 'forge-agent',
         creatorIsSteward: false,
+        creatorIsAgent: true,
         boxOwner: 'lan',
       }),
     ).toBe('lan');
@@ -62,6 +81,7 @@ describe('ownerIdOf', () => {
         assignee: 'an',
         creator: 'forge-agent',
         creatorIsSteward: false,
+        creatorIsAgent: true,
         boxOwner: 'lan',
       }),
     ).toBe('an');
@@ -70,6 +90,7 @@ describe('ownerIdOf', () => {
         assignee: null,
         creator: 'steward-user',
         creatorIsSteward: true,
+        creatorIsAgent: false,
         boxOwner: 'lan',
       }),
     ).toBeNull();

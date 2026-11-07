@@ -129,6 +129,12 @@ describe("the Issues list's rows", () => {
     expect(first?.querySelector("[title^='ISS-']")).not.toBeNull();
     expect(screen.getByTestId("list-header").textContent).not.toContain("Key");
   });
+
+  it("read Unassigned where core names no owner, as for one an agent account filed from no box", async () => {
+    board();
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    expect(screen.getAllByTestId("list-row")[0]).toHaveTextContent("Unassigned");
+  });
 });
 
 // The Waves view leads each card with the issue's title too, never its key (ISS-1072 round 2): the key

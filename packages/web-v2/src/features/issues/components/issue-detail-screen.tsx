@@ -252,7 +252,7 @@ function IssueRail({
         onEditModules={canWrite ? onEditModules : undefined}
         canMarkMerged={canWrite}
         requirementKey={standing ? (standing.standing.requirement?.key ?? null) : undefined}
-        owner={standing?.standing.owner ?? null}
+        owner={standing ? standing.standing.owner : undefined}
         standing={standing?.standing}
         developer={developer}
       />

@@ -63,7 +63,8 @@ interface PropertiesRailProps {
   canMarkMerged?: boolean | undefined;
   /** The requirement the issue delivers (`IssueStanding.requirement.key`), null while none; undefined until the standing is read. */
   requirementKey?: string | null | undefined;
-  /** Who owns the issue now (`IssueStanding.owner`); the creator where the standing names none. */
+  /** Who owns the issue now (`IssueStanding.owner`): null where the standing names none, which reads
+   *  Unassigned (ISS-1072); undefined while the standing is unread, which reads the creator meanwhile. */
   owner?: { name: string | null; kind: "human" | "agent" } | null | undefined;
   /** The issue's standing, for the trace rows (`rail-trace.tsx`); undefined until it is read. */
   standing?: IssueStanding | undefined;
@@ -202,7 +203,7 @@ export function PropertiesRail({
     : readOnly
       ? { text: t("issues.edit.readOnly") }
       : null;
-  const ownerName = owner ? (owner.name ?? t("issues.facts.unknown")) : creatorLabelOf(issue);
+  const ownerName = owner === undefined ? creatorLabelOf(issue) : owner ? (owner.name ?? t("issues.facts.unknown")) : t("issues.facts.noOwner");
   const selects = [
     { label: t("issues.field.priority"), value: issue.priority as string, options: priorityOptions, commit: (p: string) => onPatch({ priority: p as IssuePriority }) },
     { label: t("issues.field.size"), value: issue.complexity ?? "", options: complexityOptions, commit: (c: string) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) }) },

@@ -151,3 +151,27 @@ describe("an artifact carried between issues is said on both issues, flat", () =
     expect(screen.getByRole("link", { name: "ISS-110" }).getAttribute("href")).toContain("ISS-110");
   });
 });
+
+// The page's Owner reads as the list's (ISS-1072 round 2): where core's standing names no owner, as for
+// an issue an agent account filed from no box, it reads Unassigned, never the agent that filed it.
+describe("the issue's owner", () => {
+  it("reads Unassigned where the standing names none, never the filing agent's handle", () => {
+    fakeCore(() => ({ body: {} }));
+    renderWithQuery(
+      <PropertiesRail
+        issue={issue({ creatorLabel: "forge", creatorIsAgent: true })}
+        slug="hop"
+        cost={undefined}
+        deps={undefined}
+        pending={false}
+        readOnly={false}
+        onPatch={() => {}}
+        owner={null}
+        developer={false}
+      />,
+    );
+    const facts = screen.getByTestId("facts-properties");
+    expect(facts).toHaveTextContent("Unassigned");
+    expect(facts).not.toHaveTextContent(/\bforge\b/);
+  });
+});

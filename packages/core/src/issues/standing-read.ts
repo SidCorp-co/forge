@@ -96,6 +96,8 @@ interface IssueRowRaw {
   by_agent: boolean;
   /** Filed by an account of the retired steward (`steward_accounts`). */
   by_steward: boolean;
+  /** Filed by an agent account (`users.kind = 'agent'`), whichever box it was filed from. */
+  by_agent_account: boolean;
   /** The person who owns the box it was filed from; null where none filed it. */
   box_owner_id: string | null;
   requirement_id: string | null;
@@ -153,6 +155,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
              (i.created_by_device_id IS NOT NULL OR EXISTS (
                SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent')) AS by_agent,
+             EXISTS (SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent') AS by_agent_account,
              EXISTS (SELECT 1 FROM steward_accounts sa WHERE sa.user_id = i.created_by_id) AS by_steward,
              (SELECT d.owner_id FROM devices d WHERE d.id = i.created_by_device_id) AS box_owner_id,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
@@ -273,6 +276,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     assignee: r.assignee_id,
     creator: r.created_by_id,
     creatorIsSteward: r.by_steward,
+    creatorIsAgent: r.by_agent_account,
     boxOwner: r.box_owner_id,
   });
   const owner = ownerId ? f.people.get(ownerId) : undefined;
