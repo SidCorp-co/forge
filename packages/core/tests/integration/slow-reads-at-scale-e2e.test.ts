@@ -3,7 +3,8 @@
 // 313, and the requirement, feedback and release lists the attention read is built from 5 to 8 s each.
 // This seeds one project the shape of forge on dev (88 requirements, 1100 issues with their criteria
 // and verdicts, 540 releases, 500 feedback) and records each read's statements, its slowest ones and
-// its wall time. Set SLOW_READS_OUT to a file to keep the measures.
+// its wall time, and holds every statement to a ceiling of shared buffers its plan touches. Set
+// SLOW_READS_OUT to a file to keep the measures, and SLOW_READS_EXPLAIN to add the slowest plans.
 
 import { appendFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
@@ -46,6 +47,10 @@ async function seed(): Promise<void> {
     await tx.execute(
       sql`UPDATE requirements SET current_revision = 1, status = 'agreed' WHERE project_id = ${p}`,
     );
+    // each agreed requirement holds the baseline its agree wrote
+    await tx.execute(sql`
+      INSERT INTO requirement_baselines (requirement_id, revision, seq, act, agreed_by, agreed_kind)
+      SELECT id, 1, 1, 'agree', ${ownerId}, 'person' FROM requirements WHERE project_id = ${p}`);
   });
   await db.execute(sql`
     INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
@@ -190,12 +195,37 @@ async function explained(s: Statement): Promise<string> {
   try {
     const plan = await client.unsafe(`EXPLAIN (ANALYZE, BUFFERS) ${s.text}`, s.params);
     const lines = plan.map((r) => r['QUERY PLAN']);
-    return [...lines.slice(0, Number(process.env.SLOW_READS_PLAN_LINES ?? 6)), ...lines.filter((l) => /Execution Time|Planning Time/.test(l))]
+    return [
+      ...lines.slice(0, Number(process.env.SLOW_READS_PLAN_LINES ?? 6)),
+      ...lines.filter((l) => /Execution Time|Planning Time/.test(l)),
+    ]
       .map((l) => `      | ${l.slice(0, 200)}`)
       .join('\n');
   } catch (err) {
     return `      | (no plan: ${(err as Error).message})`;
   }
+}
+
+/**
+ * The most shared buffers one statement of these reads may touch at this size. Time on a laptop or
+ * a CI box varies; the pages a plan reads do not. Before ISS-1070 r2 the shipped-release read
+ * touched 1.36 million (each issue detoasting every release's metadata); the heaviest statement
+ * after it, the requirement verdict read, about 35 thousand.
+ */
+const BUFFERS_PER_STATEMENT = 200_000;
+
+/** The shared buffers a read-only statement's plan touches, children and subplans included. */
+async function buffersOf(s: Statement): Promise<number | null> {
+  if (!/^\s*(SELECT|WITH)\b/i.test(s.text) || /\b(INSERT|UPDATE|DELETE)\b/i.test(s.text))
+    return null;
+  const client = (
+    db as unknown as {
+      $client: { unsafe: (t: string, p?: unknown) => Promise<{ 'QUERY PLAN': unknown }[]> };
+    }
+  ).$client;
+  const [row] = await client.unsafe(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${s.text}`, s.params);
+  const [top] = (row?.['QUERY PLAN'] ?? []) as { Plan: Record<string, number> }[];
+  return (top?.Plan['Shared Hit Blocks'] ?? 0) + (top?.Plan['Shared Read Blocks'] ?? 0);
 }
 
 function report(label: string, m: Measure): string {
@@ -232,7 +262,7 @@ beforeAll(async () => {
 afterAll(closeWorld);
 
 describe('the shell and Dashboard reads at forge-dev size', () => {
-  it('answers each read, and records its statements and time', async () => {
+  it('answers each read, each statement within its buffer ceiling, and records its statements and time', async () => {
     const out = process.env.SLOW_READS_OUT;
     for (const path of READS(projectId)) {
       const warm = await measured(path); // the first request pays for the prepared statements
@@ -255,7 +285,14 @@ describe('the shell and Dashboard reads at forge-dev size', () => {
         ...plans,
       ].join('\n');
       if (out) appendFileSync(out, `${line}\n`);
-      else console.log(line);
+      // each statement's plan stays within the ceiling: no read pays once per row for what one read answers
+      for (const s of median.statements) {
+        const buffers = await buffersOf(s);
+        expect(
+          buffers ?? 0,
+          `${path} sent a statement touching ${buffers} buffers: ${s.text.replace(/\s+/g, ' ').slice(0, 300)}`,
+        ).toBeLessThanOrEqual(BUFFERS_PER_STATEMENT);
+      }
     }
   }, 600_000);
 });
