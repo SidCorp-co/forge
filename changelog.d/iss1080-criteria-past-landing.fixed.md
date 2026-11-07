@@ -1,1 +1,0 @@
-**Criteria written only in a description are caught before the lock.** Filing or taking such an issue warns and names the door, and the run holding a landed issue with no criteria adds them once, recorded, without a reopen.

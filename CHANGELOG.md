@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.565] - 2026-11-07
+
+Criteria written only in an issue description now reach the record
+
+### Fixed
+
+- **Criteria written only in a description are caught before the lock.** Filing or taking such an issue warns and names the door, and the run holding a landed issue with no criteria adds them once, recorded, without a reopen.
+
 ## [0.4.0-dev.564] - 2026-11-07
 
 Runs record what reached them, and knowledge and notes say what they rest on
