@@ -50,7 +50,7 @@ import {
   type PendingIssueRelation,
   writeIssueRelations,
 } from './relations-service.js';
-import { refuseBadReleaseNote } from './release-note-door.js';
+import { refuseBadReleaseNote, releaseNoteWarnings } from './release-note-door.js';
 import { leaseWriteTakes } from './session-claim.js';
 import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
 
@@ -127,6 +127,8 @@ type CreateIssueResult =
       bodyWarnings: string[];
       /** A criteria list its description holds while it has none on the record (ISS-1080), or null. */
       criteriaWarning: string | null;
+      /** What the note filed with it answers, as the PATCH that writes one answers it (ISS-1099). */
+      noteWarnings: string[];
       /** A birth that asked `open`: opened, or held at draft naming each gap; null for one filed at draft. */
       admission: Admission | null;
     };
@@ -435,6 +437,7 @@ export async function createIssue(
     attachmentErrors: persisted.errors,
     bodyWarnings: prepared?.warnings ?? [],
     criteriaWarning,
+    noteWarnings: await releaseNoteWarnings(created.projectId, created.releaseNotes),
     admission,
   };
 }

@@ -128,6 +128,7 @@ issueProjectRoutes.post(
     const warnings = [
       ...result.bodyWarnings,
       ...(result.criteriaWarning ? [result.criteriaWarning] : []),
+      ...result.noteWarnings,
     ];
     if (warnings.length > 0) response.warnings = warnings;
     // a birth that asked open names where it stands: opened, or at draft with each gap that held it

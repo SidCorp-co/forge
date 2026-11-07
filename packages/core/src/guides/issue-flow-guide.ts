@@ -448,8 +448,10 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    \`ARTIFACT_CARRIER_DESIGN\`).
 3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, title, userFacing, adminSteps? } }\`:
    what a user will now see, in their words and in the project's content language (its
-   \`## Content language\` block names it; the answer carries a \`warnings\` entry when a Vietnamese
-   project's note has no Vietnamese letter in it) — a short \`title\` of at most ten words (refused
+   \`## Content language\` block names it; the answer carries a \`warnings\` entry naming the field and
+   the language to rewrite it in when its title, sentence or an admin step is plainly in the other
+   language: no Vietnamese letter in six words or more on a Vietnamese project, Vietnamese letters
+   in two words and a third of them on an English one) — a short \`title\` of at most ten words (refused
    by name without one), exactly one full sentence in \`userFacing\` (two are refused by name, and a
    note kept with two waits off a release page still to ship until rewritten), and each step an
    admin must take before it goes out in \`adminSteps\` — no paths, hashes or refactors, the engineering detail in

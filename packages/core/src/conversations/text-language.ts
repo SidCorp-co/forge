@@ -2,11 +2,10 @@
 // (`assistant/screened-reply.ts:withReplyLanguage`), what a turn is told to answer in, and what a
 // room speaks (`room-language.ts`). Only Vietnamese and English are told apart.
 
+import { VIETNAMESE_LETTER } from '@forge/contracts/content-language';
+
 export type ReplyLanguage = 'en' | 'vi';
 
-// letters only Vietnamese writes among the Latin scripts: the breve and circumflex vowels, the
-// horn vowels, d-stroke, and every vowel carrying a tone mark
-const VIETNAMESE_LETTER = /[ăâđêôơưàảãáạằẳẵắặầẩẫấậèẻẽéẹềểễếệìỉĩíịòỏõóọồổỗốộờởỡớợùủũúụừửữứựỳỷỹýỵ]/i; // i18n-allow: the letters that tell Vietnamese apart
 const WORD = /\p{L}+/gu;
 
 /** A message's share of Vietnamese-marked words at which it reads as Vietnamese, not as English quoting a name. */

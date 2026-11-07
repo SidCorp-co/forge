@@ -216,58 +216,68 @@ export function contentLanguageRecord(
 	};
 }
 
-/** Words a release note needs before its script is judged: a one-word or two-word line says too little to tell. */
+/** Words a text needs before its script is judged: a one-word or two-word line says too little to tell. */
 export const SCRIPT_CHECK_MIN_WORDS = 6;
 
-// the letters Vietnamese spells with and English never does: đ, the vowel marks, and the five tone marks
+// the letters Vietnamese spells with and English never does: đ, the vowel marks, and the five tone
+// marks; the one set every reading of a text's language tests (`core/src/conversations/text-language.ts` too)
 export const VIETNAMESE_LETTER =
 	/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
 
+/** The share of a text's words spelled with a Vietnamese letter at which it is not English. */
+const VIETNAMESE_WORD_SHARE = 1 / 3;
+
+/** How far a text is read: `short` also reads one under `SCRIPT_CHECK_MIN_WORDS` words where its own letters decide it. */
+interface MisfitReading {
+	short?: boolean;
+}
+
 /**
- * The one test of whether prose plainly disagrees with a project's content language, or null.
- * It runs for `vi` only: a note of at least `SCRIPT_CHECK_MIN_WORDS` words with no Vietnamese
- * letter in it is not Vietnamese. No other language is guessed, and a note that passes is not
- * thereby judged to be in the language. `what` names the prose, so the sentence says which text it read.
+ * Why `text` plainly is not in the project's content language, or null: the one reading of a text's
+ * letters against a project, for what a chat saves (REQ-69 BC-10) and for a release note (ISS-1099).
+ * `tag` is read by its language subtag (`vi-VN` is `vi`). `vi`: at least `SCRIPT_CHECK_MIN_WORDS`
+ * words with no Vietnamese letter anywhere in them; a shorter text is never judged so, as an absent
+ * letter decides nothing in "Fix login" or "v1.31.1". `en`: two or more words, and a third or more
+ * of them, spelled with a Vietnamese letter, so a Vietnamese name in an English sentence passes; a
+ * text under `SCRIPT_CHECK_MIN_WORDS` words is read so only with `short` (a release note's title).
+ * No other language is guessed, and a text that passes is not thereby judged to be in the language.
+ */
+export function contentLanguageMisfit(
+	tag: string,
+	text: string,
+	reading: MisfitReading = {},
+): string | null {
+	const words = text.split(/\s+/).filter((w) => /\p{L}/u.test(w));
+	if (words.length === 0) return null;
+	const short = words.length < SCRIPT_CHECK_MIN_WORDS;
+	const name = `${contentLanguageName(tag)} (\`${tag}\`)`;
+	const language = tag.toLowerCase().split("-")[0];
+	if (language === "vi")
+		return short || VIETNAMESE_LETTER.test(text)
+			? null
+			: `it is ${words.length} words with no Vietnamese letter in it, and this project writes in ${name}`;
+	if (language !== "en" || (short && !reading.short)) return null;
+	const spelled = words.filter((w) => VIETNAMESE_LETTER.test(w)).length;
+	return spelled < 2 || spelled / words.length < VIETNAMESE_WORD_SHARE
+		? null
+		: `${spelled} of its ${words.length} words are spelled with Vietnamese letters, and this project writes in ${name}`;
+}
+
+/**
+ * The warning a release note's text answers where it is not in the project's content language, or
+ * null (ISS-1099): `contentLanguageMisfit` in both directions, reading a short title by its letters
+ * too. `what` names the field, so the sentence says which text it read and the language to rewrite it
+ * in. A warning, never a refusal: the note is stored as sent.
  */
 export function contentLanguageScriptWarning(
 	tag: string,
 	text: string,
 	what: string,
 ): string | null {
-	if (tag !== "vi") return null;
-	const words = text.split(/\s+/).filter((w) => /\p{L}/u.test(w));
-	if (words.length < SCRIPT_CHECK_MIN_WORDS) return null;
-	if (VIETNAMESE_LETTER.test(text)) return null;
-	return `${what} is ${words.length} words with no Vietnamese letter (no đ, no vowel or tone mark) in it, but this project's content language is ${contentLanguageName(tag)} (\`${tag}\`); it was stored as sent. Rewrite it in ${contentLanguageName(tag)}.`;
-}
-
-/** The share of a text's words spelled with a Vietnamese letter at which it is not English. */
-const VIETNAMESE_WORD_SHARE = 1 / 3;
-
-/**
- * Why `text` plainly is not in the project's content language, or null (REQ-69 BC-10): the check
- * text a chat saves for the project meets before it is held or put to the person. A text under
- * `SCRIPT_CHECK_MIN_WORDS` words says too little to tell. `vi`: no Vietnamese letter anywhere in
- * it. `en`: a third or more of its words spelled with one, so a Vietnamese name in an English
- * sentence passes. No other language is guessed, and a text that passes is not thereby judged to
- * be in the language.
- */
-export function contentLanguageMisfit(
-	tag: string,
-	text: string,
-): string | null {
-	const words = text.split(/\s+/).filter((w) => /\p{L}/u.test(w));
-	if (words.length < SCRIPT_CHECK_MIN_WORDS) return null;
-	const name = `${contentLanguageName(tag)} (\`${tag}\`)`;
-	if (tag === "vi")
-		return VIETNAMESE_LETTER.test(text)
-			? null
-			: `it is ${words.length} words with no Vietnamese letter in it, and this project writes in ${name}`;
-	if (tag !== "en") return null;
-	const spelled = words.filter((w) => VIETNAMESE_LETTER.test(w)).length;
-	return spelled / words.length < VIETNAMESE_WORD_SHARE
-		? null
-		: `${spelled} of its ${words.length} words are spelled with Vietnamese letters, and this project writes in ${name}`;
+	const misfit = contentLanguageMisfit(tag, text, { short: true });
+	return misfit
+		? `${what}: ${misfit}; it was stored as sent. Rewrite it in ${contentLanguageName(tag)}.`
+		: null;
 }
 
 // A release note is read by the people who use the product, so it carries none of the engineer's

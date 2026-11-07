@@ -1,7 +1,3 @@
-import {
-  contentLanguageScriptWarning,
-  releaseNoteReferenceWarning,
-} from '@forge/contracts/content-language';
 import { diffFieldValue } from '@forge/contracts/field-changes';
 import { Hono } from 'hono';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -34,6 +30,7 @@ import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { issueDetailOf } from './project-issue-routes.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { releaseNoteWarnings } from './release-note-door.js';
 import { issuePatchSchema } from './request-schemas.js';
 import { deleteIssue } from './service.js';
 import { updateIssueFields } from './update-service.js';
@@ -47,7 +44,7 @@ export {
 
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
-import { deleteMemory, issueDeleteRefusal, readProjectDocument } from './ports.js';
+import { deleteMemory, issueDeleteRefusal } from './ports.js';
 
 export { bodyRoutes } from '../body/routes.js';
 
@@ -186,22 +183,11 @@ issueRoutes.patch(
       await activeIssuePrefix(issue.projectId),
       await readLandingShape(issue.projectId),
     );
-    const warnings = [...collected.warnings, ...updated.warnings];
-    const note = patch.releaseNotes;
-    if (note && note.section !== 'Skip') {
-      const held = await readProjectDocument(issue.projectId);
-      const language = held?.document.contentLanguage ?? 'en';
-      const read: [string, string][] = [
-        ...(note.title ? [[note.title, 'releaseNotes.title'] as [string, string]] : []),
-        [note.userFacing, 'releaseNotes.userFacing'],
-      ];
-      for (const [text, field] of read) {
-        const mismatch = contentLanguageScriptWarning(language, text, field);
-        if (mismatch) warnings.push(mismatch);
-        const references = releaseNoteReferenceWarning(text, field);
-        if (references) warnings.push(references);
-      }
-    }
+    const warnings = [
+      ...collected.warnings,
+      ...updated.warnings,
+      ...(await releaseNoteWarnings(issue.projectId, patch.releaseNotes)),
+    ];
     return c.json(warnings.length > 0 ? { ...patched, warnings } : patched);
   },
 );

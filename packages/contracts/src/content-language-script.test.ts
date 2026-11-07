@@ -16,7 +16,7 @@ describe("a note whose script disagrees with the content language", () => {
 			"releaseNotes.userFacing",
 		);
 		expect(said).toContain(
-			"releaseNotes.userFacing is 12 words with no Vietnamese letter",
+			"releaseNotes.userFacing: it is 12 words with no Vietnamese letter",
 		);
 		expect(said).toContain("Vietnamese (`vi`)");
 	});
