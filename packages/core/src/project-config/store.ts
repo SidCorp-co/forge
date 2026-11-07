@@ -85,6 +85,16 @@ export const drizzleConfigStore = {
     return out;
   },
 
+  /** The project documents of `projectIds`, each with its project, for a read across projects. */
+  async readProjects(
+    projectIds: readonly string[],
+  ): Promise<(StoredDocument & { projectId: string })[]> {
+    return db
+      .select()
+      .from(projectConfigDocuments)
+      .where(inArray(projectConfigDocuments.projectId, [...projectIds]));
+  },
+
   async readProject(projectId: string): Promise<StoredDocument | null> {
     const [row] = await db
       .select()
@@ -148,6 +158,16 @@ export const drizzleConfigStore = {
       }
       throw err;
     }
+  },
+
+  /** The policies of `projectIds`, each with its project, for a read across projects. */
+  async readPolicies(
+    projectIds: readonly string[],
+  ): Promise<(StoredDocument & { projectId: string })[]> {
+    return db
+      .select()
+      .from(projectPolicies)
+      .where(inArray(projectPolicies.projectId, [...projectIds]));
   },
 
   async readPolicy(projectId: string): Promise<StoredDocument | null> {

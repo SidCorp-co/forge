@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { perProjectRead } from '../db/read-memo.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
@@ -13,15 +13,26 @@ export async function activeIssuePrefix(
   projectId: string,
   dbi: IssueRefReader = defaultDb,
 ): Promise<string | null> {
-  const read = async () => {
+  if (dbi !== defaultDb) {
     const [row] = await dbi
       .select({ issuePrefix: projects.issuePrefix })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
     return row?.issuePrefix ?? null;
-  };
-  return dbi === defaultDb ? memoizedRead(`issuePrefix:${projectId}`, read) : read();
+  }
+  // once a read, and in a read across projects once for all of them (`db/read-memo.ts:perProjectRead`)
+  return perProjectRead(
+    'issuePrefix',
+    projectId,
+    (ids) =>
+      defaultDb
+        .select({ id: projects.id, issuePrefix: projects.issuePrefix })
+        .from(projects)
+        .where(inArray(projects.id, [...ids])),
+    (r) => r.id,
+    (rows) => rows[0]?.issuePrefix ?? null,
+  );
 }
 
 /** Every prefix this project has ever held, for parsing a reference somebody published earlier. */

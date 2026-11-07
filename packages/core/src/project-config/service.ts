@@ -2,7 +2,7 @@ import { parseSecretRef, secretRefOf } from '@forge/contracts/project-config';
 import { parseVariableRef } from '@forge/contracts/variables';
 import type { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { perProjectRead } from '../db/read-memo.js';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
 import { getAdapter, providerCanDeploy } from '../integrations/index.js';
 import { stableStringify } from '../lib/canonical-json.js';
@@ -98,20 +98,26 @@ export async function readProjectDocument(
   return held ? { revision: held.revision, document: held.document } : null;
 }
 
+// once a read, and in a read across projects once for all of them (`db/read-memo.ts:perProjectRead`)
 export function readProjectConfig(projectId: string): Promise<Held<ProjectDocument> | null> {
-  return memoizedRead(`projectConfig:${projectId}`, async () => {
-    const stored = await drizzleConfigStore.readProject(projectId);
-    return stored
-      ? reread(projectDocumentSchema, stored, `project document of ${projectId}`)
-      : null;
-  });
+  return perProjectRead(
+    'projectConfig',
+    projectId,
+    (ids) => drizzleConfigStore.readProjects(ids),
+    (r) => r.projectId,
+    ([stored]) =>
+      stored ? reread(projectDocumentSchema, stored, `project document of ${projectId}`) : null,
+  );
 }
 
 export function readPolicy(projectId: string): Promise<Held<PolicyDocument> | null> {
-  return memoizedRead(`projectPolicy:${projectId}`, async () => {
-    const stored = await drizzleConfigStore.readPolicy(projectId);
-    return stored ? reread(policyDocumentSchema, stored, `policy of ${projectId}`) : null;
-  });
+  return perProjectRead(
+    'projectPolicy',
+    projectId,
+    (ids) => drizzleConfigStore.readPolicies(ids),
+    (r) => r.projectId,
+    ([stored]) => (stored ? reread(policyDocumentSchema, stored, `policy of ${projectId}`) : null),
+  );
 }
 
 export async function readTestingProfile(

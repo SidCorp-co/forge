@@ -6,7 +6,7 @@ import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { perProjectRead } from '../db/read-memo.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { countingOf } from './criteria/verdict-counting.js';
 
@@ -140,12 +140,19 @@ export async function modulesOf(projectId: string, ids: readonly string[]) {
   const out = new Map<string, { id: string; path: string; name: string }>();
   if (ids.length === 0) return out;
   const [all, links] = await Promise.all([
-    memoizedRead(`moduleLabels:${projectId}`, async () =>
-      rowsOf<ModuleRaw>(
-        await db.execute(sql`
-          SELECT NULL::uuid AS issue_id, id, name, slug, parent_id, NULL::boolean AS is_primary
-            FROM labels WHERE project_id = ${projectId} AND kind = 'module'`),
-      ),
+    // once a read, and in a read across projects once for all of them (`db/read-memo.ts:perProjectRead`)
+    perProjectRead(
+      'moduleLabels',
+      projectId,
+      async (projectIds) =>
+        rowsOf<ModuleRaw & { project_id: string }>(
+          await db.execute(sql`
+            SELECT NULL::uuid AS issue_id, id, name, slug, parent_id, NULL::boolean AS is_primary, project_id
+              FROM labels WHERE project_id IN (${idList(projectIds)}) AND kind = 'module'
+             ORDER BY project_id, id`),
+        ),
+      (r) => r.project_id,
+      (rows) => rows,
     ),
     db.execute(sql`
       SELECT il.issue_id, l.id, l.name, l.slug, l.parent_id, il.is_primary
