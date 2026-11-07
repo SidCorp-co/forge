@@ -17,7 +17,7 @@ import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { idList, rowsOf } from '../db/raw-sql.js';
+import { idList, rowsOf, uuidArray } from '../db/raw-sql.js';
 import { idOfParts, memoizedRead, onePerProject, partsOf, rowsPerId } from '../db/read-memo.js';
 import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -90,41 +90,41 @@ async function readAnchorOnce(projectId: string, now: Date): Promise<Anchor> {
   const at = now.toISOString();
   // every project's asks before the quiet point are one read (ISS-1070 r6)
   const row = await onePerProject(`forecastAnchor:${at}`, projectId, async (ids) => {
-    const inIds = idList(ids);
     const rows = rowsOf<EventRow & { project_id: string }>(
       await db.execute(sql`
-      SELECT DISTINCT ON (e.project_id) * FROM (
-        SELECT i.project_id, 'transition' AS kind, al.created_at AS at, i.iss_seq AS seq,
+      -- each project's newest event by its own ordered walk, as its read alone takes it
+      SELECT p.id AS project_id, e.* FROM unnest(${uuidArray(ids)}) AS p(id)
+      CROSS JOIN LATERAL (SELECT * FROM (
+        SELECT 'transition' AS kind, al.created_at AS at, i.iss_seq AS seq,
                NULL::int AS other, al.payload ->> 'to' AS status
           FROM activity_log al JOIN issues i ON i.id = al.issue_id
-         WHERE i.project_id IN (${inIds}) AND al.action = 'issue.statusChanged'
+         WHERE i.project_id = p.id AND al.action = 'issue.statusChanged'
            AND al.created_at <= ${at}::timestamptz
         UNION ALL
-        SELECT i.project_id, 'filed', i.created_at, i.iss_seq, NULL, NULL
-          FROM issues i WHERE i.project_id IN (${inIds}) AND i.created_at <= ${at}::timestamptz
+        SELECT 'filed', i.created_at, i.iss_seq, NULL, NULL
+          FROM issues i WHERE i.project_id = p.id AND i.created_at <= ${at}::timestamptz
         UNION ALL
-        SELECT d.project_id, 'blocker_added', d.created_at, t.iss_seq, f.iss_seq, NULL
+        SELECT 'blocker_added', d.created_at, t.iss_seq, f.iss_seq, NULL
           FROM issue_dependencies d
           JOIN issues f ON f.id = d.from_issue_id JOIN issues t ON t.id = d.to_issue_id
-         WHERE d.project_id IN (${inIds}) AND d.kind = 'blocks' AND d.created_at <= ${at}::timestamptz
+         WHERE d.project_id = p.id AND d.kind = 'blocks' AND d.created_at <= ${at}::timestamptz
         UNION ALL
-        SELECT d.project_id, 'blocker_ended', d.valid_until, t.iss_seq, f.iss_seq, NULL
+        SELECT 'blocker_ended', d.valid_until, t.iss_seq, f.iss_seq, NULL
           FROM issue_dependencies d
           JOIN issues f ON f.id = d.from_issue_id JOIN issues t ON t.id = d.to_issue_id
-         WHERE d.project_id IN (${inIds}) AND d.kind = 'blocks' AND d.valid_until <= ${at}::timestamptz
+         WHERE d.project_id = p.id AND d.kind = 'blocks' AND d.valid_until <= ${at}::timestamptz
         UNION ALL
-        SELECT s.project_id, 'run_started', s.started_at, i.iss_seq, NULL, NULL
+        SELECT 'run_started', s.started_at, i.iss_seq, NULL, NULL
           FROM agent_sessions s JOIN pipeline_runs r ON r.id = s.pipeline_run_id
           LEFT JOIN issues i ON i.id = r.issue_id
-         WHERE s.project_id IN (${inIds}) AND s.kind = ${RUN_SESSION_KIND}
+         WHERE s.project_id = p.id AND s.kind = ${RUN_SESSION_KIND}
            AND s.started_at <= ${at}::timestamptz
         UNION ALL
-        SELECT r.project_id, 'run_ended', r.finished_at, i.iss_seq, NULL, NULL
+        SELECT 'run_ended', r.finished_at, i.iss_seq, NULL, NULL
           FROM pipeline_runs r JOIN agent_sessions s ON s.pipeline_run_id = r.id AND s.kind = ${RUN_SESSION_KIND}
           LEFT JOIN issues i ON i.id = r.issue_id
-         WHERE r.project_id IN (${inIds}) AND r.finished_at <= ${at}::timestamptz
-      ) e
-      ORDER BY e.project_id, e.at DESC, e.kind`),
+         WHERE r.project_id = p.id AND r.finished_at <= ${at}::timestamptz
+      ) ev ORDER BY ev.at DESC, ev.kind LIMIT 1) e`),
     );
     return new Map(rows.map((r) => [r.project_id, r]));
   });
