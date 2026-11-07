@@ -483,6 +483,7 @@ jobs:
               # runner change does not start the core job.
               - 'packages/runner/crates/runner-transport/src/status.rs'
               - 'packages/runner/crates/runner-daemon/src/wake_source.rs'
+              - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session.rs'
             runner:
               - 'packages/runner/**'
               - '.github/workflows/ci.yml'
