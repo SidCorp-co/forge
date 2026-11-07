@@ -43,16 +43,24 @@ describe("a note whose script disagrees with the content language", () => {
 			"releaseNotes.userFacing",
 		);
 		expect(said).toContain("releaseNotes.userFacing");
-		expect(said).toContain("of its 12 words are spelled with Vietnamese letters");
+		expect(said).toContain(
+			"of its 12 words are spelled with Vietnamese letters",
+		);
 		expect(said).toContain("Rewrite it in English.");
 		expect(contentLanguageScriptWarning("en", english, "x")).toBeNull();
 	});
 	it("warns on a short Vietnamese title for an en project, where its letters decide it", () => {
 		expect(
-			contentLanguageScriptWarning("en", "Sửa trang đăng nhập", "releaseNotes.title"),
+			contentLanguageScriptWarning(
+				"en",
+				"Sửa trang đăng nhập",
+				"releaseNotes.title",
+			),
 		).toContain("releaseNotes.title");
 		// one Vietnamese name in a short English title decides nothing
-		expect(contentLanguageScriptWarning("en", "Login for Nguyễn", "x")).toBeNull();
+		expect(
+			contentLanguageScriptWarning("en", "Login for Nguyễn", "x"),
+		).toBeNull();
 	});
 	it("is silent on a note with no letter that decides it, such as a version", () => {
 		expect(contentLanguageScriptWarning("en", "v1.31.1", "x")).toBeNull();

@@ -1,0 +1,1 @@
+**A release note in the wrong language now says so.** Writing or filing one answers a warning naming the field and the language to rewrite it in, for a Vietnamese note on an English project and the reverse.

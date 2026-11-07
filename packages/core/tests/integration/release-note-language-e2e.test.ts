@@ -138,10 +138,14 @@ describe('release note language warning', () => {
 
   it('is silent on a title that is only a version, which no letter decides', async () => {
     const vi = await seed('vi');
-    expect((await write(vi.id, vi.token, vietnamese, 'Fixed', 'v1.31.1')).body.warnings).toBeUndefined();
+    expect(
+      (await write(vi.id, vi.token, vietnamese, 'Fixed', 'v1.31.1')).body.warnings,
+    ).toBeUndefined();
     await truncateAll();
     const en = await seed('en');
-    expect((await write(en.id, en.token, english, 'Fixed', 'v1.31.1')).body.warnings).toBeUndefined();
+    expect(
+      (await write(en.id, en.token, english, 'Fixed', 'v1.31.1')).body.warnings,
+    ).toBeUndefined();
   });
 
   // the REST create body has no `releaseNotes` key (strict); the door that takes a note at birth is
