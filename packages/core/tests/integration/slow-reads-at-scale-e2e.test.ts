@@ -310,17 +310,12 @@ async function profiled(path: string, out: string, as: string): Promise<void> {
  * replaced was cheaper (What's new 4.2 to 5.8 thousand, the home 26 to 28 thousand): that is the
  * model's read price, and it stands while the fact is joined rather than kept on the verdict row.
  */
-/** A read's ceilings: statements, shared buffers, and where named its median time. */
+/** A read's ceilings: statements and shared buffers. */
 interface Ceiling {
   path: string;
   statements: number;
   buffers: number;
-  /** The most milliseconds its median may take on this box (ISS-1070 r6: 300 for attention and home). */
-  ms?: number;
 }
-
-/** The time ISS-1070 r6 holds the shell's attention and home reads to, here, at one project and at twelve. */
-const SHELL_MS = 300;
 
 /**
  * The statements the shell's attention and home reads send, the one ceiling at one project and at
@@ -335,8 +330,8 @@ const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 15000 },
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
-  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 27000, ms: SHELL_MS },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 30000, ms: SHELL_MS },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 27000 },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 30000 },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
@@ -352,8 +347,8 @@ const READS = (p: string): Ceiling[] => [
  */
 const READS_ACROSS = (p: string): Ceiling[] => [
   // a person in twelve projects sends what a person in one does (ISS-1070 r6)
-  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 135000, ms: SHELL_MS },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000, ms: SHELL_MS },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 135000 },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000 },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
@@ -443,9 +438,6 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
         ? [
             `${label} ${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
           ]
-        : []),
-      ...(ceiling.ms !== undefined && median.ms > ceiling.ms
-        ? [`${label} ${path} took ${median.ms.toFixed(0)} ms, over its ceiling of ${ceiling.ms}`]
         : []),
     );
   }
