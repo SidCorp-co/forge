@@ -231,6 +231,13 @@ fn runs_in(dir: &std::path::Path, name: &str) -> bool {
         || (cfg!(windows) && runner_platform::exe::is_runnable(&dir.join(format!("{name}.exe"))))
 }
 
+/// Claude Code's switch for prompt suggestions (2.1.319 reads it before its `promptSuggestionEnabled`
+/// setting, and takes `false` as off). A suggestion is drawn as dim ghost text in an empty composer
+/// and Enter there sends it, so a pane this box types into and presses Enter at would act on an
+/// instruction the model invented; and a capture without its escapes reads the ghost as typed text,
+/// refusing every wake (ISS-1081 round 2). Every pane is started with suggestions off.
+pub const PROMPT_SUGGESTION_VAR: &str = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION";
+
 // A pane's `forge-runner hook|gate|run|api` finds its daemon through `daemon_dir`, this
 // daemon's config dir. The session server's unit inherits none of this process's environment, so
 // a daemon serving a config dir of its own names it or its panes reach the box's default daemon
@@ -241,7 +248,7 @@ pub(super) fn pane_env_from(
     var: impl Fn(&str) -> Option<std::ffi::OsString>,
     daemon_dir: Option<&std::path::Path>,
 ) -> Vec<(String, String)> {
-    let mut env = Vec::new();
+    let mut env = vec![(PROMPT_SUGGESTION_VAR.to_string(), "false".to_string())];
     if let Some(v) =
         runner_platform::process::mcp_tool_timeout_default(var("MCP_TOOL_TIMEOUT").as_deref())
     {
@@ -435,6 +442,30 @@ mod tests {
         assert!(
             handed.is_empty(),
             "a pane was handed the daemon's XDG_CONFIG_HOME {handed:?}: every XDG tool in it (vi-natural among them) reads the daemon's directory instead of the user's"
+        );
+    }
+
+    #[test]
+    fn every_pane_starts_with_claude_codes_prompt_suggestions_off() {
+        for dir in [None, Some(Path::new(DAEMON_DIR))] {
+            let env = pane_env_from(daemon_var, dir);
+            let set: Vec<&str> = env
+                .iter()
+                .filter(|(k, _)| k == super::PROMPT_SUGGESTION_VAR)
+                .map(|(_, v)| v.as_str())
+                .collect();
+            assert_eq!(set, vec!["false"], "{env:?}");
+        }
+        let args = super::super::new_session_args(
+            "forge-master-p",
+            Path::new("/r"),
+            &["claude".into()],
+            &pane_env_from(daemon_var, None),
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "-e" && w[1] == "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false"),
+            "the launch does not carry it: {args:?}"
         );
     }
 
