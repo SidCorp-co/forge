@@ -1,0 +1,1 @@
+**Routine approval switches and the Vietnamese interface are gone.** Settings offer no person-approval toggles or language pickers, stored policy stays as it was, a release asks no approval its project never requires, and Approvals leaves the rail.

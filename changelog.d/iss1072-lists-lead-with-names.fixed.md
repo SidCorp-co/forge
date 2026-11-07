@@ -1,0 +1,1 @@
+**Lists lead with names, and Stuck means stuck.** Integrations, Modules, Requirements, Feedback, Channels, Automation and Issues read names before keys on the shared list; queued issues, settled feedback and issues behind a moving blocker no longer read stuck.
