@@ -175,7 +175,7 @@ function Row({ v, selected, onPeek, eta, keyed }: { v: ListRowView; selected: bo
       className={cn(
         ROW_GRID,
         "relative min-h-[54px] w-full cursor-pointer items-center border-b border-line-divider py-[7px] text-left text-fg no-underline hover:bg-hover",
-        "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-y-1 max-md:pr-3 max-md:py-2.5",
+        "max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:pr-3 max-md:py-2.5",
         selected && "bg-sel before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-link hover:bg-sel",
       )}
     >

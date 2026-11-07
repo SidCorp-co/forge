@@ -163,7 +163,7 @@ function RowLine({ row, at }: { row: Row; at: number }) {
       ) : (
         link
       )}
-      {row.since ? <span className="text-muted tabular-nums">{formatElapsed(at - Date.parse(row.since), language)}</span> : null}
+      {row.since ? <span className="shrink-0 text-muted tabular-nums">{formatElapsed(at - Date.parse(row.since), language)}</span> : null}
     </>
   );
 }
@@ -221,7 +221,7 @@ export function LiveBar({ projectId, slug }: { projectId: string; slug: string }
       {open ? (
         <ul data-testid="live-bar-list" className="border-t border-line px-4 py-1">
           {rows.map((row) => (
-            <li key={row.key} className="flex min-w-0 flex-wrap items-center gap-x-3 py-0.5">
+            <li key={row.key} className="flex min-w-0 items-center gap-x-3 py-0.5">
               <RowLine row={row} at={at} />
             </li>
           ))}

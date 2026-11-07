@@ -9,7 +9,7 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
   const { line, sub, late, also } = etaLines(eta, clock);
   return (
     // one ETA on the row (ISS-1072): the latest it may run to rides the tooltip with the detail
-    <span className="flex min-w-0 flex-col items-end text-right tabular-nums" title={[sub, eta.detail].filter(Boolean).join(" · ")} data-testid="eta-cell" data-kind={eta.kind}>
+    <span className="flex min-w-0 flex-col items-end text-right tabular-nums max-md:items-start max-md:text-left" title={[sub, eta.detail].filter(Boolean).join(" · ")} data-testid="eta-cell" data-kind={eta.kind}>
       <span
         className={cn(
           "inline-flex max-w-full items-center gap-1 truncate text-13",

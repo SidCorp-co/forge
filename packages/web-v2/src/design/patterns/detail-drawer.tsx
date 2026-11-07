@@ -56,8 +56,11 @@ export function DetailDrawer({
           onClick={() => set(true)}
           data-detail-drawer=""
           data-testid={testId}
+          aria-label={count !== undefined ? undefined : label}
+          title={label}
         >
-          {label}
+          {/* on a phone the trigger is its icon, so a page's tabs keep one line beside it (ISS-1109) */}
+          <span className="max-md:sr-only">{label}</span>
           {count !== undefined ? (
             <span className="text-12 font-medium text-muted">{count}</span>
           ) : null}

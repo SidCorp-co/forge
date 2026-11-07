@@ -208,6 +208,8 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = (k: string) => etaOfFeedback(forecasts.get(k), clock);
+  // an untriaged row's ETA is its triage wait, which its Waiting on already says: the cell says it nowhere twice (ISS-1109)
+  const rowEtaOf = (k: string) => (forecasts.get(k)?.triage ? null : etaOf(k));
   // the search box reads q; the rest is the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("feedback");
   const all = q.data?.feedback ?? [];
@@ -270,7 +272,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 ariaLabel={t("feedback.title")}
                 groups={list.groups}
                 fold={list.fold}
-                row={rowOf(slug, etaOf, clock, t, time, notes)}
+                row={rowOf(slug, rowEtaOf, clock, t, time, notes)}
                 eta={{ label: ETA_COPY[clock.lang].header, sort: { label: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort } }}
                 selected={peek.open}
                 onPeek={list.togglePeek}
