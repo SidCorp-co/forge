@@ -121,7 +121,12 @@ const planted = {
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>()),
   resolveSourceHost: async () => planted,
-  sourceHostForBinding: async () => planted,
+  // the merge door reads whether the target holds the head first: it holds what this host merged
+  sourceHostForBinding: async () => ({
+    ...planted,
+    branchContains: async (_branch: string, sha: string) =>
+      [...requests.values()].some((r) => r.state === 'merged' && r.headSha === sha),
+  }),
 }));
 
 const rows = async <T>(query: ReturnType<typeof sql>) =>

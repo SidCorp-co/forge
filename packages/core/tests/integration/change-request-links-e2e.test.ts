@@ -71,9 +71,34 @@ vi.mock('../../src/integrations/source-host/index.js', async (original) => ({
   ...(await original<typeof import('../../src/integrations/source-host/index.js')>()),
   resolveSourceHost: async () => plantedGitLab(),
 }));
+/** The merge door's host: it also reads the request and whether the target holds its head. */
+const mergingGitLab = () => ({
+  ...plantedGitLab(),
+  readChangeRequest: async (number: number) => {
+    const merged = host.merges.includes(number);
+    return {
+      number,
+      url: null,
+      title: `MR ${number}`,
+      state: merged ? 'merged' : 'open',
+      draft: false,
+      headRef: `mr-${number}`,
+      headSha: headOf(number),
+      baseRef: BASE,
+      baseSha: BASE_SHA,
+      updatedAt: null,
+      body: null,
+      mergedAt: merged ? '2026-10-26T09:00:00.000Z' : null,
+      mergeCommitSha: merged ? mergeCommitOf(number) : null,
+    };
+  },
+  branchContains: async (_branch: string, sha: string) =>
+    host.merges.some((n) => headOf(n) === sha),
+});
+
 vi.mock('../../src/integrations/source-host/resolve.js', async (original) => ({
   ...(await original<typeof import('../../src/integrations/source-host/resolve.js')>()),
-  sourceHostForBinding: async () => plantedGitLab(),
+  sourceHostForBinding: async () => mergingGitLab(),
 }));
 
 const rows = async <T>(query: ReturnType<typeof sql>) =>

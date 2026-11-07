@@ -79,10 +79,12 @@ export async function landedOnTarget(
 
 /** The commits between the pinned head and the head the request carries now, named for a refusal. */
 async function commitsBetween(host: SourceHost, pin: string, head: string): Promise<string> {
-  const range = await host.readRange(pin, head).catch(
-    (err: unknown) =>
-      ({ ok: false, reason: err instanceof Error ? err.message : String(err) }) as const,
-  );
+  let range: Awaited<ReturnType<SourceHost['readRange']>>;
+  try {
+    range = await host.readRange(pin, head);
+  } catch (err) {
+    range = { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
   if (!range.ok) return `The commits between them could not be read (${range.reason}).`;
   const named = range.commits
     .slice(0, NAMED_COMMITS)

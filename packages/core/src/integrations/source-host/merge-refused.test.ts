@@ -23,11 +23,19 @@ vi.mock('../index.js', () => ({
   updateDelivery,
 }));
 const merge = vi.fn();
+const readChangeRequest = vi.fn(async () => ({
+  state: 'open',
+  headSha: 'a'.repeat(40),
+  baseRef: 'main',
+}));
+const branchContains = vi.fn(async () => false);
 vi.mock('./resolve.js', () => ({
   sourceHostForBinding: async () => ({
     provider: 'github',
     words: { mergeMethods: ['merge'], changeRequest: 'pull request', sigil: '#' },
     merge,
+    readChangeRequest,
+    branchContains,
   }),
 }));
 vi.mock('./projection.js', () => ({ markPullRequestMerged: async () => {} }));
@@ -47,6 +55,33 @@ describe('mergeStoredChangeRequest: a refused merge', () => {
     );
     expect(out?.kind).toBe('refused');
     expect(updateDelivery.mock.calls[0]?.[1]).toMatchObject({ status: 'refused' });
+  });
+
+  it('sends nothing and settles refused when the target cannot say whether it holds the head', async () => {
+    merge.mockClear();
+    branchContains.mockRejectedValueOnce(new Error('GitHub answered HTTP 502 for the compare'));
+    const out = await mergeStoredChangeRequest(
+      { pullRequestId: 'pr-1', requestedBy: 'user:u1', runId: null },
+      stamp as never,
+    );
+    expect(out).toMatchObject({ kind: 'refused', reason: 'merge-containment-unread' });
+    expect(merge).not.toHaveBeenCalled();
+    expect(updateDelivery.mock.calls[0]?.[1]).toMatchObject({ status: 'refused' });
+  });
+
+  it('refuses a release request whose head is not its pin, before anything is sent', async () => {
+    merge.mockClear();
+    const out = await mergeStoredChangeRequest(
+      {
+        pullRequestId: 'pr-1',
+        requestedBy: 'user:u1',
+        runId: null,
+        releasePin: { sha: 'b'.repeat(40), runId: 'r1', pinnedBy: 'approval' },
+      },
+      stamp as never,
+    );
+    expect(out).toMatchObject({ kind: 'refused', reason: 'release-head-moved' });
+    expect(merge).not.toHaveBeenCalled();
   });
 
   it('settles its delivery refused on a method the host lacks', async () => {

@@ -88,7 +88,8 @@ const planted = {
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/integrations/source-host/resolve.js')>()),
   resolveSourceHost: async () => planted,
-  sourceHostForBinding: async () => planted,
+  // nothing this host merged lands on a target a later read could find
+  sourceHostForBinding: async () => ({ ...planted, branchContains: async () => false }),
 }));
 
 const rows = async <T>(query: ReturnType<typeof sql>) =>

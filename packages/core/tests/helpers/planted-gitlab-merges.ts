@@ -14,6 +14,8 @@ export const messages = new Map<string, string>();
 export const contains = new Map<string, Set<string>>();
 /** Each stored request's branch, as the planted host merges it. */
 export const heads = new Map<number, string>();
+/** Each stored request's head commit where the suite planted one; else `headOf`'s. */
+export const headShas = new Map<number, string>();
 /** Requests the planted host answers as already merged, at the commit that landed them. */
 export const alreadyMerged = new Map<number, string>();
 /**
@@ -52,6 +54,7 @@ export function resetPlanted(): void {
   messages.clear();
   contains.clear();
   heads.clear();
+  headShas.clear();
   alreadyMerged.clear();
   callFails.clear();
   readsClosed.clear();
@@ -64,7 +67,8 @@ export function resetPlanted(): void {
 }
 
 /** The head the planted host carries for request `number`. */
-export const headOf = (number: number) => `${String(number).padStart(4, '0')}${'a'.repeat(36)}`;
+export const headOf = (number: number) =>
+  headShas.get(number) ?? `${String(number).padStart(4, '0')}${'a'.repeat(36)}`;
 
 const TIMEOUT = 'The operation was aborted due to timeout';
 

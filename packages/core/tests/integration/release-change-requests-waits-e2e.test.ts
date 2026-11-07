@@ -42,6 +42,9 @@ vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) 
       head: null,
     }),
     sameTree: async () => true,
+    readChangeRequest: async (number: number) =>
+      (await import('../helpers/projected-request.js')).readProjectedRequest(number),
+    branchContains: async () => false,
   }),
 }));
 

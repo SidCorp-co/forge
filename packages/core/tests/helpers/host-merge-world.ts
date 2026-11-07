@@ -18,7 +18,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from './factories.js';
-import { heads, mergeMessage, messages, resetPlanted } from './planted-gitlab-merges.js';
+import { heads, headShas, mergeMessage, messages, resetPlanted } from './planted-gitlab-merges.js';
 import { seedProjectDocument } from './release-world.js';
 
 export const BRANCH = 'release/stg';
@@ -88,6 +88,7 @@ export async function mergeRequest(
   title = `MR ${number}`,
 ) {
   heads.set(number, headRef);
+  headShas.set(number, head.toLowerCase());
   await applyPullRequestEvent(
     { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
     {
