@@ -86,7 +86,7 @@ beforeAll(async () => {
     'scalar',
     'never',
     'waiting',
-  ];
+  ] as const;
   for (const [n, name] of names.entries()) {
     issue[name] = (
       await createTestIssue(projectId, ownerId, n + 1, {
