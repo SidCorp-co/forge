@@ -9,7 +9,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 
-interface Row {
+type Row = {
   number: number;
   title: string;
   state: string;
@@ -19,7 +19,7 @@ interface Row {
   base_sha: string;
   merged_at: Date | null;
   merge_commit_sha: string | null;
-}
+};
 
 export async function readProjectedRequest(number: number) {
   const [row] = [
