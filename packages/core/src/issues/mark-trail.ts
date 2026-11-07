@@ -23,6 +23,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import type { CommitReading } from './commit-landing.js';
@@ -135,10 +136,7 @@ async function markClaimsRead(
     SELECT DISTINCT ON (a.issue_id) a.issue_id,
            CASE WHEN a.action = ${MARK_RECORD} THEN a.payload ->> 'commit' END AS sha
       FROM activity_log a
-     WHERE a.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )})
+     WHERE a.issue_id = ANY(${uuidArray(issueIds)})
        AND (${IS_STAMPED_MARK} OR ${IS_UNMARK})
      ORDER BY a.issue_id, a.created_at DESC, (a.action = ${MARK_RECORD}) ASC
   `)) as unknown as Array<{ issue_id: string; sha: string | null }>;
@@ -163,10 +161,7 @@ export async function currentMarkTimes(
     SELECT DISTINCT ON (a.issue_id) a.issue_id, a.created_at AS at,
            (a.action = ${MARK_RECORD}) AS marked
       FROM activity_log a
-     WHERE a.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )})
+     WHERE a.issue_id = ANY(${uuidArray(issueIds)})
        AND (${IS_STAMPED_MARK} OR ${IS_UNMARK})
      ORDER BY a.issue_id, a.created_at DESC, (a.action = ${MARK_RECORD}) ASC
   `)) as unknown as Array<{ issue_id: string; at: Date | string; marked: boolean }>;
@@ -193,10 +188,7 @@ export async function markedCommitsOf(
   if (issueIds.length === 0) return out;
   const rows = (await executor.execute(sql`
     SELECT id, merged_commit_sha AS sha FROM issues
-     WHERE id IN (${sql.join(
-       issueIds.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )})
+     WHERE id = ANY(${uuidArray(issueIds)})
   `)) as unknown as Array<{ id: string; sha: string | null }>;
   for (const r of rows)
     if (r.sha) out.set(r.id, { sha: r.sha.toLowerCase(), provenance: 'observed' });

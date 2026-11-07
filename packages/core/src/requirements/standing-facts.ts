@@ -431,10 +431,7 @@ async function statusFactsRead(ids: readonly string[]): Promise<{
          ORDER BY kt.created_at DESC
          LIMIT 1
       ) last ON true
-     WHERE r.id IN (${sql.join(
-       ids.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )})`)) as unknown as Array<{
+     WHERE r.id = ANY(${uuidArray(ids)})`)) as unknown as Array<{
     id: string;
     status: string;
     at: Date | string;
@@ -479,10 +476,7 @@ async function startedAtRead(issueIds: readonly string[]): Promise<Map<string, D
       FROM kernel_transitions
      WHERE entity = 'issue'
        AND to_status NOT IN ('draft', 'open')
-       AND entity_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
+       AND entity_id = ANY(${uuidArray(issueIds)})
      GROUP BY entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
   return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
 }
@@ -499,10 +493,7 @@ async function closedAtRead(issueIds: readonly string[]): Promise<Map<string, Da
       FROM kernel_transitions
      WHERE entity = 'issue'
        AND to_status = 'closed'
-       AND entity_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
+       AND entity_id = ANY(${uuidArray(issueIds)})
      GROUP BY entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
   return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
 }

@@ -6,8 +6,9 @@
 
 import type { IssueStanding } from '@forge/contracts/issue-standing';
 import type { MasterServing } from '@forge/contracts/steward';
-import { inArray, max } from 'drizzle-orm';
+import { max, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 import { feedbackDecisions } from '../db/schema-feedback.js';
 import { issueWaitsOf } from '../issues/index.js';
@@ -53,7 +54,7 @@ async function decidedAtOf(feedbackIds: readonly string[]): Promise<Map<string, 
     const rows = await db
       .select({ id: feedbackDecisions.feedbackId, at: max(feedbackDecisions.decidedAt) })
       .from(feedbackDecisions)
-      .where(inArray(feedbackDecisions.feedbackId, [...some]))
+      .where(sql`${feedbackDecisions.feedbackId} = ANY(${uuidArray(some)})`)
       .groupBy(feedbackDecisions.feedbackId);
     return new Map(rows.flatMap((r) => (r.at ? [[r.id, new Date(r.at)] as const] : [])));
   });

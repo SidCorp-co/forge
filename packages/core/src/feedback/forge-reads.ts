@@ -4,8 +4,9 @@
  */
 
 import type { FeedbackOriginView } from '@forge/contracts/feedback';
-import { and, asc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { rowsPerId } from '../db/read-memo.js';
 import { issues, projects } from '../db/schema.js';
 import { feedback, feedbackOccurrences } from '../db/schema-feedback.js';
@@ -104,7 +105,7 @@ const originRowsOf = (feedbackIds: readonly string[]) =>
     .from(feedbackOccurrences)
     .leftJoin(projects, eq(projects.id, feedbackOccurrences.sourceProjectId))
     .leftJoin(issues, eq(issues.id, feedbackOccurrences.sourceIssueId))
-    .where(inArray(feedbackOccurrences.feedbackId, [...feedbackIds]))
+    .where(sql`${feedbackOccurrences.feedbackId} = ANY(${uuidArray(feedbackIds)})`)
     .orderBy(asc(feedbackOccurrences.createdAt), asc(feedbackOccurrences.id));
 
 /** What `forgeOriginsOf` reads: each item's origin view, and the items every report of which came from an archived project. */

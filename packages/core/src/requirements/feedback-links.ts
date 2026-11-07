@@ -2,6 +2,7 @@ import type { FeedbackStatus } from '@forge/contracts/feedback';
 import type { RequirementFeedbackVia } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { rowsPerId } from '../db/read-memo.js';
 
 interface FeedbackLink {
@@ -51,38 +52,35 @@ export async function feedbackLinksOf(
 /** Every feedback link of `requirementIds`, whatever project the feedback item is in. */
 async function linkRowsOf(requirementIds: readonly string[]) {
   if (requirementIds.length === 0) return [];
-  const ids = sql`(${sql.join(
-    requirementIds.map((id) => sql`${id}::uuid`),
-    sql`, `,
-  )})`;
+  const ids = uuidArray(requirementIds);
   return (await db.execute(sql`
     WITH links AS (
       SELECT f.id AS fid, f.requirement_id AS rid, 'requirement' AS via, 1 AS rank
-        FROM feedback f WHERE f.requirement_id IN ${ids}
+        FROM feedback f WHERE f.requirement_id = ANY(${ids})
       UNION ALL
       SELECT f.id, i.requirement_id, 'issue', 2
         FROM feedback f JOIN issues i ON i.id = f.issue_id
-       WHERE i.requirement_id IN ${ids}
+       WHERE i.requirement_id = ANY(${ids})
       UNION ALL
       SELECT f.id, rw.requirement_id, 'workflow', 3
         FROM feedback f JOIN requirement_workflows rw ON rw.workflow_id = f.workflow_id
-       WHERE rw.requirement_id IN ${ids}
+       WHERE rw.requirement_id = ANY(${ids})
       UNION ALL
       SELECT f.id, i.requirement_id, 'release', 4
         FROM feedback f JOIN issues i ON i.release_batch_run_id = f.release_run_id
-       WHERE i.requirement_id IN ${ids}
+       WHERE i.requirement_id = ANY(${ids})
       UNION ALL
       SELECT f.id, i.requirement_id, 'route', 5
         FROM feedback f JOIN feedback_route_issues c ON c.feedback_id = f.id
         JOIN issues i ON i.id = c.issue_id
-       WHERE i.requirement_id IN ${ids}
+       WHERE i.requirement_id = ANY(${ids})
       UNION ALL
       SELECT f.id, s.requirement_id, 'route', 5
         FROM feedback f JOIN suggestions s ON s.id = f.routed_suggestion_id
-       WHERE s.requirement_id IN ${ids}
+       WHERE s.requirement_id = ANY(${ids})
       UNION ALL
       SELECT f.id, f.routed_requirement_id, 'route', 5
-        FROM feedback f WHERE f.routed_requirement_id IN ${ids}
+        FROM feedback f WHERE f.routed_requirement_id = ANY(${ids})
     )
     SELECT DISTINCT ON (l.rid, l.fid)
            l.rid AS requirement_id, f.project_id, l.fid AS feedback_id, f.fb_seq, f.status, l.via

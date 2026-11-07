@@ -1,5 +1,6 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 import { issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -24,7 +25,7 @@ async function displayIdsRead(
     .select({ id: issues.id, issSeq: issues.issSeq, issuePrefix: projects.issuePrefix })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(inArray(issues.id, [...issueIds]));
+    .where(sql`${issues.id} = ANY(${uuidArray(issueIds)})`);
   return new Map(rows.map((r) => [r.id, formatIssueRef(r.issuePrefix, r.issSeq)]));
 }
 

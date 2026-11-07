@@ -5,8 +5,9 @@
  * (ISS-1018). Moved out of `standing-facts.ts`, which reads the requirement's own facts.
  */
 
-import { inArray } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { requirementDependents } from './dependents.js';
@@ -60,7 +61,7 @@ function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string, strin
     const rows = await db
       .select({ id: issues.id, projectId: issues.projectId })
       .from(issues)
-      .where(inArray(issues.id, [...ids]));
+      .where(sql`${issues.id} = ANY(${uuidArray(ids)})`);
     return new Map(rows.map((r) => [r.id, r.projectId]));
   });
 }

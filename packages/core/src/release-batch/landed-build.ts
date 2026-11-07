@@ -29,7 +29,7 @@
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
-import { inArray, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
@@ -145,10 +145,7 @@ async function recordedLandingsRead(
        AND r.metadata ->> 'source' = ${RELEASE_RECORD_SOURCE}
        AND r.metadata ->> 'verification' = ${LANDED_VERIFICATION}
        AND r.metadata -> 'issueIds' ? (i.id::text)
-     WHERE i.id IN (${sql.join(
-       ids.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )})
+     WHERE i.id = ANY(${uuidArray(ids)})
        AND i.status = 'closed'
      ORDER BY i.id, r.started_at DESC
   `)) as unknown as Array<{ id: string; commit: string | null; at: Date | string }>;
@@ -212,7 +209,7 @@ export async function landedBuildsOf(
           paths: issues.mergedPaths,
         })
         .from(issues)
-        .where(inArray(issues.id, [...some])),
+        .where(sql`${issues.id} = ANY(${uuidArray(some)})`),
     (r) => r.id,
   );
   const [recorded, claims, shown] = await Promise.all([
@@ -365,6 +362,8 @@ export {
   otherBuildWhy,
   weighOnLanded,
 } from './landed-weighing.js';
+
+import { uuidArray } from '../db/raw-sql.js';
 
 /** Each issue's live criteria weighed on the build `buildOf` names for it. */
 export interface LandedStanding {

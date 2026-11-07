@@ -8,6 +8,7 @@
 import { type ChangedTrace, changedSincePlan } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 
 interface PlanDrift {
@@ -48,10 +49,7 @@ async function changedTracedRead(
       JOIN issues i ON i.id = c.issue_id
       JOIN requirements r ON r.id = i.requirement_id
       JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id AND rc.requirement_id = r.id
-     WHERE c.issue_id IN (${sql.join(
-       issueIds.map((id) => sql`${id}::uuid`),
-       sql`, `,
-     )})
+     WHERE c.issue_id = ANY(${uuidArray(issueIds)})
        AND c.retired_at IS NULL
        AND i.planned_revision IS NOT NULL
        AND rc.retired_revision > i.planned_revision

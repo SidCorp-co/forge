@@ -6,9 +6,10 @@ import {
   type ReleaseDraftApprovalView,
   releaseThroughChangeRequests,
 } from '@forge/contracts/releases';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
 import { rowsPerId } from '../db/read-memo.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-ledger.js';
@@ -150,7 +151,7 @@ export async function approvalsOfRuns(runIds: readonly string[]): Promise<Releas
       db
         .select()
         .from(releaseApprovals)
-        .where(inArray(releaseApprovals.runId, [...some]))
+        .where(sql`${releaseApprovals.runId} = ANY(${uuidArray(some)})`)
         .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id)),
     (r) => r.runId,
   );

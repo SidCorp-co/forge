@@ -4,7 +4,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { idList } from '../db/raw-sql.js';
+import { idList, uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
 
 /**
@@ -39,21 +39,13 @@ async function reopenedAtRead(
 ): Promise<Map<string, Date>> {
   if (issueIds.length === 0) return new Map();
   const returned =
-    asReturned.length === 0
-      ? sql`false`
-      : sql`t.entity_id IN (${sql.join(
-          asReturned.map((id) => sql`${id}::uuid`),
-          sql`, `,
-        )})`;
+    asReturned.length === 0 ? sql`false` : sql`t.entity_id = ANY(${uuidArray(asReturned)})`;
   const rows = (await executor.execute(sql`
     SELECT t.entity_id, max(t.created_at) AS at
       FROM kernel_transitions t
      WHERE t.entity = 'issue'
        AND t.to_status = 'reopen'
-       AND t.entity_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
+       AND t.entity_id = ANY(${uuidArray(issueIds)})
        AND NOT COALESCE((
              SELECT u.from_status = 'reopen' FROM kernel_transitions u
               WHERE u.entity = 'issue' AND u.entity_id = t.entity_id
@@ -107,10 +99,7 @@ async function closedAtRead(
       FROM kernel_transitions
      WHERE entity = 'issue'
        AND to_status = 'closed'
-       AND entity_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
+       AND entity_id = ANY(${uuidArray(issueIds)})
      ORDER BY created_at ASC`)) as unknown as Array<{ issue_id: string; at: Date | string }>;
   const out = new Map<string, Date[]>();
   for (const r of rows) out.set(r.issue_id, [...(out.get(r.issue_id) ?? []), new Date(r.at)]);
@@ -210,10 +199,7 @@ export async function shipsWithdrawnOf(
       JOIN issues i ON i.id = t.entity_id
      WHERE t.entity = 'issue'
        AND t.from_status = 'closed'
-       AND t.entity_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
+       AND t.entity_id = ANY(${uuidArray(issueIds)})
        AND NOT ${releasedSql(sql`i.id`, sql`i.project_id`)}`)) as unknown as Array<{
     issue_id: string;
   }>;
@@ -239,10 +225,7 @@ export async function arrivedAfterOf(
      WHERE k.entity = 'issue'
        AND k.to_status = ${status}
        AND k.created_at > ${atIso}
-       AND k.entity_id IN (${sql.join(
-         issueIds.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
+       AND k.entity_id = ANY(${uuidArray(issueIds)})
        AND (SELECT p.to_status FROM kernel_transitions p
              WHERE p.entity = 'issue' AND p.entity_id = k.entity_id AND p.created_at <= ${atIso}
              ORDER BY p.created_at DESC LIMIT 1) IS DISTINCT FROM ${status}
@@ -284,10 +267,9 @@ export async function reopenedRoundsOf(
     closedAtOf(executor, ids),
     executor.execute(sql`
       SELECT id::text AS id, merged_at AS at FROM issues
-       WHERE id IN (${sql.join(
-         ids.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})`) as unknown as Promise<Array<{ id: string; at: Date | string | null }>>,
+       WHERE id = ANY(${uuidArray(ids)})`) as unknown as Promise<
+      Array<{ id: string; at: Date | string | null }>
+    >,
   ]);
   const markedAt = new Map([...marks].map((m) => [m.id, m.at === null ? null : new Date(m.at)]));
   return new Map(
