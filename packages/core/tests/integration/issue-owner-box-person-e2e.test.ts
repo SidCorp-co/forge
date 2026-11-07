@@ -54,7 +54,7 @@ async function filedByAgent(seq: number, box: string | null) {
 async function ownerOf(key: string): Promise<Doc> {
   const res = await api(token, 'GET', `/api/projects/${projectId}/issues/standing/${key}`);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
-  return res.body.standing.owner as Doc;
+  return (res.body.standing as Doc).owner as Doc;
 }
 
 describe('the owner an issue names (ISS-1072)', () => {
