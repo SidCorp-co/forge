@@ -22,16 +22,27 @@ interface MemberRow {
 
 describe("an org's members read", () => {
   it('names an agent by its handle and marks it an agent, and a person by their name or email', async () => {
-    const owner = await createTestUser({ verified: true, email: `owner-${Date.now()}@test.forge.local` });
+    const owner = await createTestUser({
+      verified: true,
+      email: `owner-${Date.now()}@test.forge.local`,
+    });
     const orgId = await seedOrg(owner.id);
-    const named = await createTestUser({ kind: 'agent', email: `autoflow.27285ff18a5b@agents.forge.invalid` });
+    const named = await createTestUser({
+      kind: 'agent',
+      email: `autoflow.27285ff18a5b@agents.forge.invalid`,
+    });
     await db.execute(sql`UPDATE users SET display_name = 'autoflow' WHERE id = ${named.id}`);
     // an agent minted before its handle was kept as its display name: the handle its address carries
-    const older = await createTestUser({ kind: 'agent', email: `hop.7bd530d2f0a4@agents.forge.invalid` });
+    const older = await createTestUser({
+      kind: 'agent',
+      email: `hop.7bd530d2f0a4@agents.forge.invalid`,
+    });
     const person = await createTestUser({ verified: true });
     await db.execute(sql`UPDATE users SET display_name = 'Lan Pham' WHERE id = ${person.id}`);
     for (const id of [named.id, older.id, person.id]) {
-      await db.execute(sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id}, 'member')`);
+      await db.execute(
+        sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id}, 'member')`,
+      );
     }
 
     const res = await api(await userToken(owner.id), 'GET', `/api/orgs/${orgId}/members`);
