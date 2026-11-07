@@ -1390,6 +1390,9 @@
     "agents": {
       "serves": ["REQ-15", "agent-run-standing"]
     },
+    "agreements": {
+      "serves": ["REQ-90", "working-agreements#open-page", "working-agreements#inspect"]
+    },
     "approvals": {
       "serves": ["REQ-8", "REQ-11", "REQ-41"]
     },
