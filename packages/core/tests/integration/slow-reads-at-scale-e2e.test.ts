@@ -315,7 +315,16 @@ interface Ceiling {
   path: string;
   statements: number;
   buffers: number;
+  /** The slowest warm median it may take, where one is held: the shell waits on it (ISS-1070 r7). */
+  ms?: number;
 }
+
+/**
+ * The warm median the attention and home reads may take for a person in twelve projects: the
+ * criterion is Home and the Dashboard showing content in under 2 s on forge-dev, which has run about
+ * 1.4 times this seed (ISS-1070 r7).
+ */
+const ACROSS_MS = 700;
 
 /**
  * The statements the shell's attention and home reads send, the one ceiling at one project and at
@@ -347,8 +356,8 @@ const READS = (p: string): Ceiling[] => [
  */
 const READS_ACROSS = (p: string): Ceiling[] => [
   // a person in twelve projects sends what a person in one does (ISS-1070 r6)
-  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 135000 },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000 },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 135000, ms: ACROSS_MS },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000, ms: ACROSS_MS },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
@@ -445,6 +454,11 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
       ...(buffers > ceiling.buffers
         ? [
             `${label} ${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
+          ]
+        : []),
+      ...(ceiling.ms !== undefined && median.ms > ceiling.ms
+        ? [
+            `${label} ${path} took ${median.ms.toFixed(0)} ms warm (median of 3), over its ceiling of ${ceiling.ms} ms`,
           ]
         : []),
     );
