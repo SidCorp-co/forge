@@ -125,6 +125,14 @@ async function iss12(status = 'reopen'): Promise<string> {
            updated_at = now() - interval '7 hours'
      WHERE id = ${id}
   `);
+  // a reopen is recorded where it happens: after the mark, which makes this the round sent back
+  // (`host-landing.ts:mergeSinceLastReopenSql`), never a fix round that landed since (ISS-1104)
+  if (status === 'reopen') {
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type, actor_agency, source, created_at)
+      VALUES (${randomUUID()}, 'issue', ${id}, 'awaiting_release', 'reopen', 'user', 'human', 'test', now() - interval '8 hours')
+    `);
+  }
   return id;
 }
 
