@@ -93,10 +93,16 @@ impl NudgePass<'_> {
 /// wait-for-reset (captured 2026-09-24: `Usage limit reached again after you
 /// continued`), so no key is sent ahead of it. `prompts` is what the pane's
 /// hooks had reported submitted when it was nudged.
+///
+/// The line goes as a wake, ending on the runner's mark
+/// (`terminal::held::marked`). A prompt that refuses it for text it already
+/// holds is read again, and a runner wake held there at an idle prompt is
+/// submitted in this one's place (ISS-1081 round 2): it is an earlier wake to
+/// the same master, and typing behind it is what the refusal forbids.
 pub(crate) async fn nudge_master(
     masters: &Arc<Masters>,
-    project_id: &str,
-    slug: &str,
+    activity: &agent_activity::Activities,
+    (project_id, slug): (&str, &str),
     because: &str,
     line: &str,
     prompts: Option<u64>,
@@ -105,7 +111,13 @@ pub(crate) async fn nudge_master(
         return;
     };
     tracing::info!("[master] {slug}: nudging {name}: {because}");
-    let typed = terminal::send_line(&name, line).await;
+    let mut typed = terminal::send_line(&name, &terminal::held::marked(line)).await;
+    if matches!(typed, Err(terminal::NotTyped::Refused(_))) {
+        let at = (project_id, slug, session.as_str(), name.as_str());
+        if let Some(held) = take_held(masters, activity.get(&session).as_ref(), at, prompts).await {
+            typed = held;
+        }
+    }
     if note_wake(masters, (project_id, slug, &session), &typed, prompts) {
         return;
     }
@@ -120,6 +132,56 @@ pub(crate) async fn nudge_master(
         } else {
             tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
         }
+    }
+}
+
+/// Whether the pane's hooks report a turn running or stopped on a question:
+/// a prompt either way, where Enter does not start a turn.
+pub(crate) fn turn_by_hooks(seen: Option<&agent_activity::Activity>) -> bool {
+    matches!(
+        seen.map(agent_activity::Activity::doing),
+        Some(agent_activity::Doing::Working | agent_activity::Doing::AwaitingPermission)
+    )
+}
+
+/// What became of a nudge whose prompt refused it for held text, where the
+/// held text decides it: `Some` with the answer that stands for the nudge, or
+/// `None` where today's refusal stands (no text held, or not a runner wake).
+///
+/// A runner wake at an idle prompt is submitted, one attempt, and answered as
+/// a wake typed (`Prompt::Empty`) or said unsent (`Unsubmitted`), which
+/// [`note_wake`] keeps and the sweep reports naming the pane. One behind a
+/// running turn is left to send itself when the turn ends; the sweep reports
+/// it if it reads it still held with no turn running.
+async fn take_held(
+    masters: &Masters,
+    seen: Option<&agent_activity::Activity>,
+    (project_id, slug, session, name): (&str, &str, &str, &str),
+    prompts: Option<u64>,
+) -> Option<std::result::Result<terminal::Prompt, terminal::NotTyped>> {
+    let left = masters.wake_left(project_id, session, prompts);
+    match terminal::held::submit_held_wake(name, left, turn_by_hooks(seen)).await {
+        Ok(terminal::held::Held::Submitted(text)) => {
+            tracing::info!(
+                "[master] {slug}: {name} held a runner wake unsent at an idle prompt \u{ab}{}\u{bb}; \
+it was submitted in place of this nudge",
+                runner_workspace::composer::excerpt(&text, 200)
+            );
+            Some(Ok(terminal::Prompt::Empty))
+        }
+        Ok(terminal::held::Held::Busy(text)) => {
+            tracing::info!(
+                "[master] {slug}: {name} holds a runner wake behind a running turn \u{ab}{}\u{bb}; \
+it is left to send itself when the turn ends, and the sweep reports it if it reads it still held \
+with no turn running",
+                runner_workspace::composer::excerpt(&text, 200)
+            );
+            // Not seen submitted: kept as a wake left, which is what the sweep
+            // reads it by once the turn is over.
+            Some(Ok(terminal::Prompt::Unread))
+        }
+        Ok(terminal::held::Held::Nothing | terminal::held::Held::NotAWake(_)) => None,
+        Err(e) => Some(Err(e)),
     }
 }
 

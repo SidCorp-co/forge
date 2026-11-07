@@ -78,6 +78,10 @@ pub(crate) struct Registry {
     /// then: the sweep reads that pane's prompt and tells core where the wake
     /// still sits there (ISS-1081).
     pub(crate) wake_left: HashMap<String, (String, u64)>,
+    /// Per project, the master session, the text its prompt was last read
+    /// holding, and when a sweep first read it holding that text: held text
+    /// that is no wake and stands is the pane waiting on a person (ISS-1081).
+    pub(crate) held_draft: HashMap<String, (String, String, Instant)>,
     /// Per project, the master session and its turn count when its last
     /// pass settled: a turn started past it with no pass open is one the
     /// runner did not nudge, and is recorded as an unprompted pass.
@@ -324,6 +328,33 @@ impl Masters {
             return true;
         }
         reg.wake_left.remove(project_id);
+        false
+    }
+
+    /// Whether `session`'s prompt has held `held` since a sweep at least
+    /// `stands` ago. Each read is kept, so the first read of a text starts it,
+    /// and a prompt read holding nothing, or another session's, forgets it.
+    pub(crate) fn draft_stood(
+        &self,
+        project_id: &str,
+        session: &str,
+        held: Option<&str>,
+        stands: Duration,
+    ) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(held) = held else {
+            reg.held_draft.remove(project_id);
+            return false;
+        };
+        if let Some((s, text, since)) = reg.held_draft.get(project_id) {
+            if s == session && text == held {
+                return since.elapsed() >= stands;
+            }
+        }
+        reg.held_draft.insert(
+            project_id.to_string(),
+            (session.to_string(), held.to_string(), Instant::now()),
+        );
         false
     }
 

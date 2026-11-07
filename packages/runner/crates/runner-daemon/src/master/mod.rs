@@ -103,8 +103,9 @@ fn standing_prompt(
     reach: &runner_workspace::mcp::config::PaneReach,
 ) -> String {
     let mut out = format!(
-        "Use the `forge-master` skill. You are the resident master for project `{project}` on \
-this box, and you will be woken again in this same session rather than started fresh.\n"
+        "{} You are the resident master for project `{project}` on this box, and you will be \
+woken again in this same session rather than started fresh.\n",
+        terminal::held::STANDING_OPENING
     );
     if let Some(base) = base_branch {
         out.push_str(&format!(

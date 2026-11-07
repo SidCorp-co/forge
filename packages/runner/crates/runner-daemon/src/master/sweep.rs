@@ -326,17 +326,44 @@ pub(crate) fn dialog_of(
         })
 }
 
-/// What a master's pane shows that only a person answers, off its prompt: a
-/// choice list, or the wake this box typed there and did not see submitted,
-/// still sitting at it (`wake_left`). The second is said naming the pane, so
-/// a master that sat an hour with its wake unsent is core's to read rather
-/// than this box's log's (ISS-1081).
-pub(crate) fn stopped_on(name: &str, seen: &Composer, wake_left: bool) -> Option<String> {
-    match seen {
+/// How long a held text that is no runner wake stands at an idle prompt, read
+/// on more than one sweep, before it is told to core as the pane waiting on a
+/// person: past a person pausing mid-draft, and every wake refused meanwhile.
+pub(crate) const DRAFT_STANDS: Duration = Duration::from_secs(60);
+
+/// What a master's pane shows that only a person answers, off its prompt.
+///
+/// - A choice list.
+/// - A runner wake held unsent (`terminal::held::is_wake`, `left` being a wake
+///   this box typed there and has not seen go) with no turn running, by the
+///   pane's drawing or its hooks (`turn`). One behind a running turn sends
+///   itself when the turn ends, so it is reported once a sweep reads it still
+///   held with no turn running, not before (ISS-1081 round 2).
+/// - Held text that is no wake, at an idle prompt, that has stood since a
+///   sweep at least [`DRAFT_STANDS`] earlier (`draft_stood`): every wake is
+///   refused while it stands, so the pane waits on whoever typed it.
+///
+/// Each is said naming the pane, so a master that sat an hour with its prompt
+/// held is core's to read rather than this box's log's (ISS-1081).
+pub(crate) fn stopped_on(
+    name: &str,
+    read: &terminal::held::PaneRead,
+    (left, turn): (bool, bool),
+    draft_stood: bool,
+) -> Option<String> {
+    let idle = !(read.turn_running || turn);
+    match &read.composer {
         Composer::Menu { highlighted } => Some(composer::excerpt(highlighted, 200)),
-        Composer::Holds(held) if wake_left => Some(format!(
-            "{name}: the wake this box typed sits unsent at its prompt \u{ab}{}\u{bb}; Enter at \
-the pane submits it",
+        Composer::Holds(held) if terminal::held::is_wake(held, left) => idle.then(|| {
+            format!(
+                "{name}: the wake this box typed sits unsent at its prompt \u{ab}{}\u{bb}; Enter \
+at the pane submits it",
+                composer::excerpt(held, 200)
+            )
+        }),
+        Composer::Holds(held) if idle && draft_stood => Some(format!(
+            "{name}: its prompt holds an unsent draft \u{ab}{}\u{bb}; no wake reaches it \
+until a person sends or clears it",
             composer::excerpt(held, 200)
         )),
         _ => None,
@@ -356,16 +383,23 @@ pub(crate) async fn report_pane_dialog(
         return;
     };
     let reported = activity.get(&session_id);
-    let seen = terminal::pane_prompt(&name).await;
+    let read = terminal::held::pane_read(&name).await;
     let wake_left = masters.wake_left(
         project_id,
         &session_id,
         reported.as_ref().map(|a| a.prompts),
     );
-    if wake_left && seen == Composer::Empty {
+    if wake_left && read.composer == Composer::Empty {
         masters.clear_wake_left(project_id);
     }
-    let dialog = dialog_of(stopped_on(&name, &seen, wake_left), reported.as_ref());
+    let held = match &read.composer {
+        Composer::Holds(text) => Some(text.as_str()),
+        _ => None,
+    };
+    let draft_stood = masters.draft_stood(project_id, &session_id, held, DRAFT_STANDS);
+    let turn = turn_by_hooks(reported.as_ref());
+    let on_pane = stopped_on(&name, &read, (wake_left, turn), draft_stood);
+    let dialog = dialog_of(on_pane, reported.as_ref());
     let text = dialog.as_ref().map(|(t, _)| t.as_str());
     if !masters.claim_dialog_report(project_id, &session_id, text) {
         return;
@@ -396,12 +430,29 @@ mod tests {
 
     const PANE: &str = "forge-master-forge-plugin";
 
+    use runner_workspace::terminal::held::{marked, PaneRead};
+
+    fn idle(composer: Composer) -> PaneRead {
+        PaneRead {
+            composer,
+            turn_running: false,
+        }
+    }
+
+    fn busy(composer: Composer) -> PaneRead {
+        PaneRead {
+            composer,
+            turn_running: true,
+        }
+    }
+
     /// ISS-1081: forge-master-forge-plugin sat an hour with its wake at the
     /// prompt, and the box said so only in its own log, once a nudge.
     #[test]
     fn a_wake_this_box_left_unsent_is_what_the_pane_waits_on_naming_the_pane() {
-        let seen = Composer::Holds("[Pasted text #1 +21 lines]".into());
-        let said = stopped_on(PANE, &seen, true).expect("an unsent wake was not reported");
+        let seen = idle(Composer::Holds("[Pasted text #1 +21 lines]".into()));
+        let said =
+            stopped_on(PANE, &seen, (true, false), false).expect("an unsent wake was not reported");
         assert!(
             said.starts_with(PANE) && said.contains("unsent") && said.contains("+21 lines"),
             "{said}"
@@ -413,32 +464,87 @@ mod tests {
         assert_eq!(dialog_of(Some(said.clone()), None), Some((said, "pane")));
     }
 
+    /// ISS-1081 round 2: a wake from before a restart carries no note of this
+    /// process's; its mark tells it.
     #[test]
-    fn a_draft_at_the_prompt_that_is_no_wake_of_this_boxs_is_not_reported() {
-        let seen = Composer::Holds("a person typing".into());
-        assert_eq!(stopped_on(PANE, &seen, false), None);
+    fn a_marked_wake_held_at_an_idle_prompt_is_reported_without_a_note() {
+        let seen = idle(Composer::Holds(marked("Pass. Run the wave.")));
+        let said = stopped_on(PANE, &seen, (false, false), false);
+        assert!(said.is_some_and(|s| s.starts_with(PANE) && s.contains("unsent")));
+    }
+
+    #[test]
+    fn a_wake_behind_a_running_turn_is_not_reported_until_no_turn_runs() {
+        let wake = Composer::Holds(marked("Pass."));
+        assert_eq!(
+            stopped_on(PANE, &busy(wake.clone()), (true, false), false),
+            None
+        );
+        assert_eq!(
+            stopped_on(PANE, &idle(wake.clone()), (true, true), false),
+            None,
+            "a wake was reported while its hooks report a turn"
+        );
+        assert!(stopped_on(PANE, &idle(wake), (true, false), false).is_some());
+    }
+
+    #[test]
+    fn a_draft_that_is_no_wake_is_reported_only_once_it_stands_at_an_idle_prompt() {
+        let seen = idle(Composer::Holds("a person typing".into()));
+        assert_eq!(stopped_on(PANE, &seen, (true, false), false), None);
+        let said = stopped_on(PANE, &seen, (true, false), true).expect("a standing draft");
+        assert!(
+            said.starts_with(PANE)
+                && said.contains("a person typing")
+                && !said.contains("wake this box"),
+            "{said}"
+        );
+        let held = busy(Composer::Holds("a person typing".into()));
+        assert_eq!(stopped_on(PANE, &held, (false, false), true), None);
+    }
+
+    #[test]
+    fn a_draft_stands_only_once_the_same_text_is_read_again_past_the_bound() {
+        let m = Masters::new();
+        let held = Some("a person typing");
+        assert!(
+            !m.draft_stood("p", "s1", held, Duration::ZERO),
+            "one read is no standing"
+        );
+        assert!(m.draft_stood("p", "s1", held, Duration::ZERO));
+        assert!(!m.draft_stood("p", "s1", held, Duration::from_secs(60)));
+        assert!(!m.draft_stood("p", "s1", Some("another"), Duration::ZERO));
+        assert!(!m.draft_stood("p", "s2", Some("another"), Duration::ZERO));
+        assert!(!m.draft_stood("p", "s2", None, Duration::ZERO));
+        assert!(!m.draft_stood("p", "s2", Some("another"), Duration::ZERO));
     }
 
     #[test]
     fn an_empty_or_unread_prompt_stops_nothing_and_a_menu_still_does() {
-        assert_eq!(stopped_on(PANE, &Composer::Empty, true), None);
-        assert_eq!(stopped_on(PANE, &Composer::Unrecognised, true), None);
+        for c in [Composer::Empty, Composer::Unrecognised] {
+            assert_eq!(stopped_on(PANE, &idle(c), (true, false), true), None);
+        }
         let menu = Composer::Menu {
             highlighted: "1. Yes".into(),
         };
-        assert_eq!(stopped_on(PANE, &menu, false), Some("1. Yes".into()));
+        assert_eq!(
+            stopped_on(PANE, &idle(menu), (false, false), false),
+            Some("1. Yes".into())
+        );
     }
 
     #[test]
     fn a_long_wake_is_said_within_cores_dialog_limit() {
-        let seen = Composer::Holds("x".repeat(5000));
         let name = "forge-master-".to_string() + &"p".repeat(83);
-        let said = stopped_on(&name, &seen, true).unwrap();
-        assert!(
-            said.chars().count() <= 400,
-            "{} characters",
-            said.chars().count()
-        );
+        for text in [marked(&"x".repeat(5000)), "x".repeat(5000)] {
+            let said =
+                stopped_on(&name, &idle(Composer::Holds(text)), (false, false), true).unwrap();
+            assert!(
+                said.chars().count() <= 400,
+                "{} characters",
+                said.chars().count()
+            );
+        }
     }
 
     #[test]

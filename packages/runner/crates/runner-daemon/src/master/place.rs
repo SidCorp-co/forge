@@ -419,7 +419,7 @@ surface it reads",
         carry.lifted.map(stood_up_brief),
         carry.owed,
     );
-    let typed = terminal::brief_new_pane(name, &brief).await;
+    let typed = terminal::brief_new_pane(name, &terminal::held::marked(&brief)).await;
     let (masters, project_id) = (t.sw.shared.masters, t.runner.project_id.as_str());
     if let Some((session, _)) = masters.get(project_id) {
         let prompts = t.sw.shared.activity.get(&session).map(|a| a.prompts);

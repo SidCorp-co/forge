@@ -319,8 +319,8 @@ async fn drive(t: &Turn<'_>, ledger: &mut Option<Ledger>, typed: Option<&str>) {
     if let Some(because) = typed {
         nudge_master(
             masters,
-            project_id,
-            t.slug(),
+            t.sw.shared.activity,
+            (project_id, t.slug()),
             because,
             &t.work.nudge,
             prompts,
