@@ -297,6 +297,8 @@ const ENUM_FAMILIES = {
   notificationType: NOTIFICATION_TYPE_LABELS,
   landingSurface: LANDING_SURFACE_LABELS,
   artifactChange: ARTIFACT_CHANGE_LABELS,
+  /** A policy gate's mode in a project (REQ-76): `enforce` refuses, `advise` records the gap, `off` asks nothing. */
+  gateMode: { enforce: "Enforce", advise: "Advise", off: "Off" },
   ...ENUM_LABELS,
 } as const satisfies Record<string, Record<string, string>>;
 

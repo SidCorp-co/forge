@@ -1,10 +1,10 @@
 
 // Settings → General: what the project is called and the rules its work follows. Every value is a
 // field of the project document, held as one draft and saved by one write at the revision read
-// (`PUT /projects/:id/config`, the raw editor's own write). No step asks a person to approve it here
-// (routine approval is a defect, owner 2026-11-06) and no language is chosen (Forge is English only,
-// owner 2026-10-08): what the document already holds for either is kept as written and read by core,
-// and the raw editor under Advanced still writes it (ISS-1071).
+// (`PUT /projects/:id/config`, the raw editor's own write). No step asks a person to approve it here,
+// a plan's approval included (routine approval is a defect, owner 2026-11-06), and no language is
+// chosen (Forge is English only, owner 2026-10-08): what the document already holds for either is kept
+// as written and read by core, and the raw editor under Advanced still writes it (ISS-1071).
 import { Link } from "@/lib/navigation/router";
 import { SENSITIVE_DATA_LEVELS } from "@forge/contracts/data-policy";
 import { FEEDBACK_VERIFY_WINDOW } from "@forge/contracts/feedback";
@@ -91,13 +91,6 @@ export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; 
 				/>
 			</SettingsGroup>
 			<SettingsGroup id="rules" title={t("settings.project.general.rules")}>
-				<SwitchSetting
-					draft={draft}
-					path={["plan", "approval", "required"]}
-					fallback={false}
-					label={t("settings.project.general.planApproval")}
-					disabled={off}
-				/>
 				<SwitchSetting
 					draft={draft}
 					path={["delivery", "verdictsRequired"]}

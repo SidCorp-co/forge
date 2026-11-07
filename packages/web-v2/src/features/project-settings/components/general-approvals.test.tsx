@@ -26,6 +26,7 @@ const STORED = {
   contentLanguage: "vi",
   keepTermsInEnglish: ["checkout"],
   approvals: { designs: true, triage: false },
+  plan: { approval: { required: true } },
   release: { approval: { required: true } },
 };
 
@@ -43,6 +44,9 @@ describe("project settings after the rulings of 2026-11-06 and 2026-10-08", () =
     const text = document.body.textContent ?? "";
     expect(controls().filter((n) => /A person (approves|accepts|agrees|admits)|approves triage/i.test(n))).toEqual([]);
     expect(text).not.toMatch(/A person (approves|accepts|agrees|admits)|Person approves triage/);
+    // a plan's approval is a routine one too: no switch for it (ISS-1071 round 2)
+    expect(controls().filter((n) => /approv/i.test(n))).toEqual([]);
+    expect(text).not.toMatch(/Plans need approval/i);
     expect(text).not.toMatch(/Content language|Keep in English|Keep these terms/i);
     expect(screen.queryByRole("region", { name: /language/i })).toBeNull();
   });
@@ -66,7 +70,7 @@ describe("project settings after the rulings of 2026-11-06 and 2026-10-08", () =
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({
       baseRevision: 4,
-      document: { project: { name: "Hop Clinic" }, contentLanguage: "vi", keepTermsInEnglish: ["checkout"], approvals: { designs: true, triage: false }, release: { approval: { required: true } } },
+      document: { project: { name: "Hop Clinic" }, contentLanguage: "vi", keepTermsInEnglish: ["checkout"], approvals: { designs: true, triage: false }, plan: { approval: { required: true } }, release: { approval: { required: true } } },
     });
   });
 });
