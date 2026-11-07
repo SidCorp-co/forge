@@ -12,6 +12,7 @@ export { OCCUPYING } from './load.js';
 export { reapDeadMasterHolds, reapSilentMasters } from './master-reaper.js';
 export { ensureMasterSession, projectHasLiveMaster, residentMasterSql } from './master-session.js';
 export { masterLastBeatSql, masterSilentSql } from './master-silence.js';
+export { recordDevicePluginVersion } from './plugin-version-record.js';
 export { ADMITTED_RUNNER } from './pool-admission.js';
 export { readRunnerPoolRead } from './pool-read-report.js';
 export { provideDevicesPorts } from './ports.js';

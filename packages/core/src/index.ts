@@ -25,10 +25,12 @@ import { runOnceBackfills, startDeferredBackfills } from './boot-backfills.js';
 import { CHAT_PROVIDED_TOOLS } from './chat-tools.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
+import { recordTokenPluginVersion } from './credentials/pat-plugin-version.js';
 import { provideCredentialsPorts } from './credentials/ports.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
+import { recordDevicePluginVersion } from './devices/index.js';
 import { contractHolding, contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
@@ -98,6 +100,7 @@ import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
+import { providePluginVersionRecorders } from './middleware/plugin-version.js';
 import { closeRateLimitStore } from './middleware/rate-limit.js';
 import { readMemo } from './middleware/read-memo.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
@@ -201,6 +204,10 @@ import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+providePluginVersionRecorders({
+  device: recordDevicePluginVersion,
+  token: recordTokenPluginVersion,
+});
 provideRouteRefSources({
   projectIdOfSlug: findProjectIdBySlug,
   projectSlugsOf: findProjectSlugs,

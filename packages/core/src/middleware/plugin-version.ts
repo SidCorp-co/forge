@@ -17,8 +17,6 @@ import {
 } from '@forge/contracts/plugin-version';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { recordTokenPluginVersion } from '../credentials/pat-plugin-version.js';
-import { recordDevicePluginVersion } from '../devices/plugin-version-record.js';
 import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -39,6 +37,28 @@ const PLUGIN_CLIENT_VAR = 'pluginClient';
 
 /** A version heard again within this long is not written again; a changed version always is. */
 export const PLUGIN_VERSION_RECORD_INTERVAL_MS = 10 * 60 * 1000;
+
+/** The modules owning the rows a version is written on: devices for a box, credentials for a token. */
+export interface PluginVersionRecorders {
+  device(deviceId: string, version: string): Promise<void>;
+  token(tokenId: string, version: string): Promise<void>;
+}
+
+let recorders: PluginVersionRecorders | null = null;
+
+/** The process entry provides the owning modules' writers before it serves. */
+export function providePluginVersionRecorders(provided: PluginVersionRecorders): void {
+  recorders = provided;
+}
+
+function recordersOf(): PluginVersionRecorders {
+  if (!recorders) {
+    throw new Error(
+      'plugin-version: no recorder was provided, so a plugin version cannot be written; the process entry calls providePluginVersionRecorders before it serves',
+    );
+  }
+  return recorders;
+}
 
 const lastRecorded = new Map<string, { version: string; at: number }>();
 const warned = new Set<string>();
@@ -64,8 +84,8 @@ function recordPluginVersion(caller: PluginCaller, version: string): void {
   writes.start(
     () =>
       caller.kind === 'device'
-        ? recordDevicePluginVersion(caller.id, version)
-        : recordTokenPluginVersion(caller.id, version),
+        ? recordersOf().device(caller.id, version)
+        : recordersOf().token(caller.id, version),
     (err) => {
       lastRecorded.delete(key);
       logger.warn({ err, caller }, 'plugin-version: the version heard was not written');

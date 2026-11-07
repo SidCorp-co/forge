@@ -13,26 +13,26 @@ import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestIdVars } from './request-id.js';
 
-const written: Array<{ set: unknown; table: unknown }> = [];
-
-vi.mock('../db/client.js', () => ({
-  db: {
-    update: (table: unknown) => ({
-      set: (set: unknown) => ({
-        where: async () => {
-          written.push({ table, set });
-        },
-      }),
-    }),
-  },
-}));
+const written: Array<{ kind: 'device' | 'token'; id: string; set: { pluginVersion: string } }> = [];
 
 const { logger } = await import('../lib/logger.js');
 const warn = vi.spyOn(logger, 'warn');
 const { errorHandler } = await import('./error.js');
-const { admitPluginVersion, narrowedFor, pluginVersionWritesSettled } = await import(
-  './plugin-version.js'
-);
+const {
+  admitPluginVersion,
+  narrowedFor,
+  pluginVersionWritesSettled,
+  providePluginVersionRecorders,
+} = await import('./plugin-version.js');
+// the owning modules' writers, as the process entry provides them
+providePluginVersionRecorders({
+  device: async (id, version) => {
+    written.push({ kind: 'device', id, set: { pluginVersion: version } });
+  },
+  token: async (id, version) => {
+    written.push({ kind: 'token', id, set: { pluginVersion: version } });
+  },
+});
 
 const NARROWING = {
   since: '3.36.681',
