@@ -1,0 +1,1 @@
+**0.4.0-dev.589 records the build 0.4.0-dev.588 deployed.** That release's run stopped before its record, so the four changes listed under 0.4.0-dev.588 (ISS-1121, ISS-1126, ISS-1129, ISS-1130) are released here.
