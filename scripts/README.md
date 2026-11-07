@@ -1352,7 +1352,7 @@ chrome with every reader of it: a copy file holds `en` alone, and one holding an
 refused by name when the copy is composed (`packages/web-v2/src/lib/i18n/product-copy.ts:composeCopy`).
 A reader asked for another language (`productCopy`, `copyLocale`, `copyOr`, `productCopyTemplate`,
 `said`) throws naming it rather than drawing English in its place (`englishOnly`), proven by
-`packages/web-v2/src/lib/i18n/copy-files.test.ts` and `copy-readers.test.ts`. Text a person or a run
+`packages/web-v2/src/lib/i18n/copy-files.test.ts` and `packages/web-v2/src/lib/i18n/copy-readers.test.ts`. Text a person or a run
 wrote in Vietnamese is content, not chrome, and keeps its written-language mark.
 
 Kept, because they are about structure rather than language: the walking test still renders every

@@ -3,7 +3,7 @@
  * @direct-test-of packages/core/src/issues/standing-held.ts
  * @direct-test-of packages/core/src/lib/standing-act-class.ts
  */
-import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { type IssueStatus, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import {
@@ -79,7 +79,7 @@ const blocker = (over: Partial<StandingEdge> = {}): StandingEdge => ({
 });
 
 describe("an issue in the master's queue", () => {
-  it.each(['open', 'approved', 'reopen'] as const)(
+  it.each([...TAKEABLE_STATUSES])(
     'reads queued, never stuck, when it has waited three working days at %s',
     (status) => {
       const s = deriveIssueStanding(

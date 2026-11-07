@@ -193,7 +193,7 @@ export const PATTERN_CATALOG: readonly PatternEntry[] = [
 		],
 		tests: [
 			"packages/web-v2/src/features/suggestions/components/suggestion-list.test.tsx",
-			"packages/web-v2/src/test/en-only-copy.test.tsx"
+			"packages/web-v2/src/lib/i18n/copy-readers.test.ts"
 		],
 		checklist: [
 			"The feature keeps the module layout: **api.ts**, **hooks.ts**, **types.ts**, **components/**, and **routes.ts** only where it owns pages.",

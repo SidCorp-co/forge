@@ -22,7 +22,7 @@ builds on [API route](api-route.md) for the reads and writes it calls, and on
 ## Test shape
 
 - `packages/web-v2/src/features/suggestions/components/suggestion-list.test.tsx` — the component rendered with `renderWithQuery` over a `fakeCore` that answers what core answers, asserting what a person sees and what a click sends
-- `packages/web-v2/src/test/en-only-copy.test.tsx` — a key with English only reads its English on a Vietnamese page, with no raw key and no blank
+- `packages/web-v2/src/lib/i18n/copy-readers.test.ts` — a copy reader asked for any language but English throws naming it, never drawing English in its place
 
 A new screen gets a `*.test.tsx` beside its component, collected by `packages/web-v2/vitest.config.ts`
 under jsdom (`pnpm --filter web-v2 test`). It renders the component with
