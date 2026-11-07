@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.561] - 2026-11-07
+
+A release records the commit production serves, so judged verdicts count
+
+### Fixed
+
+- **A release ships the commit its deploy serves.** Where production serves a descendant of the commit a finish named, that one is recorded and the named one kept, and the shipped-commit door corrects a finish-named commit to it.
+
 ## [0.4.0-dev.560] - 2026-11-07
 
 Change requests opened through Forge link their issues at once
