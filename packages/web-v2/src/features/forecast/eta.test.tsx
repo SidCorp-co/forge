@@ -143,9 +143,37 @@ describe("a release a person still cuts", () => {
   });
 
   it("names who triages an untriaged feedback item, with no date", () => {
-    const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null }, en);
+    const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null, owes: null }, en);
     expect(eta && etaLines(eta, en).line).toBe("Waits on Feedback triager");
     expect(eta?.detail).toBe("Feedback triager — triage it. new: a holder of feedback.approve triages it");
+  });
+});
+
+// ISS-1103 (QA on dev.577): FB-512, Planned on REQ-86, read "Shipped 0.4.0-dev.532" alone while REQ-86
+// waited on its verdicts. A shipped line whose item core says still owes judgement says both, on the
+// face of the cell and on the rail, and never reads as finished.
+describe("shipped work that still owes judgement", () => {
+  const shipped: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-3000) }, release: null, inHands: null, shipped: { version: "0.4.0-dev.532", at: at(-2880) } };
+
+  it("says shipped, in which version, and that judgement is owed, as the cell's two visible lines", () => {
+    const eta = etaOfFeedback({ key: "FB-512", triage: null, delivery: shipped, owes: "judgement" }, en);
+    if (!eta) throw new Error("no eta");
+    expect(eta.kind).toBe("judging");
+    expect(etaLines(eta, en)).toEqual({ line: "Shipped 0.4.0-dev.532", sub: null, also: "Awaiting judgement" });
+    expect(etaInline(eta, en)).toBe("Shipped 0.4.0-dev.532 · awaiting judgement");
+    expect(eta.detail).toMatch(/^Shipped in 0\.4\.0-dev\.532 .*Its verdicts are owed\.$/);
+    render(<EtaCell eta={eta} clock={en} />);
+    const cell = screen.getByTestId("eta-cell");
+    expect(cell.dataset.kind).toBe("judging");
+    expect(cell.textContent).toBe("Shipped 0.4.0-dev.532Awaiting judgement");
+    expect(cell.querySelector("svg")).toBeNull();
+  });
+
+  it("says plain shipped where nothing is owed", () => {
+    const eta = etaOfFeedback({ key: "FB-1", triage: null, delivery: shipped, owes: null }, en);
+    if (!eta) throw new Error("no eta");
+    expect(eta.kind).toBe("shipped");
+    expect(etaLines(eta, en)).toEqual({ line: "Shipped 0.4.0-dev.532", sub: null });
   });
 });
 

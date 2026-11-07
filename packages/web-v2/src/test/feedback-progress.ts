@@ -37,7 +37,7 @@ export const progress = (key: string, w: FeedbackWork, estimate: FeedbackEstimat
   key,
   work: w,
   estimate,
-  forecast: { key, triage: null, delivery: null, ...forecast },
+  forecast: { key, triage: null, delivery: null, owes: null, ...forecast },
 });
 
 const triagePaused = {

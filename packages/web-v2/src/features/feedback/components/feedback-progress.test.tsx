@@ -89,6 +89,16 @@ describe("the feedback item's progress block", () => {
     const shipped = screen.getByTestId("feedback-progress-shipped");
     expect(shipped.textContent).toContain("Shipped in 0.3.0");
     expect(within(shipped).getByRole("link", { name: "0.3.0" }).getAttribute("href")).toBe("/projects/hop/releases/0.3.0");
+    expect(within(shipped).queryByTestId("feedback-progress-owes")).toBeNull();
+  });
+
+  // ISS-1103: a planned item whose carrier shipped reads shipped and that judgement is owed, never shipped alone
+  it("shipped work its item still owes judgement on says so beside the release", async () => {
+    const p = CASE("FB-16");
+    await shown({ ...p, forecast: { ...p.forecast, owes: "judgement" } });
+    const shipped = screen.getByTestId("feedback-progress-shipped");
+    expect(shipped.textContent).toContain("Shipped in 0.3.0");
+    expect(within(shipped).getByTestId("feedback-progress-owes").textContent).toBe(" · awaiting judgement");
   });
 
   it("a duplicate follows its original, linked", async () => {

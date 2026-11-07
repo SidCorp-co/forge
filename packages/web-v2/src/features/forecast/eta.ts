@@ -27,6 +27,8 @@ export type Eta =
   | { kind: "landed"; at: string | null; tail: EtaTail | null; detail: string }
   /** Work in people's hands: said as shipped, never as a date to wait for (REQ-29 BC-9). */
   | { kind: "shipped"; version: string | null; detail: string }
+  /** Shipped, and its item still owes the verdicts that deliver it (ISS-1103): never read as finished. */
+  | { kind: "judging"; version: string | null; detail: string }
   | { kind: "none"; detail: string };
 
 /** The release a person still owes after the landing, the viewer's own as "then you cut it". */
@@ -107,7 +109,11 @@ export function etaOfScope(s: ScopeForecast | undefined, c: EtaClock): Eta | nul
 export function etaOfFeedback(f: FeedbackForecast | undefined, c: EtaClock): Eta | null {
   if (!f) return null;
   if (f.triage) return { kind: "waits", who: f.triage.says.who, act: f.triage.says.act, detail: waitDetail(f.triage.says, c.lang) };
-  return f.delivery ? etaOfDelivery(f.delivery, c) : null;
+  if (!f.delivery) return null;
+  const eta = etaOfDelivery(f.delivery, c);
+  // core says what a shipped line still owes (`forecast/feedback.ts:owedAfterShip`): the cell says both
+  if (eta.kind === "shipped" && f.owes === "judgement") return { kind: "judging", version: eta.version, detail: `${eta.detail} ${ETA_COPY[c.lang].judgementOwed}` };
+  return eta;
 }
 
 /** The order the column sorts by: the p50, then what has landed by when, then everything without a time. */
@@ -118,8 +124,11 @@ export function etaSortValue(e: Eta | null): number | null {
   return null;
 }
 
-/** The cell's two lines: the time and, quieter, the p85 or the person who cuts the release. */
-export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | null; late?: boolean } {
+/**
+ * The cell's lines: the time and, quieter, the p85 or the person who cuts the release; `also` is a
+ * second line the cell shows on its face, the judgement shipped work still owes.
+ */
+export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | null; late?: boolean; also?: string } {
   const copy = ETA_COPY[c.lang];
   const tail = e.kind === "range" || e.kind === "done" || e.kind === "landed" ? e.tail : null;
   const sub = tail ? thenCuts(tail.who, c.lang) : null;
@@ -137,6 +146,8 @@ export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | nul
       return { line: copy.awaitingRelease, sub };
     case "shipped":
       return { line: copy.shippedLine(e.version), sub: null };
+    case "judging":
+      return { line: copy.shippedLine(e.version), sub: null, also: copy.awaitingJudgement };
     case "none":
       return { line: "—", sub: null };
   }
@@ -151,5 +162,6 @@ export function etaInline(e: Eta, c: EtaClock): string {
   }
   const { line, sub } = etaLines(e, c);
   const head = e.kind === "done" ? `✓ ${line}`.trim() : line;
-  return sub ? `${head} · ${sub}` : head;
+  const said = e.kind === "judging" ? `${head} · ${copy.awaitingJudgementInline}` : head;
+  return sub ? `${said} · ${sub}` : said;
 }

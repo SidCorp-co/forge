@@ -133,6 +133,13 @@ function Estimate({ p, slug, clock }: { p: Progress; slug: string; clock: EtaClo
           t("feedback.progress.state.shipped")
         )}
         {e.at ? <span className="text-muted"> · {time.date(e.at)}</span> : null}
+        {/* shipped while the item still owes its verdicts (ISS-1103): never read as finished */}
+        {p.forecast.owes === "judgement" ? (
+          <span className="text-muted" data-testid="feedback-progress-owes">
+            {" "}
+            · {t("eta.awaitingJudgementInline")}
+          </span>
+        ) : null}
       </span>
     );
   }

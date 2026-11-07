@@ -43,6 +43,10 @@ interface EtaCopy {
   landed: (when: string) => string;
   /** The cell of a change landed and not yet in people's hands, which carries no date. */
   awaitingRelease: string;
+  /** Shipped work whose item still owes its verdicts: the cell's second line, mid-line on the rail, and the tooltip's sentence. */
+  awaitingJudgement: string;
+  awaitingJudgementInline: string;
+  judgementOwed: string;
   shipped: (version: string | null, when: string) => string;
   sortBy: string;
 }
@@ -83,6 +87,9 @@ function copyOf(lang: EtaLang): EtaCopy {
     nothingLinked: t("eta.nothingLinked"),
     landed: (when) => t("eta.landed", { when }),
     awaitingRelease: t("eta.awaitingRelease"),
+    awaitingJudgement: t("eta.awaitingJudgement"),
+    awaitingJudgementInline: t("eta.awaitingJudgementInline"),
+    judgementOwed: t("eta.judgementOwed"),
     shipped: (version, when) => (version ? t("eta.shipped", { version, when }) : t("eta.shippedUnversioned", { when })).replace(/ \.$/, "."),
     sortBy: t("eta.sortBy"),
   };

@@ -1,5 +1,7 @@
 {
   "en": {
+    "eta.awaitingJudgement": "Awaiting judgement",
+    "eta.awaitingJudgementInline": "awaiting judgement",
     "eta.awaitingRelease": "Landed, awaiting release",
     "eta.date": "{month} {d}",
     "eta.header": "ETA",
@@ -26,6 +28,7 @@
     "eta.shippedBare": "Shipped",
     "eta.late": "Late, was {when}",
     "eta.inVersion": "in {version}",
+    "eta.judgementOwed": "Its verdicts are owed.",
     "eta.shippedUnversioned": "Shipped {when}.",
     "eta.sortBy": "Sort by forecast time",
     "eta.thenCuts": "then {who} cuts it",
