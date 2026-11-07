@@ -10,14 +10,5 @@
     "whatsNew.release": "Release {version}",
     "whatsNew.title": "What's new",
     "whatsNew.unread": "a new release"
-  },
-  "vi": {
-    "whatsNew.failed": "Không đọc được mục Có gì mới.",
-    "whatsNew.kind.fixed": "Đã sửa",
-    "whatsNew.kind.improved": "Cải thiện",
-    "whatsNew.kind.new": "Mới",
-    "whatsNew.loading": "Đang tải mục Có gì mới…",
-    "whatsNew.nav": "Có gì mới",
-    "whatsNew.title": "Có gì mới"
   }
 }

@@ -142,7 +142,7 @@ const DEV = "?view=developer";
 const stuck = new Set(["s12", "run-1"]);
 // a button found by its label in either language: the rail test draws each screen in en as well
 const clickLabel = (key: ProductCopyKey) => () => {
-  const labels = [productCopy("vi")(key), productCopy("en")(key)];
+  const labels = [productCopy("en")(key)];
   const hit = [...document.querySelectorAll("button")].find((b) => labels.includes(b.textContent?.trim() ?? ""));
   if (!hit) throw new Error(`nothing to click labelled ${key}`);
   fireEvent.click(hit);

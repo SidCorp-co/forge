@@ -122,8 +122,7 @@ const drawer = () => (
 );
 
 function TabBar() {
-  const language = useInterfaceLanguage();
-  return <BottomTabBar items={bottomTabItems(language === "vi" ? 3 : 0)} activeKey="home" onSelect={noop} />;
+  return <BottomTabBar items={bottomTabItems(0)} activeKey="home" onSelect={noop} />;
 }
 
 function Palette() {

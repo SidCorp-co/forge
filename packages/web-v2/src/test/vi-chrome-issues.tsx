@@ -32,7 +32,7 @@ import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { Seeded } from "./vi-chrome-requirements";
 
 // a control found by its label in either language: the rail test draws each screen in en as well
-const labelled = (key: ProductCopyKey) => `[aria-label="${productCopy("vi")(key)}"],[aria-label="${productCopy("en")(key)}"]`;
+const labelled = (key: ProductCopyKey) => `[aria-label="${productCopy("en")(key)}"]`;
 
 // The Issues screens of the Development space for the vi walking test: the table and the three
 // grouped views, the peek, the full page and its tabs, the rail, the banners, the dialogs. Content
@@ -269,7 +269,7 @@ const wrap = (data: [QueryKey, unknown][], children: ReactNode) => <Seeded data=
 const board = (mode: "attention" | "module" | "waves") => () => wrap([[["issues", "standing", P, "open"], STANDING_LIST]], <IssuesBoard scope={{ projectId: P, slug: "hop" }} mode={mode} />);
 
 const peek = { open: "ISS-1", position: { at: 1, of: 6 }, set: noop, move: noop };
-const clock = { lang: "vi" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
+const clock = { lang: "en" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
 
 /** An open question a close or drop on `i1` would end, listed in its dialog (ISS-560). */
 const MOOT_QUESTION: AgentQuestion = {
@@ -405,7 +405,7 @@ export const SCREENS = [
     render: () => wrap([], <NewIssueDialog open onClose={noop} scope={{ projectId: P, slug: "hop" }} />),
     act: () => {
       const quick = [...document.querySelectorAll('[role="tab"], button')].find((b) =>
-        [productCopy("vi")("issues.newIssue.mode.quick"), productCopy("en")("issues.newIssue.mode.quick")].includes(b.textContent?.trim() ?? ""),
+        [productCopy("en")("issues.newIssue.mode.quick")].includes(b.textContent?.trim() ?? ""),
       );
       if (!quick) throw new Error("no quick-capture tab");
       fireEvent.click(quick);

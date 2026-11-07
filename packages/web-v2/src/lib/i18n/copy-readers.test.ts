@@ -1,40 +1,41 @@
 import { SAID_ENTRIES } from "@forge/contracts/said";
+import { say } from "@forge/contracts/said";
 import { describe, expect, it } from "vitest";
-import { ETA_COPY, etaLangOf } from "@/lib/i18n/eta-copy";
-import { copyLocale, PRODUCT_STRINGS as product, productCopy } from "./product-copy";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
+import { labelCopy } from "./labels";
+import { copyLocale, copyOr, PRODUCT_STRINGS as product, productCopy, productCopyTemplate } from "./product-copy";
+import { said } from "./said";
 
-// One product copy, read by both readers: every key exists in en, and a vi key is one of them (what
-// core says holds its English in `@forge/contracts/said`, so the copy files hold only its vi), a tag
-// resolves by its base language, and the ETA words come from the same copy the rest of the product reads.
-const keysOf = (lang: "vi" | "en") => Object.keys(product[lang]).sort();
+// One product copy, in English (owner, 2026-10-08, ISS-1071): every key exists once, what core says
+// holds its English in `@forge/contracts/said` and never in a file, the ETA words come from the same
+// copy, and a reader asked for any other language refuses it by name rather than drawing English.
 
-describe("the locale readers", () => {
-  it("holds no vi key without its English, the registry's English counted as en", () => {
-    const english = new Set([...keysOf("en"), ...Object.keys(SAID_ENTRIES)]);
-    expect(keysOf("vi").filter((k) => !english.has(k))).toEqual([]);
-  });
-
+describe("the copy readers", () => {
   it("holds no key twice: what core says has its English in the registry, never in the file", () => {
-    expect(keysOf("en").filter((k) => k in SAID_ENTRIES)).toEqual([]);
+    expect(Object.keys(product.en).filter((k) => k in SAID_ENTRIES)).toEqual([]);
+    expect(Object.keys(product)).toEqual(["en"]);
   });
 
-  it("resolves a tag by its base language, and anything else to en", () => {
-    for (const tag of ["vi", "vi-VN", "VI"]) {
-      expect(etaLangOf(tag)).toBe("vi");
-      expect(copyLocale(tag)).toBe(copyLocale("vi"));
+  it("reads English for English and an unnamed language, in the en-GB locale", () => {
+    for (const tag of ["en", "en-GB", "EN", null, undefined]) {
+      expect(copyLocale(tag)).toBe("en-GB");
+      expect(productCopy(tag)("eta.header")).toBe(product.en["eta.header"]);
     }
-    for (const tag of ["en", "en-GB", "ja", "fr-CA", "", null, undefined]) {
-      expect(etaLangOf(tag)).toBe("en");
-      expect(copyLocale(tag)).toBe(copyLocale("en"));
-    }
+  });
+
+  it("refuses every other language by name, in each reader", () => {
+    const refused = /No product copy is written in "vi": Forge is English only/;
+    expect(() => productCopy("vi")).toThrow(refused);
+    expect(() => copyLocale("vi")).toThrow(refused);
+    expect(() => copyOr("vi", "eta.header", "x")).toThrow(refused);
+    expect(() => productCopyTemplate("vi", "eta.header")).toThrow(refused);
+    expect(() => labelCopy("vi")("requirementState", "in_delivery")).toThrow(refused);
+    expect(() => said(say("standing.who.master"), "vi")).toThrow(refused);
+    expect(() => productCopy("vi-VN")).toThrow('No product copy is written in "vi-VN"');
   });
 
   it("reads the ETA words from the product copy", () => {
-    expect(ETA_COPY.vi.header).toBe(product.vi["eta.header"]);
+    expect(Object.keys(ETA_COPY)).toEqual(["en"]);
     expect(ETA_COPY.en.header).toBe(product.en["eta.header"]);
-    expect(ETA_COPY.vi.latestInline("T")).toBe("muộn nhất T"); // i18n-allow: asserts the vi copy itself
-    expect(productCopy("vi-VN")("whatsNew.title" as never, { new: 1 })).toBe(
-      productCopy("vi")("whatsNew.title" as never, { new: 1 }),
-    );
   });
 });

@@ -1,17 +1,7 @@
 {
-  "src/design/vocabulary-common.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
   "src/features/comments/components/entity-comment-thread.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "src/features/conversations/act-offers.test.ts": {
-    "@typescript-eslint/require-await": {
-      "count": 3
     }
   },
   "src/features/conversations/components/block-hosts.test.tsx": {
@@ -45,11 +35,6 @@
   "src/features/issues/components/use-guarded-transition.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
-    }
-  },
-  "src/features/issues/identity-phrase.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
     }
   },
   "src/features/previews/idea-snapshot.test.ts": {
@@ -145,11 +130,6 @@
       "count": 2
     }
   },
-  "src/features/workflows/template-words.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
   "src/lib/api/error.test.ts": {
     "@typescript-eslint/require-await": {
       "count": 2
@@ -161,21 +141,6 @@
     },
     "@typescript-eslint/require-await": {
       "count": 2
-    }
-  },
-  "src/lib/i18n/copy-readers.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    }
-  },
-  "src/lib/i18n/labels.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    }
-  },
-  "src/lib/i18n/said.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
     }
   },
   "src/lib/ws/replaced-draft.test.tsx": {

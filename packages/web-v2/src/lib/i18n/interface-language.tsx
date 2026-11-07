@@ -1,30 +1,22 @@
 
-import { createContext, type ReactNode, use, useMemo } from "react";
+import { createContext, use, useMemo } from "react";
 import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatDuration, formatElapsed, formatNumber, formatRelative, formatShortDateTime, formatUsd, formatWhen } from "./format";
 import { labelCopy } from "./labels";
-import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
+import { copyOr, type Copy, copyLocale, type InterfaceLanguage, productCopy } from "./product-copy";
 
-// The language the product's chrome is written in, one answer for every screen: the person's own
-// choice (Account > Preferences > Interface language), else English. Forge is English only (owner,
-// 2026-10-08; REQ-13 BC-2): a project's content language governs what agents write and the product's
-// own content, never Forge's chrome, so a Vietnamese project no longer turns the menus Vietnamese.
-// Content a person or an agent wrote stays in the language it was written in.
+// The language the product's chrome is written in: English, on every screen. Forge is English only
+// (owner, 2026-10-08; ISS-1071): no person's choice and no project's content language turns it, so
+// there is no choice to read and no scope to set. Content a person or an agent wrote stays in the
+// language it was written in (`written.tsx`). Every reader below takes the one language, so a screen
+// still says which language it formats in, and the readers refuse any other by name (`englishOnly`).
 
-type InterfaceLanguage = "en" | "vi";
-
-/** The chosen language, else English; never the project's content language. */
-export function resolveInterfaceLanguage(choice: string | null | undefined): InterfaceLanguage {
-  return choice && baseOf(choice) === "vi" ? "vi" : "en";
-}
-
+// Priced amnesty (ISS-1071): 122 files still thread the one language from this hook into the readers.
+// Dropping the hook and the `language` parameters is a sweep across files ISS-1070 holds (the issue
+// page, the shell's reads), so it waits for that batch to land; until then nothing provides this
+// context and every screen reads its English default. It ends with the sweep that deletes the hook.
 const InterfaceLanguageContext = createContext<InterfaceLanguage>("en");
 
-/** Pins the language for a subtree; the workspace shell and tests use it. */
-export function InterfaceLanguageScope({ language, children }: { language: InterfaceLanguage; children: ReactNode }) {
-  return <InterfaceLanguageContext value={language}>{children}</InterfaceLanguageContext>;
-}
-
-/** The language chrome is written in on this screen. */
+/** The language chrome is written in on this screen: English. */
 export function useInterfaceLanguage(): InterfaceLanguage {
   return use(InterfaceLanguageContext);
 }
@@ -35,24 +27,24 @@ export function useCopy(): Copy {
   return useMemo(() => productCopy(language), [language]);
 }
 
-/** The BCP 47 locale dates, times and numbers are drawn in: vi-VN (24h, dd/MM/yyyy) or en-GB (24h). */
+/** The BCP 47 locale dates, times and numbers are drawn in: en-GB (24h, day before month). */
 export function useCopyLocale(): string {
   return copyLocale(useInterfaceLanguage());
 }
 
-/** A reader of the contracts' enum labels (a state, a phase, an area) in the interface language. */
+/** A reader of the contracts' enum labels (a state, a phase, an area). */
 export function useLabel() {
   const language = useInterfaceLanguage();
   return useMemo(() => labelCopy(language), [language]);
 }
 
-/** A navigation entry's label: the locale file's `nav.<key>` where the entry has one, else the label it was built with (a project's or ecosystem's own name). */
+/** A navigation entry's label: the copy file's `nav.<key>` where the entry has one, else the label it was built with (a project's or ecosystem's own name). */
 export function useNavLabel() {
   const language = useInterfaceLanguage();
   return (key: string, label: string): string => copyOr(language, `nav.${key}`, label);
 }
 
-/** The language-aware relative time, `5m ago` and its Vietnamese reading, and the absolute date and time; every screen formats through these. */
+/** The relative time, `5m ago`, and the absolute date and time; every screen formats through these. */
 export function useTimeFormat() {
   const language = useInterfaceLanguage();
   return useMemo(

@@ -1,5 +1,5 @@
 // The surfaces ISS-680 brings to the UI copy rule, drawn as a person reads them (FB-281): the issue
-// page's Stuck banner over a real release hold, in English and in Vietnamese; Needs you and the card
+// page's Stuck banner over a real release hold; Needs you and the card
 // of a park re-kinded to wait on a resource; the re-point notice core posts in the thread; and the
 // Approvals peek of a question about a requirement its evidence also names. The probe answers each
 // raw code, route, double stop or repeated requirement a person's view still shows.
@@ -18,7 +18,6 @@ import { IssueStateHead } from "@/features/issues/components/detail/issue-state-
 import { IssueStuckBanner } from "@/features/issues/components/issue-standing-bits";
 import type { CommentNode } from "@/features/issues/types";
 import { IssueQuestions } from "@/features/questions";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import "./entry";
 import { InRouter } from "./router";
 
@@ -112,7 +111,7 @@ window.fetch = async (input: RequestInfo | URL) =>
     ? new Response(JSON.stringify({ questions: [question] }), { headers: { "content-type": "application/json" } })
     : new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
 
-const SURFACES = ["banner-en", "banner-vi", "parked", "notice", "peek"] as const;
+const SURFACES = ["banner", "parked", "notice", "peek"] as const;
 const textOf = (name: string) => document.querySelector(`[data-witness="${name}"]`)?.textContent ?? "";
 
 function probe(): string[] {
@@ -162,13 +161,8 @@ createRoot(root).render(
   <InRouter>
     <QueryClientProvider client={queries}>
       <main className="mx-auto max-w-[900px] bg-app p-4">
-        <Part name="banner-en">
+        <Part name="banner">
           <IssueStuckBanner standing={stuck} className="rounded-md" />
-        </Part>
-        <Part name="banner-vi">
-          <InterfaceLanguageScope language="vi">
-            <IssueStuckBanner standing={stuck} className="rounded-md" />
-          </InterfaceLanguageScope>
         </Part>
         <Part name="parked">
           <IssueStateHead standing={parked} forecast={undefined} panels={<IssueQuestions issueId="i1" parkedForInfo waitingKind="needs_resource" show="now" />} />

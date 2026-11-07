@@ -4,7 +4,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import type { useDesignDecision } from "../hooks";
 import type { DesignDecisionBody } from "../types";
@@ -72,26 +71,18 @@ describe("what the approver reads before and after the click", () => {
       error: new ApiError(422, "refused", "WORKFLOW_DESIGN_BASE_UNAPPROVED", undefined, { error: { code: refusal.code, message: "refused", refusals: [refusal] } }),
     }) as unknown as Decide;
 
-  it("words a base refusal in Vietnamese from its facts, never core's English detail", () => {
-    const vi = productCopy("vi");
-    render(
-      <InterfaceLanguageScope language="vi">
-        <DecisionError decide={refusedWith({ ...block, path: "/revision" })} />
-      </InterfaceLanguageScope>,
-    );
+  it("words a base refusal from its facts, never core's English detail", () => {
+    const en = productCopy("en");
+    render(<DecisionError decide={refusedWith({ ...block, path: "/revision" })} />);
     const line = screen.getByTestId("design-decision-error");
     expect(line).toHaveTextContent("WORKFLOW_DESIGN_BASE_UNAPPROVED");
-    const base = vi("workflows.refusal.base.stale", { flow: "hop-access-decision", r: 10, approved: 11 });
-    expect(line).toHaveTextContent(vi("workflows.refusal.baseUnapproved", { r: 7, bases: base }));
+    const base = en("workflows.refusal.base.stale", { flow: "hop-access-decision", r: 10, approved: 11 });
+    expect(line).toHaveTextContent(en("workflows.refusal.baseUnapproved", { r: 7, bases: base }));
     expect(line).not.toHaveTextContent(block.detail);
   });
 
   it("reads core's detail where the refusal carries no facts this screen words", () => {
-    render(
-      <InterfaceLanguageScope language="vi">
-        <DecisionError decide={refusedWith({ code: "WORKFLOW_DESIGN_BASE_UNAPPROVED", path: "/revision", detail: "an older core's sentence" })} />
-      </InterfaceLanguageScope>,
-    );
+    render(<DecisionError decide={refusedWith({ code: "WORKFLOW_DESIGN_BASE_UNAPPROVED", path: "/revision", detail: "an older core's sentence" })} />);
     expect(screen.getByTestId("design-decision-error")).toHaveTextContent("an older core's sentence");
   });
 

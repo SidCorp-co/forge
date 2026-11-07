@@ -95,7 +95,6 @@ describe("What changes", () => {
     render(<WhatChanges changes={carried} slug="hop" />);
     fireEvent.click(screen.getByTestId("release-surface-toggle"));
     expect(screen.getByTestId("release-artifact-carried").textContent).toBe("carried by ISS-110");
-    expect(productCopy("vi")("releases.changes.carriedBy", { issue: "ISS-110" })).toBe("phát hành cùng ISS-110"); // i18n-allow: asserts the vi carriage copy
   });
 
   it("counts paths a release's range changed that no surface claims as paths, under no issue", () => {

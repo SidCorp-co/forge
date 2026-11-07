@@ -1,8 +1,8 @@
 
 // Text a person or a model wrote, shown as it was written: never translated, marked with the
-// language it was written in where that is not the reader's, so a vi reader meeting an English
-// sentence reads it as someone's English rather than as a gap in the interface. Null is a text
-// whose language was not kept (written before it was), and carries no mark: a guess would be one.
+// language it was written in where that is not the reader's (the chrome's English), so a Vietnamese
+// sentence reads as someone's Vietnamese rather than as a gap in the interface. Null is a text whose
+// language was not kept (written before it was), and carries no mark: a guess would be one.
 
 import type { WrittenLang } from "@forge/contracts/written-lang";
 import { useCopy, useInterfaceLanguage } from "./interface-language";

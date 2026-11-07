@@ -20,27 +20,5 @@
     "dash.decision.accept": "Accept",
     "dash.decision.verify": "Verify",
     "dash.more": "{n} more"
-  },
-  "vi": {
-    "dash.fbOpen": "đang mở",
-    "dash.fbUntriaged": "chưa phân loại",
-    "dash.loadFailed": "Không tải được project",
-    "dash.loading": "đang tải project…",
-    "dash.needsYou": "Cần bạn",
-    "dash.notFound": "Không tìm thấy project",
-    "dash.notFoundMessage": "Project này không tồn tại hoặc bạn không có quyền truy cập.",
-    "dash.projectSettings": "Cài đặt project",
-    "dash.shippedIssues": "{n} issue",
-    "dash.title": "Tổng quan",
-    "dash.empty": "Yên ắng",
-    "dash.group.needs": "Cần bạn",
-    "dash.group.moving": "Đang chạy",
-    "dash.group.shipped": "Đã phát hành",
-    "dash.group.stuck": "Bị kẹt",
-    "dash.decision.answer": "Trả lời",
-    "dash.decision.approve": "Duyệt",
-    "dash.decision.accept": "Nghiệm thu",
-    "dash.decision.verify": "Xác nhận",
-    "dash.more": "Thêm {n}"
   }
 }

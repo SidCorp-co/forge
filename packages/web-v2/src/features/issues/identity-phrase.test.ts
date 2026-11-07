@@ -1,6 +1,5 @@
 import { identityPhraseOf } from "@forge/contracts/verdict-identity";
 import { describe, expect, it } from "vitest";
-import { productCopy } from "@/lib/i18n/product-copy";
 import { identityPhrase } from "./identity-phrase";
 
 type Reading = Parameters<typeof identityPhraseOf>[0];
@@ -39,13 +38,6 @@ describe("identityPhrase", () => {
 
   it("names every workflow draft a storefront verdict was judged on (ISS-613)", () => {
     expect(identityPhrase(READINGS.storefront)).toBe("storefront draft wf1@v12345678901, wf2@v2 on preview");
-  });
-
-  it("reads in Vietnamese with no English word of the sentence left", () => {
-    const vi = productCopy("vi");
-    expect(identityPhrase(READINGS.design, vi)).toBe("thiết kế checkout bản 4"); // i18n-allow: asserts the vi copy itself
-    expect(identityPhrase(READINGS.storefrontUncorroborated, vi)).toBe("bản nháp storefront wf1@v1 trên preview (chưa đối chiếu: no match)"); // i18n-allow: asserts the vi copy itself
-    expect(identityPhrase(READINGS.none, vi)).toBe("không có định danh"); // i18n-allow: asserts the vi copy itself
   });
 
   it("prints a field the verdict does not carry as a dash, never the word undefined", () => {

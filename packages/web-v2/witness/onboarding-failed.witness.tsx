@@ -1,7 +1,7 @@
 // The dashboard's failed-onboarding line (ISS-605 c2), drawn from forge's own live onboarding read on
 // forge-dev with the hint core now derives from it (`onboarding-failed.fixture.json`): who acts reads
 // as the role holding onboarding.request, never the permission id, and You to its holder, who alone is
-// offered the act; the same in Vietnamese; and the runner's failure tag only in the Developer view.
+// offered the act; and the runner's failure tag only in the Developer view.
 //
 //   pnpm --filter web-v2 witness witness/onboarding-failed.witness.tsx --out <dir> --clip
 
@@ -9,7 +9,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { writeUrlParams } from "@/design/hooks/use-url-params";
 import { OnboardingHint } from "@/features/onboarding";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import "./entry";
 import LIVE from "./onboarding-failed.fixture.json";
 import { InRouter } from "./router";
@@ -30,20 +29,18 @@ const root = createRoot(document.getElementById("root") as HTMLElement);
 
 let shown = 0;
 
-/** Draws the line for `next` in `language`, tagged so a stage reads its own render, never the last one. */
-function show(next: Reader, language: "en" | "vi"): string {
+/** Draws the line for `next`, tagged so a stage reads its own render, never the last one. */
+function show(next: Reader): string {
   reader = next;
   shown += 1;
   const stage = String(shown);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root.render(
-    <InRouter key={`${next}-${language}-${Math.random()}`} at="/projects/forge" pattern="/projects/$slug">
+    <InRouter key={`${next}-${Math.random()}`} at="/projects/forge" pattern="/projects/$slug">
       <QueryClientProvider client={client}>
-        <InterfaceLanguageScope language={language}>
-          <main className="min-h-screen bg-app text-fg" data-witness="page" data-stage={stage}>
-            <OnboardingHint projectId="p1" projectName="forge" />
-          </main>
-        </InterfaceLanguageScope>
+        <main className="min-h-screen bg-app text-fg" data-witness="page" data-stage={stage}>
+          <OnboardingHint projectId="p1" projectName="forge" />
+        </main>
       </QueryClientProvider>
     </InRouter>,
   );
@@ -84,29 +81,22 @@ window.__witness = {
     {
       name: "member-en",
       run: () => {
-        const stage = show("member", "en");
+        const stage = show("member");
         return reads(stage, { line: "Attempt 10 failed · Waits on: Member · Ask for a re-analysis", act: false, tag: false });
       },
     },
     {
       name: "you-en",
       run: () => {
-        const stage = show("you", "en");
+        const stage = show("you");
         return reads(stage, { line: "Attempt 10 failed · Waits on: You · Ask for a re-analysis", act: true, tag: false });
-      },
-    },
-    {
-      name: "member-vi",
-      run: () => {
-        const stage = show("member", "vi");
-        return reads(stage, { line: "Lần thử 10 thất bại · Đang chờ: Thành viên · Yêu cầu phân tích lại", act: false, tag: false }); // i18n-allow: the vi line the witness reads
       },
     },
     {
       name: "developer-view",
       run: () => {
         writeUrlParams({ view: "developer" });
-        const stage = show("you", "en");
+        const stage = show("you");
         return reads(stage, { line: "Attempt 10 failed · Waits on: You · Ask for a re-analysis", act: true, tag: true });
       },
     },

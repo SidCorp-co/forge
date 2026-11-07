@@ -15,7 +15,6 @@
 import type { DecisionAnswer, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { DecisionPeek } from "./components/approval-peek";
 
@@ -169,13 +168,11 @@ const KINDS: [string, NeedsYouDecision][] = [
   ],
 ];
 
-/** The peek's whole text in a language, with the Technical fold opened where it has one. */
-function drawnIn(d: NeedsYouDecision, language: "en" | "vi"): string {
+/** The peek's whole text, with the Technical fold opened where it has one. */
+function drawn(d: NeedsYouDecision): string {
   cleanup();
   renderWithQuery(
-    <InterfaceLanguageScope language={language}>
-      <DecisionPeek d={d} peek={peek} full={{ href: "/x", origin: null }} slug="hop" noun="Decision" typing={null} onType={() => {}} onPress={() => {}} />
-    </InterfaceLanguageScope>,
+    <DecisionPeek d={d} peek={peek} full={{ href: "/x", origin: null }} slug="hop" noun="Decision" typing={null} onType={() => {}} onPress={() => {}} />,
   );
   const fold = screen.queryByTestId("approval-peek-technical");
   const trigger = fold?.querySelector("button");
@@ -184,8 +181,8 @@ function drawnIn(d: NeedsYouDecision, language: "en" | "vi"): string {
 }
 
 describe("every decision opening a requirement names it once, in Rests on (ISS-680 c5)", () => {
-  it.each(KINDS.flatMap(([what, d]) => (["en", "vi"] as const).map((l) => [what, l, d] as const)))("%s (%s)", (_, language, d) => {
-    const text = drawnIn(d, language);
+  it.each(KINDS)("%s", (_, d) => {
+    const text = drawn(d);
     expect(count(text, KEY)).toBe(1);
     expect(count(text, TITLE)).toBe(1);
     expect(screen.getByTestId("approval-peek-evidence")).toHaveTextContent(`${KEY} revision 2`);

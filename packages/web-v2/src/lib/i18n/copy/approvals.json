@@ -118,11 +118,5 @@
     "approvals.peek.noPlain": "No summary",
     "approvals.peek.effects": "What each answer does",
     "approvals.peek.recommendedAnswer": "Recommended: {label}"
-  },
-  "vi": {
-    "approvals.peek.technical": "Kỹ thuật",
-    "approvals.peek.noPlain": "Chưa có tóm tắt",
-    "approvals.peek.effects": "Mỗi lựa chọn làm gì",
-    "approvals.peek.recommendedAnswer": "Đề xuất: {label}"
   }
 }

@@ -36,7 +36,6 @@ import projectDashboardCopy from "./copy/project-dashboard.json";
 import projectSettingsCopy from "./copy/project-settings.json";
 import projectStatusCopy from "./copy/project-status.json";
 import projectsCopy from "./copy/projects.json";
-import questionsCopy from "./copy/questions.json";
 import releasesCopy from "./copy/releases.json";
 import requirementsCopy from "./copy/requirements.json";
 import runnersCopy from "./copy/runners.json";
@@ -97,7 +96,6 @@ export const COPY_FILES = {
   "lib/i18n/copy/project-settings.json": projectSettingsCopy,
   "lib/i18n/copy/project-status.json": projectStatusCopy,
   "lib/i18n/copy/projects.json": projectsCopy,
-  "lib/i18n/copy/questions.json": questionsCopy,
   "lib/i18n/copy/releases.json": releasesCopy,
   "lib/i18n/copy/requirements.json": requirementsCopy,
   "lib/i18n/copy/runners.json": runnersCopy,

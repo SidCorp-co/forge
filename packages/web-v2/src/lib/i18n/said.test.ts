@@ -5,12 +5,11 @@ import { PRODUCT_STRINGS as strings } from "./product-copy";
 import { said, saidView, saysKey, unknownSaid } from "./said";
 
 // What core says reaches a reader as a registry key and typed values (`@forge/contracts/said`), read
-// through the product copy of the reader's language. These hold a key's vi template, where one was
-// written, to filling only the values the key declares, the English read to exactly the sentence core
-// sends beside it, and a key this build lacks to a visible marker, never to English. A key with no vi
-// template reads its English on a vi page: Forge is not multilingual (the owner's ruling of 2026-10-08).
+// through the product copy (English only). These hold a key's template to filling only the values the
+// key declares, the English read to exactly the sentence core sends beside it, and a key this build
+// lacks to a visible marker, never to English.
 
-const VI = strings.vi as Record<string, string>;
+const EN: Record<string, string> = strings.en;
 const ENTRIES = Object.entries(SAID_ENTRIES) as [SaidKey, (typeof SAID_ENTRIES)[SaidKey]][];
 
 /** A value of each kind, as a producer would send one. */
@@ -38,38 +37,26 @@ const SAMPLE: Record<SaidKind, SaidValue> = {
 };
 
 const sample = (key: SaidKey): Said => {
-  const vars = Object.fromEntries(Object.entries(SAID_ENTRIES[key].vars ?? {}).map(([n, k]) => [n, SAMPLE[k as SaidKind]]));
+  const vars = Object.fromEntries(Object.entries(SAID_ENTRIES[key].vars ?? {}).map(([n, k]) => [n, SAMPLE[k]]));
   return Object.keys(vars).length ? { key, vars } : { key };
 };
 
-const slots = (template: string) => new Set([...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1] as string));
+const slots = (template: string) => new Set([...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
 
-describe("what core says, read in vi", () => {
-  it("fills every value a key declares and no other, an English agreement word aside, where a vi template was written", () => {
+describe("what core says, filled into its templates", () => {
+  it("fills every value a key declares and no other, an agreement word aside", () => {
     const wrong: string[] = [];
     for (const [key, entry] of ENTRIES) {
-      if (typeof VI[key] !== "string") continue;
+      if (typeof EN[key] !== "string") continue;
       const declared = Object.entries(entry.vars ?? {});
       const want = new Set(declared.filter(([, k]) => k !== "agreement").map(([n]) => n));
       const all = new Set(declared.map(([n]) => n));
-      const got = slots(VI[key] as string);
+      const got = slots(EN[key]);
       const missing = [...want].filter((n) => !got.has(n));
       const stray = [...got].filter((n) => !all.has(n));
       if (missing.length || stray.length) wrong.push(`${key}: missing {${missing.join(",")}} stray {${stray.join(",")}}`);
     }
     expect(wrong).toEqual([]);
-  });
-
-  it("reads the session a run closed short of an outcome in vi, not as core's English (live QA, run detail)", () => {
-    const s = say("runs.final.shortOf", {
-      close: say("runs.final.close", { close: "ended" }),
-      missed: [say("runs.final.missed", { key: "ISS-110", status: "needs_info", landed: null })],
-    });
-    expect(sayEn(s)).toBe("the session closed (ended) with ISS-110 at needs_info, short of an outcome");
-    const vi = said(s, "vi");
-    expect(vi).toContain("ISS-110");
-    expect(vi).not.toContain("short of an outcome");
-    expect(vi).not.toContain("the session closed");
   });
 });
 
@@ -89,8 +76,8 @@ describe("what core says, read in en", () => {
 describe("a key this build does not know", () => {
   const stray = { key: "standing.act.noSuchAct" } as unknown as Said;
 
-  it("reads as a marker naming it, in every language, never as English", () => {
-    expect(said(stray, "vi")).toBe(unknownSaid("standing.act.noSuchAct"));
+  it("reads as a marker naming it, never as English", () => {
+    expect(said(stray, "en")).toBe(unknownSaid("standing.act.noSuchAct"));
     expect(said(stray, "en")).toBe("⟦standing.act.noSuchAct⟧");
   });
 
@@ -104,9 +91,9 @@ describe("a wait read from what core said", () => {
   const w = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.triageIt"), rule: say("feedback.rule.triagerTriages", { phase: "new" }) });
 
   it("draws who, act and rule in the reader's words and drops what it read them from", () => {
-    const v = saidView(w, "vi");
-    expect(v.who).toBe(VI["standing.who.you"]);
-    expect(v.act).toBe(VI["standing.act.triageIt"]);
+    const v = saidView(w, "en");
+    expect(v.who).toBe("You");
+    expect(v.act).toBe("triage it");
     expect("says" in v).toBe(false);
     expect(saidView(w, "en")).toMatchObject({ who: "You", act: "triage it", rule: "new: a holder of feedback.approve triages it" });
   });

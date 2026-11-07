@@ -12,7 +12,6 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/design";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { routeEvent } from "@/lib/ws/event-router";
@@ -85,14 +84,9 @@ function core(world: World): Call[] {
   });
 }
 
-const viCopy = productCopy("vi");
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
-const within = (ui: ReactElement, language: "en" | "vi") => (
-  <InterfaceLanguageScope language={language}>
-    <TooltipProvider delay={0}>{ui}</TooltipProvider>
-  </InterfaceLanguageScope>
-);
-const mount = (qc = client(), language: "en" | "vi" = "en") => renderWithQuery(within(<LiveBar projectId={P} slug="forge" />, language), qc);
+const within = (ui: ReactElement) => <TooltipProvider delay={0}>{ui}</TooltipProvider>;
+const mount = (qc = client()) => renderWithQuery(within(<LiveBar projectId={P} slug="forge" />), qc);
 const bar = () => screen.getByTestId("live-bar");
 const tip = () =>
   waitFor(() => {
@@ -122,22 +116,21 @@ describe("the project bar (REQ-15 BC-10)", () => {
     expect(screen.queryByText("can't read", { exact: false })).toBeNull();
   });
 
-  it("says so in the person's language", async () => {
+  it("says so in the product's own words", async () => {
     core({ live: list([]), recent: list([]), rooms: turns([]) });
-    mount(client(), "vi");
+    mount();
     await waitFor(() => expect(bar().dataset.state).toBe("quiet"));
-    expect(viCopy("agents.now.nothing")).not.toBe(productCopy("en")("agents.now.nothing"));
-    expect(screen.getByTestId("live-bar-nothing").textContent).toContain(viCopy("agents.now.nothing"));
+    expect(screen.getByTestId("live-bar-nothing").textContent).toContain(productCopy("en")("agents.now.nothing"));
     cleanup();
     core({
       live: list([], master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-9", trigger: "nudge" }, passIssueTitle: "Fix the release page" })),
       recent: list([]),
       rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
     });
-    mount(client(), "vi");
+    mount();
     await waitFor(() => expect(bar().dataset.state).toBe("busy"));
-    expect(bar().textContent).toContain(viCopy("agents.now.master.on", { title: "Fix the release page" }));
-    expect(bar().textContent).toContain(viCopy("agents.now.answering"));
+    expect(bar().textContent).toContain(productCopy("en")("agents.now.master.on", { title: "Fix the release page" }));
+    expect(bar().textContent).toContain(productCopy("en")("agents.now.answering"));
     expect(bar().textContent).not.toMatch(CODES);
   });
 

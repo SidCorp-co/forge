@@ -43,7 +43,6 @@ import {
 } from "@/features/shell";
 import { CurrentProjectProvider } from "@/features/projects/current-project";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { WorkspaceInterfaceLanguage } from "@/providers/interface-language-provider";
 import type { ProjectListItem } from "@/features/projects";
 import type { ChatDockApi } from "@/features/chat-dock";
 import { useRecents } from "@/lib/navigation/recents";
@@ -175,8 +174,7 @@ function ShellContext({
 }) {
   return (
     <CurrentProjectProvider project={project} projectRef={projectRef}>
-      <WorkspaceInterfaceLanguage>
-        <TourReleaseProvider value={tourRelease}>
+      <TourReleaseProvider value={tourRelease}>
           <ChatDockProvider value={dock}>
             <MockupFeedback>
               <TopBarSlotProvider>
@@ -184,8 +182,7 @@ function ShellContext({
               </TopBarSlotProvider>
             </MockupFeedback>
           </ChatDockProvider>
-        </TourReleaseProvider>
-      </WorkspaceInterfaceLanguage>
+      </TourReleaseProvider>
     </CurrentProjectProvider>
   );
 }

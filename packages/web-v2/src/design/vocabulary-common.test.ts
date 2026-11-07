@@ -7,8 +7,7 @@ import { ENUM_COMMON, STATUS_COMMON, enumLabel, statusReading } from "./vocabula
 // an English key spelled as the contract spells it. A Vietnamese one is not owed (Forge is not
 // multilingual, the owner's ruling of 2026-10-08); a value with none reads in English on a vi page.
 
-const en = product.en as Record<string, string>;
-const vi = product.vi as Record<string, string>;
+const en: Record<string, string> = product.en;
 
 describe("enum and state families read from common words", () => {
   it("names every value of each family it reads, in en as the contract", () => {
@@ -24,10 +23,10 @@ describe("enum and state families read from common words", () => {
     }
   });
 
-  it("reads them in vi, and a value no family names sentence-cased", () => {
-    expect(enumLabel("jobType", "code", "vi")).toBe(vi["common.jobType.code"]);
+  it("reads them in English, and a value no family names sentence-cased", () => {
+    expect(enumLabel("jobType", "code", "en")).toBe(en["common.jobType.code"]);
     expect(enumLabel("jobType", "code", "en")).toBe("Code");
-    expect(statusReading("pipelineRun", "running", "vi").label).toBe(vi["common.state.pipelineRun.running"]);
-    expect(enumLabel("jobType", "brand_new", "vi")).toBe("Brand new");
+    expect(statusReading("pipelineRun", "running", "en").label).toBe(en["common.state.pipelineRun.running"]);
+    expect(enumLabel("jobType", "brand_new", "en")).toBe("Brand new");
   });
 });

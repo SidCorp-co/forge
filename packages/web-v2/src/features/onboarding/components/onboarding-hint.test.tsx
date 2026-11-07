@@ -6,7 +6,6 @@ import type { OnboardingHint as Hint } from "@forge/contracts/onboarding";
 import { type Said, say, sayEn } from "@forge/contracts/said";
 import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { OnboardingHint } from "./onboarding-hint";
 import { ThreadSub } from "./thread-sub";
@@ -38,12 +37,8 @@ const failedState = (who: Said = ROLE, mayReanalyze = false) => ({
   firstRequirements: null,
 });
 
-function renderIn(language: "en" | "vi") {
-  return renderWithQuery(
-    <InterfaceLanguageScope language={language}>
-      <OnboardingHint projectId="p1" projectName="forge" />
-    </InterfaceLanguageScope>,
-  );
+function renderHint() {
+  return renderWithQuery(<OnboardingHint projectId="p1" projectName="forge" />);
 }
 
 describe("a failed onboarding analysis", () => {
@@ -51,7 +46,7 @@ describe("a failed onboarding analysis", () => {
 
   it("names the role who acts and the act, never the permission id, and offers no control the reader may not use", async () => {
     fakeCore(() => ({ body: failedState() }));
-    renderIn("en");
+    renderHint();
     const line = await screen.findByTestId("onboarding-hint");
     expect(line).toHaveTextContent("Onboarding analysis failed.");
     expect(line).toHaveTextContent("Waits on: Member");
@@ -64,25 +59,16 @@ describe("a failed onboarding analysis", () => {
 
   it("reads You to the reader who holds it, with the act to take", async () => {
     fakeCore(() => ({ body: failedState(YOU, true) }));
-    renderIn("en");
+    renderHint();
     const line = await screen.findByTestId("onboarding-hint");
     expect(line).toHaveTextContent("Waits on: You");
     expect(screen.getByTestId("onboarding-hint-action")).toHaveTextContent("Ask for a re-analysis");
     expect(screen.queryByTestId("onboarding-hint-act")).toBeNull();
   });
 
-  it("reads the role in Vietnamese, with no key and no permission id", async () => {
-    fakeCore(() => ({ body: failedState() }));
-    renderIn("vi");
-    const line = await screen.findByTestId("onboarding-hint");
-    expect(line).toHaveTextContent("Đang chờ: Thành viên · Yêu cầu phân tích lại"); // i18n-allow: asserts the vi copy of the failed line
-    expect(line).not.toHaveTextContent("onboarding.request");
-    expect(line.textContent).not.toContain("⟦");
-  });
-
   it("keeps the runner's failure tag behind the Developer view", async () => {
     fakeCore(() => ({ body: failedState() }));
-    renderIn("en");
+    renderHint();
     const line = await screen.findByTestId("onboarding-hint");
     expect(line).not.toHaveTextContent("cc-startup-death");
     expect(screen.queryByTestId("onboarding-hint-ended")).toBeNull();
@@ -91,7 +77,7 @@ describe("a failed onboarding analysis", () => {
   it("draws the failure tag in the Developer view", async () => {
     window.history.replaceState(null, "", "/?view=developer");
     fakeCore(() => ({ body: failedState() }));
-    renderIn("en");
+    renderHint();
     expect(await screen.findByTestId("onboarding-hint-ended")).toHaveTextContent("cc-startup-death (≤3 msgs, no tool use)");
   });
 

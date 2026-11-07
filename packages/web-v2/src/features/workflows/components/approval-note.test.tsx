@@ -106,7 +106,7 @@ describe("an approval's note where the design is read", () => {
     expect(within(returned).queryByText("Approval note")).toBeNull();
   });
 
-  it("reads a re-pin act's reason in the reader's language, and a decider's note as they wrote it", () => {
+  it("reads a re-pin act's reason from its facts, and a decider's note as they wrote it", () => {
     const said = say("designs.reason.repinOnly", {
       act: "a1b2",
       actWords: say("designs.act.repinBatch", { n: 2, changes: "changes", r: 2 }),
@@ -117,9 +117,7 @@ describe("an approval's note where the design is read", () => {
     });
     const composed = revision({ reason: sayEn(said), says: { reason: said } });
     expect(revisionReason(composed, "en")).toBe(sayEn(said));
-    const vi = revisionReason(composed, "vi");
-    expect(vi).not.toBe(sayEn(said));
-    expect(vi).toContain("access r1 → r2");
-    expect(revisionReason(revision({}), "vi")).toBe(NOTE);
+    expect(revisionReason(composed, "en")).toContain("access r1 → r2");
+    expect(revisionReason(revision({}), "en")).toBe(NOTE);
   });
 });

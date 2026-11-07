@@ -117,9 +117,9 @@ const projectQueries = (): [QueryKey, unknown][] => [
   [["devices", "d1", "runners"], [{ runnerId: "r1", projectId: P, slug: "hop", name: "Hop", repoPath: "/srv/hop", branch: "main", status: "online", lastSeenAt: ago(1), baseBranch: "main" }]],
 ];
 
-// a button found by its label in either language: the rail test draws each screen in en as well
+// a button found by its label
 const clickKey = (key: ProductCopyKey, nth = 0) => () => {
-  const labels = [productCopy("vi")(key), productCopy("en")(key)];
+  const labels = [productCopy("en")(key)];
   const hits = [...document.querySelectorAll("button")].filter((b) => labels.includes(b.textContent?.trim() ?? ""));
   const el = hits[nth];
   if (!el) throw new Error(`nothing to open labelled ${key}`);

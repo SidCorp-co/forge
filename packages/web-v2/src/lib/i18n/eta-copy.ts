@@ -1,14 +1,10 @@
-import { baseOf, copyLocale, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
+import { copyLocale, type InterfaceLanguage, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
-// The ETA column's words, in the interface language (`eta-clock.ts:useEtaClock`), never the project's
-// content language (REQ-13 BC-2): vi for a vi tag, English for every other. The words are the `eta.*`
-// keys of the forecast's copy file, `lib/i18n/copy/forecast.json`, read through `productCopy`.
+// The ETA column's words, in English (`eta-clock.ts:useEtaClock`): Forge is English only (owner,
+// 2026-10-08, ISS-1071). The words are the `eta.*` keys of the forecast's copy file,
+// `lib/i18n/copy/forecast.json`, read through `productCopy`.
 
-export type EtaLang = "vi" | "en";
-
-/** The ETA copy for a language tag: vi for any vi tag, else English. */
-export const etaLangOf = (tag: string | null | undefined): EtaLang =>
-  baseOf(tag) === "vi" ? "vi" : "en";
+export type EtaLang = InterfaceLanguage;
 
 interface EtaCopy {
   /** The column header and the rail's label. */
@@ -92,4 +88,4 @@ function copyOf(lang: EtaLang): EtaCopy {
   };
 }
 
-export const ETA_COPY: Record<EtaLang, EtaCopy> = { vi: copyOf("vi"), en: copyOf("en") };
+export const ETA_COPY: Record<EtaLang, EtaCopy> = { en: copyOf("en") };

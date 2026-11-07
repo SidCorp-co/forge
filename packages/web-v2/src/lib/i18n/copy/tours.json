@@ -31,25 +31,5 @@
     "tours.seen": "Seen",
     "tours.show": "Show",
     "tours.updated": "Updated"
-  },
-  "vi": {
-    "help.nav": "Trợ giúp",
-    "help.title": "Trợ giúp · Hướng dẫn",
-    "tour.integrations.step1.title": "Trạng thái thật",
-    "tour.integrations.step2.title": "Kết nối ngay tại đây",
-    "tour.integrations.step3.title": "Dùng chung một connection",
-    "tour.integrations.title": "Tích hợp",
-    "tour.release-what-changes.title": "Trang release",
-    "tours.done": "Xong",
-    "tours.hint.later": "Để sau",
-    "tours.hint.show": "Xem {count} bước",
-    "tours.meta": "{count} bước · bản {revision} · {state}",
-    "tours.next": "Tiếp",
-    "tours.notSeen": "Chưa xem",
-    "tours.prev": "Lùi",
-    "tours.progress": "{{current}} / {{total}}",
-    "tours.seen": "Đã xem",
-    "tours.show": "Xem",
-    "tours.updated": "Có cập nhật"
   }
 }

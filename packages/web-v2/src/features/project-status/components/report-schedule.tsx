@@ -12,6 +12,7 @@ import { useCreateSchedule, useDeleteSchedule, useRunSchedule, useSchedules, use
 import type { ScheduleRow } from "@/features/automation";
 import { useProjectMembers } from "@/features/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { copyLocale } from "@/lib/i18n/product-copy";
 import { useReportTemplates } from "../hooks";
 import { TemplateParamFields, type TemplateParamValues, TemplatePicker, templateParamsOf } from "./template-params";
 
@@ -32,7 +33,7 @@ export function weeklyCron(day: number, time: string): string {
 
 /** A weekday's name in the reader's language: 2026-10-04 was a Sunday. */
 function dayName(day: number, lang: string): string {
-  return new Intl.DateTimeFormat(lang === "vi" ? "vi-VN" : "en-GB", { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 9, 4 + day)));
+  return new Intl.DateTimeFormat(copyLocale(lang), { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 9, 4 + day)));
 }
 
 const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";

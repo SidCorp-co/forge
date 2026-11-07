@@ -7,7 +7,6 @@ import type { RequirementForecasts, ScopeForecast } from "@forge/contracts/forec
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { IssueProgressText } from "@/features/forecast";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { REQ_PROJECT, reqQueries, Seeded } from "@/test/vi-chrome-requirements";
 import { RequirementsScreen } from "./requirements-screen";
@@ -28,61 +27,38 @@ const REQ_19: ScopeForecast = {
 };
 const forecasts: RequirementForecasts = { ...stamp, projectId: REQ_PROJECT, requirements: [REQ_19] };
 
-function listText(language: "en" | "vi"): string {
+function listText(): string {
   const { container, unmount } = render(
-    <InterfaceLanguageScope language={language}>
-      <Seeded data={[...reqQueries(), [["issues", "standing", "forecast", "requirements", REQ_PROJECT], forecasts]]}>
-        <RequirementsScreen projectId={REQ_PROJECT} slug="hop" />
-      </Seeded>
-    </InterfaceLanguageScope>,
+    <Seeded data={[...reqQueries(), [["issues", "standing", "forecast", "requirements", REQ_PROJECT], forecasts]]}>
+      <RequirementsScreen projectId={REQ_PROJECT} slug="hop" />
+    </Seeded>,
   );
   const text = container.textContent ?? "";
   unmount();
   return text;
 }
 
-function progressOf(language: "en" | "vi"): string {
-  const { unmount } = render(
-    <InterfaceLanguageScope language={language}>
-      <IssueProgressText progress={REQ_19.progress} />
-    </InterfaceLanguageScope>,
-  );
+function progressOf(): string {
+  const { unmount } = render(<IssueProgressText progress={REQ_19.progress} />);
   const text = screen.getByTestId("issue-progress").textContent ?? "";
   unmount();
   return text;
 }
 
 describe("one progress, printed by one function", () => {
-  it.each(["en", "vi"] as const)("prints REQ-19 progress in %s, and the requirements list prints none", (language) => {
-    expect(progressOf(language)).toBe(language === "en" ? "0 shipped · 5 landed, awaiting release · 1 to do" : "0 đã phát hành · 5 xong code, chờ release · 1 còn lại"); // i18n-allow: asserts the vi progress copy
+  it("prints REQ-19 progress, and the requirements list prints none", () => {
+    expect(progressOf()).toBe("0 shipped · 5 landed, awaiting release · 1 to do");
     // the list is one line per requirement now (REQ-29 BC-4) and prints no issue progress
-    expect(listText(language)).not.toContain("awaiting release");
+    expect(listText()).not.toContain("awaiting release");
   });
 });
 
 describe("the progress words", () => {
-  const vi_ = product.vi;
   const en = product.en;
-
-  it("gives shipped, landed and to do three different Vietnamese words, and only landed uses the landed word", () => {
-    const words = ["progress.shipped", "progress.awaitingRelease", "progress.toDo"].map((k) => vi_[k]?.replace("{n} ", ""));
-    expect(new Set(words).size).toBe(3);
-    expect(words.filter((w) => w?.includes("xong"))).toEqual(["xong code, chờ release"]); // i18n-allow: asserts the vi progress copy
-  });
-
-  it("never says the landed word where English says shipped, nor the shipped word where English says landed", () => {
-    // a sentence that names one of the two states; one that sets them side by side (the hint) names both
-    const only = (one: RegExp, other: RegExp) => Object.keys(en).filter((k) => one.test(en[k] ?? "") && !other.test(en[k] ?? ""));
-    const SHIPPED = /\bshipped\b/i;
-    const LANDED = /\blanded\b/i;
-    expect(only(SHIPPED, LANDED).filter((k) => vi_[k]?.includes("xong"))).toEqual([]);
-    expect(only(LANDED, SHIPPED).filter((k) => vi_[k]?.includes("phát hành"))).toEqual([]); // i18n-allow: the vi word for shipped
-  });
 
   it("keeps no count that called closed issues done", () => {
     for (const k of ["requirements.row.issuesDone", "requirements.facts.doneOf", "releases.landedOf", "fc.scopeHead", "standing.act.done"]) {
       expect(en[k]).toBeUndefined();
-      expect(vi_[k]).toBeUndefined();
     }
   });
 });

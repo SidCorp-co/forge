@@ -1,7 +1,6 @@
 import type { StatusReportDetail } from "@forge/contracts/status-reports";
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { PRODUCT_STRINGS as copy } from "@/lib/i18n/product-copy";
 import { renderWithQuery } from "@/test/render";
 import { AT, STATUS } from "@/test/project-status";
@@ -11,7 +10,7 @@ import { SinceLastReport } from "./since-last-report";
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 // "Since last report" lays out what core derived from two kept reports: an issue newly shipped and
-// the next release's date moved, old to new, in the reader's language; an empty part says so.
+// the next release's date moved, old to new; an empty part says so.
 
 const clock = { lang: "en" as const, now: Date.parse(AT), timeZone: "UTC" };
 const meta = (id: string, asOf: string) => ({
@@ -51,13 +50,9 @@ describe("Since last report", () => {
     expect(screen.getAllByText("Nothing changed")).toHaveLength(2);
   });
 
-  it("reads in Vietnamese for a Vietnamese reader, and says the first report has nothing to compare", () => {
-    renderWithQuery(
-      <InterfaceLanguageScope language="vi">
-        <SinceLastReport detail={{ ...detail, previous: null, diff: null }} slug="hop" clock={{ ...clock, lang: "vi" }} />
-      </InterfaceLanguageScope>,
-    );
-    expect(screen.getByText(copy.vi["status.since.title"])).toBeTruthy();
+  it("titles the section and says the first report has nothing to compare", () => {
+    renderWithQuery(<SinceLastReport detail={{ ...detail, previous: null, diff: null }} slug="hop" clock={clock} />);
+    expect(screen.getByText(copy.en["status.since.title"])).toBeTruthy();
     expect(screen.getByText(copy.en["status.since.first"])).toBeTruthy();
   });
 

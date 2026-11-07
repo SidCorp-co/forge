@@ -8,7 +8,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { RequirementDetail } from "../types";
@@ -244,47 +243,47 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
   });
 });
 
-// The acts that only open on a press (drop, defer, the held agree's reason) read in the chosen
-// language too; the walking test sees the closed state only.
-describe("a requirement's acts in Vietnamese", () => {
-  const vi = productCopy("vi");
-  const inVi = (ui: ReactElement) => renderWithQuery(<InterfaceLanguageScope language="vi">{ui}</InterfaceLanguageScope>);
+// The acts that only open on a press (drop, defer, the held agree's reason) read from the product's
+// copy too; the walking test sees the closed state only.
+describe("a requirement's acts that open on a press", () => {
+  const en = productCopy("en");
+  const inEn = (ui: ReactElement) => renderWithQuery(ui);
 
   it("names the held agree and each unapproved design by its label", async () => {
     fakeCore(() => undefined);
     const user = userEvent.setup();
-    inVi(<PrimaryActions projectId="p1" slug="epod" d={detail([{ flow: "checkout", title: "Checkout", designStatus: "proposed" }, { flow: "refund", title: "Refund", designStatus: null }])} />);
-    const held = screen.getByRole("button", { name: vi("requirements.act.agreeR", { r: 1 }) });
+    inEn(<PrimaryActions projectId="p1" slug="epod" d={detail([{ flow: "checkout", title: "Checkout", designStatus: "proposed" }, { flow: "refund", title: "Refund", designStatus: null }])} />);
+    const held = screen.getByRole("button", { name: en("requirements.act.agreeR", { r: 1 }) });
     expect(held).toBeDisabled();
     await user.hover(held.closest('[data-slot="tooltip-trigger"]') as HTMLElement);
-    const designs = `Checkout (${productCopy("vi")("label.designStatus.proposed").toLowerCase()}), Refund (${vi("requirements.act.noDesignYet")})`;
-    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent(vi("requirements.act.agreeHeldTip", { designs })));
+    const designs = `Checkout (proposed), Refund (${en("requirements.act.noDesignYet")})`;
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent(en("requirements.act.agreeHeldTip", { designs })));
   });
 
-  it("opens drop and defer with their reasons asked in Vietnamese", async () => {
+  it("opens drop and defer with their reasons asked", async () => {
     fakeCore(() => undefined);
     const user = userEvent.setup();
-    inVi(<PrimaryActions projectId="p1" slug="epod" d={detail([])} />);
-    await user.click(screen.getByRole("button", { name: vi("requirements.act.drop") }));
-    expect(screen.getByRole("textbox", { name: vi("requirements.act.dropWhyLabel") })).toHaveAttribute("placeholder", vi("requirements.act.dropWhy"));
-    await user.click(screen.getByRole("button", { name: vi("common.cancel") }));
-    await user.click(screen.getByRole("button", { name: vi("requirements.act.defer") }));
-    expect(screen.getByRole("textbox", { name: vi("requirements.act.deferWhyLabel") })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: vi("requirements.act.meantForLabel") })).toHaveAttribute("placeholder", vi("requirements.act.meantFor"));
+    inEn(<PrimaryActions projectId="p1" slug="epod" d={detail([])} />);
+    await user.click(screen.getByRole("button", { name: en("requirements.act.drop") }));
+    expect(screen.getByRole("textbox", { name: en("requirements.act.dropWhyLabel") })).toHaveAttribute("placeholder", en("requirements.act.dropWhy"));
+    await user.click(screen.getByRole("button", { name: en("common.cancel") }));
+    await user.click(screen.getByRole("button", { name: en("requirements.act.defer") }));
+    expect(screen.getByRole("textbox", { name: en("requirements.act.deferWhyLabel") })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: en("requirements.act.meantForLabel") })).toHaveAttribute("placeholder", en("requirements.act.meantFor"));
   });
 
-  it("asks the signer's reason in Vietnamese and says what accepting does", async () => {
+  it("asks the signer's reason and says what accepting does", async () => {
     fakeCore(() => undefined);
     const user = userEvent.setup();
-    inVi(<ProposalDecision projectId="p1" d={detail([])} revision={2} />);
-    await user.click(screen.getByRole("button", { name: vi("requirements.act.accept") }));
+    inEn(<ProposalDecision projectId="p1" d={detail([])} revision={2} />);
+    await user.click(screen.getByRole("button", { name: en("requirements.act.accept") }));
     const step = screen.getByTestId("accept-step");
-    expect(step).toHaveTextContent(vi("requirements.act.acceptConsequence", { r: 2 }));
-    expect(within(step).getByRole("textbox", { name: vi("common.acceptWhyLabel") })).toBeInTheDocument();
-    expect(within(step).getByRole("button", { name: vi("requirements.act.acceptR", { r: 2 }) })).toBeInTheDocument();
-    await user.click(within(step).getByRole("button", { name: vi("common.cancel") }));
-    await user.click(screen.getByRole("button", { name: vi("requirements.act.reject") }));
-    expect(screen.getByRole("button", { name: vi("requirements.act.returnR", { r: 2 }) })).toBeInTheDocument();
+    expect(step).toHaveTextContent(en("requirements.act.acceptConsequence", { r: 2 }));
+    expect(within(step).getByRole("textbox", { name: en("common.acceptWhyLabel") })).toBeInTheDocument();
+    expect(within(step).getByRole("button", { name: en("requirements.act.acceptR", { r: 2 }) })).toBeInTheDocument();
+    await user.click(within(step).getByRole("button", { name: en("common.cancel") }));
+    await user.click(screen.getByRole("button", { name: en("requirements.act.reject") }));
+    expect(screen.getByRole("button", { name: en("requirements.act.returnR", { r: 2 }) })).toBeInTheDocument();
   });
 });
 
@@ -313,16 +312,12 @@ describe("Undefer on a deferred requirement", () => {
     );
   });
 
-  it("asks it in the viewer's language", async () => {
+  it("asks it from the product's copy", async () => {
     fakeCore(() => undefined);
     const user = userEvent.setup();
-    const vi = productCopy("vi");
-    renderWithQuery(
-      <InterfaceLanguageScope language="vi">
-        <PrimaryActions projectId="p1" slug="epod" d={deferred()} />
-      </InterfaceLanguageScope>,
-    );
-    await user.click(screen.getByRole("button", { name: vi("requirements.act.undefer") }));
-    expect(screen.getByLabelText(vi("requirements.act.undeferWhyLabel"))).toBeInTheDocument();
+    const en = productCopy("en");
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={deferred()} />);
+    await user.click(screen.getByRole("button", { name: en("requirements.act.undefer") }));
+    expect(screen.getByLabelText(en("requirements.act.undeferWhyLabel"))).toBeInTheDocument();
   });
 });

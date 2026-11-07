@@ -7,18 +7,13 @@ import { productCopy } from "@/lib/i18n/product-copy";
 import { statusMarkdown } from "./report-markdown";
 import { AT, STATUS, turn } from "@/test/project-status";
 
-// JU-4: no surface could be copied, printed or sent; the report copies as Markdown in the reader's
-// language, dated, every section stamped, and a row waiting on the viewer names them for its reader.
+// JU-4: no surface could be copied, printed or sent; the report copies as Markdown, dated, every section stamped, and a row waiting on the viewer names them for its reader.
 
-const words = (lang: "en" | "vi") => ({ t: productCopy(lang), label: labelCopy(lang), clock: { lang, now: Date.parse(AT), timeZone: "UTC" } });
+const words = (lang: "en") => ({ t: productCopy(lang), label: labelCopy(lang), clock: { lang, now: Date.parse(AT), timeZone: "UTC" } });
 
 describe("the status report as Markdown", () => {
   it("reads every section in order, dated, in English", () => {
     expect(statusMarkdown(STATUS, words("en"))).toMatchSnapshot();
-  });
-
-  it("reads the same report in Vietnamese", () => {
-    expect(statusMarkdown(STATUS, words("vi"))).toMatchSnapshot();
   });
 
   it("names the viewer where a row waits on them, since the reader of a pasted report is someone else", () => {

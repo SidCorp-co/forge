@@ -1,6 +1,5 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { StepBar } from "./facts-rail";
 
 // A step's name is read whole, at a 1440px rail and at a 390px phone alike: in a fifth of a 280px
@@ -20,11 +19,7 @@ const steps = [
 
 describe("the step bar's labels", () => {
   it("wraps a long Vietnamese step name instead of cutting it", () => {
-    const { container } = render(
-      <InterfaceLanguageScope language="vi">
-        <StepBar steps={steps} />
-      </InterfaceLanguageScope>,
-    );
+    const { container } = render(<StepBar steps={steps} />);
     const items = [...container.querySelectorAll('[data-testid="step-bar"] li')];
     expect(items).toHaveLength(steps.length);
     for (const [i, li] of items.entries()) {

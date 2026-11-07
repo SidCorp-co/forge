@@ -21,11 +21,5 @@
     "needsYou.decisions.reason.agent_takes": "{n} the agent takes itself",
     "needsYou.decisions.changes": "Changes",
     "needsYou.decisions.impact": "Impact"
-  },
-  "vi": {
-    "needs.lastActivity": "Hoạt động gần nhất {at}",
-    "needsYou.title.designProposed": "{title} · bản sửa {revision} đang đề xuất",
-    "needsYou.title.question": "Một câu hỏi do lượt chạy đặt ra",
-    "needsYou.title.release": "Bản phát hành {version}"
   }
 }

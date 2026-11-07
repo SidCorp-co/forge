@@ -1,40 +1,13 @@
 import { renderSaid, type Said, type SaidKind, SAID_ENTRIES } from "@forge/contracts/said";
 import type { WaitingSays } from "@forge/contracts/standing";
 import { labelCopy } from "./labels";
-import { baseOf, copyOr, productCopyTemplate } from "./product-copy";
+import { englishOnly } from "./product-copy";
 
 // What core says, in the reader's words: core sends each standing sentence as a registry key and
-// typed values (`@forge/contracts/said`) beside its English, and this reads the key through the
-// product copy of the reader's language. Nothing here reads core's English; a key this build does
-// not know is a visible marker in development and test, never the English it came with.
-
-/** An ISO calendar date as the language writes it: `05/10/2026` in vi, as sent in en. */
-const dateIn = (iso: string, language: string): string => {
-  const [y, m, d] = iso.split("-");
-  return baseOf(language) === "vi" && y && m && d ? `${d}/${m}/${y}` : iso;
-};
-
-function valueIn(language: string) {
-  const label = labelCopy(language);
-  return (kind: SaidKind, value: string | number): string => {
-    const v = String(value);
-    switch (kind) {
-      case "date":
-        return dateIn(v, language);
-      case "status":
-      case "statusLabel":
-        return label("issueStatus", v);
-      case "step":
-        return label("workStep", v.toLowerCase());
-      case "role":
-        return label("permissionRole", v);
-      case "health":
-        return copyOr(language, `common.state.connection.${v}`, v);
-      default:
-        return v;
-    }
-  };
-}
+// typed values (`@forge/contracts/said`) beside its English, and this reads the key's English from the
+// registry, the sentence core sent. Forge is English only (owner, 2026-10-08, ISS-1071), so a
+// language other than English is refused by name (`englishOnly`); a key this build does not know is a
+// visible marker in development and test, never the English it came with.
 
 /** What a key this build does not know reads as: a marker naming it, so the gap is seen and filed rather than read past. */
 export const unknownSaid = (key: string): string => `⟦${key}⟧`;
@@ -47,16 +20,11 @@ const ENGLISH_VALUE = (kind: SaidKind, value: string | number): string => {
   return v;
 };
 
-/** `s` in `language`. English reads the registry's own template, so it is the sentence core sent. */
+/** `s` in `language`, which is English: the registry's own template, so it is the sentence core sent. */
 export function said(s: Said | null | undefined, language: string): string {
+  englishOnly(language);
   if (!s) return "";
-  const en = baseOf(language) === "en";
-  const value = en ? ENGLISH_VALUE : valueIn(language);
-  return renderSaid(s, {
-    template: (key) => (en ? SAID_ENTRIES[key]?.en : productCopyTemplate(language, key)),
-    value,
-    unknown: unknownSaid,
-  });
+  return renderSaid(s, { template: (key) => SAID_ENTRIES[key]?.en, value: ENGLISH_VALUE, unknown: unknownSaid });
 }
 
 /** `s` in `language`, or null where core said nothing. */

@@ -264,7 +264,7 @@ const workflowDesignScreen = (): ReactElement => (
   </Seeded>
 );
 
-const canvas: Canvas = readCanvas(body("dat-hang") as never, null, productCopy("vi"));
+const canvas: Canvas = readCanvas(body("dat-hang") as never, null, productCopy("en"));
 const overlay = { on: true, onToggle: () => {}, layer: "both", onLayer: () => {}, observed: true, nodes: new Map(), edges: new Map(), hrefOf: () => null } as never;
 
 /** Every built-in template as the canvas draws it: its title, its legend (node types and line kinds), each node type's chip and its bands. */

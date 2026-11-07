@@ -48,7 +48,7 @@ const connection = (over: Partial<ConnectionDirectoryItem>): ConnectionDirectory
     hasSecrets: true,
     createdAt: ago(600),
     updatedAt: ago(60),
-    usage: { bindings: [{ id: "b1", projectId: P, role: "deploy", label: "", name: "dev", active: true }] },
+    usage: { bindings: [{ id: "b1", projectId: P, projectName: "Hop", role: "deploy", label: "", name: "dev", active: true }] },
     ...over,
   });
 
@@ -148,7 +148,7 @@ const queries = (items: IntegrationSummary[] = BINDINGS): [QueryKey, unknown][] 
 
 // a control found by its label in either language: the rail test draws each screen in en as well
 const clickKey = (key: ProductCopyKey, nth = 0) => () => {
-  const labels = [productCopy("vi")(key), productCopy("en")(key)];
+  const labels = [productCopy("en")(key)];
   const hits = [...document.querySelectorAll("button, a")].filter((b) => labels.includes(b.textContent?.trim() ?? ""));
   const el = hits[nth];
   if (!el) throw new Error(`nothing to open labelled ${key}`);

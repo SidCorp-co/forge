@@ -3,22 +3,21 @@ import { productCopy } from "@/lib/i18n/product-copy";
 import { verifiedSentence } from "./verified";
 
 const en = productCopy("en");
-const vi = productCopy("vi");
 
 describe("what a release verified, in words", () => {
-  it("names the provider that served a provider-checked deploy, in both languages", () => {
+  it("names the provider that served a provider-checked deploy", () => {
     const v = { level: "criteria", proven: 3, total: 3, check: "provider", provider: "Autoflow", judgedOn: null } as const;
     expect(verifiedSentence(v, en)).toBe("Verified: 3 checks met, and the deploy checked by what Autoflow serves");
-    const named = vi("releases.verified.byNamedProvider", { provider: "Autoflow" });
+    const named = en("releases.verified.byNamedProvider", { provider: "Autoflow" });
     expect(named).toContain("Autoflow");
-    expect(verifiedSentence(v, vi).endsWith(named)).toBe(true);
-    expect(verifiedSentence(v, vi)).not.toContain(vi("releases.verified.byProvider"));
+    expect(verifiedSentence(v, en).endsWith(named)).toBe(true);
+    expect(verifiedSentence(v, en)).not.toContain(en("releases.verified.byProvider"));
   });
 
   it("says production's provider only where the facts name none, never a blank name", () => {
     const v = { level: "criteria", proven: 3, total: 3, check: "provider", provider: null, judgedOn: null } as const;
     expect(verifiedSentence(v, en)).toBe("Verified: 3 checks met, and the deploy checked by what production's provider serves");
-    expect(verifiedSentence(v, vi).endsWith(vi("releases.verified.byProvider"))).toBe(true);
+    expect(verifiedSentence(v, en).endsWith(en("releases.verified.byProvider"))).toBe(true);
     expect(verifiedSentence({ ...v, provider: "" }, en)).toBe(verifiedSentence(v, en));
   });
 
@@ -39,11 +38,9 @@ describe("what a release verified, in words", () => {
   });
 
   // ISS-851, owner 2026-11-01: the agent's record IS the release, never "Not verified"
-  it("says a release its agent recorded is recorded, in both languages", () => {
+  it("says a release its agent recorded is recorded", () => {
     const v = { level: "none", proven: 0, total: 0, check: "recorded", provider: null, judgedOn: null } as const;
     expect(verifiedSentence(v, en)).toBe("Recorded by its agent");
-    expect(verifiedSentence(v, vi)).toBe(vi("releases.verified.recorded"));
-    expect(vi("releases.verified.recorded")).not.toBe(en("releases.verified.recorded"));
     expect(verifiedSentence({ ...v, level: "some_criteria", proven: 1, total: 2 }, en)).toBe(
       "Partly verified: 1 of 2 checks met, recorded by its agent",
     );

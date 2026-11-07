@@ -5,7 +5,6 @@
 import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { say, sentence } from "@/test/said";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
@@ -108,15 +107,11 @@ describe("the page leads with the reporter's answer", () => {
     }
   });
 
-  it("says it plainly with no forecast, and in the reader's language", () => {
-    renderWithQuery(
-      <InterfaceLanguageScope language="vi">
-        <FeedbackAnswer f={view({ phase: "verified", status: "verified" })} slug="hop" forecast={undefined} clock={{ ...CLOCK, lang: "vi" }} />
-      </InterfaceLanguageScope>,
-    );
+  it("says it plainly with no forecast", () => {
+    renderWithQuery(<FeedbackAnswer f={view({ phase: "verified", status: "verified" })} slug="hop" forecast={undefined} clock={CLOCK} />);
     const line = screen.getByTestId("feedback-answer-line");
     expect(line).toHaveTextContent("0.4.2");
-    expect(line.textContent).not.toMatch(/\b(Shipped|confirmed)\b/);
+    expect(line).toHaveTextContent("Shipped in 0.4.2");
   });
 });
 

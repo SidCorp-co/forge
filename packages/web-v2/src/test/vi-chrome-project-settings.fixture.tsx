@@ -127,7 +127,7 @@ const seeded = (ui: ReactElement) => <Seeded data={queries()}>{ui}</Seeded>;
 
 /** A control found by its label in either language: the rail test draws each screen in en as well. */
 const clickKey = (key: ProductCopyKey) => () => {
-  const labels = [productCopy("vi")(key), productCopy("en")(key)];
+  const labels = [productCopy("en")(key)];
   const el = [...document.querySelectorAll("button, a")].find((b) => labels.some((l) => b.textContent?.trim().startsWith(l.split("{")[0] ?? l)));
   if (!el) throw new Error(`nothing to open labelled ${key}`);
   fireEvent.click(el);

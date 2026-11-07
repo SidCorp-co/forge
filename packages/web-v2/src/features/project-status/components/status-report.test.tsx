@@ -1,7 +1,6 @@
 import { verbatim } from "@forge/contracts/said";
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
 import { AT, STATUS } from "@/test/project-status";
@@ -9,10 +8,10 @@ import { StatusReport } from "./status-report";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
-// hop /status in vi, 2026-10-08: 25 of its English lines were texts agents wrote in English,
-// quoted with nothing saying so. A quoted text now carries its language where it is not the reader's.
+// hop /status, 2026-10-08: 25 of its lines were texts agents wrote in English, quoted with nothing
+// saying so. The page reads in English; a quoted text now carries its language where it is not English.
 
-const clock = { lang: "vi" as const, now: Date.parse(AT), timeZone: "UTC" };
+const clock = { lang: "en" as const, now: Date.parse(AT), timeZone: "UTC" };
 const report = (title: string, titleLang: "en" | "vi" | null) => ({
   area: "automation" as const,
   entity: "schedule" as const,
@@ -26,24 +25,20 @@ const report = (title: string, titleLang: "en" | "vi" | null) => ({
 
 function shown() {
   const people = [report("Missing CLI verb: no verb links an issue to a requirement", "en"), report("Thiếu lệnh liên kết issue", "vi"), report("Written before the language was kept", null)]; // i18n-allow: Vietnamese text under test
-  renderWithQuery(
-    <InterfaceLanguageScope language="vi">
-      <StatusReport s={{ ...STATUS, waits: { ...STATUS.waits, people, peopleCount: people.length } }} slug="hop" clock={clock} window="7" onWindow={() => {}} />
-    </InterfaceLanguageScope>,
-  );
+  renderWithQuery(<StatusReport s={{ ...STATUS, waits: { ...STATUS.waits, people, peopleCount: people.length } }} slug="hop" clock={clock} window="7" onWindow={() => {}} />);
   return within(screen.getByTestId("status-waits"));
 }
 
 describe("the status page quoting what someone wrote", () => {
-  it("marks an agent's English as English on a vi page, and nothing else", () => {
+  it("marks text written in Vietnamese as Vietnamese, and nothing else", () => {
     const waits = shown();
     expect(waits.getAllByTestId("written-mark")).toHaveLength(1);
     expect(waits.getByText("Missing CLI verb: no verb links an issue to a requirement")).toHaveAttribute("lang", "en");
     expect(waits.getByText("Thiếu lệnh liên kết issue")).toHaveAttribute("lang", "vi"); // i18n-allow: Vietnamese text under test
   });
 
-  it("marks a running issue's English title too", () => {
+  it("leaves a running issue's English title unmarked", () => {
     shown();
-    expect(within(screen.getByTestId("status-in-flight")).getByTestId("written-mark")).toHaveTextContent("en");
+    expect(within(screen.getByTestId("status-in-flight")).queryByTestId("written-mark")).toBeNull();
   });
 });

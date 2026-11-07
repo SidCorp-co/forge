@@ -10,20 +10,19 @@ import { said } from "@/lib/i18n/said";
 describe("the Development overview reads core's own sentences", () => {
   const notes = [say("overview.signal.ciNote"), say("overview.signal.postMergeNote"), say("overview.signal.noSlotsNote")];
 
-  it("spells each signal note in en as core sends it, and reads it in vi", () => {
+  it("spells each signal note in en as core sends it", () => {
     for (const n of notes) {
       expect(said(n, "en")).toBe(sayEn(n));
-      expect(said(n, "vi")).not.toBe(sayEn(n));
     }
     expect(sayEn(say("overview.signal.noSlotsNote"))).toBe(NO_MASTER_SLOTS);
   });
 
-  it("reads core's refusal of a box's undeclared slots by its key, in vi too", () => {
+  it("reads core's refusal of a box's undeclared slots by its key", () => {
     const detail = say("masters.refusal.slotsNotDeclared", { device: "box-1" });
     const s = slotsNoteSaid({ slots: { inUse: 0, max: 0, runs: 0, undeclared: { code: "MASTER_SLOTS_UNDECLARED", path: "/slots/max", detail: sayEn(detail), says: { detail } } } as never });
     expect(s).toEqual(detail);
-    expect(s && said(s, "vi")).not.toBe(sayEn(detail));
-    expect(s && said(s, "vi")).toContain("box-1");
+    expect(s && said(s, "en")).toBe(sayEn(detail));
+    expect(s && said(s, "en")).toContain("box-1");
     expect(slotsNoteSaid({ slots: null })).toEqual(say("overview.signal.noSlotsNote"));
   });
 });

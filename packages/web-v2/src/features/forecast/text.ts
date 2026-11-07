@@ -1,7 +1,7 @@
 import { type DeliveryForecast, type Forecast, type ForecastPaused, type ForecastSpan, isOwedLeg, type ReleaseLeg, type ScopeForecast } from "@forge/contracts/forecast";
 import { formatClock, formatDateTime, formatNumber } from "@/lib/i18n/format";
 import { labelCopy } from "@/lib/i18n/labels";
-import { type Copy, productCopy } from "@/lib/i18n/product-copy";
+import { type Copy, copyLocale, productCopy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { type EtaClock, partsOf, rangeText } from "@/lib/i18n/eta-clock-words";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
@@ -20,7 +20,7 @@ export function spanText(minutes: number, lang: Lang = "en"): string {
   if (m < 60) return t("fc.span.min", { n: Math.max(1, m) });
   const h = m / 60;
   if (h < 48) {
-    const n = h < 10 ? new Intl.NumberFormat(lang === "vi" ? "vi-VN" : "en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(h) : formatNumber(Math.round(h), lang);
+    const n = h < 10 ? new Intl.NumberFormat(copyLocale(lang), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(h) : formatNumber(Math.round(h), lang);
     return t("fc.span.h", { n });
   }
   return t("fc.span.d", { n: Math.round(h / 24) });

@@ -4,7 +4,6 @@
 
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { SCREENS } from "@/test/vi-chrome-contracts";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
@@ -14,7 +13,7 @@ const page = (search: string) => {
   window.history.replaceState(null, "", `/projects/hop/contracts/hop/orders${search}`);
   const s = SCREENS.find((x) => x.name === "Contract detail");
   if (!s) throw new Error("the contract fixture has no Contract detail screen");
-  return render(<InterfaceLanguageScope language="en">{s.render()}</InterfaceLanguageScope>);
+  return render(s.render());
 };
 
 const railLabels = () => [...screen.getByTestId("contract-facts").querySelectorAll("[data-fact-label]")].map((el) => el.textContent?.trim());

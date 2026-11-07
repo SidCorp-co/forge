@@ -1,6 +1,8 @@
 
-// Settings → Account. Identity is read from the hydrated auth session; theme +
-// language preferences save against `/api/auth/me/preferences`.
+// Settings → Account. Identity is read from the hydrated auth session; the theme saves against
+// `/api/auth/me/preferences`. Forge is English only (owner, 2026-10-08), so no language is chosen here
+// (ISS-1071); a language a person chose before stays on their preferences, where core still reads it
+// for what it writes to them, and never turns the chrome.
 import { useState } from "react";
 import {
   Button,
@@ -16,13 +18,10 @@ import {
 import { useAuth } from "@/providers/auth-provider";
 import { usePreferences, useUpdatePreferences } from "@/features/preferences";
 import { AssistantPreferences } from "./assistant-preferences-card";
-import type { LanguagePref, ThemePref } from "@/features/preferences";
+import type { ThemePref } from "@/features/preferences";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 const THEMES = ["system", "light", "dark"] as const;
-// A language is named in its own words wherever the screen is read (`language.*` of the locale file).
-// No choice reads as English: a project's content language never sets Forge's chrome (REQ-13 BC-2).
-const DEFAULT_LANGUAGE: LanguagePref = "en";
 
 export function AccountTab() {
   const { user } = useAuth();
@@ -54,18 +53,10 @@ function AccountPreferences() {
   const prefsQ = usePreferences();
   const update = useUpdatePreferences();
   const [themeEdit, setThemeEdit] = useState<ThemePref | null>(null);
-  const [languageEdit, setLanguageEdit] = useState<LanguagePref | null>(null);
   const theme = themeEdit ?? prefsQ.data?.theme ?? "system";
-  const language = languageEdit ?? prefsQ.data?.language ?? DEFAULT_LANGUAGE;
   const t = useCopy();
   const themeOptions: SelectOption[] = THEMES.map((v) => ({ value: v, label: t(`shell.account.theme.${v}`) }));
-  const languageOptions: SelectOption[] = [
-    { value: "en", label: t("language.en") },
-    { value: "vi", label: t("language.vi") },
-  ];
-
-
-  const dirty = !!prefsQ.data && (theme !== prefsQ.data.theme || language !== (prefsQ.data.language ?? DEFAULT_LANGUAGE));
+  const dirty = !!prefsQ.data && theme !== prefsQ.data.theme;
 
   return (
     <PageSection>
@@ -85,19 +76,12 @@ function AccountPreferences() {
                 onChange={(v) => setThemeEdit(v as ThemePref)}
               />
             </Field>
-            <Field label={t("language.label")}>
-              <Select
-                options={languageOptions}
-                value={language}
-                onChange={(v) => setLanguageEdit(v as LanguagePref)}
-              />
-            </Field>
             <div>
               <Button
                 variant="primary"
                 loading={update.isPending}
                 disabled={!dirty}
-                onClick={() => update.mutate({ theme, language })}
+                onClick={() => update.mutate({ theme })}
                 className="min-h-11"
               >
                 {t("shell.account.save")}

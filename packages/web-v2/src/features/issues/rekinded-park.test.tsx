@@ -15,7 +15,6 @@ import { NEEDS_INFO_KINDS } from "@forge/contracts/issue-vocabulary";
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { IssueQuestions, type AgentQuestion } from "@/features/questions";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { CommentThread } from "./components/comment-thread";
@@ -43,20 +42,14 @@ const parkQuestion = {
 } as unknown as AgentQuestion;
 
 describe("a re-kinded resource question's heading", () => {
-  for (const language of ["en", "vi"] as const) {
-    it(`is headed by the resource it waits on, not a decision (${language})`, async () => {
-      fakeCore(() => ({ body: { questions: [parkQuestion] } }));
-      renderWithQuery(
-        <InterfaceLanguageScope language={language}>
-          <IssueQuestions issueId="i1" parkedForInfo waitingKind="needs_resource" show="now" />
-        </InterfaceLanguageScope>,
-      );
-      const t = productCopy(language);
-      const heading = await screen.findByText(t("agents.question.resource"));
-      expect(heading).toHaveAttribute("data-question-title", "true");
-      expect(screen.queryByText(t("agents.question.waiting"))).toBeNull();
-    });
-  }
+  it(`is headed by the resource it waits on, not a decision`, async () => {
+    fakeCore(() => ({ body: { questions: [parkQuestion] } }));
+    renderWithQuery(<IssueQuestions issueId="i1" parkedForInfo waitingKind="needs_resource" show="now" />);
+    const t = productCopy("en");
+    const heading = await screen.findByText(t("agents.question.resource"));
+    expect(heading).toHaveAttribute("data-question-title", "true");
+    expect(screen.queryByText(t("agents.question.waiting"))).toBeNull();
+  });
 });
 
 // ISS-687 (REQ-68 BC-4, BC-6): the issue page names who the park waits on and asks its reader
@@ -79,18 +72,12 @@ const standing = {
 } as unknown as IssueStanding;
 
 describe("the state head of a resource park", () => {
-  for (const language of ["en", "vi"] as const) {
-    it(`names who supplies it and asks the reader nothing (${language})`, () => {
-      renderWithQuery(
-        <InterfaceLanguageScope language={language}>
-          <IssueStateHead standing={standing} forecast={undefined} />
-        </InterfaceLanguageScope>,
-      );
-      expect(screen.getByTestId("issue-now").textContent).toContain("Ana");
-      expect(screen.queryByTestId("issue-needs-you")).toBeNull();
-      expect(screen.queryByRole("button")).toBeNull();
-    });
-  }
+  it(`names who supplies it and asks the reader nothing`, () => {
+    renderWithQuery(<IssueStateHead standing={standing} forecast={undefined} />);
+    expect(screen.getByTestId("issue-now").textContent).toContain("Ana");
+    expect(screen.queryByTestId("issue-needs-you")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
 });
 
 // the notice as core's `park-repoint.ts` posts it on a re-kind
@@ -113,32 +100,26 @@ const notice = (to: string, from: string): CommentNode =>
     attachments: [],
   }) as unknown as CommentNode;
 
-function thread(node: CommentNode, language: "en" | "vi", developer = false) {
-  const { container } = renderWithQuery(
-    <InterfaceLanguageScope language={language}>
-      <CommentThread issueId="i1" comments={[node]} members={undefined} readOnly developer={developer} />
-    </InterfaceLanguageScope>,
-  );
+function thread(node: CommentNode, developer = false) {
+  const { container } = renderWithQuery(<CommentThread issueId="i1" comments={[node]} members={undefined} readOnly developer={developer} />);
   return container.textContent ?? "";
 }
 
 describe("a re-point notice in the thread", () => {
-  for (const language of ["en", "vi"] as const) {
-    for (const kind of [...NEEDS_INFO_KINDS, "needs_something_new"]) {
-      it(`reads the ${kind} wait as a label, never a code (${language})`, () => {
-        const t = productCopy(language);
-        const text = thread(notice(kind, "needs_decision"), language);
-        expect(text).not.toMatch(/needs_[a-z_]+/);
-        expect(text).not.toContain("Re-pointed");
-        const label = kind === "needs_something_new" ? t("issues.waitingKind.unknown") : t(`issues.waitingKind.${kind as (typeof NEEDS_INFO_KINDS)[number]}`);
-        expect(text).toContain(t("issues.thread.nowWaitsOn", { what: label }));
-        expect(text).toContain("The run needs a database to test against.");
-      });
-    }
+  for (const kind of [...NEEDS_INFO_KINDS, "needs_something_new"]) {
+    it(`reads the ${kind} wait as a label, never a code`, () => {
+      const t = productCopy("en");
+      const text = thread(notice(kind, "needs_decision"));
+      expect(text).not.toMatch(/needs_[a-z_]+/);
+      expect(text).not.toContain("Re-pointed");
+      const label = kind === "needs_something_new" ? t("issues.waitingKind.unknown") : t(`issues.waitingKind.${kind as (typeof NEEDS_INFO_KINDS)[number]}`);
+      expect(text).toContain(t("issues.thread.nowWaitsOn", { what: label }));
+      expect(text).toContain("The run needs a database to test against.");
+    });
   }
 
   it("reads as core wrote it, codes and all, in the Developer view", () => {
-    const text = thread(notice("needs_resource", "needs_decision"), "en", true);
+    const text = thread(notice("needs_resource", "needs_decision"), true);
     expect(text).toContain("needs_resource");
     expect(text).toContain("needs_decision");
   });

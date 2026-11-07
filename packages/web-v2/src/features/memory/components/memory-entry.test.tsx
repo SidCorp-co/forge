@@ -1,7 +1,6 @@
 import type { MemoryEntry } from "@forge/contracts/memory";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { MemoryEntryItem } from "./memory-entry";
 
@@ -44,12 +43,8 @@ const BASE: MemoryEntry = {
   archivedBy: null,
 };
 
-const row = (entry: MemoryEntry, acts = { onVerify: vi.fn(), onCorrect: vi.fn(), onRetire: vi.fn() }, lang: "en" | "vi" = "en") => {
-  renderWithQuery(
-    <InterfaceLanguageScope language={lang}>
-      <MemoryEntryItem entry={entry} slug="hop" timeZone="UTC" busy={false} {...acts} />
-    </InterfaceLanguageScope>,
-  );
+const row = (entry: MemoryEntry, acts = { onVerify: vi.fn(), onCorrect: vi.fn(), onRetire: vi.fn() }) => {
+  renderWithQuery(<MemoryEntryItem entry={entry} slug="hop" timeZone="UTC" busy={false} {...acts} />);
   return acts;
 };
 
@@ -152,13 +147,13 @@ describe("a memory on the record it names", () => {
     expect(screen.getByTestId("memory-retired").textContent).toBe("Archived on 07/10/2026: flagged stale by ISS-126, never confirmed");
   });
 
-  it("reads a decay archive in Vietnamese, with no English sentence of core's", () => {
-    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "unused" } }, undefined, "vi");
-    expect(screen.getByTestId("memory-retired").textContent).toBe("Lưu trữ ngày 07/10/2026: hiếm khi được đọc và chưa ai xác nhận"); // i18n-allow: the vi copy under test
+  it("reads an unused-row archive in the product's words", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "unused" } });
+    expect(screen.getByTestId("memory-retired").textContent).toBe("Archived on 07/10/2026: rarely read and never confirmed");
   });
 
   it("shows an outdated verdict's evidence as written", () => {
-    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "outdated", evidence: "ISS-9 removed the board" } }, undefined, "vi");
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "outdated", evidence: "ISS-9 removed the board" } });
     expect(screen.getByTestId("memory-retired").textContent).toContain("ISS-9 removed the board");
   });
 
@@ -187,9 +182,9 @@ describe("a memory on the record it names", () => {
     expect(acts.onVerify).toHaveBeenCalledWith("m1");
   });
 
-  it("reads in Vietnamese", () => {
-    row(BASE, undefined, "vi");
-    expect(screen.getByTestId("memory-meta").textContent).toContain("Chưa ai kiểm chứng"); // i18n-allow: the vi copy under test
+  it("says nobody has verified a row yet", () => {
+    row(BASE);
+    expect(screen.getByTestId("memory-meta").textContent).toContain("Never checked");
   });
   it("keeps the agent as its writer, names the person who corrected it with why, and shows the earlier text (ISS-434)", () => {
     const LAN = { id: "u-lan", name: "Lan", agent: false };

@@ -4,7 +4,6 @@
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import type { RepinPlan } from "../types";
 import { PinOnlyReading, DesignRepins } from "./design-repins";
 
@@ -51,14 +50,13 @@ describe("a proposal that only moves its pins", () => {
     expect(screen.getByTestId("design-pin-only-proof")).toHaveTextContent("Differs from r4 only at /basedOn/0/revision");
   });
 
-  it("reads in Vietnamese, and is nothing for any other change", () => {
+  it("is nothing for any other change", () => {
     const { container } = render(
-      <InterfaceLanguageScope language="vi">
+      <>
         <PinOnlyReading change={{ pins: [{ workflow: "access", from: 12, to: 13 }], ...proof }} approvedRevision={4} />
         <PinOnlyReading change={null} approvedRevision={4} />
-      </InterfaceLanguageScope>,
+      </>,
     );
-    expect(screen.getByTestId("design-pin-only")).toHaveTextContent("Chỉ đổi phiên bản ghim"); // i18n-allow: asserts the vi copy of the re-pin act
     expect(container.querySelectorAll("[data-testid=design-pin-only]")).toHaveLength(1);
   });
 });
@@ -77,15 +75,11 @@ describe("the act that clears a base's pin-only dependents", () => {
     expect(mutate).toHaveBeenCalledWith({ revision: 13, designs: FLOWS.map((flow, i) => ({ workflowId: `w-${flow}`, revision: 4 + i })) });
   });
 
-  it("is the person's act in Vietnamese, and off for a viewer who may not approve", () => {
+  it("is the person's act, and off for a viewer who may not approve", () => {
     state.plan = planOf(false);
-    render(
-      <InterfaceLanguageScope language="vi">
-        <DesignRepins projectId="p" workflowId="w-access" slug="hop" />
-      </InterfaceLanguageScope>,
-    );
-    expect(screen.getByTestId("design-repins")).toHaveTextContent("6 thiết kế chỉ cần đổi ghim → r13"); // i18n-allow: asserts the vi copy of the re-pin act
-    expect(screen.getByTestId("repin-act")).toHaveTextContent("Duyệt 6 bản chỉ đổi ghim"); // i18n-allow: asserts the vi copy of the re-pin act
+    render(<DesignRepins projectId="p" workflowId="w-access" slug="hop" />);
+    expect(screen.getByTestId("design-repins")).toHaveTextContent("6 designs only need their pin moved → r13");
+    expect(screen.getByTestId("repin-act")).toHaveTextContent("Approve 6 pin-only changes");
     expect(screen.getByTestId("repin-act")).toBeDisabled();
   });
 

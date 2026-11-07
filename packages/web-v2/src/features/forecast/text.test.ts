@@ -41,7 +41,6 @@ describe("forecast text", () => {
   it("names who owes the move instead of a date when paused", () => {
     const f: Forecast = { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("issues.standing.act.answer"), say("issues.rule.needsInfo")), ref: null, since: null, late: null };
     expect(forecastText(f, CLOCK).line).toBe("Paused — waiting on Member to answer a question");
-    expect(forecastText(f, { ...CLOCK, lang: "vi" }).line).toContain("Thành viên"); // i18n-allow: the vi of what core said
   });
 
   it("gives no number below the floor", () => {

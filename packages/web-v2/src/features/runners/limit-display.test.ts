@@ -43,12 +43,4 @@ describe("runnerLimitDisplay", () => {
 		const old = runnerLimitDisplay({ ...refused, limitRefusedAt: undefined, limitPrintedResetAt: undefined }, "en", now);
 		expect(old).toMatchObject({ refusedText: null, printedText: null, nextTryText: "next try in 3m" });
 	});
-
-	it("reads in the interface language, never in English under vi", () => {
-		const vi = runnerLimitDisplay(refused, "vi", now);
-		const line = vi ? runnerLimitLine(vi) : "";
-		expect(line).not.toMatch(/Usage limit|refused|next try/);
-		expect(vi?.printedText).not.toMatch(/Account said/);
-		expect(vi?.detail).toBe(refused.limitDetail);
-	});
 });

@@ -4,7 +4,6 @@
 import { say } from "@forge/contracts/said";
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
 import { EndedAttempt, ReleaseAttempts } from "./release-attempts";
 
@@ -49,15 +48,11 @@ const r040 = {
 };
 
 describe("a cancelled release's own page", () => {
-  it("says why it was cancelled in Vietnamese, with the refusal's words behind a fold", () => {
-    renderWithQuery(
-      <InterfaceLanguageScope language="vi">
-        <EndedAttempt r={r040 as never} slug="hop" />
-      </InterfaceLanguageScope>,
-    );
+  it("says why it was cancelled, with the refusal's words behind a fold", () => {
+    renderWithQuery(<EndedAttempt r={r040 as never} slug="hop" />);
     const ended = screen.getByTestId("release-ended");
-    expect(ended).toHaveTextContent("Vì sao bản 0.4.0 bị huỷ"); // i18n-allow: Vietnamese text under test
-    expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("không chứng minh được"); // i18n-allow: Vietnamese text under test
+    expect(ended).toHaveTextContent("Why 0.4.0 was cancelled");
+    expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("could not be proven");
     expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("RELEASE_NOT_VERIFIED");
     expect(within(ended).getByTestId("release-ended-abort")).toHaveTextContent("ISS-110");
   });
@@ -94,15 +89,6 @@ describe("a re-cut moved above a version claimed since", () => {
     renderWithQuery(<ReleaseAttempts r={recut as never} slug="forge" />);
     const rules = screen.getAllByTestId("cut-rule");
     expect(rules[1]).toHaveTextContent("A new version, 0.4.0-dev.227: 0.4.0-dev.211 is below 0.4.0-dev.226, claimed since.");
-  });
-
-  it("names it in Vietnamese", () => {
-    renderWithQuery(
-      <InterfaceLanguageScope language="vi">
-        <ReleaseAttempts r={recut as never} slug="forge" />
-      </InterfaceLanguageScope>,
-    );
-    expect(screen.getAllByTestId("cut-rule")[1]).toHaveTextContent("0.4.0-dev.211 thấp hơn 0.4.0-dev.226"); // i18n-allow: Vietnamese text under test
   });
 });
 

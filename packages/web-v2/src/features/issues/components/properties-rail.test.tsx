@@ -149,6 +149,5 @@ describe("an artifact carried between issues is said on both issues, flat", () =
     expect(screen.getByText("Carried by")).toBeInTheDocument();
     expect(screen.getByTestId("issue-carries")).toHaveTextContent("from ISS-41");
     expect(screen.getByRole("link", { name: "ISS-110" }).getAttribute("href")).toContain("ISS-110");
-    expect(productCopy("vi")("issues.rail.carriedBy")).toBe("Phát hành cùng"); // i18n-allow: asserts the vi carriage copy
   });
 });
