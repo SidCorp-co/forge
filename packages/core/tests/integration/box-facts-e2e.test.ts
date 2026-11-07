@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { readAgreements } from '../../src/agreements/index.js';
 import { mintPat } from '../../src/credentials/pat.js';
 import { DISK_CRITICAL_FREE_PERCENT, DISK_WIRE_ROOTS } from '../../src/devices/disk-report.js';
 import { checkoutOrientation } from '../../src/prompt/index.js';
@@ -156,9 +157,14 @@ describe('a box reporting its facts', () => {
       checkoutOrientation(project.id, project.slug, {
         entries: [{ key: 'ui-copy-rule', text: rule }],
         guides: { project: ['build-commands'], org: [], sources: { 'build-commands': null } },
+        // the agreements in force ride on every orientation since ISS-1112
+        agreements: await readAgreements(project.id, null),
       }),
     );
-    expect(row?.orientation).toContain(`### ui-copy-rule\n${rule}`);
+    // its heading may name the working agreement it details (ISS-1112); the rule's text follows it
+    const [heading, body] = row?.orientation.split('### ui-copy-rule')[1]?.split('\n') ?? [];
+    expect(heading).toMatch(/^( \(detail of the working agreement [^)]+\))?$/);
+    expect(body).toBe(rule);
     // an on-demand entry is listed by its slug to fetch, never its body (ISS-867); one written with no
     // source is said to record none, never shown as if it rested on something (ISS-1064)
     expect(row?.orientation).toContain('- build-commands — source: none recorded');
