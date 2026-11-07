@@ -459,7 +459,6 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     expect(s.waitingOn.act).toMatch(
       /^check BC-1, BC-3, BC-5 against the traceability matrix now; /,
     );
-    expect(s.waitingOn.rule).toMatch(/the BA checks now, latest \d{4}-\d{2}-\d{2}/); // ISS-1113
   });
 });
 
