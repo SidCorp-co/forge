@@ -150,6 +150,14 @@ function deriveKey(
     return null;
   }
 
+  if (rule.by === 'token-or-user') {
+    const tokenId = getPatTokenId(c);
+    if (tokenId) return { key: `${ruleName}:token:${tokenId}`, dim: 'token' };
+    if (userId) return { key: `${ruleName}:user:${userId}`, dim: 'user' };
+    if (ip) return { key: `${ruleName}:ip:${ip}`, dim: 'ip' };
+    return null;
+  }
+
   if (rule.by === 'user') {
     if (userId) return { key: `${ruleName}:user:${userId}`, dim: 'user' };
     if (ip) return { key: `${ruleName}:ip:${ip}`, dim: 'ip' };

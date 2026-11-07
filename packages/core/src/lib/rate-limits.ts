@@ -3,7 +3,11 @@ import { env } from './env.js';
 export type RateLimitRule = {
   windowMs: number;
   max: number;
-  by: 'ip' | 'user' | 'ip+user' | 'token';
+  /**
+   * What one bucket is: `token` a PAT (an address without one), `token-or-user` the PAT a caller
+   * arrived on and otherwise its user, so each run of one agent user spends its own bucket.
+   */
+  by: 'ip' | 'user' | 'ip+user' | 'token' | 'token-or-user';
 };
 
 /**
@@ -27,7 +31,7 @@ const DEFAULTS = {
   patWrite: { windowMs: 60_000, max: 600, by: 'token' },
   deviceLoginInit: { windowMs: 60 * 60_000, max: 20, by: 'ip' },
   deviceLoginApprove: { windowMs: 60 * 60_000, max: 10, by: 'ip' },
-  memoryWrite: { windowMs: 60_000, max: 30, by: 'user' },
+  memoryWrite: { windowMs: 60_000, max: 30, by: 'token-or-user' },
   memorySearch: { windowMs: 60_000, max: 60, by: 'user' },
   knowledgeSearch: { windowMs: 60_000, max: 60, by: 'user' },
   /**
