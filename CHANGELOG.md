@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.582] - 2026-11-07
+
+Admins name which Forge account a chat owner is, keeping his earlier answers
+
+### Fixed
+
+- **Attention and Home send fewer database queries for a person in many projects.** Facts each project read alone are read once for all, a forecast is simulated once, and release runs are found by index.
+- **A project admin can name the Forge account a chat account is.** The owner's answers, refused while his account was unnamed, are kept and recorded as his once named, and refusals name the admins, never asking him to link.
+
 ## [0.4.0-dev.581] - 2026-11-07
 
 Release notes warn when written in a language other than the project's

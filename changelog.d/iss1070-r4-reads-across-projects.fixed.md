@@ -1,1 +1,0 @@
-**Attention and Home send fewer database queries for a person in many projects.** Facts each project read alone are read once for all, a forecast is simulated once, and release runs are found by index.

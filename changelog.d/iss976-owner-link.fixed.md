@@ -1,1 +1,0 @@
-**A project admin can name the Forge account a chat account is.** The owner's answers, refused while his account was unnamed, are kept and recorded as his once named, and refusals name the admins, never asking him to link.
