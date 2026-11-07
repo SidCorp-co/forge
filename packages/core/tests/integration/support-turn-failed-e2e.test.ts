@@ -201,6 +201,8 @@ describe('ISS-977: one session, one turn', () => {
     await w.settleWarm();
     w.box.model = async () => {};
     w.box.turnEnd = 'completed';
+    // the turns that failed above left the room on a new session (ISS-1101): read the one it holds
+    sessionId = String((await w.rooms())[0]?.sessionId);
     const session = await sessionRowById(sessionId);
     if (!session) throw new Error('no session');
     const seeds = async () =>
