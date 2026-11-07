@@ -1,1 +1,0 @@
-**Names read whole across Forge.** Agents show by name in project settings, issue owners stay readable beside a long ETA, and Projects marks Attention only where its Dashboard shows something needing you.

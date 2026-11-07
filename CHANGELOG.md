@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.577] - 2026-11-07
+
+Names read whole on list screens; collapsed sidebar shows icons only
+
+### Changed
+
+- **Names read whole across Forge.** Agents show by name in project settings, issue owners stay readable beside a long ETA, and Projects marks Attention only where its Dashboard shows something needing you.
+
+### Fixed
+
+- **The collapsed sidebar shows icons only.** The organisation shows as its avatar, labels and the version appear on hover, and What's new opens by itself once per release.
+
 ## [0.4.0-dev.576] - 2026-11-07
 
 Retired master panes show as retired in master status
