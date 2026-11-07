@@ -108,16 +108,17 @@ export async function fireFacts(scope: FireScope): Promise<{ fires: FireRow[]; t
   return {
     fires: rows.map(
       ({ scheduleId, runAsId, reads, opsCalls, filings, stateAfter, projectId: _p, ...f }) => ({
-      ...f,
-      scheduleId,
-      runAs: runAsId ? (names.get(runAsId) ?? { id: runAsId, name: null }) : null,
-      reads: reads as ScriptRead[] | null,
-      opsCalls: opsCalls as ScriptOpsCall[] | null,
-      filings: filings as ScriptFiling[] | null,
-      stateAfter: stateAfter as Record<string, unknown> | null,
-      issues: Number(f.issues),
-      notifications: Number(f.notifications),
-    })),
+        ...f,
+        scheduleId,
+        runAs: runAsId ? (names.get(runAsId) ?? { id: runAsId, name: null }) : null,
+        reads: reads as ScriptRead[] | null,
+        opsCalls: opsCalls as ScriptOpsCall[] | null,
+        filings: filings as ScriptFiling[] | null,
+        stateAfter: stateAfter as Record<string, unknown> | null,
+        issues: Number(f.issues),
+        notifications: Number(f.notifications),
+      }),
+    ),
     total,
   };
 }
