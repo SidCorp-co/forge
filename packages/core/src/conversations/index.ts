@@ -42,6 +42,7 @@ export {
   LAST_RESORT_LINES,
   type LastResortKind,
   type LastResortPlace,
+  ROOM_STILL_QUEUED_LINES,
   releaseLastResort,
   STILL_QUEUED_LINE,
 } from './last-resort.js';

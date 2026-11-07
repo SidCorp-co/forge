@@ -41,7 +41,7 @@ import {
 } from './delivery.js';
 import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { injectWaiting, settleInjects } from './inject.js';
-import { tellLastResort } from './last-resort.js';
+import { endRoomLastResortWait, tellLastResort } from './last-resort.js';
 import { operationsBrief } from './ops-prompt.js';
 import { roleOfRoom } from './ops-role.js';
 import { projectsInScope } from './ops-scope.js';
@@ -50,7 +50,7 @@ import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
 import { insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
-import { retryOrTell, tellUnanswered } from './turn-retry.js';
+import { dropHeldTooLong, retryOrTell, tellUnanswered } from './turn-retry.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
 const SUPPORT_SESSION_GRANT = ['projects:write'] as const;
@@ -341,6 +341,8 @@ export async function deliverWaiting(roomId: string): Promise<DeliverOutcome> {
 
 async function handOn(found: RoomRow): Promise<DeliverOutcome> {
   const { room, session, held } = await sessionToHand(found);
+  // a message held past the age bound goes to no turn and is told nowhere (ISS-1105)
+  await dropHeldTooLong(room);
   if (held) return holdWaiting(room, held);
   if (!session) return 'nothing-waiting';
   if (session.status === 'running') return injectWaiting(room, session);
@@ -384,8 +386,9 @@ async function handOn(found: RoomRow): Promise<DeliverOutcome> {
 
 /**
  * The room's session ended on a cause its checkout meets again (`room-session.ts`): nothing is
- * handed to a turn, and each waiting message's thread is told it is not answered, once; the
- * messages wait for the binding to name another checkout.
+ * handed to a turn, and the room is told once, at its top level, as soon as a message waits on an
+ * answer: the hand-over of that message, or the drain's next tick, runs this (ISS-1105). The
+ * messages wait for the binding to name another checkout, each until the age bound drops it.
  */
 async function holdWaiting(room: RoomRow, held: SessionRow): Promise<DeliverOutcome> {
   const why = `the session's checkout ${held.repoPath ?? '(none)'} failed its last turn (${held.failureReason}) and the binding still names it`;
@@ -443,14 +446,26 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
     : [marker.roomId];
   for (const roomId of served) {
     if (!COMPLETED.has(row.status)) await retryFailedTurn(roomId, row);
-    // a completed turn shows the fault cleared: what waited out a back-off goes with the next turn
-    else await endBackOff(roomId);
+    else {
+      // a completed turn shows the fault cleared: what waited out a back-off goes with the next
+      // turn, and a later break is told to the room again (ISS-1105)
+      await endBackOff(roomId);
+      await endRoomWait(roomId);
+    }
     // what the box refused to write into the turn now waits again, and goes with the rest
     await settleInjects(roomId);
     await deliverWaiting(roomId);
   }
   // the turn ended: the rooms it answered read quiet or waiting on the project's pages (REQ-15 BC-10)
   await pushProjectNow(db, row.projectId, 'rooms');
+}
+
+async function endRoomWait(roomId: string): Promise<void> {
+  const room = await roomById(roomId);
+  if (!room) return;
+  await endRoomLastResortWait(room).catch((err) =>
+    logger.error({ err, roomId }, "support: the room's last-resort wait could not be ended"),
+  );
 }
 
 /** The ends of a turn that finished it; every other end left its messages unanswered. */

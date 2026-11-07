@@ -8,12 +8,81 @@
 //
 // Replaces the rule that a failed turn's messages stayed delivered and were never handed again,
 // and the lost turn's one hand-on (ISS-850's `redelivered` marker), with one count for every cause.
+//
+// A held message has an age bound (ISS-1105): one that waited past `HELD_MESSAGE_MAX_AGE_MS` is
+// dropped with a record on the room and its thread is never told. A failure is told to the room
+// once, in one line at its top level, and only where a message within the bound still waits on an
+// answer; it replaces the rule that told each waiting thread in a post of its own, which posted
+// into 19 threads of 12-hour-old chatter at once in epod's sid-catalog.
 
 import { logger } from '../lib/logger.js';
-import { giveBackFailed, toldFailed } from './delivery.js';
+import { dropWaitingBefore, giveBackFailed, toldFailed } from './delivery.js';
 import { deliverWaiting } from './dispatch.js';
-import { tellLastResort } from './last-resort.js';
+import { tellRoomLastResort } from './last-resort.js';
+import { isCoreThread } from './rules.js';
 import { type ActionRow, insertAction, type RoomRow } from './store.js';
+import { TOP_LEVEL } from './thread.js';
+
+/**
+ * How long a member's message may wait for an answer before core stops holding it (ISS-1105): two
+ * hours. Past it, an answer or a failed-turn line reads to the room as the assistant waking on an
+ * old thread (epod's sid-catalog had 19 threads of room chatter held 12 hours behind a broken
+ * session, each told at 04:13 local), and whoever asked has moved on or asked a person. Two hours
+ * covers a box restart, a long turn and every retry above many times over, so a message a working
+ * room would still answer is not dropped.
+ */
+export const HELD_MESSAGE_MAX_AGE_MS = 2 * 60 * 60_000;
+
+const HELD_TOO_LONG = `it waited more than ${HELD_MESSAGE_MAX_AGE_MS / 3_600_000} hours with no turn answering it`;
+
+/** Whether `m` waited past the bound. */
+const heldTooLong = (m: Pick<ActionRow, 'createdAt'>, now: Date) =>
+  now.getTime() - m.createdAt.getTime() > HELD_MESSAGE_MAX_AGE_MS;
+
+/**
+ * Drop each message `room` held past the bound, with one record on the room naming who wrote each,
+ * when, and why; no turn takes it and its thread is never told. Answers how many were dropped.
+ */
+export async function dropHeldTooLong(room: RoomRow, now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - HELD_MESSAGE_MAX_AGE_MS);
+  const dropped = await dropWaitingBefore(room.id, cutoff, now, HELD_TOO_LONG);
+  if (dropped.length === 0) return 0;
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: null,
+    thread: TOP_LEVEL,
+    kind: 'refused',
+    actorKind: 'core',
+    tool: 'held_too_long',
+    output: {
+      why: HELD_TOO_LONG,
+      maxAgeMs: HELD_MESSAGE_MAX_AGE_MS,
+      messages: dropped.map((m) => ({
+        id: m.id,
+        thread: m.thread,
+        who: m.actorLabel ?? m.actorKey,
+        at: m.createdAt.toISOString(),
+      })),
+    },
+  });
+  logger.warn(
+    { roomId: room.id, dropped: dropped.length },
+    'support: messages held past the age bound were dropped, and no thread was told',
+  );
+  return dropped.length;
+}
+
+/**
+ * Whether a message the room handed its session waits on an answer: one in a member's thread that
+ * names nobody but the bot. A message naming someone else is the room's own talk (REQ-77 BC-6),
+ * and in a room answering mentions only the messages that name the bot or carry on its thread were
+ * handed at all, so what is left is a mention or a question put to the assistant.
+ */
+function waitsOnAnswer(m: Pick<ActionRow, 'thread' | 'input'>): boolean {
+  if (m.thread === TOP_LEVEL || isCoreThread(m.thread)) return false;
+  return (m.input as { addressed?: unknown } | null)?.addressed !== 'others';
+}
 
 /**
  * How many turns may take a message before its thread is told. The first retry covers a one-off
@@ -91,40 +160,52 @@ export async function retryOrTell(
 }
 
 /**
- * Record each thread of `taken` as left without an answer, with `reason`, and tell it so in core's
- * last-resort line, once per wait: a message some failure was already reported for is not reported
- * again, and a thread told while it still waits is recorded, not told twice.
+ * Record each thread of `taken` as left without an answer, with `reason`, and tell the room once
+ * (ISS-1105): one line at its top level through core's last-resort path, where a message within the
+ * bound still waits on an answer, never a post in each thread. A message held past the bound is not
+ * reported here (`dropHeldTooLong` records it), one some failure was already reported for is not
+ * reported again, and a room told while it still waits is not told twice.
  */
 export async function tellUnanswered(
   room: RoomRow,
   taken: readonly ActionRow[],
   reason: string,
+  now: Date = new Date(),
 ): Promise<void> {
   const told = await toldFailed(
     room.id,
     taken.map((m) => m.id),
   );
-  const left = taken.filter((m) => !told.has(m.id));
+  const left = taken.filter((m) => !told.has(m.id) && !heldTooLong(m, now));
+  if (left.length === 0) return;
+  const waiting = left.filter(waitsOnAnswer);
+  const said =
+    waiting.length > 0
+      ? await tellRoomLastResort(
+          room,
+          waiting.map((m) => String((m.input as { text?: unknown } | null)?.text ?? '')),
+        )
+      : null;
+  const posted = said?.posted ? said : null;
   const threads = new Map(left.map((m) => [m.thread, m] as const));
   for (const [thread, first] of threads) {
-    // a scheduled check or a release note is no member's thread: its failure is recorded, and
-    // nothing is posted (BC-13, ISS-854)
-    const said = await tellLastResort(room, thread, 'turn_failed');
-    const posted = said.posted ? said : null;
+    const messages = left.filter((m) => m.thread === thread);
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,
-      conversationId: posted?.conversationId ?? first.conversationId,
+      conversationId: first.conversationId,
       thread,
       kind: 'refused',
       actorKind: 'core',
       tool: 'turn_failed',
       output: {
         reason,
-        messages: left.filter((m) => m.thread === thread).map((m) => m.id),
+        messages: messages.map((m) => m.id),
+        waitsOnAnswer: messages.some(waitsOnAnswer),
+        // the room's one line, where this call posted it; the thread itself is told nothing
         posted: Boolean(posted),
+        roomLine: posted?.messageId ?? null,
       },
-      externalId: posted?.messageId ?? null,
     });
   }
 }

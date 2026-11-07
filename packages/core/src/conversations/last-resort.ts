@@ -30,6 +30,16 @@ export const STILL_QUEUED_LINE =
   'Trợ lý đang gặp sự cố nên chưa trả lời được ngay. Tin nhắn của bạn vẫn được giữ lại, trợ lý sẽ trả lời ngay khi có thể.'; // i18n-allow: core's last-resort chat line, Vietnamese by owner ruling (ISS-875, ISS-977)
 
 /**
+ * A support room's one line when its session is broken (ISS-1105): said once to the room's people
+ * at its top level, never in each waiting thread, and like the thread's line it never asks anyone
+ * to resend. Vietnamese where the room's content language is; English otherwise.
+ */
+export const ROOM_STILL_QUEUED_LINES: Readonly<Record<'vi' | 'en', string>> = {
+  vi: 'Trợ lý đang gặp sự cố nên chưa trả lời được. Các tin nhắn gửi trợ lý vẫn được giữ lại, trợ lý sẽ trả lời ngay khi có thể.', // i18n-allow: core's last-resort room line, Vietnamese by owner ruling (ISS-875, ISS-1105)
+  en: 'The assistant has a problem and cannot answer yet. Messages to it are kept, and it will answer as soon as it can.',
+};
+
+/**
  * The thread a line goes into, as its chat server knows it: the adapter, and that adapter's venue
  * id for the thread itself (a Rocket.Chat thread is `<namespace> <rid> <tmid>`, the same id a
  * support thread and an assistant's thread venue carry), so both doors into one thread share its

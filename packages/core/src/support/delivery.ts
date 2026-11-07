@@ -300,6 +300,8 @@ export async function settleLatency(roomId: string, thread: string, at: Date): P
         sql`${supportActions.deliveredAt} IS NOT NULL`,
         sql`${supportActions.createdAt} <= ${iso}::timestamptz`,
         sql`NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'latencyMs')`,
+        // a message dropped for its age was never answered (ISS-1105)
+        sql`NOT (COALESCE(${supportActions.output}, '{}'::jsonb) ? 'dropped')`,
       ),
     );
 }
@@ -366,6 +368,36 @@ export async function undeliveredThreads(
   const seen = new Map<string, string | null>();
   for (const r of rows) if (!seen.has(r.thread)) seen.set(r.thread, r.conversationId);
   return [...seen].map(([thread, conversationId]) => ({ thread, conversationId }));
+}
+
+/**
+ * Drop each message of a room that waited since before `cutoff` with no turn taking it (ISS-1105):
+ * stamped delivered and marked `dropped` with when and why, so no turn takes it, no thread is told
+ * of it and no latency is read from it. Answers what was dropped, oldest first.
+ */
+export async function dropWaitingBefore(
+  roomId: string,
+  cutoff: Date,
+  now: Date,
+  why: string,
+): Promise<ActionRow[]> {
+  const rows = await db
+    .update(supportActions)
+    .set({
+      deliveredAt: now,
+      output: sql`(COALESCE(${supportActions.output}, '{}'::jsonb) - 'retryAt')
+        || jsonb_build_object('dropped', jsonb_build_object('at', ${now.toISOString()}::text, 'why', ${why}::text))`,
+    })
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        isNull(supportActions.deliveredAt),
+        lt(supportActions.createdAt, cutoff),
+      ),
+    )
+    .returning();
+  return rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 /** Every inbound message of a room no turn has taken, backing off or not, oldest first. */
