@@ -61,6 +61,17 @@ const WORDS: Readonly<Record<string, Words>> = {
     act: 'issues.releaseHold.act.releaseQueuedBehind',
     actor: 'release',
   },
+  // ISS-1126: the release's own waits, cleared by the sweep once a trigger is met or the outcome lands
+  RELEASE_CUTOFF_PENDING: {
+    cause: 'issues.releaseHold.cause.releaseCutoffPending',
+    act: 'issues.releaseHold.act.releaseCutoffPending',
+    actor: 'release',
+  },
+  RELEASE_OUTCOME_INCOMPLETE: {
+    cause: 'issues.releaseHold.cause.releaseOutcomeIncomplete',
+    act: 'issues.releaseHold.act.releaseOutcomeIncomplete',
+    actor: 'release',
+  },
   NO_RELEASE_GATE: {
     cause: 'issues.releaseHold.cause.noReleaseGate',
     act: 'issues.releaseHold.act.noReleaseGate',

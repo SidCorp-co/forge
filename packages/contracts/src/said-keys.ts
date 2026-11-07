@@ -537,6 +537,18 @@ export const SAID = {
 	"issues.releaseHold.act.releaseQueuedBehind": {
 		en: "take it in a later release",
 	},
+	"issues.releaseHold.cause.releaseCutoffPending": {
+		en: "Waiting for the next release batch",
+	},
+	"issues.releaseHold.act.releaseCutoffPending": {
+		en: "release it once a release trigger is met",
+	},
+	"issues.releaseHold.cause.releaseOutcomeIncomplete": {
+		en: "Its requirement or feedback still has work landing",
+	},
+	"issues.releaseHold.act.releaseOutcomeIncomplete": {
+		en: "release it with the rest of its outcome",
+	},
 	"issues.releaseHold.cause.releaseHeadCarriesHeld": {
 		en: "What production builds already holds a held issue",
 	},
