@@ -169,6 +169,7 @@ export async function buildJobSystemPrompt(input: {
   const preamble = await jobsPorts().buildPipelinePreamble(projectId, {
     step,
     policy: input.policy,
+    issueId,
   });
   const [issueRow] = issueId
     ? await db

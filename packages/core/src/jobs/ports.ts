@@ -112,7 +112,7 @@ interface JobsPorts {
   /** The pipeline preamble one step's job runs under, measured per block. */
   buildPipelinePreamble(
     projectId: string,
-    opts: { step: JobType; policy: DispatchState },
+    opts: { step: JobType; policy: DispatchState; issueId: string | null },
   ): Promise<{
     content: string;
     blocks: PreambleBlock[];

@@ -1,3 +1,4 @@
+import type { AgreementsView } from '@forge/contracts/agreements';
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
 import {
   contentLanguageBlock,
@@ -9,6 +10,7 @@ import type { PreambleBlock, PreambleBlockId } from '@forge/contracts/jobs';
 import type { DispatchState } from '@forge/contracts/project-config';
 import type { RunContextSource } from '@forge/contracts/run-context';
 import { and, eq } from 'drizzle-orm';
+import { agreementsMapText, readAgreements, restatedRules, taskOf } from '../agreements/index.js';
 import { db } from '../db/client.js';
 import {
   type JobType,
@@ -226,6 +228,32 @@ interface BuildPreambleOptions {
   step?: JobType | null;
   /** The policy state the job runs under; absent for a preamble no job runs (chat, preview). */
   policy?: DispatchState | null;
+  /** The issue the job works: its labels and category decide which conditional agreements apply. */
+  issueId?: string | null;
+}
+
+/**
+ * The project's working agreements resolved for the job's issue (REQ-90 design step supply), or the
+ * block saying they could not be read: a run told nothing would read a project with none.
+ */
+async function agreementsBlock(
+  projectId: string,
+  issueId: string | null,
+): Promise<{ body: string | null; view: AgreementsView | null }> {
+  try {
+    const task = issueId ? await taskOf(projectId, { issue: issueId }) : null;
+    const view = await readAgreements(projectId, task);
+    return { body: agreementsMapText(view, 2, projectId), view };
+  } catch (err) {
+    logger.error(
+      { err: (err as Error).message, projectId, issueId },
+      'pipeline preamble: the working agreements could not be read, so the prompt says so in their place',
+    );
+    return {
+      body: `## Working agreements\n\nThis project's working agreements could not be read when this prompt was built. Read them before you work: \`GET /api/projects/${projectId}/agreements${issueId ? `?issue=${issueId}` : ''}\`.`,
+      view: null,
+    };
+  }
 }
 
 export async function buildPipelinePreambleStructured(
@@ -262,9 +290,18 @@ export async function buildPipelinePreambleStructured(
   });
   let carried: RunContextSource[] = [];
   if (step && factInputs) {
-    const factsBlock = renderStageFactsText(factInputs, projectId, step);
+    const agreements = await agreementsBlock(projectId, opts?.issueId ?? null);
+    const restated = agreements.view ? restatedRules(agreements.view) : undefined;
+    const factsBlock = renderStageFactsText(factInputs, projectId, step, restated);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });
-    carried = carriedIn(factsBlock, factInputs.alwaysInjectFacts, factInputs.lessons);
+    // after the facts: the map depends on the issue, so the shared cacheable prefix stays whole
+    if (agreements.body) sections.push({ id: 'working-agreements', body: agreements.body });
+    carried = carriedIn(
+      `${factsBlock}\n\n${agreements.body ?? ''}`,
+      factInputs.alwaysInjectFacts,
+      factInputs.lessons,
+      agreements.view,
+    );
   }
   // Built-in per-state depth, after the shared prefix so cross-state cache on
   // the prefix is preserved.

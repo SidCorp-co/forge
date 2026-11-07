@@ -24,10 +24,13 @@ export type JobRefusalCode = (typeof JOB_REFUSAL_CODES)[number];
  * own flows mint some, and no lane mints the rest any more (the staged lane and the `drive` job).
  */
 export const UNMINTABLE_JOB_TYPES = {
-	release_batch: "core mints it from the release flow (POST /api/projects/:id/release-batches)",
+	release_batch:
+		"core mints it from the release flow (POST /api/projects/:id/release-batches)",
 	onboarding: "core mints it from project onboarding",
-	steward: "core mints it from the steward runtime, for an act that needs the codebase (REQ-48)",
-	drive: "core no longer mints drive jobs: a master opens a run session over the issue instead",
+	steward:
+		"core mints it from the steward runtime, for an act that needs the codebase (REQ-48)",
+	drive:
+		"core no longer mints drive jobs: a master opens a run session over the issue instead",
 	triage: "the staged lane that minted it was removed",
 	clarify: "the staged lane that minted it was removed",
 	plan: "the staged lane that minted it was removed",
@@ -46,7 +49,8 @@ export const UNMINTABLE_JOB_TYPES = {
  * so a pool retry would only hold the project's one steward slot for a run that has already ended.
  */
 export const POOL_UNRETRIED_JOB_TYPES = {
-	steward: "its steward run ends failed with it, and the item's standing queues the next run",
+	steward:
+		"its steward run ends failed with it, and the item's standing queues the next run",
 } as const;
 
 /**
@@ -56,7 +60,8 @@ export const POOL_UNRETRIED_JOB_TYPES = {
  * project (FB-78, ISS-267).
  */
 export const OWN_CREDENTIAL_JOB_TYPES = {
-	steward: "the steward account's token, minted for the job (steward/job.ts:stewardJobCredential)",
+	steward:
+		"the steward account's token, minted for the job (steward/job.ts:stewardJobCredential)",
 } as const;
 
 /** Whether a job of this type runs on the claiming box's own credential. */
@@ -75,10 +80,14 @@ export interface HoldState {
 }
 
 /** Reasons whose clearance the hold sweep can VERIFY before re-queueing, by re-running the check that failed. */
-const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set(["all_devices_exhausted"]);
+const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set([
+	"all_devices_exhausted",
+]);
 
 /** Reasons with nothing to re-check: waiting IS the whole remedy, so the hold simply retries after a recheck interval. */
-export const TIME_CHECKED_REASONS: ReadonlySet<string> = new Set(["verify_unavailable"]);
+export const TIME_CHECKED_REASONS: ReadonlySet<string> = new Set([
+	"verify_unavailable",
+]);
 
 /** Every reason that may auto-release. Derived, never hand-listed — a reason has to pick a lane above to get in. */
 export const AUTO_RELEASE_REASONS: ReadonlySet<string> = new Set([
@@ -87,7 +96,9 @@ export const AUTO_RELEASE_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 function holdResumesItself(reason: string | null | undefined): boolean {
-	return reason !== null && reason !== undefined && AUTO_RELEASE_REASONS.has(reason);
+	return (
+		reason !== null && reason !== undefined && AUTO_RELEASE_REASONS.has(reason)
+	);
 }
 
 /**
@@ -95,8 +106,13 @@ function holdResumesItself(reason: string | null | undefined): boolean {
  * one auto-release. The release sweep acts on it, and every surface that describes a held job
  * asks it with the job's own hold state, so no copy promises a resume the sweep will not perform.
  */
-export function holdReleasesItself(hold: HoldState | null, failureReason: string | null = null): boolean {
-	return hold ? hold.autoRelease && holdResumesItself(hold.reason) : holdResumesItself(failureReason);
+export function holdReleasesItself(
+	hold: HoldState | null,
+	failureReason: string | null = null,
+): boolean {
+	return hold
+		? hold.autoRelease && holdResumesItself(hold.reason)
+		: holdResumesItself(failureReason);
 }
 
 export function readHoldState(payload: unknown): HoldState | null {
@@ -130,7 +146,9 @@ export interface AutoRetryPayload {
 }
 
 /** The retry state a job carries, or null on a job that is not a retry (or predates the budget). */
-export function readAutoRetryPayload(payload: unknown): AutoRetryPayload | null {
+export function readAutoRetryPayload(
+	payload: unknown,
+): AutoRetryPayload | null {
 	if (!payload || typeof payload !== "object") return null;
 	const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
 	if (!raw || typeof raw !== "object") return null;
@@ -162,6 +180,7 @@ export type PreambleBlockId =
 	| "policy"
 	| "project-context"
 	| "forge-facts"
+	| "working-agreements"
 	| "state-block"
 	| "contract-context"
 	| "artifact-context"

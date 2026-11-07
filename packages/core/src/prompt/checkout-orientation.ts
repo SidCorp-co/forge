@@ -1,3 +1,5 @@
+import type { AgreementsView } from '@forge/contracts/agreements';
+import { agreementsMapText, readAgreements, restatedRules } from '../agreements/index.js';
 import {
   type AlwaysInjectFact,
   type LessonEntry,
@@ -36,6 +38,8 @@ export type OrientationRules =
         /** What each rests on, by slug (ISS-1064). */
         sources?: Readonly<Record<string, string | null>>;
       };
+      /** The project's working agreements, resolved for no task (REQ-90). */
+      agreements?: AgreementsView;
     }
   | { unreadable: true };
 
@@ -44,7 +48,7 @@ function rulesText(projectId: string, rules: OrientationRules): string | null {
   if ('unreadable' in rules)
     return `## Project rules (always applied)
 
-The project's knowledge could not be read when this orientation was written, so its rules are not here. Read them before you work: \`GET /api/projects/${projectId}/knowledge?injection=always\`.`;
+The project's knowledge could not be read when this orientation was written, so its rules and working agreements are not here. Read them before you work: \`GET /api/projects/${projectId}/knowledge?injection=always\` and \`GET /api/projects/${projectId}/agreements\`.`;
   // a master and the runs it declares build issues, breakdowns, designs and revisions, and work
   // across areas, so the map names every area lesson labelled with its area (REQ-50 BC-3)
   const lessons = lessonsMapText(
@@ -66,7 +70,14 @@ The project's knowledge could not be read when this orientation was written, so 
     depth: 2,
   });
   const parts = [
-    rules.entries.length > 0 ? projectRulesText(rules.entries, 2) : null,
+    rules.agreements ? agreementsMapText(rules.agreements, 2, projectId) : null,
+    rules.entries.length > 0
+      ? projectRulesText(
+          rules.entries,
+          2,
+          rules.agreements ? restatedRules(rules.agreements) : undefined,
+        )
+      : null,
     lessons,
     guides,
   ].filter((p): p is string => p !== null);
@@ -119,14 +130,15 @@ ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
   try {
-    const [entries, lessons, project, org, sources] = await Promise.all([
+    const [entries, lessons, project, org, sources, agreements] = await Promise.all([
       selectAlwaysInjectFromKnowledge(projectId),
       selectLessonEntries(projectId),
       selectOnDemandSlugsFromKnowledge(projectId),
       orgOnDemandSlugsOf(projectId),
       selectOnDemandSourcesFromKnowledge(projectId),
+      readAgreements(projectId, null),
     ]);
-    rules = { entries, lessons, guides: { project, org, sources } };
+    rules = { entries, lessons, guides: { project, org, sources }, agreements };
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },

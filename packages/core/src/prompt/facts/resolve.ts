@@ -230,6 +230,8 @@ export function renderStageFactsText(
   inputs: ProjectFactInputs,
   projectId: string,
   stage: JobType,
+  /** Each always-on rule a working agreement restates, by slug, to the agreement's name (REQ-90). */
+  restatedBy?: ReadonlyMap<string, string>,
 ): string {
   const ctx: FactRenderContext = {
     projectId,
@@ -266,7 +268,7 @@ export function renderStageFactsText(
         'always-inject knowledge entries exceed the char budget — every prompt for this project carries the overflow',
       );
     }
-    projectParts.push(projectRulesText(alwaysInject, 3));
+    projectParts.push(projectRulesText(alwaysInject, 3, restatedBy));
   }
 
   // a run builds an issue, so its map names the project's lessons and those about issues; an area

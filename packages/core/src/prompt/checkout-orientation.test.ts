@@ -7,6 +7,11 @@ const store = vi.hoisted(() => ({
   orgGuides: vi.fn(),
   sources: vi.fn(),
 }));
+const agreements = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('../agreements/index.js', async (actual) => ({
+  ...(await actual<typeof import('../agreements/index.js')>()),
+  readAgreements: agreements.read,
+}));
 vi.mock('../knowledge/index.js', () => ({
   selectAlwaysInjectFromKnowledge: store.read,
   selectLessonEntries: store.lessons,
@@ -15,6 +20,8 @@ vi.mock('../knowledge/index.js', () => ({
   selectOnDemandSourcesFromKnowledge: store.sources,
 }));
 
+import { FORGE_AGREEMENTS } from '../agreements/forge-defaults.js';
+import { resolveAgreements } from '../agreements/resolve.js';
 import { LESSONS_MAP_MAX_CHARS } from '../lessons/index.js';
 import {
   checkoutOrientation,
@@ -31,6 +38,19 @@ const UI_COPY_RULE = {
 };
 const DELIVERY = { key: 'dev-delivery-checks', text: 'Prove each criterion once, red first.' };
 const RULES = { entries: [UI_COPY_RULE, DELIVERY] };
+
+/** A project that changed nothing: Forge's defaults alone. */
+const INHERITED = resolveAgreements({
+  projectId: 'p-1',
+  forge: FORGE_AGREEMENTS,
+  rows: [],
+  represented: [],
+  task: null,
+});
+
+beforeEach(() => {
+  agreements.read.mockResolvedValue(INHERITED);
+});
 
 describe('core serves the orientation a box writes into a checkout', () => {
   const body = checkoutOrientation('p-1', 'forge', RULES);
@@ -101,6 +121,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
       checkoutOrientation('p-1', 'forge', {
         ...RULES,
         guides: { project: [], org: [], sources: {} },
+        agreements: INHERITED,
       }),
     );
   });
@@ -124,6 +145,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
         ...RULES,
         lessons: [lesson],
         guides: { project: [], org: [], sources: {} },
+        agreements: INHERITED,
       }),
     );
     expect(body).toContain('lesson-3 [all work]');
@@ -202,5 +224,21 @@ describe('the orientation core serves reads the rules from the knowledge store',
     store.read.mockRejectedValueOnce(new Error('connection refused'));
     const body = await servedCheckoutOrientation('p-1', 'forge');
     expect(body).toBe(checkoutOrientation('p-1', 'forge', { unreadable: true }));
+  });
+});
+
+describe('a fresh session reads the working agreements in force (REQ-90 BC-5, BC-13)', () => {
+  it('carries the map of every default, and points a rule an agreement restates at it', async () => {
+    store.read.mockResolvedValue([{ key: 'batch-delivery', text: 'Work moves in batches.' }]);
+    store.guides.mockResolvedValue([]);
+    store.orgGuides.mockResolvedValue([]);
+    store.sources.mockResolvedValue({});
+    const body = await servedCheckoutOrientation('p-1', 'forge');
+    expect(agreements.read).toHaveBeenCalledWith('p-1', null);
+    expect(body).toContain('## Working agreements');
+    for (const a of FORGE_AGREEMENTS) expect(body).toContain(`- **${a.name}**`);
+    expect(body).toContain('`lean-testing`');
+    expect(body).toContain('### batch-delivery (detail of the working agreement Batch delivery)');
+    expect(body.indexOf('## Working agreements')).toBeLessThan(body.indexOf('## Project rules'));
   });
 });
