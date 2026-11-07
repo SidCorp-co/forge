@@ -1,0 +1,1 @@
+**An aborted release now says why, by whom and who owes the next act.** Its run state and each attempt on its page carry the reason, the actor, the blocker, the push and what carries its version; a bare cancel says so.

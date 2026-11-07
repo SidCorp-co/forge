@@ -19,12 +19,12 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readRunFailure } from '../pipeline/index.js';
-import { abortViewOf } from './abort-account.js';
+import { abortViewOf, carriedOf } from './abort-account.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
 import type { Part } from './release-read-views.js';
 import { readReleaseRepair, repairViewOf } from './release-repair.js';
-import { carriersIn, carriersOf, type Lineage, type LineageRun } from './version-rule.js';
+import { carriersIn, type Lineage, type LineageRun } from './version-rule.js';
 import { versionStatus } from './versions.js';
 
 /** Every release, by the version its last attempt wears, with each of its attempts first first. */
@@ -180,7 +180,6 @@ export function cutViewsOf(
 ): ReleaseCutView[] {
   return runs.map((run, i) => {
     const decider = deciderIdOf(run);
-    const reading = carriersOf(run);
     const outcome =
       run.id === own.runId && own.state !== 'draft'
         ? own.state
@@ -203,7 +202,7 @@ export function cutViewsOf(
       repair: repairOf(run, people),
       decidedBy: decider ? (people.get(decider) ?? null) : null,
       rule: ruleOf(run.metadata),
-      carried: reading.kind === 'carried' ? reading.carriers : reading.kind === 'none' ? [] : null,
+      carried: carriedOf(run),
       roster: rosterOf(run, known),
     };
   });

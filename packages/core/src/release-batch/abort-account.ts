@@ -3,7 +3,11 @@
 // two reads cannot tell one abort two ways (ISS-1095). A run cancelled with no abort on record says
 // so by name, never reading the same as an explained one.
 
-import type { ReleaseAbortView, ReleasePerson } from '@forge/contracts/releases';
+import type {
+  ReleaseAbortView,
+  ReleasePerson,
+  ReleaseVersionCarrier,
+} from '@forge/contracts/releases';
 import { readRunFailure } from '../pipeline/index.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { carriersOf, type LineageRun } from './version-rule.js';
@@ -15,6 +19,14 @@ export const NO_ABORT_RECORDED =
   'This run was cancelled and no abort was recorded on it: nothing on record says why, who ended it, who owes the next act, or what left its box.';
 
 type AbortedRun = Pick<LineageRun, 'status' | 'releasedAt' | 'metadata' | 'reachedBox'>;
+
+/** What outside Forge carries an attempt's version: `[]` where it was said nothing does, null where nobody said. */
+export function carriedOf(
+  run: Pick<LineageRun, 'metadata' | 'reachedBox'>,
+): ReleaseVersionCarrier[] | null {
+  const reading = carriersOf(run);
+  return reading.kind === 'carried' ? reading.carriers : reading.kind === 'none' ? [] : null;
+}
 
 /** The user an abort names as its actor, to be read with the other people a read names. */
 export function abortActorOf(metadata: unknown): string | null {
@@ -32,7 +44,6 @@ export function abortViewOf(
 ): ReleaseAbortView | null {
   const stamp = readAbortStamp(run.metadata);
   if (stamp) {
-    const reading = carriersOf(run);
     return {
       recorded: true,
       reason: stamp.reason,
@@ -41,8 +52,7 @@ export function abortViewOf(
       blocker: stamp.blocker ?? null,
       pushed: stamp.pushed ?? null,
       roster: stamp.roster,
-      carried:
-        reading.kind === 'carried' ? reading.carriers : reading.kind === 'none' ? [] : null,
+      carried: carriedOf(run),
     };
   }
   if (run.releasedAt !== null) return null;

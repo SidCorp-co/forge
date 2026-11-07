@@ -84,7 +84,10 @@ describe('abortViewOf', () => {
     expect(abortViewOf(run({}, { status: 'running' }), people)).toBeNull();
     expect(
       abortViewOf(
-        run({ failure: { code: 'release_not_shipped', detail: 'x', at: 'x' } }, { status: 'failed' }),
+        run(
+          { failure: { code: 'release_not_shipped', detail: 'x', at: 'x' } },
+          { status: 'failed' },
+        ),
         people,
       ),
     ).toBeNull();
