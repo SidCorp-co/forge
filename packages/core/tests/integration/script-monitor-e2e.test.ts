@@ -138,7 +138,7 @@ describe('a declaration that is not read-only is refused by name when it is save
       ops: PRODUCTION_WATCH_OPS,
     });
     expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).toContain('ops must be omitted when kind is "prompt"');
+    expect(String(res.body.detail)).toContain('ops must be omitted when kind is "prompt"');
   });
 });
 

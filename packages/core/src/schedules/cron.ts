@@ -11,10 +11,12 @@ const MIN_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * A kind core runs inline, cheaply, and whose lag a person waits on may fire more often than the
- * hour every session-starting kind is held to: a beta port (ISS-923) every 15 minutes.
+ * hour every session-starting kind is held to: a beta port (ISS-923) every 15 minutes, and a script
+ * (REQ-87), which starts no session, so a production watch reads every 15 minutes.
  */
 const MIN_INTERVAL_MS_OF: Partial<Record<ScheduleKind, number>> = {
   beta_port: 15 * 60 * 1000,
+  script: 15 * 60 * 1000,
 };
 
 const minutes = (ms: number) => Math.round(ms / 60_000);
