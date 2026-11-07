@@ -176,6 +176,9 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
     const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
     // the board Pipeline drew is Issues › Waves now, where its route sends an old link (ISS-1073)
     if (matchesSub(rest, "/pipeline")) return "proj-issues";
+    // a project's Approvals is Needs you for that project, which the workspace Overview row counts; it
+    // has no row of its own since ISS-1071, and lit Dashboard, a page it is not (ISS-1073)
+    if (matchesSub(rest, "/approvals")) return "overview";
     const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
     return hit?.key ?? "proj-overview";
   }

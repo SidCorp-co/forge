@@ -70,10 +70,14 @@ describe("the nav model", () => {
     expect(delivery?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
   });
 
-  it("holds no Approvals row: the serious decisions are read under the Dashboard's Needs you, which its page lights (ISS-1071)", () => {
+  // round 2: the page lit Dashboard, a row it is not (ISS-1073); it lights the workspace Overview, whose
+  // count is the Needs you its decisions are, as /attention does
+  it("holds no Approvals row, and its page lights the row that carries Needs you, never Dashboard (ISS-1071, ISS-1073)", () => {
     expect(PROJECT_ITEMS.map((it) => it.key)).not.toContain("proj-approvals");
     expect(projectMenu({}).map((e) => e.key)).not.toContain("proj-approvals");
-    expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("proj-overview");
+    expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("overview");
+    expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe(buildActiveKey("/attention", null));
+    expect(buildActiveKey("/projects/hop", "hop")).toBe("proj-overview");
   });
 
   it("lights a Product row on its own page", () => {
