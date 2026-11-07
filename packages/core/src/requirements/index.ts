@@ -8,6 +8,12 @@ export {
   type StaleContractPin,
   staleOnContract,
 } from './contract-links.js';
+export {
+  criteriaFactDrift,
+  criteriaFactsTick,
+  drainStaleCriteriaFacts,
+  sweepCriteriaFacts,
+} from './criteria-facts.js';
 export type { CriterionClip } from './criterion-clip.js';
 export { tracedCodesOf, traceWordingsOf } from './criterion-trace.js';
 export { deferRequirement, undeferRequirement } from './deferral.js';

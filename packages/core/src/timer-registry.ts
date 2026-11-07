@@ -34,6 +34,7 @@ import { sweepPreviews } from './previews/index.js';
 import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
+import { criteriaFactsTick } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import {
@@ -314,6 +315,7 @@ export function coreTimers(): Timer[] {
     { kind: 'cluster', name: 'pipeline-sweeper', cron: '* * * * *', run: runPipelineSweep },
     { kind: 'cluster', name: 'pipeline-reconciler', cron: '* * * * *', run: runReconcilerOnce },
     { kind: 'cluster', name: 'builder-facts-drift', cron: '*/10 * * * *', run: builderFactsTick },
+    { kind: 'cluster', name: 'criteria-facts-drift', cron: '*/10 * * * *', run: criteriaFactsTick },
     {
       kind: 'cluster',
       name: 'feedback-loop-check',

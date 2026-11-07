@@ -6,6 +6,7 @@ import {
   runRescueCapRehomeOnce,
 } from './issues/index.js';
 import { logger } from './lib/logger.js';
+import { drainStaleCriteriaFacts } from './requirements/index.js';
 import { retireStaleDraftQuestionsOnce, runStewardReaskOnce } from './steward/index.js';
 
 /**
@@ -95,7 +96,13 @@ export function startDeferredBackfills(): void {
     .then((n) => {
       if (n > 0) logger.info({ issues: n }, 'boot: builder facts written for the marked issues');
     })
-    .catch((err) => logger.error({ err }, 'boot: writing the marked builder facts failed'));
+    .catch((err) => logger.error({ err }, 'boot: writing the marked builder facts failed'))
+    // the criteria facts carry the builder flags, so they are written after them (0633)
+    .then(() => fillCriteriaFacts())
+    .then((n) => {
+      if (n) logger.info({ issues: n }, 'boot: criteria facts written for the marked issues');
+    })
+    .catch((err) => logger.error({ err }, 'boot: writing the marked criteria facts failed'));
 }
 
 /** Rewrites every issue marked for its builder facts, 0627's backfill among them, a batch at a time. */
@@ -103,6 +110,16 @@ async function fillBuilderFacts(): Promise<number> {
   let total = 0;
   for (;;) {
     const n = await drainStaleBuilderFacts(db, 200);
+    total += n;
+    if (n === 0) return total;
+  }
+}
+
+/** Rewrites every issue marked for its criteria facts, 0633's backfill among them, a batch at a time. */
+async function fillCriteriaFacts(): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const n = await drainStaleCriteriaFacts(db, 200);
     total += n;
     if (n === 0) return total;
   }

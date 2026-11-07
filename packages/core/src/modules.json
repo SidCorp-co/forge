@@ -1111,6 +1111,8 @@
       "kind": "domain",
       "context": "design",
       "owns": [
+        "issueCriteriaFacts",
+        "issueCriteriaFactsStale",
         "requirementBaselinePins",
         "requirementBaselines",
         "requirementAreas",

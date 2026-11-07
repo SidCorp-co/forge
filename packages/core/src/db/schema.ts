@@ -25,6 +25,7 @@ export * from './schema-builder-facts.js';
 export * from './schema-cleanup.js';
 export * from './schema-comments.js';
 export * from './schema-credentials.js';
+export * from './schema-criteria-facts.js';
 export * from './schema-devices.js';
 export * from './schema-forecast-moves.js';
 export * from './schema-gate-changes.js';
