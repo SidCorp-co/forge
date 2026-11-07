@@ -337,6 +337,7 @@ describe('ISS-1106: a request from before the session’s restart is cited, neve
     expect(await consentIn(asked.id)).toMatchObject({ actor_key: tuyen.userId });
     expect(await filings()).toBe(before + 1);
   });
+});
 
 describe('REQ-90 BC-11, BC-12: one rule for who agrees to an act, scoped by target', () => {
   const FB_566 =
