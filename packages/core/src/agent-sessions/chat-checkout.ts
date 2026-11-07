@@ -57,7 +57,9 @@ export async function requireCheckoutView(
 /** The turn frame's checkout fields: none for a writable checkout, which is what a box does unasked. */
 export function checkoutFields(view: CheckoutView | null): Record<string, string | string[]> {
   if (!view) return {};
-  const siblings = view.siblings?.length ? { siblingCheckouts: view.siblings } : {};
+  const siblings: Record<string, string[]> = view.siblings?.length
+    ? { siblingCheckouts: view.siblings }
+    : {};
   if (view.mode === 'build' || view.mode === 'own') {
     return {
       checkout: view.mode,
