@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { LAST_RESORT_LINES, STILL_QUEUED_LINE } = await import('./last-resort.js');
-const { internalCodesIn } = await import('../messaging/internal-codes.js');
+const { FORGE_KEY_PREFIXES, internalCodesIn } = await import('../messaging/internal-codes.js');
 const { confidentLanguageOf } = await import('./text-language.js');
 
 // ISS-875: core speaks in a room on its own only where the agent cannot, and then in plain
@@ -24,7 +24,7 @@ describe("core's last-resort lines", () => {
   });
 
   it.each(lines)('%s holds no internal code', (_kind, line) => {
-    expect(internalCodesIn(line)).toEqual([]);
+    expect(internalCodesIn(line, FORGE_KEY_PREFIXES)).toEqual([]);
     expect(line).not.toMatch(/[A-Z]{2,}_[A-Z_]+|\(|@/);
   });
 

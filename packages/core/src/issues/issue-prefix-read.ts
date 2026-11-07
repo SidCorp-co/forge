@@ -47,6 +47,15 @@ export async function heldIssuePrefixes(
   return rows.map((r) => r.prefix);
 }
 
+/**
+ * Every issue prefix any Forge project holds or held, a tombstone's included: a reference somebody
+ * published under one still reads as an issue key (ISS-1107, `messaging/internal-codes.ts`).
+ */
+export async function everyIssuePrefix(dbi: IssueRefReader = defaultDb): Promise<string[]> {
+  const rows = await dbi.select({ prefix: issuePrefixAliases.prefix }).from(issuePrefixAliases);
+  return rows.map((r) => r.prefix);
+}
+
 /** Formats every reference in one operation off a single read, so a map over rows spends one
  *  query and not one per row. */
 export async function issueRefFormatter(

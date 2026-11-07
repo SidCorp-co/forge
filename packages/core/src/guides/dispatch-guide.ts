@@ -163,8 +163,10 @@ screens the words for the room's readers and records the post as the master's.
   into the same room and thread under a neutral name.
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
   in), never at its top level, mentioning at most the asker or a member the channel lists. Plain
-  words, things named as the user sees them on screen: no issue key, MR or PR number, environment
-  variable name, commit sha or credential word.
+  words, things named as the user sees them on screen: no Forge issue key, MR or PR number,
+  environment variable name, commit sha or credential word. A store's own codes, such as order
+  number RIV-68493, stay as the user reads them; a prefix that collides with a Forge one is declared
+  in the project document's \`userFacingCodes\`.
 - **Refused by name, nothing posted:** \`SUPPORT_ROOM_UNKNOWN\` (no binding of the project names the
   room), \`SUPPORT_ROOM_SWITCHED_OFF\` (its binding is off or no longer names it),
   \`SUPPORT_MASTER_POST_USERS_ROOM\` (a top-level post in a room its users read),

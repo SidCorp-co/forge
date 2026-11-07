@@ -311,6 +311,15 @@ export const projectDocumentSchema = z.strictObject({
   // terms the prose keeps in English beyond the built-in technical ones
   // (`@forge/contracts/content-language:TECHNICAL_TERMS_KEPT_IN_ENGLISH`); absent is none.
   keepTermsInEnglish: unique(keepTermsInEnglishSchema).optional(),
+  // the prefixes of codes this project's people read as their own, such as a store's order numbers
+  // (`RIV` for RIV-68493): a room's screen never reads one as a Forge issue key, even where it is a
+  // Forge prefix (ISS-1107, `messaging/internal-codes.ts:keyPrefixesOf`). Absent is none.
+  userFacingCodes: unique(
+    z
+      .array(z.string().regex(/^[A-Z][A-Z0-9]{0,9}$/, 'a code prefix in upper case, such as RIV'))
+      .min(1)
+      .max(20),
+  ).optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

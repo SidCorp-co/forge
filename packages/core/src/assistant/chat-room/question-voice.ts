@@ -14,12 +14,14 @@ import type { ReplyLanguage } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
+import { everyIssuePrefix } from '../../issues/index.js';
 import { webBaseUrl } from '../../lib/web-base-url.js';
 import { type MessageVerdict, refusalsOf } from '../../messaging/contract.js';
-import { internalCodeRefusals } from '../../messaging/internal-codes.js';
+import { internalCodeRefusals, keyPrefixesOf } from '../../messaging/internal-codes.js';
 import { type ProvenMessage, proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
+import { readProjectDocument } from '../../project-config/index.js';
 import { runExternalChatTurn } from '../external-chat.js';
 import { CORRECTIVE_PREFIX } from '../screened-reply.js';
 import type { ChatToolset } from '../tools/mcp-adapter.js';
@@ -118,6 +120,12 @@ const why = (verdict: MessageVerdict) =>
     .map((r) => r.why)
     .join('; ');
 
+/** The prefixes a question's post is read for issue keys under (ISS-1107, `support/screen.ts:keyPrefixesFor`). */
+async function questionKeyPrefixes(projectId: string): Promise<readonly string[]> {
+  const [prefixes, held] = await Promise.all([everyIssuePrefix(), readProjectDocument(projectId)]);
+  return keyPrefixesOf(prefixes, held?.document.userFacingCodes ?? []);
+}
+
 /**
  * One turn of the room's agent over `message`, screened at the room's reply door with its one
  * repair; what it wrote as the admitted message, or why nothing may be posted.
@@ -139,6 +147,7 @@ async function speak(t: Turn): Promise<Spoken> {
     });
   let result = await run(t.message);
   if (t.answered?.()) return { kind: 'answered' };
+  const keyPrefixes = await questionKeyPrefixes(t.projectId);
   if (result.terminal === 'error') return { kind: 'error', reason: result.error ?? 'turn failed' };
   const calls = [...result.toolCalls];
   if (!result.reply.trim()) return { kind: 'empty', reason: 'the agent wrote nothing' };
@@ -146,7 +155,7 @@ async function speak(t: Turn): Promise<Spoken> {
     screen: async (segments) => {
       // no room shows an internal code in a question's thread (ISS-873): the same list the support screen refuses
       const codes = segments.flatMap((s) =>
-        internalCodeRefusals(s, "a question's thread is read by everyone in the room"),
+        internalCodeRefusals(s, "a question's thread is read by everyone in the room", keyPrefixes),
       );
       if (codes.length > 0) return { ok: false, refusals: codes };
       return screenReplyAtDoor('chat-sync', {

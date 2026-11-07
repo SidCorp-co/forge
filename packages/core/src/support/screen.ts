@@ -3,13 +3,22 @@
 // a room was bound for. No room takes an internal code (ISS-872, ISS-873): an issue key, an MR or PR
 // number, an environment variable's name, a commit sha or a credential word is refused by name,
 // save in a reply inside a member's own thread of a room the team reads, where they asked for the
-// detail. A refused line is recorded and nothing is posted.
+// detail. A refused line is recorded and nothing is posted. An issue key is one under a prefix Forge
+// issues, less the codes the project declared its people's own (ISS-1107, `keyPrefixesFor`).
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
 import { screened } from '../conversations/index.js';
+import { everyIssuePrefix } from '../issues/index.js';
 import { refusalsOf } from '../messaging/contract.js';
-import { internalCodesIn, PLAIN_WORDS_SHAPE } from '../messaging/internal-codes.js';
+import {
+  ISSUE_KEY,
+  internalCodesIn,
+  keyPrefixesOf,
+  PLAIN_WORDS_SHAPE,
+  USER_FACING_CODES_DOOR,
+} from '../messaging/internal-codes.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { isCoreThread } from './rules.js';
@@ -43,6 +52,12 @@ export async function codesBarredBecause(
   return null;
 }
 
+/** The prefixes a post in `projectId`'s rooms is read for issue keys under (ISS-1107). */
+export async function keyPrefixesFor(projectId: string): Promise<readonly string[]> {
+  const [prefixes, held] = await Promise.all([everyIssuePrefix(), readProjectDocument(projectId)]);
+  return keyPrefixesOf(prefixes, held?.document.userFacingCodes ?? []);
+}
+
 export async function screenForThread(
   room: RoomRow,
   conversationId: string | null,
@@ -51,7 +66,7 @@ export async function screenForThread(
   door: SessionDoor,
   tool: string,
 ): Promise<Outcome<{ text: string; proof: ProvenMessage }>> {
-  const found = internalCodesIn(text);
+  const found = internalCodesIn(text, await keyPrefixesFor(room.projectId));
   const barred = found.length > 0 ? await codesBarredBecause(room, thread, tool) : null;
   const codes = barred ? found : [];
   if (codes.length > 0) {
@@ -66,10 +81,11 @@ export async function screenForThread(
       input: { text, door },
       output: { code: 'SUPPORT_INTERNAL_CODE', codes },
     });
+    const ownCodes = codes.some((c) => c.kind === ISSUE_KEY) ? ` ${USER_FACING_CODES_DOOR}.` : '';
     return no(
       'SUPPORT_INTERNAL_CODE',
       '/text',
-      `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.`,
+      `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.${ownCodes}`,
     );
   }
   const verdict = await screenReplyAtDoor(door, {

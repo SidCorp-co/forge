@@ -1,0 +1,1 @@
+**A store's order numbers reach its merchant as he reads them.** The room screen reads a token as an issue key only under a prefix Forge issues, so RIV-68493 passes; a colliding prefix is declared in the project document's `userFacingCodes`.

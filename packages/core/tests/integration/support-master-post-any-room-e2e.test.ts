@@ -8,6 +8,7 @@ vi.hoisted(() => {
 
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
+import { seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
@@ -15,6 +16,8 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/routes.ts
 // @direct-test-of packages/contracts/src/support-channel.ts
+// @direct-test-of packages/core/src/support/screen.ts
+// @direct-test-of packages/core/src/messaging/internal-codes.ts
 // @direct-test-of packages/core/src/support/dispatch.ts (ISS-977: two hand-overs racing one session collided minting its turn token)
 //
 // ISS-943: sid-desk's master had no way to post its release line into a thread of #sid-email, the
@@ -94,6 +97,41 @@ describe("ISS-943: a master posts in its project's support room", () => {
     const mention = await post({ text: `@alice ${RESULT}`, thread: asked });
     expect(said(mention), JSON.stringify(mention.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
     expect(threadLines(asked)).toEqual([]);
+  });
+
+  // ISS-1107 (FB-565): an issue key is read by a prefix Forge issues, never by its shape, so a
+  // store's order numbers reach the merchant as he reads them, and a code the project declares its
+  // people's own passes even where it collides with a Forge prefix
+  it("passes a store's order number, refuses a Forge key naming the door, and passes a declared code", async () => {
+    const asked = await asks('Hai đơn của tôi đâu rồi?');
+    const order = 'Mình đang xem hai đơn RIV-68493 và RIV-68340 của bạn nhé.';
+    const passed = await post({ text: order, thread: asked });
+    expect(passed.status, JSON.stringify(passed.body)).toBe(201);
+    const keyed = await post({ text: 'Mình đang xem ISS-123 cho bạn nhé.', thread: asked });
+    expect(said(keyed), JSON.stringify(keyed.body)).toEqual([400, 'SUPPORT_INTERNAL_CODE']);
+    expect(refusalOf(keyed)?.detail).toContain("project document's userFacingCodes");
+    const collides = 'Mình đang xem đơn FB-68493 của bạn nhé.';
+    expect(said(await post({ text: collides, thread: asked }))).toEqual([
+      400,
+      'SUPPORT_INTERNAL_CODE',
+    ]);
+
+    await seedProjectDocument(w.projectId, w.ownerId, { environments: {} });
+    const held = (await api(w.owner, 'GET', `/api/projects/${w.projectId}/config`)).body as {
+      revision: number;
+      document: Record<string, unknown>;
+    };
+    const declared = await api(w.owner, 'PUT', `/api/projects/${w.projectId}/config`, {
+      baseRevision: held.revision,
+      document: { ...held.document, userFacingCodes: ['FB'] },
+    });
+    expect(declared.status, JSON.stringify(declared.body)).toBe(200);
+    const own = await post({ text: collides, thread: asked });
+    expect(own.status, JSON.stringify(own.body)).toBe(201);
+    expect(said(await post({ text: 'Mình đang xem ISS-123 cho bạn nhé.', thread: asked }))).toEqual(
+      [400, 'SUPPORT_INTERNAL_CODE'],
+    );
+    expect(threadLines(asked).map((l) => l.text)).toEqual([order, collides]);
   });
 
   it("refuses a top-level post in the users' room, named or not, and posts nothing", async () => {

@@ -143,6 +143,7 @@ export {
 } from './issue-lease-read.js';
 export {
   activeIssuePrefix,
+  everyIssuePrefix,
   heldIssuePrefixes,
 } from './issue-prefix-read.js';
 export { claimIssuePrefix } from './issue-prefix-service.js';
