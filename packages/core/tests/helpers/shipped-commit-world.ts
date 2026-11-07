@@ -98,11 +98,14 @@ export async function shippedRun(
     commit = null,
     source,
     extra = {},
+    version = '0.16.0',
   }: {
     shipped?: boolean;
     commit?: string | null;
     source?: Source;
     extra?: Record<string, unknown>;
+    /** The version it cut; an earlier release of the same project names its own. */
+    version?: string;
   } = {},
 ): Promise<string> {
   const runId = randomUUID();
@@ -118,7 +121,7 @@ export async function shippedRun(
     INSERT INTO pipeline_runs (id, project_id, kind, status, metadata, release_version,
                                release_released_at, finished_at)
     VALUES (${runId}, ${world.projectId}, 'system', ${shipped ? 'completed' : 'running'},
-            ${JSON.stringify(metadata)}::jsonb, '0.16.0', ${shipped ? sql`now()` : null},
+            ${JSON.stringify(metadata)}::jsonb, ${version}, ${shipped ? sql`now()` : null},
             ${shipped ? sql`now()` : null})
   `);
   return runId;
