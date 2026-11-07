@@ -33,7 +33,27 @@ export async function turnCheckout(
 ): Promise<{ repoPath: string; movedFrom: string | null }> {
   const repoPath = await resolveSessionRepoPathForDevice(projectId, deviceId);
   if (!repoPath) throw checkoutUnbound(projectId, deviceId);
+  if (keepsWorktree(session, deviceId, repoPath, migrated) && session.repoPath) {
+    return { repoPath: session.repoPath, movedFrom: null };
+  }
   return { repoPath, movedFrom: checkoutMovedFrom(session, deviceId, repoPath, migrated) };
+}
+
+/**
+ * Whether the session runs in a worktree the box cut inside the checkout its binding names, as a
+ * preview's sketch does: that worktree is the bound checkout's, kept so the run edits off the main
+ * tree, and a turn stays in it. Only on the box that cut it; a rebind elsewhere moves it as any.
+ */
+function keepsWorktree(
+  session: Pick<AgentSessionRow, 'repoPath' | 'deviceId'>,
+  deviceId: string,
+  bound: string,
+  migrated: boolean,
+): boolean {
+  const sameBox = !migrated && deviceId === (session.deviceId ?? null);
+  return (
+    sameBox && !!session.repoPath?.startsWith(`${bound.replace(/\/+$/u, '')}/.claude/worktrees/`)
+  );
 }
 
 /**
@@ -47,6 +67,7 @@ export function checkoutMovedFrom(
   migrated = false,
 ): string | null {
   const sameBox = !migrated && deviceId === (session.deviceId ?? null);
+  if (bound && keepsWorktree(session, deviceId, bound, migrated)) return null;
   return sameBox && bound && session.repoPath && session.repoPath !== bound
     ? session.repoPath
     : null;

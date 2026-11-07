@@ -35,6 +35,43 @@ describe('the checkout a chat turn runs in', () => {
     expect(checkoutMovedFrom(session, 'd-1', '/srv/new')).toBe('/srv/gone');
   });
 
+  // preview-subjects-e2e: a sketch session made in its own worktree ran its turns in the bound
+  // checkout itself once every turn read the binding, where the box cut the worktree to keep it off
+  it('keeps a worktree the box cut inside the bound checkout, a preview sketch, on that box', async () => {
+    const sketch = { repoPath: '/srv/new/.claude/worktrees/sketch-req-7-ab12cd', deviceId: 'd-1' };
+    await expect(turnCheckout(sketch, 'p-1', 'd-1', false)).resolves.toEqual({
+      repoPath: sketch.repoPath,
+      movedFrom: null,
+    });
+    expect(checkoutMovedFrom(sketch, 'd-1', '/srv/new')).toBeNull();
+    expect(checkoutMovedFrom(sketch, 'd-1', '/srv/new/')).toBeNull();
+    // a worktree of another checkout, or a sibling whose name only begins like it, still moves
+    const elsewhere = {
+      repoPath: '/srv/old/.claude/worktrees/sketch-req-7-ab12cd',
+      deviceId: 'd-1',
+    };
+    await expect(turnCheckout(elsewhere, 'p-1', 'd-1', false)).resolves.toEqual({
+      repoPath: '/srv/new',
+      movedFrom: elsewhere.repoPath,
+    });
+    expect(
+      checkoutMovedFrom(
+        { ...sketch, repoPath: '/srv/new-2/.claude/worktrees/x' },
+        'd-1',
+        '/srv/new',
+      ),
+    ).toBe('/srv/new-2/.claude/worktrees/x');
+    // on another box, or after a migration, the box's own binding: the worktree was never cut there
+    await expect(turnCheckout(sketch, 'p-1', 'd-2', false)).resolves.toEqual({
+      repoPath: '/srv/new',
+      movedFrom: null,
+    });
+    await expect(turnCheckout(sketch, 'p-1', 'd-1', true)).resolves.toEqual({
+      repoPath: '/srv/new',
+      movedFrom: null,
+    });
+  });
+
   it('a move is said on the transcript naming both checkouts', () => {
     const at = new Date('2026-11-07T10:00:00Z');
     expect(movedNotice('/srv/gone', '/srv/new', at)).toEqual({
