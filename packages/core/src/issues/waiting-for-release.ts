@@ -53,12 +53,15 @@ export function adoptionOnlyMarkSql(i: SQL): SQL {
  * adoption-only marks are this shape too. Never NULL.
  */
 export function outsideGitMarkSql(i: SQL): SQL {
-  return sql`coalesce((${i}.merged_at IS NOT NULL
-    AND coalesce(trim(${i}.merged_commit_sha), '') = ''
-    AND ${i}.merged_paths IS NULL
-    AND jsonb_typeof(${i}.merged_artifacts) = 'array'
-    AND jsonb_array_length(${i}.merged_artifacts) > 0
-    AND NOT ${markClaimsCommitSql(i)}), false)`;
+  // CASE, not AND: Postgres may evaluate an AND's operands in any order, and the trail read is the
+  // only costly one, so it runs only for a row whose own columns already read artifacts-only
+  return sql`(CASE WHEN ${i}.merged_at IS NOT NULL
+      AND coalesce(trim(${i}.merged_commit_sha), '') = ''
+      AND ${i}.merged_paths IS NULL
+      AND jsonb_typeof(${i}.merged_artifacts) = 'array'
+      AND jsonb_array_length(${i}.merged_artifacts) > 0
+    THEN NOT ${markClaimsCommitSql(i)}
+    ELSE false END)`;
 }
 
 /**
