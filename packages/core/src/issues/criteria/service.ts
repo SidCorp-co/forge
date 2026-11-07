@@ -14,6 +14,7 @@ import {
   rewordingsOf,
   verdictsAcrossPut,
 } from './criterion-reword.js';
+import type { CriteriaWriter } from './late-add.js';
 import { keptProbesOf } from './probes.js';
 import {
   type CriterionInput,
@@ -79,13 +80,18 @@ export async function readCriteriaAndRetired(issue: { id: string; projectId: str
 
 /**
  * Replaces an issue's criteria in one transaction, answering which verdicts already recorded it kept
- * and which it voided; null where the issue is gone.
+ * and which it voided; null where the issue is gone. `writer` is who writes them: the one add after
+ * landing is its holder's (`late-add.ts`).
  */
-export async function replaceCriteria(issueId: string, criteria: readonly CriterionInput[]) {
+export async function replaceCriteria(
+  issueId: string,
+  criteria: readonly CriterionInput[],
+  writer: CriteriaWriter,
+) {
   return db.transaction(async (tx) => {
     if (!(await lockIssue(tx, issueId))) return null;
     const before = await liveRows(tx, issueId);
-    if (!(await putCriteria(tx, issueId, criteria))) return null;
+    if (!(await putCriteria(tx, issueId, criteria, writer))) return null;
     const after = new Set((await liveRows(tx, issueId)).map((r) => r.id));
     return verdictsAcrossPut(tx, before, after);
   });

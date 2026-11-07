@@ -166,7 +166,7 @@ issueRoutes.patch(
 
     const actor = restActor(c);
 
-    let updated: IssueRow;
+    let updated: Awaited<ReturnType<typeof updateIssueFields>>;
     try {
       updated = await updateIssueFields({
         issueId: id,
@@ -182,11 +182,11 @@ issueRoutes.patch(
     }
 
     const patched = serializeIssue(
-      updated,
+      updated.issue,
       await activeIssuePrefix(issue.projectId),
       await readLandingShape(issue.projectId),
     );
-    const warnings = [...collected.warnings];
+    const warnings = [...collected.warnings, ...updated.warnings];
     const note = patch.releaseNotes;
     if (note && note.section !== 'Skip') {
       const held = await readProjectDocument(issue.projectId);

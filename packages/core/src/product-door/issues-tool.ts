@@ -52,16 +52,19 @@ const input = z.strictObject({
   relations: issueCreateSchema.shape.relations.describe(
     "create: edges filed with it, e.g. [{ kind: 'blocks', dependsOnId }], committed before it can dispatch",
   ),
+  acceptanceCriteria: issueCreateSchema.shape.acceptanceCriteria.describe(
+    'create: its criteria on the record, numbered lines `1. …`; a list only in the description is none',
+  ),
 });
 type Input = z.infer<typeof input>;
 
 const SHAPE =
-  '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset?, title?, description?, priority?, category?, relations? }';
+  '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset?, title?, description?, priority?, category?, relations?, acceptanceCriteria? }';
 
 const DESCRIPTION = `Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none), and the filing of one.
 - action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and \`progress\`. \`pause\` names a wait that holds the whole project, such as no runner online.
 - action=get { projectId, issue }: one issue with its description, the questions it waits on, \`progress\`, and \`requirement\`: the requirement it delivers, whichever project of its organization holds it (\`otherProject\` names a sibling's), at its current revision with its spec, its criteria (code and body) and its latest agreed baseline; null where it delivers none.
-- action=create { projectId, title, description?, priority?, category?, relations? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\`, where the project's master admits it (no person admits an issue), and answers its key. An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one here directly when it is delivery work someone will build that an agreed requirement or a triaged feedback item already covers, or a defect found while building, and name in its description what it delivers. When the person asks for an issue and the work has no requirement or feedback behind it, or you cannot tell which it is, ask them before filing.`;
+- action=create { projectId, title, description?, priority?, category?, relations?, acceptanceCriteria? }: files an issue as you, the way any other door does: it needs project.write, is born at \`draft\`, where the project's master admits it (no person admits an issue), and answers its key. An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one here directly when it is delivery work someone will build that an agreed requirement or a triaged feedback item already covers, or a defect found while building, and name in its description what it delivers. Its criteria go in \`acceptanceCriteria\`: a list only in the description is no criterion, and the answer's \`warnings\` says so. When the person asks for an issue and the work has no requirement or feedback behind it, or you cannot tell which it is, ask them before filing.`;
 
 async function list(ctx: McpContext, i: Input) {
   await projectAccess(ctx, i.projectId);
@@ -170,6 +173,7 @@ async function create(ctx: McpContext, i: Input) {
       priority: i.priority,
       category: i.category,
       relations: i.relations,
+      acceptanceCriteria: i.acceptanceCriteria,
     },
     {
       createdById: actor.userId,
@@ -188,7 +192,10 @@ async function create(ctx: McpContext, i: Input) {
     title: result.issue.title,
     status: result.issue.status,
     relations: result.relations,
-    warnings: result.bodyWarnings,
+    warnings: [
+      ...result.bodyWarnings,
+      ...(result.criteriaWarning ? [result.criteriaWarning] : []),
+    ],
   };
 }
 

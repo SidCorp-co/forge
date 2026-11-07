@@ -10,7 +10,8 @@ import { emitEvent } from '../outbox/index.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { callerBoxOf } from './caller-box.js';
-import { syncCriteriaFromText } from './criteria/store.js';
+import { unrecordedCriteriaWarning } from './criteria/description-criteria.js';
+import { liveRows, syncCriteriaFromText } from './criteria/store.js';
 import { assertDesignPasses } from './design-record.js';
 import { issueGateOf } from './gates.js';
 import { refuseScopeHeldForBuild } from './issue-scope.js';
@@ -63,9 +64,18 @@ type IssueUpdateInput = {
   changes?: { fields: string[]; before: Record<string, unknown>; after: Record<string, unknown> };
 };
 
-export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
-  const row = await writeIssueFields(input);
-  return row;
+/**
+ * The written issue, and what the write is told without being refused: a write that takes the lease
+ * on an issue with no criteria on the record while its description lists some is told so
+ * (`criteria/description-criteria.ts`, ISS-1080).
+ */
+export interface IssueFieldsWritten {
+  issue: IssueRow;
+  warnings: string[];
+}
+
+export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWritten> {
+  return writeIssueFields(input);
 }
 
 type UpdateTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -80,7 +90,7 @@ type UpdateTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * lease and the worklog's branch and head go to the work state, the rest to the column. Exit: until
  * forge-plugin moves to the 10-status model (plugin-followups.md).
  */
-async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
+async function writeIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWritten> {
   const { issueId, labelIds, expect, workState, actor } = input;
   const scope = await issueScopeOf(issueId);
   const level = scope ? await dataPolicyOf(scope.projectId) : 'off';
@@ -97,9 +107,10 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const planGate = intoBuild ? await issueGateOf(intoBuild.projectId, 'plan_approval') : null;
   const designGate = intoBuild ? await issueGateOf(intoBuild.projectId, 'design_record') : null;
 
-  // the box a lease write comes from is stamped on the lease it takes (`run-holder.ts`)
+  // the box a lease write comes from is stamped on the lease it takes (`run-holder.ts`), and a
+  // criteria write past the lock is its holder's (`criteria/late-add.ts`)
   const writer =
-    updates.sessionContext === undefined
+    updates.sessionContext === undefined && updates.acceptanceCriteria === undefined
       ? null
       : await callerBoxOf(
           actor.type === 'user' ? actor.id : null,
@@ -123,13 +134,13 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       const planned = await plannedRevisionFor(tx, issueId, updates.plan as string | null);
       if (planned) Object.assign(columns, planned);
     }
+    let tookLease = false;
     if (updates.sessionContext !== undefined) {
       if (!expect) refuseUnreadSessionContextDrop(current.sessionContext, updates.sessionContext);
       const read = splitSessionContext(updates.sessionContext);
       const prior = leaseIn(current.sessionContext);
-      if (read.lease.present && leaseWriteTakes(prior, read.lease.value, new Date())) {
-        await refuseHeldTake(tx, issueId, 'a write that takes the lease');
-      }
+      tookLease = read.lease.present && leaseWriteTakes(prior, read.lease.value, new Date());
+      if (tookLease) await refuseHeldTake(tx, issueId, 'a write that takes the lease');
       const held = await readWorkState(tx, issueId);
       const origin = writer
         ? leaseOriginFor(
@@ -206,6 +217,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
         tx,
         issueId,
         (updates.acceptanceCriteria as string | null) ?? null,
+        writer && { actor, box: writer },
       );
     }
 
@@ -248,6 +260,13 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(eq(issues.id, issueId))
       .limit(1);
     if (!written) throw notFound('issue not found');
+    const told = tookLease
+      ? unrecordedCriteriaWarning({
+          id: issueId,
+          description: written.description,
+          liveCriteria: (await liveRows(tx, issueId)).length,
+        })
+      : null;
     if (changes && changes.fields.length > 0) {
       await emitEvent(tx, 'issue.updated', {
         issueId,
@@ -256,7 +275,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
         ...changes,
       });
     }
-    return written;
+    return { issue: written, warnings: told ? [told] : [] };
   });
 }
 

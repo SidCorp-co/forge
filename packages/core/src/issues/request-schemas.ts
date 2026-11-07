@@ -117,6 +117,9 @@ export const issueCreateSchema = z
     relations: z.array(issueRelationInputSchema).max(20).optional(),
     status: z.enum(ISSUE_INITIAL_STATUSES).optional(),
     writtenLang: writtenLangSchema.optional(),
+    // the criteria filed on the record with it, numbered `1. …`: a list only in the description is
+    // none (ISS-1080)
+    acceptanceCriteria: z.string().max(100_000).nullable().optional(),
   })
   .strict();
 

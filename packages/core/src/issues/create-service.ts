@@ -32,7 +32,8 @@ import {
 } from './attachment-service.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { callerBoxOf } from './caller-box.js';
-import { syncCriteriaFromText } from './criteria/store.js';
+import { unrecordedCriteriaWarning } from './criteria/description-criteria.js';
+import { liveRows, syncCriteriaFromText } from './criteria/store.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { issueGateOf } from './gates.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -124,6 +125,8 @@ type CreateIssueResult =
       attachmentErrors: AttachmentErrorEntry[];
       /** What the body sanitizer removed from the description on the way in. */
       bodyWarnings: string[];
+      /** A criteria list its description holds while it has none on the record (ISS-1080), or null. */
+      criteriaWarning: string | null;
       /** A birth that asked `open`: opened, or held at draft naming each gap; null for one filed at draft. */
       admission: Admission | null;
     };
@@ -328,6 +331,11 @@ async function writeBirth(tx: Tx, birth: Birth) {
   if (inserted.acceptanceCriteria) {
     await syncCriteriaFromText(tx, inserted.id, inserted.acceptanceCriteria);
   }
+  const criteriaWarning = unrecordedCriteriaWarning({
+    id: inserted.id,
+    description: inserted.description,
+    liveCriteria: (await liveRows(tx, inserted.id)).length,
+  });
   // ISS-54 — the lease, branch and head a `sessionContext` names belong to the work state
   // (`work-state.ts:splitSessionContext`), until forge-plugin moves to the 10-status model.
   if (split && (split.lease.present || split.branch !== null || split.headSha !== null)) {
@@ -356,7 +364,7 @@ async function writeBirth(tx: Tx, birth: Birth) {
   if (split?.lease.present && leaseWriteTakes(null, split.lease.value, new Date())) {
     await refuseHeldTake(tx, inserted.id, 'filing it with a live lease');
   }
-  return { created: inserted, pendingRelations };
+  return { created: inserted, pendingRelations, criteriaWarning };
 }
 
 export async function createIssue(
@@ -389,7 +397,11 @@ export async function createIssue(
     if (deduped) return deduped;
   }
 
-  const { created: born, pendingRelations } = await db.transaction((tx) =>
+  const {
+    created: born,
+    pendingRelations,
+    criteriaWarning,
+  } = await db.transaction((tx) =>
     writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey, level }),
   );
   // admitted after the birth commits, its edges with it, by the move every draft takes
@@ -422,6 +434,7 @@ export async function createIssue(
     attachments: persisted.persisted,
     attachmentErrors: persisted.errors,
     bodyWarnings: prepared?.warnings ?? [],
+    criteriaWarning,
     admission,
   };
 }

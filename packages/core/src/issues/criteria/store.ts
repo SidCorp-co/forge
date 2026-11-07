@@ -38,6 +38,7 @@ import {
 import { droppedTraceDetail, droppedTraces } from './dropped-traces.js';
 import { failureOwnedElsewhere } from './fail-owner.js';
 import { ambiguousDetail, matchCriteria, sameCriteria } from './match.js';
+import { type CriteriaWriter, lockReading, recordAddedAfterLanding } from './late-add.js';
 import { foreignTraceFault } from './own-requirement.js';
 import { liveWordingAt } from './trace-wording.js';
 
@@ -116,7 +117,9 @@ type CriteriaPath = '/criteria' | '/acceptanceCriteria';
 
 /**
  * Make the issue's live criteria exactly `desired`, in its order. Refused CRITERIA_LOCKED where the
- * set would change at a status whose verdicts were earned on it, and CRITERIA_RENUMBER_AMBIGUOUS
+ * set would change at a status whose verdicts were earned on it, but for the one add after landing
+ * its holder makes to an issue that never had criteria (`late-add.ts:lockReading`, ISS-1080), recorded
+ * on its history; and CRITERIA_RENUMBER_AMBIGUOUS
  * where a repeated wording would have to move. A kept row whose number moves is first parked on a
  * number above every live and desired one, so a swap never holds two live rows on one number
  * (`issue_criteria_live_n_uq`).
@@ -126,15 +129,15 @@ async function applyCriteria(
   issue: { id: string; status: string },
   desired: readonly CriterionInput[],
   path: CriteriaPath,
+  writer: CriteriaWriter | null,
 ): Promise<void> {
   const live = await liveRows(tx, issue.id);
   const same = sameCriteria(live, desired);
-  if (!same && LOCKED_STATUSES.has(issue.status)) {
-    throw refuseCriteria(
-      'CRITERIA_LOCKED',
-      `this issue is at \`${issue.status}\`, where its criteria are the ones its verdicts were earned on; reopen it to change them, or correct one wording with PATCH /api/issues/:id/criteria/:n, which keeps its verdicts`,
-    );
-  }
+  const lock =
+    !same && LOCKED_STATUSES.has(issue.status)
+      ? await lockReading(tx, issue, writer, path)
+      : null;
+  if (lock?.kind === 'locked') throw refuseCriteria('CRITERIA_LOCKED', lock.detail);
   const match = matchCriteria(live, desired);
   if (match.ambiguous.length > 0) {
     throw refuseCriteria('CRITERIA_RENUMBER_AMBIGUOUS', ambiguousDetail(match.ambiguous), path);
@@ -174,6 +177,15 @@ async function applyCriteria(
       position,
       ...requirement,
     });
+  }
+  if (lock?.kind === 'late-add' && writer) {
+    await recordAddedAfterLanding(
+      tx,
+      issue,
+      writer,
+      desired.map((c) => c.n),
+      lock.holder,
+    );
   }
 }
 
@@ -306,6 +318,7 @@ export async function putCriteria(
   tx: Tx,
   issueId: string,
   desired: readonly CriterionInput[],
+  writer: CriteriaWriter | null = null,
 ): Promise<boolean> {
   const fault = inputFault(desired);
   if (fault) throw refuseCriteria('CRITERIA_INPUT_INVALID', fault, '/criteria');
@@ -316,6 +329,7 @@ export async function putCriteria(
     issue,
     await tracedInputs(tx, issue.id, desired, '/criteria'),
     '/criteria',
+    writer,
   );
   const text = renderCriteriaText(
     desired.map(({ n, statement }) => ({ n, statement: statement.trim() })),
@@ -337,6 +351,7 @@ export async function syncCriteriaFromText(
   tx: Tx,
   issueId: string,
   text: string | null,
+  writer: CriteriaWriter | null = null,
 ): Promise<void> {
   const [issue] = await tx
     .select({ id: issues.id, status: issues.status })
@@ -357,6 +372,7 @@ export async function syncCriteriaFromText(
     issue,
     await tracedInputs(tx, issue.id, parsed.criteria, '/acceptanceCriteria'),
     '/acceptanceCriteria',
+    writer,
   );
 }
 

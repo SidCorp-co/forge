@@ -5,7 +5,8 @@
  *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict and its `weighing`
  *                                   (`criteria-weighing.ts`), and the retired ones with all their verdicts
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text),
- *                                   answering `verdicts`: which recorded verdicts it kept and voided
+ *                                   answering `verdicts`: which recorded verdicts it kept and voided;
+ *                                   past the lock, the holder's one add to an issue with none (ISS-1080)
  *   GET  /api/issues/:id/criteria/:ref   one live criterion (`ref` its number or id) with its wording history
  *   PATCH /api/issues/:id/criteria/:ref  correct its wording: keeps its id and every verdict on it,
  *                                   recording the old and new text on its history
@@ -29,6 +30,7 @@ import {
 import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { nestedFieldShape, zValidator } from '../../middleware/zod-validator.js';
 import { requiresOnResolved } from '../../permissions/index.js';
+import { callerBoxOf } from '../caller-box.js';
 import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from '../issue-route-ref.js';
 import { judgedBuildOf } from '../ports.js';
 import { findIssueById } from '../read-service.js';
@@ -92,7 +94,11 @@ issueCriteriaRoutes.put(
     const { id } = c.req.valid('param');
     const { criteria } = c.req.valid('json');
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
-    const verdicts = await replaceCriteria(id, criteria);
+    const actor = restActor(c);
+    const verdicts = await replaceCriteria(id, criteria, {
+      actor: { type: 'user', id: actor.id, agency: actor.agency },
+      box: await callerBoxOf(actor.id, c.get('patDeviceId') ?? null),
+    });
     if (!verdicts) throw notFound('issue not found');
     return c.json({ ...(await criteriaShown(c.get('agency'), issue)), verdicts });
   },

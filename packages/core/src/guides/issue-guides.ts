@@ -98,7 +98,7 @@ export const WRITING_AN_ISSUE_GUIDE: CoreGuide = {
   title: 'Writing an issue',
   summary:
     'One issue, one verifiable outcome; the three shapes an issue body takes and how to tell which one you are writing, the line a technical backlog item opens with, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
-  version: 4,
+  version: 5,
   body: `## Writing an issue
 
 **Write one outcome.** An issue is one verifiable outcome, and the steps inside it — layers, files, builders — are its plan, not issues of their own. Write a second issue only where a part needs its own priority, goes to another owner, or must be tracked on its own (guide \`what-is-an-issue\`). The criteria you write say when the outcome is met in scope; that is when the issue closes, and what it cannot meet is moved out on the record first.
@@ -124,9 +124,13 @@ The six blocks, in this order. The last two appear only when they earn it.
 | **Opening line** | One or two sentences in a blockquote: what is wrong, and what it costs. Plain language — no function, table or file names. |
 | **Who it hurts** | A table, at most four rows: *who · what they hit · how often or how wide*. If no row can be filled, this is probably not an issue — check the four gates in \`what-is-an-issue\`. |
 | **Now → wanted** | Exactly one diagram, at most eight nodes. It replaces a paragraph; it never accompanies one. |
-| **What to do** | At most six bullets, each an outcome someone can observe. Not function names — and not acceptance criteria, which are decided when the issue RUNS, not when it is filed. |
+| **What to do** | At most six bullets, each an outcome someone can observe. Not function names. Where they are the criteria the work is judged by, they go on the record too (below). |
 | **Waiting on a decision** | Only when genuinely blocked. State the question and what each answer costs. |
 | **Evidence** | Always last. Every row carries *date · what was measured · source*. If it cannot be measured it is an opinion — cut it. |
+
+### Criteria go on the record, not only in the description
+
+A criteria list only in the description is no criterion: a verdict has nothing to attach to, and once the issue reaches \`awaiting_release\` its criteria are locked. Where you know them when you file, send them as \`acceptanceCriteria\`, numbered lines (\`1. …\`), on the create, or \`PUT /api/issues/:id/criteria\` after it; where you do not, the run that takes the issue writes them before it lands. A filing or a lease-take whose description holds a list under an *Acceptance criteria*, *Criteria*, *Outcome*, *Done when* or *What to do* heading while the issue has no criteria answers a \`criteria-list-in-description\` warning naming that door.
 
 ### Technical detail is placed, not deleted
 
@@ -161,7 +165,7 @@ export const PIPELINE_AND_ISSUE_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Pipeline & issue lifecycle',
   summary:
     "What belongs in a description, the ten statuses an issue moves through and the guard each move carries, the three marks an issue's work earns (met in scope, released, confirmed on the target environment), why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
-  version: 18,
+  version: 19,
   body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -325,10 +329,10 @@ Three things write it: \`POST /api/issues/:id/merge\`, which is a claim you make
 
 ### Derived fields you don't hand-set
 - \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.
-- \`acceptanceCriteria\` — written by **clarify/plan**. Draft ACs from the requester belong in \`description\` prose, not in this field.
+- \`acceptanceCriteria\` — the criteria on the record, numbered lines (\`1. …\`). A filer who knows them files them here, and the run that takes an issue with none writes them before it lands: a list only in \`description\` prose is no criterion, and no verdict can attach to it (guide \`writing-an-issue\`).
 - \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **the marker's word**: core refuses no mark for the evidence it lacks and only reads a commit it names as a reading — so before stamping it, confirm the work is there (the commit reachable from the target branch, or the live page showing the change), name what you checked, and never read someone else's \`merged_at\` as proof a merge happened.
 
-When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline. An agent's own finding goes to its place first: product through Feedback, a standalone technical defect on the debt ledger for the Audit, and an issue in its module's backlog only for priority, a handoff or independent tracking (guide \`what-is-an-issue\`).
+When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\`, and \`acceptanceCriteria\` where you already know them — and leave the rest to the pipeline. An agent's own finding goes to its place first: product through Feedback, a standalone technical defect on the debt ledger for the Audit, and an issue in its module's backlog only for priority, a handoff or independent tracking (guide \`what-is-an-issue\`).
 
 ### A crash is not a reason to hold
 If your job fails mechanically (process crash, non-zero exit), the system itself retries the job with a retry budget and leaves the issue where it is — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,

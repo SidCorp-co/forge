@@ -23,7 +23,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 15,
+  version: 16,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -95,6 +95,14 @@ where the change explains itself. The criteria are what the release judges the w
 are numbered lines (\`1. …\`), one outcome a reader can check without opening the diff. A repeated
 number or a number with no statement is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered
 line writes no criteria at all, so read the field back.
+
+The criteria are on the record before the issue lands: a list only in the description is no
+criterion. Taking an issue that has none while its description lists some answers a
+\`criteria-list-in-description\` warning; write them then. At \`awaiting_release\` and \`closed\` the
+criteria are locked (\`CRITERIA_LOCKED\`), but an issue that got there with none ever on the record
+takes them once, from the run holding it, through \`PUT /api/issues/:id/criteria\` or the field, and
+the add is recorded on its history as made after landing. A second add is refused
+\`CRITERIA_LATE_ADD_SPENT\`, and an add by anyone else \`CRITERIA_LATE_ADD_NOT_HOLDER\`.
 
 The requirement the issue delivers reads through the issue: \`GET /api/issues/:id/requirement\`
 answers its current revision (spec, and each criterion's code and body) and its latest agreed

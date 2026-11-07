@@ -14,6 +14,10 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERIA_REFUSED",
 	"CRITERIA_TEXT_UNPARSEABLE",
 	"CRITERIA_LOCKED",
+	/** A second add of criteria past the lock: the one add after landing is taken once per issue (ISS-1080). */
+	"CRITERIA_LATE_ADD_SPENT",
+	/** An add of criteria past the lock by anyone but the run holding the issue (ISS-1080). */
+	"CRITERIA_LATE_ADD_NOT_HOLDER",
 	"CRITERIA_INPUT_INVALID",
 	"CRITERIA_TRACE_INVALID",
 	"CRITERIA_TRACE_NOT_LEADING",
