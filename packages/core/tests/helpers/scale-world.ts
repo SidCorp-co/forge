@@ -1,4 +1,4 @@
-// One project the shape of forge on forge-dev, at a size the caller names: requirements with agreed
+// One project the shape of forge on forge-dev, at a size the caller names, in an org the caller may name: requirements with agreed
 // revisions and criteria, issues mostly closed and released with their criteria, verdicts, moves and
 // activity, releases carrying them, feedback routed onto them, and the open issues' modules, blocks
 // edges and release holds (ISS-1070). The reads the shell and the Dashboard wait on are timed over it
@@ -19,6 +19,8 @@ export interface Scale {
   releases: number;
   feedback: number;
   activityPerIssue: number;
+  /** How many of the newest issues are not closed, spread over the open statuses; 80 where unnamed. */
+  open?: number;
 }
 
 const SHA = 'a'.repeat(40);
@@ -27,9 +29,15 @@ const SHA = 'a'.repeat(40);
 export async function seedAtScale(
   ownerId: string,
   s: Scale,
-  opts: { projectId?: string; servingCommit?: string } = {},
+  opts: { projectId?: string; servingCommit?: string; orgId?: string } = {},
 ): Promise<string> {
-  const p = (await createTestProject(ownerId, opts.projectId ? { id: opts.projectId } : {})).id;
+  const p = (
+    await createTestProject(ownerId, {
+      ...(opts.projectId ? { id: opts.projectId } : {}),
+      ...(opts.orgId ? { orgId: opts.orgId } : {}),
+    })
+  ).id;
+  const closed = s.issues - (s.open ?? 80);
   await withKernelMarker(db, async (tx) => {
     await tx.execute(sql`
       INSERT INTO requirements (id, project_id, req_seq, title, status)
@@ -55,10 +63,10 @@ export async function seedAtScale(
   await db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, priority, requirement_id, planned_revision)
     SELECT gen_random_uuid(), ${p}, g, 'issue ' || g,
-           CASE WHEN g <= ${s.issues - 80} THEN 'closed'
+           CASE WHEN g <= ${closed} THEN 'closed'
                 ELSE (ARRAY['open','in_progress','awaiting_release','draft','dropped'])[1 + g % 5] END,
            ${ownerId}, now() - make_interval(hours => ${s.issues} - g),
-           CASE WHEN g <= ${s.issues - 80} THEN now() - make_interval(hours => ${s.issues} - g) END,
+           CASE WHEN g <= ${closed} THEN now() - make_interval(hours => ${s.issues} - g) END,
            'medium',
            (SELECT id FROM requirements WHERE project_id = ${p} AND req_seq = 1 + g % ${s.requirements}),
            1
@@ -131,11 +139,11 @@ export async function seedAtScale(
     INSERT INTO issue_labels (issue_id, label_id, is_primary)
     SELECT i.id, l.id, true FROM issues i
       JOIN labels l ON l.project_id = i.project_id AND l.slug = 'module-' || (1 + i.iss_seq % 6)
-     WHERE i.project_id = ${p} AND i.iss_seq > ${s.issues - 80}`);
+     WHERE i.project_id = ${p} AND i.iss_seq > ${closed}`);
   await db.execute(sql`
     INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
     SELECT ${p}, b.id, t.id, 'blocks' FROM issues b JOIN issues t ON t.project_id = b.project_id AND t.iss_seq = b.iss_seq + 7
-     WHERE b.project_id = ${p} AND b.iss_seq > ${s.issues - 80} AND b.iss_seq % 3 = 0`);
+     WHERE b.project_id = ${p} AND b.iss_seq > ${closed} AND b.iss_seq % 3 = 0`);
   await db.execute(sql`
     INSERT INTO release_holds (project_id, issue_id, code, reason, owes, waiting_for)
     SELECT ${p}, id, 'RELEASE_CRITERIA_UNEARNED', 'no runtime witnessed it', 'human', 'a verdict at the running deployment'

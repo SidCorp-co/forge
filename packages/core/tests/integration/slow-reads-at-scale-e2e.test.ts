@@ -35,7 +35,7 @@ const PRODUCT = vi.hoisted(() => {
 import { db } from '../../src/db/client.js';
 import { currentQueryTiming } from '../../src/db/query-timing.js';
 import { closeWorld, type Doc, testEnv } from '../helpers/ecosystem-world.js';
-import { createTestUser } from '../helpers/factories.js';
+import { addProjectMember, createTestUser, seedOrg } from '../helpers/factories.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
 
 const SCALE: Scale = {
@@ -49,9 +49,30 @@ const SCALE: Scale = {
   activityPerIssue: 20,
 };
 
+/**
+ * The rest of a person's projects beside forge, each a share of forge's size: on forge-dev the
+ * orchestrator is a member of every project, and its attention read sent 2,224 statements where a
+ * project's own Needs you sent 193, one read of each project in turn (ISS-1070 r4).
+ */
+const SHARE: Scale = {
+  requirements: 22,
+  criteriaPerRequirement: 6,
+  issues: 280,
+  criteriaPerIssue: 4,
+  verdictsPerCriterion: 3,
+  releases: 135,
+  feedback: 125,
+  activityPerIssue: 8,
+  open: 20,
+};
+/** The projects the person across projects is a member of, forge's among them. */
+const PROJECTS_ACROSS = 12;
+
 let ownerId: string;
 let token: string;
 let projectId: string;
+/** A person in {@link PROJECTS_ACROSS} projects, forge's one of them, as the orchestrator is on forge-dev. */
+let acrossToken: string;
 let app: Awaited<typeof import('../../src/index.js')>['app'];
 
 interface Statement {
@@ -123,7 +144,7 @@ function siteOf(stack: string): string {
 }
 
 /** One GET, with every statement it sent and how long each took from send to answer. */
-async function measured(path: string): Promise<Measure> {
+async function measured(path: string, as: string = token): Promise<Measure> {
   const client = (db as unknown as { $client: { unsafe: Unsafe } }).$client;
   const statements: Statement[] = [];
   const unsafe = client.unsafe;
@@ -151,7 +172,7 @@ async function measured(path: string): Promise<Measure> {
   try {
     const started = performance.now();
     const res = await app.request(path, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
+      headers: { Authorization: `Bearer ${as}`, 'X-Forge-Lifecycle': '10' },
     });
     const text = await res.text();
     // what the request sent before it answered: work it left running is not its own
@@ -215,16 +236,20 @@ async function buffersOf(s: Statement): Promise<number | null> {
 }
 
 /** One more GET under the V8 profiler, its self time summed by function, written beside `out`. */
-async function profiled(path: string, out: string): Promise<void> {
+async function profiled(path: string, out: string, as: string): Promise<void> {
   const { Session } = await import('node:inspector/promises');
   const session = new Session();
   session.connect();
   await session.post('Profiler.enable');
   await session.post('Profiler.start');
-  await measured(path);
+  await measured(path, as);
   const { profile } = (await session.post('Profiler.stop')) as {
     profile: {
-      nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number } }[];
+      nodes: {
+        id: number;
+        callFrame: { functionName: string; url: string; lineNumber: number };
+        children?: number[];
+      }[];
       samples: number[];
       timeDeltas: number[];
     };
@@ -240,9 +265,29 @@ async function profiled(path: string, out: string): Promise<void> {
     by.set(f, (by.get(f) ?? 0) + (self.get(n.id) ?? 0));
   }
   const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 40);
+  // each sample charged to the nearest frame of core's own code above it: who asked for the work
+  const parent = new Map<number, number>();
+  for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
+  const node = new Map(profile.nodes.map((n) => [n.id, n]));
+  const charged = new Map<string, number>();
+  for (const [id, us] of self) {
+    let at: number | undefined = id;
+    let name = '(no core frame)';
+    while (at !== undefined) {
+      const f = node.get(at)?.callFrame;
+      if (f?.url.includes('/packages/core/src/')) {
+        name = `${f.functionName || '(anon)'} ${f.url.replace(/^.*\/packages\/core\/src\//, '')}:${f.lineNumber}`;
+        break;
+      }
+      at = parent.get(at);
+    }
+    charged.set(name, (charged.get(name) ?? 0) + us);
+  }
+  const chargedTop = [...charged].sort((a, b) => b[1] - a[1]).slice(0, 30);
   appendFileSync(
     out,
-    `## profile ${path}\n${top.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n`,
+    `## profile ${path}\n${top.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n` +
+      `## charged to core's own frame ${path}\n${chargedTop.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n`,
   );
 }
 
@@ -263,6 +308,20 @@ function report(label: string, m: Measure): string {
     }),
     ...(process.env.SLOW_READS_STACKS ? sitesOf(m) : []),
   ].join('\n');
+}
+
+/** The statements touching the most shared buffers, by the code that sent them where it is named. */
+function heaviestSites(heaviest: { own: number; s: Statement }[]): string[] {
+  const by = new Map<string, { n: number; own: number }>();
+  for (const { own, s } of heaviest) {
+    const at = s.site?.split(' < ')[0] ?? s.text.replace(/\s+/g, ' ').slice(0, 120);
+    const was = by.get(at) ?? { n: 0, own: 0 };
+    by.set(at, { n: was.n + 1, own: was.own + own });
+  }
+  return [...by]
+    .sort((a, b) => b[1].own - a[1].own)
+    .slice(0, Number(process.env.SLOW_READS_HEAVIEST ?? 8))
+    .map(([at, { n, own }]) => `  ${String(own).padStart(8)} buf in ${n}  ${at}`);
 }
 
 /** Each call site's statements: how many, and their summed time, the most first. */
@@ -299,6 +358,20 @@ const READS = (p: string): { path: string; statements: number; buffers: number }
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
 
+/**
+ * The reads of a person across {@link PROJECTS_ACROSS} projects, with the most statements each may
+ * send and the most shared buffers their plans may touch together. Before ISS-1070 r4 each read
+ * each project in turn: the attention read sent ... (filled in by r4).
+ */
+const READS_ACROSS = (p: string): { path: string; statements: number; buffers: number }[] => [
+  { path: '/api/me/attention', statements: 100000, buffers: 10_000_000 },
+  { path: '/api/me/home', statements: 100000, buffers: 10_000_000 },
+  { path: '/api/me/whats-new', statements: 100000, buffers: 10_000_000 },
+  { path: '/api/ecosystems/mine', statements: 100000, buffers: 10_000_000 },
+  { path: `/api/projects/${p}/needs-you`, statements: 100000, buffers: 10_000_000 },
+  { path: `/api/projects/${p}/needs-you/decisions`, statements: 100000, buffers: 10_000_000 },
+];
+
 beforeAll(async () => {
   testEnv();
   if (process.env.SLOW_READS_STACKS) {
@@ -313,63 +386,90 @@ beforeAll(async () => {
     projectId: PRODUCT,
     servingCommit: process.env.SOURCE_COMMIT as string,
   });
-}, 300_000);
+  // the person across projects: an admin of forge's, and in one org holding the rest
+  const acrossId = (await createTestUser({ verified: true })).id;
+  acrossToken = await signUserToken(acrossId);
+  await addProjectMember(projectId, acrossId, 'admin');
+  const orgId = await seedOrg(acrossId);
+  for (let n = 1; n < PROJECTS_ACROSS; n++) await seedAtScale(acrossId, SHARE, { orgId });
+}, 900_000);
 
 afterAll(closeWorld);
 
+/**
+ * Reads each path as `as`, a warm-up then three, holds each statement to its buffer ceiling, and
+ * answers each read over its ceilings of statements or buffers; every read is measured before any
+ * is judged, so one red names each read over its ceiling.
+ */
+async function judged(
+  label: string,
+  reads: { path: string; statements: number; buffers: number }[],
+  as: string,
+): Promise<string[]> {
+  const out = process.env.SLOW_READS_OUT;
+  const failures: string[] = [];
+  const only = process.env.SLOW_READS_ONLY ? new RegExp(process.env.SLOW_READS_ONLY) : null;
+  for (const ceiling of reads.filter((r) => !only || only.test(r.path))) {
+    const { path } = ceiling;
+    const warm = await measured(path, as); // the first request pays for the prepared statements
+    expect(warm.status, `${path}: ${JSON.stringify(warm.body).slice(0, 400)}`).toBe(200);
+    const runs = [await measured(path, as), await measured(path, as), await measured(path, as)];
+    if (process.env.SLOW_READS_PROFILE) await profiled(path, process.env.SLOW_READS_PROFILE, as);
+    const median = [...runs].sort((a, b) => a.ms - b.ms)[1] as Measure;
+    const plans = process.env.SLOW_READS_EXPLAIN
+      ? await Promise.all(
+          [...median.statements]
+            .sort((a, b) => b.ms - a.ms)
+            .slice(0, 3)
+            .map(
+              async (s) =>
+                `    plan of ${s.text.replace(/\s+/g, ' ').slice(0, 120)}\n${await explained(s)}`,
+            ),
+        )
+      : [];
+    // each statement's plan stays within the ceiling: no read pays once per row for what one read answers
+    let buffers = 0;
+    const heaviest: { own: number; s: Statement }[] = [];
+    for (const s of median.statements) {
+      const own = (await buffersOf(s)) ?? 0;
+      buffers += own;
+      heaviest.push({ own, s });
+      expect(
+        own,
+        `${path} sent a statement touching ${own} buffers: ${s.text.replace(/\s+/g, ' ').slice(0, 300)}`,
+      ).toBeLessThanOrEqual(BUFFERS_PER_STATEMENT);
+    }
+    const line = [
+      report(`${label}: median of 3 (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
+      `  ceiling: ${median.statements.length} of ${ceiling.statements} statements, ${buffers} of ${ceiling.buffers} buffers`,
+      ...heaviestSites(heaviest),
+      ...plans,
+    ].join('\n');
+    if (out) appendFileSync(out, `${line}\n`);
+    failures.push(
+      ...(median.statements.length > ceiling.statements
+        ? [
+            `${label} ${path} sent ${median.statements.length} statements, over its ceiling of ${ceiling.statements}`,
+          ]
+        : []),
+      ...(buffers > ceiling.buffers
+        ? [
+            `${label} ${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
+          ]
+        : []),
+    );
+  }
+  return failures;
+}
+
 describe('the shell and Dashboard reads at forge-dev size', () => {
   it('answers each read within its ceilings of statements and buffers, and records its statements and time', async () => {
-    const out = process.env.SLOW_READS_OUT;
-    const failures: string[] = [];
-    const only = process.env.SLOW_READS_ONLY ? new RegExp(process.env.SLOW_READS_ONLY) : null;
-    for (const ceiling of READS(projectId).filter((r) => !only || only.test(r.path))) {
-      const { path } = ceiling;
-      const warm = await measured(path); // the first request pays for the prepared statements
-      expect(warm.status, `${path}: ${JSON.stringify(warm.body).slice(0, 400)}`).toBe(200);
-      const runs = [await measured(path), await measured(path), await measured(path)];
-      if (process.env.SLOW_READS_PROFILE) await profiled(path, process.env.SLOW_READS_PROFILE);
-      const median = [...runs].sort((a, b) => a.ms - b.ms)[1] as Measure;
-      const plans = process.env.SLOW_READS_EXPLAIN
-        ? await Promise.all(
-            [...median.statements]
-              .sort((a, b) => b.ms - a.ms)
-              .slice(0, 3)
-              .map(
-                async (s) =>
-                  `    plan of ${s.text.replace(/\s+/g, ' ').slice(0, 120)}\n${await explained(s)}`,
-              ),
-          )
-        : [];
-      // each statement's plan stays within the ceiling: no read pays once per row for what one read answers
-      let buffers = 0;
-      for (const s of median.statements) {
-        const own = (await buffersOf(s)) ?? 0;
-        buffers += own;
-        expect(
-          own,
-          `${path} sent a statement touching ${own} buffers: ${s.text.replace(/\s+/g, ' ').slice(0, 300)}`,
-        ).toBeLessThanOrEqual(BUFFERS_PER_STATEMENT);
-      }
-      const line = [
-        report(`median of 3 (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
-        `  ceiling: ${median.statements.length} of ${ceiling.statements} statements, ${buffers} of ${ceiling.buffers} buffers`,
-        ...plans,
-      ].join('\n');
-      if (out) appendFileSync(out, `${line}\n`);
-      failures.push(
-        ...(median.statements.length > ceiling.statements
-          ? [
-              `${path} sent ${median.statements.length} statements, over its ceiling of ${ceiling.statements}`,
-            ]
-          : []),
-        ...(buffers > ceiling.buffers
-          ? [
-              `${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
-            ]
-          : []),
-      );
-    }
-    // every read is measured before any is judged, so one red names each read over its ceiling
-    expect(failures).toEqual([]);
+    expect(await judged('one project', READS(projectId), token)).toEqual([]);
   }, 600_000);
+
+  it('answers a person in twelve projects within the ceilings of each read across them', async () => {
+    expect(
+      await judged(`${PROJECTS_ACROSS} projects`, READS_ACROSS(projectId), acrossToken),
+    ).toEqual([]);
+  }, 900_000);
 });
