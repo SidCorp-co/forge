@@ -14,7 +14,6 @@ import {
   rewordingsOf,
   verdictsAcrossPut,
 } from './criterion-reword.js';
-import { underCutoverOf } from './cutover-marks.js';
 import { keptProbesOf } from './probes.js';
 import {
   type CriterionInput,
@@ -26,27 +25,35 @@ import {
 } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
 import { appendTracedCriteria } from './tie.js';
+import { countingOf } from './verdict-counting.js';
 import { recordVerdict } from './verdict-record.js';
 import { verdictRefused } from './verdict-refused.js';
 
 /**
  * An issue's live criteria with their latest verdicts and the storefront's current drafts, each with
  * the class its design records, the judge that class routes it to (null where none classes it) and
- * the probe it keeps (null where it keeps none). A latest pass the building run recorded before the
- * builder-pass cutover says so (`countedUnderCutover`).
+ * the probe it keeps (null where it keeps none). A latest pass or short the building run recorded
+ * names why it never counts (`notCounted`), as its write answered (`verdict-counting.ts`), and one
+ * recorded before the builder-pass cutover says it counts only under it (`countedUnderCutover`).
  */
 export async function readCriteriaWithDrafts(issue: { id: string; projectId: string }) {
   const criteria = await withCurrentDrafts(issue.projectId, await listCriteria(db, issue.id));
   const ids = criteria.map((c) => c.id);
   const latest = criteria.flatMap((c) => (c.latest ? [c.latest] : []));
-  const [routes, probes, underCutover] = await Promise.all([
+  const [routes, probes, counting] = await Promise.all([
     criterionRoutesOf(ids),
     keptProbesOf(db, ids),
-    underCutoverOf(db, issue.projectId, latest),
+    countingOf(db, issue.projectId, latest),
   ]);
   return criteria.map((c) => ({
     ...c,
-    latest: c.latest ? { ...c.latest, countedUnderCutover: underCutover.has(c.latest.id) } : null,
+    latest: c.latest
+      ? {
+          ...c.latest,
+          notCounted: counting.get(c.latest.id)?.notCounted ?? null,
+          countedUnderCutover: counting.get(c.latest.id)?.countedUnderCutover ?? false,
+        }
+      : null,
     class: routes.get(c.id)?.class ?? null,
     judge: routes.get(c.id)?.judge ?? null,
     probe: probes.get(c.id) ?? null,

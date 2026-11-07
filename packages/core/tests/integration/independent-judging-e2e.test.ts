@@ -12,7 +12,6 @@
  * @direct-test-of packages/core/src/issues/built-by.ts
  * @direct-test-of packages/contracts/src/verified-rule.ts
  * @direct-test-of packages/core/src/issues/criteria/service.ts
- * @direct-test-of packages/core/src/requirements/verdicts.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -484,84 +483,5 @@ describe('BC-3: a failing verdict reopens the issue that owns the work', () => {
     expect(
       (await api(token, 'POST', `/api/issues/${id}/criteria/traces`, { codes: ['BC-2'] })).status,
     ).toBeLessThan(300);
-  });
-});
-
-// REQ-74 r3 BC-3: a failing verdict reopens the issue that owns the work, unless that issue first
-// moved the failing criterion out on the record (ISS-1062, `issues/close-in-scope.ts`), where the
-// issue it went to owns it now and the closed one stays closed.
-describe('BC-3 r3: a criterion a close moved out fails on the issue it went to', () => {
-  beforeEach(() => world('independent'));
-
-  /** ISS-1 tracing BC-1 and BC-2, closed in scope with criterion 1 (BC-1) moved to ISS-2, criterion 2 judged met. */
-  async function closedMovingBc1(): Promise<{ req: string; closed: string; dest: string }> {
-    const req = await agreedRequirement();
-    const closed = await issueTracing(req, 1, ['BC-1', 'BC-2'], 'awaiting_release');
-    const { id: dest } = await createTestIssue(projectId, ownerId, 2, {
-      status: 'open',
-      createdAt: new Date(),
-    });
-    await ok(onProject('POST', `/requirements/${req}/issues`, { issue: 'ISS-2' }));
-    await seedIssueStatus(dest, 'in_progress');
-    await judge(closed, 2, 'pass', JUDGED, null);
-    await ok(
-      api(token, 'PATCH', `/api/issues/${closed}`, {
-        sessionContext: {
-          lease: { holder: 'master-of-iss-1', renewedAt: new Date().toISOString(), minutes: 60 },
-        },
-      }),
-    );
-    const res = await api(token, 'POST', `/api/issues/${closed}/transition`, {
-      toStatus: 'closed',
-      unmet: [{ criterion: 1, to: { issue: 'ISS-2' } }],
-    });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.movedOut).toEqual(['criterion 1 → ISS-2 criterion 1']);
-    expect(await statusOf(closed)).toBe('closed');
-    return { req, closed, dest };
-  }
-
-  const failAt = (req: string, code: string) =>
-    onProject('POST', `/requirements/${req}/verdicts`, {
-      criterion: code,
-      verdict: 'fail',
-      reason: 'not so on the running build',
-      identity: { kind: 'commit', sha: NEW },
-      evidence: ['shot.png'],
-    });
-
-  it('reopens the issue it went to once that one landed, and leaves the closed one closed', async () => {
-    const { req, closed, dest } = await closedMovingBc1();
-    await db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${dest}`);
-    await seedIssueStatus(dest, 'awaiting_release');
-
-    const res = await failAt(req, 'BC-1');
-
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.routed).toMatchObject([{ key: 'ISS-2', outcome: 'reopen' }]);
-    expect(await statusOf(dest)).toBe('reopen');
-    expect(await statusOf(closed)).toBe('closed');
-  });
-
-  it('leaves the issue it went to building, as the owner, and the closed one closed', async () => {
-    const { req, closed, dest } = await closedMovingBc1();
-
-    const res = await failAt(req, 'BC-1');
-
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.routed).toMatchObject([{ key: 'ISS-2', outcome: 'building' }]);
-    expect(await statusOf(dest)).toBe('in_progress');
-    expect(await statusOf(closed)).toBe('closed');
-  });
-
-  it('still reopens the closed issue on a fail of a criterion it kept', async () => {
-    const { req, closed, dest } = await closedMovingBc1();
-
-    const res = await failAt(req, 'BC-2');
-
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.routed).toMatchObject([{ key: 'ISS-1', outcome: 'reopen' }]);
-    expect(await statusOf(closed)).toBe('reopen');
-    expect(await statusOf(dest)).toBe('in_progress');
   });
 });
