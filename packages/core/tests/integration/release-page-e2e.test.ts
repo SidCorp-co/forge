@@ -251,8 +251,10 @@ describe('the page reads off the release record', () => {
   });
 
   // REQ-79 r6: outside strict release approval advises, so a production act goes ahead with no
-  // person's approval and the release says so, once, from the first such act
-  it('reads unapproved once a production act went ahead with nobody approving, and strict still refuses it', async () => {
+  // person's approval. Where the project requires none, nobody was asked, and the page says so rather
+  // than "not approved by a person" (routine approval is a defect, owner 2026-11-06, ISS-1071); the
+  // required case reads unapproved (`release-page/sections.test.ts`)
+  it('reads not asked once a production act went ahead where no approval is required, and strict still refuses it', async () => {
     const w = await releaseWorldOfFour();
     const { assertApprovalAllowsAttempt } = await import('../../src/release-batch/approvals.js');
     const attempt = () =>
@@ -263,11 +265,14 @@ describe('the page reads off the release record', () => {
     expect(await underStrict(projectId, ownerId, attempt)).toEqual(['RELEASE_AWAITING_APPROVAL']);
     expect((await page('member')).header.approval.state).toBe('pending');
     expect(await attempt()).toBeNull();
-    const first = (await page('member')).header.approval;
-    expect(first).toMatchObject({ required: false, state: 'unapproved', by: null });
-    expect(first.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect((await page('member')).header.approval).toEqual({
+      required: false,
+      state: 'not_asked',
+      by: null,
+      at: null,
+    });
     expect(await attempt()).toBeNull();
-    expect((await page('member')).header.approval).toMatchObject({ at: first.at });
+    expect((await page('member')).header.approval.state).toBe('not_asked');
   });
 
   it('reads improvements and fixes in user terms, and what an admin must do, naming each artifact', async () => {
