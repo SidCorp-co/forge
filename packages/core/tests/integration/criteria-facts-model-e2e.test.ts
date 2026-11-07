@@ -11,6 +11,7 @@
  * @direct-test-of packages/core/src/requirements/criteria-facts.ts
  * @direct-test-of packages/core/src/requirements/criteria-facts-live.ts
  * @direct-test-of packages/core/src/requirements/standing-facts.ts
+ * @direct-test-of packages/core/src/db/schema-criteria-facts.ts
  */
 
 import { sql } from 'drizzle-orm';
