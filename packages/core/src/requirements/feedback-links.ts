@@ -2,6 +2,7 @@ import type { FeedbackStatus } from '@forge/contracts/feedback';
 import type { RequirementFeedbackVia } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 
 interface FeedbackLink {
   requirementId: string;
@@ -28,51 +29,65 @@ export async function feedbackLinksOf(
   projectId: string,
   requirementIds: readonly string[],
 ): Promise<FeedbackLink[]> {
+  // every project's asks in one turn are read together, each answer keeping the feedback of the
+  // project asked, as the read of that one project kept it (ISS-1070 r6)
+  const rows = await rowsPerId(
+    'feedbackLinks',
+    requirementIds,
+    linkRowsOf,
+    (r) => r.requirement_id,
+  );
+  return rows
+    .filter((r) => r.project_id === projectId)
+    .map((r) => ({
+      requirementId: r.requirement_id,
+      feedbackId: r.feedback_id,
+      fbSeq: Number(r.fb_seq),
+      status: r.status,
+      via: r.via,
+    }));
+}
+
+/** Every feedback link of `requirementIds`, whatever project the feedback item is in. */
+async function linkRowsOf(requirementIds: readonly string[]) {
   if (requirementIds.length === 0) return [];
   const ids = sql`(${sql.join(
     requirementIds.map((id) => sql`${id}::uuid`),
     sql`, `,
   )})`;
-  const rows = (await db.execute(sql`
+  return (await db.execute(sql`
     WITH links AS (
       SELECT f.id AS fid, f.requirement_id AS rid, 'requirement' AS via, 1 AS rank
-        FROM feedback f WHERE f.project_id = ${projectId} AND f.requirement_id IN ${ids}
+        FROM feedback f WHERE f.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, i.requirement_id, 'issue', 2
         FROM feedback f JOIN issues i ON i.id = f.issue_id
-       WHERE f.project_id = ${projectId} AND i.requirement_id IN ${ids}
+       WHERE i.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, rw.requirement_id, 'workflow', 3
         FROM feedback f JOIN requirement_workflows rw ON rw.workflow_id = f.workflow_id
-       WHERE f.project_id = ${projectId} AND rw.requirement_id IN ${ids}
+       WHERE rw.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, i.requirement_id, 'release', 4
         FROM feedback f JOIN issues i ON i.release_batch_run_id = f.release_run_id
-       WHERE f.project_id = ${projectId} AND i.requirement_id IN ${ids}
+       WHERE i.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, i.requirement_id, 'route', 5
         FROM feedback f JOIN feedback_route_issues c ON c.feedback_id = f.id
         JOIN issues i ON i.id = c.issue_id
-       WHERE f.project_id = ${projectId} AND i.requirement_id IN ${ids}
+       WHERE i.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, s.requirement_id, 'route', 5
         FROM feedback f JOIN suggestions s ON s.id = f.routed_suggestion_id
-       WHERE f.project_id = ${projectId} AND s.requirement_id IN ${ids}
+       WHERE s.requirement_id IN ${ids}
       UNION ALL
       SELECT f.id, f.routed_requirement_id, 'route', 5
-        FROM feedback f WHERE f.project_id = ${projectId} AND f.routed_requirement_id IN ${ids}
+        FROM feedback f WHERE f.routed_requirement_id IN ${ids}
     )
     SELECT DISTINCT ON (l.rid, l.fid)
-           l.rid AS requirement_id, l.fid AS feedback_id, f.fb_seq, f.status, l.via
+           l.rid AS requirement_id, f.project_id, l.fid AS feedback_id, f.fb_seq, f.status, l.via
       FROM links l JOIN feedback f ON f.id = l.fid
-     ORDER BY l.rid, l.fid, l.rank`)) as unknown as LinkRow[];
-  return [...rows].map((r) => ({
-    requirementId: r.requirement_id,
-    feedbackId: r.feedback_id,
-    fbSeq: Number(r.fb_seq),
-    status: r.status,
-    via: r.via,
-  }));
+     ORDER BY l.rid, l.fid, l.rank`)) as unknown as (LinkRow & { project_id: string })[];
 }
 
 const UNTRIAGED: readonly FeedbackStatus[] = ['new', 'reopened'];

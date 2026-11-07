@@ -7,7 +7,8 @@
 
 import { type ChangedTrace, changedSincePlan } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 
 interface PlanDrift {
   key: string;
@@ -26,7 +27,16 @@ type Executor = Pick<Tx, 'execute'>;
  * revision, at or before its requirement's head, retired (reworded or removed). An issue with none
  * is absent from the map.
  */
-export async function changedTracedOf(
+export function changedTracedOf(
+  executor: Executor,
+  issueIds: readonly string[],
+): Promise<Map<string, ChangedTrace[]>> {
+  // an issue's changed traces are its own: every ask of a read is read together (ISS-1070 r6)
+  if (executor !== db) return changedTracedRead(executor, issueIds);
+  return memoizedPerId('changedTraced', issueIds, (some) => changedTracedRead(executor, some));
+}
+
+async function changedTracedRead(
   executor: Executor,
   issueIds: readonly string[],
 ): Promise<Map<string, ChangedTrace[]>> {

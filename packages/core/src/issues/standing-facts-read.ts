@@ -6,7 +6,7 @@ import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { perProjectRead } from '../db/read-memo.js';
+import { memoizedPerId, perProjectRead } from '../db/read-memo.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { countingOf } from './criteria/verdict-counting.js';
 
@@ -108,6 +108,17 @@ export async function requirementsOf(
   ids: readonly string[],
   projectId: string,
 ): Promise<Map<string, RequirementRaw>> {
+  // a requirement's row is its own: every project's asks in one turn are one read (ISS-1070 r6)
+  const rows = await memoizedPerId('standingRequirements', ids, requirementRowsOf);
+  return new Map(
+    [...rows.values()].map(({ project_id, slug, name, ...r }) => [
+      r.id,
+      { ...r, project: project_id === projectId ? null : { id: project_id, slug, name } },
+    ]),
+  );
+}
+
+async function requirementRowsOf(ids: readonly string[]) {
   if (ids.length === 0) return new Map();
   const rows = rowsOf<
     Omit<RequirementRaw, 'project'> & { project_id: string; slug: string; name: string }
@@ -118,12 +129,7 @@ export async function requirementsOf(
            WHERE r.id IN (${idList(ids)})`,
     ),
   );
-  return new Map(
-    rows.map(({ project_id, slug, name, ...r }) => [
-      r.id,
-      { ...r, project: project_id === projectId ? null : { id: project_id, slug, name } },
-    ]),
-  );
+  return new Map(rows.map((r) => [r.id, r]));
 }
 
 interface ModuleRaw {

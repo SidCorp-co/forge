@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
 
 /**
  * One read request's answers to the lookups its handlers repeat: who the caller is in a project,
@@ -108,13 +107,52 @@ export function perProjectRead<R, V>(
   return memoizedRead(keyOf(projectId), one);
 }
 
+/** The ids asked under one key in this turn of the event loop, read together when it ends. */
+interface PendingBatch {
+  ids: Set<string>;
+  read: (ids: readonly string[]) => Promise<ReadonlyMap<string, unknown>>;
+  done: Promise<ReadonlyMap<string, unknown>>;
+}
+
+const batches = new WeakMap<Map<string, Promise<unknown>>, Map<string, PendingBatch>>();
+
+/**
+ * The batch of `key` this turn gathers into, opened on its first ask and read once the turn's other
+ * work has run (`setImmediate`), so every ask made before then, from any project's read, is one
+ * statement. The first asker's `read` reads for all of them: a key names one read.
+ */
+function batchOf(
+  memo: Map<string, Promise<unknown>>,
+  key: string,
+  read: (ids: readonly string[]) => Promise<ReadonlyMap<string, unknown>>,
+): PendingBatch {
+  let open = batches.get(memo);
+  if (!open) {
+    open = new Map();
+    batches.set(memo, open);
+  }
+  const held = open.get(key);
+  if (held) return held;
+  const pending = { ids: new Set<string>(), read } as PendingBatch;
+  pending.done = new Promise((resolve, reject) => {
+    setImmediate(() => {
+      open.delete(key);
+      Promise.resolve(pending.read([...pending.ids])).then(resolve, reject);
+    });
+  });
+  open.set(key, pending);
+  return pending;
+}
+
 /**
  * `read(ids)` keyed per id inside a {@link withReadMemo} scope: an id an earlier ask under `key`
- * already read is answered from that read, and only the rest are read, in one statement. A read
- * whose answer for an id does not depend on which other ids it was asked with (a row per issue,
- * filtered by the issue's own id) may take it, so two reads over overlapping sets of issues in one
- * request (Needs you's open issues and the issues its requirements trace) send each fact once. The
- * answer holds the ids in the order asked; outside a scope, `read` answers every id itself.
+ * already read is answered from that read, and the rest of every ask made in the same turn of the
+ * event loop are read together, in one statement. A read whose answer for an id does not depend on
+ * which other ids it was asked with (a row per issue, filtered by the issue's own id) may take it, so
+ * two reads over overlapping sets of issues in one request (Needs you's open issues and the issues
+ * its requirements trace), and each project's read of a person's projects read side by side, send
+ * each fact once (ISS-1070 r6). The answer holds the ids in the order asked; outside a scope, `read`
+ * answers every id itself.
  */
 export async function memoizedPerId<V>(
   key: string,
@@ -127,9 +165,10 @@ export async function memoizedPerId<V>(
   const slot = (id: string) => `${key}\u0000${id}`;
   const missing = unique.filter((id) => !memo.has(slot(id)));
   if (missing.length > 0) {
-    const all = Promise.resolve(read(missing));
+    const batch = batchOf(memo, key, read);
     for (const id of missing) {
-      const held = all.then((m) => (m.has(id) ? { value: m.get(id) as V } : null));
+      batch.ids.add(id);
+      const held = batch.done.then((m) => (m.has(id) ? { value: m.get(id) as V } : null));
       memo.set(slot(id), held);
       held.catch(() => memo.delete(slot(id)));
     }
@@ -143,24 +182,6 @@ export async function memoizedPerId<V>(
     if (held) out.set(id, structuredClone(held.value));
   });
   return out;
-}
-
-/**
- * `read(ids)` once per distinct set of ids under `key` inside a {@link withReadMemo} scope. Unlike
- * {@link memoizedPerId}, two asks over different but overlapping sets each read their own: how many
- * statements a read sends then never hangs on which ask reached here first. `memoizedPerId` reads
- * one set and the rest of the other, which is one statement where the second set falls inside the
- * first and two where it does not, so the same read counted 111 or 113 by the order its concurrent
- * halves came back in (`needs-you-bounded-e2e`, ISS-1070 r5).
- */
-export function memoizedPerSet<V>(
-  key: string,
-  ids: readonly string[],
-  read: (ids: readonly string[]) => Promise<V>,
-): Promise<V> {
-  const set = [...new Set(ids)].sort();
-  const digest = createHash('sha1').update(set.join(',')).digest('hex');
-  return memoizedRead(`${key}\u0000${digest}`, () => read(set));
 }
 
 const producing = new AsyncLocalStorage<ReadonlySet<string>>();
@@ -185,4 +206,48 @@ export function offerRead<T>(key: string, produce: () => Promise<T>): Promise<T>
 export function heldRead<T>(key: string): Promise<T> | undefined {
   if (producing.getStore()?.has(key)) return undefined;
   return memos.getStore()?.get(key) as Promise<T> | undefined;
+}
+
+/**
+ * The rows `fetch` answers for `ids`, where each row belongs to the one id `idOf` names and a row's
+ * presence does not depend on which other ids were asked: asked by several reads in one turn (each
+ * project's read of a person's projects), one statement answers all of them (`memoizedPerId`). The
+ * rows come back in the order `fetch` sent them, as `fetch(ids)` alone would.
+ */
+export async function rowsPerId<R>(
+  key: string,
+  ids: readonly string[],
+  fetch: (ids: readonly string[]) => PromiseLike<R[]>,
+  idOf: (row: R) => string,
+): Promise<R[]> {
+  if (ids.length === 0) return [];
+  const byId = await memoizedPerId(key, ids, async (some) => {
+    const out = new Map<string, { at: number; row: R }[]>(some.map((id) => [id, []]));
+    const rows = await fetch(some);
+    for (const [at, row] of rows.entries()) out.get(idOf(row))?.push({ at, row });
+    return out;
+  });
+  return [...byId.values()]
+    .flat()
+    .sort((a, b) => a.at - b.at)
+    .map((r) => r.row);
+}
+
+/**
+ * The rows `fetch` answers for `projectId`, read for every project a read across projects declared
+ * ({@link readingAcross}) in one statement (`perProjectRead`), in the order `fetch` sent them.
+ */
+export function rowsPerProject<R>(
+  key: string,
+  projectId: string,
+  fetch: (projectIds: readonly string[]) => PromiseLike<R[]>,
+  projectOf: (row: R) => string,
+): Promise<R[]> {
+  return perProjectRead(
+    key,
+    projectId,
+    async (ids) => fetch(ids),
+    projectOf,
+    (rows) => rows,
+  );
 }

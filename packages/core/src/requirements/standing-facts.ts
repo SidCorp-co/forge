@@ -10,6 +10,7 @@ import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { uuidArray } from '../db/raw-sql.js';
+import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { issueAttachments } from '../db/schema.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
 import {
@@ -121,11 +122,27 @@ async function filesOf(issueIds: readonly string[]): Promise<Map<string, Coverag
  * earlier verdict since the issue's latest reopen comes with it, newest first, so coverage can read
  * past a newer one that is not the judge's (`standing-coverage.ts:judgesOf`).
  */
-export async function issueCriteriaOf(
+export function issueCriteriaOf(
   issueIds: readonly string[],
   ex: Pick<Tx, 'execute'> = db,
   /** Issues read as if back from their reopen now (`issues/release-evidence.ts:reopenedAtOf`). */
   asReturned: readonly string[] = [],
+): Promise<StandingIssueCriterion[]> {
+  // an issue's criteria are its own whichever issues are asked beside it: a read's asks, every
+  // project's of a person's, are read together where they read the pool (ISS-1070 r6)
+  if (ex !== db) return issueCriteriaRead(issueIds, ex, asReturned);
+  return rowsPerId(
+    `issueCriteria:${[...asReturned].sort().join(',')}`,
+    issueIds,
+    (some) => issueCriteriaRead(some, ex, asReturned),
+    (c) => c.issueId,
+  );
+}
+
+async function issueCriteriaRead(
+  issueIds: readonly string[],
+  ex: Pick<Tx, 'execute'>,
+  asReturned: readonly string[],
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   // a criterion's facts are read once per criterion, and a pin only for a verdict naming a design or
@@ -258,8 +275,12 @@ type PinRow = {
   approved: number | null;
 };
 
-export async function latestPinsOf(ids: readonly string[]) {
-  if (ids.length === 0) return [];
+/** Each requirement's linked designs with the revision its latest baseline pins and the one approved. */
+export function latestPinsOf(ids: readonly string[]) {
+  return rowsPerId('latestPins', ids, latestPinsRead, (r) => r.requirementId);
+}
+
+async function latestPinsRead(ids: readonly string[]) {
   const rows = (await db.execute(sql`
     SELECT rw.requirement_id, w.flow, w.document->>'title' AS title, p.design_revision AS pinned, w.approved_revision AS approved
       FROM requirement_workflows rw
@@ -292,8 +313,11 @@ type ContractPinRow = {
 };
 
 /** The contract pins of each requirement's latest baseline. */
-export async function latestContractPinsOf(ids: readonly string[]) {
-  if (ids.length === 0) return [];
+export function latestContractPinsOf(ids: readonly string[]) {
+  return rowsPerId('latestContractPins', ids, latestContractPinsRead, (r) => r.requirementId);
+}
+
+async function latestContractPinsRead(ids: readonly string[]) {
   const rows = (await db.execute(sql`
     SELECT p.requirement_id, p.provider_project_id, p.contract_slug, p.contract_version
       FROM requirement_baseline_pins p
@@ -333,6 +357,24 @@ export async function acceptanceDecisionsOf(
  * for one standing accepted, whether that move into accepted was a decision (`acceptanceDecisionsOf`).
  */
 export async function statusFactsOf(ids: readonly string[]): Promise<{
+  since: Map<string, Date>;
+  decisions: Map<string, RequirementAcceptanceDecision>;
+}> {
+  const read = await memoizedPerId('statusFacts', ids, async (some) => {
+    const { since, decisions } = await statusFactsRead(some);
+    return new Map(
+      [...since].map(([id, at]) => [id, { since: at, decision: decisions.get(id) ?? null }]),
+    );
+  });
+  return {
+    since: new Map([...read].map(([id, f]) => [id, f.since])),
+    decisions: new Map(
+      [...read].flatMap(([id, f]) => (f.decision ? [[id, f.decision] as const] : [])),
+    ),
+  };
+}
+
+async function statusFactsRead(ids: readonly string[]): Promise<{
   since: Map<string, Date>;
   decisions: Map<string, RequirementAcceptanceDecision>;
 }> {
@@ -385,7 +427,11 @@ export async function issueTimesOf(linked: readonly { id: string; status: string
 }
 
 /** When each issue first moved past draft and open: the work on it started. */
-async function startedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
+function startedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
+  return memoizedPerId('startedAt', issueIds, startedAtRead);
+}
+
+async function startedAtRead(issueIds: readonly string[]): Promise<Map<string, Date>> {
   if (issueIds.length === 0) return new Map();
   const rows = (await db.execute(sql`
     SELECT entity_id, min(created_at) AS at
@@ -401,7 +447,11 @@ async function startedAtOf(issueIds: readonly string[]): Promise<Map<string, Dat
 }
 
 /** When each closed issue last moved to closed, from its kernel transitions. */
-export async function closedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
+export function closedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
+  return memoizedPerId('closedAt', issueIds, closedAtRead);
+}
+
+async function closedAtRead(issueIds: readonly string[]): Promise<Map<string, Date>> {
   if (issueIds.length === 0) return new Map();
   const rows = (await db.execute(sql`
     SELECT entity_id, max(created_at) AS at
@@ -417,8 +467,11 @@ export async function closedAtOf(issueIds: readonly string[]): Promise<Map<strin
 }
 
 /** Each requirement's linked designs that hold no approved revision, which an agree refuses. */
-export async function unapprovedDesignsOf(ids: readonly string[]) {
-  if (ids.length === 0) return [];
+export function unapprovedDesignsOf(ids: readonly string[]) {
+  return rowsPerId('unapprovedDesigns', ids, unapprovedDesignsRead, (r) => r.requirementId);
+}
+
+async function unapprovedDesignsRead(ids: readonly string[]) {
   const rows = (await db.execute(sql`
     SELECT rw.requirement_id, w.flow, w.document->>'title' AS title, w.design_status
       FROM requirement_workflows rw

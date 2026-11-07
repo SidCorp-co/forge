@@ -18,16 +18,16 @@ import { changedSincePlan } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import type { issues } from '../db/schema.js';
 import {
   type RequirementStatus,
   type RevisionState,
-  requirementBaselines,
-  requirementCriteria,
-  requirementRevisions,
+  type requirementBaselines,
+  type requirementCriteria,
+  type requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { runners } from '../db/schema-runners.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
@@ -54,6 +54,13 @@ import {
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { liveBuildOf } from './standing-live-build.js';
+import {
+  baselineRowsOf,
+  criteriaRowsOf,
+  proposedSuggestionsOf,
+  revisionRowsOf,
+  runnerBoundIn,
+} from './standing-rows.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
 import { askedOf } from './steward-asked.js';
 import { requirementVerdictsIn } from './verdicts-read.js';
@@ -134,17 +141,23 @@ const uncoveredList = z.object({
  * so the accept is the record and no column copies it.
  */
 async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<string, string>>> {
-  const rows = await db
-    .select({ requirementId: suggestions.requirementId, payload: suggestions.payload })
-    .from(suggestions)
-    .where(
-      and(
-        inArray(suggestions.requirementId, [...ids]),
-        eq(suggestions.kind, 'breakdown'),
-        eq(suggestions.status, 'accepted'),
-      ),
-    )
-    .orderBy(desc(suggestions.decidedAt));
+  const rows = await rowsPerId(
+    'uncovered',
+    ids,
+    (some) =>
+      db
+        .select({ requirementId: suggestions.requirementId, payload: suggestions.payload })
+        .from(suggestions)
+        .where(
+          and(
+            inArray(suggestions.requirementId, [...some]),
+            eq(suggestions.kind, 'breakdown'),
+            eq(suggestions.status, 'accepted'),
+          ),
+        )
+        .orderBy(desc(suggestions.decidedAt)),
+    (r) => r.requirementId as string,
+  );
   const out = new Map<string, Map<string, string>>();
   for (const row of rows) {
     if (!row.requirementId) continue;
@@ -267,26 +280,6 @@ function standingIssueOf(
 const ownOf = (s: IssueStanding | undefined): OwnStanding | null =>
   s ? { waitingOn: s.waitingOn, since: new Date(s.times.since), stuck: s.times.stuck } : null;
 
-/** The proposed suggestions on these requirements, by kind. */
-const proposedSuggestionsOf = (ids: string[]) =>
-  db
-    .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
-    .from(suggestions)
-    .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed')));
-
-/**
- * One runner bound to the project, if any, whatever its status: where none is bound no master can
- * act (FB-77); a runner briefly offline still carries its master.
- */
-const runnerBoundIn = async (projectId: string): Promise<boolean> =>
-  (
-    await db
-      .select({ id: runners.id })
-      .from(runners)
-      .where(eq(runners.projectId, projectId))
-      .limit(1)
-  ).length > 0;
-
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
   projectId: string,
@@ -320,48 +313,13 @@ export async function standingsOf(
     owed,
     verdictsRequired,
   ] = await Promise.all([
-    held?.revisions ??
-      db
-        .select({
-          requirementId: requirementRevisions.requirementId,
-          revision: requirementRevisions.revision,
-          state: requirementRevisions.state,
-          authorId: requirementRevisions.authorId,
-          authorAgency: requirementRevisions.authorAgency,
-          returnReason: requirementRevisions.returnReason,
-          createdAt: requirementRevisions.createdAt,
-          proposedAt: requirementRevisions.proposedAt,
-          decidedAt: requirementRevisions.decidedAt,
-        })
-        .from(requirementRevisions)
-        .where(inArray(requirementRevisions.requirementId, ids))
-        .orderBy(desc(requirementRevisions.revision)),
-    held?.criteria ??
-      db
-        .select({
-          requirementId: requirementCriteria.requirementId,
-          id: requirementCriteria.id,
-          code: requirementCriteria.code,
-          body: requirementCriteria.body,
-          sinceRevision: requirementCriteria.sinceRevision,
-          retiredRevision: requirementCriteria.retiredRevision,
-        })
-        .from(requirementCriteria)
-        .where(inArray(requirementCriteria.requirementId, ids)),
+    held?.revisions ?? revisionRowsOf(ids),
+    held?.criteria ?? criteriaRowsOf(ids),
     held?.linked ?? linkedIssuesOf(ids),
     proposedSuggestionsOf(ids),
     held ? held.prefix : activeIssuePrefix(projectId),
     latestPinsOf(ids),
-    held?.baselines ??
-      db
-        .select({
-          requirementId: requirementBaselines.requirementId,
-          revision: requirementBaselines.revision,
-          seq: requirementBaselines.seq,
-          agreedAt: requirementBaselines.agreedAt,
-        })
-        .from(requirementBaselines)
-        .where(inArray(requirementBaselines.requirementId, ids)),
+    held?.baselines ?? baselineRowsOf(ids),
     held ? held.gates : documentGatesIn(projectId),
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),

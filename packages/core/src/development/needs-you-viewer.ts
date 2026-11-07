@@ -8,7 +8,6 @@ import { db } from '../db/client.js';
 import { readingAcross } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
-import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
 import { primeEndedRunClaims } from '../release-batch/release-read.js';
 import { primeRequirementVerdicts } from '../requirements/verdicts-read.js';
@@ -29,13 +28,6 @@ export const needsYouViewerOf = (
   mayApprove: holds(access, 'releases.approve'),
   mayWrite: holds(access, 'project.write'),
 });
-
-/**
- * How many projects the cross-project read assembles at once. Each project's read sends its lists'
- * statements in parallel, and every page load asks for this count: unbounded, eight projects queued
- * a few hundred statements ahead of the page's own reads on the ten-connection pool.
- */
-export const NEEDS_YOU_ACROSS_CONCURRENCY = 2;
 
 /**
  * The viewer's decisions across every project they can see, each project's the one Needs you read
@@ -64,34 +56,31 @@ export async function readNeedsYouAcross(
   primeNeedsYouAcross(names.map((p) => p.id));
   primeRequirementVerdicts(names.map((p) => p.id));
   primeEndedRunClaims(names.map((p) => p.id));
-  const limiter = createLimiter(NEEDS_YOU_ACROSS_CONCURRENCY);
+  // every project read side by side: each fact they ask is read once for all of them
+  // (`read-memo.ts:memoizedPerId`, `perProjectRead`), so twelve projects send the statements of one
   const perProject = await Promise.all(
-    names.map((p) =>
-      limiter.run(
-        async (): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
-          const access = await effectiveProjectRole(userId, p.id);
-          if (!access || !holds(access, 'project.read')) return [];
-          const { read, ids } = await readNeedsYouDecisionsBare(
-            p.id,
-            needsYouViewerOf(access, userId, agency),
-            access,
-            now,
-          );
-          const owed = read.notDecisions.filter((n) => n.reason !== 'agent_takes');
-          if (read.total === 0 && owed.length === 0) return [];
-          return [
-            {
-              projectSlug: p.slug,
-              projectName: p.name,
-              total: read.total,
-              decisions: read.decisions.slice(0, cap),
-              owed,
-              ids,
-            },
-          ];
+    names.map(async (p): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
+      const access = await effectiveProjectRole(userId, p.id);
+      if (!access || !holds(access, 'project.read')) return [];
+      const { read, ids } = await readNeedsYouDecisionsBare(
+        p.id,
+        needsYouViewerOf(access, userId, agency),
+        access,
+        now,
+      );
+      const owed = read.notDecisions.filter((n) => n.reason !== 'agent_takes');
+      if (read.total === 0 && owed.length === 0) return [];
+      return [
+        {
+          projectSlug: p.slug,
+          projectName: p.name,
+          total: read.total,
+          decisions: read.decisions.slice(0, cap),
+          owed,
+          ids,
         },
-      ),
-    ),
+      ];
+    }),
   );
   // what every project's decisions rest on, in one read for all of them (REQ-48 r3 BC-15)
   const sections = perProject.flat();

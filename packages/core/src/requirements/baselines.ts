@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, lte } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import { mockups } from '../db/schema-mockups.js';
 import {
@@ -110,7 +111,21 @@ export async function writePinsIn(
 }
 
 /** Each contract each of `requirementIds` links, with its newest approved version. */
-export async function linkedContractsOf(
+export function linkedContractsOf(
+  tx: Tx,
+  requirementIds: readonly string[],
+): Promise<(LinkedContract & { requirementId: string })[]> {
+  // a requirement's contracts are its own: every project's asks in one read are read together
+  if (tx !== db) return linkedContractsRead(tx, requirementIds);
+  return rowsPerId(
+    'linkedContracts',
+    requirementIds,
+    (some) => linkedContractsRead(tx, some),
+    (r) => r.requirementId,
+  );
+}
+
+async function linkedContractsRead(
   tx: Tx,
   requirementIds: readonly string[],
 ): Promise<(LinkedContract & { requirementId: string })[]> {

@@ -10,6 +10,7 @@
 import { type OtherProject, requirementKey } from '@forge/contracts/requirements';
 import { eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues, projects } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -99,6 +100,15 @@ export async function requirementNamed(
 
 /** The issues delivering each of `requirementIds`, of whichever project, in key order. */
 export function linkedIssuesOf(requirementIds: readonly string[]) {
+  return rowsPerId(
+    'linkedIssues',
+    requirementIds,
+    linkedIssuesRead,
+    (r) => r.requirementId as string,
+  );
+}
+
+function linkedIssuesRead(requirementIds: readonly string[]) {
   return db
     .select({
       requirementId: issues.requirementId,

@@ -16,7 +16,6 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { readingAcross } from '../db/read-memo.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { createLimiter } from '../lib/bounded-concurrency.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requiresSelf } from '../permissions/index.js';
@@ -31,9 +30,6 @@ import {
   readHomeProject,
 } from './home-moving.js';
 import { byLastMove } from './home-stage.js';
-
-/** Projects read at once: each reads its feedback list, forecasts, runs and releases. */
-const HOME_CONCURRENCY = 2;
 
 /** The projects in scope the caller holds `project.read` on. */
 async function readableProjects(userId: string, orgId: string | null): Promise<HomeProject[]> {
@@ -79,21 +75,19 @@ meHomeRoutes.get(
     const projects = await readableProjects(viewer.userId, orgId ?? null);
     // what each project's part reads one project at a time, read for all of them at once
     readingAcross(projects.map((p) => p.id));
-    const limiter = createLimiter(HOME_CONCURRENCY);
+    // every project read side by side, each fact read once for all of them (ISS-1070 r6)
     const parts = await Promise.all(
-      projects.map((p) =>
-        limiter.run(async () => {
-          const [part, releases] = await Promise.all([
-            readHomeProject(viewer, p.id, now),
-            liveReleasesOf(p.id),
-          ]);
-          const mine = new Set([
-            ...part.issues.map((i) => i.key),
-            ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
-          ]);
-          return { ...(await homeItemsOf(p, part, now)), live: liveOf(p, releases, mine) };
-        }),
-      ),
+      projects.map(async (p) => {
+        const [part, releases] = await Promise.all([
+          readHomeProject(viewer, p.id, now),
+          liveReleasesOf(p.id),
+        ]);
+        const mine = new Set([
+          ...part.issues.map((i) => i.key),
+          ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
+        ]);
+        return { ...(await homeItemsOf(p, part, now)), live: liveOf(p, releases, mine) };
+      }),
     );
     const moving = parts.flatMap((p) => p.moving).sort(byLastMove);
     const response: HomeResponse = {
@@ -122,17 +116,14 @@ meHomeRoutes.get(
     const viewer = viewerOf(c);
     const projects = await readableProjects(viewer.userId, orgId ?? null);
     readingAcross(projects.map((p) => p.id));
-    const limiter = createLimiter(HOME_CONCURRENCY);
     const found = await Promise.all(
-      projects.map((p) =>
-        limiter.run(async () => {
-          const [part, releases] = await Promise.all([
-            readHomeProject(viewer, p.id),
-            releasesOf(p.id),
-          ]);
-          return findIn(p, part, releases, q);
-        }),
-      ),
+      projects.map(async (p) => {
+        const [part, releases] = await Promise.all([
+          readHomeProject(viewer, p.id),
+          releasesOf(p.id),
+        ]);
+        return findIn(p, part, releases, q);
+      }),
     );
     const items = found.flatMap((f) => f.items);
     const total = found.reduce((n, f) => n + f.total, 0);
