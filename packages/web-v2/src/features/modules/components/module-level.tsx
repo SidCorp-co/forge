@@ -1,20 +1,13 @@
 
 // One level of the module tree: the business modules (the roots) on the Modules screen, or one
-// module's children on its page. A map of the level's modules and the couplings core rolled up to
-// it, then the same modules as a flush list. A click on a node or a row opens the peek beside them;
-// a double click, Enter, a modified click or the peek's open control goes to the module itself.
+// module's children on its page, as one flat grouped list led by each module's name (ISS-1072: the tile
+// map above it repeated the same modules). A click on a row opens the peek beside it; Enter, a
+// modified click or the peek's open control goes to the module itself. The slug is the row's tooltip
+// and the issue that last landed is named in its age's.
 
 import { MODULE_ATTENTION_GROUPS, MODULE_ATTENTION_LABELS } from "@forge/contracts/modules";
 import type { ReactNode } from "react";
-import {
-  GroupedList,
-  type ListGroup,
-  type ListRowView,
-  useListPage,
-  ViewHeading,
-  WaitingOn,
-  ListLayout,
-} from "@/design";
+import { GroupedList, type ListGroup, type ListRowView, ListLayout, useListPage, WaitingOn } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { copyOr, type Copy } from "@/lib/i18n/product-copy";
 import { formatAge, formatStamp } from "@/lib/utils/format";
@@ -22,10 +15,9 @@ import { MODULES_LIST, moduleHref } from "@/lib/routes/modules";
 import { useCodeTrace } from "../hooks";
 import type { CodeTraceResponse, ModuleRollupResponse, ModuleRollupRow } from "../types";
 import { moduleWaitingView, OpenBar } from "./module-bits";
-import { ModuleMap } from "./module-map";
 import { ModulePeek } from "./module-peek";
 
-const columnsIn = (t: Copy) => ({ key: t("modules.col.key"), title: t("modules.col.title"), state: t("modules.col.state"), meta: t("modules.col.meta") });
+const columnsIn = (t: Copy) => ({ title: t("modules.col.title"), state: t("modules.col.state"), meta: t("modules.col.meta") });
 
 const keyOf = (r: ModuleRollupRow) => r.slug ?? r.id;
 
@@ -63,14 +55,13 @@ const rowOf =
     const land = r.standing.lastLanding;
     return {
       key: keyOf(r),
-      keyLabel: <span className="whitespace-normal break-all">{r.slug ?? r.id}</span>,
       href: moduleHref(slug, keyOf(r)),
       title: r.name,
       facts: factsOf(r, trace, all, t),
       state: <OpenBar standing={r.standing} max={max} />,
       waitingOn: <WaitingOn w={moduleWaitingView(r.standing, language)} />,
-      owner: land ? <span className="font-mono text-12">{land.issueKey}</span> : <span className="text-subtle">{t("modules.noneYet")}</span>,
-      age: land ? { text: formatAge(land.landedAt), title: t("modules.landedAt", { when: formatStamp(land.landedAt) }) } : null,
+      owner: land ? null : <span className="text-subtle">{t("modules.noneYet")}</span>,
+      age: land ? { text: formatAge(land.landedAt), title: `${land.title} (${land.issueKey}) · ${t("modules.landedAt", { when: formatStamp(land.landedAt) })}` } : null,
       dim: r.standing.attentionGroup === "quiet",
     };
   };
@@ -106,7 +97,6 @@ export function ModuleLevel({
   const language = useInterfaceLanguage();
   const scopeId = scope?.id ?? null;
   const rows = data.modules.filter((r) => (scopeId ? r.parentId === scopeId : r.depth === 0));
-  const couplings = data.couplings.filter((c) => c.parentId === scopeId);
   const max = Math.max(1, ...rows.map((r) => r.standing.open));
   const traceQ = useCodeTrace(projectId);
   const trace = traceByModule(traceQ.data);
@@ -133,24 +123,7 @@ export function ModuleLevel({
             {t("modules.truncated", { n: read.returned, open: read.open, older: unread })}
           </p>
         ) : null}
-        <section className="px-5 pb-4 pt-5 max-md:px-3" data-testid="module-level-map">
-          <ViewHeading
-            right={
-              couplings.length ? (
-                <span className="text-12 text-subtle">{t("modules.map.lineWidth")}</span>
-              ) : undefined
-            }
-          >
-            {scope ? t("modules.inside", { name: scope.name }) : t("modules.business")}
-          </ViewHeading>
-          <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={list.togglePeek} onOpen={open} />
-          {couplings.length === 0 ? (
-            <p className="mt-2 text-13 text-subtle" data-testid="module-map-no-couplings">
-              {t("modules.map.noCoupling")}
-            </p>
-          ) : null}
-        </section>
-        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={list.groups} fold={list.fold} row={rowOf(slug, max, trace, data.modules, t, language)} selected={peek.open} onPeek={list.togglePeek} columns={columnsIn(t)} />
+        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={list.groups} fold={list.fold} row={rowOf(slug, max, trace, data.modules, t, language)} selected={peek.open} onPeek={list.togglePeek} columns={columnsIn(t)} keyColumn={false} />
     </ListLayout>
   );
 }

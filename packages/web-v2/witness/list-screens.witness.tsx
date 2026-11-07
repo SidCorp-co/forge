@@ -8,11 +8,9 @@
 //
 //   [VITE_WITNESS_THEMES=light,dark] [VITE_WITNESS_ONLY=name,name] pnpm --filter web-v2 witness witness/list-screens.witness.tsx --out <dir>
 
-import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { say } from "@forge/contracts/said";
-import { waitingOn } from "@forge/contracts/standing";
 import { TopBarSlotProvider } from "@/design";
 import { ChannelsScreen } from "@/features/channels";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
@@ -20,6 +18,7 @@ import { ModulesScreen } from "@/features/modules";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { type ChromeScreen, gatherScreens } from "@/test/vi-chrome-screens";
+import { MODULE_QUERIES, MODULES_PROJECT } from "@/test/module-rollup";
 import { P as FB_P } from "@/test/vi-chrome-feedback";
 import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
 import { firstScreenWords } from "./first-screen";
@@ -45,44 +44,7 @@ const seed = (name: string): ReactNode => {
   return s.render();
 };
 
-const MP = "7f1c1d1e-0000-4000-8000-000000001072";
-const AT = "2026-11-06T09:00:00.000Z";
-const counts = (open: number) => ({ total: open + 3, open, closed: 3, dropped: 0, recentlyActive: open });
-const both = (open: number) => ({ primary: counts(open), secondary: counts(0) });
-const waits = () => waitingOn("master", { who: say("standing.who.master"), act: say("issues.standing.act.dispatch"), rule: say("standing.act.none") });
-const moduleRow = (i: number, name: string, open: number, group: "moving" | "stuck" | "quiet") => ({
-  id: `m${i}`,
-  name,
-  slug: `${name.toLowerCase().replace(/ /g, "-")}-${i}`,
-  path: `${name.toLowerCase().replace(/ /g, "-")}-${i}`,
-  description: null,
-  knowledgeEntryId: null,
-  color: "#336699",
-  parentId: null,
-  depth: 0,
-  own: both(open),
-  inherited: both(0),
-  rollup: both(open),
-  standing: {
-    attentionGroup: group,
-    waitingOn: group === "quiet" ? waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: say("standing.act.none") }) : waits(),
-    leadIssue: open ? `ISS-${40 + i}` : null,
-    open,
-    openByKind: { moving: group === "moving" ? open : 0, stuck: group === "stuck" ? open : 0, queued: 0, paused: 0 },
-    running: group === "moving" ? 1 : 0,
-    lastLanding: null,
-    requirements: [],
-    childCount: i % 2,
-  },
-});
-const ROLLUP = {
-  activeWithinDays: 14,
-  generatedAt: AT,
-  modules: [moduleRow(1, "Conversations", 3, "moving"), moduleRow(2, "Identity access", 1, "stuck"), moduleRow(3, "Releases", 2, "moving"), moduleRow(4, "Billing", 0, "quiet")],
-  couplings: [{ parentId: null, aId: "m1", bId: "m2", sharedIssues: 2, weight: 2 }],
-  unassigned: counts(9),
-  issuesRead: { returned: 15, open: 15 },
-};
+const MP = MODULES_PROJECT;
 const CHANNELS = { channels: [{ rid: "GENERAL-rid-1", name: "Forge-Communicate", members: 0, rules: 0, commonIssues: 0 }, { rid: "r2", name: "hop-support", members: 12, rules: 3, commonIssues: 4 }] };
 
 interface Page {
@@ -96,7 +58,7 @@ const P = "/projects/hop";
 const PAGES: Page[] = [
   { name: "rail", path: P, pattern: "/projects/$slug", render: () => seed("Navigation rail · labelled") },
   { name: "integrations", path: "/integrations", pattern: "/integrations", render: () => seed("Integrations") },
-  { name: "modules", path: `${P}/modules`, render: () => <Seeded data={[[["issues", "standing", "modules", MP, "rollup"] as QueryKey, ROLLUP], [["code-trace", MP], { units: [], untraced: 0, total: 0 }]]}><ModulesScreen projectId={MP} slug="hop" /></Seeded> },
+  { name: "modules", path: `${P}/modules`, render: () => <Seeded data={MODULE_QUERIES}><ModulesScreen projectId={MP} slug="hop" /></Seeded> },
   { name: "requirements", path: `${P}/requirements`, render: () => <Seeded data={REQUIREMENTS_TITLED}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
   { name: "feedback", path: `${P}/feedback`, render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
   { name: "channels", path: `${P}/channels`, render: () => <Seeded data={[[["channels", MP], CHANNELS]]}><ChannelsScreen projectId={MP} slug="hop" /></Seeded> },
