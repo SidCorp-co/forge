@@ -1,5 +1,6 @@
 // @direct-test-of scripts/merge-check.mjs
 // @direct-test-of scripts/lib/merge-check.mjs
+// @direct-test-of packages/contracts/src/merge-check.ts
 //
 // The merge check's reruns of a red integration test (ISS-1120): each red file once at the head,
 // and where it stays red once at the merge base in a worktree of its own, removed after. Red at the
