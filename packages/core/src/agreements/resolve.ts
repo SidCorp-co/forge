@@ -176,8 +176,9 @@ function forgeView(
             says: `Forge's default ${a.name} moved to revision ${forge.revision} after this project's change (revision ${project.revision}, written over default revision ${project.baseRevision ?? 'none'}). The project's change still holds; a project admin re-affirms it (PUT with the same rule) or restores the default.`,
           }
         : null,
-    // the default holds for every task; a project change holds where its condition does
-    applies: project ? applies : true,
+    // a default always applies: to a task its project change's condition rules out, as the default
+    // itself (BC-6); unresolved only where no task was given and the change is conditional
+    applies: applies === null ? null : true,
     history: [...projectHistory(rows), ...forgeHistory(a)],
   };
 }
