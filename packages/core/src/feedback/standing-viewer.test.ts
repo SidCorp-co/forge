@@ -179,3 +179,44 @@ describe('an item planned on an issue at the release gate names who releases it'
     expect(planned('automatic').attentionGroup).toBe('moving');
   });
 });
+
+// ISS-1072 round 3: Feedback listed items Resolved under Moving where the confirm they wait on is an
+// agent's (a channel agent reporter, or the master verifying): a resolved item is shipped and waits
+// on its confirm, someone else's turn, never Moving.
+describe('a resolved item is never Moving', () => {
+  it.each([
+    ['an agent reporter confirms it', { reporterIsAgent: true }],
+    ['the master verifies it', { masterVerifies: true }],
+    ['the master confirms an answer', { masterVerifies: true }, 'answer' as const],
+  ])('waits, not moves, where %s', (_, facts, route = 'issue' as const) => {
+    const s = feedbackStandingOf(
+      'resolved',
+      route,
+      [],
+      'Channel agent',
+      viewer(),
+      null,
+      { ...NO_STANDING_FACTS, ...facts },
+      AT,
+    );
+    expect(s.waitingOn.kind).toBe('agent');
+    expect(s.attentionGroup).not.toBe('moving');
+    expect(s.attentionGroup).toBe('waiting');
+  });
+
+  it('still moves while an agent works it before it ships: the master triaging a new item', () => {
+    const fresh = { ...AT, now: new Date('2026-10-01T00:05:00Z') };
+    const s = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      viewer(),
+      null,
+      { ...NO_STANDING_FACTS, masterOwesTriage: true },
+      fresh,
+    );
+    expect(s.waitingOn.kind).toBe('agent');
+    expect(s.attentionGroup).toBe('moving');
+  });
+});

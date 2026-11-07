@@ -1,5 +1,5 @@
 
-import { createContext, use, useState, type ReactNode } from "react";
+import { createContext, use, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 interface TopBarSlots {
@@ -7,6 +7,9 @@ interface TopBarSlots {
   actions: HTMLElement | null;
   setTitle: (el: HTMLElement | null) => void;
   setActions: (el: HTMLElement | null) => void;
+  /** The page files feedback with an action of its own, so the bar draws no second one (ISS-1072). */
+  ownsFeedback: boolean;
+  setOwnsFeedback: (owns: boolean) => void;
 }
 
 const TopBarSlotContext = createContext<TopBarSlots | null>(null);
@@ -15,9 +18,25 @@ const TopBarSlotContext = createContext<TopBarSlots | null>(null);
 export function TopBarSlotProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<HTMLElement | null>(null);
   const [actions, setActions] = useState<HTMLElement | null>(null);
+  const [ownsFeedback, setOwnsFeedback] = useState(false);
   return (
-    <TopBarSlotContext value={{ title, actions, setTitle, setActions }}>{children}</TopBarSlotContext>
+    <TopBarSlotContext value={{ title, actions, setTitle, setActions, ownsFeedback, setOwnsFeedback }}>{children}</TopBarSlotContext>
   );
+}
+
+/** Called by a page whose own action files feedback (a project's Feedback list): the bar's Feedback yields to it while it is shown. */
+export function usePageFilesFeedback(): void {
+  const set = use(TopBarSlotContext)?.setOwnsFeedback;
+  useEffect(() => {
+    if (!set) return;
+    set(true);
+    return () => set(false);
+  }, [set]);
+}
+
+/** Whether the page shown files feedback itself, so the bar's own Feedback entry is not drawn. */
+export function usePageOwnsFeedback(): boolean {
+  return use(TopBarSlotContext)?.ownsFeedback ?? false;
 }
 
 /** The shell's side: refs for the two places in the bar a page can fill. */

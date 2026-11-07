@@ -395,9 +395,14 @@ function plannedWait(
   }
 }
 
-/** The list's group for an item, from whether the act it waits on is the viewer's own. */
+/**
+ * The list's group for an item, from whether the act it waits on is the viewer's own. A resolved item
+ * has shipped and waits on its confirm, someone else's turn even where an agent owes it (ISS-1072):
+ * it never reads Moving.
+ */
 function groupOf(phase: FeedbackPhase, owed: Owed): FeedbackAttentionGroup {
   if (owed.yours) return 'needs_you';
+  if (phase === 'resolved') return 'waiting';
   if (phase === 'planned' || owed.wait.kind === 'agent') return 'moving';
   if (phase === 'verified' || phase === 'declined') return 'done';
   return 'waiting';

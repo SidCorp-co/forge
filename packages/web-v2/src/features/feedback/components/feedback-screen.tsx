@@ -26,6 +26,7 @@ import {
   type ListGroup,
   type ListRowView,
   useListPage,
+  usePageFilesFeedback,
   PageTitle,
   sortGroupsBy,
   StatusChip,
@@ -199,6 +200,8 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const q = useFeedbackList(projectId);
   const [grouping, setGrouping] = useViewMode(modes);
   const [creating, setCreating] = useState(false);
+  // the page's New feedback is its one feedback action: the bar's Feedback yields to it (ISS-1072)
+  usePageFilesFeedback();
   const forecastQ = useFeedbackForecasts(projectId);
   const notes = useNoteLines(projectId, "feedback");
   const forecasts = new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i]));
@@ -232,7 +235,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
           titleAfter={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
-              {t("feedback.title")}
+              {t("feedback.new")}
             </Button>
           }
           lead={
