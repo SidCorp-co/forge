@@ -56,9 +56,10 @@ export async function deployCommitOf(projectId: string, bindingId: string): Prom
 
 /**
  * The deploy already sent that answers this one, or null where it goes out. On the same run a
- * running or queued deploy answers it unless both commits are read and differ, and a succeeded one
- * at the same commit answers it; on another run, or none, only a running deploy of the same commit.
- * A failed or expired deploy answers nothing.
+ * queued, running or succeeded deploy answers it unless both commits are read and differ: a commit
+ * that could not be read is never shown to differ, and `redeploy` is the way to send it anyway. On
+ * another run, or none, only a running deploy of the same read commit answers it. A failed or
+ * expired deploy answers nothing.
  */
 async function priorOf(
   runId: string | null,
@@ -71,7 +72,7 @@ async function priorOf(
     const unread = d.commit === null || commit === null;
     const live = d.state === 'running' || d.state === 'queued';
     if (runId !== null && d.runId === runId) {
-      if ((live && (same || unread)) || (d.state === 'succeeded' && same)) return d;
+      if ((live || d.state === 'succeeded') && (same || unread)) return d;
     } else if (live && same) {
       return d;
     }
