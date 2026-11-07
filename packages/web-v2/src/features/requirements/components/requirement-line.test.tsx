@@ -1,6 +1,7 @@
 // The Requirements list on live dev.227: AGE read "1m" on all 45 rows once area and short name were
-// set on each, because it read the last edit; and a long Waits on act was cut with an ellipsis at
-// 1440 px. AGE now reads the time in the current state (`standing.stateSince`), and an act wraps.
+// set on each, because it read the last edit. AGE now reads the time in the current state
+// (`standing.stateSince`). Waits on is the shared cell every list draws (ISS-1072): one line, whose
+// turn it is as a mark and a name, and a short act; the whole sentence, keys and all, is its tooltip.
 
 import { render, screen } from "@testing-library/react";
 import type { RequirementSummary } from "@forge/contracts/requirements";
@@ -44,12 +45,15 @@ describe("a requirement's row on the list", () => {
     expect(screen.getByTestId("list-row")).not.toHaveTextContent(/1m$/);
   });
 
-  it("says the breakdown act short, and lets any act wrap rather than be cut", () => {
-    line(row());
-    const waits = screen.getByTestId("req-waits");
-    expect(waits).toHaveTextContent("You · review the breakdown");
-    expect(waits.className).not.toMatch(/\btruncate\b/);
-    expect(waits.className).toMatch(/\bbreak-words\b/);
+  it("draws Waits on as the shared one-line cell, the long act whole only in its tooltip", () => {
+    const long = "Update to the approved design: Issue to release (revision 25); judge BC-4, BC-5 and BC-6 on ISS-643";
+    line(row({ waitingOn: { who: "orchestrator", act: long, kind: "agent", rule: "", ref: null, dueAt: null } as never, attentionGroup: "moving" } as never));
+    expect(screen.queryByTestId("req-waits")).toBeNull();
+    const waits = screen.getByTestId("waiting-on");
+    expect(waits).toHaveAttribute("data-kind", "agent");
+    expect(waits.className).toMatch(/\bwhitespace-nowrap\b/);
+    expect(waits.className).not.toMatch(/\bbreak-words\b/);
+    expect(waits.getAttribute("title")).toContain(long);
   });
 });
 

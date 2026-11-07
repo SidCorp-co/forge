@@ -5,11 +5,11 @@
 // leads with the requirement's name; its key is the name's tooltip (REQ-11 BC-19).
 
 import { REQUIREMENT_ATTENTION_GROUPS, type RequirementSummary } from "@forge/contracts/requirements";
-import { GroupedList, type ListGroup, useGroupFold } from "@/design";
+import { GroupedList, type ListGroup, useGroupFold, WaitingOn } from "@/design";
 import { useNoteLines } from "@/features/standing";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
-import { ageShort, nameOf, Passing, RowState, WaitsText } from "./requirement-line";
+import { ageShort, nameOf, Passing, RowState } from "./requirement-line";
 
 type ListGrouping = "attention" | "area";
 
@@ -54,7 +54,8 @@ export function RequirementsList({ groups, slug, now, selected, onPeek, notes }:
           ),
           facts: notes?.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : [],
           state: <Passing r={r} wide={false} />,
-          waitingOn: <WaitsText r={r} />,
+          // the shared one-line cell (ISS-1072): whose turn and a short act, the whole sentence its tooltip
+          waitingOn: r.standing.attentionGroup === "done" ? null : <WaitingOn w={r.standing.waitingOn} />,
           owner: null,
           age: { text: ageShort(r.standing.stateSince, now), title: time.dateTime(r.standing.stateSince) },
           dim: r.standing.attentionGroup === "done",
