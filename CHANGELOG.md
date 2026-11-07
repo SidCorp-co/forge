@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.567] - 2026-11-07
+
+Home, Dashboard and Needs you load faster
+
+### Changed
+
+- **A direct master's pass names the close it may make.** It no longer says only a release closes an issue: the holder closes from awaiting_release, naming where each unmet criterion goes.
+
+### Fixed
+
+- **Needs you, the Dashboard and Home load faster on a project with hundreds of releases.** Which release shipped each issue is read once for a whole list, and Needs you weighs only the releases still waiting on someone.
+
 ## [0.4.0-dev.566] - 2026-11-07
 
 A master's wake typed by the runner is now submitted
