@@ -28,7 +28,11 @@
 //   pnpm merge-check --report <path>     where the report goes (default: the OS temp directory)
 //   pnpm merge-check --lane fast         the fast lane: no integration tests, no probes, no verify
 //
-// Exit 0: every check passed. 1: a check or probe is red, a probe is missing, or the change is behind
+// A red integration test file is rerun once at the head and, where it stays red, once at the merge
+// base in a worktree of its own (`lib/merge-check-reruns.mjs`, ISS-1120): red at the base too is
+// base-red, green on the rerun is flaky, and neither refuses the change; the report names them apart.
+//
+// Exit 0: every check passed, or every red was base-red or flaky. 1: a check or probe is red, a probe is missing, or the change is behind
 // its base. 2: it could not run.
 
 import { spawnSync } from 'node:child_process';
@@ -62,6 +66,7 @@ import {
   verifyCommand,
   verifyEnv,
 } from './lib/merge-check.mjs';
+import { recordingExec, rerunLines, rerunReds } from './lib/merge-check-reruns.mjs';
 import {
   originOf,
   probeRefusalLines,
@@ -228,11 +233,30 @@ console.log(highImpact.line);
 checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) => t.path) }));
 // No `narrow`: a test's @direct-test-when lines shorten the developer's run only, so every
 // declaration selects here as written and a whole-tree test runs on every change under it (ISS-769).
-const direct = runDirectTests(ROOT, { touched, integration: lane === 'full', narrow: false });
+// Each vitest run also writes its JSON report, so a red integration run names the files that went red.
+const recording = recordingExec(run, ROOT);
+const direct = runDirectTests(ROOT, {
+  touched,
+  integration: lane === 'full',
+  narrow: false,
+  exec: recording.exec,
+});
 // A package the tests load from its dist that cannot be rebuilt to its source stops the check here,
 // before any test ran against the old build (ISS-587): exit 2, it could not run.
 if (direct.refusal) die(direct.refusal);
 checks.push(...direct.checks);
+// Each red integration file, rerun once at the head and, where it stays red, once at the merge base
+// (ISS-1120): red there too is base-red, green again is flaky, and neither is this change's red.
+const mergeBase = git('merge-base', baseSha, head);
+const rerun = rerunReds({
+  root: ROOT,
+  head,
+  base: mergeBase,
+  checks,
+  calls: recording.calls,
+  exec: run,
+});
+recording.dispose();
 
 // A criterion stands on a verdict at a commit this base carries (ISS-472 round 5): a commit git does
 // not know, or one off the base, is not carried, so the criterion stays the change's and owes its probe.
@@ -286,6 +310,7 @@ const report = reportOf({
   checks,
   probes: probeRun.bindings,
   standing: probeRun.standing,
+  reruns: rerun.reruns,
   lane,
   patchId,
   commits,
@@ -306,7 +331,13 @@ if (direct.untested.length) {
   );
 }
 
-const red = redChecks(checks);
+if (rerun.reruns.length || rerun.unclassed.length) {
+  console.log('\nmerge-check: integration reds rerun at the head and the merge base (ISS-1120)');
+  for (const line of rerunLines(rerun.reruns)) console.log(line);
+  for (const line of rerun.unclassed) console.log(`  unclassed ${line}`);
+}
+
+const red = redChecks(checks, rerun.reruns);
 const probeFaults = probeRefusalLines(probeRun);
 for (const line of probeFaults) console.error(`\nmerge-check: ${line}. Report: ${path}`);
 if (red.length) {

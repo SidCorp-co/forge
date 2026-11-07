@@ -132,11 +132,19 @@ export function missingCheck(checks, lane = 'full') {
 }
 
 /**
- * The checks that ended red, a probe's excepted: a red probe is refused MERGE_PROBE_RED by name
- * (`lib/merge-probes.mjs:probeRefusalLines`), as core refuses it.
+ * The checks that ended red and are the change's, a probe's excepted: a red probe is refused
+ * MERGE_PROBE_RED by name (`lib/merge-probes.mjs:probeRefusalLines`), as core refuses it. A red
+ * `integration-tests` check whose every red file was rerun and found `base-red` or `flaky`
+ * (`lib/merge-check-reruns.mjs`, ISS-1120) is not the change's, as core reads it
+ * (`merge-check-rules.ts:checkRefusal`).
  */
-export function redChecks(checks) {
-  return checks.filter((c) => c.result === 'fail' && c.kind !== 'probes');
+export function redChecks(checks, reruns = []) {
+  const notTheChanges = (c) => {
+    if (c.name !== 'integration-tests') return false;
+    const of = reruns.filter((x) => x.check === c.id);
+    return of.length > 0 && of.every((x) => x.verdict !== 'branch-red');
+  };
+  return checks.filter((c) => c.result === 'fail' && c.kind !== 'probes' && !notTheChanges(c));
 }
 
 /**
@@ -156,6 +164,7 @@ export function reportOf({
   checks,
   probes = [],
   standing = [],
+  reruns = [],
   lane = 'full',
   patchId,
   commits = [],
@@ -171,6 +180,8 @@ export function reportOf({
     ...(standing.length
       ? { standing: standing.map(({ criterion, verdict }) => ({ criterion, verdict })) }
       : {}),
+    // sent only where a red was rerun, so a report with none is the shape an older core still takes
+    ...(reruns.length ? { reruns } : {}),
     lane,
     patchId,
   };
