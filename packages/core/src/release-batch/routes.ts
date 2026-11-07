@@ -484,9 +484,10 @@ const shippedCommitBodySchema = z
   })
   .strict();
 
-// ISS-1079 — a release that finished naming no commit is given the one it shipped, on its agent's
-// word and refused where that commit does not hold every landing it carried, so the verdicts judged
-// there count for the issues it carried.
+// ISS-1079 — a release that finished naming no commit is given the one it shipped, and one whose
+// finish named a commit production does not serve is corrected to the served descendant of it, on its
+// agent's word and refused where that commit does not hold every landing it carried, so the verdicts
+// judged there count for the issues it carried.
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/shipped-commit',
   zValidator('param', runParamSchema),

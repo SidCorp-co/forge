@@ -37,8 +37,9 @@ import {
 /**
  * Owe this run's tag on `commit`, once: the first call that finds the run versioned and owing none
  * writes `metadata.tagOwed` and tells the outbox in the same unit; every later call changes nothing
- * and answers false, so a tag is never re-aimed at a later commit. `commit` null owes a tag the
- * release cannot have (`RELEASE_TAG_NO_COMMIT`).
+ * and answers false, so a tag is never re-aimed at a later commit, but for one owed on the commit a
+ * finish named and not yet put, which follows the commit the release shipped (`followShippedCommit`).
+ * `commit` null owes a tag the release cannot have (`RELEASE_TAG_NO_COMMIT`).
  */
 export async function oweReleaseTag(
   runId: string,
@@ -74,6 +75,51 @@ export async function oweReleaseTag(
       runId,
       version: run.version,
       commit: owed.commit,
+    });
+    return true;
+  });
+}
+
+/**
+ * The tag follows the commit a release turned out to ship (ISS-1079 r2): owed on `commit` where none
+ * is owed yet, and re-aimed there from the commit its finish named while the host has not put it. A
+ * tag the host already put stays where it stands, since Forge never moves a tag; the commit shipped
+ * descends from it then. True where this call owed or re-aimed it.
+ */
+export async function followShippedCommit(runId: string, commit: string): Promise<boolean> {
+  if (await oweReleaseTag(runId, commit, 'finish')) return true;
+  return db.transaction(async (tx) => {
+    const [run] = await tx
+      .select({ projectId: pipelineRuns.projectId, version: pipelineRuns.releaseVersion })
+      .from(pipelineRuns)
+      .where(eq(pipelineRuns.id, runId))
+      .limit(1);
+    const to = wholeCommit(commit);
+    if (!run?.version || !to) return false;
+    const owed: TagOwed = {
+      name: releaseTagName(run.version),
+      commit: to,
+      from: 'finish',
+      at: new Date().toISOString(),
+    };
+    const meta = sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb)`;
+    const wrote = await writeRunMetadata(
+      runId,
+      {
+        merge: { tagOwed: owed },
+        when: sql`${meta} -> 'tagOwed' ->> 'from' = 'finish'
+          AND lower(${meta} -> 'tagOwed' ->> 'commit') IS DISTINCT FROM ${to}
+          AND coalesce(${meta} -> 'tag' ->> 'state', '') <> 'tagged'`,
+        touch: false,
+      },
+      tx,
+    );
+    if (!wrote) return false;
+    await emitEvent(tx, 'release.committed', {
+      projectId: run.projectId,
+      runId,
+      version: run.version,
+      commit: to,
     });
     return true;
   });

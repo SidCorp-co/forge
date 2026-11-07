@@ -1074,8 +1074,12 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_CHANGE_REQUEST_ORDER",
 	/** A shipped commit attached to a run that is no shipped release batch (ISS-1079). */
 	"RELEASE_SHIPPED_COMMIT_NOT_SHIPPED",
-	/** A shipped commit attached to a release that already records one (ISS-1079). */
+	/** A shipped commit sent for a release holding a commit its finish named, which it does not descend from (ISS-1079). */
 	"RELEASE_SHIPPED_COMMIT_HELD",
+	/** A shipped commit sent for a release that already records that very commit (ISS-1079). */
+	"RELEASE_SHIPPED_COMMIT_SAME",
+	/** A shipped commit sent for a release whose commit a deploy observed or an agent attached, never replaced (ISS-1079). */
+	"RELEASE_SHIPPED_COMMIT_SETTLED",
 	/** A shipped commit that does not hold the landing of an issue the release carried (ISS-1079). */
 	"RELEASE_SHIPPED_COMMIT_LACKS_LANDING",
 	/** A shipped commit whose hold on the release's landings nothing could read (ISS-1079). */
@@ -1098,6 +1102,8 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_CARRY_PROVEN: 409,
 	RELEASE_SHIPPED_COMMIT_NOT_SHIPPED: 409,
 	RELEASE_SHIPPED_COMMIT_HELD: 409,
+	RELEASE_SHIPPED_COMMIT_SAME: 409,
+	RELEASE_SHIPPED_COMMIT_SETTLED: 409,
 	RELEASE_SHIPPED_COMMIT_LACKS_LANDING: 409,
 	RELEASE_SHIPPED_COMMIT_UNREAD: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;

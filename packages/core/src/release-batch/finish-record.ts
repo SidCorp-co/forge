@@ -20,6 +20,12 @@ export interface ShippedCommitSource {
    *  `attached`: an agent attached it afterwards (`shipped-commit.ts:attachShippedCommit`). */
   from: 'finish' | 'deploy' | 'attached' | null;
   said: string;
+  /** The commit the finish named, kept where the release shipped a descendant of it instead: the one
+   *  its deploy was seen serving, or the one the door corrected it to (ISS-1079 r2). */
+  named?: string | null;
+  /** A commit the deploy was seen serving that was not taken as shipped, since it was not read to
+   *  descend from the commit the finish named, and why; the named commit stands meanwhile. */
+  served?: { commit: string; why: string } | null;
 }
 
 /** Why an attempt ended red, in the vocabulary the door answers with. */
@@ -130,10 +136,25 @@ function shippedOf(v: unknown): ShippedCommitSource | null {
   const said = str(s.said);
   if (!said) return null;
   const from = str(s.from);
+  const named = str(s.named);
+  const served = s.served as { commit?: unknown; why?: unknown } | null | undefined;
+  const servedCommit = str(served?.commit);
+  const servedWhy = str(served?.why);
   return {
     from: from && SHIPPED_FROM.has(from) ? (from as ShippedCommitSource['from']) : null,
     said,
+    ...(named ? { named } : {}),
+    ...(servedCommit && servedWhy ? { served: { commit: servedCommit, why: servedWhy } } : {}),
   };
+}
+
+/**
+ * Where a finished record's commit came from: its `shipped.from`, or `finish` for a commit a record
+ * written before ISS-1079 holds, since the finish was then its only writer. Null where it holds none.
+ */
+export function heldCommitFrom(record: ReleaseFinishRecord): ShippedCommitSource['from'] {
+  if (!record.commit) return null;
+  return record.shipped?.from ?? 'finish';
 }
 
 export function isInFlight(record: ReleaseFinishRecord | null): boolean {
