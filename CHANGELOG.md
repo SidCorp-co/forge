@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.573] - 2026-11-07
+
+Aborted releases say why they stopped, who stopped them and what they carried
+
+### Fixed
+
+- **An aborted release now says why, by whom and who owes the next act.** Its run state and each attempt carry the reason, the actor, the blocker, the push and what carries its version; a bare cancel says so.
+
 ## [0.4.0-dev.571] - 2026-11-07
 
 Channel agreements file in linked projects; mentions by username work
