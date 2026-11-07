@@ -24,7 +24,8 @@
 //! - `storageKey`, optional: the `localStorage` key the web app reads its token from, written into
 //!   the storage state for the deployment's origin.
 //!
-//! The answer's `token` (or `accessToken`, `access_token`) becomes an `Authorization: Bearer` line;
+//! The answer's token (`token`, `accessToken`, `access_token` or `jwt`, at the top or under `data`:
+//! `TOKEN_PATHS`) becomes an `Authorization: Bearer` line;
 //! with none, the cookies the sign-in set become a `Cookie:` line. A redirect is never followed, so
 //! the password goes to the one origin named and nowhere else.
 
@@ -44,8 +45,20 @@ const ACCOUNT_FIELDS: [&str; 4] = ["email", "username", "login", "identifier"];
 const FIELDS_SAID: &str = "`email`, `username`, `login` or `identifier`";
 /// The keys a sign-in route may be named by.
 const ROUTE_KEYS: [&str; 1] = ["loginRoute"];
-/// The fields of a sign-in's answer read as its bearer token.
-const TOKEN_FIELDS: [&str; 3] = ["token", "accessToken", "access_token"];
+/// Where a sign-in's answer may carry its bearer token, as JSON pointers: `token`, `accessToken`,
+/// `access_token` or `jwt`, at the top or under `data` (Strapi and SidDesk answer `jwt`, SidDesk
+/// under `data`; ISS-1094). Core's write-time check reads the same list
+/// (`integrations/deploy/sign-in-probe.ts`: `TOKEN_PATHS`), held equal by its test.
+const TOKEN_PATHS: [&str; 8] = [
+    "/token",
+    "/accessToken",
+    "/access_token",
+    "/jwt",
+    "/data/token",
+    "/data/accessToken",
+    "/data/access_token",
+    "/data/jwt",
+];
 
 /// What the secret says about signing in. Its `Debug` never shows the account or the password.
 pub(crate) struct Secret {
@@ -467,15 +480,20 @@ pub(crate) async fn sign_in(
             "the sign-in at {shown_at} was refused: {status}{code}; nothing was written"
         ));
     }
-    let bearer = TOKEN_FIELDS
+    let bearer = TOKEN_PATHS
         .iter()
-        .find_map(|k| answer.get(*k).and_then(Value::as_str))
-        .filter(|t| !t.is_empty())
+        .find_map(|p| {
+            answer
+                .pointer(p)
+                .and_then(Value::as_str)
+                .filter(|t| !t.is_empty())
+        })
         .map(str::to_string);
     if bearer.is_none() && cookies.is_empty() {
         return Err(format!(
-            "the sign-in at {shown_at} answered {status} with no token (`token`, `accessToken` or \
-             `access_token`) and set no cookie, so there is no session to hand over"
+            "the sign-in at {shown_at} answered {status} with no token (`token`, `accessToken`, \
+             `access_token` or `jwt`, at the top or under `data`) and set no cookie, so there is \
+             no session to hand over"
         ));
     }
     let local_storage = match (&secret.storage_key, &bearer) {

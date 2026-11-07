@@ -128,7 +128,8 @@ beforeEach(async () => {
     }
     if (url === STRAPI_SIGN_IN) {
       if (body.identifier === EMAIL && body.password === RIGHT) {
-        return Response.json({ token: 'session-token-1083' });
+        // SidDesk answers its token as `data.jwt` (ISS-1094), not a top-level `token`
+        return Response.json({ data: { jwt: 'session-token-1083', user: { id: 1 } } });
       }
       return Response.json(
         { error: { message: 'identifier and password are required' } },

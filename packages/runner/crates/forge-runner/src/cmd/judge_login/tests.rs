@@ -129,7 +129,12 @@ fn respond(answers: Answers, line: &str, headers: &str, body: &str) -> String {
             let refused = json!({ "error": { "message": "identifier and password are required" } });
             return http("400 Bad Request", &[], &refused.to_string());
         }
-        return http("200 OK", &[], &json!({ "token": TOKEN }).to_string());
+        // SidDesk answers its token as `data.jwt` (ISS-1094), not a top-level `token`.
+        return http(
+            "200 OK",
+            &[],
+            &json!({ "data": { "jwt": TOKEN, "user": { "id": 1 } } }).to_string(),
+        );
     }
     if line.starts_with("POST /api/auth/local ") {
         let sent: Value = serde_json::from_str(body).unwrap_or(Value::Null);

@@ -7,7 +7,36 @@
  */
 
 export const SIGN_IN_TIMEOUT_MS = 10_000;
-const TOKEN_FIELDS = ['token', 'accessToken', 'access_token'] as const;
+/**
+ * Where a sign-in's answer may carry its bearer token, as JSON pointers: `token`, `accessToken`,
+ * `access_token` or `jwt`, at the top or under `data` (Strapi and SidDesk answer `jwt`, SidDesk
+ * under `data`; ISS-1094). judge-login reads the same list (`session.rs`: `TOKEN_PATHS`), held equal
+ * by `project-config/actor-sign-in.test.ts`.
+ */
+export const TOKEN_PATHS = [
+  '/token',
+  '/accessToken',
+  '/access_token',
+  '/jwt',
+  '/data/token',
+  '/data/accessToken',
+  '/data/access_token',
+  '/data/jwt',
+] as const;
+
+/** The token an answer carries at the first of `TOKEN_PATHS` holding a non-empty string. */
+export function tokenIn(body: unknown): string | null {
+  for (const path of TOKEN_PATHS) {
+    let at: unknown = body;
+    for (const key of path.slice(1).split('/')) {
+      at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[key] : undefined;
+    }
+    if (typeof at === 'string' && at !== '') return at;
+  }
+  return null;
+}
+
+const TOKENS_SAID = '`token`, `accessToken`, `access_token` or `jwt`, at the top or under `data`';
 
 /** What is sent: the account under the field its route reads, and the password. */
 export interface SignInBody {
@@ -90,8 +119,7 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
       says: `answered ${status}${code ? ` ${code}` : ''}`,
     };
   }
-  const o = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-  const bearer = TOKEN_FIELDS.some((k) => typeof o[k] === 'string' && o[k] !== '');
+  const bearer = tokenIn(body) !== null;
   const cookie = res.headers.getSetCookie().some((c) => !deletes(c));
   if (!bearer && !cookie) {
     return {
@@ -99,7 +127,7 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
       at,
       status,
       code,
-      says: `answered ${status} with no token (\`token\`, \`accessToken\` or \`access_token\`) and set no cookie, so there is no session to hand a judge`,
+      says: `answered ${status} with no token (${TOKENS_SAID}) and set no cookie, so there is no session to hand a judge`,
     };
   }
   return { answer: 'signs-in', at, status };
