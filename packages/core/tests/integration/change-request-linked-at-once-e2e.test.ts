@@ -283,6 +283,23 @@ describe('the create records the link whole', () => {
   });
 });
 
+// FB-546: !210 was titled `Batch ISS-103/105/106/107/28/109: …`, and its title linked nothing
+describe('a Batch title links every key its list holds', () => {
+  it('links the six keys of the !210 title on a keyless branch, and merges for the fifth', async () => {
+    const ids = [];
+    for (const seq of [103, 105, 106, 107, 28, 109]) ids.push(await issue(seq));
+    const res = await open({
+      head: 'chore/order-export',
+      title: 'Batch ISS-103/105/106/107/28/109: order export',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ projection: { outcome: 'recorded', issueIds: ids } });
+    const merged = await mergeOf(ids[4] as string, 201);
+    expect(merged.status, JSON.stringify(merged.body)).toBe(200);
+    expect(merges).toEqual([201]);
+  });
+});
+
 describe('a request whose title changes is re-linked on its next refresh', () => {
   it('links past the draft marker, then follows the title to its new key', async () => {
     await issue(70);
@@ -329,7 +346,10 @@ describe('NO_PULL_REQUEST says how a request links and what Forge holds for it',
   it('names the issues the projection holds for the request, and the linking rule', async () => {
     await issue(105);
     const id = await issue(103);
-    onHostOnly(210, { title: 'Batch ISS-103/105: two fixes', headRef: 'fix/iss-105-wording' });
+    onHostOnly(210, {
+      title: 'Two fixes: the export for ISS-103 and ISS-105',
+      headRef: 'fix/iss-105-wording',
+    });
 
     const res = await mergeOf(id, 210);
 
@@ -359,5 +379,20 @@ describe('NO_PULL_REQUEST says how a request links and what Forge holds for it',
     expect(refusal?.detail).toContain('holds no record of !999');
     expect(refusal?.detail).toContain('404 Not Found');
     expect(refusal?.detail).toContain('batch-iss-n-m');
+  });
+});
+
+// ISS-980: epod's empty projection was refused as a project that had bound no GitHub repository
+describe('PROJECTION_EMPTY names the host the project bound', () => {
+  it('names the GitLab binding of a GitLab project, never GitHub', async () => {
+    const id = await issue(103);
+
+    const res = await mergeOf(id, 999);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const refusal = refusalOf(res.body);
+    expect(refusal?.code).toBe('PROJECTION_EMPTY');
+    expect(refusal?.detail).toContain('its GitLab binding');
+    expect(refusal?.detail).not.toContain('GitHub');
   });
 });

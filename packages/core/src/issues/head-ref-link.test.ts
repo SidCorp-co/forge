@@ -203,6 +203,42 @@ describe('ISS-980: a draft marker hides no key, and a batch branch links every k
   });
 });
 
+// FB-546 (epod !210): titled `Batch ISS-103/105/106/107/28/109: …`, it linked nothing by its title
+describe('ISS-980: a Batch lead and the slash shorthand link every key the list holds', () => {
+  it('reads the !210 title as delivering all six keys, in order', () => {
+    expect(keys(titleIssueReferences('Batch ISS-103/105/106/107/28/109: order export'))).toEqual([
+      'ISS-103',
+      'ISS-105',
+      'ISS-106',
+      'ISS-107',
+      'ISS-28',
+      'ISS-109',
+    ]);
+  });
+
+  it('reads a Batch lead with a colon, a listed lead, a draft marker and a full key after a slash', () => {
+    expect(keys(titleIssueReferences('Batch: ISS-1, ISS-2 and ISS-3'))).toEqual([
+      'ISS-1',
+      'ISS-2',
+      'ISS-3',
+    ]);
+    expect(keys(titleIssueReferences('ISS-54/69: two fixes'))).toEqual(['ISS-54', 'ISS-69']);
+    expect(keys(titleIssueReferences('Draft: batch ISS-1/2 lift'))).toEqual(['ISS-1', 'ISS-2']);
+    expect(keys(titleIssueReferences('[ISS-7/AH-3] pair'))).toEqual(['ISS-7', 'AH-3']);
+  });
+
+  it('reads a bare number anywhere else, or a Batch word inside the title, as no key', () => {
+    expect(titleIssueReferences('Bumps the client 103/105')).toEqual([]);
+    expect(titleIssueReferences('Ship the batch ISS-4 started')).toEqual([]);
+    expect(titleIssueReferences('Batches of 3/4 ISS-5 rows')).toEqual([]);
+    expect(titleIssueReferences('Call adminhub-api ISS-11/12 from the widget')).toEqual([]);
+  });
+
+  it('names the Batch lead and the slash shorthand in its rule', () => {
+    expect(CHANGE_REQUEST_LINK_RULE).toContain('Batch ISS-n/m');
+  });
+});
+
 describe('noIssueReason: an MR that links nothing says what was read (ISS-855)', () => {
   it('names the branch, the title, the description and the shapes that link', () => {
     const why = noIssueReason({
