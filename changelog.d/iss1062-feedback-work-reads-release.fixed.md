@@ -1,1 +1,1 @@
-**A feedback item reads its work shipped only once a release holds it.** A closed carrier with no shipped release reads landed on the item and on its estimate alike, a close made before the in-scope close included, so the two never disagree (ISS-1062).
+**A feedback item reads its work shipped only once a release holds it.** A closed carrier no shipped release holds reads landed, on the item and its estimate alike (ISS-1062).
