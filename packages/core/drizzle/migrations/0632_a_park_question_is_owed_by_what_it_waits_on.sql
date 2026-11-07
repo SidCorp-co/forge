@@ -8,14 +8,15 @@
 --     `master_or_peer`.
 -- A park question is an open free-text question on an issue that nobody asked through a door
 -- (`asked_by` null), no design revision answers, and no comment minted (a comment's question keeps
--- the comment's id). Each row moved is named in a NOTICE; a park question whose first round says
--- nothing of what would settle it (no `needed`) cannot be placed, and aborts the deploy naming it.
+-- the comment's id). Each row moved is named in a NOTICE. A row is placed by its merge wait before
+-- its words, so a mark's park with no `needed` is still `machine`; one with no `needed` and nothing
+-- else to read it by (a park from before `needed` existed) stays `human`, as it is today and as a
+-- person can answer it, and a NOTICE names it as left. Nothing here aborts a deploy.
 --
 -- ROLLBACK: none needed for the schema; the rows' old kind is `human`, and each NOTICE names a row.
 
 DO $$
 DECLARE
-  bad record;
   r record;
   moved integer := 0;
 BEGIN
@@ -43,12 +44,6 @@ BEGIN
      AND q.steps -> 0 ->> 'answerShape' = 'free_text'
      AND NOT EXISTS (SELECT 1 FROM comments c WHERE c.id = q.id);
 
-  SELECT id, issue_key INTO bad FROM park_owed_1127 WHERE coalesce(btrim(needed), '') = '' LIMIT 1;
-  IF FOUND THEN
-    RAISE EXCEPTION '0632: park question % on % says nothing of what would settle it (no `needed` on its first round), so what it waits on cannot be read; answer or void it, then deploy again',
-      bad.id, bad.issue_key;
-  END IF;
-
   FOR r IN
     SELECT k.id, k.issue_key,
            CASE
@@ -56,6 +51,7 @@ BEGIN
              WHEN k.issue_status = 'needs_info' AND k.waiting_kind = 'needs_resource' THEN 'master_or_peer'
              WHEN named.keys IS NOT NULL THEN 'master_or_peer'
            END AS kind,
+           coalesce(btrim(k.needed), '') = '' AS mute,
            CASE
              WHEN k.awaits_merge THEN 'its own merge mark answers it'
              WHEN k.issue_status = 'needs_info' AND k.waiting_kind = 'needs_resource' THEN 'it waits on a resource'
@@ -73,7 +69,12 @@ BEGIN
       ) named ON true
      ORDER BY k.id
   LOOP
-    CONTINUE WHEN r.kind IS NULL;
+    IF r.kind IS NULL THEN
+      IF r.mute THEN
+        RAISE NOTICE '0632: park question % on % left human: nothing says what settles it (no `needed`, no merge wait)', r.id, r.issue_key;
+      END IF;
+      CONTINUE;
+    END IF;
     UPDATE agent_questions SET blocker_kind = r.kind, updated_at = now() WHERE id = r.id;
     moved := moved + 1;
     RAISE NOTICE '0632: park question % on % moved from human to %: %', r.id, r.issue_key, r.kind, r.why;

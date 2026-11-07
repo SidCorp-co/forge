@@ -3,7 +3,8 @@
  * (ISS-1127): each one whose park waits on no person moves off `human` and is named in a NOTICE — its
  * own merge mark to `machine`, a resource park or another issue named in `needed` to
  * `master_or_peer` — and a person's answer, a comment's question and a question someone asked keep
- * theirs. A park question that says nothing of what would settle it aborts the deploy naming it.
+ * theirs. A park question that says nothing of what would settle it, and waits on no mark, stays a
+ * person's and is named in a NOTICE; nothing aborts the deploy.
  *
  * @direct-test-of packages/core/drizzle/migrations/0632_a_park_question_is_owed_by_what_it_waits_on.sql
  */
@@ -117,16 +118,23 @@ describe('0632 moves each open park question that waits on no person off it', ()
     expect(said).not.toContain(onPerson);
   });
 
-  it('aborts naming a park question that says nothing of what would settle it', async () => {
-    const issue = await parked('needs_resource');
+  it('places a merge-mark park with no `needed` as the machine’s, and leaves a mute one a person’s, naming it, never aborting', async () => {
+    const merged = await parked('needs_answer');
+    const onMark = await asked(merged, null, { mergeOf: merged });
+    const issue = await parked('needs_decision');
     const mute = await asked(issue, null);
-    const failed = await m.migrate().then(
-      () => null,
-      (e: unknown) => e as Error & { cause?: { message?: string } },
-    );
-    expect(failed?.cause?.message ?? failed?.message).toMatch(
-      new RegExp(`^0632: park question ${mute} on EPOD-\\d+ says nothing of what would settle it`),
-    );
+    const notices: string[] = [];
+    await m.migrate((n) => notices.push(n));
+    expect(await kindOf(onMark)).toBe('machine');
     expect(await kindOf(mute)).toBe('human');
+    const said = notices.join('\n');
+    expect(said).toMatch(
+      new RegExp(`0632: park question ${onMark} on EPOD-\\d+ moved from human to machine`),
+    );
+    expect(said).toMatch(
+      new RegExp(
+        `0632: park question ${mute} on EPOD-\\d+ left human: nothing says what settles it`,
+      ),
+    );
   });
 });
