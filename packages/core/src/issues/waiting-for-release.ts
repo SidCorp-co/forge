@@ -7,11 +7,13 @@
 //
 // Only a close on the machine that has the holder's close counts (`IN_SCOPE_CLOSE_SINCE`): a row
 // closed under the release-only rule keeps what it holds and joins no roster. A design-only or
-// adoption-only close ships nothing a release carries, so it waits for none.
+// adoption-only close ships nothing a release carries, so it waits for none; nor does a close whose
+// mark names its landing outside git (ISS-1129): artifacts and no commit, a change no build holds.
 
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { designOnlyMarkSql } from './design-delivery.js';
+import { markClaimsCommitSql } from './mark-trail.js';
 import { releasedSql } from './release-evidence.js';
 
 /** The shape of the issue machine on which the holder's close (`met.in.scope`) was first declared. */
@@ -44,15 +46,33 @@ export function adoptionOnlyMarkSql(i: SQL): SQL {
 }
 
 /**
+ * The issue row aliased `i` carries a mark that names its landing outside git (ISS-1129, agenfold
+ * ISS-272): artifacts, no commit in `merged_commit_sha` or claimed by its current mark, no read
+ * paths. Its change was made where it runs (a console's config, a CMS entry), so no build a release
+ * deploys holds it, and once closed met in scope it shipped on its own record. Design-only and
+ * adoption-only marks are this shape too. Never NULL.
+ */
+export function outsideGitMarkSql(i: SQL): SQL {
+  return sql`coalesce((${i}.merged_at IS NOT NULL
+    AND coalesce(trim(${i}.merged_commit_sha), '') = ''
+    AND ${i}.merged_paths IS NULL
+    AND jsonb_typeof(${i}.merged_artifacts) = 'array'
+    AND jsonb_array_length(${i}.merged_artifacts) > 0
+    AND NOT ${markClaimsCommitSql(i)}), false)`;
+}
+
+/**
  * The issue row aliased `i` is `closed` met in scope by its holder and no shipped release holds its
  * work yet: its merge recorded, its newest close the `awaiting_release` edge on a machine that has
- * the holder's close, not design-only or adoption-only, and not `releasedSql`. Never NULL.
+ * the holder's close, not design-only, adoption-only or otherwise outside git, and not
+ * `releasedSql`. Never NULL.
  */
 export function closedUnreleasedSql(i: SQL): SQL {
   return sql`(${i}.status = 'closed'
     AND ${i}.merged_at IS NOT NULL
     AND NOT ${designOnlyMarkSql(i)}
     AND NOT ${adoptionOnlyMarkSql(i)}
+    AND NOT ${outsideGitMarkSql(i)}
     AND coalesce((
       SELECT c.from_status = 'awaiting_release' AND coalesce(c.machine_version, 0) >= ${IN_SCOPE_CLOSE_SINCE}
         FROM kernel_transitions c

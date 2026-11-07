@@ -21,7 +21,7 @@
  * issue reads as marked with no claim until it is marked again.
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import type { CommitReading } from './commit-landing.js';
@@ -96,6 +96,19 @@ const IS_UNMARK = sql`(a.action = ${UNMARK_RECORD}
 
 /** A mark the stamp took. A mark it outranked changed nothing and is not the current mark. */
 const IS_STAMPED_MARK = sql`(a.action = ${MARK_RECORD} AND (a.payload ->> 'stamped')::boolean)`;
+
+/**
+ * The issue row aliased `i` has a current mark claiming a whole commit, as `currentMarkClaims` reads
+ * it: the newest stamped mark or unmark is a mark naming one. Never NULL.
+ */
+export function markClaimsCommitSql(i: SQL): SQL {
+  return sql`coalesce((
+    SELECT CASE WHEN a.action = ${MARK_RECORD} THEN a.payload ->> 'commit' END ~* '^[0-9a-f]{40}$'
+      FROM activity_log a
+     WHERE a.issue_id = ${i}.id AND (${IS_STAMPED_MARK} OR ${IS_UNMARK})
+     ORDER BY a.created_at DESC, (a.action = ${MARK_RECORD}) ASC
+     LIMIT 1), false)`;
+}
 
 /**
  * The commit each issue's current mark claims, by issue id; an issue whose newest trail record is an

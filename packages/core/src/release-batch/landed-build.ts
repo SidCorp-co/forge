@@ -152,6 +152,36 @@ async function recordedLandings(
   return out;
 }
 
+/**
+ * Why an issue names no landed build, with the one act its status takes (ISS-1129): a closed issue
+ * refuses the unmark (`issues/merged-at.ts:refuseUnmarkOnClosed`), so it is offered the correction
+ * door; a mark naming artifacts and no commit landed outside git, where no commit is owed and a
+ * holder's close ships it on its own record (`issues/waiting-for-release.ts:outsideGitMarkSql`).
+ */
+function noCommitWhy(
+  key: string,
+  row: {
+    id: string;
+    mergedAt: Date | null;
+    status: string;
+    artifacts: readonly unknown[] | null;
+    paths: unknown;
+  },
+): string {
+  if (row.mergedAt === null) {
+    return `${key} has not merged, so nothing has landed for a verdict to count on`;
+  }
+  const closed = row.status === 'closed';
+  if ((row.artifacts?.length ?? 0) > 0 && row.paths === null) {
+    return closed
+      ? `${key}'s merge names its landing outside git (artifacts, no commit), so no build holds it for a verdict to count on; it is closed, and shipped on its own record`
+      : `${key}'s merge names its landing outside git (artifacts, no commit), so no build holds it for a verdict to count on: its holder closes it met in scope, and it ships on its own record with no release`;
+  }
+  return closed
+    ? `${key}'s merge records no commit, so nothing says which build it landed as: it is closed, so record the commit it landed at with \`POST /api/issues/${row.id}/merge/correction\` (\`commit\`, \`reason\`)`
+    : `${key}'s merge records no commit, so nothing says which build it landed as: mark it again naming the commit it landed at (\`DELETE\`, then \`POST /api/issues/${row.id}/merge\` with \`target\` and \`commit\`)`;
+}
+
 /** Each issue's landed build, or why it has none. */
 export async function landedBuildsOf(
   issueIds: readonly string[],
@@ -165,6 +195,9 @@ export async function landedBuildsOf(
       mergedAt: issues.mergedAt,
       sha: issues.mergedCommitSha,
       head: issues.mergedHead,
+      status: issues.status,
+      artifacts: issues.mergedArtifacts,
+      paths: issues.mergedPaths,
     })
     .from(issues)
     .where(inArray(issues.id, ids));
@@ -208,13 +241,7 @@ export async function landedBuildsOf(
         basis: `${key}'s merge mark names \`${short(claimed)}\``,
       });
     } else {
-      out.set(row.id, {
-        sha: null,
-        why:
-          row.mergedAt === null
-            ? `${key} has not merged, so nothing has landed for a verdict to count on`
-            : `${key}'s merge records no commit, so nothing says which build it landed as: mark it again naming the commit it landed at (\`DELETE\`, then \`POST /api/issues/${row.id}/merge\` with \`target\` and \`commit\`)`,
-      });
+      out.set(row.id, { sha: null, why: noCommitWhy(key, row) });
     }
   }
   return out;
