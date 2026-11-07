@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.575] - 2026-11-07
+
+Delivery-check questions can be read and answered, and stalled checks finish
+
+### Fixed
+
+- **A requirement's delivery check names only what can be cleared.** Its questions read and answer at their own doors, a check finishes on its own or the sweep restarts it, and its standing never asks a move the gate refuses.
+
 ## [0.4.0-dev.574] - 2026-11-07
 
 Dashboard, Needs you, Home and What's new load faster with far fewer queries
