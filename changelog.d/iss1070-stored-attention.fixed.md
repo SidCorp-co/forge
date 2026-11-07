@@ -1,0 +1,1 @@
+**Your attention and home reads assemble less on every load.** Each issue's traced criteria and their verdicts are kept as they change, so a person in twelve projects waits about a third less for attention.
