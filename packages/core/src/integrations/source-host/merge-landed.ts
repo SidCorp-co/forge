@@ -43,7 +43,10 @@ export async function landingOnTarget(
   const sha = head.toLowerCase();
   const range = await host.readRange(sha, target);
   if (!range.ok) {
-    return { kind: 'unread', why: `the commits ${target} holds past ${short(sha)}: ${range.reason}` };
+    return {
+      kind: 'unread',
+      why: `the commits ${target} holds past ${short(sha)}: ${range.reason}`,
+    };
   }
   const merge = range.commits.find((c) => c.parents.some((p) => p.toLowerCase() === sha));
   if (!merge && !range.complete) {

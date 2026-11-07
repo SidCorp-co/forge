@@ -118,8 +118,14 @@ async function viewOf(
   const sentBy = await whoSent(prior.sentBy);
   const sentAt = prior.deliveryId ? prior.sentAt.toISOString() : null;
   const run =
-    prior.runId === null ? 'with no run' : prior.runId === runId ? 'on this run' : `on run ${prior.runId}`;
-  const what = prior.deploymentUuid ? `deployment ${prior.deploymentUuid}` : 'a deploy Coolify has not named yet';
+    prior.runId === null
+      ? 'with no run'
+      : prior.runId === runId
+        ? 'on this run'
+        : `on run ${prior.runId}`;
+  const what = prior.deploymentUuid
+    ? `deployment ${prior.deploymentUuid}`
+    : 'a deploy Coolify has not named yet';
   return {
     integrationId,
     deploymentUuid: prior.deploymentUuid,

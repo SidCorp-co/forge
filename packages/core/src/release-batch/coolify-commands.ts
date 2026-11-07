@@ -239,7 +239,12 @@ export async function runCoolifyDeploy(input: {
     };
   }
   return shape(
-    await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id, ...targetLabels, ...ask }),
+    await dispatchCoolifyDeployDirect({
+      projectId,
+      integrationId: row.id,
+      ...targetLabels,
+      ...ask,
+    }),
   );
 }
 

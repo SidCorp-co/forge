@@ -18,7 +18,7 @@ import {
   seedIssueStatus,
   truncateAll,
 } from './factories.js';
-import { heads, headShas, mergeMessage, messages, resetPlanted } from './planted-gitlab-merges.js';
+import { headShas, heads, mergeMessage, messages, resetPlanted } from './planted-gitlab-merges.js';
 import { seedProjectDocument } from './release-world.js';
 
 export const BRANCH = 'release/stg';

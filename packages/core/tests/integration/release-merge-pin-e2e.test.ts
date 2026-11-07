@@ -172,8 +172,12 @@ describe('a release merge is held to the head its approval names (FB-571)', () =
     expect(refusal?.code).toBe('RELEASE_MERGE_HEAD_MOVED');
     expect(refusal?.detail).toContain(`head is ${MOVED}`);
     expect(refusal?.detail).toContain(`merges only ${APPROVED}, the head its approval names`);
-    expect(refusal?.detail).toContain('1 commit between them: ab2112113333 ISS-211: contract 17.1.0');
-    expect(refusal?.detail).toContain('abort the release and cut it again, or have the new head approved');
+    expect(refusal?.detail).toContain(
+      '1 commit between them: ab2112113333 ISS-211: contract 17.1.0',
+    );
+    expect(refusal?.detail).toContain(
+      'abort the release and cut it again, or have the new head approved',
+    );
     expect(planted.merges).toEqual([]);
   });
 

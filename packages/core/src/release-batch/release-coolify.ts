@@ -300,22 +300,28 @@ function sentPayload(
  * dispatch returns `reason: 'no-integration'` and stamps the skipped substep.
  */
 // release/deploy after:stamp — the deploy is a caller's act on a landed change (`POST …/integrations/coolify/deploy`): the issue path reaches every environment but production before the release stage, and the release run reaches production; a binding reaching production parks for a human unless the project document's production environment deploys on-land
-export async function tryDispatchCoolifyRelease(args: {
-  projectId: string;
-  issueId: string | null;
-  runId: string;
-  /** Hard filter — when set, dispatch ONLY this binding. */
-  integrationId?: string | null;
-  allowLive?: boolean;
-  /** ISS-1279 — the release path passes it; the landing auto-subscriber does not. */
-  takeEnvironmentLock?: boolean;
-  /** Deploy only these targets of each binding: the fast lane's web-only deploy (REQ-39 BC-7). */
-  targetLabels?: readonly string[] | undefined;
-} & DeployAsk): Promise<DispatchOutcome> {
+export async function tryDispatchCoolifyRelease(
+  args: {
+    projectId: string;
+    issueId: string | null;
+    runId: string;
+    /** Hard filter — when set, dispatch ONLY this binding. */
+    integrationId?: string | null;
+    allowLive?: boolean;
+    /** ISS-1279 — the release path passes it; the landing auto-subscriber does not. */
+    takeEnvironmentLock?: boolean;
+    /** Deploy only these targets of each binding: the fast lane's web-only deploy (REQ-39 BC-7). */
+    targetLabels?: readonly string[] | undefined;
+  } & DeployAsk,
+): Promise<DispatchOutcome> {
   const { projectId, issueId, runId } = args;
   const takeEnvironmentLock = args.takeEnvironmentLock === true;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  const targets = await deployTargets(projectId, args.integrationId ?? null, args.allowLive ?? true);
+  const targets = await deployTargets(
+    projectId,
+    args.integrationId ?? null,
+    args.allowLive ?? true,
+  );
   const { reachesLive, envOf, reachedBy } = targets;
   if (targets.pairs.length === 0) {
     await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
@@ -434,17 +440,19 @@ function jobIdOf(key: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-export async function dispatchCoolifyDeployDirect(args: {
-  projectId: string;
-  integrationId: string;
-  /** Deploy only these targets of the binding: the fast lane's web-only deploy (REQ-39 BC-7). */
-  targetLabels?: readonly string[] | undefined;
-  /**
-   * One act's own key, so a redelivered landing deploys once (`landing-deploy.ts`): the job is queued
-   * under an id derived from it, and a second send finds it there. Fresh where absent.
-   */
-  requestId?: string | undefined;
-} & DeployAsk): Promise<DispatchOutcome> {
+export async function dispatchCoolifyDeployDirect(
+  args: {
+    projectId: string;
+    integrationId: string;
+    /** Deploy only these targets of the binding: the fast lane's web-only deploy (REQ-39 BC-7). */
+    targetLabels?: readonly string[] | undefined;
+    /**
+     * One act's own key, so a redelivered landing deploys once (`landing-deploy.ts`): the job is queued
+     * under an id derived from it, and a second send finds it there. Fresh where absent.
+     */
+    requestId?: string | undefined;
+  } & DeployAsk,
+): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
   const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const pair = pairs.find((p) => p.binding.id === integrationId);

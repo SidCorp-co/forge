@@ -8,15 +8,15 @@ export {
 export { CoolifyApiError, describeCoolifyForbidden } from './coolify/client.js';
 export { type HealthReading, probeHealth } from './coolify/health-probe.js';
 export {
-  type DeployCaller,
-  type SentDeploy,
-  sentDeploysOf,
-} from './coolify/sent-deploys.js';
-export {
   buildClient,
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
 } from './coolify/log-fetch.js';
+export {
+  type DeployCaller,
+  type SentDeploy,
+  sentDeploysOf,
+} from './coolify/sent-deploys.js';
 export type {
   CoolifyConfig,
   CoolifyRollbackImage,

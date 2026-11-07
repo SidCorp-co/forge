@@ -119,7 +119,12 @@ beforeEach(async () => {
 type Doc = Record<string, unknown>;
 
 const deploy = async (body: Doc) => {
-  const res = await api(token, 'POST', `/api/projects/${projectId}/integrations/coolify/deploy`, body);
+  const res = await api(
+    token,
+    'POST',
+    `/api/projects/${projectId}/integrations/coolify/deploy`,
+    body,
+  );
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body as Doc & { alreadySent?: Doc[]; redeployedOver?: Doc[] };
 };

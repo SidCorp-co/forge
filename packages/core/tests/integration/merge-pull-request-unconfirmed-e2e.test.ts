@@ -27,12 +27,7 @@ import {
   rows,
   seedWorld,
 } from '../helpers/host-merge-world.js';
-import {
-  callFails,
-  containment,
-  merged,
-  merges,
-} from '../helpers/planted-gitlab-merges.js';
+import { callFails, containment, merged, merges } from '../helpers/planted-gitlab-merges.js';
 
 vi.mock('../../src/integrations/source-host/resolve.js', async (importOriginal) => {
   const planted = await import('../helpers/planted-gitlab-merges.js');
