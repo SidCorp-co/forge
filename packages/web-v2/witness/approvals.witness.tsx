@@ -63,8 +63,8 @@ createRoot(document.getElementById("root") as HTMLElement).render(
             <NavRail
               compact={false}
               workspaceItems={workspaceNavItems(0, undefined)}
-              projectItems={projectMenu({ decisions: READ })}
-              activeKey="proj-approvals"
+              projectItems={projectMenu({})}
+              activeKey="proj-overview"
               onNavigate={noop}
               groupOpen={{}}
               onToggleGroup={noop}

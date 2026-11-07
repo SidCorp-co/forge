@@ -1,7 +1,6 @@
 import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isNavGroup } from "@/design";
 import { needsMe } from "@/features/ecosystem";
 import type { WorkspaceRead } from "@/features/ecosystem";
-import type { NeedsYouDecisions } from "@forge/contracts/needs-you-decisions";
 import { needsYouHint } from "@/features/needs-you";
 import type { NeedsYouAreaKey, NeedsYouResponse } from "@/features/needs-you";
 import { labelCopy } from "@/lib/i18n/labels";
@@ -89,8 +88,6 @@ export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isNavGroup
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
   needsYou?: NeedsYouResponse | undefined;
-  /** The decisions the viewer owes: the Needs you read's `decisions` (REQ-48 BC-11). No rail row counts them since the Approvals row went (ISS-1071). */
-  decisions?: Pick<NeedsYouDecisions, "total"> | undefined;
 }
 
 const AREA_OF: Record<string, NeedsYouAreaKey> = {

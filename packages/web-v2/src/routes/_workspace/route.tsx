@@ -206,10 +206,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const dock = useChatDockState(railProject?.id ?? null);
   const pageColumnRef = useRef<HTMLDivElement>(null);
   const tourRelease = useTourRelease(railRef);
-  // the rail's badges read one Needs you read, its decisions count included: the decisions read is
-  // the pages' that list them, never every route's (ISS-1070)
+  // the rail's badges read one Needs you read: the decisions read is the pages' that list them, never
+  // every route's (ISS-1070), and no rail row counts decisions since Approvals left it (ISS-1071)
   const needsYou = useNeedsYou(railRef).data;
-  const decisions = needsYou ? { total: needsYou.decisions } : undefined;
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -259,7 +258,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           attentionCount={attentionCount}
           railSlug={railSlug}
           rail={rail}
-          badges={{ needsYou, decisions }}
+          badges={{ needsYou }}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={() => void logout()}
@@ -277,7 +276,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attentionCount={attentionCount}
-        badges={{ needsYou, decisions }}
+        badges={{ needsYou }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}

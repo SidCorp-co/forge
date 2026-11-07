@@ -72,7 +72,7 @@ describe("the nav model", () => {
 
   it("holds no Approvals row: the serious decisions are read under the Dashboard's Needs you, which its page lights (ISS-1071)", () => {
     expect(PROJECT_ITEMS.map((it) => it.key)).not.toContain("proj-approvals");
-    expect(projectMenu({ decisions: { total: 4 } }).map((e) => e.key)).not.toContain("proj-approvals");
+    expect(projectMenu({}).map((e) => e.key)).not.toContain("proj-approvals");
     expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("proj-overview");
   });
 
