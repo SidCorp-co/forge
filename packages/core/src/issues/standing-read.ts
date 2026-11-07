@@ -96,6 +96,8 @@ interface IssueRowRaw {
   by_agent: boolean;
   /** Filed by an account of the retired steward (`steward_accounts`). */
   by_steward: boolean;
+  /** The person who owns the box it was filed from; null where none filed it. */
+  box_owner_id: string | null;
   requirement_id: string | null;
   planned_revision: number | null;
   plan: string | null;
@@ -152,6 +154,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              (i.created_by_device_id IS NOT NULL OR EXISTS (
                SELECT 1 FROM users u WHERE u.id = i.created_by_id AND u.kind = 'agent')) AS by_agent,
              EXISTS (SELECT 1 FROM steward_accounts sa WHERE sa.user_id = i.created_by_id) AS by_steward,
+             (SELECT d.owner_id FROM devices d WHERE d.id = i.created_by_device_id) AS box_owner_id,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
@@ -270,6 +273,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     assignee: r.assignee_id,
     creator: r.created_by_id,
     creatorIsSteward: r.by_steward,
+    boxOwner: r.box_owner_id,
   });
   const owner = ownerId ? f.people.get(ownerId) : undefined;
   return {
@@ -421,7 +425,7 @@ async function standingRows(
       [...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))],
       projectId,
     ),
-    peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
+    peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id, r.box_owner_id])),
     changedTracedOf(db, ids),
   ]);
   const key = (seq: number) => formatIssueRef(prefix, seq);
