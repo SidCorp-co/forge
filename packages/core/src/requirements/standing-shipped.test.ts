@@ -103,6 +103,9 @@ describe('an agreed requirement with no issue', () => {
     const s = read([]);
     expect(kinds(s)).toEqual(['breakdown']);
     expect(s.waitingOn.says.act.key).toBe('standing.act.breakDownBy');
+    // owed from the agree on, the SLA its latest day (ISS-1113)
+    expect(s.waitingOn.act).toMatch(/^break down now; (latest|overdue since) \d{4}-\d{2}-\d{2}$/);
+    expect(s.waitingOn.rule).toMatch(/break it down now, latest \d{4}-\d{2}-\d{2}/);
     expect(s.next).toBe('in_delivery');
   });
 

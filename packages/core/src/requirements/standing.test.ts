@@ -456,7 +456,11 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
       liveBuild,
     });
     expect(s.state).toBe('delivered');
-    expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
+    // owed from the delivery on, the SLA its latest day (ISS-1113)
+    expect(s.waitingOn.act).toMatch(
+      /^check BC-1, BC-3, BC-5 against the traceability matrix now; (latest|overdue since) \d{4}-\d{2}-\d{2}$/,
+    );
+    expect(s.waitingOn.rule).toMatch(/the BA checks now, latest \d{4}-\d{2}-\d{2}/);
   });
 });
 
