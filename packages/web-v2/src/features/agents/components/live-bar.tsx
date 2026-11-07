@@ -1,6 +1,7 @@
 // The bar on every project page that says what runs on the project now (REQ-15 BC-10, ISS-856): the
 // master, the runs and jobs in flight, releases and deploys, and the support rooms' turns, one line
-// collapsed and a short flat list open, each item a link. It reads the run standing and the rooms'
+// collapsed and a short flat list open, each item a link. A build a lease holds with no run over it
+// (a direct-mode master's, ISS-1102) is running too, said as the master's where core says it is. It reads the run standing and the rooms'
 // turns once and again only when a project-room frame says they moved; it never polls. Its face is
 // plain words in the person's language (ISS-864, `ui-copy-rule` 10): an issue's title, never its key;
 // keys, room ids, steps and boxes sit in each item's tooltip and behind its link.
@@ -19,7 +20,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { type NowItem, type ProjectNow, projectNowOf, type Read } from "../now";
 import { nowQueries } from "../queries";
-import type { RunStanding } from "../types";
+import type { RunLeasedBuild, RunStanding } from "../types";
 
 /** How many items the collapsed line names before it counts the rest. */
 const LINE_ITEMS = 3;
@@ -57,27 +58,50 @@ function runRow(r: RunStanding, t: Copy, label: Label, language: Language, slug:
   };
 }
 
+function leasedRow(b: RunLeasedBuild, t: Copy, label: Label, slug: string): Row {
+  const title = b.issue.title;
+  const step = b.step ? label("workStep", b.step) : null;
+  const text = b.byMaster
+    ? step
+      ? t("agents.now.leased.master", { step, title })
+      : t("agents.now.leased.masterAny", { title })
+    : step
+      ? t("agents.now.run", { step, title })
+      : title;
+  return { key: `leased:${b.issue.key}`, text, href: issueHref(slug, b.issue.key), tip: tipOf(b.issue.key, b.step, b.holder), since: b.stepStartedAt };
+}
+
+type MasterItem = Extract<NowItem, { kind: "master" }>;
+
+/** The master's line, carrying the step, box and start of the run or leased build on its issue. */
+function masterRow(item: MasterItem, folded: NowItem | undefined, t: Copy, slug: string): Row {
+  const fold = folded?.kind === "run" ? folded.run : null;
+  const lease = folded?.kind === "leased" ? folded.build : null;
+  const title = item.issue?.title ?? null;
+  return {
+    key: "master",
+    text: item.word === "working" && title ? t("agents.now.master.on", { title }) : t(`agents.now.master.${item.word}`),
+    href: item.issue ? issueHref(slug, item.issue.key) : masterHref(slug),
+    tip: tipOf(item.issue?.key, fold?.step.step ?? lease?.step, fold?.device?.name ?? lease?.holder ?? item.box),
+    since: fold?.startedAt ?? lease?.stepStartedAt ?? null,
+  };
+}
+
 function rowsOf(now: ProjectNow, t: Copy, label: Label, language: Language, slug: string): Row[] {
   const master = now.items.find((i) => i.kind === "master");
   const masterKey = master?.issue?.key ?? null;
-  // a run on the issue the master works is the master's work: said once, on the master's line
-  const folded = now.items.find((i) => i.kind === "run" && masterKey !== null && i.run.issue?.key === masterKey);
+  // a run or a leased build on the issue the master works is the master's work: said once, on the master's line
+  const folded = now.items.find(
+    (i) => masterKey !== null && ((i.kind === "run" && i.run.issue?.key === masterKey) || (i.kind === "leased" && i.build.issue.key === masterKey)),
+  );
   const rowOf = (item: NowItem): Row | null => {
     switch (item.kind) {
-      case "master": {
-        if (item.word === "idle") return null;
-        const fold = folded?.kind === "run" ? folded.run : null;
-        const title = item.issue?.title ?? null;
-        return {
-          key: "master",
-          text: item.word === "working" && title ? t("agents.now.master.on", { title }) : t(`agents.now.master.${item.word}`),
-          href: item.issue ? issueHref(slug, item.issue.key) : masterHref(slug),
-          tip: tipOf(item.issue?.key, fold?.step.step, fold?.device?.name ?? item.box),
-          since: fold?.startedAt ?? null,
-        };
-      }
+      case "master":
+        return item.word === "idle" ? null : masterRow(item, folded, t, slug);
       case "run":
         return item === folded ? null : runRow(item.run, t, label, language, slug);
+      case "leased":
+        return item === folded ? null : leasedRow(item.build, t, label, slug);
       case "release": {
         const r = item.run;
         const version = r.release?.version ?? null;

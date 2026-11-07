@@ -15,7 +15,7 @@ import { TooltipProvider } from "@/design";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { routeEvent } from "@/lib/ws/event-router";
-import type { MasterStanding, RunStanding, RunStandingList } from "../types";
+import type { MasterStanding, RunLeasedBuild, RunStanding, RunStandingList } from "../types";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({}));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {}, useRooms: () => {} }));
@@ -64,7 +64,16 @@ const run = (over: Partial<RunStanding>): RunStanding =>
     ...over,
   }) as unknown as RunStanding;
 
-const list = (items: RunStanding[], m = master()): RunStandingList => ({ items, master: m }) as unknown as RunStandingList;
+const list = (items: RunStanding[], m = master(), leased: RunLeasedBuild[] = []): RunStandingList => ({ items, master: m, leased }) as unknown as RunStandingList;
+const leasedBuild = (over: Partial<RunLeasedBuild> = {}): RunLeasedBuild => ({
+  issue: { key: "ISS-1070", title: "The app shell loads slowly", status: "in_progress" },
+  step: "build",
+  stepStartedAt: minutesAgo(34),
+  holder: "forge-master-box",
+  byMaster: true,
+  expiresAt: minutesAgo(-240),
+  ...over,
+});
 const turns = (rooms: SupportTurnsView["rooms"]): SupportTurnsView => ({ generatedAt: minutesAgo(0), projectId: P, rooms });
 
 interface World {
@@ -229,5 +238,45 @@ describe("the project bar (REQ-15 BC-10)", () => {
     await waitFor(() => expect(bar().textContent).toContain("2 messages waiting"));
     expect(roomReads()).toBe(2);
     expect(liveReads()).toBe(2);
+  });
+});
+
+describe("the project bar counts a leased build (ISS-1102)", () => {
+  // ISS-1102 (QA on dev.577): a direct-mode master builds through its own subagents under an issue
+  // lease, with no run record; the Issues header read "Nothing running" beside three rows "In progress ·
+  // Build". Core serves those leased builds beside the runs, and the bar counts them as running.
+  it("counts a leased build with no run as running, named as the master's, its codes in the tooltip", async () => {
+    core({
+      live: list([], master(), [leasedBuild(), leasedBuild({ issue: { key: "ISS-1100", title: "Owed checks wait a day", status: "in_progress" }, stepStartedAt: minutesAgo(17), byMaster: false, holder: "someone-else" })]),
+      recent: list([]),
+      rooms: turns([]),
+    });
+    mount();
+    await waitFor(() => expect(bar().dataset.state).toBe("busy"));
+    expect(screen.queryByTestId("live-bar-nothing")).toBeNull();
+    expect(screen.getAllByTestId("live-bar-item")).toHaveLength(2);
+    const href = (name: string) => screen.getAllByRole("link", { name }).map((a) => a.getAttribute("href"));
+    expect(href("Master · Build: The app shell loads slowly")).toContain("/projects/forge/issues/ISS-1070");
+    expect(href("Build: Owed checks wait a day")).toContain("/projects/forge/issues/ISS-1100");
+    expect(bar().textContent).toContain("34m");
+    expect(bar().textContent).not.toMatch(CODES);
+    expect(bar().textContent).not.toContain("forge-master-box");
+    const [own] = screen.getAllByRole("link", { name: "Master · Build: The app shell loads slowly" });
+    if (!own) throw new Error("no leased build link");
+    await userEvent.setup().hover(own);
+    expect((await tip()).textContent).toBe("ISS-1070 · build · forge-master-box");
+  });
+
+  it("says a leased build once when the master's pass names its issue", async () => {
+    core({
+      live: list([], master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-1070", trigger: "nudge" } }), [leasedBuild()]),
+      recent: list([]),
+      rooms: turns([]),
+    });
+    mount();
+    await waitFor(() => expect(bar().dataset.state).toBe("busy"));
+    expect(screen.getAllByTestId("live-bar-item")).toHaveLength(1);
+    expect(bar().textContent).toContain("Master working: The app shell loads slowly");
+    expect(bar().textContent).toContain("34m");
   });
 });

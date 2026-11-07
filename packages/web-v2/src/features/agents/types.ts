@@ -2,6 +2,7 @@ export type {
   RunEvent,
   RunGroup,
   RunHeld,
+  RunLeasedBuild,
   RunStanding,
   RunStandingDetail,
   RunStandingList,

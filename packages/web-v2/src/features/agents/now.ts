@@ -1,8 +1,8 @@
 // What runs on a project now, as the project bar draws it (REQ-15 BC-10): read from the run standing
-// with its master beside it and from each support room's turn, and derived into nothing core did not
-// say. A source that did not answer is named unreadable, never read as idle (VISION: state-never-lies).
+// with its master and the leased builds no run covers beside it (ISS-1102), and from each support
+// room's turn, and derived into nothing core did not say. A source that did not answer is named unreadable, never read as idle (VISION: state-never-lies).
 import type { SupportRoomTurn, SupportTurnsView } from "@forge/contracts/project-now";
-import type { MasterStanding, RunStanding, RunStandingList } from "./types";
+import type { MasterStanding, RunLeasedBuild, RunStanding, RunStandingList } from "./types";
 
 /** How the bar names the master: present or absent, working or idle. */
 export type MasterWord = "working" | "idle" | "waiting" | "silent" | "absent";
@@ -22,6 +22,8 @@ const MASTER_WORD: Record<MasterStanding["state"], MasterWord> = {
 export type NowItem =
   | { kind: "master"; word: MasterWord; issue: { key: string; title: string | null } | null; box: string | null }
   | { kind: "run"; run: RunStanding }
+  /** An issue a live lease holds with no run over it: a direct-mode build (`runs/leased-builds.ts`). */
+  | { kind: "leased"; build: RunLeasedBuild }
   | { kind: "release"; run: RunStanding }
   | { kind: "deploy"; run: RunStanding }
   /** The rooms whose bot is answering, or whose members wait on it: one item each, the fact said once (ISS-864). */
@@ -38,7 +40,7 @@ export interface ProjectNow {
   /** Sources that did not answer; the bar says so for each, and never says nothing runs while one stands. */
   unreadable: NowSource[];
   loading: boolean;
-  /** Something moves: a run, a working or waiting master, a room answering or waited on. */
+  /** Something moves: a run, a leased build, a working or waiting master, a room answering or waited on. */
   busy: boolean;
   /** The newest instant anything finished or moved, for the line that says nothing runs. */
   lastActivityAt: string | null;
@@ -59,9 +61,11 @@ export function projectNowOf(live: Read<RunStandingList>, recent: Read<RunStandi
   if (live.state === "read") {
     const m = live.data.master;
     const key = m.pass?.issueKey ?? null;
-    const title = m.passIssueTitle ?? live.data.items.find((r) => r.issue?.key === key)?.issue?.title ?? null;
+    const title =
+      m.passIssueTitle ?? live.data.items.find((r) => r.issue?.key === key)?.issue?.title ?? live.data.leased.find((b) => b.issue.key === key)?.issue.title ?? null;
     items.push({ kind: "master", word: MASTER_WORD[m.state], issue: key ? { key, title } : null, box: m.device?.name ?? null });
     for (const run of live.data.items) items.push({ kind: laneKind(run), run });
+    for (const build of live.data.leased) items.push({ kind: "leased", build });
   } else if (live.state === "unreadable") unreadable.push("runs");
   if (rooms.state === "read") {
     const answering = rooms.data.rooms.filter((r) => r.state === "answering");

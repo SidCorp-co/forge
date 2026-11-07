@@ -355,6 +355,8 @@
     "agents.now.deployingAny": "Deploying",
     "agents.now.expand": "Show all",
     "agents.now.lastActivity": "last activity {at}",
+    "agents.now.leased.master": "Master · {step}: {title}",
+    "agents.now.leased.masterAny": "Master: {title}",
     "agents.now.master.absent": "No master",
     "agents.now.master.idle": "Master idle",
     "agents.now.master.on": "Master working: {title}",
