@@ -25,7 +25,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { rowIn } from '../feedback/index.js';
-import { activeIssuePrefix, closedUnreleasedSql } from '../issues/index.js';
+import { activeIssuePrefix, designOnlyMarkSql, releasedSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type LinkRow, readFeedbackLines } from './feedback.js';
 import { stamp } from './read.js';
@@ -40,7 +40,7 @@ const QUEUED: readonly string[] = TAKEABLE_STATUSES;
  */
 export function workStateOf(
   statuses: readonly string[],
-  /** How many of them are closed met in scope with no shipped release holding them yet: landed, not shipped. */
+  /** How many of them are closed with no shipped release holding them (`closedUnshippedSql`): landed, not shipped. */
   unreleased = 0,
 ): Pick<FeedbackWork, 'state' | 'running' | 'total'> {
   const live = statuses.filter((s) => s !== 'dropped');
@@ -144,6 +144,17 @@ interface WorkIssueRow {
   unreleased: boolean;
 }
 
+/**
+ * A closed carrier no shipped release holds: landed, not shipped. Whether work is live is the release
+ * record's to say, never `closed` (ISS-1062, `issues/release-evidence.ts:releasedSql`), the rule the
+ * estimate's `forecast/scope.ts` reads too, so the item and its estimate never disagree. A design-only
+ * close has no release to wait on. `issues/waiting-for-release.ts:closedUnreleasedSql` answers another
+ * question: what a release cut may still claim, which leaves out a close made before the in-scope close.
+ */
+const closedUnshippedSql = sql`(i.status = 'closed'
+  AND NOT ${designOnlyMarkSql(sql`i`)}
+  AND NOT ${releasedSql(sql`i.id`, sql`i.project_id`)})`;
+
 /** The issues an issue route names, or every issue of the requirement a new-requirement route opened. */
 async function issuesOf(
   projectId: string,
@@ -165,7 +176,7 @@ async function issuesOf(
   if (!where) return [];
   const [rows, prefix] = await Promise.all([
     db.execute(sql`
-      SELECT i.iss_seq, i.title, i.status, ${closedUnreleasedSql(sql`i`)} AS unreleased FROM issues i
+      SELECT i.iss_seq, i.title, i.status, ${closedUnshippedSql} AS unreleased FROM issues i
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL AND ${where}
        ORDER BY i.iss_seq`),
     activeIssuePrefix(projectId),

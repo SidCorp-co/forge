@@ -19,6 +19,7 @@ import {
 import {
   addProjectMember,
   createTestProject,
+  createTestRelease,
   createTestUser,
   rows,
   seedIssueStatus,
@@ -109,18 +110,28 @@ describe('a feedback item always says whether work runs and when it is done', ()
     if (p.estimate.kind === 'none') expect(p.estimate.reason).toBeTruthy();
   });
 
-  it('reads shipped once every carrier is closed', async () => {
+  it('reads shipped once every carrier is closed and a release holds it, and landed before', async () => {
     const p0 = await progress(fb);
+    const carriers: string[] = [];
     for (const i of p0.work.issues as Doc[]) {
       const [row] = await rows<{ id: string }>(
         sql`SELECT id FROM issues WHERE project_id = ${projectId} AND iss_seq = ${Number(String(i.key).split('-')[1])}`,
       );
       await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${row?.id}`);
+      // a seeded close records no in-scope close: the shape of a close made before ISS-1062
       await seedIssueStatus(row?.id as string, 'closed');
+      carriers.push(row?.id as string);
     }
+    // closed, no release holds it: whether work is live is the release record's to say (ISS-1062),
+    // so the item and its estimate both read it landed, never shipped
+    const landed = await progress(fb);
+    expect(landed.work.state, 'closed with no release holding it is landed').toBe('landed');
+    expect(landed.estimate.kind).not.toBe('shipped');
+
+    await createTestRelease(projectId, '9.9.9', carriers, new Date());
     const p = await progress(fb);
     expect(p.work.state).toBe('shipped');
-    expect(p.estimate.kind).toBe('shipped');
+    expect(p.estimate).toMatchObject({ kind: 'shipped', version: '9.9.9' });
   });
 
   it('reads the work of the requirement a new-requirement route opened', async () => {
