@@ -1,8 +1,8 @@
 // ISS-1072 round 3's screens, each in the shell at 1440 and at a phone's 390, light and dark, drawn over
 // the live cases forge-core-61's QA read on dev.571: an issue page whose long title ran under the bar's
 // acts, Issues rows that cut the owner to "orchestr…" beside a long ETA, Project settings › People
-// naming agents by their minted addresses beside a share link with no name, the Projects table's
-// unheaded "2m" column and clipped Team avatars, and the Feedback header's two buttons named Feedback.
+// naming agents by their minted addresses beside a share link with no name, and the Feedback header's
+// two buttons named Feedback. The Projects table is witness/projects-whole.witness.tsx's.
 // Each stage prints `WORDS <page> <theme> <width> <n>` (witness/first-screen.ts), is shot to
 // `<out>/<case>-<page>-<theme>.png`, and names what is wrong on the page drawn.
 //
@@ -18,8 +18,6 @@ import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { MembersTab } from "@/features/project-settings/components/members-tab";
 import { ShareSettings } from "@/features/project-settings/components/shares-section";
-import { ProjectList } from "@/features/projects/components/project-list";
-import type { ProjectConsoleItem } from "@/features/projects/types";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { P as FB_P } from "@/test/vi-chrome-feedback";
 import { Seeded } from "@/test/vi-chrome-requirements";
@@ -127,29 +125,6 @@ const PEOPLE: [QueryKey, unknown][] = [
   [["projects", "all"], []],
 ];
 
-// ── Projects, as the list view draws them ──
-const project = (id: string, name: string, members: string[], minutes: number): ProjectConsoleItem => ({
-  id,
-  slug: name.toLowerCase(),
-  name,
-  orgId: "o1",
-  orgName: "SidCorp",
-  orgIsPersonal: false,
-  role: "admin",
-  orgRole: "owner",
-  createdAt: AT,
-  health: "healthy",
-  liveRuns: 0,
-  openIssues: 74,
-  runnerCount: 1,
-  spend24hUsd: 0,
-  memberCount: members.length,
-  members,
-  lastActivityAt: ago(minutes),
-  pinned: false,
-});
-const PROJECTS = [project("p1", "Forge", ["OR", "QA", "FO", "ST"], 2), project("p2", "Agenfold", ["OR", "AG", "ST", "QA"], 49)];
-
 interface Page {
   name: string;
   path: string;
@@ -172,7 +147,6 @@ const PAGES: Page[] = [
       </Seeded>
     ),
   },
-  { name: "projects", path: "/projects", pattern: "/projects", render: () => <div className="px-8 py-6"><ProjectList items={PROJECTS} now={NOW} spend={false} onTogglePin={() => {}} /></div> },
   { name: "feedback", path: `${P}/feedback`, render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
 ];
 
@@ -218,7 +192,6 @@ const theme = (t: "light" | "dark") => {
   document.documentElement.classList.toggle("dark", t === "dark");
 };
 const cut = (el: HTMLElement) => el.scrollWidth > el.clientWidth + 0.5;
-const overlap = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
 /** What is wrong on each page, by what the QA read on dev.571. */
 function wrongOn(name: string): string[] {
@@ -245,16 +218,6 @@ function wrongOn(name: string): string[] {
     if (document.body.innerText.includes("agents.forge.invalid")) out.push("an agent reads as its minted address");
     for (const t of all("[data-testid=share-title]")) if (!t.innerText.trim()) out.push(`share ${t.closest("tr")?.dataset.shareId} has no name`);
     if (all("[data-testid=share-title]").length < SHARES.length) out.push("a share row draws no name");
-  }
-  if (name === "projects") {
-    for (const th of document.querySelectorAll<HTMLTableCellElement>("th")) if (!th.innerText.trim() && th.cellIndex > 0) out.push(`column ${th.cellIndex + 1} has no header`);
-    for (const row of all("tbody tr")) {
-      const marks = [...row.querySelectorAll<HTMLElement>("td:last-child div > span")];
-      for (let i = 1; i < marks.length; i++) {
-        const [a, b] = [marks[i - 1], marks[i]] as [HTMLElement, HTMLElement];
-        if (overlap(a.getBoundingClientRect(), b.getBoundingClientRect())) out.push(`a Team avatar "${b.innerText}" lies over "${a.innerText}"`);
-      }
-    }
   }
   if (name === "feedback") {
     const named = all("button").filter((b) => /feedback/i.test(b.getAttribute("aria-label") ?? b.innerText) && b.getBoundingClientRect().width > 0);
