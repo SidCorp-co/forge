@@ -2,7 +2,7 @@
  *  move. Landed work is not handed back to be dispatched again: no status moves by itself, so the
  *  agent owing it moves it to `awaiting_release` (REQ-45 BC-1, BC-7; issue-delivery `rule-wedge`). */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { type Db, db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, issueWorkInFlightSql, mergeNotRecorded } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -14,6 +14,19 @@ export type LandedWork = {
   commit: string | null;
   landing: string | null;
 };
+
+/**
+ * Whether the issue row `i` carries a merge recorded after its last reopen: this round's mark, where
+ * a mark the issue was reopened after is the round a failing verdict sent back. The one reading of
+ * "merged since the last reopen": the wedge net's, a run's end's and the strand pass's.
+ */
+export const mergeSinceLastReopenSql = (i: SQL): SQL => sql`(${i}.merged_at IS NOT NULL
+  AND NOT EXISTS (
+        SELECT 1 FROM kernel_transitions k
+         WHERE k.entity = 'issue' AND k.entity_id = ${i}.id
+           AND k.to_status = 'reopen'
+           AND k.created_at > ${i}.merged_at
+      ))`;
 
 /**
  * The issue's mark, where it is this round's and the move to `awaiting_release` would take it; null
@@ -30,13 +43,7 @@ export async function landedWorkStands(
     SELECT i.merged_at, i.merged_commit_sha, i.merged_landing
       FROM issues i
      WHERE i.id = ${issueId}::uuid
-       AND i.merged_at IS NOT NULL
-       AND NOT EXISTS (
-             SELECT 1 FROM kernel_transitions k
-              WHERE k.entity = 'issue' AND k.entity_id = i.id
-                AND k.to_status = 'reopen'
-                AND k.created_at > i.merged_at
-           )
+       AND ${mergeSinceLastReopenSql(sql`i`)}
   `)) as unknown as Array<{
     merged_at: Date | string;
     merged_commit_sha: string | null;

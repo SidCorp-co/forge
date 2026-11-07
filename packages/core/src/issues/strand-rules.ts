@@ -102,6 +102,12 @@ function silence(lease: LeaseReading): string {
 /** What the pass could see about one row, and nothing it inferred. */
 export interface StrandEvidence {
   merged: boolean;
+  /**
+   * Whether the merge is recorded after the issue's last reopen, the reconciler's own reading
+   * (`pipeline/wedge-landed.ts:mergeSinceLastReopenSql`): a reopen carrying one is a fix round that
+   * landed. Absent where the reader did not ask, which reads every landed reopen as a round owed.
+   */
+  mergedSinceReopen?: boolean;
   /** Whether any `pipeline_runs` row has ever existed for this issue, terminal or not. */
   everRan: boolean;
   /** Whether this project has a runner admitted to the job pool. */
@@ -202,12 +208,14 @@ export function heldReleaseWait(
 // independent judge, a landed row a run may take waits on the run that claims it and judges what
 // landed, never on the expired claim of the run that landed it. Where it declares none (`self`, or
 // the builder's own pass), nobody judges between the landing and the release (ISS-1068): a landed
-// open or approved row is the master's to move on to `awaiting_release`, and a landed row sent back
-// (`reopen`) is a fix round the master runs again, read by the rules below as any other reopen. The
-// sweep's reason and the board's standing (`issues/standing.ts`) both read it here.
+// open or approved row is the master's to move on to `awaiting_release`, and so is a `reopen` whose
+// merge is recorded since that reopen, the fix round having landed (issue-delivery `rule-wedge`,
+// ISS-1104). A reopen whose mark predates it is a fix round the master runs again, read by the rules
+// below as any other reopen. The sweep's reason and the board's standing (`issues/standing.ts`)
+// both read it here.
 export function landedWait(
   status: string,
-  evidence: Pick<StrandEvidence, 'merged' | 'judge'>,
+  evidence: Pick<StrandEvidence, 'merged' | 'mergedSinceReopen' | 'judge'>,
 ): {
   /** Whom the board names: the judging run, or the project's master. */
   on: 'judge' | 'master';
@@ -232,7 +240,7 @@ export function landedWait(
       },
     };
   }
-  if (status === 'reopen') return null;
+  if (status === 'reopen' && evidence.mergedSinceReopen !== true) return null;
   const rule = say('issues.rule.landedMaster', { status });
   return {
     on: 'master',

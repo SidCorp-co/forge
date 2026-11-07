@@ -52,6 +52,7 @@ import {
   NOTHING_LIVE_ON_THIS_ISSUE,
 } from './idle-recovered.js';
 import { surface, unchangedStrand, writeStrand } from './idle-strand-write.js';
+import { mergeSinceLastReopenSql } from './wedge-landed.js';
 import { admittedRunner, projectAdminUserIdsFor } from './ports.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
@@ -82,6 +83,8 @@ export interface StrandRecord {
   lease: string;
   evidence: {
     merged: boolean;
+    /** The merge is recorded since the last reopen (`wedge-landed.ts:mergeSinceLastReopenSql`). */
+    mergedSinceReopen: boolean;
     everRan: boolean;
     poolHasRunner: boolean;
     leaseFanout: number;
@@ -101,6 +104,8 @@ export interface CandidateRow {
   /** Text, not a `Date`: `db.execute` hands raw SQL results back unparsed. */
   updated_at: string;
   landed: boolean;
+  /** Landed, by a merge recorded since the issue's last reopen. */
+  landed_since_reopen: boolean;
   step: WorkStep | null;
   lease: unknown;
   strand: unknown;
@@ -208,6 +213,7 @@ function judge(
   const withheld = withheldOf(row);
   const evidence: StrandEvidence = {
     merged: row.landed,
+    mergedSinceReopen: row.landed_since_reopen,
     everRan: row.ever_ran,
     poolHasRunner: pooled.has(row.project_id),
     lease,
@@ -235,6 +241,7 @@ function judge(
       lease: lease.verdict,
       evidence: {
         merged: evidence.merged,
+        mergedSinceReopen: row.landed_since_reopen,
         everRan: evidence.everRan,
         poolHasRunner: evidence.poolHasRunner,
         leaseFanout: lease.fanout,
@@ -276,6 +283,7 @@ function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): 
     lease: lease.verdict,
     evidence: {
       merged: row.landed,
+      mergedSinceReopen: row.landed_since_reopen,
       everRan: row.ever_ran,
       poolHasRunner: false,
       leaseFanout: lease.fanout,
@@ -303,6 +311,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
   const rows = (await db.execute(sql`
     SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at,
            ${landedSql(sql`i`)} AS landed,
+           (${landedSql(sql`i`)} AND ${mergeSinceLastReopenSql(sql`i`)}) AS landed_since_reopen,
            p.issue_prefix, p.name AS project_name,
            (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
            (SELECT w.step FROM issue_work_state w WHERE w.issue_id = i.id)   AS step,
