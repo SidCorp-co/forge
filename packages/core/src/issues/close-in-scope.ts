@@ -134,6 +134,13 @@ export async function closeScopeOf(
   const moves: MovedCriterion[] = [];
   const named = new Set<number>();
   for (const entry of facts.unmet) {
+    if (named.has(entry.criterion)) {
+      unplaced.push({
+        criterion: entry.criterion,
+        why: 'it is named more than once in `unmet`: name each criterion once, with its one destination',
+      });
+      continue;
+    }
     named.add(entry.criterion);
     const c = byN.get(entry.criterion);
     if (!c) {

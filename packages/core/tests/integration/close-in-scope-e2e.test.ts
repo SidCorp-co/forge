@@ -219,6 +219,13 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
     expect(refusalsOf(toFrozen)[0]?.detail).toContain(`${frozen} is \`awaiting_release\``);
     const unknown = await close(id, { unmet: [{ criterion: 7, to: { issue: frozen } }] });
     expect(refusalsOf(unknown)[0]?.detail).toContain('criterion 7: it is not a live criterion');
+    const twice = await close(id, {
+      unmet: [
+        { criterion: 2, to: 'requirement' },
+        { criterion: 2, to: 'requirement' },
+      ],
+    });
+    expect(refusalsOf(twice)[0]?.detail).toContain('criterion 2: it is named more than once');
     expect(await statusOf(id)).toBe('awaiting_release');
   });
 

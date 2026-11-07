@@ -37,9 +37,6 @@ export function runContextTally(): { failed: number; unattributed: number; since
   return { ...tally };
 }
 
-/** Settles every write the recorder started, for a caller that must read after them. */
-export const runContextSettled = (): Promise<void> => work.settled();
-
 /** One batch insert: a row per source, and per issue where the run works several. */
 async function write(
   subject: RunSubject,

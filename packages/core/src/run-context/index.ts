@@ -5,7 +5,6 @@ export {
   type RunSubject,
   recordCarried,
   recordCarriedLater,
-  runContextSettled,
   runContextTally,
 } from './record.js';
 export {
