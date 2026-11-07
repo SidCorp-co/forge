@@ -1,0 +1,1 @@
+**A product whose sign-in reads `identifier` can be judged.** judge-login and the check made when an actor secret is written now take the account under `identifier`, the Strapi convention, beside `email`, `username` and `login`.

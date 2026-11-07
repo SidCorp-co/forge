@@ -11,9 +11,10 @@
 //! a refusal.
 //! - `password` is required: a secret with none (an API key, a token) is the credential itself and is
 //!   refused by name, never written to a file.
-//! - The account is named by the field its sign-in route reads: exactly one of `email`, `username`
-//!   or `login`, sent under that name. These are not aliases of one key: each is the request field
-//!   itself (forge's `/api/auth/local` reads `email`; other products read `username` or `login`), so
+//! - The account is named by the field its sign-in route reads: exactly one of `email`, `username`,
+//!   `login` or `identifier`, sent under that name. These are not aliases of one key: each is the
+//!   request field itself (forge's `/api/auth/local` reads `email`; other products read `username` or
+//!   `login`, and a Strapi sign-in such as SidDesk's reads `identifier`), so
 //!   the secret says which field to send. `account` or `user` names no field and is refused.
 //! - The route is `loginRoute`, the one key a real secret uses (no alias is read):
 //!   `[POST ]<https URL | /path>`, a POST where no method is given. A
@@ -35,8 +36,12 @@ use reqwest::Url;
 use runner_transport::rollover::{self, ROLLOVER};
 use serde_json::{json, Map, Value};
 
-/// The fields an account may be named by: each is also the field the sign-in route reads.
-const ACCOUNT_FIELDS: [&str; 3] = ["email", "username", "login"];
+/// The fields an account may be named by: each is also the field the sign-in route reads. Core's
+/// write-time check reads the same list (`project-config/actor-sign-in.ts`: `ACCOUNT_FIELDS`), and
+/// its test fails when the two differ.
+const ACCOUNT_FIELDS: [&str; 4] = ["email", "username", "login", "identifier"];
+/// The list as a refusal names it.
+const FIELDS_SAID: &str = "`email`, `username`, `login` or `identifier`";
 /// The keys a sign-in route may be named by.
 const ROUTE_KEYS: [&str; 1] = ["loginRoute"];
 /// The fields of a sign-in's answer read as its bearer token.
@@ -142,7 +147,7 @@ fn keys_of(o: &Map<String, Value>) -> String {
 
 const SHAPE: &str =
     "a JSON object naming `loginRoute` (`<https URL or /path>`), the account by the \
-                     field its route reads (`email`, `username` or `login`) and `password`";
+                     field its route reads (`email`, `username`, `login` or `identifier`) and `password`";
 
 /// The one string named by exactly one of `keys`, or the line refusing none or two.
 fn one_of<'a>(
@@ -197,11 +202,11 @@ pub(crate) fn parse_secret(value: &str) -> Result<Secret, String> {
         return Err(match vague {
             Some(k) => format!(
                 "the secret{kind} names its account as `{k}`, which is no field a sign-in route \
-                 reads; name it by the field its route reads: `email`, `username` or `login`"
+                 reads; name it by the field its route reads: {FIELDS_SAID}"
             ),
             None => format!(
                 "the secret{kind} names no account (it holds {}); name it by the field its sign-in \
-                 route reads: `email`, `username` or `login`",
+                 route reads: {FIELDS_SAID}",
                 keys_of(&o)
             ),
         });

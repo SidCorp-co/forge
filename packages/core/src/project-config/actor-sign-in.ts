@@ -7,7 +7,8 @@
  * `sign_in_url`, `sign_in`), so a value that passes here is one judge-login can sign in with:
  * - a JSON object naming `password`; a secret with none (an API key, a token) is the credential
  *   itself and is not probed;
- * - the account under exactly one of `email`, `username` or `login`, sent under that name;
+ * - the account under exactly one of `ACCOUNT_FIELDS`, sent under that name (`identifier` is the
+ *   Strapi convention, which SidDesk's sign-in reads);
  * - `loginRoute`, `[POST ]<https URL | /path>`: a path signs in at the origin of the judged
  *   deployment that answers it (the service whose longest `routes` prefix claims it, else `url`).
  *
@@ -20,7 +21,14 @@ import { serviceRouting } from '@forge/contracts/criterion-probes';
 import { type SignInBody, shown } from '../integrations/deploy/index.js';
 import type { JudgedDeployment } from './testing-secret-values.js';
 
-const ACCOUNT_FIELDS = ['email', 'username', 'login'] as const;
+/** The fields an account may be named by, each also the field its sign-in route reads. judge-login
+ * reads the same list (`session.rs`: `ACCOUNT_FIELDS`), held equal by `actor-sign-in.test.ts`. */
+export const ACCOUNT_FIELDS = ['email', 'username', 'login', 'identifier'] as const;
+
+/** The list as a refusal names it: `email`, `username`, `login` or `identifier`. */
+const FIELDS_SAID = `${ACCOUNT_FIELDS.slice(0, -1)
+  .map((f) => `\`${f}\``)
+  .join(', ')} or \`${ACCOUNT_FIELDS[ACCOUNT_FIELDS.length - 1]}\``;
 
 export interface ActorSecret extends SignInBody {
   field: (typeof ACCOUNT_FIELDS)[number];
@@ -35,8 +43,7 @@ function keysOf(o: Record<string, unknown>): string {
   return keys.length === 0 ? 'no key judge-login reads' : `keys ${keys.join(', ')}`;
 }
 
-const SHAPE =
-  'a JSON object naming `loginRoute` (`<https URL or /path>`), the account by the field its route reads (`email`, `username` or `login`) and `password`';
+const SHAPE = `a JSON object naming \`loginRoute\` (\`<https URL or /path>\`), the account by the field its route reads (${FIELDS_SAID}) and \`password\``;
 
 type OneOf = { why: string } | { one: { key: string; value: string } | null };
 
@@ -94,7 +101,7 @@ export function parseActorSecret(value: string): { secret: ActorSecret } | { why
   if ('why' in account) return account;
   if (!account.one) {
     return {
-      why: `the secret${kind} names no account (it holds ${keysOf(obj)}); name it by the field its sign-in route reads: \`email\`, \`username\` or \`login\``,
+      why: `the secret${kind} names no account (it holds ${keysOf(obj)}); name it by the field its sign-in route reads: ${FIELDS_SAID}`,
     };
   }
   const route = oneOf(obj, ['loginRoute']);

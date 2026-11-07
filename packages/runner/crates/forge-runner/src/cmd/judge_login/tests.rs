@@ -122,6 +122,15 @@ fn http(status: &str, extra: &[String], body: &str) -> String {
 }
 
 fn respond(answers: Answers, line: &str, headers: &str, body: &str) -> String {
+    // A Strapi sign-in, as SidDesk's `/api/auth/login` reads it: the account under `identifier`.
+    if line.starts_with("POST /api/auth/login ") {
+        let sent: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+        if sent != json!({ "identifier": EMAIL, "password": PASSWORD }) {
+            let refused = json!({ "error": { "message": "identifier and password are required" } });
+            return http("400 Bad Request", &[], &refused.to_string());
+        }
+        return http("200 OK", &[], &json!({ "token": TOKEN }).to_string());
+    }
     if line.starts_with("POST /api/auth/local ") {
         let sent: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         if sent != json!({ "email": EMAIL, "password": PASSWORD }) {
@@ -321,6 +330,77 @@ async fn the_dev_secrets_own_shape_signs_in() {
     assert!(sent
         .iter()
         .all(|s| s.line.starts_with("POST /api/auth/local ")));
+}
+
+/// A product whose sign-in reads `identifier` (Strapi; SidDesk's `/api/auth/login`) is signed in
+/// with the account sent under that name, and the same account under `email` is not (ISS-1083).
+#[tokio::test]
+async fn an_account_named_identifier_signs_in_under_that_name() {
+    let (api, seen) = stub(Answers::TokenAndCookies).await;
+    let root = Scratch::new("identifier");
+    let value = secret(json!({
+        "loginRoute": format!("POST {api}/api/auth/login"),
+        "identifier": EMAIL,
+        "password": PASSWORD,
+    }));
+    let (files, _) = login_into(
+        &answer(&api, &value),
+        &root.0.join("strapi"),
+        "dev",
+        "member",
+    )
+    .await
+    .unwrap_or_else(|e| panic!("identifier: {e}"));
+    assert_eq!(
+        std::fs::read_to_string(&files.header).unwrap(),
+        format!("Authorization: Bearer {TOKEN}\n")
+    );
+    let sent = seen.lock().unwrap().clone();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert!(
+        sent[0].line.starts_with("POST /api/auth/login "),
+        "{sent:?}"
+    );
+    let body: Value = serde_json::from_str(&sent[0].body).unwrap();
+    assert_eq!(body, json!({ "identifier": EMAIL, "password": PASSWORD }));
+
+    let as_email = secret(json!({
+        "loginRoute": format!("POST {api}/api/auth/login"),
+        "email": EMAIL,
+        "password": PASSWORD,
+    }));
+    let Err(refused) = login_into(
+        &answer(&api, &as_email),
+        &root.0.join("email"),
+        "dev",
+        "member",
+    )
+    .await
+    else {
+        panic!("the account under `email` signed in where the route reads `identifier`");
+    };
+    assert!(refused.contains("400"), "{refused}");
+
+    let both = secret(json!({
+        "loginRoute": format!("POST {api}/api/auth/login"),
+        "identifier": EMAIL,
+        "email": EMAIL,
+        "password": PASSWORD,
+    }));
+    let Err(refused) =
+        login_into(&answer(&api, &both), &root.0.join("both"), "dev", "member").await
+    else {
+        panic!("a secret naming two accounts signed in");
+    };
+    assert!(
+        refused.contains("names `email` and `identifier` at once"),
+        "{refused}"
+    );
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        2,
+        "a refused shape sends nothing"
+    );
 }
 
 /// curl as a judge runs it, or — on a box with none — the header sent as curl sends a `-H @file`

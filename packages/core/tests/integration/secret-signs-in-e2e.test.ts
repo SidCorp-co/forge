@@ -37,6 +37,8 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 
 const ORIGIN = 'https://qa.forge.example.test';
 const SIGN_IN = `${ORIGIN}/api/auth/local`;
+// a Strapi sign-in, as SidDesk's reads it: the account under `identifier` (ISS-1083)
+const STRAPI_SIGN_IN = `${ORIGIN}/api/auth/login`;
 const EMAIL = 'qa-member-937@forge-dev.test';
 const RIGHT = 'Corr3ct-H0rse-Battery-937';
 const WRONG = 'Tr0ub4dor-drifted-937';
@@ -124,6 +126,15 @@ beforeEach(async () => {
     if (url === SIGN_IN && body.email === EMAIL && body.password === RIGHT) {
       return Response.json({ token: 'session-token-937' });
     }
+    if (url === STRAPI_SIGN_IN) {
+      if (body.identifier === EMAIL && body.password === RIGHT) {
+        return Response.json({ token: 'session-token-1083' });
+      }
+      return Response.json(
+        { error: { message: 'identifier and password are required' } },
+        { status: 400 },
+      );
+    }
     return Response.json(
       { error: { code: 'INVALID_CREDENTIALS', message: 'invalid credentials' } },
       { status: 401 },
@@ -175,6 +186,24 @@ describe('an actor secret is tried at its environment when it is written (ISS-93
     expect(seen).toEqual([{ url: SIGN_IN, body: { email: EMAIL, password: RIGHT } }]);
     const after = await profile();
     expect(after.actors.member).toMatchObject({ usable: true, checkedAt: expect.any(String) });
+  });
+
+  it('an account named identifier signs in under that name, and beside email is refused by name (ISS-1083)', async () => {
+    const strapi = (extra: Record<string, unknown>) =>
+      JSON.stringify({ loginRoute: '/api/auth/login', password: RIGHT, ...extra });
+    const body = await ok(put('dev', 'qa', strapi({ identifier: EMAIL })));
+    expect(body.signIn).toEqual([
+      expect.objectContaining({ actor: 'member', answer: 'signs-in', at: STRAPI_SIGN_IN }),
+    ]);
+    expect(seen).toEqual([{ url: STRAPI_SIGN_IN, body: { identifier: EMAIL, password: RIGHT } }]);
+
+    seen = [];
+    const both = await ok(put('dev', 'qa', strapi({ identifier: EMAIL, email: EMAIL })));
+    expect(both.signIn).toEqual([
+      expect.objectContaining({ actor: 'member', answer: 'unprobeable' }),
+    ]);
+    expect(JSON.stringify(both.signIn)).toContain('names `email` and `identifier` at once');
+    expect(seen).toEqual([]);
   });
 
   it('a value the environment refuses is refused by name, and the value held before is kept', async () => {
