@@ -12,6 +12,7 @@
  * @direct-test-of packages/core/src/issues/built-by.ts
  * @direct-test-of packages/contracts/src/verified-rule.ts
  * @direct-test-of packages/core/src/issues/criteria/service.ts
+ * @direct-test-of packages/core/src/issues/criteria/verdict-counting.ts
  */
 
 import { randomUUID } from 'node:crypto';
