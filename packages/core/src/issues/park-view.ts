@@ -22,7 +22,7 @@ import {
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import { parkSince } from './park-since.js';
-import { answeredSince, openHumanQuestionIdsOn, openQuestionSubjectsOn } from './ports.js';
+import { answeredSince, openAskedQuestionIdsOn, openQuestionSubjectsOn } from './ports.js';
 import { type RecordEntry, recordHistory } from './record-events/history.js';
 import { announcesAMove } from './transition-reason.js';
 
@@ -63,7 +63,7 @@ interface ParkInput {
   comments: readonly ParkComment[];
   /** Comments after the boundary that could be a person's reply, oldest first. */
   replies?: readonly ParkComment[];
-  openHumanQuestionIds: readonly string[];
+  openAskedQuestionIds: readonly string[];
   /** What those open questions are about, each named once. */
   subjects?: readonly QuestionSubject[];
   /** The question row answered since the park was entered, where one was (ISS-258). */
@@ -108,7 +108,7 @@ function resumeFrom(leftStatus: IssueStatus | null, recordId: string | null): Pa
 /** The park view for one issue, or `null` where nobody owes it anything. */
 function readPark(input: ParkInput): IssuePark | null {
   const parked = AWAITING_INPUT_STATUSES.includes(input.status);
-  if (!parked && input.openHumanQuestionIds.length === 0) return null;
+  if (!parked && input.openAskedQuestionIds.length === 0) return null;
   const entry = input.moves[0]?.to === input.status ? input.moves[0] : undefined;
   let record: IssuePark['record'] = null;
   let readings: string[] = [];
@@ -147,7 +147,7 @@ function readPark(input: ParkInput): IssuePark | null {
     record: parked ? record : null,
     readings: parked ? readings : [],
     answer: parked && record ? answerAfter(input.replies ?? [], record.postedAt) : null,
-    openQuestionIds: [...input.openHumanQuestionIds],
+    openQuestionIds: [...input.openAskedQuestionIds],
     subjects: [...(input.subjects ?? [])],
   };
   const threadQuestion = threadQuestionOf(view);
@@ -243,8 +243,8 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!issue) return null;
-  const openHumanQuestionIds = await openHumanQuestionIdsOn(db, issueId);
-  const subjects = openHumanQuestionIds.length > 0 ? await openQuestionSubjectsOn(issueId) : [];
+  const openAskedQuestionIds = await openAskedQuestionIdsOn(db, issueId);
+  const subjects = openAskedQuestionIds.length > 0 ? await openQuestionSubjectsOn(issueId) : [];
   const status = issue.status as IssueStatus;
   if (!AWAITING_INPUT_STATUSES.includes(status)) {
     return readPark({
@@ -252,7 +252,7 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
       waitingKind: null,
       moves: [],
       comments: [],
-      openHumanQuestionIds,
+      openAskedQuestionIds,
       subjects,
     });
   }
@@ -301,7 +301,7 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     leftStatus: (work?.leftStatus ?? null) as IssueStatus | null,
     comments: records.map(asEntry),
     replies,
-    openHumanQuestionIds,
+    openAskedQuestionIds,
     subjects,
     answered,
   });

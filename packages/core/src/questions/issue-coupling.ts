@@ -10,7 +10,7 @@ import {
 } from '@forge/contracts/issue-machine';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { type IssueDependencyExecutor, parkSinceSql } from '../issues/index.js';
@@ -49,8 +49,12 @@ async function openQuestionIdsOn(executor: Executor, issueId: string): Promise<s
   return rows.map((r) => r.id);
 }
 
-/** The open questions a person owes an answer to — the rows the marker above is read from. */
-export async function openHumanQuestionIdsOn(
+/**
+ * The open questions the issue asks: those a person owes an answer to (the rows the marker above is
+ * read from), and those its park asked whoever owes them (`parkQuestionsOf`; ISS-1127: a resource
+ * park's question is the master's, yet it is still what the park asks).
+ */
+export async function openAskedQuestionIdsOn(
   executor: Executor,
   issueId: string,
 ): Promise<string[]> {
@@ -58,10 +62,13 @@ export async function openHumanQuestionIdsOn(
     .select({ id: agentQuestions.id })
     .from(agentQuestions)
     .where(
-      and(
-        eq(agentQuestions.issueId, issueId),
-        eq(agentQuestions.status, 'open'),
-        eq(agentQuestions.blockerKind, 'human'),
+      or(
+        and(
+          eq(agentQuestions.issueId, issueId),
+          eq(agentQuestions.status, 'open'),
+          eq(agentQuestions.blockerKind, 'human'),
+        ),
+        parkQuestionsOf(issueId),
       ),
     )
     .orderBy(agentQuestions.createdAt, agentQuestions.id);
@@ -147,7 +154,8 @@ export async function settleOpenQuestions(
 
 /**
  * The open questions the park the issue stands at asked: a kernel fact, never a reading of their
- * words. One is the open person question written in the transaction that began the park's current
+ * words. Whoever owes one (`issues/park-owed.ts:parkOwedBy`, ISS-1127: a resource park's is the
+ * master's, a mark's the machine's), it is the park's. One is the open question written in the transaction that began the park's current
  * wait, so its `created_at` is that moment (`issues/park-since.ts`: the move into `needs_info`, or a
  * later re-kind; both are that transaction's `now()`); the other is an open question waiting on an awaited fact — a design
  * revision's decision or a merge mark — which only a park writes, whether it entered the park, was
@@ -158,7 +166,6 @@ function parkQuestionsOf(issueId: string): SQL {
   return and(
     eq(agentQuestions.issueId, issueId),
     eq(agentQuestions.status, 'open'),
-    eq(agentQuestions.blockerKind, 'human'),
     sql`(${agentQuestions.awaitsWorkflowId} IS NOT NULL
       OR ${agentQuestions.awaitsMergeIssueId} IS NOT NULL
       OR ${agentQuestions.createdAt} = ${parkSinceSql(sql`${issueId}::uuid`)})`,

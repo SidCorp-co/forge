@@ -201,7 +201,7 @@ interface IssuePorts {
     projectId: string,
     issueId: string,
   ) => Promise<{ workflowId: string; revision: number; flow: string } | null>;
-  openHumanQuestionIdsOn: (executor: Tx, issueId: string) => Promise<string[]>;
+  openAskedQuestionIdsOn: (executor: Tx, issueId: string) => Promise<string[]>;
   /** What the open questions a person owes on the issue are about, each named once (ISS-583). */
   openQuestionSubjectsOn: (issueId: string) => Promise<QuestionSubject[]>;
   /** The question answered most recently on this issue after `after`, with what its answer did (ISS-258). */
@@ -443,7 +443,7 @@ export const personOwesAnAnswer = port('personOwesAnAnswer');
 export const askParkQuestion = port('askParkQuestion');
 export const pendingDesignOfPark = port('pendingDesignOfPark');
 export const answerMergeQuestions = port('answerMergeQuestions');
-export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
+export const openAskedQuestionIdsOn = port('openAskedQuestionIdsOn');
 export const openQuestionSubjectsOn = port('openQuestionSubjectsOn');
 export const answeredSince = port('answeredSince');
 export const answeredSinceSql = port('answeredSinceSql');

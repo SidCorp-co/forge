@@ -23,7 +23,7 @@ export {
 export { type AwaitedDesign, answerDesignQuestions } from './design-wait.js';
 export {
   holdsOpenHumanQuestion,
-  openHumanQuestionIdsOn,
+  openAskedQuestionIdsOn,
   openParkWaitsOn,
   type ParkWait,
   personOwesAnAnswer,

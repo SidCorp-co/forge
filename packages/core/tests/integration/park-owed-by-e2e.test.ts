@@ -109,6 +109,10 @@ describe('a park on a resource or another issue is no person’s (ISS-1127)', ()
     expect(await ownersNeedsYou()).not.toContain(q.id);
     const { questionsOwedToAgents } = await import('../../src/questions/index.js');
     expect((await questionsOwedToAgents(projectId)).map((o) => o.id)).toContain(q.id);
+    // the issue still reads what it waits on, and that its park asks it
+    const parkView = ok(await say('owner', 'GET', `/api/issues/${issue.id}/park`)).park as Doc;
+    expect(parkView.owes).toBe('resource');
+    expect(parkView.openQuestionIds).toEqual([q.id]);
   });
 
   it('a decision park whose needs names another issue waits on that delivery, the master’s', async () => {
