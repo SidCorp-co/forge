@@ -27,8 +27,14 @@ const left = (at: number) => ({ left: `${clamp(at)}%` });
 export const TIMELINE_GROUP_STICKY = "max-md:sticky max-md:left-0 max-md:w-[100cqw]";
 
 export function TimelineFrame({ label, children }: { label: string; children: ReactNode }) {
+  const frameRef = useRef<HTMLElement>(null);
+  // the axis ends at now: a frame narrower than its lanes (a phone) opens at that end, the latest first
+  useEffect(() => {
+    const el = frameRef.current;
+    if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = el.scrollWidth;
+  }, []);
   return (
-    <section aria-label={label} className="@container/frame overflow-x-auto" data-testid="timeline-frame">
+    <section ref={frameRef} aria-label={label} className="@container/frame overflow-x-auto" data-testid="timeline-frame">
       <div className="min-w-[900px]">{children}</div>
     </section>
   );

@@ -198,7 +198,8 @@ function Row({ v, selected, onPeek, eta, keyed }: { v: ListRowView; selected: bo
           </span>
         ) : null}
       </span>
-      <span className="flex min-w-0 max-md:order-2 max-md:col-span-2 max-md:justify-end">{v.state}</span>
+      {/* on a phone a keyed row's state sits right of its key; a title-first row's starts its own line */}
+      <span className={cn("flex min-w-0 max-md:order-2", keyed ? "max-md:col-span-2 max-md:justify-end" : "max-md:col-span-3 max-md:justify-start")}>{v.state}</span>
       <span className="flex min-w-0 max-md:order-4 max-md:col-span-2">{v.waitingOn}</span>
       {eta ? <span className="flex min-w-0 justify-end max-md:order-6 max-md:col-span-3 max-md:justify-start">{v.eta}</span> : null}
       <span className="flex min-w-0 items-center justify-end gap-2 whitespace-nowrap max-lg:hidden max-md:order-5 max-md:flex">

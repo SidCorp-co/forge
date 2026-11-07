@@ -201,9 +201,9 @@ function sideways(): string[] {
   return main.scrollWidth <= main.clientWidth ? [] : [`main scrolls sideways: ${main.scrollWidth} px in ${main.clientWidth}`];
 }
 
-/** Every lane starts 32px into the frame, where its group's label starts. */
+/** Every lane starts 32px into the frame as it shows, where its group's label starts: on a phone the frame opens scrolled to now, its lead column held in place. */
 function indented(): string[] {
-  const frame = q("[data-testid=timeline-frame] > div");
+  const frame = q("[data-testid=timeline-frame]");
   if (!frame) return ["no lanes drawn"];
   const left = frame.getBoundingClientRect().left;
   const wrong: string[] = [];

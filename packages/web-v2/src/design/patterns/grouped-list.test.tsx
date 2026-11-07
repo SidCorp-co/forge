@@ -98,3 +98,27 @@ describe("a grouped list reads as a hierarchy", () => {
     expect(classes(within(header("you")).getByTestId("group-dot"))).toContain("size-2");
   });
 });
+
+// On a phone a row that leads with its title has no key cell beside its state, so its state starts
+// its own line at the left, never floating mid-row beside an empty cell (ISS-1072, the coordinator's
+// check at 400 px of 2026-11-07); a keyed row keeps its state on the key's line, at the right
+describe("a row's state on a phone", () => {
+  const stateCell = (keyColumn: boolean) => {
+    const fold = { isOpen: () => true, toggle: () => {} };
+    render(<GroupedList ariaLabel="Things" groups={GROUPS.slice(1, 2)} fold={fold} row={(i) => ({ ...row(i), state: <b data-testid="st">Open</b> })} selected={null} onPeek={() => {}} keyColumn={keyColumn} />);
+    const cell = screen.getByTestId("st").parentElement as HTMLElement;
+    cleanup();
+    return cell.className;
+  };
+
+  it("starts its own line at the left where the row leads with its title", () => {
+    expect(stateCell(false)).toMatch(/max-md:col-span-3/);
+    expect(stateCell(false)).toMatch(/max-md:justify-start/);
+    expect(stateCell(false)).not.toMatch(/max-md:justify-end/);
+  });
+
+  it("sits at the right of the key's line where the row is keyed", () => {
+    expect(stateCell(true)).toMatch(/max-md:col-span-2/);
+    expect(stateCell(true)).toMatch(/max-md:justify-end/);
+  });
+});
