@@ -72,7 +72,7 @@ export class OpenedPullRequestIncomplete extends Error {
       ? `\`POST /api/projects/:id/integrations/source/change-requests/${opts.number}/refresh\` re-reads it and writes the row, and so does a webhook delivery for it.`
       : 'A webhook delivery for it writes the row.';
     super(
-      `${opts.provider ?? 'github'}: the answer to opening change request${which} on ${repository} carried no ` +
+      `${opts.provider ?? 'the source host'}: the answer to opening change request${which} on ${repository} carried no ` +
         `${missing.join(', no ')}${opts.readBack ? `, and reading it back did not supply it (${opts.readBack})` : ''}, ` +
         `so Forge cannot write the projection row the merge route resolves on. The change request EXISTS on the host. ${refresh}`,
     );
