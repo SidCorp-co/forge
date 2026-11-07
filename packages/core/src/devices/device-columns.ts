@@ -16,5 +16,7 @@ export const DEVICE_LIST_COLUMNS = {
   gateReport: devices.gateReport,
   binaryReport: devices.binaryReport,
   diskReport: devices.diskReport,
+  pluginVersion: devices.pluginVersion,
+  pluginSeenAt: devices.pluginSeenAt,
   createdAt: devices.createdAt,
 };

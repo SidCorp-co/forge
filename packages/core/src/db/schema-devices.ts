@@ -65,6 +65,12 @@ export const devices = pgTable(
      * heard it. A condition it is in, like `gateReport`; `devices/disk-report.ts` judges it.
      */
     diskReport: jsonb('disk_report'),
+    /**
+     * The forge-plugin version a call on this box's token last named in `x-forge-plugin`, and when
+     * core heard it (`middleware/plugin-version.ts`). NULL where no call on it has named one.
+     */
+    pluginVersion: text('plugin_version'),
+    pluginSeenAt: timestamp('plugin_seen_at', { withTimezone: true }),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
     // the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
     // NULL is undeclared, served as such by masters/standing, never a guessed number

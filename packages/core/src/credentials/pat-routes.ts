@@ -109,6 +109,8 @@ function publicShape(row: PatRow) {
     createdAt: row.createdAt,
     lastUsedAt: row.lastUsedAt,
     lastUsedIp: row.lastUsedIp,
+    pluginVersion: row.pluginVersion,
+    pluginSeenAt: row.pluginSeenAt,
     revokedAt: row.revokedAt,
     fenceEditable: fenceFixed(row) === null,
   };

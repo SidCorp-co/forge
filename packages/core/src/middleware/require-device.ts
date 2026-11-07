@@ -7,6 +7,7 @@ import type { Device } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { parseBearerHeader } from './bearer.js';
 import { declareGate } from './declared-gate.js';
+import { admitPluginVersion } from './plugin-version.js';
 
 type AuthedDevice = Device;
 
@@ -50,6 +51,7 @@ export const requireDevice = (): MiddlewareHandler<{ Variables: DeviceVars }> =>
     if (!read) throw unauth(NOT_A_DEVICE_CREDENTIAL);
 
     c.set('device', read.device);
+    admitPluginVersion(c, { kind: 'device', id: read.device.id });
     await next();
   });
 };

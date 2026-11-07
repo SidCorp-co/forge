@@ -91,6 +91,8 @@ export async function listOrgDevices(orgId: string, visibleIds: string[]) {
       platform: devices.platform,
       agentVersion: devices.agentVersion,
       agentCommit: devices.agentCommit,
+      pluginVersion: devices.pluginVersion,
+      pluginSeenAt: devices.pluginSeenAt,
       status: devices.status,
       disabledAt: devices.disabledAt,
       lastSeenAt: devices.lastSeenAt,

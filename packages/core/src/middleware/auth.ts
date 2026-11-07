@@ -14,6 +14,7 @@ import { admitChatWrite } from './chat-write-hold.js';
 import { declareGate } from './declared-gate.js';
 import { recordingPatAct } from './pat-act-record.js';
 import { beginPatRequest } from './pat-rest-surface.js';
+import { admitPluginVersion } from './plugin-version.js';
 
 export type AuthVars = {
   userId: string;
@@ -107,6 +108,12 @@ async function admitPat(
   c.set('patTokenId', principal.tokenId);
   if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
   if (principal.onBehalfOf) c.set('onBehalfOf', principal.onBehalfOf);
+  admitPluginVersion(
+    c,
+    principal.deviceId
+      ? { kind: 'device', id: principal.deviceId }
+      : { kind: 'token', id: principal.tokenId },
+  );
   return runWithPatScope(scope, async () => {
     // a chat credential's write is held, passed or refused here, before any route sees it (REQ-30 BC-4)
     await admitChatWrite(c);
@@ -175,6 +182,8 @@ function admitUser(c: Context<{ Variables: AuthVars }>, claims: UserClaims): voi
   c.set('userId', claims.sub);
   c.set('principal', 'user');
   c.set('agency', 'human');
+  // a person's session is no plugin client; a malformed version it names is still refused
+  admitPluginVersion(c, null);
 }
 
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
@@ -219,6 +228,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     c.set('deviceId', device.id);
     c.set('principal', 'device');
     c.set('agency', 'agent');
+    admitPluginVersion(c, { kind: 'device', id: device.id });
     await next();
   });
 }

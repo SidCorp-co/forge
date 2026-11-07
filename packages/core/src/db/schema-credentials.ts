@@ -45,6 +45,13 @@ export const personalAccessTokens = pgTable(
      * Every act made with it records this beside the token (`permissions/actor.ts:Actor`).
      */
     onBehalfOf: uuid('on_behalf_of').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * The forge-plugin version a call on this token last named in `x-forge-plugin`, and when core
+     * heard it, for a token bound to no box; a box's token records it on the box
+     * (`middleware/plugin-version.ts`). NULL where no call on it has named one.
+     */
+    pluginVersion: text('plugin_version'),
+    pluginSeenAt: timestamp('plugin_seen_at', { withTimezone: true }),
   },
   (t) => ({
     userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name).where(isNull(t.revokedAt)),
