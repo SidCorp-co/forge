@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { PLUGIN_VERSION_HEADER } from '@forge/contracts/plugin-version';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
+import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { pluginVersionWritesSettled } from '../../src/middleware/plugin-version.js';
 import { api, userToken } from '../helpers/api.js';
 import { createTestDevice, createTestUser, truncateAll } from '../helpers/factories.js';
@@ -88,9 +89,21 @@ describe('a plugin client naming its version', () => {
     await truncateAll();
     ownerId = (await createTestUser({ verified: true })).id;
     deviceId = await createTestDevice(ownerId, { status: 'online' });
-    boxToken = (await mintPat({ permissions: ['*'], userId: ownerId, name: 'box', deviceId }))
-      .plaintext;
-    const minted = await mintPat({ permissions: ['*'], userId: ownerId, name: 'laptop' });
+    boxToken = (
+      await mintPat({
+        permissions: ['*'],
+        userId: ownerId,
+        name: 'box',
+        deviceId,
+        grantEpoch: PAT_GRANT_EPOCH,
+      })
+    ).plaintext;
+    const minted = await mintPat({
+      permissions: ['*'],
+      userId: ownerId,
+      name: 'laptop',
+      grantEpoch: PAT_GRANT_EPOCH,
+    });
     personalToken = minted.plaintext;
     personalTokenId = minted.row.id;
     ownerSession = await userToken(ownerId);
@@ -110,12 +123,10 @@ describe('a plugin client naming its version', () => {
   async function shownToken() {
     const res = await api(ownerSession, 'GET', '/api/pat');
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const list = res.body as unknown as Array<{
-      id: string;
-      pluginVersion: string | null;
-      pluginSeenAt: string | null;
-    }>;
-    return list.find((t) => t.id === personalTokenId);
+    const { tokens } = res.body as unknown as {
+      tokens: Array<{ id: string; pluginVersion: string | null; pluginSeenAt: string | null }>;
+    };
+    return tokens.find((t) => t.id === personalTokenId);
   }
 
   it("records a box token's version on the box, and its owner reads it", async () => {
