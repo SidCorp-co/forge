@@ -181,7 +181,7 @@ async function issueCriteriaRead(
   const reopenedJson = JSON.stringify(
     Object.fromEntries([...reopened].map(([id, at]) => [id, at.toISOString()])),
   );
-  const kept = everyVerdictRead.on ? sql`true` : sql`k.kept = 1`;
+  const kept = everyVerdictRead.on ? sql`true` : sql`v.kept = 1`;
   const rows = await readWithBuilderFacts(
     ex,
     async () =>
@@ -196,6 +196,19 @@ async function issueCriteriaRead(
         JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
        WHERE c.issue_id = ANY(${uuidArray(issueIds)})
          AND c.retired_at IS NULL
+    ),
+    -- every criterion's verdicts ranked in their class at once, so each fact table is joined once
+    ranked AS (
+      SELECT cv.id, cv.criterion_id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence,
+             cv.identity_kind, cv.commit_sha, cv.runtime_ref, cv.design_workflow_id, cv.design_revision,
+             cv.contract_ref, cv.contract_version, cv.release_version, cv.storefront_drafts,
+             cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id,
+             vb.by_builder, vb.verdict_id IS NULL AS fact_missing,
+             row_number() OVER (PARTITION BY cv.criterion_id, ${VERDICT_CLASS_SQL}
+                                ORDER BY cv.created_at DESC, cv.id DESC) AS kept
+        FROM crit c
+        JOIN criterion_verdicts cv ON cv.criterion_id = c.id
+        LEFT JOIN verdict_builder_facts vb ON vb.verdict_id = cv.id
     )
     SELECT c.id AS criterion_id, c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
            v.identity_kind,
@@ -229,21 +242,7 @@ async function issueCriteriaRead(
            (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored,
            c.criterion_class
       FROM crit c
-      LEFT JOIN LATERAL (
-        SELECT k.* FROM (
-          SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
-                 cv.commit_sha,
-                 cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
-                 cv.contract_version, cv.release_version, cv.storefront_drafts,
-                 cv.storefront_environment, cv.covers, cv.author_user_id, cv.author_device_id,
-                 vb.by_builder, vb.verdict_id IS NULL AS fact_missing,
-                 row_number() OVER (PARTITION BY ${VERDICT_CLASS_SQL}
-                                    ORDER BY cv.created_at DESC, cv.id DESC) AS kept
-            FROM criterion_verdicts cv
-            LEFT JOIN verdict_builder_facts vb ON vb.verdict_id = cv.id
-           WHERE cv.criterion_id = c.id
-        ) k WHERE ${kept}
-      ) v ON true
+      LEFT JOIN ranked v ON v.criterion_id = c.id AND ${kept}
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
      ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[],
     (r) => (r.fact_owed ? { issueId: r.issue_id, missing: r.fact_missing === true } : null),

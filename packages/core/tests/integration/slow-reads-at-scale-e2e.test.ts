@@ -322,13 +322,20 @@ interface Ceiling {
 /** The time ISS-1070 r6 holds the shell's attention and home reads to, here, at one project and at twelve. */
 const SHELL_MS = 300;
 
+/**
+ * The statements the shell's attention and home reads send, the one ceiling at one project and at
+ * twelve: a person's reads ask each fact once for every project they hold (ISS-1070 r6).
+ */
+const ATTENTION_STATEMENTS = 111;
+const HOME_STATEMENTS = 109;
+
 const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
   { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 15000 },
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
-  { path: '/api/me/attention', statements: 115, buffers: 27000, ms: SHELL_MS },
-  { path: '/api/me/home', statements: 127, buffers: 30000, ms: SHELL_MS },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 27000, ms: SHELL_MS },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 30000, ms: SHELL_MS },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
@@ -344,8 +351,8 @@ const READS = (p: string): Ceiling[] => [
  */
 const READS_ACROSS = (p: string): Ceiling[] => [
   // a person in twelve projects sends what a person in one does (ISS-1070 r6)
-  { path: '/api/me/attention', statements: 115, buffers: 135000, ms: SHELL_MS },
-  { path: '/api/me/home', statements: 127, buffers: 150000, ms: SHELL_MS },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 135000, ms: SHELL_MS },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000, ms: SHELL_MS },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
