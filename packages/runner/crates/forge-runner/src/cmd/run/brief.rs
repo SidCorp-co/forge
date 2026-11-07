@@ -122,6 +122,9 @@ pub fn compose(f: &Facts) -> String {
     }
     lines.push(format!("Project: {} · {}", f.project_slug, f.project_id));
     lines.push(format!("Run: {} (declared on this box)", f.run_id));
+    // The run exports this line as it stands, so every tracker call it makes names the run
+    // (`x-forge-run`, read by the plugin's tracker) and `judge-login --run` has the id to take.
+    lines.push(format!("FORGE_RUN={}", f.run_id));
     lines.push(format!(
         "Tree: {} · branch {} · head {}",
         f.tree.path.display(),
@@ -543,6 +546,7 @@ mod tests {
             "ISS-294 · issue 6d86898e",
             "Project: forge · d1bb4907",
             "Run: 70d69d6e",
+            "\nFORGE_RUN=70d69d6e\n",
             "Tree: /r/.claude/worktrees/ISS-294 · branch dev-ISS-294 · head 1aae01978",
             "Tree origin: adopted — it stood before this run was declared over it",
             "Base branch: dev (the project's baseBranch); held trees read against origin/dev at 1aae01978",
