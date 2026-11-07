@@ -11,8 +11,11 @@ const refuse = (what: string) => () => {
   throw new TypeError(`${what} is a read answer shared across a request and cannot change`);
 };
 
+/** Every object made read-only through and through here: each is walked once, however often handed on. */
+const done = new WeakSet<object>();
+
 export function frozen<T>(value: T): T {
-  freeze(value, new WeakSet());
+  freeze(value, done);
   return value;
 }
 
