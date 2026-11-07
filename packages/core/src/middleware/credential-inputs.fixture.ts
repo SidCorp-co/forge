@@ -118,8 +118,9 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:x-request-id`,
   'whether a sign-in page follows a sign-out (`session=ended`), so a demo core shows its form': words`
     query:session`,
-  'a header core’s own clients send: what they render, the project an /mcp call names, the run a box read is recorded against': words`
-    header:x-forge-capabilities header:x-forge-project-slug header:x-forge-run header:x-forge-unresolved-ref`,
+  'a header core’s own clients send: what they render, the project an /mcp call names, the run a box read is recorded against, the plugin version a narrowing is weighed against': words`
+    header:x-forge-capabilities header:x-forge-plugin header:x-forge-project-slug header:x-forge-run
+    header:x-forge-unresolved-ref`,
   'a widget visitor, the page they are on and the origin that framed it, as the frame says, stored as data; the site key is public': words`
     field:json:context field:json:embeddedAt field:json:visitor field:json:visitorId field:param:siteKey`,
   [ROW_KEYS]: words`
@@ -259,8 +260,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'a value core’s own middleware set once it admitted the caller, never the secret': words`
     var:agency var:agentUserId var:authUserResolution var:chatWriteAdmitted var:device
     var:deviceId var:onBehalfOf var:patDeviceId var:patRequestClass var:patRequestResolution
-    var:patActRecorded var:patRequestWrites var:patTokenId var:principal var:requestId var:sessionCookie
-    var:user var:userId var:userTokenResolution`,
+    var:patActRecorded var:patRequestWrites var:patTokenId var:pluginClient var:principal var:requestId
+    var:sessionCookie var:user var:userId var:userTokenResolution`,
 };
 
 /** Each whole read a presented secret arrives in, by `<module> <what> in <owner>`, and what. */
