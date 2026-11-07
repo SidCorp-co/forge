@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.576] - 2026-11-07
+
+Retired master panes show as retired in master status
+
+### Fixed
+
+- **A master pane core retires shows as its last exit.** `forge-runner master status` now reads a retired pane as retired, with core's reason and its own age, never the earlier exit's.
+
 ## [0.4.0-dev.575] - 2026-11-07
 
 Delivery-check questions can be read and answered, and stalled checks finish
