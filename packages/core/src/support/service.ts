@@ -24,17 +24,24 @@ import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
 
 export type { Outcome } from './outcome.js';
 
-/** A thread's recorded lines, oldest first. */
+/**
+ * A thread's recorded lines, oldest first, each with the id the chat server gave it, so a message
+ * the session was never handed (written before its restart) can still be cited (ISS-1106); null
+ * on a line core wrote for itself.
+ */
 export async function readThread(
   room: RoomRow,
   thread: string,
-): Promise<Outcome<{ role: string; from: string | null; text: string; at: string }[]>> {
+): Promise<
+  Outcome<{ id: string | null; role: string; from: string | null; text: string; at: string }[]>
+> {
   const conversationId = await knownThread(room, thread);
   if (!conversationId) return threadUnknown(thread);
   const lines = await readMessages(conversationId, 60);
   return {
     ok: true,
     value: lines.map((m) => ({
+      id: m.externalId,
       role: m.role,
       from: m.role === 'user' ? (m.authorLabel ?? m.authorKey ?? null) : null,
       text: m.content,

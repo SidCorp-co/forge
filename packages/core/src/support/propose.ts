@@ -25,6 +25,7 @@ import { type Refusal, refusalOf } from './refusals.js';
 import { mintConfirmCode } from './rules.js';
 import { insertAction, insertFix, type ProposalRow, type RoomRow, threadMembers } from './store.js';
 import { noteInThread } from './thread.js';
+import { latestMessageOf } from './thread-messages.js';
 
 /** What the session is handed for a proposal: its handle, whom it waits on, and until when. */
 export interface Proposed {
@@ -33,6 +34,8 @@ export interface Proposed {
   waitsOn: string;
   expiresAt: string;
   next: string;
+  /** The asker's own request, by message id, where it already is their agreement: cite it (ISS-1106). */
+  message?: string;
 }
 
 export type ProposeOutcome = { ok: true; value: Proposed } | { ok: false; refusals: Refusal[] };
@@ -128,6 +131,9 @@ export async function offerChange(input: {
     conversationId,
     `Proposed: ${changeName(fix)}, waiting on ${waitsOn} to agree (${fix.code}).`,
   );
+  const consent = await ownRequestConsents(room, fix, asker);
+  // the request is cited by its id, which a session restarted since it was written was never handed
+  const request = consent ? await latestMessageOf(room.id, input.thread, asker.key) : null;
   return {
     ok: true,
     value: {
@@ -135,7 +141,8 @@ export async function offerChange(input: {
       proposal: fix.code,
       waitsOn,
       expiresAt: fix.expiresAt.toISOString(),
-      next: nextStep(fix, asker, waitsOn, await ownRequestConsents(room, fix, asker)),
+      next: nextStep(fix, asker, waitsOn, consent, request),
+      ...(request ? { message: request } : {}),
     },
   };
 }
@@ -146,6 +153,7 @@ function nextStep(
   asker: { key: string; label: string | null },
   waitsOn: string,
   consent: RequestConsent | null,
+  request: string | null,
 ): string {
   if (!consent) {
     return `Nothing was posted. Ask ${waitsOn} in your own words, in this thread. When they answer, call agree { thread, proposal: "${fix.code}", message: <their message id>, decision?: "decline" }.`;
@@ -155,7 +163,8 @@ function nextStep(
     consent.by === 'decider'
       ? `the project's ruling [knowledge:${consent.ruling}] names them the one who decides ${actsWords([fix.kind])}, so their own request is their agreement`
       : 'in this room their own request is their agreement';
-  return `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves, and ${why}: call agree { thread, proposal: "${fix.code}", message: <the id of their message asking for it> } now, and ask them nothing.`;
+  const cite = request ? `"${request}"` : '<the id of their message asking for it>';
+  return `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves, and ${why}: call agree { thread, proposal: "${fix.code}", message: ${cite} } now, and ask them nothing.`;
 }
 
 /**

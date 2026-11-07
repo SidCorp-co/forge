@@ -226,7 +226,7 @@ const SHAPE = [
 const DESCRIPTION = [
   'Answer a Rocket.Chat support group, or an operations room, as its assistant. Every answer people see goes through this tool; nothing you write outside it reaches the room.',
   'search {query, project?}: the project knowledge and its published OpenAPI contracts (of a followed project, named as project); each hit carries `cite`, which you put in brackets after what it supports.',
-  'thread {thread}: the thread so far, oldest first. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
+  'thread {thread}: the thread so far, oldest first, each message with its id, which agree cites. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
   "reply {thread, text}: post your answer in that thread. It is screened before it is posted; a refusal names what to rewrite. In a group the product's users read, any post holding a Forge issue key (a store's own order number such as RIV-68493 may stay), an MR or PR number, an environment variable name, a commit sha or a credential word is refused SUPPORT_INTERNAL_CODE.",
   'run {thread, tool, args}: run a granted diagnose check; you get what came back, and the thread is shown nothing.',
   'propose_fix {thread, tool, args, asker}: propose a granted fix for the person who asked (`from.id`). Nothing is posted: you are handed `proposal`, whom it waits on and when it expires. Ask that person in your own words; nothing runs until you cite their answer with agree.',

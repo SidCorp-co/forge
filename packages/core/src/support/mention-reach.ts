@@ -6,8 +6,9 @@
 
 import { fetchMessage, fetchRoomMembers } from '../integrations/rocketchat/index.js';
 import { isCoreThread } from './rules.js';
-import { type RoomRow, threadStarterHeard } from './store.js';
+import type { RoomRow } from './store.js';
 import { roomAuth, TOP_LEVEL } from './thread.js';
+import { threadStarterHeard } from './thread-messages.js';
 
 /** The username that started `thread` in `room`: core's record where it heard it, else the room's. */
 export async function threadStarter(room: RoomRow, thread: string): Promise<string | null> {

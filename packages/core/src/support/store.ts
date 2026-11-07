@@ -314,24 +314,6 @@ export async function latestThreadWriter(
   return row?.key ? { key: row.key, label: row.label } : null;
 }
 
-/** The username of the member whose message started `thread`, where core heard it (ISS-1097). */
-export async function threadStarterHeard(roomId: string, thread: string): Promise<string | null> {
-  const [row] = await db
-    .select({ label: supportActions.actorLabel })
-    .from(supportActions)
-    .where(
-      and(
-        eq(supportActions.roomId, roomId),
-        eq(supportActions.thread, thread),
-        eq(supportActions.externalId, thread),
-        eq(supportActions.kind, 'message_in'),
-        eq(supportActions.actorKind, 'member'),
-      ),
-    )
-    .limit(1);
-  return row?.label ?? null;
-}
-
 /** The conversation one thread is recorded in, read off its first action. */
 export async function threadConversation(roomId: string, thread: string): Promise<string | null> {
   const [row] = await db

@@ -1,0 +1,1 @@
+**A channel agent cites an earlier request without asking again.** Reading a thread returns each message's id, and a filing whose asker's own request is their agreement names that message's id to cite.

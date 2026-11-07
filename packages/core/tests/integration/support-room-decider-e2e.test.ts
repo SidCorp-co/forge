@@ -267,6 +267,52 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
     expect(stored).toEqual([]);
   });
 
+  // ISS-1106 (FB-564): her request was written before the session's restart, so it was never handed
+  // to the session that records it. The thread read and the record's answer both carry its id, and
+  // the session cites it at once, never asking her again.
+  it('hands the session the id of a request it was never handed, and cites it as her agreement', async () => {
+    const before = await filings();
+    const asked = await w.hear(() => chat.say(tuyen, 'Làm trên adminhub đi'));
+    let read: Record<string, unknown> = {};
+    let proposed: Record<string, unknown> = {};
+    let agreed: Record<string, unknown> = {};
+    await w.hear(
+      () => chat.say(chat.bob, 'mình cũng cần cái này', asked.id),
+      async (turn, act) => {
+        // the session after its restart is handed bob's line alone, never her request
+        expect(turn.messages.map((m) => m.message)).not.toContain(asked.id);
+        read = await act({ action: 'thread', thread: asked.id });
+        proposed = await act({
+          action: 'record',
+          thread: asked.id,
+          kind: 'request',
+          title: 'Do it on adminhub',
+          summary: 'Do it on adminhub, as tuyen asked',
+          asker: tuyen.userId,
+        });
+        agreed = await act({
+          action: 'agree',
+          thread: asked.id,
+          proposal: String(proposed.proposal),
+          message: String(proposed.message),
+        });
+      },
+    );
+    // the tool's list comes back spread over its indexes
+    const lines = Object.entries(read)
+      .filter(([k]) => /^\d+$/.test(k))
+      .map(([, v]) => v as { id?: string | null; from: string | null; text: string });
+    expect(lines.find((l) => l.text === 'Làm trên adminhub đi')).toMatchObject({
+      id: asked.id,
+      from: 'tuyen',
+    });
+    expect(proposed, JSON.stringify(proposed)).toMatchObject({ pending: true, message: asked.id });
+    expect(String(proposed.next)).toContain(`message: "${asked.id}"`);
+    expect(agreed, JSON.stringify(agreed)).toMatchObject({ recorded: true });
+    expect(await consentIn(asked.id)).toMatchObject({ actor_key: tuyen.userId });
+    expect(await filings()).toBe(before + 1);
+  });
+
   it('stops counting her once the ruling is gone, and the brief stops naming her', async () => {
     const gone = await api(w.owner, 'DELETE', `/api/projects/${w.projectId}/knowledge/${RULING}`);
     expect(gone.status, JSON.stringify(gone.body)).toBe(200);
