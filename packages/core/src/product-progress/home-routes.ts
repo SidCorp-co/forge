@@ -21,7 +21,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requiresSelf } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
 import { findIn, rankFound } from './home-find.js';
-import { liveOf, releasesOf } from './home-live.js';
+import { liveOf, liveReleasesOf, releasesOf } from './home-live.js';
 import {
   carriersOf,
   type HomeProject,
@@ -82,7 +82,7 @@ meHomeRoutes.get(
         limiter.run(async () => {
           const [part, releases] = await Promise.all([
             readHomeProject(viewer, p.id),
-            releasesOf(p.id),
+            liveReleasesOf(p.id),
           ]);
           const mine = new Set([
             ...part.issues.map((i) => i.key),

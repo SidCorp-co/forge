@@ -1,10 +1,11 @@
 // What is live for a person's home (ISS-919): each project's latest release on production and on
-// testing, from the release list the Releases page reads, with how many of the person's items it
-// carried; and, for the search, the release an issue went live in.
+// testing, summarised as the Releases page's list summarises it but read alone (ISS-1070), with how
+// many of the person's items it carried; and, for the search, the release an issue went live in,
+// which reads the whole list.
 
 import type { HomeLiveRelease } from '@forge/contracts/owner-home';
 import type { ReleaseListResponse, ReleaseSummary } from '@forge/contracts/releases';
-import { listReleases } from '../release-batch/index.js';
+import { latestLiveReleases, listReleases } from '../release-batch/index.js';
 import type { HomeProject } from './home-moving.js';
 
 export type ReleaseEnvironment = HomeLiveRelease['environment'];
@@ -19,14 +20,23 @@ export function environmentOf(r: ReleaseSummary): ReleaseEnvironment | null {
 
 const keysOf = (r: ReleaseSummary) => r.contents.flatMap((g) => g.issues.map((i) => i.key));
 
+/** Every release of the project, for the search's went-live reading. */
 export async function releasesOf(projectId: string): Promise<ReleaseListResponse> {
   return listReleases(projectId, null);
+}
+
+/** What the project has live: its newest release on production and on testing, and production. */
+export type LiveReleases = Pick<ReleaseListResponse, 'releases' | 'production'>;
+
+/** The newest release per environment alone, never the whole list: the home reads every project's (ISS-1070). */
+export async function liveReleasesOf(projectId: string): Promise<LiveReleases> {
+  return latestLiveReleases(projectId);
 }
 
 /** The project's latest release per environment, production first, with the person's items it carried. */
 export function liveOf(
   project: HomeProject,
-  list: ReleaseListResponse,
+  list: LiveReleases,
   mine: ReadonlySet<string>,
 ): HomeLiveRelease[] {
   const out: HomeLiveRelease[] = [];

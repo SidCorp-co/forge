@@ -5,6 +5,7 @@ import type {
   ReleaseProduction,
   ReleaseShippedFailing,
   ReleaseShippedResponse,
+  ReleaseSummary,
 } from '@forge/contracts/releases';
 import { RELEASE_ATTENTION_GROUPS, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
@@ -301,51 +302,36 @@ export async function listReleases(
   projectId: string,
   viewer: ViewerFacts | null,
 ): Promise<ReleaseListResponse> {
-  const [required, current] = await Promise.all([
-    approvalRequired(projectId),
-    currentReleaseVersion(projectId),
-  ]);
-  const [runs, draft, production, lineage] = await Promise.all([
-    runParts(projectId, undefined, required),
-    draftPart(projectId),
-    productionOf(projectId, current),
-    readLineage(projectId),
-  ]);
-  const lines = releaseLinesOf(lineage);
-  const placed = placeParts(lines, runs, draft);
-  // A release is listed once, under the version its last attempt wears: a version its roster went on
-  // from is one of that release's attempts, not a release of its own (ADR 0011).
-  const parts = placed.parts.filter((p) => p.continuedAs === null);
-  const shared = await sharedFor(
-    projectId,
-    parts,
-    viewer,
-    current,
-    required,
-    parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
-  );
-  await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
-  const releases = parts.map((p) => summaryOf(p, shared));
+  const { releases, current, required } = await summariseChosen(projectId, viewer, (all) => all);
   const counts = Object.fromEntries(
     RELEASE_ATTENTION_GROUPS.map((a) => [a, releases.filter((r) => r.attentionGroup === a).length]),
   ) as ReleaseListResponse['counts'];
-  // A landing recorded before versioning stays listed after the project declares production.
-  const landings = await landingRecordsOf(projectId);
-  // an ended run still claiming gate issues is in no part's roster: it is named here with its act
-  const endedRunHolds = await readEndedRunHolds(projectId);
+  // A landing recorded before versioning stays listed after the project declares production; an
+  // ended run still claiming gate issues is in no part's roster: it is named here with its act
+  const [production, landings, endedRunHolds] = await Promise.all([
+    productionOf(projectId, current),
+    landingRecordsOf(projectId),
+    readEndedRunHolds(projectId),
+  ]);
   return { releases, counts, approvalRequired: required, production, landings, endedRunHolds };
 }
 
+/** The releases that went out (shipped or landed on testing), newest first. */
+const wentOut = (parts: readonly Part[]): Part[] =>
+  parts
+    .filter((p) => p.releasedAt !== null)
+    .sort((a, b) => (b.releasedAt?.getTime() ?? 0) - (a.releasedAt?.getTime() ?? 0));
+
 /**
- * The newest `limit` releases that shipped, newest first, summarised as `listReleases` summarises
- * them: the releases are placed as the list places them, and only the ones returned are weighed, so
- * a page showing the last few never pays for the whole list (ISS-1070).
+ * The releases `choose` picks, summarised exactly as `listReleases` summarises them: every release is
+ * placed as the list places it, and only the chosen are weighed, so a read that shows a few never
+ * pays for the whole list (ISS-1070).
  */
-export async function listShippedReleases(
+async function summariseChosen(
   projectId: string,
   viewer: ViewerFacts | null,
-  limit: number,
-): Promise<ReleaseShippedResponse> {
+  choose: (listed: Part[]) => Part[],
+): Promise<{ releases: ReleaseSummary[]; current: string | null }> {
   const [required, current] = await Promise.all([
     approvalRequired(projectId),
     currentReleaseVersion(projectId),
@@ -356,10 +342,7 @@ export async function listShippedReleases(
     readLineage(projectId),
   ]);
   const placed = placeParts(releaseLinesOf(lineage), runs, draft);
-  const parts = placed.parts
-    .filter((p) => p.continuedAs === null && p.releasedAt !== null)
-    .sort((a, b) => (b.releasedAt?.getTime() ?? 0) - (a.releasedAt?.getTime() ?? 0))
-    .slice(0, limit);
+  const parts = choose(placed.parts.filter((p) => p.continuedAs === null));
   const shared = await sharedFor(
     projectId,
     parts,
@@ -369,7 +352,35 @@ export async function listShippedReleases(
     parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
   );
   await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
-  return { releases: parts.map((p) => summaryOf(p, shared)) };
+  return { releases: parts.map((p) => summaryOf(p, shared)), current, required };
+}
+
+/** The newest `limit` releases that went out, newest first: `GET releases/shipped?limit=n`. */
+export async function listShippedReleases(
+  projectId: string,
+  viewer: ViewerFacts | null,
+  limit: number,
+): Promise<ReleaseShippedResponse> {
+  const { releases } = await summariseChosen(projectId, viewer, (listed) =>
+    wentOut(listed).slice(0, limit),
+  );
+  return { releases };
+}
+
+/**
+ * The newest release on production and the newest on testing, with what production is: what a
+ * person's home names as live, read without the whole list (ISS-1070).
+ */
+export async function latestLiveReleases(
+  projectId: string,
+): Promise<Pick<ReleaseListResponse, 'releases' | 'production'>> {
+  const { releases, current } = await summariseChosen(projectId, null, (listed) => {
+    const out = wentOut(listed);
+    return [out.find((p) => p.state === 'shipped'), out.find((p) => p.state === 'landed')].filter(
+      (p): p is Part => p !== undefined,
+    );
+  });
+  return { releases, production: await productionOf(projectId, current) };
 }
 
 const REWORKED: IssueLandingReading = {

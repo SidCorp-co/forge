@@ -14,6 +14,7 @@
  * @direct-test-of packages/core/src/product-progress/home-routes.ts
  * @direct-test-of packages/core/src/product-progress/home-moving.ts
  * @direct-test-of packages/core/src/product-progress/home-live.ts
+ * @direct-test-of packages/core/src/release-batch/release-read.ts
  * @direct-test-of packages/core/src/product-progress/home-find.ts
  * @direct-test-of packages/core/src/product-progress/home-stage.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
@@ -225,6 +226,21 @@ describe("a person's home", () => {
     const live = home.live as Doc[];
     expect(live.map((l) => l.version)).toEqual(['1.2.0']);
     expect(live[0]).toMatchObject({ environment: 'production', mine: 1 });
+  });
+
+  // ISS-1070: the home reads each project's newest release per environment alone, never the whole
+  // list; what it names is what the whole list's newest shipped release is
+  it('names the newest production release the release list reads, written before or after an older one', async () => {
+    await shippedRelease(projectId, '1.1.0', [], T(4));
+    const home = ok(await say('owner', 'GET', '/api/me/home'));
+    const list = ok(await say('owner', 'GET', `/api/projects/${projectId}/releases`));
+    const newest = (list.releases as Doc[])
+      .filter((r) => r.state === 'shipped' && r.releasedAt)
+      .sort((a, b) => String(b.releasedAt).localeCompare(String(a.releasedAt)))[0];
+    expect((home.live as Doc[]).map((l) => [l.version, l.at])).toEqual([
+      [newest?.version, newest?.releasedAt],
+    ]);
+    expect(newest?.version).toBe('1.2.0');
   });
 
   it('finds a live item as live since its version, a moving one at its stage, and nothing the person cannot read', async () => {
