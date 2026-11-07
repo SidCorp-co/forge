@@ -30,6 +30,7 @@ import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import { resolveReleaseChannels } from './channel.js';
 import { enqueueCoolifyHealthGate, healthGateFor } from './coolify-health-gate.js';
 import { raiseOnRunIncident } from './gate-raise.js';
+import { recordObservedShippedCommit } from './shipped-commit.js';
 import { deploymentConfirms, readLiveState } from './verify.js';
 
 export interface CoolifyConfirmJob {
@@ -114,11 +115,14 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>({ binding, connection });
   let verdict: DeploymentVerdict;
   let detail: string | undefined;
+  /** What this reading of the deployment says it built: the commit the release ships (ISS-1079). */
+  let built: string | null = null;
   try {
     const dep = await buildClient(ctx).getDeployment(data.deploymentUuid);
     verdict = classifyDeploymentStatus(dep.status);
+    built = dep.commit ?? null;
     if (verdict === 'failed') {
-      return contestFailure(data, binding.projectId, String(dep.status), dep.commit ?? null);
+      return contestFailure(data, binding.projectId, String(dep.status), built);
     }
   } catch (err) {
     verdict = 'pending';
@@ -141,7 +145,10 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
     });
     if (healthGate.kind === 'gate') {
       await recordDeployDelivery(data, 'succeeded', detail);
-      await enqueueCoolifyHealthGate(healthGate.job, { startAfterSeconds: 0 });
+      await enqueueCoolifyHealthGate(
+        { ...healthGate.job, commit: built },
+        { startAfterSeconds: 0 },
+      );
       return { settled: null, closedRun: false, handedToHealthGate: true };
     }
     if (healthGate.kind === 'window-too-short') {
@@ -164,7 +171,7 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
     }
   }
 
-  if (verdict !== 'pending') return settle(data, verdict, detail);
+  if (verdict !== 'pending') return settle({ ...data, commit: built }, verdict, detail);
 
   if (Date.now() >= new Date(data.deadlineAt).getTime()) {
     return settle(
@@ -226,7 +233,7 @@ async function contestFailure(
       { runId: data.runId, deploymentUuid: data.deploymentUuid, detail },
       'coolify confirm: a failure report the target contradicts',
     );
-    return settle(data, 'succeeded', detail);
+    return settle({ ...data, commit }, 'succeeded', detail);
   }
 
   const until = Math.min(
@@ -253,7 +260,7 @@ async function contestFailure(
 
 /** Write the inbound audit row, then settle the hold it reports on. */
 async function settle(
-  data: CoolifyConfirmJob,
+  data: CoolifyConfirmJob & { commit?: string | null },
   verdict: Exclude<DeploymentVerdict, 'pending'>,
   detail?: string,
 ): Promise<ConfirmOutcome> {
@@ -283,11 +290,11 @@ async function recordDeployDelivery(
   });
 }
 
-/** What one target's settled outcome does to its run. */
+/** What one target's settled outcome does to its run, with the commit the deployment reported. */
 type DeploySettlementTarget = Pick<
   CoolifyConfirmJob,
   'bindingId' | 'runId' | 'deliveryId' | 'deploymentUuid' | 'targetLabel'
->;
+> & { commit?: string | null | undefined };
 
 /**
  * Mark the hold and — when this was the last unresolved one — perform the
@@ -319,6 +326,7 @@ export async function applyDeploySettlement(
     deliveryId: data.deliveryId,
     status: verdict,
     ...(detail ? { detail } : {}),
+    ...(verdict === 'succeeded' && data.commit ? { commit: data.commit } : {}),
   });
   await settleDeployAttempt(data.runId, data.deliveryId, data.bindingId, holds);
 
@@ -351,6 +359,9 @@ export async function applyDeploySettlement(
     });
     return { settled: 'failed', closedRun: 'failed', detail: why };
   }
+
+  // a release whose finish named no commit records the one its deploy reported (ISS-1079)
+  await recordObservedShippedCommit(data.runId);
 
   const gate = resolveDeployGate(holds);
   if (gate.verdict !== 'clear') return { settled: 'succeeded', closedRun: false };

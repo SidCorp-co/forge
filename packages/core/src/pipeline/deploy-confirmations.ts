@@ -19,6 +19,9 @@ interface DeployConfirmation {
   status: DeployConfirmationStatus;
   deadlineAt: string;
   detail?: string;
+  /** The commit the platform reported this deployment built, as the reading that saw it settle
+   *  named it (ISS-1079); absent where it named none. */
+  commit?: string;
   /** The lock rows this deploy holds: a NAME alone outlives its row and would free a later
    *  taker's, and absent, this hold frees nothing (ISS-1279). */
   locks?: DeployLockRef[];
@@ -177,6 +180,8 @@ export async function settleDeployTarget(args: {
   deliveryId: string;
   status: Exclude<DeployConfirmationStatus, 'pending'>;
   detail?: string;
+  /** The commit the platform reported the deployment built; kept on the hold it settles. */
+  commit?: string | null;
 }): Promise<DeployHolds> {
   const key = targetHoldKey(args.deliveryId);
   const holds = await readDeployHolds(args.runId);
@@ -185,7 +190,12 @@ export async function settleDeployTarget(args: {
     await writeHold(
       args.runId,
       key,
-      { ...existing, status: args.status, ...(args.detail ? { detail: args.detail } : {}) },
+      {
+        ...existing,
+        status: args.status,
+        ...(args.detail ? { detail: args.detail } : {}),
+        ...(args.commit ? { commit: args.commit } : {}),
+      },
       true,
     );
   }

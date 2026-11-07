@@ -14,6 +14,14 @@ type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 export const IN_FLIGHT: ReadonlySet<FinishState> = new Set(['accepted', 'verifying', 'closing']);
 const STATES: ReadonlySet<string> = new Set([...IN_FLIGHT, 'finished', 'failed']);
 
+/** Where a finished release's `commit` came from (ISS-1079), or, with `from: null`, why it names none. */
+export interface ShippedCommitSource {
+  /** `finish`: the finish's caller named it; `deploy`: the deploy this run dispatched reported it;
+   *  `attached`: an agent attached it afterwards (`shipped-commit.ts:attachShippedCommit`). */
+  from: 'finish' | 'deploy' | 'attached' | null;
+  said: string;
+}
+
 /** Why an attempt ended red, in the vocabulary the door answers with. */
 export interface FinishRefusal {
   code: string;
@@ -25,8 +33,11 @@ export interface ReleaseFinishRecord {
   /** One per accepted attempt. A retry of the same attempt answers the same id. */
   requestId: string;
   state: FinishState;
-  /** The whole sha the caller claims was pushed, or `null` to ask only that the deploy arrived. */
+  /** The whole sha the caller claims was pushed, or `null` to ask only that the deploy arrived. Once
+   *  `finished`, the commit the release shipped, wherever `shipped` says it came from. */
   commit: string | null;
+  /** Where a finished release's `commit` came from, or why it names none; `null` before it finished. */
+  shipped?: ShippedCommitSource | null;
   requestedBy: TransitionActor;
   acceptedAt: string;
   updatedAt: string;
@@ -107,6 +118,21 @@ export function readFinishRecord(metadata: unknown): ReleaseFinishRecord | null 
       ? (r.verification as RecordedVerification)
       : null,
     finishedAt: str(r.finishedAt),
+    shipped: shippedOf(r.shipped),
+  };
+}
+
+const SHIPPED_FROM: ReadonlySet<string> = new Set(['finish', 'deploy', 'attached']);
+
+function shippedOf(v: unknown): ShippedCommitSource | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const s = v as Record<string, unknown>;
+  const said = str(s.said);
+  if (!said) return null;
+  const from = str(s.from);
+  return {
+    from: from && SHIPPED_FROM.has(from) ? (from as ShippedCommitSource['from']) : null,
+    said,
   };
 }
 

@@ -20,6 +20,8 @@ export interface CoolifyHealthGateJob {
   graceUntil: string;
   /** ISO-8601. Past this with no healthy reading, the deploy has failed. */
   deadlineAt: string;
+  /** The commit the deployment reported it built, kept for the hold this gate settles (ISS-1079). */
+  commit?: string | null;
 }
 
 const HEALTH_GRACE_MS = 45_000;

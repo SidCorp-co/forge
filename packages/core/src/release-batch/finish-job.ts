@@ -35,6 +35,7 @@ import {
 import { RECORDED_VERIFICATION } from './recorded.js';
 import { FENCE_LOST, fenceLost, reasonOf, refuseRelease } from './refuse.js';
 import { oweReleaseTag } from './release-tag.js';
+import { recordObservedShippedCommit } from './shipped-commit.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
 const FINISH_LEASE_MS = 120_000;
@@ -342,9 +343,14 @@ async function runReleaseBatchFinish(runId: string): Promise<void> {
           owner: null,
           leaseUntil: null,
           finishedAt: new Date().toISOString(),
+          ...(r.commit
+            ? { shipped: { from: 'finish' as const, said: 'named by its finish' } }
+            : {}),
         }));
       },
     });
+    // a finish that named no commit records the one the deploy it dispatched reported (ISS-1079)
+    if (hold.state === 'finished') await recordObservedShippedCommit(runId);
   } catch (err) {
     await recordFinishFailure(err, runId, hold);
   } finally {

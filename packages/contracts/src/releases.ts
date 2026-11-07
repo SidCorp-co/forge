@@ -1059,6 +1059,14 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_VERSION_UNKNOWN",
 	/** A change-request release's declared order that is not exactly its roster's change requests. */
 	"RELEASE_CHANGE_REQUEST_ORDER",
+	/** A shipped commit attached to a run that is no shipped release batch (ISS-1079). */
+	"RELEASE_SHIPPED_COMMIT_NOT_SHIPPED",
+	/** A shipped commit attached to a release that already records one (ISS-1079). */
+	"RELEASE_SHIPPED_COMMIT_HELD",
+	/** A shipped commit that does not hold the landing of an issue the release carried (ISS-1079). */
+	"RELEASE_SHIPPED_COMMIT_LACKS_LANDING",
+	/** A shipped commit whose hold on the release's landings nothing could read (ISS-1079). */
+	"RELEASE_SHIPPED_COMMIT_UNREAD",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
@@ -1075,6 +1083,10 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_RANGE_OUTSIDE_ROSTER: 409,
 	RELEASE_VERSION_UNKNOWN: 404,
 	RELEASE_CARRY_PROVEN: 409,
+	RELEASE_SHIPPED_COMMIT_NOT_SHIPPED: 409,
+	RELEASE_SHIPPED_COMMIT_HELD: 409,
+	RELEASE_SHIPPED_COMMIT_LACKS_LANDING: 409,
+	RELEASE_SHIPPED_COMMIT_UNREAD: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */

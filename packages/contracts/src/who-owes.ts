@@ -65,6 +65,7 @@ export const OTHER_OWED_ACTS = [
 	"release.settleClaim",
 	"release.cutAndApprove",
 	"release.setup",
+	"release.attachShippedCommit",
 ] as const;
 export type OtherOwedAct = (typeof OTHER_OWED_ACTS)[number];
 
@@ -222,6 +223,11 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		why: "cutting and approving a release of change requests is delivery, unless the project requires a person's release approval",
 		personWhen: [STRICT, RELEASE_APPROVAL],
 		byContent: true,
+	},
+	"release.attachShippedCommit": {
+		serious: false,
+		why: "attaching the commit a shipped release serves to its record is bookkeeping on what already shipped: it closes and moves nothing, and its door refuses a commit that does not hold the release's landings (ISS-1079)",
+		personWhen: [STRICT],
 	},
 	"release.setup": {
 		serious: true,

@@ -30,6 +30,7 @@ import { loadReleaseReadiness } from './readiness.js';
 import { recordRelease } from './record-door.js';
 import { readReleaseRecord } from './recorded.js';
 import { refuseRelease } from './refuse.js';
+import { attachShippedCommit } from './shipped-commit.js';
 import { recordShippedIn } from './shipped-in.js';
 import { correctShippedIn } from './shipped-in-correct.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
@@ -468,6 +469,40 @@ releaseBatchRoutes.post(
     }
     const result = await recordShippedIn({ projectId, userId, ...sent });
     return c.json(result, 201);
+  },
+);
+
+const shippedCommitBodySchema = z
+  .object({
+    /** The whole commit production serves, which holds every landing the release carried. */
+    commit: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-fA-F]{40}$/, 'a shipped commit is a whole 40-character sha'),
+    /** What the agent read to say production serves it: the probe and its answer. */
+    evidence: z.string().trim().min(10).max(2_000).optional(),
+  })
+  .strict();
+
+// ISS-1079 — a release that finished naming no commit is given the one it shipped, on its agent's
+// word and refused where that commit does not hold every landing it carried, so the verdicts judged
+// there count for the issues it carried.
+releaseBatchRoutes.post(
+  '/:projectId/release-batches/:runId/shipped-commit',
+  zValidator('param', runParamSchema),
+  requiresOnResolved(
+    'project.admin',
+    'the project `:projectId` names; outside strict its master holds the act too (REQ-79 r6 BC-17)',
+  ),
+  zValidator('json', shippedCommitBodySchema),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await requireReleaseAct(c, projectId, "attaching a release's shipped commit");
+    const run = await findReleaseBatchRun(runId);
+    if (!run || run.projectId !== projectId) throw notFound('release batch not found');
+    const { commit, evidence } = c.req.valid('json');
+    return c.json(await attachShippedCommit({ projectId, runId, commit, evidence, userId }), 201);
   },
 );
 

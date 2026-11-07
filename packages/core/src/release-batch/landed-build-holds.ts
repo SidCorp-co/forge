@@ -23,6 +23,7 @@ import {
   type LandedBuild,
 } from './landed-build.js';
 import { recordedHolding } from './recorded-holding.js';
+import { shippedAskKey, shippedReleaseHolding } from './shipped-holding.js';
 
 /** One issue's landed build, or why it has none. */
 export interface LandedHolds {
@@ -149,7 +150,8 @@ function laterCommitsOf(
 /**
  * Per issue whose build is a landing, whether each later commit its verdicts name holds that landing,
  * or why that was not read: the one reading of a pass on a later build, answered from the landings
- * Forge recorded (`recorded-holding.ts`), never from the host.
+ * Forge recorded (`recorded-holding.ts`), or from the commit a shipped release holding the issue
+ * recorded shipping (`shipped-holding.ts`, ISS-1079), never from the host.
  */
 export async function laterHoldersOf(
   projectId: string,
@@ -164,6 +166,14 @@ export async function laterHoldersOf(
       shas.map((sha) => holdingPair(landing, sha)),
     ),
   );
+  const answerOf = (landing: string, sha: string) =>
+    answers.get(pairKey(holdingPair(landing, sha)));
+  const shipped = await shippedReleaseHolding(
+    projectId,
+    [...later].flatMap(([issueId, { landing, shas }]) =>
+      shas.filter((sha) => answerOf(landing, sha) !== true).map((sha) => ({ issueId, sha })),
+    ),
+  );
   const out = new Map<string, Map<string, Holding>>();
   for (const [issueId, { landing, shas }] of later) {
     out.set(
@@ -171,9 +181,9 @@ export async function laterHoldersOf(
       new Map(
         shas.map((sha): [string, Holding] => [
           sha,
-          answers.get(pairKey(holdingPair(landing, sha))) ?? {
-            unread: 'the ancestry reader gave no answer',
-          },
+          shipped.has(shippedAskKey({ issueId, sha }))
+            ? true
+            : (answerOf(landing, sha) ?? { unread: 'the ancestry reader gave no answer' }),
         ]),
       ),
     );

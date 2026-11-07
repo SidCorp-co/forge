@@ -59,9 +59,7 @@ async function promotionProject(): Promise<void> {
         deployment: { mode: 'external' },
         url: 'https://mail.example.test',
         verification: {
-          runtime: [
-            { type: 'http', url: PRODUCTION_PROBE, path: 'commit', identifies: 'source' },
-          ],
+          runtime: [{ type: 'http', url: PRODUCTION_PROBE, path: 'commit', identifies: 'source' }],
         },
       },
     } as never,
