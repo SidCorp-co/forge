@@ -28,7 +28,8 @@ const PANE_READY_POLL: Duration = Duration::from_millis(250);
 /// a dialog, and only then typed into. One that shows neither within
 /// [`PANE_READY_WITHIN`] is typed into regardless and said so, since a brief
 /// never typed is lost; `send_line` reads that pane back once its composer
-/// shows the message, and answers `Unread` where it never does.
+/// shows the message, and answers `Unsubmitted`, pressing no Enter, where it
+/// never does.
 pub async fn brief_new_pane(name: &str, text: &str) -> std::result::Result<Prompt, NotTyped> {
     if !alive(name).await {
         return Err(NotTyped::Gone(name.to_string()));
@@ -104,6 +105,15 @@ impl From<NotTyped> for Error {
 const PROMPT_READ_LINES: &str = "-500";
 
 pub(super) async fn read_prompt(target: &str) -> composer::Composer {
+    match capture(target).await {
+        Some(drawn) => composer::read(&drawn),
+        None => composer::Composer::Unrecognised,
+    }
+}
+
+/// What `target` draws, with its escapes and [`PROMPT_READ_LINES`] of
+/// scrollback, or `None` where tmux could not capture it.
+pub(super) async fn capture(target: &str) -> Option<String> {
     let args = [
         "capture-pane",
         "-p",
@@ -114,8 +124,8 @@ pub(super) async fn read_prompt(target: &str) -> composer::Composer {
         target,
     ];
     match tmux(&args).await {
-        Ok(out) if out.status.success() => composer::read(&String::from_utf8_lossy(&out.stdout)),
-        _ => composer::Composer::Unrecognised,
+        Ok(out) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
+        _ => None,
     }
 }
 
@@ -216,6 +226,6 @@ nothing confirmed its prompt was empty before typing"
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    submit::after_paste(name, &target, prompt).await?;
+    submit::after_paste(name, &target).await?;
     Ok(prompt)
 }

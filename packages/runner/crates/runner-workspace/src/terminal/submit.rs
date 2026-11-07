@@ -14,11 +14,19 @@
 //! turns Enter's CR into an LF, which Claude Code reads as a newline in the
 //! draft (ISS-1081, seen five times on 2026-11-07). So such a pane is read
 //! back too, once its composer shows the message.
+//!
+//! Enter is pressed only at a composer read holding typed text. Claude Code
+//! draws a prompt suggestion as dim ghost text in an empty composer, and Enter
+//! there sends the suggestion: a master would act on an instruction the model
+//! invented. `composer::read` leaves dim text out (`composer.rs:framed` reads
+//! each line's `visible` part), so such a composer reads `Empty`; a paste that
+//! never shows used to be pressed regardless, which is that Enter. It is now
+//! said unsent instead (ISS-1081 round 2).
 
 use std::future::Future;
 use std::time::Duration;
 
-use super::{read_prompt, tmux, NotTyped, Prompt};
+use super::{read_prompt, tmux, NotTyped};
 use crate::composer::{self, Composer};
 
 /// Submit what `send_line` just pasted into `name`.
@@ -27,17 +35,38 @@ use crate::composer::{self, Composer};
 /// its own. A composer read empty before the paste holds only this message,
 /// and so does one that could not be read before and shows text now: nothing
 /// was there to read. Either is read back after each Enter. A pane whose
-/// composer never shows the paste gets one Enter and no read-back, since what
-/// it holds, if anything, cannot be told to be this message.
-pub(super) async fn after_paste(name: &str, target: &str, prompt: Prompt) -> Result<(), NotTyped> {
+/// composer never shows the paste gets no Enter at all and is said unsent:
+/// what it shows, if anything, is not this message, and may be a suggestion.
+pub(super) async fn after_paste(name: &str, target: &str) -> Result<(), NotTyped> {
     submit(
         name,
-        prompt,
         || press_enter(name, target),
         || read_prompt(target),
         Pace::LIVE,
     )
     .await
+}
+
+/// Submit the wake `name`'s composer was just read holding (ISS-1081 round 2):
+/// Enter and a read-back, pressed again while it still holds text, as
+/// [`after_paste`] does once a paste shows. One call is one attempt, at most
+/// [`ENTERS`] presses, and a wake still held after them is said unsent.
+pub(super) async fn held(name: &str, target: &str) -> Result<(), NotTyped> {
+    until_cleared(
+        || press_enter(name, target),
+        || read_prompt(target),
+        SETTLE,
+        ENTERS,
+    )
+    .await
+    .map_err(|why| match why {
+        NotSubmitted::EnterFailed(e) => NotTyped::Failed(e),
+        NotSubmitted::StillHeld(held) => NotTyped::Unsubmitted(format!(
+            "{name}: a runner wake sat unsent at its prompt and Enter was pressed {ENTERS} times, \
+and the prompt still holds it: \u{ab}{held}\u{bb}. It was not delivered; submit or clear it at \
+the pane."
+        )),
+    })
 }
 
 /// How a submit is paced: the poll for the paste to show, and the settle
@@ -58,13 +87,7 @@ impl Pace {
     };
 }
 
-async fn submit<E, EF, R, RF>(
-    name: &str,
-    prompt: Prompt,
-    enter: E,
-    mut read: R,
-    pace: Pace,
-) -> Result<(), NotTyped>
+async fn submit<E, EF, R, RF>(name: &str, enter: E, mut read: R, pace: Pace) -> Result<(), NotTyped>
 where
     E: FnMut() -> EF,
     EF: Future<Output = Result<(), String>>,
@@ -80,36 +103,22 @@ where
     .await
     .is_some();
     if !shown {
-        tracing::warn!(
-            "[terminal] {name}: the paste never showed at its prompt within {:?}; Enter is \
-pressed regardless",
+        return Err(NotTyped::Unsubmitted(format!(
+            "{name}: the message was pasted and its prompt never showed it within {:?}, so no \
+Enter was pressed — Enter at a composer showing no typed text would send Claude Code's dim prompt \
+suggestion instead. It was not delivered; submit or clear it at the pane.",
             pace.poll * pace.polls as u32
-        );
+        )));
     }
-    let readable = prompt == Prompt::Empty || shown;
-    let enters = if readable { ENTERS } else { 1 };
-    until_cleared(
-        enter,
-        || {
-            let next = if readable { Some(read()) } else { None };
-            async move {
-                match next {
-                    Some(next) => next.await,
-                    None => Composer::Unrecognised,
-                }
-            }
-        },
-        pace.settle,
-        enters,
-    )
-    .await
-    .map_err(|why| match why {
-        NotSubmitted::EnterFailed(e) => NotTyped::Failed(e),
-        NotSubmitted::StillHeld(held) => NotTyped::Unsubmitted(format!(
-            "{name}: the message was typed and Enter pressed {enters} times, and its prompt still \
-holds it unsent: \u{ab}{held}\u{bb}. It was not delivered; submit or clear it at the pane."
-        )),
-    })
+    until_cleared(enter, read, pace.settle, ENTERS)
+        .await
+        .map_err(|why| match why {
+            NotSubmitted::EnterFailed(e) => NotTyped::Failed(e),
+            NotSubmitted::StillHeld(held) => NotTyped::Unsubmitted(format!(
+                "{name}: the message was typed and Enter pressed {ENTERS} times, and its prompt \
+still holds it unsent: \u{ab}{held}\u{bb}. It was not delivered; submit or clear it at the pane."
+            )),
+        })
 }
 
 /// Read the composer every `poll` until `want` holds of what it shows, at
@@ -248,7 +257,6 @@ mod tests {
     /// read and keeps it until the `clears_on`th Enter: the answer, and each
     /// event in order, `E` an Enter and `H`/`-` a read holding the message or not.
     async fn submitted(
-        prompt: Prompt,
         shows_on: Option<usize>,
         clears_on: usize,
     ) -> (Result<(), NotTyped>, String) {
@@ -256,7 +264,6 @@ mod tests {
         let (reads, pressed) = (Cell::new(0usize), Cell::new(0usize));
         let out = submit(
             "forge-master-p",
-            prompt,
             || {
                 pressed.set(pressed.get() + 1);
                 events.borrow_mut().push('E');
@@ -293,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn enter_waits_until_the_composer_shows_the_paste() {
-        let (out, events) = submitted(Prompt::Empty, Some(3), 1).await;
+        let (out, events) = submitted(Some(3), 1).await;
         assert_eq!(out.map_err(|e| e.to_string()), Ok(()));
         assert_eq!(
             events, "--HE-",
@@ -305,7 +312,7 @@ mod tests {
     /// one Enter and never read back, and its wake sat unsent.
     #[tokio::test]
     async fn a_pane_unread_before_the_paste_that_shows_it_after_is_read_back_and_pressed_again() {
-        let (out, events) = submitted(Prompt::Unread, Some(1), 2).await;
+        let (out, events) = submitted(Some(1), 2).await;
         assert_eq!(out.map_err(|e| e.to_string()), Ok(()));
         assert_eq!(
             events, "HEHE-",
@@ -313,16 +320,30 @@ mod tests {
         );
     }
 
+    /// ISS-1081 round 2: a composer that never shows the paste was pressed
+    /// once regardless, and an empty one showing Claude Code's dim prompt
+    /// suggestion sends the suggestion on Enter.
     #[tokio::test]
-    async fn a_pane_unread_before_the_paste_and_after_it_takes_one_enter_and_no_read_back() {
-        let (out, events) = submitted(Prompt::Unread, None, 1).await;
-        assert_eq!(out.map_err(|e| e.to_string()), Ok(()));
-        assert_eq!(events, "-----E");
+    async fn a_paste_that_never_shows_gets_no_enter_and_is_said_unsent() {
+        for shows in [None, Some(usize::MAX)] {
+            let (out, events) = submitted(shows, 1).await;
+            assert_eq!(
+                events, "-----",
+                "Enter was pressed at a composer showing no typed text"
+            );
+            match out {
+                Err(NotTyped::Unsubmitted(why)) => assert!(
+                    why.starts_with("forge-master-p: ") && why.contains("no Enter"),
+                    "{why}"
+                ),
+                other => panic!("a paste that never showed was answered {other:?}"),
+            }
+        }
     }
 
     #[tokio::test]
     async fn a_wake_still_held_after_every_enter_is_said_unsent_naming_the_pane() {
-        let (out, events) = submitted(Prompt::Unread, Some(1), usize::MAX).await;
+        let (out, events) = submitted(Some(1), usize::MAX).await;
         assert_eq!(events, "HEHEHEH", "the Enters were not bounded at {ENTERS}");
         match out {
             Err(NotTyped::Unsubmitted(why)) => assert!(

@@ -62,6 +62,37 @@ pub fn read(capture: &str) -> Composer {
     }
 }
 
+/// What Claude Code draws on its spinner row for as long as a turn runs
+/// (2.1.319: `✻ Pondering… (12s · ↑ 1.2k tokens · esc to interrupt)`).
+const TURN_RUNNING: &str = "esc to interrupt";
+
+/// How many rows above the composer's opening rule the spinner is looked for:
+/// a turn's todo list and queued messages are drawn between the two.
+const SPINNER_ROWS: usize = 20;
+
+/// Whether `capture` draws a turn running over its composer (ISS-1081).
+///
+/// Text typed at a busy pane waits for the turn and is sent when it ends, and
+/// Enter there queues or interrupts rather than starting a turn, so a prompt
+/// is only idle where nothing shows the turn's spinner. It is looked for in
+/// the rows just above the composer and in the footer below it, never in the
+/// draft between the rules, so a draft quoting the words is not a turn. A
+/// capture with no composer frame reads as no turn drawn. Reading a turn where
+/// none runs only leaves a wake where it is, so the search errs wide.
+pub fn turn_running(capture: &str) -> bool {
+    let lines = rendered(capture);
+    let rules: Vec<usize> = (0..lines.len())
+        .filter(|i| is_rule(&lines[*i].all))
+        .collect();
+    let [.., open, close] = rules[..] else {
+        return false;
+    };
+    lines[open.saturating_sub(SPINNER_ROWS)..open]
+        .iter()
+        .chain(&lines[close + 1..])
+        .any(|l| l.all.contains(TURN_RUNNING))
+}
+
 /// A Claude Code tool-permission dialog, as a capture draws it.
 ///
 /// Claude Code 2.1.292 draws one as a `─` rule, a head naming the call (`Bash
