@@ -49,6 +49,7 @@ import { Route as WorkspaceProjectsSlugIndexRouteImport } from './routes/_worksp
 import { Route as WStatusTokenIndexRouteImport } from './routes/w/status/$token/index'
 import { Route as WorkspaceEcosystemsIdSettingsIndexRouteImport } from './routes/_workspace/ecosystems/$id/settings/index'
 import { Route as WorkspaceProjectsSlugAgentsIndexRouteImport } from './routes/_workspace/projects/$slug/agents/index'
+import { Route as WorkspaceProjectsSlugAgreementsIndexRouteImport } from './routes/_workspace/projects/$slug/agreements/index'
 import { Route as WorkspaceProjectsSlugApprovalsIndexRouteImport } from './routes/_workspace/projects/$slug/approvals/index'
 import { Route as WorkspaceProjectsSlugAutomationIndexRouteImport } from './routes/_workspace/projects/$slug/automation/index'
 import { Route as WorkspaceProjectsSlugChannelsIndexRouteImport } from './routes/_workspace/projects/$slug/channels/index'
@@ -293,6 +294,12 @@ const WorkspaceProjectsSlugAgentsIndexRoute =
   WorkspaceProjectsSlugAgentsIndexRouteImport.update({
     id: '/agents/',
     path: '/agents/',
+    getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
+  } as any)
+const WorkspaceProjectsSlugAgreementsIndexRoute =
+  WorkspaceProjectsSlugAgreementsIndexRouteImport.update({
+    id: '/agreements/',
+    path: '/agreements/',
     getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
   } as any)
 const WorkspaceProjectsSlugApprovalsIndexRoute =
@@ -557,6 +564,7 @@ export interface FileRoutesByFullPath {
   '/w/status/$token/': typeof WStatusTokenIndexRoute
   '/ecosystems/$id/settings/': typeof WorkspaceEcosystemsIdSettingsIndexRoute
   '/projects/$slug/agents/': typeof WorkspaceProjectsSlugAgentsIndexRoute
+  '/projects/$slug/agreements/': typeof WorkspaceProjectsSlugAgreementsIndexRoute
   '/projects/$slug/approvals/': typeof WorkspaceProjectsSlugApprovalsIndexRoute
   '/projects/$slug/automation/': typeof WorkspaceProjectsSlugAutomationIndexRoute
   '/projects/$slug/channels/': typeof WorkspaceProjectsSlugChannelsIndexRoute
@@ -632,6 +640,7 @@ export interface FileRoutesByTo {
   '/w/status/$token': typeof WStatusTokenIndexRoute
   '/ecosystems/$id/settings': typeof WorkspaceEcosystemsIdSettingsIndexRoute
   '/projects/$slug/agents': typeof WorkspaceProjectsSlugAgentsIndexRoute
+  '/projects/$slug/agreements': typeof WorkspaceProjectsSlugAgreementsIndexRoute
   '/projects/$slug/approvals': typeof WorkspaceProjectsSlugApprovalsIndexRoute
   '/projects/$slug/automation': typeof WorkspaceProjectsSlugAutomationIndexRoute
   '/projects/$slug/channels': typeof WorkspaceProjectsSlugChannelsIndexRoute
@@ -712,6 +721,7 @@ export interface FileRoutesById {
   '/w/status/$token/': typeof WStatusTokenIndexRoute
   '/_workspace/ecosystems/$id/settings/': typeof WorkspaceEcosystemsIdSettingsIndexRoute
   '/_workspace/projects/$slug/agents/': typeof WorkspaceProjectsSlugAgentsIndexRoute
+  '/_workspace/projects/$slug/agreements/': typeof WorkspaceProjectsSlugAgreementsIndexRoute
   '/_workspace/projects/$slug/approvals/': typeof WorkspaceProjectsSlugApprovalsIndexRoute
   '/_workspace/projects/$slug/automation/': typeof WorkspaceProjectsSlugAutomationIndexRoute
   '/_workspace/projects/$slug/channels/': typeof WorkspaceProjectsSlugChannelsIndexRoute
@@ -791,6 +801,7 @@ export interface FileRouteTypes {
     | '/w/status/$token/'
     | '/ecosystems/$id/settings/'
     | '/projects/$slug/agents/'
+    | '/projects/$slug/agreements/'
     | '/projects/$slug/approvals/'
     | '/projects/$slug/automation/'
     | '/projects/$slug/channels/'
@@ -866,6 +877,7 @@ export interface FileRouteTypes {
     | '/w/status/$token'
     | '/ecosystems/$id/settings'
     | '/projects/$slug/agents'
+    | '/projects/$slug/agreements'
     | '/projects/$slug/approvals'
     | '/projects/$slug/automation'
     | '/projects/$slug/channels'
@@ -945,6 +957,7 @@ export interface FileRouteTypes {
     | '/w/status/$token/'
     | '/_workspace/ecosystems/$id/settings/'
     | '/_workspace/projects/$slug/agents/'
+    | '/_workspace/projects/$slug/agreements/'
     | '/_workspace/projects/$slug/approvals/'
     | '/_workspace/projects/$slug/automation/'
     | '/_workspace/projects/$slug/channels/'
@@ -1280,6 +1293,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceProjectsSlugAgentsIndexRouteImport
       parentRoute: typeof WorkspaceProjectsSlugRouteRoute
     }
+    '/_workspace/projects/$slug/agreements/': {
+      id: '/_workspace/projects/$slug/agreements/'
+      path: '/agreements'
+      fullPath: '/projects/$slug/agreements/'
+      preLoaderRoute: typeof WorkspaceProjectsSlugAgreementsIndexRouteImport
+      parentRoute: typeof WorkspaceProjectsSlugRouteRoute
+    }
     '/_workspace/projects/$slug/approvals/': {
       id: '/_workspace/projects/$slug/approvals/'
       path: '/approvals'
@@ -1559,6 +1579,7 @@ const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
 interface WorkspaceProjectsSlugRouteRouteChildren {
   WorkspaceProjectsSlugIndexRoute: typeof WorkspaceProjectsSlugIndexRoute
   WorkspaceProjectsSlugAgentsIndexRoute: typeof WorkspaceProjectsSlugAgentsIndexRoute
+  WorkspaceProjectsSlugAgreementsIndexRoute: typeof WorkspaceProjectsSlugAgreementsIndexRoute
   WorkspaceProjectsSlugApprovalsIndexRoute: typeof WorkspaceProjectsSlugApprovalsIndexRoute
   WorkspaceProjectsSlugAutomationIndexRoute: typeof WorkspaceProjectsSlugAutomationIndexRoute
   WorkspaceProjectsSlugChannelsIndexRoute: typeof WorkspaceProjectsSlugChannelsIndexRoute
@@ -1603,6 +1624,8 @@ const WorkspaceProjectsSlugRouteRouteChildren: WorkspaceProjectsSlugRouteRouteCh
     WorkspaceProjectsSlugIndexRoute: WorkspaceProjectsSlugIndexRoute,
     WorkspaceProjectsSlugAgentsIndexRoute:
       WorkspaceProjectsSlugAgentsIndexRoute,
+    WorkspaceProjectsSlugAgreementsIndexRoute:
+      WorkspaceProjectsSlugAgreementsIndexRoute,
     WorkspaceProjectsSlugApprovalsIndexRoute:
       WorkspaceProjectsSlugApprovalsIndexRoute,
     WorkspaceProjectsSlugAutomationIndexRoute:

@@ -63,6 +63,8 @@ const PROJECT_MENU: ProjEntry[] = [
       { key: "proj-requirements", label: en("nav.proj-requirements"), icon: "book", sub: "/requirements" },
       { key: "proj-releases", label: en("nav.proj-releases"), icon: "rocket", sub: "/releases" },
       { key: "proj-workflows", label: en("nav.proj-workflows"), icon: "flow", sub: "/workflows" },
+      // the rules the project's agents work under: Forge's defaults, the project's changes, what agents get (REQ-90)
+      { key: "proj-agreements", label: en("nav.proj-agreements"), icon: "shield", sub: "/agreements" },
       // each bound chat group's members, rules, common issues and routes (REQ-75 r6 BC-30)
       { key: "proj-channels", label: en("nav.proj-channels"), icon: "mail", sub: "/channels" },
     ],

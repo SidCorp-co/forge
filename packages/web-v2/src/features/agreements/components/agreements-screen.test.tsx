@@ -40,7 +40,10 @@ const rowOf = (name: string) => {
   return row;
 };
 
-beforeEach(() => window.history.replaceState(null, "", PAGE));
+beforeEach(() => {
+  window.history.replaceState(null, "", PAGE);
+  sessionStorage.clear();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the Agreements page (REQ-90 BC-1)", () => {
@@ -73,8 +76,8 @@ describe("the Agreements page (REQ-90 BC-1)", () => {
     const groups = screen.getAllByTestId("list-group").map((g) => g.textContent);
     expect(groups.map((g) => g?.replace(/\d+/, " #").trim())).toEqual(["Changed #", "Inherited #", "Locked #"]);
     // inherited and locked are one click away while there are changes; opening them shows each row
-    fireEvent.click(screen.getByRole("button", { name: /Inherited/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Locked/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Inherited/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Locked/ }));
     const batch = rowOf("Batch delivery");
     expect(within(batch).getByTestId("agreement-state").textContent).toBe("Inherited");
     expect(within(batch).getByTestId("lane-effective").textContent).toBe("Related work goes in batches of at least one whole issue.");
@@ -112,7 +115,7 @@ describe("the inspector (REQ-90 BC-9)", () => {
     await screen.findByRole("table", { name: "Agreements" });
     fireEvent.click(within(rowOf("Proportional verification")).getByRole("button", { name: "Proportional verification" }));
     const drawer = await screen.findByRole("dialog", { name: "Proportional verification" });
-    expect(within(drawer).getByTestId("inspect-forge").textContent).toContain(agreementDetail("proportional-verification").forge?.rule);
+    expect((await within(drawer).findByTestId("inspect-forge")).textContent).toContain(agreementDetail("proportional-verification").forge?.rule);
     expect(within(drawer).getByTestId("inspect-project").textContent).toContain("Billing broke twice in October");
     expect(within(drawer).getByTestId("inspect-project").textContent).toContain("Lan");
     expect(within(drawer).getByTestId("inspect-effective").textContent).toContain("billing");
@@ -128,7 +131,7 @@ describe("the inspector (REQ-90 BC-9)", () => {
     await screen.findByRole("table", { name: "Agreements" });
     fireEvent.click(within(rowOf("Continuous audit")).getByRole("button", { name: "Continuous audit" }));
     const drawer = await screen.findByRole("dialog", { name: "Continuous audit" });
-    expect(within(drawer).getByTestId("inspect-conflict").textContent).toContain("Forge changed this default after the project's change.");
+    expect((await within(drawer).findByTestId("inspect-conflict")).textContent).toContain("Forge changed this default after the project's change.");
   });
 
   it("lets a project admin change an agreement and restore its default, sending the revision it read", async () => {
@@ -141,10 +144,10 @@ describe("the inspector (REQ-90 BC-9)", () => {
     await screen.findByRole("table", { name: "Agreements" });
     fireEvent.click(within(rowOf("Proportional verification")).getByRole("button", { name: "Proportional verification" }));
     const drawer = await screen.findByRole("dialog", { name: "Proportional verification" });
-    fireEvent.click(within(drawer).getByRole("button", { name: "Change" }));
-    fireEvent.change(within(drawer).getByLabelText("Rule"), { target: { value: "A billing change runs the billing and tax checks." } });
-    fireEvent.change(within(drawer).getByLabelText("Labels"), { target: { value: "billing, tax" } });
-    fireEvent.change(within(drawer).getByLabelText("Reason"), { target: { value: "Tax rules moved" } });
+    fireEvent.click(await within(drawer).findByRole("button", { name: "Change" }));
+    fireEvent.change(within(drawer).getByLabelText(/^Rule/), { target: { value: "A billing change runs the billing and tax checks." } });
+    fireEvent.change(within(drawer).getByLabelText(/^Labels/), { target: { value: "billing, tax" } });
+    fireEvent.change(within(drawer).getByLabelText(/^Reason/), { target: { value: "Tax rules moved" } });
     fireEvent.click(within(drawer).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     const put = calls.find((c) => c.method === "PUT");
@@ -152,7 +155,7 @@ describe("the inspector (REQ-90 BC-9)", () => {
     expect(put?.body).toEqual({ rule: "A billing change runs the billing and tax checks.", condition: { labels: ["billing", "tax"] }, reason: "Tax rules moved", projectRevision: 2 });
 
     fireEvent.click(within(drawer).getByRole("button", { name: "Restore default" }));
-    fireEvent.change(within(drawer).getByLabelText("Reason"), { target: { value: "Back to the default" } });
+    fireEvent.change(within(drawer).getByLabelText(/^Reason/), { target: { value: "Back to the default" } });
     fireEvent.click(within(drawer).getByRole("button", { name: "Restore" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     const post = calls.find((c) => c.method === "POST");
@@ -164,17 +167,18 @@ describe("the inspector (REQ-90 BC-9)", () => {
     core();
     renderWithQuery(<AgreementsScreen projectId={P} slug="hop" canManage />);
     await screen.findByRole("table", { name: "Agreements" });
-    fireEvent.click(screen.getByRole("button", { name: /Locked/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Locked/ }));
     fireEvent.click(within(rowOf("Access")).getByRole("button", { name: "Access" }));
     const locked = await screen.findByRole("dialog", { name: "Access" });
+    expect(await within(locked).findByText("Locked")).toBeTruthy();
     expect(within(locked).queryByRole("button", { name: "Change" })).toBeNull();
-    expect(within(locked).getByText("Locked")).toBeTruthy();
     fireEvent.keyDown(locked, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    fireEvent.click(screen.getByRole("button", { name: /Inherited/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Inherited/ }));
     fireEvent.click(within(rowOf("Gate profile")).getByRole("button", { name: "Gate profile" }));
     const gates = await screen.findByRole("dialog", { name: "Gate profile" });
+    expect((await within(gates).findByRole("link", { name: "Open settings" })).getAttribute("href")).toBe("/projects/hop/settings");
     expect(within(gates).queryByRole("button", { name: "Change" })).toBeNull();
     expect(within(gates).getByRole("link", { name: "Open settings" }).getAttribute("href")).toBe("/projects/hop/settings");
   });
