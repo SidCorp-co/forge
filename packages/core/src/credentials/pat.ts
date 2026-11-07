@@ -401,7 +401,10 @@ export async function setPatFence(
   });
 }
 
-/** Count active PATs for a user. Used for the per-user cap. */
+/**
+ * The live personal access tokens a user holds, for the per-user cap: unrevoked and unexpired
+ * (`patIsLive`), and none issued to a box. An expired token, never revoked, holds no seat (ISS-1124).
+ */
 export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db
     .select({ id: personalAccessTokens.id })
@@ -409,8 +412,8 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
     .where(
       and(
         eq(personalAccessTokens.userId, userId),
-        isNull(personalAccessTokens.revokedAt),
         isNull(personalAccessTokens.deviceId),
+        patIsLive(),
       ),
     );
   return rows.length;

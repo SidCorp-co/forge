@@ -83,13 +83,16 @@ export function mintableGrant(
   return permissions;
 }
 
-/** Refuses a person already holding as many live tokens as one may. */
+/**
+ * Refuses a person already holding as many live tokens as one may; an expired or revoked token
+ * holds no seat, and the refusal names the count it read.
+ */
 export async function assertUnderTokenLimit(userId: string): Promise<void> {
   const active = await countActivePatsForUser(userId);
   if (active >= env.PAT_MAX_PER_USER) {
     throw refusePat(
       'PAT_LIMIT',
-      `you hold the most live personal access tokens allowed (${env.PAT_MAX_PER_USER}); revoke one first`,
+      `you hold ${active} live personal access tokens, and ${env.PAT_MAX_PER_USER} is the most allowed; expired and revoked ones do not count. Revoke a live one first`,
     );
   }
 }
