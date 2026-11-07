@@ -1,12 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { closeOrphanedScriptFires } from '../../src/schedules/fires.js';
 import {
   PRODUCTION_WATCH_OPS,
   PRODUCTION_WATCH_PARAMS,
   PRODUCTION_WATCH_SCRIPT,
 } from '../../src/guides/script-schedules-guide.js';
+import { closeOrphanedScriptFires } from '../../src/schedules/fires.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
