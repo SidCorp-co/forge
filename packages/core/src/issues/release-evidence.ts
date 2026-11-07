@@ -150,16 +150,20 @@ export function releaseRunsHoldingSql(issueIds: readonly string[], projectId: SQ
      WHERE jsonb_typeof(r.release_roster -> ${key}) = 'array'
     UNION ALL
     SELECT r.release_roster ->> ${key} WHERE jsonb_typeof(r.release_roster -> ${key}) = 'string'`;
-  // the asked ids are joined before the rule reads them, so it casts only an id that was asked
+  // the pairs a roster names come first, kept apart so the rule is asked of them alone and never of
+  // every asked issue against every run; and only an id that was asked reaches the rule's cast
   return sql`
-    SELECT DISTINCT a.issue_id, r.id, r.release_version, r.release_released_at
-      FROM pipeline_runs r
-      CROSS JOIN LATERAL (${named('issueIds')} UNION ALL ${named('rosterClosed')}) AS n(issue_id)
-      JOIN unnest(ARRAY[${idList(issueIds)}]::text[]) AS a(issue_id) ON a.issue_id = n.issue_id
-     WHERE r.project_id = ${projectId}
-       AND r.release_version IS NOT NULL
-       AND r.release_released_at IS NOT NULL
-       AND ${holdsWorkSql(sql`a.issue_id`)}`;
+    WITH named AS MATERIALIZED (
+      SELECT DISTINCT a.issue_id, r.id
+        FROM pipeline_runs r
+        CROSS JOIN LATERAL (${named('issueIds')} UNION ALL ${named('rosterClosed')}) AS n(issue_id)
+        JOIN unnest(ARRAY[${idList(issueIds)}]::text[]) AS a(issue_id) ON a.issue_id = n.issue_id
+       WHERE r.project_id = ${projectId}
+         AND r.release_version IS NOT NULL
+         AND r.release_released_at IS NOT NULL)
+    SELECT h.issue_id, r.id, r.release_version, r.release_released_at
+      FROM named h JOIN pipeline_runs r ON r.id = h.id
+     WHERE ${holdsWorkSql(sql`h.issue_id`)}`;
 }
 
 /** True where a shipped release still holds the work of the issue `issueId` names (`holdingReleaseRunsSql`). */
