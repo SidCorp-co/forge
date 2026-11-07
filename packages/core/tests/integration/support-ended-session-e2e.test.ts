@@ -13,7 +13,11 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { LAST_RESORT_LINES, STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
+import {
+  LAST_RESORT_LINES,
+  ROOM_STILL_QUEUED_LINES,
+  STILL_QUEUED_LINE,
+} from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
 import { warmSupportRoom } from '../../src/support/warm.js';
 import { api } from '../helpers/api.js';
@@ -26,7 +30,7 @@ import { SupportWorld, type Turn } from '../helpers/support-world.js';
 // lost, and a cancel changed nothing. A room's session that ended is never handed another turn: the
 // room's next turn opens a new session in the checkout the binding names now. One that ended on a
 // cause a retry meets again (its checkout is not on the box) is not tried again in that checkout:
-// the room holds, the thread is told, and the binding naming another checkout lifts the hold.
+// the room holds, the room is told once (ISS-1105), and the binding naming another checkout lifts the hold.
 
 const w = new SupportWorld();
 let roomId = '';
@@ -140,7 +144,7 @@ describe('ISS-1101: a session whose turn failed', () => {
 });
 
 describe('ISS-1101: a turn that failed because its checkout is not on the box', () => {
-  it('is not started again in that checkout: the room holds and the thread is told', async () => {
+  it('is not started again in that checkout: the room holds and the room is told', async () => {
     await w.settleWarm();
     const held = await sessionOfRoom();
     const [runner] = await rows<{ repo_path: string }>(sql`
@@ -165,14 +169,18 @@ describe('ISS-1101: a turn that failed because its checkout is not on the box', 
     const told = (await w.actions(roomId)).filter(
       (a) => a.kind === 'refused' && a.tool === 'turn_failed' && a.thread === asked,
     );
-    // each message is recorded unanswered; the thread is told once while it waits
+    // each message is recorded unanswered; the room is told once, at its top level, while it
+    // waits, and the thread itself nothing (ISS-1105)
     expect(told.length).toBeGreaterThan(0);
-    const lines = (await w.chat.botLines()).filter(
-      (l) =>
-        l.tmid === asked &&
-        (l.text === STILL_QUEUED_LINE || l.text === LAST_RESORT_LINES.turn_failed),
-    );
-    expect(lines).toHaveLength(1);
+    const lines = await w.chat.botLines();
+    const failed = (l: { text: string }) =>
+      l.text === STILL_QUEUED_LINE ||
+      l.text === LAST_RESORT_LINES.turn_failed ||
+      l.text === ROOM_STILL_QUEUED_LINES.en;
+    expect(lines.filter((l) => l.tmid === asked && failed(l))).toEqual([]);
+    expect(lines.filter((l) => !l.tmid && failed(l)).map((l) => l.text)).toEqual([
+      ROOM_STILL_QUEUED_LINES.en,
+    ]);
   }, 60_000);
 
   it('runs again, on a new session in the new checkout, once the binding names another', async () => {

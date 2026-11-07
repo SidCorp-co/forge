@@ -10,7 +10,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
+import { ROOM_STILL_QUEUED_LINES, STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
 import { coreTimers } from '../../src/timer-registry.js';
 import { rows } from '../helpers/factories.js';
@@ -92,10 +92,17 @@ async function boxReconnects(): Promise<void> {
   await w.box.connect();
 }
 
-const failedLine = (l: { text: string }) => l.text === STILL_QUEUED_LINE;
+const failedLine = (l: { text: string }) =>
+  l.text === STILL_QUEUED_LINE || Object.values(ROOM_STILL_QUEUED_LINES).includes(l.text);
 
-async function toldFailed(thread: string): Promise<number> {
+/** Core's failed-turn lines inside `thread`: none since ISS-1105, which tells the room once instead. */
+async function toldInThread(thread: string): Promise<number> {
   return (await w.chat.botLines()).filter((l) => l.tmid === thread && failedLine(l)).length;
+}
+
+/** Core's failed-turn lines at the room's top level (ISS-1105). */
+async function toldTheRoom(): Promise<number> {
+  return (await w.chat.botLines()).filter((l) => !l.tmid && failedLine(l)).length;
 }
 
 describe('ISS-850: a turn core lost to its restart', () => {
@@ -121,7 +128,7 @@ describe('ISS-850: a turn core lost to its restart', () => {
     await boxReconnects();
     await new Promise((r) => setTimeout(r, 500));
     expect(handed(text)).toBe(2);
-    expect(await toldFailed(thread)).toBe(0);
+    expect(await toldInThread(thread)).toBe(0);
   }, 90_000);
 
   it('a message lost on every try is told once its tries ran out, and stays queued', async () => {
@@ -133,14 +140,16 @@ describe('ISS-850: a turn core lost to its restart', () => {
     await loseTheTurn();
     await boxReconnects();
     await expect.poll(() => handed(text), { timeout: 30_000 }).toBe(3);
-    expect(await toldFailed(thread)).toBe(0);
+    expect(await toldTheRoom()).toBe(0);
     await loseTheTurn();
     await boxReconnects();
-    await expect.poll(() => toldFailed(thread), { timeout: 15_000 }).toBe(1);
+    // the room is told once, at its top level, and the thread itself nothing (ISS-1105)
+    await expect.poll(() => toldTheRoom(), { timeout: 15_000 }).toBe(1);
     await coreStarts();
     await new Promise((r) => setTimeout(r, 500));
     expect(handed(text)).toBe(3);
-    expect(await toldFailed(thread)).toBe(1);
+    expect(await toldTheRoom()).toBe(1);
+    expect(await toldInThread(thread)).toBe(0);
     const told = (await w.actions(roomId)).filter(
       (a) => a.kind === 'refused' && a.tool === 'turn_failed' && a.thread === thread,
     );
@@ -160,7 +169,7 @@ describe('ISS-850: a turn core lost to its restart', () => {
     await boxReconnects();
     await new Promise((r) => setTimeout(r, 1_000));
     expect(handed(text)).toBe(1);
-    expect(await toldFailed(thread)).toBe(0);
+    expect(await toldInThread(thread)).toBe(0);
     const lines = (await w.chat.botLines()).filter((l) => l.tmid === thread);
     expect(lines.map((l) => l.text)).toEqual([`Answered: ${text}`]);
   }, 90_000);

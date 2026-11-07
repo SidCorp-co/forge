@@ -6,7 +6,8 @@
 // takes at its next tool call or answers straight after it. The drain timer only recovers what a
 // crash left undelivered, and re-offers a room whose back-off ended. A turn that ends without
 // completing, or never reaches its box, gives the messages it left unanswered back to be tried again,
-// and tells a thread only once its tries ran out (`turn-retry.ts`, ISS-977). A turn whose end core
+// and tells the room once, at its top level, only once their tries ran out (`turn-retry.ts`, ISS-977,
+// ISS-1105); a message held past the age bound is dropped and told nowhere. A turn whose end core
 // never heard, as one cut off by a core restart, is read lost once it goes silent (`lost-turns.ts`,
 // ISS-850), and its messages are tried again the same way.
 

@@ -14,15 +14,19 @@ vi.hoisted(() => {
 });
 
 import { dispatchChatTurn, sessionRowById } from '../../src/agent-sessions/index.js';
-import { LAST_RESORT_LINES, STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
+import {
+  LAST_RESORT_LINES,
+  ROOM_STILL_QUEUED_LINES,
+  STILL_QUEUED_LINE,
+} from '../../src/conversations/last-resort.js';
 import { RETRY_DELAYS_MS } from '../../src/support/turn-retry.js';
 import { rows } from '../helpers/factories.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
 // REQ-75 r2, BC-11 and BC-18, as ISS-977 revised them: a support session's turn that fails on
 // Forge's side is tried again by Forge with a short back-off, each try on the room's history, and
-// only once the tries ran out is the thread told, in a plain Vietnamese line that says the assistant
-// answers when it can; the message stays queued. A thread answered since is told again on a later
+// only once the tries ran out is the room told, once, in one line at its top level in its own
+// language (ISS-1105), that says the assistant answers when it can; the message stays queued. A thread answered since is told again on a later
 // failure. One session runs one turn at a time, and a transcript batch numbered from a stale base
 // is told core's next seq. The world is support-room-e2e's: the real Rocket.Chat connection
 // manager against a chat server and a box playing the session's Claude Code.
@@ -75,13 +79,17 @@ describe('ISS-875: a member past the hourly limit', () => {
   });
 });
 
-/** The lines of `thread` that are core's failed-turn lines, the old one asking to resend included. */
+const failedLine = (l: { text: string }) =>
+  l.text === STILL_QUEUED_LINE ||
+  l.text === LAST_RESORT_LINES.turn_failed ||
+  Object.values(ROOM_STILL_QUEUED_LINES).includes(l.text);
+
+/** The lines of `thread` that are core's failed-turn lines: none since ISS-1105 tells the room instead. */
 const failedLines = async (thread: string) =>
-  (await w.chat.botLines()).filter(
-    (l) =>
-      l.tmid === thread &&
-      (l.text === STILL_QUEUED_LINE || l.text === LAST_RESORT_LINES.turn_failed),
-  );
+  (await w.chat.botLines()).filter((l) => l.tmid === thread && failedLine(l));
+
+/** Core's one failed-turn line at the room's top level, each time the room was told (ISS-1105). */
+const roomLines = async () => (await w.chat.botLines()).filter((l) => !l.tmid && failedLine(l));
 
 /** The room's core records of `tool` in `thread`. */
 const recorded = async (tool: string, thread: string) =>
@@ -133,20 +141,22 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
     expect(await recorded('turn_failed', parcel)).toEqual([]);
   }, 60_000);
 
-  it('tells the thread once its tries ran out, never asking to resend, and keeps the message queued', async () => {
+  it('tells the room once its tries ran out, never asking to resend, and keeps the message queued', async () => {
     const seen: Turn[] = [];
     play(seen, new Map([['Refund please', 99]]));
     const refund = await w.chat.say(w.chat.bob, 'Refund please');
     await w.untilLines(
-      (ls) => ls.some((l) => l.tmid === refund && l.text === STILL_QUEUED_LINE),
+      (ls) => ls.some((l) => !l.tmid && l.text === ROOM_STILL_QUEUED_LINES.en),
       60_000,
     );
     expect(handed(seen, 'Refund please')).toBe(3);
-    expect((await failedLines(refund)).map((l) => l.text)).toEqual([STILL_QUEUED_LINE]);
+    // one line at the room's top level, in the room's language, and none in the thread (ISS-1105)
+    expect((await roomLines()).map((l) => l.text)).toEqual([ROOM_STILL_QUEUED_LINES.en]);
+    expect(await failedLines(refund)).toEqual([]);
     expect((await recorded('turn_retry', refund)).map((a) => a.output.try)).toEqual([1, 2, 3]);
     const told = await recorded('turn_failed', refund);
     expect(told).toHaveLength(1);
-    expect(told[0]?.output).toMatchObject({ posted: true });
+    expect(told[0]?.output).toMatchObject({ posted: true, waitsOnAnswer: true });
     // still queued: waiting for a turn, on the slow back-off, its three tries counted
     const [held] = await rows<{ delivered: boolean; tries: number; wait_s: number }>(sql`
       SELECT delivered_at IS NOT NULL AS delivered, (output->>'tries')::int AS tries,
@@ -158,10 +168,10 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
     // the slow back-off holds it: nothing hands it on meanwhile, and nothing more is posted
     await new Promise((r) => setTimeout(r, 3_000));
     expect(handed(seen, 'Refund please')).toBe(3);
-    expect(await failedLines(refund)).toHaveLength(1);
+    expect(await roomLines()).toHaveLength(1);
   }, 90_000);
 
-  it('a held message goes with the next turn, and a thread answered since is told again when it fails again', async () => {
+  it('a held message goes with the next turn, and a room answered since is told again when it fails again', async () => {
     const seen: Turn[] = [];
     const [{ id: refund } = { id: '' }] = await rows<{ id: string }>(sql`
       SELECT thread AS id FROM support_actions
@@ -179,13 +189,11 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
         timeout: 15_000,
       })
       .toBe(true);
-    // answered, the thread's wait is over: its next failure is told again, under the same rule
+    // a turn completed, so the room's wait is over: its next failure is told again, once
     await w.chat.say(w.chat.bob, 'Still there?', refund);
-    await expect
-      .poll(() => failedLines(refund), { timeout: 60_000, interval: 250 })
-      .toHaveLength(2);
+    await expect.poll(() => roomLines(), { timeout: 60_000, interval: 250 }).toHaveLength(2);
     expect(handed(seen, 'Still there?')).toBe(3);
-    expect((await failedLines(refund)).every((l) => l.text === STILL_QUEUED_LINE)).toBe(true);
+    expect(await failedLines(refund)).toEqual([]);
     expect(await recorded('turn_failed', refund)).toHaveLength(2);
     // a turn that completes ends the slow back-off: the held message goes with it and is answered
     play(seen, new Map());
