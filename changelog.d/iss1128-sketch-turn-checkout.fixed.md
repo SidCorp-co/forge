@@ -1,1 +1,0 @@
-**A preview sketch's turns run in its own worktree again.** Every chat turn read the binding's checkout, so a sketch session ran in the main checkout; a worktree inside the bound checkout is now kept on its box.

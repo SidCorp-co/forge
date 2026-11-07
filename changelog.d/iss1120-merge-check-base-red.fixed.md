@@ -1,1 +1,0 @@
-**A dev red no longer holds unrelated landings.** `pnpm merge-check` reruns each red integration file at the head and the merge base; base-red and flaky files are recorded apart, and only the change's own red refuses.

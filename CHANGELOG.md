@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.586] - 2026-11-07
+
+Working agreements per project, safer release merges and deploys, and chat-room fixes
+
+### Added
+
+- **Each project has working agreements: Forge's nine defaults, the project's overrides and its own additions, each with reason and history.** A locked guarantee, a stale write and a brief contradicting its grants are refused by name (ISS-1110).
+- **A project's Agreements page** shows each working agreement as Forge default, project change and effective rule with its state, locked guarantees apart; an inspector holds its history, an admin's change and restore, and a run's received rules.
+- **Agents receive the working agreements in force for their task.** Every orientation and job prompt carries the map, resolved for the issue's labels, and each run records the agreement revisions it got (ISS-1112).
+
+### Fixed
+
+- **A dev red no longer holds unrelated landings.** `pnpm merge-check` reruns each red integration file at the head and the merge base; base-red and flaky files are recorded apart, and only the change's own red refuses.
+- **A preview sketch's turns run in its own worktree again.** Every chat turn read the binding's checkout, so a sketch session ran in the main checkout; a worktree inside the bound checkout is now kept on its box.
+
 ## [0.4.0-dev.585] - 2026-11-07
 
 Chat threads: real-asker mentions, no late replies, citable message ids, order numbers pass

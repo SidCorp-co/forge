@@ -1,1 +1,0 @@
-**Each project has working agreements: Forge's nine defaults, the project's overrides and its own additions, each with reason and history.** A locked guarantee, a stale write and a brief contradicting its grants are refused by name (ISS-1110).
