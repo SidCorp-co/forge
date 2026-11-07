@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RailButton } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { closeAutoOpened, useAutoOpenedRelease, useMarkWhatsNewSeen, useWhatsNew, useWhatsNewSummary } from "../hooks";
@@ -8,10 +8,13 @@ import { WhatsNewSheet } from "./whats-new-panel";
 export { forgetOpenedWhatsNew } from "../hooks";
 
 /**
- * The rail's What's new entry. Where the summary says the serving release is owed, it opens by itself
- * once (a dot stands until then); opening it reads the release and shows it as it stood. Closing it
- * on an owed release writes the mark that names that release, which clears the dot and owes nothing
- * more on it. Opened by hand with nothing owed, it shows the release and writes nothing.
+ * The rail's What's new entry, opened by itself once per release (REQ-40 BC-10: people see What's new
+ * once per instance after a release reaches it). Where the summary says the serving release is owed,
+ * it opens by itself (`hooks.ts:readSummary`); opening it reads the release and shows it as it stood.
+ * Showing an owed release writes the mark that names it, so it is seen once whether the person closes
+ * it, leaves it open, reloads or signs in again (ISS-1073: on dev.567 only a close wrote the mark, and
+ * it opened on every page load until one did); the mark clears the dot and owes nothing more on it.
+ * Opened by hand with nothing owed, it shows the release and writes nothing.
  */
 export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
   const t = useCopy();
@@ -27,10 +30,16 @@ export function WhatsNewButton({ compact = false }: { compact?: boolean }) {
   const failure = open && feedQ.error ? "failed" : null;
   const owed = summary.data?.release?.owed === true;
 
+  // the release shown is the release seen: its mark is written as it shows, once (the write clears `owed`)
+  const seenEnvironment = shown?.release?.owed ? shown.environment : null;
+  const seenVersion = shown?.release?.owed ? shown.release.version : null;
+  useEffect(() => {
+    if (seenEnvironment !== null && seenVersion !== null) writeMark({ environment: seenEnvironment, version: seenVersion });
+  }, [seenEnvironment, seenVersion, writeMark]);
+
   function closePanel() {
     setOpenedAt(null);
     closeAutoOpened();
-    if (shown?.release?.owed) writeMark({ environment: shown.environment, version: shown.release.version });
   }
 
   return (

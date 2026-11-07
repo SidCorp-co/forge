@@ -330,18 +330,18 @@ export function NavRail({
       />
     );
   };
-  const tier = (label: string, entries: NavEntry[]) => (
-    <div className={cn("flex flex-col", compact ? "items-center gap-3px" : "gap-1")}>
+  // collapsed, a tier is named to a screen reader and set apart by a rule, never by a word the rail draws (ISS-1073)
+  const tier = (label: string, entries: NavEntry[], first: boolean) => (
+    <div role="group" aria-label={label} className={cn("flex flex-col", compact ? "items-center gap-3px" : "gap-1")}>
       {compact ? (
-        <span className="select-none px-1 pb-0.5 text-center text-8-5 font-semibold uppercase leading-none tracking-[0.08em] text-subtle">
-          {label}
-        </span>
+        first ? null : <span aria-hidden className="mb-1.5 h-px w-10 bg-line-subtle" data-testid="tier-rule" />
       ) : (
         <Kicker className="px-2.5 pb-1">{label}</Kicker>
       )}
       {entries.map(entry)}
     </div>
   );
+  const hasProject = Boolean(projectItems && projectItems.length > 0);
 
   return (
     <nav
@@ -376,8 +376,8 @@ export function NavRail({
           compact ? "items-center gap-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "gap-5",
         )}
       >
-        {projectItems && projectItems.length > 0 && tier(t("common.nav.project"), projectItems)}
-        {tier(compact ? t("common.nav.space") : t("common.nav.workspace"), workspaceItems)}
+        {hasProject && projectItems ? tier(t("common.nav.project"), projectItems, true) : null}
+        {tier(t("common.nav.workspace"), workspaceItems, !hasProject)}
       </div>
       <Footer compact={compact} {...footer} />
     </nav>

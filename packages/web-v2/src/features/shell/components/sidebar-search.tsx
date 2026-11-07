@@ -25,10 +25,10 @@ export function SidebarSearch({ onOpen, compact = false, icon = false }: { onOpe
         onClick={onOpen}
         aria-label={label}
         title={label}
-        className="inline-flex w-19 flex-col items-center gap-1 rounded-md py-1.5 text-subtle transition-colors hover:bg-hover hover:text-fg"
+        className="inline-flex size-9 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
       >
+        {/* the collapsed rail is icons only: Search is the icon's name on hover, never a word under it (ISS-1073) */}
         <Icon name="search" size={18} />
-        <span className="text-10 font-semibold text-muted">{t("shell.search.short")}</span>
       </button>
     );
   }

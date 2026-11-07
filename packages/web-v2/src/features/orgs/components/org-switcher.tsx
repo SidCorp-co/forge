@@ -21,6 +21,13 @@ function orgLabel(o: OrgListItem, personal: string): string {
   return o.isPersonal ? personal : o.name;
 }
 
+/** An org's avatar letters: the first letters of its first two words, or its first two letters ("SidCorp" → "SI"). */
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const letters = words.length > 1 ? `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}` : (words[0] ?? "").slice(0, 2);
+  return letters.toUpperCase();
+}
+
 export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "brand" }) {
   const router = useRouter();
   const { orgs, activeOrg, setActiveOrg, isSingle } = useActiveOrg();
@@ -69,12 +76,14 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
   }
 
   if (variant === "compact") {
+    // the collapsed rail is icons only: the org is its avatar, its name on hover, never a word under it (ISS-1073)
     const glyph = (
-      <span className="relative inline-flex">
+      <span className="relative inline-flex" title={label}>
         <span
-          className="inline-flex size-7.5 items-center justify-center rounded-md border border-line bg-sunken text-subtle"
+          className="inline-flex size-7.5 items-center justify-center rounded-md border border-line bg-sunken text-11 font-bold text-muted"
+          data-testid="org-avatar"
         >
-          <Icon name="users" size={16} />
+          {initialsOf(label)}
         </span>
         {!isSingle && (
           <span
@@ -86,22 +95,16 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
         )}
       </span>
     );
-    const labelEl = (
-      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-tight text-muted">
-        {label}
-      </span>
-    );
     // Single org → no menu/chevron, but still a link to the org home so the
     // user can reach the org's projects + members (ISS-470, AC7 — no dead-end).
     if (isSingle) {
       return (
         <Link
           href="/org"
-          className="flex w-19 flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
+          className="flex size-10 items-center justify-center rounded-md transition-colors hover:bg-hover"
           aria-label={t("shell.org.named", { name: label })}
         >
           {glyph}
-          {labelEl}
         </Link>
       );
     }
@@ -116,10 +119,9 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "br
             type="button"
             aria-haspopup="menu"
             aria-label={t("shell.org.switch", { name: label })}
-            className="flex w-19 flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
+            className="flex size-10 items-center justify-center rounded-md transition-colors hover:bg-hover"
           >
             {glyph}
-            {labelEl}
           </button>
         }
       />

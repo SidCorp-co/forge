@@ -21,7 +21,7 @@ export function RailButton({
   /** Something there is owed to the reader. */
   dot?: boolean;
   dotTestId?: string;
-  /** The collapsed rail: the name under the icon. */
+  /** The collapsed rail: the icon alone, named on hover and to a screen reader, never text under it (ISS-1073). */
   compact?: boolean;
   /** The `data-tour` anchor a tour step points at. */
   tour?: string;
@@ -33,14 +33,15 @@ export function RailButton({
       onClick={onClick}
       data-tour={tour}
       aria-label={ariaLabel}
+      title={compact ? label : undefined}
       className={cn(
-        "relative flex w-full items-center rounded-md py-1.5 text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-11",
-        compact ? "flex-col gap-0.5 px-1 text-12" : "gap-2.5 px-1.5 text-13",
+        "relative flex items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:min-h-11",
+        compact ? "size-9 justify-center" : "w-full gap-2.5 px-1.5 py-1.5 text-13",
       )}
     >
-      <Icon name={icon} size={compact ? 15 : 16} />
-      <span className={cn(!compact && "flex-1 text-left")}>{label}</span>
-      {dot ? <span data-testid={dotTestId} aria-hidden className={cn("size-2 rounded-pill bg-accent", compact ? "absolute right-4 top-1" : "flex-none")} /> : null}
+      <Icon name={icon} size={compact ? 17 : 16} />
+      {compact ? null : <span className="flex-1 text-left">{label}</span>}
+      {dot ? <span data-testid={dotTestId} aria-hidden className={cn("size-2 rounded-pill bg-accent", compact ? "absolute right-1 top-1" : "flex-none")} /> : null}
     </button>
   );
 }

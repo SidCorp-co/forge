@@ -42,7 +42,7 @@ window.history.replaceState = (data, unused, url) => {
 };
 
 // ── the issue page: ISS-1091's title, as long as it ran on dev.571 ──
-const LONG_TITLE = "A confirmed-fixed notice for a read-only request carries no result, so the channel agent cannot say what changed";
+const LONG_TITLE = "A confirmed-fixed notice for a read-only request carries no result, so the channel agent cannot say what changed for the person who asked it in the room";
 const ISSUE_LONG: [QueryKey, unknown][] = ISSUE_TITLED.map(([key, value]) =>
   key[0] === "issue" && key[1] === "i1" && key.length <= 3 && (value as { displayId?: string }).displayId ? [key, { ...(value as object), title: LONG_TITLE }] : [key, value],
 );

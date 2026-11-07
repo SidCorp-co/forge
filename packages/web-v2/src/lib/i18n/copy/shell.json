@@ -251,7 +251,6 @@
     "shell.scope.one": "About {name}",
     "shell.search.label": "Search (⌘K)",
     "shell.search.placeholder": "Search…",
-    "shell.search.short": "Search",
     "shell.settings.tab.account": "Account",
     "shell.settings.tab.agents": "Agents",
     "shell.settings.tab.mcp": "MCP",
