@@ -32,7 +32,7 @@ async function mintMany(userId: string, n: number, prefix: string, expiresAt: Da
   return ids;
 }
 
-async function refusal(userId: string): Promise<{ code?: string; text: string } | null> {
+async function refusal(userId: string): Promise<{ code: string | undefined; text: string } | null> {
   try {
     await assertUnderTokenLimit(userId);
     return null;
