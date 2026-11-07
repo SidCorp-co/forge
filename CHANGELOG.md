@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.563] - 2026-11-07
+
+Builder passes no longer count as met; release runs record the commit they shipped
+
+### Fixed
+
+- **A builder's own pass no longer reads as met.** The criteria read names it as never counting, and the Criteria tab marks it Builder's pass, not judged, and leaves it out of Met.
+
 ## [0.4.0-dev.562] - 2026-11-07
 
 Settings drop routine approvals and second-language options; earlier releases hold their shipped issues
