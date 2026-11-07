@@ -4,12 +4,16 @@
 
 import { z } from "zod";
 
-/** What reached a run: an always-applied rule, a knowledge entry, a lesson or a memory. */
+/**
+ * What reached a run: an always-applied rule, a knowledge entry, a lesson, a memory, or a working
+ * agreement (REQ-90), whose `revision` is the `forge@<n>`, `project@<n>` or `config@<n>` it was given.
+ */
 export const RUN_CONTEXT_SOURCE_KINDS = [
 	"rule",
 	"knowledge",
 	"lesson",
 	"memory",
+	"agreement",
 ] as const;
 export type RunContextSourceKind = (typeof RUN_CONTEXT_SOURCE_KINDS)[number];
 

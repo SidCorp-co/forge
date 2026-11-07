@@ -145,13 +145,27 @@ export const CHANNEL_DECIDER_ACT_LABEL: Record<SupportProposalKind, string> = {
  * through the knowledge door; a rule said in a room never names one. That member's go in any words, on
  * a proposal of one of those acts put to them or in their own request for it, is their agreement.
  */
+/** A ruling's `member` that names every member of the room (REQ-90 BC-12): any of them agrees. */
+export const ANY_ROOM_MEMBER = "*";
+
 export const rulingDeciderSchema = z.strictObject({
-	member: chatUsernameSchema,
+	/** The chat username, or `*` for any member of the room. */
+	member: z.union([z.literal(ANY_ROOM_MEMBER), chatUsernameSchema]),
 	acts: z
 		.array(z.enum(CHANNEL_DECIDER_ACTS))
 		.min(1)
 		.max(CHANNEL_DECIDER_ACTS.length)
 		.refine((a) => new Set(a).size === a.length, "an act is named once"),
+	/**
+	 * The projects, by slug, whose acts this member decides (REQ-90 BC-12): a filing names the project
+	 * it is for. Absent, every project the room files to.
+	 */
+	targets: z
+		.array(z.string().trim().min(1).max(100))
+		.min(1)
+		.max(20)
+		.refine((t) => new Set(t).size === t.length, "a target is named once")
+		.optional(),
 });
 export type RulingDecider = z.infer<typeof rulingDeciderSchema>;
 
@@ -164,12 +178,18 @@ export const rulingDecidersSchema = z
 	.min(1)
 	.max(50)
 	.refine(
-		(d) => new Set(d.map((x) => x.member.toLowerCase())).size === d.length,
-		"a member is named once; list all their acts in one entry",
+		(d) =>
+			new Set(
+				d.map(
+					(x) =>
+						`${x.member.toLowerCase()}|${[...(x.targets ?? [])].sort().join(",")}`,
+				),
+			).size === d.length,
+		"a member is named once per set of targets; list all their acts in one entry",
 	);
 
 /** The valid shape of `metadata.deciders`, as a refusal names it. */
-export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username>, acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[] }], on an entry of kind rule`;
+export const RULING_DECIDERS_SHAPE = `metadata.${RULING_DECIDERS_KEY}: [{ member: <chat username> | "${ANY_ROOM_MEMBER}" (any member of the room), acts: (${CHANNEL_DECIDER_ACTS.join(" | ")})[], targets?: <project slug>[] }], on an entry of kind rule`;
 
 /** An instruction a member gave in the channel, kept as a rule linked to its message (BC-35). */
 export const supportRuleRequestSchema = z.strictObject({
