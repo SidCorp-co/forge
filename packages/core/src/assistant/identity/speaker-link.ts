@@ -39,7 +39,7 @@ function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
     url
       ? `Confirm it here: ${url}`
       : 'No screen for it yet: POST /api/projects/<id>/speaker-links.',
-    "Where the chat account reports no email, a project admin names your Forge account for it (POST /api/projects/<id>/speaker-links/named).",
+    'Where the chat account reports no email, a project admin names your Forge account for it (POST /api/projects/<id>/speaker-links/named).',
   ].join(' ');
 }
 
