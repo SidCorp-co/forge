@@ -41,7 +41,6 @@ export const fireRow =
     const why = fireWhy(f, language);
     return {
       key: f.id,
-      keyLabel: `#${shortId(f.id)}`,
       href: hrefOf(f.id),
       title: f.scheduleName,
       facts: [enumLabel("fireTrigger", f.trigger, language), formatDurationSec(f.durationSeconds, language), producedLine(f.produced, t), ...(why ? [why] : [])],

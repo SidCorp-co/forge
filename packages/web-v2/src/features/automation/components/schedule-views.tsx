@@ -42,6 +42,7 @@ import { useScheduleDetail } from "../hooks";
 import { automationListHref, fireHref } from "@/lib/routes/automation";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
 import { type RowCtx } from "../view";
+import { cadenceOf } from "../cadence";
 import { FireLines } from "./fire-views";
 import { ScheduleForm } from "./schedule-form";
 import { formatWhen } from "@/lib/i18n/format";
@@ -63,13 +64,12 @@ export const scheduleRow =
   (hrefOf: (id: string) => string, { t, language, time }: RowCtx) =>
   (s: ScheduleStanding): ListRowView => ({
     key: s.id,
-    keyLabel: s.name,
     href: hrefOf(s.id),
-    title: whatItRuns(s, t),
+    title: s.name,
     facts: [
       <EnumBadge key="kind" family="scheduleKind" value={s.kind} />,
-      <span key="cron" className="font-mono">
-        {s.cron}
+      <span key="cron" title={s.cron}>
+        {cadenceOf(s.cron, t)}
       </span>,
       s.lastFire ? t("schedules.lastFire", { status: statusReading("scheduleRun", s.lastFire.status, language).label.toLowerCase() }) : t("schedules.neverFired"),
     ],
@@ -162,7 +162,10 @@ function ScheduleProperties({ s, slug }: { s: ScheduleStanding; slug: string }) 
       </FactsGroup>
       <FactsGroup title={t("schedules.facts.cadence")}>
         <Fact label={t("schedules.facts.when")}>
-          <MonoTag>{s.cron}</MonoTag>
+          <span className="flex flex-wrap items-center gap-2">
+            {cadenceOf(s.cron, t)}
+            <MonoTag>{s.cron}</MonoTag>
+          </span>
         </Fact>
         <Fact label={t("schedules.facts.nextFire")} testId="schedule-next-fire">
           {s.nextFireAt ? <span title={time.dateTime(s.nextFireAt)}>{time.dateTime(s.nextFireAt)}</span> : <span className="text-subtle">{t("schedules.facts.off")}</span>}

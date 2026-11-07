@@ -160,6 +160,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                   onPeek={list.togglePeek}
                   empty={list.search.value ? t("schedules.emptySearch") : t("schedules.emptyList", { noun })}
                   columns={columnsOf(tab, t)}
+                  keyColumn={false}
                 />
             </ListLayout>
           </div>
