@@ -1,0 +1,1 @@
+**An owed check or breakdown reads as owed now.** A delivered requirement's acceptance check and an agreed requirement's breakdown say "now; latest <date>" instead of "due <date>", so no agent reads the deadline as a day to start.

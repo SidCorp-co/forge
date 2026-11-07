@@ -962,12 +962,12 @@ export const SAID = {
 		vars: { codes: "key" },
 	},
 	"standing.act.breakDownBy": {
-		en: "break down, {when}",
+		en: "break down now; {when}",
 		vars: { when: "said" },
 	},
 	"standing.act.bringIssueToGate": { en: "bring an issue to the release gate" },
 	"standing.act.check": {
-		en: "check {codes} against the traceability matrix, {when}",
+		en: "check {codes} against the traceability matrix now; {when}",
 		vars: { codes: "key", when: "said" },
 	},
 	"standing.act.checkCouldNotRun": { en: "a check could not run" },
@@ -1161,7 +1161,7 @@ export const SAID = {
 		en: "write the release note{on}",
 		vars: { on: "said?" },
 	},
-	"standing.due": { en: "due {date}", vars: { date: "date" } },
+	"standing.due": { en: "latest {date}", vars: { date: "date" } },
 	"standing.effect.follow": {
 		en: "Follows {names} from now on; wording and criteria stay.",
 		vars: { names: "saidSeries" },
@@ -1841,7 +1841,7 @@ export const SAID = {
 		en: "A newer design revision or contract version exists.",
 	},
 	"requirements.rule.check": {
-		en: "delivered at r{r}; the BA checks by {date}, {days} working days{overdue}",
+		en: "delivered at r{r}; the BA checks now, latest {date} ({days} working days){overdue}",
 		vars: { r: "count", date: "date", days: "count", overdue: "said?" },
 	},
 	"requirements.rule.overdue": { en: ", and it is overdue" },
@@ -1857,7 +1857,7 @@ export const SAID = {
 		en: "planned against an earlier revision (REQUIREMENT_CHANGED_SINCE_PLAN)",
 	},
 	"requirements.rule.breakdownDue": {
-		en: "agreed with no linked issue; breakdown due {date}, {days} working days after",
+		en: "agreed with no linked issue; break it down now, latest {date} ({days} working days after the agree)",
 		vars: { date: "date", days: "count" },
 	},
 	"requirements.rule.noIssue": { en: "agreed with no linked issue" },
