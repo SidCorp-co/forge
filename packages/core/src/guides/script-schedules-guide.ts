@@ -1,5 +1,6 @@
 import {
   FORGE_OPS_EXEC_TOOL,
+  FORGE_OPS_LOGS_TAIL_MAX,
   FORGE_OPS_READ_TOOLS,
   SCRIPT_FEEDBACK_CAP,
   SCRIPT_FILING_SHAPE,
@@ -21,12 +22,14 @@ export const PRODUCTION_WATCH_OPS: ScriptOpsDeclaration = {
     {
       name: 'disk',
       tool: FORGE_OPS_EXEC_TOOL,
-      args: { target: 'epod-production', command: 'df -P /' },
+      args: { target: 'epod-production', service: 'go-backend', command: 'disk' },
+      readOnlyBecause: 'the dashboard vetted disk to print df -P / and nothing else',
     },
     {
       name: 'metrics',
       tool: FORGE_OPS_EXEC_TOOL,
-      args: { target: 'epod-production', command: 'cat /var/lib/epod-watch/metrics.json' },
+      args: { target: 'epod-production', service: 'go-backend', command: 'metrics' },
+      readOnlyBecause: 'the dashboard vetted metrics to print the service metrics JSON',
     },
   ],
 };
@@ -122,7 +125,7 @@ export const SCRIPT_SCHEDULES_GUIDE: CoreGuide = {
   title: 'Script schedules: watch production and file a confirmed breach',
   summary:
     "A script schedule reads its project's production through read-only calls it declares on the forge-ops target, keeps a small state between firings and files deduplicated feedback on a breach seen twice, with no agent session. The rules, and an example watch a master copies.",
-  version: 1,
+  version: 2,
   body: `## Script schedules: watch production and file a confirmed breach
 
 A \`script\` schedule runs a JavaScript script in Forge's sandbox on its cron, with no agent session:
@@ -141,13 +144,20 @@ summary stays a once-a-day \`prompt\` or \`status_report\` schedule.
 - \`ctx.forge.get\`, \`ctx.log\`, \`ctx.notify\`, \`ctx.params\` as before.
 
 ### Rules
-1. **Declare every call, read-only.** \`ops: { program, calls: [{ name, tool, args, timeoutMs? }] }\` on
-   the schedule (\`POST /api/schedules\` or \`PUT /api/schedules/:id\`). A call is read-only when its tool is
-   ${readTools}, or \`${FORGE_OPS_EXEC_TOOL}\` whose \`command\` only reads (\`cat\`, \`df\`, \`grep\`, \`tail\` without
-   follow, …: the same rule a support room's host command meets). Any other tool, \`deploy\` among them, or
-   a command that can write (a pipe into a writer, \`>\`, \`;\`, \`psql\`, \`curl\`) is refused
-   \`SCRIPT_OPS_NOT_READ_ONLY\` at save, and a firing whose declaration stopped reading fails by that name
-   before its script runs.
+1. **Declare every call, read-only.** \`ops: { program, calls: [{ name, tool, args, timeoutMs?, readOnlyBecause? }] }\`
+   on the schedule (\`POST /api/schedules\` or \`PUT /api/schedules/:id\`). A call is read-only when its tool is
+   ${readTools}, or \`${FORGE_OPS_EXEC_TOOL}\` in one of two forms:
+   - **A named command** (\`{ target, service, command }\`): \`command\` is a name the ops dashboard vetted
+     for that service (\`health\`), never a shell line, and the call says why it only reads in
+     \`readOnlyBecause\`. forge-ops runs only the names its dashboard vetted.
+   - **A command line** (\`{ target, command }\`) on a target that takes one, which only reads (\`cat\`,
+     \`df\`, \`grep\`, \`tail\` without follow, …: the rule a support room's host command meets).
+
+   Any other tool, \`deploy\` among them, a command that can write (a pipe into a writer, \`>\`, \`;\`,
+   \`psql\`, \`curl\`), or a named command with no \`readOnlyBecause\` is refused \`SCRIPT_OPS_NOT_READ_ONLY\`
+   at save, and a firing whose declaration stopped reading fails by that name before its script runs.
+   A call past what forge-ops answers (\`logs\` with \`tail\` over ${FORGE_OPS_LOGS_TAIL_MAX}) is refused
+   \`SCRIPT_OPS_OVER_TARGET_LIMIT\`. A firing left running by a core restart is closed as failed, naming it.
 2. **Call only what you declared.** \`ctx.ops.deploy()\` on a schedule that does not declare it is refused
    \`SCRIPT_OPS_UNDECLARED\`, nothing reaches the box, and the refusal is on the firing's record.
 3. **Confirm before filing.** File a breach only when the state says the same signal was seen on the
@@ -177,6 +187,8 @@ Params (\`params\`):
 ${JSON.stringify(PRODUCTION_WATCH_PARAMS, null, 2)}
 \`\`\`
 
+The example's \`disk\` and \`metrics\` are named commands the target's ops dashboard has to vet first;
+until it does, forge-ops refuses them and the watch files \`watch-blind\` for each.
 The metrics document the \`metrics\` call reads: \`{ posting: { p95Seconds }, api: { p50Ms, p95Ms, p99Ms,
 errorRate }, cdc: { slotActive, taskState, lagRows }, index: { pending, stuck, failed } }\`.
 

@@ -86,7 +86,7 @@ export async function routeScheduleScriptFire(
         settle: {
           status: 'failed',
           error,
-          refusal: 'SCRIPT_OPS_NOT_READ_ONLY',
+          refusal: refusals[0]?.code ?? 'SCRIPT_OPS_NOT_READ_ONLY',
           opsCalls: [],
           filings: [],
           stateAfter: null,

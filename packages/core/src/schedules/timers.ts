@@ -12,6 +12,7 @@ import { logger } from '../lib/logger.js';
 import { boss } from '../queue/boss.js';
 import { nextRunFor } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
+import { closeOrphanedScriptFires } from './fires.js';
 
 const TICK_QUEUE = 'schedule.tick';
 const TICK_CRON = '* * * * *';
@@ -137,11 +138,21 @@ async function sendDueTimers(now: Date = new Date()): Promise<string[]> {
 
 async function tick(): Promise<void> {
   const now = new Date();
-  const [rows, timers] = await Promise.allSettled([runScheduleTickOnce(now), sendDueTimers(now)]);
+  const [rows, timers, orphans] = await Promise.allSettled([
+    runScheduleTickOnce(now),
+    sendDueTimers(now),
+    closeOrphanedScriptFires(now),
+  ]);
   if (rows.status === 'fulfilled' && rows.value.length > 0) {
     logger.info({ scheduleIds: rows.value }, 'schedule.tick: dispatched');
   }
-  const failed = [rows, timers].find((r) => r.status === 'rejected');
+  if (orphans.status === 'fulfilled' && orphans.value.length > 0) {
+    logger.warn(
+      { fireIds: orphans.value },
+      'schedule.tick: closed script fires a restart orphaned',
+    );
+  }
+  const failed = [rows, timers, orphans].find((r) => r.status === 'rejected');
   if (failed) throw failed.reason;
 }
 

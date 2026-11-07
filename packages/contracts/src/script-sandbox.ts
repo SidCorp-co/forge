@@ -55,17 +55,28 @@ export const FORGE_OPS_READ_TOOLS = [
 export const FORGE_OPS_EXEC_TOOL = "exec_command" as const;
 
 /**
+ * A forge-ops command on a service (`exec_command` with `service`) is a NAME its ops dashboard vetted
+ * for that service, such as `health`, never a shell line: forge-ops refuses anything else itself.
+ */
+export const FORGE_OPS_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
+
+/** The most lines forge-ops' `logs` answers; a `tail` past it is refused by forge-ops. */
+export const FORGE_OPS_LOGS_TAIL_MAX = 2000;
+
+/**
  * Why a script's ops call, filing or state write was refused, as the script sees it thrown (`e.code`)
  * and the fire records it. SCRIPT_OPS_UNDECLARED: a call the schedule does not declare.
  * SCRIPT_OPS_NOT_READ_ONLY: a declared call that is not read-only on the target, refused before the
  * script runs at all. SCRIPT_OPS_FAILED: a declared call that could not be run (no box, the box did
- * not answer). SCRIPT_FEEDBACK_REFUSED: a filing that does not fit, or a run with no project to file
+ * not answer). SCRIPT_OPS_OVER_TARGET_LIMIT: a declared call whose fixed arguments the target refuses
+ * (a `logs` tail past FORGE_OPS_LOGS_TAIL_MAX). SCRIPT_FEEDBACK_REFUSED: a filing that does not fit, or a run with no project to file
  * on. SCRIPT_STATE_REFUSED: a state that is not a JSON object, or is past its cap.
  */
 export const SCRIPT_DOOR_REFUSALS = [
 	"SCRIPT_OPS_UNDECLARED",
 	"SCRIPT_OPS_NOT_READ_ONLY",
 	"SCRIPT_OPS_FAILED",
+	"SCRIPT_OPS_OVER_TARGET_LIMIT",
 	"SCRIPT_FEEDBACK_REFUSED",
 	"SCRIPT_STATE_REFUSED",
 ] as const;
@@ -120,6 +131,11 @@ export const scriptOpsCallSchema = z.strictObject({
 		.min(1000)
 		.max(SCRIPT_OPS_TIMEOUT_MAX_MS)
 		.optional(),
+	/**
+	 * Why a named forge-ops command (`exec_command` with `service`) only reads, kept on the schedule:
+	 * core cannot read a vetted name's effect, so the one who declares the call says it.
+	 */
+	readOnlyBecause: z.string().trim().min(1).max(300).optional(),
 });
 export type ScriptOpsCallDeclaration = z.infer<typeof scriptOpsCallSchema>;
 

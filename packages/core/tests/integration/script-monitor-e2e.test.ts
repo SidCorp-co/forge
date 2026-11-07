@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { closeOrphanedScriptFires } from '../../src/schedules/fires.js';
 import {
   PRODUCTION_WATCH_OPS,
   PRODUCTION_WATCH_PARAMS,
@@ -74,7 +75,7 @@ beforeAll(async () => {
     const stdout =
       argv[1] === 'status'
         ? 'epod-api running'
-        : args.command?.startsWith('df')
+        : args.command === 'disk' || args.command?.startsWith('df')
           ? 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 40 60 40% /'
           : JSON.stringify(metrics);
     return { exitCode: 0, stdout, stderr: '', truncated: false, timedOut: false, durationMs: 5 };
@@ -304,5 +305,35 @@ describe('the example production watch, every 15 minutes with no agent session (
     expect(shown.filings).toEqual([{ signalKey: 'epod:cdc', key: 'FB-1', created: false }]);
     expect(shown.stateAfter).toEqual({ streak: { 'epod:cdc': 2 } });
     expect(shown.sessionId).toBeNull();
+  });
+});
+
+// ISS-1130: epod's manual fire 90324d91 sat `running` from 18:13Z, its POST /run answered 502 by a core
+// restart, and nothing would ever settle it
+describe('a script fire a core restart orphaned is closed by name, never left running', () => {
+  it('fails a sessionless script fire running past any live firing, and leaves a fresh one running', async () => {
+    const made = await create({ name: 'orphan watch', script: 'return 1;' });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const scheduleId = String(made.body.id);
+    const open = async (minutesAgo: number) => {
+      const [r] = await rows(sql`
+        INSERT INTO schedule_runs (schedule_id, project_id, trigger, status, started_at)
+        VALUES (${scheduleId}, ${projectId}, 'manual', 'running', now() - make_interval(mins => ${minutesAgo}))
+        RETURNING id`);
+      return String(r?.id);
+    };
+    const orphan = await open(11);
+    const fresh = await open(2);
+    const closed = await closeOrphanedScriptFires(new Date());
+    expect(closed).toContain(orphan);
+    expect(closed).not.toContain(fresh);
+    const [o] = await rows(
+      sql`SELECT status, error, finished_at FROM schedule_runs WHERE id = ${orphan}`,
+    );
+    expect(o?.status).toBe('failed');
+    expect(String(o?.error)).toContain('a restart');
+    expect(o?.finished_at).not.toBeNull();
+    const [f] = await rows(sql`SELECT status FROM schedule_runs WHERE id = ${fresh}`);
+    expect(f?.status).toBe('running');
   });
 });

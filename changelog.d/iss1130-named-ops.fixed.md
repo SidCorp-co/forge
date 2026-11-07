@@ -1,0 +1,1 @@
+**A script schedule takes forge-ops named commands.** A vetted command such as `health` passes when the call says why it only reads, a logs tail past 2000 is refused at save, and a restart-orphaned fire closes as failed.

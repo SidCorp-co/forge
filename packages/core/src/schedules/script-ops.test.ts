@@ -98,6 +98,63 @@ describe('a declared call is read-only on the forge-ops target, or refused by na
     expect(refusals[0]?.detail).toContain(said);
   });
 
+  // ISS-1130: epod's watch was refused `health is not a program known only to read`, a forge-ops
+  // command name read as a shell line, so no named command could ever pass
+  it('takes a named forge-ops command on a service that says why it only reads, without parsing it as a shell line', () => {
+    expect(
+      opsRefusals(
+        decl([
+          {
+            name: 'health',
+            tool: 'exec_command',
+            args: { target: 't', service: 'go-backend', command: 'health' },
+            readOnlyBecause: 'the dashboard vetted health to answer the service health only',
+          },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      'with no reason it only reads',
+      { args: { target: 't', service: 'go-backend', command: 'health' } },
+      'without saying why it only reads: declare readOnlyBecause',
+    ],
+    [
+      'that is a shell line, not a name',
+      {
+        args: { target: 't', service: 'go-backend', command: 'df -P /' },
+        readOnlyBecause: 'it reads',
+      },
+      'which is not a command name',
+    ],
+  ])('refuses a named command %s, naming the call', (_, call, said) => {
+    const refusals = opsRefusals(decl([{ name: 'bad', tool: 'exec_command', ...call }]));
+    expect(refusals.map((r) => [r.code, r.path])).toEqual([
+      ['SCRIPT_OPS_NOT_READ_ONLY', '/ops/calls/0'],
+    ]);
+    expect(refusals[0]?.detail).toContain(said);
+  });
+
+  it('refuses a logs tail past what forge-ops answers by name, and takes one at the limit', () => {
+    const at = (tail: number) =>
+      opsRefusals(decl([{ name: 'recent', tool: 'logs', args: { target: 't', tail } }]));
+    expect(at(2000)).toEqual([]);
+    expect(at(3000).map((r) => [r.code, r.path])).toEqual([
+      ['SCRIPT_OPS_OVER_TARGET_LIMIT', '/ops/calls/0/args'],
+    ]);
+    expect(at(3000)[0]?.detail).toContain("past forge-ops' limit of 2000 lines");
+  });
+
+  it('ships an example watch whose every call passes the judge in the named-command form', () => {
+    expect(opsRefusals(PRODUCTION_WATCH_OPS)).toEqual([]);
+    for (const call of PRODUCTION_WATCH_OPS.calls.filter((c) => c.tool === 'exec_command')) {
+      expect(call.args?.service).toEqual(expect.any(String));
+      expect(String(call.args?.command)).not.toMatch(/\s/);
+    }
+  });
+
   it('refuses a program that is not the forge-ops CLI, and two calls of one name', () => {
     expect(
       scriptOpsSchema.safeParse({ program: '/bin/sh', calls: [{ name: 'a', tool: 'status' }] })

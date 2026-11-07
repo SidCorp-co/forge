@@ -8,7 +8,9 @@
 // names a call and passes nothing: its arguments are the declaration's.
 
 import {
+  FORGE_OPS_COMMAND_NAME,
   FORGE_OPS_EXEC_TOOL,
+  FORGE_OPS_LOGS_TAIL_MAX,
   FORGE_OPS_READ_TOOLS,
   SCRIPT_OPS_CALL_CAP,
   SCRIPT_OPS_TARGET,
@@ -34,12 +36,39 @@ export function callNotReadOnly(call: ScriptOpsCallDeclaration): string | null {
     if (typeof command !== 'string' || command.trim() === '') {
       return `${call.name} runs ${FORGE_OPS_EXEC_TOOL} with no command; its args name the command it runs, as { target, command }`;
     }
+    const service = call.args?.service;
+    if (service !== undefined) return namedCommandNotReadOnly(call, String(service), command);
     const cls = schedulesPorts().commandReads(command);
     return cls.reads
       ? null
       : `${call.name} runs ${FORGE_OPS_EXEC_TOOL} \`${command}\`, which is not read-only: ${cls.why}`;
   }
   return `${call.name} calls ${SCRIPT_OPS_TARGET} ${call.tool}, which is not one of its read-only tools (${[...READ_TOOLS, `${FORGE_OPS_EXEC_TOOL} with a reading command`].join(', ')})`;
+}
+
+/**
+ * A forge-ops command on a service is a name its ops dashboard vetted, never a shell line, so it is
+ * not read as one (ISS-1130): it passes where it is a bare name and the call says why it only reads.
+ */
+function namedCommandNotReadOnly(
+  call: ScriptOpsCallDeclaration,
+  service: string,
+  command: string,
+): string | null {
+  if (!FORGE_OPS_COMMAND_NAME.test(command)) {
+    return `${call.name} runs ${FORGE_OPS_EXEC_TOOL} \`${command}\` on service ${service}, which is not a command name: a forge-ops command on a service is a name its ops dashboard vetted (such as health), never a shell line`;
+  }
+  return call.readOnlyBecause
+    ? null
+    : `${call.name} runs forge-ops command ${service}/${command} without saying why it only reads: declare readOnlyBecause on the call, kept on the schedule`;
+}
+
+/** Why a declared call's fixed arguments are past what the target answers, or null. */
+export function callOverTargetLimit(call: ScriptOpsCallDeclaration): string | null {
+  const tail = call.args?.tail;
+  return call.tool === 'logs' && typeof tail === 'number' && tail > FORGE_OPS_LOGS_TAIL_MAX
+    ? `${call.name} asks logs for tail ${tail}, past forge-ops' limit of ${FORGE_OPS_LOGS_TAIL_MAX} lines, which it refuses: ask ${FORGE_OPS_LOGS_TAIL_MAX} or fewer`
+    : null;
 }
 
 export interface OpsRefusal {
@@ -49,7 +78,7 @@ export interface OpsRefusal {
   detail: string;
 }
 
-/** Every declared call that is not read-only on the target, each by name; none where all only read. */
+/** Every declared call that is not read-only on the target, or asks past its limits, each by name; none where all pass. */
 export function opsRefusals(decl: ScriptOpsDeclaration): OpsRefusal[] {
   const out: OpsRefusal[] = [];
   decl.calls.forEach((call, i) => {
@@ -59,6 +88,14 @@ export function opsRefusals(decl: ScriptOpsDeclaration): OpsRefusal[] {
         code: 'SCRIPT_OPS_NOT_READ_ONLY',
         path: `/ops/calls/${i}`,
         detail: `SCRIPT_OPS_NOT_READ_ONLY: ${why}. A script schedule reads production and never changes it.`,
+      });
+    }
+    const over = callOverTargetLimit(call);
+    if (over) {
+      out.push({
+        code: 'SCRIPT_OPS_OVER_TARGET_LIMIT',
+        path: `/ops/calls/${i}/args`,
+        detail: `SCRIPT_OPS_OVER_TARGET_LIMIT: ${over}.`,
       });
     }
   });

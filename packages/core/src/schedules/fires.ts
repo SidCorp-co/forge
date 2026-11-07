@@ -15,7 +15,7 @@ import type {
 import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { scheduleRuns } from '../db/schema.js';
+import { scheduleRuns, schedules } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 
 /**
@@ -271,4 +271,35 @@ export async function fireProjectOf(fireId: string): Promise<string | null> {
     .where(eq(scheduleRuns.id, fireId))
     .limit(1);
   return row?.projectId ?? null;
+}
+
+/**
+ * How long a script fire may stay `running` before nothing can still be running it: its script's
+ * wall cap is 30 s and each ops call's 120 s, so ten minutes is past any live firing.
+ */
+export const SCRIPT_FIRE_ORPHAN_AFTER_MS = 10 * 60_000;
+
+/**
+ * Close every script fire still `running` long past any live firing (ISS-1130): the process that
+ * ran it ended under it, a core restart, so nothing would ever settle it. It is failed naming that,
+ * never left running. A fire that holds a session settles with its session and is not touched.
+ */
+export async function closeOrphanedScriptFires(now: Date): Promise<string[]> {
+  const before = new Date(now.getTime() - SCRIPT_FIRE_ORPHAN_AFTER_MS);
+  const error = `the fire was still running ${SCRIPT_FIRE_ORPHAN_AFTER_MS / 60_000} minutes after it started, past any live script firing: the core process running it ended under it (a restart), so it is closed here`;
+  const { rows } = await transition(db, SCHEDULE_RUN_MACHINE, {
+    to: 'failed',
+    from: 'running',
+    set: { finishedAt: now, error, refusal: null } as never,
+    where: and(
+      sql`${scheduleRuns.sessionId} IS NULL`,
+      sql`${scheduleRuns.startedAt} < ${before.toISOString()}::timestamptz`,
+      sql`EXISTS (SELECT 1 FROM ${schedules} s WHERE s.id = ${scheduleRuns.scheduleId} AND s.kind = 'script')`,
+    ),
+    reason: 'orphaned by a core restart',
+    actor: { type: 'system' },
+    source: 'schedule-fire-orphan',
+    returning: ['id'],
+  });
+  return rows.map((r) => String((r as { id: string }).id));
 }
