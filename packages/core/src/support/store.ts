@@ -374,6 +374,19 @@ export async function decideFix(
   return row ?? null;
 }
 
+/**
+ * Hand a claimed proposal back to pending (ISS-1088): an agreed filing that could not be recorded
+ * stands for the next agree, as it stood before the claim. Null when nothing held it claimed.
+ */
+export async function releaseFix(fixId: string): Promise<ProposalRow | null> {
+  const [row] = await db
+    .update(supportProposals)
+    .set({ state: 'pending', decidedAt: null, result: null })
+    .where(and(eq(supportProposals.id, fixId), eq(supportProposals.state, 'ran')))
+    .returning();
+  return row ?? null;
+}
+
 export async function settleFixResult(
   fixId: string,
   state: 'ran' | 'failed',

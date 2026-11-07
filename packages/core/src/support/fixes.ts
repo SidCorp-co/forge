@@ -15,6 +15,7 @@ import {
   type SupportCallArgs,
   supportApisOf,
 } from '../integrations/support-api/index.js';
+import { logger } from '../lib/logger.js';
 import { runConfirmed } from './ability-run.js';
 import { memberMessage } from './channel-store.js';
 import {
@@ -29,6 +30,7 @@ import { grantsOf, isNamedOwner, isOwner, supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { changeName, nothingDone } from './propose.js';
 import { type FiledPictures, fileRecord, type RecordRequest } from './record.js';
+import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import {
   decideFix,
@@ -37,6 +39,7 @@ import {
   type ProposalRow,
   pendingFixByCode,
   type RoomRow,
+  releaseFix,
   settleFixResult,
 } from './store.js';
 
@@ -58,6 +61,8 @@ export type Agreed =
       recorded: true;
       feedbackKey: string;
       created: boolean;
+      /** The project the item was filed in: a followed project's slug for its record (ISS-1088). */
+      project: string;
       /** What became of the thread's pictures on the item (ISS-1010); absent where it carried none. */
       pictures?: FiledPictures;
       what: string;
@@ -294,7 +299,13 @@ const gone = (proposal: string): Outcome<never> =>
     `${proposal} was settled by another answer a moment ago; nothing more was done.`,
   );
 
-/** A filing its asker agreed to: filed now, and the key or why it was not handed to the session. */
+/**
+ * A filing its asker agreed to: filed now in the project its record names, and the key and that
+ * project handed to the session, which may not read that project's feedback itself (ISS-1088). A
+ * filing that cannot be recorded, refused or broken on the way, hands the proposal back to pending
+ * and is refused SUPPORT_RECORD_NOT_FILED, naming what was wrong and what to do: a filing is keyed
+ * by its thread and title, so agreeing again never files it twice.
+ */
 async function recordAgreed(
   room: RoomRow,
   fix: ProposalRow,
@@ -303,36 +314,60 @@ async function recordAgreed(
   const filed = await fileRecord(room, {
     ...(fix.args as RecordRequest),
     reporter: { key: fix.askerKey, label: fix.askerLabel },
+  }).catch((err: unknown): Outcome<never> => {
+    logger.error({ err, roomId: room.id, code: fix.code }, 'support: an agreed filing threw');
+    const why = err instanceof Error ? err.message : String(err);
+    return no(
+      'SUPPORT_REFUSED',
+      '/proposal',
+      `Forge broke while filing it (${why}); agree again citing the same answer, and if it breaks again send it to forge with route`,
+    );
   });
-  if (!filed.ok) {
-    const detail = filed.refusals.map((r) => r.detail).join('; ');
-    await settleFixResult(fix.id, 'failed', { refused: detail });
-    await insertAction({
-      roomId: room.id,
-      projectId: room.projectId,
-      conversationId,
-      thread: fix.thread,
-      kind: 'fix_failed',
-      actorKind: 'core',
-      tool: fix.tool,
-      input: fix.args,
-      output: { refused: detail },
-      proposalId: fix.id,
-    });
-    return { ok: false, refusals: filed.refusals };
-  }
+  if (!filed.ok) return notFiled(room, fix, conversationId, filed.refusals);
   await settleFixResult(fix.id, 'ran', { feedbackKey: filed.value.feedbackKey });
-  const { pictures } = filed.value;
+  const { pictures, project, feedbackKey } = filed.value;
   return {
     ok: true,
     value: {
       recorded: true,
-      feedbackKey: filed.value.feedbackKey,
+      feedbackKey,
       created: filed.value.created,
+      project,
       ...(pictures ? { pictures } : {}),
-      what: `${changeName(fix)} was recorded as ${filed.value.feedbackKey}${picturesLine(pictures)}. You are told again once its result is final; tell the person it is recorded, in your words, and post nothing more before then.`,
+      what: `${changeName(fix)} was recorded as ${feedbackKey} in ${project}${picturesLine(pictures)}. You are told again once its result is final; tell the person it is recorded, in your words, and post nothing more before then.`,
     },
   };
+}
+
+/** An agreed filing that was not recorded: the proposal stands again, and the refusal says why. */
+async function notFiled(
+  room: RoomRow,
+  fix: ProposalRow,
+  conversationId: string,
+  refusals: readonly Refusal[],
+): Promise<Outcome<Agreed>> {
+  const detail = refusals.map((r) => `${r.code}: ${r.detail}`).join('; ');
+  const standing = await releaseFix(fix.id);
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId,
+    thread: fix.thread,
+    kind: 'fix_failed',
+    actorKind: 'core',
+    tool: fix.tool,
+    input: fix.args,
+    output: { refused: detail, standing: standing !== null },
+    proposalId: fix.id,
+  });
+  const next = standing
+    ? `${fix.code} still stands until ${fix.expiresAt.toISOString()}: once that is put right, cite the person's answer again with agree; never ask them again.`
+    : `${fix.code} no longer stands; propose it again if it is still wanted.`;
+  return no(
+    'SUPPORT_RECORD_NOT_FILED',
+    '/proposal',
+    `${changeName(fix)} was not recorded: ${detail}. Nothing was filed and nothing was posted. ${next}`,
+  );
 }
 
 /** What the session is told of the thread's pictures on a filing (ISS-1010). */

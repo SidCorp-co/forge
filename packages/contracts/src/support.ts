@@ -1296,6 +1296,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_PROPOSAL_UNKNOWN",
 	/** The proposal's time ran out before anyone agreed to it (ISS-845). */
 	"SUPPORT_PROPOSAL_EXPIRED",
+	/** An agreed filing could not be recorded; the proposal still stands for the next agree (ISS-1088). */
+	"SUPPORT_RECORD_NOT_FILED",
 	/** The cited message, or the act, is in another thread than the proposal's (ISS-845). */
 	"SUPPORT_AGREEMENT_OTHER_THREAD",
 	/** The cited message was written before the proposal was made, so it agrees to nothing (ISS-845). */

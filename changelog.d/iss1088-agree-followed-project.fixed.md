@@ -1,0 +1,1 @@
+**A channel agent's agreed record for a followed project is filed there.** Its pictures attach to it, the answer names the key and project, and a failed filing leaves the proposal standing with a named refusal.
