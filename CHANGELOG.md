@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.591] - 2026-11-07
+
+Owed checks read as now, parks waiting on no person leave Needs you
+
+### Changed
+
+- **A requirement under review says each fact once.** A proposal nothing built shows criteria without verdicts, missing goal parts on one line, no picture as one line, and scope and assumptions folded; the master's own builds read Master.
+
+### Fixed
+
+- **Attention and Home send as many statements for twelve projects as for one.** Each fact is read once for every project a person holds, and a criterion's coverage reads the newest verdict of each kind, not its whole history.
+- **A requirement no gate asks a person to agree waits on the master, not its owner.** Agreeing, accepting a revision, accepting a delivery and accepting a breakdown follow the project's gates, so they leave the owner's Needs you.
+- **A dated owed act reads as owed now, its date the latest day.** Needs-you rows, the delivered notice, a contract's adoption and the served guides no longer word a deadline as a day to start on.
+- **A park waiting on a resource or another issue no longer lands in a person's Needs you.** Its question is the master's, a park on its own merge mark the mark's; migration 0632 corrects open ones, naming each.
+
 ## [0.4.0-dev.590] - 2026-11-07
 
 Channel agent posts results, reads releases first; expired tokens leave the cap

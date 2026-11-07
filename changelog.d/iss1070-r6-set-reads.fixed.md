@@ -1,1 +1,0 @@
-**Attention and Home send as many statements for twelve projects as for one.** Each fact is read once for every project a person holds, and a criterion's coverage reads the newest verdict of each kind, not its whole history.

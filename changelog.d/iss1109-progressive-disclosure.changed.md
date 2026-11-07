@@ -1,1 +1,0 @@
-**A requirement under review says each fact once.** A proposal nothing built shows criteria without verdicts, missing goal parts on one line, no picture as one line, and scope and assumptions folded; the master's own builds read Master.

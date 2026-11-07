@@ -1,1 +1,0 @@
-**A requirement no gate asks a person to agree waits on the master, not its owner.** Agreeing, accepting a revision, accepting a delivery and accepting a breakdown follow the project's gates, so they leave the owner's Needs you.
