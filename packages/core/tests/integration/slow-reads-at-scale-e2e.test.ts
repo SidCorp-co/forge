@@ -1,20 +1,44 @@
-// ISS-1070 r2: the reads the shell and the Dashboard wait on, timed at forge-dev's size. On forge-dev
+// ISS-1070 r2 and r3: the reads the shell and the Dashboard wait on, timed at forge-dev's size. On forge-dev
 // (2026-11-07, 532d8d6cd) `/needs-you/decisions` took 8.4 s over 313 queries, `/needs-you` 7 s over
 // 313, and the requirement, feedback and release lists the attention read is built from 5 to 8 s each.
 // This seeds one project the shape of forge on dev (88 requirements, 1100 issues with their criteria
 // and verdicts, 540 releases, 500 feedback) and records each read's statements, its slowest ones and
-// its wall time, and holds every statement to a ceiling of shared buffers its plan touches. Set
-// SLOW_READS_OUT to a file to keep the measures, and SLOW_READS_EXPLAIN to add the slowest plans.
+// its wall time, and holds every statement to a ceiling of shared buffers its plan touches and each
+// read to a ceiling of statements and buffers. Set SLOW_READS_OUT to a file to keep the measures,
+// SLOW_READS_EXPLAIN to add the slowest plans, SLOW_READS_STACKS to name the code that sent each
+// statement, SLOW_READS_PROFILE to a file for a CPU profile of each read, and SLOW_READS_ONLY to a
+// pattern of the paths to read.
+// @direct-test-of packages/core/src/db/read-memo.ts
+// @direct-test-of packages/core/src/issues/standing-read.ts
+// @direct-test-of packages/core/src/issues/standing-facts-memo.ts
+// @direct-test-of packages/core/src/requirements/standing-share.ts
+// @direct-test-of packages/core/src/release-batch/release-list-read.ts
+// @direct-test-of packages/core/src/release-batch/shipped-releases.ts
+// @direct-test-of packages/core/src/pipeline/release-runs.ts
+// @direct-test-of packages/core/src/whats-new/serving.ts
 
 import { appendFileSync } from 'node:fs';
-import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { db } from '../../src/db/client.js';
-import { withKernelMarker } from '../../src/db/kernel-marker.js';
-import { closeWorld, type Doc, requester, testEnv } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser } from '../helpers/factories.js';
+import { QueryPromise } from 'drizzle-orm';
+import { PgDatabase, PgSelectBase, PgSelectBuilder } from 'drizzle-orm/pg-core';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const SCALE = {
+// What's new reads the release of the instance's own product project whose commit this build is:
+// the seeded project is that project, and its newest release this build's
+const PRODUCT = vi.hoisted(() => {
+  const id = '1070a3b5-0000-4000-8000-000000000003';
+  process.env.FORGE_ENVIRONMENT = 'dev';
+  process.env.FORGE_PRODUCT_PROJECT_ID = id;
+  process.env.SOURCE_COMMIT = 'b'.repeat(40);
+  return id;
+});
+
+import { db } from '../../src/db/client.js';
+import { currentQueryTiming } from '../../src/db/query-timing.js';
+import { closeWorld, type Doc, testEnv } from '../helpers/ecosystem-world.js';
+import { createTestUser } from '../helpers/factories.js';
+import { type Scale, seedAtScale } from '../helpers/scale-world.js';
+
+const SCALE: Scale = {
   requirements: 88,
   criteriaPerRequirement: 8,
   issues: 1100,
@@ -30,115 +54,20 @@ let token: string;
 let projectId: string;
 let app: Awaited<typeof import('../../src/index.js')>['app'];
 
-const SHA = 'a'.repeat(40);
-
-async function seed(): Promise<void> {
-  projectId = (await createTestProject(ownerId)).id;
-  const p = projectId;
-  const s = SCALE;
-  await withKernelMarker(db, async (tx) => {
-    await tx.execute(sql`
-      INSERT INTO requirements (id, project_id, req_seq, title, status)
-      SELECT gen_random_uuid(), ${p}, g, 'requirement ' || g, 'draft' FROM generate_series(1, ${s.requirements}) g`);
-    await tx.execute(sql`
-      INSERT INTO requirement_revisions (requirement_id, revision, state, spec, reason, author_id, author_agency, decided_by, decided_at)
-      SELECT id, 1, 'current', '{}'::jsonb, 'first cut', ${ownerId}, 'human', ${ownerId}, now()
-        FROM requirements WHERE project_id = ${p}`);
-    await tx.execute(
-      sql`UPDATE requirements SET current_revision = 1, status = 'agreed' WHERE project_id = ${p}`,
-    );
-    // each agreed requirement holds the baseline its agree wrote
-    await tx.execute(sql`
-      INSERT INTO requirement_baselines (requirement_id, revision, seq, act, agreed_by, agreed_kind)
-      SELECT id, 1, 1, 'agree', ${ownerId}, 'person' FROM requirements WHERE project_id = ${p}`);
-  });
-  await db.execute(sql`
-    INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
-    SELECT r.id, 'BC-' || g, 'it holds ' || g, 1
-      FROM requirements r CROSS JOIN generate_series(1, ${s.criteriaPerRequirement}) g
-     WHERE r.project_id = ${p}`);
-  // most issues closed and released, the rest spread over the open statuses
-  await db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, priority, requirement_id, planned_revision)
-    SELECT gen_random_uuid(), ${p}, g, 'issue ' || g,
-           CASE WHEN g <= ${s.issues - 80} THEN 'closed'
-                ELSE (ARRAY['open','in_progress','awaiting_release','draft','dropped'])[1 + g % 5] END,
-           ${ownerId}, now() - make_interval(hours => ${s.issues} - g),
-           CASE WHEN g <= ${s.issues - 80} THEN now() - make_interval(hours => ${s.issues} - g) END,
-           'medium',
-           (SELECT id FROM requirements WHERE project_id = ${p} AND req_seq = 1 + g % ${s.requirements}),
-           1
-      FROM generate_series(1, ${s.issues}) g`);
-  await db.execute(sql`
-    INSERT INTO issue_criteria (issue_id, n, statement, position, requirement_criterion_id)
-    SELECT i.id, g, 'criterion ' || g, g,
-           (SELECT c.id FROM requirement_criteria c WHERE c.requirement_id = i.requirement_id AND c.code = 'BC-' || g)
-      FROM issues i CROSS JOIN generate_series(1, ${s.criteriaPerIssue}) g
-     WHERE i.project_id = ${p}`);
-  await db.execute(sql`
-    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, author_agency, identity_kind, commit_sha, reason, created_at)
-    SELECT c.id, c.issue_id, CASE WHEN v = ${s.verdictsPerCriterion} THEN 'pass' ELSE 'fail' END, 'agent', 'commit', ${SHA},
-           'judged', now() - make_interval(mins => 10 - v)
-      FROM issue_criteria c JOIN issues i ON i.id = c.issue_id CROSS JOIN generate_series(1, ${s.verdictsPerCriterion}) v
-     WHERE i.project_id = ${p}`);
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (project_id, issue_id, kind, status, started_at, finished_at, metadata)
-    SELECT ${p}, i.id, 'issue', 'completed', i.created_at, i.created_at, '{}'::jsonb
-      FROM issues i CROSS JOIN generate_series(1, 2) WHERE i.project_id = ${p}`);
-  // each release carries two of the closed issues, newest last
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, release_version, release_released_at, metadata)
-    SELECT gen_random_uuid(), ${p}, 'system', 'completed',
-           now() - make_interval(hours => ${s.releases} - g), now() - make_interval(hours => ${s.releases} - g),
-           '0.4.0-dev.' || g, now() - make_interval(hours => ${s.releases} - g),
-           jsonb_build_object('issueIds', (SELECT jsonb_agg(id) FROM issues WHERE project_id = ${p} AND iss_seq IN (2 * g - 1, 2 * g)),
-                              'source', 'release-batch',
-                              'notes', (SELECT string_agg(md5(g::text || n::text), ' ') FROM generate_series(1, 120) n))
-      FROM generate_series(1, ${s.releases}) g`);
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`
-    INSERT INTO feedback (id, project_id, fb_seq, kind, title, where_seen, status, route, reported_by, reporter_agency)
-    SELECT gen_random_uuid(), ${p}, g, 'bug', 'feedback ' || g, 'The board',
-           CASE WHEN g % 2 = 0 THEN 'triaged' ELSE 'new' END, CASE WHEN g % 2 = 0 THEN 'issue' END, ${ownerId}, 'human'
-      FROM generate_series(1, ${s.feedback}) g`);
-    await tx.execute(sql`
-    INSERT INTO feedback_route_issues (feedback_id, issue_id)
-    SELECT f.id, (SELECT id FROM issues WHERE project_id = ${p} AND iss_seq = f.fb_seq)
-      FROM feedback f WHERE f.project_id = ${p} AND f.route = 'issue'`);
-  });
-  await db.execute(sql`
-    INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
-    SELECT i.id, 'user', ${ownerId}, 'human', 'issue.statusChanged',
-           jsonb_build_object('from', 'open', 'to', 'in_progress'), i.created_at + make_interval(mins => g)
-      FROM issues i CROSS JOIN generate_series(1, ${s.activityPerIssue}) g WHERE i.project_id = ${p}`);
-  // each issue's moves through the kernel, one in ten reopened after it closed
-  await withKernelMarker(db, async (tx) => {
-    await tx.execute(sql`
-      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)
-      SELECT 'issue', i.id, m.f, m.t, 'user', 'human', ${ownerId}, 'test', i.created_at + make_interval(mins => m.n)
-        FROM issues i CROSS JOIN (VALUES (1, NULL, 'draft'), (2, 'draft', 'open'), (3, 'open', 'in_progress'),
-                                          (4, 'in_progress', 'awaiting_release'), (5, 'awaiting_release', 'closed')) AS m(n, f, t)
-       WHERE i.project_id = ${p}`);
-    await tx.execute(sql`
-      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)
-      SELECT 'issue', i.id, m.f, m.t, 'user', 'human', ${ownerId}, 'test', i.created_at + make_interval(mins => 5 + m.n)
-        FROM issues i CROSS JOIN (VALUES (1, 'closed', 'reopen'), (2, 'reopen', 'in_progress'),
-                                          (3, 'in_progress', 'awaiting_release'), (4, 'awaiting_release', 'closed')) AS m(n, f, t)
-       WHERE i.project_id = ${p} AND i.iss_seq % 10 = 0`);
-  });
-  await db.execute(sql`ANALYZE`);
-}
-
 interface Statement {
   text: string;
   params: unknown;
   ms: number;
+  /** The `src/` frames that sent it, when SLOW_READS_STACKS asks for them. */
+  site?: string | undefined;
 }
 
 interface Measure {
   path: string;
   status: number;
   ms: number;
+  /** What the app's own `Server-Timing` says it spent: the database's share, the app's, the whole. */
+  timing: string;
   statements: Statement[];
   body: Doc;
 }
@@ -147,23 +76,72 @@ type Unsafe = (
   ...args: unknown[]
 ) => PromiseLike<unknown> & { handle: () => unknown; executed?: boolean };
 
+/**
+ * Where each statement was asked for, under SLOW_READS_STACKS: a drizzle query is a thenable, so an
+ * `await` on it runs its `then` in a job of its own and the stack there names no caller. The stack is
+ * taken where the query is built, in the caller's own frame, and handed to the statement it sends.
+ */
+let asking: string | undefined;
+function traceSites(): void {
+  const keep = <T extends object>(made: T, stack: string | undefined): T => {
+    if (made && typeof made === 'object') (made as { site?: string | undefined }).site = stack;
+    return made;
+  };
+  const from = PgSelectBuilder.prototype.from;
+  PgSelectBuilder.prototype.from = function (this: unknown, ...a: unknown[]) {
+    return keep(from.apply(this, a as never), new Error().stack);
+  } as typeof from;
+  const execute = PgDatabase.prototype.execute;
+  PgDatabase.prototype.execute = function (this: unknown, ...a: unknown[]) {
+    return keep(execute.apply(this, a as never), new Error().stack);
+  } as typeof execute;
+  // a select takes `then` as a mixin copied off QueryPromise when drizzle loads, so each is set apart
+  for (const proto of [QueryPromise.prototype, PgSelectBase.prototype] as { then: unknown }[]) {
+    const then = proto.then as (...a: unknown[]) => unknown;
+    proto.then = function (this: { site?: string }, ...a: unknown[]) {
+      const was = asking;
+      asking = this.site;
+      try {
+        return then.apply(this, a);
+      } finally {
+        asking = was;
+      }
+    };
+  }
+}
+
+/** The first `src/` frames of a stack, `file:function` each, so a statement names the code that sent it. */
+function siteOf(stack: string): string {
+  return stack
+    .split('\n')
+    .flatMap((l) => {
+      const m = /at (?:async )?(\S+) \(.*\/packages\/core\/src\/(.+?):\d+:\d+\)/.exec(l);
+      return m && !m[2]?.startsWith('db/') ? [`${m[2]}:${m[1]}`] : [];
+    })
+    .slice(0, Number(process.env.SLOW_READS_STACKS) || 3)
+    .join(' < ');
+}
+
 /** One GET, with every statement it sent and how long each took from send to answer. */
 async function measured(path: string): Promise<Measure> {
   const client = (db as unknown as { $client: { unsafe: Unsafe } }).$client;
   const statements: Statement[] = [];
   const unsafe = client.unsafe;
   client.unsafe = (...args: unknown[]) => {
+    // a statement the request sends, as its Server-Timing counts it; work it leaves running is not its own
+    if (!currentQueryTiming()) return unsafe(...args);
+    const site = process.env.SLOW_READS_STACKS ? siteOf(asking ?? '') : undefined;
     const query = unsafe(...args);
     const handle = query.handle;
     query.handle = function (this: typeof query) {
       if (!this.executed) {
         const started = performance.now();
-        const done = () =>
-          statements.push({
-            text: String(args[0]),
-            params: args[1],
-            ms: performance.now() - started,
-          });
+        // kept in the order sent, its time filled in when it answers
+        const sent: Statement = { text: String(args[0]), params: args[1], ms: 0, site };
+        statements.push(sent);
+        const done = () => {
+          sent.ms = performance.now() - started;
+        };
         Promise.prototype.then.call(this, done, done);
       }
       return handle.call(this);
@@ -172,13 +150,21 @@ async function measured(path: string): Promise<Measure> {
   };
   try {
     const started = performance.now();
-    const reply = await requester(app, { owner: token })('owner', 'GET', path);
+    const res = await app.request(path, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
+    });
+    const text = await res.text();
+    // what the request sent before it answered: work it left running is not its own
+    const counted = /desc="(\d+) quer/.exec(res.headers.get('Server-Timing') ?? '')?.[1];
+    if (counted === undefined) throw new Error(`${path} answered no Server-Timing count`);
+    statements.splice(Number(counted));
     return {
       path,
-      status: reply.status,
+      status: res.status,
       ms: performance.now() - started,
+      timing: res.headers.get('Server-Timing') ?? '',
       statements,
-      body: reply.json,
+      body: (text ? JSON.parse(text) : null) as Doc,
     };
   } finally {
     client.unsafe = unsafe;
@@ -228,46 +214,120 @@ async function buffersOf(s: Statement): Promise<number | null> {
   return (top?.Plan['Shared Hit Blocks'] ?? 0) + (top?.Plan['Shared Read Blocks'] ?? 0);
 }
 
+/** One more GET under the V8 profiler, its self time summed by function, written beside `out`. */
+async function profiled(path: string, out: string): Promise<void> {
+  const { Session } = await import('node:inspector/promises');
+  const session = new Session();
+  session.connect();
+  await session.post('Profiler.enable');
+  await session.post('Profiler.start');
+  await measured(path);
+  const { profile } = (await session.post('Profiler.stop')) as {
+    profile: {
+      nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number } }[];
+      samples: number[];
+      timeDeltas: number[];
+    };
+  };
+  session.disconnect();
+  const self = new Map<number, number>();
+  profile.samples.forEach((id, i) => {
+    self.set(id, (self.get(id) ?? 0) + (profile.timeDeltas[i] ?? 0));
+  });
+  const by = new Map<string, number>();
+  for (const n of profile.nodes) {
+    const f = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.replace(/^.*\/(packages|node_modules)\//, '$1/')}:${n.callFrame.lineNumber}`;
+    by.set(f, (by.get(f) ?? 0) + (self.get(n.id) ?? 0));
+  }
+  const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 40);
+  appendFileSync(
+    out,
+    `## profile ${path}\n${top.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n`,
+  );
+}
+
 function report(label: string, m: Measure): string {
   const slowest = [...m.statements].sort((a, b) => b.ms - a.ms).slice(0, 8);
   const same = new Map<string, number>();
   for (const s of m.statements) same.set(s.text, (same.get(s.text) ?? 0) + 1);
   const repeated = [...same].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
   return [
-    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats`,
+    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
     ...slowest.map(
       (s) => `  ${s.ms.toFixed(1).padStart(8)} ms  ${s.text.replace(/\s+/g, ' ').slice(0, 260)}`,
     ),
-    ...repeated.slice(0, 5).map(([t, n]) => `  x${n} ${t.replace(/\s+/g, ' ').slice(0, 200)}`),
+    ...repeated.slice(0, process.env.SLOW_READS_STACKS ? 20 : 5).map(([t, n]) => {
+      const sites = [...new Set(m.statements.filter((x) => x.text === t).map((x) => x.site))];
+      const at = process.env.SLOW_READS_STACKS ? `\n      from ${sites.join('\n      from ')}` : '';
+      return `  x${n} ${t.replace(/\s+/g, ' ').slice(0, 200)}${at}`;
+    }),
+    ...(process.env.SLOW_READS_STACKS ? sitesOf(m) : []),
   ].join('\n');
 }
 
-const READS = (p: string) => [
-  `/api/projects/${p}/needs-you`,
-  `/api/projects/${p}/needs-you/decisions`,
-  `/api/projects/${p}/releases/shipped?limit=3`,
-  '/api/me/attention',
-  '/api/me/home',
+/** Each call site's statements: how many, and their summed time, the most first. */
+function sitesOf(m: Measure): string[] {
+  const by = new Map<string, { n: number; ms: number }>();
+  for (const s of m.statements) {
+    const at = by.get(s.site ?? '?') ?? { n: 0, ms: 0 };
+    by.set(s.site ?? '?', { n: at.n + 1, ms: at.ms + s.ms });
+  }
+  return [...by]
+    .sort((a, b) => b[1].n - a[1].n || b[1].ms - a[1].ms)
+    .map(
+      ([site, { n, ms }]) => `  @${String(n).padStart(3)} ${ms.toFixed(0).padStart(6)} ms  ${site}`,
+    );
+}
+
+/**
+ * Each read, with the most statements it may send and the most shared buffers their plans may touch
+ * together at this size, at what ISS-1070 r3 left it: a statement asked again, a model built twice
+ * or a table read whole puts a read over one of them. At r3's base (1c38cc063) Needs you and its
+ * decisions sent 167 over 78 thousand buffers, the attention read 176, the home read 157, the newest
+ * shipped 81 over 18 thousand and What's new 76. The counts are the statements the request sends
+ * (its `Server-Timing`), never the work it leaves running.
+ */
+const READS = (p: string): { path: string; statements: number; buffers: number }[] => [
+  { path: `/api/projects/${p}/needs-you`, statements: 104, buffers: 58000 },
+  { path: `/api/projects/${p}/needs-you/decisions`, statements: 104, buffers: 58000 },
+  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 79, buffers: 17500 },
+  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 25, buffers: 3800 },
+  { path: '/api/me/attention', statements: 113, buffers: 58000 },
+  { path: '/api/me/home', statements: 135, buffers: 38500 },
+  { path: '/api/me/whats-new', statements: 74, buffers: 12000 },
+  { path: '/api/me/whats-new/summary', statements: 3, buffers: 5500 },
+  { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
 
 beforeAll(async () => {
   testEnv();
+  if (process.env.SLOW_READS_STACKS) {
+    Error.stackTraceLimit = 60;
+    traceSites();
+  }
   ({ app } = await import('../../src/index.js'));
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   token = await signUserToken(ownerId);
-  await seed();
+  projectId = await seedAtScale(ownerId, SCALE, {
+    projectId: PRODUCT,
+    servingCommit: process.env.SOURCE_COMMIT as string,
+  });
 }, 300_000);
 
 afterAll(closeWorld);
 
 describe('the shell and Dashboard reads at forge-dev size', () => {
-  it('answers each read, each statement within its buffer ceiling, and records its statements and time', async () => {
+  it('answers each read within its ceilings of statements and buffers, and records its statements and time', async () => {
     const out = process.env.SLOW_READS_OUT;
-    for (const path of READS(projectId)) {
+    const failures: string[] = [];
+    const only = process.env.SLOW_READS_ONLY ? new RegExp(process.env.SLOW_READS_ONLY) : null;
+    for (const ceiling of READS(projectId).filter((r) => !only || only.test(r.path))) {
+      const { path } = ceiling;
       const warm = await measured(path); // the first request pays for the prepared statements
       expect(warm.status, `${path}: ${JSON.stringify(warm.body).slice(0, 400)}`).toBe(200);
       const runs = [await measured(path), await measured(path), await measured(path)];
+      if (process.env.SLOW_READS_PROFILE) await profiled(path, process.env.SLOW_READS_PROFILE);
       const median = [...runs].sort((a, b) => a.ms - b.ms)[1] as Measure;
       const plans = process.env.SLOW_READS_EXPLAIN
         ? await Promise.all(
@@ -280,19 +340,36 @@ describe('the shell and Dashboard reads at forge-dev size', () => {
               ),
           )
         : [];
+      // each statement's plan stays within the ceiling: no read pays once per row for what one read answers
+      let buffers = 0;
+      for (const s of median.statements) {
+        const own = (await buffersOf(s)) ?? 0;
+        buffers += own;
+        expect(
+          own,
+          `${path} sent a statement touching ${own} buffers: ${s.text.replace(/\s+/g, ' ').slice(0, 300)}`,
+        ).toBeLessThanOrEqual(BUFFERS_PER_STATEMENT);
+      }
       const line = [
         report(`median of 3 (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
+        `  ceiling: ${median.statements.length} of ${ceiling.statements} statements, ${buffers} of ${ceiling.buffers} buffers`,
         ...plans,
       ].join('\n');
       if (out) appendFileSync(out, `${line}\n`);
-      // each statement's plan stays within the ceiling: no read pays once per row for what one read answers
-      for (const s of median.statements) {
-        const buffers = await buffersOf(s);
-        expect(
-          buffers ?? 0,
-          `${path} sent a statement touching ${buffers} buffers: ${s.text.replace(/\s+/g, ' ').slice(0, 300)}`,
-        ).toBeLessThanOrEqual(BUFFERS_PER_STATEMENT);
-      }
+      failures.push(
+        ...(median.statements.length > ceiling.statements
+          ? [
+              `${path} sent ${median.statements.length} statements, over its ceiling of ${ceiling.statements}`,
+            ]
+          : []),
+        ...(buffers > ceiling.buffers
+          ? [
+              `${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
+            ]
+          : []),
+      );
     }
+    // every read is measured before any is judged, so one red names each read over its ceiling
+    expect(failures).toEqual([]);
   }, 600_000);
 });
