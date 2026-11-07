@@ -60,6 +60,18 @@ export const pipelineRuns = pgTable(
     issueIdx: index('pipeline_runs_issue_idx').on(t.issueId),
     projectStartedAtIdx: index('pipeline_runs_started_at_idx').on(t.projectId, t.startedAt),
     startedAtIdx: index('pipeline_runs_started_at_only_idx').on(t.startedAt),
+    // a project's release runs, its landing records and the release a build is (ISS-1070, migration 0624)
+    releaseRunsIdx: index('pipeline_runs_release_runs_idx')
+      .on(t.projectId, t.startedAt)
+      .where(sql`release_version IS NOT NULL`),
+    releaseRecordsIdx: index('pipeline_runs_release_records_idx')
+      .on(t.projectId, t.startedAt)
+      .where(sql`(metadata ->> 'source') = 'release-record'`),
+    releaseCommitIdx: index('pipeline_runs_release_commit_idx')
+      .on(t.projectId, sql`lower(btrim(metadata -> 'finish' ->> 'commit')) text_pattern_ops`)
+      .where(
+        sql`(metadata ->> 'source') = 'release-batch' AND release_version IS NOT NULL AND release_released_at IS NOT NULL`,
+      ),
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
