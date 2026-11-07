@@ -1,1 +1,0 @@
-**A sign-in that answers its token as `jwt` signs a judge in.** judge-login and the secret-write check now read `jwt` beside `token`, `accessToken` and `access_token`, at the top or under `data`, as Strapi and SidDesk answer.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.570] - 2026-11-07
+
+Judges sign in where the login answers its token as jwt
+
+### Fixed
+
+- **A sign-in that answers its token as `jwt` signs a judge in.** judge-login and the secret-write check now read `jwt` beside `token`, `accessToken` and `access_token`, at the top or under `data`, as Strapi and SidDesk answer.
+
 ## [0.4.0-dev.569] - 2026-11-07
 
 A wake held at an idle master's prompt is submitted, never a suggestion
