@@ -114,7 +114,10 @@ function reads(items: FeedbackSummary[], forecasts: FeedbackForecast[] = []): Fe
 describe('a feedback item’s progress follows the work it became', () => {
   it('waits on its triage, with no date, while untriaged', () => {
     const fb = item('FB-1', { phase: 'new' });
-    const p = feedbackProgress(fb, reads([fb], [{ key: 'FB-1', triage, delivery: null, owes: null }]));
+    const p = feedbackProgress(
+      fb,
+      reads([fb], [{ key: 'FB-1', triage, delivery: null, owes: null }]),
+    );
     expect(p.eta).toEqual({ estimate: false, done: false, why: 'it is not triaged yet' });
     expect(p.waitingOn).toEqual([expect.objectContaining({ who: 'Ana', act: 'triage it' })]);
   });

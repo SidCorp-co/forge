@@ -230,6 +230,7 @@ describe("FB-89's shape: a declined item", () => {
       key: 'FB-89',
       triage: null,
       delivery: null,
+      owes: null,
     });
     expect(noWorkLine({ key: 'FB-90', phase: 'planned' })).toBeNull();
   });
