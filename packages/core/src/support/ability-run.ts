@@ -6,7 +6,7 @@
 
 import {
   changeRequestOpen,
-  projectOpenedPullRequest,
+  recordOpenedChangeRequest,
   resolveSourceHost,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
@@ -247,11 +247,9 @@ async function runBuild(
       title: args.title ?? branch,
       body,
     });
-    await projectOpenedPullRequest({
+    await recordOpenedChangeRequest({
       projectId: room.projectId,
-      bindingId: host.bindingId,
-      host: host.provider,
-      repository: host.fullName,
+      host,
       opened,
       description: body,
     }).catch((err) =>

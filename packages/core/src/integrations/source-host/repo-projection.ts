@@ -97,6 +97,34 @@ export async function pullRequestNumbered(issueId: string, number: number): Prom
   return row?.id ?? null;
 }
 
+/**
+ * What the projection holds for change request `number` on a project, on each of its bindings: the
+ * host, branch and title it was last projected with, and the issues it links, primary first. Empty
+ * where Forge holds no record of that number (ISS-980).
+ */
+export async function heldRequestsNumbered(
+  projectId: string,
+  number: number,
+): Promise<Array<{ host: string; headRef: string; title: string; issueIds: string[] }>> {
+  const held = await db
+    .select({
+      id: repoPullRequests.id,
+      host: repoPullRequests.host,
+      headRef: repoPullRequests.headRef,
+      title: repoPullRequests.title,
+    })
+    .from(repoPullRequests)
+    .where(and(eq(repoPullRequests.projectId, projectId), eq(repoPullRequests.number, number)));
+  return Promise.all(
+    held.map(async (row) => ({
+      host: row.host,
+      headRef: row.headRef,
+      title: row.title,
+      issueIds: (await linksOfPullRequest(row.id, row.headRef)).map((l) => l.issueId),
+    })),
+  );
+}
+
 /** Every open pull request that delivers this issue, oldest first. */
 export async function openPullRequestsForIssue(issueId: string): Promise<string[]> {
   const rows = await db

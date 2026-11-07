@@ -38,7 +38,7 @@ vi.mock('../../src/integrations/source-host/index.js', async (importOriginal) =>
       };
     },
   }),
-  projectOpenedPullRequest: async () => {},
+  recordOpenedChangeRequest: async () => {},
   changeRequestOpen: async (_bindingId: string, number: number) => !merged.has(number),
 }));
 

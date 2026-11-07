@@ -8,8 +8,9 @@
  *
  * This is the second route to the SAME writer, in the shape `review-note.ts` already holds for the
  * review path: the webhook arm and the agent face reach ONE function, so "no second record" stays a
- * property of there being one writer rather than of two call sites agreeing. Nothing here inserts,
- * and nothing here calls GitHub — the answer the creation call already returned is all it reads.
+ * property of there being one writer rather than of two call sites agreeing. Nothing here inserts.
+ * The answer the creation call returned is what it reads, and the host is called only to read back an
+ * answer missing a field the row needs (`recordOpenedChangeRequest`, ISS-980).
  */
 
 import { and, eq } from 'drizzle-orm';
@@ -18,7 +19,7 @@ import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-p
 import { forgeReads } from '../index.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 import { linkedIssuesOfNumber, type NamedLink } from './repo-projection.js';
-import type { OpenedChangeRequest } from './types.js';
+import type { OpenedChangeRequest, SourceHost } from './types.js';
 
 type OpenedProjectionOutcome =
   /** This call wrote the row. */
@@ -54,18 +55,26 @@ interface OpenedProjectionResult {
  * A creation answer that cannot become a row, named field by field.
  *
  * The row's identity columns are `NOT NULL` and the merge route resolves on them, so a partial row
- * is not a lesser record — it is a row the merge would find and then fail to act on. GitHub sending
- * a pull request back without a head sha is not a shape this widens to accept, and nor is one
- * without the `updated_at` the writer orders on — `RowIdentity` says what that absence costs.
+ * is not a lesser record — it is a row the merge would find and then fail to act on. A host sending
+ * a change request back without a head sha is not a shape this widens to accept, and nor is one
+ * without the `updated_at` the writer orders on — `RowIdentity` says what that absence costs. Where
+ * the request was read back and the read did not supply the field either, `readBack` says so.
  */
 export class OpenedPullRequestIncomplete extends Error {
   readonly missing: string[];
-  constructor(missing: string[], repository: string) {
+  constructor(
+    missing: string[],
+    repository: string,
+    opts: { provider?: string; number?: number; readBack?: string } = {},
+  ) {
+    const which = opts.number ? ` #${opts.number}` : '';
+    const refresh = opts.number
+      ? `\`POST /api/projects/:id/integrations/source/change-requests/${opts.number}/refresh\` re-reads it and writes the row, and so does a webhook delivery for it.`
+      : 'A webhook delivery for it writes the row.';
     super(
-      `github: the answer to opening a pull request on ${repository} carried no ${missing.join(', no ')}, ` +
-        'so Forge cannot write the projection row the merge route resolves on. The pull request EXISTS on ' +
-        'GitHub and nothing here is retried. Do NOT open it again — that would put a second pull request ' +
-        'on the repository. A `pull_request` delivery for the one that exists writes the same row.',
+      `${opts.provider ?? 'github'}: the answer to opening change request${which} on ${repository} carried no ` +
+        `${missing.join(', no ')}${opts.readBack ? `, and reading it back did not supply it (${opts.readBack})` : ''}, ` +
+        `so Forge cannot write the projection row the merge route resolves on. The change request EXISTS on the host. ${refresh}`,
     );
     this.name = 'OpenedPullRequestIncomplete';
     this.missing = missing;
@@ -92,7 +101,7 @@ interface RowIdentity {
   updatedAt: string;
 }
 
-function identityOf(opened: OpenedChangeRequest): RowIdentity | { missing: string[] } {
+function missingOf(opened: OpenedChangeRequest): string[] {
   const missing: string[] = [];
   if (!opened.number) missing.push('number');
   if (!opened.headRef) missing.push('head ref');
@@ -100,6 +109,11 @@ function identityOf(opened: OpenedChangeRequest): RowIdentity | { missing: strin
   if (!opened.baseRef) missing.push('base ref');
   if (!opened.baseSha) missing.push('base sha');
   if (!opened.updatedAt) missing.push('updated at');
+  return missing;
+}
+
+function identityOf(opened: OpenedChangeRequest): RowIdentity | { missing: string[] } {
+  const missing = missingOf(opened);
   if (missing.length > 0) return { missing };
   return {
     number: opened.number,
@@ -166,7 +180,10 @@ export async function projectOpenedPullRequest(args: {
 }): Promise<OpenedProjectionResult> {
   const identity = identityOf(args.opened);
   if ('missing' in identity) {
-    throw new OpenedPullRequestIncomplete(identity.missing, args.repository);
+    throw new OpenedPullRequestIncomplete(identity.missing, args.repository, {
+      ...(args.host ? { provider: args.host } : {}),
+      ...(args.opened.number ? { number: args.opened.number } : {}),
+    });
   }
 
   const written = await applyPullRequestEvent(
@@ -259,9 +276,66 @@ export async function projectOpenedPullRequest(args: {
     noIssue: null,
     reason:
       `the projection writer wrote no row for #${args.opened.number} on ${args.repository} and no row for ` +
-      'that number is there, which is a state this path does not otherwise produce. The pull request EXISTS ' +
-      'on GitHub; merging it through Forge needs a row, and none is here.',
+      'that number is there, which is a state this path does not otherwise produce. The change request EXISTS ' +
+      'on its host; merging it through Forge needs a row, and none is here.',
   };
+}
+
+/**
+ * Record a change request the agent face just opened on `host` (ISS-980, FB-547).
+ *
+ * GitLab answers a create before it has computed the request's diff, so the answer can carry no head
+ * or base sha, and the row the merge resolves on was then never written: the request stood on the
+ * host, unlinked, until somebody re-read it. Where the answer lacks a field the row needs, the request
+ * is read back from the host once and each missing field taken from that read; the answer's own
+ * fields stand. A field neither holds is refused by name (`OpenedPullRequestIncomplete`), as before.
+ */
+export async function recordOpenedChangeRequest(args: {
+  projectId: string;
+  host: SourceHost;
+  opened: OpenedChangeRequest;
+  description?: string | null;
+}): Promise<{ opened: OpenedChangeRequest; projection: OpenedProjectionResult }> {
+  const { host } = args;
+  const project = (opened: OpenedChangeRequest) =>
+    projectOpenedPullRequest({
+      projectId: args.projectId,
+      bindingId: host.bindingId,
+      host: host.provider,
+      repository: host.fullName,
+      opened,
+      description: args.description ?? null,
+    });
+  const missing = missingOf(args.opened);
+  if (missing.length === 0 || !args.opened.number) {
+    return { opened: args.opened, projection: await project(args.opened) };
+  }
+  let read: OpenedChangeRequest;
+  try {
+    read = await host.readChangeRequest(args.opened.number);
+  } catch (err) {
+    throw new OpenedPullRequestIncomplete(missing, host.fullName, {
+      provider: host.provider,
+      number: args.opened.number,
+      readBack: `the read failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+  const whole: OpenedChangeRequest = {
+    ...args.opened,
+    headRef: args.opened.headRef || read.headRef,
+    headSha: args.opened.headSha ?? read.headSha,
+    baseRef: args.opened.baseRef || read.baseRef,
+    baseSha: args.opened.baseSha ?? read.baseSha,
+    updatedAt: args.opened.updatedAt ?? read.updatedAt,
+  };
+  if (missingOf(whole).length > 0) {
+    throw new OpenedPullRequestIncomplete(missingOf(whole), host.fullName, {
+      provider: host.provider,
+      number: args.opened.number,
+      readBack: `${host.provider} answered the read without it too`,
+    });
+  }
+  return { opened: whole, projection: await project(whole) };
 }
 
 /**

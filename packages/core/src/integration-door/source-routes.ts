@@ -26,7 +26,7 @@ import { noteReviewOnIssue } from '../comments/index.js';
 import { listIntegrations } from '../integrations/index.js';
 import {
   OpenedPullRequestIncomplete,
-  projectOpenedPullRequest,
+  recordOpenedChangeRequest,
   type SourceHost,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
@@ -166,9 +166,10 @@ async function listSourceBindings(projectId: string): Promise<unknown[]> {
 
 /**
  * Open the change request, then record it on Forge's projection of the repository, so the kernel
- * can be asked to merge it later. The write runs AFTER the host created it and its failure is
- * REPORTED rather than thrown: the change request exists by then, and raising would tell the caller
- * the one thing that is certainly false.
+ * can be asked to merge it later. An answer missing a field the row needs is read back from the host
+ * first (`recordOpenedChangeRequest`, ISS-980), so the create links its issues at once. The write runs
+ * AFTER the host created it and its failure is REPORTED rather than thrown: the change request exists
+ * by then, and raising would tell the caller the one thing that is certainly false.
  */
 async function openAndProject(
   host: SourceHost,
@@ -183,15 +184,13 @@ async function openAndProject(
     ...(input.draft === undefined ? {} : { draft: input.draft }),
   });
   try {
-    const projection = await projectOpenedPullRequest({
+    const recorded = await recordOpenedChangeRequest({
       projectId,
-      bindingId: host.bindingId,
-      host: host.provider,
-      repository: host.fullName,
+      host,
       opened,
       description: input.body ?? null,
     });
-    return { ...opened, projection };
+    return { ...recorded.opened, projection: recorded.projection };
   } catch (err) {
     const why = err instanceof OpenedPullRequestIncomplete ? err.message : String(err);
     logger.error(

@@ -34,6 +34,7 @@ export {
   changeRequestOpen,
   OpenedPullRequestIncomplete,
   projectOpenedPullRequest,
+  recordOpenedChangeRequest,
 } from './opened-change-request.js';
 export type {
   CheckRunPayload,
@@ -61,6 +62,7 @@ export { currentHeadRuns, rollupOf, runPassed } from './projection-shape.js';
 export { rateLimitHeadersOf } from './rate-headers.js';
 export { projectReadChangeRequest } from './read-projection.js';
 export {
+  heldRequestsNumbered,
   openPullRequestsForIssue,
   pullRequestNumbered,
   readPullRequestsForIssues,

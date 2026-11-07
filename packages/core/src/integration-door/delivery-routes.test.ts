@@ -73,7 +73,10 @@ vi.mock('../integrations/source-host/index.js', async (importOriginal) => {
       if (state.hostError) throw state.hostError;
       return state.host;
     },
-    projectOpenedPullRequest: async () => ({ outcome: 'recorded', issueId: null }),
+    recordOpenedChangeRequest: async (args: { opened: unknown }) => ({
+      opened: args.opened,
+      projection: { outcome: 'recorded', issueId: null },
+    }),
     projectReadChangeRequest: async (args: { read: unknown }) => {
       if (state.projectError) throw state.projectError;
       state.projected.push(args.read);

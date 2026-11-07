@@ -1,0 +1,1 @@
+**A change request links its issues as soon as it opens.** Draft titles and `batch-` branches now link every issue they name, merging a named request re-reads it first, and a refusal explains how linking works.

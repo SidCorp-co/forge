@@ -30,15 +30,46 @@ const DELIVERY_BRANCH_SHAPE =
   /^(?:feat|fix)\/.+-([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,10})(?:-\d{1,10})*$/;
 
 /**
+ * `batch-iss-54-69` (ISS-980): a batch branch, one path segment, lists every key it delivers — the
+ * first in full, each after it as its number, or in full under its own prefix (`batch-iss-1-iss-2`).
+ * Unlike a delivery branch's tail, every number here is a key: the batch-delivery rule names its
+ * branches this way. Anything after the list reads the segment as no batch.
+ */
+const BATCH_SEGMENT_SHAPE =
+  /^batch-([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,10})((?:-(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\d{1,10})*)$/i;
+const BATCH_NEXT_KEY = /-(?:([A-Za-z][A-Za-z0-9]{1,5})-)?(\d{1,10})/g;
+
+/** Every key a `batch-<keys>` segment lists, the first as its lead and each after it as its tail. */
+function batchReferences(segment: string): BranchReference[] {
+  const hit = BATCH_SEGMENT_SHAPE.exec(segment);
+  if (!hit?.[1]) return [];
+  let prefix = hit[1].toUpperCase();
+  const out: BranchReference[] = [];
+  const first = Number(hit[2]);
+  if (inRange(first)) out.push({ prefix, issSeq: first, from: 'lead' });
+  for (const next of (hit[3] ?? '').matchAll(BATCH_NEXT_KEY)) {
+    prefix = next[1]?.toUpperCase() ?? prefix;
+    const issSeq = Number(next[2]);
+    if (inRange(issSeq)) out.push({ prefix, issSeq, from: 'tail' });
+  }
+  return out;
+}
+
+/**
  * Every `(prefix, number)` the branch names, in the order it names them: the key opening each path
- * segment (`iss-37-x`, `fix/iss-37-x`), then the key a `feat/…-iss-16` branch ends with, a digit
- * suffix after it read as no key.
+ * segment (`iss-37-x`, `fix/iss-37-x`) or every key a `batch-iss-54-69` segment lists, then the key
+ * a `feat/…-iss-16` branch ends with, a digit suffix after it read as no key.
  * Whether a prefix is this project's is the caller's question.
  */
 export function branchIssueReferences(headRef: string): BranchReference[] {
   const ref = headRef.trim();
   const out: BranchReference[] = [];
   for (const segment of ref.split('/')) {
+    const batch = batchReferences(segment);
+    if (batch.length > 0) {
+      out.push(...batch);
+      continue;
+    }
     const hit = SEGMENT_LEAD_SHAPE.exec(segment);
     const issSeq = Number(hit?.[2]);
     if (hit?.[1] && inRange(issSeq)) {
@@ -56,7 +87,7 @@ export function branchIssueReferences(headRef: string): BranchReference[] {
 /**
  * Which reading of a change request named an issue it links (ISS-1027): `branch-lead` where a path
  * segment of the branch opens with its key, `branch-tail` where only the key a `feat|fix/…-iss-n`
- * branch ends with holds it, `title` and `body` as the link was written, so a caller sees which part
+ * branch ends with, or a number a `batch-iss-n-m` branch lists after its first key, holds it, `title` and `body` as the link was written, so a caller sees which part
  * of a request named each issue before its merge stamps it. A head-ref link whose number a lead key
  * holds reads as the lead, as the link took it first.
  */
@@ -144,18 +175,26 @@ export function deliveredDescriptionReferences(description: string): IssueRefere
   return out;
 }
 
+/**
+ * The draft markers a host writes before a title (ISS-980): GitLab's `Draft:`, `[Draft]`, `(Draft)`
+ * and `WIP:`, and `Draft -`, each any number of times. A marker is no part of what the title says, so
+ * a key after it leads the title.
+ */
+const DRAFT_MARKERS =
+  /^(?:\s*(?:\[\s*(?:draft|wip)\s*\]|\(\s*(?:draft|wip)\s*\)|(?:draft|wip)\s*(?::|\s-)))+\s*/i;
+
 /** Where a title's key stands to be delivered: the title's start or a clause's (`;`, `,`, `|`, `(`, `[`). */
 const TITLE_LEAD_KEYS = new RegExp(`(?:^|[;,|([])\\s*(${KEY}(?:${BETWEEN_KEYS}${KEY})*)`, 'gi');
 
 /**
- * The keys a title delivers, in the order it gives them (ISS-855): a key leading the title or one of
- * its clauses, with any keys listed after it (`ISS-31: …; ISS-24: …`, `[ISS-12] …`, `ISS-1, ISS-2
+ * The keys a title delivers, in the order it gives them (ISS-855): a key leading the title, past any
+ * host draft marker (`Draft: ISS-70: …`, ISS-980), or one of its clauses, with any keys listed after it (`ISS-31: …; ISS-24: …`, `[ISS-12] …`, `ISS-1, ISS-2
  * and ISS-3 — …`), or right after a closing verb (`… (fixes ISS-9)`). A key inside a sentence is
  * prose, and one another project's slug qualifies (`adminhub-api ISS-11`) sits in neither form
  * (FB-295).
  */
 export function titleIssueReferences(title: string): IssueReference[] {
-  const line = title.replace(EMPHASIS, '').trim();
+  const line = title.replace(EMPHASIS, '').trim().replace(DRAFT_MARKERS, '');
   const hits: Array<{ at: number; refs: IssueReference[] }> = [];
   for (const hit of line.matchAll(TITLE_LEAD_KEYS)) {
     hits.push({ at: hit.index ?? 0, refs: keysIn(hit[1] ?? '') });
@@ -166,8 +205,19 @@ export function titleIssueReferences(title: string): IssueReference[] {
   return hits.sort((a, b) => a.at - b.at).flatMap((h) => h.refs);
 }
 
-const KEY_SHAPES =
-  'a branch `fix/iss-n-…` or `feat/…-iss-n`, a title leading with `ISS-n: …`, or a description line holding only `ISS-n` or `Closes ISS-n`';
+/**
+ * What Forge's projection reads to link a change request to an issue (REQ-63 BC-4, ISS-980), said
+ * whole wherever a request links nothing or the merge door finds none for an issue, so a caller pulls
+ * the lever that links rather than guessing at one.
+ */
+export const CHANGE_REQUEST_LINK_RULE =
+  'A change request links the issues its branch, its title and its description name: a branch ' +
+  'segment opening with the key (`fix/iss-n-…`, `iss-n-…`), a `feat/…-iss-n` or `fix/…-iss-n` branch ' +
+  'ending with it, or a `batch-iss-n-m` branch listing every key; a title leading with the key or a ' +
+  'list of keys (`ISS-n: …`, `[ISS-n] …`, `ISS-n, ISS-m …`), after any `Draft:`, `[Draft]`, `WIP:` ' +
+  'or `Draft -` marker, or naming it after a closing verb (`… (fixes ISS-n)`); or a description line ' +
+  'holding only keys, or `Closes ISS-n`. A key elsewhere in a title or description is prose and ' +
+  'links nothing.';
 
 /**
  * Why a change request links no issue, named by what was read (ISS-855): its branch, its title, the
@@ -193,7 +243,7 @@ export function noIssueReason(args: {
   return (
     `linked to no issue: branch \`${args.headRef}\`, title ${JSON.stringify(args.title ?? '')}, and ` +
     `${args.description?.trim() ? 'its description' : 'no description'} carry ${keys}. ` +
-    `A key links from ${KEY_SHAPES}; edit the title or description and refresh it.`
+    `${CHANGE_REQUEST_LINK_RULE} Edit the title or description and refresh it.`
   );
 }
 

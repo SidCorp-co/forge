@@ -183,10 +183,22 @@ describe('ISS-980: a draft marker hides no key, and a batch branch links every k
   });
 
   it('names the branch shapes, the title lead past a draft marker and the description in its rule', () => {
-    for (const shape of ['batch-iss-n-m', 'Draft:', '[Draft]', 'WIP:', 'Closes ISS-n', 'fix/iss-n']) {
+    for (const shape of [
+      'batch-iss-n-m',
+      'Draft:',
+      '[Draft]',
+      'WIP:',
+      'Closes ISS-n',
+      'fix/iss-n',
+    ]) {
       expect(CHANGE_REQUEST_LINK_RULE, shape).toContain(shape);
     }
-    const why = noIssueReason({ headRef: 'chore/x', title: 'x', description: null, prefixes: ['ISS'] });
+    const why = noIssueReason({
+      headRef: 'chore/x',
+      title: 'x',
+      description: null,
+      prefixes: ['ISS'],
+    });
     expect(why).toContain(CHANGE_REQUEST_LINK_RULE);
   });
 });

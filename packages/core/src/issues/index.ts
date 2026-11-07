@@ -108,6 +108,7 @@ export {
 } from './field-writes.js';
 export { type FlowIssue, type FlowMove, type IssueFlow, readIssueFlow } from './flow-history.js';
 export {
+  CHANGE_REQUEST_LINK_RULE,
   type ChangeRequestIssueLink,
   changeRequestLinkReadings,
   explainNoIssue,

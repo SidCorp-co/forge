@@ -8,12 +8,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   CHANGE_REQUEST_MERGE_METHODS,
-  describeEmptyProjection,
   type IssueMergeStamp,
   mergeStoredChangeRequest,
-  openPullRequestsForIssue,
-  projectionPipeReport,
-  pullRequestNumbered,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import {
@@ -33,11 +29,8 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireDeclared, requiresOnResolved } from '../permissions/index.js';
-import {
-  admitChangeRequestMerge,
-  promotionPinnedFor,
-  settleChangeRequestRelease,
-} from '../release-batch/index.js';
+import { admitChangeRequestMerge, settleChangeRequestRelease } from '../release-batch/index.js';
+import { resolveStoredPullRequest } from './stored-pull-request.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -117,56 +110,6 @@ const kernelMergeBodySchema = z
     method: z.enum(CHANGE_REQUEST_MERGE_METHODS).optional(),
   })
   .strict();
-
-/**
- * The refusal for an issue with no row, with the two states told apart.
- *
- * ISS-1123: `NO_PULL_REQUEST` reads as "you named the wrong number", and for the first year of this
- * route's life it was never once true — the projection had a single writer nothing reached, so
- * EVERY pull request on EVERY project answered that sentence. A projection holding nothing at all
- * is reported as what it is, under its own code, before the number is blamed.
- */
-async function noRowRefusal(
-  projectId: string,
-  about: string,
-): Promise<{ refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
-  const empty = describeEmptyProjection(await projectionPipeReport(projectId));
-  return empty
-    ? { refusal: empty, code: 'PROJECTION_EMPTY' }
-    : { refusal: about, code: 'NO_PULL_REQUEST' };
-}
-
-/** The stored pull request this call is about, or the sentence saying why there is none. */
-async function resolveStoredPullRequest(
-  projectId: string,
-  issueId: string,
-  number: number | undefined,
-): Promise<{ id: string } | { refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
-  if (number !== undefined) {
-    const id =
-      (await pullRequestNumbered(issueId, number)) ?? (await promotionPinnedFor(issueId, number));
-    return id
-      ? { id }
-      : noRowRefusal(
-          projectId,
-          `this issue has no pull request #${number} on Forge's projection of the repository`,
-        );
-  }
-  const open = await openPullRequestsForIssue(issueId);
-  if (open.length === 0) {
-    return noRowRefusal(
-      projectId,
-      "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue",
-    );
-  }
-  if (open.length > 1) {
-    return {
-      refusal: `this issue has ${open.length} open pull requests and Forge will not choose between them — name the one to merge with \`pullRequest\``,
-      code: 'NO_PULL_REQUEST',
-    };
-  }
-  return { id: open[0] as string };
-}
 
 issueMergePullRequestRoutes.post(
   '/:id/merge-pull-request',
