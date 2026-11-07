@@ -118,7 +118,10 @@ function ShareItem({
     <TR data-testid="share-row" data-share-id={share.id} data-state={state}>
       <TD>
         <span className="flex min-w-0 flex-col items-start gap-0.5" title={t("shares.list.created", { at: time.dateTime(share.createdAt) })}>
-          {share.title && <span className="max-w-60 truncate text-fg" data-testid="share-title">{share.title}</span>}
+          {/* every row has a name: a snapshot that says nothing core can name it by reads by its day (ISS-1072) */}
+          <span className="max-w-60 truncate text-fg" data-testid="share-title">
+            {share.title ?? t("shares.list.untitled", { date: time.date(share.createdAt) })}
+          </span>
           <EnumBadge family="shareSubject" value={share.subjectKind} />
         </span>
       </TD>

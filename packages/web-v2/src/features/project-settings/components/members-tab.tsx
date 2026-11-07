@@ -1,5 +1,5 @@
 
-// Project settings → Members. List (email + role) + direct-add from the org +
+// Project settings → Members. List (name + role, an agent badged) + direct-add from the org +
 // invite by email + remove + inline role change, plus a pending-invitations
 // list (cancel). Invite / remove / role-change / invitation controls are
 // owner-gated by core; we surface them only when the caller is the owner
@@ -69,13 +69,19 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
         ) : (
           <ul className="divide-y divide-line-subtle">
             {(membersQ.data ?? []).map((m) => (
-              <li key={m.userId} className={ROW}>
-                <span className="min-w-0 truncate text-fg">{m.email}</span>
+              <li key={m.userId} className={ROW} data-testid={`project-member-${m.userId}`}>
+                {/* an agent's address is minted, never shown: its name and the Agent badge, as on the org (ISS-1072) */}
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 truncate text-fg" title={m.agent ? undefined : m.email}>
+                    {m.name}
+                  </span>
+                  {m.agent ? <Badge tone="neutral">{t("settings.orgs.agent")}</Badge> : null}
+                </span>
                 <span className="flex shrink-0 items-center gap-2">
                   {canEdit ? (
                     <Select
                       options={roleOptions(t)}
-                      aria-label={t("settings.project.people.roleOf", { email: m.email })}
+                      aria-label={t("settings.project.people.roleOf", { name: m.name })}
                       value={m.role}
                       onChange={(v) => updateRole.mutate({ userId: m.userId, role: v as ProjectRole })}
                       disabled={updateRole.isPending}
@@ -86,7 +92,7 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
                   {canEdit && (
                     <IconButton
                       icon="trash"
-                      aria-label={t("settings.project.people.remove", { email: m.email })}
+                      aria-label={t("settings.project.people.remove", { name: m.name })}
                       onClick={() => remove.mutate(m.userId)}
                       disabled={remove.isPending}
                     />
@@ -183,7 +189,7 @@ function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId:
         who={
           <Field label={t("settings.project.people.orgMember")}>
             <Select
-              options={candidates.map((m) => ({ value: m.userId, label: m.email }))}
+              options={candidates.map((m) => ({ value: m.userId, label: m.name }))}
               value={userId}
               onChange={setUserId}
               placeholder={t("settings.project.people.orgMemberPlaceholder")}

@@ -187,15 +187,15 @@ describe("a project's share links", () => {
     expect(document.body.textContent).not.toMatch(/forge_share_|tokenHash/);
   });
 
-  it("tells two links of one kind apart by the title each froze, and the dialog names the same one", async () => {
+  it("tells two links of one kind apart by the title each froze, and names one that froze none by its day (ISS-1072)", async () => {
     const shares = [view({ id: "s-a", title: "Progress by requirement" }), view({ id: "s-b", title: "Open risks" }), view({ id: "s-c", title: null })];
     fakeCore((call) => (call.method === "GET" ? { body: { shares } } : undefined));
     list();
     await screen.findByTestId("share-list");
-    expect(screen.getAllByTestId("share-title").map((t) => `${t.closest("tr")?.getAttribute("data-share-id")}:${t.textContent}`)).toEqual([
-      "s-a:Progress by requirement",
-      "s-b:Open risks",
-    ]);
+    const named = screen.getAllByTestId("share-title").map((t) => `${t.closest("tr")?.getAttribute("data-share-id")}:${t.textContent}`);
+    expect(named.slice(0, 2)).toEqual(["s-a:Progress by requirement", "s-b:Open risks"]);
+    // the last row of Project settings › People read only its "Chat answer" tag
+    expect(named[2]).toMatch(/^s-c:Shared \S*2026/);
   });
 
   it("offers a project admin Revoke on every active link", async () => {

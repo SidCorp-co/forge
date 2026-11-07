@@ -15,6 +15,10 @@ export type ProjectRole = "admin" | "member" | "viewer";
 /** One row of `GET /api/projects/:id/members` — includes the member email. */
 export interface ProjectMemberRow {
 	userId: string;
+	/** What the page shows: an agent's name, never its minted address; a person's name, or their email (ISS-1072). */
+	name: string;
+	/** An agent account, read as an Agent badge beside its name. */
+	agent: boolean;
 	email: string;
 	/** The name the person goes by, where they set one. */
 	displayName?: string | null;

@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { handleOfAgentEmail } from '../credentials/agent-account.js';
+import { memberReading } from '../credentials/agent-account.js';
 import { db, type Tx } from '../db/client.js';
 import {
   type OrgMemberRole,
@@ -127,15 +127,7 @@ export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(eq(organizationMembers.orgId, orgId));
-  return rows.map(({ kind, ...r }) => {
-    const agent = kind === 'agent';
-    const typed = r.displayName?.trim() || null;
-    // an agent's address is minted, never shown: past its handle, only the part before the @
-    const name = agent
-      ? (typed ?? r.handle ?? handleOfAgentEmail(r.email) ?? r.email.split('@')[0] ?? r.email)
-      : (typed ?? r.email);
-    return { ...r, name, agent };
-  });
+  return rows.map(({ kind, ...r }) => ({ ...r, ...memberReading({ kind, ...r }) }));
 }
 
 const orgHead = {

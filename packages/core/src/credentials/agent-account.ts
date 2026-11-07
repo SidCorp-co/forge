@@ -36,6 +36,25 @@ export function handleOfAgentEmail(email: string): string | null {
 }
 
 /**
+ * How a member reads wherever members are listed, an org's or a project's (ISS-1072): an agent by
+ * its name with `agent` set, its minted address never shown (past its typed name and handle, only
+ * the part before the @); a person by their typed name, or their email where none is typed.
+ */
+export function memberReading(m: {
+  kind: string;
+  email: string;
+  displayName: string | null;
+  handle?: string | null;
+}): { name: string; agent: boolean } {
+  const agent = m.kind === 'agent';
+  const typed = m.displayName?.trim() || null;
+  const name = agent
+    ? (typed ?? m.handle ?? handleOfAgentEmail(m.email) ?? m.email.split('@')[0] ?? m.email)
+    : (typed ?? m.email);
+  return { name, agent };
+}
+
+/**
  * The `users` row an agent account is minted with, wherever one is minted. Its handle is also the
  * label a reader is shown, so no renderer falls back to the synthesized address, which exists only
  * because the column is required and unique (ISS-1317).

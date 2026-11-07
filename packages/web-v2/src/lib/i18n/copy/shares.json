@@ -45,6 +45,7 @@
     "shares.list.revokedAt": "Revoked {at}",
     "shares.list.revokeRefused": "Core refused to revoke the share",
     "shares.list.title": "Share links",
+    "shares.list.untitled": "Shared {date}",
     "shares.list.you": "{name} (you)",
     "shares.narrative.recommendations": "Recommendations",
     "shares.narrative.risks": "Risks",

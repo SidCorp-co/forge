@@ -1,4 +1,5 @@
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { memberReading } from '../credentials/agent-account.js';
 import { db } from '../db/client.js';
 import {
   devices,
@@ -162,9 +163,13 @@ export async function projectDetail(projectId: string) {
   return { project, members, labels: labelRows, devicePool };
 }
 
-/** A project's members with each one's account email, display name and kind. */
+/**
+ * A project's members with each one's account email, display name and kind, and the name a reader
+ * is shown with whether it is an agent, read as the org's members are (ISS-1072): an agent's
+ * minted address is never its name.
+ */
 export async function listProjectMembers(projectId: string) {
-  return db
+  const rows = await db
     .select({
       userId: projectMembers.userId,
       email: users.email,
@@ -177,6 +182,7 @@ export async function listProjectMembers(projectId: string) {
     .from(projectMembers)
     .innerJoin(users, eq(users.id, projectMembers.userId))
     .where(eq(projectMembers.projectId, projectId));
+  return rows.map((r) => ({ ...r, ...memberReading(r) }));
 }
 
 /** The role `userId` holds on the project, or null when they are not a member. */

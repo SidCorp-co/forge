@@ -44,20 +44,51 @@ const CREATED_WITH: Record<ShareAudience, ProjectPermission> = {
   link: 'shares.public',
 };
 
+/** How much of a reply or a finding names a share before it is cut at a word. */
+const NAME_CHARS = 80;
+
+/** A text's first line as a name: Markdown marks dropped, cut at a word within {@link NAME_CHARS}. */
+function nameFromText(text: unknown): string | null {
+  if (typeof text !== 'string') return null;
+  const line = (text.split('\n').find((l) => l.trim()) ?? '')
+    .replace(/^[\s#>*-]+/, '')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!line) return null;
+  if (line.length <= NAME_CHARS) return line;
+  const cut = line.slice(0, NAME_CHARS);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), NAME_CHARS / 2)).trimEnd()}…`;
+}
+
 /**
  * What a stored snapshot is named by: its own title (a shared chat answer's question), a release
- * page's version, else its first block title; all were scrubbed with the rest of the snapshot.
+ * page's version, its first block title, else the first line of what it says, its reply or a block's
+ * finding (ISS-1072: an answer frozen with no question and no titled block listed with no name); all
+ * were scrubbed with the rest of the snapshot.
  */
-function titleOf(snapshot: unknown): string | null {
-  const own = (snapshot as { title?: unknown } | null)?.title;
+export function titleOf(snapshot: unknown): string | null {
+  const doc = snapshot as {
+    title?: unknown;
+    reply?: unknown;
+    header?: { version?: unknown };
+    blocks?: unknown;
+  } | null;
+  const own = doc?.title;
   if (typeof own === 'string' && own.trim()) return own;
-  const version = (snapshot as { header?: { version?: unknown } } | null)?.header?.version;
+  const version = doc?.header?.version;
   if (typeof version === 'string' && version.trim()) return `Release ${version}`;
-  const blocks = (snapshot as { blocks?: unknown } | null)?.blocks;
-  if (!Array.isArray(blocks)) return null;
+  const blocks = (Array.isArray(doc?.blocks) ? doc.blocks : []) as ({
+    title?: unknown;
+    finding?: unknown;
+  } | null)[];
   for (const block of blocks) {
-    const title = (block as { title?: unknown } | null)?.title;
+    const title = block?.title;
     if (typeof title === 'string' && title.trim()) return title;
+  }
+  for (const text of [doc?.reply, ...blocks.map((b) => b?.finding)]) {
+    const name = nameFromText(text);
+    if (name) return name;
   }
   return null;
 }

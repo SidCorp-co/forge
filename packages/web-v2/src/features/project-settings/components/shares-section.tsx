@@ -13,7 +13,7 @@ export function ShareSettings({ projectId, isAdmin }: { projectId: string; isAdm
 	const membersQ = useMembers(projectId);
 	const nameOf = (userId: string) => {
 		const m = membersQ.data?.find((row) => row.userId === userId);
-		return m ? (m.displayName ?? m.email) : null;
+		return m ? m.name : null;
 	};
 	return (
 		<PageSection>
