@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.568] - 2026-11-07
+
+Test accounts that sign in by identifier can now be stored and judged
+
+### Fixed
+
+- **A product whose sign-in reads `identifier` can be judged.** judge-login and the check made when an actor secret is written now take the account under `identifier`, the Strapi convention, beside `email`, `username` and `login`.
+
 ## [0.4.0-dev.567] - 2026-11-07
 
 Home, Dashboard and Needs you load faster
