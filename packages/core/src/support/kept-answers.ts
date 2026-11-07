@@ -43,11 +43,7 @@ export async function ownerSetupStep(projectId: string): Promise<string> {
 }
 
 /** Keep the owner's cited answer to a question, once per room, message and question. */
-export async function keepOwnerAnswer(
-  room: RoomRow,
-  thread: string,
-  kept: Kept,
-): Promise<void> {
+export async function keepOwnerAnswer(room: RoomRow, thread: string, kept: Kept): Promise<void> {
   const externalId = `${KEPT}:${kept.questionId}:${kept.message}`;
   const [held] = await db
     .select({ id: supportActions.id })
@@ -87,7 +83,8 @@ async function recordOne(kept: Kept, userId: string): Promise<Recorded> {
     });
     return { recorded: true, by: userId };
   } catch (err) {
-    if (isRefusal(err)) return { recorded: false, why: err.refusals.map((r) => r.detail).join('; ') };
+    if (isRefusal(err))
+      return { recorded: false, why: err.refusals.map((r) => r.detail).join('; ') };
     logger.error({ err, questionId: kept.questionId }, 'support: a kept owner answer failed');
     return { recorded: false, why: err instanceof Error ? err.message : String(err) };
   }
@@ -142,7 +139,12 @@ export async function recordKeptAnswers(
         kind: 'routed',
         actorKind: 'core',
         tool: ANSWER,
-        input: { thread: row.thread, message: kept.message, forgeQuestion: kept.questionId, kept: row.id },
+        input: {
+          thread: row.thread,
+          message: kept.message,
+          forgeQuestion: kept.questionId,
+          kept: row.id,
+        },
       });
     }
     const entry = told.get(room.id) ?? { thread: row.thread, lines: [] };

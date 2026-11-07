@@ -168,6 +168,20 @@ describe('the chat-link guide a channel agent reads (ISS-878)', () => {
     }
   });
 
+  it('names the admin naming as the way with no address, and never has the owner asked (ISS-976)', async () => {
+    const guide = await served('link-chat-account');
+    for (const part of [
+      '`POST /api/projects/:id/speaker-links/named { source, externalId, userId, reason }`',
+      '`DELETE /api/projects/:id/speaker-links/named/:namingId { reason }`',
+      'never ask him to link anything',
+      'noted and waits on a setup step its admins own',
+      '`SPEAKER_NAMED_NOT_A_MEMBER`',
+    ]) {
+      expect(guide, `the link guide no longer says ${part}`).toContain(part);
+    }
+    expect(guide).not.toContain('They set one on the chat account');
+  });
+
   it('is named by the support brief by its slug, as one pointer', () => {
     const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
     expect(brief).toContain('GET /api/guides/link-chat-account.md');

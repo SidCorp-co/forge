@@ -15,7 +15,7 @@ import { z } from 'zod';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { invalid, zValidator } from '../../middleware/zod-validator.js';
+import { invalid, noQuery, zValidator } from '../../middleware/zod-validator.js';
 import { requiresOnParam } from '../../permissions/index.js';
 import { confirmSpeakerLink } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
@@ -237,6 +237,7 @@ speakerLinkProjectRoutes.get(
   '/projects/:projectId/speaker-links/named',
   projectParam,
   projectAdmin,
+  noQuery,
   async (c) => {
     const namings = await namingsOf(c.req.valid('param').projectId);
     return c.json({ namings: namings.map(namingView) });

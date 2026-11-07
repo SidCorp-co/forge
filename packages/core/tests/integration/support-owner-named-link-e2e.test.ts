@@ -222,9 +222,9 @@ describe('ISS-976: a project admin names the Forge account a chat account is', (
     });
     expect(row?.named_at).toBeTruthy();
     // his kept answer is recorded as him, once, and the master who asked wakes
-    await expect.poll(async () => (await question(kept))?.status, { timeout: 10_000 }).toBe(
-      'answered',
-    );
+    await expect
+      .poll(async () => (await question(kept))?.status, { timeout: 10_000 })
+      .toBe('answered');
     expect((await question(kept))?.steps.at(-1)).toMatchObject({
       answerText: 'Không cần đâu, downtime chút không sao',
       answeredBy: w.ownerId,

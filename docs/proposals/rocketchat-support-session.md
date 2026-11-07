@@ -369,9 +369,12 @@ give the member, or `{ linked: true }`. The member opens it signed in to Forge a
 account must be their Forge address. No code passes through the room or the session, and core posts
 nothing: once the link is confirmed, the session of each room the account wrote in is handed the
 fact (`support/speaker-link.ts:tellLinked`). The address read needs `view-full-other-user-info` on
-the bot; without it the page refuses `SPEAKER_EMAIL_ABSENT` and nobody can link there, so the owner
-grants it. The typed `link <code>` path is gone. The proof is
-`packages/core/tests/integration/support-link-page-e2e.test.ts`.
+the bot; without it, or where the account holds no address, the page refuses `SPEAKER_EMAIL_ABSENT`
+and names the other way: a project admin names the Forge account the chat account is
+(`POST /api/projects/:id/speaker-links/named`, ISS-976), which holds in that project alone and is
+undone there. The typed `link <code>` path is gone. The proof is
+`packages/core/tests/integration/support-link-page-e2e.test.ts` and
+`packages/core/tests/integration/support-owner-named-link-e2e.test.ts`.
 
 **Migration (BC-29).** Each hand-run watcher becomes a binding of its group, one room at a time:
 1. Its prompt file's standing instructions become `persona`.
