@@ -6,6 +6,7 @@
  * said it shipped, or what.
  */
 
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { eq, inArray, or, type SQL } from 'drizzle-orm';
 import { issues, type PipelineRunStatus } from '../db/schema.js';
 import { readFinishRecord } from './finish-record.js';
@@ -23,7 +24,7 @@ export interface ReleaseRunEnded {
   commit: string | null;
 }
 
-const ENDED: ReadonlySet<PipelineRunStatus> = new Set(['completed', 'failed', 'cancelled']);
+const ENDED: ReadonlySet<PipelineRunStatus> = new Set(TERMINAL_PIPELINE_RUN_STATUSES);
 
 const iso = (at: Date | null) => (at ? at.toISOString() : null);
 
