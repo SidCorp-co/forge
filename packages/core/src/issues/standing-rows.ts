@@ -19,6 +19,7 @@ import { contractWaitUnsettledSql } from './contract-waits.js';
 import { designOnlyMarkSql, designReturnedUnderSql } from './design-delivery.js';
 import { landedSql, mergeSinceLastReopenSql } from './host-landing.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
+import { leaseByMasterSql } from './master-lease.js';
 import { owedMarkSql } from './owed-merges.js';
 import { parkSinceSql } from './park-since.js';
 import { patternReviewPendingSql } from './patterns.js';
@@ -68,6 +69,7 @@ export interface IssueRowRaw {
   last_activity: string | null;
   moving: boolean;
   run_live: boolean;
+  lease_by_master: boolean;
   owes_answer: boolean;
   holds_dependents: boolean;
   park_entry: { reason: string | null; agency: string; actorType: string } | null;
@@ -133,7 +135,8 @@ async function rowsWhere(where: SQL): Promise<IssueRowRaw[]> {
                projectId: sql`i.project_id`,
                issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
              })} AS moving,
-             ${issueRunLiveSql({ projectId: sql`i.project_id`, issueKey: sql`'ISS-' || i.iss_seq` })} AS run_live
+             ${issueRunLiveSql({ projectId: sql`i.project_id`, issueKey: sql`'ISS-' || i.iss_seq` })} AS run_live,
+             ${leaseByMasterSql(sql`i`, sql`w`)} AS lease_by_master
         FROM issues i
         LEFT JOIN issue_work_state w ON w.issue_id = i.id
        WHERE i.archived_at IS NULL AND ${where}

@@ -160,6 +160,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     step: r.step,
     stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
     lease: leaseOf(r.lease, f.now),
+    leaseByMaster: r.lease_by_master === true,
     inFlight: r.moving,
     runLive: r.run_live,
     owesAnswer: r.owes_answer,

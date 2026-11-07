@@ -13,7 +13,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf, uuidArray } from '../db/raw-sql.js';
 import { rowsPerProject } from '../db/read-memo.js';
-import { classifyLease } from '../issues/index.js';
+import { classifyLease, leaseByMasterSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
 import { RUN_SCOPE_SQL } from './facts.js';
@@ -29,20 +29,20 @@ interface LeasedRow {
   step: WorkStep | null;
   step_started_at: string | Date | null;
   lease: unknown;
-  lease_device_id: string | null;
+  by_master: boolean;
 }
 
 const iso = (at: string | Date | null) => (at === null ? null : new Date(at).toISOString());
 
 /**
  * Every issue of the project a live or shared lease holds at a moving status, with no live run in
- * the runs list's scope over it by its id or its run group; `masterDeviceId` is the box the
- * project's master is on, so a lease written from it reads as the master's own build.
+ * the runs list's scope over it by its id or its run group. It is the master's own build where its
+ * holder is one the master leases under (`issues/master-lease.ts:leaseByMasterSql`), the rule the
+ * issue rows name it by, never by the device that wrote this one lease (UI-E residual 2).
  */
 export async function leasedBuildsOf(
   projectId: string,
   prefix: string | null,
-  masterDeviceId: string | null,
   now: Date,
 ): Promise<RunLeasedBuild[]> {
   // every project of a person's read asks in one statement (`db/read-memo.ts:rowsPerProject`, ISS-1070 r6)
@@ -56,7 +56,7 @@ export async function leasedBuildsOf(
         step: r.step,
         stepStartedAt: iso(r.step_started_at),
         holder: read.holder,
-        byMaster: masterDeviceId !== null && r.lease_device_id === masterDeviceId,
+        byMaster: r.by_master === true,
         expiresAt: read.expiresAt?.toISOString() ?? null,
       },
     ];
@@ -67,7 +67,8 @@ export async function leasedBuildsOf(
 async function leasedRowsIn(projectIds: readonly string[]): Promise<LeasedRow[]> {
   return rowsOf<LeasedRow>(
     await db.execute(sql`
-      SELECT i.project_id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease, w.lease_device_id
+      SELECT i.project_id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease,
+             ${leaseByMasterSql(sql`i`, sql`w`)} AS by_master
         FROM issues i
         JOIN issue_work_state w ON w.issue_id = i.id
        WHERE i.project_id = ANY(${uuidArray(projectIds)}) AND i.archived_at IS NULL

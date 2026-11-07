@@ -7,6 +7,13 @@
  * written from the master's box. It never names a build no live lease holds, and never twice a build
  * a run already lists.
  *
+ * ISS-1109 (UI-E residuals 1 and 2): every pane on a box leases under one holder id, and a pane may
+ * write its lease through another device's token. The master's build is read by the holder, the
+ * master's identity, never by the device that wrote one lease; and the issue's own row names that
+ * build the master's, never "Run", by the same rule (`issues/master-lease.ts:leaseByMasterSql`).
+ *
+ * @direct-test-of packages/core/src/issues/master-lease.ts
+ * @direct-test-of packages/core/src/issues/standing-rows.ts
  * @direct-test-of packages/core/src/runs/leased-builds.ts
  * @direct-test-of packages/core/src/runs/read.ts
  */
@@ -160,5 +167,30 @@ describe('ISS-1102 the read behind the live bar serves leased builds beside the 
     const read = await live();
     expect((read.items as Doc[]).some((r) => r.boxRunId === runId)).toBe(true);
     expect((read.leased as Doc[]).map((b) => b.issue.key)).toEqual(['ISS-1', 'ISS-2']);
+  });
+});
+
+describe("ISS-1109 the master's build is read by its holder, on the bar and on the row", () => {
+  const rowOf = async (key: string) => {
+    const res = await api(reader, 'GET', `/api/projects/${projectId}/issues/standing/${key}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body as Doc;
+  };
+
+  it("names a lease the master's holder wrote from another box the master's build", async () => {
+    await lease(4, otherBox, 'forge-master-box');
+    await atStep(4, 12);
+    const build = ((await live()).leased as Doc[]).find((b) => b.issue.key === 'ISS-4');
+    expect(build?.holder).toBe('forge-master-box');
+    expect(build?.byMaster).toBe(true);
+  });
+
+  it("names the master's leased build Master on its row, another holder's Run", async () => {
+    const mine = (await rowOf('ISS-4')).standing.waitingOn;
+    expect(mine.kind).toBe('master');
+    expect(mine.who).toBe('Master');
+    const theirs = (await rowOf('ISS-2')).standing.waitingOn;
+    expect(theirs.kind).toBe('run');
+    expect(theirs.who).toBe('Run');
   });
 });

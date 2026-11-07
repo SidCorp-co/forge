@@ -171,6 +171,7 @@ export {
   type MarkedCommit,
   markedCommitsOf,
 } from './mark-trail.js';
+export { leaseByMasterSql } from './master-lease.js';
 export {
   archivedIssueIdsSql,
   issueHead,

@@ -81,6 +81,8 @@ export interface IssueStandingInput {
   step: WorkStep | null;
   stepStartedAt: Date | null;
   lease: IssueLeaseView | null;
+  /** The lease's holder is an identity the project's master leases under (`master-lease.ts:leaseByMasterSql`); absent reads false. */
+  leaseByMaster?: boolean;
   inFlight: boolean;
   /** A run session holds it through the fleet lease (`issue-lease.ts:issueRunLiveSql`). */
   runLive: boolean;
@@ -329,6 +331,10 @@ function releaseHeldTurn(hold: ReleaseHoldView, people: People): Turn {
   return { group, waitingOn: forPerson(people, act, rule).waitingOn };
 }
 
+/** The master's own build: its lease held, with no run over it (a direct-mode master's subagents). */
+const mastersBuild = (input: IssueStandingInput): boolean =>
+  input.leaseByMaster === true && held(input.lease) && !input.runLive && !input.inFlight;
+
 function runningTurn(input: IssueStandingInput): Turn {
   const leased = held(input.lease) || input.runLive;
   const step = input.step;
@@ -339,6 +345,13 @@ function runningTurn(input: IssueStandingInput): Turn {
       : say('issues.standing.act.step', { step })
     : say(leased ? 'issues.standing.act.working' : 'standing.act.starting');
   const holder = input.lease?.holder ?? null;
+  if (mastersBuild(input) && holder !== null) {
+    // UI-E residual 1 (ISS-1109): named as the master's, never as a run no runs read counts
+    return {
+      group: 'moving',
+      waitingOn: wait('master', MASTER, act, say('issues.rule.leaseHeld', { holder })),
+    };
+  }
   return {
     group: 'moving',
     waitingOn: wait(

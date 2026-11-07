@@ -71,6 +71,36 @@ describe('an issue a live run session holds', () => {
   });
 });
 
+// UI-E residual 1 (ISS-1109): a direct-mode master builds under its own lease with no run record; the
+// row named that build "Run · Build" while the runs read counted no run, so a lease the master holds
+// with no live run is the master's build, and a real run over it keeps Run
+describe('an issue the master leases with no run over it', () => {
+  const lease = { holder: 'forge-master-sid-xeon-1', verdict: 'live', expiresAt: null } as const;
+  const at = new Date(now.getTime() - 30 * 60_000);
+
+  it('reads Master at its step, not Run', () => {
+    const s = deriveIssueStanding(
+      input('in_progress', { lease, leaseByMaster: true, step: 'build', stepStartedAt: at }),
+    );
+    expect(s.attentionGroup).toBe('moving');
+    expect(s.waitingOn.kind).toBe('master');
+    expect(s.waitingOn.who).toBe('Master');
+    expect(s.waitingOn.act).toBe('Build · 30 min');
+  });
+
+  it("keeps Run where a live run holds it, even under the master's lease", () => {
+    const s = deriveIssueStanding(
+      input('in_progress', { lease, leaseByMaster: true, runLive: true, inFlight: true }),
+    );
+    expect(s.waitingOn.who).toBe('Run');
+  });
+
+  it('keeps Run for a lease another holder holds', () => {
+    const s = deriveIssueStanding(input('in_progress', { lease, leaseByMaster: false }));
+    expect(s.waitingOn.who).toBe('Run');
+  });
+});
+
 // F11: approving is one act per release, on Releases, never one Needs-you row per issue it carries
 describe('a merged issue on a project that approves its releases', () => {
   it('waits on its release, not on the viewer, and names the button that releases', () => {

@@ -438,7 +438,7 @@ export interface RunLeasedBuild {
 	stepStartedAt: string | null;
 	/** The lease's holder as written; an identifier, kept off a face. */
 	holder: string;
-	/** The lease was written from the box the project's master is on: the master's own build. */
+	/** The lease is held under a holder the project's master leases under, whichever device wrote it: the master's own build. */
 	byMaster: boolean;
 	expiresAt: string | null;
 }

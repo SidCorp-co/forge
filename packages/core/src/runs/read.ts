@@ -145,7 +145,7 @@ export async function listRunStanding(
   const [items, live, leased] = await Promise.all([
     standingsOf(projectId, page.slice(0, opts.limit), ctx),
     standingsOf(projectId, liveBase, ctx),
-    leasedBuildsOf(projectId, prefix, master.device?.id ?? null, ctx.now),
+    leasedBuildsOf(projectId, prefix, ctx.now),
   ]);
   const liveByState = Object.fromEntries(RUN_LIVE_STATES.map((s) => [s, 0])) as Record<
     RunLiveState,
