@@ -28,6 +28,7 @@ import {
   membersOf,
   recordedThreads,
   roomsOfChannel,
+  usernamesOfIds,
   writeCommonIssue,
   writeMember,
 } from './channel-store.js';
@@ -113,7 +114,10 @@ export function readerOf(member: MemberRow | null): 'detail' | 'plain' | null {
 
 /**
  * A reply's mentions (BC-34): at most one person, who is the thread's asker or a member the record
- * says what to ask for; never the whole channel. Null when it may be posted.
+ * says what to ask for; never the whole channel. A listed member is mentioned by the username the
+ * room shows, whether the record lists them by it or by the user id the chat server signs, and the
+ * refusal names them by username, so a reply never needs a raw id (ISS-1089). Null when it may be
+ * posted.
  */
 export async function mentionRefusal<T>(
   room: RoomRow,
@@ -122,7 +126,13 @@ export async function mentionRefusal<T>(
 ): Promise<Outcome<T> | null> {
   const named = [...new Set(mentionsIn(text).map((m) => m.toLowerCase()))];
   if (named.length === 0) return null;
-  const listed = (await membersAskable(room)).map((m) => m.username);
+  const askable = await membersAskable(room);
+  const shown = await shownNames(room, askable);
+  const listed = askable.map((m) => shown(m.username));
+  // a member listed by id answers to that id too, as a mention of it always did
+  const answersTo = new Set(
+    askable.flatMap((m) => [m.username.toLowerCase(), shown(m.username).toLowerCase()]),
+  );
   const whom = listed.length
     ? `the asker, or one of ${listed.map((u) => `@${u}`).join(', ')}`
     : 'the asker only: no member of this channel lists what to ask them for';
@@ -137,12 +147,28 @@ export async function mentionRefusal<T>(
   if (named.length > 1) return refuse(`it mentions ${named.length} people`);
   const one = named[0] as string;
   if (asker && one === asker.toLowerCase()) return null;
-  if (listed.some((u) => u.toLowerCase() === one)) return null;
+  if (answersTo.has(one)) return null;
   return refuse(`@${one} is neither the asker nor a member this channel lists what to ask for`);
 }
 
 async function membersAskable(room: RoomRow): Promise<MemberRow[]> {
   return (await membersOf((await channelOfRoom(room)).id)).filter((m) => m.askFor);
+}
+
+/**
+ * How the room shows each of `members`: by the username the chat server pairs with a member the
+ * record holds under a user id (ISS-1089), else as the record holds them.
+ */
+async function shownNames(
+  room: RoomRow,
+  members: readonly MemberRow[],
+): Promise<(stored: string) => string> {
+  const channel = await channelOfRoom(room);
+  const byId = await usernamesOfIds(
+    channel.id,
+    members.map((m) => m.username),
+  );
+  return (stored) => byId.get(stored) ?? stored;
 }
 
 async function recordWrite(
@@ -381,16 +407,17 @@ export async function routeNeed(
   const channel = await channelOfRoom(room);
   const member = await memberOf(channel.id, input.member as string);
   if (!member?.roles.includes(role)) {
-    const named = (await membersOf(channel.id))
-      .filter((m) => m.roles.includes(role))
-      .map((m) => `@${m.username}`);
+    const holding = (await membersOf(channel.id)).filter((m) => m.roles.includes(role));
+    const shown = await shownNames(room, holding);
+    const named = holding.map((m) => `@${shown(m.username)}`);
     return no(
       'SUPPORT_ROUTE_ROLE',
       '/member',
       `@${input.member} does not hold ${CHANNEL_ROLE_LABEL[role]} in this channel, so a ${input.to} need is not theirs; ${named.length ? `ask ${named.join(' or ')}` : `no member holds ${CHANNEL_ROLE_LABEL[role]} yet: a person sets one on the channel's page`}. Nothing was posted.`,
     );
   }
-  const text = `@${member.username} ${input.text}`;
+  const username = (await shownNames(room, [member]))(member.username);
+  const text = `@${username} ${input.text}`;
   const admitted = await screenForThread(
     room,
     conversationId,
@@ -406,7 +433,7 @@ export async function routeNeed(
     text: admitted.value.text,
     proof: admitted.value.proof,
   });
-  await routed({ route: input.to, member: member.username }, posted.messageId);
+  await routed({ route: input.to, member: username }, posted.messageId);
   return { ok: true, value: { route: input.to, messageId: posted.messageId } };
 }
 
@@ -474,7 +501,8 @@ export async function flagSecret(
     .filter((m) => m.roles.includes('technical'))
     .sort((a, b) => (a.state === b.state ? 0 : a.state === 'confirmed' ? -1 : 1))[0];
   const who = author.label ? `@${author.label}` : `account ${author.key}`;
-  const note = `Message ${messageId} from ${who} in this thread held a secret; Forge kept nothing of it, and the bot cannot delete it. Ask ${technical ? `@${technical.username}` : 'a Technical member'} to delete that message from the chat server, in your own words, without repeating what it held.`;
+  const asked = technical ? (await shownNames(room, [technical]))(technical.username) : null;
+  const note = `Message ${messageId} from ${who} in this thread held a secret; Forge kept nothing of it, and the bot cannot delete it. Ask ${asked ? `@${asked}` : 'a Technical member'} to delete that message from the chat server, in your own words, without repeating what it held.`;
   // the fact goes to the session as a note of the thread, handed on with the message itself
   await insertAction({
     roomId: room.id,
@@ -494,6 +522,6 @@ export async function flagSecret(
     kind: 'secret_flagged',
     actorKind: 'core',
     input: { message: messageId },
-    output: { technical: technical?.username ?? null, posted: false },
+    output: { technical: asked, posted: false },
   });
 }

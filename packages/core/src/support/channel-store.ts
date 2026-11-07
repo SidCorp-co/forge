@@ -3,7 +3,7 @@
 // project bound to it reads it (BC-41), and so does an outside agent a binding names as its answerer.
 
 import type { ChannelMemberState, ChannelRole } from '@forge/contracts/support-channel';
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   supportActions,
@@ -145,15 +145,106 @@ export async function membersOf(channelId: string): Promise<MemberRow[]> {
     .orderBy(asc(supportChannelMembers.username));
 }
 
-/** A member by username, as the chat server writes it in any case. */
+/**
+ * The writers the channel's groups heard among `names`, each by the user id the chat server signed
+ * and the username its latest message carried (ISS-1089): a name matches either. A session that
+ * named a member by `from.id` wrote the record under that id; this pairs it with the username the
+ * room shows and a reply mentions.
+ */
+export async function writersNamed(
+  channelId: string,
+  names: readonly string[],
+): Promise<{ key: string; username: string }[]> {
+  if (names.length === 0) return [];
+  const [channel] = await db
+    .select({ projectId: supportChannels.projectId, rid: supportChannels.rid })
+    .from(supportChannels)
+    .where(eq(supportChannels.id, channelId))
+    .limit(1);
+  if (!channel) return [];
+  const roomIds = (await roomsOfChannel(channel.projectId, channel.rid)).map((r) => r.id);
+  if (roomIds.length === 0) return [];
+  const lower = names.map((n) => n.toLowerCase());
+  const heard = and(
+    inArray(supportActions.roomId, roomIds),
+    eq(supportActions.kind, 'message_in'),
+    eq(supportActions.actorKind, 'member'),
+    isNotNull(supportActions.actorKey),
+    isNotNull(supportActions.actorLabel),
+  );
+  const keys = await db
+    .selectDistinct({ key: supportActions.actorKey })
+    .from(supportActions)
+    .where(
+      and(
+        heard,
+        or(
+          inArray(supportActions.actorKey, [...names]),
+          inArray(sql`lower(${supportActions.actorLabel})`, lower),
+        ),
+      ),
+    );
+  if (keys.length === 0) return [];
+  // a username can change: each writer is known by the one its latest message carried
+  const latest = await db
+    .selectDistinctOn([supportActions.actorKey], {
+      key: supportActions.actorKey,
+      username: supportActions.actorLabel,
+    })
+    .from(supportActions)
+    .where(
+      and(
+        heard,
+        inArray(
+          supportActions.actorKey,
+          keys.map((k) => k.key as string),
+        ),
+      ),
+    )
+    .orderBy(supportActions.actorKey, desc(supportActions.createdAt));
+  return latest
+    .map((w) => ({ key: w.key as string, username: w.username as string }))
+    .filter((w) => names.includes(w.key) || lower.includes(w.username.toLowerCase()));
+}
+
+/**
+ * The username each of `values` is known by in the channel's groups, for a value that is a
+ * writer's user id (ISS-1089); a value that is no writer's id is absent.
+ */
+export async function usernamesOfIds(
+  channelId: string,
+  values: readonly string[],
+): Promise<Map<string, string>> {
+  const writers = await writersNamed(channelId, values);
+  return new Map(writers.filter((w) => values.includes(w.key)).map((w) => [w.key, w.username]));
+}
+
+/**
+ * A member by username, as the chat server writes it in any case, or by the user id it signs: a
+ * member the record lists by id is found by their username too, and one listed by username by
+ * their id (ISS-1089).
+ */
 export async function memberOf(channelId: string, username: string): Promise<MemberRow | null> {
+  const exact = await memberNamedIn(channelId, [username]);
+  if (exact) return exact;
+  const aliases = (await writersNamed(channelId, [username])).flatMap((w) =>
+    w.key === username ? [w.username] : [w.key],
+  );
+  return memberNamedIn(channelId, aliases);
+}
+
+async function memberNamedIn(channelId: string, names: readonly string[]) {
+  if (names.length === 0) return null;
   const [row] = await db
     .select()
     .from(supportChannelMembers)
     .where(
       and(
         eq(supportChannelMembers.channelId, channelId),
-        sql`lower(${supportChannelMembers.username}) = ${username.toLowerCase()}`,
+        inArray(
+          sql`lower(${supportChannelMembers.username})`,
+          names.map((n) => n.toLowerCase()),
+        ),
       ),
     )
     .limit(1);
@@ -161,9 +252,11 @@ export async function memberOf(channelId: string, username: string): Promise<Mem
 }
 
 /**
- * Write a member. An inference (`state` inferred) lands only on a member no person confirmed: the
- * guard is in the statement, so a correction racing it wins. Answers the row, or null when a
- * confirmed member stood.
+ * Write a member, under the username the chat server shows (ISS-1089): one named by the user id a
+ * message of the channel signed is written under that writer's username, and a row the record held
+ * under that id is carried over to it. An inference (`state` inferred) lands only on a member no
+ * person confirmed: the guard is in the statement, so a correction racing it wins. Answers the row,
+ * or null when a confirmed member stood.
  */
 export async function writeMember(input: {
   channelId: string;
@@ -174,13 +267,33 @@ export async function writeMember(input: {
   confirmedBy: string | null;
   sourceMessage: string | null;
 }): Promise<MemberRow | null> {
-  const existing = await memberOf(input.channelId, input.username);
-  const username = existing?.username ?? input.username;
+  const carried =
+    (await usernamesOfIds(input.channelId, [input.username])).get(input.username) ?? input.username;
+  let held = await memberOf(input.channelId, carried);
+  // a row the record held under the writer's id takes their username; found by alias, no row holds
+  // that username yet, so the key is free
+  if (
+    held &&
+    held.username.toLowerCase() !== carried.toLowerCase() &&
+    (await usernamesOfIds(input.channelId, [held.username])).has(held.username)
+  ) {
+    await db
+      .update(supportChannelMembers)
+      .set({ username: carried })
+      .where(
+        and(
+          eq(supportChannelMembers.channelId, input.channelId),
+          eq(supportChannelMembers.username, held.username),
+        ),
+      );
+    held = { ...held, username: carried };
+  }
+  const username = held?.username ?? carried;
   const values = {
     channelId: input.channelId,
     username,
     roles: [...input.roles],
-    askFor: input.askFor === undefined ? (existing?.askFor ?? null) : input.askFor,
+    askFor: input.askFor === undefined ? (held?.askFor ?? null) : input.askFor,
     state: input.state,
     confirmedBy: input.confirmedBy,
     sourceMessage: input.sourceMessage,

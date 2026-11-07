@@ -9,12 +9,15 @@ import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { ChannelWorld, code } from '../helpers/support-channel.js';
+import type { Member } from '../helpers/support-world.js';
 
 // REQ-75 r6 (ISS-750): a bound channel's record in Forge — its members, their roles and what to ask
 // each, nothing secret or personal kept — read the same by every bot session of the group and across
 // a restart. The world is support-room-e2e's: the real Rocket.Chat connection manager against the
 // stand-in chat server, and a box playing the session through `forge_support` alone.
 // What the bot does with the record (ISS-751) is support-channel-acts-e2e.
+// @direct-test-of packages/core/src/support/channel.ts
+// @direct-test-of packages/core/src/support/channel-store.ts
 
 const w = new ChannelWorld();
 // a GitHub token's shape, built here so no literal secret sits in the tree
@@ -259,5 +262,54 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     ]) {
       expect(cold.turn.text, part).toContain(part);
     }
+  });
+});
+
+// ISS-1089, from FB-555: in #sid-email the record listed thanhnh by the user id the chat server
+// signs (a session had named the member by `from.id`), so support.reply refused `@thanhnh` and
+// took only `@fnfPCTkrtrBL4NPyF`, an id Rocket.Chat may not render, in a users' room.
+describe('ISS-1089: a mention matches a listed member by username as well as by id', () => {
+  const thanh: Member = { userId: 'fnfPCTkrtrBL4NPyF', username: 'thanhnh' };
+
+  it('accepts @username for a member the record lists by user id, and names them by username when refusing a stranger', async () => {
+    // thanhnh writes in the group, so the room pairs the id the server signed with the username
+    await w.ask(thanh, 'I look after the mail relay', async () => undefined);
+    await db.execute(sql`
+      INSERT INTO support_channel_members (channel_id, username, roles, ask_for, state)
+      SELECT id, ${thanh.userId}, ARRAY['technical'], 'the mail relay', 'inferred'
+        FROM support_channels WHERE rid = ${w.rid}`);
+    const tries: [string, string | null][] = [
+      ['@thanhnh can you check the relay', null],
+      ['@mallory can you check the relay', 'SUPPORT_MENTION_REFUSED'],
+    ];
+    const answers: Record<string, unknown>[] = [];
+    const { id } = await w.ask(w.chat.bob, 'The relay drops mail', async (m, act) => {
+      for (const [text] of tries)
+        answers.push(await act({ action: 'reply', thread: m.thread, text }));
+      return undefined;
+    });
+    expect(answers.map((a) => code(a))).toEqual(tries.map(([, c]) => c ?? undefined));
+    // the stranger's refusal names the listed member as the room knows them, never by id
+    const refusal = JSON.stringify(answers[1]);
+    expect(refusal).toContain('@thanhnh');
+    expect(refusal).not.toContain(thanh.userId);
+    const posted = (await w.chat.botLines()).filter((l) => l.tmid === id).map((l) => l.text);
+    expect(posted).toEqual(['@thanhnh can you check the relay']);
+  });
+
+  it('keeps a member the session names by user id under their username', async () => {
+    const erin: Member = { userId: 'Qx7ErinUserId0001', username: 'erin' };
+    const { out } = await w.ask(erin, 'I answer billing questions', (m, act) =>
+      act({
+        action: 'member',
+        member: erin.userId,
+        roles: ['product'],
+        askFor: 'billing questions',
+        message: m.message,
+      }),
+    );
+    expect(code(out), JSON.stringify(out)).toBeUndefined();
+    expect(await w.memberRow('erin')).toMatchObject({ roles: ['product'], state: 'inferred' });
+    expect(await w.memberRow(erin.userId)).toBeUndefined();
   });
 });

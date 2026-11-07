@@ -29,6 +29,7 @@ import {
   membersOf,
   roomsOfChannel,
   rulesOf,
+  usernamesOfIds,
 } from './channel-store.js';
 import { decidersBlock } from './deciders.js';
 import { roomHealth } from './health.js';
@@ -108,9 +109,15 @@ async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_
     commonIssuesOf(channel.id),
   ]);
   const names = await userNames(members.map((m) => m.confirmedBy));
+  // a member the record holds under the chat server's user id is shown by its username (ISS-1089)
+  const byId = await usernamesOfIds(
+    channel.id,
+    members.map((m) => m.username),
+  );
+  const shown = members.map((m) => ({ ...m, username: byId.get(m.username) ?? m.username }));
   const fbIds = issues.flatMap((i) => (i.feedbackId ? [i.feedbackId] : []));
   const keys = await externalItemPhases(projectId, fbIds);
-  const memberRows: ChannelMemberView[] = members.map((m) => ({
+  const memberRows: ChannelMemberView[] = shown.map((m) => ({
     username: m.username,
     roles: m.roles as ChannelRole[],
     state: m.state,
@@ -134,7 +141,7 @@ async function recordOf(projectId: string, channel: ChannelRow): Promise<Record_
     feedbackKey: i.feedbackId ? (keys.get(i.feedbackId)?.key ?? null) : null,
     updatedAt: i.updatedAt.toISOString(),
   }));
-  return { memberRows, ruleRows, commonIssueRows, routes: routesOf(members) };
+  return { memberRows, ruleRows, commonIssueRows, routes: routesOf(shown) };
 }
 
 /**
@@ -202,14 +209,22 @@ export function channelBlock(record: SessionRecord, group?: string): string {
   ].join('\n\n');
 }
 
-/** The roles of every writer the channel record holds, by lower-cased username (BC-37). */
+/**
+ * The roles of every writer the channel record holds, by lower-cased username (BC-37), a member
+ * held under the chat server's user id by the username it pairs with (ISS-1089).
+ */
 export async function writerRoles(
   projectId: string,
   rid: string,
 ): Promise<Map<string, readonly string[]>> {
   const channel = await channelOf(projectId, rid);
   if (!channel) return new Map();
-  return new Map((await membersOf(channel.id)).map((m) => [m.username.toLowerCase(), m.roles]));
+  const members = await membersOf(channel.id);
+  const byId = await usernamesOfIds(
+    channel.id,
+    members.map((m) => m.username),
+  );
+  return new Map(members.map((m) => [(byId.get(m.username) ?? m.username).toLowerCase(), m.roles]));
 }
 
 /**
