@@ -1,6 +1,4 @@
-import type { IssueMove } from "@forge/contracts/issue-machine";
 
-import type { IssueWorkStateRow, PipelineHealth } from "@/features/issues";
 import {
   type REGISTRY_JOB_TYPES,
   REGISTRY_PIPELINE_RUN_KINDS,
@@ -135,24 +133,6 @@ export type PipelineRunListItem = Omit<
   "steps" | "attempts" | "retrySummary" | "gateAtOpen"
 >;
 
-export interface PipelineIssueRow {
-  id: string;
-  projectId: string;
-  displayId: string;
-  title: string;
-  status: string;
-  priority: string;
-  assigneeId: string | null;
-  /** Derived by the search hydrator with `?withAgentSessions=true`. */
-  agentStatus?: "running" | "queued" | "completed" | "failed" | null;
-  pipelineHealth?: PipelineHealth;
-  /** ISS-54 — the run's step inside `in_progress`, which the card's chip names. */
-  workState?: IssueWorkStateRow | null;
-  /** The moves a person may offer from its status, from core's list read. */
-  moves: IssueMove[];
-  metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
-}
-
 export interface StepDurationRow {
   runId: string;
   issueId: string | null;
@@ -179,5 +159,3 @@ export interface AnalyticsOpts {
   projectId?: string;
   step?: PipelineJobType;
 }
-
-export const BOARD_EXCLUDED_STATUSES = ["draft", "closed"] as const;

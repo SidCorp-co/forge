@@ -6,7 +6,6 @@
 //   pnpm --filter web-v2 witness witness/steward-surfaces.witness.tsx --out <dir>
 
 import { AttentionScreen } from "@/features/attention";
-import { PipelineBoard } from "@/features/pipeline";
 import { StatusReport } from "@/features/project-status/components/status-report";
 import { APPROVALS_READ } from "@/test/approvals-read";
 import { clock, FP, has, ISSUE_STUCK, Live, mountSurfaces, type Surface, WITNESS_STATUS } from "./steward.fixture";
@@ -32,16 +31,6 @@ const SURFACES: Surface[] = [
     ),
     // a decision is named by its title, its key the title's hover (ui-copy-rule 10)
     check: () => [...has("attention", APPROVALS_READ.decisions.find((d) => d.key === "FB-135")?.title ?? "FB-135"), ...has("attention", `+${APPROVALS_READ.total - 3} more`)],
-  },
-  {
-    name: "pipeline-board",
-    path: "/projects/hop/pipeline",
-    render: () => (
-      <Live>
-        <PipelineBoard scope={{ projectId: FP, slug: "hop" }} />
-      </Live>
-    ),
-    check: () => has("the board", ISSUE_STUCK.reason),
   },
 ];
 

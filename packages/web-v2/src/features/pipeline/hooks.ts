@@ -8,10 +8,6 @@ export function useProjectRuns(projectId: string | undefined) {
   return useQuery(pipelineQueries.projectRuns(projectId));
 }
 
-export function useProjectIssues(projectId: string | undefined) {
-  return useQuery(pipelineQueries.projectIssues(projectId));
-}
-
 /** Single run rollup, WS-live. Only fetched when `enabled` (i.e. the SlideOver is open). */
 export function useRun(runId: string | undefined, enabled = true) {
   return useQuery(pipelineQueries.run(runId, enabled));
