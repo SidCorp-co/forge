@@ -20,6 +20,8 @@ import {
   runParts,
   sharedFor,
   weighDraft,
+  weighWentOut,
+  wentOutParts,
 } from './release-read.js';
 import { type Part, summaryOf } from './release-read-views.js';
 import type { ViewerFacts } from './release-view.js';
@@ -116,15 +118,47 @@ async function summariseChosen(
   return { releases: parts.map((p) => summaryOf(p, shared)), current, required };
 }
 
+/**
+ * The releases `pick` takes of those that went out, newest first, summarised as the whole list
+ * summarises them: every run is placed from the keys its place reads, and only the picked are read
+ * whole and weighed, so a page showing the last few never reads every run's record (ISS-1070).
+ */
+async function summariseWentOut(
+  projectId: string,
+  viewer: ViewerFacts | null,
+  pick: (wentOut: Part[]) => Part[],
+): Promise<{ releases: ReleaseSummary[]; current: string | null }> {
+  const [required, current] = await Promise.all([
+    approvalRequired(projectId),
+    currentReleaseVersion(projectId),
+  ]);
+  const [runs, draft, lineage] = await Promise.all([
+    wentOutParts(projectId),
+    placeDraft(projectId),
+    readLineage(projectId),
+  ]);
+  const placed = placeParts(releaseLinesOf(lineage), runs, draft);
+  const picked = pick(wentOut(placed.parts.filter((p) => p.continuedAs === null)));
+  const parts = await weighWentOut(projectId, picked, required);
+  const shared = await sharedFor(
+    projectId,
+    parts,
+    viewer,
+    current,
+    required,
+    parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
+  );
+  await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
+  return { releases: parts.map((p) => summaryOf(p, shared)), current };
+}
+
 /** The newest `limit` releases that went out, newest first: `GET releases/shipped?limit=n`. */
 export async function listShippedReleases(
   projectId: string,
   viewer: ViewerFacts | null,
   limit: number,
 ): Promise<ReleaseShippedResponse> {
-  const { releases } = await summariseChosen(projectId, viewer, (listed) =>
-    wentOut(listed).slice(0, limit),
-  );
+  const { releases } = await summariseWentOut(projectId, viewer, (out) => out.slice(0, limit));
   return { releases };
 }
 
@@ -135,11 +169,10 @@ export async function listShippedReleases(
 export async function latestLiveReleases(
   projectId: string,
 ): Promise<Pick<ReleaseListResponse, 'releases' | 'production'>> {
-  const { releases, current } = await summariseChosen(projectId, null, (listed) => {
-    const out = wentOut(listed);
-    return [out.find((p) => p.state === 'shipped'), out.find((p) => p.state === 'landed')].filter(
+  const { releases, current } = await summariseWentOut(projectId, null, (out) =>
+    [out.find((p) => p.state === 'shipped'), out.find((p) => p.state === 'landed')].filter(
       (p): p is Part => p !== undefined,
-    );
-  });
+    ),
+  );
   return { releases, production: await productionOf(projectId, current) };
 }

@@ -8,8 +8,12 @@ import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { LANDED_VERIFICATION } from './landed-build.js';
 import { compareReleaseVersions, parseReleaseVersion } from './version.js';
 
-export async function versionRuns(projectId: string, version?: string): Promise<ReleaseRunRow[]> {
-  return (await releaseRunsByVersion(projectId, version)).sort((a, b) =>
+export async function versionRuns(
+  projectId: string,
+  version?: string,
+  opts: { placing?: boolean } = {},
+): Promise<ReleaseRunRow[]> {
+  return (await releaseRunsByVersion(projectId, version, opts)).sort((a, b) =>
     byVersionDescending(a.version, b.version),
   );
 }

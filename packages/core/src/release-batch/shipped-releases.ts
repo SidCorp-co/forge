@@ -6,6 +6,7 @@
 import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { reportedCommit } from './verify.js';
 import { issueIdsOf } from './versions.js';
 
 /** A release Forge verified shipping: the version it cut and the commit production served. */
@@ -21,8 +22,17 @@ export interface ShippedReleaseRun extends ShippedRelease {
   cutAt: Date;
 }
 
-/** Releases that shipped, oldest first, each with the issues it carries. */
-export async function shippedReleaseRuns(projectId: string): Promise<ShippedReleaseRun[]> {
+/**
+ * Releases that shipped, oldest first, each with the issues it carries. With `built`, only those
+ * whose commit a deployment reporting `built` confirms (`verify.ts:deploymentConfirms`), asked of
+ * the database, so a read of the one release a build is never reads every release's record.
+ */
+export async function shippedReleaseRuns(
+  projectId: string,
+  opts: { built?: string | null } = {},
+): Promise<ShippedReleaseRun[]> {
+  const reading = opts.built === undefined ? undefined : reportedCommit(opts.built ?? '');
+  if (reading === null) return [];
   const rows = await db
     .select({
       runId: pipelineRuns.id,
@@ -39,6 +49,11 @@ export async function shippedReleaseRuns(projectId: string): Promise<ShippedRele
         sql`${pipelineRuns.metadata} -> 'finish' ->> 'state' = 'finished'`,
         isNotNull(pipelineRuns.releaseVersion),
         isNotNull(pipelineRuns.releaseReleasedAt),
+        ...(reading
+          ? [
+              sql`lower(btrim(${pipelineRuns.metadata} -> 'finish' ->> 'commit')) LIKE ${`${reading}%`}`,
+            ]
+          : []),
       ),
     )
     .orderBy(asc(pipelineRuns.releaseReleasedAt), asc(pipelineRuns.id));

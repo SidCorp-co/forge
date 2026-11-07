@@ -42,7 +42,9 @@ export function releaseOfBuild(
 /** What this instance serves, without refusing where it declares nothing: the seen-mark rule reads this. */
 export async function readServing(
   built: string | null = sourceCommit,
-  shipped: (projectId: string) => Promise<ShippedReleaseRun[]> = shippedReleaseRuns,
+  // only the releases whose commit this build is: every page load asks, and a project ships hundreds
+  shipped: (projectId: string) => Promise<ShippedReleaseRun[]> = (projectId) =>
+    shippedReleaseRuns(projectId, { built }),
 ): Promise<ServingReading> {
   const environment = env.FORGE_ENVIRONMENT ?? null;
   const projectId = env.FORGE_PRODUCT_PROJECT_ID ?? null;

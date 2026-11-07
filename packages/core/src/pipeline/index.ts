@@ -54,6 +54,7 @@ export { verifyRecovery } from './recovery-verifier.js';
 export { refuseCancellingRelease } from './release-run-cancel.js';
 export {
   type ReleaseRunRow,
+  releaseRunsByIds,
   releaseRunsByVersion,
   runWearingVersion,
   type ShippedRelease,

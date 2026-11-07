@@ -9,7 +9,7 @@ import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { holderNames, namedHolders } from '../permissions/index.js';
-import type { ReleaseRunRow } from '../pipeline/index.js';
+import { type ReleaseRunRow, releaseRunsByIds } from '../pipeline/index.js';
 import {
   approvalRequired,
   readContentLanguage,
@@ -292,6 +292,53 @@ export async function sharedFor(
     provider: productionProviderOf(channels),
     changeRequestLinks,
   };
+}
+
+/**
+ * Each run that went out, placed from its columns and the keys its place reads (`PLACING_KEYS` in
+ * `pipeline/release-runs.ts`), and nothing more: a read that shows the newest few places every run
+ * and reads the whole of only those (`weighWentOut`, ISS-1070). A run that went out reads its state
+ * from its own stamp, never from its approvals, so none are read to place it.
+ */
+export async function wentOutParts(projectId: string): Promise<Part[]> {
+  const [runs, deploysFrom] = await Promise.all([
+    versionRuns(projectId, undefined, { placing: true }),
+    deploysFromOf(projectId),
+  ]);
+  return runs
+    .filter((r) => r.releasedAt !== null)
+    .map((run) => runPart(run, [], [], false, deploysFrom));
+}
+
+/** The parts `wentOutParts` placed, each read whole with its attempts and approvals, keeping its place. */
+export async function weighWentOut(
+  projectId: string,
+  placed: readonly Part[],
+  required: boolean,
+): Promise<Part[]> {
+  const ids = placed.flatMap((p) => (p.runId ? [p.runId] : []));
+  const [runs, deploysFrom, attempts, rows] = await Promise.all([
+    releaseRunsByIds(projectId, ids),
+    deploysFromOf(projectId),
+    attemptsOf(ids),
+    approvalsOfRuns(ids),
+  ]);
+  const approvals = await approvalViews(rows);
+  const byId = new Map(runs.map((r) => [r.id, r]));
+  return placed.map((p) => {
+    const run = p.runId ? byId.get(p.runId) : undefined;
+    if (!run) throw new Error(`release ${p.version}: its run ${p.runId} was placed and is gone`);
+    return {
+      ...runPart(
+        run,
+        attempts.filter((a) => a.runId === run.id),
+        approvals.filter((a) => a.runId === run.id),
+        required,
+        deploysFrom,
+      ),
+      continuedAs: p.continuedAs,
+    };
+  });
 }
 
 export async function runParts(projectId: string, version: string | undefined, required: boolean) {

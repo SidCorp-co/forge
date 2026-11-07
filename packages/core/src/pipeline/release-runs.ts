@@ -3,7 +3,7 @@
 // `release_version`; every reader resolves it here, so a version names one run everywhere.
 
 import { createHash } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { memoizedRead } from '../db/read-memo.js';
@@ -25,20 +25,38 @@ function wearsOver(row: ReleaseRunRow, held: ReleaseRunRow): boolean {
   return row.startedAt > held.startedAt;
 }
 
-/** One release-batch run per version, the one wearing it; every version, or just `version`. */
+/**
+ * The keys of a run's metadata its place among the releases reads (`release-batch/versions.ts:
+ * versionStatus`, `landedOffProduction`): a read that places every run and shows a few reads only
+ * these of each, and the whole metadata of the few (ISS-1070).
+ */
+const PLACING_KEYS = ['source', 'verification', 'branch', 'identity', 'abort'] as const;
+
+const placingMetadata = sql`jsonb_build_object(${sql.join(
+  PLACING_KEYS.map((k) => sql`${k}::text, ${pipelineRuns.metadata} -> ${k}::text`),
+  sql`, `,
+)})`;
+
+const runColumns = (placing: boolean) => ({
+  id: pipelineRuns.id,
+  status: pipelineRuns.status,
+  version: pipelineRuns.releaseVersion,
+  metadata: placing ? sql<unknown>`${placingMetadata}` : pipelineRuns.metadata,
+  startedAt: pipelineRuns.startedAt,
+  releasedAt: pipelineRuns.releaseReleasedAt,
+});
+
+/**
+ * One release-batch run per version, the one wearing it; every version, or just `version`. With
+ * `placing`, each run's metadata holds only the keys its place reads (`PLACING_KEYS`).
+ */
 export async function releaseRunsByVersion(
   projectId: string,
   version?: string,
+  opts: { placing?: boolean } = {},
 ): Promise<ReleaseRunRow[]> {
   const rows = await db
-    .select({
-      id: pipelineRuns.id,
-      status: pipelineRuns.status,
-      version: pipelineRuns.releaseVersion,
-      metadata: pipelineRuns.metadata,
-      startedAt: pipelineRuns.startedAt,
-      releasedAt: pipelineRuns.releaseReleasedAt,
-    })
+    .select(runColumns(opts.placing === true))
     .from(pipelineRuns)
     .where(
       and(
@@ -60,6 +78,23 @@ export async function releaseRunsByVersion(
     if (!held || wearsOver(row, held)) byVersion.set(row.version, row);
   }
   return [...byVersion.values()];
+}
+
+/** These release runs of the project, each with its whole metadata, in no order. */
+export async function releaseRunsByIds(
+  projectId: string,
+  ids: readonly string[],
+): Promise<ReleaseRunRow[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select(runColumns(false))
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.projectId, projectId), inArray(pipelineRuns.id, [...ids])));
+  return rows.map((r) => ({
+    ...r,
+    version: r.version as string,
+    metadata: (r.metadata ?? {}) as Record<string, unknown>,
+  }));
 }
 
 /** The run that wears `version` in this project, or `null` when none does. */
