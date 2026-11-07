@@ -9,13 +9,14 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { readFeedbackForecasts } from './feedback.js';
 import { readFeedbackProgress } from './feedback-progress.js';
-import { readIssueForecast, readProjectForecast } from './read.js';
+import { readIssueForecast } from './read.js';
 import {
   readComingNext,
   readDraftReleaseForecast,
   readRequirementForecast,
   readRequirementForecasts,
 } from './scope.js';
+import { readProjectForecast } from './simulation.js';
 import { forecastViewerFor } from './viewer.js';
 
 const projectParam = z.object({ id: z.uuid() });

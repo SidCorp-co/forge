@@ -28,8 +28,9 @@ import {
 import { scopeForecast, scopeLandings, seedOf, type Wait, waitOn } from './model.js';
 import { withMoves } from './moves.js';
 import { issueProgressOf } from './progress.js';
-import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
+import { type Facts, forecastOf, pausedOf, stamp } from './read.js';
 import { type ForecastViewer, readReleaseFacts, readShipped } from './release.js';
+import { simulated } from './simulation.js';
 
 /** One simulation, the release that follows it, and the release that shipped each landed issue in view. */
 export interface Reads {
@@ -49,7 +50,7 @@ export async function readsFor(
   const landed = rows.filter((r) => r.merged_at !== null).map((r) => r.id);
   const anchor = await readAnchor(projectId, now);
   const [f, release, shipped] = await Promise.all([
-    simulate(projectId, now, anchor),
+    simulated(projectId, now, anchor),
     readReleaseFacts(projectId, anchor.at, viewer),
     readShipped(projectId, landed),
   ]);
