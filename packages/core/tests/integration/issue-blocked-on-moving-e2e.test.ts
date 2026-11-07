@@ -5,6 +5,7 @@
  * blocker's own standing though the blocker is not among the rows it was asked for.
  *
  * @direct-test-of packages/core/src/issues/standing-read.ts
+ * @direct-test-of packages/core/src/issues/standing-groups.ts
  * @direct-test-of packages/core/src/issues/standing-held.ts
  * @direct-test-of packages/core/src/issues/standing.ts
  */
