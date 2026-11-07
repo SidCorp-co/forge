@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.589] - 2026-11-07
+
+Records the curated memory, release trigger and outside-git fixes 588 deployed
+
+### Changed
+
+- **0.4.0-dev.589 records the build 0.4.0-dev.588 deployed.** That release's run stopped before its record, so the four changes listed under 0.4.0-dev.588 (ISS-1121, ISS-1126, ISS-1129, ISS-1130) are released here.
+
 ## [0.4.0-dev.588] - 2026-11-07
 
 Curated memory and knowledge, with a release cutoff and outside-git close fixes
