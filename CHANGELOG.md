@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.584] - 2026-11-07
+
+Sweeps leave deliberately held work alone; leases name the session holding them
+
+### Added
+
+- **Core reads the plugin version a client names in `x-forge-plugin` and warns, rather than refuses, where a route narrows a shape older plugins still send.** Device and token lists show the version heard (ISS-1104).
+
+### Fixed
+
+- **Forge's sweeps no longer hand held work away (ISS-1104).** Idle in_progress work stays put and its master is woken to decide; a reopen merged since reopening reads ready for release; a lease may name its session.
+- **An agent's refusals name a door its own token opens (ISS-1104).** Fenced tokens are sent to a person through the question door, read issue keys without projectId, retire 100 memories per call, and keep their own write limit.
+- **An owed check or breakdown reads as owed now.** A delivered requirement's acceptance check and an agreed requirement's breakdown say "now; latest <date>" instead of "due <date>", so no agent reads the deadline as a day to start.
+
 ## [0.4.0-dev.583] - 2026-11-07
 
 The live bar counts leased builds; shipped feedback says judgement is owed
