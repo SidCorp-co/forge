@@ -75,6 +75,7 @@ const sweep = (projectId: string, now: Date) =>
     stuck: 0,
     changed: 0,
     settledAsks: 0,
+    checks: 0,
     paced: 0,
   });
 

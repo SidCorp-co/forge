@@ -12,6 +12,7 @@
 // @direct-test-of packages/core/src/steward/runs-store.ts
 // @direct-test-of packages/core/src/steward/dispatch.ts
 // @direct-test-of packages/core/src/steward/sweep.ts
+// @direct-test-of packages/core/src/steward/holds.ts
 // @direct-test-of packages/core/src/steward/acts-store.ts
 // @direct-test-of packages/core/src/steward/routes.ts
 // @direct-test-of packages/core/src/db/schema-steward-runs.ts
@@ -233,26 +234,38 @@ describe("a trigger folds into the item's one live run (BC-1)", () => {
     await steward.endRun(next ?? '', { state: 'skipped', reason: 'subject_ended' });
   });
 
-  it("holds the breakdown out of the master's work while the intake question waits, until someone replies", async () => {
+  // ISS-1084: the check's question is a question row, held until answered at its own door; a
+  // question comment of a check before ISS-688 holds as the row migration 0623 asked under its id
+  it("holds the breakdown out of the master's work while the intake question waits, until it is answered", async () => {
     const { breakdownsHeldBySteward } = await import('../../src/steward/index.js');
-    const stewardUser = (await createTestUser({ kind: 'agent' })).id;
-    const [question] = await rows<{ id: string }>(sql`
-      INSERT INTO comments (requirement_id, author_id, body, intent)
-      VALUES (${req.id}, ${stewardUser}, 'Which board does BC-1 mean? Options: a: saved; b: shared. Recommended: a.', 'question')
-      RETURNING id`);
+    const asked = ok(
+      await say('owner', 'POST', '/api/questions', {
+        projectId,
+        about: { requirement: req.key },
+        blockerKind: 'master_or_peer',
+        prompt: 'Which board does BC-1 mean?',
+        options: [
+          { id: 'a', label: 'saved', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
+          {
+            id: 'b',
+            label: 'shared',
+            authority: 'writer',
+            bindsTo: 'session',
+            executedBy: 'agent',
+          },
+        ],
+        recommendedOptionId: 'a',
+      }),
+      201,
+    );
     await rows(sql`
       INSERT INTO steward_acts (run_id, project_id, act, door, did, wrote)
-      VALUES (${runId}, ${projectId}, 'intake_check', 'POST requirements comments', 'Asked on the requirement',
-              ${JSON.stringify({ kind: 'comment', ref: question?.id })}::jsonb)`);
+      VALUES (${runId}, ${projectId}, 'intake_check', 'POST /api/questions', 'Asked on the requirement',
+              ${JSON.stringify({ kind: 'question', ref: asked.id })}::jsonb)`);
     expect(await breakdownsHeldBySteward(projectId)).toEqual([req.key]);
 
     ok(
-      await as('POST', `/requirements/${req.key}/comments`, {
-        intent: 'note',
-        body: 'The saved board.',
-        parentId: question?.id,
-      }),
-      201,
+      await say('owner', 'POST', `/api/questions/${asked.id}/answer`, { round: 1, optionId: 'a' }),
     );
     expect(await breakdownsHeldBySteward(projectId)).toEqual([]);
   });
