@@ -21,14 +21,12 @@ export function ConnectionGroupList({
   open,
   onToggle,
   ownerLabel,
-  projectName,
   onOpenConnection,
 }: {
   group: ConnectionGroup;
   open: boolean;
   onToggle: () => void;
   ownerLabel: (connection: ConnectionDirectoryItem) => string;
-  projectName: (id: string) => string;
   onOpenConnection: (id: string) => void;
 }) {
   const rowsId = `connections-${group.provider}`;
@@ -70,7 +68,6 @@ export function ConnectionGroupList({
               key={c.id}
               connection={c}
               ownerLabel={ownerLabel(c)}
-              projectName={projectName}
               onOpen={() => onOpenConnection(c.id)}
             />
           ))}

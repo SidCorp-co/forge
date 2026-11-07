@@ -29,11 +29,11 @@ const COOLIFY: ConnectionDirectoryItem = {
   updatedAt: "2026-10-01T00:00:00Z",
   usage: {
     bindings: [
-      { id: "b1", projectId: "p1", role: "deploy", label: "", name: "dev", active: true },
-      { id: "b2", projectId: "p1", role: "deploy", label: "", name: "app y8w4c4ks", active: true },
+      { id: "b1", projectId: "p1", projectName: "Forge", role: "deploy", label: "", name: "dev", active: true },
+      { id: "b2", projectId: "p1", projectName: "Forge", role: "deploy", label: "", name: "app y8w4c4ks", active: true },
     ],
   },
-} as ConnectionDirectoryItem;
+};
 
 const GITLAB: ConnectionDirectoryItem = {
   ...COOLIFY,
@@ -41,8 +41,8 @@ const GITLAB: ConnectionDirectoryItem = {
   provider: "gitlab",
   displayName: "GitLab fork",
   config: { baseUrl: "https://gitlab.com", projectPath: "it/autoflow" },
-  usage: { bindings: [{ id: "b3", projectId: "p1", role: "source", label: "", name: "Source", active: true }] },
-} as ConnectionDirectoryItem;
+  usage: { bindings: [{ id: "b3", projectId: "p1", projectName: "Forge", role: "source", label: "", name: "Source", active: true }] },
+};
 
 function serve() {
   return fakeCore((call) => {
@@ -58,6 +58,21 @@ function serve() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("IntegrationsScreen", () => {
+  // ISS-1072: a binding on a project the viewer's own list does not hold was drawn by its UUID
+  it("names each binding's project as core names it, never by its id, on a project the viewer does not list", async () => {
+    const BETA = "315dd421-5b5e-4f31-9c55-1f2a3b4c5d6e";
+    const other = { ...COOLIFY, id: "c9", usage: { bindings: [{ id: "b9", projectId: BETA, projectName: "Forge Getforge Beta", role: "deploy", label: "", name: "production", active: true }] } } as ConnectionDirectoryItem;
+    fakeCore((call) => {
+      if (call.path === "/integration-connections") return { body: { items: [other] } };
+      if (call.path === "/orgs") return { body: [{ id: "o1", name: "SidCorp", role: "owner" }] };
+      if (call.path.startsWith("/projects")) return { body: [{ id: "p1", slug: "forge", name: "Forge", orgId: "o1", archivedAt: null }] };
+      return undefined;
+    });
+    renderWithQuery(<IntegrationsScreen />);
+    expect(await screen.findByText("Forge Getforge Beta")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(BETA);
+  });
+
   it("is titled as the nav names it, and adds a connection here rather than sending the person into a project", async () => {
     serve();
     renderWithQuery(<IntegrationsScreen />);

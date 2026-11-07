@@ -46,6 +46,7 @@ import { badRequest } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
+import { listProjectHeads } from '../projects/index.js';
 import { summarizeBindings } from './binding-standing.js';
 import { bindConnectionInto } from './connect-and-bind.js';
 import {
@@ -139,9 +140,21 @@ integrationConnectionsRoutes.get('/', CONNECTIONS_LISTED, noQuery, async (c) => 
     await listBindingsByConnectionIds(rows.map((r) => r.id)),
   );
   const projectIds = [...new Set([...bindings.values()].flat().map((b) => b.projectId))];
-  const deployMaps = new Map(
-    await Promise.all(projectIds.map(async (id) => [id, await readDeployMap(id)] as const)),
-  );
+  const [deployMaps, heads] = await Promise.all([
+    Promise.all(projectIds.map(async (id) => [id, await readDeployMap(id)] as const)).then(
+      (pairs) => new Map(pairs),
+    ),
+    projectIds.length ? listProjectHeads(projectIds) : [],
+  ]);
+  // a binding is drawn by its project's name, never its id (ISS-1072); the binding's project row is
+  // its foreign key, so a name missing here is a broken row, refused by name rather than drawn as an id
+  const names = new Map(heads.map((h) => [h.id, h.name] as const));
+  const projectNameOf = (id: string): string => {
+    const name = names.get(id);
+    if (name === undefined)
+      throw new Error(`integration binding names project ${id}, which no project row holds`);
+    return name;
+  };
   const environmentOf = (b: { id: string; projectId: string }) =>
     deployMaps.get(b.projectId)?.environments.get(b.id)?.name ?? null;
   const reported = await reportedBindingIdentities(
@@ -156,7 +169,13 @@ integrationConnectionsRoutes.get('/', CONNECTIONS_LISTED, noQuery, async (c) => 
   );
   return c.json({
     items: rows.map((r) =>
-      summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [], environmentOf, reported),
+      summarizeConnectionWithUsage(
+        r,
+        bindings.get(r.id) ?? [],
+        environmentOf,
+        projectNameOf,
+        reported,
+      ),
     ),
   });
 });

@@ -330,6 +330,8 @@ export interface ConnectionUsage {
 	bindings: Array<{
 		id: string;
 		projectId: string;
+		/** The project's name, drawn where the binding is listed; its id is never the text (ISS-1072). */
+		projectName: string;
 		role: BindingRole;
 		label: string;
 		/** What tells this binding apart from the connection's others on its project: the environment

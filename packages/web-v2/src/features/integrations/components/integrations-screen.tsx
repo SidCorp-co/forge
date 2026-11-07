@@ -115,7 +115,6 @@ export function IntegrationsScreen() {
   const language = useInterfaceLanguage();
 
   const orgNameById = new Map((orgsQ.data ?? []).map((o) => [o.id, o.name] as const));
-  const projectName = (id: string) => (projectsQ.data ?? []).find((p) => p.id === id)?.name ?? id;
   const all = connections.data?.items ?? [];
   // ISS-477 — scope the directory to the active org: a personal org shows the user's own
   // (`ownerType:'user'`) credentials; a team org shows credentials it owns. Connections from other
@@ -129,7 +128,7 @@ export function IntegrationsScreen() {
       )
     : all;
   const providersPresent = [...new Set(inScope.map((c) => c.provider))].sort();
-  const items = inScope.filter((c) => (provider === "" || c.provider === provider) && matchesQuery(c, query, projectName, language));
+  const items = inScope.filter((c) => (provider === "" || c.provider === provider) && matchesQuery(c, query, language));
   const ownerLabel = (c: ConnectionDirectoryItem) =>
     c.ownerType === "instance"
       ? t("integrations.owner.instance")
@@ -200,7 +199,6 @@ export function IntegrationsScreen() {
               open={apps.isOpen(g.provider)}
               onToggle={() => apps.toggle(g.provider)}
               ownerLabel={ownerLabel}
-              projectName={projectName}
               onOpenConnection={setSelectedId}
             />
           ))}

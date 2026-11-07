@@ -35,9 +35,27 @@ function binding(id: string, resourceUuid: string, projectId = 'p1') {
   } as unknown as IntegrationBindingRow;
 }
 
+const NAMES = (projectId: string) =>
+  ({ p1: 'Hop Clinic', p2: 'Forge Getforge Beta' })[projectId] ?? '';
+
 describe('the connections directory row: what a person reads off one credential', () => {
+  // ISS-1072: the directory drew a binding's project by its id where the viewer's own project list
+  // did not hold it; core names it, so no row reads a UUID
+  it('names the project each binding is on, by name', () => {
+    const row = summarizeConnectionWithUsage(
+      connection,
+      [binding('b1', 'e0o0c40k', 'p1'), binding('b2', 'y8w4c4ks', 'p2')],
+      () => null,
+      NAMES,
+    );
+    expect(row.usage.bindings.map((b) => (b as { projectName?: string }).projectName)).toEqual([
+      'Hop Clinic',
+      'Forge Getforge Beta',
+    ]);
+  });
+
   it('carries the connection health bucketed by core, so the row status pill has a state to name', () => {
-    const row = summarizeConnectionWithUsage(connection, [], () => null) as {
+    const row = summarizeConnectionWithUsage(connection, [], () => null, NAMES) as {
       directoryStatus?: string;
     };
     expect(row.directoryStatus).toBe('connected');
@@ -48,6 +66,7 @@ describe('the connections directory row: what a person reads off one credential'
       connection,
       [binding('b-dev', 'e0o0c40k'), binding('b-other', 'y8w4c4ks')],
       (b) => (b.id === 'b-dev' ? 'dev' : null),
+      NAMES,
     );
     expect(row.usage.bindings.map((b) => (b as { name?: string }).name)).toEqual([
       'dev',
@@ -60,6 +79,7 @@ describe('the connections directory row: what a person reads off one credential'
       connection,
       [binding('b1', 'e0o0c40k', 'p1'), binding('b2', 'y8w4c4ks', 'p2')],
       () => null,
+      NAMES,
     );
     expect(row.usage.bindings.map((b) => (b as { name?: string }).name)).toEqual([
       'Deploy',

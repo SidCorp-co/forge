@@ -28,7 +28,6 @@ export function connectionTarget(connection: {
 export function matchesQuery(
   connection: ConnectionDirectoryItem,
   query: string,
-  projectName: (id: string) => string,
   language?: string,
 ): boolean {
   const needle = query.trim().toLowerCase();
@@ -40,7 +39,7 @@ export function matchesQuery(
     providerLabel(connection.provider),
     providerLabel(connection.provider, language),
     connectionTarget(connection) ?? "",
-    ...connection.usage.bindings.map((b) => projectName(b.projectId)),
+    ...connection.usage.bindings.map((b) => b.projectName),
   ];
   return haystack.some((value) => value.toLowerCase().includes(needle));
 }

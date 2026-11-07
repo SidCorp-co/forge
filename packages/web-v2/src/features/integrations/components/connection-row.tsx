@@ -18,11 +18,9 @@ const ROW_DETAILS = new Map(
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
   connection,
-  projectName,
   emptyId,
 }: {
   connection: ConnectionDirectoryItem;
-  projectName: (id: string) => string;
   /** Named by the row button's description: the chips are in its NAME, this is not. */
   emptyId: string;
 }) {
@@ -43,7 +41,7 @@ function UsageLine({
           className="fg-body-sm inline-flex items-center gap-1 rounded-pill border border-line bg-surface px-2 py-0.5"
           title={b.active ? undefined : t("integrations.row.offTitle")}
         >
-          <span>{projectName(b.projectId)}</span>
+          <span>{b.projectName}</span>
           <span className="text-subtle">{b.name}</span>
           {!b.active && <span className="text-subtle">· {t("integrations.row.off")}</span>}
         </span>
@@ -54,7 +52,6 @@ function UsageLine({
 
 function connectionRowLabel(
   connection: ConnectionDirectoryItem,
-  projectName: (id: string) => string,
   t: Copy,
   language?: string,
 ): string {
@@ -73,7 +70,7 @@ function connectionRowLabel(
   // a target.
   if (connection.usage.bindings.length > 0) {
     const used = connection.usage.bindings.map((b) => {
-      return `${projectName(b.projectId)} ${b.name}${b.active ? "" : ` (${t("integrations.row.off")})`}`;
+      return `${b.projectName} ${b.name}${b.active ? "" : ` (${t("integrations.row.off")})`}`;
     });
     parts.push(t("integrations.row.usedBy", { list: used.join(", ") }));
   }
@@ -133,13 +130,11 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
 export function ConnectionItem({
   connection,
   ownerLabel,
-  projectName,
   onOpen,
 }: {
   connection: ConnectionDirectoryItem;
   /** ISS-477 — which principal owns this credential ("Personal" or an org name). */
   ownerLabel: string;
-  projectName: (id: string) => string;
   onOpen: () => void;
 }) {
   const update = useUpdateConnection();
@@ -165,7 +160,7 @@ export function ConnectionItem({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
       <button
         type="button"
-        aria-label={connectionRowLabel(connection, projectName, t, language)}
+        aria-label={connectionRowLabel(connection, t, language)}
         aria-describedby={[
           ownerId,
           // Only when it renders: an id naming no element is ignored by the
@@ -202,7 +197,7 @@ export function ConnectionItem({
               {target}
             </span>
           )}
-          <UsageLine connection={connection} projectName={projectName} emptyId={usageEmptyId} />
+          <UsageLine connection={connection} emptyId={usageEmptyId} />
           <span id={healthId} className="fg-body-sm text-subtle">
             {connection.lastHealthStatus
               ? `${t("integrations.row.lastHealth", { status: statusReading("connection", connection.lastHealthStatus, language).label })}${checked ? ` · ${checked}` : ""}`

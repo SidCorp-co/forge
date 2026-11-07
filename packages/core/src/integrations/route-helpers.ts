@@ -150,6 +150,8 @@ export function summarizeConnectionWithUsage(
   bindings: IntegrationBindingRow[],
   /** Binding id → the project-document environment that deploys through it, where one does. */
   environmentOf: (binding: IntegrationBindingRow) => string | null,
+  /** The name of the project a binding is on, which the directory draws in place of its id (ISS-1072). */
+  projectNameOf: (projectId: string) => string,
   /** Binding id → the name its provider reports for what it points at (`reportedBindingIdentities`). */
   reported?: ReadonlyMap<string, string>,
 ) {
@@ -176,6 +178,7 @@ export function summarizeConnectionWithUsage(
       bindings: bindings.map((b) => ({
         id: b.id,
         projectId: b.projectId,
+        projectName: projectNameOf(b.projectId),
         role: b.role as BindingRole,
         label: b.label,
         name: names.get(b.id) ?? b.role,
