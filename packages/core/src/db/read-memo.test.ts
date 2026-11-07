@@ -183,6 +183,15 @@ describe('memoizedPerId', () => {
     };
   };
 
+  it('sends no read for an empty list, inside a scope or outside one', async () => {
+    const r = perId();
+    expect((await memoizedPerId('k', [], r.read)).size).toBe(0);
+    await withReadMemo(async () => {
+      expect((await memoizedPerId('k', [], r.read)).size).toBe(0);
+    });
+    expect(r.asked).toEqual([]);
+  });
+
   it('reads every id itself outside a request scope', async () => {
     const r = perId();
     await memoizedPerId('k', ['a', 'b'], r.read);

@@ -181,7 +181,8 @@ function batchOf(
         }
       }
       // what the read asks in turn is the batch's, not the project's read that opened it
-      inFlow.exit(() => Promise.resolve(pending.read([...pending.ids]))).then(resolve, reject);
+      if (pending.ids.size === 0) resolve(new Map());
+      else inFlow.exit(() => Promise.resolve(pending.read([...pending.ids]))).then(resolve, reject);
     }, held);
   });
   open.set(key, pending);
@@ -258,7 +259,8 @@ async function perId<V>(
   byProject: boolean,
 ): Promise<Map<string, V>> {
   const memo = memos.getStore();
-  if (!memo) return new Map(await read(ids));
+  // no id asks nothing: a read is never sent for an empty list (`IN ()` is no statement)
+  if (!memo) return ids.length === 0 ? new Map() : new Map(await read(ids));
   asked(memo, key);
   const unique = [...new Set(ids)];
   const slot = (id: string) => slotOf(key, id);

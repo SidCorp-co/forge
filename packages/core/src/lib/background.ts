@@ -3,6 +3,8 @@
 // known to `backgroundSettled()`, so a caller that must not empty or close the database under one
 // (a test's reset, a shutdown) can wait them out instead of deadlocking against them.
 
+import { withoutQueryTiming } from '../db/query-timing.js';
+
 const everyRunning = new Set<Promise<void>>();
 
 export interface Background {
@@ -21,8 +23,9 @@ export function background(): Background {
   const running = new Set<Promise<void>>();
   return {
     start(work, failed) {
-      const done: Promise<void> = Promise.resolve()
-        .then(work)
+      // outside the request's timing: its statements are not the request's, and one held up behind a
+      // lock must not keep the request's quiet point back (`db/query-timing.ts:whenQuiet`)
+      const done: Promise<void> = withoutQueryTiming(() => Promise.resolve().then(work))
         .then(() => undefined)
         .catch(failed)
         .finally(() => {
