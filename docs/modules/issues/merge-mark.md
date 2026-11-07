@@ -283,6 +283,11 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
 - **An adoption record** writes one `adoption` artifact per adopted version, on either shape (below).
   Only the mark writer stamps one: an `adoption` artifact sent in `artifacts` is refused
   `ARTIFACTS_ADOPTION_BY_HAND`, so the surface always names a record Forge read.
+- **Outside git.** A mark naming artifacts and no commit, neither stamped nor claimed, and no read
+  paths names a change no build holds: a console's config, a CMS entry (agenfold ISS-272). Closed
+  met in scope, it shipped on its own record and waits for no release
+  (`packages/core/src/issues/waiting-for-release.ts:outsideGitMarkSql`, ISS-1129); at
+  `awaiting_release` its holder's close is what ships it.
 
 The release read (`packages/core/src/release-batch/landing-surfaces.ts`) groups them into the release's
 `changes`: per surface its artifacts and the issues touching each, `design` marked as shipping

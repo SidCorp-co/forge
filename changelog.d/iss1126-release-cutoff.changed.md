@@ -1,0 +1,1 @@
+**A release is cut by a configured trigger, not once per recording.** `release.cutoff` names time, count, target and request triggers, defaulting to ten minutes; only whole outcomes ride, and each waiting issue's hold names its pending trigger.
