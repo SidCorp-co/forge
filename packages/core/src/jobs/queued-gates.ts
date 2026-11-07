@@ -3,7 +3,7 @@ import { deviceReach, fenceReaches } from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
 import { gateEnforcedSql } from '../db/gate-sql.js';
 import { actsAsTheBoxSql } from '../db/job-credential-sql.js';
-import { memoizedPerId } from '../db/read-memo.js';
+import { memoizedPerProject } from '../db/read-memo.js';
 import { contractWaitUnsettledSql } from '../db/schema-contract-waits.js';
 import { patternReviewPendingSql } from '../db/schema-issue-patterns.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
@@ -205,7 +205,7 @@ export async function gateReasonsForQueuedJobsIn(
 ): Promise<Map<string, GateSkipReason>> {
   // each project's jobs are read for every project asked before the quiet point (ISS-1070 r6):
   // every arm is correlated on the job's own project, so a project read beside others reads alike
-  const held = await memoizedPerId('queuedGateReasons', projectIds, gateReasonsRead);
+  const held = await memoizedPerProject('queuedGateReasons', projectIds, gateReasonsRead);
   return new Map([...held.values()].flatMap((reasons) => [...reasons]));
 }
 

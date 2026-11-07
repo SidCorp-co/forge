@@ -13,7 +13,7 @@ import { feedbackShippedPrefix } from '@forge/contracts/notifications';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { and, desc, eq, inArray, like, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedPerId, onePerId, rowsPerId } from '../db/read-memo.js';
+import { memoizedPerId, onePerProject, rowsPerId } from '../db/read-memo.js';
 import { issues, notificationDeliveryMembers, notifications, pipelineRuns } from '../db/schema.js';
 import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { pipelineOutbox } from '../db/schema-outbox.js';
@@ -85,7 +85,7 @@ const carriersOf = (feedbackIds: readonly string[]) =>
  */
 export async function noticesBeganIn(projectId: string): Promise<Date | null> {
   // every project's asks before the quiet point are one read (ISS-1070 r6)
-  const at = await onePerId('noticesBegan', projectId, async (ids) => {
+  const at = await onePerProject('noticesBegan', projectId, async (ids) => {
     const rows = await db
       .select({
         projectId: pipelineOutbox.projectId,

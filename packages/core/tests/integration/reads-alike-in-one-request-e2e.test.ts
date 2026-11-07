@@ -8,11 +8,10 @@
 // - the newest shipped and the newest live, which place every run from the keys its place reads and
 //   read the picked whole (`release-read.ts:wentOutParts`);
 // - the release a build is, asked of the database by its commit (`shipped-releases.ts`).
-// ISS-1070 r4: a read across a person's projects (`db/read-memo.ts:readingAcross`) reads what each
-// project's read asks one project at a time once for all of them (`perProjectRead`: the release
-// lineage, the stamped releases, the project document and policy, the issue prefix, the module
-// labels), and simulates a project's forecast once for its feedback lines and its own dates: each
-// project's reads answer there what they answer alone.
+// ISS-1070 r4/r6: a read across a person's projects reads what each project's read asks one project
+// or one id at a time once for all of them, at the request's quiet point (`db/read-memo.ts:
+// memoizedPerId`, `rowsPerProject`, `perProjectRead`), and simulates a project's forecast once for
+// its feedback lines and its own dates: each project's reads answer there what they answer alone.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/issues/standing-read.ts
 // @direct-test-of packages/core/src/issues/standing-facts-memo.ts
@@ -33,7 +32,8 @@
 // @direct-test-of packages/core/src/product-progress/home-moving.ts
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { readingAcross, withReadMemo } from '../../src/db/read-memo.js';
+import { newQueryTiming, withQueryTiming } from '../../src/db/query-timing.js';
+import { withReadMemo } from '../../src/db/read-memo.js';
 import { readNeedsYouDecisions } from '../../src/development/needs-you-decisions-read.js';
 import { readNeedsYou } from '../../src/development/needs-you-list.js';
 import { needsYouViewerOf } from '../../src/development/needs-you-viewer.js';
@@ -195,10 +195,10 @@ describe("inside one read across a person's projects, each project's reads answe
       };
       const alone: unknown[] = [];
       for (const id of worlds) alone.push(await reads(id));
-      const together = await withReadMemo(() => {
-        readingAcross(worlds);
-        return Promise.all(worlds.map(reads));
-      });
+      // timed as a request is, so each batch waits for the request's quiet point as it does live
+      const together = await withQueryTiming(newQueryTiming(), () =>
+        withReadMemo(() => Promise.all(worlds.map(reads))),
+      );
       // each world holds what the shared facts are about, so no read compares two empty answers
       for (const answer of alone as Awaited<ReturnType<typeof reads>>[]) {
         const [, , open, requirements, shipped, live] = answer;

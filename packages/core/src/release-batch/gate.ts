@@ -1,7 +1,7 @@
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { onePerId } from '../db/read-memo.js';
+import { onePerProject } from '../db/read-memo.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
@@ -93,7 +93,7 @@ export async function resolveReleaseDeclaration(
 ): Promise<ReleaseDeclaration | null> {
   // a read asks this of each release it weighs and each landing it reads, and of every project it
   // reads beside this one: each is asked once, all of them in one statement (ISS-1070 r6)
-  const row = await onePerId('projectExists', projectId, async (ids) => {
+  const row = await onePerProject('projectExists', projectId, async (ids) => {
     const rows = await db
       .select({ id: projects.id })
       .from(projects)

@@ -9,11 +9,9 @@ import { readingAcross } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';
-import { primeEndedRunClaims } from '../release-batch/release-read.js';
 import type { NeedsYouViewer } from './needs-you.js';
 import { readNeedsYouDecisionsBare } from './needs-you-decisions-read.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
-import { primeNeedsYouAcross } from './needs-you-fold.js';
 
 /** The viewer each list's route builds for this caller, so the counts read as the lists do. */
 export const needsYouViewerOf = (
@@ -50,12 +48,11 @@ export async function readNeedsYouAcross(
     .select({ id: projects.id, slug: projects.slug, name: projects.name })
     .from(projects)
     .where(inArray(projects.id, ids));
-  // the rows every project's read sends once, read for all of them at once
+  // a read by project reads every one of them in its one statement (`db/read-memo.ts:readingAcross`)
   readingAcross(names.map((p) => p.id));
-  primeNeedsYouAcross(names.map((p) => p.id));
-  primeEndedRunClaims(names.map((p) => p.id));
   // every project read side by side: each fact they ask is read once for all of them
-  // (`read-memo.ts:memoizedPerId`, `perProjectRead`), so twelve projects send the statements of one
+  // at the request's quiet point (`db/read-memo.ts:memoizedPerId`), so twelve projects send the
+  // statements of one
   const perProject = await Promise.all(
     names.map(async (p): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
       const access = await effectiveProjectRole(userId, p.id);

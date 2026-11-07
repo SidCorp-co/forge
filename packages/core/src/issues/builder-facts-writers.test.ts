@@ -3,15 +3,18 @@
 // the list: a module that starts writing an input is named here before it lands, so a reviewer reads
 // that its write goes through the trigger (no `session_replication_role`, no trigger switched off),
 // and the model's own tables are written by its owner alone. The trigger on each table is checked
-// against the database in `tests/integration/builder-facts-model-e2e.test.ts`.
+// against the database in `tests/integration/builder-facts-model-e2e.test.ts`; the statuses the
+// session trigger reads as ended are held to the session machine's here (ISS-1070 r6).
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { describe, expect, it } from 'vitest';
 import { BUILDER_INPUT_TABLES } from './builder-facts.js';
 
 const SRC = fileURLToPath(new URL('..', import.meta.url));
+const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 
 /** Every module writing each input table today, by path under `src/`. */
 const WRITERS: Record<(typeof BUILDER_INPUT_TABLES)[number]['table'], readonly string[]> = {
@@ -114,5 +117,32 @@ describe('the writers of the builder rule inputs', () => {
         .map((f) => `${f} writes ${t}`),
     );
     expect(others).toEqual([]);
+  });
+});
+
+/**
+ * The statuses the session trigger's last definition names as ended (0627): a session that ends
+ * marks its issue on a later write of its `updated_at` only while it reads ended there, so the list
+ * written into the migration has to be the session machine's own.
+ */
+function triggerEndedStatuses(): string[] {
+  const defined = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => readFileSync(join(MIGRATIONS, f), 'utf8'))
+    .flatMap((sql) => [
+      ...sql.matchAll(/CREATE TRIGGER forge_builder_inputs_sessions_upd[\s\S]*?EXECUTE FUNCTION/g),
+    ])
+    .map((m) => m[0]);
+  const last = defined.at(-1);
+  if (!last) throw new Error('no migration defines forge_builder_inputs_sessions_upd');
+  const list = /NEW\.status IN \(([^)]*)\)/.exec(last)?.[1];
+  if (!list) throw new Error('forge_builder_inputs_sessions_upd names no ended statuses');
+  return [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1] as string).sort();
+}
+
+describe('the session trigger of the builder rule', () => {
+  it("names as ended exactly the session machine's terminal statuses", () => {
+    expect(triggerEndedStatuses()).toEqual([...TERMINAL_AGENT_SESSION_STATUSES].sort());
   });
 });

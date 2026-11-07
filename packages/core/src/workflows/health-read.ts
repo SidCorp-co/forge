@@ -8,7 +8,7 @@ import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList } from '../db/raw-sql.js';
-import { onePerId, rowsPerProject } from '../db/read-memo.js';
+import { onePerProject, rowsPerProject } from '../db/read-memo.js';
 import { notFound } from '../middleware/route-errors.js';
 import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf, readProjectDocument } from '../project-config/index.js';
@@ -60,7 +60,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
   const [doc, slugRow, feedback, facts, held] = await Promise.all([
     readProjectDocument(projectId),
     // every project's asks before the quiet point are one read (ISS-1070 r6)
-    onePerId('projectSlug', projectId, async (ids) => {
+    onePerProject('projectSlug', projectId, async (ids) => {
       const rows = rowsOf<{ id: string; slug: string }>(
         await db.execute(sql`SELECT id, slug FROM projects WHERE id IN (${idList(ids)})`),
       );

@@ -73,7 +73,7 @@ meHomeRoutes.get(
     const viewer = viewerOf(c);
     const now = new Date();
     const projects = await readableProjects(viewer.userId, orgId ?? null);
-    // what each project's part reads one project at a time, read for all of them at once
+    // a read by project reads every one of them in its one statement (`db/read-memo.ts:readingAcross`)
     readingAcross(projects.map((p) => p.id));
     // every project read side by side, each fact read once for all of them (ISS-1070 r6)
     const parts = await Promise.all(
@@ -115,6 +115,7 @@ meHomeRoutes.get(
     const { q, orgId } = c.req.valid('query');
     const viewer = viewerOf(c);
     const projects = await readableProjects(viewer.userId, orgId ?? null);
+    // a read by project reads every one of them in its one statement (`db/read-memo.ts:readingAcross`)
     readingAcross(projects.map((p) => p.id));
     const found = await Promise.all(
       projects.map(async (p) => {

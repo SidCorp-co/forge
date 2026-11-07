@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { newQueryTiming, statementSent, withQueryTiming } from './query-timing.js';
 import {
   heldRead,
+  idOfParts,
   memoizedPerId,
   memoizedRead,
   offerRead,
+  partsOf,
   perProjectRead,
-  primeReads,
-  readingAcross,
+  rowsPerId,
+  rowsPerProject,
   withReadMemo,
 } from './read-memo.js';
 
@@ -72,87 +75,6 @@ describe('memoizedRead', () => {
   });
 });
 
-describe('primeReads', () => {
-  const rows = [
-    { projectId: 'a', n: 1 },
-    { projectId: 'b', n: 2 },
-    { projectId: 'a', n: 3 },
-  ];
-
-  it('answers every project the one statement read, in its order, and reads nothing more', async () => {
-    let statements = 0;
-    let own = 0;
-    const readAll = async (ids: readonly string[]) => {
-      statements += 1;
-      return rows.filter((r) => ids.includes(r.projectId));
-    };
-    const ownRead = (id: string) => async () => {
-      own += 1;
-      return rows.filter((r) => r.projectId === id);
-    };
-    await withReadMemo(async () => {
-      primeReads(
-        ['a', 'b', 'c'],
-        (id) => `rows:${id}`,
-        readAll,
-        (r) => r.projectId,
-      );
-      expect(await memoizedRead('rows:a', ownRead('a'))).toEqual([rows[0], rows[2]]);
-      expect(await memoizedRead('rows:b', ownRead('b'))).toEqual([rows[1]]);
-      expect(await memoizedRead('rows:c', ownRead('c'))).toEqual([]);
-    });
-    expect(statements).toBe(1);
-    expect(own).toBe(0);
-  });
-
-  it('keeps an answer already held and primes only the rest', async () => {
-    const asked: string[][] = [];
-    await withReadMemo(async () => {
-      await memoizedRead('rows:a', async () => [{ projectId: 'a', n: 9 }]);
-      primeReads(
-        ['a', 'b'],
-        (id) => `rows:${id}`,
-        async (ids) => {
-          asked.push([...ids]);
-          return rows.filter((r) => ids.includes(r.projectId));
-        },
-        (r) => r.projectId,
-      );
-      expect(await memoizedRead('rows:a', async () => [])).toEqual([{ projectId: 'a', n: 9 }]);
-    });
-    expect(asked).toEqual([['b']]);
-  });
-
-  it('reads nothing outside a request scope', () => {
-    let statements = 0;
-    primeReads(
-      ['a'],
-      (id) => id,
-      async () => {
-        statements += 1;
-        return [];
-      },
-      () => 'a',
-    );
-    expect(statements).toBe(0);
-  });
-
-  it('does not keep a failed statement, so each project reads on its own', async () => {
-    await withReadMemo(async () => {
-      primeReads(
-        ['a'],
-        (id) => `rows:${id}`,
-        async () => {
-          throw new Error('statement failed');
-        },
-        () => 'a',
-      );
-      await expect(memoizedRead('rows:a', async () => [])).rejects.toThrow('statement failed');
-      expect(await memoizedRead('rows:a', async () => [rows[0]])).toEqual([rows[0]]);
-    });
-  });
-});
-
 describe('perProjectRead', () => {
   const rows = [
     { projectId: 'a', n: 1 },
@@ -181,36 +103,15 @@ describe('perProjectRead', () => {
     expect(r.asked).toEqual([['a'], ['a']]);
   });
 
-  it('reads each project once in a scope that declared none across', async () => {
-    const r = across();
-    await withReadMemo(async () => {
-      expect(await read(r, 'a')).toEqual([1, 3]);
-      expect(await read(r, 'a')).toEqual([1, 3]);
-      expect(await read(r, 'b')).toEqual([2]);
-    });
-    expect(r.asked).toEqual([['a'], ['b']]);
-  });
-
-  it('reads every declared project in one statement, each answered from its own rows as alone', async () => {
+  it('reads every project asked together in one statement, each answered from its own rows as alone', async () => {
     const r = across();
     const alone = across();
     const [a, b, c] = [await read(alone, 'a'), await read(alone, 'b'), await read(alone, 'c')];
     await withReadMemo(async () => {
-      readingAcross(['a', 'b', 'c']);
       expect(await Promise.all([read(r, 'b'), read(r, 'a'), read(r, 'c')])).toEqual([b, a, c]);
       expect(await read(r, 'a')).toEqual(a);
     });
-    expect(r.asked).toEqual([['a', 'b', 'c']]);
-  });
-
-  it('admits no project the declaration left out: it is read on its own', async () => {
-    const r = across();
-    await withReadMemo(async () => {
-      readingAcross(['a']);
-      expect(await read(r, 'b')).toEqual([2]);
-      expect(await read(r, 'a')).toEqual([1, 3]);
-    });
-    expect(r.asked).toEqual([['b'], ['a']]);
+    expect(r.asked).toEqual([['b', 'a', 'c']]);
   });
 
   it('keeps no failed statement, so the next ask reads again and fails or answers on its own', async () => {
@@ -221,7 +122,6 @@ describe('perProjectRead', () => {
       return rows.filter((r) => ids.includes(r.projectId));
     };
     await withReadMemo(async () => {
-      readingAcross(['a', 'b']);
       const ask = (id: string) => perProjectRead('rows', id, flaky, (x) => x.projectId, ns);
       await expect(ask('a')).rejects.toThrow('statement failed');
       expect(await ask('b')).toEqual([2]);
@@ -232,7 +132,6 @@ describe('perProjectRead', () => {
   it('hands each caller its own copy', async () => {
     const r = across();
     await withReadMemo(async () => {
-      readingAcross(['a', 'b']);
       const first = await read(r, 'a');
       first.push(99);
       expect(await read(r, 'a')).toEqual([1, 3]);
@@ -253,13 +152,16 @@ describe('a lazy thenable read (a query builder)', () => {
   it('is sent once however many projects and callers read it', async () => {
     const sent = { n: 0 };
     await withReadMemo(async () => {
-      primeReads(
-        ['a', 'b', 'c'],
-        (id) => `rows:${id}`,
-        () => lazy(sent, []),
-        (r) => r.projectId,
+      await Promise.all(
+        ['a', 'b', 'c'].map((id) =>
+          rowsPerProject(
+            'rows',
+            id,
+            () => lazy(sent, []),
+            (r) => r.projectId,
+          ),
+        ),
       );
-      await Promise.all(['a', 'b', 'c'].map((id) => memoizedRead(`rows:${id}`, async () => [])));
       await memoizedRead('own', () => lazy(sent, []));
       await memoizedRead('own', () => lazy(sent, []));
     });
@@ -370,5 +272,73 @@ describe('offerRead and heldRead', () => {
       ).rejects.toThrow('list refused');
       expect(heldRead('k')).toBeUndefined();
     });
+  });
+});
+
+describe('a batch at the quiet point', () => {
+  const perId = () => {
+    const asked: string[][] = [];
+    return {
+      asked,
+      read: async (ids: readonly string[]) => {
+        asked.push([...ids]);
+        return new Map(ids.map((id) => [id, id]));
+      },
+    };
+  };
+  const turns = (n: number) =>
+    Array.from({ length: n }).reduce<Promise<void>>(
+      (p) => p.then(() => new Promise((ok) => setImmediate(ok))),
+      Promise.resolve(),
+    );
+
+  it('waits while a statement of the request is out, then reads every ask made meanwhile at once', async () => {
+    const r = perId();
+    const timing = newQueryTiming();
+    await withQueryTiming(timing, () =>
+      withReadMemo(async () => {
+        const answered = statementSent(timing);
+        const first = memoizedPerId('k', ['a'], r.read);
+        // a read that asks several turns later, while the statement is still out, joins the batch
+        await turns(3);
+        const second = memoizedPerId('k', ['b'], r.read);
+        expect(r.asked).toEqual([]);
+        answered();
+        expect([...(await first).keys(), ...(await second).keys()]).toEqual(['a', 'b']);
+      }),
+    );
+    expect(r.asked).toEqual([['a', 'b']]);
+  });
+
+  it('reads at the end of the turn outside a timed request', async () => {
+    const r = perId();
+    await withReadMemo(async () => {
+      const first = memoizedPerId('k', ['a'], r.read);
+      await turns(3);
+      await memoizedPerId('k', ['b'], r.read);
+      await first;
+    });
+    expect(r.asked).toEqual([['a'], ['b']]);
+  });
+
+  it('answers rows by id in the order each statement sent them', async () => {
+    const rows = [
+      { id: 'b', n: 1 },
+      { id: 'a', n: 2 },
+      { id: 'b', n: 3 },
+    ];
+    await withReadMemo(async () => {
+      const fetch = async (ids: readonly string[]) => rows.filter((r) => ids.includes(r.id));
+      const [both, a] = await Promise.all([
+        rowsPerId('rows', ['a', 'b'], fetch, (r) => r.id),
+        rowsPerId('rows', ['a'], fetch, (r) => r.id),
+      ]);
+      expect(both).toEqual(rows);
+      expect(a).toEqual([rows[1]]);
+    });
+  });
+
+  it('joins and splits an id of several parts', () => {
+    expect(partsOf(idOfParts('p', 'v1.2'))).toEqual(['p', 'v1.2']);
   });
 });

@@ -8,7 +8,7 @@ import type { QuestionSuggestion } from '@forge/contracts/question-suggestion';
 import type { QuestionSubject } from '@forge/contracts/questions';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead, primeReads } from '../db/read-memo.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
 import { requirementOf } from './decision-age.js';
 import { itemLastMovedAt, movedSinceAsked } from './moved-decisions.js';
@@ -54,11 +54,15 @@ function detachedRowsOf(projectIds: readonly string[]) {
     .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
 }
 
-const detachedKey = (projectId: string) => `detachedOpenQuestions:${projectId}`;
-
 /** Every open `human` question of the project attached to nothing, newest first. */
 export async function readDetachedOpenQuestions(projectId: string): Promise<DetachedQuestionRow[]> {
-  const rows = await memoizedRead(detachedKey(projectId), () => detachedRowsOf([projectId]));
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const rows = await rowsPerProject(
+    'detachedOpenQuestions',
+    projectId,
+    detachedRowsOf,
+    (r) => r.projectId,
+  );
   return rows.map((r) => ({
     id: r.id,
     prompt: r.current?.prompt ?? '',
@@ -143,24 +147,18 @@ function openPersonRowsOf(projectIds: readonly string[]) {
     .orderBy(asc(agentQuestions.createdAt), asc(agentQuestions.id));
 }
 
-const openPersonKey = (projectId: string) => `openPersonQuestions:${projectId}`;
-
-/**
- * Both open-question reads of every project in `projectIds`, one statement each, answering each
- * project's own read later in the request (`db/read-memo.ts:primeReads`).
- */
-export function primeOpenQuestionReads(projectIds: readonly string[]): void {
-  primeReads(projectIds, detachedKey, detachedRowsOf, (r) => r.projectId);
-  primeReads(projectIds, openPersonKey, openPersonRowsOf, (r) => r.projectId);
-}
-
 /**
  * Every open `human` question of the project outside a questionnaire, oldest first: the answer a
  * person owes on an issue, a requirement, a feedback item or nothing, read once so each needs-me
  * decision answers the round it shows. A row with no round is a broken row and refused by id.
  */
 export async function readOpenPersonQuestions(projectId: string): Promise<OpenPersonQuestion[]> {
-  const read = await memoizedRead(openPersonKey(projectId), () => openPersonRowsOf([projectId]));
+  const read = await rowsPerProject(
+    'openPersonQuestions',
+    projectId,
+    openPersonRowsOf,
+    (r) => r.projectId,
+  );
   // a steward decision whose item moved since it was asked is gone already, before the sweep voids it
   const rows = read.filter(
     (r) =>

@@ -39,7 +39,6 @@ export {
 export {
   type DetachedQuestionRow,
   type OpenPersonQuestion,
-  primeOpenQuestionReads,
   readDetachedOpenQuestions,
   readOpenPersonQuestions,
 } from './needs-you-read.js';

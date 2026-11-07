@@ -34,78 +34,19 @@ export function memoizedRead<T>(key: string, read: () => Promise<T>): Promise<T>
 }
 
 /**
- * Answers `keyOf(id)` for every project in `projectIds` from one statement, `readAll`, inside a
- * {@link withReadMemo} scope: a read across projects primes what each project's own read would
- * otherwise send once a project (`development/needs-you-viewer.ts:readNeedsYouAcross`). A key already
- * held keeps its answer; outside a scope nothing is read, and each project's read reads on its own.
- * A failed statement is not kept, so each project's read then tries on its own and fails there.
+ * One project's answer to a read that `readAll` makes for any set of projects: every project asked
+ * under `key` before the request's quiet point is read in one statement ({@link rowsPerProject}), and
+ * `answer` is handed this project's rows in the order `readAll` sent them, so a project read alone and
+ * read beside others answers alike. Outside a scope, every ask reads its own project.
  */
-export function primeReads<R>(
-  projectIds: readonly string[],
-  keyOf: (projectId: string) => string,
-  readAll: (projectIds: readonly string[]) => Promise<R[]>,
-  projectOf: (row: R) => string,
-): void {
-  const memo = memos.getStore();
-  if (!memo) return;
-  const ids = projectIds.filter((id) => !memo.has(keyOf(id)));
-  if (ids.length === 0) return;
-  // a query builder is a thenable that sends its statement again on every `then`: send it once
-  const all = Promise.resolve(readAll(ids));
-  for (const id of ids) {
-    const key = keyOf(id);
-    const held = all.then((rows) => rows.filter((r) => projectOf(r) === id));
-    memo.set(key, held);
-    held.catch(() => memo.delete(key));
-  }
-}
-
-/** The projects a read across projects declared in each memo ({@link readingAcross}). */
-const across = new WeakMap<Map<string, Promise<unknown>>, ReadonlySet<string>>();
-
-/**
- * Declares, inside a {@link withReadMemo} scope, the projects a read across projects assembles one
- * by one (`development/needs-you-viewer.ts:readNeedsYouAcross`, the home): each
- * {@link perProjectRead} any of them asks then reads every one of them in one statement, where it
- * would otherwise send one a project. It admits nothing: a project's rows are only ever handed to
- * that project's own read, which its caller has already checked. Outside a scope it does nothing.
- */
-export function readingAcross(projectIds: readonly string[]): void {
-  const memo = memos.getStore();
-  if (!memo) return;
-  across.set(memo, new Set([...(across.get(memo) ?? []), ...projectIds]));
-}
-
-/**
- * One project's answer to a read that `readAll` makes for any set of projects, one statement each:
- * inside a scope where {@link readingAcross} declared this project, the first ask reads every declared
- * project not yet held and answers each from its own rows; inside any other scope, once per key; and
- * every time outside one. `answer` is handed the project's rows in the order `readAll` sent them, so a
- * project read alone and read beside others answers alike.
- */
-export function perProjectRead<R, V>(
+export async function perProjectRead<R, V>(
   key: string,
   projectId: string,
   readAll: (projectIds: readonly string[]) => Promise<R[]>,
   projectOf: (row: R) => string,
   answer: (rows: R[]) => V,
 ): Promise<V> {
-  const memo = memos.getStore();
-  const keyOf = (id: string) => `${key}\u0000${id}`;
-  const one = async () => answer(await readAll([projectId]));
-  if (!memo) return one();
-  const declared = across.get(memo);
-  if (declared?.has(projectId) && !memo.has(keyOf(projectId))) {
-    const ids = [...declared].filter((id) => !memo.has(keyOf(id)));
-    // a query builder is a thenable that sends its statement again on every `then`: send it once
-    const all = Promise.resolve(readAll(ids));
-    for (const id of ids) {
-      const held = all.then((rows) => answer(rows.filter((r) => projectOf(r) === id)));
-      memo.set(keyOf(id), held);
-      held.catch(() => memo.delete(keyOf(id)));
-    }
-  }
-  return memoizedRead(keyOf(projectId), one);
+  return answer(await rowsPerProject(key, projectId, readAll, projectOf));
 }
 
 /** The ids asked under one key before the request's next quiet point, read together there. */
@@ -113,6 +54,37 @@ interface PendingBatch {
   ids: Set<string>;
   read: (ids: readonly string[]) => Promise<ReadonlyMap<string, unknown>>;
   done: Promise<ReadonlyMap<string, unknown>>;
+}
+
+/** The projects a read across projects declared in each memo ({@link readingAcross}). */
+const across = new WeakMap<Map<string, Promise<unknown>>, ReadonlySet<string>>();
+
+/**
+ * Declares, inside a {@link withReadMemo} scope, the projects a read across a person's projects
+ * reads side by side (`development/needs-you-viewer.ts:readNeedsYouAcross`, the home): a read keyed
+ * by project ({@link memoizedPerProject}, {@link rowsPerProject}) then reads every one of them in its
+ * one statement, so a project whose read reaches it later than the others finds its answer held. It
+ * admits nothing: a project's answer is only ever handed to that project's own read, which its caller
+ * has already checked. Outside a scope it does nothing.
+ */
+export function readingAcross(projectIds: readonly string[]): void {
+  const memo = memos.getStore();
+  if (!memo) return;
+  across.set(memo, new Set([...(across.get(memo) ?? []), ...projectIds]));
+}
+
+const slotOf = (key: string, id: string) => `${key}\u0000${id}`;
+
+/** Holds `id`'s answer under `key` as what `done` answers for it, dropped where the read fails. */
+function hold(
+  memo: Map<string, Promise<unknown>>,
+  key: string,
+  id: string,
+  done: Promise<ReadonlyMap<string, unknown>>,
+): void {
+  const held = done.then((m) => (m.has(id) ? { value: m.get(id) } : null));
+  memo.set(slotOf(key, id), held);
+  held.catch(() => memo.delete(slotOf(key, id)));
 }
 
 const batches = new WeakMap<Map<string, Promise<unknown>>, Map<string, PendingBatch>>();
@@ -128,6 +100,7 @@ function batchOf(
   memo: Map<string, Promise<unknown>>,
   key: string,
   read: (ids: readonly string[]) => Promise<ReadonlyMap<string, unknown>>,
+  byProject: boolean,
 ): PendingBatch {
   let open = batches.get(memo);
   if (!open) {
@@ -140,6 +113,14 @@ function batchOf(
   pending.done = new Promise((resolve, reject) => {
     whenQuiet(() => {
       open.delete(key);
+      // a read by project reads every project the read across declared and nothing holds yet
+      if (byProject) {
+        for (const id of across.get(memo) ?? []) {
+          if (pending.ids.has(id) || memo.has(slotOf(key, id))) continue;
+          pending.ids.add(id);
+          hold(memo, key, id, pending.done);
+        }
+      }
       Promise.resolve(pending.read([...pending.ids])).then(resolve, reject);
     });
   });
@@ -157,24 +138,47 @@ function batchOf(
  * each fact once (ISS-1070 r6). The answer holds the ids in the order asked; outside a scope, `read`
  * answers every id itself.
  */
-export async function memoizedPerId<V>(
+export function memoizedPerId<V>(
   key: string,
   ids: readonly string[],
   read: (ids: readonly string[]) => Promise<ReadonlyMap<string, V>>,
 ): Promise<Map<string, V>> {
+  return perId(key, ids, read, false);
+}
+
+/**
+ * {@link memoizedPerId} over project ids: a read keyed by project, which reads with them every
+ * project the read across projects declared ({@link readingAcross}).
+ */
+export function memoizedPerProject<V>(
+  key: string,
+  projectIds: readonly string[],
+  read: (projectIds: readonly string[]) => Promise<ReadonlyMap<string, V>>,
+): Promise<Map<string, V>> {
+  return perId(key, projectIds, read, true);
+}
+
+async function perId<V>(
+  key: string,
+  ids: readonly string[],
+  read: (ids: readonly string[]) => Promise<ReadonlyMap<string, V>>,
+  byProject: boolean,
+): Promise<Map<string, V>> {
   const memo = memos.getStore();
   if (!memo) return new Map(await read(ids));
   const unique = [...new Set(ids)];
-  const slot = (id: string) => `${key}\u0000${id}`;
+  const slot = (id: string) => slotOf(key, id);
   const missing = unique.filter((id) => !memo.has(slot(id)));
   if (missing.length > 0) {
-    const batch = batchOf(memo, key, read);
+    const batch = batchOf(memo, key, read, byProject);
     for (const id of missing) {
       batch.ids.add(id);
-      const held = batch.done.then((m) => (m.has(id) ? { value: m.get(id) as V } : null));
-      memo.set(slot(id), held);
-      held.catch(() => memo.delete(slot(id)));
+      hold(memo, key, id, batch.done);
     }
+  } else {
+    // an ask answered from what is held still waits for the quiet point, as one that reads does: the
+    // reads of a person's projects then ask each fact in the same wave, whichever asked it first
+    await new Promise<void>((answered) => whenQuiet(answered));
   }
   const out = new Map<string, V>();
   const answers = await Promise.all(
@@ -221,20 +225,36 @@ let statementsSent = 0;
  * (`memoizedPerId`). Each id's rows come back in the order `fetch` sent them; an id read in an
  * earlier statement comes before one read in a later.
  */
-export async function rowsPerId<R>(
+export function rowsPerId<R>(
   key: string,
   ids: readonly string[],
   fetch: (ids: readonly string[]) => PromiseLike<R[]>,
   idOf: (row: R) => string,
 ): Promise<R[]> {
-  if (ids.length === 0) return [];
-  const byId = await memoizedPerId(key, ids, async (some) => {
-    const out = new Map<string, { sent: number; at: number; row: R }[]>(some.map((id) => [id, []]));
-    const sent = ++statementsSent;
-    const rows = await fetch(some);
-    for (const [at, row] of rows.entries()) out.get(idOf(row))?.push({ sent, at, row });
-    return out;
-  });
+  return rowsOf(key, ids, fetch, idOf, false);
+}
+
+async function rowsOf<R>(
+  key: string,
+  ids: readonly string[],
+  fetch: (ids: readonly string[]) => PromiseLike<R[]>,
+  idOf: (row: R) => string,
+  byProject: boolean,
+): Promise<R[]> {
+  const byId = await perId(
+    key,
+    ids,
+    async (some) => {
+      const out = new Map<string, { sent: number; at: number; row: R }[]>(
+        some.map((id) => [id, []]),
+      );
+      const sent = ++statementsSent;
+      const rows = await fetch(some);
+      for (const [at, row] of rows.entries()) out.get(idOf(row))?.push({ sent, at, row });
+      return out;
+    },
+    byProject,
+  );
   return [...byId.values()]
     .flat()
     .sort((a, b) => a.sent - b.sent || a.at - b.at)
@@ -242,8 +262,9 @@ export async function rowsPerId<R>(
 }
 
 /**
- * The rows `fetch` answers for `projectId`, every project asked before the request's quiet point
- * read in one statement ({@link rowsPerId}), in the order `fetch` sent them.
+ * The rows `fetch` answers for `projectId`, every project asked before the request's quiet point,
+ * and every project a read across declared ({@link readingAcross}), read in one statement, in the
+ * order `fetch` sent them.
  */
 export function rowsPerProject<R>(
   key: string,
@@ -251,7 +272,7 @@ export function rowsPerProject<R>(
   fetch: (projectIds: readonly string[]) => PromiseLike<R[]>,
   projectOf: (row: R) => string,
 ): Promise<R[]> {
-  return rowsPerId(key, [projectId], fetch, projectOf);
+  return rowsOf(key, [projectId], fetch, projectOf, true);
 }
 
 /**
@@ -264,6 +285,15 @@ export async function onePerId<V>(
   read: (ids: readonly string[]) => Promise<ReadonlyMap<string, V>>,
 ): Promise<V | undefined> {
   return (await memoizedPerId(key, [id], read)).get(id);
+}
+
+/** {@link onePerId} keyed by project: it reads with it every project a read across declared. */
+export async function onePerProject<V>(
+  key: string,
+  projectId: string,
+  read: (projectIds: readonly string[]) => Promise<ReadonlyMap<string, V>>,
+): Promise<V | undefined> {
+  return (await memoizedPerProject(key, [projectId], read)).get(projectId);
 }
 
 /** One id for {@link onePerId} made of several parts, a project and a version say ({@link partsOf}). */

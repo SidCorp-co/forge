@@ -27,7 +27,7 @@ import type { MasterServing } from '@forge/contracts/steward';
 import { type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead, onePerId } from '../db/read-memo.js';
+import { memoizedRead, onePerProject } from '../db/read-memo.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import {
   masterLastBeatSql,
@@ -152,7 +152,7 @@ async function closedPassWhere(executor: Tx, where: SQL): Promise<MasterClosedPa
 async function readLastPass(executor: Tx, projectId: string): Promise<MasterClosedPass | null> {
   if (executor !== db) return closedPassWhere(executor, sql`project_id = ${projectId}`);
   // every project's asks before the quiet point are one read (ISS-1070 r6)
-  const pass = await onePerId('lastClosedPass', projectId, async (ids) => {
+  const pass = await onePerProject('lastClosedPass', projectId, async (ids) => {
     const rows = rowsOf<PassRow & { ended_at: string | Date; project_id: string }>(
       await db.execute(sql`
         WITH last AS (

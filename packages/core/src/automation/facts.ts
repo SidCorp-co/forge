@@ -6,7 +6,7 @@ import type { AutomationPerson, FireProducedItems } from '@forge/contracts/autom
 import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { onePerId, rowsPerProject } from '../db/read-memo.js';
+import { onePerProject, rowsPerProject } from '../db/read-memo.js';
 import {
   agentSessions,
   issues,
@@ -169,7 +169,7 @@ async function latestFiresOf(scope: FireScope) {
       },
       (r: FireQueryRow) => r.projectId,
     ),
-    onePerId('fireCounts', scope.projectId, async (ids) => {
+    onePerProject('fireCounts', scope.projectId, async (ids) => {
       const tallies = await db
         .select({ projectId: scheduleRuns.projectId, n: count() })
         .from(scheduleRuns)

@@ -7,7 +7,8 @@
 // read to a ceiling of statements and buffers. Set SLOW_READS_OUT to a file to keep the measures,
 // SLOW_READS_EXPLAIN to add the slowest plans, SLOW_READS_STACKS to name the code that sent each
 // statement, SLOW_READS_PROFILE to a file for a CPU profile of each read, and SLOW_READS_ONLY to a
-// pattern of the paths to read.
+// pattern of the paths to read. SLOW_READS_SHRINK=<n> seeds every count at an n-th (at least one)
+// for a quick look at which statements a read sends, its times and ceilings then meaningless.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/issues/standing-read.ts
 // @direct-test-of packages/core/src/issues/standing-facts-memo.ts
@@ -37,6 +38,21 @@ import { currentQueryTiming } from '../../src/db/query-timing.js';
 import { closeWorld, type Doc, testEnv } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestUser, seedOrg } from '../helpers/factories.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
+import {
+  heaviestSites,
+  type Measure,
+  report,
+  type Statement,
+} from '../helpers/slow-reads-report.js';
+
+/** Every count of `s` at an n-th, at least one, under SLOW_READS_SHRINK; `s` itself otherwise. */
+function shrunk(s: Scale): Scale {
+  const n = Number(process.env.SLOW_READS_SHRINK ?? 1);
+  if (!(n > 1)) return s;
+  return Object.fromEntries(
+    Object.entries(s).map(([k, v]) => [k, Math.max(1, Math.round(Number(v) / n))]),
+  ) as unknown as Scale;
+}
 
 const SCALE: Scale = {
   requirements: 88,
@@ -74,29 +90,6 @@ let projectId: string;
 /** A person in {@link PROJECTS_ACROSS} projects, forge's one of them, as the orchestrator is on forge-dev. */
 let acrossToken: string;
 let app: Awaited<typeof import('../../src/index.js')>['app'];
-
-interface Statement {
-  text: string;
-  params: unknown;
-  ms: number;
-  /** The rows it answered, each one the process parses and maps. */
-  rows?: number;
-  /** Its plan's planning and execution time, run again alone (`buffersOf`). */
-  planMs?: number;
-  execMs?: number;
-  /** The `src/` frames that sent it, when SLOW_READS_STACKS asks for them. */
-  site?: string | undefined;
-}
-
-interface Measure {
-  path: string;
-  status: number;
-  ms: number;
-  /** What the app's own `Server-Timing` says it spent: the database's share, the app's, the whole. */
-  timing: string;
-  statements: Statement[];
-  body: Doc;
-}
 
 type Unsafe = (
   ...args: unknown[]
@@ -304,74 +297,6 @@ async function profiled(path: string, out: string, as: string): Promise<void> {
   );
 }
 
-function report(label: string, m: Measure): string {
-  const slowest = [...m.statements].sort((a, b) => b.ms - a.ms).slice(0, 8);
-  const same = new Map<string, number>();
-  for (const s of m.statements) same.set(s.text, (same.get(s.text) ?? 0) + 1);
-  const repeated = [...same].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
-  return [
-    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
-    ...slowest.map(
-      (s) => `  ${s.ms.toFixed(1).padStart(8)} ms  ${s.text.replace(/\s+/g, ' ').slice(0, 260)}`,
-    ),
-    ...repeated.slice(0, process.env.SLOW_READS_STACKS ? 20 : 5).map(([t, n]) => {
-      const sites = [...new Set(m.statements.filter((x) => x.text === t).map((x) => x.site))];
-      const at = process.env.SLOW_READS_STACKS ? `\n      from ${sites.join('\n      from ')}` : '';
-      return `  x${n} ${t.replace(/\s+/g, ' ').slice(0, 200)}${at}`;
-    }),
-    ...(process.env.SLOW_READS_STACKS ? sitesOf(m) : []),
-  ].join('\n');
-}
-
-/** The statements touching the most shared buffers, by the code that sent them where it is named. */
-function heaviestSites(heaviest: { own: number; s: Statement }[]): string[] {
-  const by = new Map<string, { n: number; own: number; rows: number; plan: number }>();
-  for (const { own, s } of heaviest) {
-    const at = s.site?.split(' < ')[0] ?? s.text.replace(/\s+/g, ' ').slice(0, 120);
-    const was = by.get(at) ?? { n: 0, own: 0, rows: 0, plan: 0 };
-    by.set(at, {
-      n: was.n + 1,
-      own: was.own + own,
-      rows: was.rows + (s.rows ?? 0),
-      plan: was.plan + (s.planMs ?? 0),
-    });
-  }
-  const top = (of: (v: { own: number; rows: number; plan: number }) => number) =>
-    [...by]
-      .sort((a, b) => of(b[1]) - of(a[1]))
-      .slice(0, Number(process.env.SLOW_READS_HEAVIEST ?? 8));
-  const rows = heaviest.reduce((n, { s }) => n + (s.rows ?? 0), 0);
-  const plan = heaviest.reduce((n, { s }) => n + (s.planMs ?? 0), 0);
-  const exec = heaviest.reduce((n, { s }) => n + (s.execMs ?? 0), 0);
-  return [
-    `  alone, the database plans them in ${plan.toFixed(0)} ms and runs them in ${exec.toFixed(0)} ms`,
-    ...top((v) => v.own).map(
-      ([at, { n, own, rows }]) => `  ${String(own).padStart(8)} buf in ${n} (${rows} rows)  ${at}`,
-    ),
-    ...top((v) => v.plan).map(
-      ([at, { n, plan }]) => `  ${plan.toFixed(1).padStart(8)} ms planning ${n}  ${at}`,
-    ),
-    `  ${rows} rows in all`,
-    ...top((v) => v.rows).map(
-      ([at, { n, own, rows }]) => `  ${String(rows).padStart(8)} rows in ${n} (${own} buf)  ${at}`,
-    ),
-  ];
-}
-
-/** Each call site's statements: how many, and their summed time, the most first. */
-function sitesOf(m: Measure): string[] {
-  const by = new Map<string, { n: number; ms: number }>();
-  for (const s of m.statements) {
-    const at = by.get(s.site ?? '?') ?? { n: 0, ms: 0 };
-    by.set(s.site ?? '?', { n: at.n + 1, ms: at.ms + s.ms });
-  }
-  return [...by]
-    .sort((a, b) => b[1].n - a[1].n || b[1].ms - a[1].ms)
-    .map(
-      ([site, { n, ms }]) => `  @${String(n).padStart(3)} ${ms.toFixed(0).padStart(6)} ms  ${site}`,
-    );
-}
-
 /**
  * Each read, with the most statements it may send and the most shared buffers their plans may touch
  * together at this size, at what ISS-1070 r4 left it: a statement asked again, a model built twice
@@ -385,16 +310,25 @@ function sitesOf(m: Measure): string[] {
  * replaced was cheaper (What's new 4.2 to 5.8 thousand, the home 26 to 28 thousand): that is the
  * model's read price, and it stands while the fact is joined rather than kept on the verdict row.
  */
-const READS = (p: string): { path: string; statements: number; buffers: number }[] => [
+/** A read's ceilings: statements, shared buffers, and where named its median time. */
+interface Ceiling {
+  path: string;
+  statements: number;
+  buffers: number;
+  /** The most milliseconds its median may take on this box (ISS-1070 r6: 300 for attention and home). */
+  ms?: number;
+}
+
+/** The time ISS-1070 r6 holds the shell's attention and home reads to, here, at one project and at twelve. */
+const SHELL_MS = 300;
+
+const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
   { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 15000 },
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
-  { path: '/api/me/attention', statements: 115, buffers: 27000 },
-  // +1 a project since ISS-1102: the progress read lists the project's leased builds beside its runs
-  // (`runs/leased-builds.ts:leasedBuildsOf`). Priced: it ends when ISS-1070 r6 reads them across
-  // the person's projects in one statement.
-  { path: '/api/me/home', statements: 128, buffers: 30000 },
+  { path: '/api/me/attention', statements: 115, buffers: 27000, ms: SHELL_MS },
+  { path: '/api/me/home', statements: 127, buffers: 30000, ms: SHELL_MS },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
@@ -408,10 +342,10 @@ const READS = (p: string): { path: string; statements: number; buffers: number }
  * buffers finding the release its build is, and Needs you sent 107. What's new and the ecosystems
  * read send as many statements for twelve projects as for one.
  */
-const READS_ACROSS = (p: string): { path: string; statements: number; buffers: number }[] => [
-  { path: '/api/me/attention', statements: 1117, buffers: 135000 },
-  // +12 since ISS-1102, one leased-builds read a project; ends with ISS-1070 r6's set-based reads.
-  { path: '/api/me/home', statements: 1327, buffers: 150000 },
+const READS_ACROSS = (p: string): Ceiling[] => [
+  // a person in twelve projects sends what a person in one does (ISS-1070 r6)
+  { path: '/api/me/attention', statements: 115, buffers: 135000, ms: SHELL_MS },
+  { path: '/api/me/home', statements: 127, buffers: 150000, ms: SHELL_MS },
   { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
   { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
@@ -428,7 +362,7 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   token = await signUserToken(ownerId);
-  projectId = await seedAtScale(ownerId, SCALE, {
+  projectId = await seedAtScale(ownerId, shrunk(SCALE), {
     projectId: PRODUCT,
     servingCommit: process.env.SOURCE_COMMIT as string,
   });
@@ -437,7 +371,7 @@ beforeAll(async () => {
   acrossToken = await signUserToken(acrossId);
   await addProjectMember(projectId, acrossId, 'admin');
   const orgId = await seedOrg(acrossId);
-  for (let n = 1; n < PROJECTS_ACROSS; n++) await seedAtScale(acrossId, SHARE, { orgId });
+  for (let n = 1; n < PROJECTS_ACROSS; n++) await seedAtScale(acrossId, shrunk(SHARE), { orgId });
 }, 900_000);
 
 afterAll(closeWorld);
@@ -447,11 +381,7 @@ afterAll(closeWorld);
  * answers each read over its ceilings of statements or buffers; every read is measured before any
  * is judged, so one red names each read over its ceiling.
  */
-async function judged(
-  label: string,
-  reads: { path: string; statements: number; buffers: number }[],
-  as: string,
-): Promise<string[]> {
+async function judged(label: string, reads: Ceiling[], as: string): Promise<string[]> {
   const out = process.env.SLOW_READS_OUT;
   const failures: string[] = [];
   const only = process.env.SLOW_READS_ONLY ? new RegExp(process.env.SLOW_READS_ONLY) : null;
@@ -505,6 +435,9 @@ async function judged(
         ? [
             `${label} ${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
           ]
+        : []),
+      ...(ceiling.ms !== undefined && median.ms > ceiling.ms
+        ? [`${label} ${path} took ${median.ms.toFixed(0)} ms, over its ceiling of ${ceiling.ms}`]
         : []),
     );
   }

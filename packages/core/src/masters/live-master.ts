@@ -7,7 +7,7 @@ import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type { MasterPaneDialog } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { onePerId } from '../db/read-memo.js';
+import { onePerProject } from '../db/read-memo.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql, masterSilentSql } from '../devices/index.js';
 
@@ -34,7 +34,7 @@ export interface MasterRow {
 
 export async function liveMaster(projectId: string): Promise<MasterRow | null> {
   // every project's asks before the quiet point are one read (ISS-1070 r6)
-  return (await onePerId('liveMaster', projectId, liveMastersOf)) ?? null;
+  return (await onePerProject('liveMaster', projectId, liveMastersOf)) ?? null;
 }
 
 async function liveMastersOf(projectIds: readonly string[]): Promise<Map<string, MasterRow>> {

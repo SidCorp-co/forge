@@ -18,7 +18,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { memoizedRead, onePerId, rowsPerId, rowsPerProject } from '../db/read-memo.js';
+import { idOfParts, memoizedRead, onePerProject, partsOf, rowsPerId } from '../db/read-memo.js';
 import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
@@ -89,7 +89,7 @@ export function readAnchor(projectId: string, now: Date): Promise<Anchor> {
 async function readAnchorOnce(projectId: string, now: Date): Promise<Anchor> {
   const at = now.toISOString();
   // every project's asks before the quiet point are one read (ISS-1070 r6)
-  const row = await onePerId(`forecastAnchor:${at}`, projectId, async (ids) => {
+  const row = await onePerProject(`forecastAnchor:${at}`, projectId, async (ids) => {
     const inIds = idList(ids);
     const rows = rowsOf<EventRow & { project_id: string }>(
       await db.execute(sql`
@@ -153,17 +153,33 @@ function eventSaid(e: EventRow, prefix: string | null): Said {
   }
 }
 
+/**
+ * Each project and moment of `keys` (`idOfParts(project, at)`) as rows a statement joins: a read
+ * of several projects, each as of its own anchor, sends one statement (ISS-1070 r6).
+ */
+const asOf = (keys: readonly string[]) =>
+  sql`(VALUES ${sql.join(
+    keys.map((k) => {
+      const [project, at = ''] = partsOf(k);
+      // the run peak's window opens FORECAST_PEAK_DAYS before, counted in days of the clock
+      const peakFrom = new Date(new Date(at).getTime() - FORECAST_PEAK_DAYS * DAY_MS).toISOString();
+      return sql`(${k}, ${project}::uuid, ${at}::timestamptz, ${peakFrom}::timestamptz)`;
+    }),
+    sql`, `,
+  )}) AS w(key, project_id, at, peak_from)`;
+
 function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
-  // every project's asks before the quiet point are one read (ISS-1070 r6)
-  return rowsPerProject(
-    `landedRows:${now.toISOString()}`,
-    projectId,
-    async (ids) =>
-      rowsOf<SampleRow & { project_id: string }>(
+  // every project's asks before the quiet point are one read, each as of its own `now`
+  return rowsPerId(
+    'landedRows',
+    [idOfParts(projectId, now.toISOString())],
+    async (keys) =>
+      rowsOf<SampleRow & { key: string }>(
         await db.execute(sql`
-      SELECT i.project_id, i.complexity, i.merged_at AS landed_at,
+      SELECT w.key, i.complexity, i.merged_at AS landed_at,
              EXTRACT(EPOCH FROM (i.merged_at - s.started_at)) / 60 AS minutes
-        FROM issues i
+        FROM ${asOf(keys)}
+        JOIN issues i ON i.project_id = w.project_id
         JOIN LATERAL (
           SELECT min(al.created_at) AS started_at
             FROM activity_log al
@@ -171,16 +187,15 @@ function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {
              AND al.action = 'issue.statusChanged'
              AND al.payload ->> 'to' = 'in_progress'
         ) s ON s.started_at IS NOT NULL AND s.started_at < i.merged_at
-       WHERE i.project_id IN (${idList(ids)})
-         AND i.status IN (${sql.join(
-           LANDED_STATUSES.map((st) => sql`${st}`),
-           sql`, `,
-         )})
+       WHERE i.status IN (${sql.join(
+         LANDED_STATUSES.map((st) => sql`${st}`),
+         sql`, `,
+       )})
          AND i.merged_at IS NOT NULL
-         AND i.merged_at >= ${now.toISOString()}::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
-         AND i.merged_at <= ${now.toISOString()}::timestamptz`),
+         AND i.merged_at >= w.at - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
+         AND i.merged_at <= w.at`),
       ),
-    (r) => r.project_id,
+    (r) => r.key,
   );
 }
 
@@ -198,26 +213,25 @@ interface SpellRow {
  * started and is not counted. Null where no run was live in the window.
  */
 async function readPeakLiveRuns(projectId: string, now: Date): Promise<number | null> {
-  const at = now.toISOString();
-  const from = new Date(now.getTime() - FORECAST_PEAK_DAYS * DAY_MS).toISOString();
-  // every project's asks before the quiet point are one read (ISS-1070 r6)
-  const spells = await rowsPerProject(
-    `liveSpells:${at}`,
-    projectId,
-    async (ids) =>
-      rowsOf<SpellRow & { project_id: string }>(
+  // every project's asks before the quiet point are one read, each as of its own `now`
+  const spells = await rowsPerId(
+    'liveSpells',
+    [idOfParts(projectId, now.toISOString())],
+    async (keys) =>
+      rowsOf<SpellRow & { key: string }>(
         await db.execute(sql`
-      SELECT s.project_id, greatest(s.started_at, ${from}::timestamptz) AS started_at,
-             least(coalesce(r.finished_at, ${at}::timestamptz), ${at}::timestamptz) AS ended_at
-        FROM agent_sessions s
+      SELECT w.key,
+             greatest(s.started_at, w.peak_from) AS started_at,
+             least(coalesce(r.finished_at, w.at), w.at) AS ended_at
+        FROM ${asOf(keys)}
+        JOIN agent_sessions s ON s.project_id = w.project_id
         JOIN pipeline_runs r ON r.id = s.pipeline_run_id
-       WHERE s.project_id IN (${idList(ids)})
-         AND s.kind = ${RUN_SESSION_KIND}
+       WHERE s.kind = ${RUN_SESSION_KIND}
          AND s.started_at IS NOT NULL
-         AND s.started_at <= ${at}::timestamptz
-         AND coalesce(r.finished_at, ${at}::timestamptz) > ${from}::timestamptz`),
+         AND s.started_at <= w.at
+         AND coalesce(r.finished_at, w.at) > w.peak_from`),
       ),
-    (r) => r.project_id,
+    (r) => r.key,
   );
   if (spells.length === 0) return null;
   return peakOf(

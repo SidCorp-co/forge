@@ -80,7 +80,8 @@ function settle(t: QueryTiming): void {
   for (const fn of due) fn();
 }
 
-function sent(t: QueryTiming): () => void {
+/** Marks a statement of `t` sent; the function it returns marks it answered, once. */
+export function statementSent(t: QueryTiming): () => void {
   t.sending += 1;
   let answered = false;
   return () => {
@@ -105,7 +106,7 @@ function timedUnsafe(unsafe: Unsafe): Unsafe {
     query.handle = function (this: LazyQuery) {
       if (!this.executed) {
         const close = open(t);
-        const answered = sent(t);
+        const answered = statementSent(t);
         const done = () => {
           close();
           answered();

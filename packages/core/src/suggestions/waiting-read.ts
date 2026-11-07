@@ -13,7 +13,7 @@ import type {
 } from '@forge/contracts/suggestions';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead, primeReads } from '../db/read-memo.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -103,13 +103,6 @@ function proposedRowsOf(projectIds: readonly string[]): Promise<Row[]> {
     .orderBy(asc(suggestions.createdAt));
 }
 
-const proposedKey = (projectId: string) => `proposedSuggestions:${projectId}`;
-
-/** The proposed suggestions of every project in `projectIds` in one statement (`db/read-memo.ts:primeReads`). */
-export function primeWaitingSuggestions(projectIds: readonly string[]): void {
-  primeReads(projectIds, proposedKey, proposedRowsOf, (r) => r.projectId);
-}
-
 /**
  * Every proposed suggestion of `projectId` the viewer may decide, oldest first. `holds` answers
  * whether the viewer holds a permission on the project; a suggestion they may neither accept nor
@@ -123,7 +116,13 @@ export async function waitingSuggestionsFor(
   const breakdownGate = await acceptGateOf(projectId, 'breakdown');
   const mayBreakdown = holds(breakdownGate.permission);
   if (!mayReject && !mayBreakdown) return [];
-  const rows = await memoizedRead(proposedKey(projectId), () => proposedRowsOf([projectId]));
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const rows = await rowsPerProject(
+    'proposedSuggestionsOf',
+    projectId,
+    proposedRowsOf,
+    (r) => r.projectId,
+  );
   const named = await targetsOf(projectId, rows);
   return rows.flatMap((r): WaitingSuggestion[] => {
     const mayAccept = r.kind === 'breakdown' ? mayBreakdown : mayReject;

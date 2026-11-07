@@ -9,7 +9,7 @@
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead, primeReads } from '../db/read-memo.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import { keptForItsAbort } from '../issues/index.js';
 import { agrees } from '../lib/plural.js';
@@ -101,9 +101,6 @@ export function endedRunHolds(
   });
 }
 
-const claimedKey = (gateStatus: IssueStatus) => (projectId: string) =>
-  `endedRunClaims:${gateStatus}:${projectId}`;
-
 /** The issues a release run claims at the gate of each of `projectIds`, the oldest landing first. */
 async function claimedAtGate(projectIds: readonly string[], gateStatus: IssueStatus) {
   return db
@@ -123,27 +120,17 @@ async function claimedAtGate(projectIds: readonly string[], gateStatus: IssueSta
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
 }
 
-/**
- * The claimed gate issues of every project in `projectIds` in one statement, so a read across
- * projects that lists each one's releases (Needs you) reads them for no statement more a project
- * (`db/read-memo.ts:primeReads`); nothing is claimed in the common case, so this is all it reads.
- */
-export function primeEndedRunClaims(projectIds: readonly string[]): void {
-  primeReads(
-    projectIds,
-    claimedKey(RELEASE_GATE_STATUS),
-    (ids) => claimedAtGate(ids, RELEASE_GATE_STATUS),
-    (r) => r.projectId,
-  );
-}
-
 /** Every ended run still claiming issues at this project's gate, with the act that frees each. */
 export async function readEndedRunHolds(
   projectId: string,
   gateStatus: IssueStatus = RELEASE_GATE_STATUS,
 ): Promise<ReleaseEndedRunHold[]> {
-  const claimed = await memoizedRead(claimedKey(gateStatus)(projectId), () =>
-    claimedAtGate([projectId], gateStatus),
+  // every project's asks before the quiet point are one read (ISS-1070 r6)
+  const claimed = await rowsPerProject(
+    `claimedAtGate:${gateStatus}`,
+    projectId,
+    (ids) => claimedAtGate(ids, gateStatus),
+    (r) => r.projectId,
   );
   if (claimed.length === 0) return [];
   const conflicts = await readClaimConflicts(

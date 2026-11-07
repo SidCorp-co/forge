@@ -11,7 +11,7 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { onePerId, rowsPerId, rowsPerProject } from '../db/read-memo.js';
+import { onePerProject, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { blockerUnsettledSql } from './blocked-by.js';
@@ -137,7 +137,7 @@ async function rowsWhere(where: SQL): Promise<IssueRowRaw[]> {
         FROM issues i
         LEFT JOIN issue_work_state w ON w.issue_id = i.id
        WHERE i.archived_at IS NULL AND ${where}
-       ORDER BY i.updated_at DESC`),
+       ORDER BY i.updated_at DESC, i.iss_seq DESC`),
   );
 }
 
@@ -162,7 +162,7 @@ export function issueRowsIn(
     (ids) =>
       rowsWhere(sql`i.id IN (
         SELECT id FROM (
-          SELECT i.id, row_number() OVER (PARTITION BY i.project_id ORDER BY i.updated_at DESC) AS rank
+          SELECT i.id, row_number() OVER (PARTITION BY i.project_id ORDER BY i.updated_at DESC, i.iss_seq DESC) AS rank
             FROM issues i
            WHERE i.project_id IN ${uuids(ids)} AND i.archived_at IS NULL ${scopeSql(scope)}
         ) ranked WHERE rank <= ${limit})`),
@@ -183,7 +183,11 @@ export async function issueRowsById(
   );
   return rows
     .filter((r) => r.project_id === projectId)
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime() ||
+        b.iss_seq - a.iss_seq,
+    );
 }
 
 /** The issue `issSeq` names in `projectId`, alone. */
@@ -192,7 +196,7 @@ export const issueRowOf = (projectId: string, issSeq: number) =>
 
 /** How many of a project's issues are open and closed; every project's asks are one read. */
 export async function scopeCounts(projectId: string): Promise<{ open: number; closed: number }> {
-  const held = await onePerId('issueScopeCounts', projectId, async (ids) => {
+  const held = await onePerProject('issueScopeCounts', projectId, async (ids) => {
     const rows = rowsOf<{ project_id: string; open: number; closed: number }>(
       await db.execute(sql`
         SELECT project_id, count(*) FILTER (WHERE status NOT IN ${DONE_SQL})::int AS open,

@@ -14,7 +14,7 @@ import {
 } from '@forge/contracts/releases';
 import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { idOfParts, onePerId, partsOf } from '../db/read-memo.js';
+import { idOfParts, onePerId, onePerProject, partsOf } from '../db/read-memo.js';
 import {
   type ReleaseDraftApprovalRow,
   releaseDraftApprovals,
@@ -155,7 +155,7 @@ export async function rosterApproved(
   roster: readonly string[],
 ): Promise<boolean> {
   // every project's asks before the quiet point are one read (ISS-1070 r6)
-  const latest = await onePerId('latestDraftDecision', projectId, async (ids) => {
+  const latest = await onePerProject('latestDraftDecision', projectId, async (ids) => {
     const rows = await db
       .selectDistinctOn([releaseDraftApprovals.projectId])
       .from(releaseDraftApprovals)

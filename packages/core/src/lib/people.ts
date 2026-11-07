@@ -1,6 +1,6 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedRead } from '../db/read-memo.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { users } from '../db/schema.js';
 
 export interface Person {
@@ -15,8 +15,8 @@ export function personLabel(u: { displayName: string | null; email: string }): s
 
 export async function peopleOf(ids: readonly (string | null)[]): Promise<Map<string, Person>> {
   const unique = [...new Set(ids.filter((i): i is string => i !== null))].sort();
-  if (unique.length === 0) return new Map();
-  return memoizedRead(`people:${unique.join(',')}`, async () => {
+  // a person's name is their own: every read's asks before the quiet point are one (ISS-1070 r6)
+  const named = await memoizedPerId('people', unique, async (some) => {
     const rows = await db
       .select({
         id: users.id,
@@ -25,9 +25,10 @@ export async function peopleOf(ids: readonly (string | null)[]): Promise<Map<str
         kind: users.kind,
       })
       .from(users)
-      .where(inArray(users.id, unique));
+      .where(inArray(users.id, [...some]));
     return new Map(rows.map((u) => [u.id, { name: personLabel(u), kind: u.kind } as Person]));
   });
+  return new Map([...named].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 export async function userNames(ids: readonly (string | null)[]): Promise<Map<string, string>> {

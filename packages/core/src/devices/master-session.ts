@@ -2,7 +2,7 @@ import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, type Column, eq, getTableName, inArray, notInArray, sql } from 'drizzle-orm';
 import { beatSession, insertSessionRow, transitionSessions } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
-import { onePerId } from '../db/read-memo.js';
+import { onePerProject } from '../db/read-memo.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { logger } from '../lib/logger.js';
@@ -39,7 +39,7 @@ async function liveMasterOn(
 export async function projectHasLiveMaster(projectId: string, executor: Tx = db): Promise<boolean> {
   if (executor === db) {
     // every project's asks before the quiet point are one read (ISS-1070 r6)
-    const live = await onePerId('projectHasLiveMaster', projectId, async (ids) => {
+    const live = await onePerProject('projectHasLiveMaster', projectId, async (ids) => {
       const rows = await db
         .selectDistinct({ projectId: agentSessions.projectId })
         .from(agentSessions)

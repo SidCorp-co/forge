@@ -62,7 +62,7 @@ export async function feedbackStandingsOf(projectId: string): Promise<FeedbackSu
     .select()
     .from(feedback)
     .where(eq(feedback.projectId, projectId))
-    .orderBy(desc(feedback.createdAt))
+    .orderBy(desc(feedback.createdAt), desc(feedback.fbSeq))
     .limit(LIST_WINDOW);
   const [linked, gate] = await Promise.all([
     linkedOf(projectId, rows),
@@ -143,12 +143,12 @@ const latestFeedbackOf = (projectId: string) =>
             inArray(feedback.projectId, [...ids]),
             sql`${feedback.id} IN (
               SELECT id FROM (
-                SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at DESC) AS rank
+                SELECT id, row_number() OVER (PARTITION BY project_id ORDER BY created_at DESC, fb_seq DESC) AS rank
                   FROM feedback WHERE project_id IN (${projects})
               ) ranked WHERE rank <= ${LIST_WINDOW})`,
           ),
         )
-        .orderBy(desc(feedback.createdAt));
+        .orderBy(desc(feedback.createdAt), desc(feedback.fbSeq));
     },
     (r) => r.projectId,
   );
@@ -179,7 +179,7 @@ async function summariesOf(
               named ? inArray(feedback.id, named.length ? named : [NO_FEEDBACK]) : undefined,
             ),
           )
-          .orderBy(desc(feedback.createdAt))
+          .orderBy(desc(feedback.createdAt), desc(feedback.fbSeq))
           .limit(named ? Math.max(named.length, 1) : LIST_WINDOW);
   const [linked, can] = await Promise.all([
     linkedOf(projectId, rows),

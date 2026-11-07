@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { agentAccountsAmong } from '../auth/index.js';
 import { db, type Tx } from '../db/client.js';
-import { onePerId } from '../db/read-memo.js';
+import { onePerProject } from '../db/read-memo.js';
 import {
   ecosystemConsumptions,
   ecosystemMemberships,
@@ -16,7 +16,7 @@ export async function readInterface(tx: Tx, projectId: string): Promise<StoredDo
   if (tx === db) {
     // every project's asks before the quiet point are one read (ISS-1070 r6)
     return (
-      (await onePerId('projectInterface', projectId, (ids) => readInterfaces(db, ids))) ?? null
+      (await onePerProject('projectInterface', projectId, (ids) => readInterfaces(db, ids))) ?? null
     );
   }
   const [row] = await tx
