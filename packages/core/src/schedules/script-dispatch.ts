@@ -8,10 +8,7 @@
 // and ctx.state is what the last successful firing left (BC-3), written back only when this one
 // succeeds. Every call, filing and state change is recorded on the fire.
 
-import {
-  type ScriptOpsDeclaration,
-  scriptOpsSchema,
-} from '@forge/contracts/script-sandbox';
+import { type ScriptOpsDeclaration, scriptOpsSchema } from '@forge/contracts/script-sandbox';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';

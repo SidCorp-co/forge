@@ -30,7 +30,7 @@ beforeAll(() => {
   provideSchedulesPorts({
     commandReads: classifyCommand,
     // the project's filer as the door behaves: an open item with the same key is joined
-    fileScriptFeedback: async ({ request }) => {
+    fileScriptFeedback: async ({ request }: { request: { signalKey: string } }) => {
       const open = openKeys.get(request.signalKey);
       const key = open ?? `FB-${openKeys.size + 1}`;
       if (!open) openKeys.set(request.signalKey, key);
@@ -59,12 +59,36 @@ describe('a declared call is read-only on the forge-ops target, or refused by na
   });
 
   it.each([
-    ['deploy', { tool: 'deploy', args: { target: 't' } }, 'forge-ops deploy, which is not one of its read-only tools'],
-    ['an unknown tool', { tool: 'restart', args: {} }, 'forge-ops restart, which is not one of its read-only tools'],
-    ['an exec that writes', { tool: 'exec_command', args: { target: 't', command: 'rm -rf /tmp/x' } }, '`rm -rf /tmp/x`, which is not read-only: rm is not a program known only to read'],
-    ['an exec that chains', { tool: 'exec_command', args: { target: 't', command: 'df; reboot' } }, 'which is not read-only: it holds a shell construct'],
-    ['a query', { tool: 'exec_command', args: { target: 't', command: 'psql -c select' } }, 'psql is not a program known only to read'],
-    ['an exec with no command', { tool: 'exec_command', args: { target: 't' } }, 'runs exec_command with no command'],
+    [
+      'deploy',
+      { tool: 'deploy', args: { target: 't' } },
+      'forge-ops deploy, which is not one of its read-only tools',
+    ],
+    [
+      'an unknown tool',
+      { tool: 'restart', args: {} },
+      'forge-ops restart, which is not one of its read-only tools',
+    ],
+    [
+      'an exec that writes',
+      { tool: 'exec_command', args: { target: 't', command: 'rm -rf /tmp/x' } },
+      '`rm -rf /tmp/x`, which is not read-only: rm is not a program known only to read',
+    ],
+    [
+      'an exec that chains',
+      { tool: 'exec_command', args: { target: 't', command: 'df; reboot' } },
+      'which is not read-only: it holds a shell construct',
+    ],
+    [
+      'a query',
+      { tool: 'exec_command', args: { target: 't', command: 'psql -c select' } },
+      'psql is not a program known only to read',
+    ],
+    [
+      'an exec with no command',
+      { tool: 'exec_command', args: { target: 't' } },
+      'runs exec_command with no command',
+    ],
   ])('refuses %s, naming the call', (_, call, said) => {
     const refusals = opsRefusals(decl([{ name: 'bad', ...call }]));
     expect(refusals).toHaveLength(1);
@@ -75,8 +99,14 @@ describe('a declared call is read-only on the forge-ops target, or refused by na
   });
 
   it('refuses a program that is not the forge-ops CLI, and two calls of one name', () => {
-    expect(scriptOpsSchema.safeParse({ program: '/bin/sh', calls: [{ name: 'a', tool: 'status' }] }).success).toBe(false);
-    expect(scriptOpsSchema.safeParse({ program: 'forge-ops', calls: [{ name: 'a', tool: 'status' }] }).success).toBe(false);
+    expect(
+      scriptOpsSchema.safeParse({ program: '/bin/sh', calls: [{ name: 'a', tool: 'status' }] })
+        .success,
+    ).toBe(false);
+    expect(
+      scriptOpsSchema.safeParse({ program: 'forge-ops', calls: [{ name: 'a', tool: 'status' }] })
+        .success,
+    ).toBe(false);
     expect(
       scriptOpsSchema.safeParse(
         decl([
@@ -88,7 +118,9 @@ describe('a declared call is read-only on the forge-ops target, or refused by na
   });
 
   it('runs the CLI with the tool and its fixed arguments as one item, no shell', () => {
-    const d = decl([{ name: 'disk', tool: 'exec_command', args: { target: 't', command: 'df -P /' } }]);
+    const d = decl([
+      { name: 'disk', tool: 'exec_command', args: { target: 't', command: 'df -P /' } },
+    ]);
     expect(opsArgv(d, d.calls[0] as ScriptOpsDeclaration['calls'][number])).toEqual([
       '/home/dev/.local/bin/forge-ops',
       'exec_command',
@@ -104,7 +136,15 @@ describe('the ops host of one firing', () => {
       argvs.push(argv);
       return {
         ok: true as const,
-        value: { name: 'x', exitCode: 0, stdout: 'up', stderr: '', truncated: false, timedOut: false, durationMs: 4 },
+        value: {
+          name: 'x',
+          exitCode: 0,
+          stdout: 'up',
+          stderr: '',
+          truncated: false,
+          timedOut: false,
+          durationMs: 4,
+        },
       };
     };
     return { argvs, run };
@@ -112,20 +152,32 @@ describe('the ops host of one firing', () => {
 
   it('runs a declared call on the box and records it answered', async () => {
     const b = box();
-    const ops = openOpsCaller({ projectId: 'p', decl: decl([{ name: 'status', tool: 'status', args: { target: 't' } }]), run: b.run });
+    const ops = openOpsCaller({
+      projectId: 'p',
+      decl: decl([{ name: 'status', tool: 'status', args: { target: 't' } }]),
+      run: b.run,
+    });
     const out = await ops.call('status', null);
     expect(out).toMatchObject({ ok: true, body: { exitCode: 0, stdout: 'up' } });
     expect(b.argvs).toEqual([['/home/dev/.local/bin/forge-ops', 'status', '{"target":"t"}']]);
-    expect(ops.calls()).toEqual([{ name: 'status', outcome: 'answered', exitCode: 0, durationMs: 4 }]);
+    expect(ops.calls()).toEqual([
+      { name: 'status', outcome: 'answered', exitCode: 0, durationMs: 4 },
+    ]);
   });
 
   it('refuses an undeclared call and one given arguments by name, with nothing asked of the box', async () => {
     const b = box();
-    const ops = openOpsCaller({ projectId: 'p', decl: decl([{ name: 'status', tool: 'status' }]), run: b.run });
+    const ops = openOpsCaller({
+      projectId: 'p',
+      decl: decl([{ name: 'status', tool: 'status' }]),
+      run: b.run,
+    });
     const undeclared = await ops.call('deploy', null);
     const given = await ops.call('status', { target: 'other' });
     expect(undeclared).toMatchObject({ ok: false, code: 'SCRIPT_OPS_UNDECLARED' });
-    expect(undeclared.ok ? '' : undeclared.message).toContain('ctx.ops.deploy is not declared on this schedule; it declares status');
+    expect(undeclared.ok ? '' : undeclared.message).toContain(
+      'ctx.ops.deploy is not declared on this schedule; it declares status',
+    );
     expect(given.ok ? '' : given.message).toContain('takes no arguments');
     expect(b.argvs).toEqual([]);
     expect(ops.calls()).toEqual([
@@ -136,8 +188,15 @@ describe('the ops host of one firing', () => {
 
   it('refuses a declared call that is not read-only at the call too', async () => {
     const b = box();
-    const ops = openOpsCaller({ projectId: 'p', decl: decl([{ name: 'ship', tool: 'deploy' }]), run: b.run });
-    expect(await ops.call('ship', null)).toMatchObject({ ok: false, code: 'SCRIPT_OPS_NOT_READ_ONLY' });
+    const ops = openOpsCaller({
+      projectId: 'p',
+      decl: decl([{ name: 'ship', tool: 'deploy' }]),
+      run: b.run,
+    });
+    expect(await ops.call('ship', null)).toMatchObject({
+      ok: false,
+      code: 'SCRIPT_OPS_NOT_READ_ONLY',
+    });
     expect(b.argvs).toEqual([]);
   });
 
@@ -169,7 +228,11 @@ describe('the feedback host of one firing', () => {
     expect(out.ok ? '' : out.message).toContain(said);
     expect(out.ok ? '' : out.message).toContain('Nothing was filed.');
     expect(filed.length).toBe(before);
-    expect(f.filings()[0]).toMatchObject({ key: null, created: false, refused: 'SCRIPT_FEEDBACK_REFUSED' });
+    expect(f.filings()[0]).toMatchObject({
+      key: null,
+      created: false,
+      refused: 'SCRIPT_FEEDBACK_REFUSED',
+    });
   });
 });
 
@@ -197,11 +260,23 @@ describe('the example production watch (REQ-87 BC-3, BC-5)', () => {
               : JSON.stringify(metrics);
         return {
           ok: true as const,
-          value: { name: 'x', exitCode: 0, stdout, stderr: '', truncated: false, timedOut: false, durationMs: 3 },
+          value: {
+            name: 'x',
+            exitCode: 0,
+            stdout,
+            stderr: '',
+            truncated: false,
+            timedOut: false,
+            durationMs: 3,
+          },
         };
       },
     });
-    const filer = openFiler({ projectId: 'p', schedule: { id: 's', name: 'epod watch' }, fireId: 'f' });
+    const filer = openFiler({
+      projectId: 'p',
+      schedule: { id: 's', name: 'epod watch' },
+      fireId: 'f',
+    });
     const r = await runScript({
       script: PRODUCTION_WATCH_SCRIPT,
       projectId: 'p',
@@ -214,7 +289,10 @@ describe('the example production watch (REQ-87 BC-3, BC-5)', () => {
     });
     expect(r.status, JSON.stringify(r.error)).toBe('success');
     if (r.state) state = r.state;
-    return { value: r.value as { breaches: Record<string, number>; filed: string[] }, calls: ops.calls() };
+    return {
+      value: r.value as { breaches: Record<string, number>; filed: string[] },
+      calls: ops.calls(),
+    };
   };
 
   it('reads healthy, files nothing, and calls only what it declares', async () => {

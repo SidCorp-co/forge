@@ -28,7 +28,10 @@ function assertOps(
   targetProjectSlug: string | null | undefined,
 ): void {
   if (ops == null) return;
-  if (kind !== 'script') throw badRequest(`ops must be omitted when kind is "${kind}": only a script schedule calls its project's forge-ops target`);
+  if (kind !== 'script')
+    throw badRequest(
+      `ops must be omitted when kind is "${kind}": only a script schedule calls its project's forge-ops target`,
+    );
   if (targetProjectSlug) {
     throw badRequest(
       "ops and targetProjectSlug do not go together: a script schedule reads its own project's forge-ops target and files on its own project",

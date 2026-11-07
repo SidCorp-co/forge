@@ -47,7 +47,9 @@ export function openFiler(args: {
   const log: ScriptFiling[] = [];
   const file: ScriptFiler = async (payload) => {
     const key =
-      payload && typeof payload === 'object' && typeof (payload as { signalKey?: unknown }).signalKey === 'string'
+      payload &&
+      typeof payload === 'object' &&
+      typeof (payload as { signalKey?: unknown }).signalKey === 'string'
         ? String((payload as { signalKey: string }).signalKey).slice(0, 200)
         : '';
     const refuse = (message: string) => {

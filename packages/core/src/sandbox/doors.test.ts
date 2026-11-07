@@ -57,7 +57,11 @@ describe('ctx.ops', () => {
     ]);
     expect(r.value).toEqual([
       { ok: { exitCode: 0, stdout: 'ok' } },
-      { name: 'ScriptOpsRefused', code: 'SCRIPT_OPS_UNDECLARED', message: 'deploy is not declared' },
+      {
+        name: 'ScriptOpsRefused',
+        code: 'SCRIPT_OPS_UNDECLARED',
+        message: 'deploy is not declared',
+      },
     ]);
   });
 
@@ -139,9 +143,12 @@ describe('ctx.state', () => {
       `past its cap of ${SCRIPT_STATE_CAP_BYTES}`,
     ],
   ])('refuses %s by name and keeps the last one', async (_, set, said) => {
-    const r = await run(`${caught} const t = await tried(() => ${set}); return { t, s: ctx.state.get() };`, {
-      state: { n: 1 },
-    });
+    const r = await run(
+      `${caught} const t = await tried(() => ${set}); return { t, s: ctx.state.get() };`,
+      {
+        state: { n: 1 },
+      },
+    );
     const v = r.value as { t: { code: string; message: string }; s: unknown };
     expect(v.t.code).toBe('SCRIPT_STATE_REFUSED');
     expect(v.t.message).toContain(said);

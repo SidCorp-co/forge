@@ -106,10 +106,18 @@ const fireOf = async (scheduleId: string) => {
 
 describe('a declaration that is not read-only is refused by name when it is saved (BC-1)', () => {
   it.each([
-    ['deploy', { name: 'ship', tool: 'deploy', args: { target: 'epod-production' } }, 'forge-ops deploy'],
+    [
+      'deploy',
+      { name: 'ship', tool: 'deploy', args: { target: 'epod-production' } },
+      'forge-ops deploy',
+    ],
     [
       'an exec that writes',
-      { name: 'wipe', tool: 'exec_command', args: { target: 'epod-production', command: 'rm -rf /var/lib/x' } },
+      {
+        name: 'wipe',
+        tool: 'exec_command',
+        args: { target: 'epod-production', command: 'rm -rf /var/lib/x' },
+      },
       '`rm -rf /var/lib/x`, which is not read-only',
     ],
   ])('refuses %s, naming the call, and saves nothing', async (_, call, said) => {
@@ -119,8 +127,9 @@ describe('a declaration that is not read-only is refused by name when it is save
       ops: { program: PRODUCTION_WATCH_OPS.program, calls: [call] },
     });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
-    const refusals = (res.body.error as { refusals: { code: string; path: string; detail: string }[] })
-      .refusals;
+    const refusals = (
+      res.body.error as { refusals: { code: string; path: string; detail: string }[] }
+    ).refusals;
     expect(refusals).toEqual([
       expect.objectContaining({ code: 'SCRIPT_OPS_NOT_READ_ONLY', path: '/ops/calls/0' }),
     ]);
@@ -165,9 +174,11 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
       { name: 'status', outcome: 'answered', exitCode: 0, durationMs: 5 },
     ]);
     // only the declared call reached the box, as the CLI with its fixed arguments
-    expect(opsReads().slice(before).map((a) => a.data.argv)).toEqual([
-      [PRODUCTION_WATCH_OPS.program, 'status', '{"target":"epod-production"}'],
-    ]);
+    expect(
+      opsReads()
+        .slice(before)
+        .map((a) => a.data.argv),
+    ).toEqual([[PRODUCTION_WATCH_OPS.program, 'status', '{"target":"epod-production"}']]);
   });
 
   it('fails a firing whose stored declaration stopped reading, before the script runs', async () => {
@@ -187,7 +198,11 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
     expect(ran.status).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(ran.body)).toContain('SCRIPT_OPS_NOT_READ_ONLY');
     const fire = await fireOf(id);
-    expect(fire).toMatchObject({ status: 'failed', refusal: 'SCRIPT_OPS_NOT_READ_ONLY', output: null });
+    expect(fire).toMatchObject({
+      status: 'failed',
+      refusal: 'SCRIPT_OPS_NOT_READ_ONLY',
+      output: null,
+    });
     expect(opsReads().length).toBe(before);
   });
 });
@@ -222,7 +237,9 @@ describe('the example production watch, every 15 minutes with no agent session (
     const f = await fire(healthy);
     expect(f.status, String(f.error)).toBe('success');
     expect(f.session_id).toBeNull();
-    expect((f.ops_calls as { name: string; outcome: string }[]).map((c) => [c.name, c.outcome])).toEqual([
+    expect(
+      (f.ops_calls as { name: string; outcome: string }[]).map((c) => [c.name, c.outcome]),
+    ).toEqual([
       ['status', 'answered'],
       ['disk', 'answered'],
       ['metrics', 'answered'],
@@ -276,7 +293,11 @@ describe('the example production watch, every 15 minutes with no agent session (
 
   it('shows the calls and filings on the fire the run history reads (BC-4)', async () => {
     const f = await fireOf(id);
-    const res = await api(owner, 'GET', `/api/projects/${projectId}/automation/fires/${String(f.id)}`);
+    const res = await api(
+      owner,
+      'GET',
+      `/api/projects/${projectId}/automation/fires/${String(f.id)}`,
+    );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const shown = res.body.fire as Body;
     expect(shown.opsCalls).toEqual(f.ops_calls);

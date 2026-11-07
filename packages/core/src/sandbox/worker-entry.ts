@@ -222,9 +222,7 @@ function wrapped(script: string): string {
   return `(async () => {\n${script}\n})().then((v) => (v === undefined ? null : JSON.stringify(v)))`;
 }
 
-function finish(
-  done: Omit<WorkerDone, 'type' | 'output' | 'notifications' | 'stateJson'>,
-): void {
+function finish(done: Omit<WorkerDone, 'type' | 'output' | 'notifications' | 'stateJson'>): void {
   const message: WorkerDone = {
     type: 'done',
     output: output.join('\n'),

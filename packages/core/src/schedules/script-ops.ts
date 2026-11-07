@@ -35,7 +35,9 @@ export function callNotReadOnly(call: ScriptOpsCallDeclaration): string | null {
       return `${call.name} runs ${FORGE_OPS_EXEC_TOOL} with no command; its args name the command it runs, as { target, command }`;
     }
     const cls = schedulesPorts().commandReads(command);
-    return cls.reads ? null : `${call.name} runs ${FORGE_OPS_EXEC_TOOL} \`${command}\`, which is not read-only: ${cls.why}`;
+    return cls.reads
+      ? null
+      : `${call.name} runs ${FORGE_OPS_EXEC_TOOL} \`${command}\`, which is not read-only: ${cls.why}`;
   }
   return `${call.name} calls ${SCRIPT_OPS_TARGET} ${call.tool}, which is not one of its read-only tools (${[...READ_TOOLS, `${FORGE_OPS_EXEC_TOOL} with a reading command`].join(', ')})`;
 }
@@ -69,7 +71,9 @@ export function opsArgv(decl: ScriptOpsDeclaration, call: ScriptOpsCallDeclarati
 }
 
 /** The box a project's ops calls run on: one online box bound to it that runs a declared read. */
-async function opsBoxOf(projectId: string): Promise<{ ok: true; deviceId: string } | { ok: false; why: string }> {
+async function opsBoxOf(
+  projectId: string,
+): Promise<{ ok: true; deviceId: string } | { ok: false; why: string }> {
   const need = SUPPORT_BOX_CAPABILITIES.reads;
   const online = await onlineCapableDeviceIds(projectId, undefined, {
     includeLimited: true,
@@ -151,10 +155,17 @@ export function openOpsCaller(args: {
     }
     // read again at the call: a declaration that stopped reading never reaches the box
     const why = callNotReadOnly(decl);
-    if (why) return refuse('SCRIPT_OPS_NOT_READ_ONLY', `SCRIPT_OPS_NOT_READ_ONLY: ${why}. Nothing ran.`);
-    const ran = await run(opsArgv(args.decl, decl), decl.timeoutMs ?? SCRIPT_OPS_TIMEOUT_DEFAULT_MS);
+    if (why)
+      return refuse('SCRIPT_OPS_NOT_READ_ONLY', `SCRIPT_OPS_NOT_READ_ONLY: ${why}. Nothing ran.`);
+    const ran = await run(
+      opsArgv(args.decl, decl),
+      decl.timeoutMs ?? SCRIPT_OPS_TIMEOUT_DEFAULT_MS,
+    );
     if (!ran.ok) {
-      return refuse('SCRIPT_OPS_FAILED', `SCRIPT_OPS_FAILED: ctx.ops.${said} did not run: ${ran.why}`);
+      return refuse(
+        'SCRIPT_OPS_FAILED',
+        `SCRIPT_OPS_FAILED: ctx.ops.${said} did not run: ${ran.why}`,
+      );
     }
     const v = ran.value;
     log.push({

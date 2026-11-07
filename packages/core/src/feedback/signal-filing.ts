@@ -20,7 +20,11 @@ import { insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './servic
 const CLOSED: readonly string[] = ['verified', 'declined'];
 
 /** The open item `signalKey` names in the project, a duplicate read as its root; null where none is. */
-export async function openItemOf(tx: Tx, projectId: string, signalKey: string): Promise<Row | null> {
+export async function openItemOf(
+  tx: Tx,
+  projectId: string,
+  signalKey: string,
+): Promise<Row | null> {
   const named = await tx
     .select()
     .from(feedback)
