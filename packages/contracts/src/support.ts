@@ -732,6 +732,11 @@ export const SUPPORT_ACTION_KINDS = [
 	"owner_sign_in",
 	/** The owner confirmed the sign-in core started, and core keeps the credential it gave (ISS-1047). */
 	"owner_signed_in",
+	/**
+	 * The owner's cited answer to a Forge question, kept because his chat account is no Forge account
+	 * yet, and recorded as his once it is (ISS-976); `output` says what became of it.
+	 */
+	"answer_kept",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 

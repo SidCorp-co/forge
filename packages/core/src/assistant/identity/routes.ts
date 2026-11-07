@@ -4,6 +4,9 @@
  * propose and confirm are project-scoped because the project supplies the chat
  * credential the speaker's address is read through; the map they write is keyed
  * on the channel instance and resolves for every project reading it.
+ *
+ * ISS-976 — a project admin names the Forge account a chat account is, where no
+ * address matches it; the naming holds only in that project, and is undone there.
  */
 
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
@@ -17,6 +20,7 @@ import { requiresOnParam } from '../../permissions/index.js';
 import { confirmSpeakerLink } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
+import { nameSpeaker, namingsOf, type SpeakerNaming, undoNaming } from './named-links.js';
 import {
   isConversationAdapter,
   type SpeakerRefusal,
@@ -100,7 +104,7 @@ async function profileAndCandidates(
   if (!lookup.profile.email) {
     return {
       code: 'SPEAKER_EMAIL_ABSENT',
-      message: `${source} reports no email address for speaker id ${externalId}, and an address is the only thing a candidate is matched on. Set one on the chat account, or link through a channel that reports one.`,
+      message: `${source} reports no email address for speaker id ${externalId}, and an address is the only thing this page matches a candidate on. The way that needs none: a project admin names the Forge account this chat account is, with POST /api/projects/${projectId}/speaker-links/named { source, externalId, userId, reason }. Otherwise an address set on the chat account lets this page match it.`,
     };
   }
   return { profile: lookup.profile, candidates: await proposeCandidates(lookup.profile.email) };
@@ -180,5 +184,117 @@ speakerLinkProjectRoutes.post(
       userId,
     });
     return c.json({ link: confirmed.link }, 201);
+  },
+);
+
+const projectAdmin = requiresOnParam('project.admin');
+
+const namingBody = zValidator(
+  'json',
+  z.object({
+    source: z.string(),
+    externalId: z.string(),
+    /** The Forge account the chat account is, by its id: never matched from a name or an address. */
+    userId: z.uuid(),
+    /** Why the admin names it, kept with the naming. */
+    reason: z.string().trim().min(1).max(500),
+  }),
+  invalid(
+    'invalid body: { source, externalId, userId, reason }. "externalId" is the chat server\'s own user id for the speaker, "userId" the Forge account\'s id, and "reason" why you name it.',
+  ),
+);
+
+const undoBody = zValidator(
+  'json',
+  z.object({ reason: z.string().trim().min(1).max(500) }),
+  invalid('invalid body: { reason }, why the naming is undone.'),
+);
+
+const namingParam = zValidator(
+  'param',
+  z.object({ projectId: z.uuid(), namingId: z.uuid() }),
+  invalid('invalid path: /api/projects/<project uuid>/speaker-links/named/<naming uuid>'),
+);
+
+function namingView(n: SpeakerNaming) {
+  return {
+    id: n.id,
+    source: n.source,
+    namespace: n.externalNamespace,
+    externalId: n.externalId,
+    label: n.externalLabel,
+    userId: n.userId,
+    namedBy: n.namedBy,
+    reason: n.reason,
+    namedAt: n.namedAt,
+    undoneBy: n.undoneBy,
+    undoneAt: n.undoneAt,
+    undoReason: n.undoReason,
+  };
+}
+
+speakerLinkProjectRoutes.get(
+  '/projects/:projectId/speaker-links/named',
+  projectParam,
+  projectAdmin,
+  async (c) => {
+    const namings = await namingsOf(c.req.valid('param').projectId);
+    return c.json({ namings: namings.map(namingView) });
+  },
+);
+
+speakerLinkProjectRoutes.post(
+  '/projects/:projectId/speaker-links/named',
+  projectParam,
+  projectAdmin,
+  namingBody,
+  async (c) => {
+    const projectId = c.req.valid('param').projectId;
+    const raw = c.req.valid('json');
+    const body = readBody(raw);
+    if (isRefusal(body)) throw refused(body, '/source');
+    // the chat server says the id is an account it holds; its address is not read
+    const lookup = await lookupSpeakerProfile({ projectId, ...body });
+    if (!lookup.found) throw refused(lookup.refusal, '/externalId');
+    const named = await nameSpeaker({
+      projectId,
+      profile: lookup.profile,
+      userId: raw.userId,
+      namedBy: c.get('userId'),
+      reason: raw.reason,
+    });
+    if (!named.ok) {
+      throw refused(
+        named.refusal,
+        named.refusal.code === 'SPEAKER_NAMED_NOT_A_MEMBER' ? '/userId' : '/externalId',
+      );
+    }
+    await tellSpeakerLinked({
+      source: lookup.profile.source,
+      namespace: lookup.profile.namespace,
+      externalId: lookup.profile.externalId,
+      label: lookup.profile.username,
+      userId: raw.userId,
+      projectId,
+    });
+    return c.json({ naming: namingView(named.naming) }, 201);
+  },
+);
+
+speakerLinkProjectRoutes.delete(
+  '/projects/:projectId/speaker-links/named/:namingId',
+  namingParam,
+  projectAdmin,
+  undoBody,
+  async (c) => {
+    const { projectId, namingId } = c.req.valid('param');
+    const undone = await undoNaming({
+      projectId,
+      namingId,
+      by: c.get('userId'),
+      reason: c.req.valid('json').reason,
+    });
+    if (!undone.ok) throw refused(undone.refusal, '/namingId');
+    return c.json({ naming: namingView(undone.naming) });
   },
 );

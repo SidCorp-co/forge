@@ -9,6 +9,12 @@ export const SPEAKER_REFUSAL_CODES = [
 	"SPEAKER_NOT_THE_TARGET",
 	"SPEAKER_ADDRESS_DIFFERS",
 	"SPEAKER_ALREADY_LINKED",
+	/** The Forge account a project admin names for a chat account holds no write on the project (ISS-976). */
+	"SPEAKER_NAMED_NOT_A_MEMBER",
+	/** No naming of this project has that id (ISS-976). */
+	"SPEAKER_NAMING_UNKNOWN",
+	/** The naming was undone already (ISS-976). */
+	"SPEAKER_NAMING_UNDONE",
 ] as const;
 
 export type SpeakerRefusalCode = (typeof SPEAKER_REFUSAL_CODES)[number];

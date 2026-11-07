@@ -3970,6 +3970,13 @@
       "when": 1836864000000,
       "tag": "0624_release_reads_find_their_runs_by_index",
       "breakpoints": true
+    },
+    {
+      "idx": 625,
+      "version": "7",
+      "when": 1836950400000,
+      "tag": "0625_an_admin_names_the_forge_account_a_chat_account_is",
+      "breakpoints": true
     }
   ]
 }

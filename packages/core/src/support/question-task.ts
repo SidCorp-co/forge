@@ -17,6 +17,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
+import { keepOwnerAnswer, ownerSetupStep } from './kept-answers.js';
 import { no, type Outcome } from './outcome.js';
 import { ownerOwedQuestion } from './owner-owed.js';
 import type { Refusal } from './refusals.js';
@@ -138,7 +139,11 @@ async function ownerMessage(room: RoomRow, owner: string, id: string): Promise<A
   return row ?? null;
 }
 
-/** Record the owner's cited message as their answer, as their linked Forge account. */
+/**
+ * Record the owner's cited message as their answer, as the Forge account his chat account is. Where
+ * it is none yet, the answer is kept and recorded once it is (ISS-976), and the refusal names who
+ * owes that step: never him.
+ */
 async function answerAsOwner(
   room: RoomRow,
   handed: { questionId: string; round: number },
@@ -153,17 +158,8 @@ async function answerAsOwner(
       `${input.message} is no message the owner this binding names wrote in this group; cite the owner's own message that answers it. Nothing was recorded.`,
     );
   }
-  const { namespace } = await roomAuth(room);
-  const speaker = await resolveSpeaker({ source: 'rocketchat', namespace, externalId: owner });
-  if (!speaker.linked) {
-    return no(
-      'SUPPORT_ANSWER_NOT_THE_OWNER',
-      '/message',
-      "the owner's chat account is linked to no Forge account, so nobody can be recorded as answering; ask them to link it (support.link). Nothing was recorded.",
-    );
-  }
   const [q] = await db
-    .select({ steps: agentQuestions.steps })
+    .select({ steps: agentQuestions.steps, projectId: agentQuestions.projectId })
     .from(agentQuestions)
     .where(eq(agentQuestions.id, handed.questionId))
     .limit(1);
@@ -183,6 +179,26 @@ async function answerAsOwner(
         ? `this question is a choice: pass \`option\`, the id of the option the owner's words pick (${step.options.map((o) => o.id).join(', ')}). Nothing was recorded.`
         : "the owner's message carries no words to record. Nothing was recorded.",
     );
+  }
+  // the account is resolved where the answer is recorded: a naming holds in its own project alone
+  const questionProject = q?.projectId ?? room.projectId;
+  const { namespace } = await roomAuth(room);
+  const speaker = await resolveSpeaker(
+    { source: 'rocketchat', namespace, externalId: owner },
+    questionProject,
+  );
+  if (!speaker.linked) {
+    if (q) {
+      await keepOwnerAnswer(room, input.thread, {
+        questionId: handed.questionId,
+        questionProjectId: questionProject,
+        round: handed.round,
+        message: input.message,
+        ownerKey: owner,
+        answer,
+      });
+    }
+    return no('SUPPORT_ANSWER_NOT_THE_OWNER', '/message', await ownerSetupStep(questionProject));
   }
   try {
     await answerAs({

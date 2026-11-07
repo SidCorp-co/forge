@@ -18,6 +18,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { granters, grantsOf, readersOf, supportConfigOf } from './grants.js';
+import { keepOwnerAnswer, ownerSetupStep } from './kept-answers.js';
 import { projectsInScope } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { issueInReach, questionRefusal } from './owner-ask-targets.js';
@@ -355,13 +356,12 @@ async function answerForgeQuestion(
   ownerKey: string,
 ): Promise<void> {
   const why = await (async (): Promise<string | null> => {
-    const { namespace } = await roomAuth(room);
-    const owner = await resolveSpeaker({ source: 'rocketchat', namespace, externalId: ownerKey });
-    if (!owner.linked) {
-      return "the owner's chat account is linked to no Forge account, so nobody can be recorded as answering; ask them to link it (support.link) and answer again";
-    }
     const [q] = await db
-      .select({ status: agentQuestions.status, steps: agentQuestions.steps })
+      .select({
+        status: agentQuestions.status,
+        steps: agentQuestions.steps,
+        projectId: agentQuestions.projectId,
+      })
       .from(agentQuestions)
       .where(eq(agentQuestions.id, questionId))
       .limit(1);
@@ -371,6 +371,24 @@ async function answerForgeQuestion(
     if (!answer) {
       const options = isChoiceStep(step) ? step.options.map((o) => o.label).join(' | ') : '';
       return `the question is a choice, and the owner's words name none of its options (${options}); ask them to answer with one`;
+    }
+    // resolved where the answer is recorded; where he is no Forge account yet, it is kept (ISS-976)
+    const questionProject = q.projectId ?? room.projectId;
+    const { namespace } = await roomAuth(room);
+    const owner = await resolveSpeaker(
+      { source: 'rocketchat', namespace, externalId: ownerKey },
+      questionProject,
+    );
+    if (!owner.linked) {
+      await keepOwnerAnswer(room, thread, {
+        questionId,
+        questionProjectId: questionProject,
+        round: step.round,
+        message: message.id,
+        ownerKey,
+        answer,
+      });
+      return ownerSetupStep(questionProject);
     }
     try {
       await answerAs({

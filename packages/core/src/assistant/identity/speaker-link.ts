@@ -5,6 +5,7 @@ import { type ConversationAdapter, conversationAdapters } from '../../db/schema-
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { logger } from '../../lib/logger.js';
 import { speakerLinkUrl } from './link-url.js';
+import { namedUserOf } from './named-links.js';
 
 export type { SpeakerRefusal, SpeakerResolution };
 
@@ -38,6 +39,7 @@ function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
     url
       ? `Confirm it here: ${url}`
       : 'No screen for it yet: POST /api/projects/<id>/speaker-links.',
+    "Where the chat account reports no email, a project admin names your Forge account for it (POST /api/projects/<id>/speaker-links/named).",
   ].join(' ');
 }
 
@@ -53,8 +55,9 @@ export function sourceUnknownRefusal(source: string): SpeakerRefusal {
 }
 
 /**
- * The ONE resolution. A speaker is the Forge user a confirmed row names, or a
- * named refusal — never a guess, never a fallback, never a service identity.
+ * The ONE resolution. A speaker is the Forge user a confirmed row names, or, in
+ * `projectId`, the one that project's admin named for it (ISS-976), or a named
+ * refusal — never a guess, never a fallback, never a service identity.
  */
 export async function resolveSpeaker(
   ref: SpeakerRef,
@@ -74,6 +77,8 @@ export async function resolveSpeaker(
       ),
     )
     .limit(1);
+  const named = !row && projectId ? await namedUserOf(ref, projectId) : null;
+  if (named) return { linked: true, userId: named };
   if (!row) {
     return {
       linked: false,
@@ -83,13 +88,18 @@ export async function resolveSpeaker(
   return { linked: true, userId: row.userId };
 }
 
-/** A chat account a person just linked to their Forge user, on the link page. */
+/**
+ * A chat account a person just linked to their Forge user, on the link page; or one a project admin
+ * named, which holds only in `projectId` (ISS-976).
+ */
 export interface SpeakerLinked {
   source: string;
   namespace: string;
   externalId: string;
   label: string | null;
   userId: string;
+  /** The project whose admin named the account; absent for a link its owner confirmed. */
+  projectId?: string;
 }
 
 let linkedListener: ((linked: SpeakerLinked) => Promise<void>) | null = null;
