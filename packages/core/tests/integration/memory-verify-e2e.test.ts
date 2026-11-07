@@ -22,6 +22,12 @@ type Entry = Record<string, unknown> & {
 const DAY_H = 24;
 const due = MEMORY_CHECK_AFTER_DAYS * DAY_H;
 
+// a seeded row answers its curation, so the checks read here are age, a flag and a cited record;
+// a row that owes its curation is due a check of its own (curated-memory-e2e)
+const CURATED = {
+  curation: { value: 'v', type: 'fact', scope: 'the board', recheckWhen: 'it moves', owed: [] },
+};
+
 describe('a person says a memory is still true', () => {
   let w: World;
   let movingId: string;
@@ -43,7 +49,7 @@ describe('a person says a memory is still true', () => {
   async function seed(ref: string, text: string, metadata: object = {}, written = ago(due + 1)) {
     await db.execute(sql`
       INSERT INTO memories (project_id, source, source_ref, text_content, metadata, created_at, updated_at)
-      VALUES (${w.projectId}, 'note', ${ref}, ${text}, ${JSON.stringify(metadata)}::jsonb,
+      VALUES (${w.projectId}, 'note', ${ref}, ${text}, ${JSON.stringify({ ...CURATED, ...metadata })}::jsonb,
               ${written.toISOString()}, ${written.toISOString()})
     `);
   }

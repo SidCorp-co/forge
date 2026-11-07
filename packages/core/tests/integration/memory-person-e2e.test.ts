@@ -27,6 +27,12 @@ async function write(w: World, token: string, sourceRef: string, textContent: st
     source: 'note',
     sourceRef,
     textContent,
+    // each row answers its curation, so `stale` below reads the gone record and the release flag
+    // alone; a row that owes one is listed there too (curated-memory-e2e)
+    value: 'the next run reads the board as it is',
+    type: 'fact',
+    scope: 'the board',
+    recheckWhen: 'the board is redesigned',
   });
 }
 

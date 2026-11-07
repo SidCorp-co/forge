@@ -223,7 +223,7 @@ describe("the guide index line shows an entry's source", () => {
 });
 
 describe('a lesson entry is unaffected (criterion 4)', () => {
-  it('is written by the lessons module with none of the three, and the door still refuses it as a lesson', async () => {
+  it('is written by the lessons module with no source or re-check, its scope its own, and the door still refuses it as a lesson', async () => {
     await db.transaction((tx) =>
       putLessonEntry(tx, {
         projectId: w.projectId,
@@ -241,8 +241,9 @@ describe('a lesson entry is unaffected (criterion 4)', () => {
     expect(read.body).toMatchObject({
       kind: 'lesson',
       body: 'Keep ward names short.',
+      type: 'convention',
       source: null,
-      scope: null,
+      scope: 'every piece of work in this project',
       recheckWhen: null,
     });
     const named = await api(w.admin, 'PUT', own('zz-my-lesson'), {

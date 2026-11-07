@@ -26,6 +26,12 @@ async function read(w: World, state: string) {
   return res.body as { items: Entry[]; total: number; counts: Record<string, number> };
 }
 
+// a seeded row answers its curation, so the checks read here are age, a flag and a cited record;
+// a row that owes its curation is due a check of its own (curated-memory-e2e)
+const CURATED = {
+  curation: { value: 'v', type: 'fact', scope: 'the board', recheckWhen: 'it moves', owed: [] },
+};
+
 async function seed(
   w: World,
   ref: string,
@@ -34,7 +40,7 @@ async function seed(
 ) {
   await db.execute(sql`
     INSERT INTO memories (project_id, source, source_ref, text_content, metadata, created_at, updated_at, last_verified_at, archived_at)
-    VALUES (${w.projectId}, 'note', ${ref}, ${text}, ${JSON.stringify(at.metadata ?? {})}::jsonb,
+    VALUES (${w.projectId}, 'note', ${ref}, ${text}, ${JSON.stringify({ ...CURATED, ...at.metadata })}::jsonb,
             ${at.written.toISOString()}, ${at.written.toISOString()}, ${at.verified?.toISOString() ?? null},
             ${at.archived ? at.written.toISOString() : null})
   `);
