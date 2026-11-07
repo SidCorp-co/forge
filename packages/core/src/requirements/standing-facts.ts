@@ -197,6 +197,12 @@ async function issueCriteriaRead(
        WHERE c.issue_id = ANY(${uuidArray(issueIds)})
          AND c.retired_at IS NULL
     ),
+    -- the asked issues' builder facts, read once by their issue: looked up per verdict they cost a
+    -- descent of the key for each one
+    facts AS MATERIALIZED (
+      SELECT verdict_id, by_builder FROM verdict_builder_facts
+       WHERE issue_id = ANY(${uuidArray(issueIds)})
+    ),
     -- every criterion's verdicts ranked in their class at once, so each fact table is joined once
     ranked AS (
       SELECT cv.id, cv.criterion_id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence,
@@ -208,7 +214,8 @@ async function issueCriteriaRead(
                                 ORDER BY cv.created_at DESC, cv.id DESC) AS kept
         FROM crit c
         JOIN criterion_verdicts cv ON cv.criterion_id = c.id
-        LEFT JOIN verdict_builder_facts vb ON vb.verdict_id = cv.id
+        LEFT JOIN facts vb ON vb.verdict_id = cv.id
+       WHERE cv.issue_id = ANY(${uuidArray(issueIds)})
     )
     SELECT c.id AS criterion_id, c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
            v.identity_kind,
