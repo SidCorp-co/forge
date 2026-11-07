@@ -54,6 +54,7 @@ const line = (over: Partial<FeedbackForecast> = {}): FeedbackForecast => ({
   key: 'FB-1',
   triage: null,
   delivery: null,
+  owes: null,
   ...over,
 });
 const delivery = (landing: Forecast, over: Partial<DeliveryForecast> = {}): DeliveryForecast => ({
