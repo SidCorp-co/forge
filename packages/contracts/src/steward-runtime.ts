@@ -172,14 +172,24 @@ export interface StewardRunsResponse {
 	runs: StewardRunView[];
 }
 
-/** One share of the steward's day: what it may spend, and what it has spent. */
+/** One side of the steward's day: what it has spent, and what it may spend in all today. */
 export interface StewardShareView {
 	gatewayTurns: { spent: number; of: number };
 	runnerJobs: { spent: number; of: number };
 }
 
 /**
+ * The handoffs' side: `kept` is the share no sweep run may spend, and `of` adds to it what the sweep
+ * has not spent, since a handoff is never dropped for its share (ISS-1100: 10 runner jobs read "of 4").
+ */
+export interface StewardHandoffShareView extends StewardShareView {
+	kept: { gatewayTurns: number; runnerJobs: number };
+}
+
+/**
  * `GET /api/projects/:id/steward-budget`: the steward's UTC day, so a person can see why it is quiet.
+ * `handoff.of` is the day less what the sweep spent, and `sweep.of` its share, less what handoffs
+ * spent past theirs, so neither side reads spent past what it may spend.
  * `quiet` is `handoffs` where the whole day is spent (no handoff gets a run until `resumesAt`),
  * `sweep` where only the sweep's share is spent (handoffs still run, `paced` stuck items wait), and
  * null where neither is.
@@ -187,7 +197,7 @@ export interface StewardShareView {
 export interface StewardBudgetView {
 	day: string;
 	resumesAt: string;
-	handoff: StewardShareView;
+	handoff: StewardHandoffShareView;
 	sweep: StewardShareView;
 	paced: number;
 	quiet: "handoffs" | "sweep" | null;

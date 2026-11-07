@@ -9,16 +9,22 @@
 // A note written under facts core has since reworded reads stale though its basis never moved
 // (ISS-1044): it is emitted `standing.changed` too, a stuck item's as well once its diagnosis ran on
 // that basis, and only once, by a run queued after the note was written.
+// A stuck item is diagnosed again on an unchanged basis only where that can ask what the last could
+// not (ISS-1100): never while an ask or a decision already holds its standing, which the diagnosis
+// would only note again, and never more than `DIAGNOSES_PER_BASIS_A_DAY` times a UTC day whatever
+// ended them. Forge REQ-45 was diagnosed every 5 minutes on one basis, each run ending on a note
+// alone because its standing's decision forbade an ask, and spent the sweep's day by 02:00Z.
 // An ask of the master stands until its item's basis moves, its item waits on a person, or a reasoned
 // decision on the item, or on the item whose run asked, answers it; one answered since it was made
 // leaves the master's nudge at once, and the sweep settles it. The sweep spends only its share of the
-// day's budget (`policy.ts:sharesOf`): it raises no more runs than that share has room for, oldest
-// stuck first, then the oldest note, and the rest wait for a later sweep, so a full backlog is paced
-// across days and the handoff share stays whole. Before any of it, an agreed requirement whose check
-// ended without finishing an hour ago, or never ran, has its check queued again (`owed-checks.ts`):
-// its delivery waits on that check, and nothing else raises it.
+// day's budget (`policy.ts:sharesOf`), less what handoffs spent past their own: it raises no more runs
+// than that has room for, oldest stuck first, then the oldest note, and the rest wait for a later
+// sweep, so a full backlog is paced across days and the handoff share stays whole. Before any of it,
+// an agreed requirement whose check ended without finishing an hour ago, or never ran, has its check
+// queued again (`owed-checks.ts`): its delivery waits on that check, so it is a handoff billed to the
+// handoff share whatever room the sweep has left, and nothing else raises it.
 
-import type { ItemStanding, StandingSubjectKind } from '@forge/contracts/steward';
+import type { ItemStanding, StandingSubject, StandingSubjectKind } from '@forge/contracts/steward';
 import { isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -28,6 +34,7 @@ import {
   type AnsweredOn,
   answeredAsks,
   answeredOnOf,
+  askedAlready,
   askItemOf,
   asksToSettle,
   openMasterAsks,
@@ -36,7 +43,7 @@ import {
 import { raiseOwedChecks } from './owed-checks.js';
 import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
-import { ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
+import { diagnosesOnBasis, ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
 
 export interface SweepTally {
   projects: number;
@@ -49,12 +56,42 @@ export interface SweepTally {
   paced: number;
 }
 
-/** How many gateway turns the sweep may still commit today: its share, less what it spent and queued. */
+/**
+ * How many gateway turns the sweep may still commit today: its share less what it spent, or the whole
+ * day less what every run spent where handoffs spent past their own share into it, less what it queued.
+ */
 async function sweepRoom(projectId: string, now: Date): Promise<number> {
-  const { sweep } = sharesOf((await stewardStanceOf(projectId)).budget);
-  const spent = await spentSince(projectId, utcDayStart(now), { sweepOnly: true });
+  const { budget } = await stewardStanceOf(projectId);
+  const day = utcDayStart(now);
+  const swept = await spentSince(projectId, day, { sweepOnly: true });
+  const all = await spentSince(projectId, day);
   const queued = await sweepQueued(projectId, now);
-  return sweep.gatewayTurns - spent.gatewayTurns - queued.gatewayTurns;
+  const left = Math.min(
+    sharesOf(budget).sweep.gatewayTurns - swept.gatewayTurns,
+    budget.gatewayTurns - all.gatewayTurns,
+  );
+  return left - queued.gatewayTurns;
+}
+
+/** How many times one stuck basis may be diagnosed in a UTC day, whatever ended each diagnosis. */
+export const DIAGNOSES_PER_BASIS_A_DAY = 2;
+
+/**
+ * Whether the stuck item has been diagnosed enough on its basis though no run holds it: a diagnosis
+ * ran on it and an ask or a decision already holds its standing, so another would end on a note alone
+ * again, or the day's diagnoses of the basis are spent. An ask lifted or a decision's date passed lets
+ * the next sweep diagnose it again, within the day's bound.
+ */
+async function diagnosedEnough(
+  projectId: string,
+  row: ItemStanding,
+  subject: StandingSubject,
+  now: Date,
+): Promise<boolean> {
+  const today = await diagnosesOnBasis(subject, row.basis, utcDayStart(now));
+  if (today >= DIAGNOSES_PER_BASIS_A_DAY) return true;
+  const ever = today > 0 || (await diagnosesOnBasis(subject, row.basis, new Date(0))) > 0;
+  return ever && (await askedAlready(projectId, row, now)) !== null;
 }
 
 /**
@@ -94,12 +131,15 @@ async function sweepRow(
   stuckIssues: ReadonlySet<string>,
   tally: SweepTally,
   room: { turns: number },
+  now: Date,
 ) {
   const subject = { kind: row.subject.kind, id: row.subject.id, key: row.subject.key };
   const stuck = row.stuck;
   const reworded = rewordedNote(row);
   if (stuck && !stuckCarrierOf(row, stuckIssues)) {
-    const diagnosed = await ranOnBasis(subject, 'stuck_diagnosis', row.basis);
+    const diagnosed =
+      (await ranOnBasis(subject, 'stuck_diagnosis', row.basis)) ||
+      (await diagnosedEnough(projectId, row, subject, now));
     // a diagnosed item's note under reworded facts is rewritten by a note run, below
     if (diagnosed && !reworded) return;
     if (!diagnosed) {
@@ -162,12 +202,10 @@ export async function sweepProjectStandings(
   const stuckIssues = new Set(
     rows.filter((r) => r.subject.kind === 'issue' && r.stuck).map((r) => r.subject.key),
   );
+  // a check owed holds a delivery: a handoff, billed to the handoff share, never to the sweep's room
+  tally.checks += await raiseOwedChecks(projectId, now);
   const room = { turns: await sweepRoom(projectId, now) };
-  // a check owed holds a delivery, so it is raised before any note or diagnosis takes the room
-  const checks = await raiseOwedChecks(projectId, now, room.turns);
-  room.turns -= checks;
-  tally.checks += checks;
-  for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, room);
+  for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, room, now);
   tally.settledAsks += await settleProjectAsks(projectId, rows, now);
 }
 

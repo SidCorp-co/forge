@@ -170,10 +170,19 @@ export function slotsFor(budget: StewardBudget): number {
 const TURNS_PER_SLOT = 25;
 export const STEWARD_MAX_SLOTS = 8;
 
+/** Each of `a` less `b`, never below 0. */
+const less = (a: StewardBudget, b: StewardBudget): StewardBudget => ({
+  gatewayTurns: Math.max(0, a.gatewayTurns - b.gatewayTurns),
+  runnerJobs: Math.max(0, a.runnerJobs - b.runnerJobs),
+});
+
 /**
- * The steward's day as a person reads it: each share and what it spent, how many of the sweep's
- * items wait for a later day, and whether the steward is quiet for handoffs or only for the sweep.
- * Handoff runs spend their own share first and then whatever the sweep left (`refusalOf`).
+ * The steward's day as a person reads it: what each side spent and may spend in all, how many of the
+ * sweep's items wait for a later day, and whether the steward is quiet for handoffs or only for the
+ * sweep. Handoff runs spend their own share first and then whatever the sweep left (`refusalOf`), so
+ * the handoffs may spend the day less what the sweep spent, their `kept` share within it, and the
+ * sweep its share less what handoffs spent past theirs: forge's 10 runner jobs read "of 4" on
+ * 2026-11-07, a share the handoffs were never held to (ISS-1100).
  */
 export async function budgetDayOf(projectId: string, now: Date): Promise<StewardBudgetView> {
   const day = utcDayStart(now);
@@ -181,10 +190,7 @@ export async function budgetDayOf(projectId: string, now: Date): Promise<Steward
   const shares = sharesOf(budget);
   const all = await spentSince(projectId, day);
   const swept = await spentSince(projectId, day, { sweepOnly: true });
-  const handed = {
-    gatewayTurns: all.gatewayTurns - swept.gatewayTurns,
-    runnerJobs: all.runnerJobs - swept.runnerJobs,
-  };
+  const handed = less(all, swept);
   const { paced } = await sweepQueued(projectId, now);
   const one = { gatewayTurns: 1, runnerJobs: 0 };
   const quiet = !fits(budget, all, one)
@@ -196,11 +202,12 @@ export async function budgetDayOf(projectId: string, now: Date): Promise<Steward
     gatewayTurns: { spent: spent.gatewayTurns, of: of.gatewayTurns },
     runnerJobs: { spent: spent.runnerJobs, of: of.runnerJobs },
   });
+  const borrowed = less(handed, shares.handoff);
   return {
     day: day.toISOString(),
     resumesAt: nextUtcDay(now).toISOString(),
-    handoff: view(handed, shares.handoff),
-    sweep: view(swept, shares.sweep),
+    handoff: { ...view(handed, less(budget, swept)), kept: shares.handoff },
+    sweep: view(swept, less(shares.sweep, borrowed)),
     paced,
     quiet,
   };

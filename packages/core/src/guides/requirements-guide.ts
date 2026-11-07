@@ -209,9 +209,11 @@ while no live issue links to it, then by its delivery check (REQ-67), every refu
 optionId | text }\`, as whoever owes it (the refusal names the project's master or a person); the answer
 is recorded on the requirement as a decision. \`REQUIREMENT_UNCHECKED\` while the project's steward is
 on and has not finished checking it since its head was agreed; nothing of it is the master's to do. Its
-detail says where the check stands: queued or running, or ended without finishing and why, which the
-standing sweep starts again an hour after it ended, or never tried, which the sweep starts within 15
-minutes of the agree; the runs read at \`GET /api/projects/:id/steward-runs?subject=REQ-n\`. The
+detail says where the check stands: queued and when it is due, or running, or ended without finishing
+and why, which the standing sweep queues again an hour after it ended, or never tried, which the sweep
+queues within 15 minutes of the agree. A check is a handoff: it runs once queued while the steward's
+daily budget has room, else from the UTC midnight the budget resumes, which the detail names; the runs
+read at \`GET /api/projects/:id/steward-runs?subject=REQ-n\`. The
 steward checks it on the agree and on each proposed breakdown, the check in a run of its own: each
 criterion checkable on the running product, a duplicate or conflict with a live requirement, the
 workflow it changes and the steps its criteria trace. What it finds goes back as the questions it needs

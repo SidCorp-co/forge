@@ -50,8 +50,8 @@ export type DeliveryCheckAttemptState =
 
 /**
  * The steward's latest check of it since its head was agreed, none having finished: queued or
- * running, or ended without finishing and why. An ended one is started again by the standing sweep
- * an hour after it ended (`steward/owed-checks.ts`).
+ * running, or ended without finishing and why. An ended one is queued again by the standing sweep
+ * an hour after it ended (`steward/owed-checks.ts`), due when the steward's daily budget pays for it.
  */
 export interface DeliveryCheckAttempt {
 	state: DeliveryCheckAttemptState;
@@ -59,6 +59,11 @@ export interface DeliveryCheckAttempt {
 	at: string;
 	/** Why an ended one did not finish: its failure's first line or its skip reason; null while live. */
 	why: string | null;
+	/**
+	 * When a queued one is due to start: after its debounce, or the UTC midnight the steward's daily
+	 * budget resumes where today's cannot pay for it; null unless queued.
+	 */
+	dueAt: string | null;
 }
 
 export interface RequirementDeliveryCheck {

@@ -16,7 +16,7 @@ import {
   type StewardSkipReason,
   type StewardTrigger,
 } from '@forge/contracts/steward';
-import { and, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { type StewardRunEvent, stewardRuns } from '../db/schema-steward-runs.js';
@@ -48,6 +48,11 @@ export interface TriggerIn {
   at: Date;
   /** The basis the trigger saw, where it carries one (the sweep's). */
   basis?: string | null;
+  /**
+   * When it is due, where not after its debounce: an owed check the day's budget cannot pay for is
+   * due when the budget resumes (`owed-checks.ts`), so the run reads the time it will keep.
+   */
+  dueAt?: Date;
 }
 
 export type Folded = { runId: string; into: 'new' | 'queued' | 'follow_up' };
@@ -63,6 +68,9 @@ export function triggerActs(trigger: StewardTrigger): StewardAct[] {
     ? orderedActs(['note', act])
     : [act];
 }
+
+/** When a trigger's run is due: after its debounce, or at the time its raiser named. */
+const dueOf = (t: TriggerIn): Date => t.dueAt ?? new Date(t.at.getTime() + STEWARD_DEBOUNCE_MS);
 
 /** Insert the subject's run, or fold the trigger into the live one; inside the delivery's transaction. */
 export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
@@ -96,7 +104,7 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
         events: [event],
         actsToRun: acts,
         basis: t.basis ?? null,
-        notBefore: new Date(t.at.getTime() + STEWARD_DEBOUNCE_MS),
+        notBefore: dueOf(t),
       })
       .returning({ id: stewardRuns.id });
     if (!row) throw new Error('steward: the run insert returned no row');
@@ -106,7 +114,7 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
     // a handoff folded into a sweep's run makes it a handoff run, due on the handoff's own clock: a
     // run the sweep paced to tomorrow never holds a person's handoff back with it
     const handoff = isSweepTrigger(live.trigger) && !isSweepTrigger(t.trigger);
-    const due = new Date(t.at.getTime() + STEWARD_DEBOUNCE_MS);
+    const due = dueOf(t);
     await tx
       .update(stewardRuns)
       .set({
@@ -421,7 +429,8 @@ export async function spentSince(
  * same refusal; one whose turn or job did not finish counts for an hour, after which the sweep tries
  * again. A stuck diagnosis that finished counts only where it ended in an act, an ask, or why nobody
  * was asked (`diagnosis-end.ts`): one that ended on a note alone is diagnosed again (ISS-654), and
- * the diagnosis that follows always ends so, which bounds it to once. `queuedAfter` counts only the
+ * the diagnosis that follows ends so unless an ask or a decision already held the standing, which the
+ * sweep bounds on its own (`sweep.ts:diagnosedEnough`, ISS-1100). `queuedAfter` counts only the
  * runs queued after it: a note written under facts core has since reworded is rewritten by a run
  * queued after it was written, never the run that wrote it (ISS-1044).
  */
@@ -454,6 +463,31 @@ export async function ranOnBasis(
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * How many stuck diagnoses of the subject on `basis` ran to their end since `since`: done or failed,
+ * a turn spent on each. A run skipped, or one still live, is none.
+ */
+export async function diagnosesOnBasis(
+  subject: StandingSubject,
+  basis: string,
+  since: Date,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(stewardRuns)
+    .where(
+      and(
+        eq(stewardRuns.subjectKind, subject.kind),
+        eq(stewardRuns.subjectId, subject.id),
+        eq(stewardRuns.basis, basis),
+        sql`'stuck_diagnosis' = ANY(${stewardRuns.actsToRun})`,
+        inArray(stewardRuns.state, ['done', 'failed']),
+        gte(stewardRuns.endedAt, since),
+      ),
+    );
+  return row?.n ?? 0;
 }
 
 /** The subject's runs, newest first. */

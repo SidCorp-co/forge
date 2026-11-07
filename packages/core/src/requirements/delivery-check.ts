@@ -257,10 +257,11 @@ async function attemptOf(tx: Tx, row: CheckedRow): Promise<DeliveryCheckAttempt 
     at: string | Date;
     failure: string | null;
     skip_reason: string | null;
+    due: string | Date | null;
   }>(
     await tx.execute(sql`
       SELECT sr.state, coalesce(sr.ended_at, sr.started_at, sr.queued_at) AS at, sr.failure,
-             sr.skip_reason
+             sr.skip_reason, CASE WHEN sr.state = 'queued' THEN sr.not_before END AS due
         FROM steward_runs sr
        WHERE sr.subject_kind = 'requirement'
          AND sr.subject_id = ${row.id}
@@ -275,6 +276,7 @@ async function attemptOf(tx: Tx, row: CheckedRow): Promise<DeliveryCheckAttempt 
     state: hit.state,
     at: new Date(hit.at).toISOString(),
     why: hit.failure ? (hit.failure.split('\n')[0] ?? null) : hit.skip_reason,
+    dueAt: hit.due === null ? null : new Date(hit.due).toISOString(),
   };
 }
 
@@ -345,17 +347,38 @@ export const CHECK_RETRY_MS = 60 * 60_000;
 /** How long after its agree a requirement no check was tried on waits for the sweep to start one. */
 export const CHECK_UNTRIED_GRACE_MS = 5 * 60_000;
 
-/** Where its check stands and what takes it on, as the refusal says it. */
-function uncheckedDetail(attempt: DeliveryCheckAttempt | null, runs: string): string {
+/** The UTC midnight after `at`: when the steward's daily budget resumes (`steward/policy.ts:nextUtcDay`). */
+const budgetResumesAfter = (at: Date) =>
+  new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate() + 1)).toISOString();
+
+/**
+ * Where its check stands and what takes it on, as the refusal says it. A check is a handoff: the
+ * sweep queues it whatever room its own share has left, due at once where the day's budget pays for
+ * it and when the budget resumes where it cannot (ISS-1100), so a queued one names its own due time,
+ * and one not yet queued names both, never a time the budget will not keep.
+ */
+function uncheckedDetail(attempt: DeliveryCheckAttempt | null, runs: string, now: Date): string {
   const read = `the steward's runs on it read at GET ${runs}; nothing of it is the master's to do`;
+  const budget = (from: Date) =>
+    `it runs then if the steward's budget for the day has room, else when the budget resumes at ${budgetResumesAfter(from)}`;
   if (!attempt) {
-    return `the steward has not finished a check of it since its head was agreed, and none has been tried; the standing sweep starts one within 15 minutes of its agree (${read}).`;
+    const by = new Date(now.getTime() + 15 * 60_000);
+    return `the steward has not finished a check of it since its head was agreed, and none has been tried; the standing sweep queues one within 15 minutes of its agree, and ${budget(by)} (${read}).`;
   }
-  if (attempt.state === 'queued' || attempt.state === 'running') {
-    return `the steward's check of it is ${attempt.state} since ${attempt.at}; delivery may start once it ends done (${read}).`;
+  if (attempt.state === 'running') {
+    return `the steward's check of it is running since ${attempt.at}; delivery may start once it ends done (${read}).`;
   }
-  const again = new Date(Date.parse(attempt.at) + CHECK_RETRY_MS).toISOString();
-  return `the steward's last check of it ended ${attempt.state} at ${attempt.at} (${attempt.why ?? 'no reason recorded'}); the standing sweep starts it again an hour after it ended, from ${again} (${read}).`;
+  if (attempt.state === 'queued') {
+    const due = attempt.dueAt && Date.parse(attempt.dueAt) > now.getTime() ? attempt.dueAt : null;
+    // a run the day's budget could not pay for is due at the UTC midnight the budget resumes
+    const resumes = due?.endsWith('T00:00:00.000Z')
+      ? ", when the steward's daily budget resumes"
+      : '';
+    const when = due ? `due at ${due}${resumes}` : 'due now';
+    return `the steward's check of it is queued since ${attempt.at}, ${when}; delivery may start once it ends done (${read}).`;
+  }
+  const again = new Date(Math.max(Date.parse(attempt.at) + CHECK_RETRY_MS, now.getTime()));
+  return `the steward's last check of it ended ${attempt.state} at ${attempt.at} (${attempt.why ?? 'no reason recorded'}); the standing sweep queues it again from ${again.toISOString()}, and ${budget(again)} (${read}).`;
 }
 
 /**
@@ -367,6 +390,7 @@ function uncheckedDetail(attempt: DeliveryCheckAttempt | null, runs: string): st
 export function deliveryCheckRefusals(
   check: RequirementDeliveryCheck,
   row: Pick<CheckedRow, 'projectId' | 'reqSeq'>,
+  now = new Date(),
 ): RequirementRefusal[] {
   const runs = `/api/projects/${row.projectId}/steward-runs?subject=${requirementKey(row.reqSeq)}`;
   return [
@@ -380,7 +404,7 @@ export function deliveryCheckRefusals(
           {
             code: 'REQUIREMENT_UNCHECKED' as const,
             path: '',
-            detail: uncheckedDetail(check.attempt, runs),
+            detail: uncheckedDetail(check.attempt, runs, now),
           },
         ]
       : []),
@@ -395,17 +419,12 @@ export interface OwedCheck {
 
 /**
  * The agreed requirements of `projectId` whose check is owed and nothing is taking (ISS-1084), oldest
- * agreed first, at most `limit`: none finished since the head was agreed, none live, and the last one
+ * agreed first: none finished since the head was agreed, none live, and the last one
  * tried ended an hour ago (`CHECK_RETRY_MS`), or none was tried and the agree is past its grace. The
  * steward's handoff starts a check on each agree and breakdown; this is what starts one where that
  * check ended without finishing (adminhub-api REQ-22, forge REQ-45) or never ran.
  */
-export async function checksOwedIn(
-  projectId: string,
-  now: Date,
-  limit: number,
-): Promise<OwedCheck[]> {
-  if (limit <= 0) return [];
+export async function checksOwedIn(projectId: string, now: Date): Promise<OwedCheck[]> {
   const retry = new Date(now.getTime() - CHECK_RETRY_MS);
   const grace = new Date(now.getTime() - CHECK_UNTRIED_GRACE_MS);
   const rows = rowsOf<{ id: string; req_seq: number }>(
@@ -434,8 +453,7 @@ export async function checksOwedIn(
               AND (sr.acts_to_run && ${CHECK_ACTS} OR sr.follow_up && ${CHECK_ACTS}))
          AND (CASE WHEN tried.at IS NULL THEN agreed.at <= ${sqlTimestamp(grace)}
                    ELSE tried.at <= ${sqlTimestamp(retry)} END)
-       ORDER BY agreed.at, r.id
-       LIMIT ${limit}`),
+       ORDER BY agreed.at, r.id`),
   );
   return rows.map((r) => ({ id: r.id, key: requirementKey(Number(r.req_seq)) }));
 }

@@ -202,7 +202,8 @@ beforeAll(async () => {
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
   const as = requester(app, { owner: await signUserToken(ownerId) });
-  say = (method, path, body) => as('owner', method, path.startsWith('/api/') ? path : at(path), body);
+  say = (method, path, body) =>
+    as('owner', method, path.startsWith('/api/') ? path : at(path), body);
 }, 120_000);
 
 afterEach(async () => {
