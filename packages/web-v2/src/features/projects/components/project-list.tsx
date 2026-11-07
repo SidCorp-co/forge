@@ -63,7 +63,9 @@ function ProjectTable({ items, now, spend, onTogglePin }: ProjectListProps) {
           <TH>{t('projects.col.runs')}</TH>
           <TH>{t('projects.col.issues')}</TH>
           <TH>{t('projects.col.runners')}</TH>
-          <TH className="text-right">{spend ? t('projects.col.spend') : null}</TH>
+          {/* every column drawn has its heading: the spend only while a cost is not $0, the last move always (ISS-1072) */}
+          {spend ? <TH className="text-right">{t('projects.col.spend')}</TH> : null}
+          <TH className="text-right">{t('projects.col.active')}</TH>
           <TH className="text-right">{t('projects.col.team')}</TH>
         </TR>
       </THead>
@@ -97,10 +99,8 @@ function ProjectTable({ items, now, spend, onTogglePin }: ProjectListProps) {
               <TD>
                 <Stat icon="server">{p.runnerCount}</Stat>
               </TD>
-              <TD className="text-right font-mono text-12 text-subtle">
-                {spend ? formatSpend(p.spend24hUsd) : null}
-                <span className="ml-1.5 text-disabled">{formatRelativeTime(p.lastActivityAt, now)}</span>
-              </TD>
+              {spend ? <TD className="text-right font-mono text-12 text-subtle">{formatSpend(p.spend24hUsd)}</TD> : null}
+              <TD className="whitespace-nowrap text-right font-mono text-12 text-subtle">{formatRelativeTime(p.lastActivityAt, now)}</TD>
               <TD>
                 <span className="flex justify-end">
                   <MemberStack members={p.members} total={p.memberCount} size={22} />

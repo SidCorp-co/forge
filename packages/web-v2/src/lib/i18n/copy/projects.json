@@ -5,6 +5,7 @@
     "projects.attention.count": "{n} need attention",
     "projects.attention.only": "Show only these",
     "projects.attention.showAll": "Show all",
+    "projects.col.active": "Active",
     "projects.col.health": "Health",
     "projects.col.issues": "Issues",
     "projects.col.project": "Project",
