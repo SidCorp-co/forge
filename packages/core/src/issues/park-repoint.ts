@@ -55,7 +55,7 @@ export function repointsPark(status: IssueStatus, options: RepointOptions): bool
 const KIND_WAITS_ON: Record<WaitingKind, string> = {
   needs_answer: 'an answer from a person',
   needs_decision: 'a decision from a person',
-  needs_resource: 'something a person supplies',
+  needs_resource: 'something the master supplies',
 };
 
 function refused(

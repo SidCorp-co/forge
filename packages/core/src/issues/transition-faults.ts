@@ -92,7 +92,7 @@ export function reasonFault(
       return {
         code: 'WAITING_KIND_REQUIRED',
         detail:
-          'a move to `needs_info` says what it is stopped on, as `waitingKind`: `needs_answer` (a question), `needs_decision` (a decision) or `needs_resource` (something a person supplies)',
+          'a move to `needs_info` says what it is stopped on, as `waitingKind`: `needs_answer` (a question), `needs_decision` (a decision) or `needs_resource` (something the master supplies)',
         details,
       };
     }

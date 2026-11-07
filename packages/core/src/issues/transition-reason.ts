@@ -12,7 +12,7 @@ export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): bool
 const NEEDS_INFO_HEADINGS: Record<WaitingKind, string> = {
   needs_answer: '❓ **Needs info**',
   needs_decision: '⏸ **Waiting on a human decision**',
-  needs_resource: '⏸ **Waiting on a person to supply something**',
+  needs_resource: '⏸ **Waiting on something to be supplied**',
 };
 
 const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) => string> = {
