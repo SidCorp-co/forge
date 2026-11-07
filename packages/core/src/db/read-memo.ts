@@ -57,6 +57,8 @@ interface PendingBatch {
   ids: Set<string>;
   read: (ids: readonly string[]) => Promise<ReadonlyMap<string, unknown>>;
   done: Promise<ReadonlyMap<string, unknown>>;
+  /** What `done` answers, each value made read-only once: what every id of the batch is held as. */
+  answered: Promise<ReadonlyMap<string, unknown>>;
 }
 
 /** The projects a read across projects declared in each memo ({@link readAcross}). */
@@ -134,16 +136,17 @@ const heldFor = (memo: Map<string, Promise<unknown>>, key: string) => () =>
 
 const slotOf = (key: string, id: string) => `${key}\u0000${id}`;
 
-/** Holds `id`'s answer under `key` as what `done` answers for it, dropped where the read fails. */
+/**
+ * Holds `id` under `key` as its batch's answer: one promise and one freeze a batch, not one an id, so
+ * a person's twelve projects asking four thousand issues wait on a handful of promises (ISS-1070 r6).
+ */
 function hold(
   memo: Map<string, Promise<unknown>>,
   key: string,
   id: string,
-  done: Promise<ReadonlyMap<string, unknown>>,
+  batch: PendingBatch,
 ): void {
-  const held = done.then((m) => (m.has(id) ? { value: frozen(m.get(id)) } : null));
-  memo.set(slotOf(key, id), held);
-  held.catch(() => memo.delete(slotOf(key, id)));
+  memo.set(slotOf(key, id), batch.answered);
 }
 
 const batches = new WeakMap<Map<string, Promise<unknown>>, Map<string, PendingBatch>>();
@@ -180,13 +183,22 @@ function batchOf(
         for (const id of across.get(memo) ?? []) {
           if (pending.ids.has(id) || memo.has(slotOf(key, id))) continue;
           pending.ids.add(id);
-          hold(memo, key, id, pending.done);
+          hold(memo, key, id, pending);
         }
       }
       // what the read asks in turn is the batch's, not the project's read that opened it
       if (pending.ids.size === 0) resolve(new Map());
       else inFlow.exit(() => Promise.resolve(pending.read([...pending.ids]))).then(resolve, reject);
     }, held);
+  });
+  pending.answered = pending.done.then((m) => {
+    for (const v of m.values()) frozen(v);
+    return m;
+  });
+  // a read that fails is not kept: each id it held is asked again by the next read
+  pending.answered.catch(() => {
+    for (const id of pending.ids)
+      if (memo.get(slotOf(key, id)) === pending.answered) memo.delete(slotOf(key, id));
   });
   open.set(key, pending);
   return pending;
@@ -274,20 +286,23 @@ async function perId<V>(
     const batch = batchOf(memo, key, read, byProject);
     for (const id of missing) {
       batch.ids.add(id);
-      hold(memo, key, id, batch.done);
+      hold(memo, key, id, batch);
     }
   } else {
     // an ask answered from what is held still waits for the quiet point, as one that reads does: the
     // reads of a person's projects then ask each fact in the same wave, whichever asked it first
     await new Promise<void>((answered) => whenQuiet(answered));
   }
-  const out = new Map<string, V>();
-  const answers = await Promise.all(
-    unique.map((id) => memo.get(slot(id)) as Promise<{ value: V } | null>),
+  // each id waits on its batch's answer: a handful of batches however many ids
+  const held = unique.map((id) => memo.get(slot(id)) as Promise<ReadonlyMap<string, V>>);
+  const batchesOf = [...new Set(held)];
+  const answers = new Map(
+    (await Promise.all(batchesOf)).map((m, i) => [batchesOf[i] as Promise<unknown>, m]),
   );
+  const out = new Map<string, V>();
   unique.forEach((id, i) => {
-    const held = answers[i];
-    if (held) out.set(id, held.value);
+    const m = answers.get(held[i] as Promise<unknown>);
+    if (m?.has(id)) out.set(id, m.get(id) as V);
   });
   return out;
 }
