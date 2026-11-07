@@ -48,6 +48,7 @@ export const INVENTORY = [
   { route: `${P}/status`, component: "StatusReport", feature: "project-status", drawn: "status" },
   { route: `${P}/overview`, component: "DevelopmentOverviewScreen", feature: "development", drawn: "development-overview" },
   { route: `${P}/settings`, component: "ProjectSettingsScreen (General tab drawn)", feature: "project-settings", drawn: "project-settings" },
+  { route: `${P}/agreements`, component: "AgreementsScreen", feature: "agreements", drawn: "agreements" },
   { route: `${P}/contracts`, component: "ContractsScreen", feature: "contracts", files: ["features/contracts/components/contracts-screen.tsx"] },
   { route: `${P}/contracts/$provider/$contract`, component: "ContractScreen", feature: "contracts", drawn: "contract-detail" },
   { route: `${P}/channels`, component: "ChannelsScreen", feature: "channels", files: ["features/channels/components/channels-screen.tsx"] },

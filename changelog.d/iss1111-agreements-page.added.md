@@ -1,0 +1,1 @@
+**A project's Agreements page** shows each working agreement as Forge default, project change and effective rule with its state, locked guarantees apart; an inspector holds its history, an admin's change and restore, and a run's received rules.

@@ -17,6 +17,8 @@ import { Route as RegisterRoute } from "@/routes/_auth/register/index";
 import { EcosystemScreen } from "@/features/ecosystem/components/ecosystem-screen";
 import { EcosystemsHome } from "@/features/ecosystem/components/ecosystems-home";
 import { MyForgeFeedback } from "@/features/feedback";
+import { AgreementsScreen } from "@/features/agreements";
+import { AGREEMENTS_PROJECT } from "@/test/agreements.fixture";
 import { HomeScreen } from "@/features/overview";
 import { P as FB_P } from "@/test/vi-chrome-feedback";
 import { P as REL_P, releaseSeed } from "@/test/vi-chrome-rel-wf";
@@ -75,6 +77,7 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "contract-detail", path: `${P}/contracts/hop/orders`, render: () => vi("Contract detail") },
     { name: "development-overview", path: `${P}/overview`, render: () => vi("Development overview") },
     { name: "project-settings", path: `${P}/settings`, render: () => vi("Project settings · General") },
+    { name: "agreements", path: `${P}/agreements`, render: () => <AgreementsScreen projectId={AGREEMENTS_PROJECT} slug="hop" canManage /> },
     { name: "integrations", path: "/integrations", pattern: "/integrations", render: () => vi("Integrations") },
     { name: "runners", path: "/runners", pattern: "/runners", render: () => vi("Runners") },
     { name: "owner-home", path: "/", pattern: "/", render: () => <Seeded data={HOME_SEED}><HomeScreen /></Seeded> },

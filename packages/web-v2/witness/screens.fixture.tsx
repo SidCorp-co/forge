@@ -10,6 +10,7 @@ import { FEEDBACK_SEED } from "@/test/vi-chrome-feedback";
 import { detailQueries } from "@/test/vi-chrome-issues";
 import { AUTOFLOW, EPOD_CATALOG } from "./ecosystem-page.fixture";
 import { reqQueries } from "@/test/vi-chrome-requirements";
+import { AGREEMENTS_PROJECT, AGREEMENTS_VIEW } from "@/test/agreements.fixture";
 
 export const NOW = "2026-10-21T09:00:00.000Z";
 export const day = (i: number) => new Date(Date.parse(NOW) - (29 - i) * 86_400_000).toISOString().slice(0, 10);
@@ -90,6 +91,8 @@ const mineItem = (key: string, title: string, phase: string, from: string, n: nu
 HOME_READS.push(
   [/^\/ecosystems\/[^/]+\/bus$/, () => EPOD_CATALOG],
   [/^\/ecosystems\/mine$/, () => ({ ecosystems: [EPOD_CATALOG, AUTOFLOW].map(ecosystemRow), invitations: [], threads: [], drafts: [], projects: [...EPOD_CATALOG.projects, ...AUTOFLOW.projects].map((p) => ({ id: p.id, slug: p.slug, name: p.name })), mine: [] })],
+  // the Agreements page's current rules (REQ-90)
+  [new RegExp(`^/projects/${AGREEMENTS_PROJECT}/agreements$`), () => AGREEMENTS_VIEW],
   [/^\/forge\/feedback$/, () => ({ feedback: [mineItem("FB-212", "The board drops a card dragged to Done", "new", "HOP", 1, "Waiting to be triaged by Forge's team."), mineItem("FB-198", "forge claim refuses a lease that has expired", "planned", "Autoflow", 4, "ISS-1433 carries it and a run is working on it now.", true), mineItem("FB-160", "The release page cuts the version at phone width", "verified", "Catalog", 2, "Shipped in 0.4.0-dev.244 and verified.")], returned: 3, home: { id: "p-forge", slug: "forge-dev", name: "Forge" }, asOf: FEEDBACK_AT })],
 );
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

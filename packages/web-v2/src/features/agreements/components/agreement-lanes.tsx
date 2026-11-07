@@ -5,7 +5,7 @@
 
 import type { AgreementView } from "@forge/contracts/agreements";
 import type { ReactNode } from "react";
-import { GroupHeader, Icon, type ListGroup, TBody, TD, TH, THead, TR, Table, StatusChip, type useGroupFold } from "@/design";
+import { GroupHeader, Icon, type ListGroup, TBody, TD, TH, THead, TR, Table, StatusChip, useMediaQuery, type useGroupFold } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
@@ -73,8 +73,12 @@ export const stateLabel = (a: AgreementView, t: Copy) => t(`agreements.state.${a
 function AgreementInLanes({ a, selected, onOpen, t }: { a: AgreementView; selected: boolean; onOpen: (slug: string) => void; t: Copy }) {
   return (
     <TR data-testid="agreement-row" data-name={a.name} aria-selected={selected || undefined} className={cn(selected && "bg-sel")}>
-      <TD className="w-56 max-w-56 pl-8">
+      <TD className="w-56 max-w-56 pl-8 max-md:w-auto max-md:pl-4">
         <AgreementName a={a} onOpen={onOpen} t={t} />
+        {/* a phone has no room for the lanes: what agents get reads under the name */}
+        <span className="block truncate text-12 text-subtle md:hidden" data-testid="lane-effective-phone" title={a.effective.rule}>
+          {a.effective.rule}
+        </span>
       </TD>
       <TD className="max-w-60 max-md:hidden" data-testid="lane-forge">
         {forgeLane(a, t)}
@@ -82,10 +86,10 @@ function AgreementInLanes({ a, selected, onOpen, t }: { a: AgreementView; select
       <TD className="max-w-56 max-md:hidden" data-testid="lane-project">
         {projectLane(a, t)}
       </TD>
-      <TD className="max-w-80" data-testid="lane-effective">
+      <TD className="max-w-80 max-md:hidden" data-testid="lane-effective">
         <LaneText text={a.effective.rule} />
       </TD>
-      <TD className="w-28 whitespace-nowrap">
+      <TD className="w-36 whitespace-nowrap">
         <span data-testid="agreement-state">
           <StatusChip tone={STATE_TONE[a.state]} label={stateLabel(a, t)} value={a.state} />
         </span>
@@ -111,11 +115,11 @@ export function AgreementLanes({ groups, fold, selected, onOpen }: { groups: Lis
     <Table aria-label={t("agreements.title")} className="table-fixed">
       <THead>
         <TR>
-          <TH className="w-56 pl-8">{t("agreements.col.agreement")}</TH>
+          <TH className="w-56 pl-8 max-md:w-auto max-md:pl-4">{t("agreements.col.agreement")}</TH>
           <TH className="max-md:hidden">{t("agreements.col.forge")}</TH>
           <TH className="max-md:hidden">{t("agreements.col.project")}</TH>
-          <TH>{t("agreements.col.effective")}</TH>
-          <TH className="w-28">{t("agreements.col.state")}</TH>
+          <TH className="max-md:hidden">{t("agreements.col.effective")}</TH>
+          <TH className="w-36">{t("agreements.col.state")}</TH>
         </TR>
       </THead>
       <TBody>
@@ -128,9 +132,11 @@ export function AgreementLanes({ groups, fold, selected, onOpen }: { groups: Lis
 }
 
 function LaneGroup({ g, fold, selected, onOpen, t }: { g: ListGroup<AgreementView>; fold: Fold; selected: string | null; onOpen: (slug: string) => void; t: Copy }) {
+  // a header spans the columns drawn: on a phone, the name and the state alone, so no hidden lane takes a share of the width
+  const wide = useMediaQuery("(min-width: 768px)");
   return (
     <>
-      <GroupInTable g={g} fold={fold} span={5} />
+      <GroupInTable g={g} fold={fold} span={wide ? 5 : 2} />
       {fold.isOpen(g.id, g.collapsed) ? g.rows.map((a) => <AgreementInLanes key={a.slug} a={a} selected={selected === a.slug} onOpen={onOpen} t={t} />) : null}
     </>
   );

@@ -79,9 +79,10 @@ function Layers({ d, t }: { d: AgreementDetailView; t: Copy }) {
       ) : null}
       {d.project ? (
         <Section title={t("agreements.inspect.project")} testId="inspect-project">
-          <Rule text={d.project.rule} />
+          {/* the change in force is the effective rule above, never drawn twice */}
+          {d.effective.from === "project" ? null : <Rule text={d.project.rule} />}
           <PropertyList>
-            <Applies words={conditionWords(d.project.condition)} t={t} />
+            {d.effective.from === "project" ? null : <Applies words={conditionWords(d.project.condition)} t={t} />}
             <Property label={t("agreements.inspect.reason")}>{d.project.reason}</Property>
             <Property label={t("agreements.inspect.by")}>{d.project.actor.name ?? "—"}</Property>
             <Property label={t("agreements.inspect.when")}>{time.date(d.project.at)}</Property>
@@ -90,7 +91,7 @@ function Layers({ d, t }: { d: AgreementDetailView; t: Copy }) {
       ) : null}
       {d.forge ? (
         <Section title={t("agreements.inspect.forge")} testId="inspect-forge">
-          <Rule text={d.forge.rule} />
+          {d.effective.from === "forge" ? null : <Rule text={d.forge.rule} />}
           {d.forge.detail ? <p className="mt-2 whitespace-pre-wrap text-13 text-muted">{d.forge.detail}</p> : null}
           <PropertyList>
             <Property label={t("agreements.inspect.source")}>{d.forge.source}</Property>
