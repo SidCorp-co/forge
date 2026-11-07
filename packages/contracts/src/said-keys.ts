@@ -1857,7 +1857,7 @@ export const SAID = {
 		en: "planned against an earlier revision (REQUIREMENT_CHANGED_SINCE_PLAN)",
 	},
 	"requirements.rule.breakdownDue": {
-		en: "agreed with no linked issue; break it down now, latest {date} ({days} working days after the agree)",
+		en: "agreed, no issue; break it down now, latest {date} ({days} working days)",
 		vars: { date: "date", days: "count" },
 	},
 	"requirements.rule.noIssue": { en: "agreed with no linked issue" },

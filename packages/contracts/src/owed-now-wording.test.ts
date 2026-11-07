@@ -41,7 +41,7 @@ describe("a deadline reads as owed now, the date as the latest day", () => {
 				say("requirements.rule.breakdownDue", { date: "2026-11-13", days: 2 }),
 			),
 		).toBe(
-			"agreed with no linked issue; break it down now, latest 2026-11-13 (2 working days after the agree)",
+			"agreed, no issue; break it down now, latest 2026-11-13 (2 working days)",
 		);
 	});
 
