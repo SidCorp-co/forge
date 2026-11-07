@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { frozen } from './frozen.js';
 import { whenQuiet } from './query-timing.js';
 
 /**
@@ -16,9 +17,10 @@ export function withReadMemo<T>(fn: () => T): T {
 }
 
 /**
- * `read()` once per `key` inside a {@link withReadMemo} scope, and every time outside one. Each caller
- * gets its own copy, so one caller changing what it was handed cannot change another's answer. A
- * read that fails is not kept, so the next ask tries again and fails on its own.
+ * `read()` once per `key` inside a {@link withReadMemo} scope, and every time outside one. Every caller
+ * is handed the one answer, made read-only (`db/frozen.ts`): a caller that writes into it throws
+ * there, so it can never change another caller's answer, and nothing is copied per ask (ISS-1070
+ * r6). A read that fails is not kept, so the next ask tries again and fails on its own.
  */
 export function memoizedRead<T>(key: string, read: () => Promise<T>): Promise<T> {
   const memo = memos.getStore();
@@ -26,11 +28,11 @@ export function memoizedRead<T>(key: string, read: () => Promise<T>): Promise<T>
   let held = memo.get(key) as Promise<T> | undefined;
   if (!held) {
     // a query builder sends its statement again on every `then`: send it once
-    held = Promise.resolve(read());
+    held = Promise.resolve(read()).then(frozen);
     memo.set(key, held);
     held.catch(() => memo.delete(key));
   }
-  return held.then((value) => structuredClone(value));
+  return held;
 }
 
 /**
@@ -138,7 +140,7 @@ function hold(
   id: string,
   done: Promise<ReadonlyMap<string, unknown>>,
 ): void {
-  const held = done.then((m) => (m.has(id) ? { value: m.get(id) } : null));
+  const held = done.then((m) => (m.has(id) ? { value: frozen(m.get(id)) } : null));
   memo.set(slotOf(key, id), held);
   held.catch(() => memo.delete(slotOf(key, id)));
 }
@@ -282,7 +284,7 @@ async function perId<V>(
   );
   unique.forEach((id, i) => {
     const held = answers[i];
-    if (held) out.set(id, structuredClone(held.value));
+    if (held) out.set(id, held.value);
   });
   return out;
 }

@@ -46,12 +46,13 @@ describe('memoizedRead', () => {
     expect(c.calls).toBe(2);
   });
 
-  it('hands each caller its own copy', async () => {
+  it('hands every caller the one answer, read-only: a caller writing into it throws there', async () => {
     const c = counter();
     await withReadMemo(async () => {
       const first = await memoizedRead('k', c.read);
-      first.list.push(3);
-      expect((await memoizedRead('k', c.read)).list).toEqual([1, 2]);
+      expect(() => first.list.push(3)).toThrow(TypeError);
+      expect(await memoizedRead('k', c.read)).toBe(first);
+      expect(first.list).toEqual([1, 2]);
     });
   });
 
@@ -130,12 +131,22 @@ describe('perProjectRead', () => {
     expect(calls).toBe(2);
   });
 
-  it('hands each caller its own copy', async () => {
+  it("refuses a caller writing into a project's rows, so no other caller's answer changes", async () => {
     const r = across();
     await withReadMemo(async () => {
-      const first = await read(r, 'a');
-      first.push(99);
-      expect(await read(r, 'a')).toEqual([1, 3]);
+      const ask = () =>
+        perProjectRead(
+          'rows',
+          'a',
+          r.readAll,
+          (x) => x.projectId,
+          (l) => l,
+        );
+      const first = await ask();
+      expect(() => {
+        (first[0] as { n: number }).n = 99;
+      }).toThrow(TypeError);
+      expect((await ask()).map((x) => x.n)).toEqual([1, 3]);
     });
   });
 });
@@ -226,11 +237,17 @@ describe('memoizedPerId', () => {
     expect(r.asked).toEqual([['a', 'b'], ['a']]);
   });
 
-  it('hands each caller its own copy', async () => {
+  it("refuses a caller writing into an id's answer, at any depth, so no other caller's answer changes", async () => {
     const r = perId();
     await withReadMemo(async () => {
       const first = await memoizedPerId('k', ['a'], r.read);
-      first.get('a')?.rows.push('changed');
+      const a = first.get('a') as { id: string; rows: string[] };
+      expect(() => a.rows.push('changed')).toThrow(TypeError);
+      expect(() => {
+        a.id = 'b';
+      }).toThrow(TypeError);
+      // the map handed over is the caller's own: adding to it changes nobody else's
+      first.set('z', { id: 'z', rows: [] });
       expect((await memoizedPerId('k', ['a'], r.read)).get('a')?.rows).toEqual(['a']);
     });
   });
