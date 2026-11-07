@@ -173,5 +173,27 @@ describe("the issue's owner", () => {
     const facts = screen.getByTestId("facts-properties");
     expect(facts).toHaveTextContent("Unassigned");
     expect(facts).not.toHaveTextContent(/\bforge\b/);
+    // nobody owns it, so no person's avatar stands beside the word (round 3 read "UN" as if initials)
+    expect(screen.getByTestId("issue-owner")).not.toHaveTextContent(/\bUN\b/);
+    expect(screen.queryByTestId("issue-owner-avatar")).toBeNull();
+  });
+
+  it("draws a named owner with their avatar", () => {
+    fakeCore(() => ({ body: {} }));
+    renderWithQuery(
+      <PropertiesRail
+        issue={issue()}
+        slug="hop"
+        cost={undefined}
+        deps={undefined}
+        pending={false}
+        readOnly={false}
+        onPatch={() => {}}
+        owner={{ name: "Lan Pham", kind: "human" }}
+        developer={false}
+      />,
+    );
+    expect(screen.getByTestId("issue-owner")).toHaveTextContent("Lan Pham");
+    expect(screen.getByTestId("issue-owner-avatar")).toHaveTextContent("LP");
   });
 });

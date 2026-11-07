@@ -10,6 +10,7 @@ import { ISSUE_CATEGORY_LABELS } from "@forge/contracts/issue-vocabulary";
 import { useState } from "react";
 import { useBlockerEdit } from "../hooks";
 import { formatApiError } from "@/lib/api/error";
+import { cn } from "@/lib/utils/cn";
 import { Avatar, enumLabel, FactsGroup, MonoTag, type SelectOption } from "@/design";
 import { useComplexityOptions, usePriorityOptions } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
@@ -225,9 +226,14 @@ export function PropertiesRail({
             </Row>
           ))}
           <Row label={t("issues.facts.owner")}>
-            <div className="flex min-w-0 items-center justify-end gap-2">
-              <Avatar initials={initials(ownerName)} size={22} />
-              <span className="fg-body-sm truncate text-fg" title={ownerName}>
+            <div className="flex min-w-0 items-center justify-end gap-2" data-testid="issue-owner">
+              {/* nobody owns it: the word alone, never a person's avatar of its letters (ISS-1072) */}
+              {owner === null ? null : (
+                <span className="contents" data-testid="issue-owner-avatar">
+                  <Avatar initials={initials(ownerName)} size={22} />
+                </span>
+              )}
+              <span className={cn("fg-body-sm truncate", owner === null ? "text-muted" : "text-fg")} title={ownerName}>
                 {ownerName}
               </span>
             </div>
