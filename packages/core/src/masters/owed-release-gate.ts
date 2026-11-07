@@ -120,7 +120,7 @@ export function releasesLine(
       (m) =>
         `${releaseName(m)}: ${m.next.label} next, ${m.merged} of ${m.total} merged, through ${m.next.issueKey} ${m.next.issueId}`,
     );
-    line += ` ${releaseMerges.length} accepted release${plural(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head moved since the owner accepted it, so abort the release and cut it again on the new head.`;
+    line += ` ${releaseMerges.length} accepted release${plural(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head is not the one the owner accepted, so abort the release and cut it again on the new head, or have the new head approved.`;
   }
   return line;
 }
