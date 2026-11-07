@@ -10,6 +10,7 @@ import {
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
+import { agreementRoutes } from './agreements/routes.js';
 import { publishedContractRoutes } from './api-contract/routes.js';
 import { baDoorRoutes, conversationRoutes, speakerLinkProjectRoutes } from './assistant/routes.js';
 import {
@@ -489,9 +490,9 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/shares', shareOpenRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/projects', runContextRoutes);
+  app.route('/api/projects', agreementRoutes);
   app.route('/api/skills', skillCrudRoutes);
   app.route('/api/runners', runnerRoutes);
-
   app.route('/api/projects', projectSnapshotRoutes);
   app.route('/api/projects', issueGraphRoutes);
   app.route('/api/projects', runnerLoadRoutes);

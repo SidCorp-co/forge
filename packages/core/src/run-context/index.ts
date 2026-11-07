@@ -9,6 +9,7 @@ export {
   runContextTally,
 } from './record.js';
 export {
+  type AgreementFound,
   digestOf,
   type Found,
   type KnowledgeFound,

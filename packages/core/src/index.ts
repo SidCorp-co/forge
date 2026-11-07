@@ -5,6 +5,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import pkg from '../package.json' with { type: 'json' };
+import { provideAgreementsPorts } from './agreements/index.js';
 import {
   admitChatRestWrite,
   agreedRecordsIn,
@@ -65,6 +66,7 @@ import {
   issueHead,
   issueIdOfKey,
   issueStandingsBySeq,
+  issueTaskOf,
   loadIssueRelationsForIssues,
   refuseUnresolvedIssueKey,
   releasedIssueOf,
@@ -251,6 +253,7 @@ providePreferencesPorts({
 });
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideRunContextDomainPorts();
+provideAgreementsPorts({ issueTaskOf });
 provideKnowledgePorts({
   searchMemory: runMemorySearch,
   reembedRequirement: embedRequirementHead,

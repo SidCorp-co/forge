@@ -1,7 +1,7 @@
 import type { LabelAttachRefusalCode } from '@forge/contracts/issues';
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, type LabelKind, labels } from '../db/schema.js';
+import { issueLabels, issues, type LabelKind, labels } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 
 type IssueLabelLite = {
@@ -208,4 +208,25 @@ export async function listModulesForIssues(
     out.set(r.issueId, list);
   }
   return out;
+}
+
+/**
+ * An issue as a working agreement's condition reads a task (REQ-90): its project, its labels by name
+ * and its category; null where there is no such issue.
+ */
+export async function issueTaskOf(
+  issueId: string,
+): Promise<{ projectId: string; labels: string[]; category: string | null } | null> {
+  const [row] = await db
+    .select({ projectId: issues.projectId, category: issues.category })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row) return null;
+  const named = await db
+    .select({ name: labels.name })
+    .from(issueLabels)
+    .innerJoin(labels, eq(labels.id, issueLabels.labelId))
+    .where(eq(issueLabels.issueId, issueId));
+  return { projectId: row.projectId, labels: named.map((l) => l.name), category: row.category };
 }

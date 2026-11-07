@@ -23,6 +23,8 @@ export interface RulingDeciderRead extends RulingDecider {
   /** The ruling's slug, as `knowledge:<slug>` cites it. */
   ruling: string;
   title: string;
+  /** When the ruling was last written: the revision a reader of it was given (REQ-90). */
+  updatedAt: Date;
 }
 
 /**
@@ -64,6 +66,7 @@ export async function rulingDecidersOf(projectId: string): Promise<RulingDecider
     .select({
       slug: knowledgeEntries.slug,
       title: knowledgeEntries.title,
+      updatedAt: knowledgeEntries.updatedAt,
       deciders: sql<unknown>`${knowledgeEntries.metadata} -> ${RULING_DECIDERS_KEY}`,
     })
     .from(knowledgeEntries)
@@ -87,7 +90,8 @@ export async function rulingDecidersOf(projectId: string): Promise<RulingDecider
       );
       continue;
     }
-    for (const d of parsed.data) out.push({ ...d, ruling: row.slug, title: row.title });
+    for (const d of parsed.data)
+      out.push({ ...d, ruling: row.slug, title: row.title, updatedAt: row.updatedAt });
   }
   return out;
 }

@@ -159,7 +159,7 @@ export {
   resolveIssueKeyInProject,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-export { listModulesForIssues } from './label-service.js';
+export { issueTaskOf, listModulesForIssues } from './label-service.js';
 export { carriedToLanding, filesNamed, type LandedCarriage } from './landed-carriage.js';
 export { landingShortfall } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';

@@ -3991,6 +3991,13 @@
       "when": 1837123200000,
       "tag": "0627_verdict_builder_facts_kept_by_each_write",
       "breakpoints": true
+    },
+    {
+      "idx": 628,
+      "version": "7",
+      "when": 1837209600000,
+      "tag": "0628_a_project_records_its_working_agreements",
+      "breakpoints": true
     }
   ]
 }

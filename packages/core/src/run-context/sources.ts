@@ -20,10 +20,18 @@ export interface MemoryFound {
   text?: string;
 }
 
+/** A working agreement as a read or a prompt gave it: its slug and the effective revision (REQ-90). */
+export interface AgreementFound {
+  slug: string;
+  /** `forge@<n>`, `project@<n>` or `config@<n>`. */
+  revision: string;
+}
+
 /** What one read returned, as the recorder takes it. */
 export interface Found {
   knowledge?: readonly KnowledgeFound[];
   memory?: readonly MemoryFound[];
+  agreements?: readonly AgreementFound[];
 }
 
 /** `sha256:<16 hex>` of the text a run was given: the revision where the read carried no timestamp. */
@@ -53,5 +61,10 @@ export function sourcesOf(found: Found): RunContextSource[] {
     ref: m.id,
     revision: stamp(m.asOf) ?? (m.text === undefined ? null : digestOf(m.text)),
   }));
-  return [...knowledge, ...memory];
+  const agreements = (found.agreements ?? []).map((a) => ({
+    kind: 'agreement' as const,
+    ref: a.slug,
+    revision: a.revision,
+  }));
+  return [...knowledge, ...memory, ...agreements];
 }

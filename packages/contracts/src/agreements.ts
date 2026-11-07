@@ -10,11 +10,12 @@
 // - `GET  /api/projects/:id/agreements[?issue=<uuid> | ?labels=a,b&category=c]` → `AgreementsView`
 // - `GET  /api/projects/:id/agreements/:slug` → `AgreementDetailView` (with its history)
 // - `PUT  /api/projects/:id/agreements/:slug` `AgreementWrite` → `AgreementDetailView` (project.admin)
-// - `POST /api/projects/:id/agreements/:slug/restore` `AgreementRestore` → `AgreementDetailView` (project.admin)
+// - `POST /api/projects/:id/agreements/:slug/restore` `AgreementRestore` → `AgreementsView` (project.admin)
 // - a run's received agreements: `GET /api/projects/:id/run-context?session=|issue=`, rows of kind
 //   `agreement`, `ref` the slug and `revision` the `AgreementView.effective.revision` it was given.
 
 import { z } from "zod";
+import type { RefusalStatuses } from "./refusal.js";
 
 /**
  * How an agreement stands on a project: `inherited` (the Forge default holds), `overridden` (the
@@ -255,6 +256,7 @@ export const AGREEMENTS_QUERY_SHAPE =
 	"none (every agreement, conditions unresolved), issue=<issue uuid>, or labels=<a,b>&category=<c>";
 
 export const AGREEMENT_REFUSAL_CODES = [
+	"AGREEMENT_REFUSED",
 	"AGREEMENT_NOT_FOUND",
 	"AGREEMENT_LOCKED",
 	"AGREEMENT_AUTHORITY_ELSEWHERE",
@@ -266,6 +268,15 @@ export const AGREEMENT_REFUSAL_CODES = [
 	"AGREEMENT_ISSUE_NOT_FOUND",
 ] as const;
 export type AgreementRefusalCode = (typeof AGREEMENT_REFUSAL_CODES)[number];
+
+/** Each refusal's status; a code left out answers 422. */
+export const AGREEMENT_REFUSAL_STATUSES = {
+	AGREEMENT_NOT_FOUND: 404,
+	AGREEMENT_ISSUE_NOT_FOUND: 404,
+	AGREEMENT_REVISION_STALE: 409,
+	AGREEMENT_NOTHING_TO_RESTORE: 409,
+	AGREEMENT_SLUG_INVALID: 400,
+} as const satisfies RefusalStatuses<AgreementRefusalCode>;
 
 /** `forge@3` → `{ layer: 'forge', revision: 3 }`; null for anything else. */
 export function parseAgreementRevision(

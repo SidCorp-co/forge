@@ -123,6 +123,18 @@
         "core-kernel#k-sessions"
       ]
     },
+    "agreements": {
+      "kind": "domain",
+      "context": "knowledge",
+      "owns": ["projectAgreementRevisions"],
+      "serves": [
+        "REQ-90",
+        "working-agreements#edit",
+        "working-agreements#resolve",
+        "working-agreements#supply",
+        "working-agreements#record-run"
+      ]
+    },
     "api-contract": {
       "kind": "platform",
       "context": "platform",

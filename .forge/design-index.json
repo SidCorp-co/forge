@@ -324,6 +324,10 @@
   "REQ-80": {
    "title": "Forge holds and applies each project's environment variables, per environment, with audit and drift",
    "status": "agreed"
+  },
+  "REQ-90": {
+   "title": "Working Agreements: see which rules a project inherits, overrides and gives its agents",
+   "status": "agreed"
   }
  },
  "workflows": {
@@ -958,6 +962,18 @@
     "ks-owner-decisions",
     "ks-plan-is-root",
     "ks-state-never-lies"
+   ]
+  },
+  "working-agreements": {
+   "title": "Working agreements: default, project change, what agents get",
+   "steps": [
+    "agent-works",
+    "edit",
+    "inspect",
+    "open-page",
+    "record-run",
+    "resolve",
+    "supply"
    ]
   }
  }

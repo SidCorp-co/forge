@@ -22,8 +22,10 @@ export { readEnvironmentState } from './environment-state.js';
 export type { EnvironmentState } from './environment-state-schema.js';
 export { readDeliveryShape, readFastDelivery } from './fast-delivery.js';
 export {
+  type GateChangeView,
   gateOf,
   raiseAfterIncident,
+  readGateChanges,
   readGateModes,
   readGateProfile,
   readProjectGates,
