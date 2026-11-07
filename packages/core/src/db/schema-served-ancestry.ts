@@ -6,8 +6,11 @@ import { projects } from './schema-projects.js';
  * What the source host answered about a served commit and a commit a verdict was judged at: whether
  * the served one descends from it, and where it does not, every file the two trees may differ in
  * (`release-batch/served-ancestry.ts`). Asked once, by the pass that reads what a project serves, so
- * a read answers from here and asks no host (ISS-774), and a deploy empties nothing. Ancestry between
- * two named commits never changes, so a row is never updated; a host that did not answer writes none.
+ * a read answers from here and asks no host (ISS-774), and a deploy empties nothing. The same pass
+ * asks whether a shipped release's commit holds the landing of an issue judged there, and the other
+ * way where it does not, and a door that asked the host keeps a `holds` (ISS-1079): `served_commit`
+ * is then the later commit and `judged_commit` the earlier. Ancestry between two named commits never
+ * changes, so a row is never updated; a host that did not answer writes none.
  */
 export const servedAncestry = pgTable(
   'served_ancestry',
@@ -15,9 +18,9 @@ export const servedAncestry = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    /** The whole commit an environment of the project was read serving, lower case. */
+    /** The whole commit an environment of the project was read serving, or the later of a pair, lower case. */
     servedCommit: text('served_commit').notNull(),
-    /** The whole commit a verdict on the project was judged at, lower case. */
+    /** The whole commit a verdict on the project was judged at, or the earlier of a pair, lower case. */
     judgedCommit: text('judged_commit').notNull(),
     carried: boolean('carried').notNull(),
     /** Where not carried, the files the two trees may differ in; null where carried. */

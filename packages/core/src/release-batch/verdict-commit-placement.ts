@@ -5,13 +5,16 @@
  * (`landed-build-holds.ts`). Asked first of the landings Forge recorded (`recorded-holding.ts`, the
  * reading `laterHoldersOf` and `earlierCarriageOf` make), then of the project's ancestry reader
  * (`judged-build.ts:ancestryOf`, the source host or the box's bound checkout) the record doors share.
- * A write may ask the host; no read path calls this.
+ * A write may ask the host; no read path calls this. A `holds` the reader answered is kept
+ * (`served-ancestry.ts:keepHolding`, ISS-1079), so a read weighing a pass at a shipped release's commit
+ * answers it from the row and asks nothing: what the attach door and the verdict door learn stays.
  */
 
 import { pairKey } from '../runners/index.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
 import { type Holding, holdingPair } from './landed-build.js';
 import { recordedHolding } from './recorded-holding.js';
+import { keepHolding } from './served-ancestry.js';
 
 export type CommitPlacement =
   /** `holds`: the commit holds the landing; `carried`: the landing descends from the commit. */
@@ -46,8 +49,14 @@ export async function commitPlacedOnLanding(
   const read = await ancestryOf(projectId, [holds, carried], deps);
   const later = read.get(pairKey(holds));
   const earlier = read.get(pairKey(carried));
-  if (later === true) return { placed: true, how: 'holds' };
-  if (earlier === true) return { placed: true, how: 'carried' };
+  if (later === true) {
+    await keepHolding(projectId, built, named);
+    return { placed: true, how: 'holds' };
+  }
+  if (earlier === true) {
+    await keepHolding(projectId, named, built);
+    return { placed: true, how: 'carried' };
+  }
   if (later === false && earlier === false) return { placed: false };
   return { unread: unreadOf(later) ?? unreadOf(earlier) ?? 'the ancestry reader gave no answer' };
 }

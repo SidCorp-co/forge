@@ -3,7 +3,8 @@
  * BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it.
  * `laterHoldersOf` is the one reading of that hold, and `earlierCarriageOf` of a landing's descent
  * from an earlier pass (ISS-845), both answered from the landings Forge recorded
- * (`recorded-holding.ts:recordedHolding`) and never from the host, and both a requirement's coverage
+ * (`recorded-holding.ts:recordedHolding`), the former also, at a commit a shipped release recorded
+ * shipping, from the ancestry Forge kept (`shipped-holding.ts`, ISS-1079), never from the host, and both a requirement's coverage
  * (`landedBuildHolds`, `requirements/standing-coverage.ts`) and the automatic release's landing
  * basis (`criteria-basis.ts:landingCriteriaReports`) read them. A release record keeps its own rule:
  * the recorded commit must hold the verdict's (`landing-coverage.ts`).
@@ -12,7 +13,7 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { landedCommitOf } from '@forge/contracts/verdict-identity';
-import type { Carriage } from '../issues/index.js';
+import { type Carriage, carriageKey } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { pairKey } from '../runners/index.js';
 import {
@@ -23,7 +24,8 @@ import {
   type LandedBuild,
 } from './landed-build.js';
 import { recordedHolding } from './recorded-holding.js';
-import { shippedAskKey, shippedReleaseHolding } from './shipped-holding.js';
+import { persistedCarriage } from './served-ancestry.js';
+import { shippedAskKey, shippedCommitHolding } from './shipped-holding.js';
 
 /** One issue's landed build, or why it has none. */
 export interface LandedHolds {
@@ -150,8 +152,9 @@ function laterCommitsOf(
 /**
  * Per issue whose build is a landing, whether each later commit its verdicts name holds that landing,
  * or why that was not read: the one reading of a pass on a later build, answered from the landings
- * Forge recorded (`recorded-holding.ts`), or from the commit a shipped release holding the issue
- * recorded shipping (`shipped-holding.ts`, ISS-1079), never from the host.
+ * Forge recorded (`recorded-holding.ts`), or, at the commit a shipped release recorded shipping, from
+ * the release holding the issue and the ancestry Forge kept (`shipped-holding.ts`, ISS-1079), never
+ * from the host.
  */
 export async function laterHoldersOf(
   projectId: string,
@@ -168,25 +171,25 @@ export async function laterHoldersOf(
   );
   const answerOf = (landing: string, sha: string) =>
     answers.get(pairKey(holdingPair(landing, sha)));
-  const shipped = await shippedReleaseHolding(
+  const shipped = await shippedCommitHolding(
     projectId,
     [...later].flatMap(([issueId, { landing, shas }]) =>
-      shas.filter((sha) => answerOf(landing, sha) !== true).map((sha) => ({ issueId, sha })),
+      shas
+        .filter((sha) => answerOf(landing, sha) !== true)
+        .map((sha) => ({ issueId, landing, sha })),
     ),
   );
   const out = new Map<string, Map<string, Holding>>();
   for (const [issueId, { landing, shas }] of later) {
-    out.set(
-      issueId,
-      new Map(
-        shas.map((sha): [string, Holding] => [
-          sha,
-          shipped.has(shippedAskKey({ issueId, sha }))
-            ? true
-            : (answerOf(landing, sha) ?? { unread: 'the ancestry reader gave no answer' }),
-        ]),
-      ),
-    );
+    const holdingAt = (sha: string): Holding => {
+      const recorded = answerOf(landing, sha);
+      if (recorded === true) return true;
+      return (
+        shipped.get(shippedAskKey({ issueId, sha })) ??
+        recorded ?? { unread: 'the ancestry reader gave no answer' }
+      );
+    };
+    out.set(issueId, new Map(shas.map((sha): [string, Holding] => [sha, holdingAt(sha)])));
   }
   return out;
 }
@@ -204,8 +207,11 @@ function carriageOfHolding(held: Holding | undefined, by: string): Carriage {
 /**
  * Per issue whose build is a landing, what that landing holds of each other commit its verdicts
  * name (ISS-845): it descends from one where a landing Forge recorded at that commit, on the same
- * branch, came no later (`recorded-holding.ts`, a fix round's own earlier landing among them), and
- * otherwise whether it does was not read. Never from the host, so the files between are not read.
+ * branch, came no later (`recorded-holding.ts`, a fix round's own earlier landing among them), or
+ * where the source host's answer Forge kept says so (`served-ancestry.ts`, ISS-1079: a commit a
+ * shipped release recorded shipping that does not hold the landing is asked the other way too), and
+ * otherwise whether it does was not read. Never from the host on the read, so the files between are
+ * not read where no kept answer names them.
  */
 export async function earlierCarriageOf(
   projectId: string,
@@ -214,19 +220,26 @@ export async function earlierCarriageOf(
   judgedOnFor: (issueId: string) => string | null,
 ): Promise<Map<string, Map<string, Carriage>>> {
   const other = laterCommitsOf(builds, judged, judgedOnFor);
-  const answers = await recordedHolding(
-    projectId,
-    [...other.values()].flatMap(({ landing, shas }) =>
-      shas.map((sha) => holdingPair(sha, landing)),
+  const asked = [...other.values()];
+  const [answers, kept] = await Promise.all([
+    recordedHolding(
+      projectId,
+      asked.flatMap(({ landing, shas }) => shas.map((sha) => holdingPair(sha, landing))),
     ),
-  );
+    persistedCarriage(
+      projectId,
+      asked.flatMap(({ shas }) => shas),
+      asked.map(({ landing }) => landing),
+    ),
+  ]);
   const out = new Map<string, Map<string, Carriage>>();
   for (const [issueId, { landing, shas }] of other) {
     const carried = new Map<string, Carriage>();
     for (const sha of shas) {
       const held = answers.get(pairKey(holdingPair(sha, landing)));
       const by = `Forge recorded \`${short(sha)}\` landing on its branch before \`${short(landing)}\``;
-      carried.set(sha, carriageOfHolding(held, by));
+      const hostSaid = held === true ? undefined : kept.get(carriageKey(sha, landing));
+      carried.set(sha, hostSaid ?? carriageOfHolding(held, by));
     }
     out.set(issueId, carried);
   }

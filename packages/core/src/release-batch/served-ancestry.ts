@@ -7,7 +7,12 @@
  * every runtime verdict a deploy ago read unread (REQ-79, 2026-10-30).
  *
  * Each pass reads what each project serves (production, and the environment its changes are judged
- * on), and asks for every pair it holds no row and no release record for, newest verdict first. A host
+ * on), and asks for every pair it holds no row and no release record for, newest verdict first. It
+ * also asks, first, whether each commit a shipped release recorded shipping holds the landing of each
+ * issue whose verdicts name it (`owedShippedPairs`, ISS-1079): sidcorp-mail's ISS-7 shipped in 0.9.0
+ * and was judged at 62a4ac7, which 0.16.0 shipped, and only a kept answer lets coverage count that
+ * (`shipped-holding.ts`). A door that asks the host the same question keeps a `holds` answer too
+ * (`keepHolding`, from `verdict-commit-placement.ts:commitPlacedOnLanding`). A host
  * that does not answer writes nothing, so the pair stays unread with its reason and the next pass asks
  * again. The work is bounded: at most `ANCESTRY_PROJECTS_PER_PASS` projects are read a pass, and at most
  * `ANCESTRY_ASKS_PER_PASS` pairs not already held are asked of the host across all of them (each one
@@ -26,9 +31,13 @@ import {
 } from '../integrations/source-host/index.js';
 import { type Carriage, carriageKey, rotated } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { pairKey } from '../runners/index.js';
 import { carriageOf } from './carriage.js';
+import { holdingPair, landedBuildsOf } from './landed-build.js';
 import { recordedCarriage } from './recorded-carriage.js';
+import { recordedHolding } from './recorded-holding.js';
 import { readJudgedOnNow, readServingNow } from './serving-reading.js';
+import { type ShippedAsk, shippedAskKey, shippedCommitHolding } from './shipped-holding.js';
 
 /** How many projects one pass reads what they serve of. */
 export const ANCESTRY_PROJECTS_PER_PASS = 10;
@@ -129,6 +138,16 @@ async function hostOf(projectId: string): Promise<SourceHost | { why: string }> 
   }
 }
 
+function uniquePairs<P extends { judged: string; served: string }>(pairs: readonly P[]): P[] {
+  const seen = new Set<string>();
+  return pairs.filter((p) => {
+    const key = carriageKey(p.judged, p.served);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** The pairs of one project no row and no release record answers, newest verdict first. */
 async function owedPairs(projectId: string, served: readonly string[]) {
   const judged = await judgedCommitsOf(projectId);
@@ -141,6 +160,90 @@ async function owedPairs(projectId: string, served: readonly string[]) {
       .filter((s) => s !== j && !held.has(carriageKey(j, s)) && !recorded.has(carriageKey(j, s)))
       .map((s) => ({ judged: j, served: s })),
   );
+}
+
+/** A pair the pass asks; `back` asks the other way too where the first answer does not hold. */
+interface Owed {
+  judged: string;
+  served: string;
+  back?: true;
+}
+
+/**
+ * Per issue whose newest live verdicts name a commit a shipped release of the project recorded
+ * shipping, other than its landing, the pair (landing, that commit) no landing mark and no kept row
+ * answers (`shipped-holding.ts:shippedCommitHolding` reads it unread): what the pass asks of the host.
+ * Where that commit is kept not holding the landing, whether the landing descends from it instead is
+ * asked too (`back`), so the pass a hotfix holds is weighed as carried or as another build
+ * (`landed-build-holds.ts:earlierCarriageOf`), never left unread.
+ */
+async function owedShippedPairs(projectId: string): Promise<Owed[]> {
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT newest.issue_id, newest.judged FROM (
+      SELECT DISTINCT ON (c.id) c.issue_id::text AS issue_id,
+             lower(coalesce(v.commit_sha, v.runtime_ref)) AS judged
+        FROM issue_criteria c
+        JOIN issues i ON i.id = c.issue_id
+        JOIN criterion_verdicts v ON v.criterion_id = c.id
+       WHERE i.project_id = ${projectId} AND i.status <> 'dropped' AND c.retired_at IS NULL
+       ORDER BY c.id, v.created_at DESC, v.id DESC
+    ) newest
+     WHERE newest.judged IN (
+       SELECT lower(r.metadata -> 'finish' ->> 'commit') FROM pipeline_runs r
+        WHERE r.project_id = ${projectId} AND r.metadata ->> 'source' = 'release-batch'
+          AND r.metadata -> 'finish' ->> 'state' = 'finished' AND r.release_released_at IS NOT NULL)
+  `)) as unknown as Array<{ issue_id: string; judged: string }>;
+  if (rows.length === 0) return [];
+  const builds = await landedBuildsOf([...new Set(rows.map((r) => r.issue_id))]);
+  const asks: ShippedAsk[] = rows.flatMap((r) => {
+    const landing = builds.get(r.issue_id.toLowerCase())?.sha ?? null;
+    return landing && landing !== r.judged ? [{ issueId: r.issue_id, landing, sha: r.judged }] : [];
+  });
+  const [marked, shipped, kept] = await Promise.all([
+    recordedHolding(
+      projectId,
+      asks.map((a) => holdingPair(a.landing, a.sha)),
+    ),
+    shippedCommitHolding(projectId, asks),
+    persistedCarriage(
+      projectId,
+      asks.map((a) => a.sha),
+      asks.map((a) => a.landing),
+    ),
+  ]);
+  return asks.flatMap((a): Owed[] => {
+    if (marked.get(pairKey(holdingPair(a.landing, a.sha))) === true) return [];
+    const held = shipped.get(shippedAskKey(a));
+    if (typeof held === 'object') return [{ judged: a.landing, served: a.sha, back: true }];
+    const back = held === false && !kept.has(carriageKey(a.sha, a.landing));
+    return back ? [{ judged: a.sha, served: a.landing }] : [];
+  });
+}
+
+/**
+ * Keep that `holder` holds `landing`, as the source host or a box's checkout answered it to a door
+ * that asked (`verdict-commit-placement.ts:commitPlacedOnLanding`): ancestry between two named commits
+ * never changes, so the read paths answer it from here and ask nothing. Only a `holds` answer is
+ * kept, since a row saying it does not names the files the two trees differ in, which no door read.
+ */
+export async function keepHolding(
+  projectId: string,
+  landing: string,
+  holder: string,
+): Promise<void> {
+  const judged = lower(landing);
+  const served = lower(holder);
+  if (judged === served || !WHOLE.test(judged) || !WHOLE.test(served)) return;
+  await db
+    .insert(servedAncestry)
+    .values({
+      projectId,
+      servedCommit: served,
+      judgedCommit: judged,
+      carried: true,
+      differsIn: null,
+    })
+    .onConflictDoNothing();
 }
 
 // Each pass starts one project further along, so a spent budget is spent elsewhere first next time.
@@ -162,16 +265,20 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
     if (spent >= ANCESTRY_ASKS_PER_PASS) break;
     result.projects += 1;
     const served = await servedNow(projectId);
-    if (served.length === 0) continue;
-    const pairs = await owedPairs(projectId, served);
+    // a shipped release's commit against each landing it is judged for first: few, and nothing else asks
+    const pairs: Owed[] = uniquePairs([
+      ...(await owedShippedPairs(projectId)),
+      ...(served.length > 0 ? await owedPairs(projectId, served) : []),
+    ]);
     if (pairs.length === 0) continue;
     const host = await hostOf(projectId);
     if ('why' in host) {
       result.unread += pairs.length;
       continue;
     }
-    for (const pair of pairs) {
+    for (let i = 0; i < pairs.length; i += 1) {
       if (spent >= ANCESTRY_ASKS_PER_PASS) break;
+      const pair = pairs[i] as Owed;
       const carriage = await carriageOf(host, pair.judged, pair.served, spend);
       result.asked += 1;
       if (carriage.kind === 'unread' || carriage.kind === 'lacks') {
@@ -192,6 +299,10 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
         .onConflictDoNothing()
         .returning({ projectId: servedAncestry.projectId });
       result.written += written.length;
+      const back = carriageKey(pair.served, pair.judged);
+      if (pair.back && !carried && !pairs.some((p) => carriageKey(p.judged, p.served) === back)) {
+        pairs.push({ judged: pair.served, served: pair.judged });
+      }
     }
   }
   if (result.asked > 0 || result.unread > 0) {

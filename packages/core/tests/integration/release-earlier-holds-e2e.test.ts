@@ -149,14 +149,17 @@ describe('a pass at a later release commit counts for an issue an earlier releas
     const { req } = await twoReleases(HOTFIX);
 
     await readServedAncestry();
+    // neither way: the hotfix does not hold the landing, nor does the landing descend from it
     expect(await keptRows()).toContainEqual({ served: HOTFIX, judged: EARLIER, carried: false });
+    expect(await keptRows()).toContainEqual({ served: EARLIER, judged: HOTFIX, carried: false });
 
     const coverage = await coverageOf(req);
     expect(coverage.passing).toBe(1);
     const why = (await bcOf(req, 'BC-1')).issues[0]?.notCounted ?? '';
     expect(why).toContain(HOTFIX.slice(0, 12));
     expect(why).toContain(EARLIER.slice(0, 12));
-    expect(why).toContain('nor at a build that holds it');
+    expect(why).toContain('does not descend from');
+    expect(why).toContain('judged another build');
   });
 
   it('counts where the kept ancestry says the later commit holds the commit the earlier release shipped', async () => {
