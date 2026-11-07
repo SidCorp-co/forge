@@ -136,6 +136,6 @@ describe("a builder's pass that never counts on the Criteria tab (ISS-683, K91)"
   it("says on the open row that the verdict does not count", async () => {
     await drawnWithBuilder();
     fireEvent.click(screen.getAllByTestId("criterion-row")[0]?.querySelector("button") as HTMLElement);
-    expect(await screen.findByTestId("criterion-full")).toHaveTextContent("Not counted: only its builder judged it");
+    expect(await screen.findByTestId("criterion-full")).toHaveTextContent("Builder's own pass, not counted");
   });
 });

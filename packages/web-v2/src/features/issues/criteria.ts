@@ -5,7 +5,8 @@
 import { formatAttachmentCap, safeAttachmentName } from "@forge/contracts/attachments";
 import { issueKeys } from "./queries";
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MIMES, RELEASE_PICTURE_MIMES, releaseMediaKindOf } from "@forge/contracts/release-page";
-import type { JudgedBuild, StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
+import type { CriterionStanding } from "@forge/contracts/issue-vocabulary";
+import { criterionStandingOf, type JudgedBuild, type StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { issueDetailApi } from "./detail-api";
@@ -29,6 +30,8 @@ export interface CriterionVerdict extends StorefrontDraftVerdictView {
   createdAt: string;
   /** On a live criterion's latest verdict: a builder's pass counted only because it predates the cutover. */
   countedUnderCutover?: boolean;
+  /** On a live criterion's latest verdict: why a pass or short never counts, as core names it (contracts `verified-rule.ts:notCountedOf`); null where it may. */
+  notCounted?: { code: string; detail: string } | null;
 }
 
 export interface CriterionRow {
@@ -48,6 +51,14 @@ export interface RetiredCriterionRow {
   requirementCriterionId: string | null;
   retiredAt: string;
   verdicts: CriterionVerdict[];
+}
+
+/**
+ * Where a criterion stands as the tab draws and counts it: a pass or short that never counts (only its
+ * builder recorded it, REQ-74 BC-2) is not met, so it stands not judged until another run judges it.
+ */
+export function criterionRowStanding(latest: CriterionVerdict | null): CriterionStanding {
+  return latest?.notCounted ? "unjudged" : criterionStandingOf(latest);
 }
 
 /** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */

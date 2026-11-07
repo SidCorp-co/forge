@@ -9,6 +9,8 @@
 // readable (ISS-489).
 // A short is met short of its wording and never proven, so its mark is the pass's ✓ drawn hollow in
 // the warn tone, with its word beside it from md up; it never reads as a pass (forge-core-eb, 2026-10-14).
+// A pass or short only its builder recorded never counts (REQ-74 BC-2): it stands not judged, marked
+// "Builder's pass" with its reason on hover and on the open row, and Met leaves it out (ISS-683, K91).
 
 import { type ReactNode, useState } from "react";
 import { EmptyPanelLine, HollowCheck, StatusBadge, statusReading, VerdictEvidence, ViewHeading } from "@/design";
@@ -20,7 +22,7 @@ import { criterionStandingOf } from "@forge/contracts/verdict-identity";
 import { cn } from "@/lib/utils/cn";
 import { withoutCriterionCode } from "@/lib/utils/criterion-code";
 import { identityPhrase } from "../identity-phrase";
-import { type CriterionRow, type CriterionVerdict, type RetiredCriterionRow, useCriteria } from "../criteria";
+import { type CriterionRow, type CriterionVerdict, criterionRowStanding, type RetiredCriterionRow, useCriteria } from "../criteria";
 import { clipWords } from "../derive";
 import { useAttachments } from "../detail-hooks";
 import { RecordVerdict } from "./criteria-acts";
@@ -36,6 +38,7 @@ function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: 
   const word = v.verdict === "short" ? t("issues.verdict.short") : statusReading("criterion", v.verdict, language).label;
   const parts = [
     developer ? `${word} · ${identityPhrase(v, t)}` : word,
+    v.notCounted ? t("issues.verdict.notCounted") : null,
     v.reason ? t("issues.verdict.reason", { reason: v.reason }) : null,
     t("issues.verdict.by", { by, at: at(v.createdAt) }),
   ];
@@ -128,6 +131,11 @@ function CriterionItem({
             {reading}
           </span>
         ) : null}
+        {row?.latest?.notCounted ? (
+          <span className="flex-none text-12 text-subtle" title={t("issues.verdict.builderOnlyWhy")} data-testid={`criterion-${line.n}-builder-only`}>
+            {t("issues.verdict.builderOnly")}
+          </span>
+        ) : null}
         {row?.latest?.countedUnderCutover ? (
           <span className="flex-none text-12 text-subtle" title={t("issues.verdict.builderPassWhy")} data-testid={`criterion-${line.n}-builder`}>
             {t("issues.verdict.builderPass")}
@@ -191,7 +199,7 @@ export function CriteriaList({
   const rows = q.data?.criteria ?? [];
   const lines: CriterionLine[] =
     rows.length > 0
-      ? rows.map((row) => ({ id: row.id, n: row.n, statement: row.statement, standing: criterionStandingOf(row.latest), row }))
+      ? rows.map((row) => ({ id: row.id, n: row.n, statement: row.statement, standing: criterionRowStanding(row.latest), row }))
       : checklist.map((item, i) => ({ id: item.key, n: i + 1, statement: item.text, standing: item.checked ? "pass" : "unjudged", row: null }));
   const count = (f: Filter) => (f === "all" ? lines.length : lines.filter((l) => FILTER_OF[l.standing] === f).length);
   const pills: { value: Filter; label: string }[] = [

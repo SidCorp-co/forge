@@ -1,6 +1,8 @@
 // A builder's own pass counted under the cutover, witnessed at phone and desktop width in both themes
 // (ISS-683, REQ-74 BC-2; contracts `verified-rule.ts:BUILDER_PASS_CUTOVER`): the Criteria tab and the
 // release page's Technical view list it as met, marked with the one word "Builder", and mark no other.
+// A builder's pass that never counts (K91, dev.318) is drawn not judged, marked "Builder's pass", and
+// left out of Met.
 //
 //   pnpm --filter web-v2 witness witness/builder-pass-mark.witness.tsx --out <dir>
 
@@ -14,7 +16,7 @@ import "./entry";
 import { InRouter } from "./router";
 
 const AT = "2026-10-20T09:12:00.000Z";
-const judged = (verdict: "pass" | "short", reason: string, countedUnderCutover = false) => ({
+const judged = (verdict: "pass" | "short", reason: string, countedUnderCutover = false, notCounted: { code: string; detail: string } | null = null) => ({
   verdict,
   reason,
   identityKind: "commit",
@@ -22,11 +24,14 @@ const judged = (verdict: "pass" | "short", reason: string, countedUnderCutover =
   authorAgency: "agent",
   createdAt: AT,
   countedUnderCutover,
+  notCounted,
 });
+const BY_BUILDER = { code: "VERDICT_BY_BUILDER", detail: "recorded by the run that built this issue" };
 const criteria = [
   { id: "k1", n: 1, statement: "The release page names who approved it", position: 0, requirementCriterionId: null, latest: judged("pass", "passed by the building run", true) },
   { id: "k2", n: 2, statement: "The page shows the version and date", position: 1, requirementCriterionId: null, latest: judged("pass", "judged by K72 on the running build") },
   { id: "k3", n: 3, statement: "Each release opens on highlights", position: 2, requirementCriterionId: null, latest: judged("short", "opens on highlights; the clip is missing") },
+  { id: "k4", n: 4, statement: "Each highlight carries a picture", position: 3, requirementCriterionId: null, latest: judged("pass", "passed by the building run after the cutover", false, BY_BUILDER) },
 ];
 
 window.fetch = async (input: RequestInfo | URL) =>
@@ -71,6 +76,11 @@ function reads(): string[] {
   if (releaseMarks.length !== 1 || !releaseMarks[0]?.startsWith("✓#2")) wrong.push(`the release row marks ${JSON.stringify(releaseMarks)}, not #2 alone`);
   const word = document.querySelector("[data-testid=criterion-1-builder]");
   if (word && word.getBoundingClientRect().width === 0) wrong.push("the Criteria tab's Builder word is not drawn at this width");
+  const only = document.querySelector("[data-testid=criterion-4-builder-only]");
+  if (only?.textContent !== "Builder's pass" || only.getBoundingClientRect().width === 0) wrong.push("criterion 4 is not marked \"Builder's pass\" at this width");
+  if (document.querySelector("[data-testid=criterion-4-verdict]")?.textContent !== "–") wrong.push("criterion 4, a builder's pass that never counts, is not drawn not judged");
+  const pills = [...document.querySelectorAll("#criteria fieldset button")].map((b) => b.textContent);
+  if (!pills.includes("Met 3") || !pills.includes("Not judged 1")) wrong.push(`the pills read ${pills.join(", ")}, not Met 3 and Not judged 1`);
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
   return wrong;
 }
@@ -80,7 +90,7 @@ window.__witness = {
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
-  ready: () => Boolean(document.querySelector("[data-testid=criterion-3-verdict]")) && Boolean(document.querySelector("[data-testid=page-row-detail]")),
+  ready: () => Boolean(document.querySelector("[data-testid=criterion-4-verdict]")) && Boolean(document.querySelector("[data-testid=page-row-detail]")),
   stages: [
     { name: "light", run: async () => (theme("light"), await settle(), reads()) },
     { name: "dark", run: async () => (theme("dark"), await settle(), reads()) },
