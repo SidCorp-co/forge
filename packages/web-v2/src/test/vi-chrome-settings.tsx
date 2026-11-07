@@ -59,7 +59,7 @@ const agent = (n: number, over: Record<string, unknown> = {}) => ({
 const queries = (activeOrg = "o2"): [QueryKey, unknown][] => [
   [["orgs"], ORGS],
   [["settings", "preferences"], { activeOrgId: activeOrg }],
-  [["orgs", "o2", "members"], [{ userId: "u1", email: "an@example.com", role: "owner", lenses: ["technical"] }, { userId: "u2", email: "binh@example.com", role: "member", lenses: [] }]],
+  [["orgs", "o2", "members"], [{ userId: "u1", email: "an@example.com", name: "An", agent: false, role: "owner", lenses: ["technical"] }, { userId: "u2", email: "binh@example.com", name: "binh@example.com", agent: false, role: "member", lenses: [] }, { userId: "u4", email: "autoflow.27285ff18a5b@agents.forge.invalid", name: "autoflow", agent: true, role: "member", lenses: [] }]],
   [["orgs", "o2", "projects"], [{ id: "p1", name: "Hop", slug: "hop", archivedAt: null }, { id: "p2", name: "Old", slug: "old", archivedAt: ago(9000) }]],
   [["orgs", "o2", "invitations"], [{ email: "chi@example.com", role: "admin", expired: true }]],
   [["orgs", "o1", "projects"], []],

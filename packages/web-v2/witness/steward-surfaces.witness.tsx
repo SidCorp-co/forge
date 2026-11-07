@@ -8,7 +8,7 @@
 import { AttentionScreen } from "@/features/attention";
 import { StatusReport } from "@/features/project-status/components/status-report";
 import { APPROVALS_READ } from "@/test/approvals-read";
-import { clock, FP, has, ISSUE_STUCK, Live, mountSurfaces, type Surface, WITNESS_STATUS } from "./steward.fixture";
+import { clock, FP, has, ISSUE_STUCK, lacks, Live, mountSurfaces, type Surface, WITNESS_STATUS } from "./steward.fixture";
 
 const SURFACES: Surface[] = [
   {
@@ -19,7 +19,15 @@ const SURFACES: Surface[] = [
         <StatusReport s={WITNESS_STATUS} slug="hop" clock={clock} />
       </div>
     ),
-    check: () => [...has("Stuck", "REQ-45"), ...has("Stuck", "FB-74"), ...has("Needs you", "FB-135")],
+    // each row leads with its title, its key the title's hover (ISS-1072)
+    check: () => [
+      ...has("Stuck", "Checkout reaches the clinic"),
+      ...has("Stuck", "Board loses a card on refresh"),
+      ...has("Needs you", WITNESS_STATUS.needsYou.decisions.find((d) => d.key === "FB-135")?.question ?? "FB-135"),
+      ...lacks("a row", "FB-135"),
+      ...lacks("a row", "REQ-45"),
+      ...lacks("a row", "FB-74"),
+    ],
   },
   {
     name: "attention",

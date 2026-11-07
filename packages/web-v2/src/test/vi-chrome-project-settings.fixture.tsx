@@ -111,7 +111,7 @@ const queries = (): [QueryKey, unknown][] => [
   [["project", P, "members"], [{ userId: "u1", email: "an@example.com", role: "admin", createdAt: ago(900) }, { userId: "u2", email: "binh@example.com", role: "viewer", createdAt: ago(800) }]],
   [["project", P, "invitations"], [{ email: "chi@example.com", role: "member", expiresAt: ago(-60), createdAt: ago(60), inviterEmail: "an@example.com", expired: true }]],
   [["orgs"], [{ id: "o1", name: "Acme", slug: "acme", role: "owner", isPersonal: false }, { id: "o2", name: "Beta", slug: "beta", role: "admin", isPersonal: false }]],
-  [["orgs", "o1", "members"], [{ userId: "u1", email: "an@example.com", role: "owner" }, { userId: "u3", email: "dung@example.com", role: "member" }]],
+  [["orgs", "o1", "members"], [{ userId: "u1", email: "an@example.com", name: "An", agent: false, role: "owner" }, { userId: "u3", email: "dung@example.com", name: "dung@example.com", agent: false, role: "member" }]],
   [["project", P, "labels"], [
     { id: "m1", name: "Thanh toan", color: "#336699", kind: "module", parentId: null, slug: "thanh-toan", knowledgeEntryId: null, description: null },
     { id: "m2", name: "Gio hang", color: "#996633", kind: "module", parentId: "m1", slug: "gio-hang", knowledgeEntryId: null, description: "Mo ta" },
