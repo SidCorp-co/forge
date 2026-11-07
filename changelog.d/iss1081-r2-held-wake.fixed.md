@@ -1,1 +1,0 @@
-**A wake already sitting unsent at an idle master's prompt is now submitted.** One behind a running turn is left, a stuck one is told to core naming the pane, and Enter never lands on a dim prompt suggestion.

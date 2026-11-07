@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.569] - 2026-11-07
+
+A wake held at an idle master's prompt is submitted, never a suggestion
+
+### Fixed
+
+- **A wake already sitting unsent at an idle master's prompt is now submitted.** One behind a running turn is left, a stuck one is told to core naming the pane, and Enter never lands on a dim prompt suggestion.
+
 ## [0.4.0-dev.568] - 2026-11-07
 
 Test accounts that sign in by identifier can now be stored and judged
