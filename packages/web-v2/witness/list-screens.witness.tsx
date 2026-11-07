@@ -123,8 +123,10 @@ function regressions(name: string): string[] {
   if (name === "modules" && q("[data-testid=module-level-map]")) out.push("modules: the tile map is drawn above the list");
   if (name === "integrations") {
     for (const chip of all("main *")) {
-      if (chip.children.length === 0 && UUID.test(chip.innerText.trim()) && chip.getBoundingClientRect().width > 0) {
-        out.push(`integrations: "${chip.innerText.trim().slice(0, 40)}" is drawn as text`);
+      // an SVG node has no innerText: read every leaf by its text content
+      const text = (chip.textContent ?? "").trim();
+      if (chip.children.length === 0 && UUID.test(text) && chip.getBoundingClientRect().width > 0) {
+        out.push(`integrations: "${text.slice(0, 40)}" is drawn as text`);
         break;
       }
     }
