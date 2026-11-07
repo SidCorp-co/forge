@@ -103,3 +103,26 @@ describe.each([
     expect(onToggleCollapsed).toHaveBeenCalledOnce();
   });
 });
+
+// The collapsed rail is icons only (ISS-1073 round 2): its 10px labels clipped "Delivery", and a
+// nested group's rows stood wider than the rail, so it scrolled sideways under a white scrollbar
+// corner. Each row names itself to a reader and on hover, never in text the rail has no room for.
+describe("the compact rail", () => {
+  it("draws its rows and group heads as icons, each named by its label and hover title", () => {
+    rail(true, { groupOpen: { development: true } });
+    for (const b of within(screen.getByTestId("rail-tiers")).getAllByRole("button")) {
+      const name = b.getAttribute("aria-label") ?? "";
+      if (!name || /sidebar/i.test(name)) continue;
+      expect(b.getAttribute("title"), name).toBeTruthy();
+      // what a row may draw besides its icon: its count, and an ecosystem's two-letter mark, which is its icon
+      const drawn = [...b.childNodes].filter((n) => !(n instanceof HTMLElement && n.getAttribute("aria-hidden") === "true")).map((n) => n.textContent ?? "");
+      expect(drawn.join("").replace(/\d+/g, "").trim(), name).toBe("");
+    }
+    expect(button(/^Issues/)).toBeTruthy();
+  });
+
+  it("never scrolls sideways: its tiers hide what would run past the rail", () => {
+    rail(true);
+    expect(screen.getByTestId("rail-tiers").className).toMatch(/overflow-x-hidden/);
+  });
+});

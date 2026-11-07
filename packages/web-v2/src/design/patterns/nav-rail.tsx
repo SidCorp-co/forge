@@ -35,7 +35,7 @@ export type NavEntry = NavItem | NavItemGroup;
 export const isNavGroup = <E extends NavEntry>(e: E): e is Extract<E, NavItemGroup> => "items" in e;
 
 interface NavRailProps {
-  /** The 88px rail of icons over short labels; otherwise the 280px labelled rail. Both draw the same entries. */
+  /** The 88px rail of icons, each named on hover; otherwise the 280px labelled rail. Both draw the same entries. */
   compact?: boolean;
   workspaceItems: NavEntry[];
   /** The project tier, drawn above the workspace tier; absent or empty hides it. */
@@ -119,8 +119,9 @@ function Row({
         aria-label={hint ?? text}
         title={hint ?? text}
         className={cn(
-          "relative flex flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]",
-          nested ? "w-[64px]" : "w-[76px]",
+          // icons only: the label is the row's name and its hover title, never text the rail clips (ISS-1073)
+          "relative grid h-11 place-items-center rounded-md transition-colors duration-[120ms]",
+          nested ? "w-[56px]" : "w-[64px]",
           FOCUS,
           active ? "bg-accent-tint" : "text-subtle hover:bg-hover",
         )}
@@ -133,14 +134,6 @@ function Row({
           />
         )}
         <Leading item={item} active={active} size={20} />
-        <span
-          className={cn(
-            "block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em]",
-            active ? "text-accent-text" : "text-muted",
-          )}
-        >
-          {text}
-        </span>
         <Count n={count} compact />
       </button>
     );
@@ -192,7 +185,7 @@ function Group({
   ));
   if (compact) {
     return (
-      <div className="flex w-[76px] flex-col items-center" data-testid={`rail-group-${group.key}`}>
+      <div className="flex w-[64px] flex-col items-center" data-testid={`rail-group-${group.key}`}>
         <button
           type="button"
           onClick={onToggle}
@@ -200,7 +193,7 @@ function Group({
           aria-label={groupText}
           title={groupText}
           className={cn(
-            "relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 text-subtle transition-colors duration-[120ms] hover:bg-hover",
+            "relative grid h-11 w-[64px] place-items-center rounded-md text-subtle transition-colors duration-[120ms] hover:bg-hover",
             FOCUS,
           )}
         >
@@ -208,10 +201,10 @@ function Group({
             <Icon name={group.icon} size={18} style={within ? { color: "var(--accent)" } : undefined} />
             {chevron(11)}
           </span>
-          <span className="block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em] text-fg">{groupText}</span>
           <Count n={count} compact />
         </button>
-        {open && <div className="ml-2.5 flex flex-col items-center gap-3px border-l border-line-subtle pl-0.5">{rows}</div>}
+        {/* the rows sit inside the group's width, under a rule at its left, so nothing runs past the rail */}
+        {open && <div className="ml-1.5 flex flex-col items-center gap-3px border-l border-line-subtle pl-px">{rows}</div>}
       </div>
     );
   }
@@ -377,7 +370,11 @@ export function NavRail({
       {projectSwitcher}
       <div
         data-testid="rail-tiers"
-        className={cn("flex min-h-0 w-full flex-1 flex-col overflow-y-auto", compact ? "items-center gap-3" : "gap-5")}
+        className={cn(
+          "flex min-h-0 w-full flex-1 flex-col overflow-y-auto overflow-x-hidden",
+          // the collapsed rail scrolls without a bar of its own: a bar and its corner square took its width
+          compact ? "items-center gap-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "gap-5",
+        )}
       >
         {projectItems && projectItems.length > 0 && tier(t("common.nav.project"), projectItems)}
         {tier(compact ? t("common.nav.space") : t("common.nav.workspace"), workspaceItems)}

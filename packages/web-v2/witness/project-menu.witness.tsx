@@ -3,6 +3,8 @@
 // and no Questions or Lessons row anywhere (REQ-33 BC-8, BC-9).
 // At 1440 px the labelled rail and the compact rail are drawn side by side; at 390 px the phone's
 // drawer, the only navigation there. Each probe reads the rows as laid out, never the menu's model.
+// A third rail, compact with Delivery open as well, reads the collapsed layout (ISS-1073 round 2): icons
+// only, nothing past the rail's edge, no scrollbar of its own and no corner square.
 //
 //   pnpm --filter web-v2 witness witness/project-menu.witness.tsx --out <dir>
 
@@ -14,7 +16,8 @@ import { projectMenu, workspaceNavItems } from "@/features/shell/nav-model";
 import "./entry";
 import { InRouter } from "./router";
 
-const PRODUCT = ["Requirements", "Workflows", "Releases", "Feedback"];
+// in the order the menu draws them since Feedback led Product and Channels joined it (nav-model.ts:projectMenu)
+const PRODUCT = ["Feedback", "Requirements", "Releases", "Workflows", "Channels"];
 const DELIVERY = ["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"];
 const PHONE = 600;
 /** Rows no project menu draws: a question is read in Approvals and on its item, a lesson by no person. */
@@ -27,9 +30,9 @@ window.fetch = () => new Promise<Response>(() => {});
 const noop = () => {};
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const phone = window.innerWidth < PHONE;
-const rail = (compact: boolean) => (
-  <div style={{ height: "100vh" }} data-testid={compact ? "witness-compact" : "witness-labelled"}>
-    <NavRail compact={compact} workspaceItems={workspaceNavItems(0, undefined)} projectItems={projectMenu({})} activeKey="proj-requirements" onNavigate={noop} groupOpen={{}} onToggleGroup={noop} />
+const rail = (compact: boolean, id = compact ? "witness-compact" : "witness-labelled", groupOpen: Record<string, boolean> = {}) => (
+  <div style={{ height: "100vh" }} data-testid={id}>
+    <NavRail compact={compact} workspaceItems={workspaceNavItems(0, undefined)} projectItems={projectMenu({})} activeKey="proj-requirements" onNavigate={noop} groupOpen={groupOpen} onToggleGroup={noop} />
   </div>
 );
 
@@ -56,6 +59,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
         <div style={{ display: "flex", gap: 24 }}>
           {rail(false)}
           {rail(true)}
+          {rail(true, "witness-compact-open", { delivery: true })}
         </div>
       )}
     </QueryClientProvider>
@@ -104,6 +108,29 @@ function rails(): string[] {
   return wrong;
 }
 
+/** The collapsed rails: no row's words drawn, nothing past the rail's edge, no scrollbar of their own. */
+function collapsed(): string[] {
+  const wrong: string[] = [];
+  for (const id of ["witness-compact", "witness-compact-open"]) {
+    const nav = document.querySelector<HTMLElement>(`[data-testid=${id}] nav`);
+    const tiers = nav?.querySelector<HTMLElement>("[data-testid=rail-tiers]");
+    if (!nav || !tiers) {
+      wrong.push(`${id}: no rail drawn`);
+      continue;
+    }
+    if (tiers.scrollWidth > tiers.clientWidth) wrong.push(`${id}: the rail scrolls sideways, ${tiers.scrollWidth} px in ${tiers.clientWidth}`);
+    if (tiers.offsetWidth - tiers.clientWidth > 0 || tiers.offsetHeight - tiers.clientHeight > 0) wrong.push(`${id}: the rail draws a scrollbar of its own`);
+    const edge = nav.getBoundingClientRect();
+    for (const b of tiers.querySelectorAll<HTMLElement>("button")) {
+      const r = b.getBoundingClientRect();
+      if (r.width > 0 && (r.left < edge.left - 0.5 || r.right > edge.right + 0.5)) wrong.push(`${id}: ${b.getAttribute("title") ?? "a row"} runs past the rail, ${Math.round(r.left)}–${Math.round(r.right)} in ${Math.round(edge.left)}–${Math.round(edge.right)}`);
+      const words = [...b.querySelectorAll<HTMLElement>("span")].filter((x) => shown(x) && x.getAttribute("aria-hidden") !== "true" && !/^\d+$/.test((x.textContent ?? "").trim()) && (x.textContent ?? "").trim() !== "" && x.children.length === 0);
+      if (words.length > 0) wrong.push(`${id}: ${b.getAttribute("title") ?? "a row"} draws its words "${words.map((x) => x.textContent).join(" ")}"`);
+    }
+  }
+  return wrong.slice(0, 12);
+}
+
 function drawer(): string[] {
   const wrong: string[] = [];
   const all = texts(document.body, "span, button");
@@ -121,13 +148,13 @@ window.__witness = {
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
-  ready: () => (phone ? document.body.textContent?.includes("Dashboard") === true : document.querySelectorAll("[data-testid^=witness-] nav").length === 2),
+  ready: () => (phone ? document.body.textContent?.includes("Dashboard") === true : document.querySelectorAll("[data-testid^=witness-] nav").length === 3),
   stages: (["light", "dark"] as const).map((theme) => ({
     name: theme,
     run: () => {
       document.documentElement.dataset.theme = theme;
       document.documentElement.classList.toggle("dark", theme === "dark");
-      const wrong = phone ? drawer() : rails();
+      const wrong = phone ? drawer() : [...rails(), ...collapsed()];
       if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
       return wrong;
     },
