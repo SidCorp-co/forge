@@ -11,6 +11,8 @@
  * @direct-test-of packages/core/src/release-batch/shipped-holding.ts
  * @direct-test-of packages/core/src/release-batch/landed-build-holds.ts
  * @direct-test-of packages/core/src/release-batch/finish-job.ts
+ * @direct-test-of packages/core/src/release-batch/finish-record.ts
+ * @direct-test-of packages/core/src/pipeline/deploy-confirmations.ts
  * @direct-test-of packages/core/src/release-batch/coolify-confirm.ts
  * @direct-test-of packages/core/src/release-batch/routes.ts
  */
