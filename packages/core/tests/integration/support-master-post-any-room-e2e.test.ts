@@ -18,6 +18,7 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/contracts/src/support-channel.ts
 // @direct-test-of packages/core/src/support/screen.ts
 // @direct-test-of packages/core/src/support/mention-reach.ts
+// @direct-test-of packages/core/src/support/thread-messages.ts
 // @direct-test-of packages/core/src/messaging/internal-codes.ts
 // @direct-test-of packages/core/src/support/dispatch.ts (ISS-977: two hand-overs racing one session collided minting its turn token)
 //

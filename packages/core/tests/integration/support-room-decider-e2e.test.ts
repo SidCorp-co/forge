@@ -19,6 +19,7 @@ import type { Member } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/channel-read.ts
 // @direct-test-of packages/core/src/support/propose.ts
+// @direct-test-of packages/core/src/support/thread-messages.ts
 // @direct-test-of packages/core/src/knowledge/ruling-deciders.ts
 // @direct-test-of packages/core/src/knowledge/upsert.ts
 //
