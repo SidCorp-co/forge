@@ -32,10 +32,12 @@ function wearsOver(row: ReleaseRunRow, held: ReleaseRunRow): boolean {
  */
 const PLACING_KEYS = ['source', 'verification', 'branch', 'identity', 'abort'] as const;
 
-const placingMetadata = sql`jsonb_build_object(${sql.join(
-  PLACING_KEYS.map((k) => sql`${k}::text, ${pipelineRuns.metadata} -> ${k}::text`),
-  sql`, `,
-)})`;
+// the keys picked in one pass over the stored value: a `->` per key would read it whole once per key
+const placingMetadata = sql`(SELECT coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+  FROM jsonb_each(${pipelineRuns.metadata}) e WHERE e.key IN (${sql.join(
+    PLACING_KEYS.map((k) => sql`${k}::text`),
+    sql`, `,
+  )}))`;
 
 const runColumns = (placing: boolean) => ({
   id: pipelineRuns.id,
