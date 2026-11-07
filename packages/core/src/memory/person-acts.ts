@@ -170,7 +170,7 @@ export async function retireMemories(args: {
       out.retired.push(await retireMemory({ ...args, memoryId }));
     } catch (err) {
       if (!(err instanceof RefusalError)) throw err;
-      for (const r of err.refusals) out.refused.push({ id: memoryId, code: r.code, detail: r.detail });
+      for (const { code, detail } of err.refusals) out.refused.push({ id: memoryId, code, detail });
     }
   }
   return out;
