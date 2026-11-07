@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.581] - 2026-11-07
+
+Release notes warn when written in a language other than the project's
+
+### Fixed
+
+- **A release note in the wrong language now says so.** Writing or filing one answers a warning naming the field and the language to rewrite it in, for a Vietnamese note on an English project and the reverse.
+
 ## [0.4.0-dev.579] - 2026-11-07
 
 Channel assistants recover after their project moves to a new checkout
