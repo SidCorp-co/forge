@@ -1,1 +1,0 @@
-**A checkout's orientation follows core within one heartbeat.** Core names each project's orientation revision on the heartbeat; a box rewrites CLAUDE.local.md when it moves, with no restart, and `forge-runner sync` rewrites it on demand.

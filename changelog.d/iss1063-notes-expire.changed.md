@@ -1,1 +1,0 @@
-**A note now leaves on its own.** It retires when the issue it names is closed or dropped, or after the policy's window unverified; each search hit says verified or unverified, and decisions go to rules or requirements.

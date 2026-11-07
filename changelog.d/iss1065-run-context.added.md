@@ -1,1 +1,0 @@
-**Core records what reached each run.** Every rule, knowledge entry, lesson and memory a run's prompt carried or its credential read is kept with how and when, and `GET /api/projects/:id/run-context` answers it per run or issue.

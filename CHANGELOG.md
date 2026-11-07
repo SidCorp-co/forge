@@ -9,6 +9,24 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.564] - 2026-11-07
+
+Runs record what reached them, and knowledge and notes say what they rest on
+
+### Added
+
+- **A knowledge entry says what it rests on.** A reference, guide, workflow or rule, and every org entry, needs a source, a scope and when to re-check it; the prompt shows each source, and the anchor audit checks it first.
+- **Core records what reached each run.** Every rule, knowledge entry, lesson and memory a run's prompt carried or its credential read is kept with how and when, and `GET /api/projects/:id/run-context` answers it per run or issue.
+
+### Changed
+
+- **A note now leaves on its own.** It retires when the issue it names is closed or dropped, or after the policy's window unverified; each search hit says verified or unverified, and decisions go to rules or requirements.
+
+### Fixed
+
+- **A feedback item reads its work shipped only once a release holds it.** A closed carrier no shipped release holds reads landed, on the item and its estimate alike (ISS-1062).
+- **A checkout's orientation follows core within one heartbeat.** Core names each project's orientation revision on the heartbeat; a box rewrites CLAUDE.local.md when it moves, with no restart, and `forge-runner sync` rewrites it on demand.
+
 ## [0.4.0-dev.563] - 2026-11-07
 
 Builder passes no longer count as met; release runs record the commit they shipped
