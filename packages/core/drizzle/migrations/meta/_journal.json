@@ -4012,6 +4012,13 @@
       "when": 1837382400000,
       "tag": "0630_memory_upkeep_leaves_memory_and_knowledge_keeps_its_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 631,
+      "version": "7",
+      "when": 1837468800000,
+      "tag": "0631_a_design_verdict_is_found_by_its_issue",
+      "breakpoints": true
     }
   ]
 }

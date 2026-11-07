@@ -50,6 +50,10 @@ function deliveredBy(issueId: SQL): SQL {
         SELECT v.design_workflow_id, v.design_revision
           FROM issue_criteria c ${latestVerdictDesign}
          WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
+           -- an issue no verdict names a design for is passed over on 0631's index, before any
+           -- criterion's newest verdict is read (ISS-1070 r6)
+           AND EXISTS (SELECT 1 FROM criterion_verdicts dv
+                        WHERE dv.issue_id = ${issueId} AND dv.identity_kind = 'design')
       ) u
   )`;
 }

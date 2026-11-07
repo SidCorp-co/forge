@@ -221,6 +221,10 @@ export const criterionVerdicts = pgTable(
     ),
     latestIdx: index('criterion_verdicts_latest_idx').on(t.criterionId, t.createdAt),
     issueIdx: index('criterion_verdicts_issue_idx').on(t.issueId),
+    // whether an issue's criteria name a design at all, before any newest verdict is read (0631)
+    designIssueIdx: index('criterion_verdicts_design_issue_idx')
+      .on(t.issueId)
+      .where(sql`${t.identityKind} = 'design'`),
   }),
 );
 
