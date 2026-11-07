@@ -264,9 +264,8 @@ export async function readLedger(projectId: string): Promise<DebtLedgerView> {
   };
 }
 
-/** The rating a landing is judged at: the check's own where it sends one, else the issue's current. */
-async function landingRating(issueId: string, sent: Impact | undefined): Promise<Impact | null> {
-  if (sent) return sent;
+/** The rating a landing is judged at: the issue's current. */
+async function landingRating(issueId: string): Promise<Impact | null> {
   return (await currentRatings([issueId]))[0]?.impact ?? null;
 }
 
@@ -283,7 +282,7 @@ export async function cleanupOwesLandingCheck(args: {
 }): Promise<boolean> {
   const shape = await readDeliveryShape(args.projectId);
   if (!shape.fast || !shape.onLand) return false;
-  return (await landingRating(args.issueId, undefined))?.rating === HOLDING_RATING;
+  return (await landingRating(args.issueId))?.rating === HOLDING_RATING;
 }
 
 /**
