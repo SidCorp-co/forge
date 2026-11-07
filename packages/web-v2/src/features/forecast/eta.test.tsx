@@ -200,6 +200,8 @@ describe("the ETA column's language and order", () => {
     const cell = screen.getByTestId("eta-cell");
     expect(cell.getAttribute("data-kind")).toBe("range");
     expect(screen.getByTestId("eta-line").textContent).toBe("14:10");
-    expect(screen.getByTestId("eta-sub").textContent).toBe("latest ~ Tomorrow 18:50");
+    // one ETA on the row (ISS-1072): the latest it may run to rides the tooltip, never a second line
+    expect(screen.queryByTestId("eta-sub")).toBeNull();
+    expect(cell.getAttribute("title")).toContain("latest ~ Tomorrow 18:50");
   });
 });

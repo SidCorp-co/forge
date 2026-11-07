@@ -50,17 +50,25 @@ export function useRowWords(): RowWords {
   return { t, time };
 }
 
-/** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing. */
+/**
+ * The secondary line, by name: its module and its requirement, and a high priority (ISS-1072). The
+ * keys, criterion codes, the feedback it came from and how many criteria are met are the peek's and
+ * the page's, read on demand.
+ */
 function factsLine(r: IssueStandingRow, t: Copy): string[] {
   const s = r.standing;
   const parts: string[] = [];
-  if (s.module) parts.push(s.module.path);
-  if (s.requirement) parts.push(`${s.requirement.key}${s.requirement.criteria.length ? ` ${s.requirement.criteria.join(", ")}` : ""}`);
-  if (s.requirement?.staleCriteria.length) parts.push(t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") }));
+  if (s.module) parts.push(s.module.name);
+  if (s.requirement) parts.push(s.requirement.title);
   if (r.priority === "high" || r.priority === "critical") parts.push(r.priority === "critical" ? t("issues.facts.critical") : t("issues.facts.high"));
-  if (s.feedback[0]) parts.push(`${t("issues.facts.from", { key: s.feedback[0] })}${s.feedbackDropped.includes(s.feedback[0]) ? ` (${t("issues.facts.dropped")})` : ""}`);
-  if (s.criteria.total > 0) parts.push(t("issues.facts.met", { met: s.criteria.met, total: s.criteria.total }));
   return parts;
+}
+
+/** A wait on one of its blockers names the blocker's role, its key and title in the tooltip; any other wait names whom core says. */
+function waitCell(r: IssueStandingRow, t: Copy): ReactNode {
+  const w = r.standing.waitingOn;
+  const blocker = w.kind === "issue" ? r.standing.blockedBy.find((b) => b.key === w.ref) : undefined;
+  return <WaitingOn w={w} whoNode={blocker ? <span title={`${blocker.key} ${blocker.title}`}>{t("issues.waits.blocker")}</span> : undefined} />;
 }
 
 /** An issue's ETA from the project forecast; null while the forecast has not answered for it. */
@@ -75,7 +83,7 @@ export const issueRowView =
     facts: factsLine(r, t),
     ...(eta ? { eta: <EtaCell eta={eta.of(r.key)} clock={eta.clock} /> } : {}),
     state: issueBadge(r),
-    waitingOn: <WaitingOn w={r.standing.waitingOn} />,
+    waitingOn: waitCell(r, t),
     owner: r.standing.owner ? (
       <ActorChip name={r.standing.owner.name ?? t("issues.facts.unknown")} kind={r.standing.owner.kind} size={20} />
     ) : (

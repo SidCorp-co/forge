@@ -8,7 +8,8 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
   if (!eta) return <span className="block text-right text-12 text-subtle" data-testid="eta-cell" data-kind="empty" />;
   const { line, sub, late } = etaLines(eta, clock);
   return (
-    <span className="flex min-w-0 flex-col items-end text-right tabular-nums" title={eta.detail} data-testid="eta-cell" data-kind={eta.kind}>
+    // one ETA on the row (ISS-1072): the latest it may run to rides the tooltip with the detail
+    <span className="flex min-w-0 flex-col items-end text-right tabular-nums" title={[sub, eta.detail].filter(Boolean).join(" · ")} data-testid="eta-cell" data-kind={eta.kind}>
       <span
         className={cn(
           "inline-flex max-w-full items-center gap-1 truncate text-13",
@@ -22,11 +23,6 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
         {eta.kind === "done" ? <Icon name="check" size={12} className="shrink-0" /> : null}
         <span className="truncate">{line}</span>
       </span>
-      {sub ? (
-        <span className="max-w-full truncate text-12 text-subtle" data-testid="eta-sub">
-          {sub}
-        </span>
-      ) : null}
     </span>
   );
 }

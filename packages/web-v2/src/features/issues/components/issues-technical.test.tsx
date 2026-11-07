@@ -116,3 +116,17 @@ describe("the Issues list's Technical chip (ISS-1001)", () => {
     expect(screen.getAllByTestId("list-group")[2]).toHaveTextContent("Debt 1");
   });
 });
+
+// Raw keys never lead the Issues list (ISS-1072): each row leads with its title, its key the title's
+// tooltip, and the header names no Key column
+describe("the Issues list's rows", () => {
+  it("lead with the title, the key only in its tooltip", async () => {
+    board();
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    const first = screen.getAllByTestId("list-row")[0];
+    expect(first?.textContent?.startsWith("Issue ")).toBe(true);
+    expect(first?.textContent).not.toContain("ISS-");
+    expect(first?.querySelector("[title^='ISS-']")).not.toBeNull();
+    expect(screen.getByTestId("list-header").textContent).not.toContain("Key");
+  });
+});

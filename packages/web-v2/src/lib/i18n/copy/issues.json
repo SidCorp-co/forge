@@ -156,14 +156,12 @@
     "issues.facts.critical": "Critical priority",
     "issues.facts.dropped": "dropped",
     "issues.facts.feedback": "Feedback",
-    "issues.facts.from": "From {key}",
     "issues.facts.fromLabel": "From",
     "issues.facts.high": "High priority",
     "issues.facts.lease": "Lease",
     "issues.facts.leaseWord": "lease",
     "issues.facts.noOwner": "No owner",
     "issues.facts.owner": "Owner",
-    "issues.facts.met": "Met {met}/{total}",
     "issues.facts.plannedOnShort": "planned on r{planned}, now r{now}",
     "issues.facts.requirement": "Requirement",
     "issues.facts.staleShort": "{codes} on an earlier wording",
@@ -588,6 +586,7 @@
     "issues.stuckState.unknown": "Waiting",
     "issues.thread.waitChanged": "Wait changed",
     "issues.thread.nowWaitsOn": "Now waiting on: {what}",
-    "issues.waitingKind.unknown": "Waiting"
+    "issues.waitingKind.unknown": "Waiting",
+    "issues.waits.blocker": "Blocker"
   }
 }

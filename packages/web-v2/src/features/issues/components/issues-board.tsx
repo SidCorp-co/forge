@@ -448,6 +448,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
                   selected={peek.open}
                   onPeek={list.togglePeek}
                   empty={t("issues.board.noMatch")}
+                  keyColumn={false}
                 />
               )
             }
