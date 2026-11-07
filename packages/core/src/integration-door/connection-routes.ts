@@ -1,4 +1,4 @@
-import type { ConnectionBindingView, IntegrationRefusalCode } from '@forge/contracts/integrations';
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
@@ -298,7 +298,7 @@ integrationConnectionsRoutes.get('/:id/bindings', CONNECTION_READ, noQuery, asyn
   ]);
   // the drawer names each project as the directory does, by its name (ISS-1072)
   const projectNameOf = projectNameLookup(heads);
-  const items: ConnectionBindingView[] = bindings.map((b) => ({
+  const items = bindings.map((b) => ({
     ...b,
     projectName: projectNameOf(b.projectId),
   }));
