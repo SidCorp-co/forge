@@ -20,6 +20,10 @@ import { sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { applyDeploySettlement } from '../../src/release-batch/coolify-confirm.js';
+import {
+  acceptReleaseBatchFinish,
+  registerReleaseBatchFinish,
+} from '../../src/release-batch/finish-job.js';
 import { shippedReleaseRuns } from '../../src/release-batch/shipped-releases.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -177,9 +181,38 @@ const codeOf = (body: unknown) => {
   return b.error?.refusals?.[0]?.code ?? b.error?.code ?? null;
 };
 
+/** ISS-11 claimed by a cut release run whose deploy already settled, its finish not yet taken. */
+async function claimedByRun(issueId: string, holds: Record<string, unknown>): Promise<string> {
+  const runId = randomUUID();
+  const metadata = { source: 'release-batch', issueIds: [issueId], __forge_deploy_confirm: holds };
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, metadata, release_version)
+    VALUES (${runId}, ${world.projectId}, 'system', 'running', ${JSON.stringify(metadata)}::jsonb,
+            '0.16.0')
+  `);
+  await db.execute(sql`UPDATE issues SET release_batch_run_id = ${runId} WHERE id = ${issueId}`);
+  return runId;
+}
+
+/** The run's finish record once the job leaves it terminal. */
+async function finishedRecord(runId: string): Promise<Record<string, unknown>> {
+  const until = Date.now() + 20_000;
+  for (;;) {
+    const [row] = [
+      ...(await db.execute<{ finish: Record<string, unknown> | null }>(sql`
+        SELECT metadata -> 'finish' AS finish FROM pipeline_runs WHERE id = ${runId}`)),
+    ];
+    const state = row?.finish?.state;
+    if (state === 'finished' || state === 'failed') return row?.finish ?? {};
+    if (Date.now() > until) throw new Error(`the finish stayed ${String(state)}`);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
 beforeAll(async () => {
   testEnv();
   await startQueue();
+  await registerReleaseBatchFinish();
 }, 120_000);
 
 afterAll(async () => {
@@ -243,6 +276,29 @@ describe('a release that completes on a seen deploy records its shipped commit (
     const recorded = await recordObservedShippedCommit(runId);
 
     expect(recorded).toMatchObject({ commit: SHIPPED, from: 'deploy' });
+    expect(await shippedCommitOf(runId)).toBe(SHIPPED);
+    expect(await coverageOf(req)).toEqual({ criteria: 1, passing: 1, judged: 1 });
+  });
+
+  it('records it when the finish job completes a finish that named no commit', async () => {
+    const req = await agreedRequirement(['The webmail serves the release build']);
+    const issue = await landedIssue(11, LANDING, ['The webmail serves the release build']);
+    await traced(req, issue, 11, { 1: 'BC-1' });
+    await passedAt(issue, SHIPPED);
+    const runId = await claimedByRun(issue, hold('succeeded', SHIPPED));
+
+    await acceptReleaseBatchFinish(runId, {
+      type: 'user',
+      id: world.ownerId,
+      agency: 'agent',
+    });
+    const finish = await finishedRecord(runId);
+
+    expect(finish, JSON.stringify(finish)).toMatchObject({ state: 'finished', closed: [issue] });
+    const until = Date.now() + 10_000;
+    while ((await shippedCommitOf(runId)) === null && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
     expect(await shippedCommitOf(runId)).toBe(SHIPPED);
     expect(await coverageOf(req)).toEqual({ criteria: 1, passing: 1, judged: 1 });
   });

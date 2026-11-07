@@ -1,0 +1,1 @@
+**A release finished without a commit now records the one production serves.** Its deploy's reported commit is kept, or an agent attaches it through a door that checks the landings, so verdicts judged there count.
