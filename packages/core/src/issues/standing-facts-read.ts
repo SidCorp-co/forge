@@ -7,6 +7,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
+import { countingOf } from './criteria/verdict-counting.js';
 
 interface CriteriaRaw {
   issue_id: string;
@@ -17,20 +18,24 @@ interface CriteriaRaw {
   identity_kind: string | null;
   storefront_drafts: StorefrontDraftPart[] | null;
   stands: boolean;
+  /** The latest verdict may count: false where it is a pass or short only its builder recorded (`criteria/verdict-counting.ts`). */
+  counts: boolean;
 }
 
 // a passing verdict on a storefront draft passes only while the source still holds that
 // draft: one the source moved past, or cannot be read back, is not counted passing, so the list
 // never says every criterion passed of an issue the release hold keeps (FB-56); every workflow
-// draft the verdict names is read, so a move of any one of them takes it off passing (ISS-613)
+// draft the verdict names is read, so a move of any one of them takes it off passing (ISS-613).
+// A pass or short only the building run recorded never counts (REQ-74 BC-2), so `counts` reads it
+// as the Criteria tab does, for every row of the page in one query (ISS-683)
 export async function criteriaOf(
   projectId: string,
   ids: readonly string[],
 ): Promise<CriteriaRaw[]> {
   if (ids.length === 0) return [];
-  const rows = rowsOf<Omit<CriteriaRaw, 'stands'>>(
+  const rows = rowsOf<Omit<CriteriaRaw, 'stands' | 'counts'> & { verdict_id: string | null }>(
     await db.execute(sql`
-      SELECT c.issue_id, v.verdict, rc.code AS bc_code, v.identity_kind,
+      SELECT c.issue_id, v.id AS verdict_id, v.verdict, rc.code AS bc_code, v.identity_kind,
              v.storefront_drafts,
              NOT (rc.since_revision <= r.current_revision
                   AND (rc.retired_revision IS NULL OR rc.retired_revision > r.current_revision))
@@ -39,7 +44,7 @@ export async function criteriaOf(
         LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
         LEFT JOIN requirements r ON r.id = rc.requirement_id
         LEFT JOIN LATERAL (
-          SELECT cv.verdict, cv.identity_kind, cv.storefront_drafts
+          SELECT cv.id, cv.verdict, cv.identity_kind, cv.storefront_drafts
             FROM criterion_verdicts cv
            WHERE cv.criterion_id = c.id
            ORDER BY cv.created_at DESC, cv.id DESC
@@ -53,9 +58,19 @@ export async function criteriaOf(
       ? (r.storefront_drafts ?? []).map((p) => p.workflowId)
       : [],
   );
-  const current = await readCurrentDrafts(projectId, drafts);
-  return rows.map((r) => ({
+  const [current, counting] = await Promise.all([
+    readCurrentDrafts(projectId, drafts),
+    countingOf(
+      db,
+      projectId,
+      rows.flatMap((r) =>
+        r.verdict_id && r.verdict ? [{ id: r.verdict_id, verdict: r.verdict }] : [],
+      ),
+    ),
+  ]);
+  return rows.map(({ verdict_id, ...r }) => ({
     ...r,
+    counts: !verdict_id || !counting.get(verdict_id)?.notCounted,
     stands:
       r.identity_kind !== 'storefront_draft' ||
       current(r.storefront_drafts ?? []).corroboration === 'corroborated',

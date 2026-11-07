@@ -8,7 +8,11 @@
 import { countedUnderCutover, type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
-import { declaredBeforeLandingSql, verdictByBuilderSql } from '../built-by.js';
+import {
+  builderCandidatesAcrossSql,
+  declaredBeforeLandingSql,
+  verdictByBuilderSql,
+} from '../built-by.js';
 import { readJudge } from '../ports.js';
 
 /** How one verdict counts: named where it never will, marked where it counts only by the amnesty. */
@@ -21,8 +25,9 @@ const COUNTS: VerdictCounting = { notCounted: null, countedUnderCutover: false }
 
 /**
  * How each of `verdicts` counts, by id, read through the same builder rule every count of proof
- * reads (`built-by.ts`). A fail or a skip counts whoever records it, so only passes and shorts are
- * read; one id absent from the answer counts as it is.
+ * reads (`built-by.ts`), in one query whatever their number: the criteria read and the issue
+ * standing ask it over a whole page. A fail or a skip counts whoever records it, so only passes and
+ * shorts are read; one id absent from the answer counts as it is.
  */
 export async function countingOf(
   executor: Pick<Tx, 'execute'>,
@@ -31,6 +36,12 @@ export async function countingOf(
 ): Promise<Map<string, VerdictCounting>> {
   const judged = verdicts.filter((v) => v.verdict === 'pass' || v.verdict === 'short');
   if (judged.length === 0) return new Map();
+  const ids = sql.join(
+    judged.map((v) => sql`${v.id}::uuid`),
+    sql`, `,
+  );
+  // every issue's builder candidates read once for the statement, not once per verdict
+  const issues = sql`(SELECT DISTINCT iv.issue_id FROM criterion_verdicts iv WHERE iv.id IN (${ids}))`;
   const rows = (await executor.execute(sql`
     SELECT v.id, v.verdict, v.created_at AS recorded_at, ${verdictByBuilderSql({
       issueId: sql`v.issue_id`,
@@ -38,14 +49,13 @@ export async function countingOf(
       authorDevice: sql`v.author_device_id`,
       at: sql`v.created_at`,
       runSession: sql`v.run_session_id`,
+      candidates: sql`bc.candidates`,
     })} AS by_builder,
       CASE WHEN v.run_session_id IS NULL THEN NULL
            ELSE ${declaredBeforeLandingSql(sql`v.issue_id`, sql`v.run_session_id`)} END AS opened_at
       FROM criterion_verdicts v
-     WHERE v.id IN (${sql.join(
-       judged.map((v) => sql`${v.id}::uuid`),
-       sql`, `,
-     )})`)) as unknown as {
+     CROSS JOIN (SELECT ${builderCandidatesAcrossSql(issues)} AS candidates) bc
+     WHERE v.id IN (${ids})`)) as unknown as {
     id: string;
     verdict: string;
     recorded_at: string | Date;

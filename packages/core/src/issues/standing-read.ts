@@ -303,7 +303,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     blocks: f.edges.filter((e) => e.fromId === r.id).map((e) => edgeEnd(e, 'to', f.key)),
     criteria: {
       total: mine.length,
-      met: mine.filter((c) => c.stands && verdictEarns(c.verdict)).length,
+      met: mine.filter((c) => c.stands && c.counts && verdictEarns(c.verdict)).length,
       failing: mine.filter((c) => c.verdict === 'fail').length,
       skipped: mine.filter((c) => c.verdict === 'skipped').length,
     },
