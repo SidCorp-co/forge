@@ -34,13 +34,16 @@ import { byLastMove } from './home-stage.js';
 /** The projects in scope the caller holds `project.read` on. */
 async function readableProjects(userId: string, orgId: string | null): Promise<HomeProject[]> {
   const visible = (await listVisibleProjectsWithRole(userId)).filter((p) => inActiveOrg(p, orgId));
-  const checked = await Promise.all(
-    visible.map(async (p) => {
+  // each project's access read side by side, as the reads after it are (`db/read-memo.ts:readAcross`)
+  const checked = await readAcross(
+    visible,
+    (p) => p.id,
+    async (p) => {
       const access = await effectiveProjectRole(userId, p.id);
       return access && holds(access, 'project.read')
         ? { id: p.id, slug: p.slug, name: p.name }
         : null;
-    }),
+    },
   );
   return checked.filter((p): p is HomeProject => p !== null);
 }

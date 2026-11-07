@@ -14,6 +14,14 @@ import {
   withReadMemo,
 } from './read-memo.js';
 
+/**
+ * Runs `fn` as one project's read in a request that declared a read across `projects`
+ * (`readAcross`), where asks wait for the quiet point and are read together; the other projects'
+ * reads end at once.
+ */
+const declaring = async <T>(projects: readonly string[], fn: () => Promise<T>): Promise<T> =>
+  (await readAcross(projects, String, async (p) => (p === projects[0] ? fn() : undefined)))[0] as T;
+
 const counter = () => {
   let calls = 0;
   return {
@@ -109,11 +117,25 @@ describe('perProjectRead', () => {
     const r = across();
     const alone = across();
     const [a, b, c] = [await read(alone, 'a'), await read(alone, 'b'), await read(alone, 'c')];
-    await withReadMemo(async () => {
-      expect(await Promise.all([read(r, 'b'), read(r, 'a'), read(r, 'c')])).toEqual([b, a, c]);
-      expect(await read(r, 'a')).toEqual(a);
-    });
+    await withReadMemo(() =>
+      declaring(['b', 'a', 'c'], async () => {
+        expect(await Promise.all([read(r, 'b'), read(r, 'a'), read(r, 'c')])).toEqual([b, a, c]);
+        expect(await read(r, 'a')).toEqual(a);
+      }),
+    );
     expect(r.asked).toEqual([['b', 'a', 'c']]);
+  });
+
+  it('reads a project at once, once, in a request that declared one project at most', async () => {
+    const r = across();
+    await withReadMemo(async () => {
+      expect(await Promise.all([read(r, 'a'), read(r, 'a')])).toEqual([
+        [1, 3],
+        [1, 3],
+      ]);
+      expect(await read(r, 'b')).toEqual([2]);
+    });
+    expect(r.asked).toEqual([['a'], ['b']]);
   });
 
   it('keeps no failed statement, so the next ask reads again and fails or answers on its own', async () => {
@@ -163,20 +185,22 @@ describe('a lazy thenable read (a query builder)', () => {
 
   it('is sent once however many projects and callers read it', async () => {
     const sent = { n: 0 };
-    await withReadMemo(async () => {
-      await Promise.all(
-        ['a', 'b', 'c'].map((id) =>
-          rowsPerProject(
-            'rows',
-            id,
-            () => lazy(sent, []),
-            (r) => r.projectId,
+    await withReadMemo(() =>
+      declaring(['a', 'b', 'c'], async () => {
+        await Promise.all(
+          ['a', 'b', 'c'].map((id) =>
+            rowsPerProject(
+              'rows',
+              id,
+              () => lazy(sent, []),
+              (r) => r.projectId,
+            ),
           ),
-        ),
-      );
-      await memoizedRead('own', () => lazy(sent, []));
-      await memoizedRead('own', () => lazy(sent, []));
-    });
+        );
+        await memoizedRead('own', () => lazy(sent, []));
+        await memoizedRead('own', () => lazy(sent, []));
+      }),
+    );
     expect(sent.n).toBe(2);
   });
 });
@@ -215,29 +239,50 @@ describe('memoizedPerId', () => {
 
   it('reads only the ids no earlier ask held, and answers each id as its own read would', async () => {
     const r = perId();
-    await withReadMemo(async () => {
-      const first = await memoizedPerId('k', ['a', 'b', 'none'], r.read);
-      const second = await memoizedPerId('k', ['b', 'c', 'none'], r.read);
-      expect([...first.keys()]).toEqual(['a', 'b']);
-      expect(second).toEqual(await r.read(['b', 'c', 'none']));
-    });
+    await withReadMemo(() =>
+      declaring(['p', 'q'], async () => {
+        const first = await memoizedPerId('k', ['a', 'b', 'none'], r.read);
+        const second = await memoizedPerId('k', ['b', 'c', 'none'], r.read);
+        expect([...first.keys()]).toEqual(['a', 'b']);
+        expect(second).toEqual(await r.read(['b', 'c', 'none']));
+      }),
+    );
     // 'b' and 'none' (a held answer of nothing) are not asked twice; the last ask is the comparison
     expect(r.asked).toEqual([['a', 'b', 'none'], ['c'], ['b', 'c', 'none']]);
   });
 
   it('shares an ask still in flight, and keys apart what two reads keep apart', async () => {
     const r = perId();
-    await withReadMemo(async () => {
-      await Promise.all([
-        memoizedPerId('k', ['a', 'b'], r.read),
-        memoizedPerId('k', ['a'], r.read),
-        memoizedPerId('other', ['a'], r.read),
-      ]);
-    });
+    await withReadMemo(() =>
+      declaring(['p', 'q'], () =>
+        Promise.all([
+          memoizedPerId('k', ['a', 'b'], r.read),
+          memoizedPerId('k', ['a'], r.read),
+          memoizedPerId('other', ['a'], r.read),
+        ]),
+      ),
+    );
     expect(r.asked).toEqual([['a', 'b'], ['a']]);
   });
 
-  it("refuses a caller writing into an id's answer, at any depth, so no other caller's answer changes", async () => {
+  it('reads each set of ids once, whichever order they were asked in, in a request that declared one project at most', async () => {
+    const r = perId();
+    await withReadMemo(async () => {
+      const first = await memoizedPerId('k', ['b', 'a', 'none'], r.read);
+      // a set overlapping one already read is read whole: which ask came first changes no count
+      const second = await memoizedPerId('k', ['b', 'c'], r.read);
+      const again = await memoizedPerId('k', ['none', 'a', 'b'], r.read);
+      expect([...first.keys()]).toEqual(['b', 'a']);
+      expect([...second.keys()]).toEqual(['b', 'c']);
+      expect(again).toEqual(new Map([...first].reverse()));
+    });
+    expect(r.asked).toEqual([
+      ['a', 'b', 'none'],
+      ['b', 'c'],
+    ]);
+  });
+
+  it("refuses a caller writing into an id's answer or its rows, so no other caller's answer changes", async () => {
     const r = perId();
     await withReadMemo(async () => {
       const first = await memoizedPerId('k', ['a'], r.read);
@@ -323,28 +368,46 @@ describe('a batch at the quiet point', () => {
     const r = perId();
     const timing = newQueryTiming();
     await withQueryTiming(timing, () =>
-      withReadMemo(async () => {
-        const answered = statementSent(timing);
-        const first = memoizedPerId('k', ['a'], r.read);
-        // a read that asks several turns later, while the statement is still out, joins the batch
-        await turns(3);
-        const second = memoizedPerId('k', ['b'], r.read);
-        expect(r.asked).toEqual([]);
-        answered();
-        expect([...(await first).keys(), ...(await second).keys()]).toEqual(['a', 'b']);
-      }),
+      withReadMemo(() =>
+        declaring(['p', 'q'], async () => {
+          const answered = statementSent(timing);
+          const first = memoizedPerId('k', ['a'], r.read);
+          // a read that asks several turns later, while the statement is still out, joins the batch
+          await turns(3);
+          const second = memoizedPerId('k', ['b'], r.read);
+          expect(r.asked).toEqual([]);
+          answered();
+          expect([...(await first).keys(), ...(await second).keys()]).toEqual(['a', 'b']);
+        }),
+      ),
     );
     expect(r.asked).toEqual([['a', 'b']]);
   });
 
+  it('does not wait for the quiet point in a request that declared one project at most', async () => {
+    const r = perId();
+    const timing = newQueryTiming();
+    await withQueryTiming(timing, () =>
+      withReadMemo(async () => {
+        const answered = statementSent(timing);
+        // the statement still out holds nothing back: the ask is read beside it
+        expect([...(await memoizedPerId('k', ['a'], r.read)).keys()]).toEqual(['a']);
+        expect(r.asked).toEqual([['a']]);
+        answered();
+      }),
+    );
+  });
+
   it('reads at the end of the turn outside a timed request', async () => {
     const r = perId();
-    await withReadMemo(async () => {
-      const first = memoizedPerId('k', ['a'], r.read);
-      await turns(3);
-      await memoizedPerId('k', ['b'], r.read);
-      await first;
-    });
+    await withReadMemo(() =>
+      declaring(['p', 'q'], async () => {
+        const first = memoizedPerId('k', ['a'], r.read);
+        await turns(3);
+        await memoizedPerId('k', ['b'], r.read);
+        await first;
+      }),
+    );
     expect(r.asked).toEqual([['a'], ['b']]);
   });
 
@@ -387,7 +450,7 @@ describe('a batch at the quiet point', () => {
       expect(k.asked).toEqual([['a', 'c', 'b']]);
     });
 
-    it('reads it a step apart where the reads run side by side without it', async () => {
+    it('reads each ask apart where the reads run side by side without it', async () => {
       const k = perId();
       const j = perId();
       await timed(() =>
@@ -398,7 +461,7 @@ describe('a batch at the quiet point', () => {
           }),
         ),
       );
-      expect(k.asked).toEqual([['a', 'c'], ['b']]);
+      expect(k.asked).toEqual([['a'], ['c'], ['b']]);
     });
 
     it("stops waiting for a project's read once it ends without asking", async () => {

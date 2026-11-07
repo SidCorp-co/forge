@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import { frozen } from './frozen.js';
 import { whenQuiet } from './query-timing.js';
 
@@ -263,8 +264,10 @@ async function perId<V>(
   const memo = memos.getStore();
   // no id asks nothing: a read is never sent for an empty list (`IN ()` is no statement)
   if (!memo) return ids.length === 0 ? new Map() : new Map(await read(ids));
-  asked(memo, key);
   const unique = [...new Set(ids)];
+  // a request reading one project at most has no other project's read to wait for
+  if ((across.get(memo)?.size ?? 0) <= 1) return perSet(memo, key, unique, read);
+  asked(memo, key);
   const slot = (id: string) => slotOf(key, id);
   const missing = unique.filter((id) => !memo.has(slot(id)));
   if (missing.length > 0) {
@@ -287,6 +290,39 @@ async function perId<V>(
     if (held) out.set(id, held.value);
   });
   return out;
+}
+
+/**
+ * A request that reads one project at most (a project's own page, or a person in one project) reads
+ * each ask as it comes, once for each distinct set of ids under `key`, beside the request's other
+ * statements: held for a quiet point, every batch waits on the slowest statement in flight and the
+ * work of its answer stops overlapping the rest, for a handful of statements saved (ISS-1070 r6).
+ * It is keyed by the whole set, as r5's per-set read was: an ask whose ids another ask read in part
+ * reads them again, so how many statements a read sends never hangs on which ask came first.
+ */
+function perSet<V>(
+  memo: Map<string, Promise<unknown>>,
+  key: string,
+  unique: readonly string[],
+  read: (ids: readonly string[]) => Promise<ReadonlyMap<string, V>>,
+): Promise<Map<string, V>> {
+  if (unique.length === 0) return Promise.resolve(new Map());
+  const set = [...unique].sort();
+  const slot = `${key}\u0002${createHash('sha1').update(set.join(',')).digest('hex')}`;
+  let held = memo.get(slot) as Promise<ReadonlyMap<string, V>> | undefined;
+  if (!held) {
+    held = Promise.resolve(read(set)).then((m) => {
+      for (const v of m.values()) frozen(v);
+      return m;
+    });
+    memo.set(slot, held);
+    held.catch(() => memo.delete(slot));
+  }
+  return held.then((m) => {
+    const out = new Map<string, V>();
+    for (const id of unique) if (m.has(id)) out.set(id, m.get(id) as V);
+    return out;
+  });
 }
 
 const producing = new AsyncLocalStorage<ReadonlySet<string>>();
