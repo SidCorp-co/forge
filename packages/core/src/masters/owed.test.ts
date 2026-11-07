@@ -496,9 +496,7 @@ describe('unheld work the wedge net left', () => {
     expect(dispatched([], { ...none, wedgedWork: [left] }).owed).toBe(1);
     const once = workDigest([], { ...none, wedgedWork: [left] });
     expect(once).not.toBe(workDigest([], none));
-    expect(
-      workDigest([], { ...none, wedgedWork: [{ ...left, since: '2026-11-07T09:00:00.000Z' }] }),
-      'a new claim is new work',
-    ).not.toBe(once);
+    const later = { ...left, since: '2026-11-07T09:00:00.000Z' };
+    expect(workDigest([], { ...none, wedgedWork: [later] }), 'new claim').not.toBe(once);
   });
 });
