@@ -63,6 +63,7 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     // ISS-845 (FB-453): a bare push to the base branch overrides a project that lands only by MR
     expect(direct.nudge).not.toContain('land it on the base branch');
     expect(direct.nudge).not.toContain('its own tests pass');
+    expect(direct.nudge).not.toContain('a close by anything but a release');
     for (const said of [
       'Dispatch no runner role',
       'general-purpose subagents on disjoint files',
@@ -77,7 +78,8 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
       'only once you have checked it live, after landing',
       'a move off a legal edge or without its reason',
       "anyone but the issue's holder",
-      'a close by anything but a release',
+      // ISS-1062: the holder closes from awaiting_release once met in scope, so the release no longer owns the close
+      'a close by anyone but the holder, from anywhere but `awaiting_release`, or leaving a criterion it did not meet with nowhere to go',
       '1 feedback item owes a triage (FB-1)',
     ]) {
       expect(direct.nudge).toContain(said);
