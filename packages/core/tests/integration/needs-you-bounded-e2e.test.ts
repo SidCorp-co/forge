@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { drainStaleBuilderFacts } from '../../src/issues/builder-facts.js';
 import { closeWorld, type Doc, ok, requester, testEnv } from '../helpers/ecosystem-world.js';
 import {
   createTestFeedback,
@@ -251,7 +252,12 @@ describe('GET needs-you on a project the size of HOP', () => {
     // (`issues/builder-facts.ts`), two statements a reader: both are read once before measuring
     await measured(small);
 
+    // a builder fact still owed when a read starts is written by that read (two statements a
+    // reader), and under a loaded run the warm-up read can leave one owed: drain them first, so
+    // the count measures the read and never the fact it happened to owe
+    while ((await drainStaleBuilderFacts(db)) > 0);
     const few = await measured(small);
+    while ((await drainStaleBuilderFacts(db)) > 0);
     const many = await measured(large);
 
     // every revision proposed waits on its approver, so the read reached each design
