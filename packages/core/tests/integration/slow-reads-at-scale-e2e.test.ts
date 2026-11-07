@@ -6,7 +6,7 @@
 // its wall time, and holds every statement to a ceiling of shared buffers its plan touches and each
 // read to a ceiling of statements and buffers. Set SLOW_READS_OUT to a file to keep the measures,
 // SLOW_READS_EXPLAIN to add the slowest plans, SLOW_READS_STACKS to name the code that sent each
-// statement, SLOW_READS_PROFILE to a file for a CPU profile of each read, and SLOW_READS_ONLY to a
+// statement, SLOW_READS_EVERY to list every statement with its time, rows, buffers and plan, SLOW_READS_PROFILE to a file for a CPU profile of each read, and SLOW_READS_ONLY to a
 // pattern of the paths to read. SLOW_READS_SHRINK=<n> seeds every count at an n-th (at least one)
 // for a quick look at which statements a read sends, its times and ceilings then meaningless.
 // @direct-test-of packages/core/src/db/read-memo.ts
@@ -421,10 +421,18 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
         `${path} sent a statement touching ${own} buffers: ${s.text.replace(/\s+/g, ' ').slice(0, 300)}`,
       ).toBeLessThanOrEqual(BUFFERS_PER_STATEMENT);
     }
+    // SLOW_READS_EVERY lists each statement in the order sent: its time, rows, buffers, plan and site
+    const every = process.env.SLOW_READS_EVERY
+      ? heaviest.map(
+          ({ own, s }, i) =>
+            `  #${String(i + 1).padStart(3)} ${s.ms.toFixed(1).padStart(7)} ms ${String(s.rows ?? '-').padStart(6)} rows ${String(own).padStart(6)} buf plan ${(s.planMs ?? 0).toFixed(1)} exec ${(s.execMs ?? 0).toFixed(1)}  ${s.site || s.text.replace(/\s+/g, ' ').slice(0, 160)}`,
+        )
+      : [];
     const line = [
       report(`${label}: median of 3 (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
       `  ceiling: ${median.statements.length} of ${ceiling.statements} statements, ${buffers} of ${ceiling.buffers} buffers`,
       ...heaviestSites(heaviest),
+      ...every,
       ...plans,
     ].join('\n');
     if (out) appendFileSync(out, `${line}\n`);
