@@ -78,7 +78,7 @@ describe("a cancelled release's own page", () => {
   it("says a cancel recorded no abort, never reading as one that did", () => {
     const unexplained = { ...r040, cuts: [cut(2, "0.4.0", "failed", { abort: { recorded: false, says: "no abort was recorded" } })] };
     renderWithQuery(<EndedAttempt r={{ ...unexplained, state: "failed" } as never} slug="hop" />);
-    expect(screen.getByTestId("release-ended-abort-unrecorded")).toHaveTextContent("No abort recorded");
+    expect(screen.getByTestId("release-ended-abort-unrecorded")).toHaveTextContent("Cancel unexplained");
     expect(screen.getByTestId("release-ended")).not.toHaveTextContent("No reason");
   });
 

@@ -3,7 +3,7 @@
     "releases.abort.owes.agent": "Waits on its agent: {what}",
     "releases.abort.owes.human": "Waits on a person: {what}",
     "releases.abort.reason": "Abort reason",
-    "releases.abort.unrecorded": "No abort recorded",
+    "releases.abort.unrecorded": "Cancel unexplained",
     "releases.approval": "Approval",
     "releases.approvals": "Approvals",
     "releases.unapproved": "Not approved by a person",
