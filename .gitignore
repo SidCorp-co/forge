@@ -56,6 +56,11 @@ __pycache__
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/*.md
+# `.cargo/config.toml` is the other: it points every worktree nested under the checkout at the
+# checkout's own runner build directory (ISS-1059).
+!.claude/.cargo/
+.claude/.cargo/*
+!.claude/.cargo/config.toml
 
 # IDE
 .idea

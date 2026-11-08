@@ -1,0 +1,8 @@
+# Every worktree nested under this checkout's `.claude/worktrees/` builds the runner's intermediate
+# artifacts (dependencies, incremental state, build scripts) into this checkout's own
+# `packages/runner/target`, so a new worktree costs its sources and its final binaries, not a full
+# Rust build (ISS-1059). Cargo reads this file only for a directory beneath `.claude/`: the checkout
+# itself, and CI's, which has no worktree under it, build where they always did. A relative path is
+# read from `.claude/`. Two worktrees building at once wait on cargo's lock on this directory.
+[build]
+build-dir = "../packages/runner/target"
