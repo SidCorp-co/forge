@@ -1915,6 +1915,10 @@ export const SAID = {
 	"requirements.rule.deliveryUnchecked": {
 		en: "start refused until the steward's check ends; runs at GET /api/projects/:id/steward-runs?subject=REQ-n",
 	},
+	"requirements.rule.heldByDecision": {
+		en: "{rule}; a decision holds it {until}: {why}",
+		vars: { rule: "said", until: "text", why: "text" },
+	},
 	"requirements.rule.byRule": {
 		en: "no person gate asks this move on this project, so Forge makes it by rule; a guard that refuses it is named here",
 	},
