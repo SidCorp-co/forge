@@ -158,9 +158,7 @@ describe('a carrier shipped with a failing criterion resolves nothing, and names
       AT,
     ).waitingOn;
     expect(w).toMatchObject({ kind: 'issue', who: 'ISS-18 c2', ref: 'ISS-18' });
-    expect(w.rule).toBe(
-      'planned: ISS-18 c2 failed when it shipped; a release with it passing resolves it',
-    );
+    expect(w.rule).toBe('planned: ISS-18 c2 failed when shipped; a release passing it resolves it');
   });
 });
 

@@ -372,9 +372,8 @@ const NEEDS_YOU_STATEMENTS = 141;
 // than one and its designs' health reading their builds (ISS-1070 r8, measured: Needs you 41k,
 // attention 39k, home 32.4k, What's new 7.9k, the newest shipped 16.7k, where r7's seed read under
 // 27k, 24k, 30k, 7k and 15k). ISS-1159 prices +4,000 on each read that lists feedback: its shipped
-// carriers' failing criteria, one latest verdict per criterion, touched 3,931 buffers on this seed,
-// where every criterion carries `fail` verdicts under its latest pass; on forge a fail is rare. Priced
-// until a stored latest verdict per criterion answers it without the scan.
+// carriers' failing criteria touched 3,931 buffers on this seed, every criterion holding `fail` under
+// its latest pass (rare on forge); priced until a stored latest verdict per criterion answers it.
 const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 47000 },
   {

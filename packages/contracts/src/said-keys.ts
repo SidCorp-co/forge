@@ -1597,7 +1597,7 @@ export const SAID = {
 		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
 	"feedback.rule.shippedFailing": {
-		en: "planned: {failing} failed when it shipped; a release with it passing resolves it",
+		en: "planned: {failing} failed when shipped; a release passing it resolves it",
 		vars: { failing: "text" },
 	},
 	"feedback.rule.shippedSettles": {
