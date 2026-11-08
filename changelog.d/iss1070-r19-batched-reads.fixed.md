@@ -1,1 +1,0 @@
-**Home and attention read held blockers and ship notices once.** Blockers holding an issue list from outside it, a notice's release and a message writer's name come with their own rows, not a second read each.

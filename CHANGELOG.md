@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.611] - 2026-11-08
+
+A lesson about an app stays in its own project
+
+### Fixed
+
+- **A release no longer counts an issue's close as proof it was judged.** The pass a close records still counts for its requirement, but no release reads a criterion proven by it alone.
+- **Home and attention read held blockers and ship notices once.** Blockers holding an issue list from outside it, a notice's release and a message writer's name come with their own rows, not a second read each.
+- **A lesson's own record now says whether it is about the app or a process, and its scope no longer decides it.** A project-scoped lesson about the app's screens keeps its check in its project instead of going to Forge.
+
 ## [0.4.0-dev.610] - 2026-11-08
 
 Release page names who may approve; support brief describes diagnose checks correctly
