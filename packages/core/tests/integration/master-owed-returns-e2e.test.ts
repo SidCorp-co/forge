@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/workflows/owed-designs.ts
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
@@ -179,8 +180,7 @@ const owedLine = async (): Promise<string> => ok(await askVerdict()).work.owedLi
 const approvalsLine = async (): Promise<string> =>
   /proposed designs? waits? on your approval \([^)]*\)/.exec(await owedLine())?.[0] ?? '';
 
-// ISS-1158 (FB-586): outside strict the master holds workflow-designs.approve, so a proposed design
-// is its act; support-group r4 sat proposed for days, its pass naming nothing, while ISS-1014 waited
+// ISS-1158 (FB-586): support-group r4 sat proposed for days, the master's pass naming nothing
 describe('a proposed design on a project that is not strict is owed to the project master', () => {
   it('is named on the pass as owed its approval, its read names the master, and it leaves once decided', async () => {
     const id = await proposedDesign('approval-flow');

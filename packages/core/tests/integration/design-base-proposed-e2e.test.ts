@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/workflows/service.ts
 /**
  * A design pinned to a base's newest revision while that revision waits on its approver (FB-145,
  * ISS-580): the base is proposed, not stale, and the next act is approving the base, not the
