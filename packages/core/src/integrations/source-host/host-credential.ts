@@ -21,6 +21,7 @@ import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { providerRefused } from '../../lib/provider-refusal.js';
 import { refuser } from '../../lib/refusal.js';
+import { PRE_RELAY_RUNNER_AMNESTY, relayCapableRunner } from '../../lib/relay-runner.js';
 import {
   decryptConnectionSecrets,
   effectiveConfig,
@@ -41,30 +42,23 @@ import {
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 
 /**
- * AMNESTY — cm:hack ISS-685 until:every online device reports forge-runner 0.18.0 or later — then
- * delete this constant, `preRelayCredential` and the branch reading it, so every direct ask for a
- * relayed host is refused GIT_THROUGH_FORGE.
+ * AMNESTY — cm:hack ISS-685 until:a published runner release (runner-v0.18 or later) carries the
+ * relay remote, and every online device holding a GitLab-bound project has `relay_runner_at` set —
+ * then delete this re-export, `preRelayCredential` and the branch reading it, so every direct ask for
+ * a relayed host is refused GIT_THROUGH_FORGE.
  *
- * The first runner release that moves a checkout's origin to the relay: 0.18 is the runner line this
- * change ships on (`packages/runner/Cargo.toml`), and every runner live today is 0.17.x. A device
- * reporting an older version, or none, still asks GitLab directly and picks a release up only at its
- * update check, so refusing it would cut its masters off fetch and push for hours.
- *   Traded: such a runner is still served the connection's long-lived token on a direct ask, logged.
- *   Costs: that token sits on every box that has not updated.
+ * Every published runner (runner-v0.17.x) predates the relay and cannot move a checkout's origin to
+ * it, so refusing a device that reports an older version, or none, would cut its masters off fetch
+ * and push until a relay release ships.
+ *   Traded: such a device is still served the connection's long-lived token on a direct ask, logged.
+ *   Costs: that token sits on every box that has not updated, and the exemption is self-asserted: the
+ *   box reports its own version. A device that once reported a relay runner is latched
+ *   (`devices.relay_runner_at`, set by its heartbeat) and is never served the token again, whatever
+ *   it reports after (ISS-685 r2: a heartbeat back to 0.17.0 handed it over in two requests); a box
+ *   that has never reported one can still claim to be old. A dev build of 0.18.0 without relay code
+ *   reads as relay-capable and is refused, which costs its git, never the token.
  */
-export const PRE_RELAY_RUNNER_AMNESTY = '0.18.0';
-
-/** Whether a device's reported runner version (`a.b.c`) is at or past the relay; none is not. */
-export function relayCapableRunner(version: string | null | undefined): boolean {
-  const got = /^(\d+)\.(\d+)\.(\d+)$/.exec(version?.trim() ?? '');
-  if (!got) return false;
-  const floor = PRE_RELAY_RUNNER_AMNESTY.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    const d = Number(got[i + 1]) - (floor[i] as number);
-    if (d !== 0) return d > 0;
-  }
-  return true;
-}
+export { PRE_RELAY_RUNNER_AMNESTY, relayCapableRunner };
 
 interface GitCredentialGrant {
   username: string;
@@ -151,6 +145,8 @@ export async function mintGitCredentialForDevice(args: {
   deviceId: string;
   /** The runner version the device last reported (`devices.agent_version`), or null. */
   agentVersion: string | null;
+  /** Whether the device ever reported a runner at or past the relay (`devices.relay_runner_at`). */
+  relayRunnerSeen?: boolean;
   host: string;
   path: string;
   /** Reach only this project's repository, whatever else the device runs (ISS-765). */
@@ -178,7 +174,7 @@ export async function mintGitCredentialForDevice(args: {
   if (cred.kind === 'relayed') {
     // a session's own ask (an owner-mode channel agent) is never under the amnesty: its clone's
     // origin is the relay, and the connection's token never reaches a session
-    if (!args.onlyProject && !relayCapableRunner(args.agentVersion)) {
+    if (!args.onlyProject && !args.relayRunnerSeen && !relayCapableRunner(args.agentVersion)) {
       const served = cred.preRelayCredential({
         config,
         secrets: decryptConnectionSecrets(pair.connection),

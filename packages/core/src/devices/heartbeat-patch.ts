@@ -1,3 +1,6 @@
+import { type SQL, sql } from 'drizzle-orm';
+import { devices } from '../db/schema.js';
+import { relayCapableRunner } from '../lib/relay-runner.js';
 import { type BinaryReport, storedBinaryReport } from './binary-report.js';
 import { type DiskReport, storedDiskReport } from './disk-report.js';
 import { type GateReport, storedGateReport } from './gate-report.js';
@@ -13,6 +16,7 @@ interface HeartbeatReport {
 
 export interface DevicePatch {
   lastSeenAt: Date;
+  relayRunnerAt?: SQL;
   agentVersion?: string;
   agentCommit?: string | null;
   capabilities?: Record<string, unknown>;
@@ -31,6 +35,13 @@ export function heartbeatPatch(report: HeartbeatReport, now: Date): DevicePatch 
     lastSeenAt: now,
     ...(report.agentVersion !== undefined
       ? { agentVersion: report.agentVersion, agentCommit: report.agentCommit ?? null }
+      : {}),
+    // a relay runner reported once latches the device for good (ISS-685): reporting an older
+    // version after never hands it a relayed host's token
+    ...(relayCapableRunner(report.agentVersion)
+      ? {
+          relayRunnerAt: sql`COALESCE(${devices.relayRunnerAt}, ${now.toISOString()}::timestamptz)`,
+        }
       : {}),
     ...(report.capabilities !== undefined ? { capabilities: report.capabilities } : {}),
     ...(report.gate !== undefined ? { gateReport: storedGateReport(report.gate, now) } : {}),

@@ -51,6 +51,7 @@ deviceGitCredentialRoutes.post(
     const grant = await mintGitCredentialForDevice({
       deviceId: device.id,
       agentVersion: device.agentVersion ?? null,
+      relayRunnerSeen: device.relayRunnerAt != null,
       host,
       path,
     });

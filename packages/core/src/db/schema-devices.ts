@@ -69,6 +69,12 @@ export const devices = pgTable(
      * The forge-plugin version a call on this box's token last named in `x-forge-plugin`, and when
      * core heard it (`middleware/plugin-version.ts`). NULL where no call on it has named one.
      */
+    /**
+     * When the device first reported a runner at or past the git relay (ISS-685): a latch, never
+     * cleared, so a box that reported one is never handed a relayed host's token by reporting an
+     * older version after. NULL where it never has.
+     */
+    relayRunnerAt: timestamp('relay_runner_at', { withTimezone: true }),
     pluginVersion: text('plugin_version'),
     pluginSeenAt: timestamp('plugin_seen_at', { withTimezone: true }),
     maxConcurrent: integer('max_concurrent').notNull().default(1),

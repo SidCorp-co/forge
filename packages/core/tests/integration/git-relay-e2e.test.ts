@@ -167,6 +167,26 @@ describe('REQ-73 BC-5 transition: a runner older than the relay keeps git until 
     }
   });
 
+  // ISS-685 r2: the version is the box's own word, so a box at the relay heartbeated 0.17.0 (or a
+  // dev build) with the git helper's own credential and was handed the token on the next ask
+  it('a device that reported a relay runner is never served the token again, whatever it reports after', async () => {
+    await db.execute(sql`UPDATE devices SET relay_runner_at = NULL WHERE id = ${world.deviceId}`);
+    const beat = (agentVersion: string) =>
+      api(world.boxToken, 'POST', '/api/devices/heartbeat', { agentVersion });
+    expect((await beat(PRE_RELAY_RUNNER_AMNESTY)).status).toBeLessThan(300);
+    expect((await ask(HOST, `${REPO}.git`)).body.code).toBe('GIT_THROUGH_FORGE');
+    for (const version of ['0.17.0', 'dev']) {
+      expect((await beat(version)).status, version).toBeLessThan(300);
+      const res = await ask(HOST, `${REPO}.git`);
+      expect([res.status, res.body.code], `${version}: ${JSON.stringify(res.body)}`).toEqual([
+        409,
+        'GIT_THROUGH_FORGE',
+      ]);
+      expect(JSON.stringify(res.body)).not.toContain(TOKEN);
+    }
+    await db.execute(sql`UPDATE devices SET relay_runner_at = NULL WHERE id = ${world.deviceId}`);
+  });
+
   it('a runner at or past the floor is refused GIT_THROUGH_FORGE, whatever patch it is on', async () => {
     for (const version of [PRE_RELAY_RUNNER_AMNESTY, '0.18.7', '1.0.0']) {
       await reporting(version);
