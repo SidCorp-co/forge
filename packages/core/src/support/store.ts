@@ -420,6 +420,37 @@ export async function toldResultOfThread(
   };
 }
 
+/**
+ * The member messages each of a project's rooms could not take in the last day (ISS-1046), one row
+ * per room and cause, with how many and the newest: what the project's master is told once.
+ */
+export async function unhandledMessagesOf(
+  projectId: string,
+  since: Date,
+): Promise<{ roomId: string; rid: string; code: string; count: number; lastAt: string }[]> {
+  const rows = (await db.execute(sql`
+    SELECT a.room_id, r.rid, a.output->>'code' AS code, count(*)::int AS n, max(a.created_at) AS last_at
+      FROM support_actions a JOIN support_rooms r ON r.id = a.room_id
+     WHERE a.project_id = ${projectId} AND a.kind = 'refused' AND a.tool = 'message_unhandled'
+       AND a.created_at >= ${since.toISOString()}::timestamptz
+     GROUP BY a.room_id, r.rid, a.output->>'code'
+     ORDER BY max(a.created_at) DESC
+  `)) as unknown as {
+    room_id: string;
+    rid: string;
+    code: string | null;
+    n: number;
+    last_at: Date | string;
+  }[];
+  return rows.map((r) => ({
+    roomId: r.room_id,
+    rid: r.rid,
+    code: r.code ?? 'UNKNOWN',
+    count: r.n,
+    lastAt: new Date(r.last_at).toISOString(),
+  }));
+}
+
 export async function actionsOfRoom(roomId: string, limit: number): Promise<ActionRow[]> {
   return db
     .select()

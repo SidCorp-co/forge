@@ -19,7 +19,7 @@ import {
   releaseLastResort,
   STILL_QUEUED_LINE,
 } from '../conversations/index.js';
-import { FIXED_REPLY_CONSTANT } from '../integrations/rocketchat/index.js';
+import { FIXED_REPLY_CONSTANT, sendFixedReply } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
 import { readContentLanguage } from '../project-config/index.js';
 import { isCoreThread, supportVenueId } from './rules.js';
@@ -31,11 +31,16 @@ export type Told =
   | { posted: true; messageId: string | null; conversationId: string }
   | { posted: false; why: 'not-a-member-thread' | 'already-told' | 'post-failed' };
 
-/** Tell `thread` the one line of `kind`, unless it is no member's thread or was told one already. */
+/**
+ * Tell `thread` the one line of `kind`, unless it is no member's thread or was told one already.
+ * `unrecorded` posts it without writing it on the thread's conversation, for a thread whose
+ * conversation is what failed to open (ISS-1046); its `conversationId` is then empty.
+ */
 export async function tellLastResort(
   room: RoomRow,
   thread: string,
   kind: LastResortKind,
+  opts: { unrecorded?: boolean } = {},
 ): Promise<Told> {
   if (thread === TOP_LEVEL || isCoreThread(thread)) {
     return { posted: false, why: 'not-a-member-thread' };
@@ -49,6 +54,15 @@ export async function tellLastResort(
   );
   if (!line) return { posted: false, why: 'already-told' };
   try {
+    if (opts.unrecorded) {
+      const { auth } = await roomAuth(room);
+      const sent = await sendFixedReply(
+        { kind: 'rest', auth, rid: room.rid, tmid: thread },
+        line,
+        FIXED_REPLY_CONSTANT,
+      );
+      return { posted: true, messageId: sent.messageId, conversationId: '' };
+    }
     const posted = await postInThread({ room, thread, text: line });
     return { posted: true, messageId: posted.messageId, conversationId: posted.conversationId };
   } catch (err) {

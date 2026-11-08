@@ -7,6 +7,14 @@ import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import type { StandingSubjectKind } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
+/** Member messages one room could not take, for one cause (ISS-1046). */
+export interface UnhandledRoomMessages {
+  rid: string;
+  code: string;
+  count: number;
+  lastAt: string;
+}
+
 /** The next merge an accepted change-request release waits on (`release-batch/merges-owed.ts`). */
 export interface ReleaseMergeOwed {
   runId: string;
@@ -213,6 +221,11 @@ interface MastersPorts {
    * failure's code (ISS-772): master work under every profile, since nobody else is asked for them.
    */
   intakeFailuresOwed(projectId: string): Promise<{ key: string; code: string }[]>;
+  /**
+   * Member messages a room of the project could not take in the last day, one per room and cause
+   * (ISS-1046): the master is told once per cause, never per message.
+   */
+  unhandledRoomMessagesOwed?(projectId: string): Promise<UnhandledRoomMessages[]>;
   /**
    * The reviews the project's independent judge owes, which only the master declares (ISS-870): none
    * where its gate profile declares no independent judge.

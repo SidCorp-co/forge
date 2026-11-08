@@ -140,7 +140,7 @@ import {
   releaseNamerOf,
   stewardJobCredential,
 } from './steward/index.js';
-import { classifyCommand } from './support/index.js';
+import { classifyCommand, unhandledMessagesOf } from './support/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -401,6 +401,8 @@ export function provideExecutionPorts(): void {
     masterMode: readMasterMode,
     draftCarriersWaiting: draftFeedbackCarriers,
     intakeFailuresOwed: intakeFailedRequirements,
+    unhandledRoomMessagesOwed: (projectId) =>
+      unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000)),
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
     releaseHoldsOwed: agentOwedHolds,
     endedRunHolds: (projectId) => readEndedRunHolds(projectId),

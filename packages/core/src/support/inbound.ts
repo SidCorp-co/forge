@@ -18,6 +18,7 @@ import {
   reactToMessage,
 } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
+import { isRefusal } from '../lib/refusal.js';
 import { flagSecret } from './channel.js';
 import { deliverWaiting } from './dispatch.js';
 import { answersOfConfig } from './grants.js';
@@ -36,6 +37,9 @@ import {
 import { roomAuth, threadConversationOf } from './thread.js';
 
 const RECEIVED_EMOJI = 'eyes';
+
+/** The `refused` action's tool naming a member message the room could not take (ISS-1046). */
+export const UNHANDLED_TOOL = 'message_unhandled';
 
 /**
  * Whom a message is for, as the chat server parsed its mentions (REQ-77 BC-6): the bot, someone else
@@ -98,6 +102,68 @@ export async function handleSupportMessage(input: {
         ? { kind: 'agent', agent: route.agent }
         : { kind: 'support', support: config },
   });
+  try {
+    await takeIntoRoom(room, { ...input, m }, config, secret);
+  } catch (err) {
+    await recordUnhandled(room, m, err);
+  }
+}
+
+/**
+ * A member's message the room could not take (ISS-1046): it was dropped with a server log alone, and
+ * neither the person nor the master heard of it. It is recorded on the room as received but not
+ * handled, with the refusal's code; the person is told in their thread, in core's last-resort line,
+ * that it is kept; the project's master reads it on its nudge, once per room and cause. A failure to
+ * record it is thrown, so the connection logs and reports it as before.
+ */
+async function recordUnhandled(
+  room: RoomRow,
+  m: RocketChatIncomingMessage,
+  err: unknown,
+): Promise<void> {
+  const code = refusalCodeOf(err);
+  const thread = threadOf(m);
+  logger.error(
+    { err, roomId: room.id, rid: room.rid, msgId: m.id, code },
+    'support: a member message could not be taken; recorded as unhandled',
+  );
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: null,
+    thread,
+    kind: 'refused',
+    actorKind: 'core',
+    tool: UNHANDLED_TOOL,
+    input: { message: m.id, from: m.username ?? m.userId },
+    output: { code, detail: err instanceof Error ? err.message : String(err) },
+  });
+  // the session never took it, so no agent can speak to it: core's line, once per wait
+  await tellLastResort(room, thread, 'turn_failed', { unrecorded: true }).catch((told: unknown) =>
+    logger.error({ err: told, roomId: room.id }, 'support: an unhandled message was not told'),
+  );
+}
+
+/** The refusal code a throw carries, or what kind of throw it was where it carries none. */
+function refusalCodeOf(err: unknown): string {
+  if (isRefusal(err)) return err.refusals[0]?.code ?? err.fallbackCode;
+  const cause = (err as { cause?: { code?: unknown } } | null)?.cause?.code;
+  if (typeof cause === 'string') return cause;
+  return err instanceof Error ? err.name : 'UNKNOWN';
+}
+
+/** A member's message in a room it was ensured for: recorded on its thread and handed on. */
+async function takeIntoRoom(
+  room: RoomRow,
+  input: {
+    connectionId: string;
+    ac: Pick<ActiveConnection, 'botUserId'>;
+    m: RocketChatIncomingMessage;
+  },
+  config: SupportRoomConfig,
+  secret: boolean,
+): Promise<void> {
+  const { m } = input;
   const { auth, namespace } = await roomAuth(room);
   const thread = threadOf(m);
   const conversation = await threadConversationOf(room, namespace, thread);

@@ -33,6 +33,7 @@ import {
   type ReleaseMergeOwed,
   type ReviewOwed,
   type StewardAsk,
+  type UnhandledRoomMessages,
   type WaitingRequest,
 } from './ports.js';
 
@@ -95,6 +96,8 @@ interface Owed {
   carriers: { key: string }[];
   /** Draft requirements whose intake draft failed for good, each with its code (ISS-772). */
   intakeFailures: { key: string; code: string }[];
+  /** Member messages a room could not take in the last day, per room and cause (ISS-1046). */
+  unhandledRoomMessages?: UnhandledRoomMessages[];
   reviews: ReviewOwed[];
   /** Release holds on waiting issues whose act is the master's, each named with its command (ISS-888). */
   releaseHolds: ReleaseHoldOwed[];
@@ -241,6 +244,12 @@ function carriersLine(carriers: { key: string }[]): string {
 }
 
 /** Draft requirements the intake assistant could not draft (ISS-772): the master drafts each, or drops it. */
+function unhandledRoomLine(unhandled: Owed['unhandledRoomMessages']): string {
+  if (!unhandled || unhandled.length === 0) return '';
+  const causes = unhandled.map((u) => `${u.count} in room ${u.rid}, ${u.code}`);
+  return ` A room of this project could not take member messages in the last day (${causes.join('; ')}): nothing answered them. Read each room's refused message_unhandled actions (\`forge-runner api projects/<projectId>/support/rooms/<roomId>/actions\`), fix or route the cause, and answer the people they came from in their threads.`;
+}
+
 function intakeFailuresLine(failed: Owed['intakeFailures']): string {
   if (failed.length === 0) return '';
   const keys = failed.map((f) => `${f.key} ${f.code}`);
@@ -281,6 +290,7 @@ export function owedLine(owed: Owed): string {
     requestsLine(owed.requests) +
     carriersLine(owed.carriers) +
     intakeFailuresLine(owed.intakeFailures) +
+    unhandledRoomLine(owed.unhandledRoomMessages) +
     reviewsLine(owed.reviews);
   const {
     breakdowns,
@@ -360,6 +370,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.carriers.map((c) => `carrier:${c.key}`),
     ...owed.intakeFailures.map((f) => `intake-failed:${f.key}|${f.code}`),
+    ...(owed.unhandledRoomMessages ?? []).map((u) => `room-unhandled:${u.rid}|${u.code}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
     ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
     ...endedRunHoldsWork(owed.endedRunHolds),
@@ -466,6 +477,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const carriers = await ports.draftCarriersWaiting(projectId);
   const intakeFailures = await ports.intakeFailuresOwed(projectId);
+  const unhandledRoomMessages = (await ports.unhandledRoomMessagesOwed?.(projectId)) ?? [];
   const reviews = await ports.reviewsOwed(projectId);
   const releaseHolds = await ports.releaseHoldsOwed(projectId);
   const endedRunHolds = await ports.endedRunHolds(projectId);
@@ -508,6 +520,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       requests,
       carriers,
       intakeFailures,
+      unhandledRoomMessages,
       reviews,
       releaseHolds,
       endedRunHolds,
