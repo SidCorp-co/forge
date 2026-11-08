@@ -3,10 +3,12 @@
  * `release.shipped` on the outbox once, the notify-feedback consumer writes the reporter a notice naming
  * the item, the release and the user-facing note, and the item's page reads "told" back off that notice.
  * An item still owed another carrier is not told; a reporter with no bell is named, not skipped.
- * The relay is the triager's own act but no person's decision, so it reads `waiting`, never Needs you (REQ-48 BC-11: a list draws
- * needs_you only for rows the decisions read holds).
+ * Outside strict a resolved item whose carrier shipped is done (owner 2026-11-08, D5): nothing waits on
+ * its reporter, an agent's confirm or a person's relay, and anyone may still tell the reporter, who may
+ * reopen it. Whether the reporter was told is read and counted all the same.
  *
  * @direct-test-of packages/core/src/feedback/standing-carrier.ts
+ * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
@@ -43,6 +45,14 @@ async function detail(key: string): Promise<Body> {
   const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/feedback/${key}`);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body.feedback as Body;
+}
+
+/** D5: outside strict a shipped item is done, waiting on nobody, the next sweep recording it verified. */
+function shippedDone(d: Body): void {
+  expect(d.attentionGroup, 'a shipped item outside strict is done (D5)').toBe('done');
+  const waiting = d.waitingOn as Body;
+  expect(waiting.kind, 'nothing waits on the reporter, an agent or a relay (D5)').toBe('none');
+  expect((waiting.says as Body).rule).toMatchObject({ key: 'feedback.rule.shippedSettles' });
 }
 
 const notices = async (type: string) =>
@@ -122,8 +132,9 @@ describe('the release that ships an item tells its reporter', () => {
     expect((await detail(fb)).shipNotice).toBeNull();
   });
 
-  // REQ-66 BC-8: an agent has no bell; its own read of the item asks it, and nobody owes it a relay
-  it('asks a reporter that is an agent to confirm through its own read of the item, never through a bell', async () => {
+  // REQ-66 BC-8: an agent has no bell; its own read of the item tells it, and nobody owes it a relay.
+  // D5: outside strict the ship settles it, so the agent owes no confirm either; it may reopen it
+  it('tells a reporter that is an agent through its own read of the item, never a bell, and owes it nothing', async () => {
     const carrier = await closed({ mergedAt: new Date() });
     const fb = await feedback(w, [carrier.id]);
     await db.execute(sql`
@@ -135,7 +146,7 @@ describe('the release that ships an item tells its reporter', () => {
     const d = await detail(fb);
     expect(d.shipNotice).toMatchObject({ state: 'told', how: 'asked' });
     expect(d.reporterNotTold).toBeNull();
-    expect((d.waitingOn as Body).kind).toBe('agent');
+    shippedDone(d);
     expect(saidDisagreements(d)).toEqual([]);
   });
 });
@@ -197,7 +208,7 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(Date.parse(String((d.shipNotice as Body).noticesBegan))).toBe(cutoff.getTime());
     expect(d.reporterNotTold).toBe('before_notices');
     expect(d.attentionGroup, "no stale relay on anyone's Needs you").not.toBe('needs_you');
-    expect((d.waitingOn as Body).act).toBe('verify the fix shipped in 0.0.9');
+    shippedDone(d);
     expect((d.can as Body).tellShipped, 'anyone who wants to may still tell them').toBe(true);
     expect((d.shipNotice as Body).says).toEqual({
       reason: { key: 'feedback.notice.before', vars: { date: cutoff.toISOString().slice(0, 10) } },
@@ -205,7 +216,8 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(saidDisagreements(d), 'what it says and its English agree').toEqual([]);
   });
 
-  it('keeps an item shipped after the cutoff and never told owed to the triager, on their Needs you', async () => {
+  // D5: the relay is still read owed and counted, but outside strict it puts the item on nobody's list
+  it('reads an item shipped after the cutoff and never told as owed a relay, and done', async () => {
     const d = (await read(`/feedback/${after}`)).feedback as Body;
     expect(d.shipNotice).toMatchObject({
       state: 'not_told',
@@ -213,13 +225,8 @@ describe("a project's first release notice is the cutoff: before it nothing was 
       beforeNotices: false,
     });
     expect(d.reporterNotTold).toBe('owed');
-    // the relay is the triager's own act, no decision: Needs you lists it as theirs (ISS-924)
-    expect(d.attentionGroup).toBe('needs_you');
-    expect(String((d.waitingOn as Body).act)).toMatch(/^tell .+ that it shipped in 0\.0\.10$/);
-    expect(((d.waitingOn as Body).says as Body).act).toMatchObject({
-      key: 'standing.act.tellShippedIn',
-      vars: { v: '0.0.10' },
-    });
+    shippedDone(d);
+    expect((d.can as Body).tellShipped, 'anyone who wants to may tell them now').toBe(true);
     expect(saidDisagreements(d)).toEqual([]);
   });
 
@@ -369,7 +376,7 @@ describe("the notice is the reporter's, in their words, once", () => {
   });
 });
 
-describe('a reporter no notice reached is relayed to by a person, on their Needs you until done', () => {
+describe('a reporter no notice reached may be relayed to by a person, the item done meanwhile (D5)', () => {
   /** An item a person reported whose release was stamped shipped but sent them no notice. */
   async function silentItem(version: string): Promise<{ fb: string; runId: string }> {
     const reporter = await createTestUser({ verified: true });
@@ -416,19 +423,16 @@ describe('a reporter no notice reached is relayed to by a person, on their Needs
   const send = (fb: string, body: Body) =>
     api(w.token, 'POST', `/api/projects/${w.projectId}/feedback/${fb}/messages`, body);
 
-  it('names the holders of feedback.approve as owing the relay, as their own act', async () => {
+  it("puts a shipped item no notice reached on nobody's Needs you, done, and lets a person tell them", async () => {
     const { fb } = await silentItem('0.4.0');
     const d = await detail(fb);
     expect(d.phase).toBe('resolved');
     expect(d.shipNotice).toMatchObject({ state: 'not_told' });
-    expect(d.attentionGroup, "the relay is the triager's own act: on their Needs you").toBe(
-      'needs_you',
-    );
-    expect((d.waitingOn as Body).kind).toBe('you');
-    expect(String((d.waitingOn as Body).act)).toMatch(/^tell .+ that it shipped in 0\.4\.0$/);
+    shippedDone(d);
+    expect((d.can as Body).tellShipped).toBe(true);
     const list = await api(w.token, 'GET', `/api/projects/${w.projectId}/feedback`);
     const row = (list.body.feedback as Body[]).find((f) => f.key === fb);
-    expect(row?.attentionGroup).toBe('needs_you');
+    expect(row?.attentionGroup).toBe('done');
   });
 
   it('refuses a relay told to nobody, and a bell message to a reporter with no bell, by name', async () => {
@@ -467,8 +471,7 @@ describe('a reporter no notice reached is relayed to by a person, on their Needs
     });
     expect(saidDisagreements(d)).toEqual([]);
     expect(((d.shipNotice as Body).by as string | null) ?? '').not.toBe('');
-    expect(d.attentionGroup).not.toBe('needs_you');
-    expect((d.waitingOn as Body).act).toBe('verify the fix shipped in 0.4.2');
+    shippedDone(d);
     const [m] = d.messages as Body[];
     expect(m).toMatchObject({ audience: 'reporter', relayed: true, recipients: [] });
     expect(
