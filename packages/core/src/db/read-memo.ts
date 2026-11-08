@@ -110,7 +110,11 @@ export function readAcross<P, T>(
   projects: readonly P[],
   idOf: (project: P) => string,
   read: (project: P) => Promise<T>,
-  /** Names the read, so the order its code asks in ({@link Order}) is learned apart from another's. */
+  /**
+   * Names the read, so the order its code asks in ({@link Order}) is learned apart from another's:
+   * reads that shared one name stopped learning on the first read's steps, and the other's asks
+   * found an order that knew none of theirs and split (ISS-1070 r10).
+   */
   name = 'read',
 ): Promise<T[]> {
   const memo = memos.getStore();

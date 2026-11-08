@@ -45,6 +45,7 @@ async function readableProjects(userId: string, orgId: string | null): Promise<H
         ? { id: p.id, slug: p.slug, name: p.name }
         : null;
     },
+    'home-access',
   );
   return checked.filter((p): p is HomeProject => p !== null);
 }
@@ -95,6 +96,7 @@ meHomeRoutes.get(
         const items = await withQueryLeg('home-items', () => homeItemsOf(p, part, now));
         return { ...items, live: liveOf(p, releases, mine) };
       },
+      'home',
     );
     const moving = parts.flatMap((p) => p.moving).sort(byLastMove);
     const response: HomeResponse = {
@@ -132,6 +134,7 @@ meHomeRoutes.get(
         ]);
         return findIn(p, part, releases, q);
       },
+      'home-find',
     );
     const items = found.flatMap((f) => f.items);
     const total = found.reduce((n, f) => n + f.total, 0);
