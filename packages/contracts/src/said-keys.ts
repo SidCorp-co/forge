@@ -2163,7 +2163,7 @@ export const SAID = {
 		en: "a holder of workflow-designs.approve decides the design, person or agent",
 	},
 	"designs.rule.masterDecides": {
-		en: "revision {r} is proposed and asks no person: the project's master approves or returns it",
+		en: "revision {r} is proposed; the project's master approves or returns it",
 		vars: { r: "count" },
 	},
 	"designs.act.repin": { en: "re-pin basedOn" },
