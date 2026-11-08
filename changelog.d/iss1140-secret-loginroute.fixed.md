@@ -1,1 +1,0 @@
-**A stored secret can gain its sign-in route without anyone reading or retyping it.** `PATCH /api/projects/:id/secrets/:scope/:name {"set":{"loginRoute":"…"}}` merges the route, keeps every other key, and checks the sign-in as a PUT does.

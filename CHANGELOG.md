@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.600] - 2026-11-08
+
+A testing account's sign-in route can be added without retyping its password
+
+### Fixed
+
+- **A stored secret can gain its sign-in route without anyone reading or retyping it.** `PATCH /api/projects/:id/secrets/:scope/:name {"set":{"loginRoute":"…"}}` merges the route, keeps every other key, and checks the sign-in as a PUT does.
+
 ## [0.4.0-dev.599] - 2026-11-08
 
 Production sites: a release deploys and records every production site
