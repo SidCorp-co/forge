@@ -18,6 +18,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
+import { idOfParts, memoizedPerId, partsOf } from '../db/read-memo.js';
 import { holdingReleaseRunsSql } from '../issues/index.js';
 import type { Holding } from './landed-build.js';
 
@@ -49,7 +51,9 @@ interface Row {
 
 /**
  * Per ask (`shippedAskKey`) whose commit a shipped release of the project recorded shipping, whether
- * it holds the issue's landing, or why that is unread. Asks at any other commit are left out.
+ * it holds the issue's landing, or why that is unread. Asks at any other commit are left out. An
+ * ask's answer is its project's own, so every project's asks before the quiet point are one read
+ * (`db/read-memo.ts:memoizedPerId`, ISS-1070 r10).
  */
 export async function shippedCommitHolding(
   projectId: string,
@@ -57,41 +61,61 @@ export async function shippedCommitHolding(
 ): Promise<Map<string, Holding>> {
   const out = new Map<string, Holding>();
   if (asks.length === 0) return out;
-  const values = sql.join(
-    asks.map(
-      (a) => sql`(${a.issueId.toLowerCase()}, ${a.landing.toLowerCase()}, ${a.sha.toLowerCase()})`,
+  const held = await memoizedPerId(
+    'shippedHolding',
+    asks.map((a) =>
+      idOfParts(projectId, a.issueId.toLowerCase(), a.landing.toLowerCase(), a.sha.toLowerCase()),
     ),
+    holdingsOf,
+  );
+  for (const [key, holding] of held) {
+    const [, issueId = '', , sha = ''] = partsOf(key);
+    out.set(shippedAskKey({ issueId, sha }), holding);
+  }
+  return out;
+}
+
+/** Each asked project, issue, landing and commit's (`idOfParts`) holding, where a shipped release recorded the commit. */
+async function holdingsOf(keys: readonly string[]): Promise<Map<string, Holding>> {
+  const values = sql.join(
+    keys.map((k) => {
+      const [project, issueId, landing, sha] = partsOf(k);
+      return sql`(${project}::uuid, ${issueId}, ${landing}, ${sha})`;
+    }),
     sql`, `,
   );
-  const holding = sql`(${holdingReleaseRunsSql(sql`a.issue_id`, sql`${projectId}`)})`;
+  const projects = [...new Set(keys.map((k) => partsOf(k)[0] as string))];
+  const holding = sql`(${holdingReleaseRunsSql(sql`a.issue_id`, sql`a.project_id`)})`;
   const rows = (await db.execute(sql`
     WITH shipped AS (
-      SELECT r.id, r.release_version AS version, r.release_released_at AS at,
+      SELECT r.id, r.project_id, r.release_version AS version, r.release_released_at AS at,
              lower(r.metadata -> 'finish' ->> 'commit') AS commit
         FROM pipeline_runs r
-       WHERE r.project_id = ${projectId}
+       WHERE r.project_id = ANY(${uuidArray(projects)})
          AND r.metadata ->> 'source' = 'release-batch'
          AND r.metadata -> 'finish' ->> 'state' = 'finished'
          AND r.release_version IS NOT NULL AND r.release_released_at IS NOT NULL)
-    SELECT a.issue_id, a.sha, a.landing,
+    SELECT a.project_id::text AS project_id, a.issue_id, a.sha, a.landing,
            (SELECT b.version FROM shipped b
-             WHERE b.commit = a.sha AND EXISTS (SELECT 1 FROM ${holding} h WHERE h.id = b.id)
+             WHERE b.project_id = a.project_id AND b.commit = a.sha
+               AND EXISTS (SELECT 1 FROM ${holding} h WHERE h.id = b.id)
              LIMIT 1) AS holder,
            (SELECT string_agg(b.version, ', ' ORDER BY b.at, b.id) FROM shipped b
-             WHERE b.commit = a.sha) AS shipped_by,
+             WHERE b.project_id = a.project_id AND b.commit = a.sha) AS shipped_by,
            (SELECT s.carried FROM served_ancestry s
-             WHERE s.project_id = ${projectId} AND s.served_commit = a.sha
+             WHERE s.project_id = a.project_id AND s.served_commit = a.sha
                AND s.judged_commit = a.landing) AS holds_landing,
            EXISTS (SELECT 1 FROM ${holding} h
                      JOIN pipeline_runs hr ON hr.id = h.id
-                     JOIN served_ancestry s ON s.project_id = ${projectId} AND s.served_commit = a.sha
+                     JOIN served_ancestry s ON s.project_id = a.project_id AND s.served_commit = a.sha
                       AND s.judged_commit = lower(hr.metadata -> 'finish' ->> 'commit') AND s.carried
            ) AS holds_release
-      FROM (VALUES ${values}) AS a(issue_id, landing, sha)
-  `)) as unknown as Row[];
+      FROM (VALUES ${values}) AS a(project_id, issue_id, landing, sha)
+  `)) as unknown as (Row & { project_id: string })[];
+  const out = new Map<string, Holding>();
   for (const r of rows) {
     if (r.shipped_by === null) continue;
-    out.set(shippedAskKey({ issueId: r.issue_id, sha: r.sha }), holdingOf(r, r.shipped_by));
+    out.set(idOfParts(r.project_id, r.issue_id, r.landing, r.sha), holdingOf(r, r.shipped_by));
   }
   return out;
 }

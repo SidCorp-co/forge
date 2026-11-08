@@ -23,6 +23,7 @@
 import { servedCommits } from '@forge/contracts/releases';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idOfParts, memoizedPerId, partsOf } from '../db/read-memo.js';
 import { servedAncestry } from '../db/schema.js';
 import {
   resolveSourceHost,
@@ -98,29 +99,52 @@ async function servedNow(projectId: string): Promise<string[]> {
   return [...new Set(commits.filter((c) => WHOLE.test(c)))];
 }
 
-/** What the host answered about each held pair of `judged` × `served`, by `carriageKey`. */
+/**
+ * What the host answered about each held pair of `judged` × `served`, by `carriageKey`. A pair's
+ * answer is its project's own, so every project's asks before the quiet point are one read
+ * (`db/read-memo.ts:memoizedPerId`, ISS-1070 r10).
+ */
 export async function persistedCarriage(
   projectId: string,
   judged: readonly string[],
   served: readonly string[],
 ): Promise<Map<string, Carriage>> {
-  const out = new Map<string, Carriage>();
   const j = [...new Set(judged.map(lower).filter((c) => WHOLE.test(c)))];
   const s = [...new Set(served.map(lower).filter((c) => WHOLE.test(c)))];
-  if (j.length === 0 || s.length === 0) return out;
+  if (j.length === 0 || s.length === 0) return new Map();
+  const held = await memoizedPerId(
+    'persistedCarriage',
+    j.flatMap((judgedCommit) => s.map((servedCommit) => idOfParts(projectId, judgedCommit, servedCommit))),
+    carriagesOf,
+  );
+  return new Map(
+    [...held].map(([key, carriage]) => {
+      const [, judgedCommit = '', servedCommit = ''] = partsOf(key);
+      return [carriageKey(judgedCommit, servedCommit), carriage];
+    }),
+  );
+}
+
+/** Each asked project, judged and served commit's (`idOfParts`) kept answer, where one is kept. */
+async function carriagesOf(keys: readonly string[]): Promise<Map<string, Carriage>> {
+  const parts = keys.map((k) => partsOf(k));
   const rows = await db
     .select()
     .from(servedAncestry)
     .where(
       and(
-        eq(servedAncestry.projectId, projectId),
-        inArray(servedAncestry.servedCommit, s),
-        inArray(servedAncestry.judgedCommit, j),
+        inArray(servedAncestry.projectId, [...new Set(parts.map((p) => p[0] as string))]),
+        inArray(servedAncestry.servedCommit, [...new Set(parts.map((p) => p[2] as string))]),
+        inArray(servedAncestry.judgedCommit, [...new Set(parts.map((p) => p[1] as string))]),
       ),
     );
+  const asked = new Set(keys);
+  const out = new Map<string, Carriage>();
   for (const r of rows) {
+    const key = idOfParts(r.projectId, r.judgedCommit, r.servedCommit);
+    if (!asked.has(key)) continue;
     out.set(
-      carriageKey(r.judgedCommit, r.servedCommit),
+      key,
       r.carried
         ? { kind: 'descends', by: `the source host answered so at ${r.readAt.toISOString()}` }
         : { kind: 'differs', paths: r.differsIn ?? [] },

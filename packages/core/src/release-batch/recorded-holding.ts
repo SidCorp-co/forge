@@ -15,6 +15,8 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { uuidArray } from '../db/raw-sql.js';
+import { idOfParts, memoizedPerId, partsOf } from '../db/read-memo.js';
 import { MARK_RECORD, markedCommitsOf } from '../issues/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
 import type { Holding } from './landed-build.js';
@@ -60,51 +62,84 @@ export async function recordedHolding(
   return out;
 }
 
-/** The newest merged issue's mark at each of `shas` on the project: its time and branch. */
+/**
+ * The newest merged issue's mark at each of `shas` on the project: its time and branch. A mark at a
+ * commit is the project's own, so every project's asks before the quiet point are one read
+ * (`db/read-memo.ts:memoizedPerId`): the issues and trail marks of all of them in two statements,
+ * each kept only for the project and commit it was asked for (ISS-1070 r10: a person's projects that
+ * record landings each sent their own, twice a read).
+ */
 async function landingMarks(
   projectId: string,
   shas: readonly string[],
 ): Promise<Map<string, Mark>> {
+  const held = await memoizedPerId(
+    'landingMarks',
+    shas.map((sha) => idOfParts(projectId, sha)),
+    marksAt,
+  );
+  return new Map([...held].map(([key, mark]) => [partsOf(key)[1] as string, mark]));
+}
+
+/** Each asked project and commit's (`idOfParts`) newest mark, from its issues and their trails. */
+async function marksAt(keys: readonly string[]): Promise<Map<string, Mark>> {
+  const asked = new Set(keys);
+  const projects = [...new Set(keys.map((k) => partsOf(k)[0] as string))];
   const among = sql.join(
-    shas.map((s) => sql`${s}`),
+    [...new Set(keys.map((k) => partsOf(k)[1] as string))].map((s) => sql`${s}`),
     sql`, `,
   );
   const rows = (await db.execute(sql`
-    SELECT i.id::text AS id, i.merged_at AS at,
+    SELECT i.id::text AS id, i.project_id::text AS project_id, i.merged_at AS at,
            i.merged_target AS target
       FROM issues i
-     WHERE i.project_id = ${projectId} AND i.merged_at IS NOT NULL
+     WHERE i.project_id = ANY(${uuidArray(projects)}) AND i.merged_at IS NOT NULL
        AND (lower(i.merged_commit_sha) IN (${among})
             OR (i.merged_commit_sha IS NULL AND EXISTS (
                   SELECT 1 FROM activity_log a
                    WHERE a.issue_id = i.id AND a.action = ${MARK_RECORD}
                      AND lower(a.payload ->> 'commit') IN (${among}))))
-  `)) as unknown as Array<{ id: string; at: Date | string; target: string | null }>;
+  `)) as unknown as Array<{
+    id: string;
+    project_id: string;
+    at: Date | string;
+    target: string | null;
+  }>;
   const named = await markedCommitsOf(rows.map((r) => r.id));
   const marks = new Map<string, Mark>();
-  const keepNewest = (sha: string, mark: Mark) => {
-    const before = marks.get(sha);
-    if (!before || before.at < mark.at) marks.set(sha, mark);
+  const keepNewest = (key: string, mark: Mark) => {
+    if (!asked.has(key)) return;
+    const before = marks.get(key);
+    if (!before || before.at < mark.at) marks.set(key, mark);
   };
   for (const r of rows) {
     const sha = named.get(r.id)?.sha;
-    if (sha === undefined || !shas.includes(sha)) continue;
-    keepNewest(sha, { at: new Date(r.at), target: r.target });
+    if (sha === undefined) continue;
+    keepNewest(idOfParts(r.project_id, sha), { at: new Date(r.at), target: r.target });
   }
-  for (const t of await trailMarks(projectId, among)) {
-    keepNewest(t.sha.toLowerCase(), { at: new Date(t.at), target: t.target });
+  for (const t of await trailMarks(projects, among)) {
+    keepNewest(idOfParts(t.project_id, t.sha.toLowerCase()), {
+      at: new Date(t.at),
+      target: t.target,
+    });
   }
   return marks;
 }
 
-/** Every stamped mark the project's issues recorded at one of `among`, current or since superseded. */
-async function trailMarks(projectId: string, among: SQL) {
+/** Every stamped mark the projects' issues recorded at one of `among`, current or since superseded. */
+async function trailMarks(projects: readonly string[], among: SQL) {
   return (await db.execute(sql`
-    SELECT lower(a.payload ->> 'commit') AS sha, a.created_at AS at, a.payload ->> 'target' AS target
+    SELECT i.project_id::text AS project_id, lower(a.payload ->> 'commit') AS sha, a.created_at AS at,
+           a.payload ->> 'target' AS target
       FROM activity_log a
       JOIN issues i ON i.id = a.issue_id
-     WHERE i.project_id = ${projectId} AND a.action = ${MARK_RECORD}
+     WHERE i.project_id = ANY(${uuidArray(projects)}) AND a.action = ${MARK_RECORD}
        AND (a.payload ->> 'stamped')::boolean
        AND lower(a.payload ->> 'commit') IN (${among})
-  `)) as unknown as Array<{ sha: string; at: Date | string; target: string | null }>;
+  `)) as unknown as Array<{
+    project_id: string;
+    sha: string;
+    at: Date | string;
+    target: string | null;
+  }>;
 }
