@@ -301,10 +301,9 @@ describe('snooze: parked out of New until a date, returned by the clock', () => 
     `);
     const back = await read(fb);
     expect(back.snoozed, 'a snooze that ran out reads as none').toBeNull();
-    // back in New, its triage is owed again: the master's outside strict (ISS-1132), never a
-    // holder's Needs you there
-    expect(back.attentionGroup).not.toBe('needs_you');
-    expect(back.waitingOn).toMatchObject({ kind: 'agent', act: 'triage it' });
+    // back in New, the triage is the viewer's again, so it is back on their Needs you (ISS-924)
+    expect(back.attentionGroup).toBe('needs_you');
+    expect(back.waitingOn).toMatchObject({ kind: 'you', act: 'triage it' });
     expect((await owedTriages(projectId)).map((o) => o.key)).toContain(fb);
   });
 

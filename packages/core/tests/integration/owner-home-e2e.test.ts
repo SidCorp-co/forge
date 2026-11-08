@@ -43,7 +43,6 @@ import {
   createTestProject,
   createTestUser,
 } from '../helpers/factories.js';
-import { declareControls } from '../helpers/project-controls.js';
 
 let say: ReturnType<typeof requester>;
 let owner = '';
@@ -161,29 +160,7 @@ describe("a person's home", () => {
     expect(full).toMatchObject({ movingTotal: HOME_MOVING_LIMIT + 2, movingTruncated: true });
   });
 
-  // ISS-1132: outside strict a new item's triage is the master's by the one rule, so holding
-  // feedback.approve puts nothing on the owner's Needs you; it reads under Moving, owed by the master
-  it('leaves a new item the master triages off the owner’s Needs you, under Moving', async () => {
-    const home = ok(await say('owner', 'GET', '/api/me/home'));
-    const fb1 = (home.moving as Doc[]).find((m) => m.key === 'FB-1');
-    expect(fb1, 'FB-1 reads under Moving').toBeDefined();
-    expect(fb1?.owes?.who).not.toBe('You');
-    const attention = ok(await say('owner', 'GET', '/api/me/attention'));
-    const part = (attention.needsYou as Doc[]).find((p) => p.projectSlug === slug);
-    expect(part?.owed ?? []).not.toContainEqual(expect.objectContaining({ reason: 'triage' }));
-  });
-
   it('lists an item the viewer owes on their Needs you, never under moving, and the home has no waiting of its own', async () => {
-    // a strict project keeps triage a person's: the owner holds it, so it is theirs to take
-    await declareControls(projectId, owner, { gates: { profile: 'strict' } });
-    try {
-      await ownedTriageReads();
-    } finally {
-      await declareControls(projectId, owner, { gates: { profile: 'standard' } });
-    }
-  });
-
-  async function ownedTriageReads() {
     const home = ok(await say('owner', 'GET', '/api/me/home'));
     // FB-1 is new and the owner holds triage, so its standing names the owner: theirs to take
     expect((home.moving as Doc[]).map((m) => m.key)).not.toContain('FB-1');
@@ -226,11 +203,11 @@ describe("a person's home", () => {
     // an outsider holds no triage there and reads no part of that project
     const theirs = ok(await say('outsider', 'GET', '/api/me/attention'));
     expect((theirs.needsYou as Doc[]).map((p) => p.projectSlug)).not.toContain(slug);
-  }
+  });
 
   it('ranks Moving by last move, newest first, with the idle folded last', async () => {
     const home = ok(await say('owner', 'GET', '/api/me/home'));
-    const moving = (home.moving as Doc[]).filter((m) => m.kind === 'issue');
+    const moving = home.moving as Doc[];
     expect(moving.map((m) => m.key)).toEqual(['ISS-6', 'ISS-3', 'ISS-2', 'ISS-4']);
     const idle = moving.filter((m) => m.idle);
     expect(idle.map((m) => m.key)).toEqual(['ISS-4']);

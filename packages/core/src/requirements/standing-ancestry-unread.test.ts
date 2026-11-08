@@ -9,6 +9,7 @@
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { deriveStanding, type StandingInput, type StandingIssue } from './standing.js';
+import type { LiveBuildHolds } from './standing-identity.js';
 import { codesAct } from './standing-proof.js';
 
 const at = (iso: string) => new Date(iso);
@@ -64,7 +65,7 @@ const tracedPass = (issue: number, n: number, commit = JUDGED) => ({
 });
 
 /** The live build read at `LIVE`; `held` names what it is read to hold, `JUDGED` stays unanswered. */
-const liveBuild = (held: Record<string, boolean> = {}): StandingInput['liveBuild'] => ({
+const liveBuild = (held: Record<string, boolean> = {}): LiveBuildHolds => ({
   sha: LIVE,
   holds: new Map(Object.entries(held)),
   runtimes: new Map(),
@@ -72,7 +73,7 @@ const liveBuild = (held: Record<string, boolean> = {}): StandingInput['liveBuild
 });
 
 function standing(over: Partial<StandingInput>) {
-  const s = deriveStanding({
+  const input = {
     status: 'in_delivery',
     owner: { id: 'u1', name: 'Ba', kind: 'human' },
     viewer: null,
@@ -108,7 +109,8 @@ function standing(over: Partial<StandingInput>) {
     master: 'serves',
     now: at('2026-11-08T01:17:00Z'),
     ...over,
-  });
+  } as StandingInput;
+  const s = deriveStanding(input);
   expect(saidDisagreements(s)).toEqual([]);
   return s;
 }
