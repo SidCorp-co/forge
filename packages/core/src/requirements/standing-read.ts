@@ -54,7 +54,7 @@ import {
   statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
-import { liveBuildOf } from './standing-live-build.js';
+import { liveBuildsOf } from './standing-live-build.js';
 import {
   baselineRowsOf,
   criteriaRowsOf,
@@ -377,7 +377,6 @@ export async function standingsOf(
       deliveryHoldsOf(projectId, rows),
     ]);
   const { issueWaits, release } = work;
-  const liveBuild = await liveBuildOf(projectId, issueCriteria, own);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const criteriaByIssue = new Map<string, number[]>();
   issueCriteria.forEach((c, i) => {
@@ -386,6 +385,14 @@ export async function standingsOf(
     else criteriaByIssue.set(c.issueId, [i]);
   });
   const of = groupedBy();
+  const tracedOf = (id: string) =>
+    criteriaOn(
+      criteriaByIssue,
+      issueCriteria,
+      of(linked, id).map((i) => i.id),
+    );
+  const ask = rows.map((r) => ({ id: r.id, traced: tracedOf(r.id), own: of(own, r.id) }));
+  const builds = await liveBuildsOf(projectId, ask);
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
     const mine = of(linked, row.id).map((i) =>
@@ -425,7 +432,7 @@ export async function standingsOf(
         openSuggestionKinds: of(open, row.id).map((s) => s.kind),
         ...beside(row.id),
         deliveryHold: holds.get(row.id) ?? null,
-        liveBuild,
+        liveBuild: builds.get(row.id) ?? null,
         stalePins: stalePinsOf(of(pins, row.id)),
         staleContractPins: staleContractPinsOf(of(contracts, row.id), of(contractPins, row.id)),
         unapprovedDesigns: of(unapproved, row.id).map(({ flow, title, designStatus }) => ({

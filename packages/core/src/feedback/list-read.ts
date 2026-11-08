@@ -448,6 +448,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
         null,
       draftCarrier: carried.draft,
       carrier: carried.carrier,
+      carrierRunning: r.route === 'issue' && owed.some((c) => c.status === 'in_progress'),
     },
     {
       since: l.decidedAt.get(r.id) ?? r.createdAt,

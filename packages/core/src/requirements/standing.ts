@@ -27,6 +27,7 @@ import type { MasterServing } from '@forge/contracts/steward';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { OwedPolicy } from '@forge/contracts/who-owes';
 import type { RequirementStatus } from '../db/schema-requirements.js';
+import { attentionGroupOf } from '../lib/attention-group.js';
 import { actClassOf } from '../lib/standing-act-class.js';
 import { withTimes } from '../lib/standing-times.js';
 import { stateSinceOf, touchedAt } from './standing-age.js';
@@ -495,7 +496,11 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
         ? 'accepted'
         : nextStepOf(state, input.agreedAt),
     delivery,
-    attentionGroup: timed.group,
+    // the one state the list and the record read (FB-583): the turn's group in the shared vocabulary
+    attentionGroup: attentionGroupOf(timed.group, waitingOn, {
+      running: timed.group === 'moving' && live.some((i) => i.status === 'in_progress'),
+      dropped: state === 'dropped' || state === 'refused',
+    }),
     waitingOn,
     times: timed.times,
     facts: {

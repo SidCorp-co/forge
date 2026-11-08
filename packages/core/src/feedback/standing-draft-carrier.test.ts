@@ -51,7 +51,7 @@ describe("FB-74's shape: feedback routed to a draft issue", () => {
   );
 
   it('reads stuck draft_carrier through ISS-284, never "ship", never a person to triage', () => {
-    expect(s.attentionGroup).toBe('stuck');
+    expect(s.attentionGroup).toBe('overdue');
     expect(s.times.stuck).toMatchObject({ code: 'draft_carrier', via: 'ISS-284' });
     expect(s.times.stuck?.reason).toBe(
       'ISS-284 is a draft, and nothing takes a draft on by itself.',
@@ -83,7 +83,7 @@ describe('a declined item (FB-89)', () => {
       { masterTriages: false, carrierRelease: null },
       AT,
     );
-    expect(s.attentionGroup).toBe('done');
+    expect(s.attentionGroup).toBe('dropped');
     expect(s.times.stuck).toBeNull();
     expect(s.times.dueAt).toBeNull();
   });

@@ -94,6 +94,9 @@ beforeAll(async () => {
   projectId = (await createTestProject(people.owner)).id;
   await addProjectMember(projectId, people.ann, 'member');
   await addProjectMember(projectId, people.bo, 'member');
+  // the window, the record note and the person's confirm are a strict project's (owner 2026-11-08,
+  // D5): outside strict the ship is the verify, which its own describe below holds
+  await declareControls(projectId, people.owner, { gates: { profile: 'strict' } });
   say = requester(app, tokens);
 }, 120_000);
 
@@ -202,6 +205,8 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
         )) as unknown as { verify_held_at: Date | null }[]
       )[0]?.verify_held_at ?? null;
 
+    // a strict project keeps the confirm a person's, and with no criterion only a person can say it is gone
+    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
     // its reporter was told it shipped, so loop close question one is settled and two is what is owed
     const told = await api(
       w.token,
@@ -215,14 +220,7 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
     expect(inside.phase).toBe('resolved');
     expect(inside.recordCheck, 'no criterion: the record can never say').toBeNull();
     expect(inside.verifyHeld).toBeNull();
-    // outside strict a fix's verify is routine, so the project's master confirms it (ISS-1058, who-owes `feedback.verify`)
     expect(inside.waitingOn).toMatchObject({
-      kind: 'agent',
-      says: { rule: { key: 'feedback.rule.masterConfirms' } },
-    });
-    // a strict project keeps it a person's, and with no criterion only a person can say it is gone
-    await declareControls(w.projectId, w.userId, { gates: { profile: 'strict' } });
-    expect((await get()).waitingOn).toMatchObject({
       says: { rule: { key: 'feedback.rule.verifyByPerson' } },
     });
 
@@ -256,5 +254,37 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
     expect(first).not.toBeNull();
     await sweepResolvedFeedback();
     expect(await heldAt(), 'the same reason is written once').toEqual(first);
+  });
+});
+
+// owner 2026-11-08 (D5, G5): outside strict a resolved item whose carrier shipped is done. The sweep
+// records it verified by ship as Forge's own decision, naming the version where the carrier names
+// one, and nothing waits on its reporter or the master; strict keeps the person's confirm (above).
+describe('outside strict the ship is the verify, and nothing waits on the reporter', () => {
+  it('reads Done at once, and the sweep records it verified by ship as Forge, telling its reporter', async () => {
+    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
+    const w = await world();
+    const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+    const fb = await feedback(w, [carrier.id]);
+    const get = async () =>
+      (await api(w.token, 'GET', `/api/projects/${w.projectId}/feedback/${fb}`)).body
+        .feedback as Doc;
+    const before = await get();
+    expect(before.phase).toBe('resolved');
+    expect(before.attentionGroup).toBe('done');
+    expect(before.chip).toBe('done');
+    expect(before.waitingOn).toMatchObject({ kind: 'none' });
+
+    const swept = await sweepResolvedFeedback();
+    expect(swept.shipped).toBeGreaterThanOrEqual(1);
+    const after = await get();
+    expect(after.status).toBe('verified');
+    expect((after.decisions as Doc[]).at(-1)).toMatchObject({
+      decision: 'verified',
+      decidedBy: null,
+      reason: expect.stringContaining('Verified by ship'),
+    });
+    const again = await sweepResolvedFeedback();
+    expect(again.shipped, 'a verified item is never verified again').toBe(0);
   });
 });

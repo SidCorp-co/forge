@@ -66,6 +66,7 @@ export {
 } from './contract-waits.js';
 export { createIssue, insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
+export { backfillCloseVerdicts } from './criteria/close-verdicts.js';
 export { namedCriteriaOf } from './criteria/criterion-names.js';
 export { requirementRecordingSessionOf } from './criteria/recording-session.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';

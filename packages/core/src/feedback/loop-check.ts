@@ -15,6 +15,12 @@
  * the fix in its preview, and the change that shipped is the one they confirmed, that word is the
  * item's loop close the moment it reads resolved — Fixed verifies it, Not fixed reopens it with
  * their note — as them, under the same rules their own press would meet. Anything else asks again.
+ *
+ * Outside strict (`who-owes` `feedback.verify` is the master's), the shipped carrier or the answer IS
+ * the verify (owner 2026-11-08, D5): the first sweep that reads an item resolved records it verified
+ * by ship, as Forge's own decision naming the version; until that sweep its reporter may still
+ * reopen it. A problem that comes back after is a new report. The window and the record note above
+ * are a strict project's alone.
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
@@ -29,7 +35,7 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { fixConfirmationsOf } from '../previews/index.js';
 import { agencyOf, issueOfPreview, shippedPatchOf } from './confirm-reads.js';
-import { linkedOf, phaseIn } from './list-read.js';
+import { type Linked, linkedOf, phaseIn, routeView } from './list-read.js';
 import { goneByRecord, loopCloseFactsOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { tellStepToReporters } from './reporters.js';
@@ -42,6 +48,8 @@ export interface AutoVerifySweepResult {
   cleared: number;
   /** Verified this sweep by the reporter's confirm made in the fix's preview: their word, carried out. */
   verified: number;
+  /** Verified this sweep by the ship itself, outside strict (D5): no one is asked. */
+  shipped: number;
   /** Reopened by a Not fixed said in the preview of the change that shipped. */
   reopened: number;
   /** Past their window, left resolved for a holder of feedback.approve with what the record reads. */
@@ -51,6 +59,53 @@ export interface AutoVerifySweepResult {
 }
 
 const NOT_HELD = { verifyHeldAt: null, verifyHeldWhy: null } as const;
+
+/** Why an item outside strict is verified by its ship: the version its carrier shipped in, or its answer. */
+export function shipVerifyReason(route: Row['route'], version: string | null): string {
+  if (route === 'answer') return 'Verified by its answer';
+  return version
+    ? `Verified by ship: its work shipped in ${version}`
+    : 'Verified by ship: its work shipped';
+}
+
+/**
+ * Records a resolved item verified by its ship (D5), as Forge's decision. Read again under the lock:
+ * an item that no longer reads resolved, or whose verify the phase refuses, is left as it is.
+ */
+async function verifyByShip(row: Row, projectId: string, linked: Linked): Promise<boolean> {
+  const version = routeView(row, linked)?.carriers.find((c) => c.release)?.release ?? null;
+  const reason = shipVerifyReason(row.route, version);
+  let moved = false;
+  await inTx(async (tx) => {
+    await lockFeedback(tx, projectId);
+    const now = await rowIn(tx, projectId, row.id, true);
+    if (now.status !== 'triaged') return;
+    const phase = phaseIn(now, await linkedOf(projectId, [now]));
+    if (verifyRefusal(phase)) return;
+    movedRow(
+      await transition(tx, FEEDBACK_MACHINE, {
+        to: 'verified',
+        expect: now.status,
+        set: { resolvedSeenAt: null, ...NOT_HELD, updatedAt: new Date() },
+        where: eq(feedback.id, now.id),
+        reason,
+        actor: { type: 'system' },
+        source: 'feedback-ship-verify',
+        returning: ['id'],
+      }),
+    );
+    await decide(tx, now, 'system', { decision: 'verified', reason });
+    await emitEvent(tx, 'feedback.verifySettled', {
+      projectId,
+      feedbackId: now.id,
+      key: feedbackKey(now.fbSeq),
+      decision: 'verified',
+    });
+    await tellStepToReporters(tx, now, 'verified', null, version);
+    moved = true;
+  });
+  return moved;
+}
 
 /** The latest confirm, when the change that shipped is the one it was said of; null asks as today. */
 async function confirmedClose(row: Row): Promise<{
@@ -168,6 +223,7 @@ export async function sweepResolvedFeedback(
     dated: 0,
     cleared: 0,
     verified: 0,
+    shipped: 0,
     reopened: 0,
     held: 0,
     noted: 0,
@@ -205,6 +261,17 @@ export async function sweepResolvedFeedback(
           { err, feedback: row.id },
           'feedback: a confirm made in a fix preview was not read as its loop close',
         );
+      }
+      if (linked.masterVerifies) {
+        try {
+          if (await verifyByShip(row, projectId, linked)) result.shipped += 1;
+        } catch (err) {
+          logger.error(
+            { err, feedback: row.id },
+            'feedback: a shipped item was not verified by its ship',
+          );
+        }
+        continue;
       }
       if (!row.resolvedSeenAt) {
         await db

@@ -93,7 +93,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
     });
     expect(s.waitingOn.rule).toMatch(/^every unshipped issue landed \(2\)/);
     // the workflow design's last turn condition groups it moving; only the wait is named (BC-19)
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn.who).not.toBe('Issues');
   });
 
@@ -122,7 +122,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
     });
     expect(nobody.waitingOn).toMatchObject({ kind: 'person', who: 'Nobody', refers: 'release' });
     expect(nobody.waitingOn.act).toContain('project.admin');
-    expect(nobody.attentionGroup).toBe('moving');
+    expect(nobody.attentionGroup).toBe('waiting');
   });
 
   it('waits on the release itself where the project releases on its own', () => {
@@ -136,7 +136,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       refers: 'release',
       ref: null,
     });
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('waiting');
   });
 
   it('refuses by name a landed set whose release the gather did not read', () => {
@@ -199,7 +199,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       who: 'Issues',
       act: 'Running 1 of 2',
     });
-    expect(running.attentionGroup).toBe('moving');
+    expect(running.attentionGroup).toBe('running');
   });
 
   it('waits on the master to take queued issues, never on "Issues: Shipped 0 of n"', () => {
@@ -217,7 +217,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       act: 'take ISS-1, ISS-3 next',
     });
     expect(s.waitingOn.rule).toBe('no issue is being worked: ISS-1, ISS-3 wait for the master');
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('queued');
   });
 
   it('keeps what the wait is about when an untouched requirement reads stuck', () => {
@@ -226,7 +226,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       release: approval,
       now: at('2026-12-31T00:00:00Z'),
     });
-    expect(s.attentionGroup).toBe('stuck');
+    expect(s.attentionGroup).toBe('overdue');
     expect(s.waitingOn).toMatchObject({ who: 'Dana Lee', refers: 'release', ref: '0.1.0' });
   });
 });

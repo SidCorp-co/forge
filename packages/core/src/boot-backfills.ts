@@ -1,5 +1,6 @@
 import { db } from './db/client.js';
 import {
+  backfillCloseVerdicts,
   drainStaleBuilderFacts,
   runActivityFieldChangesBackfillOnce,
   runCriteriaBackfillOnce,
@@ -28,6 +29,19 @@ export async function runOnceBackfills(): Promise<void> {
         refused: criteria.refusals.length,
       },
       'boot: criteria backfill ran',
+    );
+  }
+  // D2: issues closed before a close recorded its builder's verdict, once (`close-verdicts.ts`)
+  const closed = await backfillCloseVerdicts();
+  if (closed) {
+    logger.info(
+      {
+        projects: closed.projects,
+        issues: closed.issues,
+        verdicts: closed.verdicts,
+        independent: closed.independent,
+      },
+      'boot: close verdicts backfilled on projects that judge their own work',
     );
   }
   const rehome = await runRescueCapRehomeOnce();
