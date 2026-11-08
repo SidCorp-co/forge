@@ -1,5 +1,5 @@
-// The sections of a release page that read straight off the release record (REQ-40): the header and
-// who approved it (BC-1, BC-12), the user-facing lines as Improvements and Fixes (BC-6), what an
+// The sections of a release page that read straight off the release record (REQ-40): the header,
+// who may approve it and who did (BC-1, BC-12), the user-facing lines as Improvements and Fixes (BC-6), what an
 // admin must do (BC-7) and the developer view's technical notes (BC-9). Pure: each takes the
 // `ReleaseDetail` `release-batch` reads, and says nothing the record does not hold.
 
@@ -75,6 +75,7 @@ export function headerOf(detail: ReleaseDetail): ReleasePageHeader {
     build: buildOf(detail),
     verified: detail.verified,
     approval: approvalOf(detail),
+    approvers: detail.approvers,
     shippedFailing: detail.shippedFailing,
     recordedNotCut: recordedNotCut(detail),
   };

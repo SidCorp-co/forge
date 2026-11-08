@@ -2,7 +2,7 @@ import type { ReleaseShipped } from '@forge/contracts/release-page';
 import type { ReleaseApprovalView, ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import type { RangeChange } from '../release-batch/index.js';
-import { actionsOf, approvalOf, buildOf, technicalOf } from './sections.js';
+import { actionsOf, approvalOf, buildOf, headerOf, technicalOf } from './sections.js';
 
 const HEAD = 'c'.repeat(40);
 const UNREAD: ReleaseShipped = { state: 'unread', why: 'planted' };
@@ -58,6 +58,14 @@ function approval(over: Partial<ReleaseApprovalView>): ReleaseApprovalView {
 }
 
 describe('who approved the release (BC-1, BC-12)', () => {
+  // ISS-1164 (REQ-70 BC-1): the header names who may approve it, beside who decided
+  it('lists the release approvers in the header, beside the approval', () => {
+    const ADA = { id: 'u-2', name: 'Ada', kind: 'human' as const };
+    const header = headerOf(detail({ approvers: [OWNER, ADA], approvalRequired: true }));
+    expect(header.approvers?.map((a) => a.name)).toEqual(['Linh', 'Ada']);
+    expect(header.approval.state).toBe('not_asked');
+  });
+
   it('reads "not asked" where the setting asks nobody and nobody approved', () => {
     expect(approvalOf(detail())).toEqual({
       required: false,

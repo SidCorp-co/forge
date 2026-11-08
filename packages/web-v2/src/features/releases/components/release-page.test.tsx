@@ -151,6 +151,25 @@ describe("the release page in the report shape (ISS-1001)", () => {
     expect(calls.some((c) => c.path.endsWith("view=developer"))).toBe(true);
   });
 
+  // ISS-1164 (REQ-70 BC-1): who may approve, by name, beside who decided
+  it("names who may approve the release beside who decided, names only", async () => {
+    const people = [
+      { id: "u-1", name: "Linh", kind: "human" as const },
+      { id: "u-2", name: "Ada", kind: "human" as const },
+    ];
+    serve(userPage({ header: { ...userPage().header, approvers: people } }));
+    renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
+    const fold = await screen.findByTestId("release-technical-fold");
+    await screen.findByTestId("release-report");
+    (fold as HTMLDetailsElement).open = true;
+    fireEvent(fold, new Event("toggle"));
+    const approvers = await screen.findByTestId("standing-approvers");
+    expect(approvers).toHaveTextContent("May approve");
+    expect(approvers).toHaveTextContent("Linh, Ada");
+    expect(approvers).not.toHaveTextContent("u-1");
+    expect(screen.getByTestId("standing-approver")).toBeTruthy();
+  });
+
   it("offers the one act once, in the header, and nowhere in the page under it", async () => {
     serve();
     renderWithQuery(<ReleaseItemScreen projectId="p1" slug="forge" version="0.4.0" />);

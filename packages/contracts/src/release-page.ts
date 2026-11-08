@@ -579,6 +579,11 @@ export interface ReleasePageHeader {
 	build: string | null;
 	verified: ReleaseVerified;
 	approval: ReleasePageApproval;
+	/**
+	 * Who may approve the release (REQ-70 BC-1), shown beside who decided; absent on a share, which
+	 * names no person, and on a page read before it was said (ISS-1164).
+	 */
+	approvers?: ReleasePerson[] | undefined;
 	/** What a recorded landing shipped failing, said loud to every reader (REQ-45 BC-14); null where nothing did. */
 	shippedFailing: ReleaseShippedFailing | null;
 	/**

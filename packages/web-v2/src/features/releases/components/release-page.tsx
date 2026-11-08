@@ -56,8 +56,12 @@ function DeveloperNotes({ projectId, version, slug }: { projectId: string; versi
   );
 }
 
-/** Where the release stands, behind Technical: its status, who approves it, and where it goes (REQ-71 BC-6: a release its owner deploys ends at merge). */
-export function WhereItStands({ r }: { r: ReleaseDetail }) {
+/**
+ * Where the release stands, behind Technical: its status, who approved it and who may (REQ-70 BC-1,
+ * the page read's approvers, by name), and where it goes (REQ-71 BC-6: a release its owner deploys
+ * ends at merge).
+ */
+export function WhereItStands({ r, approvers }: { r: ReleaseDetail; approvers?: readonly { name: string }[] | undefined }) {
   const t = useCopy();
   const time = useTimeFormat();
   const s = releaseStandingOf(r, t, time.date);
@@ -69,6 +73,11 @@ export function WhereItStands({ r }: { r: ReleaseDetail }) {
       <Property label={t("releases.standing.label.approver")} testId="standing-approver">
         {s.approver}
       </Property>
+      {approvers && approvers.length > 0 ? (
+        <Property label={t("releases.standing.label.approvers")} testId="standing-approvers">
+          {approvers.map((a) => a.name).join(", ")}
+        </Property>
+      ) : null}
       <Property label={t("releases.standing.label.goesTo")} testId="standing-goes-to">
         {s.goesTo}
       </Property>
@@ -97,6 +106,8 @@ function NextStep({ r }: { r: ReleaseDetail }) {
 function TechnicalFold({ projectId, r, slug }: { projectId: string; r: ReleaseDetail; slug: string }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
+  // the same read the page body draws, so a cached one: who may approve is the page header's (ISS-1164)
+  const approvers = useReleasePage(projectId, r.version, "user").data?.header.approvers;
   const requests = changeRequestItems(r.issues).length;
   const said = [
     t("releases.technical.title"),
@@ -110,7 +121,7 @@ function TechnicalFold({ projectId, r, slug }: { projectId: string; r: ReleaseDe
       </summary>
       {open ? (
         <div className="grid gap-6 pb-6" data-testid="release-technical-body">
-          <WhereItStands r={r} />
+          <WhereItStands r={r} approvers={approvers} />
           {r.head ? <p className="font-mono text-12 text-muted">{t("releases.technical.build", { sha: shortSha(r.head) })}</p> : null}
           <ReleaseTagLine r={r} />
           <ShippedFailingBanner r={r} />

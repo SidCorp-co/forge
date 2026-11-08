@@ -186,6 +186,7 @@
     "releases.standing.goesTo.ownerDeploys": "Ends at merge, the owner deploys",
     "releases.standing.goesTo.undeclared": "No production",
     "releases.standing.label.approver": "Approver",
+    "releases.standing.label.approvers": "May approve",
     "releases.standing.label.goesTo": "Goes to",
     "releases.standing.label.status": "Status",
     "releases.standing.label.tag": "Tag",
