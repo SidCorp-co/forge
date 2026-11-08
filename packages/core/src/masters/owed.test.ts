@@ -52,6 +52,7 @@ const none = {
   endedRunHolds: [],
   requests: [] as WaitingRequest[],
   carriers: [] as { key: string }[],
+  intakeFailures: [] as { key: string; code: string }[],
   reviews: [],
   contentLanguage: 'en',
 };

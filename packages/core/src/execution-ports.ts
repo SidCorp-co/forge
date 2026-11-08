@@ -115,6 +115,7 @@ import {
   warnedReleaseNotes,
 } from './release-batch/index.js';
 import {
+  intakeFailedRequirements,
   owedBreakdowns,
   owedRequirementRevisions,
   proposedDraftRequirements,
@@ -399,6 +400,7 @@ export function provideExecutionPorts(): void {
     masterGate: (projectId) => gateOf(projectId, 'master_admitted_only'),
     masterMode: readMasterMode,
     draftCarriersWaiting: draftFeedbackCarriers,
+    intakeFailuresOwed: intakeFailedRequirements,
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
     releaseHoldsOwed: agentOwedHolds,
     endedRunHolds: (projectId) => readEndedRunHolds(projectId),

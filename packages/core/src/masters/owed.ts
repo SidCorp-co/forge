@@ -93,6 +93,8 @@ interface Owed {
   requests: WaitingRequest[];
   /** Drafts a feedback triage routed an item to, whoever filed them: master work under any profile (ISS-840). */
   carriers: { key: string }[];
+  /** Draft requirements whose intake draft failed for good, each with its code (ISS-772). */
+  intakeFailures: { key: string; code: string }[];
   reviews: ReviewOwed[];
   /** Release holds on waiting issues whose act is the master's, each named with its command (ISS-888). */
   releaseHolds: ReleaseHoldOwed[];
@@ -238,6 +240,13 @@ function carriersLine(carriers: { key: string }[]): string {
   return ` ${keys.length} draft issue${plural(keys.length, '', 's')} ${plural(keys.length, 'carries', 'carry')} triaged feedback and ${plural(keys.length, 'waits', 'wait')} to be taken on (${keys.join(', ')}): nothing takes a draft on by itself, so admit each to open (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"open","reason":"<why>"}'\`) and work it, or drop it saying why; ${method('issue-flow')} (Take it) is how.`;
 }
 
+/** Draft requirements the intake assistant could not draft (ISS-772): the master drafts each, or drops it. */
+function intakeFailuresLine(failed: Owed['intakeFailures']): string {
+  if (failed.length === 0) return '';
+  const keys = failed.map((f) => `${f.key} ${f.code}`);
+  return ` ${failed.length} draft requirement${plural(failed.length, '', 's')} ${plural(failed.length, 'was', 'were')} not drafted by the intake assistant and will not be tried again (${keys.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`), then write its draft revision and propose it, or drop it saying why; ${method('requirement-lifecycle')} is how.`;
+}
+
 /**
  * The requests a profile with `master_admitted_only` off hands the master (REQ-76 BC-9): it takes
  * each on itself, the person's word being the agreement such a profile asks for.
@@ -271,6 +280,7 @@ export function owedLine(owed: Owed): string {
     confirmsLine(owed.confirms) +
     requestsLine(owed.requests) +
     carriersLine(owed.carriers) +
+    intakeFailuresLine(owed.intakeFailures) +
     reviewsLine(owed.reviews);
   const {
     breakdowns,
@@ -349,6 +359,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.recordings.map((r) => `filing-record:${r.issueId}|${r.release ?? ''}`),
     ...owed.requests.map((r) => `request:${r.kind}:${r.key}`),
     ...owed.carriers.map((c) => `carrier:${c.key}`),
+    ...owed.intakeFailures.map((f) => `intake-failed:${f.key}|${f.code}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
     ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
     ...endedRunHoldsWork(owed.endedRunHolds),
@@ -454,6 +465,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   ]);
   const held = new Set(await ports.breakdownsHeldBySteward(projectId));
   const carriers = await ports.draftCarriersWaiting(projectId);
+  const intakeFailures = await ports.intakeFailuresOwed(projectId);
   const reviews = await ports.reviewsOwed(projectId);
   const releaseHolds = await ports.releaseHoldsOwed(projectId);
   const endedRunHolds = await ports.endedRunHolds(projectId);
@@ -495,6 +507,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       recordings: merges.recordings,
       requests,
       carriers,
+      intakeFailures,
       reviews,
       releaseHolds,
       endedRunHolds,

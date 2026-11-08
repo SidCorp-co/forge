@@ -31,6 +31,7 @@ const none = {
   endedRunHolds: [],
   requests: [],
   carriers: [],
+  intakeFailures: [],
   reviews: [],
   contentLanguage: 'en',
 };

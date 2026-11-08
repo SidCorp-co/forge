@@ -209,6 +209,11 @@ interface MastersPorts {
    */
   draftCarriersWaiting(projectId: string): Promise<{ key: string }[]>;
   /**
+   * Draft requirements the intake assistant could not draft and will not try again, each with the
+   * failure's code (ISS-772): master work under every profile, since nobody else is asked for them.
+   */
+  intakeFailuresOwed(projectId: string): Promise<{ key: string; code: string }[]>;
+  /**
    * The reviews the project's independent judge owes, which only the master declares (ISS-870): none
    * where its gate profile declares no independent judge.
    */

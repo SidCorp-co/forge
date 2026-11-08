@@ -12,3 +12,4 @@
 - The feedback list drops its reporter column; Age is the last column.
 - Steward notes are no longer shown on list rows.
 - A feedback item verified by its ship, or on someone's behalf, can be reopened by its reporter (or a holder of feedback.approve) with a reason; its page offers only that reopen.
+- A draft requirement the intake assistant could not draft, with no retry left, is named on every master pass with its failure code until it is drafted, proposed or leaves draft (ISS-772).
