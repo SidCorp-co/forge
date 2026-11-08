@@ -78,9 +78,7 @@ export async function simulate(projectId: string, now: Date, anchored?: Anchor):
     await Promise.all([
       anchoring,
       listIssueStanding(projectId, 'open', now),
-      anchoring.then(([a, m]) =>
-        readHistory(projectId, clockOf(a, now).now, m.slots?.max ?? null),
-      ),
+      anchoring.then(([a, m]) => readHistory(projectId, clockOf(a, now).now, m.slots?.max ?? null)),
       projectWaitOf(projectId),
       activeIssuePrefix(projectId),
       policing.then(async (policy) =>
