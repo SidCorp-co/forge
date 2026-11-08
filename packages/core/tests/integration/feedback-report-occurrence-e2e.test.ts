@@ -49,6 +49,8 @@ vi.mock('../../src/integrations/llm/embeddings.js', async (importOriginal) => ({
 const model = vi.hoisted(() => ({
   answer: { kind: 'bug', severity: 'high', sameAs: null as string | null },
   sent: [] as string[],
+  /** Set: the stand-in misses as the live model did at dev.319 (ISS-694). */
+  miss: null as string | null,
 }));
 
 vi.mock('../../src/integrations/llm/index.js', async (importOriginal) => {
@@ -63,6 +65,7 @@ vi.mock('../../src/integrations/llm/index.js', async (importOriginal) => {
       const sent = await egressScoped(scope as never, prompt);
       if (!sent.ok) return { ok: false, miss: 'withheld', detail: sent.refusal.code };
       model.sent.push(sent.text);
+      if (model.miss) return { ok: false, miss: model.miss };
       return { ok: true, value: { ...model.answer }, modelId: 'test-fast' };
     },
   };
@@ -255,6 +258,48 @@ describe('a repeat joins the open item as an occurrence, never a new item (BC-3)
     expect(model.sent.at(-1), 'the agent was shown the open item to judge against').toContain(
       `${key}: Saving the card drops the due date`,
     );
+  });
+
+  // ISS-694, dev.319: the reading missed on every call, and an identical sentence 50 s later was a new item
+  it('joins a word-for-word repeat to its open item where the agent cannot read it, and at no_egress', async () => {
+    model.miss = 'failed';
+    try {
+      const said = 'The issues list shows an empty Status column for every row';
+      const first = ok(
+        await report('viewer', p.open, { said, whereSeen: '/projects/demo/issues', kind: 'bug' }),
+        201,
+      );
+      const key = String((first.feedback as Doc).key);
+      const before = await itemCount(p.open);
+      const again = ok(
+        await report('other', p.open, {
+          said: `  ${said.toUpperCase()} `,
+          whereSeen: '/projects/demo/issues',
+          screenshot: shot(false),
+        }),
+        200,
+      );
+      expect(again).toMatchObject({ created: false, feedback: { key } });
+      expect(await itemCount(p.open), 'no new item').toBe(before);
+      const item = ok(await say('owner', 'GET', `/api/projects/${p.open}/feedback/${key}`))
+        .feedback as Doc;
+      expect(item.occurrences as Doc[]).toHaveLength(1);
+    } finally {
+      model.miss = null;
+    }
+    const said = 'The shift planner forgets the chosen week';
+    const filed = ok(
+      await report('viewer', p.closed, { said, whereSeen: '/projects/demo/plan', kind: 'bug' }),
+      201,
+    );
+    const repeat = ok(
+      await report('other', p.closed, { said, whereSeen: '/projects/demo/plan' }),
+      200,
+    );
+    expect(repeat).toMatchObject({
+      created: false,
+      feedback: { key: (filed.feedback as Doc).key },
+    });
   });
 
   it('files a new item where the agent names a key that is no open item near the sentence', async () => {

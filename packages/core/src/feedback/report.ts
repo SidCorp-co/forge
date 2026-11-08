@@ -17,7 +17,7 @@ import {
   type FeedbackReportResponse,
   feedbackKey,
 } from '@forge/contracts/feedback';
-import { eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -112,6 +112,35 @@ async function candidatesOf(projectId: string, said: string): Promise<Row[]> {
   return [...open.values()].slice(0, CANDIDATES);
 }
 
+/**
+ * The open item a report repeats word for word, as its title is stored (scrubbed alike on a project
+ * that redacts), case and spacing aside; null where none does. Read without any model, so a repeat
+ * joins its item where the agent's reading fails or the policy lets no model read it (ISS-694: at
+ * dev.319 an identical sentence 50 s later became a new item while the reading missed).
+ */
+async function exactRepeatOf(projectId: string, said: string): Promise<Row | null> {
+  const title = storedText(await dataPolicyOf(projectId), said.trim()).text;
+  const rows = await db
+    .select()
+    .from(feedback)
+    .where(
+      and(
+        eq(feedback.projectId, projectId),
+        sql`lower(btrim(${feedback.title})) = lower(btrim(${title}))`,
+      ),
+    )
+    .orderBy(desc(feedback.createdAt))
+    .limit(CANDIDATES);
+  for (const row of rows) {
+    const root = await openRootIn(db, projectId, row);
+    if (root) return root;
+  }
+  return null;
+}
+
+const asReportKind = (kind: string): Reading['kind'] | null =>
+  (FEEDBACK_REPORT_KINDS as readonly string[]).includes(kind) ? (kind as Reading['kind']) : null;
+
 function readingPrompt(said: string, whereSeen: string, candidates: readonly Row[]): string {
   const open = candidates.length
     ? candidates.map((c) => `- ${feedbackKey(c.fbSeq)}: ${c.title}`).join('\n')
@@ -169,6 +198,17 @@ async function placeOf(
     }
   | { ok: false; refusal: Refusal }
 > {
+  const exact = await exactRepeatOf(projectId, request.said);
+  const kept = exact ? (request.kind ?? asReportKind(exact.kind)) : null;
+  if (exact && kept) {
+    return {
+      ok: true,
+      join: exact,
+      kind: kept,
+      severity: exact.severity,
+      by: request.kind ? 'reporter' : 'agent',
+    };
+  }
   const candidates = await candidatesOf(projectId, request.said);
   const read = await readingOf(projectId, request.said, request.whereSeen, candidates);
   if (!read.ok) {
