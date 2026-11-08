@@ -56,9 +56,43 @@ export async function profiled(
     charged.set(name, (charged.get(name) ?? 0) + us);
   }
   const chargedTop = [...charged].sort((a, b) => b[1] - a[1]).slice(0, 30);
+  // the process's own work by where it ran, the profiler's own frames and its idle wait left out
+  const kinds = new Map<string, number>();
+  for (const n of profile.nodes) {
+    const us = self.get(n.id) ?? 0;
+    if (us === 0) continue;
+    const { functionName: fn, url } = n.callFrame;
+    const kind =
+      fn === '(idle)' || fn === '(program)' || url === 'node:inspector'
+        ? null
+        : fn === '(garbage collector)'
+          ? 'gc'
+          : url.includes('/node_modules/postgres/')
+            ? 'postgres driver'
+            : url.includes('/node_modules/drizzle-orm/')
+              ? 'drizzle'
+              : url.includes('/node_modules/zod/')
+                ? 'zod'
+                : url.includes('/packages/core/src/db/frozen')
+                  ? 'core db/frozen'
+                  : url.includes('/packages/core/src/db/read-')
+                    ? 'core db/read-memo and read-order'
+                    : url.includes('/packages/core/src/')
+                      ? 'core, the rest'
+                      : url.includes('/packages/contracts/')
+                        ? 'contracts'
+                        : 'node and the rest';
+    if (kind) kinds.set(kind, (kinds.get(kind) ?? 0) + us);
+  }
+  const busy = [...kinds.values()].reduce((a, b) => a + b, 0);
+  const ms = (us: number) => (us / 1000).toFixed(1).padStart(8);
   appendFileSync(
     out,
-    `## profile ${path}\n${top.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n` +
-      `## charged to core's own frame ${path}\n${chargedTop.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n`,
+    `## profile ${path}\n${top.map(([f, us]) => `  ${ms(us)} ms  ${f}`).join('\n')}\n` +
+      `## charged to core's own frame ${path}\n${chargedTop.map(([f, us]) => `  ${ms(us)} ms  ${f}`).join('\n')}\n` +
+      `## busy ${path}: ${ms(busy).trim()} ms\n${[...kinds]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, us]) => `  ${ms(us)} ms  ${k}`)
+        .join('\n')}\n`,
   );
 }

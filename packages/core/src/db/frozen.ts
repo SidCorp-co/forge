@@ -21,31 +21,39 @@ const refuse = (what: string) => () => {
 /** The answer, its container and each row: the levels made read-only. */
 const ROW_DEPTH = 3;
 
-/** Every object made read-only here: each is walked once, however often handed on. */
-const done = new WeakSet<object>();
-
 export function frozen<T>(value: T): T {
   freeze(value, 0);
   return value;
 }
 
+/**
+ * A value already frozen is not walked again: what it holds was made read-only before it, so a
+ * batch's rows handed on to every reader are walked once. No register of what was walked is kept
+ * (ISS-1070 r11: a WeakSet entry and an `Object.values` copy an object cost a person's twelve
+ * projects 150 ms of a read, and their collection more); a frozen object says so itself. A Date is
+ * left as it is: freezing one never stopped `setTime`, which writes its own slot, and a read
+ * answers thousands.
+ */
 function freeze(value: unknown, depth: number): void {
-  if (depth >= ROW_DEPTH || value === null || typeof value !== 'object' || done.has(value)) return;
-  done.add(value);
-  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return;
-  if (value instanceof Map) {
+  if (depth >= ROW_DEPTH || value === null || typeof value !== 'object' || Object.isFrozen(value))
+    return;
+  if (value instanceof Date || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return;
+  const below = depth + 1;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) freeze(value[i], below);
+  } else if (value instanceof Map) {
     for (const [k, v] of value) {
-      freeze(k, depth + 1);
-      freeze(v, depth + 1);
+      freeze(k, below);
+      freeze(v, below);
     }
     for (const m of ['set', 'delete', 'clear'])
       Object.defineProperty(value, m, { value: refuse(`Map.${m}`) });
   } else if (value instanceof Set) {
-    for (const v of value) freeze(v, depth + 1);
+    for (const v of value) freeze(v, below);
     for (const m of ['add', 'delete', 'clear'])
       Object.defineProperty(value, m, { value: refuse(`Set.${m}`) });
   } else {
-    for (const v of Object.values(value)) freeze(v, depth + 1);
+    for (const k in value) freeze((value as Record<string, unknown>)[k], below);
   }
   Object.freeze(value);
 }
