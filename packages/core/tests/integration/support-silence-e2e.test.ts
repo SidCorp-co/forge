@@ -6,6 +6,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
@@ -13,6 +14,9 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/support/turn-retry.ts
 // @direct-test-of packages/core/src/support/prompt.ts
+// @direct-test-of packages/core/src/support/turn-of-act.ts
+// @direct-test-of packages/core/src/support/turn-record.ts
+// @direct-test-of packages/core/src/agent-sessions/turn-events.ts
 //
 // ISS-942: a room agent's silence wrote nothing and a reply carried no reason, so a wrong silence
 // or a wrong answer could not be found and the room's policy tuned. support.silent posts nothing and
@@ -136,5 +140,86 @@ describe('ISS-1007: a completed turn that said nothing for a message is not read
     const retries = await rows<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM support_actions WHERE thread = ${id} AND tool = 'turn_retry'`);
     expect(retries[0]?.n).toBe(0);
+  });
+});
+
+describe('ISS-1029: a room action names its turn, and the turn keeps what the session read', () => {
+  it('links a reply to its session and turn, and reads that turn scrubbed for the project', async () => {
+    await w.settleWarm();
+    let seq = 1_000_000;
+    const line = (l: Record<string, unknown>) => ({
+      seq: seq++,
+      kind: 'stdout',
+      data: { line: l },
+    });
+    let replied: Record<string, unknown> | null = null;
+    w.box.model = async (turn, act) => {
+      const m = turn.messages.find((x) => x.from !== 'forge');
+      if (!m) return;
+      // what the session read before it named a cause, as the runner posts its stream
+      const posted = await fetch(`${w.core.base}/api/agent-sessions/${turn.sessionId}/events`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${w.box.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          events: [
+            line({
+              type: 'assistant',
+              message: {
+                content: [
+                  { type: 'tool_use', name: 'Bash', input: { command: 'grep PO-1453 app.log' } },
+                ],
+              },
+            }),
+            line({
+              type: 'user',
+              message: {
+                content: [
+                  {
+                    type: 'tool_result',
+                    content: `send failed for PO-1453 bot=${w.chat.bot.authToken}`,
+                  },
+                ],
+              },
+            }),
+          ],
+        }),
+      });
+      expect(posted.status, await posted.clone().text()).toBe(200);
+      replied = await act({
+        action: 'reply',
+        thread: m.thread,
+        text: 'PO-1453 failed to send; the supplier refused it.',
+        why: 'asked why PO-1453 did not go',
+      });
+    };
+    const asked = await w.chat.say(w.chat.alice, 'Why did PO-1453 not go out?');
+    await expect.poll(() => replied, { timeout: 15_000 }).not.toBeNull();
+    const roomOf = await roomId();
+    const reply = (await w.actions(roomOf)).find((a) => a.kind === 'reply' && a.thread === asked);
+    // [ACTION_NAMES_NO_TURN] before the fix: no action said which session or turn took it
+    const turn = reply?.turn as { sessionId: string; id: string } | null | undefined;
+    expect(turn, JSON.stringify(reply)).toMatchObject({ sessionId: expect.any(String) });
+    const path = `/api/projects/${w.projectId}/support/rooms/${roomOf}/turns/${turn?.id}`;
+    const got = await api(w.owner, 'GET', path);
+    expect(got.status, JSON.stringify(got.body)).toBe(200);
+    const record = got.body.turn as { sessionId: string; steps: Record<string, unknown>[] };
+    expect(record.sessionId).toBe(turn?.sessionId);
+    expect(record.steps).toContainEqual({
+      kind: 'called',
+      tool: 'Bash',
+      input: JSON.stringify({ command: 'grep PO-1453 app.log' }),
+    });
+    const answer = record.steps.find((s) => s.kind === 'answered');
+    expect(String(answer?.text)).toContain('send failed for PO-1453');
+    expect(JSON.stringify(record)).not.toContain(w.chat.bot.authToken);
+    // only the project's people read it, and a turn no action names is refused by name
+    expect((await api(w.stranger, 'GET', path)).status).toBeGreaterThanOrEqual(403);
+    const unknown = await api(
+      w.owner,
+      'GET',
+      `/api/projects/${w.projectId}/support/rooms/${roomOf}/turns/00000000-0000-4000-8000-000000000000`,
+    );
+    expect(unknown.status).toBe(404);
+    expect(JSON.stringify(unknown.body)).toContain('SUPPORT_TURN_UNKNOWN');
   });
 });

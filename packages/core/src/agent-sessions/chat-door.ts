@@ -104,3 +104,24 @@ export async function boxSessionOfToken(tokenId: string): Promise<string | null>
   const origin = token ? turnTokenOrigin(token.name) : null;
   return origin?.door === 'box-session' ? origin.sessionId : null;
 }
+
+/**
+ * The span of the box-session turn a `turn:<sessionId>` token was handed for: minted at its
+ * hand-over, revoked at its end (`endedAt` null while it runs). Null for any other token (ISS-1029).
+ */
+export async function boxTurnOfToken(
+  tokenId: string,
+): Promise<{ sessionId: string; startedAt: Date; endedAt: Date | null } | null> {
+  const [token] = await db
+    .select({
+      name: personalAccessTokens.name,
+      createdAt: personalAccessTokens.createdAt,
+      revokedAt: personalAccessTokens.revokedAt,
+    })
+    .from(personalAccessTokens)
+    .where(eq(personalAccessTokens.id, tokenId))
+    .limit(1);
+  const origin = token ? turnTokenOrigin(token.name) : null;
+  if (!token || origin?.door !== 'box-session') return null;
+  return { sessionId: origin.sessionId, startedAt: token.createdAt, endedAt: token.revokedAt };
+}

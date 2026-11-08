@@ -113,10 +113,17 @@ export const supportActions = pgTable(
     proposalId: uuid('proposal_id'),
     feedbackId: uuid('feedback_id').references(() => feedback.id, { onDelete: 'set null' }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    /** The room's session that took this act, where a turn of it did (ISS-1029). */
+    sessionId: uuid('session_id').references(() => agentSessions.id, { onDelete: 'set null' }),
+    /** The turn it was taken in: the credential core handed that one turn (ISS-1029). */
+    turnId: uuid('turn_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     roomCreatedIdx: index('support_actions_room_created_idx').on(t.roomId, t.createdAt),
+    sessionTurnIdx: index('support_actions_session_turn_idx')
+      .on(t.sessionId, t.turnId)
+      .where(sql`session_id IS NOT NULL`),
     undeliveredIdx: index('support_actions_undelivered_idx')
       .on(t.roomId, t.createdAt)
       .where(sql`kind = 'message_in' AND delivered_at IS NULL`),

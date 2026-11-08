@@ -1189,6 +1189,11 @@ export interface SupportActionView {
 	input: unknown;
 	output: unknown;
 	feedbackKey: string | null;
+	/**
+	 * The session and turn that took it, where a turn did (ISS-1029): its record is read at
+	 * `GET /api/projects/:id/support/rooms/:roomId/turns/:id`.
+	 */
+	turn: { sessionId: string; id: string } | null;
 	at: string;
 }
 
@@ -1518,6 +1523,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_DIRECT_TURN_NEEDS_ADMIN",
 	/** A direct message to a room's session carrying what a room turn cannot: files, a picked box (ISS-950). */
 	"SUPPORT_DIRECT_TURN_SHAPE",
+	/** A turn no action of the room names (ISS-1029). */
+	"SUPPORT_TURN_UNKNOWN",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1630,4 +1637,5 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,
 	SUPPORT_DIRECT_TURN_SHAPE: 400,
+	SUPPORT_TURN_UNKNOWN: 404,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

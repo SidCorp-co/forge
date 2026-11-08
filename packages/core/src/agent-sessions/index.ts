@@ -1,7 +1,7 @@
 export { persistSessionAttachment } from './attachment-service.js';
 export type { CheckoutView } from './chat-checkout.js';
 export { boxLacks, noClaudeClient } from './chat-device.js';
-export { boxSessionOfToken, type ChatDoor, chatDoorOfToken } from './chat-door.js';
+export { boxSessionOfToken, boxTurnOfToken, type ChatDoor, chatDoorOfToken } from './chat-door.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 export { checkoutMovedFrom } from './chat-turn-checkout.js';
 export {
@@ -56,6 +56,7 @@ export {
   transitionSessions,
 } from './session-transition.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
+export { turnStdoutLines } from './turn-events.js';
 export { firstUserMessageText, messageRoleToTurnRole, readTranscript } from './turns-helpers.js';
 export { materializeJobUsage, recordModelCallUsage } from './usage-materialize.js';
 export {

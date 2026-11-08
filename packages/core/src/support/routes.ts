@@ -48,6 +48,7 @@ import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
 import { mountOwnerRoutes } from './owner-routes.js';
+import { mountTurnRecordRoutes } from './turn-record.js';
 
 export { ownerSignInCallbackRoutes } from './owner-routes.js';
 
@@ -457,6 +458,7 @@ supportRoutes.post(
 );
 
 mountChannelRoutes(supportRoutes);
+mountTurnRecordRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
 

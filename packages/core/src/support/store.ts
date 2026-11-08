@@ -14,6 +14,7 @@ import {
   supportProposals,
   supportRooms,
 } from '../db/schema-support.js';
+import { turnOfRequest } from './turn-of-act.js';
 
 export type RoomRow = typeof supportRooms.$inferSelect;
 export type ActionRow = typeof supportActions.$inferSelect;
@@ -174,6 +175,8 @@ export async function insertAction(action: NewAction, exec: Exec = db): Promise<
     .insert(supportActions)
     .values({
       ...action,
+      // the session and turn that took it, where a turn's request writes it (ISS-1029)
+      ...(await turnOfRequest()),
       actorKey: action.actorKey ?? null,
       actorLabel: action.actorLabel ?? null,
       tool: action.tool ?? null,

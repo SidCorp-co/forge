@@ -124,6 +124,7 @@ function viewOf(row: ActionRow, keys: Map<string, string>): SupportActionView {
     input: row.input,
     output: row.output,
     feedbackKey: row.feedbackId ? (keys.get(row.feedbackId) ?? null) : null,
+    turn: row.sessionId && row.turnId ? { sessionId: row.sessionId, id: row.turnId } : null,
     at: row.createdAt.toISOString(),
   };
 }
