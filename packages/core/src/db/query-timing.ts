@@ -206,6 +206,15 @@ export function outboundCall(provider: string): (() => void) | undefined {
   };
 }
 
+/** The name of the request's part this code runs inside ({@link withQueryLeg}), if any. */
+export function currentLegName(): string | undefined {
+  const t = timings.getStore();
+  const leg = legs.getStore();
+  if (!t || leg?.of !== t) return undefined;
+  for (const [name, held] of t.legs) if (held === leg) return name;
+  return undefined;
+}
+
 /** The wall time `clock`'s calls were outstanding, a call still unanswered counted to now. */
 export const httpMsOf = (clock: HttpClock, now = performance.now()): number =>
   clock.ms + (clock.inFlight > 0 ? now - clock.openedAt : 0);

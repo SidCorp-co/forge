@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { subscribe } from 'node:diagnostics_channel';
-import { currentQueryTiming, outboundCall } from '../db/query-timing.js';
+import { currentLegName, outboundCall } from '../db/query-timing.js';
 import { logger } from './logger.js';
 import { webBaseUrl } from './web-base-url.js';
 
@@ -11,14 +11,13 @@ import { webBaseUrl } from './web-base-url.js';
  * make on a diagnostics channel, so a call is counted whichever client made it and whoever holds a
  * reference to it. A call is named by the provider the code making it declares ({@link asProvider});
  * one nobody named is named by the kind of host it went to ({@link hostKindOf}), and the code that
- * made it is logged once a process with that host's name ({@link logSite}), for an operator alone.
+ * made it, the part of the request it was made in and its host's name are logged once a process
+ * ({@link logSite}), for an operator alone.
  * The response carries nothing of the call but that kind, its count and its time: never its
  * address, path or headers.
  */
 
 const providers = new AsyncLocalStorage<string>();
-/** The code that called `fetch` with no provider named, read where the request is announced. */
-const sites = new AsyncLocalStorage<string>();
 
 /** The provider a call made inside `fn` is counted to: `coolify`, `probe`. */
 export function asProvider<T>(provider: string, fn: () => T): T {
@@ -83,11 +82,12 @@ const LOGGED_MOST = 200;
  * never a path or a query), so the leg a response names reads as its caller in the server's log.
  */
 function logSite(kind: string, host: string, site: string | undefined): void {
-  const key = `${kind} ${site ?? ''}`;
+  const part = currentLegName() ?? 'unnamed';
+  const key = `${kind} ${part} ${site ?? ''}`;
   if (logged.has(key) || logged.size >= LOGGED_MOST) return;
   logged.add(key);
   logger.info(
-    { kind, host, site: site ?? 'unknown' },
+    { kind, host, part, site: site ?? 'unknown' },
     'an outbound call a request waited on, by no named provider',
   );
 }
@@ -103,7 +103,8 @@ function opened({ request }: { request: { origin?: unknown; host?: unknown } }):
   if (!close) return;
   open.set(request, close);
   if (named === undefined)
-    logSite(kind, host, sites.getStore() ?? (siteOf(new Error().stack) || undefined));
+    // `node:http` announces a request inside its caller's stack; fetch announces it past every await
+    logSite(kind, host, siteOf(new Error().stack) || undefined);
 }
 
 function closed({ request }: { request: object }): void {
@@ -115,19 +116,10 @@ function closed({ request }: { request: object }): void {
 
 let installed = false;
 
-/**
- * Subscribes the channels once a process; every request made after it is counted. `fetch` is
- * wrapped so a call no provider names carries the code that made it to where it is announced.
- */
+/** Subscribes the channels once a process; every request made after it is counted. */
 export function timeOutboundHttp(): void {
   if (installed) return;
   installed = true;
-  const fetchOf = globalThis.fetch;
-  globalThis.fetch = function sitedFetch(this: unknown, ...args: Parameters<typeof fetch>) {
-    if (providers.getStore() !== undefined || !currentQueryTiming())
-      return fetchOf.apply(this, args);
-    return sites.run(siteOf(new Error().stack), () => fetchOf.apply(this, args));
-  } as typeof fetch;
   // fetch: created, then its body read to the end or failed
   subscribe('undici:request:create', opened as (m: unknown) => void);
   subscribe('undici:request:trailers', closed as (m: unknown) => void);
