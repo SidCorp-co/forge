@@ -26,6 +26,8 @@ export const SETTLED_BY: Readonly<Record<DecisionAct, OutboxEventType>> = {
   'release.decide': 'release.approvalDecided',
   // a drafted release's decision settles its approver's row (`release-batch/draft-approval.ts`)
   'release.decideDraft': 'decision.settled',
+  // a production deploy's confirm settles its person's row (`release-batch/coolify-prod-gate.ts`)
+  'release.confirmDeploy': 'decision.settled',
   'preview.approve': 'preview.transitioned',
   'design.decide': 'workflow.designDecided',
   'mockup.accept': 'mockup.transitioned',

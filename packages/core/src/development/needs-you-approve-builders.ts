@@ -229,7 +229,13 @@ export function releaseDecision(
           effect:
             merges.length > 0
               ? `The master merges ${clip(order, 200)} in that order; nothing merges before.`
-              : 'The release may go to production.',
+              : // a production deploy kept on request waits on a person's confirm after it (ISS-1096)
+                clip(
+                  ['The release may go to production.', row.standing.waitingOn.effect]
+                    .filter(Boolean)
+                    .join(' '),
+                  300,
+                ),
           recommended: clean,
         }),
         answer({

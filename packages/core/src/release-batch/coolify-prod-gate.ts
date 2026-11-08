@@ -1,11 +1,13 @@
 // The production confirm gate: a deploy reaching production parks on its run until a person
 // presses confirm, unless the project's production environment deploys on-land.
 
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { enqueueOutboundDispatch, findDeliveryByRequestId } from '../integrations/index.js';
 import { logger } from '../lib/logger.js';
+import { peopleOf } from '../lib/people.js';
+import { emitEvent } from '../outbox/index.js';
 import {
   acquireDeployLocks,
   type DeployLockHeld,
@@ -15,6 +17,9 @@ import {
   setCurrentStep,
   writeRunMetadata,
 } from '../pipeline/index.js';
+import { type ProjectDocument, productionOf } from '../project-config/index.js';
+import { type ResumeOutcome, resumeConfirmedRelease } from './confirm-resume.js';
+import type { ReleaseChannel } from './plan.js';
 import type { DeployLockIntent } from './release-coolify-hold.js';
 
 const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
@@ -45,6 +50,68 @@ interface ProdGateState {
 }
 
 const GATE_METADATA_KEY = '__forge_prod_deploy_gate';
+
+/** A production deploy parked on its run for a person's confirm, not pressed yet (ISS-1096). */
+export interface PendingProdConfirm {
+  bindingId: string;
+  requestedAt: string;
+}
+
+/**
+ * The production deploy a run's metadata holds parked for a person's confirm, the oldest first, or
+ * null where none waits: what the release reads as waiting on that person (`release-view.ts`).
+ */
+export function pendingProdConfirmOf(metadata: unknown): PendingProdConfirm | null {
+  const gates = (metadata as Record<string, unknown> | null)?.[GATE_METADATA_KEY];
+  if (typeof gates !== 'object' || gates === null) return null;
+  const waiting = Object.values(gates as Record<string, Partial<ProdGateState>>)
+    .filter((g) => typeof g?.bindingId === 'string' && !g.confirmedAt)
+    .map((g) => ({ bindingId: g.bindingId as string, requestedAt: String(g.requestedAt ?? '') }))
+    .sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+  return waiting[0] ?? null;
+}
+
+/**
+ * Whether a run's `metadata` (as SQL) holds a production deploy parked for a person's confirm: the
+ * run waits on that person, so no sweep closes it for the job under it having ended (ISS-1096).
+ */
+export const awaitsProdConfirm = (metadata: SQL): SQL => sql`(
+  jsonb_typeof(${metadata} -> ${GATE_METADATA_KEY}) = 'object'
+  AND EXISTS (
+    SELECT 1 FROM jsonb_each(${metadata} -> ${GATE_METADATA_KEY}) g
+     WHERE coalesce(g.value ->> 'confirmedAt', '') = ''
+  ))`;
+
+/**
+ * Whether a release's production deploy will park for a person's confirm: production is bound to a
+ * Coolify binding the release run deploys, on request rather than on land or by the provider itself
+ * (`release-coolify.ts:tryDispatchCoolifyRelease`), so the approval can say so (ISS-1096).
+ */
+export function productionAsksConfirm(
+  channels: readonly Pick<ReleaseChannel, 'provider'>[],
+  document: ProjectDocument | undefined,
+): boolean {
+  if (channels[0]?.provider !== 'coolify' || !document) return false;
+  const deployment = productionOf(document)?.declaration.deployment;
+  return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-request';
+}
+
+/** The binding each of these runs waits on a person's confirm for, by run; runs with none are absent. */
+export async function pendingProdConfirmsOfRuns(
+  runIds: readonly string[],
+): Promise<Map<string, PendingProdConfirm>> {
+  if (runIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(inArray(pipelineRuns.id, [...runIds]));
+  return new Map(
+    rows.flatMap((r) => {
+      const pending = pendingProdConfirmOf(r.metadata);
+      return pending ? [[r.id, pending] as const] : [];
+    }),
+  );
+}
 
 export async function markPendingHumanConfirm(input: {
   runId: string;
@@ -119,6 +186,8 @@ interface ConfirmProdResult {
   runId: string | null;
   /** The binding id the confirmation targeted (== old project_integration id). */
   integrationId: string;
+  /** How the release run was carried on once confirmed (`confirm-resume.ts`); absent where none was. */
+  resumed?: ResumeOutcome;
 }
 
 /**
@@ -198,5 +267,34 @@ export async function confirmPendingProdDeploy(
     throw err;
   }
 
-  return { confirmed: true, runId: run.id, integrationId: bindingId };
+  // the person's row leaves Needs you, and the release run is carried on to its finish (ISS-1096)
+  const projectId = await announceConfirmed(run.id, gate.bindingId);
+  const by = confirmedByUserId
+    ? ((await peopleOf([confirmedByUserId])).get(confirmedByUserId)?.name ?? confirmedByUserId)
+    : 'a project admin';
+  const resumed = projectId && enqueued ? await resumeConfirmedRelease(run.id, by) : undefined;
+  return {
+    confirmed: true,
+    runId: run.id,
+    integrationId: bindingId,
+    ...(resumed ? { resumed } : {}),
+  };
+}
+
+/** The confirm settles the person's decision in Activity (`activity/settle-events.ts`); answers the run's project. */
+async function announceConfirmed(runId: string, bindingId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ projectId: pipelineRuns.projectId, version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!row) return null;
+  await db.transaction((tx) =>
+    emitEvent(tx, 'decision.settled', {
+      projectId: row.projectId,
+      act: 'release.confirmDeploy',
+      subject: row.version ?? `${runId}:${bindingId}`,
+    }),
+  );
+  return row.projectId;
 }

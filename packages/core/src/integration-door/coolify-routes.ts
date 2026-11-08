@@ -306,7 +306,8 @@ function registerSetupRoutes(routes: Routes): void {
           cause: { code: 'NOT_LIVE_BINDING' },
         });
       }
-      const result = await confirmPendingProdDeploy(id);
+      // who pressed it is recorded on the gate and named to the release run it carries on (ISS-1096)
+      const result = await confirmPendingProdDeploy(id, c.get('userId'));
       await announceIntegrationChanged(projectId, {
         bindingId: id,
         connectionId: existing.connection.id,

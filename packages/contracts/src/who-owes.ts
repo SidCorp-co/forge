@@ -165,6 +165,11 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		personWhen: [STRICT, RELEASE_APPROVAL],
 		byContent: true,
 	},
+	"release.confirmDeploy": {
+		serious: true,
+		because: "irreversible",
+		why: "a production deploy the project keeps on request reaches its users once pressed; the confirm is a person's, and the master never presses it (ISS-1096)",
+	},
 	"release.decideDraft": {
 		serious: false,
 		why: "approving a drafted release that carries only reversible changes is delivery; a project that requires a person's release approval keeps it theirs",

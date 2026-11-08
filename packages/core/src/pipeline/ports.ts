@@ -110,6 +110,8 @@ interface PipelinePorts {
   /** Whether the run whose metadata is `metadata` is one its release ends — by its settle or its
    *  abort — and no sweep may close for running no job. */
   releaseEndsRun: (metadata: SQL) => SQL;
+  /** A release run waiting on a person's production confirm, which no sweep closes (ISS-1096). */
+  awaitsProdConfirm: (metadata: SQL) => SQL;
   requestJobKill: (job: KillableJob, reason: string) => Promise<string>;
   gateReasonsForQueuedJobsIn: (
     projectIds: readonly string[],
@@ -188,6 +190,7 @@ export const getLoopThresholds = port('getLoopThresholds');
 export const killGraceMs = port('killGraceMs');
 export const parkedOnAHuman = port('parkedOnAHuman');
 export const releaseEndsRun = port('releaseEndsRun');
+export const awaitsProdConfirm = port('awaitsProdConfirm');
 export const voidCancelledRunQuestions = port('voidCancelledRunQuestions');
 export const requestJobKill = port('requestJobKill');
 export const gateReasonsForQueuedJobsIn = port('gateReasonsForQueuedJobsIn');

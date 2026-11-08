@@ -20,7 +20,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
-import { api, userToken } from '../helpers/api.js';
+import { api, patToken, userToken } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
@@ -73,7 +73,7 @@ beforeEach(async () => {
   token = await userToken(ownerId);
   const agentId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, agentId, 'admin');
-  agentToken = await userToken(agentId);
+  agentToken = await patToken(agentId, [projectId]);
   // production deploys on request: a release run's production deploy parks for a person's confirm
   bindingId = await fx.declareProduction({ baseUrl: 'http://coolify.invalid', targets: [APP] }, 'none');
   await fx.seedReleaseRunner();

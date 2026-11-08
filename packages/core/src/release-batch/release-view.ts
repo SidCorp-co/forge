@@ -66,6 +66,8 @@ interface TurnFacts {
     decision: 'approved' | 'returned' | null;
     requestedBy: ReleasePerson;
     reason: string | null;
+    /** Who decided it, where it is decided; absent on a fact built before ISS-1096 read it. */
+    decidedBy?: ReleasePerson | null;
   } | null;
   approvers: readonly ReleasePerson[];
   /** Who holds project.admin, by name: whom a cut names where the master does not take it. */
@@ -79,6 +81,16 @@ interface TurnFacts {
   /** The blockers, in the order the door refuses in, each with whoever owes its act. */
   gates: readonly { code: string; owner: ReleaseGateOwner }[];
   inFlight: ReleaseAttemptStage | null;
+  /**
+   * The production deploy its run parked for a person's confirm, not pressed yet (ISS-1096): the run
+   * waits on that person, never on itself. Null where none waits.
+   */
+  prodConfirm?: { bindingId: string } | null;
+  /**
+   * Whether this project's production deploy waits on a person's confirm (a Coolify production
+   * binding deployed on request): the approval says so, so the confirm can be given with it.
+   */
+  confirmsProduction?: boolean;
   /**
    * Where the project names its testing environment (`delivery.judgedOn`, REQ-36 BC-18): its name,
    * the project's judge, and how many carried criteria pass on the build it serves of how many.
@@ -226,6 +238,35 @@ function untestedTurn(f: TurnFacts): Turn | null {
   });
 }
 
+/**
+ * A release whose production deploy waits on a person's confirm (ISS-1096): the run stays open and
+ * waits on whoever may press it, the confirm door's holders of project.admin, named first by the
+ * approver where they hold it. A person among them reads it as theirs, in Needs you; an agent
+ * holding the permission is never that person.
+ */
+function confirmTurn(f: TurnFacts, bindingId: string): Turn {
+  const route = `POST /api/projects/${f.projectId}/integrations/${bindingId}/confirm-prod-deploy`;
+  const act = say('standing.act.confirmProdDeploy', { v: f.version });
+  const rule = say('releases.rule.awaitsProdConfirm', { route });
+  if (f.viewer?.agency === 'human' && f.viewer.isAdmin) {
+    return turn('needs_you', 'you', { who: YOU, act, rule });
+  }
+  if (f.admins.length === 0) {
+    return turn('stuck', 'none', {
+      who: holdersWho(f.admins),
+      act: nobodyHoldsAct(act, 'project.admin'),
+      rule,
+    });
+  }
+  const approver = f.approval?.decidedBy?.name;
+  const who = approver && f.admins.includes(approver) ? [approver] : f.admins;
+  return turn('waiting', 'person', { who: holdersWho(who), act, rule });
+}
+
+/** What approving says where the production deploy then waits on a person's confirm (ISS-1096). */
+const confirmEffect = (f: TurnFacts) =>
+  f.confirmsProduction ? { effect: say('releases.effect.confirmAfterApproval') } : {};
+
 function approvalTurn(f: TurnFacts): Turn {
   const a = f.approval;
   if (a?.decision === null) {
@@ -248,6 +289,7 @@ function approvalTurn(f: TurnFacts): Turn {
       who: YOU,
       act: say('standing.act.approveOrReturn', { v: f.version }),
       rule,
+      ...confirmEffect(f),
     });
   }
   const approvers = f.approvers.map((a) => a.name);
@@ -262,6 +304,7 @@ function approvalTurn(f: TurnFacts): Turn {
     who: holdersWho(approvers),
     act: say('standing.act.approve'),
     rule,
+    ...confirmEffect(f),
   });
 }
 
@@ -324,6 +367,7 @@ export function turnOf(f: TurnFacts): Turn {
           }),
         });
       }
+      if (f.prodConfirm) return confirmTurn(f, f.prodConfirm.bindingId);
       return turn('moving', 'agent', {
         who: RELEASE_RUN,
         act: f.inFlight ? IN_FLIGHT_ACT[f.inFlight] : say('standing.act.starting'),

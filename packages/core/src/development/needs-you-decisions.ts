@@ -36,6 +36,7 @@ import {
   releaseFactsOf,
   revisionDecision,
 } from './needs-you-approve-builders.js';
+import { confirmDeployDecision } from './needs-you-confirm-deploy.js';
 import {
   type Built,
   type DecisionBody,
@@ -46,7 +47,7 @@ import { draftApprovalDecision } from './needs-you-draft-approval.js';
 import { asked } from './needs-you-escalation.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { revisionWordsOf } from './needs-you-signoff-words.js';
-import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
+import { type DesignRepinGroup, releaseApprovalsOfRuns, releaseConfirmsOfRuns } from './ports.js';
 
 /** The said act keys whose row is the viewer's own work to finish, never a choice. */
 const OWN_WORK: ReadonlySet<string> = new Set([
@@ -98,6 +99,8 @@ const REPIN_BATCH = 'designs.act.repinBatch';
 
 /** A draft release no gate holds, which its admins cut where the master does not (`release-batch/release-view.ts:draftTurn`). */
 const RELEASE_CUT = 'standing.act.cut';
+/** A release run's production deploy parked for a person's confirm (`release-view.ts:confirmTurn`, ISS-1096). */
+const RELEASE_CONFIRM = 'standing.act.confirmProdDeploy';
 const RELEASE_DRAFT_DECIDE = 'standing.act.approveDraftOrReturn';
 
 type Classified = Built | { reason: NeedsYouNotDecisionReason } | { folded: true };
@@ -124,6 +127,8 @@ interface Facts {
   /** Each draft release the viewer may cut, by version. */
   cutOf: ReadonlyMap<string, CuttableRelease>;
   approvalOf: ReadonlyMap<string, string>;
+  /** The binding each release run's production deploy waits on a person's confirm for, by run. */
+  confirmOf: ReadonlyMap<string, { bindingId: string }>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
   /** Each design whose proposed revision waits on a person, by flow. */
   designOf: ReadonlyMap<string, { workflowId: string; revision: number; title: string }>;
@@ -221,6 +226,12 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     const cut = f.cutOf.get(row.key);
     if (!cut) return { reason: 'work' };
     return cutDecision(row, area, f.projectId, cut);
+  }
+  if (row.entity === 'release' && act.key === RELEASE_CONFIRM) {
+    const runId = f.releaseOf.get(row.key)?.runId;
+    const pending = runId ? f.confirmOf.get(runId) : undefined;
+    if (!pending || row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
+    return confirmDeployDecision(row, area, f.projectId, pending.bindingId);
   }
   if (row.entity === 'release' && act.key === RELEASE_DRAFT_DECIDE) {
     if (row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
@@ -349,10 +360,15 @@ export async function decisionsOf(
       n === null ? [] : [{ requirementId: r.id, revision: n }],
     ),
   );
-  const [questions, approvals, wordsOf] = await Promise.all([
+  // read only where a release waits on a confirm, so a read with none asks nothing more (ISS-1096)
+  const confirmRuns = attention.releases.releases.flatMap((r) =>
+    r.waitingOn.says.act.key === RELEASE_CONFIRM && r.runId ? [r.runId] : [],
+  );
+  const [questions, approvals, wordsOf, confirms] = await Promise.all([
     readOpenPersonQuestions(projectId),
     releaseApprovalsOfRuns(runIds),
     revisionWordsOf(signed),
+    confirmRuns.length > 0 ? releaseConfirmsOfRuns(confirmRuns) : new Map(),
   ]);
   const facts: Facts = {
     projectId,
@@ -382,6 +398,7 @@ export async function decisionsOf(
       ),
     ),
     approvalOf: new Map(approvals.filter((a) => a.decision === null).map((a) => [a.runId, a.id])),
+    confirmOf: confirms,
     feedbackAnswerOf: new Map(attention.feedback.map((f) => [f.key, f.route?.answer ?? null])),
     contractOf: new Map(
       attention.contracts.contracts.flatMap((c) =>

@@ -26,6 +26,7 @@ import {
   releaseVerifiedBy,
   resolveReleaseChannels,
 } from './channel.js';
+import { pendingProdConfirmOf, productionAsksConfirm } from './coolify-prod-gate.js';
 import { draftDecisionRefusal, standingDraftApproval } from './draft-approval.js';
 import { draftVersionOf } from './draft-version.js';
 
@@ -206,6 +207,8 @@ function runPart(
     tag: releaseTagOf(run.metadata),
     draftApproval: null,
     draftDecidable: false,
+    // a run still open whose production deploy waits on a person's confirm (ISS-1096)
+    prodConfirm: run.releasedAt === null ? pendingProdConfirmOf(run.metadata) : null,
     corrections: correctionsIn(run.metadata),
   };
 }
@@ -290,6 +293,7 @@ export async function sharedFor(
     contentLanguage: language.contentLanguage,
     provider: productionProviderOf(channels),
     changeRequestLinks,
+    confirmsProduction: productionAsksConfirm(channels, doc?.document),
   };
 }
 

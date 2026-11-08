@@ -138,6 +138,11 @@ export const DECISION_ACTS = {
 		path: "/api/projects/:projectId/releases/:version/approval",
 		reason: false,
 	},
+	// a release run's production deploy parked for a person's press (ISS-1096): the binding's own door
+	"release.confirmDeploy": {
+		path: "/api/projects/:projectId/integrations/:bindingId/confirm-prod-deploy",
+		reason: false,
+	},
 	"preview.approve": {
 		path: "/api/previews/:previewId/approve",
 		reason: false,
@@ -564,6 +569,7 @@ export const DECISION_ACT_OF_SAID: Readonly<Record<string, DecisionActOfSaid>> =
 		"standing.act.check": { act: "requirement.accept" },
 		"standing.act.approveOrReturn": { act: "release.decide" },
 		"standing.act.approveDraftOrReturn": { act: "release.decideDraft" },
+		"standing.act.confirmProdDeploy": { act: "release.confirmDeploy" },
 		"designs.act.approveOrReturn": { act: "design.decide" },
 		"contracts.act.approveOrReturn": { act: "contract.decide" },
 		"standing.act.confirmAnswer": { act: "feedback.verify" },

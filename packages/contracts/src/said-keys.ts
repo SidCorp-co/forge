@@ -1006,6 +1006,10 @@ export const SAID = {
 	"standing.act.recordLanding": { en: "record the landing" },
 	"standing.act.recordRelease": { en: "record the release production serves" },
 	"standing.act.deploying": { en: "deploying" },
+	"standing.act.confirmProdDeploy": {
+		en: "confirm the production deploy of {v}",
+		vars: { v: "version" },
+	},
 	"standing.act.finishDraft": { en: "finish draft" },
 	"standing.act.fixFailing": {
 		en: "fix {codes}, failing on {keys}",
@@ -1747,6 +1751,13 @@ export const SAID = {
 	},
 	"releases.rule.inProgress": {
 		en: "the release run is working on production",
+	},
+	"releases.rule.awaitsProdConfirm": {
+		en: "its production deploy waits on a person's confirm, given with {route}; the run stays open until then",
+		vars: { route: "code" },
+	},
+	"releases.effect.confirmAfterApproval": {
+		en: "Its production deploy then waits on a project admin's confirm.",
 	},
 	"releases.rule.issueShipped": { en: "the issue has shipped" },
 	"requirements.dedup.notChecked": {

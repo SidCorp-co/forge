@@ -40,6 +40,10 @@ interface DevelopmentPorts {
   ) => Promise<{ canDecide: boolean; groups: DesignRepinGroup[] }>;
   /** The release approvals asked of these release runs (`release-batch/approvals.ts:approvalsOfRuns`). */
   releaseApprovalsOfRuns: (runIds: readonly string[]) => Promise<ReleaseApprovalRow[]>;
+  /** The production deploy each release run waits on a person's confirm for (`release-batch/coolify-prod-gate.ts`, ISS-1096). */
+  releaseConfirmsOfRuns: (
+    runIds: readonly string[],
+  ) => Promise<Map<string, { bindingId: string; requestedAt: string }>>;
   /** Every live run's standing and the recently finished ones (`runs/read.ts:listRunStanding`), and
    *  the version the next cut takes (`release-batch/draft-version.ts:nextDraftVersion`), as `viewer`. */
   deliveryRunsOf: (projectId: string, viewer: { userId: string } | null) => Promise<DeliveryRuns>;
@@ -78,6 +82,7 @@ export const provideDevelopmentPorts = slot.provide;
 export const designHealthOf = slot.port('designHealthOf');
 export const designRepinsOf = slot.port('designRepinsOf');
 export const releaseApprovalsOfRuns = slot.port('releaseApprovalsOfRuns');
+export const releaseConfirmsOfRuns = slot.port('releaseConfirmsOfRuns');
 export const deliveryRunsOf = slot.port('deliveryRunsOf');
 export const masterAccountsOf = slot.port('masterAccountsOf');
 export const emitNotification = slot.port('emitNotification');

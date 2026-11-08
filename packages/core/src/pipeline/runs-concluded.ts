@@ -24,7 +24,7 @@ import { RESULT_QUIET_MINUTES } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../lib/logger.js';
-import type { LoopScope } from './ports.js';
+import { awaitsProdConfirm, type LoopScope } from './ports.js';
 import { closeRun } from './runs.js';
 
 export interface ConcludedRunReapResult {
@@ -62,6 +62,8 @@ function selectConcluded(now: Date, scope: LoopScope) {
       LIMIT 1
     ) last_job ON TRUE
     WHERE r.status IN ('running', 'paused')
+      -- a release run waiting on a person's production confirm stays open for that press (ISS-1096)
+      AND NOT ${awaitsProdConfirm(sql`r.metadata`)}
       AND NOT EXISTS (
         SELECT 1 FROM jobs j2
         WHERE j2.pipeline_run_id = r.id

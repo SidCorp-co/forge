@@ -142,12 +142,14 @@ import {
 import {
   approvalRequired,
   approvalsOfRuns,
+  awaitsProdConfirm,
   commitPlacedOnLanding,
   criteriaWeighingOf,
   deliveryHeadsOf,
   judgedBuildOf,
   landedRecordOf,
   nextDraftVersion,
+  pendingProdConfirmsOfRuns,
   releasedLineReads,
   releaseEndsRun,
   releaseHoldsOf,
@@ -201,6 +203,7 @@ function provideWorkPipelinePorts(): void {
     killGraceMs,
     parkedOnAHuman,
     releaseEndsRun,
+    awaitsProdConfirm,
     requestJobKill,
     gateReasonsForQueuedJobsIn,
     readRunGate,
@@ -261,6 +264,19 @@ function provideIssueSidePorts(): void {
     betaKeysOfIssue: async (issueId) => betaKeysOf(issueId, await feedbackIdsRoutingTo(issueId)),
   });
   provideBetaPortPorts({ createFeedback, triageOutcomesOf, feedbackIdOfSeq });
+}
+
+/** What Needs you and the Delivery overview read from later contexts (`development/ports.ts`). */
+function provideWorkDevelopmentPorts(): void {
+  provideDevelopmentPorts({
+    designHealthOf: projectHealthAs,
+    designRepinsOf: repinGroupsAs,
+    releaseApprovalsOfRuns: approvalsOfRuns,
+    releaseConfirmsOfRuns: pendingProdConfirmsOfRuns,
+    deliveryRunsOf,
+    masterAccountsOf: async (projectId) => (await masterAccountsOf(projectId)).accounts,
+    emitNotification,
+  });
 }
 
 export function provideWorkPorts(): void {
@@ -387,14 +403,7 @@ export function provideWorkPorts(): void {
     },
   });
 
-  provideDevelopmentPorts({
-    designHealthOf: projectHealthAs,
-    designRepinsOf: repinGroupsAs,
-    releaseApprovalsOfRuns: approvalsOfRuns,
-    deliveryRunsOf,
-    masterAccountsOf: async (projectId) => (await masterAccountsOf(projectId)).accounts,
-    emitNotification,
-  });
+  provideWorkDevelopmentPorts();
 
   provideWorkflowHealthPorts({
     openFeedbackOf: async (viewer, projectId) => {

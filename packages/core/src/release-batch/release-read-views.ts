@@ -85,6 +85,8 @@ export interface Part {
   draftApproval: ReleaseDraftApprovalView | null;
   /** Whether a decision on this draft is taken (`draft-approval.ts:draftDecisionRefusal`); false on a cut run. */
   draftDecidable: boolean;
+  /** The production deploy its run parked for a person's confirm (`coolify-prod-gate.ts`, ISS-1096); null or absent where none waits. */
+  prodConfirm?: { bindingId: string } | null;
 }
 
 export interface Shared {
@@ -106,6 +108,8 @@ export interface Shared {
   provider: string | null;
   /** Every change request linked to an issue these releases carry (REQ-63 BC-5). */
   changeRequestLinks: readonly ChangeRequestLinkRow[];
+  /** Production deploys on request through Coolify, so its deploy waits on a person's confirm (ISS-1096). */
+  confirmsProduction?: boolean;
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -128,7 +132,12 @@ function inFlightStage(attempts: readonly ReleaseAttemptRow[]) {
 function approvalFacts(p: Part) {
   const latest = p.approvals[0];
   return latest
-    ? { decision: latest.decision, requestedBy: latest.requestedBy, reason: latest.reason }
+    ? {
+        decision: latest.decision,
+        requestedBy: latest.requestedBy,
+        reason: latest.reason,
+        decidedBy: latest.decidedBy,
+      }
     : null;
 }
 
@@ -152,6 +161,8 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),
+    prodConfirm: p.prodConfirm ?? null,
+    confirmsProduction: s.confirmsProduction === true,
     testing: s.facts.judgedOn
       ? {
           environment: s.facts.judgedOn,
