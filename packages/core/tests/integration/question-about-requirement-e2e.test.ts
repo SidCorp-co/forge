@@ -13,6 +13,7 @@
 // @direct-test-of packages/core/src/questions/routes.ts
 // @direct-test-of packages/core/src/questions/ask.ts
 // @direct-test-of packages/core/src/questions/write.ts
+// @direct-test-of packages/core/src/questions/open-twin.ts
 // @direct-test-of packages/core/src/questions/unanswerable-ask.ts
 // @direct-test-of packages/core/src/issues/record-events/question-record.ts
 
@@ -176,7 +177,13 @@ describe('a question about a requirement is asked on no issue', () => {
   it('reads back the same subject whichever door asked it', async () => {
     const req = await requirement('Aggregate report download');
     const rest = ok(await askRest({ projectId, about: { requirement: req.key } }), 201);
-    const box = ok(await askBox({ about: { requirement: req.key } }));
+    // the same words twice on one subject are refused, so the box asks its own (ISS-918)
+    const box = ok(
+      await askBox({
+        about: { requirement: req.key },
+        prompt: 'May a referral manager export the aggregate report?',
+      }),
+    );
     const subjects = await Promise.all(
       [rest.id, box.questionId].map(
         async (id) => ok(await say('owner', 'GET', `/api/questions/${id}`)).subject,
@@ -385,5 +392,34 @@ describe('a box question naming its issue by display key (ISS-619)', () => {
     const bent = await askBox({ ...freeText, issueId: 'issue five', prompt: 'Which flag?' });
     expect(bent.status, JSON.stringify(bent.json)).toBe(400);
     expect(await questionCount()).toBe(before);
+  });
+});
+
+// ISS-918: REQ-77 on forge-dev held two pairs of identical open questions asked 22 s apart
+describe('a question asked again word for word while the first is open on its subject', () => {
+  it('is refused naming the open one, through either door, and writes nothing', async () => {
+    const req = await requirement('Aggregate report retention');
+    const first = ok(await askRest({ projectId, about: { requirement: req.key } }), 201);
+    const before = await questionCount();
+    for (const again of [
+      await askRest({ projectId, about: { requirement: req.key } }),
+      await askBox({ about: { requirement: req.key } }),
+    ]) {
+      expect(again.status, JSON.stringify(again.json)).toBe(422);
+      expect(JSON.stringify(again.json)).toContain('QUESTION_ALREADY_OPEN');
+      expect(JSON.stringify(again.json)).toContain(String(first.id));
+    }
+    expect(await questionCount()).toBe(before);
+    // another wording, or another subject, is its own question
+    ok(
+      await askRest({
+        projectId,
+        about: { requirement: req.key },
+        prompt: 'May a referral manager keep the aggregate report?',
+      }),
+      201,
+    );
+    const other = await requirement('Aggregate report sharing');
+    ok(await askRest({ projectId, about: { requirement: other.key } }), 201);
   });
 });

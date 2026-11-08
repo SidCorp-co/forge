@@ -43,6 +43,7 @@ import {
   voidSupersededDesignQuestions,
 } from './design-wait.js';
 import { type AwaitedMerge, awaitedMergeFault, neededForMerge } from './merge-wait.js';
+import { openTwinOf } from './open-twin.js';
 import { resolveAskOrigin } from './origin.js';
 import { owedBlockerOf } from './owed.js';
 import { screenRound } from './screen.js';
@@ -392,6 +393,14 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
     );
   }
   const origin = input.origin ?? (await resolveAskOrigin(executor, input.agentSessionId));
+  const first = step(1, input.prompt, input.answer, input.sensitive, input.plain);
+  const twin = input.origin ? null : await openTwinOf(executor, input, about, first);
+  if (twin) {
+    throw refuseQuestion(
+      'QUESTION_ALREADY_OPEN',
+      `question ${twin} asks this, word for word, and is still open on the same subject: it is not asked twice. Read it (GET /api/questions/${twin}) and wait on its answer, or void it before asking again`,
+    );
+  }
   const [row] = await executor
     .insert(agentQuestions)
     .values({
@@ -405,7 +414,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       blockerKind: input.blockerKind,
       serious: input.serious === true,
       rule: input.rule ?? null,
-      steps: [step(1, input.prompt, input.answer, input.sensitive, input.plain)],
+      steps: [first],
       assumed: scrubSecretsDeep(input.assumed),
       origin,
       maxRounds: input.maxRounds ?? 3,

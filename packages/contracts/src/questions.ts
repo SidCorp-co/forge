@@ -16,6 +16,8 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_OPTIONS_REQUIRED",
 	"QUESTION_RECOMMENDED_UNKNOWN",
 	"QUESTION_OPTION_IDS_DUPLICATE",
+	/** The same question, word for word, is still open on the same subject; the refusal names it (ISS-918). */
+	"QUESTION_ALREADY_OPEN",
 	"QUESTION_SHAPE_INVALID",
 	"QUESTION_ANSWER_WRONG_SHAPE",
 	"QUESTION_MESSAGE_REFUSED",
