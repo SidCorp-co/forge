@@ -1,0 +1,6 @@
+- Requirement and feedback rows read one state in one vocabulary — Needs you, Running, Queued, Overdue, Waiting on others, Done, with Dropped apart — and a feedback row carries a chip saying New, Planned, Running or Done (FB-583).
+- Where no person gate asks them, a requirement moves into delivery once an issue starts, to delivered once every criterion passes, and is accepted by rule; a re-pin no traced step needs is made by rule too. Nobody is asked to move, mark, check or re-pin it (ISS-616).
+- Outside strict, a closed issue's close is its builder's verdict on each traced criterion it did not move out, and issues closed before are backfilled once at boot; a requirement's list and record read one coverage.
+- Outside strict, a resolved feedback item whose carrier shipped is done, verified by ship with its version; nothing waits on its reporter.
+- A new requirement revision owes a re-plan only for a traced criterion whose wording changed; a title-only change re-ties its issue criteria.
+- The lessons pass drafts an "Add a check" issue only for a lesson about a product area's behaviour; a process lesson is routed to Forge's feedback once (ISS-1136).

@@ -22,6 +22,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
+import { feedback } from './schema-feedback.js';
 import { issues } from './schema-issues.js';
 import { projects } from './schema-projects.js';
 import { requirementAreas } from './schema-requirements.js';
@@ -65,6 +66,10 @@ export const lessons = pgTable(
     supersedesId: uuid('supersedes_id'),
     supersededById: uuid('superseded_by_id'),
     checkIssueId: uuid('check_issue_id').references(() => issues.id, { onDelete: 'set null' }),
+    /** The Forge feedback a process lesson was routed to, in place of a check issue (0638, ISS-1136). */
+    routedFeedbackId: uuid('routed_feedback_id').references(() => feedback.id, {
+      onDelete: 'set null',
+    }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
