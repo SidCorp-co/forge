@@ -1,0 +1,1 @@
+**Your attention page and home load faster when you follow many kinds of project.** Each project's linked feedback and release history is read once for all of them, not once a project.
