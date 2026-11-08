@@ -80,6 +80,12 @@ async function referencedAs(projectId: string, bindingId: string) {
     if ('binding' in env.deployment && env.deployment.binding === bindingId) {
       out.push({ path: `/environments/${name}/deployment/binding`, role: 'deploy' });
     }
+    // a further production site's binding is referenced too (ISS-1077)
+    (env.sites ?? []).forEach((site, i) => {
+      if ('binding' in site.deployment && site.deployment.binding === bindingId) {
+        out.push({ path: `/environments/${name}/sites/${i}/deployment/binding`, role: 'deploy' });
+      }
+    });
   }
   return out;
 }

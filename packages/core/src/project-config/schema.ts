@@ -125,31 +125,52 @@ const routePrefix = () =>
     .regex(/^\/[^\s?#]*$/, 'a path prefix starting with `/` (no query or fragment)');
 const routeList = () => unique(z.array(routePrefix()).min(1).max(20));
 
+const deploymentSchema = z.union([
+  z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
+  z.strictObject({
+    mode: z.literal('external'),
+    // the door outside Forge that deploys this environment (`forge-ops`, a CI pipeline): a release
+    // lands here by the agent's record of that deploy (ISS-851)
+    target: z
+      .string()
+      .min(1)
+      .max(120)
+      .regex(/^\S(?:.*\S)?$/, 'a name with no leading or trailing space')
+      .optional(),
+  }),
+]);
+
+const verificationSchema = z.strictObject({
+  runtime: z.array(runtimeProbeSchema).min(1).max(3),
+});
+
+/** How many sites production may name beside its own, so a production is at most ten sites. */
+export const PRODUCTION_SITES_MAX = 9;
+
+// ISS-1077 — a further site production serves (webmail.lighthuman.vn beside mail.sidcorp.co): its own
+// binding, trigger, origin and runtime verification. The environment's own deployment is its first
+// site, named by the environment (`promotion-path.ts:sitesOf`); every site holds a binding
+// (`rules.ts:checkSites`, PRODUCTION_SITE_UNBOUND).
+const siteSchema = z.strictObject({
+  name: slug(),
+  deployment: deploymentSchema,
+  url: httpsUrl().optional(),
+  verification: verificationSchema.optional(),
+});
+
 export const environmentSchema = z
   .strictObject({
     tier: z.enum(['production', 'staging', 'preview', 'dev']),
     deploysFrom: gitRef().optional(),
-    deployment: z.union([
-      z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
-      z.strictObject({
-        mode: z.literal('external'),
-        // the door outside Forge that deploys this environment (`forge-ops`, a CI pipeline): a release
-        // lands here by the agent's record of that deploy (ISS-851)
-        target: z
-          .string()
-          .min(1)
-          .max(120)
-          .regex(/^\S(?:.*\S)?$/, 'a name with no leading or trailing space')
-          .optional(),
-      }),
-    ]),
+    deployment: deploymentSchema,
     services: sized(z.record(slug(), httpsUrl()), { max: 10 }).optional(),
     testing: slug().optional(),
     url: httpsUrl().optional(),
     // which paths each declared service answers; the environment's `url` answers every other one.
     // A kept request probe is replayed on the origin that answers its path (ISS-470).
     routes: sized(z.record(slug(), routeList()), { max: 10 }).optional(),
-    verification: z.strictObject({ runtime: z.array(runtimeProbeSchema).min(1).max(3) }).optional(),
+    verification: verificationSchema.optional(),
+    sites: z.array(siteSchema).min(1).max(PRODUCTION_SITES_MAX).optional(),
   })
   .superRefine(routesFaults);
 
@@ -330,6 +351,7 @@ export const projectDocumentSchema = z.strictObject({
 
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 export type EnvironmentDeclaration = ProjectDocument['environments'][string];
+export type SiteDeclaration = NonNullable<EnvironmentDeclaration['sites']>[number];
 
 export const BINDING_ROLES = ['deploy', 'source', 'service'] as const;
 export type BindingRole = (typeof BINDING_ROLES)[number];

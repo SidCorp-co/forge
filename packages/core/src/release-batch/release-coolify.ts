@@ -139,7 +139,23 @@ export async function liveActionNeedsHumanConfirm(
     return true;
   }
   if (!reaches) return false;
-  return !(await productionDeploysOnLand(projectId));
+  return !(await deploysItselfOnLand(await readDeployMap(projectId), binding, () =>
+    productionDeploysOnLand(projectId),
+  ));
+}
+
+/**
+ * Whether a deploy reaching production goes out with no person's confirm (ISS-1077): a production
+ * site's own binding by its own trigger, so each site keeps its own rule; a binding that reaches
+ * production only by sharing its application, where every site of production deploys on land.
+ */
+async function deploysItselfOnLand(
+  map: DeployMap,
+  binding: { id: string },
+  everySiteOnLand: () => Promise<boolean>,
+): Promise<boolean> {
+  const site = map.productionBindings.has(binding.id) ? map.environments.get(binding.id) : undefined;
+  return site ? site.trigger === 'on-land' : await everySiteOnLand();
 }
 
 /** Whether this binding deploys the production environment's box. */
@@ -152,8 +168,8 @@ export async function bindingReachesProduction(
 }
 
 /**
- * Which of these bindings reach the production box — by being the production environment's
- * binding, or by deploying to an application that binding also deploys to.
+ * Which of these bindings reach the production box — by being a production site's binding, or by
+ * deploying to an application such a binding also deploys to.
  *
  * Built from the WHOLE binding set before any filter, because the shared resource is only
  * visible while the production binding is still in the list: drop it first and the one beside
@@ -166,11 +182,11 @@ function reachesProductionOf(
 ): (binding: { id: string; config: unknown }) => boolean {
   const live = new Set(
     pairs
-      .filter((p) => p.binding.id === map.productionBinding)
+      .filter((p) => map.productionBindings.has(p.binding.id))
       .flatMap((p) => resourceUuidsOf(p.binding.config)),
   );
   return (binding) =>
-    binding.id === map.productionBinding ||
+    map.productionBindings.has(binding.id) ||
     resourceUuidsOf(binding.config).some((u) => live.has(u));
 }
 
@@ -202,9 +218,8 @@ async function deployTargets(projectId: string, integrationId: string | null, al
   const map = await readDeployMap(projectId);
   const reachesLive = reachesProductionOf(map, allPairs);
   const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.name ?? null;
-  const production = map.productionBinding
-    ? (map.environments.get(map.productionBinding)?.name ?? null)
-    : null;
+  const [first] = map.productionBindings;
+  const production = first ? (map.environments.get(first)?.name ?? null) : null;
   const reachedBy = (binding: { id: string; config: unknown }): string[] => {
     const own = envOf(binding);
     const reached = production !== null && reachesLive(binding) ? [production] : [];
@@ -216,7 +231,7 @@ async function deployTargets(projectId: string, integrationId: string | null, al
     if (integrationId && p.binding.id !== integrationId) return false;
     return allowLive || !reachesLive(p.binding);
   });
-  return { pairs, reachesLive, envOf, reachedBy };
+  return { pairs, reachesLive, envOf, reachedBy, map };
 }
 
 /**
@@ -327,7 +342,7 @@ export async function tryDispatchCoolifyRelease(
     args.integrationId ?? null,
     args.allowLive ?? true,
   );
-  const { reachesLive, envOf, reachedBy } = targets;
+  const { reachesLive, envOf, reachedBy, map } = targets;
   if (targets.pairs.length === 0) {
     await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
     return noIntegration();
@@ -353,8 +368,14 @@ export async function tryDispatchCoolifyRelease(
     : [];
 
   const dispatched: string[] = [];
-  let pendingHumanConfirm = false;
-  const autoProd = await productionDeploysOnLand(projectId);
+  const parked: string[] = [];
+  // each production site parks for its own confirm unless its own trigger deploys on land (ISS-1077)
+  let everySiteOnLand: Promise<boolean> | null = null;
+  const onLand = (binding: { id: string }) =>
+    deploysItselfOnLand(map, binding, () => {
+      everySiteOnLand ??= productionDeploysOnLand(projectId);
+      return everySiteOnLand;
+    });
 
   // EVERY hold before the FIRST enqueue: opened beside its own enqueue, the holds registered so
   // far read as the whole set, and a target settling there closes the run and frees the
@@ -368,7 +389,11 @@ export async function tryDispatchCoolifyRelease(
   let witnessed = 0;
   try {
     for (const { binding, commit } of pairs) {
-      if (reachesLive(binding) && !autoProd && !(await prodConfirmed(binding.id, runId))) {
+      if (
+        reachesLive(binding) &&
+        !(await onLand(binding)) &&
+        !(await prodConfirmed(binding.id, runId))
+      ) {
         await markPendingHumanConfirm({
           runId,
           issueId,
@@ -376,7 +401,7 @@ export async function tryDispatchCoolifyRelease(
           // THIS binding's, never the fan-out's: a sibling's would refuse its own press.
           ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachedBy) } : {}),
         });
-        pendingHumanConfirm = true;
+        parked.push(binding.id);
         continue;
       }
 
@@ -427,16 +452,18 @@ export async function tryDispatchCoolifyRelease(
   }
   await freeLockIfNothingPending(lock, runId, dispatched, takenLocks);
 
-  if (dispatched.length > 0 || !pendingHumanConfirm) {
+  // a site parked beside one that went out still waits on its own confirm, and the answer says so (ISS-1077)
+  const waits = parked.length > 0 ? { waitsOn: confirmOwed(projectId, parked) } : {};
+  if (dispatched.length > 0 || parked.length === 0) {
     return {
       dispatched: dispatched.length > 0,
-      pendingHumanConfirm,
+      pendingHumanConfirm: parked.length > 0,
       integrationIds: dispatched,
       ...keyed(once),
+      ...waits,
     };
   }
-  const parked = pairs.filter((p) => reachesLive(p.binding)).map((p) => p.binding.id);
-  return { ...awaitingConfirm(parked), ...keyed(once), waitsOn: confirmOwed(projectId, parked) };
+  return { ...awaitingConfirm(parked), ...keyed(once), ...waits };
 }
 
 /** Who owes a parked production deploy its press, and that the run waits open for it (ISS-1096). */

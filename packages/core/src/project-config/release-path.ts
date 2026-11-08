@@ -7,17 +7,22 @@ import {
   type NamedEnvironment,
   type Promotion,
   productionOf,
+  productionSitesOf,
   promotionSourcesOf,
   releaseLandingOf,
+  sitesOf,
 } from './promotion-path.js';
 import type { DeploymentTrigger, ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
 
 export {
+  type EnvironmentSite,
   environmentsOf,
   type NamedEnvironment,
   type Promotion,
   productionOf,
+  productionSitesOf,
+  sitesOf,
 } from './promotion-path.js';
 
 /** Where a change goes once it lands, read from the project document and nothing else. */
@@ -102,23 +107,37 @@ export function describeCrossings(path: ReleasePath): string {
   return `${path.defaultBranch} ${path.crossing.via} → ${path.crossing.to}`;
 }
 
-/** The production environment's binding, and the environment each deploy binding serves. */
+/** The production sites' bindings, and the environment and site each deploy binding serves. */
 export interface DeployMap {
-  productionBinding: string | null;
+  /** Every production site's binding, the environment's own first (ISS-1077); empty where none is bound. */
+  productionBindings: ReadonlySet<string>;
   /** Unset for a binding no environment of the project document names. */
-  environments: ReadonlyMap<string, { name: string; trigger: DeploymentTrigger }>;
+  environments: ReadonlyMap<string, { name: string; site: string; trigger: DeploymentTrigger }>;
+}
+
+/** The deploy map one document declares: every site of every environment, by its binding. */
+export function readDeployMapOf(document: ProjectDocument): DeployMap {
+  const environments = new Map<
+    string,
+    { name: string; site: string; trigger: DeploymentTrigger }
+  >();
+  for (const env of environmentsOf(document)) {
+    for (const site of sitesOf(env)) {
+      if (site.binding !== null && site.trigger !== null) {
+        environments.set(site.binding, { name: env.name, site: site.name, trigger: site.trigger });
+      }
+    }
+  }
+  const productionBindings = new Set(
+    productionSitesOf(document).flatMap((s) => (s.binding === null ? [] : [s.binding])),
+  );
+  return { productionBindings, environments };
 }
 
 export async function readDeployMap(projectId: string): Promise<DeployMap> {
   const held = await readProjectDocument(projectId);
-  const environments = new Map<string, { name: string; trigger: DeploymentTrigger }>();
-  if (!held) return { productionBinding: null, environments };
-  for (const env of environmentsOf(held.document)) {
-    const d = env.declaration.deployment;
-    if ('binding' in d) environments.set(d.binding, { name: env.name, trigger: d.trigger });
-  }
-  const production = productionOf(held.document);
-  return { productionBinding: production ? bindingOf(production) : null, environments };
+  if (!held) return { productionBindings: new Set(), environments: new Map() };
+  return readDeployMapOf(held.document);
 }
 
 /** `release.approval.required` of the project document; a project with no document requires none. */
@@ -145,14 +164,15 @@ export function releaseModeOf(document: ProjectDocument | undefined): ReleaseMod
 }
 
 /**
- * Whether production deploys on land (`environments.<production>.deployment.trigger: on-land`): a
- * change reaches production when it lands on the branch, so what holds it from production holds it
- * from landing. A project with no document, no production environment, or a production deployed
- * another way (`on-request`, `provider`, external) does not: it promotes, and a person cuts the release.
+ * Whether production deploys on land (`environments.<production>.deployment.trigger: on-land`, and
+ * the same on each of its `sites`, ISS-1077): a change reaches production when it lands on the
+ * branch, so what holds it from production holds it from landing. A project with no document, no
+ * production environment, or a production any site of which is deployed another way (`on-request`,
+ * `provider`, external) does not: it promotes, and a person cuts the release.
  */
 export function deploysOnLandOf(document: ProjectDocument | undefined): boolean {
-  const deployment = document ? productionOf(document)?.declaration.deployment : undefined;
-  return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-land';
+  const sites = document ? productionSitesOf(document) : [];
+  return sites.length > 0 && sites.every((s) => s.trigger === 'on-land');
 }
 
 export async function readReleaseMode(projectId: string): Promise<ReleaseMode> {

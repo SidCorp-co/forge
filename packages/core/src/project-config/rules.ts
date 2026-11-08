@@ -12,6 +12,7 @@ import { MAX_PERFORMED_CROSSINGS, releaseLandingOf } from './promotion-path.js';
 import {
   type BindingRole,
   type DeploymentTrigger,
+  type EnvironmentDeclaration,
   GITLESS_PROVIDERS,
   type ProjectDocument,
 } from './schema.js';
@@ -222,25 +223,84 @@ function checkGitlessBindings(doc: ProjectDocument, ctx: ProjectConfigContext): 
   if (doc.source.type !== 'git') return [];
   const out: ConfigRefusal[] = [];
   for (const [name, env] of Object.entries(doc.environments)) {
-    if (!('binding' in env.deployment)) continue;
-    const facts = ctx.bindings.get(env.deployment.binding);
-    if (!facts || !GITLESS_PROVIDERS.includes(facts.provider)) continue;
+    for (const { deployment, at } of deploymentsOf(name, env)) {
+      if (!('binding' in deployment)) continue;
+      const facts = ctx.bindings.get(deployment.binding);
+      if (!facts || !GITLESS_PROVIDERS.includes(facts.provider)) continue;
+      out.push({
+        code: 'GITLESS_BINDING_ON_GIT_SOURCE',
+        path: pointer(...at, 'binding'),
+        detail: `binding ${deployment.binding} is ${withArticle(facts.provider)} binding, whose work lives on ${facts.provider} and in no repository, and this project's source.type is "git"; declare source {"type": "storefront", "storefront": {"provider": "${facts.provider}", ...}} with workspace.isolation "remote-draft".`,
+      });
+    }
+  }
+  return out;
+}
+
+type Deployment = EnvironmentDeclaration['deployment'];
+
+/** Each deployment an environment declares, at its path: its own, then each site's (ISS-1077). */
+function deploymentsOf(
+  name: string,
+  env: EnvironmentDeclaration,
+): { deployment: Deployment; at: (string | number)[]; site: string }[] {
+  return [
+    { deployment: env.deployment, at: ['environments', name, 'deployment'], site: name },
+    ...(env.sites ?? []).map((s, i) => ({
+      deployment: s.deployment,
+      at: ['environments', name, 'sites', i, 'deployment'],
+      site: s.name,
+    })),
+  ];
+}
+
+/**
+ * A production of several sites (ISS-1077): only production names sites, each under its own name,
+ * and every site, the environment's own included, deploys through a binding of its own; a binding
+ * two sites name is BINDING_IN_USE (`checkEnvironments`).
+ */
+function checkSites(name: string, env: EnvironmentDeclaration): ConfigRefusal[] {
+  const sites = env.sites;
+  if (sites === undefined) return [];
+  if (env.tier !== 'production') {
+    return [
+      {
+        code: 'SITES_NEED_PRODUCTION',
+        path: pointer('environments', name, 'sites'),
+        detail: `environment "${name}" has tier "${env.tier}", and only the production environment names further sites; declare another environment for it instead.`,
+      },
+    ];
+  }
+  const out: ConfigRefusal[] = [];
+  const seen = new Set([name]);
+  sites.forEach((site, i) => {
+    if (seen.has(site.name)) {
+      out.push({
+        code: 'PRODUCTION_SITE_NAME_TAKEN',
+        path: pointer('environments', name, 'sites', i, 'name'),
+        detail: `site "${site.name}" is already a site of environment "${name}"${site.name === name ? ' (its own deployment is the site named by the environment)' : ''}; each site has a name of its own.`,
+      });
+    }
+    seen.add(site.name);
+  });
+  for (const { deployment, at, site } of deploymentsOf(name, env)) {
+    if ('binding' in deployment) continue;
     out.push({
-      code: 'GITLESS_BINDING_ON_GIT_SOURCE',
-      path: pointer('environments', name, 'deployment', 'binding'),
-      detail: `binding ${env.deployment.binding} is ${withArticle(facts.provider)} binding, whose work lives on ${facts.provider} and in no repository, and this project's source.type is "git"; declare source {"type": "storefront", "storefront": {"provider": "${facts.provider}", ...}} with workspace.isolation "remote-draft".`,
+      code: 'PRODUCTION_SITE_UNBOUND',
+      path: pointer(...at),
+      detail: `site "${site}" of environment "${name}" is deployed outside Forge, and a production of several sites deploys each through a binding of its own, so every release can deploy, judge and record it; give it {"binding": "<uuid>", "trigger": "on-request"}.`,
     });
   }
   return out;
 }
 
 function checkTrigger(
-  environment: string,
+  at: (string | number)[],
   trigger: DeploymentTrigger,
   bindingId: string,
   facts: BindingFacts,
 ): ConfigRefusal[] {
-  const path = pointer('environments', environment, 'deployment', 'trigger');
+  const path = pointer(...at, 'trigger');
   if (trigger === 'provider') {
     if (facts.readsHistory) return [];
     return [
@@ -321,24 +381,27 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
         detail: `deploysFrom names a git branch, and this project's source.type is "${doc.source.type}"; remove it.`,
       });
     }
-    if ('binding' in env.deployment) {
-      const id = env.deployment.binding;
-      const path = pointer('environments', name, 'deployment', 'binding');
+    out.push(...checkSites(name, env));
+    for (const { deployment, at, site } of deploymentsOf(name, env)) {
+      if (!('binding' in deployment)) continue;
+      const id = deployment.binding;
+      const path = pointer(...at, 'binding');
       const bound = checkBinding(id, 'deploy', path, ctx);
       out.push(...bound);
       const facts = ctx.bindings.get(id);
       if (bound.length === 0 && facts) {
-        out.push(...checkTrigger(name, env.deployment.trigger, id, facts));
+        out.push(...checkTrigger(at, deployment.trigger, id, facts));
       }
       const first = holder.get(id);
+      const here = site === name ? `environment "${name}"` : `site "${site}" of "${name}"`;
       if (first !== undefined) {
         out.push({
           code: 'BINDING_IN_USE',
           path,
-          detail: `binding ${id} already deploys environment "${first}"; one deploy binding serves one environment.`,
+          detail: `binding ${id} already deploys ${first}; one deploy binding serves one environment or site.`,
         });
       } else {
-        holder.set(id, name);
+        holder.set(id, here);
       }
     }
     if (env.testing !== undefined && !ctx.testingProfileIds.has(env.testing)) {

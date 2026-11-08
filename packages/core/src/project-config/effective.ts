@@ -1,4 +1,5 @@
 import { pointer } from './documents.js';
+import { environmentsOf, sitesOf } from './promotion-path.js';
 import type { ProjectDocument } from './schema.js';
 import { listTestingProfiles, readPolicy, readProjectConfig } from './service.js';
 import { drizzleConfigStore } from './store.js';
@@ -37,8 +38,8 @@ const POLICY_KEYS = ['qa', 'intake', 'permissions', 'states'] as const;
 function bindingIdsOf(doc: ProjectDocument): Set<string> {
   const ids = new Set<string>();
   if (doc.source.type === 'storefront') ids.add(doc.source.storefront.binding);
-  for (const env of Object.values(doc.environments)) {
-    if ('binding' in env.deployment) ids.add(env.deployment.binding);
+  for (const env of environmentsOf(doc)) {
+    for (const site of sitesOf(env)) if (site.binding !== null) ids.add(site.binding);
   }
   return ids;
 }

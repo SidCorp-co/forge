@@ -17,7 +17,7 @@ import {
   setCurrentStep,
   writeRunMetadata,
 } from '../pipeline/index.js';
-import { type ProjectDocument, productionOf } from '../project-config/index.js';
+import { type ProjectDocument, productionSitesOf } from '../project-config/index.js';
 import { type ResumeOutcome, resumeConfirmedRelease } from './confirm-resume.js';
 import type { ReleaseChannel } from './plan.js';
 import type { DeployLockIntent } from './release-coolify-hold.js';
@@ -286,15 +286,15 @@ async function announceConfirmed(runId: string, bindingId: string): Promise<stri
 }
 
 /**
- * Whether a release's production deploy will park for a person's confirm: production is bound to a
- * Coolify binding the release run deploys, on request rather than on land or by the provider itself
- * (`release-coolify.ts:tryDispatchCoolifyRelease`), so the approval can say so (ISS-1096).
+ * Whether a release's production deploy will park for a person's confirm: a production site is bound
+ * to a Coolify binding the release run deploys, on request rather than on land or by the provider
+ * itself (`release-coolify.ts:tryDispatchCoolifyRelease`), so the approval can say so (ISS-1096). Each
+ * site keeps its own trigger (ISS-1077): one site deployed on request is enough.
  */
 export function productionAsksConfirm(
   channels: readonly Pick<ReleaseChannel, 'provider'>[],
   document: ProjectDocument | undefined,
 ): boolean {
   if (channels[0]?.provider !== 'coolify' || !document) return false;
-  const deployment = productionOf(document)?.declaration.deployment;
-  return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-request';
+  return productionSitesOf(document).some((s) => s.trigger === 'on-request');
 }

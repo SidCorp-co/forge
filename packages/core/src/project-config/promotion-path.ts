@@ -1,4 +1,4 @@
-import type { EnvironmentDeclaration, ProjectDocument } from './schema.js';
+import type { DeploymentTrigger, EnvironmentDeclaration, ProjectDocument } from './schema.js';
 
 export type Promotion = ProjectDocument['promotions'][number];
 
@@ -42,6 +42,54 @@ export function environmentsOf(document: ProjectDocument): NamedEnvironment[] {
 
 export function productionOf(document: ProjectDocument): NamedEnvironment | null {
   return environmentsOf(document).find((e) => e.declaration.tier === 'production') ?? null;
+}
+
+/**
+ * One place an environment serves (ISS-1077): its own deployment is its first site, named by the
+ * environment; each of its `sites` is another, with its own binding, trigger, origin and runtime
+ * verification. A release deploys, judges and records every one.
+ */
+export interface EnvironmentSite {
+  name: string;
+  /** The environment the site belongs to. */
+  environment: string;
+  deployment: EnvironmentDeclaration['deployment'];
+  /** The deploy binding; null where the site is deployed outside Forge. */
+  binding: string | null;
+  trigger: DeploymentTrigger | null;
+  url: string | undefined;
+  verification: EnvironmentDeclaration['verification'];
+}
+
+function siteOf(
+  environment: string,
+  name: string,
+  decl: Pick<EnvironmentDeclaration, 'deployment' | 'url' | 'verification'>,
+): EnvironmentSite {
+  const { deployment } = decl;
+  return {
+    name,
+    environment,
+    deployment,
+    binding: 'binding' in deployment ? deployment.binding : null,
+    trigger: 'trigger' in deployment ? deployment.trigger : null,
+    url: decl.url,
+    verification: decl.verification,
+  };
+}
+
+/** Every site of an environment, its own deployment first; a single-binding environment is one site. */
+export function sitesOf(env: NamedEnvironment): EnvironmentSite[] {
+  return [
+    siteOf(env.name, env.name, env.declaration),
+    ...(env.declaration.sites ?? []).map((s) => siteOf(env.name, s.name, s)),
+  ];
+}
+
+/** The production environment's sites, or none where it declares no production. */
+export function productionSitesOf(document: ProjectDocument): EnvironmentSite[] {
+  const production = productionOf(document);
+  return production ? sitesOf(production) : [];
 }
 
 export function defaultBranchOf(document: ProjectDocument | null | undefined): string | null {
