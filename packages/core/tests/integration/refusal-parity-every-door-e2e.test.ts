@@ -34,15 +34,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 
-type Who =
-  | 'owner'
-  | 'ownerApi'
-  | 'web'
-  | 'api'
-  | 'chat'
-  | 'agent'
-  | 'memberPerson'
-  | 'memberAgent';
+type Who = 'owner' | 'ownerApi' | 'web' | 'api' | 'chat' | 'agent' | 'memberPerson' | 'memberAgent';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let tokens: Record<Who, string>;
 let projectId = '';
@@ -246,7 +238,12 @@ describe('REQ-72 BC-5: a release naming its schema refuses answers alike at the 
   it('refuses a one-sentence summary with the same code and details at both doors', async () => {
     const naming = { name: 'Judge probe', summary: 'judge k96 test, refused' };
     const version = '0.0.0-judge-k96';
-    const rest = await say('ownerApi', 'PUT', `/api/projects/${projectId}/releases/${version}/naming`, naming);
+    const rest = await say(
+      'ownerApi',
+      'PUT',
+      `/api/projects/${projectId}/releases/${version}/naming`,
+      naming,
+    );
     expect(rest.status, JSON.stringify(rest.json).slice(0, 300)).toBe(400);
     const mcp = await tool('ownerApi', { action: 'name', version, ...naming }, 'forge_releases');
     expect(mcp.isError).toBe(true);
@@ -260,6 +257,8 @@ describe('REQ-72 BC-5: a release naming its schema refuses answers alike at the 
     expect(got.map(({ code, path }) => ({ code, path }))).toEqual(
       expected.map(({ code, path }) => ({ code, path })),
     );
-    got.forEach((r, n) => expect(r.detail.startsWith(expected[n]?.detail ?? '?')).toBe(true));
+    for (const [n, r] of got.entries()) {
+      expect(r.detail.startsWith(expected[n]?.detail ?? '?'), r.detail).toBe(true);
+    }
   });
 });
