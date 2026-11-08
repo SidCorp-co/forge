@@ -11,7 +11,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { createTestProject, createTestUser } from './factories.js';
 import { wireLive, wireStorefront } from './live-wiring.js';
-import { seedProductionDeployTrigger } from './release-world.js';
+import { seedProductionDeployTrigger, seedProjectDocument } from './release-world.js';
 import { type Scale, seedAtScale } from './scale-world.js';
 
 const SMALL: Scale = {
@@ -48,6 +48,10 @@ interface Kind {
   storefront?: boolean;
   /** Feedback pointing at a workflow, a release and a requirement revision. */
   linkedFeedback?: boolean;
+  /** No production; work is delivered through change requests a person approves. */
+  changeRequests?: boolean;
+  /** No repository: work lands outside git, each closed issue's merge naming its artifacts. */
+  outsideGit?: boolean;
 }
 
 /** forge-dev's mix, forge first. */
@@ -55,10 +59,10 @@ export const LIVE_MIX: readonly Kind[] = [
   { scale: FORGE, deploys: 'coolify', onLand: true, linkedFeedback: true },
   { scale: SMALL, deploys: 'offline', storefront: true },
   { scale: SMALL, deploys: 'coolify', storefront: true, onLand: true },
-  { scale: { ...SMALL, batches: 3 } },
+  { scale: { ...SMALL, batches: 3 }, changeRequests: true },
   { scale: TINY, deploys: 'offline' },
   { scale: null },
-  { scale: { ...SMALL, live: false, states: false } },
+  { scale: { ...SMALL, live: false, states: false }, outsideGit: true },
   { scale: SMALL, deploys: 'coolify', onLand: true, linkedFeedback: true },
   { scale: MID, deploys: 'offline', linkedFeedback: true },
   { scale: { ...SMALL, batches: 2 } },
@@ -94,6 +98,12 @@ export async function seedLiveMix(input: {
         kind.deploys === 'coolify' ? input.coolify : undefined,
       );
     if (kind.onLand) await seedProductionDeployTrigger(id, ownerId, 'on-land');
+    if (kind.changeRequests)
+      await seedProjectDocument(id, ownerId, {
+        environments: {},
+        extra: { release: { approval: { required: true }, changeRequests: true } },
+      });
+    if (kind.outsideGit) await landOutsideGit(id, ownerId);
     if (kind.storefront) await wireStorefront(id, ownerId, input.autoflow);
     if (kind.linkedFeedback) await linkFeedback(id);
     // an agent filed most of it: the person owns one issue in seven and one item in five
@@ -131,4 +141,13 @@ async function linkFeedback(projectId: string): Promise<void> {
                                      AND s.kind = 'breakdown' LIMIT 1)
      WHERE f.project_id = ${projectId} AND f.fb_seq = 7
        AND EXISTS (SELECT 1 FROM suggestions s WHERE s.project_id = f.project_id AND s.kind = 'breakdown')`);
+}
+
+/** A project with no repository whose closed issues landed outside git, each naming what changed. */
+async function landOutsideGit(projectId: string, ownerId: string): Promise<void> {
+  await seedProjectDocument(projectId, ownerId, { environments: {}, source: { type: 'none' } });
+  await db.execute(sql`
+    UPDATE issues SET merged_commit_sha = NULL,
+           merged_artifacts = jsonb_build_array(jsonb_build_object('surface', 'config', 'ref', 'setting ' || iss_seq, 'change', 'changed'))
+     WHERE project_id = ${projectId} AND merged_at IS NOT NULL`);
 }
