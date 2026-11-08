@@ -226,63 +226,6 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
     expect(JSON.stringify(wrong.body)).not.toContain(USER);
   });
 
-  it('a secret describes the browser session as storage, each pointer probed, and kept (ISS-1145)', async () => {
-    await ok(patch('dev', 'judge', { set: GRAPHQL_SET }));
-    const res = await patch('dev', 'judge', { set: EPOD_STORAGE_SET });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.signIn).toEqual([
-      expect.objectContaining({ profile: 'dev', actor: 'admin', answer: 'signs-in', at: GRAPHQL }),
-    ]);
-    expect(await stored('secret://dev/judge')).toEqual({
-      ...STORED,
-      ...GRAPHQL_SET,
-      ...EPOD_STORAGE_SET,
-    });
-
-    // a pointer the answer does not hold is refused naming the key and the pointer, never a value
-    const lacking = await patch('dev', 'judge', {
-      set: { storage: { ...EPOD_STORAGE_SET.storage, organization_id: '/data/login/org/id' } },
-    });
-    expect(lacking.status, JSON.stringify(lacking.body)).toBe(422);
-    expect(refusalsOf(lacking)).toEqual([
-      expect.objectContaining({ code: 'SECRET_DOES_NOT_SIGN_IN' }),
-    ]);
-    expect(refusalsOf(lacking)[0]?.detail).toContain(
-      'with nothing at `/data/login/org/id` for the storage key `organization_id`',
-    );
-    for (const v of [USER, PASS, EPOD_ANSWER.access_token, EPOD_ANSWER.organization.id]) {
-      expect(JSON.stringify(lacking.body)).not.toContain(v);
-    }
-    expect((await stored('secret://dev/judge')) as object).toMatchObject(EPOD_STORAGE_SET);
-
-    // a selection of the token alone answers no user: the same storage is refused at the probe
-    const tokenOnly = await patch('dev', 'judge', { set: { loginBody: GRAPHQL_SET.loginBody } });
-    expect(refusalsOf(tokenOnly)[0]?.detail).toContain(
-      'with nothing at `/data/login/expires_at` for the storage key `auth_token_expires_at`',
-    );
-  });
-
-  it('storageKey stays shorthand for the token under one key, and both naming one key is refused (ISS-1145)', async () => {
-    await ok(put('dev', 'judge', JSON.stringify({ ...STORED, ...GRAPHQL_SET })));
-    const body = await ok(patch('dev', 'judge', { set: { storageKey: 'auth_token' } }));
-    expect(body.signIn).toEqual([expect.objectContaining({ answer: 'signs-in' })]);
-    const both = await patch('dev', 'judge', {
-      set: { storage: { auth_token: '/data/login/access_token' } },
-    });
-    expect(both.status, JSON.stringify(both.body)).toBe(422);
-    expect(refusalsOf(both)).toEqual([
-      expect.objectContaining({
-        code: 'SECRET_STORAGE_INVALID',
-        detail: expect.stringContaining('`storageKey` and `storage` both name `auth_token`'),
-      }),
-    ]);
-    expect(await stored('secret://dev/judge')).toEqual({
-      ...STORED,
-      ...GRAPHQL_SET,
-      storageKey: 'auth_token',
-    });
-  });
-
   it('a merged value the environment refuses is refused by name, and the value held before is kept', async () => {
     const res = await patch('dev', 'judge', { set: { loginRoute: `${ORIGIN}/api/auth/local` } });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -406,5 +349,64 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
       for (const line of said) expect(line).not.toContain(value);
     }
     for (const a of answers) expect(JSON.stringify(a.body)).not.toMatch(/length|chars/i);
+  });
+});
+
+describe('a secret describes the browser session it hands a judge (ISS-1145)', () => {
+  it('a secret describes the browser session as storage, each pointer probed, and kept (ISS-1145)', async () => {
+    await ok(patch('dev', 'judge', { set: GRAPHQL_SET }));
+    const res = await patch('dev', 'judge', { set: EPOD_STORAGE_SET });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.signIn).toEqual([
+      expect.objectContaining({ profile: 'dev', actor: 'admin', answer: 'signs-in', at: GRAPHQL }),
+    ]);
+    expect(await stored('secret://dev/judge')).toEqual({
+      ...STORED,
+      ...GRAPHQL_SET,
+      ...EPOD_STORAGE_SET,
+    });
+
+    // a pointer the answer does not hold is refused naming the key and the pointer, never a value
+    const lacking = await patch('dev', 'judge', {
+      set: { storage: { ...EPOD_STORAGE_SET.storage, organization_id: '/data/login/org/id' } },
+    });
+    expect(lacking.status, JSON.stringify(lacking.body)).toBe(422);
+    expect(refusalsOf(lacking)).toEqual([
+      expect.objectContaining({ code: 'SECRET_DOES_NOT_SIGN_IN' }),
+    ]);
+    expect(refusalsOf(lacking)[0]?.detail).toContain(
+      'with nothing at `/data/login/org/id` for the storage key `organization_id`',
+    );
+    for (const v of [USER, PASS, EPOD_ANSWER.access_token, EPOD_ANSWER.organization.id]) {
+      expect(JSON.stringify(lacking.body)).not.toContain(v);
+    }
+    expect((await stored('secret://dev/judge')) as object).toMatchObject(EPOD_STORAGE_SET);
+
+    // a selection of the token alone answers no user: the same storage is refused at the probe
+    const tokenOnly = await patch('dev', 'judge', { set: { loginBody: GRAPHQL_SET.loginBody } });
+    expect(refusalsOf(tokenOnly)[0]?.detail).toContain(
+      'with nothing at `/data/login/expires_at` for the storage key `auth_token_expires_at`',
+    );
+  });
+
+  it('storageKey stays shorthand for the token under one key, and both naming one key is refused (ISS-1145)', async () => {
+    await ok(put('dev', 'judge', JSON.stringify({ ...STORED, ...GRAPHQL_SET })));
+    const body = await ok(patch('dev', 'judge', { set: { storageKey: 'auth_token' } }));
+    expect(body.signIn).toEqual([expect.objectContaining({ answer: 'signs-in' })]);
+    const both = await patch('dev', 'judge', {
+      set: { storage: { auth_token: '/data/login/access_token' } },
+    });
+    expect(both.status, JSON.stringify(both.body)).toBe(422);
+    expect(refusalsOf(both)).toEqual([
+      expect.objectContaining({
+        code: 'SECRET_STORAGE_INVALID',
+        detail: expect.stringContaining('`storageKey` and `storage` both name `auth_token`'),
+      }),
+    ]);
+    expect(await stored('secret://dev/judge')).toEqual({
+      ...STORED,
+      ...GRAPHQL_SET,
+      storageKey: 'auth_token',
+    });
   });
 });
