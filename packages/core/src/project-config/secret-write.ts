@@ -210,7 +210,7 @@ export const MERGEABLE_SECRET_KEYS = ['loginRoute', ...SIGN_IN_KEYS] as const;
 /** Each mergeable key's check and the code its refusal carries. */
 const MERGE_CHECKS: Record<
   (typeof MERGEABLE_SECRET_KEYS)[number],
-  { code: string; why: (v: unknown) => string | null }
+  { code: ApiRefusal['code']; why: (v: unknown) => string | null }
 > = {
   loginRoute: {
     code: 'SECRET_LOGIN_ROUTE_INVALID',
