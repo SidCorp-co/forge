@@ -56,7 +56,7 @@ export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved under its approval checklist before any issue that builds it is dispatched.',
-  version: 7,
+  version: 8,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -105,7 +105,8 @@ names the workflow it builds is not dispatched while that design is not approved
    one. Any other park asked in prose alone stays open after the approval until a person answers it too. Writing a new revision while one is still waiting
    voids the questions on the old one and asks each issue again of the new one. A return no live issue carries is the
    master's own work: core counts it every time the master's box sweeps, and names it on the pass until
-   the next revision is proposed. A returned design is revised by writing it again, which
+   the next revision is proposed. So is a proposal where no person decides designs (not strict, \`approvals.designs\`
+   off): its read waits on the master, and the pass names it until it is approved or returned. A returned design is revised by writing it again, which
    proposes the revision; there is nothing to re-send.
 4. **Link the build.** File the issues that build it, then link each one (\`POST …/workflows/:workflow/builds\`). Until the design is
    approved those issues are out of the admissible list, and a run or job claimed for one is refused
