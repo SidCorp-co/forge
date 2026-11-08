@@ -243,13 +243,14 @@ function carriersLine(carriers: { key: string }[]): string {
   return ` ${keys.length} draft issue${plural(keys.length, '', 's')} ${plural(keys.length, 'carries', 'carry')} triaged feedback and ${plural(keys.length, 'waits', 'wait')} to be taken on (${keys.join(', ')}): nothing takes a draft on by itself, so admit each to open (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"open","reason":"<why>"}'\`) and work it, or drop it saying why; ${method('issue-flow')} (Take it) is how.`;
 }
 
-/** Draft requirements the intake assistant could not draft (ISS-772): the master drafts each, or drops it. */
+/** Member messages a room could not take in the last day, per room and cause (ISS-1046). */
 function unhandledRoomLine(unhandled: Owed['unhandledRoomMessages']): string {
   if (!unhandled || unhandled.length === 0) return '';
   const causes = unhandled.map((u) => `${u.count} in room ${u.rid}, ${u.code}`);
   return ` A room of this project could not take member messages in the last day (${causes.join('; ')}): nothing answered them. Read each room's refused message_unhandled actions (\`forge-runner api projects/<projectId>/support/rooms/<roomId>/actions\`), fix or route the cause, and answer the people they came from in their threads.`;
 }
 
+/** Draft requirements the intake assistant could not draft (ISS-772): the master drafts each, or drops it. */
 function intakeFailuresLine(failed: Owed['intakeFailures']): string {
   if (failed.length === 0) return '';
   const keys = failed.map((f) => `${f.key} ${f.code}`);
