@@ -1,1 +1,0 @@
-**Requirement and feedback rows read one state in one vocabulary:** Needs you, Running, Queued, Overdue, Waiting on others, Done, with Dropped apart; a feedback row's chip says New, Planned, Running or Done (FB-583).

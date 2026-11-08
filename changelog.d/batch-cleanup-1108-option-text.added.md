@@ -1,1 +1,0 @@
-**A question's option can ask to be answered in words.** Chosen with text it records both; without it, `QUESTION_OPTION_TEXT_REQUIRED`; text on another option, `QUESTION_OPTION_TAKES_NO_TEXT`. The answer panel writes the words under the option (ISS-826).

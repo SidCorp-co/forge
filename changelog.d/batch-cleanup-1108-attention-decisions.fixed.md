@@ -1,1 +1,0 @@
-**Attention lists each decision as its question and buttons, what it changes on its own page.** Operator overview folds OK alerts into one row, the docs landing loses its paragraph, and twenty-nine more screens hold a word budget (ISS-1137).

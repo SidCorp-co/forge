@@ -1,1 +1,0 @@
-**`source.merged` leaves the outbox.** The GitHub, GitLab and read-projection adapters stop emitting it, migration 0642 retires its rows and type, and an outbox event type with no consumer is refused (ISS-822).

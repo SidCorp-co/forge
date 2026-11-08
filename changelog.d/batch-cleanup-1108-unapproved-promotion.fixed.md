@@ -1,1 +1,0 @@
-**A promotion merged on the host while its release's approval is undecided no longer closes its roster.** The approval rule refuses the record where enforced; elsewhere it is recorded as taken unapproved (ISS-819).

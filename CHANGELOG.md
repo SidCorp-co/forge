@@ -9,6 +9,90 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.604] - 2026-11-08
+
+One state vocabulary for requirement and feedback lists, room bots act with the asker's grants
+
+### Added
+
+- **A direct-mcp integration's credential hand-off is declared egress.** Its surface is `integration.credential`, and a declaration naming none is refused at boot (ISS-825).
+- **The requirement revision editor writes each criterion's short title** (ISS-1137).
+- **A production site deployed outside Forge is declared with its own runtime verification.** One without is refused `PRODUCTION_SITE_UNVERIFIED` (was `PRODUCTION_SITE_UNBOUND`); a release records each site by what it serves, refused `RELEASE_SITE_NOT_SHIPPED` if one is left out (ISS-1139).
+- **A question's option can ask to be answered in words.** Chosen with text it records both; without it, `QUESTION_OPTION_TEXT_REQUIRED`; text on another option, `QUESTION_OPTION_TAKES_NO_TEXT`. The answer panel writes the words under the option (ISS-826).
+- **A room action names the session and turn that took it.** `GET /api/projects/:id/support/rooms/:roomId/turns/:turnId` reads that turn for the project's people: each tool called, its answer and what the session said, scrubbed (ISS-1029).
+- **The owner can waive a support switch's duties by their word.** The waiver is recorded, and only the organization's owner can give it (ISS-945).
+- **An MCP client can talk to the Forge bot in a project thread.** `bot.open`, `bot.send` and `bot.read` reach the chat assistant as you; a long turn answers processing with a handle, and a retried send starts no second turn.
+- **A room agent's silence is recorded with its reason.** support.silent posts nothing and keeps why on the room and its thread, and a reply keeps its one-line why, so a wrong silence can be found.
+- **A channel agent reads how one issue is going.** Asking the support door for one issue by its key now carries its latest notes and step handoffs, bounded and scrubbed as every room read is.
+
+### Changed
+
+- **The runner's Rust toolchain is pinned in rust-toolchain.toml (1.99.1).** CI's runner jobs and runner-release.yml install it, and pnpm verify's runner gates refuse by name to run under any other rustc (ISS-965).
+
+### Fixed
+
+- **Attention lists each decision as its question and buttons, what it changes on its own page.** Operator overview folds OK alerts into one row, the docs landing loses its paragraph, and twenty-nine more screens hold a word budget (ISS-1137).
+- **A turn that put a subagent or shell in the background is no longer done at its first result.** The runner holds it until every backgrounded task reported and the answering turn ended (ISS-764 b).
+- **A step opened beside a design's canvas folds the facts rail and minimap,** so neither covers a card and the canvas keeps its width (ISS-806).
+- **A feedback reporter answers the clarification it is shown:** an agent reporter with its own token, a person in one click on the item page with the recommended answer filled in; open questions show oldest first (ISS-695).
+- **Outside strict, a closed issue's close is its builder's verdict on each traced criterion it kept.** Issues closed before are backfilled once at boot, and a requirement's list and record read one coverage.
+- **The Coolify env door reads an empty variable as empty and names the deploy binding ids.** A token that cannot write is refused `COOLIFY_TOKEN_CANNOT_WRITE` naming its connection; a connection PATCH refuses a key it does not take (ISS-938).
+- **A requirement held by a dated decision reads waiting until that date.** It names the decision and is never overdue (ISS-1078).
+- **Landed work a standing decision holds at in progress is no longer named owed its move on every pass,** until the decision ends or the work lands again (ISS-996).
+- **The Delivery overview draws an issue a live run works as Moving, never Stuck,** and one whose run is held only under Holds; the CI and post-merge signals it never answered are gone (ISS-684).
+- **A direct message to a room's session from the project's owner or an admin runs as the room's turn,** with its grants, and an act it names runs as the sender; anyone else is refused by name (ISS-950).
+- **A feedback item whose carrier was dropped owes its re-triage on the master's pass,** to whoever triages there; the daily review names the binding key a project's thread is recorded under (ISS-1086).
+- **A feedback row's ETA reads as a date,** or "Shipped vX" once its carrier shipped.
+- **Outside strict, a resolved feedback item whose carrier shipped is done.** It is verified by ship with its version, and nothing waits on its reporter.
+- **Who lowers a gate profile Forge raised is the `gates.lower` permission,** never the writer's user kind (ISS-823).
+- **A rate-limited GitLab connection reuses compare answers and holds background callers past the host's wait;** a refused read says when to ask again (ISS-1144).
+- **A draft requirement the intake assistant could not draft, with no retry left, is named on every master pass** with its failure code, until it is drafted, proposed or leaves draft (ISS-772).
+- **Knowledge keyword and hybrid search apply one match rule to project and org entries,** merged by rank, so org rows no longer crowd out the project's (ISS-1142).
+- **A session context with a malformed lease is refused at `lease`** (ISS-995).
+- **Release pages and the release tool no longer name a probe replay or RELEASE_NOT_VERIFIED,** which no release emits (ISS-936).
+- **Requirement and feedback rows read one state in one vocabulary:** Needs you, Running, Queued, Overdue, Waiting on others, Done, with Dropped apart; a feedback row's chip says New, Planned, Running or Done (FB-583).
+- **An owner act names the room message asking for it and is logged beside it.** The product is told via `X-Forge-Via` it came through the assistant; an act naming an unhanded message is refused `SUPPORT_MESSAGE_UNKNOWN` (ISS-1014).
+- **Where a person merges change requests on the host (`release.mergedBy: person`), an accepted release's merges read as theirs** on the release page, and the master is no longer told to make them (ISS-1090).
+- **The lessons pass drafts an "Add a check" issue only for a product area's behaviour.** A process lesson is routed to Forge's feedback once (ISS-1136).
+- **A promotion's change request no longer stamps a merge on the issues it carries** (ISS-726).
+- **A second open question with the same subject and prompt is refused** `QUESTION_ALREADY_OPEN` (ISS-918).
+- **Readiness counts a merge only where it landed on the default branch** (ISS-702).
+- **An issue held out of the last release no longer flips its project to the served basis.** Every waiting issue is weighed at its landing, and a release recorded by an abbreviated commit reads as the one served (ISS-970).
+- **An ended release page lists only highlights backed by a clip or picture QA kept** of what they claim (ISS-693).
+- **A release with production declared and no approval required waits on the master or an admin** instead of reading done (ISS-709).
+- **A release run removes each worktree it made once it finishes or aborts,** or names one it could not (ISS-1076).
+- **A merge recorded before an issue was reopened no longer stands for the new round's landing** (ISS-712).
+- **A feedback item verified by its ship, or on someone's behalf, can be reopened with a reason** by its reporter or a holder of feedback.approve; its page offers only that reopen.
+- **A new requirement revision owes a re-plan only where a traced criterion's wording changed.** A title-only change re-ties its issue criteria.
+- **The feedback list drops its reporter column.** Age is the last column.
+- **A requirement no person gate asks moves by rule:** into delivery once an issue starts, to delivered once every criterion passes, then accepted; an untraced re-pin is made by rule too, and nobody is asked (ISS-616).
+- **A support room's live bar and room table open the room's session** where it has one (ISS-941).
+- **The master's pass no longer names a shipped feedback item as owing a confirm** where its ship already verifies it (ISS-1085).
+- **The steward's budget note names what waited in words,** never the event that carried it, such as `feedback.filed` (ISS-1137).
+- **Steward notes are no longer shown on list rows.**
+- **A reported problem whose title matches an open one joins it** even when the model reading fails (ISS-694).
+- **A proposed feedback triage names a missing route by name** (ISS-940).
+- **A promotion merged on the host while its release's approval is undecided no longer closes its roster.** The approval rule refuses the record where enforced; elsewhere it is recorded as taken unapproved (ISS-819).
+- **A breaking contract version files a consumer's upgrade item only where a breaking entry reaches that consumer's recorded links.** The item names each entry and call site it reaches, or why every entry is owed a check (ISS-1135).
+- **A support turn that ends having done nothing is no longer read as an answer.** Its messages are handed to the session again and, once their tries run out, recorded on their thread as unanswered.
+- **A room message Forge cannot take is never lost silently.** It is recorded on the room with its cause, the person is told in their thread that it is kept, and the project's master is told once per cause.
+- **Approving a contract version now decides every older proposed version superseded by it.** None is left proposed and asked of nobody; each reads Superseded, naming the version that replaced it.
+- **Your attention page and home load faster when you follow many kinds of project.** Each project's linked feedback and release history is read once for all of them, not once a project.
+- **A request that only read something comes back to its room with what was found.** The result a channel agent is handed now carries the team's last note on the issue that carried it, scrubbed for the room.
+- **Naming a release through the agent tool is refused as the API refuses it.** A summary outside two to three sentences is answered 400 at `/summary` by forge_releases too, never with a different code.
+- **A feedback item keeps its value check when only its drafted triage is refused.** The triage is dropped and left to the master, instead of the whole draft failing INTAKE_SHAPE.
+- **An operations room's write runs as the member who asked for it.** Each move or draft names the message that asked, and a member writing meanwhile, or another thread named, can no longer lend the act their permissions.
+- **A fenced credential naming a project outside its reach is refused the same whether that project exists or not.** A missing slug or another project's issue key reads PAT_PROJECT_OUTSIDE_FENCE, for a box's token and a pane's checkout credential alike.
+- **The support rooms read names each room's recent threads, who asked and the feedback filed from them.** A master repeating a told result in a users' thread is refused unless it names that message as the one it follows up.
+
+### Removed
+
+- **`source.merged` leaves the outbox.** The GitHub, GitLab and read-projection adapters stop emitting it, migration 0642 retires its rows and type, and an outbox event type with no consumer is refused (ISS-822).
+
+### Security
+
+- **A runner box that once ran the git relay is never handed a GitLab connection's token again.** Reporting an older runner version afterwards no longer reopens the pre-relay exemption.
+
 ## [0.4.0-dev.603] - 2026-11-08
 
 A judge's browser session lands on the app origin that signed in

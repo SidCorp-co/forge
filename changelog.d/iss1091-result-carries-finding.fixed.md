@@ -1,1 +1,0 @@
-**A request that only read something comes back to its room with what was found.** The result a channel agent is handed now carries the team's last note on the issue that carried it, scrubbed for the room.

@@ -1,1 +1,0 @@
-**A room message Forge cannot take is never lost silently.** It is recorded on the room with its cause, the person is told in their thread that it is kept, and the project's master is told once per cause.

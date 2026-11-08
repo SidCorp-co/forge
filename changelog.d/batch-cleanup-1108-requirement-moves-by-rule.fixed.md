@@ -1,1 +1,0 @@
-**A requirement no person gate asks moves by rule:** into delivery once an issue starts, to delivered once every criterion passes, then accepted; an untraced re-pin is made by rule too, and nobody is asked (ISS-616).

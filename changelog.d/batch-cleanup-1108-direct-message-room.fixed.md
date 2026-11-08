@@ -1,1 +1,0 @@
-**A direct message to a room's session from the project's owner or an admin runs as the room's turn,** with its grants, and an act it names runs as the sender; anyone else is refused by name (ISS-950).

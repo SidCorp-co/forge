@@ -1,1 +1,0 @@
-**A production site deployed outside Forge is declared with its own runtime verification.** One without is refused `PRODUCTION_SITE_UNVERIFIED` (was `PRODUCTION_SITE_UNBOUND`); a release records each site by what it serves, refused `RELEASE_SITE_NOT_SHIPPED` if one is left out (ISS-1139).

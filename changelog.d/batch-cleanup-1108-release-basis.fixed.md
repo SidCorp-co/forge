@@ -1,1 +1,0 @@
-**An issue held out of the last release no longer flips its project to the served basis.** Every waiting issue is weighed at its landing, and a release recorded by an abbreviated commit reads as the one served (ISS-970).

@@ -1,1 +1,0 @@
-**Outside strict, a closed issue's close is its builder's verdict on each traced criterion it kept.** Issues closed before are backfilled once at boot, and a requirement's list and record read one coverage.

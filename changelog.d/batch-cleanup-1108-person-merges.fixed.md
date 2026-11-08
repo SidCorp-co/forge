@@ -1,1 +1,0 @@
-**Where a person merges change requests on the host (`release.mergedBy: person`), an accepted release's merges read as theirs** on the release page, and the master is no longer told to make them (ISS-1090).

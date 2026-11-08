@@ -1,1 +1,0 @@
-**A feedback reporter answers the clarification it is shown:** an agent reporter with its own token, a person in one click on the item page with the recommended answer filled in; open questions show oldest first (ISS-695).

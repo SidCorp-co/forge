@@ -1,1 +1,0 @@
-**A room action names the session and turn that took it.** `GET /api/projects/:id/support/rooms/:roomId/turns/:turnId` reads that turn for the project's people: each tool called, its answer and what the session said, scrubbed (ISS-1029).

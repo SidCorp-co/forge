@@ -1,1 +1,0 @@
-**Naming a release through the agent tool is refused as the API refuses it.** A summary outside two to three sentences is answered 400 at `/summary` by forge_releases too, never with a different code.
