@@ -11,7 +11,7 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf, uuidArray } from '../db/raw-sql.js';
-import { onePerProject, rowsPerId, rowsPerProject } from '../db/read-memo.js';
+import { memoizedPerId, onePerProject, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { blockerUnsettledSql, holdingEdgesSql } from './blocked-by.js';
@@ -91,10 +91,15 @@ function scopeSql(scope: IssueStandingScope): SQL {
 }
 
 /** Each issue `where` names, with every fact its standing reads, newest write first. */
-async function rowsWhere(where: SQL): Promise<IssueRowRaw[]> {
-  return rowsOf<IssueRowRaw>(
+async function rowsWhere<R = IssueRowRaw>(
+  where: SQL,
+  /** A `WITH` the read's `where` names, and a column of it each row carries as `held_for`. */
+  held?: { with: SQL; heldFor: SQL },
+): Promise<R[]> {
+  return rowsOf<R>(
     await db.execute(sql`
-      SELECT i.id, i.project_id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind,
+      ${held?.with ?? sql``}
+      SELECT ${held ? sql`${held.heldFor} AS held_for, ` : sql``}i.id, i.project_id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind,
              ${landedSql(sql`i`)} AS landed,
              (${landedSql(sql`i`)} AND ${mergeSinceLastReopenSql(sql`i`)}) AS landed_since_reopen,
              (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
@@ -234,6 +239,58 @@ export async function issueRowsById(
 /** The order the issue reads answer rows in: newest write first. */
 export const newestWriteFirst = (a: IssueRowRaw, b: IssueRowRaw) =>
   new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime() || b.iss_seq - a.iss_seq;
+
+/**
+ * The rows of `ids` in `projectId`, newest write first as {@link issueRowsById} answers them, and in
+ * the same statement the rows outside them of the blockers that hold them, {@link BLOCKER_DEPTH}
+ * edges deep: the standing follows those to rows already read (ISS-1070 r19). Every project's asks
+ * are one read; each id's holders are its own.
+ */
+export async function issueRowsAndHoldersById(
+  projectId: string,
+  ids: readonly string[],
+): Promise<{ rows: IssueRowRaw[]; holders: IssueRowRaw[] }> {
+  type Held = IssueRowRaw & { held_for: string[] };
+  const byId = await memoizedPerId('issueRowsHeldById', ids, async (some) => {
+    const roots = uuidArray(some);
+    const read = await rowsWhere<Held>(
+      sql`(i.id = ANY(${roots}) OR i.id IN (SELECT id FROM held))`,
+      {
+        with: sql`WITH RECURSIVE held(root, id, project_id, hop) AS (
+          SELECT x.id, d.from_issue_id, d.project_id, 1 FROM issues x
+            ${holdingEdgesSql(sql`d.project_id = x.project_id AND d.to_issue_id = x.id`)}
+           WHERE x.id = ANY(${roots})
+          UNION
+          SELECT h.root, d.from_issue_id, d.project_id, h.hop + 1 FROM held h
+            ${holdingEdgesSql(sql`d.project_id = h.project_id AND d.to_issue_id = h.id`)}
+           WHERE h.hop < ${BLOCKER_DEPTH}
+        )`,
+        heldFor: sql`ARRAY(SELECT DISTINCT h.root::text FROM held h WHERE h.id = i.id)`,
+      },
+    );
+    return new Map(
+      some.map((id) => [
+        id,
+        {
+          row: read.find((r) => r.id === id),
+          holders: read.filter((r) => r.held_for.includes(id) && r.id !== id),
+        },
+      ]),
+    );
+  });
+  const rows: IssueRowRaw[] = [];
+  const holders = new Map<string, IssueRowRaw>();
+  for (const { row, holders: of } of byId.values()) {
+    if (row) rows.push(row);
+    for (const h of of) holders.set(h.id, h);
+  }
+  const mine = (r: IssueRowRaw) => r.project_id === projectId;
+  const asked = new Set(rows.map((r) => r.id));
+  return {
+    rows: rows.filter(mine).sort(newestWriteFirst),
+    holders: [...holders.values()].filter((h) => mine(h) && !asked.has(h.id)),
+  };
+}
 
 /** The issue `issSeq` names in `projectId`, alone. */
 export const issueRowOf = (projectId: string, issSeq: number) =>

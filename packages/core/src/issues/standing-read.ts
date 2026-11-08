@@ -56,6 +56,7 @@ import {
   type IssueRowRaw,
   issueRowOf,
   issueRowsAndHolders,
+  issueRowsAndHoldersById,
   issueRowsById,
   issueRowsIn,
   newestWriteFirst,
@@ -353,6 +354,28 @@ async function standingRows(
   }));
 }
 
+/**
+ * `raws`' standing, following the blockers outside them to `holders`, the rows already read of the
+ * blockers holding them. Across projects the holders' facts are asked beside theirs, in their
+ * statements, so the standing follows them to answers already held (ISS-1070 r19); the answer is
+ * `raws`' own.
+ */
+async function standingWithHolders(
+  projectId: string,
+  raws: readonly IssueRowRaw[],
+  holders: readonly IssueRowRaw[],
+  now: Date,
+): Promise<IssueStandingRow[]> {
+  const known = new Map([...raws, ...holders].map((r) => [r.id, r]));
+  const [rows] = await Promise.all([
+    standingRows(projectId, raws, now, 0, known),
+    holders.length > 0 && readsAcrossProjects()
+      ? standingRows(projectId, holders, now, BLOCKER_DEPTH)
+      : undefined,
+  ]);
+  return rows;
+}
+
 /** The list a project's Issues screen reads: one scope, newest write first, at most `limit` rows. */
 export async function listIssueStanding(
   projectId: string,
@@ -365,15 +388,7 @@ export async function listIssueStanding(
     scopeCounts(projectId),
     approvalRequired(projectId),
   ]);
-  const known = new Map([...raws, ...holders].map((r) => [r.id, r]));
-  const [issues] = await Promise.all([
-    standingRows(projectId, raws, now, 0, known),
-    // across projects, the holders' facts are asked beside the page's, in its statements, so the
-    // standing follows them to answers already held (ISS-1070 r19); its own answer is the page's
-    holders.length > 0 && readsAcrossProjects()
-      ? standingRows(projectId, holders, now, BLOCKER_DEPTH)
-      : undefined,
-  ]);
+  const issues = await standingWithHolders(projectId, raws, holders, now);
   return {
     issues,
     counts: {
@@ -408,7 +423,8 @@ export async function issueWaitsOf(
   now: Date = new Date(),
 ): Promise<Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>> {
   if (ids.length === 0) return new Map();
-  const rows = await standingRows(projectId, await issueRowsById(projectId, ids), now);
+  const { rows: raws, holders } = await issueRowsAndHoldersById(projectId, ids);
+  const rows = await standingWithHolders(projectId, raws, holders, now);
   return new Map(rows.map((r) => [r.id, { key: r.key, standing: r.standing }]));
 }
 
