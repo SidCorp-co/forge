@@ -1,0 +1,1 @@
+**A host merge into another branch no longer reads as landed.** On a change-request project, a merge Forge stamped into a branch other than the project's target, such as release/production, no longer lets the issue move to awaiting release.

@@ -447,6 +447,21 @@ describe('ISS-672 c1 (judge K65): only the project’s target branch on the host
     expect(await standingsOf()).not.toContain(JUDGE_WHAT_LANDED);
   });
 
+  // judge K91 (dev.318): a host merge Forge stamped into release/production read landed, and
+  // awaiting_release took it, though the code was not on dev
+  it('does not read a host merge commit stamped on another branch as landed', async () => {
+    const id = await iss12('in_progress');
+    await db.execute(sql`
+      UPDATE issues SET merged_commit_sha = ${HOST_MERGE}, merged_target = 'release/production'
+       WHERE id = ${id}
+    `);
+    const res = await api(world.token, 'POST', `/api/issues/${id}/transition`, {
+      toStatus: 'awaiting_release',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('MERGE_NOT_RECORDED');
+  });
+
   it('refuses a mark over a linked request merged into another branch', async () => {
     const id = await unmarked();
     await mergedRequest(id, new Date().toISOString(), 'release/production');

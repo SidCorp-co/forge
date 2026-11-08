@@ -19,12 +19,14 @@ export const targetBranchSql = (i: SQL): SQL => sql`(
 
 /**
  * The host's record that the issue row `i` landed: the merge commit Forge's own merge route wrote
- * (`merged_commit_sha`), or a linked change
- * request the host reports merged into the project's target branch no earlier than the issue's
- * stamp. A request merged before the stamp is an earlier delivery that a reopen superseded, and one
- * merged into any other branch landed nothing (ISS-672).
+ * (`merged_commit_sha`) on the project's target branch, or a linked change
+ * request the host reports merged into that branch no earlier than the issue's
+ * stamp. A request merged before the stamp is an earlier delivery that a reopen superseded, and a
+ * merge into any other branch (release/production, judge K91) landed nothing (ISS-672). A stamp
+ * naming no branch reads as the target's, as `release-batch/landed-on-target.ts` reads it.
  */
-const hostLandedSql = (i: SQL): SQL => sql`(${i}.merged_commit_sha IS NOT NULL OR EXISTS (
+const hostLandedSql = (i: SQL): SQL => sql`((${i}.merged_commit_sha IS NOT NULL
+     AND (${i}.merged_target IS NULL OR ${i}.merged_target = ${targetBranchSql(i)})) OR EXISTS (
   SELECT 1 FROM repo_pull_request_issues hl
     JOIN repo_pull_requests hp ON hp.id = hl.pull_request_id
    WHERE hl.issue_id = ${i}.id AND hp.state = 'merged' AND hp.base_ref = ${targetBranchSql(i)}
