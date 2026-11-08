@@ -238,9 +238,11 @@ describe('each change reads as a short title and one sentence (REQ-70 BC-3)', ()
   });
 });
 
-// The coordinator's ruling on REQ-70: a release that ended is history. On dev, 22 shipped pages kept a
-// highlight with no clip and 471 notes on old pages have no title; none may change because the rule
-// tightened after they shipped, while the same record on a release still to ship is held or refused.
+// The coordinator's ruling on REQ-70: a release that ended is history for how it is written. On dev,
+// 471 notes on old pages have no title; none may change because the rule tightened after they
+// shipped, while the same record on a release still to ship is held or refused. A highlight is the
+// exception (ISS-693): BC-2 states no exemption, so an ended page never shows one with no clip of
+// what it claims, though nothing drafts it again.
 const KEPT_GAP = 'QA kept no clip or picture as evidence of BC-1 on this build';
 const planted = async (w: { a: string; b: string; runId: string }) => {
   await db.execute(sql`
@@ -262,7 +264,7 @@ const shipRun = (runId: string) =>
   db.execute(sql`UPDATE pipeline_runs SET release_released_at = now() WHERE id = ${runId}`);
 
 describe('a release that ended keeps the page it ended with (REQ-70, history)', () => {
-  it('holds a no-clip highlight and an untitled note on a release still to ship, and reads both unchanged once it shipped', async () => {
+  it('holds a no-clip highlight and an untitled note on a release still to ship; once shipped the note reads unchanged and the highlight never shows', async () => {
     const w = await releaseWorldOfFour();
     answers = [highlight(['BC-1'])];
     expect(await refreshReleaseHighlights(projectId, w.runId)).toBe('drafted');
@@ -286,8 +288,11 @@ describe('a release that ended keeps the page it ended with (REQ-70, history)', 
     `);
     const asks = asked.length;
     const ended = await page('member', 'developer');
-    expect(ended.highlights.state).toBe('drafted');
-    expect(ended.highlights.highlights?.[0]).toMatchObject({ media: null, mediaGap: KEPT_GAP });
+    expect(ended.highlights).toEqual({
+      state: 'none',
+      why: 'no highlight it ended with shows a clip or picture QA kept of what it claims',
+    });
+    expect(JSON.stringify(ended)).not.toContain('mediaGap');
     expect(ended.improvements.map((c) => [c.line, c.detail])).toEqual([
       ['Nurses see a reminder before each visit.', null],
     ]);

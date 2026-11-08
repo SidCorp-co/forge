@@ -224,8 +224,8 @@ export function answered(
 /**
  * Whether a kept highlight still tells the truth about its build (REQ-40 BC-13, REQ-70 BC-5): its
  * requirement is one the release still carries, and each code it claims still has a pass on the
- * build. The one rule a page that ended still answers to, since it is about the build and not about
- * how a highlight is written.
+ * build. A rule a page that ended still answers to, since it is about the build and not about how a
+ * highlight is written.
  */
 const stillTrue = (h: ReleaseShownHighlight, facts: ReleaseHighlightFacts): boolean => {
   const req = facts.requirements.find((r) => r.key === h.requirement.key);
@@ -233,17 +233,35 @@ const stillTrue = (h: ReleaseShownHighlight, facts: ReleaseHighlightFacts): bool
 };
 
 /**
- * What a release that ended shows (REQ-70): the highlights it ended with, as they were kept, in the
- * shape of their day (one kept before REQ-70 BC-2 may say it has no clip); the refusal it ended on;
- * or none. No rule about how a highlight is written is applied after it ended (media, wording,
- * figures, count), nothing is owed and nothing drafts it again; only a claim its build no longer
- * proves is left out, since a page never claims what the build does not prove.
+ * Whether a kept highlight shows QA evidence of what it claims (REQ-70 BC-2, ISS-693): a clip or
+ * picture kept of one of its own requirement's criteria it claims. A highlight kept with no media, or
+ * playing the evidence of another requirement's criterion, is never shown, ended page or not: BC-2
+ * states no exemption for a release that ended.
+ */
+const showsItsEvidence = (h: ReleaseShownHighlight, facts: ReleaseHighlightFacts): boolean => {
+  const media = h.media;
+  if (!media) return false;
+  const req = facts.requirements.find((r) => r.key === h.requirement.key);
+  return (
+    req !== undefined &&
+    highlightMediaOf(req, h.claims).some((m) => m.attachmentId === media.attachmentId)
+  );
+};
+
+/**
+ * What a release that ended shows (REQ-70): the highlights it ended with, as they were kept; the
+ * refusal it ended on; or none. No rule about how a highlight is written is applied after it ended
+ * (wording, figures, count), nothing is owed and nothing drafts it again. Two are: a claim its build
+ * no longer proves is left out, since a page never claims what the build does not prove (BC-5), and so
+ * is a highlight with no clip or picture of what it claims (BC-2: one kept with a `mediaGap`, or one
+ * playing another requirement's evidence).
  */
 function endedHighlights(
   row: ReleaseHighlightsRow | null,
   facts: ReleaseHighlightFacts,
   build: string | null,
 ): ShownHighlights {
+  let unshown = 0;
   if (row?.state === 'drafted' && row.draftedAt && row.model) {
     const kept: ReleaseShownHighlight[] = [];
     const raws: unknown[] = Array.isArray(row.highlights) ? row.highlights : [];
@@ -266,7 +284,9 @@ function endedHighlights(
           owed: false,
         };
       }
-      if (stillTrue(parsed.data, facts)) kept.push(parsed.data);
+      if (!stillTrue(parsed.data, facts)) continue;
+      if (showsItsEvidence(parsed.data, facts)) kept.push(parsed.data);
+      else unshown += 1;
     }
     if (kept.length > 0)
       return {
@@ -297,7 +317,9 @@ function endedHighlights(
   const why =
     facts.requirements.length > 0
       ? row?.state === 'drafted'
-        ? 'what its highlights claimed is no longer proven on its build'
+        ? unshown > 0
+          ? 'no highlight it ended with shows a clip or picture QA kept of what it claims'
+          : 'what its highlights claimed is no longer proven on its build'
         : 'this release ended before its highlights were drafted'
       : build === null
         ? 'this release has no build yet, so nothing it carries is proven on it'
