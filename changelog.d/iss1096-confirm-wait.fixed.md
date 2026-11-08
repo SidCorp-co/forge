@@ -1,1 +1,0 @@
-**A release waiting on its production confirm now waits for you.** It names who may confirm and how, appears once in Needs you, stays open until pressed, and the confirm carries it on to shipped without a new cut.

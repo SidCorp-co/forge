@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.592] - 2026-11-08
+
+Production confirm waits hold the release open; readiness judges a proposed first revision
+
+### Fixed
+
+- **Your attention and home reads assemble less on every load.** Each issue's traced criteria and their verdicts are kept as they change, so a person in twelve projects waits about a third less for attention.
+- **A release waiting on its production confirm now waits for you.** It names who may confirm and how, appears once in Needs you, stays open until pressed, and the confirm carries it on to shipped without a new cut.
+- **A requirement awaiting its first accept is judged on what it proposes.** Its ready checklist reads the proposed revision where none is current yet, and says which revision it judged; a linked issue traces its criteria the same way.
+
 ## [0.4.0-dev.591] - 2026-11-07
 
 Owed checks read as now, parks waiting on no person leave Needs you
