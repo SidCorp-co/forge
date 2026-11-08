@@ -1,0 +1,1 @@
+**A requirement no longer reads not delivered for a minute after each deploy.** While Forge still checks whether the live build holds its passing verdicts, it says so, and never asks to file work for nothing.
