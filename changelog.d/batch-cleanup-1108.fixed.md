@@ -11,3 +11,4 @@
 - A feedback row's ETA reads as a date, or "Shipped vX" once its carrier shipped.
 - The feedback list drops its reporter column; Age is the last column.
 - Steward notes are no longer shown on list rows.
+- A feedback item verified by its ship, or on someone's behalf, can be reopened by its reporter (or a holder of feedback.approve) with a reason; its page offers only that reopen.

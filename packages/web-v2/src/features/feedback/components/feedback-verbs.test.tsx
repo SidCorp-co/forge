@@ -278,4 +278,17 @@ describe("the confirmation of the fix", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view({ ...resolved, verifyHeld: { at: "2026-10-14T01:00:00.000Z", why: "REQ-1 BC-2 reads failing on the running build" } })} />);
     expect(screen.getByTestId("verify-copy")).toHaveTextContent("Past its window, a triager answers from what the record reads.");
   });
+
+  // owner 2026-11-08, D5: a verify by ship is no one's last word, so its reporter reopens it with a reason
+  it("offers a verified item only its reopen, which sends the reason, and asks for no confirm", () => {
+    const calls = core();
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ phase: "verified", status: "verified", can: { ...CAN, triage: false, snooze: false, reopen: true } })} />);
+    const bar = screen.getByTestId("feedback-verify");
+    expect(screen.queryByTestId("verify-copy")).toBeNull();
+    expect(within(bar).getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(within(bar).getByRole("button", { name: "Reopen" }));
+    fireEvent.change(within(bar).getByRole("textbox"), { target: { value: "It is back on the board" } });
+    fireEvent.click(within(bar).getByRole("button", { name: "Reopen" }));
+    return waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: "/projects/p1/feedback/FB-4/reopen", body: { reason: "It is back on the board" } })]));
+  });
 });

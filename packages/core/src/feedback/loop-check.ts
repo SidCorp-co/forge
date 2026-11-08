@@ -18,9 +18,9 @@
  *
  * Outside strict (`who-owes` `feedback.verify` is the master's), the shipped carrier or the answer IS
  * the verify (owner 2026-11-08, D5): the first sweep that reads an item resolved records it verified
- * by ship, as Forge's own decision naming the version; until that sweep its reporter may still
- * reopen it. A problem that comes back after is a new report. The window and the record note above
- * are a strict project's alone.
+ * by ship, as Forge's own decision naming the version. Its reporter, or a holder of
+ * feedback.approve, may reopen it with a reason before or after that sweep (`rules.ts:reopenRefusal`).
+ * The window and the record note above are a strict project's alone.
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';

@@ -106,16 +106,22 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const [reopening, setReopening] = useState(false);
   const [reason, setReason] = useState("");
   const [evidence, setEvidence] = useState("");
+  // a verified item offers only its reopen (D5): no fix is waiting on a confirm, so no ask is drawn
+  const verified = f.status === "verified";
   return (
     <section className="grid gap-2" data-testid="feedback-verify">
-      <h3 className="text-12 font-semibold text-muted">{t("feedback.act.confirmFix")}</h3>
-      <p className="text-12 text-muted" data-testid="verify-copy">
-        {f.verifyHeld
-          ? t("feedback.verify.held")
-          : f.recordCheck
-            ? t("feedback.verify.byDate", { at: time.dateTime(f.recordCheck.at), n: f.recordCheck.windowDays })
-            : t("feedback.verify.byPerson")}
-      </p>
+      {verified ? null : (
+        <>
+          <h3 className="text-12 font-semibold text-muted">{t("feedback.act.confirmFix")}</h3>
+          <p className="text-12 text-muted" data-testid="verify-copy">
+            {f.verifyHeld
+              ? t("feedback.verify.held")
+              : f.recordCheck
+                ? t("feedback.verify.byDate", { at: time.dateTime(f.recordCheck.at), n: f.recordCheck.windowDays })
+                : t("feedback.verify.byPerson")}
+          </p>
+        </>
+      )}
       {!reopening && f.can.verify ? (
         <Input value={evidence} onChange={(e) => setEvidence(e.target.value)} maxLength={500} aria-label={t("feedback.verify.evidence")} placeholder={t("feedback.verify.evidence")} />
       ) : null}

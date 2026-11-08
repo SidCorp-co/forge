@@ -110,8 +110,8 @@ type Facts = Parameters<typeof holds>[0];
 
 /**
  * What the viewer may do to the item now, read off their permissions and its phase. Triage and the
- * loop close's acts never hold together: triage while it is new, reopened or triaged, verify, reopen
- * and ask-to-verify only once it reads resolved (feedback-lifecycle), so a page shows one or the other.
+ * loop close's acts never hold together: triage while it is new, reopened or triaged, verify and
+ * ask-to-verify only once it reads resolved, reopen once it reads resolved or verified (feedback-lifecycle), so a page shows one or the other.
  */
 export function canOf(i: {
   facts: Facts;
@@ -131,7 +131,9 @@ export function canOf(i: {
     drop: approver && phase === 'planned',
     // owner, 2026-10-07: anyone on the project may confirm a fix, not only a BA
     verify: phase === 'resolved',
-    reopen: (approver || i.userId === row.reportedBy) && phase === 'resolved',
+    // a verified item is reopened as a resolved one is (D5): its verify may have been by ship
+    reopen:
+      (approver || i.userId === row.reportedBy) && (phase === 'resolved' || phase === 'verified'),
     askVerify: approver && i.userId !== row.reportedBy && phase === 'resolved',
     redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
     retarget: approver && row.contractVersion === null,

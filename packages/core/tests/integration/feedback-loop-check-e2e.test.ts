@@ -287,4 +287,38 @@ describe('outside strict the ship is the verify, and nothing waits on the report
     const again = await sweepResolvedFeedback();
     expect(again.shipped, 'a verified item is never verified again').toBe(0);
   });
+  // the 37 items verified on 2026-11-08 say "reopen this item if the problem returns": that holds
+  it('lets its reporter reopen an item verified by ship, with a reason, and no one else without feedback.approve', async () => {
+    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
+    const w = await world();
+    const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+    const fb = await feedback(w, [carrier.id]);
+    await sweepResolvedFeedback();
+    const path = `/api/projects/${w.projectId}/feedback/${fb}`;
+    const verified = (await api(w.token, 'GET', path)).body.feedback as Doc;
+    expect(verified.status).toBe('verified');
+    expect(verified.can).toMatchObject({ reopen: true, verify: false });
+
+    const stranger = await createTestUser({ verified: true });
+    await addProjectMember(w.projectId, stranger.id, 'member');
+    const { signUserToken } = await import('../../src/credentials/jwt.js');
+    const theirs = await api(await signUserToken(stranger.id), 'POST', `${path}/reopen`, {
+      reason: 'not mine to say',
+    });
+    expect(JSON.stringify(theirs.body)).toContain('feedback.approve');
+
+    const bare = await api(w.token, 'POST', `${path}/reopen`, { reason: ' ' });
+    expect(JSON.stringify(bare.body)).toContain('FEEDBACK_REOPEN_REASON_REQUIRED');
+
+    const reopened = await api(w.token, 'POST', `${path}/reopen`, {
+      reason: 'It is back on the board',
+    });
+    expect(reopened.status, JSON.stringify(reopened.body)).toBe(200);
+    const after = reopened.body.feedback as Doc;
+    expect(after.status).toBe('reopened');
+    expect((after.decisions as Doc[]).at(-1)).toMatchObject({
+      decision: 'reopened',
+      reason: 'It is back on the board',
+    });
+  });
 });

@@ -192,7 +192,8 @@ export function verifyAskRefusal(
   return null;
 }
 
-// a reopen follows resolved and carries the reporter's reason (FEEDBACK_REOPEN_REASON_REQUIRED)
+// a reopen follows resolved, or a verify that was wrong (owner 2026-11-08, D5: a verify by ship or
+// on someone's behalf is no one's last word), and carries the reason (FEEDBACK_REOPEN_REASON_REQUIRED)
 export function reopenRefusal(
   phase: FeedbackPhase,
   reason: string | undefined,
@@ -204,11 +205,11 @@ export function reopenRefusal(
       'a reopen says what the fix does not answer.',
     );
   }
-  if (phase !== 'resolved') {
+  if (phase !== 'resolved' && phase !== 'verified') {
     return refusal(
       'FEEDBACK_NOT_RESOLVED',
       '/status',
-      `the item reads ${phase}; only a resolved item is reopened.`,
+      `the item reads ${phase}; only a resolved or verified item is reopened.`,
     );
   }
   return null;
