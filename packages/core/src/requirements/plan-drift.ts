@@ -25,8 +25,8 @@ type Executor = Pick<Tx, 'execute'>;
 
 /**
  * For each of `issueIds`, the BCs its live criteria trace that a revision after its planned
- * revision, at or before its requirement's head, retired (reworded or removed). An issue with none
- * is absent from the map.
+ * revision (any revision, where its plan names none), at or before its requirement's head, retired
+ * (reworded or removed). An issue with none is absent from the map.
  */
 export function changedTracedOf(
   executor: Executor,
@@ -51,8 +51,7 @@ async function changedTracedRead(
       JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id AND rc.requirement_id = r.id
      WHERE c.issue_id = ANY(${uuidArray(issueIds)})
        AND c.retired_at IS NULL
-       AND i.planned_revision IS NOT NULL
-       AND rc.retired_revision > i.planned_revision
+       AND rc.retired_revision > coalesce(i.planned_revision, 0)
        AND rc.retired_revision <= r.current_revision
      ORDER BY c.issue_id, rc.retired_revision, rc.code
   `)) as unknown as Array<{ issue_id: string; code: string; retired_revision: number }>;
