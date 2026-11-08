@@ -1,1 +1,1 @@
-**Your attention and home reads stay one set of reads when your projects differ in shape.** A project with no releases, feedback or open work no longer splits a read the others share; a run list no longer re-reads each issue's moves.
+**Your attention and home reads stay one set of reads when your projects differ in shape.** A project without releases, feedback or open work no longer splits a read the others share.
