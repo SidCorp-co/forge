@@ -65,6 +65,7 @@ export { reporterMasterProject } from './reporter-master.js';
 export { shippedNotice, verifyAskNotice } from './reporter-notices.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { sweepDeclinedFeedback } from './retention.js';
+export { proposedTriageRefusal } from './rules.js';
 export { createFeedback, lockFeedback } from './service.js';
 export { fileSignalFeedback, type SignalFiling } from './signal-filing.js';
 export {

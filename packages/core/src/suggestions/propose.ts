@@ -15,6 +15,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import {
   rowIn as feedbackRowIn,
   nearestFeedbackOf,
+  proposedTriageRefusal,
   unchangedTriageRefusal,
 } from '../feedback/index.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -128,10 +129,13 @@ async function proposeIn(
     if (wrong.length) return { refusals: wrong };
   }
   if (p.kind === 'feedback_triage' && p.target.type === 'feedback') {
+    const triage = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(p.payload);
+    const incomplete = proposedTriageRefusal(triage);
+    if (incomplete) return { refusals: [incomplete] };
     const unchanged = await unchangedTriageRefusal(
       tx,
       await feedbackRowIn(tx, p.projectId, p.target.id),
-      SUGGESTION_PAYLOADS.feedback_triage.schema.parse(p.payload),
+      triage,
     );
     if (unchanged) return { refusals: [unchanged] };
   }

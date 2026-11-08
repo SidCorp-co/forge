@@ -14,6 +14,7 @@ import type {
   FeedbackTriage,
   FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
+import { FEEDBACK_TRIAGE_ROUTES } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { isAgreedStatus } from '@forge/contracts/requirements';
 import type { SuggestionKind } from '@forge/contracts/suggestions';
@@ -400,6 +401,24 @@ export function routeShapeRefusal(
     `/${own[0]}`,
     `route ${route} is written in the triage act; name what carries it with ${own.map((k) => `\`${k}\``).join(' or ')}.`,
   );
+}
+
+/**
+ * A triage proposed for a person's accept names its route and that route's carrier when it is
+ * written (ISS-940): `payload: {}` was written as a proposal naming nothing, refused only at its
+ * accept. The short form's absent route is the triage act's, never a proposal's; the carrier check is
+ * the act's own (`routeShapeRefusal`), each path under `/payload`.
+ */
+export function proposedTriageRefusal(t: FeedbackTriage): FeedbackRefusal | null {
+  if (!t.route) {
+    return refusal(
+      'FEEDBACK_ROUTE_INCOMPLETE',
+      '/payload/route',
+      `a proposed triage names its route (${FEEDBACK_TRIAGE_ROUTES.join(', ')}) and what carries it; a proposal naming none proposes nothing.`,
+    );
+  }
+  const shape = routeShapeRefusal(t, t.route);
+  return shape ? { ...shape, path: `/payload${shape.path}` } : null;
 }
 
 /** What a requirement route may name: a draft it starts, or the agreed requirement that covers it (REQ-66). */

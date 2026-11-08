@@ -5,6 +5,7 @@
  * nothing; a re-route, a new item and a reopened item are still triaged.
  *
  * @direct-test-of packages/core/src/feedback/triage-unchanged.ts
+ * @direct-test-of packages/core/src/feedback/rules.ts
  * @direct-test-of packages/core/src/feedback/triage.ts
  * @direct-test-of packages/core/src/suggestions/propose.ts
  * @direct-test-of packages/core/src/suggestions/write.ts
@@ -119,6 +120,29 @@ describe('an unchanged re-triage is refused and writes nothing (ISS-833)', () =>
     const refusals = await refused(propose(fb, routeTo(iss)));
     expect(refusals.map((r) => r.code)).toEqual(['FEEDBACK_TRIAGE_UNCHANGED']);
     expect(await sinceOf(fb)).toBe(since);
+  });
+
+  // ISS-940: `payload: {}` was written as a proposal naming no route, refused only at its accept
+  it('refuses a proposal naming no route, or a route without its carrier, and writes nothing', async () => {
+    const fb = await fileBug('The export drops the night shift');
+    const count = async () =>
+      (
+        (await db.execute(
+          sql`SELECT count(*)::int AS n FROM suggestions WHERE kind = 'feedback_triage'`,
+        )) as unknown as { n: number }[]
+      )[0]?.n;
+    const before = await count();
+    const empty = await refused(propose(fb, {}));
+    expect(empty.map((r) => [r.code, r.path])).toEqual([
+      ['FEEDBACK_ROUTE_INCOMPLETE', '/payload/route'],
+    ]);
+    const bare = await refused(propose(fb, { route: 'revision' }));
+    expect(bare.map((r) => [r.code, r.path])).toEqual([
+      ['FEEDBACK_ROUTE_INCOMPLETE', '/payload/suggestion'],
+    ]);
+    expect(await count()).toBe(before);
+    const iss = await fileIssue('carrier of the export');
+    expect((await propose(fb, routeTo(iss))).status).toBe(201);
   });
 
   it('refuses at accept an identical proposal already standing, and reads it stale', async () => {
