@@ -184,6 +184,52 @@ describe('ISS-1117: a result note opens one post in its thread', () => {
   });
 });
 
+describe('ISS-1091: a read-only request comes back with what was found', () => {
+  it('hands the session the team’s last note on the carrying issue, scrubbed, with the result', async () => {
+    const asked = await w.hear(
+      () => chat.say(chat.bob, 'read the ShipResolve config on hub-cnw and tell me'),
+      async (_t, act, m) => {
+        await act({ action: 'reply', thread: m().thread, text: 'Recorded for the team.' });
+      },
+    );
+    const thread = asked.id;
+    await w.settleWarm();
+    const found = 'hub-cnw ShipResolve reads retries 3 and a 30 second timeout; hub-lsm the same.';
+    const issue = await createTestIssue(w.projectId, w.ownerId, 8091, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+    await createTestFeedback(w.projectId, w.ownerId, 91, [issue.id]);
+    await db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body, created_at)
+      VALUES (${issue.id}, ${w.ownerId}, 'Reading the config now.', now() - interval '2 minutes'),
+             (${issue.id}, ${w.ownerId}, ${found}, now() - interval '1 minute')`);
+    await withKernelMarker(db, (tx) =>
+      tx.execute(
+        sql`UPDATE issues SET status = 'closed', merged_at = now() WHERE id = ${issue.id}::uuid`,
+      ),
+    );
+    await db.execute(sql`
+      INSERT INTO support_feedback_links (feedback_id, room_id, project_id, thread, last_phase)
+      SELECT id, ${roomId}::uuid, ${w.projectId}::uuid, ${thread}, 'triaged'
+        FROM feedback WHERE project_id = ${w.projectId}::uuid AND fb_seq = 91`);
+    const handed: string[] = [];
+    w.box.model = async (turn, act) => {
+      const notes = turn.messages.filter((m) => m.from === 'forge' && m.thread === thread);
+      if (notes.length === 0) return;
+      handed.push(...notes.map((n) => n.text));
+      await act({ action: 'reply', thread, text: 'The retries are 3 and the timeout 30 seconds.' });
+    };
+    expect(await tellProjectResults(w.projectId)).toBe(1);
+    await expect.poll(() => handed.length, { timeout: 20_000 }).toBeGreaterThan(0);
+    await w.settleWarm();
+    // the planted red: the note said only that FB-91 was live, with nothing found to post
+    expect(handed.join('\n')).toContain(`What the team found or wrote last on it`);
+    expect(handed.join('\n')).toContain(found);
+    expect(handed.join('\n')).not.toContain('Reading the config now.');
+  });
+});
+
 describe('ISS-1123: what is live is said from a release read of the same turn', () => {
   it('refuses "0.17.0 chưa lên production" from a turn that read no release, naming the read', async () => {
     let out: Record<string, unknown> = {};

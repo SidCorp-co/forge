@@ -190,6 +190,8 @@ export interface ExternalItemResult {
   declined: string | null;
   /** What carried it live: its issues' or its requirement's titles; empty for any other route. */
   shipped: string[];
+  /** The issues that carried it, by id, whose notes say what the team found (ISS-1091). */
+  carrierIssueIds: string[];
   /** The project's data policy keeps the item's words from an agent. */
   withheld: boolean;
 }
@@ -226,11 +228,15 @@ export async function externalItemResults(
     withhold,
   );
   // what the team built for it, as its carriers are titled: a dropped issue carried nothing
+  const carriedBy = (s: Row) =>
+    s.route === 'issue'
+      ? (linked.routeIssues.get(s.id) ?? []).flatMap((id) => {
+          const i = linked.issues.get(id);
+          return i && i.status !== 'dropped' ? [{ id, title: i.title }] : [];
+        })
+      : [];
   const shippedOf = (s: Row): string[] => {
-    if (s.route === 'issue') {
-      const carried = (linked.routeIssues.get(s.id) ?? []).map((id) => linked.issues.get(id));
-      return carried.flatMap((i) => (i && i.status !== 'dropped' ? [i.title] : []));
-    }
+    if (s.route === 'issue') return carriedBy(s).map((i) => i.title);
     const req = s.route === 'new_requirement' && s.routedRequirementId;
     return req ? [linked.requirements.get(req)?.title ?? ''].filter(Boolean) : [];
   };
@@ -251,6 +257,7 @@ export async function externalItemResults(
         answer: words.answer,
         declined: words.declined,
         shipped: shippedOf(sayer),
+        carrierIssueIds: carriedBy(sayer).map((i) => i.id),
         withheld: withhold,
       };
       return [r.id, result];

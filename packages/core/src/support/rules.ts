@@ -75,6 +75,11 @@ export interface ItemResult {
   declined: string | null;
   /** What carried it live, as its issues or its requirement are titled. */
   shipped: readonly string[];
+  /**
+   * What the team wrote last on what carried it: for a request that only read something, what was
+   * found (ISS-1091). Null where nothing was written or the data policy withholds it.
+   */
+  found?: string | null;
   /** The project's data policy keeps the item's words from the session. */
   withheld: boolean;
 }
@@ -96,7 +101,9 @@ export function resultNote(r: ItemResult): string | null {
   const hidden = r.withheld
     ? " Its words are withheld from this session by the project's data policy."
     : '';
-  const shipped = quoted('What the team shipped for it', r.shipped.join('; '));
+  const shipped =
+    quoted('What the team shipped for it', r.shipped.join('; ')) +
+    quoted('What the team found or wrote last on it', r.found ?? null);
   switch (r.phase) {
     case 'resolved':
       if (r.route === 'answer') {

@@ -6,6 +6,7 @@
 // at, so two deliveries never tell one result twice. The note says what settled the item (ISS-1032):
 // an answer is told as answered, with the answer, never as live; a decline carries its reason.
 
+import { recentIssueNotes } from '../comments/index.js';
 import { externalItemResults } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
@@ -17,9 +18,27 @@ import {
   insertAction,
   openLinksOfProject,
   projectsWithOpenLinks,
+  type RoomRow,
   roomById,
   threadConversation,
 } from './store.js';
+import { scrubbedForRoom } from './thread.js';
+
+/** How much of the team's last note on a carrier a result note hands the session. */
+const FOUND_CHARS = 1500;
+
+/**
+ * The newest note the team wrote on the issues that carried an item, scrubbed for the room: for a
+ * request that only read something, what was found, which the item's own fields never hold
+ * (ISS-1091: "FB-6 is live and confirmed fixed, post its result" carried no result to post).
+ */
+async function foundOn(room: RoomRow, issueIds: readonly string[]): Promise<string | null> {
+  const notes = (await Promise.all(issueIds.map((id) => recentIssueNotes(id, 1)))).flat();
+  const last = notes.sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+  if (!last) return null;
+  const text = await scrubbedForRoom(room, last.body);
+  return text.length > FOUND_CHARS ? `${text.slice(0, FOUND_CHARS)}…` : text;
+}
 
 /**
  * Read every open link of a project again; hand the session each result that is final. Every note
@@ -39,10 +58,15 @@ export async function tellProjectResults(projectId: string, handOn?: Set<string>
   for (const link of links) {
     const now = results.get(link.feedbackId);
     if (!now) continue;
-    const note = resultNote(now);
+    if (!resultNote(now)) continue;
+    const room = await roomById(link.roomId);
+    const found =
+      !room || now.withheld || now.phase === 'declined'
+        ? null
+        : await foundOn(room, now.carrierIssueIds);
+    const note = resultNote({ ...now, found });
     if (!note) continue;
     if (!(await advanceLink(link.feedbackId, link.lastPhase, now.phase, true))) continue;
-    const room = await roomById(link.roomId);
     if (!room) continue;
     const conversationId = await threadConversation(room.id, link.thread);
     await insertAction({
