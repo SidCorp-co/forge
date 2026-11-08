@@ -1,0 +1,1 @@
+**Production can name several sites, and a release deploys, judges and records each one.** A site the release did not reach shows as not shipped, by name, and the release cannot ship until every site has.
