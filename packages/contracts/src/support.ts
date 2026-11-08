@@ -512,8 +512,21 @@ export const supportToolSchema = z
 		/** What it does, in words the session reads in the tools list and says to the asker in its own. */
 		summary: z.string().trim().min(3).max(300),
 		params: z.record(paramName, supportToolParamSchema).optional(),
+		/**
+		 * An owner tool the product gates on a person's approval (a key code, a destructive change):
+		 * core runs it only on the owner's plain agreement, asked in his thread and cited (ISS-1014,
+		 * design support-owner-acts step approval-gate).
+		 */
+		approval: z.boolean().optional(),
 	})
 	.superRefine((tool, ctx) => {
+		if (tool.approval && tool.kind !== "owner") {
+			ctx.addIssue({
+				code: "custom",
+				path: ["approval"],
+				message: `approval gates an owner act on its owner's agreement, and ${tool.name} is kind ${tool.kind}`,
+			});
+		}
 		if (
 			tool.kind === "diagnose" &&
 			!(SUPPORT_READ_METHODS as readonly string[]).includes(tool.method)
@@ -917,7 +930,9 @@ export const supportReplyRequestSchema = z.strictObject({
 	text: z.string().trim().min(1).max(4000),
 	why: supportWhySchema
 		.optional()
-		.describe("one line: why this message asked for a reply, kept on the reply's row"),
+		.describe(
+			"one line: why this message asked for a reply, kept on the reply's row",
+		),
 });
 /**
  * The session posts nothing for a message it was handed, and says why (ISS-942): chatter, a message
@@ -932,7 +947,9 @@ export const supportSilentRequestSchema = z.strictObject({
 		.max(64)
 		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
 		.optional()
-		.describe("the message you stay silent on, as it carries `message` in what you were handed"),
+		.describe(
+			"the message you stay silent on, as it carries `message` in what you were handed",
+		),
 	reason: supportWhySchema.describe("one line: why nothing is posted for it"),
 });
 export const supportRunRequestSchema = z.strictObject({
@@ -1164,6 +1181,16 @@ export const supportOwnerActRequestSchema = z.strictObject({
 	args: z
 		.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
 		.optional(),
+	/** The owner's plain agreement to an act its product gates on approval (ISS-1014). */
+	agreement: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.optional()
+		.describe(
+			"for a tool listed with approval: the id of the owner's own message agreeing to this act, written in this thread after you asked him",
+		),
 });
 export type SupportOwnerActRequest = z.infer<
 	typeof supportOwnerActRequestSchema
@@ -1550,6 +1577,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_NO_CONSENT",
 	/** A consent cited from a message the owner did not write (ISS-1013). */
 	"SUPPORT_CONSENT_NOT_THE_OWNER",
+	/** An owner act its product gates on approval, with no agreement of his cited after he was asked (ISS-1014). */
+	"SUPPORT_OWNER_APPROVAL_NEEDED",
+	/** An owner act's agreement cited from a message the owner did not write (ISS-1014). */
+	"SUPPORT_OWNER_APPROVAL_NOT_HIS",
 	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
@@ -1679,6 +1710,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_OWNER_OTHER_ROOM: 403,
 	SUPPORT_OWNER_NO_CONSENT: 403,
 	SUPPORT_CONSENT_NOT_THE_OWNER: 403,
+	SUPPORT_OWNER_APPROVAL_NEEDED: 409,
+	SUPPORT_OWNER_APPROVAL_NOT_HIS: 403,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,

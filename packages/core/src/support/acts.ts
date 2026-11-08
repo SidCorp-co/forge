@@ -390,6 +390,7 @@ async function act(
         message: input.message,
         tool: input.tool,
         args: input.args,
+        agreement: input.agreement,
       });
     case 'owner_sign_in':
       return startOwnerSignIn(room, {

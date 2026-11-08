@@ -9,7 +9,8 @@
 // ISS-1014: the act names the message asking for it, one handed to the turn in its thread, and is
 // logged beside it; the product is told on every act that it came through the assistant
 // (`OWNER_ACT_VIA`), which its own record keeps where it records the header. An act the product gates
-// on the owner's approval waits on a design step the support-group design does not draw yet.
+// on the owner's approval (a tool declared `approval`) runs only on his plain agreement, asked in his
+// thread and cited (`approvalOf`, design support-owner-acts step approval-gate).
 
 import { scrubSecretsDeep } from '@forge/observability';
 import {
@@ -24,6 +25,7 @@ import { holderNames } from '../permissions/index.js';
 import { writerOfHandedMessage } from './delivery.js';
 import { supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
+import { approvalOf } from './owner-approval.js';
 import { ownerRoomOf, standingConsent, whoCanConsent, whoSignsIn } from './owner-consent.js';
 import { ownerHeadersFor } from './owner-refresh.js';
 import type { Refusal } from './refusals.js';
@@ -54,7 +56,13 @@ export const OWNER_ACT_VIA = 'X-Forge-Via';
 
 export async function ownerAct(
   room: RoomRow,
-  input: { thread: string; message: string; tool: string; args?: SupportCallArgs | undefined },
+  input: {
+    thread: string;
+    message: string;
+    tool: string;
+    args?: SupportCallArgs | undefined;
+    agreement?: string | undefined;
+  },
 ): Promise<Outcome<OwnerActResult>> {
   const args = input.args ?? {};
   const conversationId = await knownThread(room, input.thread);
@@ -103,6 +111,11 @@ export async function ownerAct(
       ),
     );
   }
+  // a product's approval gate holds before anything is refreshed or sent (ISS-1014)
+  const approved = plan.tool.approval
+    ? await approvalOf(room, at.value, { ...input, args })
+    : { ok: true as const, value: null };
+  if (!approved.ok) return refusedWith(approved);
   // an OAuth credential is refreshed here first where it needs it (ISS-1047); a dead one is never sent
   const owner = await ownerHeadersFor({
     projectId: room.projectId,
@@ -148,7 +161,13 @@ export async function ownerAct(
     kind: 'owner_act',
     actorKind: 'core',
     tool: input.tool,
-    input: { args, product: api.name, consent: consent.id, message: input.message },
+    input: {
+      args,
+      product: api.name,
+      consent: consent.id,
+      message: input.message,
+      ...(approved.value ? { agreement: approved.value } : {}),
+    },
     output: result,
   });
   return { ok: true, value };
