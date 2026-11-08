@@ -37,7 +37,7 @@ import {
 } from "../hooks";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule, secretPlaceholderOf } from "../providers/registry";
-import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
+import type { ConnectionBindingView, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 
 // Each provider's connection-tier form, made lazy once here at module scope: the drawer renders the
@@ -264,7 +264,7 @@ function ProjectFields({
   onNavigate,
 }: {
   projects: ProjectListItem[];
-  bindings: BindingSummary[];
+  bindings: ConnectionBindingView[];
   bindingsError: string | null;
   bindingsLoading: boolean;
   onRetry: () => void;
@@ -291,7 +291,8 @@ function ProjectFields({
             const archived = Boolean(project?.archivedAt);
             const row = (
               <>
-                <span className="truncate text-fg">{project?.name ?? b.projectId}</span>
+                {/* a project the viewer does not list reads by the name core gives, never its id (ISS-1008) */}
+                <span className="truncate text-fg">{project?.name ?? b.projectName}</span>
                 <span className="fg-body-sm text-muted">
                   {scopeLabel(b.role, t)}
                 </span>
@@ -425,9 +426,9 @@ export function ConnectionEditDrawer({
   const projects = projectsQ.data ?? [];
   // Distinct PROJECT IDS with a still-resolving binding — dedupe by id (two
   // projects may share a display name) and skip already-disabled bindings,
-  // which stopped resolving before any removal.
-  const nameById = new Map(projects.map((p) => [p.id, p.name] as const));
-  const affectedProjects = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))].map((id) => nameById.get(id) ?? id);
+  // which stopped resolving before any removal. Each is named as core names it,
+  // never by its id where the viewer's own list does not hold it (ISS-1008).
+  const affectedProjects = [...new Map(bindings.filter((b) => b.active).map((b) => [b.projectId, b.projectName] as const)).values()];
 
   if (!connection) return null;
 
