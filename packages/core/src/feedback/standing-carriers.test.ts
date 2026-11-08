@@ -37,6 +37,30 @@ const reader = {
   canAdmin: false,
 };
 
+// FB-512, FB-486, FB-128, FB-108 read planned for ever (2026-11-08): each one's requirement stood
+// accepted by a decision, which `deliveredAmong` leaves out as unproven, so the item never resolved
+describe('a requirement route resolves once its requirement is accepted, by decision too', () => {
+  const routedToRequirement = (status: string, delivered: boolean): PhaseFacts => ({
+    ...routedTo(),
+    route: 'new_requirement',
+    routedIssues: [],
+    routedRequirementStatus: status,
+    routedRequirementDelivered: delivered,
+  });
+
+  it('resolves on an accepted requirement whether or not its accept waived proof', () => {
+    expect(phaseOf(routedToRequirement('accepted', false))).toBe('resolved');
+    expect(phaseOf(routedToRequirement('accepted', true))).toBe('resolved');
+    expect(phaseOf(routedToRequirement('delivered', true))).toBe('resolved');
+  });
+
+  it('stays planned while agreed or in delivery, and re-triages a dropped one', () => {
+    expect(phaseOf(routedToRequirement('agreed', false))).toBe('planned');
+    expect(phaseOf(routedToRequirement('in_delivery', false))).toBe('planned');
+    expect(phaseOf(routedToRequirement('dropped', false))).toBe('triaged');
+  });
+});
+
 describe('an issue route carried by several issues reads every one of them (ISS-265)', () => {
   it('is planned while any carrier that is not dropped is still open', () => {
     expect(phaseOf(routedTo('closed', 'in_progress', 'closed'))).toBe('planned');

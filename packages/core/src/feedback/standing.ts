@@ -72,9 +72,11 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
       }
       return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
     // workflow feedback-lifecycle edge planned → resolved: the linked requirement reads
-    // delivered; agreeing it only plans the work, so an agreed requirement keeps the item planned
+    // delivered or stands accepted; agreeing it only plans the work, so an agreed requirement keeps
+    // the item planned. An accept by decision counts as done (`RequirementAcceptanceDecision`): what
+    // it waived reads unproven on the requirement, never as work still owed to the reporter
     case 'new_requirement':
-      if (f.routedRequirementDelivered) return 'resolved';
+      if (f.routedRequirementDelivered || f.routedRequirementStatus === 'accepted') return 'resolved';
       return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
     case 'answer':
       return 'resolved';
