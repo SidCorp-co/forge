@@ -40,10 +40,14 @@ export type ReleaseRollback =
  *  which `none` would make indistinguishable from declaring nothing (ISS-1286). */
 export type VerifySource = 'environment' | 'declared-unusable' | 'none';
 
-/** The production environment's deploy binding: where a release lands. */
+/** One production site's deploy binding: where a release lands (ISS-1077: one per site). */
 export interface ReleaseChannel {
   /** The production environment's name in the project document. */
   environment: string;
+  /** The site this channel deploys: the environment's own name for its own deployment. */
+  site: string;
+  /** The site's declared origin, or null where it declares none. */
+  url: string | null;
   bindingId: string;
   provider: string;
   /** ISS-558 multi-store slug; `''` for the default binding. NOT the runner label. */
@@ -66,7 +70,7 @@ export type RecordedVerification = RecordedReleaseVerification;
 export const RECORDED_VERIFICATIONS: readonly RecordedVerification[] = RELEASE_VERIFICATIONS;
 
 export interface ReleasePlan {
-  /** The production environment's deploy binding, or empty where Forge reaches no production. */
+  /** Each production site's deploy binding, or empty where Forge reaches no production. */
   channels: ReleaseChannel[];
   /** The production binding's label, or `null`. */
   releaseRunnerLabel: string | null;

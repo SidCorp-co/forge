@@ -1,5 +1,5 @@
 // A binding with its connection, by the binding's id, as a read asks it: every project's production
-// binding a person's read weighs (`release-batch/gate.ts:productionBinding`, each environment's
+// binding a person's read weighs (`release-batch/gate.ts:productionBindings`, each environment's
 // deployment record) is asked before the quiet point and read in one statement
 // (`db/read-memo.ts:onePerId`, ISS-1070 r12), where each was one statement a project and an ask.
 // A write reads its own through `store.ts:findBindingWithConnectionById`.

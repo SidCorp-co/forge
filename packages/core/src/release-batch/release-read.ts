@@ -210,6 +210,7 @@ function runPart(
     // a run still open whose production deploy waits on a person's confirm (ISS-1096)
     prodConfirm: run.releasedAt === null ? pendingProdConfirmOf(run.metadata) : null,
     corrections: correctionsIn(run.metadata),
+    runMetadata: run.metadata,
   };
 }
 
@@ -294,6 +295,7 @@ export async function sharedFor(
     provider: productionProviderOf(channels),
     changeRequestLinks,
     confirmsProduction: productionAsksConfirm(channels, doc?.document),
+    sites: channels,
   };
 }
 

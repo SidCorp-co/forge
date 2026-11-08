@@ -174,7 +174,18 @@ releaseBatchRoutes.get(
 
 const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 
-const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
+/** One production site a record names shipped, with what its own runtime verification read it serving (ISS-1077). */
+const siteRecordSchema = z
+  .object({
+    name: z.string().trim().min(1).max(63),
+    serves: z.string().trim().min(1).max(200),
+  })
+  .strict();
+const sitesSchema = z.array(siteRecordSchema).min(1).max(10);
+
+const finishBodySchema = z
+  .object({ commit: z.string().trim().max(200).optional(), sites: sitesSchema.optional() })
+  .strict();
 const abortBodySchema = z
   .object({
     reason: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),

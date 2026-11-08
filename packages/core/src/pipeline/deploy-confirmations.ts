@@ -84,7 +84,12 @@ export async function readDeployHolds(runId: string): Promise<DeployHolds> {
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
-  const md = (row?.metadata ?? {}) as Record<string, unknown>;
+  return deployHoldsOf(row?.metadata);
+}
+
+/** The deploy holds a run's metadata carries, read off a row already in hand (ISS-1077). */
+export function deployHoldsOf(metadata: unknown): DeployHolds {
+  const md = (metadata ?? {}) as Record<string, unknown>;
   return (md[DEPLOY_CONFIRM_METADATA_KEY] as DeployHolds | undefined) ?? {};
 }
 

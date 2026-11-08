@@ -59,7 +59,7 @@ export interface ReleasedLineRead {
  * release's criteria basis (`criteria-basis.ts:criteriaBasisOf`, ISS-957) share.
  */
 export function servedCommitUnnamed(production: NamedEnvironment): string | null {
-  const { verify, verifySource } = releaseProbesOf(production);
+  const { verify, verifySource } = releaseProbesOf(production.declaration);
   if (verify) return null;
   return verifySource === 'declared-unusable'
     ? `its production \`${production.name}\` declares runtime probes that each identify an artifact, never the source, so no commit is read for what it serves: its releases are its agent's record by version`

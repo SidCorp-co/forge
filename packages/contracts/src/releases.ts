@@ -925,6 +925,12 @@ export interface ReleaseDetail extends ReleaseSummary {
 	cuts: ReleaseCutView[];
 	production: { name: string | null; url: string | null } | null;
 	/**
+	 * Each production site and where it stands on this release (ISS-1077), the environment's own first:
+	 * read off the release's own record and its run's deploys. Empty on a release no site record
+	 * covers: one that ended before sites were recorded, or a project that deploys through no binding.
+	 */
+	sites: ReleaseSiteView[];
+	/**
 	 * The project releases by merging its change requests and its owner deploys (`release.changeRequests`):
 	 * the release ends at its last merge, and names no production of its own (REQ-71 BC-6).
 	 */
@@ -936,6 +942,50 @@ export interface ReleaseDetail extends ReleaseSummary {
 	head: string | null;
 	/** Its tag on the source host; null until the commit its version names is known, and on a release before releases were tagged. */
 	tag: ReleaseTag | null;
+}
+
+/**
+ * Where one production site stands on a release (ISS-1077): `shipped` where the release's own record
+ * names it serving `serves`; `deploying` while the deploy this run sent is unsettled; `deployed` where
+ * it settled and no record names it yet; `awaiting_confirm` while it waits on a person's confirm;
+ * `failed` where the deploy this run sent failed; `not_reached` where this run sent it nothing.
+ */
+export const RELEASE_SITE_STATES = [
+	"shipped",
+	"deploying",
+	"deployed",
+	"awaiting_confirm",
+	"failed",
+	"not_reached",
+] as const;
+export type ReleaseSiteState = (typeof RELEASE_SITE_STATES)[number];
+
+export const RELEASE_SITE_STATE_LABELS: Record<ReleaseSiteState, string> = {
+	shipped: "Shipped",
+	deploying: "Deploying",
+	deployed: "Deployed",
+	awaiting_confirm: "Needs confirm",
+	failed: "Failed",
+	not_reached: "Not shipped",
+};
+
+export const RELEASE_SITE_STATE_TONES: Record<ReleaseSiteState, IssueStatusTone> = {
+	shipped: "ready",
+	deploying: "run",
+	deployed: "run",
+	awaiting_confirm: "you",
+	failed: "err",
+	not_reached: "err",
+};
+
+export interface ReleaseSiteView {
+	/** The site's name: the production environment's own for its own deployment. */
+	name: string;
+	state: ReleaseSiteState;
+	/** The version or commit the release's own record names it serving; null until it is recorded shipped. */
+	serves: string | null;
+	/** The site's declared origin, or null where it declares none. */
+	url: string | null;
 }
 
 export interface ReleaseResponse {
@@ -1113,6 +1163,10 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_SHIPPED_COMMIT_LACKS_LANDING",
 	/** A shipped commit whose hold on the release's landings nothing could read (ISS-1079). */
 	"RELEASE_SHIPPED_COMMIT_UNREAD",
+	/** A release recorded while a production site it did not reach is not shipped: failed, parked on a confirm, or unnamed (ISS-1077). */
+	"RELEASE_SITE_NOT_SHIPPED",
+	/** A release record naming a site production does not declare, or one site twice (ISS-1077). */
+	"RELEASE_SITE_UNDECLARED",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
@@ -1135,6 +1189,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_SHIPPED_COMMIT_SETTLED: 409,
 	RELEASE_SHIPPED_COMMIT_LACKS_LANDING: 409,
 	RELEASE_SHIPPED_COMMIT_UNREAD: 409,
+	RELEASE_SITE_NOT_SHIPPED: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */

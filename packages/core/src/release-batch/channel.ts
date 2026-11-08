@@ -5,7 +5,7 @@ import { rowsOf, uuidArray } from '../db/raw-sql.js';
 import { rowsPerProject } from '../db/read-memo.js';
 import { effectiveConfig, getIntegration } from '../integrations/index.js';
 import { getKnowledgeEntry } from '../knowledge/index.js';
-import type { NamedEnvironment } from '../project-config/index.js';
+import type { EnvironmentSite } from '../project-config/index.js';
 import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   RELEASE_PROCEDURE_FACT,
@@ -47,11 +47,13 @@ function classifyRollback(provider: string, raw: unknown): ReleaseRollback | nul
 }
 
 /** A release proves the commit it shipped, so only a probe identifying the source can prove it. */
-export function releaseProbesOf(production: NamedEnvironment): {
+export function releaseProbesOf(production: {
+  verification?: EnvironmentSite['verification'];
+}): {
   verify: VerifyConfig | null;
   verifySource: ReleaseChannel['verifySource'];
 } {
-  const declared = production.declaration.verification?.runtime ?? [];
+  const declared = production.verification?.runtime ?? [];
   const source = declared.filter((p) => p.identifies === 'source');
   if (source.length > 0) {
     return {
@@ -62,34 +64,42 @@ export function releaseProbesOf(production: NamedEnvironment): {
   return { verify: null, verifySource: declared.length > 0 ? 'declared-unusable' : 'none' };
 }
 
-function channelOf(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): ReleaseChannel {
-  const pair = decl.binding;
-  const label = effectiveConfig(pair).releaseRunnerLabel;
-  return {
-    environment: decl.production.name,
-    bindingId: pair.binding.id,
-    provider: pair.binding.provider,
-    label: pair.binding.label,
-    instructions: pair.binding.instructions ?? null,
-    ...releaseProbesOf(decl.production),
-    rollback: classifyRollback(
-      pair.binding.provider,
-      (pair.connection.config as Record<string, unknown> | null)?.rollback,
-    ),
-    releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
-  };
+/** One channel per production site, its own binding and its own runtime verification (ISS-1077). */
+function channelsOf(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): ReleaseChannel[] {
+  return decl.sites.map(({ site, binding: pair }) => {
+    const label = effectiveConfig(pair).releaseRunnerLabel;
+    return {
+      environment: decl.production.name,
+      site: site.name,
+      url: site.url ?? null,
+      bindingId: pair.binding.id,
+      provider: pair.binding.provider,
+      label: pair.binding.label,
+      instructions: pair.binding.instructions ?? null,
+      ...releaseProbesOf(site),
+      rollback: classifyRollback(
+        pair.binding.provider,
+        (pair.connection.config as Record<string, unknown> | null)?.rollback,
+      ),
+      releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
+    };
+  });
 }
 
-/** The production environment's deploy binding, or none where the project is not gated. */
+/** Each production site's deploy binding, its own first, or none where the project is not gated. */
 export async function resolveReleaseChannels(projectId: string): Promise<ReleaseChannel[]> {
   const decl = await resolveReleaseDeclaration(projectId);
-  return decl?.kind === 'gated' ? [channelOf(decl)] : [];
+  return decl?.kind === 'gated' ? channelsOf(decl) : [];
 }
 
-/** How the binding is named where a person has to find it: environment, provider, store slug, id. */
+/** How the binding is named where a person has to find it: environment or site, provider, store slug, id. */
 function bindingName(channel: ReleaseChannel): string {
   const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
-  return `environment \`${channel.environment}\` (${named} ${channel.bindingId})`;
+  const where =
+    channel.site === channel.environment
+      ? `environment \`${channel.environment}\``
+      : `site \`${channel.site}\` of environment \`${channel.environment}\``;
+  return `${where} (${named} ${channel.bindingId})`;
 }
 
 /** The production environments whose probes a release cannot compare with a commit. */

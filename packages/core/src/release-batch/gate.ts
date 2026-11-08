@@ -6,10 +6,12 @@ import { type IssueStatus, projects } from '../db/schema.js';
 import { type BindingWithConnection, heldBindingWithConnection } from '../integrations/index.js';
 import {
   bindingOf,
+  type EnvironmentSite,
   type NamedEnvironment,
   promotedBranch,
   type ReleasePath,
   readReleasePath,
+  sitesOf,
 } from '../project-config/index.js';
 import { blockerRefusal } from './refuse.js';
 
@@ -52,8 +54,17 @@ export type ReleaseDeclaration =
       production: NamedEnvironment;
       /** The branch production deploys from where a promotion crosses into it; null where none does. */
       deploysFrom: string | null;
+      /** The environment's own site's binding: `sites[0].binding`. */
       binding: BindingWithConnection;
+      /** Every site production serves, its own first, each through its own binding (ISS-1077). */
+      sites: GatedSite[];
     };
+
+/** One production site a gated release deploys, judges and records, with its binding held. */
+export interface GatedSite {
+  site: EnvironmentSite;
+  binding: BindingWithConnection;
+}
 
 /** The door an external production names as the one that deploys it, or null where it names none. */
 function externalTarget(production: NamedEnvironment): string | null {
@@ -61,15 +72,20 @@ function externalTarget(production: NamedEnvironment): string | null {
   return 'mode' in deployment ? (deployment.target ?? null) : null;
 }
 
-async function productionBinding(
+async function siteBinding(
   projectId: string,
   production: NamedEnvironment,
+  site: EnvironmentSite,
 ): Promise<{ ok: true; pair: BindingWithConnection } | { ok: false; reason: string }> {
-  const id = bindingOf(production);
+  const id = site.binding;
+  const named =
+    site.name === production.name
+      ? `production environment \`${production.name}\``
+      : `site \`${site.name}\` of production environment \`${production.name}\``;
   if (id === null) {
     return {
       ok: false,
-      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), names no door that deploys it, and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — name the door (\`deployment.target\`, a release is then your record of its deploy), declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
+      reason: `${named} is deployed outside Forge (deployment mode external), names no door that deploys it, and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — name the door (\`deployment.target\`, a release is then your record of its deploy), declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
     };
   }
   const pair = await heldBindingWithConnection(id);
@@ -78,10 +94,24 @@ async function productionBinding(
   if (!pair || !live) {
     return {
       ok: false,
-      reason: `production environment \`${production.name}\` deploys through binding ${id}, which is not an active binding of this project with an active connection — rebind it, or change the project document`,
+      reason: `${named} deploys through binding ${id}, which is not an active binding of this project with an active connection — rebind it, or change the project document`,
     };
   }
   return { ok: true, pair };
+}
+
+/** Every production site's binding, held; the first site that cannot be deployed refuses the whole. */
+async function productionBindings(
+  projectId: string,
+  production: NamedEnvironment,
+): Promise<{ ok: true; sites: GatedSite[] } | { ok: false; reason: string }> {
+  const sites: GatedSite[] = [];
+  for (const site of sitesOf(production)) {
+    const bound = await siteBinding(projectId, production, site);
+    if (!bound.ok) return bound;
+    sites.push({ site, binding: bound.pair });
+  }
+  return { ok: true, sites };
 }
 
 /** The declaration, read from the project document rather than inferred. `null`: no such project. */
@@ -125,15 +155,18 @@ export async function resolveReleaseDeclaration(
       target,
     };
   }
-  const bound = await productionBinding(projectId, path.production);
+  const bound = await productionBindings(projectId, path.production);
   if (!bound.ok) return { kind: 'undeclared-target', reason: bound.reason };
+  const [own] = bound.sites;
+  if (!own) return { kind: 'undeclared-target', reason: 'production declares no site' };
   return {
     kind: 'gated',
     path,
     defaultBranch: path.defaultBranch,
     production: path.production,
     deploysFrom: promotedBranch(path),
-    binding: bound.pair,
+    binding: own.binding,
+    sites: bound.sites,
   };
 }
 

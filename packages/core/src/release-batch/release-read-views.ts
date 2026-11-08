@@ -15,6 +15,7 @@ import {
   type ReleaseIssueView,
   type ReleasePerson,
   type ReleaseShippedFailing,
+  type ReleaseSiteView,
   type ReleaseSplit,
   type ReleaseState,
   type ReleaseSummary,
@@ -37,6 +38,7 @@ import { type CriterionReading, criterionReadingsAt } from './criterion-reading.
 import { judgedOnReleaseAt } from './judged-on-release.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
+import { recordedSitesOf, type SiteChannel, siteStatesOf } from './release-sites.js';
 import { noteSections } from './release-notes-view.js';
 import { irreversibleOf, releaseOwesOf } from './release-owes.js';
 import {
@@ -87,6 +89,8 @@ export interface Part {
   draftDecidable: boolean;
   /** The production deploy its run parked for a person's confirm (`coolify-prod-gate.ts`, ISS-1096); null or absent where none waits. */
   prodConfirm?: { bindingId: string } | null;
+  /** Its run's metadata, which its production sites are read off (`release-sites.ts`, ISS-1077); absent on a draft. */
+  runMetadata?: unknown;
 }
 
 export interface Shared {
@@ -110,7 +114,33 @@ export interface Shared {
   changeRequestLinks: readonly ChangeRequestLinkRow[];
   /** Production deploys on request through Coolify, so its deploy waits on a person's confirm (ISS-1096). */
   confirmsProduction?: boolean;
+  /** Each production site production declares now, its own first (ISS-1077); absent, none is read. */
+  sites?: readonly SiteChannel[];
 }
+
+/**
+ * Each production site and where it stands on this release (ISS-1077). An open run reads every site
+ * production declares now; an ended run its own record, else, where it never shipped, what its own
+ * deploys say. A release that shipped before sites were recorded lists none: nothing says which it reached.
+ */
+export function sitesOfPart(p: Part, s: Shared): ReleaseSiteView[] {
+  if (p.runId === null || p.runMetadata === undefined) return [];
+  const declared = s.sites ?? [];
+  const recorded = recordedSitesOf(p.runMetadata);
+  const open = p.releasedAt === null && !ENDED.has(p.state);
+  if (open || (recorded === null && p.state !== 'shipped')) {
+    return siteStatesOf(declared, p.runMetadata);
+  }
+  const urls = new Map(declared.map((c) => [c.site, c.url]));
+  return (recorded ?? []).map((r) => ({
+    name: r.name,
+    state: 'shipped' as const,
+    serves: r.serves,
+    url: urls.get(r.name) ?? null,
+  }));
+}
+
+const ENDED: ReadonlySet<ReleaseState> = new Set(['shipped', 'landed', 'failed', 'aborted']);
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
@@ -457,6 +487,7 @@ export function detailOf(
     feedbackAnswered.filter((f) => f.told === told).length;
   return {
     ...summary,
+    sites: sitesOfPart(p, s),
     feedbackAnswered,
     feedbackToldCounts: {
       on_ship: toldCount('on_ship'),

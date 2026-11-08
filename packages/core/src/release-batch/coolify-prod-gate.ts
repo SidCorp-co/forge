@@ -71,6 +71,17 @@ export function pendingProdConfirmOf(metadata: unknown): PendingProdConfirm | nu
   return waiting[0] ?? null;
 }
 
+/** Every binding a run's metadata holds parked for a person's confirm, not pressed yet (ISS-1077). */
+export function pendingConfirmBindingsOf(metadata: unknown): Set<string> {
+  const gates = (metadata as Record<string, unknown> | null)?.[GATE_METADATA_KEY];
+  if (typeof gates !== 'object' || gates === null) return new Set();
+  return new Set(
+    Object.values(gates as Record<string, Partial<ProdGateState>>)
+      .filter((g) => typeof g?.bindingId === 'string' && !g.confirmedAt)
+      .map((g) => g.bindingId as string),
+  );
+}
+
 /**
  * Whether a run's `metadata` (as SQL) holds a production deploy parked for a person's confirm: the
  * run waits on that person, so no sweep closes it for the job under it having ended (ISS-1096).

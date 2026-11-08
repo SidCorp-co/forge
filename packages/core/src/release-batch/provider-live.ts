@@ -38,7 +38,7 @@ export async function servedBySourceProbes(
   env: NamedEnvironment,
   named = `environment \`${env.name}\``,
 ): Promise<Reading<string>> {
-  const { verify, verifySource } = releaseProbesOf(env);
+  const { verify, verifySource } = releaseProbesOf(env.declaration);
   if (!verify) {
     return {
       ok: false,

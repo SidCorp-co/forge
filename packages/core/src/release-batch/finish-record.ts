@@ -8,6 +8,7 @@ import { logger } from '../lib/logger.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
+import { recordedSitesOf, type SiteRecord } from './release-sites.js';
 
 type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
@@ -60,6 +61,9 @@ export interface ReleaseFinishRecord {
    *  that is known, and on older records, whose `closing` was only ever reached by a green probe. */
   verification: RecordedVerification | null;
   finishedAt: string | null;
+  /** Each production site this finish records shipped, with what it serves (ISS-1077); absent on a
+   *  record written before sites were recorded. */
+  sites?: SiteRecord[] | null;
 }
 
 const VERIFICATIONS: ReadonlySet<string> = new Set<string>(RECORDED_VERIFICATIONS);
@@ -125,6 +129,7 @@ export function readFinishRecord(metadata: unknown): ReleaseFinishRecord | null 
       : null,
     finishedAt: str(r.finishedAt),
     shipped: shippedOf(r.shipped),
+    sites: recordedSitesOf({ finish: r }),
   };
 }
 

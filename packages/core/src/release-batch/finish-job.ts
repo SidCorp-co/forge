@@ -22,6 +22,7 @@ import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
+import { resolveReleaseChannels } from './channel.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
 import {
   compareAndSet,
@@ -34,6 +35,7 @@ import {
 } from './finish-record.js';
 import { RECORDED_VERIFICATION } from './recorded.js';
 import { FENCE_LOST, fenceLost, reasonOf, refuseRelease } from './refuse.js';
+import { admitSiteRecord, type SiteRecord } from './release-sites.js';
 import { oweReleaseTag } from './release-tag.js';
 import { recordObservedShippedCommit } from './shipped-commit.js';
 
@@ -52,6 +54,11 @@ export { isInFlight, type ReleaseFinishRecord, readFinishRecord } from './finish
 interface AcceptFinishOptions {
   /** A commit the agent carries as evidence; kept on the record, never compared or checked. */
   commit?: string | undefined;
+  /**
+   * Each production site the agent watched go live, with what its own runtime verification read it
+   * serving (ISS-1077). Required on a production of several sites; a production of one may leave it out.
+   */
+  sites?: SiteRecord[] | undefined;
 }
 
 interface AcceptFinishResult {
@@ -105,10 +112,17 @@ export async function acceptReleaseBatchFinish(
       .select({ n: sql<number>`count(*)::int` })
       .from(issues)
       .where(eq(issues.releaseBatchRunId, runId));
+    let sites: SiteRecord[] | null = current?.sites ?? null;
     if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
       // Closing the roster is the batch's last production act: the approval that let it deploy lets it close.
       await assertApprovalAllowsAttempt(runId, run.projectId);
       await assertFinishable(runId, run);
+      // every production site is named shipped, or the release holds as not shipped (ISS-1077)
+      sites = admitSiteRecord(await resolveReleaseChannels(run.projectId), options.sites, {
+        metadata: run.metadata,
+        fallback: commit ?? run.releaseVersion ?? '',
+        remedy: `Deploy each one on this run and watch it go live, then finish naming every site; or abort with POST /api/projects/${run.projectId}/release-batches/${runId}/abort, which returns the roster to the gate.`,
+      });
     }
 
     const now = new Date().toISOString();
@@ -129,6 +143,7 @@ export async function acceptReleaseBatchFinish(
       refusal: null,
       verification: null,
       finishedAt: null,
+      sites,
     };
     // Conditioned on the run too: an abort landing after the read above refuses on the next round.
     if (await compareAndSet(runId, current?.version ?? null, record, { runOpen: true })) {

@@ -7,6 +7,7 @@ export {
   abandonDeployDispatchHold,
   isCloseDeferred,
   openDeployDispatchHold,
+  deployHoldsOf,
   readDeployHolds,
   replaceDispatchHoldWithTargets,
   resolveDeployGate,
