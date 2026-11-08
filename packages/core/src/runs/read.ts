@@ -46,6 +46,9 @@ const SCOPE_SQL: Record<RunStandingScope, SQL> = {
 
 const SCOPE_RULE = sayEn(say('runs.list.scopeRule'));
 
+/** How many live runs a project's standing counts by state at most. */
+const LIVE_MOST = 10_000;
+
 async function baseRuns(
   projectId: string,
   where: SQL,
@@ -136,12 +139,15 @@ export async function listRunStanding(
   viewer: RunViewer | null,
 ): Promise<RunStandingList> {
   const { master, ctx } = await contextFor(projectId, viewer);
-  const [counts, page, liveBase, prefix] = await Promise.all([
+  // a first page of the live runs is the head of every live run, in the one order both rank by: read
+  // once, not again as a page beside it (ISS-1070 r18: the home sent the live runs twice a read)
+  const livePage = opts.scope === 'live' && opts.offset === 0 && opts.limit < LIVE_MOST;
+  const [counts, liveBase, page, prefix] = await Promise.all([
     countsOf(projectId),
-    scopedRuns(projectId, opts.scope, opts.limit + 1, opts.offset),
-    scopedRuns(projectId, 'live', 10_000, 0),
+    scopedRuns(projectId, 'live', LIVE_MOST, 0),
+    livePage ? null : scopedRuns(projectId, opts.scope, opts.limit + 1, opts.offset),
     activeIssuePrefix(projectId),
-  ]);
+  ]).then(([c, live, p, x]) => [c, live, p ?? live.slice(0, opts.limit + 1), x] as const);
   const [items, live, leased] = await Promise.all([
     standingsOf(projectId, page.slice(0, opts.limit), ctx),
     standingsOf(projectId, liveBase, ctx),
