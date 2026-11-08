@@ -56,7 +56,9 @@ export function criterionShortTitle(c: {
 			break;
 		short = next;
 	}
+	// a sentence of one clause that fits reads whole, its full stop kept: nothing was left out
+	if (short === whole) return { short: whole, cut: false };
 	const kept = short.replace(/[.,;:]$/, "");
-	if (short === clause) return { short: kept, cut: clause !== whole };
+	if (short === clause) return { short: kept, cut: true };
 	return { short: `${kept}…`, cut: true };
 }

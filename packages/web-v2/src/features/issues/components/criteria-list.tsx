@@ -1,6 +1,6 @@
 
-// ISS-55 — the issue's acceptance criteria as one line each: its number, the statement clipped to the
-// line, and a mark for the verdict (REQ-43 BC-10). The filter pills carry the counts, so no row does.
+// ISS-55 — the issue's acceptance criteria as one line each: its number, its short title or else its
+// statement's first clause cut at a word (ISS-1131), and a mark for the verdict (REQ-43 BC-10). The filter pills carry the counts, so no row does.
 // A person's view reads each statement without the trace code an agent wrote at its head, and each
 // verdict without the commit it was taken at; the developer view reads both (BC-7).
 // A row opens on its full statement, the verdict's identity, reason and evidence, and, for a person
@@ -17,13 +17,13 @@ import { EmptyPanelLine, HollowCheck, StatusBadge, statusReading, VerdictEvidenc
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { criterionShortTitle } from "@forge/contracts/criterion-title";
 import type { CriterionStanding } from "@forge/contracts/issue-vocabulary";
 import { criterionStandingOf } from "@forge/contracts/verdict-identity";
 import { cn } from "@/lib/utils/cn";
 import { withoutCriterionCode } from "@/lib/utils/criterion-code";
 import { identityPhrase } from "../identity-phrase";
 import { type CriterionRow, type CriterionVerdict, criterionRowStanding, type RetiredCriterionRow, useCriteria } from "../criteria";
-import { clipWords } from "../derive";
 import { useAttachments } from "../detail-hooks";
 import { RecordVerdict } from "./criteria-acts";
 
@@ -45,8 +45,6 @@ function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: 
   return parts.filter(Boolean).join("\n");
 }
 
-/** Words of a criterion's statement a row shows; the rest is on the open row (REQ-43: a row is at most 12 words). */
-const ROW_WORDS = 8;
 
 type Filter = "all" | "fail" | "unjudged" | "met" | "skipped";
 
@@ -76,6 +74,7 @@ interface CriterionLine {
   id: string;
   n: number;
   statement: string;
+  title: string | null;
   standing: CriterionStanding;
   row: CriterionRow | null;
 }
@@ -116,6 +115,8 @@ function CriterionItem({
   const reading = statusReading("criterion", line.standing, language).label;
   const row = line.row;
   const statement = developer ? line.statement : withoutCriterionCode(line.statement);
+  // the row's face is the criterion's short title, else its first clause; the whole sentence opens under it (ISS-1131)
+  const face = criterionShortTitle({ title: line.title, text: statement });
   return (
     <li className="border-t border-line-divider first:border-t-0" data-testid="criterion-row">
       <button
@@ -125,7 +126,7 @@ function CriterionItem({
         className="flex w-full min-w-0 items-baseline gap-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
       >
         <span className="w-8 flex-none tabular-nums text-subtle">{line.n}</span>
-        <span className="min-w-0 flex-1 truncate">{clipWords(statement, ROW_WORDS)}</span>
+        <span className="min-w-0 flex-1">{face.short}</span>
         {line.standing === "short" ? (
           <span className="hidden flex-none text-13 text-warn-11 md:inline" aria-hidden="true" data-testid={`criterion-${line.n}-word`}>
             {reading}
@@ -147,7 +148,7 @@ function CriterionItem({
       </button>
       {open ? (
         <div className="grid gap-2 pb-3 pl-11 text-13 text-muted" data-testid="criterion-full">
-          <p className="whitespace-pre-wrap">{statement}</p>
+          {face.cut ? <p className="whitespace-pre-wrap">{statement}</p> : null}
           {row ? (
             <>
               <p className="whitespace-pre-wrap">{tooltipOf(row, t, language, time.dateTime, developer)}</p>
@@ -199,8 +200,8 @@ export function CriteriaList({
   const rows = q.data?.criteria ?? [];
   const lines: CriterionLine[] =
     rows.length > 0
-      ? rows.map((row) => ({ id: row.id, n: row.n, statement: row.statement, standing: criterionRowStanding(row.latest), row }))
-      : checklist.map((item, i) => ({ id: item.key, n: i + 1, statement: item.text, standing: item.checked ? "pass" : "unjudged", row: null }));
+      ? rows.map((row) => ({ id: row.id, n: row.n, statement: row.statement, title: row.title ?? null, standing: criterionRowStanding(row.latest), row }))
+      : checklist.map((item, i) => ({ id: item.key, n: i + 1, statement: item.text, title: null, standing: item.checked ? "pass" : "unjudged", row: null }));
   const count = (f: Filter) => (f === "all" ? lines.length : lines.filter((l) => FILTER_OF[l.standing] === f).length);
   const pills: { value: Filter; label: string }[] = [
     { value: "all", label: t("issues.criteria.pill.all", { n: count("all") }) },

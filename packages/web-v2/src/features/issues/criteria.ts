@@ -38,6 +38,8 @@ export interface CriterionRow {
   id: string;
   n: number;
   statement: string;
+  /** Its short title, the row's face (ISS-1131); null shows the statement's first clause. */
+  title: string | null;
   position: number;
   requirementCriterionId: string | null;
   latest: CriterionVerdict | null;

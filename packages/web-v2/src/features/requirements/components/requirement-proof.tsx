@@ -2,6 +2,7 @@
 // The full page's views below the facts: the criteria as a checklist with their verdicts and evidence, the
 // revisions and the diff a proposal carries, and the history by source.
 
+import { criterionShortTitle } from "@forge/contracts/criterion-title";
 import { Written } from "@/lib/i18n/written";
 import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, type RequirementCriteriaChanges, type RequirementCriterionChange, type RequirementHistoryEntry, type RequirementListChange, type RequirementSpecChanges } from "@forge/contracts/requirements";
 import type { RequirementKind } from "@forge/contracts/requirement-pictures";
@@ -180,6 +181,7 @@ export function PeekCriteria({ d }: { d: RequirementDetail }) {
   const t = useCopy();
   const cov = d.standing.coverage;
   const rest = cov.length - PEEK_CRITERIA;
+  const titles = new Map(d.criteria.map((c) => [c.code, c.title]));
   return (
     <>
       <ul className="grid gap-1.5" data-testid="peek-criteria">
@@ -189,7 +191,9 @@ export function PeekCriteria({ d }: { d: RequirementDetail }) {
               <VerdictDot verdict={c.verdict} />
             </span>
             <span className="w-11 flex-none pt-px font-mono text-12 font-semibold text-muted">{c.code}</span>
-            <span className="line-clamp-2 min-w-0 flex-1 leading-snug">{c.body}</span>
+            <span className="min-w-0 flex-1 leading-snug" title={c.body}>
+              {criterionShortTitle({ title: titles.get(c.code), text: firstLine(c.body) }).short}
+            </span>
           </li>
         ))}
       </ul>
@@ -219,6 +223,8 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
       {cov.filter((c) => filter === "all" || c.verdict === filter).map((c) => {
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
+        // the row's face is the criterion's short title, else its first clause; the sentence opens under it (ISS-1131)
+        const face = criterionShortTitle({ title: crit?.title, text: firstLine(c.body) });
         return (
           <li key={c.code} className="border-b border-line-subtle" data-testid="criterion-row" data-verdict={c.verdict}>
             <details className="group" data-testid="criterion-detail">
@@ -230,7 +236,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 <span className="grid w-4 flex-none place-items-center">
                   {proof ? <VerdictDot verdict={c.verdict} /> : <span aria-hidden className="size-1.5 rounded-full bg-neutral-8" data-testid="criterion-bullet" />}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-14">{firstLine(c.body)}</span>
+                <span className="min-w-0 flex-1 text-14">{face.short}</span>
                 <Icon name="chevronRight" size={14} className="flex-none text-subtle transition-transform group-open:rotate-90" />
               </summary>
             <div className="min-w-0 pb-3 pl-6.5">
@@ -241,7 +247,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                   </span>
                 </div>
               ) : null}
-              <CriterionWording body={c.body} scenario={crit?.form === "scenario"} />
+              <CriterionWording body={c.body} scenario={crit?.form === "scenario"} cut={face.cut || firstLine(c.body) !== c.body.trim()} />
               {developer && c.counts ? (
                 <p className="mt-1 text-13 text-muted" data-testid="criterion-counts">
                   {c.counts.source === "issue"
@@ -316,17 +322,12 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
   );
 }
 
-/** A criterion's face: its first line, a scenario's Given line among them; the rest is behind its expand. */
 /** Fewer criteria than this read whole: their dots say each verdict, and a filter over them is noise (ISS-903). */
 const FILTER_FROM = 5;
 
-/** The short line cut to one row says no more than this many characters whole. */
-const LINE_WHOLE = 90;
-
-/** A criterion's full wording, opened under its line only where it says more than the line: a second line, or a line cut short. */
-function CriterionWording({ body, scenario }: { body: string; scenario: boolean }) {
-  const line = firstLine(body);
-  if (body.trim() === line && line.length <= LINE_WHOLE) return null;
+/** A criterion's full wording, opened under its line only where it says more than the line: a second line, a title, or a clause cut short. */
+function CriterionWording({ body, scenario, cut }: { body: string; scenario: boolean; cut: boolean }) {
+  if (!cut) return null;
   return scenario ? (
     <pre className="whitespace-pre-wrap font-mono text-13 leading-relaxed" data-testid="criterion-wording">{body}</pre>
   ) : (

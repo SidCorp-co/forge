@@ -23,7 +23,7 @@ describe("a criterion's short title (ISS-1131)", () => {
 
 	it("shows the first clause where there is none, whole when the sentence is one clause", () => {
 		expect(criterionShortTitle({ text: "A person signs in." })).toEqual({
-			short: "A person signs in",
+			short: "A person signs in.",
 			cut: false,
 		});
 		expect(
