@@ -114,6 +114,7 @@ export const STANDING_GROUPS = [
 	"moving",
 	"running",
 	"stuck",
+	"overdue",
 	"waiting_gate",
 	"queued",
 	"paused",
@@ -128,6 +129,7 @@ export const STANDING_GROUPS = [
 	"steady",
 	"closed",
 	"done",
+	"dropped",
 	"stopped",
 	"finished",
 ] as const;
@@ -143,6 +145,36 @@ export type StandingGroupLabels<G extends StandingGroup> = Record<
 	G,
 	StandingGroupLabel
 >;
+
+/**
+ * The one vocabulary a requirement row and a feedback row are grouped in (FB-583, owner 2026-11-08),
+ * in the order a list draws them: an act the viewer owes; an issue or a run working now; work in the
+ * master's queue, which has no clock; a wait past its due or held (`times.stuck` names why); a wait on
+ * anyone else; put aside; ended; and ended without delivering, never mixed into Done. A slice declares
+ * the subset it serves (`deferred` is a requirement's alone).
+ */
+export const ATTENTION_GROUPS = [
+	"needs_you",
+	"running",
+	"queued",
+	"overdue",
+	"waiting",
+	"deferred",
+	"done",
+	"dropped",
+] as const satisfies readonly StandingGroup[];
+export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
+
+export const ATTENTION_LABELS: StandingGroupLabels<AttentionGroup> = {
+	needs_you: { label: "Needs you", tone: "you", collapsed: false },
+	running: { label: "Running", tone: "run", collapsed: false },
+	queued: { label: "Queued", tone: "ready", collapsed: false },
+	overdue: { label: "Overdue", tone: "blocked", collapsed: false },
+	waiting: { label: "Waiting on others", tone: "neutral", collapsed: false },
+	deferred: { label: "Deferred", tone: "neutral", collapsed: true },
+	done: { label: "Done", tone: "done", collapsed: true },
+	dropped: { label: "Dropped", tone: "neutral", collapsed: true },
+};
 
 export interface Standing<
 	G extends StandingGroup = StandingGroup,

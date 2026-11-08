@@ -25,12 +25,14 @@ import type {
 	RequirementPictureView,
 } from "./requirement-pictures.js";
 import type { Said } from "./said.js";
-import type {
-	Standing,
-	StandingGroup,
-	StandingGroupLabels,
-	WaitingKind,
-	WaitingOn,
+import {
+	ATTENTION_GROUPS,
+	ATTENTION_LABELS,
+	type AttentionGroup,
+	type Standing,
+	type StandingGroupLabels,
+	type WaitingKind,
+	type WaitingOn,
 } from "./standing.js";
 import type { StandingTimes } from "./steward.js";
 import { verdictEvidenceSchema } from "./verdict-identity.js";
@@ -185,47 +187,12 @@ export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
 	withdrawn: "withdrawn: a draft dropped without being proposed",
 };
 
-/** The list's attention groups, in the order they are drawn. */
-export const REQUIREMENT_ATTENTION_GROUPS = [
-	"needs_you",
-	"stuck",
-	"moving",
-	"waiting",
-	"deferred",
-	"done",
-] as const satisfies readonly StandingGroup[];
-export type RequirementAttentionGroup =
-	(typeof REQUIREMENT_ATTENTION_GROUPS)[number];
+/** The list's attention groups, in the order they are drawn: the shared vocabulary (FB-583). */
+export const REQUIREMENT_ATTENTION_GROUPS = ATTENTION_GROUPS;
+export type RequirementAttentionGroup = AttentionGroup;
 
 export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttentionGroup> =
-	{
-		needs_you: {
-			label: "Needs you",
-			tone: "you",
-			collapsed: false,
-		},
-		stuck: {
-			label: "Stuck",
-			tone: "blocked",
-			collapsed: false,
-		},
-		moving: {
-			label: "Moving",
-			tone: "run",
-			collapsed: false,
-		},
-		waiting: {
-			label: "Someone else’s turn",
-			tone: "neutral",
-			collapsed: false,
-		},
-		deferred: {
-			label: "Deferred",
-			tone: "neutral",
-			collapsed: true,
-		},
-		done: { label: "Done", tone: "done", collapsed: true },
-	};
+	ATTENTION_LABELS;
 
 /** Whom a requirement waits on: the viewer, another person, an agent (the master, a draft's agent
  *  author), its issues, the release that ships them on its own, or nobody (done, or no owner to act). */
