@@ -592,6 +592,12 @@ impl Watch {
                 }
             }
             let Some(at) = stop_at else { continue };
+            if !in_turn {
+                // a Stop with no turn core handed in flight closes nothing core is waiting on
+                stop_at = None;
+                tally.next_turn();
+                continue;
+            }
             if tally.queued() > 0 || self.unsubmitted().await > 0 {
                 tracing::info!(
                     "[chat {}] a Stop with a message typed into the turn not yet taken — the turn goes on",
