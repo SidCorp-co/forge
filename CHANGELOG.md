@@ -9,6 +9,36 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.609] - 2026-11-08
+
+Production reads go through audited project reads; steward tokens, triage previews and feedback verification fixed
+
+### Added
+
+- **An owner act the product gates on approval waits for the owner's yes.** The room asks him in his thread and makes the act only once it cites his own agreement, written after he was asked.
+- **A declared production read can be the project repo's own code, with a credential from a project secret.** A read names `repo:<path>`, run from the box's checkout; only its process is handed the secret, and its answer never shows it.
+- **A binding's owner project reads its room agent's turns and brief.** A room lists its turns by thread, each with what started it and what it posted, and its brief, grants and routes with when each last changed.
+
+### Changed
+
+- **A guide article's text no longer counts against its page's word budget.** Only the page around the article is limited: its titles, labels and actions.
+- **The issue-flow guide names the route for each finding outside a change.** A product finding goes to Feedback and a technical one to debt or its module's backlog, each with the route that records it.
+- **The Feedback list says once when judging is paused for the day.** When the steward's jobs for the day are spent, one line above the list says judging resumes at 00:00 UTC.
+- **Memory recall answers each subject once, and a temporary entry retires when its ending is met.** The newest entry names the others; an ending core cannot see is flagged for re-check once its note window passes.
+- **Every question in Needs you now carries a recommended answer.** Where neither the run that asked nor the assistant recommended one, Forge recommends letting the run decide, which is one click.
+- **A script schedule's forge-ops calls take their credential from a project secret.** A pipeline run reads production through the project's declared reads; each process alone is handed its secret, and a run's read is kept on its issue.
+
+### Fixed
+
+- **A closed issue on a project that judges its own work counts as passing at its merge mark.** Requirements on a forge with no source host stop waiting on a judge that never comes.
+- **Feedback whose requirement a decision accepted now reads resolved.** It is verified by its ship, instead of waiting as planned for ever.
+- **A host merge into another branch no longer reads as landed.** On a change-request project, a merge Forge stamped into a branch other than the project's target, such as release/production, no longer lets the issue move to awaiting release.
+- **A steward job's agent keeps its token until the job ends.** Preparing the job again hands out a new token without taking the earlier one, and a job Forge ends early is recorded as Forge's end, not the agent's failure.
+- **Top-bar actions beside the Ask Agent panel no longer cover the back control.** A page whose actions do not fit in one row wraps them to a second row.
+- **A suggested triage that files a draft now shows its title before Accept.** Where the assistant wrote no title, the preview shows the item's own title, which the filed issue takes.
+- **Feedback whose fix shipped with a failing criterion is no longer verified by the ship.** It reads planned naming that criterion, and its verify is refused `FEEDBACK_CARRIER_FAILED` until a release ships it passing.
+- **Needs you reads every requirement's build in one statement of each kind again.** batch-cleanup-1108 sent one per requirement holding verdicts of its own, tripling forge-dev's needs-you statements.
+
 ## [0.4.0-dev.608] - 2026-11-08
 
 Proposed workflow designs wait on the project's master, not an untold person

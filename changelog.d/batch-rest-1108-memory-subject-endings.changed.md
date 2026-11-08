@@ -1,1 +1,0 @@
-**Memory recall answers each subject once, and a temporary entry retires when its ending is met.** The newest entry names the others; an ending core cannot see is flagged for re-check once its note window passes.

@@ -1,1 +1,0 @@
-**A binding's owner project reads its room agent's turns and brief.** A room lists its turns by thread, each with what started it and what it posted, and its brief, grants and routes with when each last changed.

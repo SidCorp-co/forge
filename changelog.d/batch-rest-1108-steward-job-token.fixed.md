@@ -1,1 +1,0 @@
-**A steward job's agent keeps its token until the job ends.** Preparing the job again hands out a new token without taking the earlier one, and a job Forge ends early is recorded as Forge's end, not the agent's failure.

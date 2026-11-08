@@ -1,1 +1,0 @@
-**Feedback whose fix shipped with a failing criterion is no longer verified by the ship.** It reads planned naming that criterion, and its verify is refused `FEEDBACK_CARRIER_FAILED` until a release ships it passing.
