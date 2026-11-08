@@ -14,9 +14,10 @@ export function shapeOf(text: string): string {
       .replace(/\$\d+/g, '$n')
       // a number standing alone, never a digit inside a name (`t1`, `iss_seq`)
       .replace(/(?<![\w$])\d+(?:\.\d+)?\b/g, '?')
-      // a list of parameters or literals, in parentheses or an ARRAY[...]
-      .replace(/\(\s*(?:\$n|\?)(?:\s*,\s*(?:\$n|\?))*\s*\)/g, '(…)')
-      .replace(/\[\s*(?:\$n|\?)(?:\s*,\s*(?:\$n|\?))*\s*\]/g, '[…]')
+      // a list of parameters or literals, each cast or not, in parentheses or an ARRAY[...]: an
+      // `IN ($n::uuid, …)` of twelve projects was a shape of its own beside the same of eleven (r13)
+      .replace(/\(\s*(?:\$n|\?)(?:::\w+)?(?:\s*,\s*(?:\$n|\?)(?:::\w+)?)*\s*\)/g, '(…)')
+      .replace(/\[\s*(?:\$n|\?)(?:::\w+)?(?:\s*,\s*(?:\$n|\?)(?:::\w+)?)*\s*\]/g, '[…]')
       // many VALUES rows read as one
       .replace(/\(…\)(?:\s*,\s*\(…\))+/g, '(…)')
       .replace(/\s+/g, ' ')

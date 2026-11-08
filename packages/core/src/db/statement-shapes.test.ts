@@ -11,6 +11,21 @@ describe('statement shapes', () => {
     expect(shapeTextOf(fingerprintOf(five))).toBe(shapeOf(two));
   });
 
+  it('reads a list of cast parameters of any length as one shape', () => {
+    // forge-dev named one runs read (`runs/facts-read.ts:latestFlips`) a new shape for every count
+    // of runs it carried (408ffa3b beside 5758de28, ISS-1070 r13)
+    const cast = (ids: string[]) =>
+      `SELECT entity_id FROM kernel_transitions WHERE entity = $1 AND entity_id IN (${ids.join(', ')})`;
+    const three = cast(['$2::uuid', '$3::uuid', '$4::uuid']);
+    expect(shapeOf(three)).toBe(
+      'SELECT entity_id FROM kernel_transitions WHERE entity = $n AND entity_id IN (…)',
+    );
+    expect(fingerprintOf(cast(['$2::uuid']))).toBe(fingerprintOf(three));
+    expect(shapeOf('SELECT x FROM t WHERE k = ANY(ARRAY[$1::text, $2::text])')).toBe(
+      'SELECT x FROM t WHERE k = ANY(ARRAY[…])',
+    );
+  });
+
   it('keeps no literal a statement carries, and no digit inside a name', () => {
     const shape = shapeOf(
       "SELECT t1.iss_seq FROM t1 WHERE t1.key = 'ISS-''42''' AND t1.at > 1.5 AND t1.id = ANY(ARRAY['a', 'b'])",
