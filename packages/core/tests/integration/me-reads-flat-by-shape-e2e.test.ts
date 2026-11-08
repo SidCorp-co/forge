@@ -320,6 +320,12 @@ describe('a person in twelve projects wired as forge-dev holds them', () => {
       [...across.cold.http].filter(([at]) => at.startsWith('/af/')),
     );
     expect(asked.length).toBeGreaterThan(0);
+    // named on Server-Timing by its provider, once a storefront binding, never by its host's hash
+    const attention = reads.get('/api/me/attention')?.across.cold.timing ?? '';
+    expect(
+      legsIn(attention).find((l) => l.startsWith('http-autoflow;')) ??
+        `no http-autoflow leg in ${attention}`,
+    ).toMatch(/desc="2 calls"/);
   });
 
   // ISS-1070 r13: half the projects are deployed through a binding that answers (`liveCoolify`), so

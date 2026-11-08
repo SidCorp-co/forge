@@ -1,5 +1,7 @@
 /** One GraphQL POST against an Autoflow platform, bearer-authenticated and time-boxed. */
 
+import { asProvider } from '../../lib/outbound-timing.js';
+
 export type AutoflowGqlResult =
   | { kind: 'ok'; data: Record<string, unknown> }
   | { kind: 'unauthorized'; status: number; message: string }
@@ -19,16 +21,19 @@ export async function autoflowGql(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ query }),
-      signal: controller.signal,
-    });
+    // named on a request's `Server-Timing` as `http-autoflow`, not by its host's hash (ISS-1070 r14)
+    const res = await asProvider('autoflow', () =>
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ query }),
+        signal: controller.signal,
+      }),
+    );
     if (res.status === 401 || res.status === 403) {
       return { kind: 'unauthorized', status: res.status, message: `HTTP ${res.status}` };
     }
