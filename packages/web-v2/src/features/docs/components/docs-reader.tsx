@@ -170,9 +170,12 @@ export function DocsArticle({
   return (
     <article ref={ref} className="mx-auto max-w-2xl">
       {children}
-      <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
-        {body}
-      </Markdown>
+      {/* the article's own text is content, never held to a screen's word budget (ISS-1148) */}
+      <div data-word-budget="content">
+        <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
+          {body}
+        </Markdown>
+      </div>
     </article>
   );
 }
@@ -195,6 +198,7 @@ function DocsToc({ toc }: { toc: TocEntry[] }) {
         <button
           key={`${t.slug}-${t.level}`}
           type="button"
+          data-word-budget="content"
           onClick={() => scrollToHeading(t.slug)}
           className={cn("truncate rounded-md px-2 py-1 text-left text-13 text-muted hover:bg-hover hover:text-fg", TOC_INDENT[t.level - 1])}
         >

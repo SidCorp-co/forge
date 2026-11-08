@@ -28,6 +28,9 @@
 // @direct-test-of packages/web-v2/src/features/operator/components/kpi-row.tsx
 // @direct-test-of packages/web-v2/src/features/operator/components/glance-cards.tsx
 // @direct-test-of packages/web-v2/src/features/operator/components/adoption-panel.tsx
+// ISS-1148: a guide article's own text is content, so only its chrome is held to the budget
+// @direct-test-of packages/web-v2/witness/first-screen.ts
+// @direct-test-of packages/web-v2/src/features/docs/components/docs-reader.tsx
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";

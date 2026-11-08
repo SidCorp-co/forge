@@ -84,6 +84,8 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "link-chat": { budget: 30 },
   "oauth-consent": { budget: 60 },
   guides: { budget: 90 },
+  // the article's own text is content, never counted (`first-screen.ts:CONTENT`): this is its chrome
+  "guide-article": { budget: 60 },
   "shared-answer": { budget: 50 },
   widget: { budget: 30 },
   "widget-status": { budget: 30 },

@@ -3,6 +3,13 @@
 // under it), and seen. A word folded away, hidden, drawn off the window or scrolled below its
 // bottom edge is not on the first screen and is not counted.
 
+/**
+ * Content, never screen copy (ISS-1148): an article's own text (a guide page's body, and the contents
+ * list drawn from its headings) is what the page is for, so no word inside it is counted; only the
+ * chrome around it, its titles, labels and actions, is held to the budget.
+ */
+export const CONTENT = "[data-word-budget='content']";
+
 /** Out of the layout, folded away (a closed <details>), hidden, or drawn too small to read. */
 function unseen(el: Element): boolean {
   const r = el.getBoundingClientRect();
@@ -32,7 +39,7 @@ export function firstScreenWords(column: HTMLElement, { whole = false }: { whole
   const range = document.createRange();
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const el = n.parentElement;
-    if (!el || unseen(el)) continue;
+    if (!el || unseen(el) || el.closest(CONTENT)) continue;
     for (const m of (n.textContent ?? "").matchAll(WORD)) {
       range.setStart(n, m.index);
       range.setEnd(n, m.index + m[0].length);

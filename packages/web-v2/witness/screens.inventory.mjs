@@ -75,8 +75,8 @@ export const INVENTORY = [
   { route: "/link-chat", component: "LinkChatPage in AuthShell", feature: "auth", drawn: "link-chat" },
   { route: "/oauth/authorize", component: "ConsentForm", feature: "mcp-auth", drawn: "oauth-consent" },
   { route: "/guides", component: "GuideShell / public-docs", feature: "guides", drawn: "guides" },
-  // an article: its words are what the page is for, so no first-view budget holds it (ISS-1137)
-  { route: "/guides/$slug", component: "GuideShell", feature: "guides", files: ["features/guides/components/guide-shell.tsx"] },
+  // an article: its text is content, so only the chrome around it is budgeted (ISS-1137, ISS-1148)
+  { route: "/guides/$slug", component: "GuideShell / PublicReader", feature: "guides", drawn: "guide-article" },
   { route: "/s/$token", component: "SharePage (-share-body)", feature: "shares", drawn: "shared-answer" },
   { route: "/w/$siteKey", component: "WidgetFrame", feature: "widget", drawn: "widget" },
   { route: "/w/status/$token", component: "WidgetStatusPage", feature: "widget", drawn: "widget-status" },
