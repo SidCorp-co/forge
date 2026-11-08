@@ -380,7 +380,9 @@ const READS = (p: string): Ceiling[] => [
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 84, buffers: 20500 },
   // ISS-1070 r9's mixed-shape seed: the open standing read touches 5,262-5,452 buffers, 5,287 on the
   // code before r9, so the seed and not the read moved it; priced until a stored fact replaces its scans
-  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5800 },
+  // ISS-1070 r11: over one seed the code before r11 and after touch the same 5,625; across seeds r11
+  // measured 4,816 to 5,889, so the seed's spread and not the read crosses 5,800: priced alike
+  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 6000 },
   { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 41000 },
   // ISS-1070 r11: the code before r11 (97d264900) touched 27,011 and 27,023 buffers on this seed,
   // over the 26,000 r8 set; the seed and not the read moved it, priced until a read model replaces its scans
