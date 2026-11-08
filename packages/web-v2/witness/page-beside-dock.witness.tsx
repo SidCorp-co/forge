@@ -8,6 +8,9 @@
 // - over: where it does not, the panel is drawn over the page, the page keeps the whole width it had
 //   without the panel, and the panel carries a way back to the page.
 // On a phone the panel is the full-screen slide-over, which is the over case at every size.
+// Beside, the page's back control is where a click on it lands, never under the page's acts: a fifth
+// page carries the acts the requirement page's bar carried when a judge found them over its back
+// control (ISS-494 c1 at 86ba777, ISS-1154), so the bar's reflow is held whatever a page puts in it.
 //
 //   pnpm --filter web-v2 witness witness/page-beside-dock.witness.tsx --out <dir>
 
@@ -19,7 +22,7 @@ import { type ChatDockApi, DOCK_OPEN_KEY, useChatDockState } from "@/features/ch
 import { DOCK_SIZE_KEY, PAGE_MIN_WIDTH } from "@/features/chat-dock/dock-size";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
-import { TopBarSlotProvider } from "@/design";
+import { Button, DetailHeader, TopBarSlotProvider } from "@/design";
 import type { ChromeScreen } from "@/test/vi-chrome-screens";
 import { SCREENS as AGENT_SCREENS } from "@/test/vi-chrome-agents";
 import { SCREENS as ISSUE_SCREENS } from "@/test/vi-chrome-issues";
@@ -30,7 +33,13 @@ import { InRouter } from "./router";
 const SIDEBAR = 280;
 const PANEL_FLOOR = 360;
 /** The pages' addresses, in the order PAGES below draws them. */
-const PAGE_PATHS = ["/projects/hop/issues/ISS-1", "/projects/hop/requirements/REQ-1", "/projects/hop/issues", "/projects/hop/agents/runs/run-5"] as const;
+const PAGE_PATHS = [
+  "/projects/hop/issues/ISS-1",
+  "/projects/hop/requirements/REQ-1",
+  "/projects/hop/issues",
+  "/projects/hop/agents/runs/run-5",
+  "/projects/hop/requirements/REQ-2",
+] as const;
 
 // the fixtures' own pages set the query string with replaceState, which a file:// page refuses for a path
 const replace = window.history.replaceState.bind(window.history);
@@ -63,7 +72,30 @@ const PAGES = [
   { name: "requirement", path: PAGE_PATHS[1], screen: named(REQUIREMENT_SCREENS, "Requirement detail · Overview") },
   { name: "board", path: PAGE_PATHS[2], screen: named(ISSUE_SCREENS, "Issues board · attention") },
   { name: "run", path: PAGE_PATHS[3], screen: named(AGENT_SCREENS, "Run page · attempts") },
+  { name: "crowded", path: PAGE_PATHS[4], screen: { name: "crowded", render: () => <CrowdedPage /> } },
 ] as const;
+
+/** A detail page whose bar carries the requirement page's acts at 86ba777 (Review proposal r2, Defer, Drop) and one more:
+ *  since ISS-903 moved Defer and Drop to ⌘K the real page's acts fit, and this holds the bar for the page whose acts do not. */
+function CrowdedPage(): ReactElement {
+  return (
+    <div className="min-h-full bg-app">
+      <DetailHeader
+        back={{ href: "/projects/hop/requirements", label: "Requirements" }}
+        title="Muc REQ-2"
+        action={
+          <span className="inline-flex items-center gap-2">
+            <Button variant="primary" size="sm">Review proposal r2</Button>
+            <Button variant="secondary" size="sm">Request changes</Button>
+            <Button variant="secondary" size="sm">Defer</Button>
+            <Button variant="secondary" size="sm">Drop</Button>
+          </span>
+        }
+      />
+      <p className="px-4 py-4">Muc tieu 2</p>
+    </div>
+  );
+}
 
 
 const at: { page: number; dock: ChatDockApi | null; show: (i: number) => Promise<void> } = { page: 0, dock: null, show: async () => {} };
@@ -171,6 +203,21 @@ function overlapping(root: HTMLElement): string[] {
   return out;
 }
 
+/** The page's back control, where a person clicks it: on screen, inside the page, and what a click at its middle lands on. */
+function backWrongs(col: DOMRect): string[] {
+  const back = q("[data-testid=detail-back]");
+  if (!back) return [];
+  const r = rect(back);
+  if (r.width < 1 || r.left < col.left - 1 || r.right > col.right + 1) return [`the back control is drawn at ${Math.round(r.left)}–${Math.round(r.right)}, outside the page's ${Math.round(col.left)}–${Math.round(col.right)}`];
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  if (hit && back.contains(hit)) return [];
+  const over = hit instanceof HTMLElement ? `${label(hit)} "${hit.innerText.trim().slice(0, 30)}"` : "nothing";
+  return [`the back control is covered: a click at its middle lands on ${over}`];
+}
+
+/** Inside the workflow canvas, a drawing wider than the canvas pans within it (flow-canvas.tsx COMPACT_READABLE): clipped there, not past the page. */
+const inCanvas = (el: HTMLElement) => el.closest(".react-flow__viewport") !== null;
+
 /** The page column as it stands beside the panel: its width, what scrolls sideways in it, what is drawn past its edges, what it squeezed. */
 function besideWrongs(room: number, panelWidth: number): string[] {
   const wrong: string[] = [];
@@ -188,12 +235,13 @@ function besideWrongs(room: number, panelWidth: number): string[] {
     if (unseen(el, r)) continue;
     const x = getComputedStyle(el).overflowX;
     if ((x === "auto" || x === "scroll") && el.scrollWidth > el.clientWidth + 1) scrollers.push(`${label(el)} scrolls sideways: ${el.scrollWidth} px in ${el.clientWidth}`);
-    if (el !== main && (r.right > col.right + 1 || r.left < col.left - 1)) cut.push(`${label(el)} is drawn at ${Math.round(r.left)}–${Math.round(r.right)}, past the page's ${Math.round(col.left)}–${Math.round(col.right)}`);
+    if (el !== main && !inCanvas(el) && (r.right > col.right + 1 || r.left < col.left - 1)) cut.push(`${label(el)} is drawn at ${Math.round(r.left)}–${Math.round(r.right)}, past the page's ${Math.round(col.left)}–${Math.round(col.right)}`);
   }
   if (scrollers.length) wrong.push(`${scrollers.length} thing(s) scroll sideways; first: ${scrollers.slice(0, 3).join("; ")}`);
   if (cut.length) wrong.push(`${cut.length} thing(s) are cut off at the page's edge; first: ${cut.slice(0, 3).join("; ")}`);
   const crossed = overlapping(column);
   if (crossed.length) wrong.push(`${crossed.length} pair(s) of controls overlap; first: ${crossed.slice(0, 3).join("; ")}`);
+  wrong.push(...backWrongs(col));
   const broken = brokenWords(column);
   if (broken.length) wrong.push(`${broken.length} word(s) are broken across lines by a squeezed column; first: ${broken.slice(0, 3).join("; ")}`);
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the window scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);

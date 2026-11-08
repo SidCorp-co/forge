@@ -9,7 +9,10 @@ import { useCopy } from "@/lib/i18n/interface-language";
 // Feedback is on every page (REQ-66 BC-1, REQ-47 BC-9): about the project the page is in, or about Forge; a page whose
 // own action files feedback (the project's Feedback list) keeps that one action, never a second button of the same name
 // Ask Agent is desktop-only: below md the bottom tabs carry it, and a second entry there would be the same control twice
-// below 768px of page column (a page beside the open panel) it is its icon alone, so the page's acts never cover the back control
+// below 768px of page column (a page beside the open panel) it is its icon alone
+// the title slot never shrinks below what it cannot lose (the back control, a word of the title), and the bar's acts wrap
+// to a second row as one group rather than run over it: a page beside the panel at either size keeps its back control
+// where a click lands (ISS-1154, REQ-69 BC-9; witness/page-beside-dock.witness.tsx)
 // open, it reads as pressed rather than turning primary: the page's one primary action keeps that colour (prototype-gap-audit)
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   const { titleRef, actionsRef } = useTopBarSlotTargets();
@@ -17,22 +20,24 @@ export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onT
   const version = useForgeVersion().data?.version?.trim();
   const pageFilesFeedback = usePageOwnsFeedback();
   return (
-    <header className="flex h-12 flex-none items-center gap-3 border-b border-line-region bg-surface px-4 sm:px-6">
-      <div ref={titleRef} className="flex min-w-0 flex-1 items-center gap-2" />
-      <div ref={actionsRef} className="flex flex-none items-center gap-2" />
-      {pageFilesFeedback ? null : <FeedbackButton clientVersion={version ? `web ${version}` : undefined} />}
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        icon="chat"
-        aria-pressed={chatOpen}
-        aria-label={dockTitle(t)}
-        onClick={onToggleChat}
-        className="hidden window-md:inline-flex aria-pressed:bg-active aria-pressed:text-fg"
-      >
-        <span className="max-column-md:sr-only">{dockTitle(t)}</span>
-      </Button>
+    <header className="flex min-h-12 flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-region bg-surface px-4 py-1.5 sm:px-6">
+      <div ref={titleRef} className="flex min-w-min flex-1 items-center gap-2" />
+      <div className="ml-auto flex min-w-0 flex-initial flex-wrap items-center justify-end gap-3" data-testid="top-bar-acts">
+        <div ref={actionsRef} className="flex flex-none items-center gap-2" />
+        {pageFilesFeedback ? null : <FeedbackButton clientVersion={version ? `web ${version}` : undefined} />}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          icon="chat"
+          aria-pressed={chatOpen}
+          aria-label={dockTitle(t)}
+          onClick={onToggleChat}
+          className="hidden window-md:inline-flex aria-pressed:bg-active aria-pressed:text-fg"
+        >
+          <span className="max-column-md:sr-only">{dockTitle(t)}</span>
+        </Button>
+      </div>
     </header>
   );
 }
