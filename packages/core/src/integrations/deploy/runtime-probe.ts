@@ -9,6 +9,7 @@
  * every request sent past a cache.
  */
 
+import { memoizedRead } from '../../db/read-memo.js';
 import { asProvider } from '../../lib/outbound-timing.js';
 
 export interface RuntimeProbeTarget {
@@ -74,16 +75,32 @@ function readingOf(raw: unknown): ProbeReading {
 
 /**
  * Read one probe. The URL is built before the request, so a probe url that does not parse throws
- * rather than becoming a reading; every caller's door screens the declaration ahead of it.
+ * rather than becoming a reading; every caller's door screens the declaration ahead of it. Inside a
+ * read request each probe is asked once (`db/read-memo.ts:memoizedRead`): a person's attention read
+ * asked each production probe twice, for the served reading and for the live build (ISS-1070 r13),
+ * and one request is one moment.
  */
-export async function readRuntimeProbe(
+export function readRuntimeProbe(
   probe: RuntimeProbeTarget,
   options: { timeoutMs?: number; fetch?: typeof fetch | undefined } = {},
 ): Promise<ProbeReading> {
   const url = new URL(probe.url);
-  url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
   const timeoutMs = Math.max(1, Math.min(options.timeoutMs ?? PROBE_TIMEOUT_MS, PROBE_TIMEOUT_MS));
-  const fetchImpl = options.fetch ?? fetch;
+  // a caller's own fetch is its own probe, never another caller's answer
+  if (options.fetch) return askProbe(url, probe.path, timeoutMs, options.fetch);
+  return memoizedRead(`runtime-probe:${timeoutMs}:${probe.path ?? ''}:${url.href}`, () =>
+    askProbe(url, probe.path, timeoutMs, fetch),
+  );
+}
+
+async function askProbe(
+  target: URL,
+  path: string | undefined,
+  timeoutMs: number,
+  fetchImpl: typeof fetch,
+): Promise<ProbeReading> {
+  const url = new URL(target);
+  url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
   let res: Response;
   try {
     res = await asProvider('probe', () =>
@@ -109,12 +126,12 @@ export async function readRuntimeProbe(
       detail: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
     };
   }
-  if (probe.path === undefined) return readingOf(text);
+  if (path === undefined) return readingOf(text);
   let body: unknown;
   try {
     body = JSON.parse(text);
   } catch {
     return { kind: 'unparseable' };
   }
-  return readingOf(readPath(body, probe.path));
+  return readingOf(readPath(body, path));
 }

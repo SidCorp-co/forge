@@ -13,6 +13,7 @@ import {
   readReleasePath,
 } from '../project-config/index.js';
 import type { Reading } from './provider-live.js';
+import { observedReading } from './serving-observed.js';
 
 export type { ServedAt, ServingReading } from '@forge/contracts/releases';
 export { servedCommits } from '@forge/contracts/releases';
@@ -141,8 +142,17 @@ export async function readServingNow(
       route: 'declare an environment with `tier: "production"`',
     };
   }
-  return readingOf(await readEnvironmentState(projectId, document, production), now, NO_ROUTE);
+  return observedReading(servingKey(projectId, production, document), async () =>
+    readingOf(await readEnvironmentState(projectId, document, production), now, NO_ROUTE),
+  );
 }
+
+/** What a reading of one environment is read from: the project, the environment and its declaration. */
+const servingKey = (
+  projectId: string,
+  env: { name: string; declaration: unknown },
+  document: ProjectDocument,
+) => `${projectId}:${env.name}:${document.source.type}:${JSON.stringify(env.declaration)}`;
 
 /** A state read into what it says is served; an environment that cannot be read reads as such. */
 function readingOf(state: EnvironmentState, now: () => Date, route: string): ServingReading {
@@ -183,6 +193,9 @@ export async function readJudgedOnNow(
     };
   }
   const route = `declare a runtime probe on \`${name}\` (\`verification.runtime\`, \`"identifies": "source"\`), or deploy it through a binding whose platform records the commit it built`;
-  const state = await readEnvironmentState(projectId, held.document, { name, declaration });
-  return { kind: 'read', name, serving: readingOf(state, now, route) };
+  const env = { name, declaration };
+  const serving = await observedReading(servingKey(projectId, env, held.document), async () =>
+    readingOf(await readEnvironmentState(projectId, held.document, env), now, route),
+  );
+  return { kind: 'read', name, serving };
 }

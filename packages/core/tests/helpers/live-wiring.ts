@@ -6,7 +6,10 @@
 // project also lists feedback reported through the Forge door from other projects' issues.
 
 import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { ecosystemDoc } from './ecosystem-world.js';
 import { createTestDevice } from './factories.js';
@@ -25,9 +28,63 @@ export async function seedEcosystem(ownerId: string, orgId: string): Promise<str
   return id;
 }
 
+/** A deployed commit the stub Coolify records and the stub probe answers. */
+export const LIVE_COMMIT = 'c0ffee1'.padEnd(40, '0');
+
+/** Where a wired project's production probe answers: an https address, as a document requires. */
+const PROBE_HOST = 'https://probe.live.test';
+
+/**
+ * A Coolify and a production probe on one local server, counting every call by its path: each
+ * application's deployment list (`/api/v1/deployments/applications/<uuid>`) answers one finished
+ * deployment of {@link LIVE_COMMIT}, and each `/commit/<project>` answers that commit (ISS-1070 r13:
+ * how often a read asks a project's platform). A probe's https address is sent on to that server by
+ * the global `fetch`, so the call is still a real one, counted on `Server-Timing` as any other.
+ */
+export function liveCoolify() {
+  const calls = new Map<string, number>();
+  let server: Server | null = null;
+  let base = '';
+  beforeAll(async () => {
+    const s = createServer((req, res) => {
+      const path = String(req.url).split('?')[0] ?? '';
+      calls.set(path, (calls.get(path) ?? 0) + 1);
+      res.setHeader('content-type', 'application/json');
+      if (path.startsWith('/commit/')) {
+        res.end(JSON.stringify({ commit: LIVE_COMMIT }));
+        return;
+      }
+      const deployment = {
+        deployment_uuid: `d-${path.split('/').pop()}`,
+        status: 'finished',
+        created_at: '2026-11-08T08:00:00.000Z',
+        commit: LIVE_COMMIT,
+      };
+      res.end(JSON.stringify({ count: 1, deployments: [deployment] }));
+    });
+    await new Promise<void>((done) => s.listen(0, '127.0.0.1', done));
+    server = s;
+    base = `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
+    const passThrough = globalThis.fetch;
+    vi.stubGlobal('fetch', (input: URL | string | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return url.startsWith(PROBE_HOST)
+        ? passThrough(`${base}${url.slice(PROBE_HOST.length)}`, init)
+        : passThrough(input, init);
+    });
+  });
+  afterAll(async () => {
+    vi.unstubAllGlobals();
+    await new Promise<void>((done) => (server ? server.close(() => done()) : done()));
+    server = null;
+  });
+  return { url: () => base, calls };
+}
+
 /**
  * Wires one seeded project as a forge-dev project is: production deployed through a deploy binding
- * (no probe and no deploy target, so reading it reaches no network), a live master on a box with an
+ * (with `coolify`, one naming an application on it and a source probe answered there; without, no
+ * probe and no deploy target, so reading it reaches no network), a live master on a box with an
  * open pass naming an issue, an active membership of `ecosystemId`, and a proposed triage on its
  * first feedback item and breakdown on its first requirement.
  */
@@ -35,8 +92,23 @@ export async function wireLive(
   projectId: string,
   ownerId: string,
   ecosystemId: string,
+  coolify?: string,
 ): Promise<void> {
-  await seedProduction({ projectId, ownerId, probes: 'none' });
+  await seedProduction(
+    coolify === undefined
+      ? { projectId, ownerId, probes: 'none' }
+      : {
+          projectId,
+          ownerId,
+          config: {
+            baseUrl: coolify,
+            targets: [{ id: 't-live', label: 'live', resourceUuid: `app-${projectId}` }],
+          },
+          probes: 'source',
+          probeUrl: `${PROBE_HOST}/commit/${projectId}`,
+          probePath: 'commit',
+        },
+  );
   const deviceId = await createTestDevice(ownerId);
   const runId = randomUUID();
   const master = randomUUID();

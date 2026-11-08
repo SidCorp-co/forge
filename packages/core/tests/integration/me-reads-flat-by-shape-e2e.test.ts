@@ -34,7 +34,7 @@ import { currentQueryTiming, type QueryTiming } from '../../src/db/query-timing.
 import { fingerprintOf, shapeTextOf } from '../../src/db/statement-shapes.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestUser, seedOrg } from '../helpers/factories.js';
-import { forgeDoorReports, seedEcosystem, wireLive } from '../helpers/live-wiring.js';
+import { forgeDoorReports, liveCoolify, seedEcosystem, wireLive } from '../helpers/live-wiring.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
 
 /** The shapes forge-dev sent once a project (r11's header, 2026-11-08), by the code that sends them. */
@@ -69,6 +69,8 @@ const SMALL: Scale = {
   states: true,
 };
 const PROJECTS = 12;
+/** Coolify and the probes, stubbed on one local server counting each call: half the projects deploy there. */
+const coolify = liveCoolify();
 
 let app: Awaited<typeof import('../../src/index.js')>['app'];
 let acrossToken: string;
@@ -84,6 +86,8 @@ interface Sent {
   /** Its wall time and `Server-Timing`'s db and app shares, kept under SLOW_READS_OUT. */
   ms: number;
   timing: string;
+  /** Each call the read made to the stub Coolify and probes, by path. */
+  http: Map<string, number>;
 }
 
 async function sentBy(path: string, token: string): Promise<Sent> {
@@ -92,6 +96,7 @@ async function sentBy(path: string, token: string): Promise<Sent> {
   let timing: QueryTiming | undefined;
   let ms = 0;
   let serverTiming = '';
+  const before = new Map(coolify.calls);
   client.unsafe = (...args: unknown[]) => {
     timing ??= currentQueryTiming();
     return unsafe(...args);
@@ -120,7 +125,10 @@ async function sentBy(path: string, token: string): Promise<Sent> {
   };
   for (const [name, leg] of timing.legs) add(name, leg.sent);
   add('unnamed', timing.sent);
-  return { areas, total: timing.queries, ms, timing: serverTiming };
+  const http = new Map<string, number>();
+  for (const [path, n] of coolify.calls)
+    if (n > (before.get(path) ?? 0)) http.set(path, n - (before.get(path) ?? 0));
+  return { areas, total: timing.queries, ms, timing: serverTiming, http };
 }
 
 /**
@@ -128,12 +136,16 @@ async function sentBy(path: string, token: string): Promise<Sent> {
  * prepared statements; each read's times are kept beside it.
  */
 async function measured(path: string, token: string): Promise<Sent & { all: number[] }> {
-  await sentBy(path, token);
+  const warm = await sentBy(path, token);
   const runs: Sent[] = [];
   for (let n = 0; n < Math.max(1, Number(process.env.SLOW_READS_RUNS ?? 3)); n++)
     runs.push(await sentBy(path, token));
   const median = [...runs].sort((a, b) => a.ms - b.ms)[Math.floor(runs.length / 2)] as Sent;
-  return { ...median, all: runs.map((r) => Math.round(r.ms)) };
+  // the calls of the read that asked most, the warm-up's included: a cold read asks too
+  const http = new Map<string, number>();
+  for (const r of [warm, ...runs])
+    for (const [at, n] of r.http) http.set(at, Math.max(n, http.get(at) ?? 0));
+  return { ...median, http, all: runs.map((r) => Math.round(r.ms)) };
 }
 
 const sum = (m: ReadonlyMap<string, number> | undefined) =>
@@ -165,7 +177,7 @@ beforeAll(async () => {
   const ids: string[] = [];
   for (let n = 0; n < PROJECTS; n++) {
     const id = await seedAtScale(ownerId, SMALL, { orgId });
-    await wireLive(id, ownerId, ecosystemId);
+    await wireLive(id, ownerId, ecosystemId, n % 2 === 0 ? coolify.url() : undefined);
     ids.push(id);
   }
   home = ids[0] as string;
@@ -185,7 +197,12 @@ beforeAll(async () => {
     for (const [path, { across, one }] of reads)
       appendFileSync(
         process.env.SLOW_READS_OUT,
-        `${path} one ${one.total} / twelve ${across.total}; twelve ${Math.round(across.ms)} ms (${across.all.join(', ')}) ${across.timing.split(', ').slice(0, 3).join(', ')}; one ${Math.round(one.ms)} ms (${one.all.join(', ')}) ${one.timing.split(', ').slice(0, 3).join(', ')}: ${[...across.areas.keys()].map((a) => `${a} ${sum(one.areas.get(a))}/${sum(across.areas.get(a))}`).join(', ')}\n${[
+        `${path} http twelve ${[...across.http.values()].reduce((a, b) => a + b, 0)} calls (most ${Math.max(0, ...across.http.values())} a path), one ${[...one.http.values()].reduce((a, b) => a + b, 0)}; ${across.timing
+          .split(/, (?=[a-z-]+[;,]|[a-z-]+$)/)
+          .filter((l) => l.startsWith('http') || /calls?"/.test(l))
+          .join(
+            ', ',
+          )}\n${path} one ${one.total} / twelve ${across.total}; twelve ${Math.round(across.ms)} ms (${across.all.join(', ')}) ${across.timing.split(', ').slice(0, 3).join(', ')}; one ${Math.round(one.ms)} ms (${one.all.join(', ')}) ${one.timing.split(', ').slice(0, 3).join(', ')}: ${[...across.areas.keys()].map((a) => `${a} ${sum(one.areas.get(a))}/${sum(across.areas.get(a))}`).join(', ')}\n${[
           ...across.areas,
         ]
           .flatMap(([a, by]) =>
@@ -206,6 +223,21 @@ describe('a person in twelve projects wired as forge-dev holds them', () => {
         ...overMost(path, across),
         ...overMost(`${path} (one project)`, one),
       ]),
+    ).toEqual([]);
+  });
+
+  // ISS-1070 r13: each production binding's Coolify list and probe were asked twice a read, once for
+  // a requirement's coverage and once for a release's basis, each a wait of ~850 ms live
+  it('asks each production binding and probe once a read at most', () => {
+    expect(
+      [...reads].flatMap(([path, { across, one }]) =>
+        [
+          ...[...across.http].map(([at, n]) => [path, at, n] as const),
+          ...[...one.http].map(([at, n]) => [`${path} (one project)`, at, n] as const),
+        ]
+          .filter(([, , n]) => n > 1)
+          .map(([read, at, n]) => `${read} asked ${at.split('/').at(-2)} ${n} times`),
+      ),
     ).toEqual([]);
   });
 

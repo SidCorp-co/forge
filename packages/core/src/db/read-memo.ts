@@ -34,6 +34,14 @@ export function withReadMemo<T>(fn: () => T): T {
   return memos.run(new Map(), fn);
 }
 
+/** Whether this code runs inside a read request's memo: a read, which changes nothing it reads. */
+export const inReadMemo = (): boolean => memos.getStore() !== undefined;
+
+/** Runs `fn` outside any read's memo: work a read starts and does not wait for reads afresh. */
+export function withoutReadMemo<T>(fn: () => T): T {
+  return memos.exit(fn);
+}
+
 /**
  * `read()` once per `key` inside a {@link withReadMemo} scope, and every time outside one. Every caller
  * is handed the one answer, made read-only (`db/frozen.ts`): a caller that writes into it throws

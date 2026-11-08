@@ -19,6 +19,7 @@ import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases, listReleasesInPlay } from '../release-batch/release-list-read.js';
+import { observingServed } from '../release-batch/serving-observed.js';
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, designSettlerOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
@@ -86,11 +87,13 @@ export const newestFirst = (a: AttentionRow, b: AttentionRow) =>
  * someone (`readNeedsYouAttention`), and lists the same rows either way.
  */
 export function readAttention(projectId: string, viewer: NeedsYouViewer, now: Date = new Date()) {
-  return attentionOf(
-    projectId,
-    viewer,
-    now,
-    timedArea('ny-releases', () => listReleases(projectId, viewer)),
+  return observingServed(() =>
+    attentionOf(
+      projectId,
+      viewer,
+      now,
+      timedArea('ny-releases', () => listReleases(projectId, viewer)),
+    ),
   );
 }
 
@@ -104,11 +107,14 @@ export function readNeedsYouAttention(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ) {
-  return attentionOf(
-    projectId,
-    viewer,
-    now,
-    timedArea('ny-releases', () => listReleasesInPlay(projectId, viewer)),
+  // what production serves, as observed a moment ago and said so (`serving-observed.ts`)
+  return observingServed(() =>
+    attentionOf(
+      projectId,
+      viewer,
+      now,
+      timedArea('ny-releases', () => listReleasesInPlay(projectId, viewer)),
+    ),
   );
 }
 
