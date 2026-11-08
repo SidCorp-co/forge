@@ -118,6 +118,11 @@ export class SessionBox {
   readonly errors: unknown[] = [];
   private closed = false;
   control: WebSocket | null = null;
+  /**
+   * Whether a turn the model took no act in still acts once (a tools read), so core reads it as a
+   * session that chose to post nothing; false plays the 1-3 s exit that did nothing (ISS-1007).
+   */
+  idleTurnsAct = true;
   /** The session's model: what it does with a turn, through `act`. */
   model: (
     turn: Turn,
@@ -290,7 +295,19 @@ export class SessionBox {
     };
     this.turns.push(turn);
     this.running.set(turn.sessionId, { turn, injected: [] });
-    if (!turn.warmUp) await this.model(turn, (args) => this.tool(turn.token, args));
+    if (!turn.warmUp) {
+      let acted = false;
+      await this.model(turn, (args) => {
+        acted = true;
+        return this.tool(turn.token, args);
+      });
+      // a model that took no act stands for a session that read the turn and chose to post nothing;
+      // it reads its tools once, as such a session acts, so core does not read the turn as an exit
+      // that did nothing (ISS-1007). A test of that exit sets `idleTurnsAct` false.
+      if (!acted && this.idleTurnsAct && turn.messages.length > 0) {
+        await this.tool(turn.token, { action: 'tools' });
+      }
+    }
     // a test that ended this turn itself while the model ran has reported it: ending it again
     // would complete whichever turn runs now, or be refused STALE_TRANSITION
     if (this.running.get(turn.sessionId)?.turn !== turn) return;

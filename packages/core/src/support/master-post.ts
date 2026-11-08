@@ -30,6 +30,7 @@ import {
   stagePostImages,
 } from './master-post-images.js';
 import { no, type Outcome } from './outcome.js';
+import { toldResultOfThread } from './room-reads.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
 import {
@@ -38,7 +39,6 @@ import {
   roomsOfProject,
   threadConversation,
   threadMembers,
-  toldResultOfThread,
 } from './store.js';
 import {
   postForTopLevel,

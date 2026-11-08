@@ -39,8 +39,8 @@ import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 export { classifyCommand } from './command-class.js';
 export { forgetMemberships } from './health.js';
 export { roomWriterUserId } from './ops-asker.js';
+export { unhandledMessagesOf } from './room-reads.js';
 export { supportRoutes } from './routes.js';
-export { unhandledMessagesOf } from './store.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
 /**
  * What a recorded item or a release came to, and each promise an environment answered (ISS-1012),

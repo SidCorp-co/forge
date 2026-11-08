@@ -47,10 +47,11 @@ import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
 import { search } from './search.js';
-import { listTools, readThread, reply, runDiagnose } from './service.js';
+import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
 import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
 import { TOP_LEVEL } from './thread.js';
+import { noteSessionAct } from './turn-acts.js';
 
 export interface SupportCaller {
   userId: string;
@@ -65,7 +66,8 @@ export type SupportActInput =
   | { action: 'search'; query: string; project?: string | undefined }
   | { action: 'thread'; thread: string }
   | { action: 'tools' }
-  | { action: 'reply'; thread: string; text: string }
+  | { action: 'reply'; thread: string; text: string; why?: string | undefined }
+  | { action: 'silent'; thread: string; message?: string | undefined; reason: string }
   | ({ action: 'run' } & ToolCall)
   | ({ action: 'propose_fix'; asker: string } & ToolCall)
   | {
@@ -157,6 +159,8 @@ export async function supportAct(
   where: { rid?: string | undefined } = {},
 ): Promise<OpsOutcome<unknown>> {
   const room = await sessionCaller(caller, hintOf(input, where.rid));
+  // any act, a read or a refused one included, shows the turn did something (ISS-1007)
+  if (room.sessionId) noteSessionAct(room.sessionId);
   const out = isOperation(input)
     ? await operationsAct(room, input)
     : room.kind === 'support' || room.kind === 'agent' || SHARED.has(input.action)
@@ -248,6 +252,7 @@ async function recordNotGranted(
 /** The acts both kinds of room take: every bound channel keeps its record (REQ-75 r6). */
 const SHARED = new Set<SupportActInput['action']>([
   'reply',
+  'silent',
   'thread',
   'channel',
   'member',
@@ -279,7 +284,9 @@ async function act(
     case 'tools':
       return listTools(room);
     case 'reply':
-      return reply(room, { thread: input.thread, text: input.text, turn });
+      return reply(room, { thread: input.thread, text: input.text, why: input.why, turn });
+    case 'silent':
+      return staySilent(room, input);
     case 'run':
       return runDiagnose(room, { thread: input.thread, tool: input.tool, args: input.args ?? {} });
     case 'propose_fix': {

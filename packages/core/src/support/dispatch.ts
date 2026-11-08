@@ -51,7 +51,13 @@ import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
 import { insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
-import { dropHeldTooLong, retryOrTell, tellUnanswered } from './turn-retry.js';
+import { lastSessionAct } from './turn-acts.js';
+import {
+  dropHeldTooLong,
+  retryOrRecordUnanswered,
+  retryOrTell,
+  tellUnanswered,
+} from './turn-retry.js';
 
 /** The one grant a support session's token carries: the project's routes, which it may not read. */
 const SUPPORT_SESSION_GRANT = ['projects:write'] as const;
@@ -464,6 +470,8 @@ export async function onSupportTurnEnded(row: SessionRow): Promise<void> {
       // turn, and a later break is told to the room again (ISS-1105)
       await endBackOff(roomId);
       await endRoomWait(roomId);
+      // and what it left with nothing said is handed again, or recorded unanswered (ISS-1007)
+      await retryUnansweredTurn(roomId, row);
     }
     // what the box refused to write into the turn now waits again, and goes with the rest
     await settleInjects(roomId);
@@ -479,6 +487,24 @@ async function endRoomWait(roomId: string): Promise<void> {
   await endRoomLastResortWait(room).catch((err) =>
     logger.error({ err, roomId }, "support: the room's last-resort wait could not be ended"),
   );
+}
+
+/**
+ * A completed turn that took no act at all for the messages it was handed: they are handed again, or
+ * recorded unanswered (ISS-1007). A turn that acted in its room chose what to answer.
+ */
+async function retryUnansweredTurn(roomId: string, row: SessionRow): Promise<void> {
+  const room = await roomById(roomId);
+  if (!room) return;
+  // core restarted since the hand-over: what the turn did is unknown here, and nothing is retried
+  const handedAt = lastTurn.get(room.id);
+  if (!handedAt) return;
+  // a turn that took any act chose what to answer (REQ-77 BC-6); one that took none exited, and its
+  // messages read as answered with no failure and no retry (the 1-3 s exits of 2026-11-01)
+  const acted = lastSessionAct(row.id);
+  if (acted && acted >= handedAt) return;
+  const taken = await unansweredOfLastTurn(room.id, handedAt, row.updatedAt);
+  await retryOrRecordUnanswered(room, taken);
 }
 
 /** The ends of a turn that finished it; every other end left its messages unanswered. */

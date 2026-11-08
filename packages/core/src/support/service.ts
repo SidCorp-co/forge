@@ -138,7 +138,12 @@ async function roomConfig(room: RoomRow) {
  */
 export async function reply(
   room: RoomRow,
-  input: { thread: string; text: string; turn?: string | null | undefined },
+  input: {
+    thread: string;
+    text: string;
+    why?: string | undefined;
+    turn?: string | null | undefined;
+  },
 ): Promise<Outcome<{ messageId: string | null }>> {
   const conversationId = await knownThread(room, input.thread);
   if (!conversationId) return threadUnknown(input.thread);
@@ -215,10 +220,36 @@ export async function reply(
     thread: input.thread,
     kind: 'reply',
     actorKind: 'session',
-    input: { text },
+    // why it answered, one line, kept for the daily review to tune the room's policy by (ISS-942)
+    input: { text, ...(input.why ? { why: await scrubbedForRoom(room, input.why) } : {}) },
     externalId: posted.messageId,
   });
   return { ok: true, value: { messageId: posted.messageId } };
+}
+
+/**
+ * The session posts nothing for a message it was handed, and says why (ISS-942): recorded on the
+ * room as `silent` with its reason, and as a system line on the thread's conversation, so a wrong
+ * silence can be found and the room's policy tuned from real use. Code records it; it gates nothing.
+ */
+export async function staySilent(
+  room: RoomRow,
+  input: { thread: string; message?: string | undefined; reason: string },
+): Promise<Outcome<{ silent: true }>> {
+  const conversationId = await knownThread(room, input.thread);
+  if (!conversationId) return threadUnknown(input.thread);
+  const reason = await scrubbedForRoom(room, input.reason);
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId,
+    thread: input.thread,
+    kind: 'silent',
+    actorKind: 'session',
+    input: { reason, ...(input.message ? { message: input.message } : {}) },
+  });
+  await noteInThread(conversationId, `stayed silent: ${reason}`);
+  return { ok: true, value: { silent: true } };
 }
 
 /** The door a reply to this asker passes (BC-37). */

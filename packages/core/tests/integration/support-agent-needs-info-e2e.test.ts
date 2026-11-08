@@ -231,7 +231,7 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     // the brief the session was opened with points at it, one clause and no more
     const briefed = w.box.turns.map((t) => t.text).join('\n');
     expect(briefed).toContain(
-      "support.issues (a parked issue's `waiting`: who owes it, the open question and its options)",
+      "support.issues (a parked issue's `waiting`: who owes it, the open question and its options;",
     );
   });
 });

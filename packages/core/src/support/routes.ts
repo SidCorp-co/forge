@@ -14,6 +14,7 @@ import {
   supportReplyRequestSchema,
   supportRunRequestSchema,
   supportSearchRequestSchema,
+  supportSilentRequestSchema,
   supportThreadRequestSchema,
 } from '@forge/contracts/support';
 import {
@@ -102,7 +103,8 @@ const ridProjectQuery = zValidator(
 const SHAPES = {
   search: '{ query, project? }',
   thread: '{ thread }',
-  reply: '{ thread, text }',
+  reply: '{ thread, text, why? }',
+  silent: '{ thread, message?, reason }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
   record:
@@ -158,6 +160,13 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(supportReplyRequestSchema, SHAPES.reply),
   (c) => act(c, c.req.valid('param').id, { action: 'reply', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/silences',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(supportSilentRequestSchema, SHAPES.silent),
+  (c) => act(c, c.req.valid('param').id, { action: 'silent', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/checks',

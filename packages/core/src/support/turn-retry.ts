@@ -79,7 +79,7 @@ export async function dropHeldTooLong(room: RoomRow, now: Date = new Date()): Pr
  * and in a room answering mentions only the messages that name the bot or carry on its thread were
  * handed at all, so what is left is a mention or a question put to the assistant.
  */
-function waitsOnAnswer(m: Pick<ActionRow, 'thread' | 'input'>): boolean {
+export function waitsOnAnswer(m: Pick<ActionRow, 'thread' | 'input'>): boolean {
   if (m.thread === TOP_LEVEL || isCoreThread(m.thread)) return false;
   return (m.input as { addressed?: unknown } | null)?.addressed !== 'others';
 }
@@ -207,5 +207,54 @@ export async function tellUnanswered(
         roomLine: posted?.messageId ?? null,
       },
     });
+  }
+}
+
+/** Why a completed turn's message is handed again: it ended with nothing said for it (ISS-1007). */
+export const COMPLETED_UNANSWERED =
+  "the session's turn completed with no reply, refusal or stated silence (support.silent) in its thread";
+
+const triesOf = (m: Pick<ActionRow, 'output'>) =>
+  Number((m.output as { tries?: unknown } | null)?.tries ?? 0);
+
+/**
+ * A turn that completed and left messages it was handed with nothing said for them (ISS-1007, ISS-764
+ * a): a turn that exits in a second, or one declared done while its process still worked, read as
+ * answered before, so the person waited with no failure and no retry recorded. Each is handed again,
+ * as a failed turn's are, until its tries run out; then it is recorded on its thread as unanswered,
+ * by name, and left: the session did run and chose to post nothing, so no room line says it broke,
+ * and chatter is never re-offered for ever.
+ */
+export async function retryOrRecordUnanswered(
+  room: RoomRow,
+  taken: readonly ActionRow[],
+  now: Date = new Date(),
+): Promise<void> {
+  const owed = taken.filter(waitsOnAnswer);
+  const again = owed.filter((m) => triesOf(m) + 1 < MAX_TRIES);
+  const spent = owed.filter((m) => triesOf(m) + 1 >= MAX_TRIES);
+  if (again.length > 0) await retryOrTell(room, again, COMPLETED_UNANSWERED, { now });
+  const threads = new Map<string, ActionRow[]>();
+  for (const m of spent) threads.set(m.thread, [...(threads.get(m.thread) ?? []), m]);
+  for (const [thread, msgs] of threads) {
+    await insertAction({
+      roomId: room.id,
+      projectId: room.projectId,
+      conversationId: msgs[0]?.conversationId ?? null,
+      thread,
+      kind: 'refused',
+      actorKind: 'core',
+      tool: 'turn_unanswered',
+      output: {
+        cause: `${MAX_TRIES} turns took it and none answered: ${COMPLETED_UNANSWERED}`,
+        messages: msgs.map((m) => m.id),
+      },
+    });
+  }
+  if (spent.length > 0) {
+    logger.warn(
+      { roomId: room.id, messages: spent.length },
+      'support: messages a completed turn left unanswered ran out of tries; recorded unanswered',
+    );
   }
 }

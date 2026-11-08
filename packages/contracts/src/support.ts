@@ -737,6 +737,8 @@ export const SUPPORT_ACTION_KINDS = [
 	 * yet, and recorded as his once it is (ISS-976); `output` says what became of it.
 	 */
 	"answer_kept",
+	/** The session chose to post nothing for a message it was handed, with its reason (ISS-942). */
+	"silent",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -837,6 +839,7 @@ export const SUPPORT_ACTIONS = [
 	"owner_consent",
 	"owner_act",
 	"owner_sign_in",
+	"silent",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -872,10 +875,32 @@ export const supportImageRequestSchema = z.strictObject({
 			"which of its pictures, 1 to the `images.count` you were handed; 1 when omitted",
 		),
 });
+/** One line saying why the session answered or stayed silent, kept on its row for the daily review (ISS-942). */
+const supportWhySchema = z.string().trim().min(3).max(300);
 export const supportReplyRequestSchema = z.strictObject({
 	thread: threadId,
 	text: z.string().trim().min(1).max(4000),
+	why: supportWhySchema
+		.optional()
+		.describe("one line: why this message asked for a reply, kept on the reply's row"),
 });
+/**
+ * The session posts nothing for a message it was handed, and says why (ISS-942): chatter, a message
+ * for someone else, one a Technical member answered, work going on in the background. Recorded on
+ * the room and as a line on the thread's conversation; nothing reaches the group.
+ */
+export const supportSilentRequestSchema = z.strictObject({
+	thread: threadId,
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.optional()
+		.describe("the message you stay silent on, as it carries `message` in what you were handed"),
+	reason: supportWhySchema.describe("one line: why nothing is posted for it"),
+});
+export type SupportSilentRequest = z.infer<typeof supportSilentRequestSchema>;
 export const supportRunRequestSchema = z.strictObject({
 	thread: threadId,
 	tool: z.string().min(1).max(48),
