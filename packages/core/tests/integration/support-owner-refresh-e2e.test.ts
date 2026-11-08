@@ -48,6 +48,7 @@ async function inOwnerRoom<T extends Record<string, unknown> | Record<string, un
   await w.hear(
     () => chat.say(chat.alice, text),
     async (_t, act, message) => {
+      asked = message().message ?? '';
       out = await does(act, message().thread);
     },
   );
@@ -55,8 +56,11 @@ async function inOwnerRoom<T extends Record<string, unknown> | Record<string, un
   return out as T;
 }
 
+/** The owner's message the running `inOwnerRoom` turn was handed, which an owner act names (ISS-1014). */
+let asked = '';
+
 const createOrganization = (act: Act, thread: string, name: string) =>
-  act({ action: 'owner_act', thread, tool: 'create_organization', args: { name } });
+  act({ action: 'owner_act', thread, message: asked, tool: 'create_organization', args: { name } });
 
 /** Keep a pair the product minted, as an admin would at the door, with `expiresIn` seconds left. */
 async function keepPair(pair: { accessToken: string; refreshToken: string }, expiresIn: number) {

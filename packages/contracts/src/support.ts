@@ -1117,6 +1117,15 @@ export type SupportOwnerConsentRequest = z.infer<
 /** An act in the product as its owner (ISS-1013): an `owner` tool by name, with its arguments. */
 export const supportOwnerActRequestSchema = z.strictObject({
 	thread: threadId,
+	/** The owner's message asking for the act, which the act is logged beside (ISS-1014). */
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.describe(
+			"the message asking for the act: the id it carries as `message` in what you were handed",
+		),
 	tool: z.string().min(1).max(48),
 	args: z
 		.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))

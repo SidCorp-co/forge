@@ -37,3 +37,4 @@
 - Attention lists each decision as its question and its buttons; what it changes opens on its own page. The operator overview folds its alerts at OK behind one row, and the docs landing drops its explaining paragraph. Twenty-nine screens no witness drew before are now held to a first-view word budget (ISS-1137).
 - The steward's budget note names what waited in words, never the event that carried it, such as `feedback.filed` (ISS-1137).
 - A step opened beside a design's canvas folds the facts rail and the minimap, so neither covers a card and the canvas keeps its width (ISS-806).
+- An owner act names the room message asking for it and is logged beside it, and the product is told on every owner act that it came through the assistant for the owner (`X-Forge-Via`); an act naming no message the turn was handed is refused SUPPORT_MESSAGE_UNKNOWN with nothing sent (ISS-1014).

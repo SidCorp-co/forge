@@ -6,8 +6,10 @@
 // product his standing consent does not cover, or where no credential of his is kept; each refusal
 // says who can consent or who keeps the credential.
 //
-// ISS-1014 builds on this: the act's mark in the product's record as made through the assistant,
-// the action log beside the asking message, and the owner's approval of an act the product gates.
+// ISS-1014: the act names the message asking for it, one handed to the turn in its thread, and is
+// logged beside it; the product is told on every act that it came through the assistant
+// (`OWNER_ACT_VIA`), which its own record keeps where it records the header. An act the product gates
+// on the owner's approval waits on a design step the support-group design does not draw yet.
 
 import { scrubSecretsDeep } from '@forge/observability';
 import {
@@ -19,6 +21,7 @@ import {
   supportApisOf,
 } from '../integrations/support-api/index.js';
 import { holderNames } from '../permissions/index.js';
+import { writerOfHandedMessage } from './delivery.js';
 import { supportConfigOf } from './grants.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { ownerRoomOf, standingConsent, whoCanConsent, whoSignsIn } from './owner-consent.js';
@@ -43,9 +46,15 @@ async function keeperOf(projectId: string): Promise<string> {
     : 'nobody holds project admin on this project, so an organization admin must first name one, who keeps it';
 }
 
+/**
+ * What the product is told on every owner act (ISS-1014): made through Forge's assistant, for the
+ * owner whose credential it carries, and which room message asked for it.
+ */
+export const OWNER_ACT_VIA = 'X-Forge-Via';
+
 export async function ownerAct(
   room: RoomRow,
-  input: { thread: string; tool: string; args?: SupportCallArgs | undefined },
+  input: { thread: string; message: string; tool: string; args?: SupportCallArgs | undefined },
 ): Promise<Outcome<OwnerActResult>> {
   const args = input.args ?? {};
   const conversationId = await knownThread(room, input.thread);
@@ -60,7 +69,7 @@ export async function ownerAct(
         kind: 'refused',
         actorKind: 'core',
         tool: 'owner_act',
-        input: { tool: input.tool, args },
+        input: { tool: input.tool, args, message: input.message },
         output: { code: first?.code, detail: first?.detail, posted: false },
       });
     }
@@ -69,6 +78,15 @@ export async function ownerAct(
   const at = await ownerRoomOf(room, 'owner_act');
   if (!at.ok) return refusedWith(at);
   if (!conversationId) return threadUnknown(input.thread);
+  if (!(await writerOfHandedMessage(room.id, input.thread, input.message))) {
+    return refusedWith(
+      no(
+        'SUPPORT_MESSAGE_UNKNOWN',
+        '/message',
+        `message ${input.message} is no member's message in thread ${input.thread} that this turn was handed; an owner act is logged beside the message asking for it, so name that one, as it carries \`message\` in what you were handed. Nothing was sent`,
+      ),
+    );
+  }
   const apis = await supportApisOf(room.projectId);
   const planned = planSupportCall({ apis, name: input.tool, kind: 'owner', args });
   if ('refusal' in planned) {
@@ -99,6 +117,9 @@ export async function ownerAct(
     plan,
     config: api.config,
     headers: owner.value.headers,
+    marks: {
+      [OWNER_ACT_VIA]: `assistant; on-behalf-of=${consent.ownerKey}; room=${room.rid}; message=${input.message}`,
+    },
     maxBytes: limitsOf(await supportConfigOf(room)).responseMaxBytes,
   });
   if ('refusal' in called) {
@@ -127,7 +148,7 @@ export async function ownerAct(
     kind: 'owner_act',
     actorKind: 'core',
     tool: input.tool,
-    input: { args, product: api.name, consent: consent.id },
+    input: { args, product: api.name, consent: consent.id, message: input.message },
     output: result,
   });
   return { ok: true, value };

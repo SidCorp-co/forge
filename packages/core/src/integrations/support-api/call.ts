@@ -192,6 +192,8 @@ export async function callGranted(input: {
   plan: PlannedCall;
   config: SupportApiConnectionConfig;
   headers: Record<string, string>;
+  /** Headers that say how the call was made, never a credential: not scrubbed from the answer. */
+  marks?: Record<string, string>;
   maxBytes: number;
   fetchImpl?: typeof fetch;
 }): Promise<{ result: SupportCallResult } | { refusal: SupportCallRefusal }> {
@@ -208,6 +210,7 @@ export async function callGranted(input: {
     const res = await (input.fetchImpl ?? fetch)(plan.url, {
       method: plan.method,
       headers: {
+        ...input.marks,
         ...input.headers,
         Accept: 'application/json, text/plain;q=0.8',
         ...(plan.body ? { 'Content-Type': 'application/json' } : {}),

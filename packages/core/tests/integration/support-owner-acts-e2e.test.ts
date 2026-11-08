@@ -80,6 +80,8 @@ async function consentBy(
 class Product {
   base = '';
   readonly calls: { method: string; url: string; auth: string | undefined; body: string }[] = [];
+  /** What each call said of how it was made (`X-Forge-Via`), as the product's own record keeps it. */
+  readonly via: (string | undefined)[] = [];
   private server!: Server;
 
   async start(): Promise<void> {
@@ -89,6 +91,7 @@ class Product {
       const body = Buffer.concat(chunks).toString('utf8');
       const auth = req.headers.authorization;
       this.calls.push({ method: req.method ?? '', url: req.url ?? '', auth, body });
+      this.via.push(req.headers['x-forge-via'] as string | undefined);
       const asOwner = auth === `Bearer ${OWNER_TOKEN}`;
       res.writeHead(asOwner ? 201 : 403, { 'content-type': 'application/json' });
       res.end(
@@ -223,7 +226,7 @@ describe('ISS-1013: nobody else consents, and no other room (BC-1, BC-7)', () =>
 async function actAs(
   who: typeof chat.alice,
   text: string,
-  opts: { rid?: string; tool?: string; args?: Record<string, unknown> } = {},
+  opts: { rid?: string; tool?: string; args?: Record<string, unknown>; message?: string } = {},
 ) {
   let out: Record<string, unknown> = {};
   await w.hear(
@@ -232,6 +235,7 @@ async function actAs(
       out = await act({
         action: 'owner_act',
         thread: message().thread,
+        message: opts.message ?? message().message,
         tool: opts.tool ?? 'create_organization',
         args: opts.args ?? { name: 'SidCorp' },
         ...(opts.rid ? { rid: opts.rid } : {}),
@@ -351,7 +355,21 @@ describe('ISS-1013: core makes the act as the owner, only with his consent, only
     });
     expect(given.out, JSON.stringify(given.out)).toMatchObject({ isError: false, already: false });
     const before = w.box.acts.length;
-    const out = await actAs(chat.alice, 'now create the SidCorp organization');
+    // ISS-1014: an act naming no message the turn was handed is refused by name, and nothing sent
+    const unnamed = await actAs(chat.alice, 'make it', { message: 'not-a-handed-message' });
+    expect(code(unnamed), JSON.stringify(unnamed)).toBe('SUPPORT_MESSAGE_UNKNOWN');
+    expect(product.calls).toEqual([]);
+    let asked = '';
+    const out = await actAs(chat.alice, 'now create the SidCorp organization', {
+      tool: 'create_organization',
+    }).then(async (o) => {
+      const [m] = await rows<{ external_id: string }>(sql`
+        SELECT external_id FROM support_actions
+         WHERE project_id = ${w.projectId}::uuid AND kind = 'message_in'
+         ORDER BY created_at DESC LIMIT 1`);
+      asked = String(m?.external_id);
+      return o;
+    });
     answers.push(out);
     expect(out, JSON.stringify(out)).toMatchObject({
       isError: false,
@@ -377,7 +395,16 @@ describe('ISS-1013: core makes the act as the owner, only with his consent, only
     const [logged] = await rows<{ input: unknown; output: unknown }>(sql`
       SELECT input, output FROM support_actions
        WHERE project_id = ${w.projectId}::uuid AND kind = 'owner_act'`);
-    expect(logged?.input).toMatchObject({ args: { name: 'SidCorp' }, product: 'agenfold' });
+    // logged beside the message that asked for it, and the product told it came through the
+    // assistant for the owner (ISS-1014)
+    expect(logged?.input).toMatchObject({
+      args: { name: 'SidCorp' },
+      product: 'agenfold',
+      message: asked,
+    });
+    expect(product.via).toEqual([
+      `assistant; on-behalf-of=${OWNER_ID}; room=${chat.rid}; message=${asked}`,
+    ]);
     expect(JSON.stringify(logged)).not.toContain(OWNER_TOKEN);
   });
 

@@ -385,7 +385,12 @@ async function act(
       return ownerConsent(room, request);
     }
     case 'owner_act':
-      return ownerAct(room, { thread: input.thread, tool: input.tool, args: input.args });
+      return ownerAct(room, {
+        thread: input.thread,
+        message: input.message,
+        tool: input.tool,
+        args: input.args,
+      });
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,
