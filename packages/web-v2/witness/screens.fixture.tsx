@@ -11,6 +11,7 @@ import { detailQueries, STANDING_LIST } from "@/test/vi-chrome-issues";
 import { AUTOFLOW, EPOD_CATALOG } from "./ecosystem-page.fixture";
 import { reqQueries } from "@/test/vi-chrome-requirements";
 import { AGREEMENTS_PROJECT, AGREEMENTS_VIEW } from "@/test/agreements.fixture";
+import { MINE, REST_READS, THREADS } from "./screens-rest.reads";
 
 export const NOW = "2026-10-21T09:00:00.000Z";
 export const day = (i: number) => new Date(Date.parse(NOW) - (29 - i) * 86_400_000).toISOString().slice(0, 10);
@@ -84,7 +85,6 @@ export const HOME_READS: [RegExp, () => unknown][] = [
   [/\/workflows$/, () => ({ workflows: [], returned: 0 })],
   [/\/workflow-templates$/, () => ({ templates: [] })],
   [/\/config$/, () => ({ declared: true, revision: 1, document: { project: { description: "The clinic back office: patients, bookings and billing over one API." } } })],
-  [/\/modules\/rollup$/, () => ({ modules: ["Patients", "Bookings", "Billing"].map((name, i) => ({ id: `m${i}`, name, slug: name.toLowerCase(), parentId: null })) })],
   [/\/steward-budget$/, () => ({ day: NOW, resumesAt: NOW, handoff: { gatewayTurns: { spent: 6, of: 80 }, runnerJobs: { spent: 1, of: 4 } }, sweep: { gatewayTurns: { spent: 2, of: 120 }, runnerJobs: { spent: 0, of: 6 } }, paced: 0, quiet: null })],
   [/^\/memory\/entries$/, () => ({ items: [], counts: { live: 0, superseded: 0, archived: 0 }, returned: 0, total: 0, limit: 100 })],
 ];
@@ -98,17 +98,20 @@ const told = { answer: null, declined: null, clarification: null, shippedIn: nul
 const mineItem = (key: string, title: string, phase: string, from: string, n: number, says: string, running = false) => ({ key, title, kind: "bug", severity: "medium", phase, route: null, origin: { occurrences: n, project: { id: `p-${from}`, slug: from.toLowerCase(), name: from }, issue: null, run: null, clientVersion: "web 0.4.0-dev.260", reporter: { id: "u1", name: "Lan", agency: "human" }, at: FEEDBACK_AT }, createdAt: FEEDBACK_AT, updatedAt: FEEDBACK_AT, progress: { label: "forecast", asOf: FEEDBACK_AT, running, says, work: null, runs: [], waitingOn: [], eta: { estimate: false } }, shipEvidence: null, told });
 HOME_READS.push(
   [/^\/ecosystems\/[^/]+\/bus$/, () => EPOD_CATALOG],
-  [/^\/ecosystems\/mine$/, () => ({ ecosystems: [EPOD_CATALOG, AUTOFLOW].map(ecosystemRow), invitations: [], threads: [], drafts: [], projects: [...EPOD_CATALOG.projects, ...AUTOFLOW.projects].map((p) => ({ id: p.id, slug: p.slug, name: p.name })), mine: [] })],
+  [/^\/ecosystems\/mine$/, () => ({ ecosystems: [EPOD_CATALOG, AUTOFLOW].map(ecosystemRow), invitations: [], threads: THREADS, drafts: [], projects: [...EPOD_CATALOG.projects, ...AUTOFLOW.projects].map((p) => ({ id: p.id, slug: p.slug, name: p.name })), mine: MINE })],
   // the Agreements page's current rules (REQ-90)
   [new RegExp(`^/projects/${AGREEMENTS_PROJECT}/agreements$`), () => AGREEMENTS_VIEW],
   [/^\/forge\/feedback$/, () => ({ feedback: [mineItem("FB-212", "The board drops a card dragged to Done", "new", "HOP", 1, "Waiting to be triaged by Forge's team."), mineItem("FB-198", "forge claim refuses a lease that has expired", "planned", "Autoflow", 4, "ISS-1433 carries it and a run is working on it now.", true), mineItem("FB-160", "The release page cuts the version at phone width", "verified", "Catalog", 2, "Shipped in 0.4.0-dev.244 and verified.")], returned: 3, home: { id: "p-forge", slug: "forge-dev", name: "Forge" }, asOf: FEEDBACK_AT })],
 );
+// the screens ISS-1137 brought under the budget, ahead of the home's reads: their module rollup is a whole one
+HOME_READS.unshift(...REST_READS);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://forge.test").pathname.replace(/^\/api/, "");
   for (const [pattern, answer] of HOME_READS) if (pattern.test(path)) return json(answer());
   if (/\/forecast\/releases\/coming$|\/onboarding$/.test(path)) return json({ error: { code: "NOT_FOUND", message: "none" } }, 404);
   // a read no fixture answers stays in flight, as in the vi walking test
+  console.log(`UNANSWERED ${path}`);
   return new Promise<Response>(() => {});
 };
 

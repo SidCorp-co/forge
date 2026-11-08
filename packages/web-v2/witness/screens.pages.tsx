@@ -28,6 +28,7 @@ import { REQ_PROJECT, Seeded } from "@/test/vi-chrome-requirements";
 
 import { HOME_SEED } from "./owner-home.fixture";
 import { ECOSYSTEM_ID } from "./screens.fixture";
+import { REST_PAGES } from "./screens.pages-rest";
 
 export interface ScreenPage {
   name: string;
@@ -104,5 +105,6 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "sign-in", path: "/login", pattern: "/login", render: () => routeOf(LoginRoute), bare: true },
     { name: "register", path: "/register", pattern: "/register", render: () => routeOf(RegisterRoute), bare: true },
     { name: "not-found", path: "/nowhere", pattern: "/nowhere", render: () => <NotFoundBody />, bare: true },
+    ...REST_PAGES,
   ];
 }
