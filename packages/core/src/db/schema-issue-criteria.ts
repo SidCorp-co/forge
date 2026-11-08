@@ -33,7 +33,7 @@ import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { comments } from './schema-comments.js';
 import { issues } from './schema-issues.js';
-import { requirementCriteria, requirements } from './schema-requirements.js';
+import { criterionTitleCheck, requirementCriteria, requirements } from './schema-requirements.js';
 import { projectWorkflows } from './schema-workflows.js';
 
 export const issueCriteria = pgTable(
@@ -46,6 +46,8 @@ export const issueCriteria = pgTable(
     /** The number a verdict names (`criterion: 3`); a renumber moves it, the row and its verdicts stay. */
     n: integer('n').notNull(),
     statement: text('statement').notNull(),
+    /** A short title a row shows, at most eight words (0634, ISS-1131); null shows the first clause. */
+    title: text('title'),
     position: integer('position').notNull(),
     /** The requirement criterion (BC-n wording, ISS-57) this issue criterion proves, if any. */
     requirementCriterionId: uuid('requirement_criterion_id'),
@@ -78,6 +80,7 @@ export const issueCriteria = pgTable(
       sql`(${t.movedToCriterionId} IS NULL AND ${t.movedToRequirementId} IS NULL) OR (${t.retiredAt} IS NOT NULL AND (${t.movedToCriterionId} IS NULL OR ${t.movedToRequirementId} IS NULL))`,
     ),
     nChk: check('issue_criteria_n_chk', sql`${t.n} >= 1`),
+    titleChk: check('issue_criteria_title_chk', criterionTitleCheck(t.title)),
     statementChk: check('issue_criteria_statement_chk', sql`${t.statement} ~ '[^[:space:]]'`),
     liveNUq: uniqueIndex('issue_criteria_live_n_uq')
       .on(t.issueId, t.n)

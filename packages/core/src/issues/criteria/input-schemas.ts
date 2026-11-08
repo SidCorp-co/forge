@@ -4,6 +4,7 @@
 
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { criterionProbeSchema } from '@forge/contracts/criterion-probes';
+import { criterionTitleSchema } from '@forge/contracts/criterion-title';
 import { CRITERION_JUDGES, ISSUE_CRITERIA_MAX } from '@forge/contracts/issue-design';
 import {
   storefrontDraftIdentitySchema,
@@ -18,6 +19,8 @@ const criterionItem = z
     n: z.number().int().min(1).optional(),
     statement: z.string().trim().min(1).max(10_000),
     requirementCriterionId: z.uuid().nullable().optional(),
+    /** A short title its row shows, at most eight words, refused by name over that (ISS-1131). */
+    title: criterionTitleSchema,
   })
   .strict();
 
@@ -28,6 +31,7 @@ function numberCriteria(items: ReadonlyArray<z.infer<typeof criterionItem>>): Cr
     n: c.n ?? next++,
     statement: c.statement,
     requirementCriterionId: c.requirementCriterionId,
+    title: c.title,
   }));
 }
 

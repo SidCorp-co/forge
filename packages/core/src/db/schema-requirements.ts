@@ -229,6 +229,10 @@ export const requirementRevisions = pgTable(
   }),
 );
 
+/** The rule both criterion tables hold a title to (0634): blank-free, trimmed, at most eight words. */
+export const criterionTitleCheck = (title: AnyPgColumn) =>
+  sql`${title} IS NULL OR (${title} ~ '[^[:space:]]' AND ${title} = btrim(${title}) AND array_length(regexp_split_to_array(${title}, '[[:space:]]+'), 1) <= 8)`;
+
 // a BC code is stable across revisions; a row is one wording of it, live from since_revision
 // until retired_revision, so the criteria of revision n are the rows whose interval holds n
 export const requirementCriteria = pgTable(
@@ -241,6 +245,8 @@ export const requirementCriteria = pgTable(
     code: text('code').notNull(),
     body: text('body').notNull(),
     form: text('form', { enum: CRITERION_FORMS }).notNull().default('statement'),
+    /** A short title a row shows, at most eight words (0634, ISS-1131); null shows the body's first clause. */
+    title: text('title'),
     sinceRevision: integer('since_revision').notNull(),
     retiredRevision: integer('retired_revision'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -262,6 +268,7 @@ export const requirementCriteria = pgTable(
     codeChk: check('requirement_criteria_code_chk', sql`${t.code} ~ '^BC-[1-9][0-9]*$'`),
     formChk: check('requirement_criteria_form_chk', sql`${t.form} IN ('statement', 'scenario')`),
     bodyChk: check('requirement_criteria_body_chk', sql`${t.body} ~ '[^[:space:]]'`),
+    titleChk: check('requirement_criteria_title_chk', criterionTitleCheck(t.title)),
     retiredChk: check(
       'requirement_criteria_retired_chk',
       sql`${t.retiredRevision} IS NULL OR ${t.retiredRevision} > ${t.sinceRevision}`,

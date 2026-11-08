@@ -11,6 +11,7 @@
  * live criterion is the one the gate and the UI read.
  */
 
+import { criterionTitleFault } from '@forge/contracts/criterion-title';
 import type { CriteriaRefusalCode } from '@forge/contracts/issues';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type {
@@ -52,6 +53,8 @@ export interface CriterionInput {
   readonly n: number;
   readonly statement: string;
   readonly requirementCriterionId?: string | null | undefined;
+  /** Its short title (ISS-1131): left out keeps the one it had, `null` clears it. */
+  readonly title?: string | null | undefined;
 }
 
 export interface LatestVerdict {
@@ -87,6 +90,8 @@ export interface CriterionWithVerdict {
   readonly id: string;
   readonly n: number;
   readonly statement: string;
+  /** Its short title, shown on its row with the statement on demand (ISS-1131); null shows the first clause. */
+  readonly title: string | null;
   readonly position: number;
   readonly requirementCriterionId: string | null;
   readonly latest: LatestVerdict | null;
@@ -162,10 +167,12 @@ async function applyCriteria(
       c.requirementCriterionId === undefined
         ? {}
         : { requirementCriterionId: c.requirementCriterionId };
+    // a title is the row's label, not its wording: a retitled criterion keeps its row and its verdicts
+    const title = c.title === undefined ? {} : { title: c.title?.trim() || null };
     if (kept) {
       await tx
         .update(issueCriteria)
-        .set({ n: c.n, position, ...requirement })
+        .set({ n: c.n, position, ...requirement, ...title })
         .where(eq(issueCriteria.id, kept.id));
       continue;
     }
@@ -175,6 +182,7 @@ async function applyCriteria(
       statement: c.statement.trim(),
       position,
       ...requirement,
+      ...title,
     });
   }
   if (lock?.kind === 'late-add' && writer) {
@@ -297,6 +305,15 @@ function inputFault(desired: readonly CriterionInput[]): string | null {
   return null;
 }
 
+/** Refuse a criterion whose short title runs past eight words, by name (ISS-1131). */
+function titleRefusal(desired: readonly CriterionInput[]): void {
+  for (const c of desired) {
+    const fault = criterionTitleFault(c.title);
+    if (fault)
+      throw refuseCriteria('CRITERION_TITLE_TOO_LONG', `criterion ${c.n}: ${fault}`, '/criteria');
+  }
+}
+
 export async function lockIssue(
   tx: Tx,
   issueId: string,
@@ -321,6 +338,7 @@ export async function putCriteria(
 ): Promise<boolean> {
   const fault = inputFault(desired);
   if (fault) throw refuseCriteria('CRITERIA_INPUT_INVALID', fault, '/criteria');
+  titleRefusal(desired);
   const issue = await lockIssue(tx, issueId);
   if (!issue) return false;
   await applyCriteria(
@@ -376,7 +394,7 @@ export async function syncCriteriaFromText(
 }
 
 const LIST_SQL = (issueIds: readonly string[]) => sql`
-  SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id,
+  SELECT c.issue_id, c.id, c.n, c.statement, c.title, c.position, c.requirement_criterion_id,
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
          v.contract_version, v.release_version, v.storefront_drafts,
@@ -400,6 +418,7 @@ export type ListRow = {
   id: string;
   n: number;
   statement: string;
+  title?: string | null;
   position: number;
   requirement_criterion_id: string | null;
   v_id: string | null;
@@ -459,6 +478,7 @@ function criterionOf(row: ListRow): CriterionWithVerdict {
     id: row.id,
     n: row.n,
     statement: row.statement,
+    title: row.title ?? null,
     position: row.position,
     requirementCriterionId: row.requirement_criterion_id,
     latest: latestOf(row),

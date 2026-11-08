@@ -29,7 +29,13 @@ export async function writeCriteria(
     .where(eq(requirementCriteria.requirementId, requirementId));
   const live: LiveCriterion[] = all
     .filter((c) => c.retiredRevision === null)
-    .map((c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }));
+    .map((c) => ({
+      id: c.id,
+      code: c.code,
+      body: c.body,
+      form: c.form as CriterionForm,
+      title: c.title,
+    }));
   const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
   const planned = planCriteria(input, live, highest, ownCodes);
   if (!planned.ok) return planned.refusals;
@@ -66,7 +72,13 @@ export async function criteriaRefusalsAt(
     .from(requirementCriteria)
     .where(eq(requirementCriteria.requirementId, requirementId));
   const live: LiveCriterion[] = (baseRevision === null ? [] : liveAt(all, baseRevision)).map(
-    (c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }),
+    (c) => ({
+      id: c.id,
+      code: c.code,
+      body: c.body,
+      form: c.form as CriterionForm,
+      title: c.title,
+    }),
   );
   const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
   const planned = planCriteria(input, live, highest);

@@ -4033,6 +4033,13 @@
       "when": 1837641600000,
       "tag": "0633_issue_criteria_facts_kept_by_each_write",
       "breakpoints": true
+    },
+    {
+      "idx": 634,
+      "version": "7",
+      "when": 1837728000000,
+      "tag": "0634_a_criterion_carries_a_short_title",
+      "breakpoints": true
     }
   ]
 }

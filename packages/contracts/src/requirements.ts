@@ -877,6 +877,7 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"CRITERION_CODE_UNKNOWN",
 	"CRITERION_CODE_DUPLICATE",
 	"CRITERION_SCENARIO_UNPARSEABLE",
+	"CRITERION_TITLE_TOO_LONG",
 	"CRITERIA_DOCUMENT_REFUSED",
 	"REQUIREMENT_PICTURE_KIND_MISMATCH",
 	"REQUIREMENT_PICTURE_ROW_INCOMPLETE",
@@ -1036,6 +1037,8 @@ export interface RequirementCriterion {
 	code: string;
 	body: string;
 	form: "statement" | "scenario";
+	/** A short title its row shows (ISS-1131); null shows the body's first clause. */
+	title: string | null;
 	sinceRevision: number;
 	retiredRevision: number | null;
 }

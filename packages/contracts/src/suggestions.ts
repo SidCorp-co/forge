@@ -7,6 +7,7 @@ import {
 	CONTRACT_WAIT_TARGET_REFUSAL_CODES,
 	contractWaitTargetSchema,
 } from "./contract-waits.js";
+import { criterionTitleSchema } from "./criterion-title.js";
 import {
 	type FeedbackTriageEffect,
 	feedbackDedupSchema,
@@ -20,11 +21,11 @@ import {
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 import { REASON_TEXT_MAX } from "./reason-text.js";
+import type { ProblemBody, RefusalStatuses } from "./refusal.js";
 import {
 	draftPictureSchema,
 	revisionKindField,
 } from "./requirement-pictures.js";
-import type { ProblemBody, RefusalStatuses } from "./refusal.js";
 import {
 	designChangePayloadSchema,
 	WORKFLOW_STEP_ID,
@@ -48,15 +49,25 @@ export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
  * requirement's ready checklist decides readiness (REQ-34 BC-3; requirement-to-delivery r19, step
  * `ready`, which replaces the readiness suggestion and its gate).
  */
-export const RETIRED_SUGGESTION_KINDS = ["readiness"] as const satisfies readonly SuggestionKind[];
+export const RETIRED_SUGGESTION_KINDS = [
+	"readiness",
+] as const satisfies readonly SuggestionKind[];
 export type RetiredSuggestionKind = (typeof RETIRED_SUGGESTION_KINDS)[number];
-export type ProposableSuggestionKind = Exclude<SuggestionKind, RetiredSuggestionKind>;
-export const isRetiredSuggestionKind = (kind: string): kind is RetiredSuggestionKind =>
+export type ProposableSuggestionKind = Exclude<
+	SuggestionKind,
+	RetiredSuggestionKind
+>;
+export const isRetiredSuggestionKind = (
+	kind: string,
+): kind is RetiredSuggestionKind =>
 	(RETIRED_SUGGESTION_KINDS as readonly string[]).includes(kind);
 /** The kinds a producer may propose: every stored kind but the retired ones. */
 export const PROPOSABLE_SUGGESTION_KINDS = SUGGESTION_KINDS.filter(
 	(k): k is ProposableSuggestionKind => !isRetiredSuggestionKind(k),
-) as readonly ProposableSuggestionKind[] as [ProposableSuggestionKind, ...ProposableSuggestionKind[]];
+) as readonly ProposableSuggestionKind[] as [
+	ProposableSuggestionKind,
+	...ProposableSuggestionKind[],
+];
 
 /** proposed → accepted | rejected | stale | withdrawn (rev 3; only the producer withdraws). */
 export const SUGGESTION_STATUSES = [
@@ -220,6 +231,8 @@ export const requirementCriterionSchema = z.strictObject({
 		.optional(),
 	body: z.string().trim().min(1).max(10_000),
 	form: z.enum(REQUIREMENT_CRITERION_FORMS).optional(),
+	/** A short title its row shows, at most eight words (refused by name over that); `null` clears it, left out keeps it. */
+	title: criterionTitleSchema,
 });
 
 /** A revision as a suggestion proposes it: the draft's kind and its picture ride with it (REQ-35 BC-10). */

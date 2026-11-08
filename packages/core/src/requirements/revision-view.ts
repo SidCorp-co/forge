@@ -25,6 +25,7 @@ export const criterionView = (c: CriterionRow) => ({
   code: c.code,
   body: c.body,
   form: c.form as CriterionForm,
+  title: c.title,
   sinceRevision: c.sinceRevision,
   retiredRevision: c.retiredRevision,
 });

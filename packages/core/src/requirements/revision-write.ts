@@ -90,7 +90,11 @@ export function storedWrite(level: SensitiveDataLevel, write: RevisionWrite): Re
     tldr: write.tldr == null ? write.tldr : text(write.tldr),
     title: write.title === undefined ? undefined : text(write.title),
     changeSummary: write.changeSummary == null ? write.changeSummary : text(write.changeSummary),
-    criteria: write.criteria.map((c) => ({ ...c, body: text(c.body) })),
+    criteria: write.criteria.map((c) => ({
+      ...c,
+      body: text(c.body),
+      ...(c.title ? { title: text(c.title) } : {}),
+    })),
   };
 }
 

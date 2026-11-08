@@ -5,6 +5,7 @@
  * nothing written.
  */
 
+import { criterionTitleFault } from '@forge/contracts/criterion-title';
 import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type {
@@ -292,6 +293,7 @@ export interface CriterionInput {
   code?: string | undefined;
   body: string;
   form?: CriterionForm | undefined;
+  title?: string | null | undefined; // ISS-1131: left out keeps the one it had, `null` clears it
 }
 
 export interface LiveCriterion {
@@ -299,6 +301,7 @@ export interface LiveCriterion {
   code: string;
   body: string;
   form: CriterionForm;
+  title: string | null;
 }
 
 interface CriteriaPlan {
@@ -307,7 +310,7 @@ interface CriteriaPlan {
   /** Rows of the base revision this revision retires (reworded or removed). */
   retire: string[];
   /** New wordings, each under a stable code: a reworded code keeps its code, a new one takes the next. */
-  insert: { code: string; body: string; form: CriterionForm }[];
+  insert: { code: string; body: string; form: CriterionForm; title: string | null }[];
 }
 
 const codeNumber = (code: string) => Number(code.slice(3));
@@ -351,6 +354,15 @@ export function planCriteria(
   input.forEach((c, i) => {
     const form = c.form ?? 'statement';
     const body = c.body.trim();
+    const titleFault = criterionTitleFault(c.title);
+    if (titleFault) {
+      refusals.push({
+        code: 'CRITERION_TITLE_TOO_LONG',
+        path: `/criteria/${i}/title`,
+        detail: titleFault,
+      });
+    }
+    const sent = c.title === undefined ? undefined : (c.title?.trim() ?? null) || null;
     if (form === 'scenario' && !scenarioParses(body)) {
       refusals.push({
         code: 'CRITERION_SCENARIO_UNPARSEABLE',
@@ -361,7 +373,7 @@ export function planCriteria(
     }
     if (c.code === undefined) {
       next += 1;
-      plan.insert.push({ code: `BC-${next}`, body, form });
+      plan.insert.push({ code: `BC-${next}`, body, form, title: sent ?? null });
       return;
     }
     if (seen.has(c.code)) {
@@ -375,7 +387,7 @@ export function planCriteria(
     seen.add(c.code);
     const prior = byCode.get(c.code);
     if (!prior && ownCodes.has(c.code)) {
-      plan.insert.push({ code: c.code, body, form });
+      plan.insert.push({ code: c.code, body, form, title: sent ?? null });
       return;
     }
     if (!prior) {
@@ -392,11 +404,12 @@ export function planCriteria(
       });
       return;
     }
-    if (prior.body === body && prior.form === form) {
+    const title = sent === undefined ? prior.title : sent;
+    if (prior.body === body && prior.form === form && prior.title === title) {
       plan.keep.push(prior.id);
     } else {
       plan.retire.push(prior.id);
-      plan.insert.push({ code: c.code, body, form });
+      plan.insert.push({ code: c.code, body, form, title });
     }
   });
   for (const c of live) if (!seen.has(c.code)) plan.retire.push(c.id);

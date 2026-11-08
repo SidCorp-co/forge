@@ -33,6 +33,8 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERION_UNKNOWN",
 	/** A wording correction that changes the criterion's trace, which only the whole-list write may. */
 	"CRITERION_REWORD_TRACE",
+	/** A criterion's short title over eight words (ISS-1131, `criterion-title.ts`). */
+	"CRITERION_TITLE_TOO_LONG",
 ] as const;
 export type CriteriaRefusalCode = (typeof CRITERIA_REFUSAL_CODES)[number];
 
