@@ -10,13 +10,11 @@
  */
 
 import { type FeedbackConfirmWaitMetView, feedbackKey } from '@forge/contracts/feedback';
-import { whoOwes } from '@forge/contracts/who-owes';
-import { and, eq, inArray, isNotNull, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { forgeHomeProject } from '../instance-settings/index.js';
 import { userNames } from '../lib/people.js';
-import { readOwedPolicy } from '../project-config/index.js';
 import { type ConfirmWaitEnd, confirmWaitEnded, confirmWaitMetOf } from './confirm-wait-facts.js';
 import { withdrawnSql } from './confirm-wait-read.js';
 import { linkedOf, phaseIn } from './list-read.js';
@@ -37,8 +35,6 @@ export interface OwedAgentConfirm {
   waitEnded: ConfirmWaitEnd | null;
   /** The room message that ended it (ISS-1038), named on the line; null where none did. */
   waitMet: FeedbackConfirmWaitMetView | null;
-  /** A person reported it: its confirm is the master's by the one rule (ISS-1058), not an agent's. */
-  person: boolean;
 }
 
 /**
@@ -106,6 +102,8 @@ async function resolvedAmong(rows: Candidate[]): Promise<OwedAgentConfirm[]> {
   const out: OwedAgentConfirm[] = [];
   for (const [projectId, items] of byProject) {
     const linked = await linkedOf(projectId, items);
+    // its ship verifies it where its project is not strict (D5): no confirm is owed by anyone
+    if (linked.masterVerifies) continue;
     for (const r of items) {
       if (phaseIn(r, linked) !== 'resolved') continue;
       out.push({
@@ -118,23 +116,21 @@ async function resolvedAmong(rows: Candidate[]): Promise<OwedAgentConfirm[]> {
         waitEnded: confirmWaitEnded(r, new Date(), r.withdrawn),
         // the master reads the item's words here as its own door does: the words are its to judge
         waitMet: confirmWaitMetOf(r, false),
-        person: r.reporterAgency !== 'agent',
       });
     }
   }
   return out;
 }
 
-/** The shipped items agents of `projectId` reported, each owing that agent's confirm or reopen. */
+/**
+ * The shipped items agents of `projectId` reported, each owing that agent's confirm or reopen. Outside
+ * strict a shipped item is verified by its ship (owner 2026-11-08, D5, `loop-check.ts:verifyByShip`),
+ * so `resolvedAmong` lists only items whose own project keeps the confirm a person's or its reporter's;
+ * the master is never owed a person's confirm (ISS-1058's rule, which D5 settles by ship instead).
+ */
 export async function owedAgentConfirms(projectId: string): Promise<OwedAgentConfirm[]> {
   const agents = and(eq(feedback.reporterAgency, 'agent'), sql`${reportedFromSql} = ${projectId}`);
-  // ISS-1058: confirming a person's report holds is routine, so where the one rule gives it to the
-  // master the master is owed it too, for the items sitting in its own project
-  const people =
-    whoOwes('feedback.verify', await readOwedPolicy(projectId)).by === 'master'
-      ? and(ne(feedback.reporterAgency, 'agent'), eq(feedback.projectId, projectId))
-      : undefined;
-  return resolvedAmong(await candidates(people ? or(agents, people) : agents));
+  return resolvedAmong(await candidates(agents));
 }
 
 /**

@@ -211,8 +211,10 @@ describe("a project whose own policy keeps a person's gate on (ISS-1058)", () =>
   });
 });
 
+// ISS-1058, then owner 2026-11-08 (D5): outside strict the answer settles it, so nobody owes a
+// confirm: not the reporter, not the master, and the pass nudge names none (ISS-1085)
 describe('a resolved report filed under a person’s account by an automated check (ISS-1058)', () => {
-  it('owes its confirm to the master, never to the reporter’s you', async () => {
+  it('is done, owed by nobody, and on no nudge', async () => {
     const [fb] = await rows<{ id: string }>(sql`
       INSERT INTO feedback (project_id, fb_seq, kind, title, reported_by, reporter_agency, status,
                             route, answer, where_seen)
@@ -221,12 +223,12 @@ describe('a resolved report filed under a person’s account by an automated che
       RETURNING id`);
     const item = (await call('owner', 'GET', `/api/projects/${projectId}/feedback/FB-145`)) as Doc;
     const standing = (item.feedback ?? item) as Doc;
-    expect(standing.waitingOn).toMatchObject({ kind: 'agent', act: 'Confirm the answer' });
+    expect(standing).toMatchObject({ attentionGroup: 'done', waitingOn: { kind: 'none' } });
     const read = await needsYou();
     expect((read.decisions as Doc[]).filter((d) => d.entity === 'feedback')).toEqual([]);
     expect((await activityRow()).people.total).toBe(0);
     const swept = await sweep();
-    expect(swept.work.owedLine).toContain('FB-145');
+    expect(swept.work.owedLine ?? '').not.toContain('FB-145');
     expect(fb?.id).toBeTruthy();
   });
 });

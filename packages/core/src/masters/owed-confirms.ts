@@ -9,14 +9,10 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
  * an item about Forge, which admits the master of the project the item was reported from
  * (`feedback/reporter-master.ts`); its own project's door for an item that sits there, where the
  * master is a member. An item sitting in any other project is no door of the master's, so its line
- * names the reporter that owes it instead of a command that would be refused. A person's item the
- * one rule gives this master is always its own project's door.
+ * names the reporter that owes it instead of a command that would be refused. A person's item is
+ * never owed here: outside strict its ship verifies it (D5), and under strict its reporter confirms it.
  */
 const confirmDoor = (c: AgentConfirmOwed): string | null => {
-  // a person's item is confirmed on its own project's door, where this master is a member; the Forge
-  // door admits only a person reporter, so naming it there sent every confirm to a refusal (ISS-1058)
-  if (c.person)
-    return `forge-runner api projects/${c.itemProjectId}/feedback/${c.key}/verify -X POST`;
   if (c.home) return `forge-runner api forge/feedback/${c.key}/verify -X POST`;
   if (c.itemProjectId === c.reportedFrom)
     return `forge-runner api projects/${c.itemProjectId}/feedback/${c.key}/verify -X POST`;
@@ -52,19 +48,7 @@ const listed = (c: AgentConfirmOwed): string => {
 
 /** REQ-66 BC-8: an agent reporter has no bell, so the master that acts for it is asked to confirm. */
 export function confirmsLine(all: readonly AgentConfirmOwed[]): string {
-  return (
-    agentConfirmsLine(all.filter((c) => !c.person)) +
-    personConfirmsLine(all.filter((c) => c.person))
-  );
-}
-
-/**
- * ISS-1058: confirming that an answer or a fix holds is routine, so on a project that keeps no
- * person's gate on it the master makes the check a person reported, and the reporter may still reopen.
- */
-function personConfirmsLine(confirms: readonly AgentConfirmOwed[]): string {
-  if (confirms.length === 0) return '';
-  return ` ${confirms.length} resolved feedback item${plural(confirms.length, ' a person reported owes its', 's people reported owe their')} confirm, which is yours on this project (${confirms.map(listed).join('; ')}): its answer was given or its fix shipped. Check on the running build what each reported, then confirm it with what you ran and saw (\`{"note":…}\` on its project's door), or reopen it with \`/reopen\` and a \`reason\` where it does not hold; its reporter is told either way and may still reopen. \`${guideCall('feedback-triage')}\` (verify and reopen) is how.`;
+  return agentConfirmsLine(all);
 }
 
 function agentConfirmsLine(confirms: readonly AgentConfirmOwed[]): string {

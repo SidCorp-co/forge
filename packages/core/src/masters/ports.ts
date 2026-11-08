@@ -29,8 +29,6 @@ export interface AgentConfirmOwed {
   waitEnded: 'met' | 'withdrawn' | 'lapsed' | null;
   /** The room message that ended it (ISS-1038): which, where, by whom, when, and its words. */
   waitMet: FeedbackConfirmWaitMetView | null;
-  /** A person reported it, and the one rule gives its confirm to this master (ISS-1058); absent on an agent's. */
-  person?: boolean;
 }
 
 /** A release act its release's standing names the master for (`release-batch/master-owed-acts.ts`). */
