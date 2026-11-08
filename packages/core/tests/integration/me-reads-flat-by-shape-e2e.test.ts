@@ -34,7 +34,14 @@ import { currentQueryTiming, type QueryTiming } from '../../src/db/query-timing.
 import { fingerprintOf, shapeTextOf } from '../../src/db/statement-shapes.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestUser, seedOrg } from '../helpers/factories.js';
-import { forgeDoorReports, liveCoolify, seedEcosystem, wireLive } from '../helpers/live-wiring.js';
+import {
+  forgeDoorReports,
+  liveAutoflow,
+  liveCoolify,
+  seedEcosystem,
+  wireLive,
+  wireStorefront,
+} from '../helpers/live-wiring.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
 
 /** The shapes forge-dev sent once a project (r11's header, 2026-11-08), by the code that sends them. */
@@ -92,6 +99,10 @@ const SMALL: Scale = {
 const PROJECTS = 12;
 /** Coolify and the probes, stubbed on one local server counting each call: half the projects deploy there. */
 const coolify = liveCoolify();
+/** Autoflow, stubbed on another counting each GraphQL call: two projects are storefronts built there. */
+const autoflow = liveAutoflow();
+/** Every call either stub has answered so far, by path. */
+const callsNow = () => new Map([...coolify.calls, ...autoflow.calls]);
 
 let app: Awaited<typeof import('../../src/index.js')>['app'];
 let acrossToken: string;
@@ -107,7 +118,7 @@ interface Sent {
   /** Its wall time and `Server-Timing`'s db and app shares, kept under SLOW_READS_OUT. */
   ms: number;
   timing: string;
-  /** Each call the read made to the stub Coolify and probes, by path. */
+  /** Each call the read made to the stub Coolify, probes and Autoflow, by path. */
   http: Map<string, number>;
 }
 
@@ -117,7 +128,7 @@ async function sentBy(path: string, token: string): Promise<Sent> {
   let timing: QueryTiming | undefined;
   let ms = 0;
   let serverTiming = '';
-  const before = new Map(coolify.calls);
+  const before = callsNow();
   client.unsafe = (...args: unknown[]) => {
     timing ??= currentQueryTiming();
     return unsafe(...args);
@@ -147,7 +158,7 @@ async function sentBy(path: string, token: string): Promise<Sent> {
   for (const [name, leg] of timing.legs) add(name, leg.sent);
   add('unnamed', timing.sent);
   const http = new Map<string, number>();
-  for (const [path, n] of coolify.calls)
+  for (const [path, n] of callsNow())
     if (n > (before.get(path) ?? 0)) http.set(path, n - (before.get(path) ?? 0));
   return { areas, total: timing.queries, ms, timing: serverTiming, http };
 }
@@ -159,7 +170,7 @@ async function sentBy(path: string, token: string): Promise<Sent> {
 async function measured(
   path: string,
   token: string,
-): Promise<Sent & { all: number[]; cold: Sent }> {
+): Promise<Sent & { all: number[]; cold: Sent; warm: Sent[] }> {
   const warm = await sentBy(path, token);
   const runs: Sent[] = [];
   for (let n = 0; n < Math.max(1, Number(process.env.SLOW_READS_RUNS ?? 3)); n++)
@@ -169,7 +180,7 @@ async function measured(
   const http = new Map<string, number>();
   for (const r of [warm, ...runs])
     for (const [at, n] of r.http) http.set(at, Math.max(n, http.get(at) ?? 0));
-  return { ...median, http, cold: warm, all: runs.map((r) => Math.round(r.ms)) };
+  return { ...median, http, cold: warm, warm: runs, all: runs.map((r) => Math.round(r.ms)) };
 }
 
 const sum = (m: ReadonlyMap<string, number> | undefined) =>
@@ -221,7 +232,7 @@ function reportOf(path: string, { across, one }: Measured): string {
   ].join('\n');
 }
 
-type Read = Sent & { all: number[]; cold: Sent };
+type Read = Sent & { all: number[]; cold: Sent; warm: Sent[] };
 interface Measured {
   across: Read;
   one: Read;
@@ -240,6 +251,8 @@ beforeAll(async () => {
   for (let n = 0; n < PROJECTS; n++) {
     const id = await seedAtScale(ownerId, SMALL, { orgId });
     await wireLive(id, ownerId, ecosystemId, n % 2 === 0 ? coolify.url() : undefined);
+    // HOP's shape on forge-dev: one storefront deployed through a binding, one not
+    if (n === 1 || n === 2) await wireStorefront(id, ownerId, autoflow.url());
     ids.push(id);
   }
   home = ids[0] as string;
@@ -285,6 +298,28 @@ describe('a person in twelve projects wired as forge-dev holds them', () => {
           .map(([read, at, n]) => `${read} asked ${at.split('/').at(-2)} ${n} times`),
       ),
     ).toEqual([]);
+  });
+
+  // ISS-1070 r14: forge-dev's attention and home asked Autoflow twice a read, warm or cold, ~850 ms,
+  // for the drafts a storefront verdict was judged at: a read a moment after another asks no platform
+  it('asks no platform on a read made a moment after another', () => {
+    expect(
+      [...reads].flatMap(([path, { across, one }]) =>
+        [
+          ...across.warm.map((r) => [path, r] as const),
+          ...one.warm.map((r) => [`${path} (one project)`, r] as const),
+        ].flatMap(([read, r]) =>
+          [...r.http].map(([at, n]) => `${read} warm asked ${at} ${n} times`),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('asks Autoflow for the drafts of each storefront project a cold read weighs', () => {
+    const asked = [...reads].flatMap(([, { across }]) =>
+      [...across.cold.http].filter(([at]) => at.startsWith('/af/')),
+    );
+    expect(asked.length).toBeGreaterThan(0);
   });
 
   // ISS-1070 r13: half the projects are deployed through a binding that answers (`liveCoolify`), so

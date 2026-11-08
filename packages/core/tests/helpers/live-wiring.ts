@@ -11,6 +11,8 @@ import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { autoflowDraftVersion } from '../../src/integrations/autoflow/draft.js';
+import { encryptJson } from '../../src/integrations/vault.js';
 import { ecosystemDoc } from './ecosystem-world.js';
 import { createTestDevice } from './factories.js';
 import { seedProduction } from './release-world.js';
@@ -165,4 +167,86 @@ export async function forgeDoorReports(
       FROM (SELECT id, row_number() OVER (ORDER BY fb_seq) AS n FROM feedback WHERE project_id = ${home}) f
       JOIN (SELECT p, row_number() OVER () AS n FROM unnest(${sql.param([...from])}::uuid[]) AS p) s(project_id, n)
         ON s.n = f.n`);
+}
+
+/** The draft graph every workflow of the stub Autoflow holds, and the version a draft verdict names. */
+const WIRED_DRAFT = { nodes: [{ id: 'case', type: 'trigger' }] };
+const WIRED_WORKFLOW = 'af-wired';
+
+/**
+ * An Autoflow platform on one local server, counting each GraphQL call by its path
+ * (`/af/<project>/graphql`, one a storefront project): every project's workflows answer
+ * {@link WIRED_WORKFLOW} at {@link WIRED_DRAFT}. forge-dev's attention and home reads asked
+ * `auto.sidcorp.co` twice a read, warm or cold, for the drafts a storefront verdict was judged at
+ * (ISS-1070 r14).
+ */
+export function liveAutoflow() {
+  const calls = new Map<string, number>();
+  let server: Server | null = null;
+  let base = '';
+  beforeAll(async () => {
+    const s = createServer((req, res) => {
+      const path = String(req.url).split('?')[0] ?? '';
+      calls.set(path, (calls.get(path) ?? 0) + 1);
+      res.setHeader('content-type', 'application/json');
+      const body = {
+        data: {
+          backendWorkflows: [{ id: WIRED_WORKFLOW, code: 'wired_flow', draft: WIRED_DRAFT }],
+        },
+      };
+      req.resume();
+      req.on('end', () => setTimeout(() => res.end(JSON.stringify(body)), latencyOf(path)));
+    });
+    await new Promise<void>((done) => s.listen(0, '127.0.0.1', done));
+    server = s;
+    base = `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await new Promise<void>((done) => (server ? server.close(() => done()) : done()));
+    server = null;
+  });
+  return { url: () => base, calls };
+}
+
+/**
+ * Makes a wired project a storefront project as HOP is on forge-dev: its source an Autoflow binding
+ * whose token is good for a day, answered at `autoflow` (`liveAutoflow`), and the latest verdict on
+ * a criterion of each of its first six open issues judged on the draft that binding holds.
+ */
+export async function wireStorefront(
+  projectId: string,
+  ownerId: string,
+  autoflow: string,
+): Promise<void> {
+  const connectionId = randomUUID();
+  const bindingId = randomUUID();
+  const config = { baseUrl: `${autoflow}/af/${projectId}`, shop: `wired-${projectId.slice(0, 6)}` };
+  const secrets = encryptJson({
+    accessToken: 'sat_wired',
+    accessTokenExpiresAt: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+  });
+  await db.execute(sql`
+    INSERT INTO integration_connections (id, owner_type, owner_id, provider, config, secrets_enc, active)
+    VALUES (${connectionId}, 'user', ${ownerId}, 'autoflow', ${JSON.stringify(config)}::jsonb, ${secrets}, true)`);
+  await db.execute(sql`
+    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, label, active, config)
+    VALUES (${bindingId}, ${connectionId}, ${projectId}, 'autoflow', 'source', 'site', true,
+            ${JSON.stringify(config)}::jsonb)`);
+  const source = { type: 'storefront', storefront: { provider: 'autoflow', binding: bindingId } };
+  await db.execute(sql`
+    UPDATE project_config_documents
+       SET revision = revision + 1,
+           document = document || jsonb_build_object('source', ${JSON.stringify(source)}::jsonb,
+                                                     'workspace', '{"isolation":"remote-draft"}'::jsonb)
+     WHERE project_id = ${projectId}`);
+  const drafts = [{ workflowId: WIRED_WORKFLOW, draftVersion: autoflowDraftVersion(WIRED_DRAFT) }];
+  await db.execute(sql`
+    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, author_agency, identity_kind,
+                                    storefront_drafts, storefront_environment, corroboration, reason)
+    SELECT DISTINCT ON (i.iss_seq) c.id, i.id, 'pass', 'agent', 'storefront_draft',
+           ${JSON.stringify(drafts)}::jsonb, 'preview', 'corroborated', 'judged on the draft'
+      FROM issues i JOIN issue_criteria c ON c.issue_id = i.id AND c.retired_at IS NULL
+     WHERE i.project_id = ${projectId} AND i.status NOT IN ('closed', 'dropped', 'draft')
+     ORDER BY i.iss_seq, c.position
+     LIMIT 6`);
 }
