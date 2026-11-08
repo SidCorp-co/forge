@@ -11,7 +11,14 @@ import { type Said, say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { StandingInput } from './standing.js';
 import { actWait } from './standing-gates.js';
-import { JUDGE_WHO, releaseAskOf, releaseTurn } from './standing-proof.js';
+import {
+  ancestryTurn,
+  awaitsAncestry,
+  codesAct,
+  JUDGE_WHO,
+  releaseAskOf,
+  releaseTurn,
+} from './standing-proof.js';
 
 const MASTER = say('standing.who.master');
 
@@ -40,7 +47,8 @@ const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code
 // failing → the master breaks it down, new work, with the breakdown's due date. The rule names every
 // criterion without a pass, so the cause reads beside whom it waits on. Where a verdict counts only on
 // a release (ISS-900), the judge is named that release, and with none recorded nobody is asked to
-// judge: the master owes the record (`standing-proof.ts:releaseTurn`).
+// judge: the master owes the record (`standing-proof.ts:releaseTurn`). A criterion whose every
+// judgement waits on the live build's ancestry read reads as that system's wait, last (ISS-1134).
 export function shippedTurn(
   input: StandingInput,
   coverage: readonly RequirementCoverage[],
@@ -57,9 +65,12 @@ export function shippedTurn(
     );
   }
   const failing = failingOf(unproven);
-  const unjudged = unproven.filter((c) => c.verdict !== 'failing');
+  // unknown is not unproven (ISS-1134): one waiting only on the ancestry read is not judged again
+  const pending = unproven.filter((c) => c.verdict !== 'failing' && awaitsAncestry(c));
+  const unjudged = unproven.filter((c) => c.verdict !== 'failing' && !awaitsAncestry(c));
   const parts = [
     unjudged.length > 0 ? say('requirements.rule.unjudged', { codes: codesOf(unjudged) }) : null,
+    pending.length > 0 ? say('requirements.rule.ancestryUnread', { codes: codesOf(pending) }) : null,
     unjudged.length > 0 && release === 'none' ? say('requirements.rule.noReleaseRecorded') : null,
     failing.length > 0 ? say('requirements.rule.failed', { codes: codesOf(failing) }) : null,
   ].filter((p): p is Said => p !== null);
@@ -75,11 +86,12 @@ export function shippedTurn(
       group: 'waiting' as const,
       waitingOn: waitingOn('agent', {
         who: JUDGE_WHO[input.judge ?? 'self'],
-        act: say('standing.act.judgeShipped', { codes: codesOf(unjudged) }),
+        act: codesAct('standing.act.judgeShipped', unjudged),
         rule,
       }),
     };
   }
+  if (failing.length === 0) return ancestryTurn(pending, rule);
   return {
     group: 'waiting' as const,
     waitingOn: waitingOn(

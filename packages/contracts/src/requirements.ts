@@ -442,6 +442,10 @@ export interface CoverageIssue {
 	/** Why this pass, short or fail does not count toward the criterion; null where it counts or is
 	 *  no judgement (none yet, or could not judge). */
 	notCounted: string | null;
+	/** Set where it does not count only because the live build was read and whether it holds this
+	 *  commit is not answered yet (the served-ancestry pass has not read the pair, ISS-1134): its hold
+	 *  is unknown, not refused. Absent everywhere else. */
+	awaitsAncestry?: true;
 	stale: boolean;
 }
 
@@ -467,6 +471,8 @@ export interface CoverageRequirementVerdict {
 	inLiveBuild: boolean | null;
 	/** Why it does not count toward the criterion (`CoverageIssue.notCounted`); null where it counts or is a skip. */
 	notCounted: string | null;
+	/** Its hold on the live build is not answered yet (`CoverageIssue.awaitsAncestry`). */
+	awaitsAncestry?: true;
 	/** It judged an earlier wording of the criterion, so it does not count for this one. */
 	stale: boolean;
 }

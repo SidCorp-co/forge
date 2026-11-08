@@ -47,6 +47,54 @@ const failingKeys = (rows: readonly RequirementCoverage[]) =>
 
 const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code).join(', ');
 
+/** The acts of a requirement's turn that name the criteria they are about. */
+type CodesAct =
+  | 'standing.act.fileOrRevise'
+  | 'standing.act.trace'
+  | 'standing.act.judgeShipped'
+  | 'standing.act.readLiveBuild';
+
+/**
+ * An act over the criteria `rows` names, refused by name over none (ISS-1134): REQ-78 read "file an
+ * issue for , or revise the requirement" when every one of its criteria fell through the turn's
+ * other branches. A turn that reaches here with nothing to name is the defect, never the act.
+ */
+export function codesAct(key: CodesAct, rows: readonly RequirementCoverage[]): Said {
+  if (rows.length === 0) {
+    throw new Error(
+      `${key} composed over no code: a requirement's turn names an act over its criteria only where one is owed it`,
+    );
+  }
+  return say(key, { codes: codesOf(rows) });
+}
+
+/**
+ * Whether every current judgement of `c` waits only on the live build's ancestry read
+ * (`CoverageIssue.awaitsAncestry`, ISS-1134): after a deploy, until the served-ancestry pass reads the
+ * (judged, served) pair, nobody knows whether the live build holds them. That is unknown, never
+ * unproven: judging again or filing work changes nothing the read will not settle.
+ */
+export const awaitsAncestry = (c: RequirementCoverage): boolean => {
+  const judged = [...c.issues, ...c.verdicts].filter(
+    (l) => !l.stale && verdictExercised(l.verdict),
+  );
+  return judged.length > 0 && judged.every((l) => l.awaitsAncestry === true);
+};
+
+/**
+ * The wait on the ancestry read for `pending`, which no person or agent is asked to take: the
+ * deployed build's own read (`release-batch/served-ancestry.ts`), so it waits as on the release side,
+ * never as `none`, which reads stuck at once with nobody acting.
+ */
+export const ancestryTurn = (pending: readonly RequirementCoverage[], rule: Said): Turn => ({
+  group: 'waiting',
+  waitingOn: waitingOn('release', {
+    who: say('standing.who.liveBuildRead'),
+    act: codesAct('standing.act.readLiveBuild', pending),
+    rule,
+  }),
+});
+
 /**
  * Whether every judgement on the current wording of `c` was weighed and counts on no build where it
  * was judged, its criterion saying why (ISS-1018): judging it again at the same identity changes
@@ -205,7 +253,11 @@ export function carriedByLinked(
 // rule names every unproven BC. Where a verdict counts only on a release (`releaseAskOf`, ISS-900),
 // the judge judges on that release: on the issues tracing the current wording, which carry a release
 // verdict as the requirement does, and at the requirement only for what no such issue traces
-// (`releaseTurn`); with no release recorded, the master owes the record.
+// (`releaseTurn`); with no release recorded, the master owes the record. One judged only at the
+// requirement on no build that counts is judged there again on the live build. One whose every
+// judgement waits on the live build's ancestry read (ISS-1134) is unknown, not unproven: the turn
+// names that read last, a system's wait, once nothing else is owed, and asks nobody to judge or file
+// for it. Every act naming criteria names at least one (`codesAct`).
 export function proofTurn(
   judge: VerifiedJudge | null,
   live: readonly { status: string; plannedRevision?: number | null; closedAt: Date | null }[],
@@ -221,15 +273,22 @@ export function proofTurn(
   if (live.length === 0 || !live.every((i) => i.status === 'closed') || unproven.length === 0) {
     return null;
   }
-  const unjudged = unproven.filter(
+  const unread = unproven.filter(
     (c) => c.verdict === 'not_judged' || c.verdict === 'stale' || c.verdict === 'not_live',
   );
+  // unknown is not unproven (ISS-1134): a criterion whose judgements wait only on the ancestry read
+  // is named as waiting on it, and no act of the judge's or the master's is asked of it
+  const pending = unread.filter(awaitsAncestry);
+  const unjudged = unread.filter((c) => !awaitsAncestry(c));
   const judgeable = unjudged.filter((c) => unjudgedKeys([c]) !== '');
   const retie = unjudged.filter((c) => unjudgedKeys([c]) === '' && staleKeys([c]) !== '');
+  // judged only at the requirement, and on no build that counts: judged again there, on the live build
+  const rejudge = unjudged.filter((c) => !judgeable.includes(c) && !retie.includes(c));
   const failing = unproven.filter((c) => c.verdict === 'failing');
   const gaps = unproven.filter((c) => c.verdict === 'gap');
   const parts = [
     unjudged.length > 0 ? say('requirements.rule.unjudged', { codes: codesOf(unjudged) }) : null,
+    pending.length > 0 ? say('requirements.rule.ancestryUnread', { codes: codesOf(pending) }) : null,
     unjudged.length > 0 && release === 'none' ? say('requirements.rule.noReleaseRecorded') : null,
     failing.length > 0 ? say('requirements.rule.failed', { codes: codesOf(failing) }) : null,
     gaps.length > 0 ? say('requirements.rule.untraced', { codes: codesOf(gaps) }) : null,
@@ -297,6 +356,12 @@ export function proofTurn(
       ),
     };
   }
+  if (rejudge.length > 0) {
+    return {
+      group: 'waiting',
+      waitingOn: wait(JUDGE_WHO[judge ?? 'self'], codesAct('standing.act.judgeShipped', rejudge), rule),
+    };
+  }
   if (failing.length > 0) {
     return {
       group: 'waiting',
@@ -307,16 +372,19 @@ export function proofTurn(
       ),
     };
   }
-  const carries = requirement ? carriedByLinked(live, requirement) : () => true;
-  const traceable = gaps.filter((c) => carries(c.code));
-  return {
-    group: 'waiting',
-    waitingOn: wait(
-      MASTER,
-      traceable.length > 0
-        ? say('standing.act.trace', { codes: codesOf(traceable) })
-        : say('standing.act.fileOrRevise', { codes: codesOf(gaps) }),
-      rule,
-    ),
-  };
+  if (gaps.length > 0) {
+    const carries = requirement ? carriedByLinked(live, requirement) : () => true;
+    const traceable = gaps.filter((c) => carries(c.code));
+    return {
+      group: 'waiting',
+      waitingOn: wait(
+        MASTER,
+        traceable.length > 0
+          ? codesAct('standing.act.trace', traceable)
+          : codesAct('standing.act.fileOrRevise', gaps),
+        rule,
+      ),
+    };
+  }
+  return ancestryTurn(pending, rule);
 }

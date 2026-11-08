@@ -1120,6 +1120,11 @@ export const SAID = {
 		en: "trace {codes} to an issue criterion",
 		vars: { codes: "key" },
 	},
+	"standing.act.readLiveBuild": {
+		en: "read whether the live build holds the verdicts on {codes}",
+		vars: { codes: "key" },
+	},
+	"standing.who.liveBuildRead": { en: "Live build read" },
 	"standing.act.fileOrRevise": {
 		en: "file an issue for {codes}, or revise the requirement",
 		vars: { codes: "key" },
@@ -1812,6 +1817,10 @@ export const SAID = {
 	},
 	"requirements.rule.unjudged": {
 		en: "{codes} hold no passing verdict yet",
+		vars: { codes: "key" },
+	},
+	"requirements.rule.ancestryUnread": {
+		en: "{codes} wait on the live build's ancestry read",
 		vars: { codes: "key" },
 	},
 	"requirements.rule.failed": { en: "{codes} failed", vars: { codes: "key" } },

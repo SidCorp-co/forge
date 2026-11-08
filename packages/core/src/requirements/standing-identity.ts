@@ -204,6 +204,12 @@ export interface Resolved {
   notCounted: string | null;
   /** Where it counts on a build other than the commit it names, the words saying on what. */
   countedAs?: string;
+  /**
+   * Set only where it does not count because the live build was read and whether it holds the
+   * commit is not answered yet (`judged-build.ts:liveBuildHolds` `unanswered` with a live `sha`): the
+   * served-ancestry pass has not read the pair, so its hold is unknown, never refused (ISS-1134).
+   */
+  awaitsAncestry?: true;
 }
 
 // Kernel input (`VISION: kernel-hard-policy-soft`): every identity a verdict can name is either
@@ -238,6 +244,7 @@ export function atLiveCommit(
     commit,
     inLiveBuild,
     notCounted: `judged at ${judged}, and whether ${build} holds it could not be checked: ${why}`,
+    ...(live?.sha && live.unanswered.has(key) ? { awaitsAncestry: true as const } : {}),
   };
 }
 
