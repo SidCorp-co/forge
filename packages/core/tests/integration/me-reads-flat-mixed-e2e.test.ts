@@ -4,7 +4,9 @@
 // The mix (`tests/helpers/live-mix.ts`) reads them as forge-dev holds them: storefronts, projects
 // that deploy on land beside ones a person cuts, recorded landings, empty and small projects, and
 // feedback pointing at workflows, releases and revisions. Every shape is held to two sends an area
-// on a warm read, named with the code that sends it.
+// on a warm read, named with the code that sends it. Forge's requirements hold verdicts of their own
+// naming commits, which batch-cleanup-1108 weighed one requirement at a time: needs-you sent each
+// build read once a requirement (perf-cleanup-1108).
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/db/read-order.ts
 // @direct-test-of packages/core/src/feedback/list-read.ts
@@ -12,6 +14,7 @@
 // @direct-test-of packages/core/src/release-batch/release-list-read.ts
 // @direct-test-of packages/core/src/release-batch/release-facts.ts
 // @direct-test-of packages/core/src/release-batch/blockers.ts
+// @direct-test-of packages/core/src/requirements/standing-live-build.ts
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -51,6 +54,7 @@ const NAMED: Record<string, string> = {
   '1fce89cc': 'issues/standing-facts-read.ts (blocking edges)',
   e7d7b685: 'issues/standing-rows.ts:rowsWhere',
   '9542b7f7': 'release-batch/release-facts.ts (carried verdicts)',
+  '70ac3d41': 'requirements/standing-live-build.ts (a build read once a requirement)',
 };
 
 /** How often a warm read may send one shape in one area: a batch read again for a later step. */

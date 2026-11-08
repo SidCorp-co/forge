@@ -6,7 +6,6 @@
  */
 
 import { issueCoresOf } from '../issues/index.js';
-import { createLimiter } from '../lib/bounded-concurrency.js';
 import { requirementDependents } from './dependents.js';
 import { recordedLandingsOf } from './recorded-landings.js';
 import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
@@ -23,62 +22,10 @@ export async function liveBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
   own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],
-  read: BuildRead = buildRead(),
 ): Promise<LiveBuildHolds | null> {
-  const owners = await read.owners(rows.map((r) => r.issueId));
-  const theirs = new Map<string, StandingIssueCriterion[]>();
-  const mine: StandingIssueCriterion[] = [];
-  for (const r of rows) {
-    const at = owners.get(r.issueId) ?? projectId;
-    if (at === projectId) mine.push(r);
-    else theirs.set(at, [...(theirs.get(at) ?? []), r]);
-  }
-  // this project's build and every other project's are read at once, kept in the order asked, each
-  // through the read's one shared owners and lines (ISS-1070 r17)
-  const [holds, ...builds] = await Promise.all([
-    projectBuildOf(projectId, mine, own, read),
-    ...[...theirs].map(([other, those]) => projectBuildOf(other, those, [], read)),
-  ]);
-  if (theirs.size === 0) return holds ?? null;
-  const foreign = new Map<string, LiveBuildHolds | null>();
-  [...theirs.values()].forEach((those, i) => {
-    for (const r of those) foreign.set(r.issueId.toLowerCase(), builds[i] ?? null);
-  });
-  return { ...(holds ?? NOTHING_ASKED), foreign };
+  const owners = await issueProjectsOf(rows.map((r) => r.issueId));
+  return (await buildsAcross(projectId, [{ key: '', rows, own }], owners)).get('') ?? null;
 }
-
-/**
- * What one read shares across the requirements it weighs: each issue's project, and each project's
- * recorded release line. Neither depends on a requirement's own verdicts, so reading them once per
- * read keeps each requirement's build its own (`liveBuildsOf`) without a statement per requirement.
- */
-interface BuildRead {
-  owners(issueIds: readonly string[]): Promise<Map<string, string>>;
-  released(projectId: string): ReturnType<ReturnType<typeof requirementDependents>['releasedLine']>;
-}
-
-function buildRead(prefetched?: Promise<Map<string, string>>): BuildRead {
-  const lines = new Map<string, ReturnType<BuildRead['released']>>();
-  return {
-    owners: async (ids) => {
-      const known = prefetched ? await prefetched : new Map<string, string>();
-      const missing = ids.filter((id) => !known.has(id));
-      if (missing.length === 0) return known;
-      return new Map([...known, ...(await issueProjectsOf(missing))]);
-    },
-    released: (projectId) => {
-      let line = lines.get(projectId);
-      if (!line) {
-        line = requirementDependents().releasedLine(projectId);
-        lines.set(projectId, line);
-      }
-      return line;
-    },
-  };
-}
-
-/** How many requirements' builds one read weighs at once. */
-const LIVE_BUILD_READS = 4;
 
 /**
  * Each requirement's build, as its record and its accept read it (`acceptance.ts:liveBuildOfRequirement`):
@@ -86,8 +33,10 @@ const LIVE_BUILD_READS = 4;
  * one's were weighed on (a verdict at a requirement swapped the landing's holds for the live build's
  * of that verdict's commit alone), so the list read REQ-78 passing 0/7 while its record read 7/7
  * (owner 2026-11-08, D2). A requirement with a verdict of its own, or none of its traced rows judged,
- * is read alone; the rest share one read of their traced rows, which holds the same of each one's
- * commits as its own read would (each map is keyed by commit or issue), at one read's statements.
+ * is weighed alone; the rest share one ask of their traced rows. Each ask takes its own branch
+ * (`commitBuildsOf`), and every ask of a project is answered from one read of each kind over all of
+ * them, which holds the same of each one's commits as its own read would (each map is keyed by commit
+ * or issue): a read per requirement sent each kind once a requirement (perf-cleanup-1108).
  */
 export async function liveBuildsOf(
   projectId: string,
@@ -97,26 +46,78 @@ export async function liveBuildsOf(
     own: readonly Pick<StandingRequirementVerdict, 'commit'>[];
   }[],
 ): Promise<Map<string, LiveBuildHolds | null>> {
-  const read = buildRead(
-    issueProjectsOf([...new Set(rows.flatMap((r) => r.traced.map((c) => c.issueId)))]),
-  );
+  const owners = await issueProjectsOf([
+    ...new Set(rows.flatMap((r) => r.traced.map((c) => c.issueId))),
+  ]);
   const alone = rows.filter((r) => r.own.some((v) => v.commit) || !weighsAny(r.traced));
   const shared = rows.filter((r) => !alone.includes(r));
-  const limit = createLimiter(LIVE_BUILD_READS);
-  const [together, ...each] = await Promise.all([
-    shared.length > 0
-      ? liveBuildOf(
-          projectId,
-          shared.flatMap((r) => r.traced),
-          [],
-          read,
-        )
-      : Promise.resolve(null),
-    ...alone.map((r) =>
-      limit.run(async () => [r.id, await liveBuildOf(projectId, r.traced, r.own, read)] as const),
+  const SHARED = '\u0000shared';
+  const asks = [
+    ...(shared.length > 0 ? [{ key: SHARED, rows: shared.flatMap((r) => r.traced), own: [] }] : []),
+    ...alone.map((r) => ({ key: r.id, rows: r.traced, own: r.own })),
+  ];
+  const builds = await buildsAcross(projectId, asks, owners);
+  return new Map(
+    rows.map((r) => [r.id, builds.get(alone.includes(r) ? r.id : SHARED) ?? null] as const),
+  );
+}
+
+/** One requirement's (or one shared set's) rows and own verdicts, weighed on its own branch. */
+interface BuildAsk {
+  key: string;
+  rows: readonly StandingIssueCriterion[];
+  own: readonly Pick<StandingRequirementVerdict, 'commit'>[];
+}
+
+/**
+ * {@link liveBuildOf} for each ask: its rows split by the issue's project, each project's asks
+ * weighed together (`projectBuildsOf`), another project's carried under `foreign`. Every project's
+ * build is read at once, never one after another (ISS-1070 r17).
+ */
+async function buildsAcross(
+  projectId: string,
+  asks: readonly BuildAsk[],
+  owners: ReadonlyMap<string, string>,
+): Promise<Map<string, LiveBuildHolds | null>> {
+  const byProject = new Map<string, BuildAsk[]>([[projectId, []]]);
+  const theirsOf = new Map<string, Map<string, StandingIssueCriterion[]>>();
+  for (const ask of asks) {
+    const mine: StandingIssueCriterion[] = [];
+    const theirs = new Map<string, StandingIssueCriterion[]>();
+    for (const r of ask.rows) {
+      const at = owners.get(r.issueId) ?? projectId;
+      if (at === projectId) mine.push(r);
+      else theirs.set(at, [...(theirs.get(at) ?? []), r]);
+    }
+    byProject.get(projectId)?.push({ key: ask.key, rows: mine, own: ask.own });
+    for (const [other, those] of theirs)
+      byProject.set(other, [
+        ...(byProject.get(other) ?? []),
+        { key: ask.key, rows: those, own: [] },
+      ]);
+    theirsOf.set(ask.key, theirs);
+  }
+  const read = new Map(
+    await Promise.all(
+      [...byProject].map(async ([p, some]) => [p, await projectBuildsOf(p, some)] as const),
     ),
-  ]);
-  return new Map([...shared.map((r) => [r.id, together] as const), ...each]);
+  );
+  const out = new Map<string, LiveBuildHolds | null>();
+  for (const ask of asks) {
+    const holds = read.get(projectId)?.get(ask.key) ?? null;
+    const theirs = theirsOf.get(ask.key) ?? new Map();
+    if (theirs.size === 0) {
+      out.set(ask.key, holds);
+      continue;
+    }
+    const foreign = new Map<string, LiveBuildHolds | null>();
+    for (const [other, those] of theirs) {
+      const build = read.get(other)?.get(ask.key) ?? null;
+      for (const r of those) foreign.set(r.issueId.toLowerCase(), build);
+    }
+    out.set(ask.key, { ...(holds ?? NOTHING_ASKED), foreign });
+  }
+  return out;
 }
 
 /** Whether any of `rows` holds a verdict a build weighs (`commitBuildOf`'s gate), a voided one's included. */
@@ -147,75 +148,111 @@ async function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string,
 }
 
 /**
- * The build a project's verdicts are weighed on, and, where its production names no commit it serves
- * (no source probe), the releases its agent recorded (`released`, ISS-900): a verdict naming a release
- * is weighed there, and the standing names that release as the one to judge on.
+ * The build each ask's verdicts on a project are weighed on, and, where its production names no commit
+ * it serves (no source probe), the releases its agent recorded (`released`, ISS-900): a verdict naming
+ * a release is weighed there, and the standing names that release as the one to judge on.
  */
-async function projectBuildOf(
+async function projectBuildsOf(
   projectId: string,
-  rows: readonly StandingIssueCriterion[],
-  own: readonly Pick<StandingRequirementVerdict, 'commit'>[],
-  read: BuildRead,
-): Promise<LiveBuildHolds | null> {
-  const [released, build] = await Promise.all([
-    read.released(projectId),
-    commitBuildOf(projectId, rows, own),
+  asks: readonly BuildAsk[],
+): Promise<Map<string, LiveBuildHolds | null>> {
+  const [released, builds] = await Promise.all([
+    requirementDependents().releasedLine(projectId),
+    commitBuildsOf(projectId, asks),
   ]);
-  return released ? { ...(build ?? NOTHING_ASKED), released } : build;
+  return new Map(
+    asks.map((a) => {
+      const build = builds.get(a.key) ?? null;
+      return [a.key, released ? { ...(build ?? NOTHING_ASKED), released } : build] as const;
+    }),
+  );
 }
 
-async function commitBuildOf(
-  projectId: string,
-  rows: readonly StandingIssueCriterion[],
-  own: readonly Pick<StandingRequirementVerdict, 'commit'>[],
-): Promise<LiveBuildHolds | null> {
-  const judged = rows
+/** What one ask's verdicts name: the commits and runtimes judged, its own commits, a voided commit. */
+function namedBy(ask: BuildAsk) {
+  const judged = ask.rows
     .flatMap((r) => [r, ...(r.earlier ?? [])])
     .filter((r) => r.verdict !== null && r.verdict !== 'skipped');
-  const commits = [
-    ...judged.flatMap((r) => (r.identity?.kind === 'commit' ? [r.identity.sha] : [])),
-    ...own.flatMap((v) => (v.commit ? [v.commit] : [])),
-  ];
-  const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
-  const voidedAtCommit = rows.some((r) => r.beforeReopen?.identity?.kind === 'commit');
-  if (commits.length === 0 && runtimes.length === 0 && !voidedAtCommit) return null;
+  const asked = ask.own.flatMap((v) => (v.commit ? [v.commit] : []));
+  return {
+    commits: [
+      ...judged.flatMap((r) => (r.identity?.kind === 'commit' ? [r.identity.sha] : [])),
+      ...asked,
+    ],
+    runtimes: judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : [])),
+    asked,
+    voidedAtCommit: ask.rows.some((r) => r.beforeReopen?.identity?.kind === 'commit'),
+  };
+}
+
+const issuesOf = (rows: readonly StandingIssueCriterion[]) => [
+  ...new Set(rows.map((r) => r.issueId)),
+];
+
+/**
+ * Each ask's build on `projectId`, each on its own branch (a verdict at the requirement weighs the
+ * live build beside the landing; none, the landing alone), every read made once over all the asks:
+ * each answer is keyed by issue or commit, so an ask reads in it only what its own read would hold.
+ */
+async function commitBuildsOf(
+  projectId: string,
+  asks: readonly BuildAsk[],
+): Promise<Map<string, LiveBuildHolds | null>> {
+  const out = new Map<string, LiveBuildHolds | null>(asks.map((a) => [a.key, null]));
+  const named = new Map(asks.map((a) => [a.key, namedBy(a)]));
+  const weighed = asks.filter((a) => {
+    const n = named.get(a.key);
+    return n && (n.commits.length > 0 || n.runtimes.length > 0 || n.voidedAtCommit);
+  });
+  if (weighed.length === 0) return out;
+  const rows = weighed.flatMap((a) => a.rows);
   // Where the release weighs an issue's criteria at its landing (no production environment, or a
   // promotion before production, ISS-849), each verdict is weighed on its own issue's landing instead,
   // and a later commit it names counts where it holds that landing (`standing-identity.ts:atLanding`).
   const landed = await requirementDependents().landingHolds(
     projectId,
-    [...new Set(rows.map((r) => r.issueId))],
+    issuesOf(rows),
     judgedAgainstOf(rows),
   );
   if (landed) {
-    const asked = own.flatMap((v) => (v.commit ? [v.commit] : []));
-    if (asked.length === 0) return landed;
-    if (landed.promoted) {
-      // a verdict at the requirement itself judges the running build, which production serves here
-      const live = await requirementDependents().liveBuildHolds(projectId, {
-        commits: asked,
-        runtimes: [],
-      });
-      return { ...landed, ...(live ?? {}) };
+    const askedAll = [...new Set(weighed.flatMap((a) => named.get(a.key)?.asked ?? []))];
+    if (askedAll.length === 0) {
+      for (const a of weighed) out.set(a.key, landed);
+      return out;
     }
-    // a verdict at the requirement itself is weighed on a landing Forge recorded (`standing-identity.ts:atRecordedLanding`)
-    const recordedLandings = await recordedLandingsOf(projectId, asked, [
-      ...new Set(rows.map((r) => r.issueId)),
-    ]);
-    return { ...landed, recordedLandings };
+    // a verdict at the requirement itself judges the running build where production serves it, and
+    // is weighed on a landing Forge recorded otherwise (`standing-identity.ts:atRecordedLanding`)
+    const extra = landed.promoted
+      ? ((await requirementDependents().liveBuildHolds(projectId, {
+          commits: askedAll,
+          runtimes: [],
+        })) ?? {})
+      : { recordedLandings: await recordedLandingsOf(projectId, askedAll, issuesOf(rows)) };
+    for (const a of weighed)
+      out.set(a.key, (named.get(a.key)?.asked.length ?? 0) > 0 ? { ...landed, ...extra } : landed);
+    return out;
   }
-  if (commits.length === 0 && runtimes.length === 0) return null;
-  const live = await requirementDependents().liveBuildHolds(projectId, { commits, runtimes });
-  if (!live) return null;
+  const live = await requirementDependents().liveBuildHolds(projectId, {
+    commits: [...new Set(weighed.flatMap((a) => named.get(a.key)?.commits ?? []))],
+    runtimes: [...new Set(weighed.flatMap((a) => named.get(a.key)?.runtimes ?? []))],
+  });
+  if (!live) return out;
+  const asking = weighed.filter((a) => {
+    const n = named.get(a.key);
+    return n && (n.commits.length > 0 || n.runtimes.length > 0);
+  });
   // where the live build does not hold a verdict, it is weighed at its issue's landing (ISS-1018)
-  const unheld = unheldOf(judgedAgainstOf(rows), live);
-  if (unheld.size === 0) return live;
-  const landings = await requirementDependents().servedLandings(
-    projectId,
-    [...unheld.keys()],
-    unheld,
-  );
-  return { ...live, landings };
+  const unheld = new Map(asking.map((a) => [a.key, unheldOf(judgedAgainstOf(a.rows), live)]));
+  const all = new Map<string, { kind: string; value: string }[]>();
+  for (const u of unheld.values())
+    for (const [issueId, commits] of u) all.set(issueId, [...(all.get(issueId) ?? []), ...commits]);
+  const landings =
+    all.size > 0
+      ? await requirementDependents().servedLandings(projectId, [...all.keys()], all)
+      : null;
+  for (const a of asking)
+    out.set(a.key, landings && (unheld.get(a.key)?.size ?? 0) > 0 ? { ...live, landings } : live);
+  return out;
 }
 
 /**

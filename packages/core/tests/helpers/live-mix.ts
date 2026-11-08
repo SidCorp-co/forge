@@ -52,11 +52,19 @@ interface Kind {
   changeRequests?: boolean;
   /** No repository: work lands outside git, each closed issue's merge naming its artifacts. */
   outsideGit?: boolean;
+  /** Verdicts recorded at the requirement itself, each naming the commit it was judged on. */
+  judgedAtRequirement?: boolean;
 }
 
 /** forge-dev's mix, forge first. */
 export const LIVE_MIX: readonly Kind[] = [
-  { scale: FORGE, deploys: 'coolify', onLand: true, linkedFeedback: true },
+  {
+    scale: FORGE,
+    deploys: 'coolify',
+    onLand: true,
+    linkedFeedback: true,
+    judgedAtRequirement: true,
+  },
   { scale: SMALL, deploys: 'offline', storefront: true },
   { scale: SMALL, deploys: 'coolify', storefront: true, onLand: true },
   { scale: { ...SMALL, batches: 3 }, changeRequests: true },
@@ -64,7 +72,7 @@ export const LIVE_MIX: readonly Kind[] = [
   { scale: null },
   { scale: { ...SMALL, live: false, states: false }, outsideGit: true },
   { scale: SMALL, deploys: 'coolify', onLand: true, linkedFeedback: true },
-  { scale: MID, deploys: 'offline', linkedFeedback: true },
+  { scale: MID, deploys: 'offline', linkedFeedback: true, judgedAtRequirement: true },
   { scale: { ...SMALL, batches: 2 } },
   { scale: TINY, deploys: 'coolify', onLand: true },
   { scale: null, deploys: 'offline' },
@@ -106,6 +114,7 @@ export async function seedLiveMix(input: {
     if (kind.outsideGit) await landOutsideGit(id, ownerId);
     if (kind.storefront) await wireStorefront(id, ownerId, input.autoflow);
     if (kind.linkedFeedback) await linkFeedback(id);
+    if (kind.judgedAtRequirement) await judgeAtRequirement(id);
     // an agent filed most of it: the person owns one issue in seven and one item in five
     await db.execute(
       sql`UPDATE issues SET created_by_id = ${agentId} WHERE project_id = ${id} AND iss_seq % 7 <> 0`,
@@ -141,6 +150,23 @@ async function linkFeedback(projectId: string): Promise<void> {
                                      AND s.kind = 'breakdown' LIMIT 1)
      WHERE f.project_id = ${projectId} AND f.fb_seq = 7
        AND EXISTS (SELECT 1 FROM suggestions s WHERE s.project_id = f.project_id AND s.kind = 'breakdown')`);
+}
+
+/**
+ * A verdict at the requirement itself on every requirement's first criterion, as forge-dev's judges
+ * record them (perf-cleanup-1108): each names a release's commit, one in three a commit no release
+ * names, so every requirement's build is weighed on its own verdicts (`standing-live-build.ts:liveBuildsOf`).
+ */
+async function judgeAtRequirement(projectId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO requirement_criterion_verdicts (requirement_id, requirement_criterion_id, verdict, evidence, commit_sha, author_agency)
+    SELECT DISTINCT ON (r.id) r.id, rc.id, 'pass', ARRAY['judged at the requirement'],
+           CASE WHEN r.req_seq % 3 = 0 THEN md5('unreleased' || r.req_seq) || '00000000'
+                ELSE rpad(md5((r.req_seq)::text), 40, '0') END,
+           'agent'
+      FROM requirements r JOIN requirement_criteria rc ON rc.requirement_id = r.id
+     WHERE r.project_id = ${projectId}
+     ORDER BY r.id, rc.code`);
 }
 
 /** A project with no repository whose closed issues landed outside git, each naming what changed. */
