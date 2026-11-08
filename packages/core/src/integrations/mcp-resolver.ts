@@ -1,3 +1,4 @@
+import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
 import { httpUpstreamOf, relayEntryFor } from './mcp-relay.js';
@@ -63,9 +64,19 @@ async function resolveGrantedMcpEntries(
         const built = path.buildEntry(config, secrets);
         // REQ-21 BC-2: an HTTP server is reached through Forge's relay with a ticket for this one
         // binding, so the provider credential never enters the run's config or environment
-        const entry = httpUpstreamOf(built)
+        const handed = httpUpstreamOf(built)
           ? await relayEntryFor({ projectId, bindingId: pair.binding.id })
           : built;
+        // REQ-12 BC-22: the hand-off passes the egress rule over the surface its provider declares
+        const passed = handed ? await egressDeep(projectId, path.egressSurface, handed) : null;
+        if (passed && !passed.ok) {
+          logger.warn(
+            { projectId, provider: decl.provider, serverName, refusal: passed.refusal },
+            'mcp-resolver: the credential hand-off was refused by the egress rule, skipping inject',
+          );
+          continue;
+        }
+        const entry = passed?.value ?? null;
         if (built && !entry) {
           logger.warn(
             { projectId, provider: decl.provider, bindingId: pair.binding.id, serverName },

@@ -4,6 +4,7 @@ import type { Said } from '@forge/contracts/said';
 import type { z } from 'zod';
 import type { Tx } from '../db/client.js';
 import type { BindingRole } from '../db/schema.js';
+import { type EgressSurface, isEgressSurface } from '../lib/data-egress.js';
 import type { BindingTargetRefusal, VerifyBindingTargetArgs } from './binding-target-types.js';
 import type { TargetedDeployAdapter } from './deploy/index.js';
 import type { GitCredentialMint } from './git-credential-types.js';
@@ -177,6 +178,12 @@ export type AgentPath =
       readonly serverName: string;
       /** Why this provider offers no core-mediated route. Read by the declaration checker. */
       readonly justification: string;
+      /**
+       * The egress surface the credential hand-off to an agent session passes (REQ-12 BC-22):
+       * `integration.credential`. `declareIntegration` refuses a direct-mcp declaration without a
+       * declared one, and the resolver passes each entry through it before a run sees it.
+       */
+      readonly egressSurface: EgressSurface;
       readonly previewSecrets: Record<string, unknown>;
       /**
        * Runs BEFORE `buildEntry` at injection, for a provider whose stored credential expires: it
@@ -643,6 +650,12 @@ export function declareIntegration<
 >(
   input: IntegrationDeclarationInput<TConfig, TSecrets>,
 ): IntegrationDeclaration<TConfig, TSecrets> {
+  const path = input.capabilities.agentPath;
+  if (path?.kind === 'direct-mcp' && !isEgressSurface(path.egressSurface)) {
+    throw new Error(
+      `INTEGRATION_EGRESS_UNDECLARED: provider ${input.provider} hands its credential to an agent session (agentPath direct-mcp) and names ${path.egressSurface === undefined ? 'no egress surface' : `egress surface "${String(path.egressSurface)}", which lib/data-egress.ts:EGRESS_SURFACES does not declare`}; set agentPath.egressSurface to 'integration.credential' (REQ-12 BC-22)`,
+    );
+  }
   return {
     ...input,
     capabilities: {

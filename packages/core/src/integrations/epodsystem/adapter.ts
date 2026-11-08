@@ -262,6 +262,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
+      egressSurface: 'integration.credential',
       routes: [],
       serverName: 'epodsystem',
       previewSecrets: { apiKey: '[redacted]' },

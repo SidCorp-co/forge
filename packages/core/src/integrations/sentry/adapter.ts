@@ -98,6 +98,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
+      egressSurface: 'integration.credential',
       routes: ['/api/projects/:id/integrations/sentry/issues'],
       serverName: 'sentry',
       previewSecrets: { authToken: '[redacted]' },

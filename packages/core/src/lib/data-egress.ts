@@ -88,9 +88,22 @@ const EGRESS_SURFACES = {
     class: 'operational',
     holds: 'report frames handed to a sandbox executor as the input snapshot of a computation',
   },
+  // REQ-12 BC-22 (ISS-825): a direct-mcp integration hands its connection's credential, or the relay
+  // ticket standing for it, to an agent session's MCP config. A credential is not project content
+  // and a scrub would break it, so it leaves as stored at every level; declaring it is what lets the
+  // hand-off pass the one egress rule, and a declaration naming no surface is refused at boot
+  'integration.credential': {
+    class: 'product',
+    holds:
+      "a connection's credential, or the relay ticket standing for it, handed to an agent session's MCP config (a direct-mcp agentPath)",
+  },
 } as const satisfies Record<string, { class: EgressClass; holds: string }>;
 
 export type EgressSurface = keyof typeof EGRESS_SURFACES;
+
+/** Whether `surface` is declared in EGRESS_SURFACES. */
+export const isEgressSurface = (surface: unknown): surface is EgressSurface =>
+  typeof surface === 'string' && Object.hasOwn(EGRESS_SURFACES, surface);
 
 export interface EgressRefusal {
   code: DataEgressRefusalCode;

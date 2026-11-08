@@ -267,6 +267,7 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
+      egressSurface: 'integration.credential',
       routes: [],
       serverName: 'autoflow',
       previewSecrets: { accessToken: '[redacted]' },
