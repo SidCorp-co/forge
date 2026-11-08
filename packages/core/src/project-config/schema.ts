@@ -149,8 +149,9 @@ export const PRODUCTION_SITES_MAX = 9;
 
 // ISS-1077 — a further site production serves (webmail.lighthuman.vn beside mail.sidcorp.co): its own
 // binding, trigger, origin and runtime verification. The environment's own deployment is its first
-// site, named by the environment (`promotion-path.ts:sitesOf`); every site holds a binding
-// (`rules.ts:checkSites`, PRODUCTION_SITE_UNBOUND).
+// site, named by the environment (`promotion-path.ts:sitesOf`); every site holds a binding, or is
+// deployed outside Forge with a runtime verification of its own (ISS-1139, `deployment-rules.ts:checkSites`,
+// PRODUCTION_SITE_UNVERIFIED).
 const siteSchema = z.strictObject({
   name: slug(),
   deployment: deploymentSchema,

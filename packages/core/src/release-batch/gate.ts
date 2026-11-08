@@ -100,13 +100,27 @@ async function siteBinding(
   return { ok: true, pair };
 }
 
-/** Every production site's binding, held; the first site that cannot be deployed refuses the whole. */
+/**
+ * A further site production declares deployed outside Forge (ISS-1139): no release deploys it, and
+ * its record names it by what its own runtime verification reads it serving.
+ */
+export function externalSitesOf(production: NamedEnvironment): EnvironmentSite[] {
+  if (production.declaration.sites === undefined) return [];
+  return sitesOf(production).filter((s) => s.binding === null && s.name !== production.name);
+}
+
+/**
+ * Every production site's binding, held; the first site that cannot be deployed refuses the whole.
+ * A further site deployed outside Forge holds none, and is recorded, not deployed (ISS-1139).
+ */
 async function productionBindings(
   projectId: string,
   production: NamedEnvironment,
 ): Promise<{ ok: true; sites: GatedSite[] } | { ok: false; reason: string }> {
   const sites: GatedSite[] = [];
+  const external = new Set(externalSitesOf(production).map((s) => s.name));
   for (const site of sitesOf(production)) {
+    if (external.has(site.name)) continue;
     const bound = await siteBinding(projectId, production, site);
     if (!bound.ok) return bound;
     sites.push({ site, binding: bound.pair });

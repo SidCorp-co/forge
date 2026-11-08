@@ -6,7 +6,7 @@ import { rowsPerProject } from '../db/read-memo.js';
 import { effectiveConfig, getIntegration } from '../integrations/index.js';
 import { getKnowledgeEntry } from '../knowledge/index.js';
 import type { EnvironmentSite } from '../project-config/index.js';
-import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
+import { externalSitesOf, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   RELEASE_PROCEDURE_FACT,
   type RecordedVerification,
@@ -14,6 +14,7 @@ import {
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
+import type { SiteChannel } from './release-sites.js';
 import type { VerifyConfig } from './verify.js';
 
 export type { RecordedVerification, ReleaseChannel } from './plan.js';
@@ -90,6 +91,36 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
   return decl?.kind === 'gated' ? channelsOf(decl) : [];
 }
 
+const externalSite = (s: EnvironmentSite): SiteChannel => ({
+  site: s.name,
+  bindingId: null,
+  url: s.url ?? null,
+});
+
+/**
+ * Every production site a release records (ISS-1077): each bound site by its channel, then each
+ * further site deployed outside Forge (ISS-1139), which no run deploys and only the record ships. An
+ * external production of several sites names its own first. None where production names one site
+ * outside Forge or is not deployed by a release.
+ */
+export async function resolveReleaseSites(projectId: string): Promise<SiteChannel[]> {
+  const decl = await resolveReleaseDeclaration(projectId);
+  if (decl?.kind === 'gated') {
+    const bound = channelsOf(decl).map((c) => ({ site: c.site, bindingId: c.bindingId, url: c.url }));
+    return [...bound, ...externalSitesOf(decl.production).map(externalSite)];
+  }
+  if (decl?.kind !== 'external') return [];
+  const further = externalSitesOf(decl.production);
+  if (further.length === 0) return [];
+  const own = { name: decl.production.name, url: decl.production.declaration.url };
+  return [{ site: own.name, bindingId: null, url: own.url ?? null }, ...further.map(externalSite)];
+}
+
+/** The production sites deployed outside Forge, which a release records by what each serves (ISS-1139). */
+export async function resolveExternalSites(projectId: string): Promise<SiteChannel[]> {
+  return (await resolveReleaseSites(projectId)).filter((s) => s.bindingId === null);
+}
+
 /** How the binding is named where a person has to find it: environment or site, provider, store slug, id. */
 function bindingName(channel: ReleaseChannel): string {
   const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
@@ -135,10 +166,12 @@ export function releaseRunnerLabelOf(channels: readonly ReleaseChannel[]): strin
 
 export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan> {
   const channels = await resolveReleaseChannels(projectId);
+  const externalSites = await resolveExternalSites(projectId);
   const entry = await getKnowledgeEntry(projectId, RELEASE_PROCEDURE_FACT);
   const raw = entry && entry.archivedAt === null ? entry.body : null;
   return {
     channels,
+    externalSites,
     releaseRunnerLabel: releaseRunnerLabelOf(channels),
     procedure: raw !== null && raw.trim().length > 0 ? raw : null,
   };

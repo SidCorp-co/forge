@@ -8,7 +8,12 @@ import { buildReleaseBatchPrompt } from './prompt.js';
 
 const MARK = 'a'.repeat(40);
 const path = { defaultBranch: 'dev', production: null, crossing: null } as unknown as ReleasePath;
-const plan: ReleasePlan = { channels: [], releaseRunnerLabel: null, procedure: null };
+const plan: ReleasePlan = {
+  channels: [],
+  externalSites: [],
+  releaseRunnerLabel: null,
+  procedure: null,
+};
 
 const prompt = (marks: (string | null)[]) =>
   buildReleaseBatchPrompt({
@@ -84,6 +89,26 @@ describe('the release prompt over production sites (ISS-1077)', () => {
     expect(text).toContain('Production is 2 sites: `live`, `webmail`');
     expect(text).toContain('{"sites":[{"name":"<site>","serves":"<version or commit>"}]}');
     expect(text).toContain('RELEASE_SITE_NOT_SHIPPED');
+  });
+
+  // ISS-1139: a further site deployed outside Forge is named, its door deploys it, its record ships it
+  it('names a site deployed outside Forge, the door that deploys it, and that the finish records it', () => {
+    const text = buildReleaseBatchPrompt({
+      runId: 'run-1',
+      projectId: 'project-1',
+      defaultBranch: 'dev',
+      path,
+      plan: {
+        ...plan,
+        channels: [channel('live', 'b-cnw', 'https://cnw.example.test')],
+        externalSites: [{ site: 'lsm', url: 'https://lsm.example.test' }],
+      },
+      releaseRunnerPreferenceMet: true,
+      issues: [],
+    });
+    expect(text).toContain('Production is 2 sites: `live`, `lsm`');
+    expect(text).toContain('`lsm` is deployed outside Forge: no binding here deploys it');
+    expect(text).toContain('name it in `sites` like any other');
   });
 
   it('says nothing of sites where production is one', () => {

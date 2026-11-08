@@ -19,8 +19,11 @@ const PURE_REFUSAL_CODES = [
 	"PRODUCTION_NOT_UNIQUE",
 	/** ISS-1077: two sites of production under one name, the environment's own included. */
 	"PRODUCTION_SITE_NAME_TAKEN",
-	/** ISS-1077: a site of a production of several sites deploys through no binding of its own. */
-	"PRODUCTION_SITE_UNBOUND",
+	/**
+	 * ISS-1139: a site of a production of several sites, deployed outside Forge, declares no runtime
+	 * verification of its own, so nothing reads what it serves for the release that records it.
+	 */
+	"PRODUCTION_SITE_UNVERIFIED",
 	/** ISS-1077: an environment that is not production names further sites. */
 	"SITES_NEED_PRODUCTION",
 	/** A preview setting names an environment the project does not declare, or one whose tier is production. */

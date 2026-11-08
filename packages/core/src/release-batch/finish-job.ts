@@ -22,7 +22,7 @@ import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
-import { resolveReleaseChannels } from './channel.js';
+import { resolveReleaseSites } from './channel.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
 import {
   compareAndSet,
@@ -118,7 +118,7 @@ export async function acceptReleaseBatchFinish(
       await assertApprovalAllowsAttempt(runId, run.projectId);
       await assertFinishable(runId, run);
       // every production site is named shipped, or the release holds as not shipped (ISS-1077)
-      sites = admitSiteRecord(await resolveReleaseChannels(run.projectId), options.sites, {
+      sites = admitSiteRecord(await resolveReleaseSites(run.projectId), options.sites, {
         metadata: run.metadata,
         fallback: commit ?? run.releaseVersion ?? '',
         remedy: `Deploy each one on this run and watch it go live, then finish naming every site; or abort with POST /api/projects/${run.projectId}/release-batches/${runId}/abort, which returns the roster to the gate.`,

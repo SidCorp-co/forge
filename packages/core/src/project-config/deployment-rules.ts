@@ -1,6 +1,7 @@
 // The rules each deployment an environment declares is held to at write: what its binding's provider
 // can do, and (ISS-1077) the sites of a production of several: only production names sites, each under
-// a name no environment or other site has, and every site deploys through a binding.
+// a name no environment or other site has, and every site deploys through a binding or, deployed
+// outside Forge, is read by a runtime verification of its own (ISS-1139).
 
 import { withArticle } from '@forge/contracts/articles';
 import { jsonPointer } from '../lib/refusal.js';
@@ -33,8 +34,10 @@ export function deploymentsOf(
 
 /**
  * A production of several sites (ISS-1077): only production names sites, each under its own name,
- * and every site, the environment's own included, deploys through a binding of its own; a binding
- * two sites name is BINDING_IN_USE (`checkEnvironments`).
+ * and every site, the environment's own included, deploys through a binding of its own (a binding
+ * two sites name is BINDING_IN_USE, `checkEnvironments`) or is deployed outside Forge (ISS-1139,
+ * catalog-api's cnw and lsm through forge-ops) with a runtime verification of its own, which reads
+ * what it serves for the release that records it.
  */
 export function checkSites(
   name: string,
@@ -72,12 +75,16 @@ export function checkSites(
     }
     seen.add(site.name);
   });
+  const verified = new Map<string, boolean>([
+    [name, env.verification !== undefined],
+    ...sites.map((s): [string, boolean] => [s.name, s.verification !== undefined]),
+  ]);
   for (const { deployment, at, site } of deploymentsOf(name, env)) {
-    if ('binding' in deployment) continue;
+    if ('binding' in deployment || verified.get(site)) continue;
     out.push({
-      code: 'PRODUCTION_SITE_UNBOUND',
-      path: pointer(...at),
-      detail: `site "${site}" of environment "${name}" is deployed outside Forge, and a production of several sites deploys each through a binding of its own, so every release can deploy, judge and record it; give it {"binding": "<uuid>", "trigger": "on-request"}.`,
+      code: 'PRODUCTION_SITE_UNVERIFIED',
+      path: pointer(...at.slice(0, -1), 'verification'),
+      detail: `site "${site}" of environment "${name}" is deployed outside Forge and declares no runtime verification, so nothing reads what it serves when a release records it; give it {"verification": {"runtime": [{"type": "http", "url": "<its version endpoint>", "path": "<field>", "identifies": "source"}]}}, or deploy it through a binding of its own, {"binding": "<uuid>", "trigger": "on-request"}.`,
     });
   }
   return out;

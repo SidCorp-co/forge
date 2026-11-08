@@ -18,10 +18,14 @@ export interface SiteRecord {
   serves: string;
 }
 
-/** What a release reads of one declared site: its name, the binding it deploys through, its origin. */
+/**
+ * What a release reads of one declared site: its name, the binding it deploys through, its origin.
+ * A site deployed outside Forge has no binding (ISS-1139): no run deploys it, and only its record
+ * says it shipped.
+ */
 export interface SiteChannel {
   site: string;
-  bindingId: string;
+  bindingId: string | null;
   url: string | null;
 }
 
@@ -37,7 +41,8 @@ export function recordedSitesOf(metadata: unknown): SiteRecord[] | null {
 }
 
 /** Where one site stands on this run, read off its own deploys: never `shipped`, which only a record says. */
-function deployStateOf(bindingId: string, metadata: unknown): ReleaseSiteState {
+function deployStateOf(bindingId: string | null, metadata: unknown): ReleaseSiteState {
+  if (bindingId === null) return 'not_reached';
   if (pendingConfirmBindingsOf(metadata).has(bindingId)) return 'awaiting_confirm';
   const holds = Object.values(deployHoldsOf(metadata)).filter((h) => h.bindingId === bindingId);
   if (holds.some((h) => h.status === 'pending')) return 'deploying';
@@ -116,12 +121,12 @@ export function admitSiteRecord(
     seen.add(s.name);
   }
   const pending = pendingConfirmBindingsOf(ctx.metadata);
-  const unshipped = channels.filter((c) => !seen.has(c.site) || pending.has(c.bindingId));
+  const waits = (c: SiteChannel) => c.bindingId !== null && pending.has(c.bindingId);
+  const unshipped = channels.filter((c) => !seen.has(c.site) || waits(c));
   if (unshipped.length > 0) {
     const lines = unshipped.map((c) => {
-      const state = pending.has(c.bindingId)
-        ? 'awaiting_confirm'
-        : deployStateOf(c.bindingId, ctx.metadata);
+      if (c.bindingId === null) return `\`${c.site}\` (${EXTERNAL_WORDS})`;
+      const state = waits(c) ? 'awaiting_confirm' : deployStateOf(c.bindingId, ctx.metadata);
       return `\`${c.site}\` (${STATE_WORDS[state]})`;
     });
     throw refuseRelease(
@@ -131,6 +136,10 @@ export function admitSiteRecord(
   }
   return [...sites];
 }
+
+/** A site deployed outside Forge, which the record left out: no run deploys it, so only the record ships it. */
+const EXTERNAL_WORDS =
+  'deployed outside Forge, and your record does not name it: once its door deployed this release, name it with what its runtime verification reads it serving';
 
 const ENDED: ReadonlySet<ReleaseState> = new Set(['shipped', 'landed', 'failed', 'aborted']);
 

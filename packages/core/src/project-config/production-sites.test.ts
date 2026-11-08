@@ -157,27 +157,40 @@ describe('a production of several sites', () => {
     });
   });
 
-  it('refuses a site with no binding, by name, and a site with no deployment at its path', () => {
+  // ISS-1139: catalog-api's cnw and lsm deploy outside Forge, through forge-ops, and were refused
+  // PRODUCTION_SITE_UNBOUND; an external site is declared with a runtime verification of its own
+  it('takes a site deployed outside Forge that reads what it serves, and refuses one that does not, by name', () => {
+    const external = { mode: 'external', target: 'forge-ops' };
+    const probe = {
+      runtime: [{ type: 'http', url: 'https://cnw.example.vn/version', path: 'commit', identifies: 'source' }],
+    };
     expect(
       refusals({
         production: {
           ...mail,
-          sites: [{ ...webmail, deployment: { mode: 'external', target: 'forge-ops' } }],
+          deployment: external,
+          verification: probe,
+          sites: [{ name: 'lsm', deployment: external, url: 'https://lsm.example.vn', verification: probe }],
         },
       }),
-    ).toContainEqual({
-      code: 'PRODUCTION_SITE_UNBOUND',
-      path: '/environments/production/sites/0/deployment',
-    });
-    // the environment's own site is a site too: deployed outside Forge, it holds no binding
+    ).toEqual([]);
+    const { verification: _probe, ...unprobed } = webmail;
     expect(
-      refusals({
-        production: { ...mail, deployment: { mode: 'external' }, sites: [webmail] },
-      }),
+      refusals({ production: { ...mail, sites: [{ ...unprobed, deployment: external }] } }),
     ).toContainEqual({
-      code: 'PRODUCTION_SITE_UNBOUND',
-      path: '/environments/production/deployment',
+      code: 'PRODUCTION_SITE_UNVERIFIED',
+      path: '/environments/production/sites/0/verification',
     });
+    // the environment's own site is a site too: deployed outside Forge, it reads by its own probe
+    expect(
+      refusals({ production: { ...mail, deployment: { mode: 'external' }, sites: [webmail] } }),
+    ).toContainEqual({
+      code: 'PRODUCTION_SITE_UNVERIFIED',
+      path: '/environments/production/verification',
+    });
+  });
+
+  it('refuses a site with no deployment at its path', () => {
     const { deployment: _none, ...unbound } = webmail;
     const read = parse({ production: { ...mail, sites: [unbound] } });
     expect(read.ok).toBe(false);

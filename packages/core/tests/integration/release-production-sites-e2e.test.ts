@@ -332,3 +332,74 @@ describe('a release over a production of two sites (ISS-1077)', () => {
     });
   });
 });
+
+// ISS-1139: catalog-api's cnw and lsm deploy outside Forge, through forge-ops, and could not be
+// declared, so a release read as shipped without saying either site's state. Planted with production
+// deployed outside Forge by forge-ops, as two sites, each read by its own runtime verification.
+describe('a production whose sites are deployed outside Forge (ISS-1139)', () => {
+  const probe = (host: string) => ({
+    runtime: [
+      {
+        type: 'http' as const,
+        url: `https://${host}/version`,
+        path: 'commit',
+        identifies: 'source' as const,
+      },
+    ],
+  });
+  const external = { mode: 'external' as const, target: 'forge-ops' };
+
+  beforeEach(async () => {
+    await seedProjectDocument(projectId, ownerId, {
+      defaultBranch: 'main',
+      environments: {
+        cnw: {
+          tier: 'production',
+          deploysFrom: 'main',
+          deployment: external,
+          url: 'https://cnw.example.test',
+          verification: probe('cnw.example.test'),
+          sites: [
+            {
+              name: 'lsm',
+              deployment: external,
+              url: 'https://lsm.example.test',
+              verification: probe('lsm.example.test'),
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it('refuses a record leaving a site out, naming it as deployed outside Forge, then ships naming each', async () => {
+    const issueId = await fx.insertIssue();
+    const body = {
+      issueIds: [issueId],
+      version: '2.1.0',
+      account: 'forge-ops deployed both sites; each version endpoint read the release commit',
+    };
+    const refused = await send('POST', '/release-records', {
+      ...body,
+      sites: [{ name: 'cnw', serves: COMMIT }],
+    });
+    expect(refused.status).toBe(409);
+    const said = JSON.stringify(refused.body);
+    expect(said).toContain('RELEASE_SITE_NOT_SHIPPED');
+    expect(said).toContain('`lsm` (deployed outside Forge, and your record does not name it');
+    expect(await fx.stored(issueId)).toMatchObject({ status: 'awaiting_release' });
+
+    await call('POST', '/release-records', {
+      ...body,
+      sites: [
+        { name: 'cnw', serves: COMMIT },
+        { name: 'lsm', serves: COMMIT },
+      ],
+    });
+    expect((await release('2.1.0')).sites).toEqual([
+      { name: 'cnw', state: 'shipped', serves: COMMIT, url: 'https://cnw.example.test' },
+      { name: 'lsm', state: 'shipped', serves: COMMIT, url: 'https://lsm.example.test' },
+    ]);
+    expect(await fx.stored(issueId)).toMatchObject({ status: 'closed' });
+  });
+});

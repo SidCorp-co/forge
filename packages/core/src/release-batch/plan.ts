@@ -72,6 +72,8 @@ export const RECORDED_VERIFICATIONS: readonly RecordedVerification[] = RELEASE_V
 export interface ReleasePlan {
   /** Each production site's deploy binding, or empty where Forge reaches no production. */
   channels: ReleaseChannel[];
+  /** Each production site deployed outside Forge, which the finish records by what it serves (ISS-1139). */
+  externalSites: ReadonlyArray<{ site: string; url: string | null }>;
   /** The production binding's label, or `null`. */
   releaseRunnerLabel: string | null;
   /** The `release-procedure` knowledge entry's body, verbatim. */

@@ -20,7 +20,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { closeRunIfOneShotInTx, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
-import { type RecordedVerification, resolveReleaseChannels } from './channel.js';
+import { type RecordedVerification, resolveReleaseSites } from './channel.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { carryNaming } from './naming.js';
@@ -191,7 +191,7 @@ export async function recordPerformedRelease(
   const verification: RecordedVerification = RECORDED_VERIFICATION;
 
   // every production site is named shipped before anything is written (ISS-1077)
-  const sites = admitSiteRecord(await resolveReleaseChannels(projectId), args.sites, {
+  const sites = admitSiteRecord(await resolveReleaseSites(projectId), args.sites, {
     metadata: null,
     fallback: commit ?? args.version,
     remedy:

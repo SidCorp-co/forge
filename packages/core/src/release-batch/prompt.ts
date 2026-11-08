@@ -58,10 +58,16 @@ function channelLine(
 
 /** What a finish over several production sites sends, and what it is refused without (ISS-1077). */
 function renderSites(plan: ReleasePlan): string {
-  if (plan.channels.length < 2) return '';
-  const names = plan.channels.map((c) => `\`${c.site}\``).join(', ');
+  const all = [...plan.channels.map((c) => c.site), ...plan.externalSites.map((s) => s.site)];
+  if (all.length < 2) return '';
+  const names = all.map((n) => `\`${n}\``).join(', ');
+  // ISS-1139: a site deployed outside Forge is deployed by its own door, and only recorded here
+  const outside =
+    plan.externalSites.length === 0
+      ? ''
+      : ` ${plan.externalSites.map((s) => `\`${s.site}\``).join(', ')} ${plan.externalSites.length === 1 ? 'is' : 'are'} deployed outside Forge: no binding here deploys ${plan.externalSites.length === 1 ? 'it' : 'them'}. Have the door that deploys ${plan.externalSites.length === 1 ? 'it' : 'each'} (forge-ops, a CI pipeline) deploy this release, then read what ${plan.externalSites.length === 1 ? 'it serves' : 'each serves'} through ${plan.externalSites.length === 1 ? 'its' : 'its own'} runtime verification and name it in \`sites\` like any other.`;
   return `\n\n### Every production site
-Production is ${plan.channels.length} sites: ${names}. Deploy each through its own binding (each parks on its own confirm where it deploys on request), and judge each by its own runtime verification. \`finish\` names every one in \`sites\`, each with the version or commit its verification read it serving: \`{"sites":[{"name":"<site>","serves":"<version or commit>"}]}\`. A finish that leaves a site out, or names one still waiting on its confirm, is refused \`RELEASE_SITE_NOT_SHIPPED\` naming it: the release holds as not shipped until every site is, or until you abort.`;
+Production is ${all.length} sites: ${names}. Deploy each bound one through its own binding (each parks on its own confirm where it deploys on request), and judge each by its own runtime verification.${outside} \`finish\` names every one in \`sites\`, each with the version or commit its verification read it serving: \`{"sites":[{"name":"<site>","serves":"<version or commit>"}]}\`. A finish that leaves a site out, or names one still waiting on its confirm, is refused \`RELEASE_SITE_NOT_SHIPPED\` naming it: the release holds as not shipped until every site is, or until you abort.`;
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {

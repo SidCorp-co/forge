@@ -25,6 +25,7 @@ import {
   type RecordedVerification,
   releaseVerifiedBy,
   resolveReleaseChannels,
+  resolveReleaseSites,
 } from './channel.js';
 import { pendingProdConfirmOf, productionAsksConfirm } from './coolify-prod-gate.js';
 import { draftDecisionRefusal, standingDraftApproval } from './draft-approval.js';
@@ -263,7 +264,7 @@ export async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels, changeRequestLinks, doc, deploysFrom] =
+  const [facts, approvers, admins, language, channels, changeRequestLinks, doc, deploysFrom, sites] =
     await Promise.all([
       loadReleaseFacts(
         projectId,
@@ -280,6 +281,7 @@ export async function sharedFor(
       ),
       readProjectDocument(projectId),
       deploysFromOf(projectId),
+      resolveReleaseSites(projectId),
     ]);
   return {
     projectId,
@@ -296,7 +298,7 @@ export async function sharedFor(
     provider: productionProviderOf(channels),
     changeRequestLinks,
     confirmsProduction: productionAsksConfirm(channels, doc?.document),
-    sites: channels,
+    sites,
   };
 }
 
