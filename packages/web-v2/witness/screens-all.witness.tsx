@@ -28,7 +28,7 @@ const THEMES = (import.meta.env.VITE_WITNESS_THEMES ?? "light").split(",") as ("
 const WHOLE = import.meta.env.VITE_WITNESS_WHOLE === "1";
 // VITE_WITNESS_WIDTHS=1440,390 also draws each page on a phone; a phone's count prints as `WORDS@390`,
 // which the word budget (witness/screens.budgets.ts:countsOf) does not read: its budget is the 1440 one.
-const WIDTHS = (import.meta.env.VITE_WITNESS_WIDTHS ?? "1440").split(",").map(Number);
+const WIDTHS: number[] = ((import.meta.env.VITE_WITNESS_WIDTHS as string | undefined) ?? "1440").split(",").map(Number);
 
 const replace = window.history.replaceState.bind(window.history);
 window.history.replaceState = (data, unused, url) => {

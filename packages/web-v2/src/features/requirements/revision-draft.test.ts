@@ -66,7 +66,7 @@ describe("the criteria a save sends", () => {
   });
 
   it("sends no kind, spec or picture, so a new revision takes the head's; a blank reason goes as none; the draft's language goes back", () => {
-    const draft = revisionDraftOf({ reason: "Owner asked", tldr: "Export", changeSummary: "Adds export", criteria: [{ id: "c", code: "BC-1", body: "Done", form: "statement", sinceRevision: 1, retiredRevision: 3 }] }, false);
+    const draft = revisionDraftOf({ reason: "Owner asked", tldr: "Export", changeSummary: "Adds export", criteria: [{ id: "c", code: "BC-1", body: "Done", form: "statement", sinceRevision: 1, retiredRevision: 3, title: null }] }, false);
     // a criterion live at the revision is kept even where a later one retired it
     expect(draft.criteria).toHaveLength(1);
     const body = revisionWrite({ ...draft, reason: "  " }, { writtenLang: "vi" });
@@ -76,7 +76,7 @@ describe("the criteria a save sends", () => {
   });
 
   it("opens a new revision with the head's criteria and none of its reason or change summary", () => {
-    const head = { reason: "First", tldr: "Export", changeSummary: "Initial", criteria: [{ id: "c", code: "BC-4", body: "Done", form: "statement" as const, sinceRevision: 1, retiredRevision: null }] };
+    const head = { reason: "First", tldr: "Export", changeSummary: "Initial", criteria: [{ id: "c", code: "BC-4", body: "Done", form: "statement" as const, sinceRevision: 1, retiredRevision: null, title: null }] };
     expect(revisionDraftOf(head, true)).toEqual({ reason: "", tldr: "Export", changeSummary: "", criteria: [{ code: "BC-4", form: "statement", body: "Done", steps: { given: [], when: [], then: [] } }] });
   });
 });
