@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.595] - 2026-11-08
+
+A release pressed on a beta project now runs on its dev twin
+
+### Added
+
+- **A release pressed on beta runs on dev.** The beta port takes it once and cuts it on the same-slug dev project, naming any beta issue with no dev twin. Once it ships or fails, beta is told.
+
+### Fixed
+
+- **Your home and attention read faster when your projects record landings.** Home reads each project's live releases without weighing every release fact, landing checks are read once for all projects, and two per-issue lookups use an index.
+
 ## [0.4.0-dev.594] - 2026-11-08
 
 Forge screens show less by default, and criteria get short titles

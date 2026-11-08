@@ -1,1 +1,0 @@
-**Your home and attention read faster when your projects record landings.** Home reads each project's live releases without weighing every release fact, landing checks are read once for all projects, and two per-issue lookups use an index.
