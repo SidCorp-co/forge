@@ -75,7 +75,10 @@ beforeEach(async () => {
   await addProjectMember(projectId, agentId, 'admin');
   agentToken = await patToken(agentId, [projectId]);
   // production deploys on request: a release run's production deploy parks for a person's confirm
-  bindingId = await fx.declareProduction({ baseUrl: 'http://coolify.invalid', targets: [APP] }, 'none');
+  bindingId = await fx.declareProduction(
+    { baseUrl: 'http://coolify.invalid', targets: [APP] },
+    'none',
+  );
   await fx.seedReleaseRunner();
 });
 
@@ -130,12 +133,9 @@ describe('a release whose production deploy waits on a person’s confirm', () =
   });
 
   it('is told once, in Needs you, as one decision whose button is the confirm', async () => {
-    const { version } = await parkedRelease();
+    const { runId } = await parkedRelease();
     // a second pending answer is the same wait, never a second row
-    await call('POST', '/integrations/coolify/deploy', {
-      pipelineRunId: (await rows<{ id: string }>(sql`
-        SELECT id FROM pipeline_runs WHERE release_version = ${version}`))[0]?.id,
-    });
+    await call('POST', '/integrations/coolify/deploy', { pipelineRunId: runId });
 
     const read = await call('GET', '/needs-you/decisions');
     const confirms = (read.decisions as Doc[]).filter((d) =>
@@ -170,7 +170,7 @@ describe('a release whose production deploy waits on a person’s confirm', () =
         FROM pipeline_runs WHERE id = ${runId}`);
     expect(run?.status).toBe('running');
     expect(run?.step).toBe('release.deploy.in_flight');
-    expect(((run?.gate as Doc)[bindingId] as Doc).confirmedByUserId).toBe(ownerId);
+    expect(((run?.gate ?? {}) as Doc)[bindingId]).toMatchObject({ confirmedByUserId: ownerId });
     // no release session is alive to carry on, so a release job is queued on the same run to finish it
     const queued = await rows<{ id: string }>(sql`
       SELECT id FROM jobs WHERE pipeline_run_id = ${runId} AND type = 'release_batch'

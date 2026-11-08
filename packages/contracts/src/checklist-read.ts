@@ -3,7 +3,11 @@
 // the kernel judged by it. Core serves one per item kind (an issue, a feedback item, a requirement);
 // a page draws the answers from here and never restates a question.
 
-import type { ChecklistAnswer, ChecklistEvaluation, ChecklistForm } from "./checklists.js";
+import type {
+	ChecklistAnswer,
+	ChecklistEvaluation,
+	ChecklistForm,
+} from "./checklists.js";
 import type { GateEdges } from "./gate-edges.js";
 import type { GatedMoveStanding } from "./move-gates.js";
 import type { Refusal } from "./refusal.js";
