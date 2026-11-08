@@ -39,6 +39,7 @@ import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
 import { noteSections } from './release-notes-view.js';
 import { irreversibleOf, releaseOwesOf } from './release-owes.js';
+import { releaseOwnerOf } from './release-owner.js';
 import { releaseSitesOf, type SiteChannel } from './release-sites.js';
 import {
   completionOf,
@@ -182,25 +183,6 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
   });
 }
 
-function ownerOf(p: Part, s: Shared): { owner: ReleasePerson | null; act: string | null } {
-  const latest = p.approvals[0];
-  if (latest?.decision && latest.decidedBy) {
-    return {
-      owner: latest.decidedBy,
-      act: latest.decision === 'approved' ? 'Approved' : 'Returned',
-    };
-  }
-  // an automatic cut asks its approval as the owner it acted for, who asked nothing either (ISS-1153)
-  if (latest && s.facts.cutters.get(latest.runId)?.as === 'automatic') {
-    return { owner: null, act: 'Asked for approval automatically' };
-  }
-  if (latest) return { owner: latest.requestedBy, act: 'Asked for approval' };
-  const cutter = p.runId ? s.facts.cutters.get(p.runId) : undefined;
-  // Forge's own cut names no person (ISS-1153): the owner it acted for never pressed it
-  if (cutter?.as === 'automatic') return { owner: null, act: 'Cut automatically' };
-  return cutter ? { owner: cutter.person, act: 'Cut' } : { owner: null, act: null };
-}
-
 function lastChange(p: Part, s: Shared): string {
   const times = [
     p.openedAt,
@@ -328,7 +310,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const judged = weighedOf(p, s).map((w) => w.readings.map((r) => r.view));
   const criteria = sumTotals(judged.map(totalsOf));
   const turn = turnFor(p, s, criteria);
-  const { owner, act } = ownerOf(p, s);
+  const { owner, act } = releaseOwnerOf(p.approvals, p.runId, s.facts.cutters);
   const split = splitOf(p, s);
   const reqs = [
     ...new Set(
