@@ -25,6 +25,7 @@ import {
   onePerProject,
   partsOf,
   rowsPerId,
+  rowsPerProject,
 } from '../db/read-memo.js';
 import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -438,6 +439,32 @@ export const issueRowsByIds = async (projectId: string, ids: readonly string[]) 
     .filter((r) => r.project_id === projectId)
     .sort((a, b) => a.iss_seq - b.iss_seq)
     .map(({ project_id: _p, ...r }) => r);
+
+/**
+ * Every issue the project's feedback routes to: an issue route's carriers, and the issues of each
+ * requirement a feedback item became, each in the item's own project. Every project's asks are one
+ * read, joined on the feedback rather than asked by the ids a read of the links answered first
+ * (ISS-1070 r18: the home read the links, then these rows by id, a wave apart).
+ */
+export function issueRowsOfFeedback(
+  projectId: string,
+): Promise<(IssueRow & { project_id: string })[]> {
+  return rowsPerProject(
+    'forecastFeedbackIssueRows',
+    projectId,
+    (ids) =>
+      issueRowsIn(sql`i.id IN (
+        SELECT fri.issue_id FROM feedback f
+          JOIN feedback_route_issues fri ON fri.feedback_id = f.id
+          JOIN issues c ON c.id = fri.issue_id AND c.project_id = f.project_id
+         WHERE f.project_id IN (${idList(ids)}) AND f.route = 'issue'
+        UNION
+        SELECT q.id FROM feedback f
+          JOIN issues q ON q.requirement_id = f.routed_requirement_id AND q.project_id = f.project_id
+         WHERE f.project_id IN (${idList(ids)}) AND f.route = 'new_requirement')`),
+    (r) => r.project_id,
+  );
+}
 
 /** `issueRowsWhere` across projects, each row with its project. */
 async function issueRowsIn(where: SQL): Promise<(IssueRow & { project_id: string })[]> {

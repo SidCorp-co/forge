@@ -357,6 +357,15 @@ export async function listIssueStanding(
 }
 
 /**
+ * The ids of the project's open issues that {@link listIssueStanding} reads the standing of, from the
+ * same read (`standing-rows.ts:issueRowsIn`): a reader of their rows asks them beside the standing,
+ * not after it (ISS-1070 r18: the forecast's work rows waited on the whole standing).
+ */
+export async function openIssueIds(projectId: string): Promise<string[]> {
+  return (await issueRowsIn(projectId, 'open', STANDING_LIMIT)).map((r) => r.id);
+}
+
+/**
  * Each of `ids`' own standing wait, keyed by id, for a read model that names what one of its issues
  * holds it on (a requirement whose issue is parked) rather than saying it again in words of its own.
  */

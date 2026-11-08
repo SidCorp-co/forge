@@ -18,11 +18,11 @@ import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { rowsPerProject } from '../db/read-memo.js';
 import { listFeedbackAs } from '../feedback/index.js';
-import { type IssueRow, issueRowsByIds, issueRowsOfRequirements } from './facts.js';
+import { type IssueRow, issueRowsOfFeedback } from './facts.js';
 import { waitOn } from './model.js';
 import { pausedOf, stamp } from './read.js';
 import type { ForecastViewer } from './release.js';
-import { readsFor, scopeOf, stuckWaitOf } from './scope.js';
+import { type Reads, readsFor, scopeOf, stuckWaitOf } from './scope.js';
 
 export interface LinkRow {
   id: string;
@@ -89,13 +89,24 @@ export async function readFeedbackLines(
   forecastViewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<FeedbackLines> {
-  const listed = await listFeedbackAs(viewer, projectId);
+  // the links, the issues they route to and the simulation need no item of the list: each starts
+  // beside it, so the lines wait on the slower of the two, not on both in turn (ISS-1070 r18)
+  const routed = routedOf(projectId);
+  const [listed, reads] = await Promise.all([
+    listFeedbackAs(viewer, projectId),
+    readsFor(
+      projectId,
+      now,
+      routed.then((r) => r.rows),
+      forecastViewer,
+    ),
+  ]);
   if (!listed.ok) {
     throw new Error(
       `forecast: the feedback list refused an unfiltered read: ${listed.refusals[0]?.detail}`,
     );
   }
-  return feedbackLinesOver(listed.list.feedback, projectId, forecastViewer, now);
+  return linesOf(listed.list.feedback, await routed, reads);
 }
 
 /** Each of `items`' line, for a door that read the items itself (`feedback/index.ts:listFeedbackIn`). */
@@ -136,40 +147,63 @@ export const owedAfterShip = (
 ): FeedbackShippedOwes | null =>
   delivery?.shipped && phase !== 'resolved' && phase !== 'verified' ? 'judgement' : null;
 
+/** The project's feedback links, and the issues every route among them names, read in one wave. */
+interface Routed {
+  links: Map<string, LinkRow>;
+  /** Each routed issue by id. */
+  byId: Map<string, IssueRow>;
+  /** Each routed requirement's issues, by requirement id. */
+  byReq: Map<string, IssueRow[]>;
+  rows: IssueRow[];
+}
+
+async function routedOf(projectId: string): Promise<Routed> {
+  const [links, routed] = await Promise.all([linksOf(projectId), issueRowsOfFeedback(projectId)]);
+  const rows = routed
+    .filter((r) => r.project_id === projectId)
+    .map(({ project_id: _p, ...r }) => r)
+    .sort((a, b) => a.iss_seq - b.iss_seq);
+  const byReq = new Map<string, IssueRow[]>();
+  for (const r of rows)
+    if (r.requirement_id) byReq.set(r.requirement_id, [...(byReq.get(r.requirement_id) ?? []), r]);
+  return { links, byId: new Map(rows.map((r) => [r.id, r])), byReq, rows };
+}
+
+/** The issues `items`' routes name: what a door that read a few items asks what shipped of. */
+function rowsOfItems(items: readonly FeedbackSummary[], routed: Routed): IssueRow[] {
+  const ids = new Set<string>();
+  for (const s of items) {
+    const link = routed.links.get(s.id);
+    if (s.route?.route === 'issue') for (const id of link?.issue_ids ?? []) ids.add(id);
+    else if (s.route?.route === 'new_requirement' && link?.routed_requirement_id)
+      for (const r of routed.byReq.get(link.routed_requirement_id) ?? []) ids.add(r.id);
+  }
+  return routed.rows.filter((r) => ids.has(r.id));
+}
+
 async function feedbackLinesOver(
   listedItems: readonly FeedbackSummary[],
   projectId: string,
   forecastViewer: ForecastViewer | null,
   now: Date,
 ): Promise<FeedbackLines> {
-  const items = [...listedItems];
-  const links = await linksOf(projectId);
-  const carrierIds = [
-    ...new Set(
-      items.flatMap((s) => (s.route?.route === 'issue' ? (links.get(s.id)?.issue_ids ?? []) : [])),
-    ),
-  ];
-  const reqIds = [
-    ...new Set(
-      items.flatMap((s) => {
-        const id =
-          s.route?.route === 'new_requirement' ? links.get(s.id)?.routed_requirement_id : null;
-        return id ? [id] : [];
-      }),
-    ),
-  ];
-  const [carriers, byReq] = await Promise.all([
-    issueRowsByIds(projectId, carrierIds),
-    issueRowsOfRequirements(projectId, reqIds),
-  ]);
-  const byId = new Map(carriers.map((r) => [r.id, r]));
+  const routed = routedOf(projectId);
   const reads = await readsFor(
     projectId,
     now,
-    [...carriers, ...[...byReq.values()].flat()],
+    routed.then((r) => rowsOfItems(listedItems, r)),
     forecastViewer,
   );
+  return linesOf(listedItems, await routed, reads);
+}
 
+function linesOf(
+  listedItems: readonly FeedbackSummary[],
+  routed: Routed,
+  reads: Reads,
+): FeedbackLines {
+  const items = [...listedItems];
+  const { links, byId, byReq } = routed;
   const own = new Map<string, FeedbackForecast>();
   const pending: FeedbackSummary[] = [];
   for (const s of items) {
@@ -221,4 +255,17 @@ async function feedbackLinesOver(
     });
   }
   return { asOf: reads.f.run.asOf, items, links, lines: own };
+}
+
+/**
+ * Each requirement the project's feedback became, by its REQ key, with its issues in number order:
+ * the rows the lines read (`routedOf`), so a reader beside them sends nothing of its own.
+ */
+export async function routedRequirementRows(projectId: string): Promise<Map<string, IssueRow[]>> {
+  const { links, byReq } = await routedOf(projectId);
+  const out = new Map<string, IssueRow[]>();
+  for (const l of links.values())
+    if (l.routed_requirement_id && l.routed_requirement_seq !== null)
+      out.set(`REQ-${l.routed_requirement_seq}`, byReq.get(l.routed_requirement_id) ?? []);
+  return out;
 }

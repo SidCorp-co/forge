@@ -38,15 +38,19 @@ function viewerOwesRelease(mode: ReleaseMode, viewer: ForecastViewer | null): bo
   return mode === 'none' && viewer.canWrite;
 }
 
+/**
+ * What follows a landing, its lags read up to `now`: a clock still being read (the forecast's
+ * anchor) is read beside the release mode, not before it (ISS-1070 r18).
+ */
 export async function readReleaseFacts(
   projectId: string,
-  now: Date,
+  now: Date | PromiseLike<Date>,
   viewer: ForecastViewer | null,
 ): Promise<ReleaseFacts> {
-  const mode = await readReleaseMode(projectId);
+  const [mode, at] = await Promise.all([readReleaseMode(projectId), now]);
   const [nextVersion, lags, holders, owes] = await Promise.all([
     mode === 'manual' || mode === 'approval' ? nextDraftVersion(projectId) : null,
-    mode === 'automatic' ? readReleaseLags(projectId, now) : [],
+    mode === 'automatic' ? readReleaseLags(projectId, at) : [],
     mode === 'automatic' ? [] : namedHolders(RELEASE_ACT_PERMISSION[mode], projectId),
     // who owes the release act is the one rule's, read with what the draft carries (ISS-1058)
     mode === 'automatic'

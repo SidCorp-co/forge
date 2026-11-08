@@ -39,20 +39,32 @@ export interface Reads {
   shipped: Map<string, Shipped>;
 }
 
+/**
+ * The simulation, its release and what shipped `rows`. The simulation reads the anchor itself, the
+ * release only its window from it, and neither needs a row, so they start before `rows` are read;
+ * the ships wait on the rows alone (ISS-1070 r18: the home's feedback lines read them in turn).
+ */
 export async function readsFor(
   projectId: string,
   now: Date,
-  rows: readonly IssueRow[],
+  rows: readonly IssueRow[] | Promise<readonly IssueRow[]>,
   viewer: ForecastViewer | null,
 ): Promise<Reads> {
-  // whether landed work is live is the release record's to say, never `closed`'s: an issue closes
-  // when its criteria are met in scope, before any release carries it
-  const landed = rows.filter((r) => r.merged_at !== null).map((r) => r.id);
-  const anchor = await readAnchor(projectId, now);
   const [f, release, shipped] = await Promise.all([
-    simulated(projectId, now, anchor),
-    readReleaseFacts(projectId, anchor.at, viewer),
-    readShipped(projectId, landed),
+    simulated(projectId, now),
+    readReleaseFacts(
+      projectId,
+      readAnchor(projectId, now).then((a) => a.at),
+      viewer,
+    ),
+    // whether landed work is live is the release record's to say, never `closed`'s: an issue closes
+    // when its criteria are met in scope, before any release carries it
+    Promise.resolve(rows).then((rs) =>
+      readShipped(
+        projectId,
+        rs.filter((r) => r.merged_at !== null).map((r) => r.id),
+      ),
+    ),
   ]);
   return { f, release, shipped };
 }

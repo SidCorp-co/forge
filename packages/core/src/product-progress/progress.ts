@@ -24,7 +24,11 @@ import {
   type RunStanding,
   type RunState,
 } from '@forge/contracts/run-standing';
-import { issueRowsOfRequirements, requirementsBySeq } from '../forecast/index.js';
+import {
+  issueRowsOfRequirements,
+  requirementsBySeq,
+  routedRequirementRows,
+} from '../forecast/index.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { etaOf } from '../report-queries/index.js';
@@ -84,15 +88,31 @@ export async function issuesOfRequirements(
   projectId: string,
   requirementIds: readonly string[],
 ): Promise<Map<string, WorkIssue[]>> {
-  const rows = await issueRowsOfRequirements(projectId, requirementIds);
+  return workOfRows(projectId, await issueRowsOfRequirements(projectId, requirementIds));
+}
+
+/**
+ * The issues of each requirement the project's feedback became, by REQ key: the rows its feedback
+ * lines read (`forecast/feedback.ts:routedRequirementRows`), so the key needs no read of its own,
+ * nor its issues one after it (ISS-1070 r18).
+ */
+export async function routedRequirementWork(projectId: string): Promise<Map<string, WorkIssue[]>> {
+  return workOfRows(projectId, await routedRequirementRows(projectId));
+}
+
+/** Each group's issues by key and status, and whether a release record holds each. */
+async function workOfRows<K>(
+  projectId: string,
+  rows: ReadonlyMap<K, readonly { id: string; status: string }[]>,
+): Promise<Map<K, WorkIssue[]>> {
   const ids = [...rows.values()].flat().map((r) => r.id);
   const [keys, shipped] = await Promise.all([
     issueDisplayIds(ids),
     shippedReleasesOf(projectId, ids),
   ]);
   return new Map(
-    [...rows].map(([reqId, issues]) => [
-      reqId,
+    [...rows].map(([of, issues]) => [
+      of,
       issues.flatMap((i) => {
         const key = keys.get(i.id);
         return key ? [{ key, status: i.status, released: shipped.has(i.id) }] : [];

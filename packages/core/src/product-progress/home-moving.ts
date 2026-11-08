@@ -12,15 +12,9 @@ import { withQueryLeg } from '../db/query-timing.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
 import { issueDisplayIds, issueWaitsOf, ownedIssuesIn } from '../issues/index.js';
-import { type FeedbackReads, feedbackProgress, routedRequirements } from './feedback-views.js';
+import { type FeedbackReads, feedbackProgress } from './feedback-views.js';
 import { feedbackEnded, feedbackStage, isIdle, issueStage, lastMoveOf } from './home-stage.js';
-import {
-  issuesOfRequirements,
-  liveRunsByIssue,
-  type Progress,
-  requirementIdsOf,
-  runsOn,
-} from './progress.js';
+import { liveRunsByIssue, type Progress, routedRequirementWork, runsOn } from './progress.js';
 
 export interface HomeProject {
   id: string;
@@ -88,28 +82,27 @@ export async function readHomeProject(
   projectId: string,
   now: Date = new Date(),
 ): Promise<HomeProjectReads> {
-  // each part a named part of the request's `Server-Timing`, with the statements it sends
-  const listed = await withQueryLeg('home-feedback', () => listFeedbackAs(viewer, projectId, {}));
-  const allFeedback = listed.ok ? listed.list.feedback : [];
-  const fViewer = await withQueryLeg('home-forecast-viewer', () =>
+  // each part a named part of the request's `Server-Timing`, with the statements it sends; none
+  // waits on the feedback list but the lines that read its items, so the forecast, the runs and the
+  // owned issues start beside it (ISS-1070 r18: they each started once its tenth wave answered)
+  const fViewer = withQueryLeg('home-forecast-viewer', () =>
     forecastViewerOf(projectId, viewer.userId),
   );
-  const [forecasts, runs, reqIds, issues] = await Promise.all([
-    withQueryLeg('home-forecasts', () => readFeedbackForecasts(viewer, projectId, fViewer, now)),
-    withQueryLeg('home-runs', () => liveRunsByIssue(projectId, viewer.userId)),
-    withQueryLeg('home-requirement-ids', () =>
-      requirementIdsOf(projectId, routedRequirements(allFeedback)),
+  const [listed, forecasts, runs, requirementIssues, issues] = await Promise.all([
+    withQueryLeg('home-feedback', () => listFeedbackAs(viewer, projectId, {})),
+    withQueryLeg('home-forecasts', async () =>
+      readFeedbackForecasts(viewer, projectId, await fViewer, now),
     ),
+    withQueryLeg('home-runs', () => liveRunsByIssue(projectId, viewer.userId)),
+    withQueryLeg('home-requirement-issues', () => routedRequirementWork(projectId)),
     withQueryLeg('home-owned', () => ownedIssues(projectId, viewer.userId)),
   ]);
-  const reqIssues = await withQueryLeg('home-requirement-issues', () =>
-    issuesOfRequirements(projectId, [...reqIds.values()]),
-  );
+  const allFeedback = listed.ok ? listed.list.feedback : [];
   const reads: FeedbackReads = {
     asOf: forecasts.asOf,
     forecasts: new Map(forecasts.items.map((f) => [f.key, f])),
     runs,
-    requirementIssues: new Map([...reqIds].map(([key, id]) => [key, reqIssues.get(id) ?? []])),
+    requirementIssues,
     items: new Map(allFeedback.map((s) => [s.key, s])),
   };
   const mine = allFeedback.filter((s) => s.reporter.id === viewer.userId);

@@ -6,7 +6,12 @@
  */
 
 import { FORECAST_LABEL, type Forecast } from '@forge/contracts/forecast';
-import { activeIssuePrefix, compareDispatchOrder, listIssueStanding } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  compareDispatchOrder,
+  listIssueStanding,
+  openIssueIds,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
@@ -59,30 +64,35 @@ export const clockOf = (anchor: Pick<Anchor, 'at'>, readAt: Date) => ({
  * against `now`, so an item still grows late while nothing happens.
  */
 export async function simulate(projectId: string, now: Date, anchored?: Anchor): Promise<Facts> {
-  const [anchor, master] = await Promise.all([
+  // only the history reads the anchor and the master: every other fact starts with them, and the
+  // work rows ask the open issues' ids as the standing reads them, not after it (ISS-1070 r18)
+  const anchoring = Promise.all([
     anchored ? Promise.resolve(anchored) : readAnchor(projectId, now),
     readMasterStanding(projectId),
   ]);
+  const policing = readEffectivePolicy(projectId);
+  const [[anchor], standing, history, projectWait, prefix, manualIntake, writers, rows] =
+    await Promise.all([
+      anchoring,
+      listIssueStanding(projectId, 'open', now),
+      anchoring.then(([a, m]) =>
+        readHistory(projectId, clockOf(a, now).now, m.slots?.max ?? null),
+      ),
+      projectWaitOf(projectId),
+      activeIssuePrefix(projectId),
+      policing.then(async (policy) =>
+        policy
+          ? isEntryGateClosed(
+              policy.document as Parameters<typeof isEntryGateClosed>[0],
+              (await readProjectDocument(projectId))?.document.gates,
+            )
+          : false,
+      ),
+      holderNames('project.write', projectId),
+      openIssueIds(projectId).then((ids) => readWork(projectId, ids)),
+    ]);
   const clock = clockOf(anchor, now);
   const at = clock.now;
-  const [standing, history, projectWait, prefix, policy, writers] = await Promise.all([
-    listIssueStanding(projectId, 'open', now),
-    readHistory(projectId, at, master.slots?.max ?? null),
-    projectWaitOf(projectId),
-    activeIssuePrefix(projectId),
-    readEffectivePolicy(projectId),
-    holderNames('project.write', projectId),
-  ]);
-  const manualIntake = policy
-    ? isEntryGateClosed(
-        policy.document as Parameters<typeof isEntryGateClosed>[0],
-        (await readProjectDocument(projectId))?.document.gates,
-      )
-    : false;
-  const rows = await readWork(
-    projectId,
-    standing.issues.map((r) => r.id),
-  );
   const byId = new Map(rows.map((r) => [r.id, r]));
   // the admissible list's own order, from the one comparator both read (issues/dispatch-order.ts)
   const queue = [...standing.issues].sort(compareDispatchOrder);

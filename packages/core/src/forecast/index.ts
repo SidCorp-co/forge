@@ -1,5 +1,9 @@
 export { issueRowsOfRequirements, requirementBySeq, requirementsBySeq } from './facts.js';
-export { readFeedbackForecasts, readFeedbackForecastsOver } from './feedback.js';
+export {
+  readFeedbackForecasts,
+  readFeedbackForecastsOver,
+  routedRequirementRows,
+} from './feedback.js';
 export { issueProgressOf } from './progress.js';
 export { readIssueForecast } from './read.js';
 export { type ForecastViewer, releaseLegFor } from './release.js';
