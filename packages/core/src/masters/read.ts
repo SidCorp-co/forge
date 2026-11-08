@@ -38,7 +38,7 @@ import {
   SESSION_SILENCE_TIMEOUT_S,
 } from '../devices/index.js';
 import { NOT_PARKED } from '../jobs/index.js';
-import { issueTitleOf, runsOutOf, slotsHeld } from './held-reads.js';
+import { runsOutOf, slotsHeld } from './held-reads.js';
 import { liveMaster, type MasterRow } from './live-master.js';
 import { slotsOf } from './rules.js';
 import { masterStateOf, storedPane } from './state.js';
@@ -188,17 +188,25 @@ export function readClosedPass(
  * live, and the forecast and the runs ask it again: every ask before the quiet point is one statement
  * (`db/read-memo.ts:onePerId`, ISS-1070 r12), where each was one a project and an ask.
  */
-function heldOpenPass(sessionId: string): Promise<MasterOpenPass | undefined> {
+function heldOpenPass(
+  sessionId: string,
+): Promise<{ pass: MasterOpenPass; issueTitle: string | null } | undefined> {
   return onePerId('masterOpenPass', sessionId, async (ids) => {
-    const rows = rowsOf<PassRow>(
+    // the title of the project's issue the pass's key names by its number (`ISS-412`, ISS-864),
+    // read with it rather than a step after it
+    const rows = rowsOf<PassRow & { issue_title: string | null }>(
       await db.execute(sql`
-        SELECT ${PASS_COLUMNS} FROM master_passes
+        SELECT ${PASS_COLUMNS},
+               (SELECT i.title FROM issues i
+                 WHERE i.project_id = master_passes.project_id
+                   AND i.iss_seq = substring(master_passes.issue_key FROM '-([0-9]+)$')::numeric) AS issue_title
+          FROM master_passes
          WHERE master_session_id = ANY(${uuidArray(ids)}) AND ended_at IS NULL`),
     );
-    const out = new Map<string, MasterOpenPass>();
+    const out = new Map<string, { pass: MasterOpenPass; issueTitle: string | null }>();
     for (const r of rows) {
       const id = String(r.master_session_id);
-      if (!out.has(id)) out.set(id, openPassOf(r));
+      if (!out.has(id)) out.set(id, { pass: openPassOf(r), issueTitle: r.issue_title ?? null });
     }
     return out;
   });
@@ -248,7 +256,16 @@ export function masterServingOf(projectId: string): Promise<MasterServing> {
   });
 }
 
-export async function readMasterStanding(projectId: string): Promise<MasterStanding> {
+/**
+ * The project's master standing. The forecast reads it twice a project and the runs once: a read
+ * request answers each ask from its first (`db/read-memo.ts:memoizedRead`, ISS-1070 r12), where each
+ * ask waited on the request's quiet points again for facts it already held.
+ */
+export function readMasterStanding(projectId: string): Promise<MasterStanding> {
+  return memoizedRead(`masterStanding:${projectId}`, () => standingOf(projectId));
+}
+
+async function standingOf(projectId: string): Promise<MasterStanding> {
   const [master, lastPass] = await Promise.all([
     liveMaster(projectId),
     readLastPass(db, projectId),
@@ -282,11 +299,12 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     master.device_id && master.device_name !== null
       ? { id: master.device_id, name: master.device_name }
       : null;
-  const [pass, held, runsOut] = await Promise.all([
-    heldOpenPass(master.id).then((p) => p ?? null),
+  const [open, held, runsOut] = await Promise.all([
+    heldOpenPass(master.id),
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
     master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
   ]);
+  const pass = open?.pass ?? null;
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
   const pane = storedPane(master.pane);
   const lastBeatAt = master.last_beat ? iso(master.last_beat) : null;
@@ -301,7 +319,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     silentAfterSeconds: SESSION_SILENCE_TIMEOUT_S,
     now: new Date(),
   });
-  const passIssueTitle = pass?.issueKey ? await issueTitleOf(projectId, pass.issueKey) : null;
+  const passIssueTitle = pass?.issueKey ? (open?.issueTitle ?? null) : null;
   return {
     ...base,
     state: read.state,

@@ -68,28 +68,3 @@ export async function runsOutOf(projectId: string, deviceId: string): Promise<nu
   });
   return runs ?? 0;
 }
-
-/**
- * The title of the project's issue a pass's key names by its number (`ISS-412`), or null where it
- * names none (ISS-864); every project's ask before the quiet point in one statement (ISS-1070 r12).
- */
-export async function issueTitleOf(projectId: string, key: string): Promise<string | null> {
-  const seq = /-(\d+)$/.exec(key)?.[1];
-  if (!seq) return null;
-  const title = await onePerId(
-    'masterPassIssueTitle',
-    idOfParts(projectId, String(Number(seq))),
-    async (ids) => {
-      const pairs = ids.map((id) => partsOf(id) as [string, string]);
-      const rows = rowsOf<{ project_id: string; iss_seq: number; title: string }>(
-        await db.execute(sql`
-        SELECT i.project_id::text AS project_id, i.iss_seq, i.title
-          FROM issues i
-          JOIN unnest(${uuidArray(pairs.map(([p]) => p))}, ${sql.param(pairs.map(([, n]) => Number(n)))}::int[]) AS k(project_id, iss_seq)
-            ON i.project_id = k.project_id AND i.iss_seq = k.iss_seq`),
-      );
-      return new Map(rows.map((r) => [idOfParts(r.project_id, String(r.iss_seq)), r.title]));
-    },
-  );
-  return title ?? null;
-}
