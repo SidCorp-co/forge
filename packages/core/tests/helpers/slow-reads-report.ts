@@ -28,6 +28,11 @@ export interface Measure {
   body: Doc;
   /** The answer's size in bytes, as the wire carries it. */
   bytes: number;
+  /**
+   * The process's own CPU time while it answered (`process.cpuUsage`): parsing, joining, freezing,
+   * whatever the database and the box's other load took meanwhile left out (ISS-1070 r11).
+   */
+  cpuMs: number;
 }
 
 export function report(label: string, m: Measure): string {
@@ -41,7 +46,7 @@ export function report(label: string, m: Measure): string {
   }
   const repeated = [...same].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
   return [
-    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${m.bytes} bytes, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
+    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${m.bytes} bytes, ${m.cpuMs.toFixed(0)} cpu ms, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
     ...slowest.map(
       (s) => `  ${s.ms.toFixed(1).padStart(8)} ms  ${s.text.replace(/\s+/g, ' ').slice(0, 260)}`,
     ),

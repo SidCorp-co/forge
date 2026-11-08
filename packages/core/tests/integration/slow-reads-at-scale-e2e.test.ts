@@ -207,6 +207,7 @@ async function measured(path: string, as: string = token): Promise<Measure> {
   }
   try {
     const started = performance.now();
+    const cpu = process.cpuUsage();
     const res = await app.request(path, {
       headers: { Authorization: `Bearer ${as}`, 'X-Forge-Lifecycle': '10' },
     });
@@ -219,6 +220,7 @@ async function measured(path: string, as: string = token): Promise<Measure> {
       path,
       status: res.status,
       ms: performance.now() - started,
+      cpuMs: ((u) => (u.user + u.system) / 1000)(process.cpuUsage(cpu)),
       timing: res.headers.get('Server-Timing') ?? '',
       statements,
       body: (text ? JSON.parse(text) : null) as Doc,
@@ -301,10 +303,11 @@ interface Ceiling {
   /** The slowest warm median it may take, where one is held: the shell waits on it (ISS-1070 r7). */
   ms?: number;
   /**
-   * The most the median read's own `Server-Timing` may name as the app's: its time with no statement
-   * in flight, what the process spends parsing, joining and freezing (ISS-1070 r11), where one is held.
+   * The most CPU time the process may spend answering it, median of the reads, where one is held:
+   * its own parsing, joining and freezing, which a loaded box's wait for the database does not move
+   * the way it moves `Server-Timing`'s app share (ISS-1070 r11).
    */
-  appMs?: number;
+  cpuMs?: number;
 }
 
 /**
@@ -366,7 +369,9 @@ const READS = (p: string): Ceiling[] => [
   // code before r9, so the seed and not the read moved it; priced until a stored fact replaces its scans
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5800 },
   { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 41000 },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 26000 },
+  // ISS-1070 r11: the code before r11 (97d264900) touched 27,011 and 27,023 buffers on this seed,
+  // over the 26,000 r8 set; the seed and not the read moved it, priced until a read model replaces its scans
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 27500 },
   // ISS-1070 r10's seed moved it: 10,481 buffers on the code before r10, 10,673 after
   { path: '/api/me/whats-new', statements: 80, buffers: 11000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
@@ -387,7 +392,8 @@ const READS_ACROSS = (p: string): Ceiling[] => [
   {
     path: '/api/me/attention',
     statements: ATTENTION_ACROSS_STATEMENTS,
-    buffers: 165000,
+    // ISS-1070 r11: 165,453 and 165,892 on the code before r11 (97d264900), the seed's spread; priced alike
+    buffers: 167000,
     ms: ATTENTION_ACROSS_MS,
     beyondAlone: ATTENTION_BEYOND_ALONE,
   },
@@ -441,13 +447,6 @@ afterAll(closeWorld);
  */
 const ALONE = new Map<string, number>();
 
-/** The app's share the read's own `Server-Timing` names: its time with no statement in flight. */
-function appOf(m: Measure): number {
-  const app = /(?:^|, )app;dur=([0-9.]+)/.exec(m.timing)?.[1];
-  if (app === undefined) throw new Error(`${m.path} answered no Server-Timing app time: ${m.timing}`);
-  return Number(app);
-}
-
 /**
  * Reads each path as `as`, a warm-up then three, holds each statement to its buffer ceiling, and
  * answers each read over its ceilings of statements or buffers; every read is measured before any
@@ -468,6 +467,9 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
     if (process.env.SLOW_READS_PROFILE)
       await profiled(path, process.env.SLOW_READS_PROFILE, () => measured(path, as));
     const median = [...runs].sort((a, b) => a.ms - b.ms)[Math.floor(runs.length / 2)] as Measure;
+    const cpu = [...runs].map((r) => r.cpuMs).sort((a, b) => a - b)[
+      Math.floor(runs.length / 2)
+    ] as number;
     // SLOW_READS_EXPLAIN=1 plans the three slowest; any other value is a pattern naming the statements to plan
     const explain = process.env.SLOW_READS_EXPLAIN;
     const match = explain && explain !== '1' ? new RegExp(explain) : null;
@@ -502,7 +504,10 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
         )
       : [];
     const line = [
-      report(`${label}: median of ${runs.length} (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
+      report(
+        `${label}: median of ${runs.length} (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`,
+        median,
+      ),
       `  ceiling: ${median.statements.length} of ${ceiling.statements} statements, ${buffers} of ${ceiling.buffers} buffers`,
       ...heaviestSites(heaviest),
       ...every,
@@ -529,9 +534,9 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
             `${label} ${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
           ]
         : []),
-      ...(ceiling.appMs !== undefined && appOf(median) > ceiling.appMs
+      ...(ceiling.cpuMs !== undefined && cpu > ceiling.cpuMs
         ? [
-            `${label} ${path} spent ${appOf(median).toFixed(0)} ms in the app (median read's Server-Timing), over its ceiling of ${ceiling.appMs} ms`,
+            `${label} ${path} spent ${cpu.toFixed(0)} ms of the process's CPU (median of ${runs.length}), over its ceiling of ${ceiling.cpuMs} ms`,
           ]
         : []),
       ...(ceiling.ms !== undefined && median.ms > ceiling.ms
