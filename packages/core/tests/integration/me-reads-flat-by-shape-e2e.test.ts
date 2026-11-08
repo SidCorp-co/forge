@@ -79,22 +79,30 @@ let wired: string[];
 interface Sent {
   areas: Map<string, Map<string, number>>;
   total: number;
+  /** Its wall time and `Server-Timing`'s db and app shares, kept under SLOW_READS_OUT. */
+  ms: number;
+  timing: string;
 }
 
 async function sentBy(path: string, token: string): Promise<Sent> {
   const client = (db as unknown as { $client: { unsafe: (...a: unknown[]) => unknown } }).$client;
   const unsafe = client.unsafe;
   let timing: QueryTiming | undefined;
+  let ms = 0;
+  let serverTiming = '';
   client.unsafe = (...args: unknown[]) => {
     timing ??= currentQueryTiming();
     return unsafe(...args);
   };
   try {
+    const started = performance.now();
     const res = await app.request(path, {
       headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
     });
     expect(res.status, await res.clone().text()).toBe(200);
     await res.text();
+    ms = performance.now() - started;
+    serverTiming = res.headers.get('Server-Timing') ?? '';
   } finally {
     client.unsafe = unsafe;
   }
@@ -110,14 +118,20 @@ async function sentBy(path: string, token: string): Promise<Sent> {
   };
   for (const [name, leg] of timing.legs) add(name, leg.sent);
   add('unnamed', timing.sent);
-  return { areas, total: timing.queries };
+  return { areas, total: timing.queries, ms, timing: serverTiming };
 }
 
-/** The median of three reads by statement count, after a warm-up that pays the prepared statements. */
-async function measured(path: string, token: string): Promise<Sent> {
+/**
+ * The median of the reads by wall time (three, or SLOW_READS_RUNS), after a warm-up that pays the
+ * prepared statements; each read's times are kept beside it.
+ */
+async function measured(path: string, token: string): Promise<Sent & { all: number[] }> {
   await sentBy(path, token);
-  const runs = [await sentBy(path, token), await sentBy(path, token), await sentBy(path, token)];
-  return [...runs].sort((a, b) => a.total - b.total)[1] as Sent;
+  const runs: Sent[] = [];
+  for (let n = 0; n < Math.max(1, Number(process.env.SLOW_READS_RUNS ?? 3)); n++)
+    runs.push(await sentBy(path, token));
+  const median = [...runs].sort((a, b) => a.ms - b.ms)[Math.floor(runs.length / 2)] as Sent;
+  return { ...median, all: runs.map((r) => Math.round(r.ms)) };
 }
 
 const sum = (m: ReadonlyMap<string, number> | undefined) =>
@@ -133,7 +147,10 @@ function overMost(path: string, sent: Sent): string[] {
   return out;
 }
 
-const reads = new Map<string, { across: Sent; one: Sent }>();
+const reads = new Map<
+  string,
+  { across: Sent & { all: number[] }; one: Sent & { all: number[] } }
+>();
 
 beforeAll(async () => {
   testEnv();
@@ -166,7 +183,7 @@ beforeAll(async () => {
     for (const [path, { across, one }] of reads)
       appendFileSync(
         process.env.SLOW_READS_OUT,
-        `${path} one ${one.total} / twelve ${across.total}: ${[...across.areas.keys()].map((a) => `${a} ${sum(one.areas.get(a))}/${sum(across.areas.get(a))}`).join(', ')}\n${[
+        `${path} one ${one.total} / twelve ${across.total}; twelve ${Math.round(across.ms)} ms (${across.all.join(', ')}) ${across.timing.split(', ').slice(0, 3).join(', ')}; one ${Math.round(one.ms)} ms (${one.all.join(', ')}) ${one.timing.split(', ').slice(0, 3).join(', ')}: ${[...across.areas.keys()].map((a) => `${a} ${sum(one.areas.get(a))}/${sum(across.areas.get(a))}`).join(', ')}\n${[
           ...across.areas,
         ]
           .flatMap(([a, by]) =>
