@@ -12,7 +12,9 @@ export function ProjectLoader({
   label, progress = 0.5, done = false, size = 150,
 }: { label: ReactNode; progress?: number; done?: boolean; size?: number }) {
   return (
-    <div className="flex flex-col items-center gap-5">
+    // `data-loading="view"` marks a loader standing in for a whole view: the screen witness refuses a
+    // first view that is one, since it counts a fixture's missing read as a screen with few words (ISS-1131)
+    <div className="flex flex-col items-center gap-5" role="status" data-loading={size >= 100 ? "view" : "part"}>
       <ForgeMascot size={size} mode="both" ring progress={progress} flicker />
       <span
         className="inline-flex items-center gap-2 font-mono"

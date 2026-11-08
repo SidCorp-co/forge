@@ -7,6 +7,8 @@ import type { ReactNode } from "react";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
+import { ReleaseItemScreen } from "@/features/releases";
+import { releasePage } from "@/test/release-page";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
 import { DocsScreen } from "@/features/docs/components/docs-screen";
 import { NotFoundBody } from "@/features/shell/components/not-found-body";
@@ -64,7 +66,17 @@ export function SCREEN_PAGES({ vi, HomePage, ISSUE_TITLED, REQUIREMENTS_TITLED, 
     { name: "feedback-list", path: `${P}/feedback`, render: () => <Seeded data={FEEDBACK_TITLED}><FeedbackScreen projectId={FB_P} slug="hop" /></Seeded> },
     { name: "feedback-detail", path: `${P}/feedback/FB-1`, render: () => vi("Feedback detail") },
     { name: "releases-list", path: `${P}/releases`, render: () => <Seeded data={releaseSeed()}><ReleasesScreen projectId={REL_P} slug="hop" /></Seeded> },
-    { name: "release-detail", path: `${P}/releases/0.3.2`, render: () => vi("Release detail") },
+    // the release's own page and its user report, both answered: the vi walk's seed left the report reading, so
+    // the page drew its loader and stacked the walk's other parts under it (ISS-1131)
+    {
+      name: "release-detail",
+      path: `${P}/releases/0.1.0`,
+      render: () => (
+        <Seeded data={[...releaseSeed(), [["release-page", REL_P, "0.1.0", "user"], releasePage({ projectId: REL_P, header: { ...releasePage().header, version: "0.1.0", state: "draft" } })]]}>
+          <ReleaseItemScreen projectId={REL_P} slug="hop" version="0.1.0" />
+        </Seeded>
+      ),
+    },
     { name: "workflows-list", path: `${P}/workflows`, render: () => vi("Workflows") },
     { name: "workflow-design", path: `${P}/workflows/dat-hang`, render: () => vi("Workflow design") },
     { name: "agents-runs", path: `${P}/agents`, render: () => vi("Agents · runs") },

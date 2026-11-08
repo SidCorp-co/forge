@@ -7,7 +7,7 @@ import { Route as HomeRoute } from "@/routes/_workspace/projects/$slug/index";
 import { APPROVALS_PROJECT as PH, APPROVALS_READ } from "@/test/approvals-read";
 import { STATUS } from "@/test/project-status";
 import { FEEDBACK_SEED } from "@/test/vi-chrome-feedback";
-import { detailQueries } from "@/test/vi-chrome-issues";
+import { detailQueries, STANDING_LIST } from "@/test/vi-chrome-issues";
 import { AUTOFLOW, EPOD_CATALOG } from "./ecosystem-page.fixture";
 import { reqQueries } from "@/test/vi-chrome-requirements";
 import { AGREEMENTS_PROJECT, AGREEMENTS_VIEW } from "@/test/agreements.fixture";
@@ -71,6 +71,14 @@ export const HOME_READS: [RegExp, () => unknown][] = [
       approvalRequired: true,
       production: { ok: true, url: "https://api.hop.example" },
       landings: [],
+    }),
+  ],
+  // the Dashboard's open issues and newest shipped releases (ISS-1067): unanswered, the home drew only its loader (ISS-1131)
+  [/^\/projects\/[^/]+\/issues\/standing$/, () => STANDING_LIST],
+  [
+    /\/releases\/shipped$/,
+    () => ({
+      releases: [{ key: "0.3.2", version: "0.3.2", state: "shipped", current: true, issueCount: 4, requirements: [], contents: [], criteria: { proven: 0, total: 0 }, verified: { level: "none", proven: 0, total: 0 } }],
     }),
   ],
   [/\/workflows$/, () => ({ workflows: [], returned: 0 })],

@@ -113,6 +113,11 @@ window.__witness = {
         }
         const threw = q("[data-witness=threw]");
         if (threw) return [`the ${p.name} page threw: ${threw.innerText.slice(0, 300)}`];
+        // a page still on its whole-view loader is a read its fixture never answers, not a screen with few words
+        const loading = q("[data-witness=page] [data-loading=view]");
+        if (loading && loading.getBoundingClientRect().height > 0) {
+          return [`the ${p.name} page drew its loader ("${loading.innerText.trim()}"), not its screen: a read its first view waits on has no fixture`];
+        }
         if (window.innerHeight !== 900) return [`the window is ${window.innerHeight} px tall, not 900`];
         const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement, { whole: WHOLE });
         const narrow = window.innerWidth >= 1024 ? "" : `@${window.innerWidth}`;
