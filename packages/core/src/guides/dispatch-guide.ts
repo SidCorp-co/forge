@@ -155,6 +155,7 @@ screens the words for the room's readers and records the post as the master's.
 - **Which room.** Any Rocket.Chat room the project's bindings answer: a support room, a channel
   agent's group, an operations room. \`GET /api/projects/:id/support/rooms\` lists them with who
   reads each (\`readers\`). \`rid\` names the room; with none, the project's one room the team reads.
+- **Watching a channel agent.** \`tmux -S <runner socket> attach -t forge-chat-<slug>\`
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
   result. Take it from the rooms read: each room's \`recentThreads\` names its newest threads, who
   asked in each, when it last moved and the FB-n filed from it. With none the post goes at the top
