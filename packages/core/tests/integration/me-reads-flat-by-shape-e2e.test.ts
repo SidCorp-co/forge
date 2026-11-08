@@ -11,6 +11,8 @@
 // @direct-test-of packages/core/src/masters/read.ts
 // @direct-test-of packages/core/src/ecosystem/graph.ts
 // @direct-test-of packages/core/src/integrations/binding-read.ts
+// @direct-test-of packages/core/src/project-config/deploy-adapters/index.ts
+// @direct-test-of packages/core/src/release-batch/gate.ts
 // @direct-test-of packages/core/src/suggestions/waiting-read.ts
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
 // @direct-test-of packages/core/src/feedback/forge-reads.ts
