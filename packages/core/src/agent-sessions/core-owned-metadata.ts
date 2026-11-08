@@ -13,6 +13,8 @@ export const CORE_OWNED_SESSION_KEYS = [
   ...TERMINAL_SESSION_BRIDGE_MARKERS,
   'source',
   'scheduleRunId',
+  // who a room's session's direct turn runs as (ISS-950): a session writing it would act as anyone
+  'directTurn',
 ] as const;
 
 const asRecord = (v: unknown): Record<string, unknown> =>

@@ -2,6 +2,7 @@
 // setup: `docs/proposals/rocketchat-support-session.md`.
 
 import {
+  provideRoomDirectTurn,
   provideSendRefusedListener,
   provideTerminalSessionBridge,
 } from '../agent-sessions/index.js';
@@ -18,6 +19,7 @@ import { consume } from '../outbox/index.js';
 import { agentProjectsGate } from './agent-projects.js';
 import { briefGrantRefusals } from './brief-grant.js';
 import { fireDueChecks } from './checks.js';
+import { sendDirectTurn } from './direct-turn.js';
 import { deliverWaiting, drainSupportRooms, onSupportTurnEnded } from './dispatch.js';
 import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
@@ -86,6 +88,8 @@ export function registerSupportRooms(): void {
   provideBriefGrantGate({ refusals: briefGrantRefusals });
   provideTerminalSessionBridge(SUPPORT_SESSION_MARKER, onSupportTurnEnded);
   provideSendRefusedListener(INJECT_INTENT, onInjectRefused);
+  // a direct message to a room's session runs as its room's turn, as the sender (ISS-950)
+  provideRoomDirectTurn(SUPPORT_SESSION_MARKER, sendDirectTurn);
   // a link confirmed on the link page is told to the sessions of the rooms its account wrote in
   provideSpeakerLinkedListener(tellLinked);
   // a project's parked question goes to its channel agent as a task, never into a room (ISS-873)

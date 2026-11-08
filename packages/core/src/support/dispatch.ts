@@ -273,7 +273,8 @@ export async function handTurn(
   room: RoomRow,
   session: SessionRow,
   client: TurnClient & { deviceId: string },
-  body: { messages: string } | { warmUp: string },
+  body: { messages: string } | { warmUp: string } | { direct: string },
+  onMinted?: (tokenId: string) => Promise<void>,
 ): Promise<void> {
   const [project] = await forgeReads().projectsByIds([room.projectId]);
   if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
@@ -288,12 +289,12 @@ export async function handTurn(
       if (history) parts.push(rooms.length > 1 ? `In channel ${r.rid}:\n${history}` : history);
     }
     if ('messages' in body) parts.push('New messages:');
-  } else if ('messages' in body) {
+  } else if (!('warmUp' in body)) {
     // a warm session reads the channel record again when it changed since it was told (BC-41)
     const news = await channelNews(room);
-    if (news) parts.push(news, 'New messages:');
+    if (news) parts.push(news, ...('messages' in body ? ['New messages:'] : []));
   }
-  parts.push('messages' in body ? body.messages : body.warmUp);
+  parts.push('messages' in body ? body.messages : 'direct' in body ? body.direct : body.warmUp);
   // minted once the turn holds the session: a hand-over refused beside a running turn revokes
   // nothing that turn runs under (ISS-977)
   const credential = () =>
@@ -303,6 +304,7 @@ export async function handTurn(
       userId: room.principalUserId,
       projectId: room.projectId,
       permissions: SUPPORT_SESSION_GRANT,
+      ...(onMinted ? { onMinted } : {}),
     });
   const checkout = await checkoutViewOf(room, followed);
   await dispatchChatTurn({

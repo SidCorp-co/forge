@@ -33,3 +33,4 @@
 - A release run removes each worktree it made once it finishes or aborts, or names one it could not (ISS-1076).
 - Who lowers a gate profile Forge raised is the `gates.lower` permission, never the writer's user kind (ISS-823).
 - A room or job turn that put a subagent or a shell in the background is no longer reported done at its first result: the runner holds it until every backgrounded task has reported and the turn that answered it ended (ISS-764 b).
+- A direct message to a room's session from the project's owner or an admin runs as the room's turn, with its grants, and an act it names runs as the sender; anyone else is refused by name with nothing run (ISS-950).

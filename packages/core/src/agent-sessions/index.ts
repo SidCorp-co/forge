@@ -1,6 +1,6 @@
 export { persistSessionAttachment } from './attachment-service.js';
 export type { CheckoutView } from './chat-checkout.js';
-export { boxLacks } from './chat-device.js';
+export { boxLacks, noClaudeClient } from './chat-device.js';
 export { boxSessionOfToken, type ChatDoor, chatDoorOfToken } from './chat-door.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 export { checkoutMovedFrom } from './chat-turn-checkout.js';
@@ -24,6 +24,7 @@ export {
   markSessionTerminal,
 } from './recovery-stats.js';
 export { agentSessionEventsRetention } from './retention.js';
+export { provideRoomDirectTurn, type RoomDirectTurn } from './room-direct-turn.js';
 export { sessionAudienceById, sessionRowById, sessionStatusesByIds } from './session-access.js';
 export {
   agentRefusalText,

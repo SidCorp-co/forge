@@ -18,6 +18,7 @@ import { assertCallerDeclaresNoKind } from './kind-query.js';
 import { sendBodySchema } from './lifecycle-schemas.js';
 import { projectHandle } from './read.js';
 import { refuseSession } from './refusals.js';
+import { roomDirectTurnOf } from './room-direct-turn.js';
 import { ensureSessionOwnerOrAdmin, withTranscript } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 
@@ -83,6 +84,20 @@ agentSessionInteractiveRoutes.post(
         'SESSION_RUNNING',
         'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.',
       );
+    }
+
+    // a room's session runs a direct message as its room's turn, with its grants, as the sender
+    // (ISS-950): never as a web chat turn, under a token no room act admits
+    const direct = roomDirectTurnOf(session);
+    if (direct) {
+      await direct({
+        session,
+        senderId: userId,
+        message: input.message,
+        attachmentIds: input.attachmentIds ?? [],
+        deviceId: input.deviceId ?? null,
+      });
+      return c.json({ ok: true });
     }
 
     // Resolve the client through the SHARED path: honour an explicit runner pick

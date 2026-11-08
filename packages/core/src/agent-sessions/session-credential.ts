@@ -135,6 +135,8 @@ export async function mintFencedSessionCredential(args: {
   projectId: string;
   permissions: readonly [PatPermission, ...PatPermission[]];
   ttlMs?: number;
+  /** Told the minted token's id before the token is handed anywhere: what one turn's acts arrive on. */
+  onMinted?: (tokenId: string) => Promise<void>;
 }): Promise<string> {
   await revokeSessionCredential(args.sessionId);
   const minted = await mintPat({
@@ -146,6 +148,7 @@ export async function mintFencedSessionCredential(args: {
     deviceId: args.deviceId,
     expiresAt: new Date(Date.now() + (args.ttlMs ?? SESSION_CREDENTIAL_TTL_MS)),
   });
+  await args.onMinted?.(minted.row.id);
   return minted.plaintext;
 }
 

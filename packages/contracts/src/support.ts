@@ -1514,6 +1514,10 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_IDENTITY_UNDECLARED",
 	/** Someone other than the owner's own account completed his sign-in: nothing was kept (ISS-1052). */
 	"SUPPORT_OWNER_SIGN_IN_NOT_THE_OWNER",
+	/** A direct message to a room's session from someone below project admin: nothing ran (ISS-950). */
+	"SUPPORT_DIRECT_TURN_NEEDS_ADMIN",
+	/** A direct message to a room's session carrying what a room turn cannot: files, a picked box (ISS-950). */
+	"SUPPORT_DIRECT_TURN_SHAPE",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1624,4 +1628,6 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CONSENT_NOT_THE_OWNER: 403,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
+	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,
+	SUPPORT_DIRECT_TURN_SHAPE: 400,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

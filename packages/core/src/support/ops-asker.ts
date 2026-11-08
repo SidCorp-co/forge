@@ -12,6 +12,7 @@ import { verifiedUserIdByEmail } from '../auth/index.js';
 import { fetchUserProfile } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
 import { writerOfHandedMessage } from './delivery.js';
+import { DIRECT_THREAD, directAskerOf } from './direct-asker.js';
 import { no, type Outcome } from './outcome.js';
 import { type RoomRow, roomById } from './store.js';
 import { roomAuth } from './thread.js';
@@ -20,8 +21,11 @@ export interface Asker {
   key: string;
   label: string | null;
   userId: string;
-  /** How the account was named a Forge user: a confirmed link, or the chat server's verified address. */
-  via: 'link' | 'email';
+  /**
+   * How the account was named a Forge user: a confirmed link, the chat server's verified address, or
+   * the sender of the direct message the turn was handed (ISS-950).
+   */
+  via: 'link' | 'email' | 'direct';
 }
 
 const unmapped = (who: string, why: string, needs?: string): Outcome<Asker> =>
@@ -42,6 +46,7 @@ export async function askerOf(
   message: string,
   needs: string,
 ): Promise<Outcome<Asker>> {
+  if (thread === DIRECT_THREAD) return directAskerOf(room, message);
   const writer = await writerOfHandedMessage(room.id, thread, message);
   if (!writer) {
     return no(
