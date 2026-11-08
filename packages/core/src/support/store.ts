@@ -340,6 +340,86 @@ export async function recentThreads(roomId: string, limit: number): Promise<stri
   return rows.map((r) => r.thread);
 }
 
+/**
+ * A room's most recent threads, newest first and at most `limit`, each with who opened it (the first
+ * member to write in it, by the label the room shows), when it last moved, and the feedback filed
+ * from it, FB-n (ISS-969): the read a master takes a users' thread from before it posts there.
+ */
+export async function recentThreadsNamed(
+  roomId: string,
+  limit: number,
+): Promise<{ thread: string; asker: string | null; lastAt: Date; feedback: string[] }[]> {
+  const rows = (await db.execute(sql`
+    SELECT a.thread,
+           (array_agg(a.actor_label ORDER BY a.created_at)
+              FILTER (WHERE a.kind = 'message_in' AND a.actor_kind = 'member'))[1] AS asker,
+           max(a.created_at) AS last_at,
+           COALESCE((SELECT array_agg('FB-' || f.fb_seq ORDER BY f.fb_seq)
+                       FROM support_feedback_links l JOIN feedback f ON f.id = l.feedback_id
+                      WHERE l.room_id = ${roomId} AND l.thread = a.thread), '{}') AS feedback
+      FROM support_actions a
+     WHERE a.room_id = ${roomId}
+     GROUP BY a.thread
+     ORDER BY max(a.created_at) DESC
+     LIMIT ${limit}
+  `)) as unknown as {
+    thread: string;
+    asker: string | null;
+    last_at: Date | string;
+    feedback: string[];
+  }[];
+  return rows.map((r) => ({
+    thread: r.thread,
+    asker: r.asker,
+    lastAt: new Date(r.last_at),
+    feedback: r.feedback,
+  }));
+}
+
+/**
+ * The newest recorded item result a thread was told, where it was told one: the item, when, and the
+ * message that told it, the session's first reply in the thread since (the `result_told` act's own
+ * id where it posted none yet). A master's post repeating it is refused unless it names this message.
+ */
+export async function toldResultOfThread(
+  roomId: string,
+  thread: string,
+): Promise<{ message: string; feedbackKey: string | null; at: Date } | null> {
+  const [told] = await db
+    .select()
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.thread, thread),
+        eq(supportActions.kind, 'result_told'),
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt))
+    .limit(1);
+  if (!told) return null;
+  const [reply] = await db
+    .select({ externalId: supportActions.externalId })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.thread, thread),
+        eq(supportActions.kind, 'reply'),
+        isNotNull(supportActions.externalId),
+        gte(supportActions.createdAt, told.createdAt),
+      ),
+    )
+    .orderBy(asc(supportActions.createdAt))
+    .limit(1);
+  const key = (told.output as { feedbackKey?: unknown } | null)?.feedbackKey;
+  return {
+    message: reply?.externalId ?? told.id,
+    feedbackKey: typeof key === 'string' ? key : null,
+    at: told.createdAt,
+  };
+}
+
 export async function actionsOfRoom(roomId: string, limit: number): Promise<ActionRow[]> {
   return db
     .select()

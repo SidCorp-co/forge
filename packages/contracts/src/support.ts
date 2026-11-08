@@ -1255,6 +1255,21 @@ export interface SupportApiView {
 	fault: string | null;
 }
 
+/** How many of a room's threads the rooms read names; `threads` still counts every one. */
+export const SUPPORT_ROOM_THREADS_LISTED = 20;
+
+/** One thread of a room as the rooms read names it (ISS-969). */
+export interface SupportRoomThreadView {
+	/** The thread's id: its opening message's, the `thread` every support act and master post names. */
+	thread: string;
+	/** Who opened it, by the display name the room shows them; null where no member wrote in it. */
+	asker: string | null;
+	/** When anything was last recorded in it. */
+	lastAt: string;
+	/** The feedback items filed from it, FB-n, oldest first. */
+	feedback: string[];
+}
+
 export interface SupportRoomView {
 	id: string;
 	/** The project whose binding attaches the room; an operations room's home, whose box serves it. */
@@ -1282,6 +1297,12 @@ export interface SupportRoomView {
 	health: SupportRoomHealth;
 	/** The threads Forge has recorded a message or an act in, in this room. */
 	threads: number;
+	/**
+	 * The room's most recent threads, newest first and at most `SUPPORT_ROOM_THREADS_LISTED`, each
+	 * with who asked in it and the feedback filed from it (ISS-969): where a master posting a result
+	 * into a users' room takes the thread it names.
+	 */
+	recentThreads: SupportRoomThreadView[];
 	/**
 	 * This project's own thread in an operations room, as the room's binding records it in
 	 * `operations.threads` (ISS-934): where the master's posts and the room's top-level posts land.
@@ -1394,6 +1415,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_INTERNAL_CODE",
 	/** A master's top-level post into a room the product's users read (ISS-872). */
 	"SUPPORT_MASTER_POST_USERS_ROOM",
+	/** A master's post into a users' thread already told a recorded item's result, naming no follow-up of it (ISS-969, FB-498). */
+	"SUPPORT_MASTER_POST_ALREADY_TOLD",
 	/** A master's post into a room its project held once, whose binding is switched off or no longer names it (ISS-943). */
 	"SUPPORT_ROOM_SWITCHED_OFF",
 	/** A master's post into a thread whose first message the chat server places in another room than the one named (ISS-943). */
@@ -1542,6 +1565,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_READ_FAILED: 503,
 	SUPPORT_INTERNAL_CODE: 400,
 	SUPPORT_MASTER_POST_USERS_ROOM: 409,
+	SUPPORT_MASTER_POST_ALREADY_TOLD: 409,
 	SUPPORT_ROOM_SWITCHED_OFF: 409,
 	SUPPORT_THREAD_OF_ANOTHER_ROOM: 409,
 	SUPPORT_PROJECT_THREAD_UNRECORDED: 409,

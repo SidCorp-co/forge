@@ -156,8 +156,14 @@ screens the words for the room's readers and records the post as the master's.
   agent's group, an operations room. \`GET /api/projects/:id/support/rooms\` lists them with who
   reads each (\`readers\`). \`rid\` names the room; with none, the project's one room the team reads.
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
-  result. With none the post goes at the top level of a room the team reads, or, in an operations
-  room every project shares, in the project's own thread its binding records.
+  result. Take it from the rooms read: each room's \`recentThreads\` names its newest threads, who
+  asked in each, when it last moved and the FB-n filed from it. With none the post goes at the top
+  level of a room the team reads, or, in an operations room every project shares, in the project's
+  own thread its binding records. \`forge-runner api -i\` prints the HTTP status, to tell a 201 from
+  a 200.
+- **Once per result.** A users' thread already told an item's result takes a post only as a
+  follow-up naming the message that told it, \`followsUp\`, as the refusal
+  \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it: say there only what it did not.
 - **Images.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment | session,
   attachmentId }\`: attach a screenshot to the issue first
   (\`POST /api/issues/:id/attachments\`), then name the id it answers. Each

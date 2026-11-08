@@ -4,6 +4,7 @@
 import {
   SUPPORT_DELIVERY_PATHS,
   SUPPORT_LATENCY_WINDOW,
+  SUPPORT_ROOM_THREADS_LISTED,
   type SupportActionView,
   type SupportApiView,
   type SupportLatencyView,
@@ -19,7 +20,13 @@ import { roomHealth } from './health.js';
 import { roleOfRoom } from './ops-role.js';
 import { heldRoomsOfProject } from './rooms.js';
 import { percentile } from './rules.js';
-import { type ActionRow, actionsOfRoom, recentThreads, roomById } from './store.js';
+import {
+  type ActionRow,
+  actionsOfRoom,
+  recentThreads,
+  recentThreadsNamed,
+  roomById,
+} from './store.js';
 import { projectThreadOfRoom } from './thread.js';
 
 const ACTIONS_SHOWN = 500;
@@ -60,6 +67,10 @@ export async function supportRoomsOf(
         grants: config?.grants ?? null,
         health,
         threads: (await recentThreads(r.id, 1000)).length,
+        recentThreads: (await recentThreadsNamed(r.id, SUPPORT_ROOM_THREADS_LISTED)).map((t) => ({
+          ...t,
+          lastAt: t.lastAt.toISOString(),
+        })),
         projectThread: await projectThreadOfRoom(r),
         latency: latencyOf(await latencySamples(r.id, SUPPORT_LATENCY_WINDOW)),
         createdAt: r.createdAt.toISOString(),

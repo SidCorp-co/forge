@@ -38,6 +38,7 @@ import {
   roomsOfProject,
   threadConversation,
   threadMembers,
+  toldResultOfThread,
 } from './store.js';
 import {
   postForTopLevel,
@@ -265,6 +266,26 @@ async function roomOfThread(
   );
 }
 
+/**
+ * A users' thread already told a recorded item's result takes a master's post only as a follow-up
+ * naming the message that told it (ISS-969, FB-498: the 0.9.0 notice reached an asker told the same
+ * change seventeen hours before). A refusal, not a warning: a warning heard after the post is sent
+ * does not stop the repeat, and a genuine follow-up has its one named way through.
+ */
+async function repeatRefusal(
+  roomId: string,
+  thread: string,
+  followsUp: string | undefined,
+): Promise<Posted | null> {
+  const told = await toldResultOfThread(roomId, thread);
+  if (!told || followsUp === told.message) return null;
+  return no(
+    'SUPPORT_MASTER_POST_ALREADY_TOLD',
+    followsUp === undefined ? '/thread' : '/followsUp',
+    `thread ${thread} was already told ${told.feedbackKey ?? 'a recorded item'}'s result at ${told.at.toISOString()}, in message ${told.message}, so a post there repeats it to the person who asked. Post only what that message did not say, as a follow-up naming it: \`followsUp: "${told.message}"\`. Nothing was posted.`,
+  );
+}
+
 /** The master's post in a named thread of its room, screened for the room's readers and recorded as the master's. */
 async function postInNamedThread(
   actor: Actor,
@@ -278,6 +299,8 @@ async function postInNamedThread(
   const room = at.room;
   const text = await scrubbedForRoom(room, input.text);
   if (!at.team) {
+    const repeat = await repeatRefusal(room.id, input.thread, input.followsUp);
+    if (repeat) return repeat;
     // toward users a post names at most one person: the asker, the starter or a member of the room
     const mentions = await mentionRefusal<never>(
       room,

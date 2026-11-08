@@ -292,6 +292,12 @@ export const supportMasterPostRequestSchema = z.strictObject({
 	 * users read takes none (ISS-872).
 	 */
 	thread: supportThreadIdSchema.optional(),
+	/**
+	 * The message this post follows up on (ISS-969, FB-498): a users' thread already told a recorded
+	 * item's result takes a master's post only naming that told message, as the refusal names it,
+	 * so a post repeating what the asker was told is never sent by default.
+	 */
+	followsUp: z.string().trim().min(1).max(100).optional(),
 });
 export type SupportMasterPostRequest = z.infer<
 	typeof supportMasterPostRequestSchema

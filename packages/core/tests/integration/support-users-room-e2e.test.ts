@@ -13,6 +13,7 @@ import { type Act, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/master-post.ts
+// @direct-test-of packages/core/src/support/read.ts
 // @direct-test-of packages/core/src/support/owner-ask.ts
 // @direct-test-of packages/core/src/support/screen.ts
 // @direct-test-of packages/core/src/support/checks.ts
@@ -119,6 +120,55 @@ describe("ISS-872: a master's post reaches a users' room only in an asker's thre
     const res = await post({ text: plain, thread: asked });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(w.threadLines(chat.rid, asked).map((l) => l.text)).toEqual([plain]);
+  });
+
+  // ISS-969 c1 and c4 (FB-498): the rooms read names each room's threads, whose they are and when
+  // they moved, so a master takes the thread from it; and a thread already told an item's result
+  // takes a master's post only as a follow-up naming the message that told it
+  it("names the users room's threads, and refuses a post repeating a told result unless it follows up on it", async () => {
+    const asked = (await w.hear(() => chat.say(chat.bob, 'Đơn PO001453760102902 bị lỗi'))).id;
+    const read = await api(owner, 'GET', `/api/projects/${w.projectId}/support/rooms`);
+    const room = (
+      read.body.rooms as {
+        id: string;
+        rid: string;
+        threads: number;
+        recentThreads: {
+          thread: string;
+          asker: string | null;
+          lastAt: string;
+          feedback: string[];
+        }[];
+      }[]
+    ).find((r) => r.rid === chat.rid);
+    expect(room?.recentThreads[0], JSON.stringify(room)).toMatchObject({
+      thread: asked,
+      asker: expect.any(String),
+      feedback: [],
+    });
+    expect(room?.threads).toBeGreaterThanOrEqual(room?.recentThreads.length ?? 0);
+    const roomId = String(room?.id);
+    await rows(sql`
+      INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, output)
+      VALUES (${roomId}, ${w.projectId}, ${asked}, 'result_told', 'core',
+              '{"phase": "resolved", "feedbackKey": "FB-1"}'::jsonb)`);
+    await rows(sql`
+      INSERT INTO support_actions (room_id, project_id, thread, kind, actor_kind, external_id, input)
+      VALUES (${roomId}, ${w.projectId}, ${asked}, 'reply', 'session', 'told-msg-1', '{"text": "Đã sửa."}'::jsonb)`);
+    const again = 'Bản 0.9.0 đã lên: đơn PO001453760102902 đã gửi được.';
+    const repeat = await post({ text: again, thread: asked });
+    expect([repeat.status, codeOf(repeat)], JSON.stringify(repeat.body)).toEqual([
+      409,
+      'SUPPORT_MASTER_POST_ALREADY_TOLD',
+    ]);
+    expect(JSON.stringify(repeat.body)).toContain('told-msg-1');
+    expect(JSON.stringify(repeat.body)).toContain('FB-1');
+    expect(w.threadLines(chat.rid, asked)).toEqual([]);
+    const wrong = await post({ text: again, thread: asked, followsUp: 'some-other-msg' });
+    expect(codeOf(wrong), JSON.stringify(wrong.body)).toBe('SUPPORT_MASTER_POST_ALREADY_TOLD');
+    const follow = await post({ text: again, thread: asked, followsUp: 'told-msg-1' });
+    expect(follow.status, JSON.stringify(follow.body)).toBe(201);
+    expect(w.threadLines(chat.rid, asked).map((l) => l.text)).toEqual([again]);
   });
 });
 
