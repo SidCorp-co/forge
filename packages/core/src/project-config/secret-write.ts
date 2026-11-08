@@ -26,11 +26,12 @@ import { db, type Tx } from '../db/client.js';
 import { projectVariableEvents } from '../db/schema-project-variables.js';
 import { type SignInAnswer, trySignIn } from '../integrations/deploy/index.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
-import { parseActorSecret, signInUrl } from './actor-sign-in.js';
+import { loginRouteRefusal, parseActorSecret, type SecretAt, signInUrl } from './actor-sign-in.js';
 import { type ApiRefusal, pointer } from './documents.js';
 import type { TestingProfile } from './policy-schema.js';
 import { environmentsOf } from './promotion-path.js';
-import { listTestingProfiles, readProjectConfig } from './service.js';
+import { readProjectSecrets } from './secret-read.js';
+import { listTestingProfiles, readProjectConfig, SECRET_VALUE_MAX } from './service.js';
 import { drizzleConfigStore, type SecretName } from './store.js';
 import { judgedDeployment } from './testing-secret-values.js';
 import { insertEvents } from './variables-store.js';
@@ -54,7 +55,8 @@ const SERVICE_NOT_PROBED =
   "not probed: a service's credential is used as itself, and nothing signs in with it";
 
 /** The sign-in each profile naming `ref` makes with `value`; none where no profile names it. */
-async function checksOf(projectId: string, ref: string, value: string): Promise<SignInCheck[]> {
+async function checksOf(at: SecretAt & { ref: string }, value: string): Promise<SignInCheck[]> {
+  const { projectId, ref } = at;
   const profiles = (await listTestingProfiles(projectId)).filter(
     (p) =>
       Object.values(p.document.actors).some((a) => a.credential === ref) ||
@@ -62,7 +64,7 @@ async function checksOf(projectId: string, ref: string, value: string): Promise<
   );
   if (profiles.length === 0) return [];
   const project = await readProjectConfig(projectId);
-  const parsed = parseActorSecret(value);
+  const parsed = parseActorSecret(value, at);
   const tried = new Map<string, Promise<SignInAnswer>>();
   const checks: SignInCheck[] = [];
   for (const { profileId: profile, document } of profiles) {
@@ -148,7 +150,10 @@ export async function writeSecret(input: {
   if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };
   const { projectId } = input;
   const ref = secretRefOf(input.scope, input.name);
-  const signIn = await checksOf(projectId, ref, input.value);
+  const signIn = await checksOf(
+    { projectId, scope: input.scope, name: input.name, ref },
+    input.value,
+  );
   const refused = signIn.filter((c) => c.answer === 'refused');
   if (refused.length > 0) {
     return {
@@ -187,6 +192,103 @@ export async function writeSecret(input: {
     secret: { scope: row.scope, name: row.name, updatedAt: row.updatedAt, ref },
     signIn,
   };
+}
+
+/** The keys a merge may set on a stored secret (ISS-1140): only the sign-in route, for now. */
+export const MERGEABLE_SECRET_KEYS = ['loginRoute'] as const;
+
+/** The refusals a merge's `set` earns before the stored value is read; none where it is usable. */
+export function mergeSetRefusals(set: Record<string, unknown>): ApiRefusal[] {
+  const keys = Object.keys(set).sort();
+  const allowed = MERGEABLE_SECRET_KEYS.map((k) => `\`${k}\``).join(', ');
+  if (keys.length === 0) {
+    return [
+      {
+        code: 'SECRET_MERGE_EMPTY',
+        path: '/set',
+        detail: `\`set\` names no key; it takes ${allowed}`,
+      },
+    ];
+  }
+  return keys.flatMap((key): ApiRefusal[] => {
+    if (!(MERGEABLE_SECRET_KEYS as readonly string[]).includes(key)) {
+      return [
+        {
+          code: 'SECRET_MERGE_KEY_UNKNOWN',
+          path: pointer(['set', key]),
+          detail: `\`${key}\` is not a key a merge sets; it sets ${allowed} alone, and any other change is a PUT of the whole value`,
+        },
+      ];
+    }
+    const route = set[key];
+    const why =
+      typeof route === 'string'
+        ? loginRouteRefusal(route)
+        : '`loginRoute` is a string, `[POST ]<https URL | /path>`';
+    return why === null
+      ? []
+      : [{ code: 'SECRET_LOGIN_ROUTE_INVALID', path: pointer(['set', key]), detail: why }];
+  });
+}
+
+export type SecretMergeOutcome =
+  | SecretWriteOutcome
+  | { ok: false; code: 'SECRET_NOT_FOUND' | 'SECRET_VALUE_UNREADABLE' };
+
+/**
+ * `PATCH /api/projects/:id/secrets/:scope/:name`: the stored value, a JSON object, gains the keys
+ * in `set` and is written back through `writeSecret`, so it is checked as a PUT's value is and
+ * answered the same. Every other key keeps its value; nothing of the value leaves in an answer.
+ */
+export async function mergeSecret(input: {
+  projectId: string;
+  scope: string;
+  name: string;
+  set: Record<string, string>;
+  actor: { id: string; tokenId: string | null; agency: 'human' | 'agent' };
+}): Promise<SecretMergeOutcome> {
+  if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };
+  const ref = secretRefOf(input.scope, input.name);
+  const read = await readProjectSecrets(input.projectId, [ref]);
+  if (!read.ok) {
+    return {
+      ok: false,
+      code: read.code === 'SECRET_VALUE_MISSING' ? 'SECRET_NOT_FOUND' : read.code,
+    };
+  }
+  let held: unknown;
+  try {
+    held = JSON.parse(read.values.get(ref) as string);
+  } catch {
+    held = null;
+  }
+  if (held === null || typeof held !== 'object' || Array.isArray(held)) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'SECRET_NOT_JSON_OBJECT',
+          path: '',
+          detail: `${ref} holds no JSON object, so there are no keys to merge into; nothing was written. Write the whole value with PUT /api/projects/${input.projectId}/secrets/${input.scope}/${input.name}`,
+        },
+      ],
+    };
+  }
+  const value = JSON.stringify({ ...(held as Record<string, unknown>), ...input.set });
+  if (value.length > SECRET_VALUE_MAX) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'SECRET_MERGE_TOO_LONG',
+          path: '/set',
+          detail: `${ref} with these keys merged is over the ${SECRET_VALUE_MAX} characters a secret holds; nothing was written`,
+        },
+      ],
+    };
+  }
+  const { set: _set, ...at } = input;
+  return writeSecret({ ...at, value });
 }
 
 /**

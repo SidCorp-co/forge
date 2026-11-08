@@ -136,6 +136,16 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"SECRET_IN_USE",
 	/** A testing profile's actor secret whose environment answered its sign-in with no session (ISS-937). */
 	"SECRET_DOES_NOT_SIGN_IN",
+	/** A merge into a stored secret names no key in `set` (ISS-1140). */
+	"SECRET_MERGE_EMPTY",
+	/** A merge names a key it does not set: `loginRoute` alone (ISS-1140). */
+	"SECRET_MERGE_KEY_UNKNOWN",
+	/** A merged `loginRoute` is no `[POST ]<https URL | /path>` a sign-in can use (ISS-1140). */
+	"SECRET_LOGIN_ROUTE_INVALID",
+	/** A merge into a stored secret whose value is no JSON object (ISS-1140). */
+	"SECRET_NOT_JSON_OBJECT",
+	/** A merge whose result is over the length a secret holds (ISS-1140). */
+	"SECRET_MERGE_TOO_LONG",
 	"BINDING_ID_MISMATCH",
 	"BINDING_TARGET_UNSUPPORTED",
 	"BINDING_NOT_REPRESENTABLE",

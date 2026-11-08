@@ -4,7 +4,7 @@
 
 import { secretRefOf } from '@forge/contracts/project-config';
 import { SUPPORT_OWNER_CREDENTIAL_SCOPE } from '@forge/contracts/support';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { VARIABLE_SECRET_SCOPE } from '../db/schema-project-variables.js';
@@ -18,7 +18,12 @@ import {
   secretValueDoors,
   secretValueElsewhere,
 } from './secret-value-door.js';
-import { writeSecret } from './secret-write.js';
+import {
+  MERGEABLE_SECRET_KEYS,
+  mergeSecret,
+  mergeSetRefusals,
+  writeSecret,
+} from './secret-write.js';
 import { deleteSecret, listSecretNames, listTestingProfiles, SECRET_VALUE_MAX } from './service.js';
 
 export const projectSecretRoutes = new Hono<{ Variables: AuthVars }>();
@@ -35,6 +40,8 @@ const secretParam = z.object({
   name: z.string().regex(NAME),
 });
 const secretBody = z.strictObject({ value: z.string().min(1).max(SECRET_VALUE_MAX) });
+// the keys in `set` are judged by name in the handler (`mergeSetRefusals`), never echoed
+const mergeBody = z.strictObject({ set: z.record(z.string(), z.unknown()) });
 
 const paramOf = <T extends z.ZodType>(schema: T) =>
   zValidator(
@@ -98,6 +105,30 @@ projectSecretRoutes.get('/:id/test-credentials', paramOf(idParam), READ, noQuery
   );
 });
 
+/** The scopes no secret door writes, refused naming the door that does; null for any other. */
+function reservedScope(c: Context, id: string, scope: string) {
+  if (scope === VARIABLE_SECRET_SCOPE) {
+    return refused(
+      c,
+      reserved(
+        `\`${VARIABLE_SECRET_SCOPE}\` holds the project's variable values and is written only as a variable: POST /api/projects/${id}/variables. Store this secret under another scope.`,
+      ),
+      'CONFIG_REFUSED',
+    );
+  }
+  if (scope === SUPPORT_OWNER_CREDENTIAL_SCOPE) {
+    return refused(c, reserved(ownerScopeSays(id, 'written')), 'CONFIG_REFUSED');
+  }
+  return null;
+}
+
+const vaultUnset = (code: string) =>
+  new HTTPException(503, {
+    message:
+      'INTEGRATION_MASTER_KEY is not set on this core, so a secret cannot be encrypted; nothing was written.',
+    cause: { code },
+  });
+
 // a testing profile's actor secret is tried at the environment naming that profile before it is
 // kept: refused SECRET_DOES_NOT_SIGN_IN where the environment answers no session, stored and
 // flagged on the profile where it cannot answer (ISS-937, `secret-write.ts`); `signIn` says which
@@ -115,18 +146,8 @@ projectSecretRoutes.put(
   ),
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
-    if (scope === VARIABLE_SECRET_SCOPE) {
-      return refused(
-        c,
-        reserved(
-          `\`${VARIABLE_SECRET_SCOPE}\` holds the project's variable values and is written only as a variable: POST /api/projects/${id}/variables. Store this secret under another scope.`,
-        ),
-        'CONFIG_REFUSED',
-      );
-    }
-    if (scope === SUPPORT_OWNER_CREDENTIAL_SCOPE) {
-      return refused(c, reserved(ownerScopeSays(id, 'written')), 'CONFIG_REFUSED');
-    }
+    const reservedAnswer = reservedScope(c, id, scope);
+    if (reservedAnswer) return reservedAnswer;
     const actor = restActor(c);
     const outcome = await writeSecret({
       projectId: id,
@@ -138,13 +159,57 @@ projectSecretRoutes.put(
     if (!outcome.ok && 'refusals' in outcome) {
       return refused(c, outcome.refusals, 'CONFIG_REFUSED');
     }
-    if (!outcome.ok) {
-      throw new HTTPException(503, {
-        message:
-          'INTEGRATION_MASTER_KEY is not set on this core, so a secret cannot be encrypted; nothing was written.',
-        cause: { code: outcome.code },
+    if (!outcome.ok) throw vaultUnset(outcome.code);
+    return c.json({ ...secretView(outcome.secret), signIn: outcome.signIn });
+  },
+);
+
+// a stored secret gains keys without its value being read or retyped (ISS-1140): core merges `set`
+// (`loginRoute` alone) into the JSON object it holds, then writes and checks it as the PUT does,
+// answering what the PUT answers and never the value, its keys' values or its length
+projectSecretRoutes.patch(
+  '/:id/secrets/:scope/:name',
+  paramOf(secretParam),
+  ADMIN,
+  zValidator(
+    'json',
+    mergeBody,
+    invalid(
+      `the body is { "set": { ${MERGEABLE_SECRET_KEYS.map((k) => `"${k}": string`).join(', ')} } } and nothing else`,
+      'SECRET_MERGE_SHAPE',
+    ),
+  ),
+  async (c) => {
+    const { id, scope, name } = c.req.valid('param');
+    const reservedAnswer = reservedScope(c, id, scope);
+    if (reservedAnswer) return reservedAnswer;
+    const { set } = c.req.valid('json');
+    const bad = mergeSetRefusals(set);
+    if (bad.length > 0) return refused(c, bad, 'CONFIG_REFUSED');
+    const actor = restActor(c);
+    const outcome = await mergeSecret({
+      projectId: id,
+      scope,
+      name,
+      set: set as Record<string, string>,
+      actor: { id: actor.id, tokenId: actor.tokenId, agency: actor.agency },
+    });
+    if (!outcome.ok && 'refusals' in outcome) {
+      return refused(c, outcome.refusals, 'CONFIG_REFUSED');
+    }
+    if (!outcome.ok && outcome.code === 'SECRET_NOT_FOUND') {
+      throw new HTTPException(404, {
+        message: `this project holds no secret ${secretRefOf(scope, name)} to merge into; GET /api/projects/${id}/secrets lists the ones it holds, and PUT writes a new one`,
+        cause: { code: 'SECRET_NOT_FOUND' },
       });
     }
+    if (!outcome.ok && outcome.code === 'SECRET_VALUE_UNREADABLE') {
+      throw new HTTPException(409, {
+        message: `${secretRefOf(scope, name)} does not decrypt with this core's INTEGRATION_MASTER_KEY, so there is nothing to merge into; nothing was written. Write the whole value with PUT.`,
+        cause: { code: 'SECRET_VALUE_UNREADABLE' },
+      });
+    }
+    if (!outcome.ok) throw vaultUnset(outcome.code);
     return c.json({ ...secretView(outcome.secret), signIn: outcome.signIn });
   },
 );

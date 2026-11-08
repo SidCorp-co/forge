@@ -72,11 +72,30 @@ function sendable(url: URL, said: string): { url: URL } | { why: string } {
   return { url };
 }
 
+/** Where a secret is stored, so a refusal can name the call that fixes it there. */
+export interface SecretAt {
+  projectId: string;
+  scope: string;
+  name: string;
+}
+
+/**
+ * The call that adds `loginRoute` to a stored secret without anyone reading or retyping its value
+ * (ISS-1140); placeholders where the secret's place is not known. judge-login names the same door.
+ */
+export function loginRouteDoor(at?: SecretAt): string {
+  const [id, scope, name] = at ? [at.projectId, at.scope, at.name] : ['<id>', '<scope>', '<name>'];
+  return `PATCH /api/projects/${id}/secrets/${scope}/${name} {"set":{"loginRoute":"<https URL or /path>"}}`;
+}
+
 /**
  * The secret's sign-in, or why it is no sign-in the probe can make. A `why` names keys and the
- * kind, never a value.
+ * kind, never a value; `at` lets a missing route name the exact call that adds one.
  */
-export function parseActorSecret(value: string): { secret: ActorSecret } | { why: string } {
+export function parseActorSecret(
+  value: string,
+  at?: SecretAt,
+): { secret: ActorSecret } | { why: string } {
   let o: unknown;
   try {
     o = JSON.parse(value);
@@ -108,7 +127,7 @@ export function parseActorSecret(value: string): { secret: ActorSecret } | { why
   if ('why' in route) return route;
   if (!route.one) {
     return {
-      why: `the secret${kind} names no sign-in route (it holds ${keysOf(obj)}), and a testing profile declares none, so where to sign in is not known and nothing is guessed; add \`loginRoute\``,
+      why: `the secret${kind} names no sign-in route (it holds ${keysOf(obj)}), and a testing profile declares none, so where to sign in is not known and nothing is guessed; add \`loginRoute\` without retyping the value: ${loginRouteDoor(at)}`,
     };
   }
   const target = routeOf(route.one.value);
@@ -121,6 +140,15 @@ export function parseActorSecret(value: string): { secret: ActorSecret } | { why
       route: target,
     },
   };
+}
+
+/** Why `route` is no `loginRoute` a sign-in can use, as a secret's own is read; null where it is one. */
+export function loginRouteRefusal(route: string): string | null {
+  if (route.trim() === '' || route !== route.trim()) {
+    return '`loginRoute` is `[POST ]<https URL | /path>`, with no space around it';
+  }
+  const target = routeOf(route);
+  return 'why' in target ? target.why : null;
 }
 
 /** The route a secret names: `[POST ]<https URL | /path>`. Another method is refused. */
