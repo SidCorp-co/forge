@@ -10,6 +10,10 @@
  * @direct-test-of packages/core/src/project-config/secret-write.ts
  * @direct-test-of packages/core/src/project-config/secret-routes.ts
  * @direct-test-of packages/core/src/project-config/actor-sign-in.ts
+ * @direct-test-of packages/core/src/integrations/deploy/sign-in-probe.ts
+ *
+ * ISS-1141: epod's admin signs in with a GraphQL mutation, so the merge also takes `loginBody` and
+ * `tokenPath`, and the probe sends that body and reads the token there.
  */
 
 import fs from 'node:fs';
@@ -37,6 +41,15 @@ const PASS = 'Corr3ct-H0rse-Battery-1140';
 const LABEL = 'epod judge (admin)';
 // the shape epod's judge secrets were stored in: an account and a password, no sign-in route
 const STORED = { username: USER, password: PASS, label: LABEL };
+const GRAPHQL = `${ORIGIN}/graphql`;
+const MUTATION =
+  'mutation Login($email: String!, $password: String!) { login(email: $email, password: $password) { access_token } }';
+// the merge epod's master sends for each of its secrets (ISS-1141)
+const GRAPHQL_SET = {
+  loginRoute: GRAPHQL,
+  loginBody: { query: MUTATION, variables: { email: '$account', password: '$password' } },
+  tokenPath: '/data/login/access_token',
+};
 
 const w = { projectId: '', token: '' };
 const spy = vi.spyOn as unknown as (
@@ -83,6 +96,18 @@ beforeEach(async () => {
     seen.push({ url, body });
     if (url === SIGN_IN && body.username === USER && body.password === PASS) {
       return Response.json({ token: 'session-token-1140' });
+    }
+    if (url === GRAPHQL) {
+      // a GraphQL server: 200 with `errors` for a wrong account, its token under data.login
+      const vars = (body.variables ?? {}) as Record<string, unknown>;
+      if (body.query !== MUTATION) return Response.json({ errors: [{}] }, { status: 422 });
+      if (vars.email !== USER || vars.password !== PASS) {
+        return Response.json({
+          errors: [{ message: `no user ${String(vars.email)}` }],
+          data: null,
+        });
+      }
+      return Response.json({ data: { login: { access_token: 'gql-session-1141' } } });
     }
     return Response.json({ error: { code: 'INVALID_CREDENTIALS' } }, { status: 401 });
   });
@@ -145,6 +170,31 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
     });
   });
 
+  it('a GraphQL sign-in is merged as loginRoute, loginBody and tokenPath, probed, and kept (ISS-1141)', async () => {
+    // today's shape at the GraphQL endpoint is what epod's master was refused: answered 422
+    const before = await patch('dev', 'judge', { set: { loginRoute: GRAPHQL } });
+    expect(before.status, JSON.stringify(before.body)).toBe(422);
+    expect(refusalsOf(before)[0]?.detail).toContain('answered 422');
+
+    const body = await ok(patch('dev', 'judge', { set: GRAPHQL_SET }));
+    expect(body.signIn).toEqual([
+      expect.objectContaining({ profile: 'dev', actor: 'admin', answer: 'signs-in', at: GRAPHQL }),
+    ]);
+    expect(seen.at(-1)).toEqual({
+      url: GRAPHQL,
+      body: { query: MUTATION, variables: { email: USER, password: PASS } },
+    });
+    expect(await stored('secret://dev/judge')).toEqual({ ...STORED, ...GRAPHQL_SET });
+    for (const v of [USER, PASS]) expect(JSON.stringify(body)).not.toContain(v);
+
+    // a wrong password answers 200 with `errors` that echo the account: refused, the text unsaid
+    await ok(put('dev', 'judge', JSON.stringify({ ...STORED, password: 'wrong-1141' })));
+    const wrong = await patch('dev', 'judge', { set: GRAPHQL_SET });
+    expect(wrong.status).toBe(422);
+    expect(refusalsOf(wrong)[0]?.detail).toContain('with a GraphQL `errors` array');
+    expect(JSON.stringify(wrong.body)).not.toContain(USER);
+  });
+
   it('a merged value the environment refuses is refused by name, and the value held before is kept', async () => {
     const res = await patch('dev', 'judge', { set: { loginRoute: `${ORIGIN}/api/auth/local` } });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
@@ -171,6 +221,26 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
         'SECRET_LOGIN_ROUTE_INVALID',
       ],
       [{ set: { loginRoute: 7 } }, 'dev', 'judge', 422, 'SECRET_LOGIN_ROUTE_INVALID'],
+      [
+        {
+          set: {
+            loginBody: { query: MUTATION, variables: { email: '$email', password: '$password' } },
+          },
+        },
+        'dev',
+        'judge',
+        422,
+        'SECRET_LOGIN_BODY_INVALID',
+      ],
+      [
+        { set: { loginBody: { email: '$account' } } },
+        'dev',
+        'judge',
+        422,
+        'SECRET_LOGIN_BODY_INVALID',
+      ],
+      [{ set: { loginBody: 'x' } }, 'dev', 'judge', 422, 'SECRET_LOGIN_BODY_INVALID'],
+      [{ set: { tokenPath: 'data.login' } }, 'dev', 'judge', 422, 'SECRET_TOKEN_PATH_INVALID'],
       [{ set: { loginRoute: '/x' } }, 'dev', 'plain', 422, 'SECRET_NOT_JSON_OBJECT'],
       [{ set: { loginRoute: '/x' } }, 'dev', 'absent', 404, 'SECRET_NOT_FOUND'],
       [{ set: { loginRoute: '/x' } }, 'var', 'judge', 422, 'SECRET_SCOPE_RESERVED'],
@@ -184,7 +254,7 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
     }
     const unknown = await patch('dev', 'judge', { set: { password: 'x', label: 'y' } });
     expect(refusalsOf(unknown).map((r) => r.path)).toEqual(['/set/label', '/set/password']);
-    expect(refusalsOf(unknown)[0]?.detail).toContain('`loginRoute`');
+    expect(refusalsOf(unknown)[0]?.detail).toContain('`loginRoute`, `loginBody`, `tokenPath`');
     expect(await stored('secret://dev/judge')).toEqual(STORED);
     expect(seen).toEqual([]);
   });
@@ -216,8 +286,10 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
     answers.push(await patch('dev', 'judge', { set: { loginRoute: `${ORIGIN}/api/auth/local` } }));
     answers.push(await patch('dev', 'judge', { set: { username: 'x' } }));
     answers.push(await patch('dev', 'plain', { set: { loginRoute: '/x' } }));
+    answers.push(await patch('dev', 'judge', { set: GRAPHQL_SET }));
+    answers.push(await patch('dev', 'judge', { set: { loginBody: { u: '$account' } } }));
     logger.level = level;
-    expect(answers.map((a) => a.status)).toEqual([200, 422, 422, 422]);
+    expect(answers.map((a) => a.status)).toEqual([200, 422, 422, 422, 200, 422]);
     expect(said.length, 'no line was written to watch').toBeGreaterThan(0);
     for (const value of [USER, PASS, LABEL, 'an-api-key-not-json-1140']) {
       for (const a of answers) expect(JSON.stringify(a.body)).not.toContain(value);

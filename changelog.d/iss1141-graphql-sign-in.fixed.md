@@ -1,0 +1,1 @@
+**A judge can sign in to an app whose sign-in is a GraphQL mutation.** A testing secret may carry `loginBody`, with `$account` and `$password` leaves, and `tokenPath`. The secret merge door, core's probe and `judge-login` all read both.
