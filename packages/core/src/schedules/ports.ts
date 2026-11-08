@@ -2,6 +2,7 @@
 // in by the process entry at boot: a module imports only its own context or one before it
 // (ADR 0008). Read only inside a call.
 
+import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import type { NotificationType } from '../db/schema.js';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -63,6 +64,8 @@ interface SchedulesPorts {
     projectId: string;
     issueIds: string[];
     userId: string;
+    /** The release's name and summary, where the cut writes them (the beta port's, ISS-988). */
+    naming?: ReleaseNaming;
   }): Promise<{ runId: string; issueIds: string[] }>;
   /** Store the period's report read as `viewerUserId` and tell each recipient once, in their language. */
   sendStatusReport(args: {

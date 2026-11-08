@@ -49,6 +49,7 @@ import {
 } from './markers.js';
 import { mirrorProject } from './mirror.js';
 import { createFeedback, feedbackIdOfSeq } from './ports.js';
+import { bridgeReleases, type ReleaseDoor } from './releases.js';
 import { type BetaPortReport, emptyReport, renderReport, reportSaysSomething } from './report.js';
 import {
   type DevIssue,
@@ -95,6 +96,8 @@ interface FireContext {
   cutoff: Date;
   report: BetaPortReport;
   budget: Budget;
+  /** Dev's release door, which a release pressed on beta is cut through (ISS-988). */
+  door: ReleaseDoor;
 }
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -106,6 +109,8 @@ const errText = (err: unknown) => (err instanceof Error ? err.message : String(e
 export async function startBetaPort(args: {
   projectId: string;
   fireId: string;
+  /** Dev's release door (`release-batch/create.ts:createReleaseBatch`), handed in by the fire. */
+  releaseDoor: ReleaseDoor;
 }): Promise<BetaPortStart> {
   const secrets = await readProjectSecrets(args.projectId, [BETA_URL_REF, BETA_TOKEN_REF]);
   if (!secrets.ok) {
@@ -131,7 +136,13 @@ export async function startBetaPort(args: {
   const webUrl = web.ok ? ((web.values.get(BETA_WEB_URL_REF) as string) ?? null) : null;
   const run = async (): Promise<BetaPortOutcome> => {
     try {
-      return await runBetaPort({ peer, webUrl, fireId: args.fireId, cutoff });
+      return await runBetaPort({
+        peer,
+        webUrl,
+        fireId: args.fireId,
+        cutoff,
+        door: args.releaseDoor,
+      });
     } catch (err) {
       return { kind: 'failed', error: scrubLogText(errText(err), [token]) };
     }
@@ -144,6 +155,7 @@ async function runBetaPort(args: {
   webUrl: string | null;
   fireId: string;
   cutoff: Date;
+  door: ReleaseDoor;
 }): Promise<BetaPortOutcome> {
   const { peer, cutoff } = args;
   const scrub = (text: string) => scrubLogText(text, [peer.token]);
@@ -166,6 +178,7 @@ async function runBetaPort(args: {
     cutoff,
     report: emptyReport(cutoff),
     budget: { ports: MAX_PORTS_PER_FIRE, mirrors: MAX_MIRRORS_PER_FIRE },
+    door: args.door,
   };
   // the bodies the first fire never read come before any new port (ISS-923 backfill)
   await backfillBodies(ctx);
@@ -213,6 +226,9 @@ function scrubReport(report: BetaPortReport, scrub: (t: string) => string): Beta
     backfilled: report.backfilled.map(scrub),
     backfillEmpty: report.backfillEmpty.map(scrub),
     backfillOwed: report.backfillOwed.map(scrub),
+    releases: report.releases.map(scrub),
+    releaseNoTwin: report.releaseNoTwin.map(scrub),
+    releasesWaiting: report.releasesWaiting.map(scrub),
   };
 }
 
@@ -268,6 +284,17 @@ async function portProject(ctx: FireContext, betaProjectId: string, twin: DevTwi
     ctx.report.beforeRuling.push(`${twin.slug}: ${before} (not ported${unread})`);
   }
 
+  // a release settled on dev is ended on beta before the mirror closes its issues by that release,
+  // which beta refuses while its own release still claims them; a release failing stops no mirror
+  try {
+    await bridgeReleases(ctx, betaProjectId, twin);
+  } catch (err) {
+    logger.warn(
+      { fireId: ctx.fireId, slug: twin.slug, err: scrubLogText(errText(err), [ctx.peer.token]) },
+      'beta-port: the release half failed',
+    );
+    ctx.report.refused.push(`${twin.slug} releases: BETA_PORT_RELEASES_FAILED (${errText(err)})`);
+  }
   await mirrorProject(ctx, { betaProjectId, twin }, betaIssues, pairs);
 }
 

@@ -35,6 +35,15 @@ export interface BetaPortReport {
   backfillEmpty: string[];
   /** The same, left for the next fire by the backfill's bound. */
   backfillOwed: string[];
+  /**
+   * Releases pressed on beta (ISS-988): one taken, requested on dev, or written back once its dev
+   * release shipped or failed: `twin: forge-beta release V (runId) …`.
+   */
+  releases: string[];
+  /** Each beta issue a taken release carries with no dev twin, by name and why. */
+  releaseNoTwin: string[];
+  /** Releases waiting on dev, naming each dev issue not at the release gate. Named every fire. */
+  releasesWaiting: string[];
 }
 
 export const REPORT_LIST_CAP = 20;
@@ -55,6 +64,9 @@ export function emptyReport(cutoff: Date): BetaPortReport {
     backfilled: [],
     backfillEmpty: [],
     backfillOwed: [],
+    releases: [],
+    releaseNoTwin: [],
+    releasesWaiting: [],
   };
 }
 
@@ -67,6 +79,19 @@ function backfillSections(report: BetaPortReport, cap: number): string[] {
       : []),
     ...(report.backfillOwed.length > 0
       ? section('bodies owed to the next fire', report.backfillOwed, cap)
+      : []),
+  ];
+}
+
+/** The release half's sections, said only where a release was taken, moved or waits. */
+function releaseSections(report: BetaPortReport, cap: number): string[] {
+  return [
+    ...(report.releases.length > 0 ? section('beta releases', report.releases, cap) : []),
+    ...(report.releaseNoTwin.length > 0
+      ? section('beta release issues with no dev twin', report.releaseNoTwin, cap)
+      : []),
+    ...(report.releasesWaiting.length > 0
+      ? section('beta releases waiting on dev', report.releasesWaiting, cap)
       : []),
   ];
 }
@@ -94,12 +119,14 @@ export function renderReport(report: BetaPortReport, cap = REPORT_LIST_CAP): str
     ...section('beta projects with no dev twin', report.noTwin, cap),
     ...section('before the ruling', report.beforeRuling, cap),
     ...(report.waiting > 0 ? [`left for the next fire: ${report.waiting}`] : []),
+    ...releaseSections(report, cap),
   ].join('\n');
 }
 
 /**
  * Whether the fire changed anything or has anything to say beyond "nothing to do". The issues left
- * on beta are named every fire and change nothing, so they alone do not count.
+ * on beta and the releases waiting on dev are named every fire and change nothing, so they alone do
+ * not count.
  */
 export function reportSaysSomething(report: BetaPortReport): boolean {
   return (
@@ -112,6 +139,8 @@ export function reportSaysSomething(report: BetaPortReport): boolean {
     report.waiting > 0 ||
     report.backfilled.length > 0 ||
     report.backfillEmpty.length > 0 ||
-    report.backfillOwed.length > 0
+    report.backfillOwed.length > 0 ||
+    report.releases.length > 0 ||
+    report.releaseNoTwin.length > 0
   );
 }

@@ -6,11 +6,13 @@
 // settle the fire with its report, skipped with a refusal where beta could not be read, or failed.
 
 import { and, eq, lt, ne, sql } from 'drizzle-orm';
-import { startBetaPort } from '../beta-port/index.js';
+import { type ReleaseCut, type ReleaseCutAsk, startBetaPort } from '../beta-port/index.js';
 import { db } from '../db/client.js';
 import { scheduleRuns, schedules } from '../db/schema.js';
+import { RefusalError } from '../lib/refusal.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { type FireSettlement, settleFire } from './fires.js';
+import { schedulesPorts } from './ports.js';
 
 /** A beta port fire still running this long after it started is one whose core stopped under it. */
 export const BETA_PORT_FIRE_STALE_MS = 60 * 60 * 1000;
@@ -59,6 +61,30 @@ const refused = (code: string, detail: string): RoutedFire => {
   };
 };
 
+/**
+ * A release pressed on beta cut on dev through dev's own release door (ISS-988): the run it cut, or
+ * the refusal it met by its code, which the port names and asks again next fire.
+ */
+async function cutOnDev(ask: ReleaseCutAsk): Promise<ReleaseCut> {
+  try {
+    const cut = await schedulesPorts().createReleaseBatch(ask);
+    return { ok: true, runId: cut.runId };
+  } catch (err) {
+    if (err instanceof RefusalError && err.refusals.length > 0) {
+      return {
+        ok: false,
+        code: err.refusals[0]?.code ?? 'RELEASE_REFUSED',
+        detail: err.refusals.map((r) => r.detail).join(' '),
+      };
+    }
+    return {
+      ok: false,
+      code: 'BETA_PORT_CUT_FAILED',
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export async function routeScheduleBetaPortFire(
   input: DispatchScheduleInput,
   fireId: string,
@@ -71,7 +97,7 @@ export async function routeScheduleBetaPortFire(
       `beta port fire ${live} of this project is still running, and two at once would port the same beta issue twice: this fire starts nothing; its report is at GET /api/projects/${projectId}/automation/fires/${live}`,
     );
   }
-  const start = await startBetaPort({ projectId, fireId });
+  const start = await startBetaPort({ projectId, fireId, releaseDoor: cutOnDev });
   if (start.kind === 'refused') return refused(start.code, start.detail);
   return {
     result: { ok: true, sessionId: null, status: 'running', resolvedProjectId: projectId },

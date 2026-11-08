@@ -1,8 +1,6 @@
 export {
-  endPeerRelease,
   listPeerCommentBodies,
   listPeerIssues,
-  listPeerPressedReleases,
   listPeerProjects,
   markPeerIssueLanded,
   type PeerAnswer,
@@ -12,8 +10,6 @@ export {
   type PeerProject,
   type PeerRecorded,
   type PeerRefusal,
-  type PeerRelease,
-  type PeerReleaseIssue,
   type PeerReleaseNote,
   type PeerReleaseRecord,
   peerMovedIntoSince,
@@ -26,3 +22,9 @@ export {
   writePeerReleaseNote,
 } from './client.js';
 export { type PeerLanding, peerLandingOf, peerLandingOfProject } from './landing.js';
+export {
+  endPeerRelease,
+  listPeerPressedReleases,
+  type PeerRelease,
+  type PeerReleaseIssue,
+} from './releases.js';

@@ -7,6 +7,11 @@ export {
   portedFirstLine,
 } from './markers.js';
 export { provideBetaPortPorts } from './ports.js';
+export type {
+  ReleaseCut,
+  ReleaseCutAsk,
+  ReleaseDoor,
+} from './releases.js';
 export { type BetaPortReport, renderReport } from './report.js';
 export {
   BETA_TOKEN_REF,
