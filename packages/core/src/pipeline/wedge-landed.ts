@@ -9,6 +9,7 @@ import {
   issueWorkInFlightSql,
   mergeNotRecorded,
   mergeSinceLastReopenSql,
+  reasonedDecisionsOn,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readWedgeLease, wedgeLeaseHoldsTheIssue, wedgeLeftLandedMarker } from './wedge-lease.js';
@@ -72,7 +73,9 @@ export type LandedWorkOwed = {
  * one leaves this list by that move, by a run taking it, or by its mark being cleared or replaced.
  * An `open` issue filed for a merge that landed before it (REQ-76 BC-8) is listed beside them: its
  * work landed before it was filed, so it is owed the same move, after the claim that makes the master
- * its holder.
+ * its holder. One a reasoned decision recorded since its landing holds (its `until` date not passed,
+ * or a condition, or none) is left to that decision (ISS-996): the same `decision` record that
+ * answers a steward ask on it answers this move too, and a new landing asks it again.
  */
 export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[]> {
   const rows = (await db.execute(sql`
@@ -97,6 +100,11 @@ export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[
   if (rows.length === 0) return [];
   const now = new Date();
   const prefix = await activeIssuePrefix(projectId);
+  const decided = await reasonedDecisionsOn(rows.map((r) => r.id));
+  const heldSince = (issueId: string, landedAt: Date): boolean =>
+    decided.some(
+      (d) => d.issueId === issueId && d.at >= landedAt && (d.until === null || d.until > now),
+    );
   const owed: LandedWorkOwed[] = [];
   for (const row of rows) {
     if (wedgeLeaseHoldsTheIssue(readWedgeLease(row.lease, now))) continue;
@@ -118,7 +126,7 @@ export async function landedWorkOwed(projectId: string): Promise<LandedWorkOwed[
          AND strpos(c.body, ${wedgeLeftLandedMarker(landed)}) > 0
        LIMIT 1
     `)) as unknown as unknown[];
-    if (!told) continue;
+    if (!told || heldSince(row.id, landed.mergedAt)) continue;
     owed.push({
       issueId: row.id,
       key: formatIssueRef(prefix, row.iss_seq),

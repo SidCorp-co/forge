@@ -17,6 +17,7 @@
  * @direct-test-of packages/core/src/pipeline/reconciler.ts
  * @direct-test-of packages/core/src/pipeline/wedge-owed.ts
  * @direct-test-of packages/core/src/pipeline/wedge-lease.ts
+ * @direct-test-of packages/core/src/pipeline/wedge-landed.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -310,6 +311,39 @@ describe('left landed work is told once per mark, and wakes its master', () => {
       {},
     );
     expect(await landedWorkOwed(projectId), 'moved: owed no more').toEqual([]);
+  });
+
+  // ISS-996 (FB-504): sidpeak ISS-1 and ISS-2 were held at in_progress on purpose by a decision, and
+  // every pass still named them owed the move; the decision that answers a steward ask answers it too
+  it('leaves landed work a standing decision holds, until its date passes or it lands again', async () => {
+    const id = await wedged({ mergedAt: minutesAgo(20), commit: COMMIT });
+    await tick();
+    expect(await landedWorkOwed(projectId)).toHaveLength(1);
+    const decide = (until: string, at = new Date()) =>
+      db.execute(sql`
+        INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+        VALUES (${id}, 'user', ${ownerId}, 'human', 'record.decision',
+                ${JSON.stringify({
+                  contract: 1,
+                  lead: 'held for the owner',
+                  fields: [
+                    { key: 'decision', value: 'hold at in_progress' },
+                    { key: 'why', value: 'the owner releases it with the next batch' },
+                    { key: 'until', value: until },
+                  ],
+                })}::jsonb, ${at.toISOString()}::timestamptz)`);
+    await decide(new Date(Date.now() - 60_000).toISOString());
+    expect(
+      await landedWorkOwed(projectId),
+      'a decision whose date passed holds nothing',
+    ).toHaveLength(1);
+    await decide(new Date(Date.now() + 86_400_000).toISOString());
+    expect(await landedWorkOwed(projectId), 'held by the decision').toEqual([]);
+    await db.execute(
+      sql`UPDATE issues SET merged_at = now() + interval '1 second', updated_at = now() - interval '30 minutes' WHERE id = ${id}`,
+    );
+    await tick();
+    expect(await landedWorkOwed(projectId), 'a later landing is asked anew').toHaveLength(1);
   });
 });
 
