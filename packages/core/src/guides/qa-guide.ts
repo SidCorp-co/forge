@@ -115,6 +115,12 @@ that works has not been tested. Plant the failure the criterion guards against w
 watch the probe go red before its green counts. A verdict is worth what its reader can re-run: the
 steps, what you expected, what you observed. Captures go outside the checkout you are judging.
 
+A screen is judged at the widths people use it at, not only the one its criterion names: a narrow
+width and the desktop widths 1280x800 and 1440x900, with each side panel the screen has both open
+and folded. A layout that breaks at any of them (a column squeezed to nothing, a control cut off or
+past the window's edge, a toolbar wrapping over what it serves) fails the verdict with a capture at
+that width, whatever width the criterion was written for.
+
 ### Writing each verdict
 \`POST /api/issues/:id/verdicts\` per criterion, as ${guideRef('issue-flow')} (section 5) gives the
 body: the identity the build serves, written whole, the evidence uploaded first and cited by its name,

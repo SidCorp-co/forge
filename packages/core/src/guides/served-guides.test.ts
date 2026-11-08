@@ -49,6 +49,15 @@ describe('the judging guide a REST-only judge reads (ISS-612)', () => {
     }
   });
 
+  it('judges a screen at narrow and desktop widths, panels open and folded, whatever width its criterion names (ISS-1152)', async () => {
+    const qa = await served('qa');
+    const exercising = between(qa, '### Exercising a criterion', '###');
+    expect(exercising).toContain('not only the one its criterion names');
+    expect(exercising).toContain('1280x800 and 1440x900');
+    expect(exercising).toContain('both open and folded');
+    expect(exercising).toContain('fails the verdict with a capture at that width');
+  });
+
   it('judges a design issue on its newest approved revision, never on content only proposed', async () => {
     const qa = await served('qa');
     const design = between(qa, '### A design issue', '###');
