@@ -1,8 +1,21 @@
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { newQueryTiming, type QueryTiming, withQueryTiming } from '../db/query-timing.js';
+import { type RepeatedShape, repeatedShapes, shapeTextOf } from '../db/statement-shapes.js';
+import { logger } from '../lib/logger.js';
+import { authUserRow } from './auth.js';
+import { onAdminList } from './require-admin.js';
 import { routeRefMs } from './route-refs.js';
 
 export const SERVER_TIMING_HEADER = 'Server-Timing';
+
+/**
+ * The most repeated statement shapes of each named part of a request, sent only to an operator of
+ * this Forge: `<part>: <fingerprint>*<count> …; …`, fingerprints and counts, never a bound value.
+ */
+export const STATEMENT_SHAPES_HEADER = 'X-Forge-Statement-Shapes';
+
+/** How many repeated shapes each part names. */
+const SHAPES_PER_PART = 3;
 
 const ms = (n: number) => n.toFixed(1);
 
@@ -40,6 +53,59 @@ export function serverTimingValue(timing: QueryTiming, totalMs: number, refMs?: 
 }
 
 /**
+ * Each named part's ({@link legsOf}) and the unnamed statements' most repeated shapes, where any
+ * repeats: what a read sends once a row or once a project, named so a count read live is turned into
+ * its statement here (`db/statement-shapes.ts:shapeTextOf`).
+ */
+export function repeatedShapesOf(timing: QueryTiming): Map<string, RepeatedShape[]> {
+  const parts = new Map<string, RepeatedShape[]>();
+  for (const [name, sent] of [
+    ...[...timing.legs].map(([name, leg]) => [name, leg.sent] as const),
+    ['unnamed', timing.sent] as const,
+  ]) {
+    const top = repeatedShapes(sent, SHAPES_PER_PART);
+    if (top.length > 0) parts.set(name, top);
+  }
+  return parts;
+}
+
+export const statementShapesValue = (parts: ReadonlyMap<string, RepeatedShape[]>): string =>
+  [...parts]
+    .map(([name, top]) => `${name}: ${top.map((s) => `${s.fingerprint}*${s.count}`).join(' ')}`)
+    .join('; ');
+
+/**
+ * Whether the caller is an operator of this Forge: its verified address on the admin list, the grant
+ * the instance's own diagnostics declare (`permissions/declared.ts:requiresInstanceAdmin`), read from
+ * the row the request's auth gate already holds.
+ */
+async function isOperator(c: Context): Promise<boolean> {
+  const userId = c.get('userId') as string | undefined;
+  if (!userId) return false;
+  const row = await authUserRow(c, userId);
+  return row !== null && row.emailVerifiedAt !== null && onAdminList(row.email);
+}
+
+/** Each fingerprint whose text this process has logged once already. */
+const logged = new Set<string>();
+
+/** Logs each shape named to an operator with its text, once a process, so a live count reads as a statement. */
+function logShapes(parts: ReadonlyMap<string, RepeatedShape[]>): void {
+  const fresh = [...parts.values()].flat().filter((s) => !logged.has(s.fingerprint));
+  if (fresh.length === 0) return;
+  for (const s of fresh) logged.add(s.fingerprint);
+  logger.info(
+    {
+      shapes: fresh.map((s) => ({
+        fingerprint: s.fingerprint,
+        statement: shapeTextOf(s.fingerprint),
+      })),
+    },
+    'statement shapes named to an operator',
+  );
+}
+
+/**
  * Stamps every response with the time this process spent on it and how much of that was the
  * database, so a reader's devtools separate the origin's share of a wait from the network's. A
  * cross-origin page reads it only where `Timing-Allow-Origin` names it, which `allowOrigin` decides.
@@ -60,5 +126,11 @@ export const serverTiming = (allowOrigin: (origin: string) => boolean): Middlewa
       c.res.headers.append(SERVER_TIMING_HEADER, value);
     }
     if (origin && allowOrigin(origin)) c.res.headers.set('Timing-Allow-Origin', origin);
+    // what a read repeats, named to an operator only: for anyone else no shape is even made
+    if (timing.legs.size === 0 || !(await isOperator(c))) return;
+    const parts = repeatedShapesOf(timing);
+    if (parts.size === 0) return;
+    c.res.headers.set(STATEMENT_SHAPES_HEADER, statementShapesValue(parts));
+    logShapes(parts);
   };
 };

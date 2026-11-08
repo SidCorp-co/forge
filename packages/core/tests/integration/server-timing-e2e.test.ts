@@ -1,6 +1,21 @@
 // @direct-test-of packages/core/src/db/query-timing.ts
 // @direct-test-of packages/core/src/middleware/server-timing.ts
-import { beforeAll, describe, expect, it } from 'vitest';
+// @direct-test-of packages/core/src/db/statement-shapes.ts
+import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+const OPERATOR = 'operator@server-timing.test';
+// env is read once, on first use: the operator list is set before anything imports it
+vi.hoisted(() => {
+  process.env.ADMIN_EMAILS = 'operator@server-timing.test';
+});
+
+import { db } from '../../src/db/client.js';
+import { withQueryLeg } from '../../src/db/query-timing.js';
+import { fingerprintOf, shapeTextOf } from '../../src/db/statement-shapes.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../../src/middleware/auth.js';
+import { STATEMENT_SHAPES_HEADER, serverTiming } from '../../src/middleware/server-timing.js';
 import { api, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 
@@ -97,5 +112,59 @@ describe('Server-Timing', () => {
       origin: 'https://elsewhere.example',
     });
     expect(stranger.headers.get('timing-allow-origin')).toBeNull();
+  });
+
+  // ISS-1070 r11: live showed counts per area and never which statement repeats; an operator now
+  // reads each area's most repeated shapes, fingerprinted, and nobody else reads any
+  describe('the repeated statement shapes', () => {
+    /** A read planted to send one statement once a row, beside one it sends once. */
+    const ROWS = 7;
+    const PER_ROW = 'SELECT $1::text AS planted_row_id';
+    const planted = new Hono<{ Variables: AuthVars }>();
+    planted.use(
+      '*',
+      serverTiming(() => false),
+      requireAuth(),
+      assertEmailVerified(),
+    );
+    planted.get('/planted', async (c) => {
+      await withQueryLeg('planted-rows', async () => {
+        await db.execute(sql`SELECT 1 AS once`);
+        for (let n = 0; n < ROWS; n++)
+          await db.execute(sql`SELECT ${`row-${n}`}::text AS planted_row_id`);
+      });
+      return c.json({ ok: true });
+    });
+    const call = async (as: string) =>
+      planted.fetch(
+        new Request('http://forge.test/planted', { headers: { authorization: `Bearer ${as}` } }),
+      );
+
+    let operator = '';
+    beforeAll(async () => {
+      operator = await userToken((await createTestUser({ verified: true, email: OPERATOR })).id);
+    });
+
+    it('names to an operator the shape a per-row loop repeats, with its count and never a bound value', async () => {
+      const res = await call(operator);
+      expect(res.status).toBe(200);
+      const shapes = res.headers.get(STATEMENT_SHAPES_HEADER) ?? '';
+      const fp = fingerprintOf(PER_ROW);
+      expect(shapes).toBe(`planted-rows: ${fp}*${ROWS}`);
+      // the fingerprint turns back into the statement here, with no row's id in it
+      expect(shapeTextOf(fp)).toBe('SELECT $n::text AS planted_row_id');
+      expect(shapes).not.toMatch(/row-\d/);
+    });
+
+    it('sends a person who is not an operator no shape, on the planted read and on Needs you', async () => {
+      const res = await call(token);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('server-timing')).toMatch(/planted-rows;dur=[0-9.]+;desc="8 queries"/);
+      expect(res.headers.get(STATEMENT_SHAPES_HEADER)).toBeNull();
+      const ny = await api(token, 'GET', `/api/projects/${projectId}/needs-you`);
+      expect(ny.status).toBe(200);
+      expect(ny.headers.get('server-timing')).toMatch(/ny-requirements;/);
+      expect(ny.headers.get(STATEMENT_SHAPES_HEADER)).toBeNull();
+    });
   });
 });

@@ -19,6 +19,8 @@ export interface QueryTiming {
   points: number;
   /** The request's named parts ({@link withQueryLeg}), in the order first entered. */
   legs: Map<string, QueryLeg>;
+  /** Each statement text sent outside every part, with how many times: its shapes are read from it. */
+  sent: Map<string, number>;
 }
 
 /**
@@ -31,6 +33,11 @@ export interface QueryLeg {
   queries: number;
   startedAt: number;
   endedAt: number;
+  /**
+   * Each statement text the part sent, with how many times: an operator reads its most repeated
+   * shapes (`db/statement-shapes.ts:repeatedShapes`), never a bound value, which travels apart.
+   */
+  sent: Map<string, number>;
 }
 
 /**
@@ -54,6 +61,7 @@ export const newQueryTiming = (): QueryTiming => ({
   quiet: [],
   points: 0,
   legs: new Map(),
+  sent: new Map(),
 });
 
 /** The timing of the request this code runs inside, if any. */
@@ -86,7 +94,7 @@ export async function withQueryLeg<T>(name: string, fn: () => Promise<T>): Promi
   const now = performance.now();
   let leg = t.legs.get(name);
   if (!leg) {
-    leg = { of: t, queries: 0, startedAt: now, endedAt: now };
+    leg = { of: t, queries: 0, startedAt: now, endedAt: now, sent: new Map() };
     t.legs.set(name, leg);
   }
   const own = leg;
@@ -170,6 +178,9 @@ function timedUnsafe(unsafe: Unsafe): Unsafe {
     t.queries += 1;
     const leg = legs.getStore();
     if (leg?.of === t) leg.queries += 1;
+    const sent = leg?.of === t ? leg.sent : t.sent;
+    const text = String(args[0]);
+    sent.set(text, (sent.get(text) ?? 0) + 1);
     const handle = query.handle;
     query.handle = function (this: LazyQuery) {
       if (!this.executed) {
