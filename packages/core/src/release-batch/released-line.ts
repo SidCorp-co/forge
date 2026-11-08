@@ -66,12 +66,29 @@ export function servedCommitUnnamed(production: NamedEnvironment): string | null
     : `its production \`${production.name}\` declares no source probe, so no commit is read for what it serves: its releases are its agent's record by version`;
 }
 
-export async function releasedLineOf(projectId: string): Promise<ReleasedLineRead | null> {
+/** Why the project's releases are its agent's record (`servedCommitUnnamed`), read from its document alone; null where they are not. */
+async function lineWhy(
+  projectId: string,
+): Promise<{ why: string; production: NamedEnvironment } | null> {
   const held = await readProjectDocument(projectId);
   const production = held ? productionOf(held.document) : null;
   if (!production) return null;
   const why = servedCommitUnnamed(production);
-  if (why === null) return null;
+  return why === null ? null : { why, production };
+}
+
+/**
+ * Whether `releasedLineOf` answers a line for the project, from its document alone: what a read that
+ * needs only that asks, so it never waits on the line's own reads (ISS-1070 r17).
+ */
+export async function holdsReleasedLine(projectId: string): Promise<boolean> {
+  return (await lineWhy(projectId)) !== null;
+}
+
+export async function releasedLineOf(projectId: string): Promise<ReleasedLineRead | null> {
+  const declared = await lineWhy(projectId);
+  if (!declared) return null;
+  const { why, production } = declared;
   const shipped = (await readStampedReleases(projectId)).map((r) => ({
     ...r,
     parsed: parseReleaseVersion(r.version),

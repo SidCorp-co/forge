@@ -251,6 +251,19 @@ export async function fillCuts(
   groupOf: (p: Part) => LineageRun[],
   cutters: ReadonlyMap<string, ReleasePerson>,
 ): Promise<void> {
+  (await readCuts(projectId, parts, groupOf))(cutters);
+}
+
+/**
+ * What each part's attempts name, read: the people and roster issues, which need only the parts, so a
+ * read asks them beside the release facts and fills the cuts once those name each attempt's cutter
+ * (ISS-1070 r17); before, they were asked a wave after the facts' deepest read.
+ */
+export async function readCuts(
+  projectId: string,
+  parts: readonly Part[],
+  groupOf: (p: Part) => LineageRun[],
+): Promise<(cutters: ReadonlyMap<string, ReleasePerson>) => void> {
   const groups = parts.map((p) => [p, groupOf(p)] as const);
   const [named, known] = await Promise.all([
     peopleOf(groups.flatMap(([, runs]) => peopleNamedBy(runs))),
@@ -262,7 +275,9 @@ export async function fillCuts(
   const people = new Map<string, ReleasePerson>(
     [...named].map(([id, person]) => [id, { id, ...person }]),
   );
-  for (const [p, runs] of groups) {
-    p.cuts = cutViewsOf(runs, { runId: p.runId, state: p.state }, cutters, people, known);
-  }
+  return (cutters) => {
+    for (const [p, runs] of groups) {
+      p.cuts = cutViewsOf(runs, { runId: p.runId, state: p.state }, cutters, people, known);
+    }
+  };
 }

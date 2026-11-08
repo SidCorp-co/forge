@@ -358,10 +358,16 @@ export async function weighWentOut(
   });
 }
 
-export async function runParts(projectId: string, version: string | undefined, required: boolean) {
-  const [runs, deploysFrom] = await Promise.all([
+/** Each run cut as `version` (every run, where none is named) as a part; `required` may still be read. */
+export async function runParts(
+  projectId: string,
+  version: string | undefined,
+  requiredRead: boolean | Promise<boolean>,
+) {
+  const [runs, deploysFrom, required] = await Promise.all([
     versionRuns(projectId, version),
     deploysFromOf(projectId),
+    requiredRead,
   ]);
   const ids = runs.map((r) => r.id);
   const [attempts, rows] = await Promise.all([attemptsOf(ids), approvalsOfRuns(ids)]);

@@ -12,7 +12,7 @@ import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
 import { approvalRequired } from '../project-config/index.js';
 import { readEndedRunHolds } from './ended-claims.js';
 import { landingRecordsOf } from './landing-records.js';
-import { fillCuts, releaseLinesOf } from './release-cuts.js';
+import { fillCuts, readCuts, releaseLinesOf } from './release-cuts.js';
 import {
   placeDraft,
   placeParts,
@@ -91,17 +91,22 @@ async function summariseChosen(
   viewer: ViewerFacts | null,
   choose: (listed: Part[]) => Part[],
 ): Promise<{ releases: ReleaseSummary[]; current: string | null; required: boolean }> {
-  const [required, current] = await Promise.all([
-    approvalRequired(projectId),
+  // the runs, the draft and the lineage are asked beside the approval rule and the current version,
+  // never a wave after them (ISS-1070 r17)
+  const requiredRead = approvalRequired(projectId);
+  const [required, current, runs, draft, lineage] = await Promise.all([
+    requiredRead,
     currentReleaseVersion(projectId),
-  ]);
-  const [runs, draft, lineage] = await Promise.all([
-    runParts(projectId, undefined, required),
+    runParts(projectId, undefined, requiredRead),
     placeDraft(projectId),
     readLineage(projectId),
   ]);
   const placed = placeParts(releaseLinesOf(lineage), runs, draft);
   const parts = choose(placed.parts.filter((p) => p.continuedAs === null));
+  // what the attempts name is asked beside the facts, and the cuts filled once those name the cutters
+  const cuts = readCuts(projectId, parts, placed.groupOf);
+  // awaited below, where its failure is thrown; never an unhandled rejection meanwhile
+  cuts.catch(() => undefined);
   // the draft's gates, naming and approval are read only where the draft is one of the chosen
   const [shared] = await Promise.all([
     sharedFor(
@@ -114,7 +119,7 @@ async function summariseChosen(
     ),
     draft && parts.includes(draft.part) ? weighDraft(projectId, draft.part) : null,
   ]);
-  await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
+  (await cuts)(shared.facts.cutters);
   return { releases: parts.map((p) => summaryOf(p, shared)), current, required };
 }
 
