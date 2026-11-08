@@ -72,12 +72,14 @@ const turn = (input: StandingInput) => {
 };
 
 describe('a requirement pinned behind an approved design', () => {
-  it("is the master's to re-pin where no gate asks a person, and leaves the signer's Needs you", () => {
+  // D3 (owner 2026-11-08): no traced step changed, so Forge re-pins by rule; nobody is asked to
+  it('is re-pinned by rule where no gate asks a person, off every Needs you', () => {
     const s = turn(base());
     expect(s.attentionGroup).not.toBe('needs_you');
     expect(s.waitingOn.kind).toBe('agent');
-    expect(s.waitingOn.who).toBe('Master');
-    expect(s.waitingOn.who).not.toBe('orchestrator');
+    expect(s.waitingOn.who).toBe('Forge');
+    expect(s.waitingOn.act).toMatch(/^Update to the approved design.* by rule on its next sweep$/);
+    expect(s.waitingOn.says.rule.key).toBe('requirements.rule.byRule');
   });
 
   it("stays a person's where the project's revisions gate asks one", () => {

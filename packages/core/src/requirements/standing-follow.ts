@@ -70,7 +70,7 @@ export function reviseForDesignAct(changes: readonly TracedChange[]): Said {
 
 /**
  * A requirement pinned behind an approved design or a current contract: re-pinning it to what was
- * approved is routine, the master's unless the project's gate asks a person (`whoOwes`, ISS-1068);
+ * approved is routine, made by rule unless the project's gate asks a person (`whoOwes`, ISS-1068, D3);
  * a person's, it is the signer's Needs you where the viewer signs off, else waits on its owner.
  */
 export function pinBehindTurn(
@@ -83,10 +83,17 @@ export function pinBehindTurn(
     rule: say('requirements.rule.pinBehind'),
     effect: updateToApprovedEffect(input.stalePins, input.staleContractPins),
   };
+  // D3: no traced step changed (`standing.ts:turnOf` reads those first), so where no gate asks a
+  // person Forge re-pins by rule on its next sweep, and nobody is asked to
   if (input.owed && whoOwes('requirement.repin', input.owed).by === 'master') {
     return {
       group: 'waiting',
-      waitingOn: waitingOn('agent', { who: say('standing.who.master'), ...says }),
+      waitingOn: waitingOn('agent', {
+        ...says,
+        who: say('standing.who.forge'),
+        act: say('standing.act.moveByRule', { move: says.act }),
+        rule: say('requirements.rule.byRule'),
+      }),
     };
   }
   if (viewer?.canSignOff) {

@@ -21,22 +21,26 @@ import { answer, inTx, lockRequirements, type RequirementOutcome } from './write
 // version, with no text revision; the earlier baseline stays, and an issue whose plan read it
 // reads changed-since-plan until it is re-planned; the text is unchanged, so the readiness result
 // the agree recorded carries over (ISS-86, ISS-98); a mockup accepted after the agree is pinned the
-// same way, beside the designs (ISS-78, REQ-49 BC-6), and the picture never is. Nothing re-pins by itself: a design approval
-// only makes this act due, and its mover takes it as the project's `revisions` person gate asks
-// (`personGateOf`): a signer where the gate is on, any project writer, an agent included, where it
-// is off (REQ-41 BC-10, owner ruling 2026-10-14)
+// same way, beside the designs (ISS-78, REQ-49 BC-6), and the picture never is. A design approval
+// makes this act due, and its mover takes it as the project's `revisions` person gate asks
+// (`personGateOf`): a signer where the gate is on; where it is off and no step a live criterion
+// traces changed, Forge re-pins by rule (owner 2026-11-08, D3, `steward/requirement-rule-moves.ts`)
 export async function repinRequirement(input: {
   projectId: string;
   ref: string;
   actor: RequirementActor;
   revision: number;
   reason?: string | null | undefined;
+  /** Made by rule where no traced step changed and no person gate asks it (D3, `steward/requirement-rule-moves.ts`). */
+  byRule?: true | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const gate = await personGateOf(projectId, 'revisions', 're-pinning a requirement');
-  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
-  if (signer) return { ok: false, refusals: [signer] };
+  if (!input.byRule) {
+    const gate = await personGateOf(projectId, 'revisions', 're-pinning a requirement');
+    const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
+    if (signer) return { ok: false, refusals: [signer] };
+  }
   const unsaid = signoffReasonRefusal('repin', input.reason);
   if (unsaid) return { ok: false, refusals: [unsaid] };
   const refusals = await inTx(async (tx) => {

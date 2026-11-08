@@ -2,7 +2,8 @@
  * The acts that move a requirement through its delivery (REQ-74 BC-8..10; workflow
  * requirement-lifecycle r4): into delivery, to delivered, accepted (by its checklist, or by decision
  * over it), and dropped with a reason. Each is an explicit act of a person, the assistant or an agent
- * through the requirement machine's kernel transition; nothing here moves a status off a result.
+ * through the requirement machine's kernel transition. Where no person gate asks a move, the sweep in
+ * `rule-moves.ts` makes it by rule through these same doors and guards (owner 2026-11-08, D1).
  */
 
 import type { ChecklistEvaluation } from '@forge/contracts/checklists';
@@ -167,12 +168,16 @@ export async function acceptDelivery(input: {
   revision: number;
   reason?: string | null | undefined;
   byDecision?: boolean | undefined;
+  /** Made by rule where no person gate asks it (`rule-moves.ts`, D1): no signer is asked, the checklist still judges. */
+  byRule?: true | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const gate = await personGateOf(projectId, 'accept');
-  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
-  if (signer) return { ok: false, refusals: [signer] };
+  if (!input.byRule) {
+    const gate = await personGateOf(projectId, 'accept');
+    const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
+    if (signer) return { ok: false, refusals: [signer] };
+  }
   const liveBuild = await liveBuildOfRequirement(projectId, row.id);
   const reason = input.reason?.trim() || null;
   const refusals = await inTx(async (tx) => {
@@ -259,16 +264,20 @@ export async function moveDelivery(input: {
   actor: RequirementActor;
   to: 'in_delivery' | 'delivered';
   reason?: string | null | undefined;
+  /** Made by rule where no person gate asks it (`rule-moves.ts`, D1): no signer is asked, every guard still judges. */
+  byRule?: true | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const gate = await personGateOf(
-    projectId,
-    'accept',
-    input.to === 'in_delivery' ? 'moving it into delivery' : 'marking it delivered',
-  );
-  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
-  if (signer) return { ok: false, refusals: [signer] };
+  if (!input.byRule) {
+    const gate = await personGateOf(
+      projectId,
+      'accept',
+      input.to === 'in_delivery' ? 'moving it into delivery' : 'marking it delivered',
+    );
+    const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
+    if (signer) return { ok: false, refusals: [signer] };
+  }
   const liveBuild =
     input.to === 'delivered' ? await liveBuildOfRequirement(projectId, row.id) : null;
   // gate `requirement_checked` (REQ-67): read before the lock, as every fact a guard is handed is

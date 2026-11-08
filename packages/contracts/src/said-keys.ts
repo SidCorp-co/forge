@@ -964,6 +964,11 @@ export const SAID = {
 	"standing.act.breakDown": { en: "break down" },
 	"standing.act.startDelivery": { en: "move it into delivery" },
 	"standing.act.markDelivered": { en: "mark it delivered" },
+	"standing.act.moveByRule": {
+		en: "{move} by rule on its next sweep",
+		vars: { move: "said" },
+	},
+	"standing.act.acceptByRule": { en: "accept it" },
 	"standing.act.acceptShipped": { en: "accept it on the shipped capability" },
 	"standing.act.judgeShipped": {
 		en: "judge {codes} on the running build",
@@ -1333,6 +1338,7 @@ export const SAID = {
 	"standing.who.linkedIssue": { en: "The linked issue" },
 	"standing.who.linkedWork": { en: "The linked work" },
 	"standing.who.master": { en: "Master" },
+	"standing.who.forge": { en: "Forge" },
 	"standing.who.steward": { en: "Steward" },
 	"standing.who.runnerOwner": { en: "The runner's owner" },
 	"standing.who.projectAdmin": { en: "A project admin" },
@@ -1908,6 +1914,9 @@ export const SAID = {
 	},
 	"requirements.rule.deliveryUnchecked": {
 		en: "start refused until the steward's check ends; runs at GET /api/projects/:id/steward-runs?subject=REQ-n",
+	},
+	"requirements.rule.byRule": {
+		en: "no person gate asks this move on this project, so Forge makes it by rule; a guard that refuses it is named here",
 	},
 	"requirements.rule.markDelivered": {
 		en: "every criterion passes on the running build; an act marks it",

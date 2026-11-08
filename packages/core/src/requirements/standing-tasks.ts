@@ -10,6 +10,7 @@ import {
   type RequirementCoverage,
   type RequirementTask,
 } from '@forge/contracts/requirements';
+import { whoOwes } from '@forge/contracts/who-owes';
 import { addWorkingDays } from '../lib/working-days.js';
 import type { StandingInput, StandingIssue } from './standing.js';
 import { failingOf, restsOnShipped } from './standing-shipped.js';
@@ -88,8 +89,16 @@ export function breakdownTaskOf(
 // one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
 // completed (the last live issue closed, or the newest passing traced verdict). Delivered is the
 // stored status an act moved it to (REQ-74 BC-8), never read off the evidence
+/**
+ * Whether no person gate asks a requirement's delivery moves (`who-owes` `requirement.accept` is the
+ * master's): Forge then makes each by rule (`steward/requirement-rule-moves.ts`, D1), and nobody is
+ * asked to move, mark or check it. Absent policy reads as a person's, as before.
+ */
+export const byRule = (input: Pick<StandingInput, 'owed'>): boolean =>
+  input.owed !== undefined && whoOwes('requirement.accept', input.owed).by === 'master';
+
 export function checkTaskOf(input: StandingInput, live: readonly StandingIssue[]): SlaTask | null {
-  if (input.status !== 'delivered') return null;
+  if (input.status !== 'delivered' || byRule(input)) return null;
   if (input.currentRevision === null || live.length === 0) return null;
   const ids = new Set(live.map((i) => i.id));
   const times = [
