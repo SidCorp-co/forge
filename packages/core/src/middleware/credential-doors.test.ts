@@ -118,6 +118,8 @@ const DOORS: Readonly<Record<string, string>> = {
     'a preview ticket and viewer cookie are JWTs under their own issuers; a PAT verifies as neither',
   'previews/relay.ts':
     'the preview host admits a viewer by its cookie or a ticket it spends, never a bearer token',
+  'middleware/route-refs.ts':
+    'verifyPat reads a fenced token only to refuse a reference outside its fence PAT_PROJECT_OUTSIDE_FENCE, after requireUserOrDevice admitted the caller; it admits nobody (ISS-723 c2)',
   'middleware/bearer.ts':
     'reads the Authorization header and session cookies and admits nothing; each caller is named here',
   'credentials/cookie.ts':
