@@ -87,6 +87,26 @@ const SHARE: Scale = {
   open: 20,
   live: true,
 };
+/**
+ * The share project `n` holds: projects differ in shape, as forge-dev's do (ISS-1070 r9). One holds no
+ * release, no design and uniform feedback; one no feedback and no open issue; one is small, with few
+ * of each; the rest {@link SHARE}. Over twelve alike projects each reached every batched read at the
+ * same step; over these, a project with nothing for one read asks the next a step before the others,
+ * and a read that split there sent its statement once for each step a key was reached at (r8 measured
+ * the home at 158 statements where one project sent 121).
+ */
+function shareOf(n: number): Scale {
+  switch (n % 4) {
+    case 1:
+      return { ...SHARE, releases: 0, live: false };
+    case 2:
+      return { ...SHARE, feedback: 0, open: 0 };
+    case 3:
+      return { ...SHARE, requirements: 6, issues: 60, releases: 10, feedback: 20, open: 30 };
+    default:
+      return SHARE;
+  }
+}
 /** The projects the person across projects is a member of, forge's among them. */
 const PROJECTS_ACROSS = 12;
 
@@ -427,7 +447,8 @@ beforeAll(async () => {
   acrossToken = await signUserToken(acrossId);
   await addProjectMember(projectId, acrossId, 'admin');
   const orgId = await seedOrg(acrossId);
-  for (let n = 1; n < PROJECTS_ACROSS; n++) await seedAtScale(acrossId, shrunk(SHARE), { orgId });
+  for (let n = 1; n < PROJECTS_ACROSS; n++)
+    await seedAtScale(acrossId, shrunk(shareOf(n)), { orgId });
 }, 900_000);
 
 afterAll(closeWorld);
