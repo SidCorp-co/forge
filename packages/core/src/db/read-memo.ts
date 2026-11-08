@@ -1,7 +1,23 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { frozen } from './frozen.js';
-import { currentQueryTiming, newQueryTiming, whenQuiet, withQueryTiming } from './query-timing.js';
+import {
+  currentQueryTiming,
+  newQueryTiming,
+  quietPoints,
+  whenQuiet,
+  withQueryTiming,
+} from './query-timing.js';
+import {
+  begun,
+  isStepOf,
+  learned,
+  type Made,
+  mayAsk,
+  type Order,
+  orderOf,
+  stepOf,
+} from './read-order.js';
 
 /**
  * One read request's answers to the lookups its handlers repeat: who the caller is in a project,
@@ -64,9 +80,15 @@ interface PendingBatch {
 /** The projects a read across projects declared in each memo ({@link readAcross}). */
 const across = new WeakMap<Map<string, Promise<unknown>>, ReadonlySet<string>>();
 
-/** One project's read inside a {@link readAcross}: the keys it has asked so far. */
+/**
+ * One project's read inside a {@link readAcross}: how many times it has asked each key, the asks it
+ * waits on now and every ask it made, each a {@link stepOf} with the quiet point it was made at.
+ */
 interface Flow {
-  asked: Set<string>;
+  order: Order;
+  asks: Map<string, number>;
+  waiting: Map<string, number>;
+  made: Made[];
 }
 
 /** The projects' reads of each memo's {@link readAcross} still running. */
@@ -88,12 +110,14 @@ export function readAcross<P, T>(
   projects: readonly P[],
   idOf: (project: P) => string,
   read: (project: P) => Promise<T>,
+  /** Names the read, so the order its code asks in ({@link Order}) is learned apart from another's. */
+  name = 'read',
 ): Promise<T[]> {
   const memo = memos.getStore();
   // outside a request the read opens a scope of its own, so its projects still batch rather than
   // each send its own hundred statements at once to the pool
   if (!memo) {
-    const own = () => withReadMemo(() => readAcross(projects, idOf, read));
+    const own = () => withReadMemo(() => readAcross(projects, idOf, read, name));
     return currentQueryTiming() ? own() : withQueryTiming(newQueryTiming(), own);
   }
   across.set(memo, new Set([...(across.get(memo) ?? []), ...projects.map(idOf)]));
@@ -103,41 +127,79 @@ export function readAcross<P, T>(
     flowsOf.set(memo, running);
   }
   const live = running;
-  return Promise.all(
-    projects.map((p) => {
-      const flow: Flow = { asked: new Set() };
+  const order = orderOf(name);
+  const learning = begun(order);
+  const flows = projects.map(
+    (): Flow => ({ order, asks: new Map(), waiting: new Map(), made: [] }),
+  );
+  const reads = Promise.all(
+    projects.map((p, i) => {
+      const flow = flows[i] as Flow;
       live.add(flow);
       return inFlow.run(flow, () => read(p)).finally(() => live.delete(flow));
     }),
   );
+  if (!learning) return reads;
+  return reads.finally(() => learned(order, flows));
 }
 
 /** How many projects' reads of each memo have asked each key. */
 const askersOf = new WeakMap<Map<string, Promise<unknown>>, Map<string, number>>();
 
-/** Records that the project's read running this code asked `key`, where one does. */
-function asked(memo: Map<string, Promise<unknown>>, key: string): void {
+/**
+ * Records that the project's read running this code asks `key` again, where one does, and answers
+ * the step it asks at.
+ */
+function asked(memo: Map<string, Promise<unknown>>, key: string): string | undefined {
   const flow = inFlow.getStore();
-  if (!flow || flow.asked.has(key)) return;
-  flow.asked.add(key);
-  let askers = askersOf.get(memo);
-  if (!askers) {
-    askers = new Map();
-    askersOf.set(memo, askers);
+  if (!flow) return undefined;
+  const n = (flow.asks.get(key) ?? 0) + 1;
+  flow.asks.set(key, n);
+  const step = stepOf(key, n);
+  flow.made.push({ step, at: quietPoints() });
+  if (n === 1) {
+    let askers = askersOf.get(memo);
+    if (!askers) {
+      askers = new Map();
+      askersOf.set(memo, askers);
+    }
+    askers.set(key, (askers.get(key) ?? 0) + 1);
   }
-  askers.set(key, (askers.get(key) ?? 0) + 1);
+  return step;
 }
 
 /**
  * How long a read by id asked by a project's read waits (`db/query-timing.ts:whenQuiet`): not at all
- * once every project's read still running has asked it, else as many as have asked it. Where every
- * read waits on a key another has yet to ask, the keys fewest of them asked are read first: a
- * project's read a step behind the others goes on to the key they wait on.
+ * once every project's read still running waits on it. A read waiting on something else that, as its
+ * read's order shows ({@link Order}), asks the key after it holds the key longer than a read that
+ * does not: the batch is read once the reads a step behind have reached it, so a key two projects
+ * reach at different steps, or ask again further on, is still read once (ISS-1070 r9). Where every
+ * read waits on a key another may yet ask, the keys fewest of them asked are read first.
  */
-const heldFor = (memo: Map<string, Promise<unknown>>, key: string) => () =>
-  [...(flowsOf.get(memo) ?? [])].some((f) => !f.asked.has(key))
-    ? (askersOf.get(memo)?.get(key) ?? 0) + 1
-    : 0;
+const heldFor = (memo: Map<string, Promise<unknown>>, key: string) => () => {
+  let held = 0;
+  for (const f of flowsOf.get(memo) ?? []) {
+    if ([...f.waiting.keys()].some((w) => isStepOf(w, key))) continue;
+    if (mayAsk(f.order, f.waiting.keys(), key, f.asks.get(key) ?? 0))
+      return (askersOf.get(memo)?.get(key) ?? 0) + 2;
+    held = 1;
+  }
+  return held;
+};
+
+/** Runs `fn` as a wait of the project's read running this code on `step`, where one does. */
+async function waitingOn<T>(step: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const flow = inFlow.getStore();
+  if (!flow || step === undefined) return fn();
+  flow.waiting.set(step, (flow.waiting.get(step) ?? 0) + 1);
+  try {
+    return await fn();
+  } finally {
+    const n = (flow.waiting.get(step) ?? 1) - 1;
+    if (n > 0) flow.waiting.set(step, n);
+    else flow.waiting.delete(step);
+  }
+}
 
 const slotOf = (key: string, id: string) => `${key}\u0000${id}`;
 
@@ -316,7 +378,7 @@ async function perId<V>(
   const unique = [...new Set(ids)];
   // a request reading one project at most has no other project's read to wait for
   if ((across.get(memo)?.size ?? 0) <= 1) return perSet(memo, key, unique, read);
-  asked(memo, key);
+  const step = asked(memo, key);
   const slot = (id: string) => slotOf(key, id);
   const missing = unique.filter((id) => !memo.has(slot(id)));
   if (missing.length > 0) {
@@ -328,13 +390,16 @@ async function perId<V>(
   } else {
     // an ask answered from what is held still waits for the quiet point, as one that reads does: the
     // reads of a person's projects then ask each fact in the same wave, whichever asked it first
-    await new Promise<void>((answered) => whenQuiet(answered));
+    await waitingOn(step, () => new Promise<void>((answered) => whenQuiet(answered)));
   }
   // each id waits on its batch's answer: a handful of batches however many ids
   const held = unique.map((id) => memo.get(slot(id)) as Promise<ReadonlyMap<string, V>>);
   const batchesOf = [...new Set(held)];
   const answers = new Map(
-    (await Promise.all(batchesOf)).map((m, i) => [batchesOf[i] as Promise<unknown>, m]),
+    (await waitingOn(step, () => Promise.all(batchesOf))).map((m, i) => [
+      batchesOf[i] as Promise<unknown>,
+      m,
+    ]),
   );
   const out = new Map<string, V>();
   unique.forEach((id, i) => {

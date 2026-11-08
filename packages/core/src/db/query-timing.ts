@@ -15,6 +15,8 @@ export interface QueryTiming {
   sending: number;
   /** What waits for the request's next quiet point ({@link whenQuiet}). */
   quiet: QuietWait[];
+  /** How many quiet points the request has reached. */
+  points: number;
   /** The request's named parts ({@link withQueryLeg}), in the order first entered. */
   legs: Map<string, QueryLeg>;
 }
@@ -50,6 +52,7 @@ export const newQueryTiming = (): QueryTiming => ({
   openedAt: 0,
   sending: 0,
   quiet: [],
+  points: 0,
   legs: new Map(),
 });
 
@@ -130,6 +133,7 @@ export function whenQuiet(fn: () => void, held?: () => number): void {
 // those holding the least
 function settle(t: QueryTiming): void {
   if (t.sending > 0 || t.quiet.length === 0) return;
+  t.points += 1;
   const due = t.quiet.map((w) => ({ w, held: w.held?.() ?? 0 }));
   const least = Math.min(...due.map((d) => d.held));
   const run = due.filter((d) => d.held === least).map((d) => d.w);
@@ -138,6 +142,9 @@ function settle(t: QueryTiming): void {
   // what ran may have sent nothing (an answer already held): what it kept back waits for the next point
   if (t.quiet.length > 0) setImmediate(() => settle(t));
 }
+
+/** How many quiet points the request this code runs inside has reached; 0 outside one. */
+export const quietPoints = (): number => timings.getStore()?.points ?? 0;
 
 /** Marks a statement of `t` sent; the function it returns marks it answered, once. */
 export function statementSent(t: QueryTiming): () => void {
