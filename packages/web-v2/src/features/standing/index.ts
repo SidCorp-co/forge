@@ -2,4 +2,4 @@
 // (REQ-48 BC-7, BC-8, BC-12).
 export { StewardActs } from "./components/steward-acts";
 export { StewardNoteLines } from "./components/steward-note";
-export { standingKeyOf, useNoteLines, useStandings, useStewardActs, useStewardNote, useStuckReasons, type StuckReason } from "./hooks";
+export { standingKeyOf, useStandings, useStewardActs, useStewardNote, useStuckReasons, type StuckReason } from "./hooks";

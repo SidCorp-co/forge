@@ -52,22 +52,24 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
   const language = useInterfaceLanguage();
   const w = f.waitingOn;
   const g = f.attentionGroup;
-  const stuck = g === "stuck" ? f.times.stuck : null;
+  const stuck = g === "overdue" ? f.times.stuck : null;
   // stuck says why in core's sentence (REQ-48 BC-5): a draft carrier reads so here, never "ship"
   if (stuck) {
     return <WaitBanner tone="blocked" head={t("feedback.banner.stuck")} body={said(stuck.says.reason, language)} rule={said(w.says.rule, language)} className={className} />;
   }
   const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
+  // declined sits in Dropped, never in Done, and owes nothing either
+  const ended = g === "done" || g === "dropped";
   const version = f.route?.carriers.find((c) => c.release)?.release ?? null;
-  const approving = g !== "done" && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.approveReleaseV");
-  const verifying = g !== "done" && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.verifyFixIn");
-  const answer = g !== "done" && saysKey(w.says.act, "standing.act.confirmAnswer") ? answerOf(f) : null;
+  const approving = !ended && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.approveReleaseV");
+  const verifying = !ended && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.verifyFixIn");
+  const answer = !ended && saysKey(w.says.act, "standing.act.confirmAnswer") ? answerOf(f) : null;
   return (
     <WaitBanner
-      tone={g === "waiting" || g === "done" ? "calm" : tone}
-      head={g === "done" ? t("feedback.banner.nothingOwed") : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : said(w.says.who, language) })}
+      tone={g === "waiting" || ended ? "calm" : tone}
+      head={ended ? t("feedback.banner.nothingOwed") : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : said(w.says.who, language) })}
       body={
-        g === "done" ? null : approving ? (
+        ended ? null : approving ? (
           <>
             {t("feedback.banner.approveRelease")}{" "}
             <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug, version)}>

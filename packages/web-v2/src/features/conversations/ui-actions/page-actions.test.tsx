@@ -53,6 +53,7 @@ const requirement = (seq: number, title: string, kind: WaitingKind, attentionGro
     touchedAt: "2026-10-08T10:00:00.000Z",
     stateSince: "2026-10-08T10:00:00.000Z",
     facts: { criteria: 2, passing: 0, judged: 0, issuesTotal: 0, proposedRevision: null, draftRevision: null },
+    coverage: [],
   },
 });
 const REQUIREMENTS = [
@@ -61,7 +62,7 @@ const REQUIREMENTS = [
   requirement(36, "Previews", "person", "waiting"),
 ];
 
-const feedback = (seq: number, kind: WaitingKind, attentionGroup: string, phase: string) => ({
+const feedback = (seq: number, kind: WaitingKind, attentionGroup: string, phase: string, chip = "new") => ({
   id: `f${seq}`,
   key: `FB-${seq}`,
   title: `Feedback ${seq}`,
@@ -70,6 +71,7 @@ const feedback = (seq: number, kind: WaitingKind, attentionGroup: string, phase:
   severity: "high",
   status: "open",
   phase,
+  chip,
   target: { type: "project", ref: null, label: null },
   route: null,
   reporter: { id: "u-2", name: "Minh", agency: "human" },
@@ -85,7 +87,7 @@ const feedback = (seq: number, kind: WaitingKind, attentionGroup: string, phase:
   owner: null,
   touchedAt: "2026-10-08T10:00:00.000Z",
 });
-const FEEDBACK = [feedback(52, "you", "needs_you", "new"), feedback(53, "run", "moving", "triaged"), feedback(54, "agent", "waiting", "triaged")];
+const FEEDBACK = [feedback(52, "you", "needs_you", "new"), feedback(53, "run", "running", "triaged"), feedback(54, "agent", "waiting", "triaged")];
 
 function core() {
   return fakeCore((c) => {

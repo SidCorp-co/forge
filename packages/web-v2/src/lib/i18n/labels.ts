@@ -18,6 +18,7 @@ import {
   FEEDBACK_PHASE_HINTS,
   FEEDBACK_PHASE_LABELS,
   FEEDBACK_ROUTE_LABELS,
+  FEEDBACK_ROW_CHIP_LABELS,
   FEEDBACK_SEVERITY_LABELS,
   FEEDBACK_TARGET_LABELS,
 } from "@forge/contracts/feedback";
@@ -79,6 +80,7 @@ export const LABEL_GROUPS = {
   releaseProof: RELEASE_PROOF_LABELS,
   releaseAttention: labelsOf(RELEASE_ATTENTION_LABELS),
   feedbackPhase: FEEDBACK_PHASE_LABELS,
+  feedbackChip: FEEDBACK_ROW_CHIP_LABELS,
   feedbackKind: FEEDBACK_KIND_LABELS,
   feedbackSeverity: FEEDBACK_SEVERITY_LABELS,
   feedbackRoute: FEEDBACK_ROUTE_LABELS,
