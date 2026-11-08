@@ -141,6 +141,7 @@
     "feedback.questions.heading": "Questions",
     "feedback.questions.toReporter": "Asked of the reporter",
     "feedback.questions.withheld": "The question's words are withheld from you",
+    "feedback.judgingPaused": "Judging resumes at {time}.",
     "feedback.noMatch": "No match",
     "feedback.noun": "feedback",
     "feedback.picker.aria": "Original",

@@ -47,7 +47,7 @@ import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useEtaSort, useFeedbackForecasts } from "@/features/forecast";
-import { useFeedbackList } from "../hooks";
+import { useFeedbackList, useStewardBudget } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
@@ -193,6 +193,9 @@ const rowOf =
     };
   };
 
+/** "00:00 UTC": when the steward's next day opens, as core reads it. */
+const utcClock = (iso: string) => `${new Date(iso).toISOString().slice(11, 16)} UTC`;
+
 export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
   const label = useLabel();
@@ -205,6 +208,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   // the page's New feedback is its one feedback action: the bar's Feedback yields to it (ISS-1072)
   usePageFilesFeedback();
   const forecastQ = useFeedbackForecasts(projectId);
+  const budget = useStewardBudget(projectId).data;
   const forecasts = new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i]));
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
@@ -269,6 +273,12 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
           ) : (
             <>
               <Funnel rows={all} untold={q.data?.untold} />
+              {/* a project-wide wait said once above the rows, never on each (ISS-1137 6a, ISS-1148) */}
+              {budget?.judgingPaused ? (
+                <p className="px-5 py-2 text-12 text-muted max-md:px-3" data-testid="feedback-judging-paused">
+                  {t("feedback.judgingPaused", { time: utcClock(budget.resumesAt) })}
+                </p>
+              ) : null}
               <GroupedList
                 ariaLabel={t("feedback.title")}
                 groups={list.groups}

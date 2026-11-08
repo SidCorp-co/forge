@@ -37,6 +37,10 @@ export function useItemRecordings(projectId: string, fbKey: string) {
 
 export const useFeedbackList = (projectId: string | undefined) => useQuery(readOf(feedbackKeys.list(projectId), () => feedbackApi.list(projectId as string)));
 
+/** The steward's day as core reads it: the list says once, above its rows, when judging is paused (ISS-1148). */
+export const useStewardBudget = (projectId: string) =>
+  useQuery({ ...readOf(["steward-budget", projectId], () => feedbackApi.stewardBudget(projectId), 60_000), enabled: Boolean(projectId) });
+
 export const useFeedbackItem = (projectId: string | undefined, key: string | undefined) =>
   useQuery(readOf(feedbackKeys.item(projectId, key), () => feedbackApi.get(projectId as string, key as string)));
 

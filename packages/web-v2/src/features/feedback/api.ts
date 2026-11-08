@@ -1,3 +1,4 @@
+import type { StewardBudgetView } from "@forge/contracts/steward-runtime";
 import { apiClient } from "@/lib/api/client";
 import type {
   CreateFeedbackRequest,
@@ -64,6 +65,8 @@ export interface TargetChoice {
 
 export const feedbackApi = {
   list: (projectId: string) => apiClient<FeedbackListResponse>(base(projectId)),
+  /** The steward's UTC day: whether its jobs are spent, so judging waits until `resumesAt` (ISS-1148). */
+  stewardBudget: (projectId: string) => apiClient<StewardBudgetView>(`/projects/${projectId}/steward-budget`),
   get: (projectId: string, key: string) => apiClient<FeedbackResponse>(one(projectId, key)),
   /** What a person picks About from: the project's requirements and releases by title, its workflows by flow, read as the lists' own routes serve them. */
   choices: async (projectId: string, type: "requirement" | "workflow" | "release"): Promise<TargetChoice[]> => {
