@@ -25,6 +25,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
         cmd.args(&launch.args)
             .env_clear()
             .envs(launch.env.iter().map(|(k, v)| (k, v)))
+            .envs(pane_terminal(&launch.env))
             .current_dir(&launch.cwd);
         let err = cmd.exec();
         anyhow::bail!(
@@ -37,4 +38,15 @@ pub fn run(args: Args) -> anyhow::Result<()> {
         let _ = launch;
         anyhow::bail!("chat-pane-exec runs only on Linux, where a chat session is confined")
     }
+}
+
+#[cfg(target_os = "linux")]
+/// The terminal the pane's tmux gave this process, where the launch names none: the daemon that
+/// built the launch runs under no terminal, and an interactive session cannot draw without one.
+fn pane_terminal(env: &[(std::ffi::OsString, std::ffi::OsString)]) -> Vec<(String, String)> {
+    ["TERM", "COLORTERM"]
+        .into_iter()
+        .filter(|k| !env.iter().any(|(name, _)| name == k))
+        .filter_map(|k| std::env::var(k).ok().map(|v| (k.to_string(), v)))
+        .collect()
 }
