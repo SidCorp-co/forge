@@ -68,6 +68,45 @@ export function requireOasdiff(env: NodeJS.ProcessEnv = process.env): Promise<st
   return pending;
 }
 
+type Download = (
+  url: string,
+  opts: { timeoutMs?: number },
+) => Promise<{ ok: true; bytes: Buffer } | { ok: false; status: number }>;
+
+/** The waits before each retry: an image build fails on the last, never on one bad answer. */
+export const DOWNLOAD_RETRY_WAITS_MS: readonly number[] = [2_000, 5_000, 10_000];
+
+const transient = (status: number) => status >= 500 || status === 429;
+
+const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
+/**
+ * The asset's bytes. A 5xx, a 429 or a network error is retried after each of
+ * {@link DOWNLOAD_RETRY_WAITS_MS} (ISS-1138: one GitHub 504 failed a deploy's image build). Any
+ * other status fails at once by name, and the last failure names every attempt.
+ */
+export async function downloadPinned(
+  url: string,
+  download: Download = downloadReleaseAsset,
+  wait: (ms: number) => Promise<void> = pause,
+): Promise<Buffer> {
+  const seen: string[] = [];
+  for (let attempt = 0; attempt <= DOWNLOAD_RETRY_WAITS_MS.length; attempt++) {
+    if (attempt > 0) await wait(DOWNLOAD_RETRY_WAITS_MS[attempt - 1] ?? 0);
+    let got: Awaited<ReturnType<Download>>;
+    try {
+      got = await download(url, { timeoutMs: 120_000 });
+    } catch (err) {
+      seen.push(err instanceof Error ? err.message : String(err));
+      continue;
+    }
+    if (got.ok) return got.bytes;
+    seen.push(`HTTP ${got.status}`);
+    if (!transient(got.status)) throw new Error(`GET ${url} answered HTTP ${got.status}`);
+  }
+  throw new Error(`GET ${url} failed ${seen.length} times: ${seen.join(', ')}`);
+}
+
 export async function fetchOasdiff(
   dir: string,
   platform = `${process.platform}-${process.arch}`,
@@ -76,9 +115,7 @@ export async function fetchOasdiff(
   const target = join(dir, 'oasdiff');
   if (existsSync(target)) return verify(target);
   const url = releaseDownloadUrl('oasdiff/oasdiff', `v${OASDIFF_VERSION}`, name);
-  const download = await downloadReleaseAsset(url, { timeoutMs: 120_000 });
-  if (!download.ok) throw new Error(`GET ${url} answered HTTP ${download.status}`);
-  const bytes = download.bytes;
+  const bytes = await downloadPinned(url);
   const got = createHash('sha256').update(bytes).digest('hex');
   if (got !== sha256) {
     throw new Error(`${name} hashes ${got}; the pin is ${sha256}.`);
