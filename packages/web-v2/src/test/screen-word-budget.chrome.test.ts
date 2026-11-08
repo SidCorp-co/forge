@@ -12,6 +12,15 @@
 // @gate-input whole-tree
 // @direct-test-of packages/web-v2/src/features/workflows/components/workflow-where-it-stands.tsx
 // @direct-test-of packages/web-v2/src/features/workflows/components/design-banner.tsx
+// ISS-1131: the screens its rollout rewrote, and the loader a first view may not stop on
+// @direct-test-of packages/web-v2/src/features/integrations/components/connection-row.tsx
+// @direct-test-of packages/web-v2/src/features/integrations/connection-groups.ts
+// @direct-test-of packages/web-v2/src/features/requirements/components/requirement-line.tsx
+// @direct-test-of packages/web-v2/src/features/requirements/components/requirement-placement.tsx
+// @direct-test-of packages/web-v2/src/features/workflows/components/workflows-screen.tsx
+// @direct-test-of packages/web-v2/src/features/feedback/components/my-forge-feedback.tsx
+// @direct-test-of packages/web-v2/src/features/shell/components/not-found-body.tsx
+// @direct-test-of packages/web-v2/src/design/patterns/mascot-loaders.tsx
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
