@@ -92,14 +92,6 @@
       "count": 1
     }
   },
-  "src/features/requirements/components/requirement-picture.test.tsx": {
-    "@eslint-react/rules-of-hooks": {
-      "count": 1
-    },
-    "boundaries/dependencies": {
-      "count": 1
-    }
-  },
   "src/features/requirements/components/requirements-screen.test.tsx": {
     "@eslint-react/purity": {
       "count": 1

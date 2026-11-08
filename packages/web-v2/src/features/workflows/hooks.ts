@@ -14,12 +14,17 @@ import type { DesignDecisionBody, DesignDocument, RepinActBody, SystemGraphRef, 
 /** Every query key the workflows feature reads under; a key without its workflow is the prefix of every design's. */
 const workflowKeys = {
   list: (projectId: string | undefined) => ["workflows", projectId] as const,
+  one: (projectId: string | undefined, workflowId: string) => ["workflows", projectId, "one", workflowId] as const,
   design: (projectId: string | undefined, workflowId?: string) => ["workflow-design", projectId, ...(workflowId === undefined ? [] : [workflowId])] as const,
   health: (projectId: string | undefined, workflowId?: string) => ["workflow-health", projectId, ...(workflowId === undefined ? [] : [workflowId])] as const,
   repins: (projectId: string | undefined, workflowId?: string) => ["workflow-repins", projectId, ...(workflowId === undefined ? [] : [workflowId])] as const,
 };
 
 export const useWorkflows = (projectId: string | undefined) => useQuery(readOf(workflowKeys.list(projectId), () => workflowsApi.list(projectId as string)));
+
+/** One workflow, read by its id alone: a requirement's picture draws the design it links, never every design of the project (ISS-921). */
+export const useWorkflow = (projectId: string | undefined, workflowId: string) =>
+  useQuery(readOf(workflowKeys.one(projectId, workflowId), () => workflowsApi.one(projectId as string, workflowId)));
 
 /** The diagram templates this project draws in: the built-ins, then its own. They change on a deploy or a project-document write. The built-ins read in the interface language; the project's own as written. */
 export function useWorkflowTemplates(projectId: string | undefined) {

@@ -280,6 +280,8 @@ export const REQ_WORKFLOWS = {
 
 export const reqQueries = (): [QueryKey, unknown][] => [
   [["workflows", REQ_PROJECT], REQ_WORKFLOWS],
+  // the picture reads the one design it draws (ISS-921)
+  ...REQ_WORKFLOWS.workflows.map((w): [QueryKey, unknown] => [["workflows", REQ_PROJECT, "one", w.workflowId], w]),
   [["workflow-templates", REQ_PROJECT], { templates: [] }],
   [["requirements", REQ_PROJECT], { requirements: [reqSummary("REQ-1"), reqSummary("REQ-2", { standing: { ...standing, attentionGroup: "done", state: "accepted" } as never })], returned: 2 }],
   [["requirement", REQ_PROJECT, "REQ-1"], reqDetail],
