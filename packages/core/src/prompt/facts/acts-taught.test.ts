@@ -129,6 +129,14 @@ describe('a release run says what left when it stops', () => {
   it('catches a refusal no code list holds', () => {
     expect(unknown('refused `RELEASE_VERSION_UNDECIDE`')).toEqual(['RELEASE_VERSION_UNDECIDE']);
   });
+
+  // ISS-1076 (FB-542): agenfold's `batch-release-0.189.0` and `gate-v0.190.0` outlived their release
+  it('removes the trees it made once it finishes or aborts, and names one it cannot', () => {
+    const rule = releaseBatchStatePrompt.slice(releaseBatchStatePrompt.indexOf('Leave no tree'));
+    expect(rule).toContain('git worktree remove --force <path>');
+    expect(rule).toContain('status --porcelain');
+    expect(rule).toContain("as the master's to remove");
+  });
 });
 
 describe('a run writes memory another reader can trust', () => {

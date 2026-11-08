@@ -97,4 +97,8 @@ a step you could not complete, a procedure that does not fit what you actually f
   answers that attempt; once it has finished, it answers the recorded outcome.
 - If the deploy comes up dead, REPAIR FORWARD. Never roll back, never revert a shared branch and
   never restore an earlier build: from inside this session you cannot tell an outage you caused
-  from one that was already there. Where you cannot repair forward, abort with the reason.`;
+  from one that was already there. Where you cannot repair forward, abort with the reason.
+- Leave no tree behind (ISS-1076). Once \`finish.state\` is \`finished\`, or once you abort, remove
+  each git worktree this run made (a release or gate checkout): \`git -C <path> status --porcelain\`
+  shows no tracked change, then \`git worktree remove --force <path>\` and \`git worktree prune\`.
+  One you cannot remove, name by its path in your report as the master's to remove.`;
