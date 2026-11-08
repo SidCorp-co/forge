@@ -1,6 +1,8 @@
 export {
+  endPeerRelease,
   listPeerCommentBodies,
   listPeerIssues,
+  listPeerPressedReleases,
   listPeerProjects,
   markPeerIssueLanded,
   type PeerAnswer,
@@ -10,6 +12,8 @@ export {
   type PeerProject,
   type PeerRecorded,
   type PeerRefusal,
+  type PeerRelease,
+  type PeerReleaseIssue,
   type PeerReleaseNote,
   type PeerReleaseRecord,
   peerMovedIntoSince,

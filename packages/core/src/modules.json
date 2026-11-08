@@ -200,7 +200,7 @@
     "beta-port": {
       "kind": "domain",
       "context": "work",
-      "owns": ["betaPortPairs"],
+      "owns": ["betaPortPairs", "betaPortReleases"],
       "serves": ["automation#inline"]
     },
     "body": {
