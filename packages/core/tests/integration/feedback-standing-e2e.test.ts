@@ -307,6 +307,34 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
   });
 });
 
+// ISS-1086 (agenfold FB-108, 51, 31): an item whose carrier was dropped read a holder's re-triage on a
+// project whose triage is the master's, and never reached the master's pass
+describe('an item whose carrier is dropped owes its triage again to whoever triages', () => {
+  afterAll(async () => {
+    await seedIssueStatus(ids.carrier, 'awaiting_release');
+  });
+
+  it('is the master’s act outside strict, and named on its pass', async () => {
+    await seedIssueStatus(ids.carrier, 'dropped');
+    expect(await standingAs('owner', ids.high)).toMatchObject({
+      waitingOn: { kind: 'agent', who: "The project's master", act: 'triage it again' },
+    });
+    expect(await owedTriages()).toContain(ids.high);
+  });
+
+  it('is a person’s under strict, as a fresh item’s is', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    try {
+      expect(await standingAs('owner', ids.high)).toMatchObject({
+        attentionGroup: 'needs_you',
+        waitingOn: { kind: 'you', act: 'triage it again' },
+      });
+    } finally {
+      await declareControls(projectId, ownerId, { gates: { profile: 'standard' } });
+    }
+  });
+});
+
 // FB-434's shape: a wait on "the master" that nothing can place sits stuck nobody_serves. A project no
 // runner is bound to never gets a master, so its new item's triage falls to a holder, named
 describe('a project no runner is bound to', () => {

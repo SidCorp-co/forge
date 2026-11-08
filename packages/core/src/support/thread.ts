@@ -157,7 +157,7 @@ export async function topLevelThreadOf(room: RoomRow): Promise<Outcome<string | 
   return no(
     'SUPPORT_PROJECT_THREAD_UNRECORDED',
     '/thread',
-    `${room.rid} is an operations room every project of the organization shares, one thread per project, and its binding records no thread for ${slug}, so the post would land at its top level. A project admin records the project's thread as \`operations.threads["${room.rid}"]["${slug}"]\` on binding ${room.bindingId} (PUT /api/projects/${room.projectId}/bindings/${room.bindingId}). Nothing was posted.`,
+    `${room.rid} is an operations room every project of the organization shares, one thread per project, and its binding records no thread for ${slug}, so the post would land at its top level. Name the project's thread in \`thread\` to post there now, one its members wrote in; a project admin records it as \`document.target.operations.threads["${room.rid}"]["${slug}"]\` on binding ${room.bindingId} (PUT /api/projects/${room.projectId}/bindings/${room.bindingId} with { baseRevision, document }). Nothing was posted.`,
   );
 }
 
