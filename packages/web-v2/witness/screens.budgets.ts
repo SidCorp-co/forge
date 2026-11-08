@@ -49,7 +49,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "project-settings": { budget: 70 },
   // REQ-90: the changes' three lanes, the inherited defaults and locked guarantees one click away
   agreements: { budget: 80 },
-  integrations: { budget: 80, amnesty: waits(101) },
+  integrations: { budget: 80 },
   runners: { budget: 80 },
   // ISS-919: three flat tables of three rows each; the Overview it replaced drew 120 in the same frame.
   // Its amnesty (163, names whole) was spent once the home drew 84 (UI-C, 2026-11-07).

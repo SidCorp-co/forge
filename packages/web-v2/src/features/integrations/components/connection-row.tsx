@@ -1,11 +1,11 @@
 
 
-import { createElement, lazy, Suspense, useId, useState } from "react";
+import { createElement, lazy, Suspense, useId } from "react";
 import { Badge, Button, Icon, statusReading } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
+import { useCanManageConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
 import { PROVIDER_MODULES, providerIcon, providerLabel as labelFor } from "../providers/registry";
 import { DirectoryStatusPill } from "./status-pill";
@@ -77,56 +77,6 @@ function connectionRowLabel(
   return parts.join(" — ");
 }
 
-function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
-  const remove = useRemoveConnection();
-  const t = useCopy();
-  const [armed, setArmed] = useState(false);
-  const count = connection.usage.bindings.length;
-
-  if (!armed) {
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation();
-          setArmed(true);
-        }}
-      >
-        {t("runners.row.remove")}
-      </Button>
-    );
-  }
-  return (
-    <span className="flex items-center gap-2">
-      <span className="fg-body-sm text-muted">
-        {count === 0 ? t("integrations.row.deleteIt") : count === 1 ? t("integrations.row.disconnectsOne") : t("integrations.row.disconnects", { n: count })}
-      </span>
-      <Button
-        variant="danger"
-        size="sm"
-        loading={remove.isPending}
-        onClick={(e) => {
-          e.stopPropagation();
-          remove.mutate(connection.id);
-        }}
-      >
-        {t("integrations.row.delete")}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation();
-          setArmed(false);
-        }}
-      >
-        {t("common.cancel")}
-      </Button>
-    </span>
-  );
-}
-
 export function ConnectionItem({
   connection,
   ownerLabel,
@@ -155,6 +105,11 @@ export function ConnectionItem({
   const target = connectionTarget(connection);
   const providerLabel = labelFor(connection.provider, language);
   const rowDetail = ROW_DETAILS.get(connection.provider);
+  const health = `${
+    connection.lastHealthStatus
+      ? `${t("integrations.row.lastHealth", { status: statusReading("connection", connection.lastHealthStatus, language).label })}${checked ? ` · ${checked}` : ""}`
+      : t("integrations.row.neverChecked")
+  }${connection.hasSecrets ? "" : ` · ${t("integrations.row.noCredential")}`}`;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
@@ -198,54 +153,39 @@ export function ConnectionItem({
             </span>
           )}
           <UsageLine connection={connection} emptyId={usageEmptyId} />
-          <span id={healthId} className="fg-body-sm text-subtle">
-            {connection.lastHealthStatus
-              ? `${t("integrations.row.lastHealth", { status: statusReading("connection", connection.lastHealthStatus, language).label })}${checked ? ` · ${checked}` : ""}`
-              : t("integrations.row.neverChecked")}
-            {!connection.hasSecrets && ` · ${t("integrations.row.noCredential")}`}
+          {/* the health reading is the status pill's reason: on hover there, read here by a screen reader (ISS-1131) */}
+          <span id={healthId} className="sr-only">
+            {health}
           </span>
         </span>
       </button>
 
-      <span id={statusId}>
+      <span id={statusId} title={health}>
         <DirectoryStatusPill status={connection.directoryStatus} />
       </span>
 
+      {/* one next act on the row: Enable where it is off; Disable and Remove are the opened row's (ISS-1131) */}
       <span className="flex shrink-0 items-center gap-1">
         {canManage ? (
-          <>
-            {connection.active ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                loading={update.isPending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  update.mutate({ id: connection.id, body: { active: false } });
-                }}
-              >
-                {t("integrations.row.disable")}
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={update.isPending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  update.mutate({ id: connection.id, body: { active: true } });
-                }}
-              >
-                {t("integrations.row.enable")}
-              </Button>
-            )}
-            <RemoveButton connection={connection} />
-          </>
+          connection.active ? null : (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={update.isPending}
+              onClick={(e) => {
+                e.stopPropagation();
+                update.mutate({ id: connection.id, body: { active: true } });
+              }}
+            >
+              {t("integrations.row.enable")}
+            </Button>
+          )
         ) : (
-          <span className="fg-body-sm text-subtle">
-            {connection.ownerType === "instance"
-              ? t("integrations.row.readOnlyInstance")
-              : t("integrations.row.readOnly", { owner: ownerLabel })}
+          <span
+            className="fg-body-sm text-subtle"
+            title={connection.ownerType === "instance" ? t("integrations.row.readOnlyInstance") : t("integrations.row.readOnly", { owner: ownerLabel })}
+          >
+            {t("integrations.row.readOnlyShort")}
           </span>
         )}
       </span>

@@ -68,10 +68,10 @@ export function groupConnectionsByApp(items: ConnectionDirectoryItem[], language
 }
 
 export function groupSummary(group: Pick<ConnectionGroup, "connections" | "needsAttention" | "off">, t: Copy): string {
+  // the count, and what wants the operator: an off connection reads off on its own row (ISS-1131)
   const count = group.connections.length;
-  const parts = [count === 1 ? t("integrations.group.oneConnection") : t("integrations.group.connections", { n: count })];
+  const parts = [String(count)];
   if (group.needsAttention > 0)
     parts.push(group.needsAttention === 1 ? t("integrations.group.needsAttentionOne") : t("integrations.group.needsAttention", { n: group.needsAttention }));
-  if (group.off > 0) parts.push(t("integrations.group.off", { n: group.off }));
   return parts.join(" · ");
 }
