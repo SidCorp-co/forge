@@ -119,22 +119,28 @@ export function startDeferredBackfills(): void {
     .catch((err) => logger.error({ err }, 'boot: writing the marked criteria facts failed'));
 }
 
-/** Rewrites every issue marked for its builder facts, 0627's backfill among them, a batch at a time. */
-async function fillBuilderFacts(): Promise<number> {
+const FILL_BATCH = 200;
+
+/**
+ * Drains marks a batch at a time until a batch comes back short. A mark a live writer holds or bumps
+ * again stays among the oldest, so draining to an empty table could reread the same rows for as long
+ * as that writer runs; what a short batch leaves is the ten-minute sweep's.
+ */
+async function fillMarked(drain: (ex: typeof db, limit: number) => Promise<number>): Promise<number> {
   let total = 0;
   for (;;) {
-    const n = await drainStaleBuilderFacts(db, 200);
+    const n = await drain(db, FILL_BATCH);
     total += n;
-    if (n === 0) return total;
+    if (n < FILL_BATCH) return total;
   }
 }
 
+/** Rewrites every issue marked for its builder facts, 0627's backfill among them, a batch at a time. */
+function fillBuilderFacts(): Promise<number> {
+  return fillMarked(drainStaleBuilderFacts);
+}
+
 /** Rewrites every issue marked for its criteria facts, 0633's backfill among them, a batch at a time. */
-async function fillCriteriaFacts(): Promise<number> {
-  let total = 0;
-  for (;;) {
-    const n = await drainStaleCriteriaFacts(db, 200);
-    total += n;
-    if (n === 0) return total;
-  }
+function fillCriteriaFacts(): Promise<number> {
+  return fillMarked(drainStaleCriteriaFacts);
 }

@@ -306,7 +306,11 @@ export async function criteriaFactDrift(
     .sort((a, b) => a.issueId.localeCompare(b.issueId));
 }
 
-/** Issues the drift sweep weighs each pass: the newest verdicts' issues, and as many at random. */
+/**
+ * Issues the drift sweep weighs each pass: the newest verdicts' issues, and as many at random. The
+ * random ones are drawn row by row (`ORDER BY random()`, one row per issue): a page sample
+ * (`TABLESAMPLE SYSTEM`) of a table a few pages long draws nothing on most passes.
+ */
 const SWEEP_NEWEST = 100;
 const SWEEP_RANDOM = 100;
 /** Marked issues the sweep rewrites each pass, oldest first, so a mark no read reaches still ends. */
@@ -334,7 +338,7 @@ export async function sweepCriteriaFacts(ex: Executor = db): Promise<CriteriaFac
   const sample = (await ex.execute(sql`
     (SELECT issue_id FROM criterion_verdicts GROUP BY issue_id ORDER BY max(created_at) DESC LIMIT ${SWEEP_NEWEST})
     UNION
-    (SELECT issue_id FROM issue_criteria_facts TABLESAMPLE SYSTEM (5) LIMIT ${SWEEP_RANDOM})`)) as unknown as {
+    (SELECT issue_id FROM issue_criteria_facts ORDER BY random() LIMIT ${SWEEP_RANDOM})`)) as unknown as {
     issue_id: string;
   }[];
   const ids = sample.map((r) => r.issue_id);

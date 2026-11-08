@@ -300,7 +300,7 @@ export async function sweepBuilderFacts(ex: Executor = db): Promise<BuilderFactS
   const sample = (await ex.execute(sql`
     (SELECT issue_id FROM criterion_verdicts GROUP BY issue_id ORDER BY max(created_at) DESC LIMIT ${SWEEP_NEWEST})
     UNION
-    (SELECT issue_id FROM verdict_builder_facts TABLESAMPLE SYSTEM (5) LIMIT ${SWEEP_RANDOM})`)) as unknown as {
+    (SELECT issue_id FROM (SELECT DISTINCT issue_id FROM verdict_builder_facts) d ORDER BY random() LIMIT ${SWEEP_RANDOM})`)) as unknown as {
     issue_id: string;
   }[];
   const ids = sample.map((r) => r.issue_id);
