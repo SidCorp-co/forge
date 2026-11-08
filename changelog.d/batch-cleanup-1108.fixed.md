@@ -15,3 +15,20 @@
 - A draft requirement the intake assistant could not draft, with no retry left, is named on every master pass with its failure code until it is drafted, proposed or leaves draft (ISS-772).
 - A project whose change requests a person merges on the host (`release.mergedBy: person`) reads an accepted release's merges as that person's on the release page, and its master is no longer told to make them (ISS-1090).
 - A promotion merged on the host while its release's approval is undecided no longer closes its roster on the deploy record: the record is refused by the approval rule where the project enforces it, and recorded as taken unapproved elsewhere (ISS-819).
+- The Delivery overview draws an issue a live run is working as Moving, never Stuck, and an issue whose run is held only under Holds; the CI and post-merge signals it never answered are gone (ISS-684).
+- An ended release page lists only highlights that show a clip or picture QA kept of what they claim (ISS-693).
+- A reported problem whose title matches an open one joins it even when the model reading fails (ISS-694).
+- A support room's live bar and room table open the room's session where it has one (ISS-941).
+- Knowledge keyword and hybrid search apply one match rule to project and org entries and merge them by rank, so org rows no longer crowd out the project's (ISS-1142).
+- A GitLab connection that is rate-limited reuses compare answers, holds background callers past the host's wait, and a refused read says when to ask again (ISS-1144).
+- Readiness counts a merge only where it landed on the default branch (ISS-702).
+- A release with production declared and no approval required waits on the master or an admin instead of reading done (ISS-709).
+- A merge recorded before an issue was reopened no longer stands for the new round's landing (ISS-712).
+- A promotion's change request no longer stamps a merge on the issues it carries (ISS-726).
+- A proposed feedback triage names a missing route by name (ISS-940).
+- A second open question with the same subject and prompt is refused QUESTION_ALREADY_OPEN (ISS-918).
+- A session context with a malformed lease is refused at `lease` (ISS-995).
+- Release pages and the release tool no longer name a probe replay or RELEASE_NOT_VERIFIED, which no release emits (ISS-936).
+- The Coolify env door reads an empty variable as empty, refuses a token without write ability as COOLIFY_TOKEN_CANNOT_WRITE naming its connection, and names the deploy binding ids; a connection PATCH refuses a key it does not take (ISS-938).
+- A release run removes each worktree it made once it finishes or aborts, or names one it could not (ISS-1076).
+- Who lowers a gate profile Forge raised is the `gates.lower` permission, never the writer's user kind (ISS-823).

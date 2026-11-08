@@ -1,0 +1,2 @@
+- The owner can waive a support channel switch's duties by their word, recorded as a waiver; only the organization's owner gives it (ISS-945).
+- A direct-mcp integration's credential hand-off is the declared egress surface `integration.credential`, and a declaration naming none is refused at boot (ISS-825).
