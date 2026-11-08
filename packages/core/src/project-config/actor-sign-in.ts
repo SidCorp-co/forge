@@ -35,14 +35,16 @@ const FIELDS_SAID = `${ACCOUNT_FIELDS.slice(0, -1)
   .join(', ')} or \`${ACCOUNT_FIELDS[ACCOUNT_FIELDS.length - 1]}\``;
 
 /** The keys a secret describes a sign-in with beyond its route (ISS-1141). judge-login reads the
- * same keys (`session.rs`: `SIGN_IN_KEYS`), held equal by `actor-sign-in.test.ts`. */
+ * same keys (`judge_login/session/described.rs`: `SIGN_IN_KEYS`), held equal by
+ * `actor-sign-in.test.ts`. */
 export const SIGN_IN_KEYS = ['loginBody', 'tokenPath'] as const;
 
 /** The whole leaves of a `loginBody` replaced with the secret's account and password. */
 export const PLACEHOLDERS = ['$account', '$password'] as const;
 
 /** The merge that describes a GraphQL sign-in, as the refusals naming the door show it. judge-login
- * names the same (`session.rs`: `GRAPHQL_SET`), held equal by `actor-sign-in.test.ts`. */
+ * names the same (`judge_login/session/described.rs`: `GRAPHQL_SET`), held equal by
+ * `actor-sign-in.test.ts`. */
 export const GRAPHQL_SET =
   '{"set":{"loginRoute":"https://<host>/graphql","loginBody":{"query":"mutation Login($email: String!, $password: String!) { login(email: $email, password: $password) { access_token } }","variables":{"email":"$account","password":"$password"}},"tokenPath":"/data/login/access_token"}}';
 

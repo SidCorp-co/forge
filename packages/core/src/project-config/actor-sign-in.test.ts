@@ -11,6 +11,7 @@ import {
 } from './actor-sign-in.js';
 
 // @direct-test-of packages/runner/crates/forge-runner/src/cmd/judge_login/session.rs
+// @direct-test-of packages/runner/crates/forge-runner/src/cmd/judge_login/session/described.rs
 
 // Core's write-time sign-in check and judge-login read one secret the same way (ISS-959): a secret
 // that passes here is one judge-login signs in with. The account fields are two lists in two
@@ -77,6 +78,13 @@ describe('where a sign-in answer carries its token (ISS-1094)', () => {
 
 // ISS-1141: epod's admin signs in with a GraphQL mutation POSTed to `/graphql`, and its token sits
 // at `/data/login/access_token`. The double answers that mutation alone, as a GraphQL server does.
+// judge-login's reading of a sign-in the secret describes (ISS-1141), a module of session.rs
+const DESCRIBED_RS = fileURLToPath(
+  new URL(
+    '../../../runner/crates/forge-runner/src/cmd/judge_login/session/described.rs',
+    import.meta.url,
+  ),
+);
 const GQL_URL = 'https://admin.epod.example.test/graphql';
 const GQL_ACCOUNT = 'judge-1141@epod.test';
 const GQL_PASSWORD = 'Corr3ct-H0rse-Battery-1141';
@@ -203,9 +211,9 @@ describe('a sign-in the secret describes: a GraphQL mutation (ISS-1141)', () => 
 
 describe('the keys a secret describes its sign-in with (ISS-1141)', () => {
   it('are the same in core and in judge-login', () => {
-    const source = readFileSync(SESSION_RS, 'utf8');
+    const source = readFileSync(DESCRIBED_RS, 'utf8');
     const keys = source.match(/const SIGN_IN_KEYS: \[&str; \d+\] = \[([^\]]*)\];/);
-    if (!keys?.[1]) throw new Error(`no SIGN_IN_KEYS array found in ${SESSION_RS}`);
+    if (!keys?.[1]) throw new Error(`no SIGN_IN_KEYS array found in ${DESCRIBED_RS}`);
     expect([...keys[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([...SIGN_IN_KEYS]);
     const example = source.match(/const GRAPHQL_SET: &str = r#"(.*)"#;/);
     expect(example?.[1]).toBe(GRAPHQL_SET);
