@@ -11,6 +11,7 @@ import {
   STEWARD_NOTE_CITES_MAX,
   type StewardCite,
   type StewardNoteWrite,
+  type StewardTrigger,
 } from '@forge/contracts/steward';
 import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
@@ -56,11 +57,27 @@ export function noteWriteOf(
   };
 }
 
+/**
+ * What each handoff is, in the words a person reads on the item (ISS-1137): a note names what waited,
+ * never the outbox event that carried it (`feedback.filed`). A trigger added without its words fails
+ * the typecheck here rather than printing its event name.
+ */
+export const TRIGGER_WORDS: Record<StewardTrigger, string> = {
+  'requirement.agreed': 'the agreed requirement',
+  'breakdown.proposed': 'the proposed breakdown',
+  'feedback.filed': 'the new feedback',
+  'standing.stuck': 'the stuck work',
+  'release.asked': 'the release asked for',
+  'release.held': 'the held release',
+  'release.shipped': 'the shipped release',
+  'standing.changed': 'the change in where this stands',
+};
+
 export function budgetNoteBody(run: RunRow, standing: ItemStanding): StewardNoteWrite {
   return noteWriteOf(
     standing,
     [
-      `The steward's daily budget for this project is spent, so it did not act on ${run.trigger} here.`,
+      `The steward's daily budget for this project is spent, so it did not act on ${TRIGGER_WORDS[run.trigger]} here.`,
       'It acts again after midnight UTC; until then this item waits on whoever its standing names.',
     ],
     [],
