@@ -165,12 +165,37 @@ describe("a steward job ends by its run's done door (REQ-48 BC-1)", () => {
     });
   });
 
+  // ISS-1004 (FB-511): a job core ended under a working agent took its token with it, and the run
+  // read only "ended failed", as though the agent had failed; it names core's end and why
+  it('reads a job core ended under its agent as core’s end, naming why, never the agent’s failure', async () => {
+    const { runId, jobId } = await claimedJob(49);
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    const { db } = await import('../../src/db/client.js');
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`
+        UPDATE jobs SET status = 'failed', failure_kind = 'infra',
+               failure_reason = 'dispatch never claimed by a runner (no ack / no started event within grace window)'
+         WHERE id = ${jobId}`),
+    );
+    const { settleJobRun } = await import('../../src/steward/dispatch.js');
+    const { runOfJob } = await import('../../src/steward/runs-store.js');
+    const run = await runOfJob(jobId);
+    if (!run) throw new Error('the run is not running');
+    await settleJobRun(run, 'failed');
+    const after = await ended(runId, jobId);
+    expect(after.run?.state).toBe('failed');
+    expect(after.run?.failure_kind).toBe('error');
+    expect(after.run?.failure).toContain('Forge ended the steward job');
+    expect(after.run?.failure).toContain('dispatch never claimed by a runner');
+    expect(after.run?.failure).toContain('not a failure of its agent');
+  });
+
   it("revokes the job's token once the job ends, though the done call that ended it lost the revoke", async () => {
     const { runId, jobId } = await claimedJob(48);
     const live = () =>
       rows<{ n: number }>(sql`
         SELECT count(*)::int AS n FROM personal_access_tokens
-         WHERE name = ${`steward job ${jobId}`} AND revoked_at IS NULL`);
+         WHERE name LIKE ${`steward job ${jobId} #%`} AND revoked_at IS NULL`);
     const { endRun } = await import('../../src/steward/runs-store.js');
     const { stewardJobCredential } = await import('../../src/steward/job.js');
     const { finalizeJobDone } = await import('../../src/jobs/index.js');

@@ -5,8 +5,9 @@
  * whose hold was released before the start, leaves that token live; the next prepare of the job must
  * still brief it with a working token, never fail the insert.
  *
- * - The second prepare answers 200 with a token that works; the first one no longer does.
- * - At most one live token of the job's name exists after each prepare, and the job's end revokes it.
+ * - The second prepare answers 200 with a token that works, and the first one still works: a pane
+ *   briefed with it may still be working the job (ISS-1004, FB-511), so only the job's end takes it.
+ * - Each prepare's token has a name of its own under the job's, and the job's end revokes every one.
  * - A prepare whose steward cannot act on the project is refused by name, not INTERNAL_ERROR.
  *
  * @direct-test-of packages/core/src/steward/job.ts
@@ -18,7 +19,13 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
-import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import {
+  closeWorld,
+  type Doc,
+  settleOutbox,
+  startQueue,
+  testEnv,
+} from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
   bindTestRunner,
@@ -113,11 +120,13 @@ function briefToken(prepared: Doc): string {
   return token;
 }
 
+/** The job's live steward tokens, one per prepare, each named under `steward job <jobId>`. */
 const liveNamed = async (jobId: string) =>
   (
     await rows<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM personal_access_tokens
-       WHERE name = ${`steward job ${jobId}`} AND revoked_at IS NULL`)
+       WHERE (name = ${`steward job ${jobId}`} OR name LIKE ${`steward job ${jobId} #%`})
+         AND revoked_at IS NULL`)
   )[0]?.n;
 
 /** Whether a token is let through a project door the steward account can read. */
@@ -125,7 +134,7 @@ const works = async (token: string) =>
   (await call(token, 'GET', `/api/projects/${projectId}`)).status === 200;
 
 describe('a steward job prepared twice (ISS-972)', () => {
-  it('briefs the second prepare with a working token and revokes the first', async () => {
+  it('briefs the second prepare with a working token, and leaves the first working', async () => {
     const { jobId } = await stewardJob();
     const first = await prepare(jobId);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
@@ -144,18 +153,21 @@ describe('a steward job prepared twice (ISS-972)', () => {
     const secondToken = briefToken(second.body);
     expect(secondToken).not.toBe(firstToken);
     expect(await works(secondToken)).toBe(true);
-    expect(await works(firstToken)).toBe(false);
-    expect(await liveNamed(jobId)).toBe(1);
+    // ISS-1004: a pane briefed with the first may still be working the job; nothing tells it
+    expect(await works(firstToken)).toBe(true);
+    expect(await liveNamed(jobId)).toBe(2);
   });
 
-  it("keeps one live token across many prepares, and the job's end revokes it", async () => {
+  it("mints one token per prepare, and the job's end revokes every one", async () => {
     const { runId, jobId } = await stewardJob();
     let token = '';
+    const earlier: string[] = [];
     for (let round = 0; round < 3; round += 1) {
       const prepared = await prepare(jobId);
       expect(prepared.status, JSON.stringify(prepared.body)).toBe(200);
+      if (token) earlier.push(token);
       token = briefToken(prepared.body);
-      expect(await liveNamed(jobId)).toBe(1);
+      expect(await liveNamed(jobId)).toBe(round + 1);
       if (round < 2) await giveBack(jobId);
     }
     const started = await call(boxPat, 'POST', '/api/devices/me/pool/start', { jobId, sessionId });
@@ -168,6 +180,31 @@ describe('a steward job prepared twice (ISS-972)', () => {
     );
     expect([done.status, done.body], JSON.stringify(done.body)).toEqual([200, { state: 'done' }]);
     expect(await liveNamed(jobId)).toBe(0);
+    expect(await works(token)).toBe(false);
+    for (const one of earlier) expect(await works(one)).toBe(false);
+  });
+
+  // ISS-1004 (FB-511, sidpeak job 905740f6): the start's own `queued → dispatched` transition reached
+  // the steward's consumer, which read it as the job's end, revoked the token and failed the run, so
+  // the agent's reads answered INVALID_TOKEN minutes in and its done call was refused
+  it('keeps the token working through the start, until the run’s own done call', async () => {
+    const { runId, jobId } = await stewardJob();
+    const prepared = await prepare(jobId);
+    expect(prepared.status, JSON.stringify(prepared.body)).toBe(200);
+    const token = briefToken(prepared.body);
+    const started = await call(boxPat, 'POST', '/api/devices/me/pool/start', { jobId, sessionId });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    await settleOutbox();
+    expect(await works(token)).toBe(true);
+    const [run] = await rows<{ state: string }>(sql`SELECT state FROM steward_runs WHERE id = ${runId}`);
+    expect(run?.state).toBe('running');
+    const done = await call(
+      token,
+      'POST',
+      `/api/projects/${projectId}/steward-runs/${runId}/done`,
+      { refused: [] },
+    );
+    expect([done.status, done.body], JSON.stringify(done.body)).toEqual([200, { state: 'done' }]);
     expect(await works(token)).toBe(false);
   });
 

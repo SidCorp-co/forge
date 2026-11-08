@@ -7,12 +7,12 @@
 import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
-import { eq, sql } from 'drizzle-orm';
-import { lockPatName, revokeLiveTokens } from '../credentials/pat.js';
+import { and, eq, isNull, like, or, sql } from 'drizzle-orm';
+import { lockPatName } from '../credentials/pat.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { jobs, runners } from '../db/schema.js';
+import { jobs, personalAccessTokens, runners } from '../db/schema.js';
 import { finalizeJobDone } from '../jobs/index.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
@@ -107,7 +107,18 @@ export async function enqueueStewardJob(
   return { ok: true, jobId };
 }
 
+/** The name every token of one job sits under; each prepare's own is `<this> #<n>`. */
 const jobTokenName = (jobId: string) => `steward job ${jobId}`;
+
+/** The job's tokens, live or not: the one name earlier prepares took, and each `#<n>` beneath it. */
+const ofJob = (stewardId: string, jobId: string) =>
+  and(
+    eq(personalAccessTokens.userId, stewardId),
+    or(
+      eq(personalAccessTokens.name, jobTokenName(jobId)),
+      like(personalAccessTokens.name, `${jobTokenName(jobId)} #%`),
+    ),
+  );
 
 /** A claimed steward job's prepare that cannot hand it a token, refused under the pool's own code. */
 const refuseClaim = refuser<PoolClaimRefusalCode>('POOL_STEWARD_CANNOT_ACT');
@@ -125,16 +136,29 @@ function jobActsOf(job: { id: string; payload: unknown }): StewardAct[] {
   return acts;
 }
 
-/** Revoke the live steward tokens named for one job: the one lookup its prepare and its end share. */
+/** Revoke every live steward token of one job: its end's act, never a prepare's. */
 const revokeLiveJobTokens = (tx: Tx, stewardId: string, jobId: string) =>
-  revokeLiveTokens({ userId: stewardId, name: jobTokenName(jobId) }, tx);
+  tx
+    .update(personalAccessTokens)
+    .set({ revokedAt: sql`now()` })
+    .where(and(ofJob(stewardId, jobId), isNull(personalAccessTokens.revokedAt)));
+
+/** The next prepare's token name, counting every token the job was ever handed. */
+async function nextJobTokenName(tx: Tx, stewardId: string, jobId: string): Promise<string> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(personalAccessTokens)
+    .where(ofJob(stewardId, jobId));
+  return `${jobTokenName(jobId)} #${(row?.n ?? 0) + 1}`;
+}
 
 /**
  * The credential section a claimed steward job's brief ends with: the steward account's token for
- * this job, minted now and named for the job so its end revokes it. A job prepared again (its answer
- * lost, its hold given back, its pane restarted) supersedes the earlier token in the mint's
- * transaction, under the name's lock: that token's plaintext cannot be handed out again, and the job
- * keeps one live token. A steward that cannot act is refused POOL_STEWARD_CANNOT_ACT, naming why.
+ * this job, minted now under a name of its own beneath the job's, so the job's end revokes it. A job
+ * prepared again (its answer lost, its hold given back, its pane restarted) is handed a new token and
+ * leaves the earlier one live: a pane briefed with it may still be working the job, and nothing would
+ * tell it its token was taken (ISS-1004, FB-511). Every one dies with the job, or at its own TTL. A
+ * steward that cannot act is refused POOL_STEWARD_CANNOT_ACT, naming why.
  */
 export async function stewardJobCredential(job: {
   id: string;
@@ -143,17 +167,15 @@ export async function stewardJobCredential(job: {
 }): Promise<string> {
   const acts = jobActsOf(job);
   const stewardId = await stewardAccountOf(job.projectId);
-  const name = jobTokenName(job.id);
   const credential = await db
     .transaction(async (tx) => {
-      await lockPatName(tx, name);
-      await revokeLiveJobTokens(tx, stewardId, job.id);
+      await lockPatName(tx, jobTokenName(job.id));
       return mintStewardCredential({
         projectId: job.projectId,
         stewardId,
         acts,
         ttlMs: JOB_TOKEN_TTL_MS,
-        name,
+        name: await nextJobTokenName(tx, stewardId, job.id),
         tx,
       });
     })
@@ -173,7 +195,7 @@ export async function stewardJobCredential(job: {
   ].join('\n');
 }
 
-/** Revoke the job's steward token, if it is still live. */
+/** Revoke the job's steward tokens that are still live. */
 export async function revokeJobCredential(projectId: string, jobId: string): Promise<void> {
   await revokeLiveJobTokens(db, await stewardAccountOf(projectId), jobId);
 }
@@ -185,6 +207,29 @@ export async function revokeJobCredential(projectId: string, jobId: string): Pro
 export async function revokeEndedJobCredential(projectId: string, jobId: string): Promise<void> {
   const [job] = await db.select({ type: jobs.type }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (job?.type === 'steward') await revokeJobCredential(projectId, jobId);
+}
+
+/** Job failure kinds that are Forge's or the box's, never the work of the job's agent. */
+const NOT_THE_AGENTS = ['infra', 'timeout', 'transient-cc'];
+
+/**
+ * Why a steward run's job ended before its acts were done, as the run records it. A job Forge or
+ * its box ended (cancelled, or failed for infra, a timeout or a transient fault) took its token with
+ * it while its agent may still have been working, so the run names that end and why, never the
+ * agent's failure (ISS-1004, FB-511: the agent's reads and its done call answered INVALID_TOKEN).
+ */
+export async function jobEndFailure(jobId: string, status: string | null): Promise<string> {
+  const [job] = await db
+    .select({ kind: jobs.failureKind, reason: jobs.failureReason, error: jobs.error })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  const why = job?.reason ?? job?.error ?? null;
+  const said = why ? ` (${job?.kind ? `${job.kind}: ` : ''}${why})` : '';
+  if (status === 'cancelled' || (job?.kind && NOT_THE_AGENTS.includes(job.kind))) {
+    return `Forge ended the steward job ${jobId} ${status ?? 'unread'}${said} before its acts were done, and revoked its token with it: not a failure of its agent`;
+  }
+  return `the steward job ${jobId} ended ${status ?? 'unread'}${said} before its acts were done`;
 }
 
 const refuse = refuser<StewardRefusalCode>('STEWARD_RUN_UNKNOWN');

@@ -16,7 +16,7 @@ import {
 } from '@forge/contracts/steward';
 import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
-import { enqueueStewardJob, revokeJobCredential, stewardJobLive } from './job.js';
+import { enqueueStewardJob, jobEndFailure, revokeJobCredential, stewardJobLive } from './job.js';
 import { budgetNote, judgeOwedNote } from './note.js';
 import { admitRun, nextUtcDay, slotsFor, stewardStanceOf } from './policy.js';
 import { openStandings } from './ports.js';
@@ -194,7 +194,7 @@ export async function settleJobRun(run: RunRow, jobStatus: string | null): Promi
     return;
   }
   const failure = run.jobId
-    ? `the steward job ${run.jobId} ended ${jobStatus ?? 'unread'} before its acts were done`
+    ? await jobEndFailure(run.jobId, jobStatus)
     : 'the process running this run ended before the run did';
   await endRun(run.id, { state: 'failed', failure, kind: 'error' });
 }
