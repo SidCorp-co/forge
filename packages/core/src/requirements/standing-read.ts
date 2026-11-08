@@ -15,10 +15,8 @@ import type {
   RequirementState,
 } from '@forge/contracts/requirements';
 import { changedSincePlan } from '@forge/contracts/requirements';
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import { z } from 'zod';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsPerId } from '../db/read-memo.js';
 import type { issues } from '../db/schema.js';
 import {
   type RequirementStatus,
@@ -28,7 +26,6 @@ import {
   type requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { masterServingOf } from '../masters/index.js';
@@ -38,11 +35,11 @@ import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { deliveryHoldsOf } from './delivery-check.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
-import { followReadsAcross } from './follow-reads.js';
 import { type IssueNaming, issueNamingOf, linkedIssuesOf, namedIssue } from './issue-projects.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
+import { besideFactsOf } from './standing-beside.js';
 import type { RequirementViewer } from './standing-draft.js';
 import {
   acceptanceDecisionsOf,
@@ -51,7 +48,6 @@ import {
   latestContractPinsOf,
   latestPinsOf,
   requirementStatusesOf,
-  statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { liveBuildsOf } from './standing-live-build.js';
@@ -63,7 +59,6 @@ import {
   runnerBoundIn,
 } from './standing-rows.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
-import { askedOf } from './steward-asked.js';
 import { requirementVerdictsIn } from './verdicts-read.js';
 
 export interface StandingRow {
@@ -132,77 +127,6 @@ export async function documentGatesIn(projectId: string): Promise<DocumentGates>
   };
 }
 
-const uncoveredList = z.object({
-  uncovered: z.array(z.object({ code: z.string(), reason: z.string() })).optional(),
-});
-
-/**
- * Per requirement, per BC code, the reason the newest accepted breakdown naming the code gave for
- * leaving it without an issue. An accepted suggestion keeps its payload (`suggestions_payload_chk`),
- * so the accept is the record and no column copies it.
- */
-async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<string, string>>> {
-  const rows = await rowsPerId(
-    'uncovered',
-    ids,
-    (some) =>
-      db
-        .select({ requirementId: suggestions.requirementId, payload: suggestions.payload })
-        .from(suggestions)
-        .where(
-          and(
-            inArray(suggestions.requirementId, [...some]),
-            eq(suggestions.kind, 'breakdown'),
-            eq(suggestions.status, 'accepted'),
-          ),
-        )
-        .orderBy(desc(suggestions.decidedAt)),
-    (r) => r.requirementId as string,
-  );
-  const out = new Map<string, Map<string, string>>();
-  for (const row of rows) {
-    if (!row.requirementId) continue;
-    const reasons = out.get(row.requirementId) ?? new Map<string, string>();
-    for (const u of uncoveredList.safeParse(row.payload).data?.uncovered ?? []) {
-      if (!reasons.has(u.code)) reasons.set(u.code, u.reason);
-    }
-    out.set(row.requirementId, reasons);
-  }
-  return out;
-}
-
-/**
- * The facts a requirement's turn reads beside its rows, per requirement: why an accepted breakdown
- * left a BC uncovered, the traced nodes a stale design pin's approval removed or renamed (REQ-41
- * BC-10, `follow-reads.ts`), and whether a steward decision on it stands open (REQ-48 BC-5).
- */
-// every requirement read has a status-since row (filed time where no transition); a missing one is a
-// broken read, refused by name rather than read as its last edit (the AGE every edit reset, dev.227)
-const sinceOf = (since: ReadonlyMap<string, Date>, id: string): Date => {
-  const at = since.get(id);
-  if (!at)
-    throw new Error(`requirement ${id} has no status-since time: statusFactsOf read no row for it`);
-  return at;
-};
-
-async function besideFactsOf(ids: readonly string[]) {
-  const [uncovered, follows, asked, { since: statusSince, decisions, held }] = await Promise.all([
-    uncoveredOf(ids),
-    followReadsAcross(ids),
-    askedOf(ids),
-    statusFactsOf(ids),
-  ]);
-  return (id: string) => ({
-    statusSince: sinceOf(statusSince, id),
-    acceptedByDecision: decisions.get(id) ?? null,
-    uncovered: uncovered.get(id) ?? new Map<string, string>(),
-    tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
-    stewardAsked: asked.steward.has(id),
-    questionAsked: asked.person.has(id),
-    decision: held.get(id) ?? null,
-  });
-}
-
 const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
   list.filter((x) => x.requirementId === id);
 
@@ -228,6 +152,17 @@ function groupedBy() {
 }
 
 /** `criteria`'s entries on `issueIds`, in the order `criteria` holds them, read through `byIssue`. */
+/** Where each issue's criteria stand in `list`, by issue id. */
+function criteriaIndexOf(list: readonly { issueId: string }[]): Map<string, number[]> {
+  const at = new Map<string, number[]>();
+  list.forEach((c, i) => {
+    const held = at.get(c.issueId);
+    if (held) held.push(i);
+    else at.set(c.issueId, [i]);
+  });
+  return at;
+}
+
 function criteriaOn<C extends { issueId: string }>(
   byIssue: ReadonlyMap<string, readonly number[]>,
   criteria: readonly C[],
@@ -328,6 +263,10 @@ export async function standingsOf(
   if (rows.length === 0) return new Map();
   const now = new Date();
   const ids = rows.map((r) => r.id);
+  // what is read beside the rows needs only their ids: asked with the first wave, not after it (ISS-1070 r17)
+  const besideRead = besideFactsOf(ids);
+  // awaited below, where its failure is thrown; never an unhandled rejection meanwhile
+  besideRead.catch(() => undefined);
   const [
     revisions,
     criteria,
@@ -363,33 +302,52 @@ export async function standingsOf(
     readOwedPolicy(projectId),
     verdictsRequiredIn(projectId),
   ]);
-  const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
-  const [people, issueCriteria, feedbackLinks, times, changedTraced, work, own, naming, holds] =
-    await Promise.all([
-      peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
-      issueCriteriaOf(linkedIds, db, known.asReturned),
-      feedbackLinksOf(projectId, ids),
-      issueTimesOf(linked),
-      changedTracedOf(db, linkedIds),
-      workFactsOf(projectId, rows, linked, viewer, now),
-      requirementVerdictsIn(projectId, ids),
-      issueNamingOf(projectId, prefix, linked),
-      deliveryHoldsOf(projectId, rows),
-    ]);
+  // the live build needs only the issues' criteria and the requirement's own verdicts: it is asked as
+  // soon as they are read, beside the work and holds, never after the deepest of them (ISS-1070 r17)
+  const criteriaRead = issueCriteriaOf(linkedIds, db, known.asReturned);
+  const ownRead = requirementVerdictsIn(projectId, ids);
+  const of = groupedBy();
+  const buildsRead = Promise.all([criteriaRead, ownRead]).then(([traced, verdicts]) => {
+    const byIssue = criteriaIndexOf(traced);
+    const idsOf = (id: string) => of(linked, id).map((i) => i.id);
+    return liveBuildsOf(
+      projectId,
+      rows.map((r) => ({
+        id: r.id,
+        traced: criteriaOn(byIssue, traced, idsOf(r.id)),
+        own: of(verdicts, r.id),
+      })),
+    );
+  });
+  buildsRead.catch(() => undefined);
+  const [
+    people,
+    issueCriteria,
+    feedbackLinks,
+    times,
+    changedTraced,
+    work,
+    own,
+    naming,
+    holds,
+    beside,
+  ] = await Promise.all([
+    peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
+    criteriaRead,
+    feedbackLinksOf(projectId, ids),
+    issueTimesOf(linked),
+    changedTracedOf(db, linkedIds),
+    workFactsOf(projectId, rows, linked, viewer, now),
+    ownRead,
+    issueNamingOf(projectId, prefix, linked),
+    deliveryHoldsOf(projectId, rows),
+    besideRead,
+  ]);
   const { issueWaits, release } = work;
   const feedbackBy = feedbackCountsOf(feedbackLinks);
-  const criteriaByIssue = new Map<string, number[]>();
-  issueCriteria.forEach((c, i) => {
-    const at = criteriaByIssue.get(c.issueId);
-    if (at) at.push(i);
-    else criteriaByIssue.set(c.issueId, [i]);
-  });
-  const of = groupedBy();
-  const tracedOf = (id: string) => criteriaOn(criteriaByIssue, issueCriteria, idsOf(id));
-  const idsOf = (id: string) => of(linked, id).map((i) => i.id);
-  const ask = rows.map((r) => ({ id: r.id, traced: tracedOf(r.id), own: of(own, r.id) }));
-  const builds = await liveBuildsOf(projectId, ask);
+  const criteriaByIssue = criteriaIndexOf(issueCriteria);
+  const builds = await buildsRead;
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
     const mine = of(linked, row.id).map((i) =>

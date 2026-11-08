@@ -33,13 +33,17 @@ export async function liveBuildOf(
     if (at === projectId) mine.push(r);
     else theirs.set(at, [...(theirs.get(at) ?? []), r]);
   }
-  const holds = await projectBuildOf(projectId, mine, own, read);
-  if (theirs.size === 0) return holds;
+  // this project's build and every other project's are read at once, kept in the order asked, each
+  // through the read's one shared owners and lines (ISS-1070 r17)
+  const [holds, ...builds] = await Promise.all([
+    projectBuildOf(projectId, mine, own, read),
+    ...[...theirs].map(([other, those]) => projectBuildOf(other, those, [], read)),
+  ]);
+  if (theirs.size === 0) return holds ?? null;
   const foreign = new Map<string, LiveBuildHolds | null>();
-  for (const [other, those] of theirs) {
-    const build = await projectBuildOf(other, those, [], read);
-    for (const r of those) foreign.set(r.issueId.toLowerCase(), build);
-  }
+  [...theirs.values()].forEach((those, i) => {
+    for (const r of those) foreign.set(r.issueId.toLowerCase(), builds[i] ?? null);
+  });
   return { ...(holds ?? NOTHING_ASKED), foreign };
 }
 
