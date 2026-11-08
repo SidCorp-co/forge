@@ -394,7 +394,9 @@ const READS = (p: string): Ceiling[] => [
     buffers: 43000,
   },
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 84, buffers: 17500 },
-  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
+  // ISS-1070 r9's mixed-shape seed: the open standing read touches 5,262-5,452 buffers, 5,287 on the
+  // code before r9, so the seed and not the read moved it; priced until a stored fact replaces its scans
+  { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5800 },
   { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 41000 },
   { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 34000 },
   { path: '/api/me/whats-new', statements: 80, buffers: 8500 },
