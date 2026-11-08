@@ -19,6 +19,7 @@ import { ReleasePageActions } from "./release-page-actions";
 import { ReleaseProofBar } from "./release-proof";
 import { ReleaseRecord, ReleaseTagLine } from "./release-record";
 import { ReleaseReport } from "./release-report";
+import { ReleaseSites } from "./release-sites";
 import { ChangeGroup, OtherChanges, Requirements, StillOpen } from "./release-groups";
 import { checksByIssue } from "./release-row-detail";
 import { ReleaseStalls } from "./release-stalls";
@@ -137,6 +138,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             <div className="grid gap-2">
               <ReleaseProofBar proof={releaseProofOf(r.verified)} issues={r.issueCount} />
               <NextStep r={r} />
+              <ReleaseSites r={r} />
               {r.continuedAs ? <ContinuedAs to={r.continuedAs} slug={slug} /> : null}
             </div>
             <QueryBoundary query={pageQ} loadingLabel={t("releases.page.loading")}>

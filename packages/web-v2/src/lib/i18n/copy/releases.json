@@ -291,6 +291,14 @@
     "releases.technical.title": "Technical",
     "releases.technical.requests": "Change requests {n}",
     "releases.technical.promotion": "promotion",
-    "releases.technical.build": "Build {sha}"
+    "releases.technical.build": "Build {sha}",
+    "releases.sites.label": "Sites",
+    "releases.sites.serves": "Serves {what}",
+    "releases.sites.state.shipped": "Shipped",
+    "releases.sites.state.deploying": "Deploying",
+    "releases.sites.state.deployed": "Deployed",
+    "releases.sites.state.awaiting_confirm": "Needs confirm",
+    "releases.sites.state.failed": "Failed",
+    "releases.sites.state.not_reached": "Not shipped"
   }
 }

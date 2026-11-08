@@ -960,15 +960,6 @@ export const RELEASE_SITE_STATES = [
 ] as const;
 export type ReleaseSiteState = (typeof RELEASE_SITE_STATES)[number];
 
-export const RELEASE_SITE_STATE_LABELS: Record<ReleaseSiteState, string> = {
-	shipped: "Shipped",
-	deploying: "Deploying",
-	deployed: "Deployed",
-	awaiting_confirm: "Needs confirm",
-	failed: "Failed",
-	not_reached: "Not shipped",
-};
-
 export const RELEASE_SITE_STATE_TONES: Record<ReleaseSiteState, IssueStatusTone> = {
 	shipped: "ready",
 	deploying: "run",
