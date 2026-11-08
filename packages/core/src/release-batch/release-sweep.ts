@@ -457,7 +457,13 @@ async function sweepProject(
 
   if (await waitsOnCarried(projectId, eligible, base)) return;
 
-  const outcome = await cutWaitingRelease({ projectId, userId: owner, issueIds: eligible });
+  // the owner only acts for the cut: nobody pressed it, and the release reads so (ISS-1153)
+  const outcome = await cutWaitingRelease({
+    projectId,
+    userId: owner,
+    cutAs: 'automatic',
+    issueIds: eligible,
+  });
   // One release carries at most the oldest RELEASE_ROSTER_LIMIT; the rest were never sent.
   const named = new Set(outcome.named);
   const behind = eligible.filter((id) => !named.has(id));

@@ -52,7 +52,9 @@ export async function routeScheduleReleaseBatchFire(
   }
   const { projectId, userId } = resolved;
 
-  const outcome = await runScheduledReleaseCut({ projectId, userId });
+  // a person pressing run cuts as themselves; the tick cuts with nobody behind it (ISS-1153)
+  const cutAs = input.actor ? 'person' : 'automatic';
+  const outcome = await runScheduledReleaseCut({ projectId, userId, cutAs });
 
   if (outcome.status === 'failed') {
     logger.warn({ scheduleId: input.schedule.id, fireId }, 'schedule.release-batch: cut failed');

@@ -192,7 +192,9 @@ function ownerOf(p: Part, s: Shared): { owner: ReleasePerson | null; act: string
   }
   if (latest) return { owner: latest.requestedBy, act: 'Asked for approval' };
   const cutter = p.runId ? s.facts.cutters.get(p.runId) : undefined;
-  return cutter ? { owner: cutter, act: 'Cut' } : { owner: null, act: null };
+  // Forge's own cut names no person (ISS-1153): the owner it acted for never pressed it
+  if (cutter?.as === 'automatic') return { owner: null, act: 'Cut automatically' };
+  return cutter ? { owner: cutter.person, act: 'Cut' } : { owner: null, act: null };
 }
 
 function lastChange(p: Part, s: Shared): string {

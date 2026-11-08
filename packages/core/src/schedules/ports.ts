@@ -3,6 +3,7 @@
 // (ADR 0008). Read only inside a call.
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
+import type { ReleaseCutAs } from '@forge/contracts/releases';
 import type { NotificationType } from '../db/schema.js';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -64,6 +65,8 @@ interface SchedulesPorts {
     projectId: string;
     issueIds: string[];
     userId: string;
+    /** `automatic` where no person's act cuts it, so it never reads as `userId`'s cut (ISS-1153). */
+    cutAs?: ReleaseCutAs;
     /** The release's name and summary, where the cut writes them (the beta port's, ISS-988). */
     naming?: ReleaseNaming;
   }): Promise<{ runId: string; issueIds: string[] }>;

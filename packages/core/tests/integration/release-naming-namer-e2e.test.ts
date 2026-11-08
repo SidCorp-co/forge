@@ -74,7 +74,12 @@ const as = (token: string, method: 'GET' | 'PUT', path: string, body?: unknown) 
 /** An unattended cut the assistant cannot name: no chat model is configured on this instance. */
 async function unnamedCut(): Promise<string> {
   const issue = await fx.insertIssue('awaiting_release', SKIP_NOTE);
-  const outcome = await cutWaitingRelease({ projectId, userId: ownerId, issueIds: [issue] });
+  const outcome = await cutWaitingRelease({
+    projectId,
+    userId: ownerId,
+    cutAs: 'automatic',
+    issueIds: [issue],
+  });
   expect(outcome.status, JSON.stringify(outcome)).toBe('success');
   const [row] = [
     ...(await db.execute(

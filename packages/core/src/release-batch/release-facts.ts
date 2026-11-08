@@ -12,7 +12,7 @@ import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsPerId, rowsPerProject } from '../db/read-memo.js';
-import { issues, jobs } from '../db/schema.js';
+import { issues, jobs, pipelineRuns } from '../db/schema.js';
 import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
@@ -68,10 +68,17 @@ export interface IssueFact {
   };
 }
 
+/**
+ * Who cut a release run, as the cut recorded it (`metadata.cutAs`, `create.ts:openClaimedRun`):
+ * Forge unattended, naming nobody, or the person whose release job it queued (ISS-1153).
+ */
+export type ReleaseCutter = { as: 'automatic' } | { as: 'person'; person: ReleasePerson };
+
 export interface ReleaseFacts {
   issues: Map<string, IssueFact>;
   requirements: Map<string, CompletionFacts>;
-  cutters: Map<string, ReleasePerson>;
+  /** Who cut each release run, by its id; a run naming nobody is absent. */
+  cutters: Map<string, ReleaseCutter>;
   /** The project's judge (`qa`), which the verified rule reads (contracts `verified-rule.ts:verifiedOf`). */
   judge: VerifiedJudge | null;
   /**
@@ -289,24 +296,41 @@ async function requirementFacts(
   );
 }
 
-async function cuttersOf(runIds: readonly string[]): Promise<Map<string, ReleasePerson>> {
+async function cuttersOf(runIds: readonly string[]): Promise<Map<string, ReleaseCutter>> {
   if (runIds.length === 0) return new Map();
   const rows = await rowsPerId(
     'releaseCutters',
     runIds,
     (some) =>
       db
-        .select({ runId: jobs.pipelineRunId, createdBy: jobs.createdBy })
-        .from(jobs)
-        .where(and(inArray(jobs.pipelineRunId, [...some]), eq(jobs.type, 'release_batch')))
+        .select({
+          runId: pipelineRuns.id,
+          cutAs: sql<string | null>`${pipelineRuns.metadata} ->> 'cutAs'`,
+          createdBy: jobs.createdBy,
+        })
+        .from(pipelineRuns)
+        .leftJoin(
+          jobs,
+          and(eq(jobs.pipelineRunId, pipelineRuns.id), eq(jobs.type, 'release_batch')),
+        )
+        .where(inArray(pipelineRuns.id, [...some]))
         .orderBy(asc(jobs.queuedAt)),
-    (r) => r.runId as string,
+    (r) => r.runId,
   );
-  const people = await peopleOf(rows.map((r) => r.createdBy));
-  const out = new Map<string, ReleasePerson>();
+  // an automatic cut's job is queued as the owner it acts for, who is no cutter: never read as one
+  const people = await peopleOf(
+    rows.flatMap((r) => (r.cutAs !== 'automatic' && r.createdBy ? [r.createdBy] : [])),
+  );
+  const out = new Map<string, ReleaseCutter>();
   for (const r of rows) {
-    const p = people.get(r.createdBy);
-    if (p && !out.has(r.runId)) out.set(r.runId, { id: r.createdBy, ...p });
+    if (out.has(r.runId)) continue;
+    if (r.cutAs === 'automatic') {
+      out.set(r.runId, { as: 'automatic' });
+      continue;
+    }
+    // a cut before ISS-1153 recorded no marker, and reads its job's creator as it always did
+    const p = r.createdBy ? people.get(r.createdBy) : undefined;
+    if (p) out.set(r.runId, { as: 'person', person: { id: r.createdBy as string, ...p } });
   }
   return out;
 }

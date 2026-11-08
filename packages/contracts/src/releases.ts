@@ -292,6 +292,13 @@ export type ReleaseAbortView =
 	  }
 	| { recorded: false; says: string };
 
+/**
+ * How a cut was made, recorded on its run when it was cut (ISS-1153): `person` by someone's own act,
+ * `automatic` by Forge's release sweep or a schedule's tick, which names no person.
+ */
+export const RELEASE_CUT_AS = ["person", "automatic"] as const;
+export type ReleaseCutAs = (typeof RELEASE_CUT_AS)[number];
+
 /** One attempt at a release: one cut of its roster, how it ended and who ended it. */
 export interface ReleaseCutView {
 	/** 1-based, in the order the attempts were cut. */
@@ -300,7 +307,10 @@ export interface ReleaseCutView {
 	/** The version this attempt wore; an attempt cut before ADR 0011 may wear another than the release. */
 	version: string;
 	cutAt: string;
+	/** The person who cut it; null on an automatic cut, and where the cut ran no job to name one. */
 	cutBy: ReleasePerson | null;
+	/** `automatic` where Forge cut it unattended; `person` otherwise, every cut before ISS-1153 too. */
+	cutAs: ReleaseCutAs;
 	outcome: VersionStatus;
 	endedAt: string | null;
 	/** The finish refusal that ended it: its code, its text word for word, and what it means said by key (`releases.refused.*`). */
@@ -376,7 +386,9 @@ export interface ReleaseSummary
 	/** What was verified, in one level a reader states in words (JU-11). */
 	verified: ReleaseVerified;
 	contents: ReleaseContentGroup[];
+	/** The person behind its latest act; null where nobody acted, or Forge cut it unattended. */
 	owner: ReleasePerson | null;
+	/** That act: `Cut`, `Cut automatically` (with no owner), `Asked for approval`, `Approved`, `Returned`. */
 	ownerAct: string | null;
 	/**
 	 * `split`: the draft is refused for one reason only, RELEASE_ROSTER_OVERSIZE, and the viewer is

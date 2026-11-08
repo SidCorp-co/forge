@@ -114,7 +114,12 @@ async function page(version: string) {
 
 /** The unattended cut the sweep makes as an issue enters the release gate (`release-sweep.ts`). */
 async function autoCut(issueIds: string[]): Promise<{ runId: string; version: string }> {
-  const outcome = await cutWaitingRelease({ projectId, userId: ownerId, issueIds });
+  const outcome = await cutWaitingRelease({
+    projectId,
+    userId: ownerId,
+    cutAs: 'automatic',
+    issueIds,
+  });
   expect(outcome.status, JSON.stringify(outcome)).toBe('success');
   const [row] = [
     ...(await db.execute(

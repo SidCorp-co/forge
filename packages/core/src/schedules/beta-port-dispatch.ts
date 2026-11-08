@@ -67,7 +67,8 @@ const refused = (code: string, detail: string): RoutedFire => {
  */
 async function cutOnDev(ask: ReleaseCutAsk): Promise<ReleaseCut> {
   try {
-    const cut = await schedulesPorts().createReleaseBatch(ask);
+    // the twin's owner only acts for the port: nobody on dev cut it (ISS-1153)
+    const cut = await schedulesPorts().createReleaseBatch({ ...ask, cutAs: 'automatic' });
     return { ok: true, runId: cut.runId };
   } catch (err) {
     if (err instanceof RefusalError && err.refusals.length > 0) {

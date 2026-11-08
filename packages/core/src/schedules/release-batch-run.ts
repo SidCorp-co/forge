@@ -8,7 +8,11 @@
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 
-import { RELEASE_BLOCKER_CODES, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
+import {
+  RELEASE_BLOCKER_CODES,
+  RELEASE_ROSTER_LIMIT,
+  type ReleaseCutAs,
+} from '@forge/contracts/releases';
 import { logger } from '../lib/logger.js';
 import { counted } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -44,7 +48,9 @@ function reasonsOf(err: unknown): string[] {
 // One classified `createReleaseBatch` attempt, shared with ISS-1117's sweep pass.
 export async function cutWaitingRelease(args: {
   projectId: string;
+  /** Who the cut acts as; on an `automatic` cut it names no cutter (ISS-1153). */
   userId: string;
+  cutAs: ReleaseCutAs;
   issueIds: string[];
 }): Promise<ScheduledCutOutcome> {
   if (args.issueIds.length === 0) {
@@ -58,6 +64,7 @@ export async function cutWaitingRelease(args: {
         projectId: args.projectId,
         issueIds,
         userId: args.userId,
+        cutAs: args.cutAs,
       });
     const result = await cut(named);
     return {
@@ -91,6 +98,8 @@ export async function cutWaitingRelease(args: {
 export async function runScheduledReleaseCut(args: {
   projectId: string;
   userId: string;
+  /** `person` where someone pressed run on the schedule, `automatic` on its tick. */
+  cutAs: ReleaseCutAs;
 }): Promise<ScheduledCutOutcome> {
   const roster = await schedulesPorts().loadReleaseRoster(args.projectId);
   if (!roster.gateStatus) {
@@ -105,5 +114,5 @@ export async function runScheduledReleaseCut(args: {
   const unclaimed = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);
   const blocked = await schedulesPorts().heldFromUnattendedCut(unclaimed);
   const waiting = unclaimed.filter((id) => !blocked.has(id));
-  return cutWaitingRelease({ projectId: args.projectId, userId: args.userId, issueIds: waiting });
+  return cutWaitingRelease({ ...args, issueIds: waiting });
 }

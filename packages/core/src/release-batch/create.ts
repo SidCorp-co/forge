@@ -2,7 +2,7 @@
 // step, enqueues one release_batch job. Finish and abort end the run (finish.ts, abort.ts).
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
-import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
+import { RELEASE_ROSTER_LIMIT, type ReleaseCutAs } from '@forge/contracts/releases';
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
@@ -43,6 +43,9 @@ interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
   userId: string;
+  /** `automatic` where Forge cuts unattended (the sweep, a schedule's tick): `userId` then only acts
+   *  for it, and the release never reads as that person's cut (ISS-1153). Absent, a person's cut. */
+  cutAs?: ReleaseCutAs;
   /** The release's name and summary, when the cut writes them (REQ-40 BC-14). */
   naming?: ReleaseNaming | null;
   /** The order a release that merges change requests merges them in, by number (REQ-63). */
@@ -153,10 +156,13 @@ export async function openClaimedRun(args: {
   metadata: Record<string, unknown>;
   naming: ReleaseNaming | null;
   userId: string;
+  /** How it is cut, recorded on the run as the cut's own fact (`metadata.cutAs`); absent, `person`. */
+  cutAs?: ReleaseCutAs | undefined;
   /** The version the agent named, in the stored shape; null lets the rule decide. */
   version: string | null;
 }) {
-  const { projectId, issueIds, metadata } = args;
+  const { projectId, issueIds } = args;
+  const metadata = { ...args.metadata, cutAs: args.cutAs ?? 'person' };
   const runSpec: OneShotRunSpec = { projectId, kind: 'system', metadata };
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, runSpec);
@@ -292,6 +298,7 @@ export async function createReleaseBatch(
     },
     naming: args.naming ?? null,
     userId,
+    cutAs: args.cutAs,
     version: args.version ?? null,
   });
 
@@ -371,6 +378,7 @@ async function cutChangeRequestRelease(
     },
     naming: args.naming ?? null,
     userId,
+    cutAs: args.cutAs,
     version: args.version ?? null,
   });
   const order = steps.map((s) => label(s)).join(', ');

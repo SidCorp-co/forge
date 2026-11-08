@@ -23,6 +23,7 @@ import { readRunFailure } from '../pipeline/index.js';
 import { abortViewOf, carriedOf } from './abort-account.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
+import type { ReleaseCutter } from './release-facts.js';
 import type { Part } from './release-read-views.js';
 import { readReleaseRepair, repairViewOf } from './release-repair.js';
 import { carriersIn, type Lineage, type LineageRun } from './version-rule.js';
@@ -174,7 +175,7 @@ function rosterOf(run: LineageRun, known: ReadonlyMap<string, RosterIssue>): Ros
 export function cutViewsOf(
   runs: readonly LineageRun[],
   own: { runId: string | null; state: ReleaseState },
-  cutters: ReadonlyMap<string, ReleasePerson>,
+  cutters: ReadonlyMap<string, ReleaseCutter>,
   people: ReadonlyMap<string, ReleasePerson>,
   known: ReadonlyMap<string, RosterIssue> = new Map(),
 ): ReleaseCutView[] {
@@ -188,12 +189,14 @@ export function cutViewsOf(
             null,
           );
     const ended = endedAtOf(run);
+    const cutter = cutters.get(run.id);
     return {
       n: i + 1,
       runId: run.id,
       version: run.version,
       cutAt: run.startedAt.toISOString(),
-      cutBy: cutters.get(run.id) ?? null,
+      cutBy: cutter?.as === 'person' ? cutter.person : null,
+      cutAs: cutter?.as ?? 'person',
       outcome,
       endedAt: ended ? ended.toISOString() : null,
       refusal: refusalOf(run),
@@ -249,7 +252,7 @@ export async function fillCuts(
   projectId: string,
   parts: readonly Part[],
   groupOf: (p: Part) => LineageRun[],
-  cutters: ReadonlyMap<string, ReleasePerson>,
+  cutters: ReadonlyMap<string, ReleaseCutter>,
 ): Promise<void> {
   (await readCuts(projectId, parts, groupOf))(cutters);
 }
@@ -263,7 +266,7 @@ export async function readCuts(
   projectId: string,
   parts: readonly Part[],
   groupOf: (p: Part) => LineageRun[],
-): Promise<(cutters: ReadonlyMap<string, ReleasePerson>) => void> {
+): Promise<(cutters: ReadonlyMap<string, ReleaseCutter>) => void> {
   const groups = parts.map((p) => [p, groupOf(p)] as const);
   const [named, known] = await Promise.all([
     peopleOf(groups.flatMap(([, runs]) => peopleNamedBy(runs))),
