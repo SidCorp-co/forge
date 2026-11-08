@@ -2705,12 +2705,6 @@ export const SAID = {
 	},
 	"overview.hold.cause.stuck.overdue": { en: "It is past its due time" },
 	"overview.hold.cause.stuck.other": { en: "It stopped moving" },
-	"overview.signal.ciNote": {
-		en: "Pull request checks only; dev has no reading.",
-	},
-	"overview.signal.postMergeNote": {
-		en: "Post-merge jobs run on GitHub; none stored.",
-	},
 	"overview.signal.noSlotsNote": {
 		en: "No master",
 	},

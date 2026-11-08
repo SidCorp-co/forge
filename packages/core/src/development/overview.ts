@@ -22,6 +22,7 @@ import type {
 } from '@forge/contracts/issue-standing';
 import { ISSUE_ATTENTION_GROUPS } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { RunSides } from './overview-holds.js';
 
 const DAY_MS = 86_400_000;
 const QUARTER_MS = 900_000;
@@ -61,13 +62,29 @@ export interface LaneFacts {
 const floorQuarter = (ms: number) => Math.floor(ms / QUARTER_MS) * QUARTER_MS;
 const ceilQuarter = (ms: number) => Math.ceil(ms / QUARTER_MS) * QUARTER_MS;
 
+const NO_RUNS: RunSides = { running: new Set(), held: new Set() };
+
+/** Moving: what a live run works, else what the issue standing reads moving; never an issue whose run
+ *  is held, which Holds draws (ISS-684: one silent run read both Moving and Held). */
+export function movingRowsOf(
+  rows: readonly IssueStandingRow[],
+  runs: RunSides = NO_RUNS,
+): IssueStandingRow[] {
+  return rows.filter(
+    (r) =>
+      isOpen(r) &&
+      !runs.held.has(r.key) &&
+      (r.standing.attentionGroup === 'moving' || runs.running.has(r.key)),
+  );
+}
+
 export function movingOf(
   rows: readonly IssueStandingRow[],
   facts: ReadonlyMap<string, LaneFacts>,
   now: Date,
+  runs: RunSides = NO_RUNS,
 ): OverviewMoving {
-  const lanes = rows
-    .filter((r) => r.standing.attentionGroup === 'moving')
+  const lanes = movingRowsOf(rows, runs)
     .map((r): OverviewLane => {
       const s = r.standing;
       const f = facts.get(r.key);
@@ -131,11 +148,19 @@ const edgeNode = (e: IssueEdgeRef): OverviewChainNode => ({
   held: false,
 });
 
-// held means held back by something that is neither a person nor a run: the Stuck attention group
-export function stuckOf(rows: readonly IssueStandingRow[]): OverviewStuck {
+// held means held back by something that is neither a person nor a run: the Stuck attention group,
+// less an issue a live run is working, which Moving draws (ISS-684: a running run read Stuck)
+export function stuckOf(
+  rows: readonly IssueStandingRow[],
+  runs: RunSides = NO_RUNS,
+): OverviewStuck {
   const open = rows.filter(isOpen);
   const byKey = new Map(open.map((r) => [r.key, r]));
-  const held = new Set(open.filter((r) => r.standing.attentionGroup === 'stuck').map((r) => r.key));
+  const held = new Set(
+    open
+      .filter((r) => r.standing.attentionGroup === 'stuck' && !runs.running.has(r.key))
+      .map((r) => r.key),
+  );
   if (held.size === 0) return { count: 0, chains: [] };
 
   const dependents = new Map<string, string[]>();

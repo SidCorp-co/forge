@@ -1,4 +1,3 @@
-import type { Said } from "@forge/contracts/said";
 import { forecastWait, RULE, say, sentence, waitingOn } from "./said";
 
 import type { QueryKey } from "@tanstack/react-query";
@@ -21,7 +20,6 @@ import { Seeded } from "./vi-chrome-requirements";
 // placeholder words; core's sentences (a signal it cannot read, a turn's rule, a record's detail)
 // are said by their registry keys, as core says them.
 
-const unavailable = (reason: Said) => ({ available: false as const, reason: sentence(reason), says: { reason } });
 
 const P = "p1";
 const AT = "2026-10-07T08:00:00.000Z";
@@ -46,8 +44,6 @@ const HOLD = {
 export const DEV: DevelopmentOverview = {
   generatedAt: NOW,
   signals: {
-    ci: unavailable(say("overview.signal.ciNote")),
-    postMerge: unavailable(say("overview.signal.postMergeNote")),
     contracts: { windows: [{ contract: "don-hang", version: "2.0.0", dueAt: "2026-10-09T08:00:00.000Z", feedback: "FB-3" }], openWindows: 4, awaitingApproval: 1 },
     master: { masters: 0, state: "none", slots: null, slotsNote: sentence(say("overview.signal.noSlotsNote")), says: { slotsNote: say("overview.signal.noSlotsNote") } },
   },

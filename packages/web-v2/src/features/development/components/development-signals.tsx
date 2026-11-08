@@ -1,22 +1,8 @@
 
-import type { Said } from "@forge/contracts/said";
 import { HoverCard, Signal, SignalsStrip, Tooltip } from "@/design";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { DevelopmentOverview } from "../types";
-
-/** A signal core cannot read, its reason read from what core said (`development/overview-read.ts`). */
-export function Unavailable({ reason }: { reason: Said }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
-  return (
-    <Tooltip label={said(reason, language)} multiline>
-      <span className="cursor-help text-muted underline decoration-dotted underline-offset-2" data-testid="signal-unavailable">
-        {t("overview.signal.unavailable")}
-      </span>
-    </Tooltip>
-  );
-}
 
 function Contracts({ s }: { s: DevelopmentOverview["signals"]["contracts"] }) {
   const next = s.windows[0];
@@ -87,17 +73,12 @@ function Master({ s }: { s: DevelopmentOverview["signals"]["master"] }) {
   );
 }
 
-/** The development overview's signals: CI, post-merge, the contracts window and the master, on the shared strip. */
+/** The development overview's signals: the contracts window and the master, on the shared strip. A signal
+ *  core never reads (CI on dev, post-merge) is not drawn (ISS-684). */
 export function DevelopmentSignals({ data }: { data: DevelopmentOverview }) {
   const t = useCopy();
   return (
     <SignalsStrip>
-      <Signal label={t("overview.signal.ci")} testId="signal-ci">
-        <Unavailable reason={data.signals.ci.says.reason} />
-      </Signal>
-      <Signal label={t("overview.signal.postMerge")} testId="signal-post-merge">
-        <Unavailable reason={data.signals.postMerge.says.reason} />
-      </Signal>
       <Signal label={t("overview.signal.contracts")} testId="signal-contracts">
         <Contracts s={data.signals.contracts} />
       </Signal>

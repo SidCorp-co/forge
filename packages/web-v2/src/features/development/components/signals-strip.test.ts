@@ -8,7 +8,7 @@ import { said } from "@/lib/i18n/said";
 // the refusal of a box's undeclared slots included (`masters/rules.ts:undeclaredSlots`).
 
 describe("the Development overview reads core's own sentences", () => {
-  const notes = [say("overview.signal.ciNote"), say("overview.signal.postMergeNote"), say("overview.signal.noSlotsNote")];
+  const notes = [say("overview.signal.noSlotsNote")];
 
   it("spells each signal note in en as core sends it", () => {
     for (const n of notes) {
