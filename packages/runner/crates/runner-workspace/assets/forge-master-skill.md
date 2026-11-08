@@ -305,6 +305,8 @@ triage written on the item. All of it goes through the project's feedback door,
 - **Where this pane lacks that grant**, `suggestions` (POST, kind `feedback_triage`, target the item)
   carries your route, kind and severity to whoever holds it, and core stamps the nearest item on it.
   While it stands the item waits on them, not you, and is off your list; a rejection puts it back.
+- **A triage someone else proposed is yours to settle** where the project's policy gives triage to
+  the master: the item stays on your list with the suggestion named, and you accept or reject it.
 - **Ask only when it cannot be routed.** `feedback/<FB-n>/clarification` (POST) puts one question to
   the reporter — repro steps, a screenshot, the environment — and the item waits on them, not you,
   until they answer; the answer wakes you.
