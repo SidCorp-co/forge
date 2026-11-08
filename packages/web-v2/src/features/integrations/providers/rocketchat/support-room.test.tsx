@@ -1,10 +1,13 @@
 import { type SupportRoomView, supportRoomConfigSchema } from "@forge/contracts/support";
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CurrentProjectProvider, type ProjectListItem } from "@/features/projects";
 import { renderWithQuery } from "@/test/render";
 import { bindingConfigOf, splitTiers, targetOf } from "../../binding-document";
 import { stateOf, supportBlockOf, supportRoomErrors, supportSaveConfig } from "./support-room-config";
 import { HealthCell, SupportRoomsRows } from "./support-rooms-table";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({}));
 
 // A support room is set up in one save (REQ-75 r5 BC-25): the room and its support block written
 // together, binding-tier, in the shape core's schema takes; and a room that is not answering says
@@ -161,5 +164,15 @@ describe("a room's health", () => {
     expect(screen.getByText("6ae1a7f66562facf823f62a7")).toBeTruthy();
     expect(screen.getByText("none")).toBeTruthy();
     expect(screen.getByText("SESSION_NOT_LISTENING")).toBeTruthy();
+  });
+
+  // ISS-941: a room's session is opened from its row, where its turns are watched live
+  it("links a room's session status to the session's page in the current project", () => {
+    renderWithQuery(
+      <CurrentProjectProvider project={{ slug: "forge" } as ProjectListItem}>
+        <SupportRoomsRows rooms={[room({ sessionId: "s-42", sessionStatus: "running" })]} />
+      </CurrentProjectProvider>,
+    );
+    expect(screen.getByRole("link", { name: "running" }).getAttribute("href")).toBe("/projects/forge/agents/s-42");
   });
 });

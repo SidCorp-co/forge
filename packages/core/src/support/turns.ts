@@ -71,6 +71,7 @@ export async function supportTurnsOf(viewer: string, projectId: string): Promise
       roomId: r.id,
       rid: r.rid,
       kind: r.kind,
+      sessionId: r.sessionId ?? null,
       state: turnStateOf(status, facts.waiting),
       waiting: facts.waiting,
       waitingSince: facts.waitingSince?.toISOString() ?? null,

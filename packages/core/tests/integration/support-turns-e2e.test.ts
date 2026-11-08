@@ -55,6 +55,10 @@ describe('GET /api/projects/:id/support/turns (REQ-15 BC-10)', () => {
       waitingSince: null,
     });
     expect(turn?.lastActivityAt === null || typeof turn?.lastActivityAt === 'string').toBe(true);
+    // ISS-941: the turn names the session answering the room, whose page shows its turns
+    const [held] = await w.rooms();
+    expect(typeof turn?.sessionId).toBe('string');
+    expect(turn?.sessionId).toBe(held?.sessionId);
   });
 
   it('reads the room answering while its turn runs, and tells the project room a message came', async () => {

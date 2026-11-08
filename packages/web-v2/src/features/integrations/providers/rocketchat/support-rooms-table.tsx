@@ -3,7 +3,10 @@
 
 import type { SupportRoomHealth, SupportRoomView } from "@forge/contracts/support";
 import { PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { useCurrentProject } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { Link } from "@/lib/navigation/router";
+import { sessionHref } from "@/lib/routes/automation";
 import { useSupportRooms } from "../../hooks";
 
 /** A room's health: the word, and under an unhealthy one each cause as `CODE — detail`. */
@@ -22,12 +25,22 @@ export function HealthCell({ health }: { health: SupportRoomHealth }) {
   );
 }
 
+/** The room's session: its status opens the session's page, where its turns are watched live (ISS-941). */
 function SessionCell({ room }: { room: SupportRoomView }) {
   const t = useCopy();
+  const slug = useCurrentProject()?.slug ?? null;
   if (!room.sessionId) return <span className="text-muted">{t("integrations.support.noSession")}</span>;
+  const status = room.sessionStatus ?? "—";
   return (
     <span>
-      {room.sessionStatus ?? "—"} ·{" "}
+      {slug ? (
+        <Link href={sessionHref(slug, room.sessionId)} className="text-link hover:underline">
+          {status}
+        </Link>
+      ) : (
+        status
+      )}{" "}
+      ·{" "}
       {room.resident ? t("integrations.support.resident") : t("integrations.support.notResident")}
     </span>
   );

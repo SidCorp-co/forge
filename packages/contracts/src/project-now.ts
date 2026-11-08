@@ -31,6 +31,8 @@ export interface SupportRoomTurn {
 	/** The Rocket.Chat group the room is, which its channel page is addressed by. */
 	rid: string;
 	kind: SupportRoomKind;
+	/** The session that answers the room, whose page shows its turns (ISS-941); null where it has none. */
+	sessionId: string | null;
 	state: SupportTurnState;
 	/** Members' messages no turn took yet. */
 	waiting: number;

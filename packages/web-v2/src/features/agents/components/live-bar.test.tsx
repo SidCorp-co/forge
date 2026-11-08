@@ -134,7 +134,7 @@ describe("the project bar (REQ-15 BC-10)", () => {
     core({
       live: list([], master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-9", trigger: "nudge" }, passIssueTitle: "Fix the release page" })),
       recent: list([]),
-      rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
+      rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", sessionId: null, state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
     });
     mount();
     await waitFor(() => expect(bar().dataset.state).toBe("busy"));
@@ -153,7 +153,7 @@ describe("the project bar (REQ-15 BC-10)", () => {
         master({ state: "in_pass", pass: { id: "p1", sessionId: "m1", verb: "dispatch", startedAt: minutesAgo(1), issueKey: "ISS-9", trigger: "nudge" }, passIssueTitle: "Fix the release page" }),
       ),
       recent: list([]),
-      rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
+      rooms: turns([{ roomId: "room-1", rid: "GENERAL", kind: "support", sessionId: "s-room-1", state: "answering", waiting: 0, waitingSince: null, lastActivityAt: minutesAgo(0) }]),
     });
     mount();
     await waitFor(() => expect(bar().dataset.state).toBe("busy"));
@@ -167,7 +167,8 @@ describe("the project bar (REQ-15 BC-10)", () => {
     expect(href("Build: Fix it")).toContain("/projects/forge/issues/ISS-5");
     expect(rows.textContent).toContain("4m");
     expect(href("Releasing 1.4.0")).toContain("/projects/forge/releases/1.4.0");
-    expect(href("Bot answering")).toContain("/projects/forge/channels/GENERAL");
+    // ISS-941: a room with a session opens that session's page, where its turns are watched live
+    expect(href("Bot answering")).toContain("/projects/forge/agents/s-room-1");
     expect(screen.queryByTestId("live-bar-nothing")).toBeNull();
     // no face carries a code; each sits in the item's tooltip
     expect(bar().textContent).not.toMatch(CODES);
@@ -233,9 +234,11 @@ describe("the project bar (REQ-15 BC-10)", () => {
     expect(bar().dataset.state).toBe("busy");
     expect(liveReads()).toBe(2);
     // a member's message waits in a room: only the rooms are read again
-    world.rooms = turns([{ roomId: "room-1", rid: "HELP", kind: "support", state: "waiting", waiting: 2, waitingSince: minutesAgo(3), lastActivityAt: minutesAgo(0) }]);
+    world.rooms = turns([{ roomId: "room-1", rid: "HELP", kind: "support", sessionId: null, state: "waiting", waiting: 2, waitingSince: minutesAgo(3), lastActivityAt: minutesAgo(0) }]);
     routeEvent({ event: "project.now.changed", data: { projectId: P, source: "rooms" }, timestamp: minutesAgo(0) }, qc);
     await waitFor(() => expect(bar().textContent).toContain("2 messages waiting"));
+    // a room with no session opens its channel
+    expect(screen.getAllByRole("link", { name: "2 messages waiting" })[0]?.getAttribute("href")).toBe("/projects/forge/channels/HELP");
     expect(roomReads()).toBe(2);
     expect(liveReads()).toBe(2);
   });

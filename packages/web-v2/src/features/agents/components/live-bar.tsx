@@ -13,7 +13,9 @@ import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-la
 import type { Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import { Link } from "@/lib/navigation/router";
+import type { SupportRoomTurn } from "@forge/contracts/project-now";
 import { masterHref, runHref } from "@/lib/routes/agents";
+import { sessionHref } from "@/lib/routes/automation";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -31,6 +33,10 @@ const readOfQuery = <T,>(q: UseQueryResult<T>): Read<T> =>
   q.isError ? { state: "unreadable" } : q.data === undefined ? { state: "loading" } : { state: "read", data: q.data };
 
 const channelHref = (slug: string, rid: string) => `/projects/${encodeURIComponent(slug)}/channels/${encodeURIComponent(rid)}`;
+
+/** A room entry opens the session answering the room, where its turns are watched live (ISS-941); its channel where it has none. */
+const roomHref = (slug: string, room: SupportRoomTurn | undefined) =>
+  room?.sessionId ? sessionHref(slug, room.sessionId) : channelHref(slug, room?.rid ?? "");
 
 /** The identifiers an item keeps off its face, for its tooltip. */
 const tipOf = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(" · ");
@@ -128,7 +134,7 @@ function rowsOf(now: ProjectNow, t: Copy, label: Label, language: Language, slug
         return {
           key: "answering",
           text: item.rooms.length === 1 ? t("agents.now.answering") : t("agents.now.answeringIn", { n: item.rooms.length }),
-          href: channelHref(slug, item.rooms[0]?.rid ?? ""),
+          href: roomHref(slug, item.rooms[0]),
           tip: tipOf(...item.rooms.map((r) => r.rid)),
           since: null,
         };
@@ -136,7 +142,7 @@ function rowsOf(now: ProjectNow, t: Copy, label: Label, language: Language, slug
         return {
           key: "waiting",
           text: item.messages === 1 ? t("agents.now.waitingOne") : t("agents.now.waiting", { n: item.messages }),
-          href: channelHref(slug, item.rooms[0]?.rid ?? ""),
+          href: roomHref(slug, item.rooms[0]),
           tip: tipOf(...item.rooms.map((r) => r.rid)),
           since: item.since,
         };
