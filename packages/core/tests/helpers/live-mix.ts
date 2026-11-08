@@ -9,6 +9,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
+import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { createTestProject, createTestUser } from './factories.js';
 import { wireLive, wireStorefront } from './live-wiring.js';
 import { seedProductionDeployTrigger, seedProjectDocument } from './release-world.js';
@@ -54,6 +55,8 @@ interface Kind {
   outsideGit?: boolean;
   /** Verdicts recorded at the requirement itself, each naming the commit it was judged on. */
   judgedAtRequirement?: boolean;
+  /** Open issues held by closed blockers whose design is not approved yet: blockers no open list reads. */
+  heldFromOutside?: boolean;
 }
 
 /** forge-dev's mix, forge first. */
@@ -64,6 +67,7 @@ export const LIVE_MIX: readonly Kind[] = [
     onLand: true,
     linkedFeedback: true,
     judgedAtRequirement: true,
+    heldFromOutside: true,
   },
   { scale: SMALL, deploys: 'offline', storefront: true },
   { scale: SMALL, deploys: 'coolify', storefront: true, onLand: true },
@@ -115,6 +119,7 @@ export async function seedLiveMix(input: {
     if (kind.storefront) await wireStorefront(id, ownerId, input.autoflow);
     if (kind.linkedFeedback) await linkFeedback(id);
     if (kind.judgedAtRequirement) await judgeAtRequirement(id);
+    if (kind.heldFromOutside) await holdFromOutside(id, ownerId);
     // an agent filed most of it: the person owns one issue in seven and one item in five
     await db.execute(
       sql`UPDATE issues SET created_by_id = ${agentId} WHERE project_id = ${id} AND iss_seq % 7 <> 0`,
@@ -167,6 +172,39 @@ async function judgeAtRequirement(projectId: string): Promise<void> {
       FROM requirements r JOIN requirement_criteria rc ON rc.requirement_id = r.id
      WHERE r.project_id = ${projectId}
      ORDER BY r.id, rc.code`);
+}
+
+/**
+ * Three closed issues, each the design issue of its workflow's newest revision, proposed and not yet
+ * approved, block an open issue: a blocker holds until its design is approved, whatever its status
+ * (`issues/blocked-by.ts:blockerUnsettledSql`), so the open list follows it outside the rows it read
+ * (`issues/standing-read.ts:standingRows`), as forge-dev's design issues do (ISS-1070 r19).
+ */
+async function holdFromOutside(projectId: string, ownerId: string): Promise<void> {
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`
+      WITH held AS (
+        SELECT w.id AS workflow_id, w.document,
+               (SELECT max(d.revision) FROM project_workflow_designs d WHERE d.workflow_id = w.id) + 1 AS revision,
+               row_number() OVER (ORDER BY w.flow) AS n
+          FROM project_workflows w WHERE w.project_id = ${projectId}
+      ), closed AS (
+        SELECT i.id, row_number() OVER (ORDER BY i.iss_seq) AS n
+          FROM issues i WHERE i.project_id = ${projectId} AND i.status = 'closed'
+      )
+      INSERT INTO project_workflow_designs (workflow_id, revision, document, proposed_by_user, design_issue_id)
+      SELECT h.workflow_id, h.revision, h.document, ${ownerId}, c.id
+        FROM held h JOIN closed c ON c.n = h.n WHERE h.n <= 3`);
+  });
+  await db.execute(sql`
+    INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
+    SELECT ${projectId}, d.design_issue_id, o.id, 'blocks'
+      FROM (SELECT design_issue_id, row_number() OVER (ORDER BY design_issue_id) AS n
+              FROM project_workflow_designs pd JOIN project_workflows w ON w.id = pd.workflow_id
+             WHERE w.project_id = ${projectId} AND pd.design_issue_id IS NOT NULL AND pd.decision IS NULL) d
+      JOIN (SELECT i.id, row_number() OVER (ORDER BY i.iss_seq DESC) AS n
+              FROM issues i WHERE i.project_id = ${projectId} AND i.status NOT IN ('closed', 'dropped')) o
+        ON o.n = d.n * 5`);
 }
 
 /** A project with no repository whose closed issues landed outside git, each naming what changed. */
