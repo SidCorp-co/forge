@@ -272,6 +272,36 @@ describe('BC-10..12: the release shows its promotion, sees it merged on GitLab, 
     expect(planted.compares).toBe(0);
   });
 
+  // ISS-819 (ISS-747 re-judge at 3e2dfcebf): merged on the host while its approval was undecided, the
+  // promotion read merged and its record closed the roster with the approval never decided
+  it('refuses the record of a promotion merged on the host before its approval was decided', async () => {
+    const ids = await landedIssues();
+    await promotionRequest(5053, HEAD);
+    const cut = await cutNaming(ids, 5053);
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    const version = String(cut.body.version);
+    await mergedOnHost(5053);
+
+    const early = await underStrict(world.projectId, world.ownerId, () => record(ids, version));
+    expect(codeOf(early.body), JSON.stringify(early.body)).toBe('RELEASE_AWAITING_APPROVAL');
+    const held = await rows<{ status: string }>(
+      sql`SELECT status FROM issues WHERE project_id = ${world.projectId} ORDER BY iss_seq`,
+    );
+    expect(held.map((s) => s.status)).not.toContain('closed');
+
+    const [pending] = await rows<{ id: string }>(
+      sql`SELECT id FROM release_approvals WHERE run_id = ${String(cut.body.runId)} AND decision IS NULL`,
+    );
+    const decided = await call(
+      'POST',
+      `/release-batches/${String(cut.body.runId)}/approvals/${pending?.id}/decision`,
+      { decision: 'approve', reason: 'the owner read the promotion and approves it' },
+    );
+    expect(decided.status, JSON.stringify(decided.body)).toBeLessThan(300);
+    const closed = await underStrict(world.projectId, world.ownerId, () => record(ids, version));
+    expect(closed.status, JSON.stringify(closed.body)).toBe(201);
+  });
+
   it('refuses a record with no release running, naming the cut that comes first', async () => {
     const ids = await landedIssues();
     await promotionRequest(5053, HEAD);

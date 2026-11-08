@@ -11,7 +11,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { releaseRunClaims } from '../issues/index.js';
-import { requestApproval } from './approvals.js';
+import { approvalsOfRuns, assertApprovalAllowsAttempt, requestApproval } from './approvals.js';
 import { label, type ReleaseMergeStep } from './change-request-roster.js';
 import { assertDeclaredGate } from './declared-gate.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
@@ -296,6 +296,12 @@ export async function recordPromotionRelease(
       `This promotion was cut as release ${run.version}, and this record names ${sent.version}: record the deploy under ${run.version}.`,
       '/version',
     );
+  }
+  // a promotion cut open asked its approval (`cutPromotionRelease`): merged on the host before that
+  // approval was decided, its record is refused by the rule the merge door holds, where the gate
+  // enforces it, and outside it is recorded as taken unapproved (ISS-819); one cut merged asked none
+  if ((await approvalsOfRuns([run.id])).length > 0) {
+    await assertApprovalAllowsAttempt(run.id, projectId);
   }
   // owed when the merge was seen; a merge Forge never heard of before this record owes it here
   await oweReleaseTag(run.id, request.mergeCommitSha, 'promotion');
