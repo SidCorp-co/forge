@@ -11,8 +11,9 @@ import { webBaseUrl } from './web-base-url.js';
  * make on a diagnostics channel, so a call is counted whichever client made it and whoever holds a
  * reference to it. A call is named by the provider the code making it declares ({@link asProvider});
  * one nobody named is named by the kind of host it went to ({@link hostKindOf}), and the code that
- * made it is logged once a process ({@link logSite}). Nothing of the call is kept but that name, its
- * count and its time: never its address, path or headers.
+ * made it is logged once a process with that host's name ({@link logSite}), for an operator alone.
+ * The response carries nothing of the call but that kind, its count and its time: never its
+ * address, path or headers.
  */
 
 const providers = new AsyncLocalStorage<string>();
@@ -24,17 +25,6 @@ export function asProvider<T>(provider: string, fn: () => T): T {
   return providers.run(provider, fn);
 }
 
-/** Hosts whose kind is a name every reader knows; any other is `other-<4 hex>` of its name. */
-const KNOWN: ReadonlyArray<[RegExp, string]> = [
-  [/(^|\.)github(usercontent)?\.com$/, 'github'],
-  [/(^|\.)gitlab\./, 'gitlab'],
-  [/(^|\.)sentry\.io$/, 'sentry'],
-  [/(^|\.)anthropic\.com$/, 'anthropic'],
-  [/(^|\.)openai\.com$/, 'openai'],
-  [/(^|\.)googleapis\.com$/, 'google'],
-  [/(^|\.)cloudflare\.com$/, 'cloudflare'],
-];
-
 function ownHost(): string | null {
   try {
     const base = webBaseUrl();
@@ -45,16 +35,15 @@ function ownHost(): string | null {
 }
 
 /**
- * The kind of host `hostname` is, as a leg may name it: a known provider, `self` for this Forge's own
- * address (a loopback one is `local` first), or `other-` and four hex of the name, which tells two hosts
- * apart without naming either.
+ * The kind of host `hostname` is, as a leg may name it: `local` for a loopback one, `self` for this
+ * Forge's own address, or `host-` and four hex of the name, which tells two hosts apart without
+ * naming either; the log of the call's site names it ({@link logSite}).
  */
 export function hostKindOf(hostname: string): string {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  for (const [pattern, kind] of KNOWN) if (pattern.test(host)) return kind;
   if (host === 'localhost' || host === '::1' || host.startsWith('127.')) return 'local';
   if (host === ownHost()) return 'self';
-  return `other-${createHash('sha1').update(host).digest('hex').slice(0, 4)}`;
+  return `host-${createHash('sha1').update(host).digest('hex').slice(0, 4)}`;
 }
 
 function hostnameOf(request: { origin?: unknown; host?: unknown }): string {
@@ -89,13 +78,16 @@ function siteOf(stack: string | undefined): string {
 const logged = new Set<string>();
 const LOGGED_MOST = 200;
 
-/** Logs once a process which code made a call no provider names, so a live leg reads as its caller. */
-function logSite(kind: string, site: string | undefined): void {
+/**
+ * Logs once a process which code made a call no provider names, and the host it went to (a name,
+ * never a path or a query), so the leg a response names reads as its caller in the server's log.
+ */
+function logSite(kind: string, host: string, site: string | undefined): void {
   const key = `${kind} ${site ?? ''}`;
   if (logged.has(key) || logged.size >= LOGGED_MOST) return;
   logged.add(key);
   logger.info(
-    { kind, site: site ?? 'unknown' },
+    { kind, host, site: site ?? 'unknown' },
     'an outbound call a request waited on, by no named provider',
   );
 }
@@ -105,12 +97,13 @@ const open = new WeakMap<object, () => void>();
 
 function opened({ request }: { request: { origin?: unknown; host?: unknown } }): void {
   const named = providers.getStore();
-  const kind = named ?? hostKindOf(hostnameOf(request));
+  const host = hostnameOf(request);
+  const kind = named ?? hostKindOf(host);
   const close = outboundCall(kind);
   if (!close) return;
   open.set(request, close);
   if (named === undefined)
-    logSite(kind, sites.getStore() ?? (siteOf(new Error().stack) || undefined));
+    logSite(kind, host, sites.getStore() ?? (siteOf(new Error().stack) || undefined));
 }
 
 function closed({ request }: { request: object }): void {
