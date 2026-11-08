@@ -214,6 +214,14 @@ cargo build --release
 ./target/release/forge-runner setup                       # pair + bind + service + doctor
 ```
 
+A worktree under the checkout's `.claude/worktrees/` builds into the checkout's own
+`packages/runner/target`, through the `build.build-dir` that `.claude/.cargo/config.toml` sets for
+every directory beneath `.claude/`. The dependencies are compiled once per checkout; each worktree
+keeps only its final binaries in its own `target`, so the paths above hold there too. Two worktrees
+building at once take turns on cargo's lock (`Blocking waiting for file lock on build directory`),
+and switching between them recompiles the workspace's own crates. The checkout itself, and CI,
+build where they always did.
+
 `setup` is the order the steps below go in, not a second implementation of
 them: pairing is `login`'s, the checkout is the server's provisioning path
 (`crates/runner-workspace/src/provision.rs`, the same one a web-UI assignment triggers), the

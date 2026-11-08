@@ -715,7 +715,9 @@ with `--config.node-linker=isolated --config.shamefully-hoist=false`, run `node 
 `pnpm build --force` and `pnpm exec turbo run test --force` after each (`--force`, or turbo's cache
 replays the first linker's result), and compare which checks could not run. Measured 2026-09-27, the
 isolated layout costs about 13 MB and five thousand directory entries more per worktree, not
-gigabytes: a worktree's size is `packages/runner/target` and web-v2's build output.
+gigabytes: a worktree's size is its runner binaries and web-v2's build output, since a worktree
+under `.claude/worktrees/` builds the runner's intermediates into the checkout's own target
+(`packages/runner/README.md`).
 
 Exit `0` clean · `1` an undeclared use or a stale allowance, each named by file, line and package
 · `2` it could not run (no manifest block, a malformed allowance, an unreadable map, no install
