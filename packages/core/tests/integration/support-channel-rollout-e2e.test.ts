@@ -11,8 +11,8 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import { encryptJson } from '../../src/integrations/vault.js';
-import { api } from '../helpers/api.js';
-import { rows } from '../helpers/factories.js';
+import { api, userToken } from '../helpers/api.js';
+import { addProjectMember, createTestUser, rows } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SUPPORT_BOX_CAPS, SupportWorld, type Turn } from '../helpers/support-world.js';
@@ -353,6 +353,57 @@ describe('REQ-77 BC-19: a switch needing the owner’s word waits for it, and no
     const applied = await api(w.owner, 'POST', switchPath(chat.rid4, '/apply'));
     expect(applied.status, JSON.stringify(applied.body)).toBe(200);
     expect(chat.kicked.at(-1)).toEqual({ rid: chat.rid4, userId: 'u-mail-babo' });
+  });
+});
+
+// ISS-945: the owner ordered OrbitInternal switched, and the plan had to invent a duty to pass
+describe('ISS-945: the owner waives a switch’s duties by their word, recorded as a waiver', () => {
+  const rid5 = `GRP${randomUUID().slice(0, 8)}`;
+
+  it('refuses a plan with no duties and no owner’s word, naming the waiver', async () => {
+    const res = await api(w.owner, 'PUT', switchPath(chat.rid4), {
+      outsideBot: { userId: 'u-orbit-babo' },
+      duties: [],
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain("the owner's waiver");
+  });
+
+  it('refuses the waiver from a project admin who is not the org owner, and applies it on the owner’s word', async () => {
+    const held = await heldTarget();
+    const moved = await w.retarget({ rids: held.rids, outsideRids: [rid5] });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const planned = await api(w.owner, 'PUT', switchPath(rid5), {
+      outsideBot: { userId: 'u-orbit-babo' },
+      duties: [],
+      ownerWord: true,
+    });
+    expect(planned.status, JSON.stringify(planned.body)).toBe(200);
+    const plan = planned.body.switch as Record<string, unknown>;
+    expect([plan.waiver, plan.duties, plan.open]).toEqual([true, [], [{ kind: 'owner_word' }]]);
+
+    const admin = await createTestUser({ verified: true });
+    await addProjectMember(w.projectId, admin.id, 'admin');
+    const byAdmin = await api(await userToken(admin.id), 'POST', switchPath(rid5, '/owner-word'), {
+      words: 'switch it',
+    });
+    expect(byAdmin.status, JSON.stringify(byAdmin.body)).toBe(403);
+    expect(JSON.stringify(byAdmin.body)).toContain('AGENT_SWITCH_WAIVER_NOT_OWNER');
+    expect(chat.kicked.some((k) => k.rid === rid5)).toBe(false);
+
+    const word = await api(w.owner, 'POST', switchPath(rid5, '/owner-word'), {
+      words: 'switch OrbitInternal now, no duties',
+    });
+    expect(word.status, JSON.stringify(word.body)).toBe(200);
+    const applied = await api(w.owner, 'POST', switchPath(rid5, '/apply'));
+    expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+    expect(chat.kicked.at(-1)).toEqual({ rid: rid5, userId: 'u-orbit-babo' });
+    const read = (await api(w.owner, 'GET', switchPath(rid5))).body.switch as Record<
+      string,
+      unknown
+    >;
+    expect([read.waiver, read.duties]).toEqual([true, []]);
+    expect((read.ownerWord as { words: string }).words).toBe('switch OrbitInternal now, no duties');
   });
 });
 

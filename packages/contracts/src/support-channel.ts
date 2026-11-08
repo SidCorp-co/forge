@@ -546,9 +546,12 @@ export const channelSwitchDutySchema = z.strictObject({
  * A group's switch from its outside bot to the project's channel agent (REQ-77 BC-16..BC-19): the
  * outside bot's chat account, which the switch removes from the group; the duties the agent passes
  * first; the switch it waits on (AdminHub after OrbitInternal, BC-18); and whether the owner's word
- * is needed (mail, BC-19).
+ * is needed (mail, BC-19). No duties with `ownerWord: true` is the owner's waiver (ISS-945): the
+ * owner's word, which only the organization's owner gives, stands in place of the duty list, and is
+ * recorded as that, never as a duty passed.
  */
-export const channelSwitchPlanSchema = z.strictObject({
+export const channelSwitchPlanSchema = z
+	.strictObject({
 	outsideBot: z.strictObject({
 		/** The outside bot's account id on the chat server, as the server signs its messages. */
 		userId: z.string().trim().min(1).max(200),
@@ -556,7 +559,6 @@ export const channelSwitchPlanSchema = z.strictObject({
 	}),
 	duties: z
 		.array(channelSwitchDutySchema)
-		.min(1)
 		.max(40)
 		.refine(
 			(d) => new Set(d.map((x) => x.key)).size === d.length,
@@ -566,7 +568,12 @@ export const channelSwitchPlanSchema = z.strictObject({
 	after: z.uuid().optional(),
 	/** The owner's word is needed before this group switches. */
 	ownerWord: z.boolean().optional(),
-});
+	})
+	.refine((p) => p.duties.length > 0 || p.ownerWord === true, {
+		path: ["duties"],
+		message:
+			"a switch passes at least one duty, or is the owner's waiver: no duties and `ownerWord: true`, the owner's word standing in place of the duty list",
+	});
 export type ChannelSwitchPlan = z.infer<typeof channelSwitchPlanSchema>;
 
 /** A person passing one duty, naming what they saw the agent do. */
@@ -621,6 +628,8 @@ export interface ChannelSwitchView {
 	after: string | null;
 	ownerWordNeeded: boolean;
 	ownerWord: { words: string; by: string; at: string } | null;
+	/** No duty list: the owner's word stands in its place (ISS-945), recorded as a waiver, never a duty passed. */
+	waiver: boolean;
 	open: ChannelSwitchOpen[];
 	switchedAt: string | null;
 	provenAt: string | null;

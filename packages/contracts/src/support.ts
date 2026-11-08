@@ -1422,6 +1422,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"AGENT_SWITCH_NO_AGENT",
 	/** A duty names a box path, key or host the confined agent never sees (ISS-775). */
 	"AGENT_SWITCH_DUTY_NAMES_BOX",
+	/** The owner's word waiving a switch's duties, given by someone who is not the organization's owner (ISS-945). */
+	"AGENT_SWITCH_WAIVER_NOT_OWNER",
 	/** The outside bot is the binding's own account and its process is not recorded stopped (ISS-775). */
 	"AGENT_SWITCH_OUTSIDE_RUNNING",
 	/** A stop record for an outside bot on another account, which the switch removes itself (ISS-775). */
@@ -1581,6 +1583,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	AGENT_SWITCH_BOT_NOT_REMOVED: 503,
 	AGENT_SWITCH_NO_AGENT: 409,
 	AGENT_SWITCH_DUTY_NAMES_BOX: 400,
+	AGENT_SWITCH_WAIVER_NOT_OWNER: 403,
 	AGENT_SWITCH_OUTSIDE_RUNNING: 409,
 	AGENT_SWITCH_OUTSIDE_NOT_SELF: 409,
 	SUPPORT_DEPLOYMENT_UNREADABLE: 503,

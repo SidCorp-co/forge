@@ -94,6 +94,7 @@ export async function viewOf(row: SwitchRow): Promise<ChannelSwitchView> {
       row.ownerWord && row.ownerWordBy && row.ownerWordAt
         ? { words: row.ownerWord, by: row.ownerWordBy, at: row.ownerWordAt.toISOString() }
         : null,
+    waiver: dutiesOf(row).length === 0,
     open: await openOf(row),
     switchedAt: row.switchedAt?.toISOString() ?? null,
     provenAt: row.provenAt?.toISOString() ?? null,

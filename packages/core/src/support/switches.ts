@@ -15,6 +15,7 @@
 import type { ChannelSwitchPlan, ChannelSwitchView } from '@forge/contracts/support-channel';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { projects } from '../db/schema.js';
 import { supportChannelSwitches, supportChannels } from '../db/schema-support.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import {
@@ -22,7 +23,14 @@ import {
   kickFromGroup,
   resolveRoomPostAuth,
 } from '../integrations/rocketchat/index.js';
-import { actorFor, projectResource, requireCan, requireDeclaredOn } from '../permissions/index.js';
+import {
+  actorFor,
+  can,
+  orgResource,
+  projectResource,
+  requireCan,
+  requireDeclaredOn,
+} from '../permissions/index.js';
 import type { ApiRefusal } from '../project-config/index.js';
 import { planBinding, readBinding, writeBinding } from '../project-config/index.js';
 import { privateRefusal } from './channel.js';
@@ -172,7 +180,11 @@ export async function passDuty(
   return { ok: true, value: await viewOf(updated) };
 }
 
-/** The owner's word for a switch that needs it (BC-19), in their words, by a project admin. */
+/**
+ * The owner's word for a switch that needs it (BC-19), in their words, by a project admin. A switch
+ * with no duties is the owner's waiver (ISS-945): there the word stands in place of the duty list, so
+ * only the owner of the project's organization gives it, and anyone else is refused by name.
+ */
 export async function giveOwnerWord(
   viewer: string,
   projectId: string,
@@ -190,6 +202,13 @@ export async function giveOwnerWord(
       `group ${rid}'s switch waits on no owner's word; plan it with \`ownerWord: true\` first`,
     );
   }
+  if (dutiesOf(row).length === 0 && !(await ownsOrgOf(viewer, projectId))) {
+    return no(
+      'AGENT_SWITCH_WAIVER_NOT_OWNER',
+      '/words',
+      `group ${rid}'s switch has no duties: the owner's word stands in their place, and only the owner of this project's organization gives it; nothing was recorded`,
+    );
+  }
   const [updated] = await db
     .update(supportChannelSwitches)
     .set({ ownerWord: words, ownerWordBy: viewer, ownerWordAt: new Date(), updatedAt: new Date() })
@@ -197,6 +216,16 @@ export async function giveOwnerWord(
     .returning();
   if (!updated) throw new Error(`support: the switch of group ${rid} did not read back`);
   return { ok: true, value: await viewOf(updated) };
+}
+
+/** Whether `viewer` owns the organization the project belongs to. */
+async function ownsOrgOf(viewer: string, projectId: string): Promise<boolean> {
+  const [p] = await db
+    .select({ orgId: projects.orgId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return p?.orgId ? can(actorFor(viewer), 'org.own', orgResource(p.orgId)) : false;
 }
 
 /** A person marks a switched group answered as well as its outside bot answered it (BC-18). */
