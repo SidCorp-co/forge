@@ -92,8 +92,8 @@ const SHARE: Scale = {
  * release, no design and uniform feedback; one no feedback and no open issue; one is small, with few
  * of each; the rest {@link SHARE}. Over twelve alike projects each reached every batched read at the
  * same step; over these, a project with nothing for one read asks the next a step before the others,
- * and a read that split there sent its statement once for each step a key was reached at (r8 measured
- * the home at 158 statements where one project sent 121).
+ * and a read that split there sent its statement once for each step a key was reached at (r9's base:
+ * attention 158 and home 162 statements where one project sent 149 and 122; after, 146 and 117).
  */
 function shareOf(n: number): Scale {
   switch (n % 4) {
@@ -377,7 +377,8 @@ const HOME_ACROSS_MS = 1880;
  * 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
 const ATTENTION_STATEMENTS = 149;
-const HOME_STATEMENTS = 123;
+// ISS-1070 r9: the home sends 122 for one project, and 117 for twelve of different shapes
+const HOME_STATEMENTS = 122;
 /** Needs you and its decisions, as {@link ATTENTION_STATEMENTS} counts the live shape's few. */
 const NEEDS_YOU_STATEMENTS = 142;
 
