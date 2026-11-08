@@ -206,13 +206,12 @@ describe('what the page shows of the highlights', () => {
     expect(answered(drafted, FACTS, digest)).toBe(true);
   });
 
-  // the coordinator's ruling on REQ-70: a release that ended is history
-  it('shows a release that ended as it was kept, its no-clip highlight included, and owes nothing', () => {
+  // REQ-70: a release that ended is history for how a highlight is written, never for what it shows
+  it('shows a release that ended as it was kept and owes nothing, but never a highlight with no clip of its claim', () => {
     const [h] = highlights;
-    const kept = { ...h, media: null, mediaGap: 'QA kept no clip or picture as evidence of BC-1' };
-    const gap = row({ ...drafted, highlights: [kept], sourceDigest: 'an older digest' });
-    expect(shownHighlights(gap, FACTS, digest, BUILD, now, true)).toEqual({
-      highlights: expect.objectContaining({ state: 'drafted', highlights: [kept] }),
+    const ended = row({ ...drafted, sourceDigest: 'an older digest' });
+    expect(shownHighlights(ended, FACTS, digest, BUILD, now, true)).toEqual({
+      highlights: expect.objectContaining({ state: 'drafted', highlights }),
       owed: false,
     });
     const failed = row({
@@ -228,7 +227,7 @@ describe('what the page shows of the highlights', () => {
       ...FACTS,
       requirements: [{ ...FACTS.requirements[0], claimable: ['BC-2'] }],
     } as ReleaseHighlightFacts;
-    expect(shownHighlights(gap, later, digestOf(later), BUILD, now, true)).toEqual({
+    expect(shownHighlights(ended, later, digestOf(later), BUILD, now, true)).toEqual({
       highlights: {
         state: 'none',
         why: 'what its highlights claimed is no longer proven on its build',
@@ -236,7 +235,7 @@ describe('what the page shows of the highlights', () => {
       owed: false,
     });
     // a rule about wording written after it ended is not applied: an engineer's code stays as kept
-    const coded = { ...kept, body: 'Stale suggestions are refused with SUGGESTION_BASE_STALE.' };
+    const coded = { ...h, body: 'Stale suggestions are refused with SUGGESTION_BASE_STALE.' };
     expect(
       shownHighlights(row({ ...drafted, highlights: [coded] }), FACTS, digest, BUILD, now, true)
         .highlights,
@@ -244,6 +243,35 @@ describe('what the page shows of the highlights', () => {
     expect(shownHighlights(null, FACTS, digest, BUILD, now, true)).toEqual({
       highlights: { state: 'none', why: 'this release ended before its highlights were drafted' },
       owed: false,
+    });
+  });
+
+  // ISS-693, 0.4.0-dev.317 and 0.4.0-dev.305 on dev: an ended page kept a no-clip highlight, and one
+  // playing another requirement's evidence (REQ-70 BC-2)
+  it('leaves out of an ended page a highlight kept with no clip, and one playing another requirement’s clip', () => {
+    const [h] = highlights;
+    const none = {
+      highlights: {
+        state: 'none',
+        why: 'no highlight it ended with shows a clip or picture QA kept of what it claims',
+      },
+      owed: false,
+    };
+    const gap = { ...h, media: null, mediaGap: 'QA kept no clip or picture as evidence of BC-1' };
+    expect(
+      shownHighlights(row({ ...drafted, highlights: [gap] }), FACTS, digest, BUILD, now, true),
+    ).toEqual(none);
+    const borrowed = {
+      ...h,
+      media: { ...CLIP, attachmentId: '33333333-3333-4333-8333-333333333333', issueKey: 'ISS-9' },
+    };
+    expect(
+      shownHighlights(row({ ...drafted, highlights: [borrowed] }), FACTS, digest, BUILD, now, true),
+    ).toEqual(none);
+    const both = row({ ...drafted, highlights: [gap, h] });
+    expect(shownHighlights(both, FACTS, digest, BUILD, now, true).highlights).toMatchObject({
+      state: 'drafted',
+      highlights: [h],
     });
   });
 
