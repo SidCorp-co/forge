@@ -52,7 +52,7 @@ function sharedState(rows: readonly WorkflowRecord[]): SharedState {
   return { status: one(statusKey), waits: one(waitKey) };
 }
 
-/** A design in the list: its whole title, wrapped and never cut (REQ-17 BC-29), what it is drawn in, its requirement, its size and age, then its state and health. */
+/** A design in the list: its whole title, wrapped and never cut (REQ-17 BC-29), its requirement and age, then its state and health; what it is drawn in and its size are the title's hover. */
 function DesignItem({ r, slug, templates, narrow, shared }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[]; narrow: boolean; shared: SharedState }) {
   const t = useCopy();
   const label = useLabel();
@@ -67,11 +67,10 @@ function DesignItem({ r, slug, templates, narrow, shared }: { r: WorkflowRecord;
       stack={narrow}
       wrap
       rowKey={w.flow}
-      title={<span title={w.summary}>{w.title}</span>}
+      // what it is drawn in and its size are the title's hover: the type filter above already names the kind (ISS-1131)
+      title={<span title={[w.summary, templateTitle(templateIdOf(r), templates, label), size(r, t)].filter(Boolean).join(" · ")}>{w.title}</span>}
       facts={[
-        <span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>,
         <RequirementKeys key="r" keys={r.requirements} />,
-        size(r, t),
         <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>,
       ]}
       trailing={
