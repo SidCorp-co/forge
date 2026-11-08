@@ -14,9 +14,10 @@ import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import type { ChangeRequestReading } from '../db/schema-repo-projection.js';
+import { type ChangeRequestReading, repoPullRequests } from '../db/schema-repo-projection.js';
 import { logger } from '../lib/logger.js';
 import { issueRefFormatter } from './issue-prefix-read.js';
+import { readLandingBranches } from './ports.js';
 
 const READING_WORDS: Record<ChangeRequestReading, string> = {
   'branch-lead': "the key leading the request's branch",
@@ -51,5 +52,39 @@ export async function overIssueStampSkip(
       `${key} is ${row.status}, so this merge did not stamp it: ${READING_WORDS[args.namedBy]} ` +
       `named it, and an issue that is over takes no landing from another issue's merge. If this ` +
       `commit is ${key}'s work, reopen it and mark the commit on it (POST /api/issues/:id/merge).`,
+  };
+}
+
+/**
+ * Why Forge's own merge of a promotion request leaves a linked issue's landing as it stands, or null
+ * where the request is no promotion (ISS-726 c4, judge K120 at dev.344): a request out of a branch the
+ * project promotes from (`promotes`) carries work already landed, and a promotion is nobody's landing
+ * (REQ-45 BC-16). A fast-forward answers the issue's own landing commit with the promotion's target,
+ * which rewrote its landing from `dev` to `main` in silence.
+ */
+export async function promotionStampSkip(
+  tx: Tx,
+  args: { projectId: string; pullRequestId: string; issueId: string },
+): Promise<{ status: string; detail: string } | null> {
+  const { promotes } = await readLandingBranches(args.projectId);
+  if (promotes.length === 0) return null;
+  const [request] = await tx
+    .select({ head: repoPullRequests.headRef, base: repoPullRequests.baseRef })
+    .from(repoPullRequests)
+    .where(eq(repoPullRequests.id, args.pullRequestId))
+    .limit(1);
+  if (!request || !promotes.includes(request.head)) return null;
+  const [row] = await tx
+    .select({ issSeq: issues.issSeq, status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, args.issueId))
+    .limit(1);
+  if (!row) return null;
+  const key = (await issueRefFormatter(args.projectId, tx))(row.issSeq);
+  return {
+    status: row.status,
+    detail:
+      `${key} keeps its landing: this request promotes \`${request.head}\` into \`${request.base}\`, ` +
+      `carrying work already landed, and a promotion is nobody's landing (REQ-45 BC-16).`,
   };
 }

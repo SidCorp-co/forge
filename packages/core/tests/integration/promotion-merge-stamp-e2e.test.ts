@@ -8,12 +8,14 @@
  * ISS-774: the host's report of either merge writes nothing; the landing here is Forge's own record.
  *
  * @direct-test-of packages/core/src/issues/merge-identity.ts
+ * @direct-test-of packages/core/src/issues/merge-stamp-skip.ts
  */
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
+import { promotionStampSkip } from '../../src/issues/merge-stamp-skip.js';
 import { owedMarks } from '../../src/issues/owed-merges.js';
 import { emitEvent } from '../../src/outbox/index.js';
 import { api } from '../helpers/api.js';
@@ -140,5 +142,51 @@ describe('a promotion of landed work never replaces an issue’s landing (REQ-45
     expect(await owedMarks(world.projectId)).toEqual([
       expect.objectContaining({ issueId: id, number: 5019, commit: STG_HEAD }),
     ]);
+  });
+});
+
+// ISS-726 c4 (judge K120 at dev.344): Forge's own merge of !24, `dev` into `main`, which GitLab
+// fast-forwarded, answered ISS-1's own landing commit with the target `main`, and the stamp rewrote
+// its landing's branch in silence. A request out of a branch the project promotes from stamps nothing.
+describe('Forge’s own merge of a promotion leaves every linked issue’s landing as it stands', () => {
+  it('skips the stamp of a request out of a promotion source, naming why, and keeps it for another', async () => {
+    await settleOutbox();
+    await seedWorld(
+      { approval: { required: true } },
+      {
+        promotions: [{ from: BRANCH, to: PRODUCTION, via: 'merge' }],
+      },
+    );
+    const id = await issue(23, 'awaiting_release');
+    await mergeRequest(5017, 'fix/remove-dead-shipment-import-iss-23', 'a6'.repeat(20), null);
+    await hostMerged(
+      5017,
+      'fix/remove-dead-shipment-import-iss-23',
+      OWN,
+      '2026-10-27T06:45:31.222Z',
+    );
+    await stampObserved(id, OWN, '2026-10-27T06:45:31.222Z');
+    await promoted();
+    const [promotion, own] = (await db.execute(sql`
+      SELECT id FROM repo_pull_requests WHERE project_id = ${world.projectId} AND number IN (5020, 5017)
+       ORDER BY number DESC`)) as unknown as Array<{ id: string }>;
+
+    const skip = await db.transaction((tx) =>
+      promotionStampSkip(tx, {
+        projectId: world.projectId,
+        pullRequestId: String(promotion?.id),
+        issueId: id,
+      }),
+    );
+    expect(skip?.detail).toContain(`promotes \`${BRANCH}\` into \`${PRODUCTION}\``);
+    expect(skip?.detail).toContain('REQ-45 BC-16');
+    const none = await db.transaction((tx) =>
+      promotionStampSkip(tx, {
+        projectId: world.projectId,
+        pullRequestId: String(own?.id),
+        issueId: id,
+      }),
+    );
+    expect(none).toBeNull();
   });
 });

@@ -18,6 +18,7 @@ import {
   mergedCommitShaSchema,
   mergeIdentityOf,
   overIssueStampSkip,
+  promotionStampSkip,
   recordIssueMerge,
   recordRefusedStamp,
   type TransitionActor,
@@ -46,7 +47,9 @@ const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 const stampKernelMerge =
   (actor: OutboxActor, projectId: string, callIssueId: string): IssueMergeStamp =>
   async (tx, { pullRequestId, performed, issueId, namedBy, commitSha, mergedAt, target, head }) => {
-    const skipped = await overIssueStampSkip(tx, { issueId, callIssueId, namedBy });
+    const skipped =
+      (await overIssueStampSkip(tx, { issueId, callIssueId, namedBy })) ??
+      (await promotionStampSkip(tx, { projectId, pullRequestId, issueId }));
     if (skipped) return { wrote: false, skipped };
     // only a merge Forge made now names its request; one the host reports already made may have
     // landed through another request's commits, so the commit answers for it

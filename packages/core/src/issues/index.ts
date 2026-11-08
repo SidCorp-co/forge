@@ -191,7 +191,7 @@ export { mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 export { mergeMarkKindOf } from './merge-mark-kind.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
-export { overIssueStampSkip } from './merge-stamp-skip.js';
+export { overIssueStampSkip, promotionStampSkip } from './merge-stamp-skip.js';
 export { mergeNotRecorded } from './merged-at.js';
 export {
   filingAnsweredBy,
