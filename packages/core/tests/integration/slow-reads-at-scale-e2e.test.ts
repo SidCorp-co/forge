@@ -21,6 +21,8 @@
 // @direct-test-of packages/core/src/release-batch/shipped-releases.ts
 // @direct-test-of packages/core/src/pipeline/release-runs.ts
 // @direct-test-of packages/core/src/whats-new/serving.ts
+// @direct-test-of packages/core/src/issues/display-ids.ts
+// @direct-test-of packages/core/src/requirements/standing-live-build.ts
 
 import { appendFileSync } from 'node:fs';
 import { QueryPromise, sql } from 'drizzle-orm';

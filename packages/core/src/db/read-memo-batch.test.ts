@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/db/read-slots.ts
 import { describe, expect, it } from 'vitest';
 import { newQueryTiming, statementSent, withQueryTiming } from './query-timing.js';
 import {
