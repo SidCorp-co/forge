@@ -4,6 +4,7 @@
 // REST and has no tool here; this server is for the product layer.
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
+import { forgeBotTool } from '../assistant/bot-door.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import { forgeFeedbackTool } from '../forge-door/index.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
@@ -50,4 +51,7 @@ export const MCP_TOOLS = {
   forge_projects: (ctx) => forgeProjectsTool(ctx),
   forge_config: (ctx) => forgeConfigTool(ctx),
   forge_bindings: (ctx) => forgeBindingsTool(ctx),
+  // A persistent project thread with the Forge bot (REQ-91): the chat assistant's own room and turn,
+  // under the caller's credential, followed by a handle where a turn outlasts the call.
+  forge_bot: (ctx) => forgeBotTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

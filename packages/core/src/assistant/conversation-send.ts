@@ -21,6 +21,7 @@ import {
   claimDueWindows,
   claimOf,
   collectInboundMessage,
+  earlierUnderKey,
   effectiveConversationMode,
   getConversation,
   type ProjectHandle,
@@ -65,10 +66,8 @@ export interface WebSendResult {
   mode: ConversationMode;
 }
 
-/**
- * Take one typed message and answer it.
- */
-export async function sendWebConversationMessage(args: {
+/** What a send asks of the room, whichever door it came through. */
+export interface WebSendArgs {
   room: WebConversationRoom;
   projectId: string;
   userId: string;
@@ -86,30 +85,72 @@ export async function sendWebConversationMessage(args: {
   clientToken?: string | undefined;
   /** The files staged with this message, as references the turn re-reads (ISS-1146). */
   images?: readonly ConversationImage[] | undefined;
-}): Promise<WebSendResult> {
+  /**
+   * The sender's own key for this message, kept as its transport id, under which a retried send is
+   * taken in once (REQ-91 BC-6): a second send under a key this room already holds is not written,
+   * and the message the first one wrote is answered instead.
+   */
+  externalMessageId?: string | undefined;
+}
+
+/** A message taken in, or the one an earlier send under the same key wrote. */
+export type WebAccepted =
+  | { kind: 'accepted'; conversationId: string; windowId: string; messageId: string; seq: number }
+  | { kind: 'duplicate'; conversationId: string; messageId: string; seq: number; content: string };
+
+/** Thrown inside the collection to roll it back when the key is already held. */
+class HeldKey {
+  constructor(readonly earlier: { id: string; seq: number; content: string }) {}
+}
+
+/**
+ * Take one typed message into its room and its window, under one commit, and tell the room's readers.
+ * Nothing is answered here: `routeOneWebWindow` does that, now or once the caller lets it run.
+ */
+export async function acceptWebConversationMessage(args: WebSendArgs): Promise<WebAccepted> {
   const frame: WebConversationFrame = {
     conversation: args.room,
     projectId: args.projectId,
     userId: args.userId,
   };
-  const collected = await collectInboundMessage({
-    ports: webConversationPorts,
-    frame,
-    message: args.content,
-    speakerKey: args.userId,
-    speakerLabel: args.userLabel,
-    speakerTokenId: args.viaTokenId,
-    ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
-    withinCollection: async (tx, { conversationId, seq }) => {
-      if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
-      if (seq !== 0 && !args.namedMode) return;
-      const row = await getConversation(conversationId, tx);
-      throw refuseConversation(
-        'CONVERSATION_MODE_SETTLED',
-        `conversation ${conversationId} was opened in ${effectiveConversationMode(row ?? { mode: null })} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
-      );
-    },
-  });
+  const key = args.externalMessageId;
+  let collected: Awaited<ReturnType<typeof collectInboundMessage>>;
+  try {
+    collected = await collectInboundMessage({
+      ports: webConversationPorts,
+      frame,
+      message: args.content,
+      speakerKey: args.userId,
+      speakerLabel: args.userLabel,
+      speakerTokenId: args.viaTokenId,
+      ...(key ? { externalMessageId: key } : {}),
+      ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
+      withinCollection: async (tx, { conversationId, seq }) => {
+        // the room row is held FOR UPDATE by the append, so a concurrent retry under the same key
+        // reads this one's row once it commits, and is rolled back here
+        if (key) {
+          const earlier = await earlierUnderKey(tx, conversationId, key, seq);
+          if (earlier) throw new HeldKey(earlier);
+        }
+        if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
+        if (seq !== 0 && !args.namedMode) return;
+        const row = await getConversation(conversationId, tx);
+        throw refuseConversation(
+          'CONVERSATION_MODE_SETTLED',
+          `conversation ${conversationId} was opened in ${effectiveConversationMode(row ?? { mode: null })} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
+        );
+      },
+    });
+  } catch (err) {
+    if (!(err instanceof HeldKey)) throw err;
+    return {
+      kind: 'duplicate',
+      conversationId: args.room.id,
+      messageId: err.earlier.id,
+      seq: err.earlier.seq,
+      content: err.earlier.content,
+    };
+  }
   if (collected.kind !== 'collected') {
     throw new Error(
       `web conversations: conversation ${args.room.id} could not be placed as a venue, so the message was not taken in`,
@@ -130,15 +171,33 @@ export async function sendWebConversationMessage(args: {
       'web conversations: the accepted event was not published',
     ),
   );
-
-  const decision = await routeOneWebWindow(args.room.externalId, `send:${args.userId}`);
   return {
+    kind: 'accepted',
     conversationId: collected.conversationId,
     windowId: collected.windowId,
+    messageId: collected.messageId,
     seq: collected.seq,
+  };
+}
+
+/**
+ * Take one typed message and answer it.
+ */
+export async function sendWebConversationMessage(args: WebSendArgs): Promise<WebSendResult> {
+  const accepted = await acceptWebConversationMessage(args);
+  if (accepted.kind !== 'accepted') {
+    throw new Error(
+      `web conversations: a send to conversation ${args.room.id} named no key, and was answered as a duplicate`,
+    );
+  }
+  const decision = await routeOneWebWindow(args.room.externalId, `send:${args.userId}`);
+  return {
+    conversationId: accepted.conversationId,
+    windowId: accepted.windowId,
+    seq: accepted.seq,
     decision,
     mode: effectiveConversationMode(
-      (await getConversation(collected.conversationId)) ?? { mode: null },
+      (await getConversation(accepted.conversationId)) ?? { mode: null },
     ),
   };
 }
@@ -258,7 +317,7 @@ function continuingOf(detail: unknown): boolean {
 /**
  * Claim and route whatever this venue owes, and say what was decided.
  */
-async function routeOneWebWindow(
+export async function routeOneWebWindow(
   venueExternalId: string,
   claimant: string,
 ): Promise<string | null> {

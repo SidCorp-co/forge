@@ -8,56 +8,18 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
-  listWindowsForConversation,
   loadConversationAttachment,
   readableConversation,
-  readConversationAgentTurns,
-  refuseConversation,
   writableConversation,
 } from '../conversations/index.js';
 import { getStorage } from '../integrations/index.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
-import type { RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
 import { ROOM_READ, ROOM_WRITE } from './conversation-declarations.js';
-import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
-
-/**
- * Why this core cannot stop this room's turn. The registry is this process's
- * own, so the turn may be a paired box's or another core's, and answering
- * "idle" to either tells the caller something this door never read.
- */
-async function nothingHereToStop(id: string): Promise<RefusalError | null> {
-  const handed = (await readConversationAgentTurns(id, null)).find(
-    (t) => t.state === 'dispatched' || t.state === 'running',
-  );
-  if (handed) {
-    return refuseConversation(
-      'CONVERSATION_TURN_HANDED_OFF',
-      `conversation ${id} handed this turn to a paired box, so there is nothing here to stop — end agent session ${handed.sessionId} instead`,
-    );
-  }
-
-  const elsewhere = (await listWindowsForConversation(id, 5)).find(
-    (w) => w.claimedAt !== null && w.closedAt === null && w.claimedBy !== null,
-  );
-  // A turn that registered during those reads is this core's to stop after all.
-  if (isTurnRunning(id)) return null;
-  if (elsewhere) {
-    return refuseConversation(
-      'CONVERSATION_TURN_ON_ANOTHER_CORE',
-      `conversation ${id} has window ${elsewhere.id} still open under claim "${elsewhere.claimedBy}", and no turn for it is running on this core — a stop reaches only the core running the turn, so this one cannot end it`,
-    );
-  }
-
-  return refuseConversation(
-    'CONVERSATION_NOTHING_RUNNING',
-    `conversation ${id} is not answering anything right now, so there was nothing to stop`,
-  );
-}
+import { isTurnRunning, nothingHereToStop, stopConversationTurns } from './conversation-stops.js';
 
 const attachmentTicketSchema = z
   .object({

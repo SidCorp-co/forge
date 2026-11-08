@@ -53,3 +53,15 @@ export const ISSUES_TOOL_ACTIONS = [
 	...ISSUES_TOOL_READS,
 	...ISSUES_TOOL_WRITES,
 ] as const;
+
+/**
+ * A persistent project thread with the Forge bot (REQ-91): `open` opens or resumes one, `send` says
+ * something in it, and `cancel` ends the turn it runs, so all three are write-class; `threads` and
+ * `read` only read, a read waiting for a reply included.
+ */
+export const BOT_TOOL_READS = ["threads", "read"] as const;
+const BOT_TOOL_WRITES = ["open", "send", "cancel"] as const;
+export const BOT_TOOL_ACTIONS = [
+	...BOT_TOOL_READS,
+	...BOT_TOOL_WRITES,
+] as const;
