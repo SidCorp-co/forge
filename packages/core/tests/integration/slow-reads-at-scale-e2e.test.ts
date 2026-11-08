@@ -300,6 +300,11 @@ interface Ceiling {
   beyondAlone?: number;
   /** The slowest warm median it may take, where one is held: the shell waits on it (ISS-1070 r7). */
   ms?: number;
+  /**
+   * The most the median read's own `Server-Timing` may name as the app's: its time with no statement
+   * in flight, what the process spends parsing, joining and freezing (ISS-1070 r11), where one is held.
+   */
+  appMs?: number;
 }
 
 /**
@@ -436,6 +441,13 @@ afterAll(closeWorld);
  */
 const ALONE = new Map<string, number>();
 
+/** The app's share the read's own `Server-Timing` names: its time with no statement in flight. */
+function appOf(m: Measure): number {
+  const app = /(?:^|, )app;dur=([0-9.]+)/.exec(m.timing)?.[1];
+  if (app === undefined) throw new Error(`${m.path} answered no Server-Timing app time: ${m.timing}`);
+  return Number(app);
+}
+
 /**
  * Reads each path as `as`, a warm-up then three, holds each statement to its buffer ceiling, and
  * answers each read over its ceilings of statements or buffers; every read is measured before any
@@ -449,10 +461,13 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
     const { path } = ceiling;
     const warm = await measured(path, as); // the first request pays for the prepared statements
     expect(warm.status, `${path}: ${JSON.stringify(warm.body).slice(0, 400)}`).toBe(200);
-    const runs = [await measured(path, as), await measured(path, as), await measured(path, as)];
+    // SLOW_READS_RUNS=<n> reads it n times (odd, three by default) and judges the median
+    const runs: Measure[] = [];
+    for (let n = 0; n < Math.max(1, Number(process.env.SLOW_READS_RUNS ?? 3)); n++)
+      runs.push(await measured(path, as));
     if (process.env.SLOW_READS_PROFILE)
       await profiled(path, process.env.SLOW_READS_PROFILE, () => measured(path, as));
-    const median = [...runs].sort((a, b) => a.ms - b.ms)[1] as Measure;
+    const median = [...runs].sort((a, b) => a.ms - b.ms)[Math.floor(runs.length / 2)] as Measure;
     // SLOW_READS_EXPLAIN=1 plans the three slowest; any other value is a pattern naming the statements to plan
     const explain = process.env.SLOW_READS_EXPLAIN;
     const match = explain && explain !== '1' ? new RegExp(explain) : null;
@@ -487,7 +502,7 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
         )
       : [];
     const line = [
-      report(`${label}: median of 3 (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
+      report(`${label}: median of ${runs.length} (${runs.map((r) => r.ms.toFixed(0)).join(', ')})`, median),
       `  ceiling: ${median.statements.length} of ${ceiling.statements} statements, ${buffers} of ${ceiling.buffers} buffers`,
       ...heaviestSites(heaviest),
       ...every,
@@ -512,6 +527,11 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
       ...(buffers > ceiling.buffers
         ? [
             `${label} ${path}'s statements touched ${buffers} shared buffers, over its ceiling of ${ceiling.buffers}`,
+          ]
+        : []),
+      ...(ceiling.appMs !== undefined && appOf(median) > ceiling.appMs
+        ? [
+            `${label} ${path} spent ${appOf(median).toFixed(0)} ms in the app (median read's Server-Timing), over its ceiling of ${ceiling.appMs} ms`,
           ]
         : []),
       ...(ceiling.ms !== undefined && median.ms > ceiling.ms
