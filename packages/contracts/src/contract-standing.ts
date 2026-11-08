@@ -137,12 +137,14 @@ export const CONTRACT_APPROVAL_LABELS: Record<string, string> = {
 	proposed: "Awaiting approval",
 	approved: "Approved",
 	returned: "Returned",
+	superseded: "Superseded",
 };
 
 export const CONTRACT_APPROVAL_TONES: Record<string, IssueStatusTone> = {
 	proposed: "you",
 	approved: "ready",
 	returned: "err",
+	superseded: "neutral",
 };
 
 export const CONTRACT_WAITING_KINDS = [

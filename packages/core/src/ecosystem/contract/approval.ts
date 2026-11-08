@@ -8,7 +8,8 @@
 import type { ContractApprovalRefusalCode } from '@forge/contracts/ecosystem';
 import { type MasterAsk, masterActRefusal, type PermissionFacts } from '../../permissions/index.js';
 
-const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
+/** `superseded`: a proposed version a newer approved one decided in its own act (ISS-1056), never left proposed. */
+const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned', 'superseded'] as const;
 export type ContractApproval = (typeof CONTRACT_APPROVALS)[number];
 
 export const CONTRACT_DECISIONS = ['approve', 'return'] as const;

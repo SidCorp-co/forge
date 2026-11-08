@@ -4054,6 +4054,13 @@
       "when": 1837900800000,
       "tag": "0636_a_beta_release_is_taken_once_and_run_on_dev",
       "breakpoints": true
+    },
+    {
+      "idx": 637,
+      "version": "7",
+      "when": 1837987200000,
+      "tag": "0637_an_approved_contract_version_supersedes_the_older_proposed_ones",
+      "breakpoints": true
     }
   ]
 }
