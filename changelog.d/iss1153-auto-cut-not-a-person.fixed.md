@@ -1,0 +1,1 @@
+**An automatic release no longer reads as a person's cut.** A release Forge cuts after a landing, or on a schedule, reads 'Cut automatically' and names nobody; a person's cut still names them. Earlier releases read as before.
