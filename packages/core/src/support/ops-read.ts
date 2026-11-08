@@ -3,9 +3,18 @@
 // argument whole against its parameter before anything runs, the box runs the argv with no shell and
 // the arguments as their own items, and core scrubs what came back before the agent reads it. A read
 // runs at once and needs no confirmer: the program reads, and keeps its own credential. The agent is
-// never shown the argv, only the read's name, summary and parameters.
+// never shown the argv, only the read's name, summary and parameters. A read's credential is a
+// project secret its declaration names (ISS-707): core reads it from the project's vault and the box
+// sets it on that one process, so no hand-placed config on one box holds it; a secret the vault does
+// not hold refuses the read by name, and what the read printed is cut of every value before anyone
+// reads it.
 
-import { SUPPORT_READ_TIMEOUT_DEFAULT_MS, type SupportReadResult } from '@forge/contracts/support';
+import {
+  SUPPORT_READ_TIMEOUT_DEFAULT_MS,
+  type SupportRead,
+  type SupportReadResult,
+} from '@forge/contracts/support';
+import { readProjectSecrets } from '../project-config/index.js';
 import { runOpsRead } from '../runners/index.js';
 import { boxOfRoom } from './box.js';
 import { firingOf } from './checks.js';
@@ -37,6 +46,32 @@ async function placeOf(
     return { ok: true, value: { thread: input.check, conversationId: null } };
   }
   return { ok: true, value: { thread: TOP_LEVEL, conversationId: null } };
+}
+
+type ReadEnv = { ok: true; env: Record<string, string> } | { ok: false; refs: string[]; code: string };
+
+/** The variables a read's process is handed: each declared secret's value, or which refs have none. */
+async function envOf(projectId: string, read: SupportRead): Promise<ReadEnv> {
+  const declared = read.secrets ?? [];
+  if (declared.length === 0) return { ok: true, env: {} };
+  const got = await readProjectSecrets(
+    projectId,
+    declared.map((d) => d.secret),
+  );
+  if (!got.ok) return { ok: false, refs: got.refs, code: got.code };
+  return {
+    ok: true,
+    env: Object.fromEntries(declared.map((d) => [d.env, got.values.get(d.secret) as string])),
+  };
+}
+
+/** `text` with every handed secret's value cut out, named by its variable. */
+function withoutSecrets(text: string, env: Record<string, string>): string {
+  let out = text;
+  for (const [name, value] of Object.entries(env)) {
+    if (value) out = out.split(value).join(`[secret ${name}]`);
+  }
+  return out;
 }
 
 /**
@@ -87,6 +122,16 @@ export async function runRead(
   }
   const argv = readArgv(read, asked.args);
   if (!argv.ok) return record(argv);
+  const env = await envOf(room.projectId, read);
+  if (!env.ok) {
+    return record(
+      no(
+        'SUPPORT_READ_SECRET_MISSING',
+        '/name',
+        `${read.name} declares the project secret ${env.refs.map((r) => r.replace('secret://', '')).join(', ')}, which this project's secrets ${env.code === 'SECRET_VALUE_MISSING' ? 'do not hold' : 'hold but cannot decrypt'}; a project admin writes it at PUT /api/projects/:id/secrets/<scope>/<name>. Nothing ran.`,
+      ),
+    );
+  }
   const box = await boxOfRoom(room, 'reads');
   if (!box.ok) return record(box);
   const ran = await runOpsRead({
@@ -95,10 +140,11 @@ export async function runRead(
     name: read.name,
     argv: argv.value,
     timeoutMs: read.timeoutMs ?? SUPPORT_READ_TIMEOUT_DEFAULT_MS,
+    ...(read.secrets ? { env: env.env } : {}),
   });
   if (!ran.ok) {
     // the box's words can name the program it could not run: scrubbed of the argv as of any secret
-    const why = (await scrubbedForRoom(room, ran.why))
+    const why = (await scrubbedForRoom(room, withoutSecrets(ran.why, env.env)))
       .split(read.argv[0] as string)
       .join(read.name);
     return record(no('SUPPORT_READ_FAILED', '/name', `${read.name} did not run: ${why}`));
@@ -107,8 +153,8 @@ export async function runRead(
     ok: true,
     value: {
       ...ran.value,
-      stdout: await scrubbedForRoom(room, ran.value.stdout),
-      stderr: await scrubbedForRoom(room, ran.value.stderr),
+      stdout: await scrubbedForRoom(room, withoutSecrets(ran.value.stdout, env.env)),
+      stderr: await scrubbedForRoom(room, withoutSecrets(ran.value.stderr, env.env)),
     },
   });
 }

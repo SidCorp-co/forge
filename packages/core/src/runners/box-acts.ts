@@ -110,14 +110,22 @@ export function runHostCommand(
  * their own items, no shell, killed at `timeoutMs` (ISS-871). The answer is the program's own, unscrubbed.
  */
 export function runOpsRead(
-  input: { deviceId: string; projectId: string; name: string; argv: string[]; timeoutMs: number },
+  input: {
+    deviceId: string;
+    projectId: string;
+    name: string;
+    argv: string[];
+    timeoutMs: number;
+    /** Variables the box sets on the read's own process alone: its declared secrets (ISS-707). */
+    env?: Record<string, string>;
+  },
   deps: BoxActDeps = defaultDeps(),
 ): Promise<BoxActOutcome<SupportReadResult>> {
   return askBox({
     deviceId: input.deviceId,
     projectId: input.projectId,
     event: 'ops.read',
-    data: { argv: input.argv, timeoutMs: input.timeoutMs },
+    data: { argv: input.argv, timeoutMs: input.timeoutMs, ...(input.env ? { env: input.env } : {}) },
     timeoutMs: input.timeoutMs + 15_000,
     deps,
     read: (raw) => {

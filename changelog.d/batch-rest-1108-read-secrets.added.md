@@ -1,0 +1,1 @@
+**A declared production read can be the project repo's own code and take its credential from a project secret.** A read names `repo:<path>`, run from the box's checkout, and its secrets, which only its process is handed and its answer never shows.

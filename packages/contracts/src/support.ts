@@ -111,14 +111,39 @@ export const supportReadNameSchema = z
 		"a read's name is 2 to 40 lowercase letters, digits and dashes, starting with a letter, such as hub-logs",
 	);
 
-/** The program a read runs on the box: an absolute path, never a name the box's PATH resolves. */
+/**
+ * The program a read runs on the box: an absolute path, never a name the box's PATH resolves; or
+ * `repo:<path>`, a program versioned in the project's own repository, run from the checkout the box
+ * binds to the project, so any runner of the project runs the same reviewed code (ISS-707).
+ */
+export const READ_REPO_PROGRAM_PREFIX = "repo:";
 const readProgramSchema = z
 	.string()
 	.max(300)
 	.regex(
-		/^\/(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._+@-]+(?:\/[A-Za-z0-9._+@-]+)*$/,
-		"the program is an absolute path on the box, with no . or .. segment",
+		/^(?:\/|repo:)(?!.*(?:^|\/|:)\.\.?(?:\/|$))[A-Za-z0-9._+@-]+(?:\/[A-Za-z0-9._+@-]+)*$/,
+		"the program is an absolute path on the box, or repo:<path> in the project's checkout, with no . or .. segment",
 	);
+
+/**
+ * A project secret a read's own process is handed as one environment variable (ISS-707): the box
+ * sets it on that process alone, the agent never sees it, and what the read prints is scrubbed of it.
+ */
+export const supportReadSecretSchema = z.strictObject({
+	env: z
+		.string()
+		.regex(
+			/^[A-Z][A-Z0-9_]{0,63}$/,
+			"an environment variable name: a capital letter, then capitals, digits or _",
+		),
+	secret: z
+		.string()
+		.regex(
+			/^secret:\/\/[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/,
+			"a project secret by ref: secret://<scope>/<name>",
+		),
+});
+export type SupportReadSecret = z.infer<typeof supportReadSecretSchema>;
 
 /** A fixed argument of a read: words the box passes as they are, one argv item each. */
 const readFixedArgSchema = z
@@ -217,6 +242,16 @@ export const supportReadSchema = z
 			.int()
 			.min(1000)
 			.max(SUPPORT_READ_TIMEOUT_MAX_MS)
+			.optional(),
+		/** The project secrets its process is handed, each as one variable (ISS-707). */
+		secrets: z
+			.array(supportReadSecretSchema)
+			.min(1)
+			.max(5)
+			.refine(
+				(ss) => new Set(ss.map((x) => x.env)).size === ss.length,
+				"two secrets share a variable; a variable is named once",
+			)
 			.optional(),
 	})
 	.superRefine((r, ctx) => {
@@ -1447,6 +1482,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_NOT_A_CHANNEL_AGENT",
 	/** A read the room's grant does not declare (ISS-871). */
 	"SUPPORT_READ_UNDECLARED",
+	/** A read whose declared project secret the vault does not hold (ISS-707). */
+	"SUPPORT_READ_SECRET_MISSING",
 	/** A read's argument outside its parameter's pattern, enum or length, unknown, or missing (ISS-871). */
 	"SUPPORT_READ_ARGS",
 	/** The box could not run a declared read (ISS-871). */
@@ -1608,6 +1645,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_DEPLOYMENT_UNREADABLE: 503,
 	SUPPORT_NOT_A_CHANNEL_AGENT: 409,
 	SUPPORT_READ_UNDECLARED: 404,
+	SUPPORT_READ_SECRET_MISSING: 409,
 	SUPPORT_READ_ARGS: 400,
 	SUPPORT_READ_FAILED: 503,
 	SUPPORT_INTERNAL_CODE: 400,

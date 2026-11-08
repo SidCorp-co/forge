@@ -163,9 +163,21 @@ pub(crate) async fn run(
     args: &[String],
     timeout: Duration,
 ) -> Result<Ran, String> {
+    run_with_env(program, args, timeout, &[]).await
+}
+
+/// [`run`] with `env` set on this one process, over what it inherits: a read's declared secrets
+/// (ISS-707), which no other process of the box is handed.
+pub(crate) async fn run_with_env(
+    program: &OsStr,
+    args: &[String],
+    timeout: Duration,
+    env: &[(String, String)],
+) -> Result<Ran, String> {
     let started = Instant::now();
     let mut child = Command::new(program)
         .args(args)
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
