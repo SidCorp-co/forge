@@ -30,6 +30,7 @@ import {
   createTestUser,
 } from '../helpers/factories.js';
 import { passingReport } from '../helpers/merge-check-report.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'ann' | 'bo' | 'stranger';
@@ -302,6 +303,12 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
 });
 
 describe("the reporter's confirm in the fix preview is the item's loop close (BC-20)", () => {
+  // asking again is a strict project's (owner 2026-11-08, D5): outside strict the ship is the verify
+  // (`loop-check.ts:verifyByShip`), so an item no confirm closes is verified by its ship instead
+  beforeAll(async () => {
+    await declareControls(projectId, people.owner, { gates: { profile: 'strict' } });
+  });
+
   it('verifies the item as the reporter when the change a full-lane merge check shipped is the one they confirmed', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await shippedWithConfirm({ patch: P, shipped: P, verdict: 'fixed' });
