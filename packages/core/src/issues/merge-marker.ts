@@ -43,6 +43,7 @@ import {
 import { type MergeRecord, recordIssueMerge, recordMergeTarget } from './merge-record.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { supersedeStaleRoundMerge } from './stale-round-merge.js';
 import { codeEvidenceOf } from './work-evidence.js';
 
 type AuditComment = { id: string; body: string; parentId: string | null };
@@ -488,8 +489,14 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
       claimedCommit: null,
       readFrom: null,
     };
-    if (preflight) stamp = await stampMark(tx, args, preflight, observed);
-    else await clearMark(tx, args.issue.id);
+    if (preflight) {
+      await supersedeStaleRoundMerge(tx, {
+        issueId: args.issue.id,
+        actor: args.actor.hookActor,
+        commit: args.commit,
+      });
+      stamp = await stampMark(tx, args, preflight, observed);
+    } else await clearMark(tx, args.issue.id);
     return { stamp, ...(await writeMarkTrail(tx, args, prior, stamp)) };
   });
 

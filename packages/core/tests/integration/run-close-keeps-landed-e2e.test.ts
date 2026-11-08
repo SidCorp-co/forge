@@ -139,3 +139,31 @@ describe("a run's end over work that did not land", () => {
     expect(await kept(issue.id)).toEqual([]);
   });
 });
+
+// ISS-712 (judge at dev.333): marked, reopened, marked again on another commit, then the run ends.
+// The second mark answered already_merged and kept the first round's stamp from before the reopen,
+// so the run's end read no landing since the reopen and handed the issue back to reopen.
+describe("a run's end over a round marked again after its reopen", () => {
+  it('keeps the issue: the mark after the reopen is the round’s own landing', async () => {
+    const issue = await building('reopen');
+    await merged(issue.id, new Date(Date.now() - 7_200_000));
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, source, actor_type, actor_agency, created_at)
+      VALUES ('issue', ${issue.id}, 'awaiting_release', 'reopen', 'issues', 'user', 'human', now() - interval '1 hour')`);
+    const again = 'beef'.repeat(10);
+    const { seedProjectDocument } = await import('../helpers/release-world.js');
+    await seedProjectDocument(projectId, adminId, { environments: {}, defaultBranch: 'dev' });
+
+    const mark = await api(box, 'POST', `/api/issues/${issue.id}/merge`, {
+      target: 'dev',
+      commit: again,
+    });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(200);
+    expect((mark.body as Doc).action).toBe('merged');
+    expect((await closed(issue.sessionId)).status).toBe(200);
+
+    expect(await statusOf(issue.id)).toBe('in_progress');
+    const [record] = await kept(issue.id);
+    expect(record?.payload).toMatchObject({ status: 'in_progress', wouldReturnTo: 'reopen' });
+  });
+});
