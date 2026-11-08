@@ -8,16 +8,7 @@ import {
   whenQuiet,
   withQueryTiming,
 } from './query-timing.js';
-import {
-  begun,
-  isStepOf,
-  learned,
-  type Made,
-  mayAsk,
-  type Order,
-  orderOf,
-  stepOf,
-} from './read-order.js';
+import { isStepOf, learnPath, type Made, mayAsk, type Path, pathOf, stepOf } from './read-order.js';
 import { slotsOf } from './read-slots.js';
 
 /**
@@ -94,7 +85,9 @@ const across = new WeakMap<Map<string, Promise<unknown>>, ReadonlySet<string>>()
  * waits on now and every ask it made, each a {@link stepOf} with the quiet point it was made at.
  */
 interface Flow {
-  order: Order;
+  id: string;
+  /** The way this project's read went last time ({@link Path}), undefined before its first. */
+  path: Path | undefined;
   asks: Map<string, number>;
   waiting: Map<string, number>;
   made: Made[];
@@ -120,9 +113,8 @@ export function readAcross<P, T>(
   idOf: (project: P) => string,
   read: (project: P) => Promise<T>,
   /**
-   * Names the read, so the order its code asks in ({@link Order}) is learned apart from another's:
-   * reads that shared one name stopped learning on the first read's steps, and the other's asks
-   * found an order that knew none of theirs and split (ISS-1070 r10).
+   * Names the read, so the way its code goes for each project ({@link Path}) is kept apart from
+   * another read's (ISS-1070 r10).
    */
   name = 'read',
 ): Promise<T[]> {
@@ -140,10 +132,14 @@ export function readAcross<P, T>(
     flowsOf.set(memo, running);
   }
   const live = running;
-  const order = orderOf(name);
-  const learning = begun(order);
   const flows = projects.map(
-    (): Flow => ({ order, asks: new Map(), waiting: new Map(), made: [] }),
+    (p): Flow => ({
+      id: idOf(p),
+      path: pathOf(name, idOf(p)),
+      asks: new Map(),
+      waiting: new Map(),
+      made: [],
+    }),
   );
   const reads = Promise.all(
     projects.map((p, i) => {
@@ -152,8 +148,10 @@ export function readAcross<P, T>(
       return inFlow.run(flow, () => read(p)).finally(() => live.delete(flow));
     }),
   );
-  if (!learning) return reads;
-  return reads.finally(() => learned(order, flows));
+  // each project's read teaches its own way, what it asked after what (ISS-1070 r15)
+  return reads.finally(() => {
+    for (const f of flows) learnPath(name, f.id, f.made);
+  });
 }
 
 /** How many projects' reads of each memo have asked each key. */
@@ -184,7 +182,7 @@ function asked(memo: Map<string, Promise<unknown>>, key: string): string | undef
 /**
  * How long a read by id asked by a project's read waits (`db/query-timing.ts:whenQuiet`): not at all
  * once no other project's read still running may ask it. A read waiting on something else that, as
- * its read's order shows ({@link Order}), asks the key after it holds the key past every key only
+ * its project's last read shows ({@link Path}), asks the key after it holds the key past every key only
  * one that never asked it may ask: the batch is read once the reads a step behind have reached it,
  * so a key two projects reach at different steps, or ask again further on, is still read once
  * (ISS-1070 r9). Among keys held alike, those most reads asked are read first: the reads on the path
@@ -196,9 +194,9 @@ const heldFor = (memo: Map<string, Promise<unknown>>, key: string) => () => {
   for (const f of flowsOf.get(memo) ?? []) {
     if ([...f.waiting.keys()].some((w) => isStepOf(w, key))) continue;
     const made = f.asks.get(key) ?? 0;
-    const may = mayAsk(f.order, f.waiting.keys(), key, made);
+    const may = mayAsk(f.path, f.waiting.keys(), key, made);
     if (may === 'yes') return HELD_IN_ORDER + fewer;
-    // where the order knows nothing yet, a read that has never asked the key may
+    // where its last read says nothing, a read that has never asked the key may
     if (may === 'unknown' && made === 0) held = fewer;
   }
   return held;

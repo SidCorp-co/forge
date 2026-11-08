@@ -15,105 +15,87 @@ export interface Made {
 }
 
 /**
- * The order one read across projects (`db/read-memo.ts:readAcross`, by its name) asks in, learned
- * from the project reads it has run: the steps a project's read asked at a later quiet point than
- * each step, and the most times any asked each key. It names reads and counts, never ids, so it holds
- * no answer and no project's data, only how the code is laid out. It learns from its first reads
- * until the order holds unchanged or {@link LEARNING} have taught it (two projects' reads side by side
- * never ask in quite the same order, so it can grow a little on every read), and again every
- * {@link RELEARN}th read, so a new shape is learned without each read paying for it (ISS-1070 r9:
- * learning on every read cost the home 28 ms of its 12 projects).
+ * The way one project's read of one read across projects (`db/read-memo.ts:readAcross`, by its name)
+ * went the last time it ran: the quiet point each step was asked at, and those of each key's asks in
+ * turn. It names reads, steps and counts, never ids, so it holds no answer and no project's data,
+ * only how the code went for that project.
+ *
+ * It is one project's own, not one order every project's read shares (ISS-1070 r15): a shared order
+ * said every read waiting on a step asks each key any other kind of project asked after it, so a
+ * batch was held for an empty project, an outside-git project or a storefront that never asks it;
+ * once every batch was held so, the least held was read first and the projects a step behind asked
+ * it again. forge-dev's fourteen projects of mixed kinds sent a statement four to six times a read.
  */
-export interface Order {
-  after: Map<string, Set<string>>;
-  most: Map<string, number>;
-  /** Reads in a row that left the order unchanged, reads that taught it, and reads in all. */
-  steady: number;
-  taught: number;
-  reads: number;
+export interface Path {
+  /** The quiet point each step was first asked at. */
+  stepAt: Map<string, number>;
+  /** The quiet points of each key's asks, the first ask's first. */
+  asksOf: Map<string, number[]>;
 }
 
-/** How many reads in a row leave the order unchanged before it stops being learned on every read. */
-const STEADY = 3;
-/** How many reads teach the order at most before it is learned only every {@link RELEARN}th read. */
-const LEARNING = 8;
-const RELEARN = 50;
-const orders = new Map<string, Order>();
+/** How many projects' paths are kept at most, the longest unread dropped first. */
+const KEPT = 4_000;
+const paths = new Map<string, Path>();
 
-/** The order of the read named `name`. */
-export function orderOf(name: string): Order {
-  let order = orders.get(name);
-  if (!order) {
-    order = { after: new Map(), most: new Map(), steady: 0, taught: 0, reads: 0 };
-    orders.set(name, order);
+const pathKey = (name: string, project: string) => `${name}\u0004${project}`;
+
+/** The way the read named `name` last went for `project`; undefined before it has run once. */
+export function pathOf(name: string, project: string): Path | undefined {
+  const key = pathKey(name, project);
+  const path = paths.get(key);
+  if (path) {
+    // read now: kept as the newest
+    paths.delete(key);
+    paths.set(key, path);
   }
-  return order;
-}
-
-/** Counts a read of `order` begun; answers whether this read learns from its project reads. */
-export function begun(order: Order): boolean {
-  order.reads += 1;
-  return (order.steady < STEADY && order.taught < LEARNING) || order.reads % RELEARN === 0;
-}
-
-/** Learns from the asks of each project read of a read that has ended. */
-export function learned(
-  order: Order,
-  reads: readonly { asks: Map<string, number>; made: Made[] }[],
-) {
-  // a read that asked nothing across projects (one project's, which reads each ask as it comes) teaches nothing
-  if (reads.every((r) => r.made.length === 0)) return;
-  order.taught += 1;
-  const changed = reads.map((r) => learnFrom(order, r.asks, r.made)).some(Boolean);
-  order.steady = changed ? 0 : order.steady + 1;
-}
-
-/** Learns the order one project's read asked in; answers whether it added to it. */
-function learnFrom(order: Order, asks: Map<string, number>, made: readonly Made[]): boolean {
-  const { after, most } = order;
-  let changed = false;
-  for (const [key, n] of asks)
-    if (n > (most.get(key) ?? 0)) {
-      most.set(key, n);
-      changed = true;
-    }
-  // every step asked at an earlier quiet point comes before each step asked at a later one
-  for (let i = 0, from = 0; i < made.length; i++) {
-    const { step, at } = made[i] as Made;
-    while (from < i && (made[from] as Made).at < at) from++;
-    for (let j = 0; j < from; j++) {
-      const earlier = (made[j] as Made).step;
-      let next = after.get(earlier);
-      if (!next) {
-        next = new Set();
-        after.set(earlier, next);
-      }
-      if (!next.has(step)) {
-        next.add(step);
-        changed = true;
-      }
-    }
-  }
-  return changed;
+  return path;
 }
 
 /**
- * Whether a read waiting on `waits`, having asked `key` `made` times, asks it again after them, as
- * its read's order has learned: `yes` where a later read asked it after one of them, `no` where the
- * order knows what follows each and it is not there, `unknown` where it knows nothing of one.
+ * Keeps the way one project's read went, from the asks it made: the next read of that project
+ * holds a batch only for what this one asked after the steps it waits on. A read that asked nothing
+ * across projects (one project's, which reads each ask as it comes) teaches nothing.
+ */
+export function learnPath(name: string, project: string, made: readonly Made[]): void {
+  if (made.length === 0) return;
+  const stepAt = new Map<string, number>();
+  const asksOf = new Map<string, number[]>();
+  for (const { step, at } of made) {
+    if (!stepAt.has(step)) stepAt.set(step, at);
+    const key = step.slice(0, step.lastIndexOf('\u0003'));
+    const asks = asksOf.get(key);
+    if (asks) asks.push(at);
+    else asksOf.set(key, [at]);
+  }
+  const key = pathKey(name, project);
+  paths.delete(key);
+  paths.set(key, { stepAt, asksOf });
+  if (paths.size > KEPT) paths.delete(paths.keys().next().value as string);
+}
+
+/**
+ * Whether a project's read waiting on `waits`, having asked `key` `made` times, asks it again after
+ * them, as its own last read went: `yes` where that read asked it again at a later quiet point than
+ * one of them, `no` where it did not, `unknown` where the project has no path yet or waits on a step
+ * its last read never took.
  */
 export function mayAsk(
-  order: Order,
+  path: Path | undefined,
   waits: Iterable<string>,
   key: string,
   made: number,
 ): 'yes' | 'no' | 'unknown' {
-  const most = order.most.get(key) ?? 0;
-  let known = most > 0;
+  if (!path) return 'unknown';
+  const later = path.asksOf.get(key)?.slice(made) ?? [];
+  if (later.length === 0) return 'no';
+  // a read waiting on no step of its own waits on another's answer, and goes on from it
+  let known = false;
+  let unread = false;
   for (const w of waits) {
-    const next = order.after.get(w);
-    if (!next) known = false;
-    else for (let n = made + 1; n <= most; n++) if (next.has(stepOf(key, n))) return 'yes';
+    known = true;
+    const at = path.stepAt.get(w);
+    if (at === undefined) unread = true;
+    else if (later.some((a) => a > at)) return 'yes';
   }
-  return known ? 'no' : 'unknown';
+  return known && !unread ? 'no' : 'unknown';
 }
