@@ -1,0 +1,1 @@
+The runner's Rust toolchain is pinned in rust-toolchain.toml (1.99.1): CI's runner jobs and runner-release.yml install it, and pnpm verify's runner gates refuse by name to run under any other rustc (ISS-965).

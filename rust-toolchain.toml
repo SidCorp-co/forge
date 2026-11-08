@@ -1,0 +1,10 @@
+# The one Rust toolchain the runner is built, linted and released with (ISS-965). CI's runner jobs and
+# runner-release.yml install it with `rustup toolchain install`, and `pnpm verify`'s runner gates run
+# cargo under it, so a lint a newer stable adds is red on both sides or on neither. It sits at the
+# repository root because rustup reads it from the directory cargo runs in, and the release build
+# runs from the root. Moving to a newer Rust is a change of its own: bump `channel`, and fix what
+# its clippy refuses in the same change.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -82,9 +82,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # the toolchain rust-toolchain.toml pins, as `pnpm verify`'s runner gates run it (ISS-965)
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
@@ -125,9 +125,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      # the toolchain rust-toolchain.toml pins, with this leg's target (ISS-965)
+      - name: Install the pinned Rust toolchain
+        shell: bash
+        run: rustup toolchain install && rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner

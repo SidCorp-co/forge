@@ -60,6 +60,24 @@ if (cargo.error || cargo.status !== 0) {
 }
 console.log(`runner-gates: ${count} crate file(s) in scope`);
 
+// ISS-965: CI runs these gates under the toolchain rust-toolchain.toml pins; a box running another
+// (a RUSTUP_TOOLCHAIN override, a distro cargo with no rustup) passes what CI's clippy refuses, as
+// 1.98.1 here passed a `fetch_update` that 1.99.1 in CI deprecated. Refused by name, never run.
+const pinned = /^\s*channel\s*=\s*"([^"]+)"/m.exec(
+  readFileSync(resolve(ROOT, 'rust-toolchain.toml'), 'utf8'),
+)?.[1];
+const rustc = spawnSync('rustc', ['--version'], { cwd: CRATE_DIR, encoding: 'utf8' });
+const running = /^rustc (\S+)/.exec(rustc.stdout ?? '')?.[1];
+if (!pinned || running !== pinned) {
+  console.error(
+    `runner-gates: rustc ${running ?? '(none answered)'} runs here, and rust-toolchain.toml pins ${pinned ?? '(no channel)'}, the toolchain CI runs these gates under.`,
+  );
+  console.error(
+    'Run them under the pin: unset RUSTUP_TOOLCHAIN and run `rustup toolchain install` in the repository, or install Rust through rustup (https://rustup.rs), then run `pnpm verify` again.',
+  );
+  process.exit(2);
+}
+
 // ADR 0009's size rule: no file's production section (everything above its first
 // `#[cfg(test)]`) passes FILE_LIMIT lines. Functions are held to 100 by clippy.toml.
 const FILE_LIMIT = 800;

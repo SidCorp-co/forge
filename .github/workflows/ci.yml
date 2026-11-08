@@ -604,9 +604,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # the toolchain rust-toolchain.toml pins, as `pnpm verify`'s runner gates run it (ISS-965)
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
@@ -680,9 +680,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # the toolchain rust-toolchain.toml pins, as `pnpm verify`'s runner gates run it (ISS-965)
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
@@ -788,10 +788,10 @@ jobs:
             echo "runner=false" >> "$GITHUB_OUTPUT"
           fi
       - uses: ./.github/actions/setup-workspace
+      # the toolchain rust-toolchain.toml pins, as `pnpm verify`'s runner gates run it (ISS-965)
       - if: steps.touched.outputs.runner == 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        name: Install the pinned Rust toolchain
+        run: rustup toolchain install
       - if: steps.touched.outputs.runner == 'true'
         uses: Swatinem/rust-cache@v2
         with:
