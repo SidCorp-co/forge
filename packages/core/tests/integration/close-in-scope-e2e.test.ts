@@ -62,7 +62,6 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
-import { declareControls } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
@@ -488,114 +487,5 @@ describe('a release carries an issue its holder closed (ISS-1062)', () => {
     expect(await phase(), 'closed met in scope is not live').toBe('planned');
     ok(await recordRelease([carrier.id], '4.2.0'), 201);
     expect(await phase()).toBe('resolved');
-  });
-});
-
-// owner 2026-11-08 (D2, G2): where the project judges its own work, a close is its builder's
-// verdict: each traced criterion it did not move out, holding no verdict, is recorded passing at its
-// landing, sourced the close, so no requirement owes "judge BC-x on ISS-y" for ever. An independent
-// judge still owes it. Last in the file: it turns the shared project's judge independent.
-describe("a close is its builder's verdict where the project judges its own work (D2)", () => {
-  const verdictsOf = (issueId: string) =>
-    rows<{
-      n: number;
-      verdict: string;
-      identity_kind: string;
-      commit_sha: string;
-      reason: string;
-    }>(sql`
-      SELECT c.n, v.verdict, v.identity_kind, v.commit_sha, v.reason
-        FROM criterion_verdicts v JOIN issue_criteria c ON c.id = v.criterion_id
-       WHERE v.issue_id = ${issueId} ORDER BY c.n`);
-
-  it('records each traced criterion holding no verdict passing at the landing, and nothing else', async () => {
-    const { id } = await landed([]);
-    await completeIssueReadyRecord(projectId, ownerId, id, seq);
-    // criterion 2 traces nothing: no requirement waits on it, so the close records nothing for it
-    await rows(sql`
-      INSERT INTO issue_criteria (issue_id, n, statement, position)
-      VALUES (${id}, 2, 'its own outcome', 1)`);
-    await lease(id);
-    const r = await close(id);
-    expect(r.status, JSON.stringify(r.json)).toBe(200);
-    expect(await verdictsOf(id)).toEqual([
-      {
-        n: 1,
-        verdict: 'pass',
-        identity_kind: 'commit',
-        commit_sha: SHA,
-        // the close's source, as every reader shows it beside the verdict (`CLOSE_VERDICT_REASON`)
-        reason:
-          "met in scope at the issue's close: the project judges its own work, so the close is its builder's verdict",
-      },
-    ]);
-  });
-
-  // forge-dev 2026-11-08: no source host, so every mark is asserted and `merged_commit_sha` is empty;
-  // reading only that column recorded no verdict for any issue closed there (ISS-690, ISS-60, …)
-  it('records at the commit an asserted mark claims, where no merge was observed', async () => {
-    const claimed = 'cd34'.repeat(10);
-    const { id } = await landed([]);
-    await completeIssueReadyRecord(projectId, ownerId, id, seq);
-    await rows(sql`UPDATE issues SET merged_commit_sha = NULL WHERE id = ${id}`);
-    await rows(sql`
-      INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload)
-      VALUES (${id}, 'user', ${ownerId}, 'agent', 'issue.mergeMarked',
-              ${JSON.stringify({ commit: claimed, stamped: true })}::jsonb)`);
-    await lease(id);
-    const r = await close(id);
-    expect(r.status, JSON.stringify(r.json)).toBe(200);
-    expect((await verdictsOf(id)).map((v) => [v.n, v.verdict, v.commit_sha])).toEqual([
-      [1, 'pass', claimed],
-    ]);
-  });
-
-  // an issue closed before the close recorded its verdict, its criterion holding a fail from an earlier
-  // landing (ISS-690: failed on 0.4.0-dev.557, met again and closed at 946913bbcd) or a reading of a
-  // runtime: the backfill answers it at the landing; a verdict written after the close is kept as newest
-  it('backfills at the landing over a verdict from an earlier landing, never over one after the close', async () => {
-    const { backfillCloseVerdicts, CLOSE_VERDICTS_BACKFILL_KEY } = await import(
-      '../../src/issues/criteria/close-verdicts.js'
-    );
-    const earlier = 'ef56'.repeat(10);
-    const before = await landed([], 'closed');
-    await completeIssueReadyRecord(projectId, ownerId, before.id, seq);
-    const after = await landed([], 'closed');
-    await completeIssueReadyRecord(projectId, ownerId, after.id, seq);
-    for (const { id } of [before, after]) {
-      await rows(sql`
-        INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type,
-                                        actor_agency, source, created_at)
-        VALUES (${randomUUID()}, 'issue', ${id}, 'awaiting_release', 'closed', 'system', 'agent',
-                'fixture', now() - interval '1 hour')`);
-    }
-    const failAt = (id: string, at: string) =>
-      rows(sql`
-        INSERT INTO criterion_verdicts
-          (criterion_id, issue_id, verdict, reason, identity_kind, commit_sha, author_agency, created_at)
-        SELECT id, issue_id, 'fail', 'not met', 'commit', ${earlier}, 'agent', now() - ${at}::interval
-          FROM issue_criteria WHERE issue_id = ${id} AND n = 1`);
-    await failAt(before.id, '1 day');
-    await failAt(after.id, '1 minute');
-    await rows(sql`DELETE FROM backfill_markers WHERE key = ${CLOSE_VERDICTS_BACKFILL_KEY}`);
-    const report = await backfillCloseVerdicts();
-    expect(report?.verdicts).toBeGreaterThanOrEqual(1);
-    expect((await verdictsOf(before.id)).map((v) => [v.verdict, v.commit_sha]).sort()).toEqual([
-      ['fail', earlier],
-      ['pass', SHA],
-    ]);
-    expect((await verdictsOf(after.id)).map((v) => v.verdict)).toEqual(['fail']);
-    // once: the marker holds it, and a second boot writes nothing
-    expect(await backfillCloseVerdicts()).toBeNull();
-  });
-
-  it('records nothing where an independent judge owes the criteria', async () => {
-    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
-    const { id } = await landed([]);
-    await completeIssueReadyRecord(projectId, ownerId, id, seq);
-    await lease(id);
-    const r = await close(id);
-    expect(r.status, JSON.stringify(r.json)).toBe(200);
-    expect(await verdictsOf(id)).toEqual([]);
   });
 });

@@ -76,7 +76,8 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
     // the item planned. An accept by decision counts as done (`RequirementAcceptanceDecision`): what
     // it waived reads unproven on the requirement, never as work still owed to the reporter
     case 'new_requirement':
-      if (f.routedRequirementDelivered || f.routedRequirementStatus === 'accepted') return 'resolved';
+      if (f.routedRequirementDelivered || f.routedRequirementStatus === 'accepted')
+        return 'resolved';
       return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
     case 'answer':
       return 'resolved';
