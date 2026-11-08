@@ -1,0 +1,1 @@
+**Your attention and home pages spend less time assembling their answer.** Each linked issue is read once for every part, shared answers are protected more cheaply, and operators can see which statements a page repeats.
