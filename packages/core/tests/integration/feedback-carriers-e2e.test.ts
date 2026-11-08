@@ -146,7 +146,7 @@ describe('an item delivered by several issues names every one of them', () => {
   it('reads stuck while its carriers are drafts, waiting on the master to take the first one on', async () => {
     const [a] = carriers.map((x) => x.key);
     const row = await listed(fb);
-    expect(row.attentionGroup).toBe('stuck');
+    expect(row.attentionGroup).toBe('overdue');
     // no master serves this project, which is what holds the draft (REQ-68 BC-4)
     expect(row.times.stuck).toMatchObject({ code: 'nobody_serves' });
     expect(row.waitingOn).toMatchObject({

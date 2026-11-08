@@ -87,7 +87,7 @@ describe('a planned item can be dropped with a reason', () => {
     await seedIssueStatus(issueId, 'draft');
     const view = await read(fb);
     expect(view.phase).toBe('triaged');
-    expect(view.attentionGroup).toBe('stuck');
+    expect(view.attentionGroup).toBe('overdue');
     // the draft is the master's to take on, and no master serves this project (REQ-68 BC-4)
     expect(view.waitingOn).toMatchObject({ kind: 'agent', who: "The project's master" });
     expect(view.times.stuck).toMatchObject({ code: 'nobody_serves' });

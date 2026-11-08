@@ -151,9 +151,9 @@ const MASTER_WAIT = expect.objectContaining({
   who: "The project's master",
   act: 'triage it',
 });
-const MASTER_TRIAGES = { attentionGroup: 'moving', waitingOn: MASTER_WAIT };
+const MASTER_TRIAGES = { attentionGroup: 'waiting', waitingOn: MASTER_WAIT };
 /** With no master serving, the master's act reads stuck on it, never a person's turn. */
-const MASTER_ABSENT = { attentionGroup: 'stuck', waitingOn: MASTER_WAIT };
+const MASTER_ABSENT = { attentionGroup: 'overdue', waitingOn: MASTER_WAIT };
 
 // ISS-1132 (FB-577): planted red, the owner read "You: triage it" on its Needs you for a project
 // whose policy gives triage to the master, because no master was live
@@ -281,7 +281,7 @@ describe('a high item is triaged onto an issue', () => {
     await seedIssueStatus(ids.carrier, 'open');
     expect(ok(await say('owner', 'GET', at(`/${ids.high}`))).feedback.phase).toBe('planned');
     expect(await standingAs('member', ids.high)).toEqual({
-      attentionGroup: 'moving',
+      attentionGroup: 'queued',
       waitingOn: expect.objectContaining({ ref: ids.carrierKey }),
     });
   });
@@ -297,7 +297,7 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act }),
     });
     expect(await standingAs('viewer', ids.high)).toEqual({
-      attentionGroup: 'moving',
+      attentionGroup: 'waiting',
       waitingOn: expect.objectContaining({
         kind: 'person',
         who: expect.not.stringMatching(ROLE_WHO),
