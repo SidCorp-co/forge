@@ -1,4 +1,4 @@
-import { RUN_GIVEN_METADATA_KEY } from '@forge/contracts/agent-sessions';
+import { RUN_GIVEN_METADATA_KEY, RUN_GROUP_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
@@ -21,7 +21,7 @@ import { say, sayEn } from '@forge/contracts/said';
 import { needsViewer } from '@forge/contracts/standing';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsPerProject } from '../db/read-memo.js';
+import { memoizedPerId, rowsPerProject } from '../db/read-memo.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
@@ -239,22 +239,50 @@ async function eventsOf(run: RunStanding): Promise<{ events: RunEvent[]; hasMore
 /** The latest run of each issue, read as `GET runs/standing` reads it (workflow-step-health `in-runs`). A run
  *  session's row names no issue and carries its issues as a group, so an issue's runs are read through the
  *  group as well, by the canonical key (ISS-992). */
+/**
+ * The newest run in scope of each of `issueIds`, its own or one whose run group holds it, inside the
+ * issue's own project: every issue asked before a read's quiet point, of every project, in one
+ * statement (`db/read-memo.ts:memoizedPerId`). A run group is weighed only over the runs that carry
+ * one, read once a project, where each issue weighed every run of its project (ISS-1070 r8: 162
+ * thousand buffers for 88 issues).
+ */
+function latestRunOfEach(
+  issueIds: readonly string[],
+): Promise<Map<string, { project_id: string; run_id: string }>> {
+  return memoizedPerId('latestRunOfIssue', issueIds, async (some) => {
+    const rows = rowsOf<{ issue_id: string; project_id: string; run_id: string }>(
+      await db.execute(sql`
+        WITH asked AS (
+          SELECT i.id, i.project_id, ${canonicalIssueKeySql(sql`i.iss_seq`)} AS key
+            FROM issues i WHERE i.id::text IN (${inList(some)})),
+        grouped AS MATERIALIZED (
+          SELECT r.id, r.project_id, r.started_at, r.metadata FROM pipeline_runs r
+           WHERE r.project_id IN (SELECT DISTINCT project_id FROM asked)
+             AND r.metadata ? ${RUN_GROUP_METADATA_KEY} AND ${RUN_SCOPE_SQL})
+        SELECT DISTINCT ON (x.issue_id) x.issue_id, x.project_id, x.run_id FROM (
+          SELECT a.id AS issue_id, a.project_id, r.id AS run_id, r.started_at
+            FROM asked a JOIN pipeline_runs r ON r.issue_id = a.id AND r.project_id = a.project_id
+           WHERE ${RUN_SCOPE_SQL}
+          UNION ALL
+          SELECT a.id, a.project_id, g.id, g.started_at
+            FROM asked a JOIN grouped g ON g.project_id = a.project_id
+             AND ${runGroupHolds(sql`g.metadata`, sql`a.key`)}
+        ) x
+        ORDER BY x.issue_id, x.started_at DESC, x.run_id`),
+    );
+    return new Map(rows.map((r) => [r.issue_id, r]));
+  });
+}
+
 export async function latestRunsOfIssues(
   projectId: string,
   issueIds: readonly string[],
   viewer: RunViewer | null,
 ): Promise<{ issueId: string; run: RunStanding }[]> {
   if (issueIds.length === 0) return [];
-  const latest = rowsOf<{ issue_id: string; run_id: string }>(
-    await db.execute(sql`
-      SELECT DISTINCT ON (i.id) i.id AS issue_id, r.id AS run_id
-        FROM issues i
-        JOIN pipeline_runs r ON r.project_id = i.project_id
-         AND (r.issue_id = i.id OR ${runGroupHolds(sql`r.metadata`, canonicalIssueKeySql(sql`i.iss_seq`))})
-       WHERE i.project_id = ${projectId} AND i.id::text IN (${inList(issueIds)})
-         AND ${RUN_SCOPE_SQL}
-       ORDER BY i.id, r.started_at DESC, r.id`),
-  );
+  const latest = [...(await latestRunOfEach(issueIds)).entries()]
+    .filter(([, l]) => l.project_id === projectId)
+    .map(([issue_id, l]) => ({ issue_id, run_id: l.run_id }));
   if (latest.length === 0) return [];
   const runIds = [...new Set(latest.map((l) => l.run_id))];
   const base = await baseRuns(projectId, sql`r.id::text IN (${inList(runIds)})`, runIds.length, 0);
