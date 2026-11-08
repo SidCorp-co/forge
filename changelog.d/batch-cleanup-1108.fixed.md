@@ -4,3 +4,7 @@
 - Outside strict, a resolved feedback item whose carrier shipped is done, verified by ship with its version; nothing waits on its reporter.
 - A new requirement revision owes a re-plan only for a traced criterion whose wording changed; a title-only change re-ties its issue criteria.
 - The lessons pass drafts an "Add a check" issue only for a lesson about a product area's behaviour; a process lesson is routed to Forge's feedback once (ISS-1136).
+- A requirement whose wait a dated decision holds reads waiting until that date, naming the decision, never overdue (ISS-1078).
+- The master's pass names no shipped feedback item as owing a confirm where its ship already verifies it (ISS-1085).
+- Landed work a standing decision holds at in progress is no longer named owed its move on every pass, until the decision ends or the work lands again (ISS-996).
+- A feedback item whose carrier was dropped owes its re-triage to whoever triages on that project and reaches the master's pass; the daily review names the binding key a project's thread is recorded under (ISS-1086).
