@@ -350,7 +350,9 @@ const HOME_ACROSS_CPU_MS = 800;
 // ISS-1159: the feedback list reads its shipped carriers' failing criteria (`list-carriers.ts:failingCriteriaOf`), 147 to 148
 const ATTENTION_STATEMENTS = 148;
 // ISS-1070 r10: the home names each project's live releases without the list's summary (122 to 70)
-const HOME_STATEMENTS = 74;
+// ISS-1070 r18: Moving's issue waits come from the forecast's simulation, the routed requirements'
+// issues from its feedback links, and the live runs are read once (74 to 66 alone, 63 for twelve)
+const HOME_STATEMENTS = 66;
 /**
  * ISS-1070 r10's seed puts beside forge projects that record landings and hold requirements in every
  * state; on the code before r10 the attention read sent 163 and the home 141 for twelve, against 149

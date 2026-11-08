@@ -1,0 +1,1 @@
+**Home starts its forecast, runs and owned issues beside the feedback list.** The links and their issues are read in one wave, Moving reuses the forecast's standing, and live runs are read once: 55 quiet points become 16.
