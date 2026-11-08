@@ -289,6 +289,19 @@ describe('BC-4: accept records the go, and the agent then merges the requests in
     });
   });
 
+  // ISS-1090: catalog-api 0.6.0 read "Master · merge the requests in order" while only its owner
+  // merges into release/production on the host; there the merges are the person's, never the master's
+  it('reads the merges as a person’s, and owes the master none, where a person merges them', async () => {
+    await seedWorld({ ...ACCEPT, mergedBy: 'person' });
+    const { runId, version } = await cutRelease();
+    await accept(runId);
+    expect((await release(version)).waitingOn).toMatchObject({
+      kind: 'you',
+      act: 'merge the requests in order',
+    });
+    expect(await owedLine()).not.toContain('accepted release');
+  });
+
   it('refuses a request whose head moved since the accept by its own code', async () => {
     const { one, runId } = await cutRelease();
     await accept(runId);

@@ -43,7 +43,9 @@ export type OwedPolicySwitch =
 	/** a person gate in `approvals`, as the gate profile resolves it (`person-gates.ts:effectiveApprovals`) */
 	| { kind: "gate"; gate: PersonGate }
 	/** `release.approval.required` of the project document */
-	| { kind: "release_approval" };
+	| { kind: "release_approval" }
+	/** `release.mergedBy: "person"`: a person merges the release's change requests on the host (ISS-1090) */
+	| { kind: "release_merges" };
 
 export type OwedActRule =
 	| { serious: true; because: SeriousBecause; why: string }
@@ -68,6 +70,7 @@ export const OTHER_OWED_ACTS = [
 	"release.cutAndApprove",
 	"release.setup",
 	"release.attachShippedCommit",
+	"release.merge",
 ] as const;
 export type OtherOwedAct = (typeof OTHER_OWED_ACTS)[number];
 
@@ -76,6 +79,7 @@ export type OwedActKind = DecisionAct | OtherOwedAct;
 
 const STRICT: OwedPolicySwitch = { kind: "strict" };
 const RELEASE_APPROVAL: OwedPolicySwitch = { kind: "release_approval" };
+const RELEASE_MERGES: OwedPolicySwitch = { kind: "release_merges" };
 const gate = (g: PersonGate): OwedPolicySwitch => ({ kind: "gate", gate: g });
 
 const ROUTINE_REQUIREMENT =
@@ -244,6 +248,11 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 		why: "attaching the commit a shipped release serves to its record is bookkeeping on what already shipped: it closes and moves nothing, and its door refuses a commit that does not hold the release's landings (ISS-1079)",
 		personWhen: [STRICT],
 	},
+	"release.merge": {
+		serious: false,
+		why: "merging an accepted change-request release's requests in their declared order is delivery, which the master makes (REQ-71 BC-4); where the project says a person merges them on the host, they are that person's",
+		personWhen: [RELEASE_MERGES],
+	},
 	"release.setup": {
 		serious: true,
 		because: "credentials",
@@ -258,6 +267,8 @@ export interface OwedPolicy {
 	gates: Readonly<Record<PersonGate, boolean>>;
 	/** `release.approval.required`. */
 	releaseApproval: boolean;
+	/** `release.mergedBy` is `person`: a person merges the release's change requests on the host (ISS-1090). */
+	releaseMergesByPerson?: boolean;
 }
 
 /** What an act carries, where its seriousness depends on it. */
@@ -287,6 +298,8 @@ const switchOn = (s: OwedPolicySwitch, p: OwedPolicy): boolean => {
 			return p.gates[s.gate];
 		case "release_approval":
 			return p.releaseApproval;
+		case "release_merges":
+			return p.releaseMergesByPerson === true;
 	}
 };
 
@@ -299,6 +312,8 @@ const SWITCH_SAID: Record<
 		`this project's ${(s as { gate: PersonGate }).gate} gate asks a person (approvals)`,
 	release_approval: () =>
 		"this project requires a person's release approval (release.approval.required)",
+	release_merges: () =>
+		"a person merges this project's change requests on the host (release.mergedBy)",
 };
 
 /**
@@ -352,6 +367,7 @@ const RELEASE_SAID: Readonly<Record<string, OwedActKind>> = {
 	"standing.act.releaseByHand": "release.record",
 	"standing.act.releaseItByHand": "release.record",
 	"standing.act.splitRelease": "release.split",
+	"standing.act.mergeInOrder": "release.merge",
 	"standing.act.cutWaiting": "release.settleClaim",
 	"standing.act.cutAndApprove": "release.cutAndApprove",
 	"standing.act.cutThenApprove": "release.cutAndApprove",

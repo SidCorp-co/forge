@@ -3,12 +3,13 @@
 // but the master makes them (REQ-71 BC-4); and the approval request a release the project requires
 // approval for has not asked yet, whose route the master is told by name (ISS-591).
 
+import { whoOwes } from '@forge/contracts/who-owes';
 import { desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseApprovals } from '../db/schema-release-ledger.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { issueDisplayIds } from '../issues/index.js';
-import { approvalRequired } from '../project-config/index.js';
+import { approvalRequired, readOwedPolicy } from '../project-config/index.js';
 import { label, mergeStepsOf } from './change-request-roster.js';
 import { tagOwedOf } from './release-tag-record.js';
 
@@ -70,6 +71,8 @@ async function latestDecisions(runIds: readonly string[]) {
  * it through the same merge route, whose settle owes the release's tag on that merge (REQ-63 BC-13).
  */
 export async function releaseMergesOwed(projectId: string): Promise<ReleaseMergeOwed[]> {
+  // a person merges this project's requests on the host (`release.mergedBy`, ISS-1090): none is the master's
+  if (whoOwes('release.merge', await readOwedPolicy(projectId)).by === 'person') return [];
   const runs = (await runningReleases(projectId)).filter((r) => mergeStepsOf(r.metadata));
   if (runs.length === 0) return [];
   const [decisions, required] = await Promise.all([

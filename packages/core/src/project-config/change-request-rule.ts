@@ -12,6 +12,16 @@ const PATH = '/release/changeRequests';
  * with no production environment is exactly that silence).
  */
 export function checkChangeRequestRelease(doc: ProjectDocument): ConfigRefusal[] {
+  if (doc.release?.mergedBy !== undefined && doc.release.changeRequests !== true) {
+    return [
+      {
+        code: 'CHANGE_REQUEST_RELEASE_UNSUPPORTED',
+        path: '/release/mergedBy',
+        detail:
+          "`release.mergedBy` says who merges a release's change requests, and this release merges none: set `release.changeRequests: true`, or remove `release.mergedBy`",
+      },
+    ];
+  }
   if (doc.release?.changeRequests !== true) return [];
   const out: ConfigRefusal[] = [];
   const unsupported = (detail: string) =>

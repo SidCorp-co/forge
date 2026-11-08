@@ -363,6 +363,22 @@ function landedTurn(f: TurnFacts): Turn {
   return turn('waiting', 'person', { who: holdersWho(approvers), act, rule });
 }
 
+/**
+ * An accepted change-request release whose requests a person merges on the host (`release.mergedBy`,
+ * ISS-1090): the merges wait on the release's approvers, the viewer among them where they hold
+ * releases.approve, and never on the master.
+ */
+function personMergesTurn(f: TurnFacts, n: number): Turn {
+  const says = {
+    act: say('standing.act.mergeInOrder'),
+    rule: say('releases.rule.personMerges', { n, requests: agrees(n, 'request', 'requests') }),
+  };
+  if (f.viewer?.mayApprove && f.viewer.agency === 'human') {
+    return turn('waiting', 'you', { who: YOU, ...says });
+  }
+  return turn('waiting', 'person', { who: holdersWho(f.approvers.map((a) => a.name)), ...says });
+}
+
 export function turnOf(f: TurnFacts): Turn {
   switch (f.state) {
     case 'draft':
@@ -378,7 +394,11 @@ export function turnOf(f: TurnFacts): Turn {
           : say('releases.rule.returned'),
       });
     case 'in_progress':
-      // a change-request release runs no job: once accepted, the master merges its requests in order
+      // a change-request release runs no job: once accepted, the master merges its requests in order,
+      // unless the project says a person merges them on the host (ISS-1090)
+      if (f.merges !== null && f.owes('release.merge').by === 'person') {
+        return personMergesTurn(f, f.merges);
+      }
       if (f.merges !== null) {
         return turn('waiting', 'agent', {
           who: MASTER,
@@ -482,3 +502,4 @@ export function completionOf(
     remaining: { issues, criteria },
     coverage: criteriaCoverageOf(req.coverage),
   };
+}

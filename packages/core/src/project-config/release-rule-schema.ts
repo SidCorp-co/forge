@@ -92,6 +92,13 @@ export const releaseRuleSchema = z.strictObject({
    */
   changeRequests: z.boolean().optional(),
   /**
+   * ISS-1090: who merges those change requests on the host. `person` where only a person may (the
+   * owner merging the promotion), so the release's merges are theirs, never the master's
+   * (`@forge/contracts/who-owes`, `release.merge`); absent, the master merges them (REQ-71 BC-4).
+   * Held to `changeRequests` (`change-request-rule.ts:checkChangeRequestRelease`).
+   */
+  mergedBy: z.literal('person').optional(),
+  /**
    * REQ-71 BC-13: the triggers that cut an automatic release, the first met cutting it
    * (`@forge/contracts/release-cutoff`). Absent, Forge's default (`RELEASE_CUTOFF_DEFAULT`).
    */

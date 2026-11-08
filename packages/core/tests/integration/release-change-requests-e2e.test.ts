@@ -264,6 +264,18 @@ describe('BC-1: a change-request project releases by approval, with no deploy', 
     expect(res.status).toBe(422);
     expect(JSON.stringify(res.body)).toContain('CHANGE_REQUEST_RELEASE_UNSUPPORTED');
   });
+
+  // ISS-1090: who merges a release's requests is said only where the release merges some
+  it('refuses who merges change requests on a release that merges none, at its key', async () => {
+    const got = await api(world.token, 'GET', `/api/projects/${world.projectId}/config`);
+    const doc = (got.body as { document: Record<string, unknown> }).document;
+    const res = await api(world.token, 'PUT', `/api/projects/${world.projectId}/config`, {
+      baseRevision: (got.body as { revision: number }).revision,
+      document: { ...doc, release: { approval: { required: true }, mergedBy: 'person' } },
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('/release/mergedBy');
+  });
 });
 
 describe('BC-2: the master merges in declared order, only after approval', () => {

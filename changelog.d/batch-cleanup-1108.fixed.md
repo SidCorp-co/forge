@@ -13,3 +13,4 @@
 - Steward notes are no longer shown on list rows.
 - A feedback item verified by its ship, or on someone's behalf, can be reopened by its reporter (or a holder of feedback.approve) with a reason; its page offers only that reopen.
 - A draft requirement the intake assistant could not draft, with no retry left, is named on every master pass with its failure code until it is drafted, proposed or leaves draft (ISS-772).
+- A project whose change requests a person merges on the host (`release.mergedBy: person`) reads an accepted release's merges as that person's on the release page, and its master is no longer told to make them (ISS-1090).

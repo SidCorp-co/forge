@@ -1737,6 +1737,10 @@ export const SAID = {
 		en: "Not judged on {environment}: {proven} of {total} criteria pass there",
 		vars: { environment: "name", proven: "count", total: "count" },
 	},
+	"releases.rule.personMerges": {
+		en: "accepted: a person merges its {n} {requests} on the host, in order",
+		vars: { n: "count", requests: "agreement" },
+	},
 	"releases.rule.landedOwesProduction": {
 		en: "landed on {branch}; production serves it once a release approver promotes it",
 		vars: { branch: "name" },

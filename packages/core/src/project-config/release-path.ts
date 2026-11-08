@@ -145,6 +145,11 @@ export async function approvalRequired(projectId: string): Promise<boolean> {
   return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
 }
 
+/** `release.mergedBy` is `person`: a person merges the release's change requests on the host (ISS-1090). */
+export async function releaseMergesByPerson(projectId: string): Promise<boolean> {
+  return (await readProjectDocument(projectId))?.document.release?.mergedBy === 'person';
+}
+
 /**
  * How a landed change reaches people: no production environment (`none`), a release approval
  * required (`approval`), production deploying on land (`automatic`), or a release a person cuts
