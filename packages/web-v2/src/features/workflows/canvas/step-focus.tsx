@@ -135,6 +135,8 @@ export function focusChrome(
     },
     search: full ? <SearchBox c={o.c} hits={[...f.hits]} query={f.query} onQuery={f.setQuery} onPick={o.reveal} /> : null,
     walkBar: full && f.walking && f.walk !== null ? <WalkBar at={f.walk} total={f.order.length} onWalk={walkTo} onStop={f.stopWalk} /> : null,
+    // the panel draws while a step or a line is selected or a walk runs (CanvasDetail)
+    panelOpen: full && (f.selection !== null || f.panelWalk !== null),
     panel: full ? (
       <CanvasDetail
         canvas={o.c}

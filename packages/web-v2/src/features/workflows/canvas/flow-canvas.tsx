@@ -303,7 +303,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}
       toolbar={<ViewBar banded={banded} allOpen={allOpen} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} changes={props.changes} />}
-      {...frameFocus}
+      {...frameFocus} onPanel={props.onPanel}
     />
   );
 }

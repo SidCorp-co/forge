@@ -217,7 +217,7 @@ function C4View(props: WorkflowCanvasProps) {
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}
       toolbar={toolbar}
-      {...frameFocus}
+      {...frameFocus} onPanel={props.onPanel}
       compact={compact}
       overflowing={overflowing}
     />

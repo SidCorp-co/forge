@@ -1,5 +1,5 @@
 
-import { type RefObject, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type RefObject, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { breakpointWidth } from "@/lib/utils/breakpoint-width";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 
@@ -51,6 +51,20 @@ export const useBannerOpen = () => useViewerFlag(BANNER_OPEN_KEY);
 
 /** Whether the design's facts rail is folded away, giving the canvas the page's full width. */
 export const useRailCollapsed = () => useViewerFlag(RAIL_COLLAPSED_KEY);
+
+/**
+ * The facts rail as the design page draws it (ISS-806): folded where the reader folded it, and folded
+ * while a step panel is open beside the canvas, so the canvas keeps its room. The reader may open the
+ * rail again for that panel; the fold never writes the stored choice, and the next panel folds it again.
+ */
+export function useRailFold(): { folded: boolean; toggle: () => void; onPanel: (open: boolean) => void } {
+  const [collapsed, setCollapsed] = useRailCollapsed();
+  const [panel, setPanel] = useState({ open: false, railKept: false });
+  const onPanel = useCallback((open: boolean) => setPanel((was) => (was.open === open ? was : { open, railKept: false })), []);
+  const folded = collapsed || (panel.open && !panel.railKept);
+  const toggle = () => (panel.open && !collapsed ? setPanel({ open: true, railKept: !panel.railKept }) : setCollapsed(!collapsed));
+  return { folded, toggle, onPanel };
+}
 
 interface RoomMeasure {
   /** The width the page's `lg` breakpoint reads (breakpointWidth): the window's, or the page's while the Ask Agent panel is beside it. */

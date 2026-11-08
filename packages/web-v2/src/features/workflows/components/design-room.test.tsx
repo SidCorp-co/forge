@@ -213,6 +213,25 @@ describe("the facts rail", () => {
     expect(screen.getByTestId("design-rail")).toBeVisible();
   });
 
+  // ISS-806 C3: a step panel beside the canvas would leave the canvas narrower than the panel at 1280
+  it("folds while a step panel is open, opens again for that panel on the reader's word, and never writes the stored choice", () => {
+    railBeside();
+    render(page());
+    const layout = screen.getByTestId("workflow-design-detail");
+    expect(layout).toHaveAttribute("data-rail", "open");
+    fireEvent.click(screen.getByTestId("walk-start-bar"));
+    expect(screen.getByTestId("workflow-panel")).toBeInTheDocument();
+    expect(layout).toHaveAttribute("data-rail", "collapsed");
+    fireEvent.click(screen.getByTestId("design-rail-toggle"));
+    expect(layout).toHaveAttribute("data-rail", "open");
+    key("Escape");
+    expect(screen.queryByTestId("workflow-panel")).toBeNull();
+    expect(layout).toHaveAttribute("data-rail", "open");
+    fireEvent.click(screen.getByTestId("walk-start-bar"));
+    expect(layout).toHaveAttribute("data-rail", "collapsed");
+    expect(window.localStorage.getItem("web-v2:workflows.design-rail-collapsed")).toBeNull();
+  });
+
   it("is always shown on a reading tab, which has no canvas to widen", () => {
     window.localStorage.setItem("web-v2:workflows.design-rail-collapsed", "true");
     render(page("steps"));

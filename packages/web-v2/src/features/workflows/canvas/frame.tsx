@@ -44,6 +44,10 @@ interface FrameProps {
   search: ReactNode;
   walkBar: ReactNode;
   panel: ReactNode;
+  /** The panel is drawn beside the canvas now, narrowing it. */
+  panelOpen?: boolean;
+  /** Told when the panel opens or closes. */
+  onPanel?: ((open: boolean) => void) | undefined;
   /** A pane on another page (the Workflows overview): no keyboard shortcuts of its own, no side panel. */
   compact?: boolean;
   /** The drawing is larger than the view. */
@@ -62,7 +66,17 @@ export function Frame(p: FrameProps) {
   // A full canvas opens with its minimap on a wide screen; a compact pane shows it only while the
   // drawing is larger than the view, since at fit it would sit on the drawing it maps.
   const [minimapPick, setMinimapPick] = useState<boolean | null>(() => (p.compact ? null : wide()));
-  const minimap = minimapPick ?? Boolean(p.overflowing);
+  // ISS-806: an open step panel narrows the canvas, and the minimap would sit on the cards it maps, so it
+  // yields while the panel is open; the reader's own pick while it is open holds until the panel closes
+  const panelOpen = Boolean(p.panelOpen);
+  const [pickWithPanel, setPickWithPanel] = useState<{ open: boolean; on: boolean | null }>({ open: panelOpen, on: null });
+  // the pick is the open panel's: a panel opened again starts from the yield
+  if (pickWithPanel.open !== panelOpen) setPickWithPanel({ open: panelOpen, on: null });
+  const onPanel = p.onPanel;
+  useEffect(() => {
+    onPanel?.(panelOpen);
+  }, [onPanel, panelOpen]);
+  const minimap = panelOpen ? (pickWithPanel.on ?? false) : (minimapPick ?? Boolean(p.overflowing));
   const [legend, setLegend] = useState(false);
 
   useEffect(() => {
@@ -149,7 +163,7 @@ export function Frame(p: FrameProps) {
           onZoom={zoomBy}
           onReset={() => void rf.zoomTo(Math.max(p.minZoom, 1), { duration: 160 })}
           onFit={p.onFit}
-          onMinimap={() => setMinimapPick(!minimap)}
+          onMinimap={() => (panelOpen ? setPickWithPanel({ open: true, on: !minimap }) : setMinimapPick(!minimap))}
           onLegend={() => setLegend(!legend)}
           focus={p.compact ? null : p.focus}
         />

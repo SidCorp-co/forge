@@ -8,7 +8,7 @@
 // @direct-test-of packages/web-v2/src/features/workflows/canvas/c4-canvas.tsx
 
 import { operationalFlow } from "@forge/contracts/workflow-template-operational";
-import { act, render, renderHook, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { productCopy } from "@/lib/i18n/product-copy";
@@ -78,5 +78,22 @@ describe("the canvas toolbar is one layer of controls (C6)", () => {
     canvas();
     const zoom = screen.getByRole("toolbar", { name: "Canvas" });
     expect(within(zoom).getByTestId("canvas-focus")).toBeInTheDocument();
+  });
+});
+
+// ISS-806 C2: an open step panel narrows the canvas, and the minimap would sit on the cards it maps
+describe("the minimap beside an open step panel", () => {
+  it("yields while the panel is open, holds the reader's own pick, and comes back when it closes", () => {
+    canvas();
+    const minimap = () => screen.getByRole("button", { name: "Minimap" });
+    expect(minimap()).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByTestId("walk-start-bar"));
+    expect(screen.getByTestId("workflow-panel")).toBeInTheDocument();
+    expect(minimap()).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(minimap());
+    expect(minimap()).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("workflow-panel")).toBeNull();
+    expect(minimap()).toHaveAttribute("aria-pressed", "true");
   });
 });

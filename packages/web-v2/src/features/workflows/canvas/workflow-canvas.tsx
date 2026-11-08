@@ -64,6 +64,8 @@ export interface WorkflowCanvasProps {
   highlight?: CanvasHighlight | null;
   /** A compact pane told the height its drawing takes once laid out, so the pane is as tall as the graph and no taller. */
   onFitted?: (height: number) => void;
+  /** Told when the step panel opens beside the canvas or closes, so the page can give the canvas room (ISS-806). */
+  onPanel?: (open: boolean) => void;
 }
 
 /**

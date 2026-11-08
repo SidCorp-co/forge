@@ -28,8 +28,13 @@ const step = (id: string, type: string, label: string, does: string, after: stri
 const STEPS = [
   step("owner", "SOURCE", "Owner", "Owner initiates onboarding.", [], { owner: "Workspace owner" }),
   step("requested", "EVENT", "Workspace requested", "Submit request with owner and tenant details.", ["owner"]),
+  // ISS-806: a Rule card with long conditions, the card ISS-781's live review saw overlap the next one
   step("policy", "RULE", "Access policy", "Apply workspace ownership and least-privilege policy.", ["requested"], {
-    conditions: [{ when: "owner has workspace create permission", result: "allow; otherwise deny" }],
+    conditions: [
+      { when: "owner has workspace create permission", result: "allow; otherwise deny" },
+      { when: "the tenant already holds a workspace under the same billing account and region", result: "join the existing workspace as a member, never a second owner" },
+      { when: "the request names an operator grant beyond the template's least-privilege set", result: "hold for an admin's approval and say which grant waits" },
+    ],
   }),
   step("case", "CASE", "Onboarding case", "Track setup request and decisions.", ["policy"], { owner: "Workspace owner" }),
   step("provision", "TASK", "Provision workspace", "Provision tenant, member roles and resource bindings.", ["case"], { owner: "Workspace admin", sla: "24h" }),
@@ -185,7 +190,8 @@ function standsAsMarks(): string[] {
   const wrong: string[] = [];
   const rail = document.querySelector("[data-testid=plain-status]");
   if (!rail) return phone ? [] : ["C7: no Where it stands group"];
-  const rows = ["stands-approved", "stands-requirement", "stands-code"].map((id) => rail.querySelector(`[data-testid=${id}]`));
+  // a draft with no approved revision has no Approved row: the header's pill says its state (ISS-805)
+  const rows = ["stands-requirement", "stands-code"].map((id) => rail.querySelector(`[data-testid=${id}]`));
   rows.forEach((r, i) => {
     if (!r) wrong.push(`C7: Where it stands has no row ${i + 1}`);
     const value = text(r?.querySelector("[data-stand]") ?? null);
@@ -223,6 +229,59 @@ function firstScreenWords(): string[] {
 
 const all = () => [...opensReadable(), ...oneToolbar(), ...standsAsMarks(), ...stateOnce(), ...firstScreenWords()];
 
+/** ISS-806 C1: no two cards overlap, the long Rule card among them, at every zoom the bar steps through. */
+async function noOverlapAtEveryZoom(): Promise<string[]> {
+  const wrong: string[] = [];
+  const press = (label: string) => document.querySelector<HTMLElement>(`[aria-label="${label}"]`)?.click();
+  for (const [label, times] of [["Zoom out", 2], ["Zoom in", 5]] as const) {
+    for (let i = 0; i < times; i++) {
+      press(label);
+      await settle(500);
+      const zoom = text(document.querySelector("[data-testid=zoom-pct]"));
+      wrong.push(...opensReadable().filter((w) => w.includes("overlap")).map((w) => `ISS-806 C1 at ${zoom}: ${w}`));
+    }
+  }
+  // back at 100%, as the page opened
+  document.querySelector<HTMLElement>("[data-testid=zoom-pct]")?.click();
+  await settle(600);
+  return wrong;
+}
+
+const box = (el: Element) => el.getBoundingClientRect();
+const meets = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+
+/** ISS-806 C2-C4: a step opened beside the canvas. */
+async function stepOpen(): Promise<string[]> {
+  // the zoom stage's fit may leave the stages folded into chips: open them all
+  [...document.querySelectorAll<HTMLElement>("[data-testid=canvas-toolbar] button")].find((b) => b.innerText.trim() === "Open all")?.click();
+  await settle(900);
+  const card = stepCards().find((c) => c.innerText.includes("Access policy"));
+  if (!card) return [`ISS-806: no Access policy card to open among ${stepCards().map((c) => c.innerText.replace(/\s+/g, " ").slice(0, 30)).join(" / ")}`];
+  card.click();
+  await settle(900);
+  const panel = document.querySelector("[data-testid=workflow-panel]");
+  if (!panel) return ["ISS-806: opening a step drew no step panel"];
+  const wrong: string[] = [];
+  const canvas = document.querySelector(".wfc");
+  const frame = canvas ? box(canvas) : null;
+  // C2: what floats over the canvas covers no card's words, beside the panel (a phone stacks the panel under the canvas)
+  const floats = [...document.querySelectorAll(".react-flow__minimap, .wfc-float")].filter((f) => box(f).width > 0);
+  const words = stepCards().flatMap((c) => [...c.querySelectorAll("*")].filter((e) => e.childElementCount === 0 && e.textContent?.trim()));
+  for (const f of phone ? [] : floats) {
+    const hit = words.find((w) => frame && meets(box(w), frame) && meets(box(f), box(w)));
+    if (hit) wrong.push(`ISS-806 C2: the ${f.classList.contains("react-flow__minimap") ? "minimap" : (f.getAttribute("aria-label") ?? "toolbar")} covers "${(hit.textContent ?? "").trim().slice(0, 40)}"`);
+  }
+  if (!phone && frame) {
+    // C3: the facts rail folds, and the canvas keeps at least the panel's width
+    const rail = document.querySelector("[data-testid=design-rail]");
+    if (rail && box(rail).width > 0) wrong.push(`ISS-806 C3: the facts rail stays open (${Math.round(box(rail).width)} px) beside the step panel`);
+    if (frame.width < box(panel).width) wrong.push(`ISS-806 C3: the canvas is ${Math.round(frame.width)} px beside a ${Math.round(box(panel).width)} px step panel`);
+    // C4: the toolbar keeps one row
+    wrong.push(...oneToolbar().map((w) => `ISS-806 C4: ${w}`));
+  }
+  return wrong;
+}
+
 /** Business/Contract is the page's Person/Developer switch now: step ids (contract terms) show on the cards in the Developer view only. */
 const contractIds = () => [...document.querySelectorAll(".react-flow__node-step .wfc-mono")].length;
 function personSpeaksBusiness(): string[] {
@@ -248,5 +307,7 @@ window.__witness = {
     { name: "light", run: async () => (theme("light"), await settle(1200), all()) },
     { name: "dark", run: async () => (theme("dark"), await settle(), [...all(), ...personSpeaksBusiness()]) },
     { name: "developer", run: async () => (theme("light"), developerSpeaksContract()) },
+    { name: "zoom", run: () => noOverlapAtEveryZoom() },
+    { name: "step-open", run: () => stepOpen() },
   ],
 };

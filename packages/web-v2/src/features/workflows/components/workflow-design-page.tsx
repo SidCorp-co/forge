@@ -21,7 +21,7 @@ import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from 
 import { DesignBanner } from "./design-banner";
 import { DesignEditor } from "./design-editor";
 import { OrphanedTraces } from "./design-decision";
-import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailCollapsed } from "./design-room";
+import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailFold } from "./design-room";
 import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
@@ -232,7 +232,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
   const [changes, setChanges] = useState(d.status === "proposed" && d.canDecide);
   const [focusOn, setFocus] = useCanvasFocus();
   const focus = focusOn && tab === "design";
-  const [railCollapsed, setRailCollapsed] = useRailCollapsed();
+  const rail = useRailFold();
   const [bannerOpen, setBannerOpen] = useBannerOpen();
   const [floatOpen, setFloatOpen] = useState(false);
   const columnRef = useRef<HTMLDivElement>(null);
@@ -277,7 +277,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
     <DetailLayout
       testId="workflow-design-detail"
       dataKey={record.document.flow}
-      railCollapsed={tab === "design" && railCollapsed}
+      railCollapsed={tab === "design" && rail.folded}
       rail={
         <FactsRail testId="design-rail">
           <WorkflowDesignProperties d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} projectId={projectId} />
@@ -298,6 +298,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
               decision={walkDecision}
               graph={{ projectId, workflowId: record.document.id, revision: shownRevision, against: diff ? d.approvedRevision : null }}
               focus={{ on: focus, onToggle: () => setFocus(!focus) }}
+              onPanel={rail.onPanel}
               changes={
                 fullDiff
                   ? {
@@ -309,7 +310,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
                   : null
               }
             />
-            {focus ? null : <RailEdge collapsed={railCollapsed} onToggle={() => setRailCollapsed(!railCollapsed)} />}
+            {focus ? null : <RailEdge collapsed={rail.folded} onToggle={rail.toggle} />}
           </div>
         </div>
       ) : (
