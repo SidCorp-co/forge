@@ -22,6 +22,8 @@ export interface CriterionDraft {
   body: string;
   /** A scenario's steps, one line each, without their keyword. */
   steps: ScenarioSteps;
+  /** The short title its row shows (ISS-1131), at most eight words; empty shows the body's first clause. */
+  title?: string;
 }
 
 export interface RevisionDraft {
@@ -64,8 +66,9 @@ export function scenarioBody(steps: ScenarioSteps): string {
 }
 
 /** One held criterion as its editor row. */
-export function criterionDraftOf(c: Pick<RequirementCriterion, "code" | "body" | "form">): CriterionDraft {
-  return c.form === "scenario" ? { code: c.code, form: "scenario", body: "", steps: scenarioOf(c.body) } : { code: c.code, form: "statement", body: c.body, steps: noSteps() };
+export function criterionDraftOf(c: Pick<RequirementCriterion, "code" | "body" | "form"> & { title?: string | null }): CriterionDraft {
+  const title = c.title ? { title: c.title } : {};
+  return c.form === "scenario" ? { code: c.code, form: "scenario", body: "", steps: scenarioOf(c.body), ...title } : { code: c.code, form: "statement", body: c.body, steps: noSteps(), ...title };
 }
 
 export const blankCriterion = (form: CriterionDraft["form"] = "statement"): CriterionDraft => ({ form, body: "", steps: noSteps() });
@@ -89,12 +92,17 @@ export function revisionDraftOf(from: Pick<RequirementRevision, "reason" | "tldr
   };
 }
 
-/** The criteria as core takes them: every row with words, a kept code beside its body and form. */
-export function criteriaWrite(rows: readonly CriterionDraft[]): { code?: string; body: string; form: CriterionDraft["form"] }[] {
+/**
+ * The criteria as core takes them: every row with words, a kept code beside its body and form, and its
+ * title where the row holds one. A row whose title was emptied sends `null`, which clears it; a row that
+ * never held one sends none, which core reads as keeping what the criterion had (none).
+ */
+export function criteriaWrite(rows: readonly CriterionDraft[]): { code?: string; body: string; form: CriterionDraft["form"]; title?: string | null }[] {
   return rows.flatMap((c) => {
     const body = bodyOf(c);
     if (!body) return [];
-    return [{ ...(c.code ? { code: c.code } : {}), body, form: c.form }];
+    const title = c.title === undefined ? {} : { title: c.title.trim() || null };
+    return [{ ...(c.code ? { code: c.code } : {}), body, form: c.form, ...title }];
   });
 }
 

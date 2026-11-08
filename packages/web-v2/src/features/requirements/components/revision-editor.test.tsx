@@ -93,6 +93,25 @@ describe("a new revision on an agreed requirement", () => {
     expect(codes.map((c) => c.code ?? c.body)).toEqual(["BC-1", "BC-2", "The sheet names each column"]);
   });
 
+  // ISS-1137: a criterion's short title is written here too, not only through REST, MCP and agents
+  it("opens each criterion with its title, and sends a title written, changed or emptied", async () => {
+    const titled = withRevisions({ ...head, criteria: head.criteria.map((c, i) => (i === 0 ? { ...c, title: "Weekly export" } : c)) });
+    const calls = core(() => ({ body: drafting }));
+    const view = show(titled);
+    fireEvent.click(within(view).getByTestId("revision-new"));
+    const form = await screen.findByTestId("revision-form");
+    typeInto(within(form).getByRole("textbox", { name: /Why it changes/ }), "Titles");
+    const [first, second] = within(form).getAllByTestId<HTMLInputElement>("criterion-title");
+    if (!first || !second) throw new Error("the form drew no title field per criterion");
+    expect(first.value).toBe("Weekly export");
+    typeInto(first, "");
+    typeInto(second, "  Sheet per clinic ");
+    fireEvent.click(within(form).getByRole("button", { name: "Open draft" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const sent = (calls.find((c) => c.method === "POST")?.body as { criteria: { code?: string; title?: string | null }[] }).criteria;
+    expect(sent.map((c) => [c.code, c.title])).toEqual([["BC-1", null], ["BC-2", "Sheet per clinic"], ["BC-3", undefined]]);
+  });
+
   it("is not offered while a revision is open, draft or proposed", () => {
     core(() => ({ body: {} }));
     expect(within(show(drafting)).queryByTestId("revision-new")).toBeNull();

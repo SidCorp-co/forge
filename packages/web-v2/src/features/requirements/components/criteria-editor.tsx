@@ -2,7 +2,7 @@
 // steps are written a line each. A refusal core names at a criterion (`/criteria/<i>/…`) is drawn on
 // that criterion; the codes ride along unseen, so a kept criterion stays the criterion it was.
 
-import { Button, Field, IconButton, SegmentedControl, Textarea, useListKeys } from "@/design";
+import { Button, Field, IconButton, Input, SegmentedControl, Textarea, useListKeys } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { blankCriterion, type CriterionDraft, SCENARIO_PARTS, type ScenarioPart, withForm } from "../revision-draft";
 
@@ -47,6 +47,10 @@ function CriterionItem({
         <span className="flex-1" />
         <IconButton icon="trash" size="sm" aria-label={t("requirements.revise.removeN", { n })} onClick={onRemove} />
       </div>
+      {/* ISS-1137: the short title its row shows, written here as REST, MCP and agents already write it */}
+      <Field label={t("requirements.revise.titleLabel", { n })}>
+        <Input value={c.title ?? ""} onChange={(e) => onChange({ ...c, title: e.target.value })} data-testid="criterion-title" />
+      </Field>
       {c.form === "statement" ? (
         <Field label={t("requirements.revise.statementLabel", { n })} error={error}>
           <Textarea rows={2} value={c.body} onChange={(e) => onChange({ ...c, body: e.target.value })} />

@@ -391,6 +391,7 @@
     "requirements.revise.statement": "Statement",
     "requirements.revise.scenario": "Scenario",
     "requirements.revise.statementLabel": "Statement {n}",
+    "requirements.revise.titleLabel": "Title {n}",
     "requirements.revise.stepsOfN": "Steps of criterion {n}",
     "requirements.revise.given": "Given",
     "requirements.revise.when": "When",
