@@ -53,7 +53,7 @@ describe("the attention screen's states", () => {
   // ISS-1137: each decision is its question and its buttons; what it changes, its impact and the
   // recommendation open on its own page, never inline under every row (ui-copy-rule)
   it("draws each project's decisions as their question and buttons, their consequences on demand", () => {
-    hook.view = { ...empty, needsYou: [{ projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3), owed: APPROVALS_READ.notDecisions }], counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: APPROVALS_READ.total };
+    hook.view = { ...empty, needsYou: [{ projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3), owed: APPROVALS_READ.notDecisions }], counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: APPROVALS_READ.total } as unknown as typeof empty;
     try {
       const { container } = renderWithQuery(<AttentionScreen />);
       expect(screen.getAllByTestId("needs-you-decision").length).toBeGreaterThan(0);
