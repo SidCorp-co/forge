@@ -10,7 +10,11 @@
  * - the account under exactly one of `ACCOUNT_FIELDS`, sent under that name (`identifier` is the
  *   Strapi convention, which SidDesk's sign-in reads);
  * - `loginRoute`, `[POST ]<https URL | /path>`: a path signs in at the origin of the judged
- *   deployment that answers it (the service whose longest `routes` prefix claims it, else `url`).
+ *   deployment that answers it (the service whose longest `routes` prefix claims it, else `url`);
+ * - optional, for a sign-in that is no `{<account field>, password}` POST (ISS-1141, epod's GraphQL
+ *   mutation): `loginBody`, a JSON object sent as the body, whose string leaves that are exactly
+ *   `$account` or `$password` become the account and password; and `tokenPath`, the JSON pointer
+ *   the answer's token is read at in place of `TOKEN_PATHS`.
  *
  * The value leaves only as the request body the adapter (`integrations/deploy/sign-in-probe.ts`)
  * sends to that one origin, following no redirect: no answer, refusal, log line or stored row holds
@@ -30,9 +34,65 @@ const FIELDS_SAID = `${ACCOUNT_FIELDS.slice(0, -1)
   .map((f) => `\`${f}\``)
   .join(', ')} or \`${ACCOUNT_FIELDS[ACCOUNT_FIELDS.length - 1]}\``;
 
+/** The keys a secret describes a sign-in with beyond its route (ISS-1141). judge-login reads the
+ * same keys (`session.rs`: `SIGN_IN_KEYS`), held equal by `actor-sign-in.test.ts`. */
+export const SIGN_IN_KEYS = ['loginBody', 'tokenPath'] as const;
+
+/** The whole leaves of a `loginBody` replaced with the secret's account and password. */
+export const PLACEHOLDERS = ['$account', '$password'] as const;
+
+/** The merge that describes a GraphQL sign-in, as the refusals naming the door show it. judge-login
+ * names the same (`session.rs`: `GRAPHQL_SET`), held equal by `actor-sign-in.test.ts`. */
+export const GRAPHQL_SET =
+  '{"set":{"loginRoute":"https://<host>/graphql","loginBody":{"query":"mutation Login($email: String!, $password: String!) { login(email: $email, password: $password) { access_token } }","variables":{"email":"$account","password":"$password"}},"tokenPath":"/data/login/access_token"}}';
+
 export interface ActorSecret extends SignInBody {
   field: (typeof ACCOUNT_FIELDS)[number];
   route: { path: string } | { url: URL };
+}
+
+/** A segment of a pointer as a refusal may say it: a key or an index, never a value. */
+const segmentSaid = (k: string) => shown(k) ?? (/^\d{1,4}$/.test(k) ? k : '…');
+
+/** Each string leaf of `v`, with the pointer to it. */
+function leavesOf(v: unknown, at: string[] = []): { at: string[]; leaf: string }[] {
+  if (typeof v === 'string') return [{ at, leaf: v }];
+  if (v === null || typeof v !== 'object') return [];
+  return Object.entries(v).flatMap(([k, inner]) => leavesOf(inner, [...at, k]));
+}
+
+/** Why `body` is no `loginBody` a sign-in can send; null where it is one. Names keys, never a value. */
+export function loginBodyRefusal(body: unknown): string | null {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return '`loginBody` is a JSON object sent as the sign-in\'s body, whose string leaves that are exactly `$account` or `$password` become the account and password';
+  }
+  const leaves = leavesOf(body);
+  for (const { at, leaf } of leaves) {
+    if (!/^\$[A-Za-z_][A-Za-z0-9_]*$/.test(leaf)) continue;
+    if ((PLACEHOLDERS as readonly string[]).includes(leaf)) continue;
+    const word = shown(leaf.slice(1)) ? `\`${leaf}\`` : 'a `$`-word';
+    return `\`loginBody\` at /${at.map(segmentSaid).join('/')} is ${word}, and a leaf is replaced only when it is exactly \`$account\` or \`$password\``;
+  }
+  if (!leaves.some((l) => l.leaf === '$password')) {
+    return '`loginBody` has no leaf that is exactly `$password`, so the sign-in would send no password';
+  }
+  return null;
+}
+
+/** Why `path` is no `tokenPath`; null where it is a JSON pointer. */
+export function tokenPathRefusal(path: unknown): string | null {
+  return typeof path === 'string' && /^(\/[^/\s]+)+$/.test(path) && path.length <= 256
+    ? null
+    : '`tokenPath` is a JSON pointer to the token in the sign-in\'s answer, such as `/data/login/access_token`';
+}
+
+/** Why the secret's `loginBody` or `tokenPath` is unusable; null where neither is named or both are usable. */
+function signInKeysRefusal(o: Record<string, unknown>): string | null {
+  if (o.loginBody !== undefined) {
+    const why = loginBodyRefusal(o.loginBody);
+    if (why) return why;
+  }
+  return o.tokenPath !== undefined ? tokenPathRefusal(o.tokenPath) : null;
 }
 
 function keysOf(o: Record<string, unknown>): string {
@@ -85,7 +145,8 @@ export interface SecretAt {
  */
 export function loginRouteDoor(at?: SecretAt): string {
   const [id, scope, name] = at ? [at.projectId, at.scope, at.name] : ['<id>', '<scope>', '<name>'];
-  return `PATCH /api/projects/${id}/secrets/${scope}/${name} {"set":{"loginRoute":"<https URL or /path>"}}`;
+  const door = `PATCH /api/projects/${id}/secrets/${scope}/${name}`;
+  return `${door} {"set":{"loginRoute":"<https URL or /path>"}}; a sign-in that is no \`{<account field>, password}\` POST also sets \`loginBody\` and \`tokenPath\`, a GraphQL one as ${door} ${GRAPHQL_SET}`;
 }
 
 /**
@@ -132,12 +193,16 @@ export function parseActorSecret(
   }
   const target = routeOf(route.one.value);
   if ('why' in target) return target;
+  const keysWhy = signInKeysRefusal(obj);
+  if (keysWhy) return { why: `the secret${kind}'s ${keysWhy}` };
   return {
     secret: {
       field: account.one.key as ActorSecret['field'],
       account: account.one.value,
       password,
       route: target,
+      ...(obj.loginBody !== undefined && { template: obj.loginBody as Record<string, unknown> }),
+      ...(obj.tokenPath !== undefined && { tokenPath: obj.tokenPath as string }),
     },
   };
 }

@@ -26,7 +26,16 @@ import { db, type Tx } from '../db/client.js';
 import { projectVariableEvents } from '../db/schema-project-variables.js';
 import { type SignInAnswer, trySignIn } from '../integrations/deploy/index.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
-import { loginRouteRefusal, parseActorSecret, type SecretAt, signInUrl } from './actor-sign-in.js';
+import {
+  loginBodyRefusal,
+  loginRouteRefusal,
+  parseActorSecret,
+  SIGN_IN_KEYS,
+  GRAPHQL_SET,
+  type SecretAt,
+  signInUrl,
+  tokenPathRefusal,
+} from './actor-sign-in.js';
 import { type ApiRefusal, pointer } from './documents.js';
 import type { TestingProfile } from './policy-schema.js';
 import { environmentsOf } from './promotion-path.js';
@@ -194,8 +203,25 @@ export async function writeSecret(input: {
   };
 }
 
-/** The keys a merge may set on a stored secret (ISS-1140): only the sign-in route, for now. */
-export const MERGEABLE_SECRET_KEYS = ['loginRoute'] as const;
+/** The keys a merge may set on a stored secret: the sign-in route (ISS-1140), and the body and
+ * token pointer of a sign-in the secret describes (ISS-1141). */
+export const MERGEABLE_SECRET_KEYS = ['loginRoute', ...SIGN_IN_KEYS] as const;
+
+/** Each mergeable key's check and the code its refusal carries. */
+const MERGE_CHECKS: Record<
+  (typeof MERGEABLE_SECRET_KEYS)[number],
+  { code: string; why: (v: unknown) => string | null }
+> = {
+  loginRoute: {
+    code: 'SECRET_LOGIN_ROUTE_INVALID',
+    why: (v) =>
+      typeof v === 'string'
+        ? loginRouteRefusal(v)
+        : '`loginRoute` is a string, `[POST ]<https URL | /path>`',
+  },
+  loginBody: { code: 'SECRET_LOGIN_BODY_INVALID', why: loginBodyRefusal },
+  tokenPath: { code: 'SECRET_TOKEN_PATH_INVALID', why: tokenPathRefusal },
+};
 
 /** The refusals a merge's `set` earns before the stored value is read; none where it is usable. */
 export function mergeSetRefusals(set: Record<string, unknown>): ApiRefusal[] {
@@ -216,18 +242,13 @@ export function mergeSetRefusals(set: Record<string, unknown>): ApiRefusal[] {
         {
           code: 'SECRET_MERGE_KEY_UNKNOWN',
           path: pointer(['set', key]),
-          detail: `\`${key}\` is not a key a merge sets; it sets ${allowed} alone, and any other change is a PUT of the whole value`,
+          detail: `\`${key}\` is not a key a merge sets; it sets ${allowed} alone, and any other change is a PUT of the whole value. A GraphQL sign-in is set as ${GRAPHQL_SET}`,
         },
       ];
     }
-    const route = set[key];
-    const why =
-      typeof route === 'string'
-        ? loginRouteRefusal(route)
-        : '`loginRoute` is a string, `[POST ]<https URL | /path>`';
-    return why === null
-      ? []
-      : [{ code: 'SECRET_LOGIN_ROUTE_INVALID', path: pointer(['set', key]), detail: why }];
+    const check = MERGE_CHECKS[key as (typeof MERGEABLE_SECRET_KEYS)[number]];
+    const why = check.why(set[key]);
+    return why === null ? [] : [{ code: check.code, path: pointer(['set', key]), detail: why }];
   });
 }
 
@@ -242,7 +263,7 @@ export async function mergeSecret(input: {
   projectId: string;
   scope: string;
   name: string;
-  set: Record<string, string>;
+  set: Record<string, unknown>;
   actor: { id: string; tokenId: string | null; agency: 'human' | 'agent' };
 }): Promise<SecretMergeOutcome> {
   if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };

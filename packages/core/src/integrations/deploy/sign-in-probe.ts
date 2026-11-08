@@ -24,25 +24,64 @@ export const TOKEN_PATHS = [
   '/data/jwt',
 ] as const;
 
-/** The token an answer carries at the first of `TOKEN_PATHS` holding a non-empty string. */
-export function tokenIn(body: unknown): string | null {
+/** The non-empty string `body` holds at the JSON pointer `path`, or null. */
+export function tokenAt(body: unknown, path: string): string | null {
+  let at: unknown = body;
+  for (const raw of path.slice(1).split('/')) {
+    const key = raw.replaceAll('~1', '/').replaceAll('~0', '~');
+    at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[key] : undefined;
+  }
+  return typeof at === 'string' && at !== '' ? at : null;
+}
+
+/** The token an answer carries at `tokenPath` where the secret names one (ISS-1141), else at the
+ * first of `TOKEN_PATHS` holding a non-empty string. */
+export function tokenIn(body: unknown, tokenPath?: string): string | null {
+  if (tokenPath !== undefined) return tokenAt(body, tokenPath);
   for (const path of TOKEN_PATHS) {
-    let at: unknown = body;
-    for (const key of path.slice(1).split('/')) {
-      at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[key] : undefined;
-    }
-    if (typeof at === 'string' && at !== '') return at;
+    const token = tokenAt(body, path);
+    if (token !== null) return token;
   }
   return null;
 }
 
 const TOKENS_SAID = '`token`, `accessToken`, `access_token` or `jwt`, at the top or under `data`';
 
-/** What is sent: the account under the field its route reads, and the password. */
+/** What is sent: the account under the field its route reads, and the password; or, where the
+ * secret describes its sign-in (ISS-1141), its `template` with each leaf that is exactly `$account`
+ * or `$password` replaced, and the token read at its `tokenPath`. */
 export interface SignInBody {
   field: string;
   account: string;
   password: string;
+  template?: Record<string, unknown>;
+  tokenPath?: string;
+}
+
+/** The body a sign-in POSTs: whole leaves alone are replaced, so `$email` inside a string stays. */
+export function signInBody(secret: SignInBody): Record<string, unknown> {
+  if (!secret.template) return { [secret.field]: secret.account, password: secret.password };
+  const fill = (v: unknown): unknown => {
+    if (v === '$account') return secret.account;
+    if (v === '$password') return secret.password;
+    if (Array.isArray(v)) return v.map(fill);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v).map(([k, inner]) => [k, fill(inner)]));
+    }
+    return v;
+  };
+  return fill(secret.template) as Record<string, unknown>;
+}
+
+/** Whether a 2xx answer is a GraphQL error: an `errors` array with an entry. Its text is never read. */
+function graphqlErrors(body: unknown): boolean {
+  const errors = body !== null && typeof body === 'object' ? (body as { errors?: unknown }).errors : undefined;
+  return Array.isArray(errors) && errors.length > 0;
+}
+
+/** A `tokenPath` as a refusal may say it: a pointer of short keys, else `the secret's \`tokenPath\``. */
+function pathSaid(path: string): string {
+  return /^(\/[A-Za-z0-9_-]{1,32}){1,8}$/.test(path) ? `\`${path}\`` : "the secret's `tokenPath`";
 }
 
 /** A key, kind or code as a line may say it: a short identifier, never a value. */
@@ -82,7 +121,7 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
       method: 'POST',
       redirect: 'manual',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ [secret.field]: secret.account, password: secret.password }),
+      body: JSON.stringify(signInBody(secret)),
       signal: AbortSignal.timeout(SIGN_IN_TIMEOUT_MS),
     });
   } catch (err) {
@@ -119,7 +158,25 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
       says: `answered ${status}${code ? ` ${code}` : ''}`,
     };
   }
-  const bearer = tokenIn(body) !== null;
+  if (graphqlErrors(body)) {
+    return {
+      answer: 'refused',
+      at,
+      status,
+      code,
+      says: `answered ${status} with a GraphQL \`errors\` array, so it signed nobody in`,
+    };
+  }
+  const bearer = tokenIn(body, secret.tokenPath) !== null;
+  if (secret.tokenPath !== undefined && !bearer) {
+    return {
+      answer: 'refused',
+      at,
+      status,
+      code,
+      says: `answered ${status} with no token at ${pathSaid(secret.tokenPath)}, so there is no session to hand a judge`,
+    };
+  }
   const cookie = res.headers.getSetCookie().some((c) => !deletes(c));
   if (!bearer && !cookie) {
     return {
