@@ -2,9 +2,9 @@
 // and never a reading too old to trust; every other read is fresh.
 import type { ServingReading } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
-import { withReadMemo } from '../db/read-memo.js';
+import { withObservedReads, withReadMemo } from '../db/read-memo.js';
 import { backgroundSettled } from '../lib/background.js';
-import { FRESH_MS, observedReading, observingServed, TRUST_MS } from './serving-observed.js';
+import { FRESH_MS, observedReading, TRUST_MS } from './serving-observed.js';
 
 /** A platform answering the commit it is told, counting each time it is asked. */
 function platform(commit: string) {
@@ -23,7 +23,7 @@ function platform(commit: string) {
 
 let keys = 0;
 const fresh = () => `project-${++keys}`;
-const asPerson = <T>(fn: () => Promise<T>) => withReadMemo(() => observingServed(fn));
+const asPerson = <T>(fn: () => Promise<T>) => withReadMemo(() => withObservedReads(fn));
 const commitOf = (r: ServingReading) => (r.kind === 'serving' ? r.served[0]?.commit : r.kind);
 
 describe("a person's reading of what is served", () => {

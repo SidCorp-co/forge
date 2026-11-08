@@ -12,9 +12,8 @@
 // Outside a person's reads (a release, the sweep, a gate, a release page) every reading is fresh, and
 // recorded here for the reads that follow.
 
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ServingReading } from '@forge/contracts/releases';
-import { inReadMemo, withoutReadMemo } from '../db/read-memo.js';
+import { inReadMemo, observedReadsAllowed, withoutReadMemo } from '../db/read-memo.js';
 import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 
@@ -33,15 +32,12 @@ interface Held {
 const held = new Map<string, Held>();
 const reading = new Map<string, Promise<ServingReading>>();
 const refreshes = background();
-const observing = new AsyncLocalStorage<true>();
 
-/** Runs `fn` as a person's read of what waits on them, which may be shown observed readings. */
-export function observingServed<T>(fn: () => T): T {
-  return observing.run(true, fn);
-}
-
-/** Whether a reading here may be one observed earlier: a person's read, inside a read request. */
-const mayObserve = () => observing.getStore() === true && inReadMemo();
+/**
+ * Whether a reading here may be one observed earlier: a person's read of what waits on them
+ * (`db/read-memo.ts:withObservedReads`), inside a read request.
+ */
+const mayObserve = () => observedReadsAllowed() && inReadMemo();
 
 /** Reads `key` afresh, and keeps the reading unless one started later is already kept. */
 async function readAndKeep(
@@ -71,7 +67,7 @@ function readShared(
 
 /**
  * The reading `read` makes under `key` (a project, the environment and its declaration), as a
- * person's read may be shown it ({@link observingServed}): observed earlier where it is still to be
+ * person's read may be shown it (`db/read-memo.ts:withObservedReads`): observed earlier where it is still to be
  * trusted, read afresh otherwise. Anywhere else it is read afresh, and recorded.
  */
 export async function observedReading(
