@@ -240,7 +240,7 @@ describe('the outbound HTTP calls', () => {
     expect(legOf(raw, 'http-coolify').calls).toBe(2);
     expect(legOf(raw, 'http-coolify').ms).toBeGreaterThanOrEqual(28);
     expect(legOf(raw, 'http-probe').calls).toBe(1);
-    expect(legOf(raw, 'http-other').calls).toBe(1);
+    expect(legOf(raw, 'http-local').calls).toBe(1);
     expect(raw).toMatch(/reads-coolify;dur=[0-9.]+;desc="0 queries, 2 calls"/);
     // counts and times only: no address, path or credential reaches the header
     expect(raw).not.toMatch(/127\.0\.0\.1|elsewhere|commit|app-1|coolify-secret/);
