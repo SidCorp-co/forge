@@ -9,6 +9,10 @@
 // statement, SLOW_READS_EVERY to list every statement with its time, rows, buffers and plan, SLOW_READS_PROFILE to a file for a CPU profile of each read, and SLOW_READS_ONLY to a
 // pattern of the paths to read. SLOW_READS_SHRINK=<n> seeds every count at an n-th (at least one)
 // for a quick look at which statements a read sends, its times and ceilings then meaningless.
+// SLOW_READS_CHURN=<n> marks n open issues for both read models before each read, as a lease renewal
+// marks them on forge-dev, so a read pays the facts it owes. The seed holds forge's live shape
+// (`scale-world.ts:Scale.live`, ISS-1070 r8): verdicts over many commits and runtimes, feedback over
+// every route; with one commit and one route a read that fans out per row or per project looked flat.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/issues/standing-read.ts
 // @direct-test-of packages/core/src/issues/standing-facts-memo.ts
@@ -19,7 +23,7 @@
 // @direct-test-of packages/core/src/whats-new/serving.ts
 
 import { appendFileSync } from 'node:fs';
-import { QueryPromise } from 'drizzle-orm';
+import { QueryPromise, sql } from 'drizzle-orm';
 import { PgDatabase, PgSelectBase, PgSelectBuilder } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -63,6 +67,7 @@ const SCALE: Scale = {
   releases: 540,
   feedback: 500,
   activityPerIssue: 20,
+  live: true,
 };
 
 /**
@@ -80,6 +85,7 @@ const SHARE: Scale = {
   feedback: 125,
   activityPerIssue: 8,
   open: 20,
+  live: true,
 };
 /** The projects the person across projects is a member of, forge's among them. */
 const PROJECTS_ACROSS = 12;
@@ -168,6 +174,13 @@ async function measured(path: string, as: string = token): Promise<Measure> {
     };
     return query;
   };
+  // SLOW_READS_CHURN=<n>: n issues of each project marked for both models before the read, as a lease renewal marks them live
+  const churn = Number(process.env.SLOW_READS_CHURN ?? 0);
+  if (churn > 0) {
+    await db.execute(
+      sql`SELECT forge_mark_issues_stale(ARRAY(SELECT id FROM issues WHERE status <> 'closed' ORDER BY random() LIMIT ${churn}), 'lease')`,
+    );
+  }
   try {
     const started = performance.now();
     const res = await app.request(path, {

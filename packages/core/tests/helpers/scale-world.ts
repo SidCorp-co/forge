@@ -21,6 +21,13 @@ export interface Scale {
   activityPerIssue: number;
   /** How many of the newest issues are not closed, spread over the open statuses; 80 where unnamed. */
   open?: number;
+  /**
+   * The shape forge has on forge-dev (2026-11-08) where the plain seed is uniform: verdicts judged at
+   * the commit of the release that carried their issue, a runtime serving it, or a commit no release
+   * names, rather than all at one; requirements accepted and dropped beside agreed; feedback answered,
+   * duplicated and routed to a new requirement beside the issue route, most of it reported by agents.
+   */
+  live?: boolean;
 }
 
 const SHA = 'a'.repeat(40);
@@ -83,6 +90,7 @@ export async function seedAtScale(
            'judged', now() - make_interval(mins => 10 - v)
       FROM issue_criteria c JOIN issues i ON i.id = c.issue_id CROSS JOIN generate_series(1, ${s.verdictsPerCriterion}) v
      WHERE i.project_id = ${p}`);
+  if (s.live) await liveShape(p, s);
   await db.execute(sql`
     INSERT INTO pipeline_runs (project_id, issue_id, kind, status, started_at, finished_at, metadata)
     SELECT ${p}, i.id, 'issue', 'completed', i.created_at, i.created_at, '{}'::jsonb
@@ -110,6 +118,7 @@ export async function seedAtScale(
     SELECT f.id, (SELECT id FROM issues WHERE project_id = ${p} AND iss_seq = f.fb_seq)
       FROM feedback f WHERE f.project_id = ${p} AND f.route = 'issue'`);
   });
+  if (s.live) await liveFeedback(p, s);
   await db.execute(sql`
     INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
     SELECT i.id, 'user', ${ownerId}, 'human', 'issue.statusChanged',
@@ -150,4 +159,46 @@ export async function seedAtScale(
       FROM issues WHERE project_id = ${p} AND status = 'awaiting_release' AND iss_seq % 2 = 0`);
   await db.execute(sql`ANALYZE`);
   return p;
+}
+
+/** The release commit the plain seed gives release `g` (each carries issues 2g-1 and 2g). */
+const releaseCommit = (g: ReturnType<typeof sql>) => sql`rpad(md5((${g})::text), 40, '0')`;
+
+/** {@link Scale.live}: the identities, statuses and routes forge holds on forge-dev, over the plain seed's rows. */
+async function liveShape(p: string, s: Scale): Promise<void> {
+  // a verdict names its issue's release commit, one in four the runtime serving it, one in seven a
+  // commit no release names; the last verdict of each criterion keeps its own
+  await db.execute(sql`
+    UPDATE criterion_verdicts v SET
+      identity_kind = CASE WHEN i.iss_seq % 4 = 0 THEN 'runtime' ELSE 'commit' END,
+      commit_sha = CASE WHEN i.iss_seq % 4 = 0 THEN NULL
+                        WHEN i.iss_seq % 7 = 0 THEN md5('unplaced' || i.iss_seq) || '00000000'
+                        ELSE ${releaseCommit(sql`(i.iss_seq + 1) / 2`)} END,
+      runtime_ref = CASE WHEN i.iss_seq % 4 = 0 THEN ${releaseCommit(sql`(i.iss_seq + 1) / 2`)} END
+      FROM issues i WHERE i.id = v.issue_id AND i.project_id = ${p} AND i.iss_seq <= ${2 * s.releases}`);
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`
+      UPDATE requirements SET status = CASE WHEN req_seq % 4 = 0 THEN 'dropped' ELSE 'accepted' END
+       WHERE project_id = ${p} AND req_seq % 3 = 0`);
+  });
+}
+
+/** {@link Scale.live}: the untriaged half answered, duplicated, routed to a new requirement or declined. */
+async function liveFeedback(p: string, s: Scale): Promise<void> {
+  await withKernelMarker(db, async (tx) => {
+    // the untriaged half answered, duplicated, routed to a new requirement or declined, as on forge
+    await tx.execute(sql`
+      UPDATE feedback f SET status = CASE WHEN f.fb_seq % 10 = 9 THEN 'declined' ELSE 'triaged' END,
+             route = (ARRAY['answer', 'duplicate', 'new_requirement', NULL, NULL])[1 + (f.fb_seq / 2) % 5],
+             answer = CASE WHEN (f.fb_seq / 2) % 5 = 0 THEN 'answered' END,
+             duplicate_of = CASE WHEN (f.fb_seq / 2) % 5 = 1
+               THEN (SELECT d.id FROM feedback d WHERE d.project_id = f.project_id AND d.fb_seq = f.fb_seq - 1) END,
+             routed_requirement_id = CASE WHEN (f.fb_seq / 2) % 5 = 2
+               THEN (SELECT r.id FROM requirements r WHERE r.project_id = f.project_id AND r.req_seq = 1 + f.fb_seq % ${s.requirements}) END,
+             reporter_agency = CASE WHEN f.fb_seq % 5 = 0 THEN 'human' ELSE 'agent' END
+       WHERE f.project_id = ${p} AND f.fb_seq % 2 = 1 AND f.fb_seq > 1`);
+    await tx.execute(
+      sql`UPDATE feedback SET status = 'verified' WHERE project_id = ${p} AND route = 'issue' AND fb_seq % 4 = 0`,
+    );
+  });
 }
