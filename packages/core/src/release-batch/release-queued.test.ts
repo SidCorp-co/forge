@@ -101,3 +101,76 @@ describe('a draft no gate holds', () => {
     expect(turn.waitingOn.act).toBe('bring a runner online');
   });
 });
+
+// ISS-1096: sidpeak 0.24.0 read "the release run is working on production" while its production
+// deploy waited on a person's confirm, so its job aborted it. The wait is the confirmer's, and the
+// approval says beforehand that the confirm will be needed.
+describe('a release whose production deploy is kept on request', () => {
+  const facts = (over: Partial<Parameters<typeof turnOf>[0]>) =>
+    turnOf({
+      state: 'in_progress',
+      version: '0.24.0',
+      projectId: 'p1',
+      runId: 'r1',
+      merges: null,
+      landedOn: null,
+      required: true,
+      approval: {
+        decision: 'approved',
+        requestedBy: { id: 'm', name: 'master', kind: 'agent' },
+        reason: null,
+        decidedBy: { id: 'a', name: 'Ada', kind: 'human' },
+      },
+      approvers: [{ id: 'a', name: 'Ada', kind: 'human' }],
+      admins: ['Bo', 'Ada'],
+      owes: releaseOwesOf(POLICY(true), []),
+      viewer: { userId: 'm', agency: 'agent', isAdmin: true, mayApprove: true },
+      gates: [],
+      inFlight: null,
+      testing: null,
+      prodConfirm: { bindingId: 'b1' },
+      confirmsProduction: true,
+      ...over,
+    });
+
+  it('waits on the approver who may press the confirm, naming the act and its door', () => {
+    const turn = facts({});
+    expect(turn.attentionGroup).toBe('waiting');
+    expect(turn.waitingOn).toMatchObject({
+      kind: 'person',
+      who: 'Ada',
+      act: 'confirm the production deploy of 0.24.0',
+    });
+    expect(turn.waitingOn.rule).toContain(
+      'POST /api/projects/p1/integrations/b1/confirm-prod-deploy',
+    );
+  });
+
+  it('is stuck naming the permission where nobody holds project.admin', () => {
+    const turn = facts({ admins: [] });
+    expect(turn.attentionGroup).toBe('stuck');
+    expect(turn.waitingOn.kind).toBe('none');
+  });
+
+  it('reads as the release run working once nothing waits on a confirm', () => {
+    expect(facts({ prodConfirm: null }).waitingOn.who).toBe('Release run');
+  });
+
+  it('says on the approval that the confirm will be needed after it', () => {
+    const turn = facts({
+      state: 'awaiting_approval',
+      approval: {
+        decision: null,
+        requestedBy: { id: 'm', name: 'master', kind: 'agent' },
+        reason: null,
+      },
+      prodConfirm: null,
+    });
+    expect(turn.waitingOn.effect).toBe(
+      "Its production deploy then waits on a project admin's confirm.",
+    );
+    expect(facts({ state: 'awaiting_approval', confirmsProduction: false }).waitingOn.effect).toBe(
+      undefined,
+    );
+  });
+});

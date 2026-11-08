@@ -120,6 +120,8 @@ const shape = (outcome: DispatchOutcome) => ({
   // ISS-1116: the deploy already sent that answered this call, and one a redeploy went out over
   ...(outcome.alreadySent ? { alreadySent: outcome.alreadySent } : {}),
   ...(outcome.redeployedOver ? { redeployedOver: outcome.redeployedOver } : {}),
+  // ISS-1096: a production deploy parked for a person's confirm says who presses it, and that the run waits
+  ...(outcome.waitsOn ? { waitsOn: outcome.waitsOn } : {}),
 });
 
 /**

@@ -17,9 +17,7 @@ import {
   setCurrentStep,
   writeRunMetadata,
 } from '../pipeline/index.js';
-import { type ProjectDocument, productionOf } from '../project-config/index.js';
 import { type ResumeOutcome, resumeConfirmedRelease } from './confirm-resume.js';
-import type { ReleaseChannel } from './plan.js';
 import type { DeployLockIntent } from './release-coolify-hold.js';
 
 const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
@@ -81,20 +79,6 @@ export const awaitsProdConfirm = (metadata: SQL): SQL => sql`(
     SELECT 1 FROM jsonb_each(${metadata} -> ${GATE_METADATA_KEY}) g
      WHERE coalesce(g.value ->> 'confirmedAt', '') = ''
   ))`;
-
-/**
- * Whether a release's production deploy will park for a person's confirm: production is bound to a
- * Coolify binding the release run deploys, on request rather than on land or by the provider itself
- * (`release-coolify.ts:tryDispatchCoolifyRelease`), so the approval can say so (ISS-1096).
- */
-export function productionAsksConfirm(
-  channels: readonly Pick<ReleaseChannel, 'provider'>[],
-  document: ProjectDocument | undefined,
-): boolean {
-  if (channels[0]?.provider !== 'coolify' || !document) return false;
-  const deployment = productionOf(document)?.declaration.deployment;
-  return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-request';
-}
 
 /** The binding each of these runs waits on a person's confirm for, by run; runs with none are absent. */
 export async function pendingProdConfirmsOfRuns(

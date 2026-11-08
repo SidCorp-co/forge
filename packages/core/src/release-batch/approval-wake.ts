@@ -13,10 +13,13 @@ import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from 
 import { logger } from '../lib/logger.js';
 import { peopleOf } from '../lib/people.js';
 import { consume } from '../outbox/index.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { projectCreatorOf } from '../projects/index.js';
 import { mergeStepsOf, type ReleaseMergeStep } from './change-request-roster.js';
 import { settleChangeRequestRelease } from './change-request-settle.js';
+import { resolveReleaseChannels } from './channel.js';
 import { releaseBatchPath } from './plan.js';
+import { productionAsksConfirm } from './production-trigger.js';
 import { wakeMastersForRelease } from './provider-live.js';
 
 type Decided = OutboxEventPayload<'release.approvalDecided'>;
@@ -40,7 +43,7 @@ export async function releaseRunSession(runId: string): Promise<string | null> {
 }
 
 /** What the run reads in its pane: the decision, who made it, and what it may do next. */
-export function decisionMessage(p: Decided, decidedBy: string): string {
+export function decisionMessage(p: Decided, decidedBy: string, asksConfirm = false): string {
   const path = `/api/${releaseBatchPath(p.projectId, p.runId)}`;
   if (p.decision === 'approved') {
     // an event recorded before ISS-914 has no carried list
@@ -49,7 +52,11 @@ export function decisionMessage(p: Decided, decidedBy: string): string {
       carried.length === 0
         ? ''
         : ` It carried ${carried.length} unproven ${carried.length === 1 ? 'criterion' : 'criteria'} by the approver's word (${carried.map((c) => `${c.issue} #${c.n}`).join(', ')}); each stays owed after the release.`;
-    return `Release approval ${p.approvalId} was APPROVED by ${decidedBy} at ${p.decidedAt}.${carriedLine} The production acts of release run ${p.runId} are allowed now: carry on with the release, and read the decision back with GET ${path}/state if you need it.`;
+    // ISS-1096: production deploys on request, so its deploy parks for a person's confirm next
+    const confirmLine = asksConfirm
+      ? ` Its production deploy then waits on a project admin's confirm: when the deploy answers pendingHumanConfirm, hold the run open and wait for that press, never abort it.`
+      : '';
+    return `Release approval ${p.approvalId} was APPROVED by ${decidedBy} at ${p.decidedAt}.${carriedLine} The production acts of release run ${p.runId} are allowed now: carry on with the release, and read the decision back with GET ${path}/state if you need it.${confirmLine}`;
   }
   return `Release approval ${p.approvalId} was RETURNED by ${decidedBy} at ${p.decidedAt}: "${p.reason ?? ''}". No production act is allowed on release run ${p.runId}. Answer that reason, then ask again with POST ${path}/approvals, or abort the batch with the reason.`;
 }
@@ -109,11 +116,15 @@ export async function tellReleaseRun(p: Decided): Promise<Told> {
     return 'no_session';
   }
   const name = (await peopleOf([p.decidedBy])).get(p.decidedBy)?.name ?? p.decidedBy;
+  const [channels, held] = await Promise.all([
+    resolveReleaseChannels(p.projectId),
+    readProjectDocument(p.projectId),
+  ]);
   const { published } = await requestSessionSend({
     agentSessionId: sessionId,
     kind: 'answer',
     intentId: p.approvalId,
-    body: decisionMessage(p, name),
+    body: decisionMessage(p, name, productionAsksConfirm(channels, held?.document)),
   });
   logger.info(
     { runId: p.runId, approvalId: p.approvalId, sessionId, published },

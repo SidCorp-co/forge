@@ -49,6 +49,11 @@ export interface DispatchOutcome {
   alreadySent?: AlreadySent[];
   /** Each deploy an explicit redeploy went out over, named so the answer says it was on purpose. */
   redeployedOver?: AlreadySent[];
+  /**
+   * Where a release run's production deploy parked for a person's confirm: who presses it and by
+   * which door, and that the run waits open for them (ISS-1096), so its job holds and never aborts.
+   */
+  waitsOn?: string;
 }
 
 /** Who asked, and whether they asked to deploy again on purpose: the door's key (`deploy-once.ts`). */
@@ -431,8 +436,16 @@ export async function tryDispatchCoolifyRelease(
     };
   }
   const parked = pairs.filter((p) => reachesLive(p.binding)).map((p) => p.binding.id);
-  return { ...awaitingConfirm(parked), ...keyed(once) };
+  return { ...awaitingConfirm(parked), ...keyed(once), waitsOn: confirmOwed(projectId, parked) };
 }
+
+/** Who owes a parked production deploy its press, and that the run waits open for it (ISS-1096). */
+const confirmOwed = (projectId: string, bindingIds: readonly string[]): string =>
+  `A person holding project.admin confirms this production deploy with ${bindingIds
+    .map((b) => `POST /api/projects/${projectId}/integrations/${b}/confirm-prod-deploy`)
+    .join(
+      ' and ',
+    )}; they are told in Needs you. The release run stays open and waits on them: hold it, never abort it for this wait. Once confirmed, the deploy goes out on this run and the release carries on to its finish.`;
 
 /** A uuid fixed by `key`: the same act always names the same job. */
 function jobIdOf(key: string): string {

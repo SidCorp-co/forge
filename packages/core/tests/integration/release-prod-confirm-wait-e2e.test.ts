@@ -96,6 +96,11 @@ async function parkedRelease(): Promise<{ runId: string; version: string }> {
     pendingHumanConfirm: true,
     reason: 'awaiting-prod-confirm',
   });
+  // the answer names who presses it and by which door, and that the run waits open for them
+  expect(String(answer.waitsOn)).toContain(
+    `POST /api/projects/${projectId}/integrations/${bindingId}/confirm-prod-deploy`,
+  );
+  expect(String(answer.waitsOn)).toContain('never abort');
   return { runId: cut.runId, version: String(cut.version) };
 }
 
