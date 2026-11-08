@@ -236,7 +236,7 @@ export const contractVersions = pgTable(
     pk: primaryKey({ columns: [t.providerProjectId, t.contractSlug, t.version] }),
     approvalChk: check(
       'contract_versions_approval_chk',
-      sql`${t.approval} IN ('proposed', 'approved', 'returned')`,
+      sql`${t.approval} IN ('proposed', 'approved', 'returned', 'superseded')`,
     ),
     decidedChk: check(
       'contract_versions_decided_chk',

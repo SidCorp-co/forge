@@ -12,6 +12,7 @@
  * @direct-test-of packages/core/src/ecosystem/standing/read.ts
  * @direct-test-of packages/contracts/src/needs-you-decisions.ts
  * @direct-test-of packages/core/src/ecosystem/contract/decide.ts
+ * @direct-test-of packages/core/src/ecosystem/contract/store.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -172,4 +173,35 @@ describe('ISS-1055 a proposed contract version is its approver decision', () => 
       key: REF,
     });
   }, 90_000);
+
+  // ISS-1056: approving 10.1.0 with 9.2.0..10.0.0 proposed behind it left those proposed forever,
+  // read by no pending and asked of nobody; the approval decides them superseded by it
+  it('the approval decides every older proposed version superseded by it, and leaves none proposed', async () => {
+    const rows = (await db.execute(sql`
+      SELECT version, approval, decision_reason, decided_as FROM contract_versions
+       WHERE provider_project_id = ${w.project.forge} AND contract_slug = 'forge-api'
+       ORDER BY recorded_at`)) as unknown as {
+      version: string;
+      approval: string;
+      decision_reason: string | null;
+      decided_as: string | null;
+    }[];
+    expect(rows.filter((r) => r.approval === 'proposed').map((r) => r.version)).toEqual([]);
+    const superseded = rows.filter((r) => r.approval === 'superseded');
+    expect(superseded.map((r) => r.version)).toEqual([
+      '9.2.0',
+      '9.3.0',
+      '9.4.0',
+      '9.5.0',
+      '9.6.0',
+      '10.0.0',
+    ]);
+    for (const r of superseded) {
+      expect(r.decision_reason).toBe('superseded by 10.1.0, approved after it was recorded');
+      expect(r.decided_as).toBe('person');
+    }
+    expect(rows.find((r) => r.version === '11.0.0')?.approval, 'the returned one stays returned').toBe(
+      'returned',
+    );
+  });
 });

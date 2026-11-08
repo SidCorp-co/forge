@@ -17,7 +17,13 @@ import {
 } from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
 import { compareVersions } from './naming.js';
-import { approvalView, decideVersion, type StoredVersion, versionsOf } from './store.js';
+import {
+  approvalView,
+  decideVersion,
+  type StoredVersion,
+  supersedeOlderProposed,
+  versionsOf,
+} from './store.js';
 
 interface DecideInput {
   projectId: string;
@@ -69,6 +75,15 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
     );
     if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
     await announceDecidedIn(tx, { projectId, contract, version });
+    if (decision === 'approve') {
+      await supersedeOlderProposed(tx, {
+        providerProjectId: projectId,
+        contractSlug: contract,
+        approved: decided,
+        decidedBy: actor.userId,
+        decidedAs: actor.agency === 'agent' ? 'agent' : 'person',
+      });
+    }
     if (decision !== 'approve' || !iface) return { ok: true, version: decided, filed: [] };
     // the approval releases every wait it reaches in its own transaction; the event it emits wakes them
     const versioning = iface.document.commitments.versioning;

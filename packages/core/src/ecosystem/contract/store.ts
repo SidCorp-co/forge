@@ -142,6 +142,43 @@ export async function decideVersion(
   return rows.length === 1;
 }
 
+/**
+ * Every proposed version of the contract recorded before `approved` is decided superseded by it, in
+ * the approval's own act and as its decider (ISS-1056): `ecosystem/standing/standing.ts:pendingOf`
+ * reads none of them once a newer one is current, so left proposed they waited on nobody, forever.
+ * A version recorded after it stays proposed, the next pending one. Returns the versions it decided.
+ */
+export async function supersedeOlderProposed(
+  tx: Tx,
+  input: {
+    providerProjectId: string;
+    contractSlug: string;
+    approved: { version: string; recordedAt: Date };
+    decidedBy: string;
+    decidedAs: Exclude<DecidedAs, 'before-approval'>;
+  },
+): Promise<string[]> {
+  const rows = await tx
+    .update(contractVersions)
+    .set({
+      approval: 'superseded',
+      decidedBy: input.decidedBy,
+      decidedAs: input.decidedAs,
+      decidedAt: sql`now()`,
+      decisionReason: `superseded by ${input.approved.version}, approved after it was recorded`,
+    })
+    .where(
+      and(
+        eq(contractVersions.providerProjectId, input.providerProjectId),
+        eq(contractVersions.contractSlug, input.contractSlug),
+        eq(contractVersions.approval, 'proposed'),
+        sql`${contractVersions.recordedAt} < ${input.approved.recordedAt.toISOString()}`,
+      ),
+    )
+    .returning({ version: contractVersions.version });
+  return rows.map((r) => r.version);
+}
+
 export async function versionsOf(
   tx: Tx,
   providerProjectIds: readonly string[],
