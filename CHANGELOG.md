@@ -9,7 +9,7 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-## [0.4.0-dev.596] - 2026-11-08
+## [0.4.0-dev.597] - 2026-11-08
 
 Worktrees stop filling the disk with runner builds and orphan test browsers
 
