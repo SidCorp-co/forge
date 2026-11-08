@@ -61,8 +61,14 @@ describe('the issue-flow guide states goals, with the gates a project turns on',
     );
     expect(prose).toContain('**Out of reach**: routed to whoever owns it');
     expect(prose).toContain('Separate work goes to its place');
-    expect(prose).toContain('is Feedback, never an issue you file');
+    // ISS-1087: the step names each lane by the route that records it, product and technical
+    expect(prose).toContain(
+      'is Feedback (`POST /api/projects/:id/feedback`), never an issue you file',
+    );
+    expect(prose).toContain('`POST /api/projects/:id/debts`');
+    expect(prose).toContain('A technical one is debt, as above, or');
     expect(prose).toContain("issue of its own in its module's technical backlog");
+    expect(prose).toContain('`Found in:` this issue with the evidence');
     expect(prose).toContain(
       'A part becomes an issue of its own only for priority, a handoff or independent tracking',
     );

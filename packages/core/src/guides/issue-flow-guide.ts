@@ -505,9 +505,10 @@ Each defect you see goes to exactly one place (guide \`what-is-an-issue\`, *Wher
   record on this one naming where it went, a \`blocks\` edge onto the issue that would ship without
   it, or \`needs_info\` on this one.
 - Separate work goes to its place. A product finding, one that changes what a user sees or should
-  expect, is Feedback, never an issue you file. A technical one needing its own priority, a handoff
-  or independent tracking is an issue of its own in its module's technical backlog: its kind as
-  \`category\`, its module as the primary label, and \`Found in:\` this issue with the evidence.
+  expect, is Feedback (\`POST /api/projects/:id/feedback\`), never an issue you file. A technical
+  one is debt, as above, or, needing its own priority, a handoff or independent tracking, an issue
+  of its own in its module's technical backlog: its kind as \`category\`, its module as the primary
+  label, and \`Found in:\` this issue with the evidence.
 - A lesson a different issue would reuse: \`POST /api/memory\`, answering four things before you
   save (\`curated-memory\`): \`value\` (how it helps later work; with none, it is history, a comment
   on the issue), \`type\` (\`fact\` verified against what is live, \`hypothesis\` inferred, or

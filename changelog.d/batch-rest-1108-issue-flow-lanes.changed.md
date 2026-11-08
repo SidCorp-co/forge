@@ -1,0 +1,1 @@
+**The issue-flow guide names the route for each finding outside a change.** A product finding goes to Feedback and a technical one to debt or its module's backlog, each with the route that records it.
