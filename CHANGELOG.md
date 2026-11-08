@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.599] - 2026-11-08
+
+Production sites: a release deploys and records every production site
+
+### Added
+
+- **Production can name several sites, and a release deploys, judges and records each one.** A site the release did not reach shows as not shipped, by name, and the release cannot ship until every site has.
+
+### Fixed
+
+- **Your attention and home pages read each project's master, ecosystem, production binding, suggestions and release draft once for all your projects.** Each was read once a project, so twelve projects sent hundreds more statements than one.
+
 ## [0.4.0-dev.598] - 2026-11-08
 
 Deploys survive a brief GitHub error while fetching the contract differ
