@@ -6,8 +6,10 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
+import { recentIssueNotes } from '../comments/index.js';
 import { projectHasLiveMaster, projectRunnerBuilds } from '../devices/index.js';
 import { listIssues } from '../issues/index.js';
+import { getIssueContexts } from '../pipeline/index.js';
 import { holdsAnAct, listReleases } from '../release-batch/index.js';
 import { listRowsOf } from '../requirements/index.js';
 import { releaseHoldOf, UNSEEN } from './ops-release-holds.js';
@@ -16,6 +18,50 @@ import type { OpsOutcome } from './ops-types.js';
 import { waitingOf } from './ops-waiting.js';
 import { no } from './outcome.js';
 import type { RoomRow } from './store.js';
+import { scrubbedForRoom } from './thread.js';
+
+/** How many of one issue's latest notes and step handoffs its read carries, and how much of each. */
+const ISSUE_NOTES = 5;
+const NOTE_CHARS = 1500;
+
+const clipped = (text: string) =>
+  text.length > NOTE_CHARS
+    ? `${text.slice(0, NOTE_CHARS)}… (cut at ${NOTE_CHARS} characters)`
+    : text;
+
+/** What one step's handoff says, as a line: its summary where it wrote one, else its payload. */
+function handoffText(payload: unknown): string {
+  const p = payload as { summary?: unknown; notes?: unknown } | null;
+  if (typeof p?.summary === 'string') return p.summary;
+  if (typeof p?.notes === 'string') return p.notes;
+  return JSON.stringify(payload);
+}
+
+/**
+ * One issue's latest comments and step handoffs, newest first, bounded and scrubbed of the room's
+ * secrets (ISS-999): what a channel agent reads before it tells a person how the issue is going.
+ */
+async function progressOf(room: RoomRow, projectId: string, issueId: string) {
+  const [notes, handoffs] = await Promise.all([
+    recentIssueNotes(issueId, ISSUE_NOTES),
+    getIssueContexts({ projectId, issueId, kind: 'handoff', limit: ISSUE_NOTES, orderDir: 'desc' }),
+  ]);
+  return {
+    notes: await Promise.all(
+      notes.map(async (n) => ({
+        at: n.at.toISOString(),
+        text: clipped(await scrubbedForRoom(room, n.body)),
+      })),
+    ),
+    handoffs: await Promise.all(
+      handoffs.map(async (h) => ({
+        step: h.step,
+        at: h.createdAt.toISOString(),
+        text: clipped(await scrubbedForRoom(room, handoffText(h.payload))),
+      })),
+    ),
+  };
+}
 
 /** Every project of the room's reach: its runners online, whether a master is resident. */
 export async function projectsRead(room: RoomRow) {
@@ -49,6 +95,9 @@ export async function issuesRead(
   // a parked issue says what it waits on and from whom, so the agent can tell a person what they
   // owe instead of sending them to look it up (ISS-877)
   const waits = await waitingOf(project.value.id, listed.rows);
+  // one issue asked for by its key carries its latest notes and handoffs (ISS-999)
+  const one = input.key && listed.rows.length === 1 ? listed.rows[0] : undefined;
+  const progress = one ? await progressOf(room, project.value.id, one.id) : null;
   return {
     ok: true,
     value: {
@@ -62,6 +111,7 @@ export async function issuesRead(
           status: r.status,
           priority: r.priority,
           ...(waiting ? { waiting } : {}),
+          ...(progress && r.id === one?.id ? progress : {}),
         };
       }),
     },

@@ -195,7 +195,7 @@ const SHAPE = [
   'project { project? }',
   'command { thread, host, command }',
   'projects {}',
-  'issues { project, status?, key? } (a row waiting on a person carries waiting: who, owes, questions with options, reason)',
+  'issues { project, status?, key? } (a row waiting on a person carries waiting: who, owes, questions with options, reason; one issue named by key carries its latest notes and step handoffs)',
   'releases { project }',
   'requirements { project }',
   'move { thread, message, issue, to, reason?, project? }',

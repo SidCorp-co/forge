@@ -80,10 +80,18 @@ beforeAll(async () => {
     INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
     VALUES (${randomUUID()}, ${connectionId}, ${w.projectId}, 'gitlab', 'source', true,
             ${JSON.stringify({ projectPath: 'acme/agenfold' })}::jsonb)`);
-  await createTestIssue(w.projectId, w.ownerId, 7, {
+  const seven = await createTestIssue(w.projectId, w.ownerId, 7, {
     status: 'in_progress',
     createdAt: new Date(),
   });
+  for (const [body, ago] of [
+    ['Root cause found in the sync job.', 120],
+    ['Fix verified on staging; waiting on the release.', 60],
+  ] as const) {
+    await db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body, created_at)
+      VALUES (${seven.id}, ${w.ownerId}, ${body}, now() - make_interval(secs => ${ago}))`);
+  }
   await createTestRequirement(w.projectId, 10, 'Orders sync to the warehouse nightly');
   await w.bindTarget({
     rids: [chat.rid],
@@ -109,6 +117,8 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
       () => fireDueChecks(new Date('2026-11-01T01:30:00Z')),
       async (_t, act) => {
         out.issues = await act({ action: 'issues', project: slug });
+        const key = (out.issues.issues as { key: string }[])[0]?.key;
+        out.one = await act({ action: 'issues', project: slug, key });
         out.releases = await act({ action: 'releases', project: slug });
         out.requirements = await act({ action: 'requirements', project: slug });
         out.projects = await act({ action: 'projects' });
@@ -123,6 +133,19 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
         expect.objectContaining({ key: expect.stringMatching(/-7$/), status: 'in_progress' }),
       ],
     });
+    // ISS-999: one issue named by its key carries its latest notes, newest first; a list carries none
+    expect(out.one).toMatchObject({
+      issues: [
+        expect.objectContaining({
+          notes: [
+            expect.objectContaining({ text: 'Fix verified on staging; waiting on the release.' }),
+            expect.objectContaining({ text: 'Root cause found in the sync job.' }),
+          ],
+          handoffs: [],
+        }),
+      ],
+    });
+    expect(JSON.stringify(out.issues)).not.toContain('Root cause found');
     expect(out.releases).toMatchObject({ project: slug, releases: [] });
     expect(out.requirements).toMatchObject({
       project: slug,
@@ -144,7 +167,13 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
       async (t, act) => {
         const thread = t.messages.find((m) => m.thread.startsWith('check:'))?.thread;
         out.other = await act({ action: 'issues', project: 'not-this-project' });
-        out.move = await act({ action: 'move', thread: 'msg1', issue: 'ISS-7', to: 'closed' });
+        out.move = await act({
+          action: 'move',
+          thread: 'msg1',
+          message: 'msg1',
+          issue: 'ISS-7',
+          to: 'closed',
+        });
         await act({ action: 'check_result', check: thread, finding: null });
       },
     );

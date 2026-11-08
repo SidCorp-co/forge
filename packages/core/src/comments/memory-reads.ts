@@ -14,6 +14,19 @@ export async function recentCommentBodies(issueId: string, limit: number): Promi
   return rows.map((r) => r.body);
 }
 
+/** The newest `limit` comments on the issue, newest first: when, and the body (ISS-999). */
+export async function recentIssueNotes(
+  issueId: string,
+  limit: number,
+): Promise<{ at: Date; body: string }[]> {
+  return db
+    .select({ at: comments.createdAt, body: comments.body })
+    .from(comments)
+    .where(eq(comments.issueId, issueId))
+    .orderBy(desc(comments.createdAt))
+    .limit(limit);
+}
+
 /** The project's comments on unarchived issues since `since`, newest first. */
 export function commentsSince(projectId: string, since: Date, limit: number) {
   return db
