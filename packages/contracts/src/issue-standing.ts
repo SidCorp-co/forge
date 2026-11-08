@@ -88,6 +88,9 @@ export interface IssueCriteriaTally {
 	failing: number;
 	/** Latest verdict `skipped`: judged, never earns. */
 	skipped: number;
+	/** When the storefront drafts `met` rests on were read, where it rests on any: a person's read may
+	 * show drafts read a moment ago, never as read now (core `db/observed-reads.ts`). */
+	draftsReadAt?: string;
 }
 
 export interface IssueRequirementRef {

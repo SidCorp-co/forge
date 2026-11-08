@@ -1,4 +1,5 @@
 import { withArticle } from '@forge/contracts/articles';
+import { observedReading } from '../db/observed-reads.js';
 import { getIntegration } from './registry.js';
 import {
   decryptConnectionSecrets,
@@ -68,13 +69,59 @@ async function readPerWorkflow<R>(
   );
 }
 
-/** The draft a storefront binding's provider holds now of each workflow named, or why it cannot be read. */
+/** The drafts one read of a binding answered, and when it was read. */
+interface DraftsRead {
+  readonly readAt: string;
+  readonly readings: ReadonlyMap<string, StorefrontDraftReading>;
+}
+
+/** Every workflow asked of each binding so far: a read of it reads them all, as the provider does. */
+const askedOf = new Map<string, Set<string>>();
+
+/**
+ * The draft a storefront binding's provider holds now of each workflow named, or why it cannot be
+ * read, each stamped with when it was read. A person's read of what waits on them is shown the one
+ * read a moment ago (`db/observed-reads.ts:observedReading`): forge-dev's attention and home asked
+ * Autoflow once a storefront project on every read, ~850 ms each (ISS-1070 r14). Anywhere else it
+ * is read now.
+ */
 export async function readStorefrontDrafts(args: {
   provider: string;
   binding: string;
   workflowIds: readonly string[];
 }): Promise<Map<string, StorefrontDraftReading>> {
-  return readPerWorkflow(args, 'draft', (d) => d.storefrontDrafts);
+  const asked = [...new Set(args.workflowIds)];
+  if (asked.length === 0) return new Map();
+  const key = `storefront-drafts:${args.provider}:${args.binding}`;
+  const every = askedOf.get(key) ?? new Set<string>();
+  for (const id of asked) every.add(id);
+  askedOf.set(key, every);
+  const drafts = await observedReading<DraftsRead>(
+    key,
+    async () => {
+      const readAt = new Date().toISOString();
+      const readings = await readPerWorkflow(
+        { ...args, workflowIds: [...every] },
+        'draft',
+        (d) => d.storefrontDrafts,
+      );
+      return { readAt, readings };
+    },
+    Date.now,
+    (held) => asked.every((id) => held.readings.has(id)),
+  );
+  return new Map(
+    asked.map((id): [string, StorefrontDraftReading] => [
+      id,
+      {
+        ...(drafts.readings.get(id) ?? {
+          kind: 'unreadable',
+          detail: `the ${args.provider} draft reader answered no reading of workflow \`${id}\``,
+        }),
+        readAt: drafts.readAt,
+      },
+    ]),
+  );
 }
 
 const unique = (ids: readonly string[]) => [...new Set(ids)];

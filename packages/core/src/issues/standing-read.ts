@@ -181,6 +181,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
       met: mine.filter((c) => c.stands && c.counts && verdictEarns(c.verdict)).length,
       failing: mine.filter((c) => c.verdict === 'fail').length,
       skipped: mine.filter((c) => c.verdict === 'skipped').length,
+      ...draftsReadAt(mine),
     },
     requirement: requirementRef(
       r,
@@ -208,6 +209,12 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     judge: f.judge,
     now: f.now,
   };
+}
+
+/** When the earliest storefront draft the tally's `met` rests on was read, where it rests on one. */
+function draftsReadAt(mine: Facts['criteria']): { draftsReadAt?: string } {
+  const at = mine.flatMap((c) => (c.drafts_read_at ? [c.drafts_read_at] : [])).sort()[0];
+  return at ? { draftsReadAt: at } : {};
 }
 
 /** How far a read follows live blockers outside the rows it was asked for; past it a blocker reads unread. */

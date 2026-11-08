@@ -56,10 +56,10 @@ export interface IssueProjectDocument {
   gates?: GatesConfig | undefined;
 }
 
-export type StorefrontDraftReading =
+export type StorefrontDraftReading = (
   | { readonly kind: 'read'; readonly draftVersion: string; readonly workflowCode: string }
-  | { readonly kind: 'missing'; readonly detail: string }
-  | { readonly kind: 'unreadable'; readonly detail: string };
+  | { readonly kind: 'missing' | 'unreadable'; readonly detail: string }
+) & { readonly readAt?: string }; // when it was read (`integrations/types.ts:StorefrontDraftReading`)
 
 export interface HostCommit {
   sha: string;

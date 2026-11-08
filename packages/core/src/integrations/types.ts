@@ -398,10 +398,14 @@ export interface StorefrontTargetArgs {
   readSecrets(): Record<string, unknown>;
 }
 
-export type StorefrontDraftReading =
+export type StorefrontDraftReading = (
   | { readonly kind: 'read'; readonly draftVersion: string; readonly workflowCode: string }
   | { readonly kind: 'missing'; readonly detail: string }
-  | { readonly kind: 'unreadable'; readonly detail: string };
+  | { readonly kind: 'unreadable'; readonly detail: string }
+) & {
+  /** When the provider was read for it: a person's read may be shown one read a moment ago (`db/observed-reads.ts`). */
+  readonly readAt?: string;
+};
 
 /**
  * What the provider publishes of one workflow now: the graph a live route runs, in the same identity

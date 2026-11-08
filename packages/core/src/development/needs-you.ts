@@ -106,7 +106,7 @@ export function readNeedsYouAttention(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ) {
-  // what production serves, as observed a moment ago and said so (`serving-observed.ts`)
+  // what production serves, as observed a moment ago and said so (`db/observed-reads.ts`)
   return observedAttention(() =>
     attentionOf(
       projectId,

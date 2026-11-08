@@ -4,6 +4,7 @@
 
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { ServedAt, ServingReading } from '@forge/contracts/releases';
+import { observedReading } from '../db/observed-reads.js';
 import type { JudgedOnReading } from '../issues/index.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
 import type { EnvironmentState, ProjectDocument } from '../project-config/index.js';
@@ -13,7 +14,6 @@ import {
   readReleasePath,
 } from '../project-config/index.js';
 import type { Reading } from './provider-live.js';
-import { observedReading } from './serving-observed.js';
 
 export type { ServedAt, ServingReading } from '@forge/contracts/releases';
 export { servedCommits } from '@forge/contracts/releases';
@@ -152,7 +152,8 @@ const servingKey = (
   projectId: string,
   env: { name: string; declaration: unknown },
   document: ProjectDocument,
-) => `${projectId}:${env.name}:${document.source.type}:${JSON.stringify(env.declaration)}`;
+): string =>
+  `serving:${projectId}:${env.name}:${document.source.type}:${JSON.stringify(env.declaration)}`;
 
 /** A state read into what it says is served; an environment that cannot be read reads as such. */
 function readingOf(state: EnvironmentState, now: () => Date, route: string): ServingReading {

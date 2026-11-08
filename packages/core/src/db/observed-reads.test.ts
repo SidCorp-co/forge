@@ -2,10 +2,9 @@
 // and never a reading too old to trust; every other read is fresh.
 import type { ServingReading } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
-import { withObservedReads } from '../db/observed-reads.js';
-import { withReadMemo } from '../db/read-memo.js';
 import { backgroundSettled } from '../lib/background.js';
-import { FRESH_MS, observedReading, TRUST_MS } from './serving-observed.js';
+import { FRESH_MS, observedReading, TRUST_MS, withObservedReads } from './observed-reads.js';
+import { withReadMemo } from './read-memo.js';
 
 /** A platform answering the commit it is told, counting each time it is asked. */
 function platform(commit: string) {

@@ -19,6 +19,8 @@ export interface CriteriaRaw {
   identity_kind: string | null;
   storefront_drafts: StorefrontDraftPart[] | null;
   stands: boolean;
+  /** When the storefront drafts `stands` rests on were read; null where it rests on none (`db/observed-reads.ts`). */
+  drafts_read_at: string | null;
   /** The latest verdict may count: false where it is a pass or short only its builder recorded (`criteria/verdict-counting.ts`). */
   counts: boolean;
 }
@@ -54,17 +56,22 @@ export async function criteriaOf(
       ),
     ),
   ]);
-  return rows.map(({ verdict_id, ...r }) => ({
-    ...r,
-    counts: !verdict_id || !counting.get(verdict_id)?.notCounted,
-    stands:
-      r.identity_kind !== 'storefront_draft' ||
-      current(r.storefront_drafts ?? []).corroboration === 'corroborated',
-  }));
+  return rows.map(({ verdict_id, ...r }) => {
+    const draft =
+      r.identity_kind === 'storefront_draft' ? current(r.storefront_drafts ?? []) : null;
+    return {
+      ...r,
+      counts: !verdict_id || !counting.get(verdict_id)?.notCounted,
+      stands: draft === null || draft.corroboration === 'corroborated',
+      drafts_read_at: draft?.readAt ?? null,
+    };
+  });
 }
 
 async function criteriaRowsOf(ids: readonly string[]) {
-  return rowsOf<Omit<CriteriaRaw, 'stands' | 'counts'> & { verdict_id: string | null }>(
+  return rowsOf<
+    Omit<CriteriaRaw, 'stands' | 'counts' | 'drafts_read_at'> & { verdict_id: string | null }
+  >(
     await db.execute(sql`
       SELECT c.issue_id, v.id AS verdict_id, v.verdict, rc.code AS bc_code, v.identity_kind,
              v.storefront_drafts,

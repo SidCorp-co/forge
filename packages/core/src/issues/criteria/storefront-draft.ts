@@ -86,21 +86,30 @@ export const readSourceDrafts: DraftReader = async (document, workflowIds) => {
 interface DraftReading {
   readonly corroboration: VerdictDraftReading;
   readonly note: string | null;
+  /** When the earliest draft it rests on was read; null where none was (`db/observed-reads.ts`). */
+  readonly readAt: string | null;
 }
+
+/** The earlier of two reading times, a missing one aside. */
+const earlier = (a: string | null, b: string | null) =>
+  a === null || (b !== null && b < a) ? b : a;
 
 function currentDraftReading(
   judged: StorefrontDraftPart,
   reading: StorefrontDraftReading,
 ): DraftReading {
+  const readAt = reading.readAt ?? null;
   if (reading.kind !== 'read') {
     return {
       corroboration: 'uncorroborated',
       note: `the draft the storefront source holds now could not be read, so nothing confirms workflow \`${judged.workflowId}\` is still at draft version \`${judged.draftVersion}\`: ${reading.detail}`,
+      readAt,
     };
   }
   if (reading.draftVersion === judged.draftVersion)
-    return { corroboration: 'corroborated', note: null };
+    return { corroboration: 'corroborated', note: null, readAt };
   return {
+    readAt,
     corroboration: 'superseded',
     note: `the storefront source holds ${workflowNamed(judged, reading)} at draft version \`${reading.draftVersion}\` now, not \`${judged.draftVersion}\`: the draft moved after it was judged, so the verdict is about a draft that will not ship`,
   };
@@ -113,11 +122,13 @@ function currentDraftReading(
  */
 function verdictReading(readings: readonly DraftReading[]): DraftReading {
   const off = readings.filter((r) => r.corroboration !== 'corroborated');
+  const readAt = readings.reduce<string | null>((at, r) => earlier(at, r.readAt), null);
   if (readings.length === 0) {
-    return { corroboration: 'uncorroborated', note: 'the verdict names no workflow draft' };
+    return { corroboration: 'uncorroborated', note: 'the verdict names no workflow draft', readAt };
   }
-  if (off.length === 0) return { corroboration: 'corroborated', note: null };
+  if (off.length === 0) return { corroboration: 'corroborated', note: null, readAt };
   return {
+    readAt,
     corroboration: off.some((r) => r.corroboration === 'superseded')
       ? 'superseded'
       : 'uncorroborated',
