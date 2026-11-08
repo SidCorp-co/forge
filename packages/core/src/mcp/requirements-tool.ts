@@ -119,7 +119,7 @@ const DESCRIPTION = [
   'propose {requirement, revision}: put a draft revision before the people who agree it.',
   'withdraw {requirement, revision, reason}: withdraw an open draft revision for good, saying why, as POST …/revisions/:n/withdraw does: its author may, anyone else needs requirements.approve. It frees the one open revision (REQUIREMENT_REVISION_OPEN) and is the one act left on a dropped requirement (REQUIREMENT_DROPPED).',
   ANSWER_LINE,
-  'Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them.',
+  'Agreeing, accepting, returning, deferring and dropping are a sign-off this tool does none of: the project’s master’s outside a strict project (it holds requirements.approve there), a person’s on the requirement page in one.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
 ].join(' ');
 
