@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.598] - 2026-11-08
+
+Deploys survive a brief GitHub error while fetching the contract differ
+
+### Fixed
+
+- **One GitHub hiccup no longer fails a deploy.** The core image's build retries the pinned oasdiff download after a 5xx, a 429 or a network error, and its final failure names every attempt.
+
 ## [0.4.0-dev.597] - 2026-11-08
 
 Worktrees stop filling the disk with runner builds and orphan test browsers
