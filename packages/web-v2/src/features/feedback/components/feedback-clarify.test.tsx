@@ -12,7 +12,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 afterEach(() => vi.unstubAllGlobals());
 
-const CAN = { triage: true, drop: true, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: true, message: true, tellShipped: false, note: true, attach: false, clarify: true };
+const CAN = { triage: true, drop: true, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: true, message: true, tellShipped: false, note: true, attach: false, clarify: true, answerClarification: false };
 const view = (clarify: boolean): FeedbackView => ({ id: "f1", key: "FB-4", phase: "new", can: { ...CAN, clarify } }) as unknown as FeedbackView;
 
 function open() {

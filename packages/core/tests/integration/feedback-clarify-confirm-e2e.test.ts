@@ -144,20 +144,74 @@ describe('a clarification carries the answer recommended, one at a time to each 
     await addProjectMember(w.projectId, reporter, 'member');
     const first = await filed(reporter);
     const second = await filed(reporter);
-    for (const [ref, prompt] of [
-      [first, 'Which page were you on?'],
-      [second, 'Which card was it?'],
-      [first, 'And which browser?'],
+    // the item shows its reporter the oldest open one: the second asked on `first` waits its turn
+    for (const [ref, prompt, shown] of [
+      [first, 'Which page were you on?', 'Which page were you on?'],
+      [second, 'Which card was it?', 'Which card was it?'],
+      [first, 'And which browser?', 'Which page were you on?'],
     ] as const) {
       const asked = await ask(ref, { prompt, needed: 'The answer', recommended: 'The board' });
       expect(asked.status, JSON.stringify(asked.body)).toBe(200);
-      expect((asked.body.feedback as Body).clarification).toMatchObject({ status: 'open', prompt });
+      expect((asked.body.feedback as Body).clarification).toMatchObject({
+        status: 'open',
+        prompt: shown,
+      });
     }
     const [open] = (await db.execute(sql`
       SELECT count(*)::int AS n FROM agent_questions q JOIN feedback f ON f.id = q.feedback_id
        WHERE f.project_id = ${w.projectId} AND f.reported_by = ${reporter} AND q.status = 'open'
     `)) as unknown as { n: number }[];
     expect(open?.n).toBe(3);
+  });
+});
+
+// ISS-695 c1 (judged failing on dev.335): the question was written as a person's, so an agent reporter
+// was refused its own answer, and the page offered a person no send of the recommended answer
+describe('the reporter answers the clarification it is shown, by one click (BC-4)', () => {
+  const answer = (token: string, c: Body, text: string) =>
+    api(token, 'POST', `/api/questions/${String(c.id)}/answer`, { text, round: c.round });
+
+  it('takes an agent reporter’s own answer, its token naming no reason', async () => {
+    const reporter = (await createTestUser({ kind: 'agent' })).id;
+    await addProjectMember(w.projectId, reporter, 'member');
+    const pat = (
+      await mintPat({
+        permissions: ['*'],
+        userId: reporter,
+        name: 'reporter box',
+        projectIds: [w.projectId],
+        grantEpoch: PAT_GRANT_EPOCH,
+      })
+    ).plaintext;
+    const fb = await filed(reporter);
+    await db.execute(sql`
+      UPDATE feedback SET reporter_agency = 'agent' WHERE project_id = ${w.projectId} AND fb_seq = ${Number(fb.slice(3))}
+    `);
+    const asked = await ask(fb, { prompt: 'Which verb?', needed: 'The verb', recommended: 'issue list' });
+    expect(asked.status, JSON.stringify(asked.body)).toBe(200);
+    const c = (asked.body.feedback as Body).clarification as Body;
+    expect(c.round).toBe(1);
+    const res = await answer(pat, c, 'issue list');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await detail(fb)).clarification).toMatchObject({ status: 'answered', answer: 'issue list' });
+  });
+
+  it('offers a person reporter the send of each open question in turn, oldest first, and no one else', async () => {
+    const reporter = (await createTestUser({ verified: true })).id;
+    await addProjectMember(w.projectId, reporter, 'member');
+    const token = await userToken(reporter);
+    const fb = await filed(reporter);
+    for (const prompt of ['Which page?', 'Which browser?']) {
+      const asked = await ask(fb, { prompt, needed: 'The answer', recommended: 'The board' });
+      expect(asked.status, JSON.stringify(asked.body)).toBe(200);
+    }
+    const mine = await detail(fb, token);
+    expect(mine.clarification).toMatchObject({ status: 'open', prompt: 'Which page?' });
+    expect((mine.can as Body).answerClarification).toBe(true);
+    expect(((await detail(fb)).can as Body).answerClarification, 'the asker is not the reporter').toBe(false);
+    const sent = await answer(token, mine.clarification as Body, 'The board');
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    expect((await detail(fb, token)).clarification).toMatchObject({ status: 'open', prompt: 'Which browser?' });
   });
 });
 

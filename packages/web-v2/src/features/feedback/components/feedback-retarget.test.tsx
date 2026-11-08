@@ -11,7 +11,7 @@ import type { FeedbackView } from "../types";
 import { PageCommandsProvider, usePageCommandList } from "@/design";
 import { FeedbackPaletteActs } from "./feedback-acts";
 
-const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false };
+const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false, answerClarification: false };
 
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({

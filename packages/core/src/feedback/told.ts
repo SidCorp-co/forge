@@ -16,7 +16,19 @@ import { shipNoticesOf } from './ship-notice.js';
 
 type Asked = Pick<typeof agentQuestions.$inferSelect, 'id' | 'status' | 'steps'>;
 
-/** The item's latest clarification: its status, and its prompt and answer where the viewer may read them. */
+/**
+ * The clarification the reporter is shown, of those asked newest first: the oldest still open, so the
+ * agent asks every question it needs (REQ-66 BC-4) and the reporter answers one at a time; else the
+ * latest asked.
+ */
+export function shownClarification<T extends Pick<Asked, 'status'>>(
+  newestFirst: readonly T[],
+): T | undefined {
+  const open = newestFirst.filter((q) => q.status === 'open');
+  return open[open.length - 1] ?? newestFirst[0];
+}
+
+/** The shown clarification: its status and round, and its prompt and answer where the viewer may read them. */
 export function clarificationViewOf(
   q: Asked | undefined,
   withhold: boolean,
@@ -26,13 +38,14 @@ export function clarificationViewOf(
   return {
     id: q.id,
     status: q.status,
+    round: step?.round ?? 1,
     prompt: withhold ? null : (step?.prompt ?? null),
     recommended: withhold || !step || isChoiceStep(step) ? null : step.recommended?.trim() || null,
     answer: withhold ? null : step && 'answerText' in step ? (step.answerText ?? null) : null,
   };
 }
 
-/** The latest clarification asked of each item's reporter, by item. */
+/** The clarification each item's reporter is shown (`shownClarification`), by item. */
 async function clarificationsOf(ids: readonly string[]): Promise<Map<string, Asked>> {
   const rows = await db
     .select({
@@ -44,8 +57,15 @@ async function clarificationsOf(ids: readonly string[]): Promise<Map<string, Ask
     .from(agentQuestions)
     .where(inArray(agentQuestions.feedbackId, [...ids]))
     .orderBy(desc(agentQuestions.createdAt));
+  const byItem = new Map<string, Asked[]>();
+  for (const r of rows) {
+    if (r.feedbackId) byItem.set(r.feedbackId, [...(byItem.get(r.feedbackId) ?? []), r]);
+  }
   const out = new Map<string, Asked>();
-  for (const r of rows) if (r.feedbackId && !out.has(r.feedbackId)) out.set(r.feedbackId, r);
+  for (const [id, asked] of byItem) {
+    const shown = shownClarification(asked);
+    if (shown) out.set(id, shown);
+  }
   return out;
 }
 

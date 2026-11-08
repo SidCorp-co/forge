@@ -2,6 +2,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { feedbackForecastKey } from "@/features/forecast";
 import { recordingsKey, reproduceApi } from "@/features/previews";
+import { questionsApi } from "@/features/questions";
 import { readOf, useWrite } from "@/lib/api/query-kit";
 import { feedbackApi, forgeFeedbackApi } from "./api";
 import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, FeedbackReportRequest, ForgeFeedbackRequest, SimilarFeedbackDraft } from "./types";
@@ -79,6 +80,12 @@ const useItemWrite = <V,>(projectId: string, key: string, write: (vars: V) => Re
 
 /** Triage, retarget, decline, verify, reopen, ask the reporter a clarification, or delete reporter data. */
 export const useFeedbackAction = (projectId: string, key: string) => useItemWrite(projectId, key, (a: FeedbackAction) => feedbackApi.act(projectId, key, a));
+
+/** The reporter answers the clarification it is shown, in the words sent: the item is read again after (ISS-695). */
+export const useAnswerClarification = (projectId: string, key: string) =>
+  useWrite((a: { questionId: string; round: number; text: string }) => questionsApi.answer(a), {
+    touches: [feedbackKeys.item(projectId, key), ...touched(projectId)],
+  });
 
 /** What a message to reporters would say and to whom, read before it is sent. */
 export const usePreviewMessage = (projectId: string, key: string) =>

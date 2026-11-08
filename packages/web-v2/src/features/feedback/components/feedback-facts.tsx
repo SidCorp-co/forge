@@ -17,6 +17,7 @@ import type { FeedbackOriginView } from "@forge/contracts/feedback";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import { releaseHref } from "@/lib/routes/releases";
+import { AnswerClarification } from "./answer-clarification";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
@@ -313,12 +314,38 @@ function WhereReportedFrom({ origin }: { origin: FeedbackOriginView }) {
   );
 }
 
+/** The clarification the reporter is shown: its question, and its answer, or the reporter's send of one (ISS-695). */
+function ClarificationFact({ f, projectId }: { f: FeedbackView; projectId: string | undefined }) {
+  const tr = useCopy();
+  const c = f.clarification;
+  if (!c) return null;
+  const answering = projectId !== undefined && f.can.answerClarification;
+  return (
+    <Fact label={tr("feedback.fact.clarification")}>
+      <span className="grid justify-items-start gap-0.5" data-testid="feedback-clarification">
+        <StatusBadge family="question" value={c.status} />
+        {c.prompt ? <span className="text-13 text-fg">{c.prompt}</span> : null}
+        {answering ? <AnswerClarification projectId={projectId} f={f} /> : null}
+        {!answering && c.recommended && !c.answer ? (
+          <span className="text-13 text-muted" data-testid="feedback-clarification-recommended">
+            {tr("feedback.fact.recommended", { answer: c.recommended })}
+          </span>
+        ) : null}
+        {c.answer ? <span className="text-13 text-muted">{c.answer}</span> : null}
+      </span>
+    </Fact>
+  );
+}
+
 export function LinkedFeedback({
   f,
   slug,
+  projectId,
 }: {
   f: FeedbackView;
   slug: string;
+  /** Where the item lives: given, the reporter answers its clarification here. */
+  projectId?: string;
 }) {
   const tr = useCopy();
   const time = useTimeFormat();
@@ -394,20 +421,7 @@ export function LinkedFeedback({
           </Fact>
         ) : null}
         {f.origin ? <WhereReportedFrom origin={f.origin} /> : null}
-        {f.clarification ? (
-          <Fact label={tr("feedback.fact.clarification")}>
-            <span className="grid justify-items-start gap-0.5" data-testid="feedback-clarification">
-              <StatusBadge family="question" value={f.clarification.status} />
-              {f.clarification.prompt ? <span className="text-13 text-fg">{f.clarification.prompt}</span> : null}
-              {f.clarification.recommended && !f.clarification.answer ? (
-                <span className="text-13 text-muted" data-testid="feedback-clarification-recommended">
-                  {tr("feedback.fact.recommended", { answer: f.clarification.recommended })}
-                </span>
-              ) : null}
-              {f.clarification.answer ? <span className="text-13 text-muted">{f.clarification.answer}</span> : null}
-            </span>
-          </Fact>
-        ) : null}
+        <ClarificationFact f={f} projectId={projectId} />
         {f.sensitive ? (
           <Fact label={tr("feedback.fact.data")}>
             <span className="text-13">{tr("feedback.fact.sensitive")}</span>

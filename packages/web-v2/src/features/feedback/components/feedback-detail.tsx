@@ -187,7 +187,7 @@ export function FeedbackPage({
               <DetailDrawer label={t("common.properties")} testId="feedback-properties">
                 <FactsRail>
                   {/* the forecast is the answer line's, above: the facts do not say when a second time */}
-                  <LinkedFeedback f={f} slug={slug} />
+                  <LinkedFeedback f={f} slug={slug} projectId={projectId} />
                 </FactsRail>
               </DetailDrawer>
             </div>

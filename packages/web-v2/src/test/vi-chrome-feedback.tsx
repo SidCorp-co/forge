@@ -29,7 +29,7 @@ const AT = "2026-10-05T08:00:00.000Z";
 const LAN = say("standing.who.named", { name: "Lan" });
 /** A reason core sends as English beside what it said. */
 const noted = (s: Said) => ({ reason: sentence(s), says: { reason: s } });
-const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, snooze: true, message: true, tellShipped: false, note: true, attach: true, clarify: true };
+const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, snooze: true, message: true, tellShipped: false, note: true, attach: true, clarify: true, answerClarification: false };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
   ({

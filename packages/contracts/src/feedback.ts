@@ -1077,9 +1077,12 @@ export interface FeedbackView extends FeedbackSummary {
 	occurrences: FeedbackOccurrenceView[];
 	/** Messages sent to reporters, and the internal notes the viewer may read, oldest first. */
 	messages: FeedbackMessageView[];
+	/** The clarification the reporter is shown: the oldest still open, else the latest asked (REQ-66 BC-4). */
 	clarification: {
 		id: string;
 		status: string;
+		/** The round an answer names (`POST /api/questions/:id/answer`). */
+		round: number;
 		prompt: string | null;
 		/** The answer the asker recommends; null on a question asked before one was required, or withheld. */
 		recommended: string | null;
@@ -1114,8 +1117,10 @@ export interface FeedbackView extends FeedbackSummary {
 		note: boolean;
 		/** Add an attachment: a project writer, while the reporter's data stands. */
 		attach: boolean;
-		/** Ask the reporter one clarification: a project writer, before it is routed, while none is open. */
+		/** Ask the reporter a clarification: a project writer, before it is routed (REQ-66 BC-4). */
 		clarify: boolean;
+		/** Answer the shown clarification: its reporter, a project writer, while it is open. */
+		answerClarification: boolean;
 	};
 	sensitive: boolean;
 }

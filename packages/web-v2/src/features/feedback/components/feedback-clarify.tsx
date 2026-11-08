@@ -1,6 +1,7 @@
-// Ask the reporter one clarification (`POST …/feedback/:fb/clarification`, Q5): the question, what is
-// needed back, and the answer you recommend, which the reporter sends by one click (REQ-66 BC-4). Offered exactly where core's read says the route takes one (`can.clarify`: a
-// writer, before the item is routed, while none is open); the open one and its answer are the rail's
+// Ask the reporter a clarification (`POST …/feedback/:fb/clarification`, Q5): the question, what is
+// needed back, and the answer you recommend, which the reporter sends by one click (REQ-66 BC-4), as
+// many as the item needs. Offered exactly where core's read says the route takes one (`can.clarify`: a
+// writer, before the item is routed); the one the reporter is shown and its answer are the rail's
 // Clarification row. Send waits until every field meets the contract's limits (ISS-539); core refuses
 // a wrong send by name all the same, shown on its field.
 

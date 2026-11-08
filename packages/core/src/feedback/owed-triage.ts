@@ -3,7 +3,7 @@
  * master for every filed item, and the master proposes a feedback_triage suggestion or routes it).
  * Severity orders the list and admits nothing: a low item left out of it is one nobody is woken for
  * (ISS-253). The box carrying the master reads it on every sweep, so a filed item is master work
- * whether or not its feedback.filed wake was heard. An item whose one clarification is open waits
+ * whether or not its feedback.filed wake was heard. An item with a clarification open waits
  * on the reporter, not the master, and the reporter's answer wakes the master and owes it again.
  * One carrying a proposed feedback_triage suggestion waits on whoever accepts or rejects it, by the
  * one rule (`@forge/contracts/who-owes:whoOwes`, `feedback.triage`, ISS-1132): where the project's

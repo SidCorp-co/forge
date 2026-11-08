@@ -53,7 +53,7 @@ export function FeedbackPeek({
               </div>
               <div className="px-4.5 pb-4 pt-4">
                 <FeedbackPeekSaid projectId={projectId} f={f} />
-                <LinkedFeedback f={f} slug={slug} />
+                <LinkedFeedback f={f} slug={slug} projectId={projectId} />
               </div>
             </>
           );

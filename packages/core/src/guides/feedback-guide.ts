@@ -6,7 +6,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Feedback: filing, triage, resolution and verification',
   summary:
-    'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, who routes it (the approvals.triage setting), how an agent without that permission proposes a route a holder accepts, the one clarification question, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
+    'How a product feedback item (FB-n) is filed about one target, why its planned and resolved phases are read from the work it was routed to, who routes it (the approvals.triage setting), how an agent without that permission proposes a route a holder accepts, the clarification questions asked of the reporter, duplicates, decline, verify and reopen, and what a sensitive project withholds.',
   version: 3,
   body: `## Feedback: filing, triage, resolution and verification
 

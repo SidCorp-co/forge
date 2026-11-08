@@ -36,7 +36,7 @@ import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { productsOfAccounts } from './server-keys.js';
 import { shipNoticeOf } from './ship-notice.js';
-import { clarificationViewOf } from './told.js';
+import { clarificationViewOf, shownClarification } from './told.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
 import { routeAsksOf, viewerCanOf } from './viewer-can.js';
 
@@ -121,7 +121,7 @@ export function canOf(i: {
   phase: FeedbackPhase;
   userId: string;
   canSeeNotes: boolean;
-}): Omit<FeedbackView['can'], 'tellShipped'> {
+}): Omit<FeedbackView['can'], 'tellShipped' | 'answerClarification'> {
   const { facts, row, phase } = i;
   const approver = holds(facts, 'feedback.approve');
   const untriaged = phase === 'new' || phase === 'reopened';
@@ -306,8 +306,8 @@ export async function detailAs(
   ]);
   const products = await productsOfAccounts(reporters.map((r) => r.id));
   const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
-  // the latest clarification to the reporter; the steward's questions about the item are not one
-  const q = questions.find((x) => x.clarification);
+  // the clarification shown to the reporter; the steward's questions about the item are not one
+  const q = shownClarification(questions.filter((x) => x.clarification));
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
   const shipNotice = await shipNoticeOf(projectId, {
     id: row.id,
@@ -387,6 +387,11 @@ export async function detailAs(
           userId: viewer.userId,
           canSeeNotes,
         }),
+        // the reporter sends the recommended answer or their own words to the shown question (ISS-695)
+        answerClarification:
+          q?.status === 'open' &&
+          viewer.userId === row.reportedBy &&
+          holds(facts, 'project.write'),
         tellShipped:
           approver &&
           shipNotice?.state === 'not_told' &&

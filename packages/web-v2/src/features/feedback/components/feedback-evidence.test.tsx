@@ -6,10 +6,12 @@
 //
 // @direct-test-of packages/web-v2/src/features/feedback/components/feedback-step.tsx
 // @direct-test-of packages/web-v2/src/features/feedback/hooks.ts
+// @direct-test-of packages/web-v2/src/features/feedback/components/answer-clarification.tsx
 
 import { RECORDING_ROUTES } from "@forge/contracts/reproduce";
 import { QueryClient } from "@tanstack/react-query";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
@@ -31,7 +33,7 @@ afterEach(() => vi.unstubAllGlobals());
 const P = "22222222-2222-4222-8222-222222222222";
 const ANN = "66666666-6666-4666-8666-666666666666";
 const LIST = RECORDING_ROUTES.ofFeedback.replace(":id", P).replace(":fb", "FB-52").replace(/^\/api/, "");
-const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false };
+const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false, answerClarification: false };
 
 const file = (id: string, name: string, mime: string) => ({
   id,
@@ -153,7 +155,7 @@ describe("a feedback item opens on its evidence", () => {
 // K31 on ISS-539: the question asked of the reporter was only a hover title, which a touch screen never shows
 describe("the clarification asked of the reporter", () => {
   it("reads its question on the rail, beside its state and the answer", () => {
-    renderWithQuery(<LinkedFeedback f={view({ clarification: { id: "c1", status: "answered", prompt: "Which browser were you on?", recommended: "Chrome", answer: "Safari 18" } })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ clarification: { id: "c1", status: "answered", round: 1, prompt: "Which browser were you on?", recommended: "Chrome", answer: "Safari 18" } })} slug="hop" />);
     const fact = screen.getByTestId("feedback-clarification");
     expect(fact).toHaveTextContent("Which browser were you on?");
     expect(fact).toHaveTextContent("Safari 18");
@@ -162,8 +164,26 @@ describe("the clarification asked of the reporter", () => {
 
   // REQ-66 BC-4: the answer the asker recommends is read beside the open question, never once answered
   it("reads the recommended answer while the question is open", () => {
-    renderWithQuery(<LinkedFeedback f={view({ clarification: { id: "c2", status: "open", prompt: "Which browser were you on?", recommended: "Chrome 130", answer: null } })} slug="hop" />);
+    renderWithQuery(<LinkedFeedback f={view({ clarification: { id: "c2", status: "open", round: 1, prompt: "Which browser were you on?", recommended: "Chrome 130", answer: null } })} slug="hop" />);
     expect(screen.getByTestId("feedback-clarification-recommended")).toHaveTextContent("Recommended: Chrome 130");
+  });
+
+  // ISS-695 c1 (judged failing on dev.335): the recommended answer was plain text, with no send
+  it("lets its reporter send the recommended answer in one click, or their own words", async () => {
+    const calls = fakeCore((c) => (c.method === "POST" ? { body: { id: "c3" } } : HANG));
+    const asked = { id: "c3", status: "open", round: 2, prompt: "Which browser were you on?", recommended: "Chrome 130", answer: null };
+    const user = userEvent.setup();
+    renderWithQuery(<LinkedFeedback f={view({ clarification: asked, can: { ...NONE, answerClarification: true } })} slug="hop" projectId={P} />);
+    expect(screen.getByTestId("feedback-clarification-text")).toHaveValue("Chrome 130");
+    await user.click(screen.getByTestId("feedback-clarification-send"));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")).toMatchObject({ path: "/questions/c3/answer", body: { text: "Chrome 130", round: 2 } }));
+  });
+
+  it("offers no send to anyone the question was not asked of", () => {
+    const asked = { id: "c4", status: "open", round: 1, prompt: "Which browser?", recommended: "Chrome", answer: null };
+    renderWithQuery(<LinkedFeedback f={view({ clarification: asked })} slug="hop" projectId={P} />);
+    expect(screen.queryByTestId("feedback-clarification-send")).toBeNull();
+    expect(screen.getByTestId("feedback-clarification-recommended")).toHaveTextContent("Recommended: Chrome");
   });
 });
 

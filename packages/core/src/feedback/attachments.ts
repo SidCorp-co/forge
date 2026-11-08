@@ -30,6 +30,14 @@ import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { answer, type FeedbackOutcome, inTx, lockFeedback, roleFacts } from './service.js';
 
 /**
+ * Who a clarification waits on: the reporter it is asked of. An agent reporter answers it with its own
+ * token, which a question written as a person's refuses (ISS-695 c1), so it is asked of an agent.
+ */
+export function clarificationOwedBy(reporter: ActorAgency): 'human' | 'master_or_peer' {
+  return reporter === 'agent' ? 'master_or_peer' : 'human';
+}
+
+/**
  * The agent asks the reporter a clarification (Q5) with the answer it recommends, which the reporter
  * sends by one click or writes over (REQ-66 r3 BC-4); the answer becomes a suggestion, never an
  * edit. It asks the questions it needs: one still open is no reason to refuse the next.
@@ -56,7 +64,7 @@ export async function askClarification(input: {
       projectId,
       feedbackId: row.id,
       prompt: input.prompt,
-      blockerKind: 'human',
+      blockerKind: clarificationOwedBy(row.reporterAgency),
       answer: { shape: 'free_text', needed: input.needed, recommended: input.recommended },
     });
     return null;
