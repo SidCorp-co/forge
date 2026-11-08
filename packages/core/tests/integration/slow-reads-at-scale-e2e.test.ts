@@ -344,7 +344,8 @@ const HOME_ACROSS_CPU_MS = 800;
  * attention +32, What's new and the newest shipped +3). Over r7's uniform seed the reads still send
  * 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
-const ATTENTION_STATEMENTS = 149;
+// ISS-1070 r11: each linked issue read once for every reader (`issues/display-ids.ts:issueCoresOf`), 149 to 147
+const ATTENTION_STATEMENTS = 147;
 // ISS-1070 r10: the home names each project's live releases without the list's summary (122 to 70)
 const HOME_STATEMENTS = 74;
 /**
@@ -356,11 +357,13 @@ const HOME_STATEMENTS = 74;
  * anchor, still split at a second step. Priced until the batch point holds a key for a read a step
  * behind (`db/read-memo.ts:heldFor`): measured 152 to 155 and 73 to 74.
  */
-const ATTENTION_ACROSS_STATEMENTS = 155;
+// ISS-1070 r11: 155 to 150-153; the batches above still split, held by a cycle in the order project reads of different shapes ask in
+const ATTENTION_ACROSS_STATEMENTS = 153;
 const ATTENTION_BEYOND_ALONE = 6;
 const HOME_BEYOND_ALONE = 4;
 /** Needs you and its decisions, as {@link ATTENTION_STATEMENTS} counts the live shape's few. */
-const NEEDS_YOU_STATEMENTS = 142;
+// ISS-1070 r11: 141 to 139 and 140, as attention's
+const NEEDS_YOU_STATEMENTS = 140;
 
 // Over the live shape the plans touch more pages, its verdicts naming many commits and runtimes rather
 // than one and its designs' health reading their builds (ISS-1070 r8, measured: Needs you 41k,
