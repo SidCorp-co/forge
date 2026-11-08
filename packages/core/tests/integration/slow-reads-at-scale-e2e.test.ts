@@ -42,6 +42,7 @@ import { currentQueryTiming } from '../../src/db/query-timing.js';
 import { closeWorld, type Doc, testEnv } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestUser, seedOrg } from '../helpers/factories.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
+import { profiled } from '../helpers/slow-reads-profile.js';
 import {
   heaviestSites,
   type Measure,
@@ -278,62 +279,6 @@ async function buffersOf(s: Statement): Promise<number | null> {
   return (top?.Plan['Shared Hit Blocks'] ?? 0) + (top?.Plan['Shared Read Blocks'] ?? 0);
 }
 
-/** One more GET under the V8 profiler, its self time summed by function, written beside `out`. */
-async function profiled(path: string, out: string, as: string): Promise<void> {
-  const { Session } = await import('node:inspector/promises');
-  const session = new Session();
-  session.connect();
-  await session.post('Profiler.enable');
-  await session.post('Profiler.start');
-  await measured(path, as);
-  const { profile } = (await session.post('Profiler.stop')) as {
-    profile: {
-      nodes: {
-        id: number;
-        callFrame: { functionName: string; url: string; lineNumber: number };
-        children?: number[];
-      }[];
-      samples: number[];
-      timeDeltas: number[];
-    };
-  };
-  session.disconnect();
-  const self = new Map<number, number>();
-  profile.samples.forEach((id, i) => {
-    self.set(id, (self.get(id) ?? 0) + (profile.timeDeltas[i] ?? 0));
-  });
-  const by = new Map<string, number>();
-  for (const n of profile.nodes) {
-    const f = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.replace(/^.*\/(packages|node_modules)\//, '$1/')}:${n.callFrame.lineNumber}`;
-    by.set(f, (by.get(f) ?? 0) + (self.get(n.id) ?? 0));
-  }
-  const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 40);
-  // each sample charged to the nearest frame of core's own code above it: who asked for the work
-  const parent = new Map<number, number>();
-  for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
-  const node = new Map(profile.nodes.map((n) => [n.id, n]));
-  const charged = new Map<string, number>();
-  for (const [id, us] of self) {
-    let at: number | undefined = id;
-    let name = '(no core frame)';
-    while (at !== undefined) {
-      const f = node.get(at)?.callFrame;
-      if (f?.url.includes('/packages/core/src/')) {
-        name = `${f.functionName || '(anon)'} ${f.url.replace(/^.*\/packages\/core\/src\//, '')}:${f.lineNumber}`;
-        break;
-      }
-      at = parent.get(at);
-    }
-    charged.set(name, (charged.get(name) ?? 0) + us);
-  }
-  const chargedTop = [...charged].sort((a, b) => b[1] - a[1]).slice(0, 30);
-  appendFileSync(
-    out,
-    `## profile ${path}\n${top.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n` +
-      `## charged to core's own frame ${path}\n${chargedTop.map(([f, us]) => `  ${(us / 1000).toFixed(1).padStart(8)} ms  ${f}`).join('\n')}\n`,
-  );
-}
-
 /**
  * Each read, with the most statements it may send and the most shared buffers their plans may touch
  * together at this size, at what ISS-1070 r4 left it: a statement asked again, a model built twice
@@ -347,11 +292,12 @@ async function profiled(path: string, out: string, as: string): Promise<void> {
  * replaced was cheaper (What's new 4.2 to 5.8 thousand, the home 26 to 28 thousand): that is the
  * model's read price, and it stands while the fact is joined rather than kept on the verdict row.
  */
-/** A read's ceilings: statements and shared buffers. */
 interface Ceiling {
   path: string;
   statements: number;
   buffers: number;
+  /** Statements a read across projects may send beyond what forge's alone sends, priced where named. */
+  beyondAlone?: number;
   /** The slowest warm median it may take, where one is held: the shell waits on it (ISS-1070 r7). */
   ms?: number;
 }
@@ -381,8 +327,20 @@ const HOME_ACROSS_MS = 1880;
  * 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
 const ATTENTION_STATEMENTS = 149;
-// ISS-1070 r9: the home sends 122 for one project, and 117 for twelve of different shapes
-const HOME_STATEMENTS = 122;
+// ISS-1070 r10: the home names each project's live releases without the list's summary (122 to 70)
+const HOME_STATEMENTS = 74;
+/**
+ * ISS-1070 r10's seed puts beside forge projects that record landings and hold requirements in every
+ * state; on the code before r10 the attention read sent 163 and the home 141 for twelve, against 149
+ * and 122 for forge alone. Forge alone asks none of a landing's coverage reads (its marks, trail,
+ * shipped holding and kept carriage, once a read since r10) nor a landed release's deploy locks,
+ * namings and jobs; and the forecast's landed rows and run spells, each project's as of its own
+ * anchor, still split at a second step. Priced until the batch point holds a key for a read a step
+ * behind (`db/read-memo.ts:heldFor`): measured 152 to 155 and 73 to 74.
+ */
+const ATTENTION_ACROSS_STATEMENTS = 155;
+const ATTENTION_BEYOND_ALONE = 6;
+const HOME_BEYOND_ALONE = 4;
 /** Needs you and its decisions, as {@link ATTENTION_STATEMENTS} counts the live shape's few. */
 const NEEDS_YOU_STATEMENTS = 142;
 
@@ -397,13 +355,15 @@ const READS = (p: string): Ceiling[] => [
     statements: NEEDS_YOU_STATEMENTS,
     buffers: 43000,
   },
-  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 84, buffers: 17500 },
+  // ISS-1070 r10's seed moved it: 20,283 buffers on the code before r10, 20,075 after
+  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 84, buffers: 20500 },
   // ISS-1070 r9's mixed-shape seed: the open standing read touches 5,262-5,452 buffers, 5,287 on the
   // code before r9, so the seed and not the read moved it; priced until a stored fact replaces its scans
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5800 },
   { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 41000 },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 34000 },
-  { path: '/api/me/whats-new', statements: 80, buffers: 8500 },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 26000 },
+  // ISS-1070 r10's seed moved it: 10,481 buffers on the code before r10, 10,673 after
+  { path: '/api/me/whats-new', statements: 80, buffers: 11000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
@@ -418,14 +378,22 @@ const READS = (p: string): Ceiling[] => [
  */
 const READS_ACROSS = (p: string): Ceiling[] => [
   // a person in twelve projects sends what a person in one does (ISS-1070 r6)
+  // ISS-1070 r10's seed moved attention's buffers: 167,201 on the code before r10, 160,787 after
   {
     path: '/api/me/attention',
-    statements: ATTENTION_STATEMENTS,
-    buffers: 110000,
+    statements: ATTENTION_ACROSS_STATEMENTS,
+    buffers: 165000,
     ms: ATTENTION_ACROSS_MS,
+    beyondAlone: ATTENTION_BEYOND_ALONE,
   },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000, ms: HOME_ACROSS_MS },
-  { path: '/api/me/whats-new', statements: 80, buffers: 8500 },
+  {
+    path: '/api/me/home',
+    statements: HOME_STATEMENTS,
+    buffers: 60000,
+    ms: HOME_ACROSS_MS,
+    beyondAlone: HOME_BEYOND_ALONE,
+  },
+  { path: '/api/me/whats-new', statements: 80, buffers: 11000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
   { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 43000 },
   {
@@ -482,7 +450,8 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
     const warm = await measured(path, as); // the first request pays for the prepared statements
     expect(warm.status, `${path}: ${JSON.stringify(warm.body).slice(0, 400)}`).toBe(200);
     const runs = [await measured(path, as), await measured(path, as), await measured(path, as)];
-    if (process.env.SLOW_READS_PROFILE) await profiled(path, process.env.SLOW_READS_PROFILE, as);
+    if (process.env.SLOW_READS_PROFILE)
+      await profiled(path, process.env.SLOW_READS_PROFILE, () => measured(path, as));
     const median = [...runs].sort((a, b) => a.ms - b.ms)[1] as Measure;
     // SLOW_READS_EXPLAIN=1 plans the three slowest; any other value is a pattern naming the statements to plan
     const explain = process.env.SLOW_READS_EXPLAIN;
@@ -530,9 +499,9 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
     const alone = across ? ALONE.get(path) : undefined;
     if (across && alone === undefined) ALONE.set(path, median.statements.length);
     failures.push(
-      ...(alone !== undefined && median.statements.length > alone
+      ...(alone !== undefined && median.statements.length > alone + (ceiling.beyondAlone ?? 0)
         ? [
-            `${label} ${path} sent ${median.statements.length} statements, more than the ${alone} it sends for one project`,
+            `${label} ${path} sent ${median.statements.length} statements, more than the ${alone} it sends for one project${ceiling.beyondAlone ? ` and the ${ceiling.beyondAlone} priced beyond it` : ''}`,
           ]
         : []),
       ...(median.statements.length > ceiling.statements
