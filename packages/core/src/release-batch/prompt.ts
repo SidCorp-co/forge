@@ -43,6 +43,23 @@ Each issue above names the commit its mark claims. Cut this release from a head 
 `;
 }
 
+/** One deploy channel; on a production of several sites, the site it deploys, its origin and probe (ISS-1077). */
+function channelLine(c: ReleasePlan['channels'][number], _i: number, all: readonly unknown[]): string {
+  const base = `- ${c.provider}${c.label ? ` [${c.label}]` : ''}, binding ${c.bindingId}`;
+  if (all.length < 2) return base;
+  const url = c.url ? `, ${c.url}` : '';
+  const probe = c.verify ? `, verified by ${c.verify.probes.map((p) => p.url).join(', ')}` : '';
+  return `${base}: site \`${c.site}\`${url}${probe}`;
+}
+
+/** What a finish over several production sites sends, and what it is refused without (ISS-1077). */
+function renderSites(plan: ReleasePlan): string {
+  if (plan.channels.length < 2) return '';
+  const names = plan.channels.map((c) => `\`${c.site}\``).join(', ');
+  return `\n\n### Every production site
+Production is ${plan.channels.length} sites: ${names}. Deploy each through its own binding (each parks on its own confirm where it deploys on request), and judge each by its own runtime verification. \`finish\` names every one in \`sites\`, each with the version or commit its verification read it serving: \`{"sites":[{"name":"<site>","serves":"<version or commit>"}]}\`. A finish that leaves a site out, or names one still waiting on its confirm, is refused \`RELEASE_SITE_NOT_SHIPPED\` naming it: the release holds as not shipped until every site is, or until you abort.`;
+}
+
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
   const { runId, projectId, defaultBranch, path, issues, plan } = args;
   const roster = issues.map(rosterLine).join('\n');
@@ -63,9 +80,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
   const channelLines =
     plan.channels.length === 0
       ? 'deploy channel: none declared to Forge'
-      : `deploy channel:\n${plan.channels
-          .map((c) => `- ${c.provider}${c.label ? ` [${c.label}]` : ''}, binding ${c.bindingId}`)
-          .join('\n')}`;
+      : `deploy channel:\n${plan.channels.map(channelLine).join('\n')}`;
 
   return `## Batch Release
 
@@ -137,7 +152,7 @@ function renderProcedure(plan: ReleasePlan): string {
     const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
     blocks.push(`### Deploy channel notes (${named})\n${channel.instructions}`);
   }
-  if (plan.channels.length > 0) blocks.push(RECORD_CLOSES);
+  if (plan.channels.length > 0) blocks.push(`${RECORD_CLOSES}${renderSites(plan)}`);
   blocks.push(renderRepairForward(plan));
   return `\n${blocks.join('\n\n')}\n`;
 }

@@ -45,3 +45,50 @@ describe('the release prompt names each roster issue’s marked commit (ISS-955)
     expect(text).not.toContain('merge-base');
   });
 });
+
+// ISS-1077: a production of several sites tells the run each site, its origin and probe, and that its
+// finish names every one; a production of one site reads as it always has.
+describe('the release prompt over production sites (ISS-1077)', () => {
+  const channel = (site: string, bindingId: string, url: string | null) => ({
+    environment: 'live',
+    site,
+    url,
+    bindingId,
+    provider: 'coolify',
+    label: '',
+    instructions: null,
+    releaseRunnerLabel: null,
+    verify: url ? { probes: [{ url: `${url}/version`, commitPath: 'version' }] } : null,
+    verifySource: url ? ('environment' as const) : ('none' as const),
+    rollback: null,
+  });
+  const over = (channels: ReleasePlan['channels']) =>
+    buildReleaseBatchPrompt({
+      runId: 'run-1',
+      projectId: 'project-1',
+      defaultBranch: 'dev',
+      path,
+      plan: { ...plan, channels },
+      releaseRunnerPreferenceMet: true,
+      issues: [],
+    });
+
+  it('names each site on its channel line and asks the finish for every one', () => {
+    const text = over([
+      channel('live', 'b-mail', 'https://mail.example.test'),
+      channel('webmail', 'b-webmail', 'https://webmail.example.test'),
+    ]);
+    expect(text).toContain(
+      '- coolify, binding b-webmail: site `webmail`, https://webmail.example.test, verified by https://webmail.example.test/version',
+    );
+    expect(text).toContain('Production is 2 sites: `live`, `webmail`');
+    expect(text).toContain('{"sites":[{"name":"<site>","serves":"<version or commit>"}]}');
+    expect(text).toContain('RELEASE_SITE_NOT_SHIPPED');
+  });
+
+  it('says nothing of sites where production is one', () => {
+    const text = over([channel('live', 'b-mail', 'https://mail.example.test')]);
+    expect(text).toContain('- coolify, binding b-mail\n');
+    expect(text).not.toContain('sites');
+  });
+});
