@@ -147,9 +147,10 @@ async fn the_browser_session_the_secret_describes_is_written_and_restores() {
             "storage": epod_storage(),
         }),
     );
-    let (files, signed_in) = login_into(&answer(&api, &value), &root.0.join("epod"), "dev", "owner")
-        .await
-        .unwrap_or_else(|e| panic!("epod: {e}"));
+    let (files, signed_in) =
+        login_into(&answer(&api, &value), &root.0.join("epod"), "dev", "owner")
+            .await
+            .unwrap_or_else(|e| panic!("epod: {e}"));
     let state: Value =
         serde_json::from_str(&std::fs::read_to_string(&files.state).unwrap()).unwrap();
     epod_restores(&state).unwrap_or_else(|e| panic!("{e}: {state}"));
@@ -172,8 +173,17 @@ async fn the_browser_session_the_secret_describes_is_written_and_restores() {
         json!([{ "origin": "https://web.forge.test", "localStorage": items }])
     );
     // the line printed names the keys and no value
-    let said = said("dev", "owner", &files, &signed_in, "removed by the run's close");
-    assert!(said.contains("`auth_token`") && said.contains("`organization_id`"), "{said}");
+    let said = said(
+        "dev",
+        "owner",
+        &files,
+        &signed_in,
+        "removed by the run's close",
+    );
+    assert!(
+        said.contains("`auth_token`") && said.contains("`organization_id`"),
+        "{said}"
+    );
     for v in [TOKEN, EXPIRES_AT, ORG_ID, USER_ID, PASSWORD, EMAIL] {
         assert!(!said.contains(v), "{v} in {said}");
         assert!(!format!("{signed_in:?}").contains(v), "{v} in the Debug");
@@ -238,18 +248,27 @@ pub(super) fn refusals(api: &str) -> Vec<(&'static str, Value, &'static str)> {
             "a storage pointer the answer does not hold (ISS-1145)",
             answer(
                 api,
-                &graphql_secret(api, json!({ "storage": { "auth_token": "/data/login/access_token", "user": "/data/login/user" } })),
+                &graphql_secret(
+                    api,
+                    json!({ "storage": { "auth_token": "/data/login/access_token", "user": "/data/login/user" } }),
+                ),
             ),
             "with nothing at `/data/login/user` for the storage key `user`",
         ),
         (
             "a storage map that is no object",
-            answer(api, &graphql_secret(api, json!({ "storage": "auth_token" }))),
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storage": "auth_token" })),
+            ),
             "`storage` is a JSON object",
         ),
         (
             "a storage value that is no JSON pointer",
-            answer(api, &graphql_secret(api, json!({ "storage": { "user": "data.login.user" } }))),
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storage": { "user": "data.login.user" } })),
+            ),
             "`storage` at `user` is no JSON pointer",
         ),
         (
@@ -261,7 +280,10 @@ pub(super) fn refusals(api: &str) -> Vec<(&'static str, Value, &'static str)> {
             "one key under storageKey and storage both",
             answer(
                 api,
-                &graphql_secret(api, json!({ "storageKey": "auth_token", "storage": { "auth_token": "/data/login/access_token" } })),
+                &graphql_secret(
+                    api,
+                    json!({ "storageKey": "auth_token", "storage": { "auth_token": "/data/login/access_token" } }),
+                ),
             ),
             "`storageKey` and `storage` both name `auth_token`",
         ),

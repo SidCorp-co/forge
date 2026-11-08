@@ -21,8 +21,9 @@
 //!   path is sent to the origin of the judged deployment that answers it (core's `deployment`, the
 //!   environment's `url`, `services` and `routes`, ISS-470); a secret naming no route is refused, as
 //!   the testing profile declares no sign-in route and none is guessed.
-//! - `storageKey`, optional: the `localStorage` key the web app reads its token from, written into
-//!   the storage state for the deployment's origin.
+//! - `storage` and `storageKey`, optional: the `localStorage` the web app restores its session from,
+//!   each value read from the sign-in's answer, written into the storage state for the deployment's
+//!   origin (ISS-1145, `session/storage.rs`).
 //! - `loginBody` and `tokenPath`, optional, for a sign-in that is no `{<account field>, password}`
 //!   POST (ISS-1141, epod's GraphQL mutation): `loginBody` is the JSON object sent as the body, each
 //!   string leaf that is exactly `$account` or `$password` replaced (a `$email` inside a string is
@@ -43,9 +44,11 @@ use runner_transport::rollover::{self, ROLLOVER};
 use serde_json::{json, Map, Value};
 
 mod described;
+mod storage;
 use described::{
     bearer_of, login_body_refusal, sign_in_body, token_path_refusal, GRAPHQL_SET, SIGN_IN_KEYS,
 };
+pub(crate) use storage::state_says;
 
 /// The fields an account may be named by: each is also the field the sign-in route reads. Core's
 /// write-time check reads the same list (`project-config/actor-sign-in.ts`: `ACCOUNT_FIELDS`), and
@@ -77,7 +80,7 @@ pub(crate) struct Secret {
     account: String,
     password: String,
     route: Target,
-    storage_key: Option<String>,
+    storage: Vec<storage::Entry>,
     body: Option<Value>,
     token_path: Option<String>,
 }
@@ -132,7 +135,7 @@ pub(crate) struct Session {
     pub(crate) at: Url,
     bearer: Option<String>,
     cookies: Vec<Cookie>,
-    local_storage: Option<(String, String)>,
+    local_storage: Vec<(String, String)>,
     origin: String,
 }
 
@@ -256,16 +259,13 @@ pub(crate) fn parse_secret(value: &str) -> Result<Secret, String> {
             return Err(format!("the secret{kind}'s {why}"));
         }
     }
-    let storage_key = o
-        .get("storageKey")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let storage = storage::entries_of(&o).map_err(|why| format!("the secret{kind}'s {why}"))?;
     Ok(Secret {
         field,
         account: account.to_string(),
         password: password.to_string(),
         route: target(route)?,
-        storage_key,
+        storage,
         body: o.get(SIGN_IN_KEYS[0]).cloned(),
         token_path: o
             .get(SIGN_IN_KEYS[1])
@@ -515,16 +515,13 @@ pub(crate) async fn sign_in(
              no session to hand over"
         ));
     }
-    let local_storage = match (&secret.storage_key, &bearer) {
-        (None, _) => None,
-        (Some(k), Some(t)) => Some((k.clone(), t.clone())),
-        (Some(_), None) => {
-            return Err(format!(
-                "the secret names a `storageKey`, and the sign-in at {shown_at} answered no token \
-                 to store under it"
-            ))
-        }
-    };
+    let local_storage = storage::values_of(
+        &secret.storage,
+        &answer,
+        bearer.as_deref(),
+        &shown_at,
+        status,
+    )?;
     let origin = deployment
         .and_then(|d| d.url.as_deref())
         .and_then(|u| Url::parse(u).ok())
@@ -574,32 +571,17 @@ pub(crate) fn storage_state(session: &Session) -> Value {
             })
         })
         .collect();
-    let origins: Vec<Value> = session
+    let items: Vec<Value> = session
         .local_storage
         .iter()
-        .map(|(name, value)| {
-            json!({
-                "origin": session.origin,
-                "localStorage": [{ "name": name, "value": value }],
-            })
-        })
+        .map(|(name, value)| json!({ "name": name, "value": value }))
         .collect();
+    let origins: Vec<Value> = if items.is_empty() {
+        Vec::new()
+    } else {
+        vec![json!({ "origin": session.origin, "localStorage": items })]
+    };
     json!({ "cookies": cookies, "origins": origins })
-}
-
-/// What the browser file holds, said without a value or a count.
-pub(crate) fn state_says(session: &Session) -> &'static str {
-    match (session.cookies.is_empty(), session.local_storage.is_some()) {
-        (false, true) => {
-            "the cookies the sign-in set, and the token under the secret's `storageKey`"
-        }
-        (false, false) => "the cookies the sign-in set",
-        (true, true) => "the token under the secret's `storageKey`",
-        (true, false) => {
-            "nothing a browser signs in with: the sign-in set no cookie and the secret names no \
-             `storageKey`, so drive the browser through its own login form"
-        }
-    }
 }
 
 /// Write `body` to `path`, 0600, replacing any earlier copy.

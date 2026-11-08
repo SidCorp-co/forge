@@ -130,7 +130,7 @@ pub(crate) fn sign_in_body(secret: &Secret) -> Value {
 }
 
 /// A `tokenPath` as a refusal may say it: a pointer of short keys, else "the secret's `tokenPath`".
-fn path_said(path: &str) -> String {
+pub(super) fn path_said(path: &str) -> String {
     let short = path.len() > 1
         && path[1..].split('/').count() <= 8
         && path[1..].split('/').all(|s| shown(s).is_some());
