@@ -252,6 +252,32 @@ export interface IssueRounds {
 }
 
 /**
+ * When each issue's current landing was marked, null where none stands. Every release line and
+ * requirement build a person's projects read asks it, each project's before the quiet point in one
+ * statement (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12): it was one a project (f9e56c77).
+ */
+function mergedAtOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, Date | null>> {
+  if (executor !== db) return mergedAtRead(executor, issueIds);
+  return memoizedPerId('issueMergedAt', issueIds, (some) => mergedAtRead(db, some));
+}
+
+async function mergedAtRead(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+): Promise<Map<string, Date | null>> {
+  const marks = (await executor.execute(sql`
+    SELECT id::text AS id, merged_at AS at FROM issues
+     WHERE id = ANY(${uuidArray(issueIds)})`)) as unknown as Array<{
+    id: string;
+    at: Date | string | null;
+  }>;
+  return new Map([...marks].map((m) => [m.id, m.at === null ? null : new Date(m.at)]));
+}
+
+/**
  * The rounds (`IssueRounds`) of each of these issues ever reopened, for a whole release line at once:
  * three statements for the list, never one per issue. An issue never reopened is absent, since no
  * release carried a round of it other than its current one.
@@ -263,15 +289,10 @@ export async function reopenedRoundsOf(
   const reopened = await reopenedAtOf(executor, issueIds);
   const ids = [...reopened.keys()];
   if (ids.length === 0) return new Map();
-  const [closed, marks] = await Promise.all([
+  const [closed, markedAt] = await Promise.all([
     closedAtOf(executor, ids),
-    executor.execute(sql`
-      SELECT id::text AS id, merged_at AS at FROM issues
-       WHERE id = ANY(${uuidArray(ids)})`) as unknown as Promise<
-      Array<{ id: string; at: Date | string | null }>
-    >,
+    mergedAtOf(executor, ids),
   ]);
-  const markedAt = new Map([...marks].map((m) => [m.id, m.at === null ? null : new Date(m.at)]));
   return new Map(
     [...reopened].map(([id, reopenedAt]) => [
       id,
