@@ -6,6 +6,7 @@
 // app on a throwaway Postgres: the route, the buttons pressed as the viewer, the device ask door.
 // @direct-test-of packages/core/src/lib/standing-times.ts
 // @direct-test-of packages/core/src/development/needs-you-decisions.ts
+// @direct-test-of packages/core/src/development/needs-you-rule-recommended.ts
 // @direct-test-of packages/core/src/development/needs-you-list.ts
 // @direct-test-of packages/core/src/development/needs-you-approve-builders.ts
 
