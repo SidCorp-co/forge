@@ -42,7 +42,9 @@ let app: Awaited<typeof import('../../src/index.js')>['app'];
 async function partsOf(projectId: string, trace?: string): Promise<Map<string, number>> {
   const client = (db as unknown as { $client: { options: { debug: unknown } } }).$client;
   const sent: string[] = [];
-  if (trace) client.options.debug = (_c: number, q: string) => sent.push(q.replace(/\s+/g, ' ').slice(0, 220));
+  if (trace)
+    client.options.debug = (_c: number, q: string) =>
+      sent.push(q.replace(/\s+/g, ' ').slice(0, 220));
   const res = await app
     .request(`/api/projects/${projectId}/needs-you`, {
       headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
@@ -56,12 +58,18 @@ async function partsOf(projectId: string, trace?: string): Promise<Map<string, n
         headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
       })
     ).json()) as { releases: { state: string; issueCount: number }[] };
-    appendFileSync(trace, `releases: ${JSON.stringify(rel.releases.map((r) => `${r.state}:${r.issueCount}`))}\n`);
+    appendFileSync(
+      trace,
+      `releases: ${JSON.stringify(rel.releases.map((r) => `${r.state}:${r.issueCount}`))}\n`,
+    );
     const by = new Map<string, number>();
     for (const q of sent) by.set(q, (by.get(q) ?? 0) + 1);
     appendFileSync(
       trace,
-      `## ${projectId} ${sent.length}\n${[...by].sort((a, b) => b[1] - a[1]).map(([q, n]) => `${String(n).padStart(4)} ${q}`).join('\n')}\n`,
+      `## ${projectId} ${sent.length}\n${[...by]
+        .sort((a, b) => b[1] - a[1])
+        .map(([q, n]) => `${String(n).padStart(4)} ${q}`)
+        .join('\n')}\n`,
     );
   }
   expect(res.status, await res.clone().text()).toBe(200);

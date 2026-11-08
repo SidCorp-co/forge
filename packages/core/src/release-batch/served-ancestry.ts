@@ -21,7 +21,7 @@
  */
 
 import { servedCommits } from '@forge/contracts/releases';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idOfParts, memoizedPerId, partsOf } from '../db/read-memo.js';
 import { servedAncestry } from '../db/schema.js';
@@ -114,7 +114,9 @@ export async function persistedCarriage(
   if (j.length === 0 || s.length === 0) return new Map();
   const held = await memoizedPerId(
     'persistedCarriage',
-    j.flatMap((judgedCommit) => s.map((servedCommit) => idOfParts(projectId, judgedCommit, servedCommit))),
+    j.flatMap((judgedCommit) =>
+      s.map((servedCommit) => idOfParts(projectId, judgedCommit, servedCommit)),
+    ),
     carriagesOf,
   );
   return new Map(

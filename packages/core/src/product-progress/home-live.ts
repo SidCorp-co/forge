@@ -5,7 +5,7 @@
 
 import type { HomeLiveRelease } from '@forge/contracts/owner-home';
 import type { ReleaseListResponse, ReleaseSummary } from '@forge/contracts/releases';
-import { latestLiveReleases, listReleases } from '../release-batch/index.js';
+import { type LiveRelease, latestLive, listReleases } from '../release-batch/index.js';
 import type { HomeProject } from './home-moving.js';
 
 export type ReleaseEnvironment = HomeLiveRelease['environment'];
@@ -26,12 +26,19 @@ export async function releasesOf(projectId: string): Promise<ReleaseListResponse
 }
 
 /** What the project has live: its newest release on production and on testing, and production. */
-export type LiveReleases = Pick<ReleaseListResponse, 'releases' | 'production'>;
+export type LiveReleases = Awaited<ReturnType<typeof latestLive>>;
 
-/** The newest release per environment alone, never the whole list: the home reads every project's (ISS-1070). */
+/**
+ * The newest release per environment alone, never the whole list, and of each only what the home
+ * shows (`release-batch/live-releases.ts`): the home reads every project's (ISS-1070).
+ */
 export async function liveReleasesOf(projectId: string): Promise<LiveReleases> {
-  return latestLiveReleases(projectId);
+  return latestLive(projectId);
 }
+
+/** The environment a release that went out went out to. */
+const liveEnvironmentOf = (r: LiveRelease): ReleaseEnvironment | null =>
+  r.state === 'shipped' ? 'production' : r.state === 'landed' ? 'testing' : null;
 
 /** The project's latest release per environment, production first, with the person's items it carried. */
 export function liveOf(
@@ -42,9 +49,9 @@ export function liveOf(
   const out: HomeLiveRelease[] = [];
   for (const env of ['production', 'testing'] as const) {
     const latest = list.releases
-      .filter((r) => environmentOf(r) === env)
-      .sort((a, b) => (b.releasedAt ?? '').localeCompare(a.releasedAt ?? ''))[0];
-    if (!latest?.releasedAt) continue;
+      .filter((r) => liveEnvironmentOf(r) === env)
+      .sort((a, b) => b.releasedAt.localeCompare(a.releasedAt))[0];
+    if (!latest) continue;
     out.push({
       projectSlug: project.slug,
       projectName: project.name,
@@ -54,7 +61,7 @@ export function liveOf(
       version: latest.version,
       name: latest.name,
       at: latest.releasedAt,
-      mine: keysOf(latest).filter((k) => mine.has(k)).length,
+      mine: latest.issueKeys.filter((k) => mine.has(k)).length,
     });
   }
   return out;

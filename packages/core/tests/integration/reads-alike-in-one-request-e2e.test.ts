@@ -30,6 +30,8 @@
 // @direct-test-of packages/core/src/forecast/read.ts
 // @direct-test-of packages/core/src/forecast/facts.ts
 // @direct-test-of packages/core/src/product-progress/home-moving.ts
+// @direct-test-of packages/core/src/product-progress/home-live.ts
+// @direct-test-of packages/core/src/release-batch/live-releases.ts
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { newQueryTiming, withQueryTiming } from '../../src/db/query-timing.js';
@@ -43,6 +45,7 @@ import { liveReleasesOf } from '../../src/product-progress/home-live.js';
 import { homeItemsOf, readHomeProject } from '../../src/product-progress/home-moving.js';
 import {
   deploymentConfirms,
+  latestLive,
   latestLiveReleases,
   listReleases,
   shippedReleaseRuns,
@@ -167,7 +170,11 @@ describe("inside one read across a person's projects, each project's reads answe
     personId = (await createTestUser({ verified: true })).id;
     const orgId = await seedOrg(personId);
     worlds = [];
-    for (let n = 0; n < 3; n++) worlds.push(await seedAtScale(personId, SMALL, { orgId }));
+    // one records its releases as landings on a branch, so its newest live is on testing (ISS-1070 r10)
+    for (let n = 0; n < 3; n++)
+      worlds.push(
+        await seedAtScale(personId, n === 1 ? { ...SMALL, batches: 3 } : SMALL, { orgId }),
+      );
   }, 180_000);
 
   it("answers each project's Needs you, open issues, requirements, newest releases and home part alike", async () => {
@@ -211,6 +218,26 @@ describe("inside one read across a person's projects, each project's reads answe
         expect(live.releases.length).toBeGreaterThan(0);
       }
       expect(together).toEqual(alone);
+      // the home's live read names what the release list's summaries of the same releases name
+      for (const id of worlds) {
+        const full = await latestLiveReleases(id);
+        const lean = await latestLive(id);
+        expect(lean.production).toEqual(full.production);
+        expect(lean.releases.map((r) => ({ ...r, issueKeys: [...r.issueKeys].sort() }))).toEqual(
+          full.releases.map((r) => ({
+            version: r.version,
+            name: r.name,
+            state: r.state,
+            landedOn: r.landedOn,
+            releasedAt: r.releasedAt,
+            issueKeys: r.contents.flatMap((g) => g.issues.map((i) => i.key)).sort(),
+          })),
+        );
+      }
+      const states = (await Promise.all(worlds.map((id) => latestLive(id)))).flatMap((l) =>
+        l.releases.map((r) => r.state),
+      );
+      expect(new Set(states)).toEqual(new Set(['shipped', 'landed']));
     } finally {
       vi.useRealTimers();
     }

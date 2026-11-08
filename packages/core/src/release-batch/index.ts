@@ -61,6 +61,7 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
+export { type LiveRelease, latestLive } from './live-releases.js';
 export {
   masterTakesReleaseAct,
   type ReleaseActOwed,
