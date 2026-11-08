@@ -11,14 +11,10 @@ import {
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { whoOwes } from '@forge/contracts/who-owes';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedPerId } from '../db/read-memo.js';
-import { pipelineRuns, projects } from '../db/schema.js';
-import { feedback } from '../db/schema-feedback.js';
-import { requirementRevisions, requirements } from '../db/schema-requirements.js';
-import { suggestions } from '../db/schema-suggestions.js';
-import { projectWorkflows } from '../db/schema-workflows.js';
+import { requirements } from '../db/schema-requirements.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
@@ -27,6 +23,13 @@ import { deliveredAmong, nodesOfDesign, runnerBoundIn } from '../requirements/in
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { type ForgeOrigins, forgeOriginsOf } from './forge-reads.js';
+import {
+  providerRowsOf,
+  releaseRowsOf,
+  rootRowsOf,
+  suggestionRowsOf,
+  workflowRowsOf,
+} from './linked-rows.js';
 import { carrierIssueRows, owedCarriers, unreleasedCarrierKeys } from './list-carriers.js';
 import { releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
@@ -130,7 +133,7 @@ const workflowsOf = (rows: readonly { id: string; flow: string; document: unknow
 async function rootsOf(rows: Row[]): Promise<Row[]> {
   const known = new Set(rows.map((r) => r.id));
   const rootIds = ids(rows.map((r) => r.duplicateOf)).filter((id) => !known.has(id));
-  return rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [];
+  return rootRowsOf(rootIds);
 }
 
 /**
@@ -169,49 +172,13 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       activeIssuePrefix(projectId),
       carrierIssueRows(issueIds),
       requirementRowsOf(reqIds),
-      releaseIds.length
-        ? db
-            .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
-            .from(pipelineRuns)
-            .where(inArray(pipelineRuns.id, releaseIds))
-        : [],
-      workflowIds.length
-        ? db
-            .select({
-              id: projectWorkflows.id,
-              flow: projectWorkflows.flow,
-              document: projectWorkflows.document,
-            })
-            .from(projectWorkflows)
-            .where(inArray(projectWorkflows.id, workflowIds))
-        : [],
-      suggestionIds.length
-        ? db
-            .select({
-              id: suggestions.id,
-              status: suggestions.status,
-              revisionState: requirementRevisions.state,
-              revision: requirementRevisions.revision,
-              requirementId: requirementRevisions.requirementId,
-              requirementSeq: requirements.reqSeq,
-            })
-            .from(suggestions)
-            .leftJoin(
-              requirementRevisions,
-              eq(requirementRevisions.fromSuggestionId, suggestions.id),
-            )
-            .leftJoin(requirements, eq(requirements.id, requirementRevisions.requirementId))
-            .where(inArray(suggestions.id, suggestionIds))
-        : [],
+      releaseRowsOf(releaseIds),
+      workflowRowsOf(workflowIds),
+      suggestionRowsOf(suggestionIds),
     ],
   );
   const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
-  const providerRows = providerIds.length
-    ? await db
-        .select({ id: projects.id, slug: projects.slug })
-        .from(projects)
-        .where(inArray(projects.id, providerIds))
-    : [];
+  const providerRows = await providerRowsOf(providerIds);
   const delivered = await deliveredAmong(
     projectId,
     ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),

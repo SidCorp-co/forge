@@ -13,7 +13,8 @@ import {
 } from '@forge/contracts/forecast';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsOf } from '../db/raw-sql.js';
+import { rowsOf, uuidArray } from '../db/raw-sql.js';
+import { idOfParts, partsOf, rowsPerId } from '../db/read-memo.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { holds, namedHolders } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
@@ -85,21 +86,47 @@ export async function releaseLegFor(
   return releaseLegOf(await readReleaseFacts(projectId, now, viewer));
 }
 
+/**
+ * A uuid as Postgres prints one: a run's issue id named any other way names no issue, as comparing
+ * it to `issues.id::text` read it. Joined by the key instead, each released run no longer scans the
+ * project's merged issues (130 ms at forge's size, ISS-1070 r15).
+ */
+const CANONICAL_UUID = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+/**
+ * The minutes from merge to release of each issue the project released in the window ending at
+ * `now`, every project a person's read asks read in one statement (`db/read-memo.ts:rowsPerId`),
+ * each at its own clock: each project that deploys on land read its own, five a read on forge-dev
+ * (ISS-1070 r15). In a fixed order, so a forecast's seeded draw from them is the same read alone or
+ * beside other projects.
+ */
 async function readReleaseLags(projectId: string, now: Date): Promise<number[]> {
-  const rows = rowsOf<{ minutes: number }>(
-    await db.execute(sql`
-      SELECT EXTRACT(EPOCH FROM (r.release_released_at - i.merged_at)) / 60 AS minutes
-        FROM pipeline_runs r
-        CROSS JOIN LATERAL jsonb_array_elements_text(
-          CASE WHEN jsonb_typeof(r.metadata -> 'issueIds') = 'array' THEN r.metadata -> 'issueIds' ELSE '[]'::jsonb END
-        ) AS m(issue_id)
-        JOIN issues i ON i.id::text = m.issue_id AND i.project_id = r.project_id
-       WHERE r.project_id = ${projectId}
-         AND r.release_released_at IS NOT NULL
-         AND r.release_released_at >= ${now.toISOString()}::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
-         AND r.release_released_at <= ${now.toISOString()}::timestamptz
-         AND i.merged_at IS NOT NULL
-         AND i.merged_at <= r.release_released_at`),
+  const rows = await rowsPerId(
+    'releaseLags',
+    [idOfParts(projectId, now.toISOString())],
+    async (keys) => {
+      const pairs = keys.map(partsOf);
+      const rows = rowsOf<{ project_id: string; at: string; minutes: number }>(
+        await db.execute(sql`
+          SELECT k.project_id::text AS project_id, k.at, EXTRACT(EPOCH FROM (r.release_released_at - i.merged_at)) / 60 AS minutes
+            FROM unnest(${uuidArray(pairs.map(([project]) => project as string))},
+                        ${sql.param(pairs.map(([, at]) => at as string))}::text[]) AS k(project_id, at)
+            JOIN pipeline_runs r ON r.project_id = k.project_id
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE WHEN jsonb_typeof(r.metadata -> 'issueIds') = 'array' THEN r.metadata -> 'issueIds' ELSE '[]'::jsonb END
+            ) AS m(issue_id)
+            JOIN issues i ON i.id = CASE WHEN m.issue_id ~ ${CANONICAL_UUID} THEN m.issue_id::uuid END
+                         AND i.project_id = r.project_id
+           WHERE r.release_released_at IS NOT NULL
+             AND r.release_released_at >= k.at::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
+             AND r.release_released_at <= k.at::timestamptz
+             AND i.merged_at IS NOT NULL
+             AND i.merged_at <= r.release_released_at
+           ORDER BY k.project_id, k.at, r.release_released_at, r.id, m.issue_id`),
+      );
+      return rows.map((r) => ({ key: idOfParts(r.project_id, r.at), minutes: r.minutes }));
+    },
+    (r) => r.key,
   );
   return rows.map((r) => Number(r.minutes));
 }
