@@ -3,6 +3,7 @@
 // calls the service its REST route calls (`release-batch/version-routes.ts`, `release-page/routes.ts`).
 
 import { RELEASES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
+import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
 import { RELEASE_STATES, type ReleaseState, type ReleaseSummary } from '@forge/contracts/releases';
 import { z } from 'zod';
 import { readDraftReleaseForecast } from '../forecast/index.js';
@@ -10,7 +11,8 @@ import { egressAs } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
-import { byRule, holds, onArg } from '../permissions/index.js';
+import { bodyRefusal } from '../middleware/zod-validator.js';
+import { byRule, holds, onArg, requireDeclaredOn } from '../permissions/index.js';
 import {
   decideApprovalOfVersion,
   draftReleaseIssueIds,
@@ -166,7 +168,12 @@ async function page(ctx: McpContext, i: Input) {
 
 async function name(ctx: McpContext, i: Input) {
   const { version, name, summary } = need(i, 'name', 'version', 'name', 'summary');
-  return nameReleaseAs(i.projectId, version, { name, summary }, ctx.principal.userId);
+  // in the REST route's order (`version-routes.ts` PUT naming): its gate, its body's schema, then
+  // the release, so one naming is refused alike at both doors (ISS-689 c2)
+  await requireDeclaredOn(i.projectId, ctx.principal.userId, 'project.admin');
+  const naming = ReleaseNamingSchema.safeParse({ name, summary });
+  if (!naming.success) throw bodyRefusal(ReleaseNamingSchema, naming.error);
+  return nameReleaseAs(i.projectId, version, naming.data, ctx.principal.userId);
 }
 
 async function decide(ctx: McpContext, i: Input) {
