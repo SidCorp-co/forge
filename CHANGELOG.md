@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.610] - 2026-11-08
+
+Release page names who may approve; support brief describes diagnose checks correctly
+
+### Added
+
+- **A release page names who may approve it.** Beside who decided, the page lists the release's approvers by name; a shared link still names no one (ISS-1164).
+
+### Fixed
+
+- **The support brief tells the truth about diagnose.** It says a diagnose posts nothing in the room and each check is recorded on its action, where it said the group sees each check (ISS-1162).
+- **Home starts its forecast, runs and owned issues beside the feedback list.** The links and their issues are read in one wave, Moving reuses the forecast's standing, and live runs are read once: 55 quiet points become 16.
+
 ## [0.4.0-dev.609] - 2026-11-08
 
 Production reads go through audited project reads; steward tokens, triage previews and feedback verification fixed
