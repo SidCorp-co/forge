@@ -180,6 +180,38 @@ describe('splitting an oversize draft', () => {
   });
 });
 
+describe('who a release reads as owed to after an automatic cut (ISS-1153)', () => {
+  const ada = { id: 'u-ada', name: 'Ada', kind: 'human' as const };
+  const asked = {
+    id: 'a1',
+    runId: 'r1',
+    requestedBy: ada,
+    requestedAt: new Date(T0).toISOString(),
+    evidence: { environment: null, commit: 'abc', reading: 'abc' },
+    note: null,
+    decision: null,
+    decidedBy: null,
+    decidedAt: null,
+    reason: null,
+    carried: [],
+  };
+  const read = (as: 'automatic' | 'person') => {
+    const s = shared(1);
+    s.facts.cutters.set('r1', as === 'automatic' ? { as } : { as, person: ada });
+    const p = { ...part(1, [], 'awaiting_approval'), runId: 'r1', approvals: [asked] } as Part;
+    const { owner, ownerAct } = summaryOf(p, s);
+    return { owner, ownerAct };
+  };
+
+  it('names no person for the approval an automatic cut asked', () => {
+    expect(read('automatic')).toEqual({ owner: null, ownerAct: 'Asked for approval automatically' });
+  });
+
+  it('still names the person who cut and asked', () => {
+    expect(read('person')).toEqual({ owner: ada, ownerAct: 'Asked for approval' });
+  });
+});
+
 describe('the decision a draft offers (ISS-1019)', () => {
   const N = 2;
   it('offers an approver the decision only where the draft itself is decidable', () => {

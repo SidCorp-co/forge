@@ -190,6 +190,10 @@ function ownerOf(p: Part, s: Shared): { owner: ReleasePerson | null; act: string
       act: latest.decision === 'approved' ? 'Approved' : 'Returned',
     };
   }
+  // an automatic cut asks its approval as the owner it acted for, who asked nothing either (ISS-1153)
+  if (latest && s.facts.cutters.get(latest.runId)?.as === 'automatic') {
+    return { owner: null, act: 'Asked for approval automatically' };
+  }
   if (latest) return { owner: latest.requestedBy, act: 'Asked for approval' };
   const cutter = p.runId ? s.facts.cutters.get(p.runId) : undefined;
   // Forge's own cut names no person (ISS-1153): the owner it acted for never pressed it
