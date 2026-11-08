@@ -58,6 +58,10 @@ export const QUESTION_REFUSAL_CODES = [
 	/** A question naming a `rule` that is no live rule of its project's knowledge (ISS-869). */
 	"QUESTION_RULE_UNKNOWN",
 	"QUESTION_OPTIONS_STEWARDS",
+	/** An option asked to be answered in words (`takesText`), chosen without its text (ISS-826). */
+	"QUESTION_OPTION_TEXT_REQUIRED",
+	/** Text sent with an option that takes none; the refusal names the options that do (ISS-826). */
+	"QUESTION_OPTION_TAKES_NO_TEXT",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {

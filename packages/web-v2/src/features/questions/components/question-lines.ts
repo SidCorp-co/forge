@@ -23,11 +23,8 @@ export function isAnswerable(question: AgentQuestion): boolean {
 export function answeredWith(last: QuestionStep | undefined, t: Copy): string {
   if (!last) return t("agents.question.noRound");
   if (!isChoiceStep(last)) return last.answerText ?? t("agents.question.inWords");
-  return (
-    last.options.find((o) => o.id === last.chosenOptionId)?.label ??
-    last.chosenOptionId ??
-    t("agents.question.optionGone")
-  );
+  const label = last.options.find((o) => o.id === last.chosenOptionId)?.label ?? last.chosenOptionId ?? t("agents.question.optionGone");
+  return last.chosenText ? `${label}: ${last.chosenText}` : label;
 }
 
 export function outcomeOf(question: AgentQuestion, language = "en"): string | null {

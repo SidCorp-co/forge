@@ -8,7 +8,7 @@ import { isStewardDecisionQuestion, stewardDecisionOf } from '@forge/contracts/s
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
+import { agentQuestions, isChoiceStep, type QuestionOption, type QuestionStep } from '../db/schema-questions.js';
 import { issueDisplayIds, writeIssueRelations } from '../issues/index.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -24,7 +24,8 @@ import { recordAnswerOnIssue } from './answer-record.js';
 import { carryStewardDecision, decideChannelGate, type StewardDecisionAnswer } from './ports.js';
 import { answeredBody, optionPermission, refuseQuestion, view } from './write.js';
 
-export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
+/** An option, with the words it is answered in where it takes them (`takesText`, ISS-826); or a free answer. */
+export type GivenAnswer = { kind: 'option'; optionId: string; text?: string } | { kind: 'text'; text: string };
 
 /** What the answerer says the issue still waits on; `blockedBy` is an issue uuid of the question's project. */
 export type StillWaits = { reason: string; blockedBy?: string };
@@ -157,6 +158,30 @@ async function holdOf(
   return { reason, blockedBy: { id: blocker.id, key } };
 }
 
+/**
+ * The words an option is answered in (ISS-826): required where the option takes text, refused where it
+ * takes none, the refusal naming the options of the round that do.
+ */
+function optionText(current: QuestionStep & { options: QuestionOption[] }, option: QuestionOption, given: string | undefined): string | undefined {
+  const text = given?.trim() || undefined;
+  if (option.takesText && !text) {
+    throw refuseQuestion(
+      'QUESTION_OPTION_TEXT_REQUIRED',
+      `option ${option.id} ("${option.label}") is answered in words: send its text beside optionId`,
+    );
+  }
+  if (!option.takesText && text) {
+    const taking = current.options.filter((o) => o.takesText).map((o) => `${o.id} ("${o.label}")`);
+    throw refuseQuestion(
+      'QUESTION_OPTION_TAKES_NO_TEXT',
+      taking.length > 0
+        ? `option ${option.id} takes no text; on round ${current.round} only ${taking.join(', ')} ${taking.length === 1 ? 'takes' : 'take'} text — choose it to answer in words, or send ${option.id} alone`
+        : `option ${option.id} takes no text, and no option on round ${current.round} does — send ${option.id} alone`,
+    );
+  }
+  return text;
+}
+
 /** The answered round; a channel gate's question decides its gate in the answer's transaction. */
 async function answerRound(
   tx: Tx,
@@ -175,6 +200,7 @@ async function answerRound(
         `option ${optionId} is not on round ${current.round} of this question`,
       );
     }
+    const chosenText = optionText(current, option, args.answer.text);
     // a body-dependent rule the declaration cannot carry: the chosen option's authority names the
     // permission, project.write (the route's declared floor) or project.admin for an admin option
     requireHeld(args.facts, optionPermission(option), `choosing option ${option.id}`);
@@ -192,6 +218,7 @@ async function answerRound(
       ...current,
       answeredAt: now.toISOString(),
       chosenOptionId: option.id,
+      ...(chosenText ? { chosenText } : {}),
       answeredBy: args.by,
       ...(args.answeredWith ? { answeredWith: args.answeredWith } : {}),
       ...(note ? { note } : {}),

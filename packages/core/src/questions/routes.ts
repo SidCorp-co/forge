@@ -72,6 +72,10 @@ const askSchema = z
             bindsTo: z.enum(optionBindings),
             executedBy: z.enum(optionExecutors),
             fingerprint: z.string().trim().min(1).max(500).optional(),
+            takesText: z
+              .boolean()
+              .optional()
+              .describe('the option is answered in words too: choosing it sends `text` beside `optionId` (ISS-826)'),
           })
           .strict(),
       )
@@ -220,7 +224,7 @@ questionRoutes.post(
       ...rest,
       answer: {
         shape: 'choice',
-        options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+        options: options.map(({ fingerprint, takesText, ...o }) => ({ ...o, ...(fingerprint ? { fingerprint } : {}), ...(takesText ? { takesText } : {}) })),
         recommendedOptionId,
       },
       blockerKind: blockerKind ?? 'human',

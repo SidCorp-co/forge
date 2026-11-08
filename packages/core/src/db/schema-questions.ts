@@ -65,6 +65,11 @@ export type QuestionOption = {
   fingerprint?: string;
   /** A steward merge's: what the draft and the item it merges into are both about (REQ-48 r3 BC-16). */
   shares?: string;
+  /**
+   * The option is answered in words as well as chosen ("Decide per criterion, named in the answer"):
+   * choosing it carries the person's text, and is refused without it (ISS-826).
+   */
+  takesText?: boolean;
 };
 
 export const answerShapes = ['choice', 'free_text'] as const;
@@ -98,6 +103,8 @@ export type ChoiceStep = StepCommon & {
   /** Why the asker recommends it, one line beside the question rather than inside it (REQ-48 r3 BC-14, migration 0516). */
   why?: string;
   chosenOptionId?: string;
+  /** The words a `takesText` option was answered with, beside the option chosen (ISS-826). */
+  chosenText?: string;
 };
 
 export type FreeTextStep = StepCommon & {

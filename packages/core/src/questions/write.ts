@@ -443,7 +443,9 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
 export function answeredBody(step: QuestionStep | undefined): string {
   if (!step) return '';
   if (!isChoiceStep(step)) return step.answerText ?? '';
-  return step.options.find((o) => o.id === step.chosenOptionId)?.label ?? '';
+  const label = step.options.find((o) => o.id === step.chosenOptionId)?.label ?? '';
+  // an option answered in words reads as the option and what it was answered with (ISS-826)
+  return step.chosenText ? `${label}: ${step.chosenText}` : label;
 }
 
 export function view<T extends { steps: QuestionStep[] }>(row: T) {

@@ -22,6 +22,8 @@ export interface QuestionOption {
   bindsTo: OptionBinding;
   executedBy: OptionExecutor;
   fingerprint?: string;
+  /** Choosing it carries the person's words too ("Decide per criterion, named in the answer", ISS-826). */
+  takesText?: boolean;
 }
 
 export interface VisibleOption extends QuestionOption {
@@ -47,6 +49,8 @@ interface ChoiceStep extends StepCommon {
   options: QuestionOption[];
   recommendedOptionId: string;
   chosenOptionId?: string;
+  /** The words a `takesText` option was answered with (ISS-826). */
+  chosenText?: string;
 }
 
 interface FreeTextStep extends StepCommon {
@@ -114,7 +118,8 @@ export function roundCountOf(question: AgentQuestion): number {
   return question.steps?.length ?? question.rounds ?? (question.currentStep ? 1 : 0);
 }
 
-export type GivenAnswer = { optionId: string; text?: never } | { text: string; optionId?: never };
+/** An option, with its words where it takes them (`takesText`); or a free answer. */
+export type GivenAnswer = { optionId: string; text?: string } | { text: string; optionId?: never };
 
 /** The answer does not release its issue: what it still waits on, and the issue key that blocks it. */
 interface StillWaits {

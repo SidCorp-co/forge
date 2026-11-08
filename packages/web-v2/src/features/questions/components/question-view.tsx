@@ -90,10 +90,13 @@ function QuestionOption({
   answerable: boolean;
   pending: boolean;
   first: boolean;
-  onChoose: (optionId: string) => void;
+  onChoose: (optionId: string, text?: string) => void;
 }) {
   const describedBy = `decision-option-${option.id}`;
   const t = useCopy();
+  // ISS-826: an option answered in words is chosen with them, and not before they are written
+  const [words, setWords] = useState("");
+  const wordsOwed = Boolean(option.takesText) && !words.trim();
   const [view] = useRecordView();
   const developer = view === "developer";
   return (
@@ -107,17 +110,27 @@ function QuestionOption({
           <Button
             variant={recommended ? "primary" : "secondary"}
             size="sm"
-            disabled={option.locked}
+            disabled={option.locked || wordsOwed}
             loading={pending}
             data-first-option={first ? "true" : undefined}
             aria-label={t("agents.question.chooseLabel", { label: option.label })}
             aria-describedby={developer ? describedBy : undefined}
-            onClick={() => onChoose(option.id)}
+            onClick={() => onChoose(option.id, option.takesText ? words.trim() : undefined)}
           >
             {t("agents.question.choose")}
           </Button>
         )}
       </div>
+      {answerable && option.takesText && !option.locked ? (
+        <Textarea
+          rows={2}
+          className="mt-1.5"
+          value={words}
+          onChange={(e) => setWords(e.target.value)}
+          aria-label={t("agents.question.optionWords", { label: option.label })}
+          data-testid="option-words"
+        />
+      ) : null}
       {answerable && option.locked && (
         <p className="fg-caption mt-1 text-danger">
           {t("agents.question.needsAuthority", { authority: option.authority })}
@@ -151,6 +164,7 @@ function RoundHistory({ step }: { step: QuestionStep }) {
               })}
             </p>
           )}
+          {step.chosenText && <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{step.chosenText}</p>}
         </>
       ) : (
         <>
@@ -427,7 +441,7 @@ export function QuestionView({
                   answerable={answerable}
                   pending={pending}
                   first={option.id === firstEnabledId}
-                  onChoose={(optionId) => send(current.round, { optionId })}
+                  onChoose={(optionId, text) => send(current.round, text ? { optionId, text } : { optionId })}
                 />
               ))
             ) : answerable ? (

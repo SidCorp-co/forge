@@ -17,7 +17,7 @@ export const questionsApi = {
     apiClient<AgentQuestion>(`/questions/${questionId}/answer`, {
       method: "POST",
       body: JSON.stringify({
-        ...(given.optionId ? { optionId: given.optionId } : { text: given.text }),
+        ...(given.optionId ? { optionId: given.optionId, ...(given.text ? { text: given.text } : {}) } : { text: given.text }),
         round,
         ...(note === undefined ? {} : { note }),
         ...(stillWaits ? { stillWaits } : {}),

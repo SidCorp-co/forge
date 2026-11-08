@@ -114,6 +114,7 @@
     "agents.question.blockedBy": "Blocked by issue",
     "agents.question.choose": "Choose",
     "agents.question.chooseLabel": "Choose {label}",
+    "agents.question.optionWords": "Your answer for {label}",
     "agents.question.chosen": " — chosen",
     "agents.question.deadlinePassed": "the park deadline passed",
     "agents.question.decision": "Decision",

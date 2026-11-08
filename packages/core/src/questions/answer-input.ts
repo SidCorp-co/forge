@@ -36,7 +36,7 @@ const answerFields = z.object({
 });
 
 export const ANSWER_SHAPE =
-  "{ round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer)";
+  "{ round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is optionId (one of the question's options), text (a free answer), or both where the option chosen takes text (`takesText`)";
 
 const filled = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
 const isBody = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
@@ -49,11 +49,7 @@ export const answerBody = answerFields
     message: 'the answer is required: send optionId or text',
     when: (p) => isBody(p.value),
   })
-  .refine((b) => !(filled(b.optionId) && filled(b.text)), {
-    path: ['text'],
-    message: 'send optionId or text, never both',
-    when: (p) => isBody(p.value),
-  });
+  ;
 
 export type AnswerBody = z.infer<typeof answerBody>;
 
@@ -65,8 +61,9 @@ export function givenAnswerOf(body: AnswerBody): {
   stillWaits?: { reason: string; blockedBy?: string | undefined };
 } {
   return {
+    // an option and its words travel together; whether the option takes words is the question's to say (answer.ts)
     answer: filled(body.optionId)
-      ? { kind: 'option', optionId: body.optionId as string }
+      ? { kind: 'option', optionId: body.optionId as string, ...(filled(body.text) ? { text: body.text as string } : {}) }
       : { kind: 'text', text: body.text as string },
     round: body.round,
     ...(body.note === undefined ? {} : { note: body.note }),

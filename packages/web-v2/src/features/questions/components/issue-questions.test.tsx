@@ -224,6 +224,30 @@ describe("the assistant's suggested answer on an issue's question (REQ-41 BC-2)"
   });
 });
 
+// ISS-826: an option worded to be answered in words is chosen with them, and sends both
+describe("an option answered in words", () => {
+  const option = (id: string, label: string, takesText?: boolean) => ({ id, label, authority: "writer", bindsTo: "project", executedBy: "human", locked: false, ...(takesText ? { takesText } : {}) });
+  const choice = {
+    ...asked,
+    answerShape: "choice",
+    recommendedOptionId: "per",
+    options: [option("all", "Keep every criterion"), option("per", "Decide per criterion, named in the answer", true)],
+    steps: [{ round: 1, prompt: "Which criteria stay?", askedAt: "2026-10-06T00:00:00Z", answerShape: "choice", options: [], recommendedOptionId: "per" }],
+  } as unknown as AgentQuestion;
+
+  it("waits for the words, then sends the option and its words together", async () => {
+    const calls = fakeCore((call) => (call.method === "GET" ? { body: { questions: [choice] } } : { body: { ...answered } }));
+    renderWithQuery(<IssueQuestions issueId="i1" />);
+    const user = userEvent.setup();
+    const per = await screen.findByRole("button", { name: "Choose Decide per criterion, named in the answer" });
+    expect(per).toBeDisabled();
+    expect(screen.getAllByTestId("option-words")).toHaveLength(1);
+    await user.type(screen.getByRole("textbox", { name: /Your answer for Decide per criterion/ }), "BC-1 keep, BC-2 drop");
+    await user.click(per);
+    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/questions/q1/answer", body: { optionId: "per", text: "BC-1 keep, BC-2 drop", round: 1 } }));
+  });
+});
+
 // ISS-583 c3: a parked business question names what it is about where a person answers it, so they
 // never ask which requirement; its key opens the requirement where the page knows the project.
 describe("what a question is about", () => {
