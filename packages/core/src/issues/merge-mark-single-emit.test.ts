@@ -40,6 +40,8 @@ vi.mock('../outbox/index.js', () => ({
   },
 }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
+// a stale round's stamp is integration-tested (run-close-keeps-landed-e2e); this mocked db answers rows to any query
+vi.mock('./stale-round-merge.js', () => ({ supersedeStaleRoundMerge: async () => false }));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
 vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
 vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));

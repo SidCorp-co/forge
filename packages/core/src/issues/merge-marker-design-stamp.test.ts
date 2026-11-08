@@ -32,6 +32,8 @@ vi.mock('../db/client.js', () => ({
 }));
 vi.mock('../outbox/index.js', () => ({ emitEvent: async () => {}, emitEvents: async () => {} }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
+// a stale round's stamp is integration-tested (run-close-keeps-landed-e2e); this mocked db answers rows to any query
+vi.mock('./stale-round-merge.js', () => ({ supersedeStaleRoundMerge: async () => false }));
 vi.mock('./ports.js', () => ({
   answerMergeQuestions: async () => [],
   contractDrift: async () => null,
