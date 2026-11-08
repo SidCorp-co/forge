@@ -186,9 +186,10 @@ route, declining included, closes the open question.
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
   before its fix shipped. A carrier shipped with a criterion whose latest verdict is \`fail\` resolves
-  nothing: the item reads planned naming it (\`ISS-18 c2\`), and nothing verifies it
-  (\`FEEDBACK_CARRIER_FAILED\`) until a release ships it passing. The reporter or anyone on the project (\`project.read\`) verifies, and the
-  decision records who and when (\`PERMISSION_FORBIDDEN\` to someone with no role on the project).
+  nothing: the item reads planned naming it, such as \`ISS-18 c2\`, and nothing verifies it
+  (\`FEEDBACK_CARRIER_FAILED\`) until a release ships it passing. The reporter or anyone on the
+  project (\`project.read\`) verifies, and the decision records who and when
+  (\`PERMISSION_FORBIDDEN\` to someone with no role on the project).
 - Nobody verifying is read from the record for a person (Feedback lifecycle r14 \`loop-check\`): every
   15 minutes core dates the first sight of \`resolved\`, and once the project's
   \`feedback.verifyWindowDays\` (default 7, 1 to 90) have run with no reply it writes on the item what
