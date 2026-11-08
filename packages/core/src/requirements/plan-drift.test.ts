@@ -20,16 +20,17 @@ describe('changedSincePlan', () => {
     expect(changedSincePlan({ ...planned, plannedRevision: 3, changedTraced: [] })).toBe(false);
   });
 
-  it('flags a plan that names no revision while the requirement has a head', () => {
-    expect(changedSincePlan({ ...planned, plannedRevision: null, changedTraced: [] })).toBe(true);
+  // owner 2026-11-08 (D4): a plan naming no revision owes a re-plan only where a BC it traces was
+  // reworded or removed, never merely because the requirement has a head (REQ-45/66/71 sat 12-16 days)
+  it('flags a plan that names no revision only where a traced BC changed', () => {
+    expect(changedSincePlan({ ...planned, plannedRevision: null, changedTraced: [] })).toBe(false);
     expect(
       changedSincePlan({
         ...planned,
         plannedRevision: null,
-        currentRevision: null,
-        changedTraced: [],
+        changedTraced: [{ code: 'BC-2', revision: 2 }],
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('never flags an issue with no plan', () => {

@@ -3,8 +3,9 @@
  * written for a revision, judged where a list is proposed, and reset when a draft is rewritten.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
+import { issueCriteria } from '../db/schema-issue-criteria.js';
 import { type CriterionForm, requirementCriteria } from '../db/schema-requirements.js';
 import {
   type CriterionInput,
@@ -47,11 +48,42 @@ export async function writeCriteria(
       .where(inArray(requirementCriteria.id, retire));
   }
   if (insert.length) {
-    await tx
+    const written = await tx
       .insert(requirementCriteria)
-      .values(insert.map((c) => ({ ...c, requirementId, sinceRevision: revision })));
+      .values(insert.map((c) => ({ ...c, requirementId, sinceRevision: revision })))
+      .returning({ id: requirementCriteria.id, code: requirementCriteria.code });
+    await retieUnchanged(tx, live, retire, insert, written);
   }
   return null;
+}
+
+/**
+ * Owner 2026-11-08 (D4): a criterion retired only for its title (its body and form carried as they
+ * were) is the same rule, so the issue criteria tracing the retired wording are tied to the new one
+ * in the same write, and no re-plan or re-tie is asked of anyone. A criterion whose body or form
+ * changed is left traced to its old wording, which owes the re-plan it always did.
+ */
+async function retieUnchanged(
+  tx: Tx,
+  live: readonly LiveCriterion[],
+  retired: readonly string[],
+  inserted: readonly { code: string; body: string; form: CriterionForm }[],
+  written: readonly { id: string; code: string }[],
+): Promise<void> {
+  const newId = new Map(written.map((w) => [w.code, w.id]));
+  for (const old of live.filter((c) => retired.includes(c.id))) {
+    const same = inserted.find(
+      (c) => c.code === old.code && c.body === old.body && c.form === old.form,
+    );
+    const to = same ? newId.get(same.code) : undefined;
+    if (!to) continue;
+    await tx
+      .update(issueCriteria)
+      .set({ requirementCriterionId: to })
+      .where(
+        and(eq(issueCriteria.requirementCriterionId, old.id), isNull(issueCriteria.retiredAt)),
+      );
+  }
 }
 
 /**

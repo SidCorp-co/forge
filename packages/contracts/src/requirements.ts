@@ -866,8 +866,9 @@ export const requirementKey = (seq: number) => `REQ-${seq}`;
 /**
  * Whether an issue's plan is flagged by a change to its requirement (requirement-to-delivery
  * `impact`): a later revision changed or retired a BC one of its criteria traces. A plan that names
- * no revision has nothing to compare against and is flagged while the requirement has a head. Read,
- * never stored; an issue with no plan has nothing to drift from, and a re-pin changes no BC.
+ * no revision is flagged only where a BC it traces was reworded or removed at all (owner 2026-11-08,
+ * D4: a re-plan is owed only for a criterion whose wording changed). Read, never stored; an issue with
+ * no plan has nothing to drift from, and a re-pin changes no BC.
  */
 export function changedSincePlan(input: {
 	plan: string | null;
@@ -877,7 +878,6 @@ export function changedSincePlan(input: {
 	changedTraced: readonly ChangedTrace[];
 }): boolean {
 	if (!input.plan?.trim()) return false;
-	if (input.plannedRevision === null) return input.currentRevision !== null;
 	if (input.plannedRevision === input.currentRevision) return false;
 	return input.changedTraced.length > 0;
 }
