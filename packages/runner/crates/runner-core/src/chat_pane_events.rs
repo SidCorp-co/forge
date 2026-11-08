@@ -92,7 +92,10 @@ mod tests {
         let path = dir.join("events.jsonl");
         append(&path, "Stop", br#"{"session_id":"s1"}"#, 7).unwrap();
         append(&path, STATUS_LINE, b"not json", 8).unwrap();
-        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         f.write_all(br#"{"event":"Stop","at_ms":9,"#).unwrap();
         let (lines, next) = read_from(&path, 0).unwrap();
         assert_eq!(lines.len(), 2, "{lines:?}");

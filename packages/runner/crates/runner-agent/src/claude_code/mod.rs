@@ -7,10 +7,10 @@
 
 pub(crate) mod confine;
 mod outcome;
-pub mod pane;
-mod pane_turn;
 #[doc(hidden)]
 pub mod own_testkit;
+pub mod pane;
+mod pane_turn;
 use outcome::*;
 mod permits;
 mod stream;

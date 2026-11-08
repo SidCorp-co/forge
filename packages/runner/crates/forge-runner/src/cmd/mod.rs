@@ -1,10 +1,10 @@
 pub mod answers;
 pub mod api;
 pub mod bind;
+pub mod chat_pane_exec;
 pub mod config;
 pub mod doctor;
 mod doctor_plugins;
-pub mod chat_pane_exec;
 pub mod egress_bridge;
 pub mod gate;
 pub mod git_credential;

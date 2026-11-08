@@ -357,7 +357,8 @@ mod tests {
     /// socket and the pane's name ride on the beat, and a box running no panes says nothing.
     #[test]
     fn a_box_s_chat_panes_ride_in_its_capabilities_and_a_box_without_says_nothing() {
-        let panes = serde_json::json!({ "socket": "/r/tmux.sock", "sessions": { "s1": "forge-chat-p" } });
+        let panes =
+            serde_json::json!({ "socket": "/r/tmux.sock", "sessions": { "s1": "forge-chat-p" } });
         let conditions = Conditions {
             chat_panes: Some(panes.clone()),
             ..Conditions::default()

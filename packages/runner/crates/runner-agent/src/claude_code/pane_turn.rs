@@ -201,10 +201,14 @@ mod tests {
         let mut t = Tally::default();
         assert!(t.read(&assistant("m1", "thinking", 189)).is_some());
         assert!(t.read(&assistant("m1", "tool_use", 189)).is_some());
-        assert!(t.read(&json!({"type":"user","message":{"content":[{"type":"tool_result"}]}})).is_some());
+        assert!(t
+            .read(&json!({"type":"user","message":{"content":[{"type":"tool_result"}]}}))
+            .is_some());
         assert!(t.read(&assistant("m2", "text", 13)).is_some());
         assert!(t.read(&json!({"type":"attachment"})).is_none());
-        assert!(t.read(&json!({"type":"system","subtype":"turn_duration","durationMs":18885})).is_none());
+        assert!(t
+            .read(&json!({"type":"system","subtype":"turn_duration","durationMs":18885}))
+            .is_none());
         let line = t.result_line("s", &Cost::Read(0.0012));
         assert_eq!(line["usage"]["output_tokens"], 202, "{line}");
         assert_eq!(line["usage"]["input_tokens"], 4);
@@ -228,7 +232,10 @@ mod tests {
             turn_cost(None, Some(0.02)),
             Cost::Unread("no status line stood before the turn to measure from")
         );
-        assert_eq!(turn_cost(Some(0.01334112), Some(0.01430154)), Cost::Read(0.00096042));
+        assert_eq!(
+            turn_cost(Some(0.01334112), Some(0.01430154)),
+            Cost::Read(0.00096042)
+        );
     }
 
     #[test]
@@ -241,13 +248,16 @@ mod tests {
         t.read(&json!({"type":"queue-operation","operation":"dequeue"}));
         assert_eq!(t.queued(), 0);
         t.read(&json!({"type":"queue-operation","operation":"enqueue"}));
-        t.read(&json!({"type":"queue-operation","operation":"remove","reason":"absorbed_mid_turn"}));
+        t.read(
+            &json!({"type":"queue-operation","operation":"remove","reason":"absorbed_mid_turn"}),
+        );
         assert_eq!(t.queued(), 0);
     }
 
     #[test]
     fn a_status_line_s_running_cost_is_read_from_its_payload() {
-        let p = json!({"session_id":"s","cost":{"total_cost_usd":0.00801877,"total_duration_ms":1}});
+        let p =
+            json!({"session_id":"s","cost":{"total_cost_usd":0.00801877,"total_duration_ms":1}});
         assert_eq!(status_cost(&p), Some(0.00801877));
         assert_eq!(status_cost(&json!({})), None);
     }

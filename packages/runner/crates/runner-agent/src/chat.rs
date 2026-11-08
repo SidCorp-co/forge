@@ -1442,7 +1442,15 @@ mod tests {
         let transcript = dir.join("t.jsonl");
         let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
         let (tx, rx) = mpsc::channel(64);
-        pane::test_turn(&runner, "sess", "s1", events.clone(), transcript.clone(), tx).await;
+        pane::test_turn(
+            &runner,
+            "sess",
+            "s1",
+            events.clone(),
+            transcript.clone(),
+            tx,
+        )
+        .await;
         std::fs::write(
             &transcript,
             concat!(
@@ -1463,7 +1471,8 @@ mod tests {
         let cost = br#"{"cost":{"total_cost_usd":0.0042}}"#;
         runner_core::chat_pane_events::append(&events, "StatusLine", cost, stop + 300).unwrap();
 
-        let ran = tokio::time::timeout(Duration::from_secs(10), consume(&client, "sess", 0, rx)).await;
+        let ran =
+            tokio::time::timeout(Duration::from_secs(10), consume(&client, "sess", 0, rx)).await;
         let _ = std::fs::remove_dir_all(&dir);
         assert!(ran.is_ok(), "the Stop hook did not end the pane's turn");
         let outcome = outcome_patches(&seen);

@@ -60,6 +60,20 @@ pub(crate) struct PaneSession {
     _egress: Option<EgressGuard>,
 }
 
+/// What a pane is started from, as [`ClaudeCodeRunner::start_in_pane`] made it.
+struct Made {
+    runner_exe: PathBuf,
+    events: PathBuf,
+    events_dir: PathBuf,
+    session: SessionStart,
+    mcp_path: PathBuf,
+    bearer_dir: Option<PathBuf>,
+    egress: Option<EgressGuard>,
+    launch_path: PathBuf,
+    transcript: PathBuf,
+    from: u64,
+}
+
 /// What this box says about its chat panes on its heartbeat (`capabilities.chatPanes`): the socket
 /// and each live pane by the session it serves, or why panes are on and none can be made.
 #[derive(Default)]
@@ -125,78 +139,19 @@ impl ClaudeCodeRunner {
             .clone()
             .ok_or_else(|| Error::Other("job has no prompt".into()))?;
         let credential = session_credential(&spec)?;
-        self.retire(&id).await?;
-        if let Some(holder) = self.pane_holder(&pane.name).await {
-            return Err(Error::Other(format!(
-                "[CHAT_PANE_HELD] {} already serves session {holder} on this box",
-                pane.name
-            )));
-        }
-        // a pane by this name that no session here holds outlived the daemon that made it, and its
-        // network with it
-        if terminal::alive(&pane.name).await {
-            tracing::info!("[chat {id}] {} is left from before — ending it", pane.name);
-            terminal::kill(&pane.name).await?;
-        }
-        let claude_dir = pane_launch::claude_dir().ok_or_else(|| {
-            Error::Other("[CHAT_PANE_NO_HOME] no Claude Code config directory can be named".into())
-        })?;
-        let events_dir = pane_launch::events_dir(&claude_dir, &pane.name);
-        std::fs::create_dir_all(&events_dir)
-            .map_err(|e| Error::Other(format!("[CHAT_PANE_EVENTS] {}: {e}", events_dir.display())))?;
-        let events = events_dir.join("events.jsonl");
-        let _ = std::fs::write(&events, b"");
-        let runner_exe = std::env::current_exe()
-            .map_err(|e| Error::Other(format!("[CHAT_PANE_NO_RUNNER] this runner's binary: {e}")))?;
-        let session = match spec.resume_id.as_deref().filter(|s| !s.is_empty()) {
-            Some(r) => SessionStart::Resume(r.to_string()),
-            None => SessionStart::New(uuid::Uuid::new_v4().to_string()),
-        };
-        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, &spec, &credential)?;
-        let settings = pane_launch::settings(
-            &runner_exe,
-            &events,
-            &pane_launch::mcp_servers_in(&mcp_path),
-        );
-        let args = PaneArgs {
-            settings: &settings,
-            system_prompt: spec.system_prompt.as_deref(),
-            model: spec.model.as_deref(),
-            mcp_config: &mcp_path,
-            session: &session,
-            first_turn: &prompt,
-        }
-        .argv();
-        let repo = spec.repo_path.to_string_lossy().into_owned();
-        let made = SessionCommand {
-            spec: &spec,
-            program: std::ffi::OsStr::new(resolve_claude_bin()),
-            args: &args,
-            repo: &repo,
-            credential: &credential,
-            mcp_path: &mcp_path,
-            bearer_dir: bearer_dir.as_deref(),
-            core_url: &self.core_url,
-        }
-        .build(None)
-        .await;
-        let (cmd, egress) = match made {
-            Ok(made) => made,
-            Err(e) => {
-                let _ = std::fs::remove_file(&mcp_path);
-                return Err(e);
-            }
-        };
-        let launch_path = launch_path(&pane.name)?;
-        pane_launch::write(&launch_path, &pane_launch::Launch::of(cmd.as_std(), &spec.repo_path))
-            .map_err(|e| Error::Other(format!("[CHAT_PANE_LAUNCH] {}: {e}", launch_path.display())))?;
-        runner_workspace::trust::pre_trust_logged(&spec.repo_path, &pane.name);
-        let transcript = claude_dir
-            .join("projects")
-            .join(runner_core::claude_paths::project_dir_name(&spec.repo_path))
-            .join(format!("{}.jsonl", session.id()));
-        // a resumed session's transcript already holds its history, which core has
-        let from = std::fs::metadata(&transcript).map_or(0, |m| m.len());
+        self.clear_for(&id, &pane).await?;
+        let Made {
+            runner_exe,
+            events,
+            events_dir,
+            session,
+            mcp_path,
+            bearer_dir,
+            egress,
+            launch_path,
+            transcript,
+            from,
+        } = self.made(&spec, &pane, &prompt, &credential).await?;
         let argv = vec![
             runner_exe.to_string_lossy().into_owned(),
             "chat-pane-exec".to_string(),
@@ -205,9 +160,14 @@ impl ClaudeCodeRunner {
         if let Err(e) = terminal::ensure(&pane.name, &spec.repo_path, &argv, &[], None).await {
             let _ = std::fs::remove_file(&launch_path);
             let _ = std::fs::remove_file(&mcp_path);
+            let _ = std::fs::remove_dir_all(&events_dir);
             return Err(e);
         }
-        tracing::info!("[chat {id}] started in {} ({})", pane.name, pane.attach_command());
+        tracing::info!(
+            "[chat {id}] started in {} ({})",
+            pane.name,
+            pane.attach_command()
+        );
         let sid = session.id().to_string();
         let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
         let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.clone())).await;
@@ -234,16 +194,8 @@ impl ClaudeCodeRunner {
             ),
             check_alive: true,
         };
-        let checkout = spec
-            .confinement
-            .as_ref()
-            .map(|c| c.checkout.clone())
-            .unwrap_or_default();
-        let siblings = spec
-            .confinement
-            .as_ref()
-            .map(|c| c.siblings.clone())
-            .unwrap_or_default();
+        let confinement = spec.confinement.clone().unwrap_or_default();
+        let (checkout, siblings) = (confinement.checkout, confinement.siblings);
         let mut map = self.panes.lock().await;
         map.insert(
             id.clone(),
@@ -269,6 +221,117 @@ impl ClaudeCodeRunner {
         );
         if let Some(s) = map.get_mut(&id) {
             s.watcher = Some(tokio::spawn(watch.run()));
+        }
+        Ok(())
+    }
+
+    /// Everything the pane is started from: its events file, its session, its MCP config, the
+    /// confined command written to its launch, and where its transcript will be.
+    async fn made(
+        &self,
+        spec: &JobSpec,
+        pane: &ChatPane,
+        prompt: &str,
+        credential: &str,
+    ) -> Result<Made> {
+        let claude_dir = pane_launch::claude_dir().ok_or_else(|| {
+            Error::Other("[CHAT_PANE_NO_HOME] no Claude Code config directory can be named".into())
+        })?;
+        let events_dir = pane_launch::events_dir(&claude_dir, &pane.name);
+        std::fs::create_dir_all(&events_dir).map_err(|e| {
+            Error::Other(format!("[CHAT_PANE_EVENTS] {}: {e}", events_dir.display()))
+        })?;
+        let events = events_dir.join("events.jsonl");
+        let _ = std::fs::write(&events, b"");
+        let runner_exe = std::env::current_exe().map_err(|e| {
+            Error::Other(format!("[CHAT_PANE_NO_RUNNER] this runner's binary: {e}"))
+        })?;
+        let session = match spec.resume_id.as_deref().filter(|s| !s.is_empty()) {
+            Some(r) => SessionStart::Resume(r.to_string()),
+            None => SessionStart::New(uuid::Uuid::new_v4().to_string()),
+        };
+        let (mcp_path, bearer_dir) = mcp_config_for(&self.core_url, spec, credential)?;
+        let settings = pane_launch::settings(
+            &runner_exe,
+            &events,
+            &pane_launch::mcp_servers_in(&mcp_path),
+        );
+        let args = PaneArgs {
+            settings: &settings,
+            system_prompt: spec.system_prompt.as_deref(),
+            model: spec.model.as_deref(),
+            mcp_config: &mcp_path,
+            session: &session,
+            first_turn: prompt,
+        }
+        .argv();
+        let repo = spec.repo_path.to_string_lossy().into_owned();
+        let made = SessionCommand {
+            spec,
+            program: std::ffi::OsStr::new(resolve_claude_bin()),
+            args: &args,
+            repo: &repo,
+            credential,
+            mcp_path: &mcp_path,
+            bearer_dir: bearer_dir.as_deref(),
+            core_url: &self.core_url,
+        }
+        .build(None)
+        .await;
+        let written = made.and_then(|(cmd, egress)| {
+            let path = launch_path(&pane.name)?;
+            pane_launch::write(
+                &path,
+                &pane_launch::Launch::of(cmd.as_std(), &spec.repo_path),
+            )
+            .map_err(|e| Error::Other(format!("[CHAT_PANE_LAUNCH] {}: {e}", path.display())))?;
+            Ok((path, egress))
+        });
+        let (launch_path, egress) = match written {
+            Ok(w) => w,
+            Err(e) => {
+                let _ = std::fs::remove_file(&mcp_path);
+                if let Some(dir) = &bearer_dir {
+                    let _ = std::fs::remove_dir_all(dir);
+                }
+                return Err(e);
+            }
+        };
+        runner_workspace::trust::pre_trust_logged(&spec.repo_path, &pane.name);
+        let transcript = claude_dir
+            .join("projects")
+            .join(runner_core::claude_paths::project_dir_name(&spec.repo_path))
+            .join(format!("{}.jsonl", session.id()));
+        // a resumed session's transcript already holds its history, which core has
+        let from = std::fs::metadata(&transcript).map_or(0, |m| m.len());
+        Ok(Made {
+            runner_exe,
+            events,
+            events_dir,
+            session,
+            mcp_path,
+            bearer_dir,
+            egress,
+            launch_path,
+            transcript,
+            from,
+        })
+    }
+
+    /// The key and the pane name free for a session `id` starting in `pane`: whatever held the key
+    /// is retired, a pane another session holds refuses, and a pane by the name that no session
+    /// here holds, left by an earlier daemon with its network gone, is ended.
+    async fn clear_for(&self, id: &str, pane: &ChatPane) -> Result<()> {
+        self.retire(id).await?;
+        if let Some(holder) = self.pane_holder(&pane.name).await {
+            return Err(Error::Other(format!(
+                "[CHAT_PANE_HELD] {} already serves session {holder} on this box",
+                pane.name
+            )));
+        }
+        if terminal::alive(&pane.name).await {
+            tracing::info!("[chat {id}] {} is left from before — ending it", pane.name);
+            terminal::kill(&pane.name).await?;
         }
         Ok(())
     }
@@ -401,7 +464,12 @@ impl ClaudeCodeRunner {
         let all: Vec<(String, PaneSession)> = self.panes.lock().await.drain().collect();
         let mut ids = Vec::new();
         for (id, s) in all {
-            end_pane(&id, s, "the runner is stopping, and the pane's network stops with it").await;
+            end_pane(
+                &id,
+                s,
+                "the runner is stopping, and the pane's network stops with it",
+            )
+            .await;
             ids.push(id);
         }
         ids
@@ -475,7 +543,10 @@ impl Watch {
         loop {
             tokio::time::sleep(READ_EVERY).await;
             reads = reads.wrapping_add(1);
-            if self.check_alive && reads % ALIVE_EVERY == 0 && !terminal::alive(&self.pane).await {
+            if self.check_alive
+                && reads.is_multiple_of(ALIVE_EVERY)
+                && !terminal::alive(&self.pane).await
+            {
                 let gone = self.panes.lock().await.remove(&self.id);
                 if let Some(s) = gone {
                     end_pane(&self.id, s, "its pane is gone").await;
@@ -577,7 +648,11 @@ impl Watch {
             return;
         };
         if let Some(s) = self.panes.lock().await.get_mut(&self.id) {
-            if let Some(i) = s.unsubmitted.iter().position(|(m, _)| same_prompt(m, prompt)) {
+            if let Some(i) = s
+                .unsubmitted
+                .iter()
+                .position(|(m, _)| same_prompt(m, prompt))
+            {
                 s.unsubmitted.remove(i);
             }
         }
@@ -718,9 +793,13 @@ mod tests {
         assert!(pane_for(false, true, true, false, Some("p")).is_none());
         assert!(pane_for(true, false, true, false, Some("p")).is_none());
         assert!(pane_for(true, true, false, false, Some("p")).is_none());
-        let off = pane_for(true, true, true, true, Some("p")).unwrap().unwrap_err();
+        let off = pane_for(true, true, true, true, Some("p"))
+            .unwrap()
+            .unwrap_err();
         assert!(off.starts_with("[CHAT_PANE_HOOKS_OFF]"), "{off}");
-        let unnamed = pane_for(true, true, true, false, None).unwrap().unwrap_err();
+        let unnamed = pane_for(true, true, true, false, None)
+            .unwrap()
+            .unwrap_err();
         assert!(unnamed.starts_with("[CHAT_PANE_NO_PROJECT]"), "{unnamed}");
     }
 
@@ -775,12 +854,19 @@ mod tests {
         test_turn(&runner, "q", "s1", events.clone(), transcript.clone(), tx).await;
         let line = |v: serde_json::Value| format!("{v}\n");
         let mut t = line(serde_json::json!({"type":"user","message":{"content":"story"}}));
-        t += &line(serde_json::json!({"type":"queue-operation","operation":"enqueue","content":"HOTEL"}));
+        t += &line(
+            serde_json::json!({"type":"queue-operation","operation":"enqueue","content":"HOTEL"}),
+        );
         std::fs::write(&transcript, &t).unwrap();
         let now = runner_core::agent_activity::now_ms();
         chat_pane_events::append(&events, "Stop", br#"{"session_id":"s1"}"#, now).unwrap();
-        chat_pane_events::append(&events, STATUS_LINE, br#"{"cost":{"total_cost_usd":0.01}}"#, now + 1)
-            .unwrap();
+        chat_pane_events::append(
+            &events,
+            STATUS_LINE,
+            br#"{"cost":{"total_cost_usd":0.01}}"#,
+            now + 1,
+        )
+        .unwrap();
         assert!(
             !done_within(&mut rx, Duration::from_millis(1500)).await,
             "the turn ended on a Stop with a typed message still queued"
@@ -790,10 +876,18 @@ mod tests {
         std::fs::write(&transcript, &t).unwrap();
         let now = runner_core::agent_activity::now_ms();
         chat_pane_events::append(&events, "Stop", br#"{"session_id":"s1"}"#, now).unwrap();
-        chat_pane_events::append(&events, STATUS_LINE, br#"{"cost":{"total_cost_usd":0.02}}"#, now + 1)
-            .unwrap();
+        chat_pane_events::append(
+            &events,
+            STATUS_LINE,
+            br#"{"cost":{"total_cost_usd":0.02}}"#,
+            now + 1,
+        )
+        .unwrap();
         let ended = done_within(&mut rx, Duration::from_secs(5)).await;
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(ended, "the second Stop, with nothing queued, did not end the turn");
+        assert!(
+            ended,
+            "the second Stop, with nothing queued, did not end the turn"
+        );
     }
 }

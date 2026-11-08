@@ -144,7 +144,11 @@ pub async fn run(ctx: Ctx, args: Args) {
     if let Some(path) = args.chat_pane_events.as_deref() {
         let at = runner_core::agent_activity::now_ms();
         if let Err(e) = runner_core::chat_pane_events::append(path, &args.event, &payload, at) {
-            eprintln!("forge-runner hook: {} not recorded in {}: {e}", args.event, path.display());
+            eprintln!(
+                "forge-runner hook: {} not recorded in {}: {e}",
+                args.event,
+                path.display()
+            );
         }
         println!("{}", chat_pane_said(&args.event));
         return;

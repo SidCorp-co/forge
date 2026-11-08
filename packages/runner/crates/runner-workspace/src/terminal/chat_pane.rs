@@ -115,7 +115,9 @@ mod tests {
             "{refused:?}"
         );
         assert!(
-            refused.to_string().starts_with("[CHAT_PANE_SOCKET_TOO_LONG]"),
+            refused
+                .to_string()
+                .starts_with("[CHAT_PANE_SOCKET_TOO_LONG]"),
             "{refused}"
         );
     }
@@ -125,7 +127,14 @@ mod tests {
         let slug = "s".repeat(90);
         let refused = chat_pane_on(Path::new("/r/tmux.sock"), &slug).expect_err("cut a name");
         assert!(
-            matches!(refused, ChatPaneRefused::NameTooLong { len: 101, bound: 96, .. }),
+            matches!(
+                refused,
+                ChatPaneRefused::NameTooLong {
+                    len: 101,
+                    bound: 96,
+                    ..
+                }
+            ),
             "{refused:?}"
         );
     }

@@ -64,9 +64,7 @@ pub fn settings(runner_exe: &Path, events: &Path, mcp_servers: &[String]) -> ser
             quote(events)
         )
     };
-    let hook = |event: &str| {
-        serde_json::json!([{ "hooks": [{ "type": "command", "command": command(event) }] }])
-    };
+    let hook = |event: &str| serde_json::json!([{ "hooks": [{ "type": "command", "command": command(event) }] }]);
     let mut allow: Vec<String> = BUILT_IN_TOOLS.iter().map(|t| (*t).to_string()).collect();
     allow.extend(mcp_servers.iter().map(|s| format!("mcp__{s}")));
     serde_json::json!({
@@ -173,10 +171,16 @@ mod tests {
             first_turn: "hello",
         }
         .argv();
-        assert!(!args.iter().any(|a| a.contains("bypassPermissions")), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a.contains("bypassPermissions")),
+            "{args:?}"
+        );
         assert_eq!(args[..2], ["--permission-mode", "dontAsk"]);
         assert_eq!(args[args.len() - 2..], ["--", "hello"]);
-        assert!(args.windows(2).any(|w| w == ["--session-id", "abc"]), "{args:?}");
+        assert!(
+            args.windows(2).any(|w| w == ["--session-id", "abc"]),
+            "{args:?}"
+        );
         assert!(args.contains(&"--strict-mcp-config".to_string()));
         assert_eq!(
             s["hooks"]["Stop"][0]["hooks"][0]["command"],

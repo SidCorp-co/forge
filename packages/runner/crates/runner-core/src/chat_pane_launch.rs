@@ -76,7 +76,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("l.json");
         let mut cmd = std::process::Command::new("bwrap");
-        cmd.args(["--", "claude"]).env_clear().env("HOME", "/h").current_dir("/w");
+        cmd.args(["--", "claude"])
+            .env_clear()
+            .env("HOME", "/h")
+            .current_dir("/w");
         let launch = Launch::of(&cmd, Path::new("/x"));
         write(&path, &launch).unwrap();
         #[cfg(unix)]
@@ -89,7 +92,10 @@ mod tests {
         assert_eq!(back, launch);
         assert_eq!(back.env, vec![("HOME".into(), "/h".into())]);
         assert_eq!(back.cwd, PathBuf::from("/w"));
-        assert!(!path.exists(), "the launch, which holds the environment, was left behind");
+        assert!(
+            !path.exists(),
+            "the launch, which holds the environment, was left behind"
+        );
         assert!(read_and_remove(&path)
             .unwrap_err()
             .starts_with("[CHAT_PANE_LAUNCH_UNREAD]"));
