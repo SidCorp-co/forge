@@ -227,8 +227,9 @@ pub(crate) fn parse_secret(value: &str) -> Result<Secret, String> {
     let Some((_, route)) = one_of(&o, &ROUTE_KEYS)? else {
         return Err(format!(
             "the secret{kind} names no sign-in route (it holds {}), and a testing profile declares \
-             none, so where to sign in is not known and nothing is guessed; add `loginRoute`, \
-             `<https URL or /path>`",
+             none, so where to sign in is not known and nothing is guessed; add `loginRoute` \
+             without retyping the value: PATCH /api/projects/<id>/secrets/<scope>/<name> \
+             {{\"set\":{{\"loginRoute\":\"<https URL or /path>\"}}}}",
             keys_of(&o)
         ));
     };

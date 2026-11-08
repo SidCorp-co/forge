@@ -585,7 +585,7 @@ fn refusals(api: &str, redirecting: &str) -> Vec<(&'static str, Value, &'static 
         (
             "no sign-in route",
             answer(api, &with(json!({ "loginRoute": null }))),
-            "names no sign-in route",
+            "add `loginRoute` without retyping the value: PATCH /api/projects/<id>/secrets/<scope>/<name> {\"set\":{\"loginRoute\":\"<https URL or /path>\"}}",
         ),
         (
             "a route under a key no real secret uses",
