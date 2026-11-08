@@ -56,6 +56,8 @@ export function learned(
   order: Order,
   reads: readonly { asks: Map<string, number>; made: Made[] }[],
 ) {
+  // a read that asked nothing across projects (one project's, which reads each ask as it comes) teaches nothing
+  if (reads.every((r) => r.made.length === 0)) return;
   const changed = reads.map((r) => learnFrom(order, r.asks, r.made)).some(Boolean);
   order.steady = changed ? 0 : order.steady + 1;
 }
@@ -89,13 +91,23 @@ function learnFrom(order: Order, asks: Map<string, number>, made: readonly Made[
   return changed;
 }
 
-/** Whether a read waiting on `waits` has been seen to ask `key` after them, having asked it `made` times. */
-export function mayAsk(order: Order, waits: Iterable<string>, key: string, made: number): boolean {
+/**
+ * Whether a read waiting on `waits`, having asked `key` `made` times, asks it again after them, as
+ * its read's order has learned: `yes` where a later read asked it after one of them, `no` where the
+ * order knows what follows each and it is not there, `unknown` where it knows nothing of one.
+ */
+export function mayAsk(
+  order: Order,
+  waits: Iterable<string>,
+  key: string,
+  made: number,
+): 'yes' | 'no' | 'unknown' {
   const most = order.most.get(key) ?? 0;
-  if (most <= made) return false;
+  let known = most > 0;
   for (const w of waits) {
     const next = order.after.get(w);
-    if (next) for (let n = made + 1; n <= most; n++) if (next.has(stepOf(key, n))) return true;
+    if (!next) known = false;
+    else for (let n = made + 1; n <= most; n++) if (next.has(stepOf(key, n))) return 'yes';
   }
-  return false;
+  return known ? 'no' : 'unknown';
 }
