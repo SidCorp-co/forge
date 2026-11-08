@@ -428,4 +428,39 @@ describe('a draft link rests on what was read, or it is refused (BC-12, FB-111)'
       "workflow:feedback-triage is a workflow FB-111's words touch: link it as affected_workflow with the step it changes, or say in notAffected why it is not affected",
     );
   });
+
+  // ISS-690 c1 (K-judge 2026-11-07): 32 of 39 feedback drafts ended INTAKE_SHAPE on triage faults
+  // alone, throwing away a sound value check; the check stands and the triage is left to the master
+  it('keeps a sound value check when only its triage is refused twice, and drops the triage', async () => {
+    const { complete, sent } = modelSaying(grounded, grounded);
+    const out = await draftIntake(fb111, {
+      ...depsOf(reads, complete),
+      triageFault: () => 'suggestion: Invalid UUID',
+    });
+    expect(sent, 'the triage fault is asked again once').toHaveLength(2);
+    expect(sent[1]?.at(-1)?.content as string).toContain('triage: suggestion: Invalid UUID');
+    expect(out.outcome, 'a triage fault never fails the value check').toBe('drafted');
+    if (out.outcome !== 'drafted') return;
+    expect(out.draft.value.outcome).toEqual({ kind: 'accept' });
+    expect(out.draft.value.who?.value).toBe('Clinic clerks');
+    expect(out.draft.triage, 'the refused triage is not proposed').toBeUndefined();
+    expect(out.draft.triageFaults).toEqual(['triage: suggestion: Invalid UUID']);
+  });
+
+  it('takes the retried triage when the second answer mends it', async () => {
+    let calls = 0;
+    const { complete } = modelSaying(grounded, grounded);
+    const out = await draftIntake(fb111, {
+      ...depsOf(reads, complete),
+      triageFault: () => (calls++ === 0 ? 'answers: Required' : null),
+    });
+    expect(out.outcome === 'drafted' && out.draft.triage).toEqual({ route: 'revision' });
+    expect(out.outcome === 'drafted' && out.draft.triageFaults).toEqual([]);
+  });
+
+  it('still fails a draft whose own links are refused, naming its triage faults beside them', async () => {
+    const { complete } = modelSaying(invented, invented);
+    const out = await draftIntake(fb111, depsOf(reads, complete));
+    expect(out.outcome === 'failed' && out.code).toBe('INTAKE_SHAPE');
+  });
 });

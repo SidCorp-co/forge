@@ -180,6 +180,13 @@ async function applyToFeedback(
       detail: 'a question holds the value check, so its triage waits for the answer',
     };
   }
+  if (draft.triageFaults.length > 0) {
+    return {
+      as: 'none',
+      code: 'INTAKE_TRIAGE_REFUSED',
+      detail: `the value check stands; its triage was refused (${draft.triageFaults.slice(0, 3).join('; ').slice(0, 400)}), so the item's master triages it`,
+    };
+  }
   try {
     const out = await createSuggestion({
       projectId: item.projectId,
