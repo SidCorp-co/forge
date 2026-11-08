@@ -22,8 +22,9 @@
 //!   environment's `url`, `services` and `routes`, ISS-470); a secret naming no route is refused, as
 //!   the testing profile declares no sign-in route and none is guessed.
 //! - `storage` and `storageKey`, optional: the `localStorage` the web app restores its session from,
-//!   each value read from the sign-in's answer, written into the storage state for the deployment's
-//!   origin (ISS-1145, `session/storage.rs`).
+//!   each value read from the sign-in's answer (ISS-1145), and `storageOrigin`, the origin they are
+//!   written for; without it, an absolute route's origin, else the deployment's (ISS-1146,
+//!   `session/storage.rs`).
 //! - `loginBody` and `tokenPath`, optional, for a sign-in that is no `{<account field>, password}`
 //!   POST (ISS-1141, epod's GraphQL mutation): `loginBody` is the JSON object sent as the body, each
 //!   string leaf that is exactly `$account` or `$password` replaced (a `$email` inside a string is
@@ -81,6 +82,7 @@ pub(crate) struct Secret {
     password: String,
     route: Target,
     storage: Vec<storage::Entry>,
+    storage_origin: Option<String>,
     body: Option<Value>,
     token_path: Option<String>,
 }
@@ -260,12 +262,15 @@ pub(crate) fn parse_secret(value: &str) -> Result<Secret, String> {
         }
     }
     let storage = storage::entries_of(&o).map_err(|why| format!("the secret{kind}'s {why}"))?;
+    let storage_origin =
+        storage::origin_named(&o).map_err(|why| format!("the secret{kind}'s {why}"))?;
     Ok(Secret {
         field,
         account: account.to_string(),
         password: password.to_string(),
         route: target(route)?,
         storage,
+        storage_origin,
         body: o.get(SIGN_IN_KEYS[0]).cloned(),
         token_path: o
             .get(SIGN_IN_KEYS[1])
@@ -522,12 +527,12 @@ pub(crate) async fn sign_in(
         &shown_at,
         status,
     )?;
-    let origin = deployment
-        .and_then(|d| d.url.as_deref())
-        .and_then(|u| Url::parse(u).ok())
-        .unwrap_or_else(|| url.clone())
-        .origin()
-        .ascii_serialization();
+    let origin = storage::origin_for(
+        secret.storage_origin.as_deref(),
+        &secret.route,
+        deployment,
+        url,
+    );
     Ok(Session {
         at: url.clone(),
         bearer,

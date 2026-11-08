@@ -7,18 +7,21 @@
 //!   string is written as it is; an object, an array, a number or a boolean as JSON text. A pointer
 //!   the answer does not hold (or holds `null` at) is refused, naming the key and the pointer.
 //! - `storageKey`: shorthand for `{<key>: <the bearer token>}`.
+//! - `storageOrigin` (ISS-1146): the origin the values are written for, where it is neither the
+//!   sign-in's own nor the deployment's (`origin_for`).
 //!
-//! Every value is written to the storage state for the app's origin and nowhere else: a refusal
-//! and the line judge-login prints name keys and pointers, never a value.
+//! Every value is written to the storage state for that one origin and nowhere else: a refusal
+//! and the line judge-login prints name keys, pointers and the origin, never a value.
 
+use reqwest::Url;
 use serde_json::{Map, Value};
 
 use super::described::path_said;
-use super::Session;
+use super::{Deployment, Session, Target};
 
 /// The keys a secret describes the browser session with. Core reads the same keys
 /// (`project-config/actor-sign-in.ts`: `STORAGE_KEYS`), held equal by its test.
-pub(super) const STORAGE_KEYS: [&str; 2] = ["storageKey", "storage"];
+pub(super) const STORAGE_KEYS: [&str; 3] = ["storageKey", "storage", "storageOrigin"];
 /// The most keys a `storage` map names.
 const MOST: usize = 32;
 
@@ -90,6 +93,66 @@ pub(crate) fn storage_refusal(v: &Value) -> Option<String> {
             )
         })
     })
+}
+
+/// Why `v` is no `storageOrigin`; none where it is one: an https origin, or http to this machine
+/// alone, written as its own origin is (no path, not even `/`, no user part, query or fragment).
+pub(crate) fn storage_origin_refusal(v: &Value) -> Option<String> {
+    let ok = v.as_str().filter(|s| s.len() <= 256).is_some_and(|s| {
+        Url::parse(s).is_ok_and(|u| {
+            let loopback = matches!(u.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
+            (u.scheme() == "https" || (u.scheme() == "http" && loopback))
+                && u.origin().ascii_serialization() == s
+        })
+    });
+    (!ok).then(|| {
+        "`storageOrigin` is the origin the browser session is written for: `https://<host>[:<port>]`, \
+         or `http://` to this machine alone, with no path, user part, query or fragment, such as \
+         `https://admin.example.com`"
+            .to_string()
+    })
+}
+
+/// The `storageOrigin` the secret names, none where it names none, or the line refusing it: one
+/// that is no origin, or one with no `storage` or `storageKey` to write there.
+pub(crate) fn origin_named(o: &Map<String, Value>) -> Result<Option<String>, String> {
+    let Some(v) = o.get(STORAGE_KEYS[2]) else {
+        return Ok(None);
+    };
+    if let Some(why) = storage_origin_refusal(v) {
+        return Err(why);
+    }
+    if !o.contains_key(STORAGE_KEYS[0]) && !o.contains_key(STORAGE_KEYS[1]) {
+        return Err(
+            "`storageOrigin` names where the browser session is written, and the secret names no \
+             `storage` or `storageKey` to write there"
+                .to_string(),
+        );
+    }
+    Ok(v.as_str().map(str::to_string))
+}
+
+/// The origin the browser session is written for (ISS-1146): the secret's `storageOrigin` where
+/// it names one; else the origin of an absolute `loginRoute`, the app that signed in (epod's admin
+/// at `admin.<host>`, whose deployment `url` is the storefront at `<host>`); else, for a path, the
+/// judged deployment's `url`, or `url`, the sign-in URL, where it names none.
+pub(crate) fn origin_for(
+    named: Option<&str>,
+    route: &Target,
+    deployment: Option<&Deployment>,
+    url: &Url,
+) -> String {
+    if let Some(o) = named {
+        return o.to_string();
+    }
+    let base = match route {
+        Target::Url(u) => u.clone(),
+        Target::Path(_) => deployment
+            .and_then(|d| d.url.as_deref())
+            .and_then(|u| Url::parse(u).ok())
+            .unwrap_or_else(|| url.clone()),
+    };
+    base.origin().ascii_serialization()
 }
 
 /// The entries `storageKey` and `storage` describe, or the line refusing them. A key named by
@@ -165,8 +228,10 @@ pub(crate) fn values_of(
         .collect()
 }
 
-/// What the browser file holds, said by its keys, never a value or a count.
+/// What the browser file holds, said by its keys and the origin they were written for, never a
+/// value or a count.
 pub(crate) fn state_says(session: &Session) -> String {
+    let origin = &session.origin;
     let keys = session
         .local_storage
         .iter()
@@ -175,10 +240,10 @@ pub(crate) fn state_says(session: &Session) -> String {
         .join(", ");
     match (session.cookies.is_empty(), keys.is_empty()) {
         (false, false) => {
-            format!("the cookies the sign-in set, and localStorage {keys} for the app's origin")
+            format!("the cookies the sign-in set, and localStorage {keys} for {origin}")
         }
         (false, true) => "the cookies the sign-in set".to_string(),
-        (true, false) => format!("localStorage {keys} for the app's origin"),
+        (true, false) => format!("localStorage {keys} for {origin}"),
         (true, true) => {
             "nothing a browser signs in with: the sign-in set no cookie and the secret \
              names no `storage`; add the localStorage keys the app restores its session from, each \

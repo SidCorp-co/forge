@@ -18,6 +18,9 @@
  * ISS-1145: epod's admin restores a browser session from five localStorage keys, so the merge also
  * takes `storage` (each key a JSON pointer into the sign-in's answer) and `storageKey`, and the
  * probe confirms each pointer resolves.
+ *
+ * ISS-1146: epod's admin signs in at `admin.<host>` while its deployment's `url` is the storefront,
+ * so the merge also takes `storageOrigin`, the origin judge-login writes that session for.
  */
 
 import fs from 'node:fs';
@@ -283,6 +286,20 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
       ],
       [{ set: { storageKey: 7 } }, 'dev', 'judge', 422, 'SECRET_STORAGE_INVALID'],
       [{ set: { storageKey: '' } }, 'dev', 'judge', 422, 'SECRET_STORAGE_INVALID'],
+      [
+        { set: { storageOrigin: 'https://admin.epod.test/vi/login' } },
+        'dev',
+        'judge',
+        422,
+        'SECRET_STORAGE_INVALID',
+      ],
+      [
+        { set: { storageOrigin: 'http://admin.epod.test' } },
+        'dev',
+        'judge',
+        422,
+        'SECRET_STORAGE_INVALID',
+      ],
       [{ set: { loginRoute: '/x' } }, 'dev', 'plain', 422, 'SECRET_NOT_JSON_OBJECT'],
       [{ set: { loginRoute: '/x' } }, 'dev', 'absent', 404, 'SECRET_NOT_FOUND'],
       [{ set: { loginRoute: '/x' } }, 'var', 'judge', 422, 'SECRET_SCOPE_RESERVED'],
@@ -297,7 +314,7 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
     const unknown = await patch('dev', 'judge', { set: { password: 'x', label: 'y' } });
     expect(refusalsOf(unknown).map((r) => r.path)).toEqual(['/set/label', '/set/password']);
     expect(refusalsOf(unknown)[0]?.detail).toContain(
-      '`loginRoute`, `loginBody`, `tokenPath`, `storageKey`, `storage`',
+      '`loginRoute`, `loginBody`, `tokenPath`, `storageKey`, `storage`, `storageOrigin`',
     );
     expect(await stored('secret://dev/judge')).toEqual(STORED);
     expect(seen).toEqual([]);
@@ -407,6 +424,32 @@ describe('a secret describes the browser session it hands a judge (ISS-1145)', (
       ...STORED,
       ...GRAPHQL_SET,
       storageKey: 'auth_token',
+    });
+  });
+
+  it('storageOrigin names the origin the session is written for, and stands only beside storage (ISS-1146)', async () => {
+    await ok(put('dev', 'judge', JSON.stringify({ ...STORED, ...GRAPHQL_SET })));
+    // with nothing to write there it is refused, and the stored value is kept
+    const alone = await patch('dev', 'judge', {
+      set: { storageOrigin: 'https://admin.epod.test' },
+    });
+    expect(alone.status, JSON.stringify(alone.body)).toBe(422);
+    expect(refusalsOf(alone)).toEqual([
+      expect.objectContaining({
+        code: 'SECRET_STORAGE_INVALID',
+        detail: expect.stringContaining('the secret names no `storage` or `storageKey`'),
+      }),
+    ]);
+    await ok(patch('dev', 'judge', { set: EPOD_STORAGE_SET }));
+    const body = await ok(
+      patch('dev', 'judge', { set: { storageOrigin: 'https://admin.epod.test' } }),
+    );
+    expect(body.signIn).toEqual([expect.objectContaining({ answer: 'signs-in' })]);
+    expect(await stored('secret://dev/judge')).toEqual({
+      ...STORED,
+      ...GRAPHQL_SET,
+      ...EPOD_STORAGE_SET,
+      storageOrigin: 'https://admin.epod.test',
     });
   });
 });

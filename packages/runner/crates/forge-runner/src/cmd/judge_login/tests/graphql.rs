@@ -37,15 +37,15 @@ fn epod_storage() -> Value {
     })
 }
 
-/// epod's admin restores a session only when `auth_token`, `user` and `organization` are all
-/// present and `organization.id` equals `organization_id` (epod `AuthContext.tsx`); the reason
-/// it would not, else nothing.
-fn epod_restores(state: &Value) -> Result<(), String> {
+/// epod's admin, at `origin`, restores a session only when `auth_token`, `user` and
+/// `organization` are all present and `organization.id` equals `organization_id` (epod
+/// `AuthContext.tsx`); the reason it would not, else nothing.
+fn epod_restores(state: &Value, origin: &str) -> Result<(), String> {
     let origins = state["origins"].as_array().ok_or("no origins")?;
     let web = origins
         .iter()
-        .find(|o| o["origin"] == "https://web.forge.test")
-        .ok_or_else(|| format!("no localStorage for the app's origin: {origins:?}"))?;
+        .find(|o| o["origin"] == origin)
+        .ok_or_else(|| format!("no localStorage for {origin}: {origins:?}"))?;
     let item = |k: &str| {
         web["localStorage"]
             .as_array()
@@ -153,7 +153,9 @@ async fn the_browser_session_the_secret_describes_is_written_and_restores() {
             .unwrap_or_else(|e| panic!("epod: {e}"));
     let state: Value =
         serde_json::from_str(&std::fs::read_to_string(&files.state).unwrap()).unwrap();
-    epod_restores(&state).unwrap_or_else(|e| panic!("{e}: {state}"));
+    // the sign-in's absolute route names the app that signed in, on another host than the
+    // deployment's `url` (https://web.forge.test), as epod's admin is (ISS-1146)
+    epod_restores(&state, &api).unwrap_or_else(|e| panic!("{e}: {state}"));
     // a string is written as it is, an object as JSON text, each for the app's origin
     let login = &epod_payload()["data"]["login"];
     let mut want: Vec<(&str, String)> = vec![
@@ -170,9 +172,9 @@ async fn the_browser_session_the_secret_describes_is_written_and_restores() {
         .collect();
     assert_eq!(
         state["origins"],
-        json!([{ "origin": "https://web.forge.test", "localStorage": items }])
+        json!([{ "origin": api, "localStorage": items }])
     );
-    // the line printed names the keys and no value
+    // the line printed names the keys, the origin they were written for, and no value
     let said = said(
         "dev",
         "owner",
@@ -184,10 +186,45 @@ async fn the_browser_session_the_secret_describes_is_written_and_restores() {
         said.contains("`auth_token`") && said.contains("`organization_id`"),
         "{said}"
     );
+    assert!(said.contains(&format!("for {api}")), "{said}");
     for v in [TOKEN, EXPIRES_AT, ORG_ID, USER_ID, PASSWORD, EMAIL] {
         assert!(!said.contains(v), "{v} in {said}");
         assert!(!format!("{signed_in:?}").contains(v), "{v} in the Debug");
     }
+}
+
+#[tokio::test]
+async fn a_named_storage_origin_wins_over_the_route_and_the_deployment() {
+    let (api, _) = stub(Answers::TokenAndCookies).await;
+    let root = Scratch::new("storage-origin");
+    let value = graphql_secret(
+        &api,
+        json!({
+            "loginBody": { "query": EPOD_MUTATION, "variables": { "email": "$account", "password": "$password" } },
+            "storage": epod_storage(),
+            "storageOrigin": "https://admin.forge.test",
+        }),
+    );
+    let (files, signed_in) =
+        login_into(&answer(&api, &value), &root.0.join("named"), "dev", "owner")
+            .await
+            .unwrap_or_else(|e| panic!("named: {e}"));
+    let state: Value =
+        serde_json::from_str(&std::fs::read_to_string(&files.state).unwrap()).unwrap();
+    epod_restores(&state, "https://admin.forge.test").unwrap_or_else(|e| panic!("{e}: {state}"));
+    assert_eq!(
+        state["origins"].as_array().map(Vec::len),
+        Some(1),
+        "{state}"
+    );
+    let said = said(
+        "dev",
+        "owner",
+        &files,
+        &signed_in,
+        "removed by the run's close",
+    );
+    assert!(said.contains("for https://admin.forge.test"), "{said}");
 }
 
 /// Each GraphQL secret `judge-login` cannot sign in with, and what its refusal says.
@@ -286,6 +323,46 @@ pub(super) fn refusals(api: &str) -> Vec<(&'static str, Value, &'static str)> {
                 ),
             ),
             "`storageKey` and `storage` both name `auth_token`",
+        ),
+        (
+            "a storageOrigin with a path (ISS-1146)",
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": "https://admin.forge.test/vi/login" })),
+            ),
+            "`storageOrigin` is the origin the browser session is written for",
+        ),
+        (
+            "a storageOrigin over http to another machine",
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": "http://admin.forge.test" })),
+            ),
+            "`storageOrigin` is the origin the browser session is written for",
+        ),
+        (
+            "a storageOrigin with a user part",
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": "https://u@admin.forge.test" })),
+            ),
+            "`storageOrigin` is the origin the browser session is written for",
+        ),
+        (
+            "a storageOrigin that is no string",
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": 7 })),
+            ),
+            "`storageOrigin` is the origin the browser session is written for",
+        ),
+        (
+            "a storageOrigin with nothing to write there",
+            answer(
+                api,
+                &graphql_secret(api, json!({ "storageOrigin": "https://admin.forge.test" })),
+            ),
+            "`storageOrigin` names where the browser session is written, and the secret names no `storage` or `storageKey`",
         ),
     ]
 }

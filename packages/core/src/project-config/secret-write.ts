@@ -37,6 +37,7 @@ import {
   sessionKeysRefusal,
   signInUrl,
   storageKeyRefusal,
+  storageOriginRefusal,
   storageRefusal,
   tokenPathRefusal,
 } from './actor-sign-in.js';
@@ -209,7 +210,7 @@ export async function writeSecret(input: {
 
 /** The keys a merge may set on a stored secret: the sign-in route (ISS-1140), the body and token
  * pointer of a sign-in the secret describes (ISS-1141), and the browser session it describes
- * (ISS-1145). */
+ * (ISS-1145) with the origin it is written for (ISS-1146). */
 export const MERGEABLE_SECRET_KEYS = ['loginRoute', ...SIGN_IN_KEYS, ...STORAGE_KEYS] as const;
 
 /** Each mergeable key's check and the code its refusal carries. */
@@ -228,6 +229,7 @@ const MERGE_CHECKS: Record<
   tokenPath: { code: 'SECRET_TOKEN_PATH_INVALID', why: tokenPathRefusal },
   storageKey: { code: 'SECRET_STORAGE_INVALID', why: storageKeyRefusal },
   storage: { code: 'SECRET_STORAGE_INVALID', why: storageRefusal },
+  storageOrigin: { code: 'SECRET_STORAGE_INVALID', why: storageOriginRefusal },
 };
 
 /** The refusals a merge's `set` earns before the stored value is read; none where it is usable. */
@@ -309,7 +311,8 @@ export async function mergeSecret(input: {
     };
   }
   const merged = { ...(held as Record<string, unknown>), ...input.set };
-  // `storageKey` and `storage` are judged together on the merged value: one may already be stored
+  // `storageKey`, `storage` and `storageOrigin` are judged together on the merged value: one may
+  // already be stored
   const session = STORAGE_KEYS.some((k) => k in input.set) ? sessionKeysRefusal(merged) : null;
   if (session !== null) {
     return {

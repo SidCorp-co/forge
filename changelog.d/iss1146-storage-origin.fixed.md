@@ -1,0 +1,1 @@
+- **A judge's browser session is written for the app that signed in.** An absolute `loginRoute` names the origin judge-login writes localStorage for; a secret may name `storageOrigin` instead, mergeable and checked by name, and the printed line names it.

@@ -42,9 +42,10 @@ const FIELDS_SAID = `${ACCOUNT_FIELDS.slice(0, -1)
  * `actor-sign-in.test.ts`. */
 export const SIGN_IN_KEYS = ['loginBody', 'tokenPath'] as const;
 
-/** The keys a secret describes the browser session with (ISS-1145). judge-login reads the same
- * keys (`judge_login/session/storage.rs`: `STORAGE_KEYS`), held equal by `actor-sign-in.test.ts`. */
-export const STORAGE_KEYS = ['storageKey', 'storage'] as const;
+/** The keys a secret describes the browser session with (ISS-1145), and the origin it is written
+ * for (ISS-1146). judge-login reads the same keys (`judge_login/session/storage.rs`:
+ * `STORAGE_KEYS`), held equal by `actor-sign-in.test.ts`. */
+export const STORAGE_KEYS = ['storageKey', 'storage', 'storageOrigin'] as const;
 
 /** The most keys a `storage` map names. */
 const STORAGE_MOST = 32;
@@ -127,12 +128,40 @@ export function storageRefusal(map: unknown): string | null {
   return null;
 }
 
-/** Why the secret's `storageKey` and `storage` cannot stand together or alone; null where they can.
- * A key named by both is refused: which of the two values the app should read is not guessed. */
+/** Why `origin` is no `storageOrigin`; null where it is one: an https origin, or http to this
+ * machine alone, written as its own origin is (no path, not even `/`, no user part, query or
+ * fragment). judge-login reads it alike (`judge_login/session/storage.rs`: `storage_origin_refusal`). */
+export function storageOriginRefusal(origin: unknown): string | null {
+  let url: URL | null = null;
+  try {
+    url = typeof origin === 'string' && origin.length <= 256 ? new URL(origin) : null;
+  } catch {
+    url = null;
+  }
+  const loopback = url !== null && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+  const ok =
+    url !== null &&
+    (url.protocol === 'https:' || (url.protocol === 'http:' && loopback)) &&
+    url.origin === origin;
+  return ok
+    ? null
+    : '`storageOrigin` is the origin the browser session is written for: `https://<host>[:<port>]`, or `http://` to this machine alone, with no path, user part, query or fragment, such as `https://admin.example.com`';
+}
+
+/** Why the secret's `storageKey`, `storage` and `storageOrigin` cannot stand together or alone;
+ * null where they can. A key named by both maps is refused: which of the two values the app should
+ * read is not guessed. An origin with no `storage` or `storageKey` would write nothing there. */
 export function sessionKeysRefusal(o: Record<string, unknown>): string | null {
   if (o.storageKey !== undefined) {
     const why = storageKeyRefusal(o.storageKey);
     if (why) return why;
+  }
+  if (o.storageOrigin !== undefined) {
+    const why = storageOriginRefusal(o.storageOrigin);
+    if (why) return why;
+    if (o.storage === undefined && o.storageKey === undefined) {
+      return '`storageOrigin` names where the browser session is written, and the secret names no `storage` or `storageKey` to write there';
+    }
   }
   if (o.storage === undefined) return null;
   const why = storageRefusal(o.storage);

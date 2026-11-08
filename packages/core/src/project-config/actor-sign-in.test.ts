@@ -346,11 +346,33 @@ describe('a secret describes the browser session (ISS-1145)', () => {
         { storageKey: 'auth_token', storage: { auth_token: '/data/login/access_token' } },
         '`storageKey` and `storage` both name `auth_token`',
       ],
+      // ISS-1146: an origin, https or http to this machine alone, written as its own origin is
+      ...['https://admin.epod.test/vi/login', 'https://admin.epod.test/', 'http://admin.epod.test']
+        .concat(['https://u@admin.epod.test', 'admin.epod.test', 'https://admin.epod.test?x=1'])
+        .map((o): [Record<string, unknown>, string] => [
+          { storageKey: 'auth_token', storageOrigin: o },
+          '`storageOrigin` is the origin the browser session is written for',
+        ]),
+      [
+        { storageKey: 'auth_token', storageOrigin: 7 },
+        '`storageOrigin` is the origin the browser session is written for',
+      ],
+      [
+        { storageOrigin: 'https://admin.epod.test' },
+        '`storageOrigin` names where the browser session is written, and the secret names no `storage` or `storageKey`',
+      ],
     ];
     for (const [extra, says] of cases) {
       const parsed = parseActorSecret(JSON.stringify({ ...GQL_SECRET, ...extra }));
       expect('why' in parsed ? parsed.why : 'signs in', JSON.stringify(extra)).toContain(says);
       if ('why' in parsed) for (const v of EPOD_VALUES) expect(parsed.why).not.toContain(v);
+    }
+  });
+
+  it('takes a storageOrigin that is an origin (ISS-1146)', () => {
+    for (const storageOrigin of ['https://admin.epod.test', 'http://127.0.0.1:5173']) {
+      const parsed = parseActorSecret(JSON.stringify({ ...EPOD_SECRET, storageOrigin }));
+      expect('why' in parsed ? parsed.why : 'parsed', storageOrigin).toBe('parsed');
     }
   });
 });
