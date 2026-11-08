@@ -187,13 +187,20 @@ describe('the reporter answers the clarification it is shown, by one click (BC-4
     await db.execute(sql`
       UPDATE feedback SET reporter_agency = 'agent' WHERE project_id = ${w.projectId} AND fb_seq = ${Number(fb.slice(3))}
     `);
-    const asked = await ask(fb, { prompt: 'Which verb?', needed: 'The verb', recommended: 'issue list' });
+    const asked = await ask(fb, {
+      prompt: 'Which verb?',
+      needed: 'The verb',
+      recommended: 'issue list',
+    });
     expect(asked.status, JSON.stringify(asked.body)).toBe(200);
     const c = (asked.body.feedback as Body).clarification as Body;
     expect(c.round).toBe(1);
     const res = await answer(pat, c, 'issue list');
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect((await detail(fb)).clarification).toMatchObject({ status: 'answered', answer: 'issue list' });
+    expect((await detail(fb)).clarification).toMatchObject({
+      status: 'answered',
+      answer: 'issue list',
+    });
   });
 
   it('offers a person reporter the send of each open question in turn, oldest first, and no one else', async () => {
@@ -208,10 +215,16 @@ describe('the reporter answers the clarification it is shown, by one click (BC-4
     const mine = await detail(fb, token);
     expect(mine.clarification).toMatchObject({ status: 'open', prompt: 'Which page?' });
     expect((mine.can as Body).answerClarification).toBe(true);
-    expect(((await detail(fb)).can as Body).answerClarification, 'the asker is not the reporter').toBe(false);
+    expect(
+      ((await detail(fb)).can as Body).answerClarification,
+      'the asker is not the reporter',
+    ).toBe(false);
     const sent = await answer(token, mine.clarification as Body, 'The board');
     expect(sent.status, JSON.stringify(sent.body)).toBe(200);
-    expect((await detail(fb, token)).clarification).toMatchObject({ status: 'open', prompt: 'Which browser?' });
+    expect((await detail(fb, token)).clarification).toMatchObject({
+      status: 'open',
+      prompt: 'Which browser?',
+    });
   });
 });
 

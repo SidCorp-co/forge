@@ -91,7 +91,9 @@ describe("a master's post in the shared operations room (ISS-934)", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(409);
     const refusal = refusalOf(res);
     expect(refusal?.code).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
-    expect(refusal?.detail).toContain(`document.target.operations.threads["${chat.rid}"]["${slug}"]`);
+    expect(refusal?.detail).toContain(
+      `document.target.operations.threads["${chat.rid}"]["${slug}"]`,
+    );
     expect(refusal?.detail).toContain(bindingPath);
     // with no rid, the project's one team room is the shared room, refused the same
     expect(refusalOf(await post({ text: REVIEW }))?.code).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');

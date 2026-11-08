@@ -389,9 +389,7 @@ export async function detailAs(
         }),
         // the reporter sends the recommended answer or their own words to the shown question (ISS-695)
         answerClarification:
-          q?.status === 'open' &&
-          viewer.userId === row.reportedBy &&
-          holds(facts, 'project.write'),
+          q?.status === 'open' && viewer.userId === row.reportedBy && holds(facts, 'project.write'),
         tellShipped:
           approver &&
           shipNotice?.state === 'not_told' &&

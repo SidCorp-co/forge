@@ -200,8 +200,9 @@ describe('ISS-1055 a proposed contract version is its approver decision', () => 
       expect(r.decision_reason).toBe('superseded by 10.1.0, approved after it was recorded');
       expect(r.decided_as).toBe('person');
     }
-    expect(rows.find((r) => r.version === '11.0.0')?.approval, 'the returned one stays returned').toBe(
-      'returned',
-    );
+    expect(
+      rows.find((r) => r.version === '11.0.0')?.approval,
+      'the returned one stays returned',
+    ).toBe('returned');
   });
 });

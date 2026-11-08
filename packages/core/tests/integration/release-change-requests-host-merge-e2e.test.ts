@@ -8,7 +8,6 @@
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { db } from '../../src/db/client.js';
 import { unlinkChangeRequestIssue } from '../../src/integrations/source-host/change-request-links.js';
 import { owedMarks } from '../../src/issues/owed-merges.js';
 import { issueWaitsOf } from '../../src/issues/standing-read.js';

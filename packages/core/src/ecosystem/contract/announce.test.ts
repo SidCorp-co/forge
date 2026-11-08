@@ -54,7 +54,9 @@ const approved = (element: string) =>
       document: {
         diff: {
           classification: 'breaking',
-          changes: [{ element, level: 'breaking', kind: 'removed', text: `${element} was removed` }],
+          changes: [
+            { element, level: 'breaking', kind: 'removed', text: `${element} was removed` },
+          ],
         },
       },
     },

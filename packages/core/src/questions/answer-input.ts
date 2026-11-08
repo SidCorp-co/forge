@@ -48,8 +48,7 @@ export const answerBody = answerFields
     path: ['optionId'],
     message: 'the answer is required: send optionId or text',
     when: (p) => isBody(p.value),
-  })
-  ;
+  });
 
 export type AnswerBody = z.infer<typeof answerBody>;
 
@@ -63,7 +62,11 @@ export function givenAnswerOf(body: AnswerBody): {
   return {
     // an option and its words travel together; whether the option takes words is the question's to say (answer.ts)
     answer: filled(body.optionId)
-      ? { kind: 'option', optionId: body.optionId as string, ...(filled(body.text) ? { text: body.text as string } : {}) }
+      ? {
+          kind: 'option',
+          optionId: body.optionId as string,
+          ...(filled(body.text) ? { text: body.text as string } : {}),
+        }
       : { kind: 'text', text: body.text as string },
     round: body.round,
     ...(body.note === undefined ? {} : { note: body.note }),

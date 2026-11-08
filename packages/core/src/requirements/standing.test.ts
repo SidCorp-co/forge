@@ -490,12 +490,15 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
       ['agreed', 'move it into delivery by rule on its next sweep'],
       ['in_delivery', 'mark it delivered by rule on its next sweep'],
       ['delivered', 'accept it by rule on its next sweep'],
-    ] as const)('%s with every BC passing waits on Forge, never on a person or the master', (status, act) => {
-      const s = at(status, routine);
-      expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Forge', act });
-      expect(s.attentionGroup).toBe('waiting');
-      expect(s.tasks.map((t) => t.kind)).not.toContain('check');
-    });
+    ] as const)(
+      '%s with every BC passing waits on Forge, never on a person or the master',
+      (status, act) => {
+        const s = at(status, routine);
+        expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Forge', act });
+        expect(s.attentionGroup).toBe('waiting');
+        expect(s.tasks.map((t) => t.kind)).not.toContain('check');
+      },
+    );
 
     it('keeps the BA check where the accept gate asks a person', () => {
       const s = at('delivered', { ...routine, gates: { ...gatesOff, accept: true } });

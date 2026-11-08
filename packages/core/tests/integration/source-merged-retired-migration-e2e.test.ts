@@ -50,9 +50,11 @@ async function refusalOf(run: Promise<unknown>): Promise<string> {
 }
 
 const types = async () =>
-  (await m.sql<{ type: string }[]>`SELECT type FROM outbox_event_types WHERE type LIKE 'source.%' ORDER BY type`).map(
-    (r) => r.type,
-  );
+  (
+    await m.sql<
+      { type: string }[]
+    >`SELECT type FROM outbox_event_types WHERE type LIKE 'source.%' ORDER BY type`
+  ).map((r) => r.type);
 
 describe('0642: a merge the host reports is no outbox event', () => {
   it('retires the type and the rows nothing read, keeping every other event', async () => {

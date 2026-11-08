@@ -34,15 +34,26 @@ beforeAll(async () => {
   const ownerId = (await createTestUser({ verified: true })).id;
   const projectId = (await createTestProject(ownerId)).id;
   token = await userToken(ownerId);
-  const issueId = (await createTestIssue(projectId, ownerId, 826, { status: 'in_progress', createdAt: new Date(Date.now() - 3_600_000) })).id;
+  const issueId = (
+    await createTestIssue(projectId, ownerId, 826, {
+      status: 'in_progress',
+      createdAt: new Date(Date.now() - 3_600_000),
+    })
+  ).id;
   const asked = await api(token, 'POST', '/api/questions', {
     issueId,
     prompt: 'Which criteria of REQ-12 does the release keep?',
-    options: [option('all', 'Keep every criterion'), option('per-criterion', 'Decide per criterion, named in the answer', true)],
+    options: [
+      option('all', 'Keep every criterion'),
+      option('per-criterion', 'Decide per criterion, named in the answer', true),
+    ],
     recommendedOptionId: 'per-criterion',
   });
   expect(asked.status, JSON.stringify(asked.body)).toBe(201);
-  questionId = String((asked.body as { id?: string; question?: { id: string } }).id ?? (asked.body as { question: { id: string } }).question.id);
+  questionId = String(
+    (asked.body as { id?: string; question?: { id: string } }).id ??
+      (asked.body as { question: { id: string } }).question.id,
+  );
 }, 120_000);
 
 afterAll(closeWorld);
@@ -53,8 +64,15 @@ describe('an option answered in words', () => {
   it('is shown as taking text on the question read', async () => {
     const res = await api(token, 'GET', `/api/questions/${questionId}`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const steps = (res.body as { steps?: { options: { id: string; takesText?: boolean }[] }[]; question?: { steps: { options: { id: string; takesText?: boolean }[] }[] } }).steps ??
-      (res.body as { question: { steps: { options: { id: string; takesText?: boolean }[] }[] } }).question.steps;
+    const steps =
+      (
+        res.body as {
+          steps?: { options: { id: string; takesText?: boolean }[] }[];
+          question?: { steps: { options: { id: string; takesText?: boolean }[] }[] };
+        }
+      ).steps ??
+      (res.body as { question: { steps: { options: { id: string; takesText?: boolean }[] }[] } })
+        .question.steps;
     expect(steps[0]?.options.map((o) => [o.id, o.takesText ?? false])).toEqual([
       ['all', false],
       ['per-criterion', true],
@@ -62,20 +80,31 @@ describe('an option answered in words', () => {
   });
 
   it('is refused without its words, by name', async () => {
-    const res = await api(token, 'POST', `/api/questions/${questionId}/answer`, { round: 1, optionId: 'per-criterion' });
+    const res = await api(token, 'POST', `/api/questions/${questionId}/answer`, {
+      round: 1,
+      optionId: 'per-criterion',
+    });
     expect(res.status).toBe(422);
     expect(codeOf(res.body)).toBe('QUESTION_OPTION_TEXT_REQUIRED');
   });
 
   it('refuses words on an option that takes none, naming the option that does', async () => {
-    const res = await api(token, 'POST', `/api/questions/${questionId}/answer`, { round: 1, optionId: 'all', text: 'BC-1 only' });
+    const res = await api(token, 'POST', `/api/questions/${questionId}/answer`, {
+      round: 1,
+      optionId: 'all',
+      text: 'BC-1 only',
+    });
     expect(res.status).toBe(422);
     expect(codeOf(res.body)).toBe('QUESTION_OPTION_TAKES_NO_TEXT');
     expect(JSON.stringify(res.body)).toContain('per-criterion');
   });
 
   it('records the option and its words together', async () => {
-    const res = await api(token, 'POST', `/api/questions/${questionId}/answer`, { round: 1, optionId: 'per-criterion', text: 'BC-1 keep, BC-2 drop' });
+    const res = await api(token, 'POST', `/api/questions/${questionId}/answer`, {
+      round: 1,
+      optionId: 'per-criterion',
+      text: 'BC-1 keep, BC-2 drop',
+    });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const read = await api(token, 'GET', `/api/questions/${questionId}`);
     expect(JSON.stringify(read.body)).toContain('"chosenText":"BC-1 keep, BC-2 drop"');

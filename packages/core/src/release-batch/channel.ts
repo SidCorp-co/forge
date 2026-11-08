@@ -106,7 +106,11 @@ const externalSite = (s: EnvironmentSite): SiteChannel => ({
 export async function resolveReleaseSites(projectId: string): Promise<SiteChannel[]> {
   const decl = await resolveReleaseDeclaration(projectId);
   if (decl?.kind === 'gated') {
-    const bound = channelsOf(decl).map((c) => ({ site: c.site, bindingId: c.bindingId, url: c.url }));
+    const bound = channelsOf(decl).map((c) => ({
+      site: c.site,
+      bindingId: c.bindingId,
+      url: c.url,
+    }));
     return [...bound, ...externalSitesOf(decl.production).map(externalSite)];
   }
   if (decl?.kind !== 'external') return [];

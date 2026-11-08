@@ -72,7 +72,10 @@ describe('POST /api/questions/:id/answer names every fault of its body at once (
   it('an option and its words reach the answer together', async () => {
     const res = await answer({ round: 1, optionId: 'a', text: 'BC-1 keep, BC-2 drop' });
     expect(res.status).toBe(200);
-    expect(state.answered[0]).toMatchObject({ answer: { kind: 'option', optionId: 'a', text: 'BC-1 keep, BC-2 drop' }, round: 1 });
+    expect(state.answered[0]).toMatchObject({
+      answer: { kind: 'option', optionId: 'a', text: 'BC-1 keep, BC-2 drop' },
+      round: 1,
+    });
   });
 
   it('a whitespace-only text is no answer', async () => {

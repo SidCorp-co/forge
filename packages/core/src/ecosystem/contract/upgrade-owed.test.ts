@@ -15,7 +15,11 @@ const LINK: ImpactLink = {
   pinnedVersion: '13.0.0',
   callSites: [
     { operation: 'GET /api/v1/product-types', path: 'src/admin/types.ts', line: 12 },
-    { operation: 'GET /api/v1/product-types/{product_type_id}', path: 'src/admin/types.ts', line: 40 },
+    {
+      operation: 'GET /api/v1/product-types/{product_type_id}',
+      path: 'src/admin/types.ts',
+      line: 40,
+    },
   ],
   fieldsUsed: [],
   outsideContract: [],
@@ -34,7 +38,9 @@ const measured = (...changes: ImpactChange[]) => ({
 
 describe('a breaking version owes a consumer an upgrade item only where it reaches what the links record', () => {
   it('owes nothing where every breaking entry is an operation the link never calls', () => {
-    const owed = upgradeOwed('semver', '14.0.0', measured(broke('DELETE /api/v1/stores/{id}')), [LINK]);
+    const owed = upgradeOwed('semver', '14.0.0', measured(broke('DELETE /api/v1/stores/{id}')), [
+      LINK,
+    ]);
     expect(owed).toEqual({ owed: false, links: ['b1db64d8'] });
   });
 
@@ -55,7 +61,9 @@ describe('a breaking version owes a consumer an upgrade item only where it reach
 
   it('owes one where a link records no call site, saying that is why', () => {
     const bare = { ...LINK, callSites: [] };
-    const owed = upgradeOwed('semver', '14.0.0', measured(broke('DELETE /api/v1/stores/{id}')), [bare]);
+    const owed = upgradeOwed('semver', '14.0.0', measured(broke('DELETE /api/v1/stores/{id}')), [
+      bare,
+    ]);
     expect(owed).toEqual({ owed: true, why: 'unrecorded' });
     if (!owed.owed) throw new Error('owed');
     const breaking = [{ element: 'DELETE /api/v1/stores/{id}', text: 'removed' }];
@@ -66,7 +74,13 @@ describe('a breaking version owes a consumer an upgrade item only where it reach
   });
 
   it('owes one where the consumer holds no link, or nothing measured the version', () => {
-    expect(upgradeOwed('semver', '14.0.0', measured(), [])).toEqual({ owed: true, why: 'unlinked' });
-    expect(upgradeOwed('semver', '14.0.0', null, [LINK])).toEqual({ owed: true, why: 'unmeasured' });
+    expect(upgradeOwed('semver', '14.0.0', measured(), [])).toEqual({
+      owed: true,
+      why: 'unlinked',
+    });
+    expect(upgradeOwed('semver', '14.0.0', null, [LINK])).toEqual({
+      owed: true,
+      why: 'unmeasured',
+    });
   });
 });

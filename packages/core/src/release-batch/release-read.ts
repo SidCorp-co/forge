@@ -264,25 +264,34 @@ export async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels, changeRequestLinks, doc, deploysFrom, sites] =
-    await Promise.all([
-      loadReleaseFacts(
-        projectId,
-        parts.flatMap((p) => p.issueIds),
-        [...new Set([...parts.flatMap((p) => (p.runId ? [p.runId] : [])), ...attemptRunIds])],
-      ),
-      namedHolders('releases.approve', projectId),
-      holderNames('project.admin', projectId),
-      readContentLanguage(projectId),
-      resolveReleaseChannels(projectId),
-      readChangeRequestLinks(
-        projectId,
-        parts.flatMap((p) => p.issueIds),
-      ),
-      readProjectDocument(projectId),
-      deploysFromOf(projectId),
-      resolveReleaseSites(projectId),
-    ]);
+  const [
+    facts,
+    approvers,
+    admins,
+    language,
+    channels,
+    changeRequestLinks,
+    doc,
+    deploysFrom,
+    sites,
+  ] = await Promise.all([
+    loadReleaseFacts(
+      projectId,
+      parts.flatMap((p) => p.issueIds),
+      [...new Set([...parts.flatMap((p) => (p.runId ? [p.runId] : [])), ...attemptRunIds])],
+    ),
+    namedHolders('releases.approve', projectId),
+    holderNames('project.admin', projectId),
+    readContentLanguage(projectId),
+    resolveReleaseChannels(projectId),
+    readChangeRequestLinks(
+      projectId,
+      parts.flatMap((p) => p.issueIds),
+    ),
+    readProjectDocument(projectId),
+    deploysFromOf(projectId),
+    resolveReleaseSites(projectId),
+  ]);
   return {
     projectId,
     ownerDeploys: releaseThroughChangeRequests(doc?.document),

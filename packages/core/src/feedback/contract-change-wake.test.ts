@@ -24,7 +24,10 @@ const filing = {
   provider: { id: 'provider', slug: 'shop' },
   contractSlug: 'orders',
   version: '2.0.0',
-  weighed: { lead: 'It reaches what this project’s links to it record:', entries: ['Order.total: removed'] },
+  weighed: {
+    lead: 'It reaches what this project’s links to it record:',
+    entries: ['Order.total: removed'],
+  },
   dueAt: new Date('2026-11-01T00:00:00Z'),
   filer: { userId: 'u1', agency: 'human' as const },
 };

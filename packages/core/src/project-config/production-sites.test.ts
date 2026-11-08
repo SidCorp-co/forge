@@ -162,7 +162,14 @@ describe('a production of several sites', () => {
   it('takes a site deployed outside Forge that reads what it serves, and refuses one that does not, by name', () => {
     const external = { mode: 'external', target: 'forge-ops' };
     const probe = {
-      runtime: [{ type: 'http', url: 'https://cnw.example.vn/version', path: 'commit', identifies: 'source' }],
+      runtime: [
+        {
+          type: 'http',
+          url: 'https://cnw.example.vn/version',
+          path: 'commit',
+          identifies: 'source',
+        },
+      ],
     };
     expect(
       refusals({
@@ -170,7 +177,14 @@ describe('a production of several sites', () => {
           ...mail,
           deployment: external,
           verification: probe,
-          sites: [{ name: 'lsm', deployment: external, url: 'https://lsm.example.vn', verification: probe }],
+          sites: [
+            {
+              name: 'lsm',
+              deployment: external,
+              url: 'https://lsm.example.vn',
+              verification: probe,
+            },
+          ],
         },
       }),
     ).toEqual([]);

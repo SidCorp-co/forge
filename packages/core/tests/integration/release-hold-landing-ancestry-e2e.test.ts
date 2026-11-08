@@ -240,7 +240,10 @@ describe('a production serving only shipped releases weighs every waiting issue 
   it('holds one landed before the release was stamped at its landing, naming the release truly', async () => {
     await shipped('0.139.0', SERVED, 30);
     const id = await landedBeforeTheStamp();
-    expect(await criteriaBasisOf(projectId)).toMatchObject({ kind: 'landing', why: 'release-only' });
+    expect(await criteriaBasisOf(projectId)).toMatchObject({
+      kind: 'landing',
+      why: 'release-only',
+    });
 
     await sweepAutomaticReleases();
 
@@ -265,6 +268,9 @@ describe('a production serving only shipped releases weighs every waiting issue 
   it('reads a release recorded by an abbreviated commit as the one served (FB-541)', async () => {
     await shipped('0.139.0', SERVED.slice(0, 12), 30);
     await landedBeforeTheStamp();
-    expect(await criteriaBasisOf(projectId)).toMatchObject({ kind: 'landing', why: 'release-only' });
+    expect(await criteriaBasisOf(projectId)).toMatchObject({
+      kind: 'landing',
+      why: 'release-only',
+    });
   });
 });

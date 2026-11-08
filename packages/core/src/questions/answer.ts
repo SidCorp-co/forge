@@ -8,7 +8,12 @@ import { isStewardDecisionQuestion, stewardDecisionOf } from '@forge/contracts/s
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { agentQuestions, isChoiceStep, type QuestionOption, type QuestionStep } from '../db/schema-questions.js';
+import {
+  agentQuestions,
+  isChoiceStep,
+  type QuestionOption,
+  type QuestionStep,
+} from '../db/schema-questions.js';
 import { issueDisplayIds, writeIssueRelations } from '../issues/index.js';
 import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -25,7 +30,9 @@ import { carryStewardDecision, decideChannelGate, type StewardDecisionAnswer } f
 import { answeredBody, optionPermission, refuseQuestion, view } from './write.js';
 
 /** An option, with the words it is answered in where it takes them (`takesText`, ISS-826); or a free answer. */
-export type GivenAnswer = { kind: 'option'; optionId: string; text?: string } | { kind: 'text'; text: string };
+export type GivenAnswer =
+  | { kind: 'option'; optionId: string; text?: string }
+  | { kind: 'text'; text: string };
 
 /** What the answerer says the issue still waits on; `blockedBy` is an issue uuid of the question's project. */
 export type StillWaits = { reason: string; blockedBy?: string };
@@ -162,7 +169,11 @@ async function holdOf(
  * The words an option is answered in (ISS-826): required where the option takes text, refused where it
  * takes none, the refusal naming the options of the round that do.
  */
-function optionText(current: QuestionStep & { options: QuestionOption[] }, option: QuestionOption, given: string | undefined): string | undefined {
+function optionText(
+  current: QuestionStep & { options: QuestionOption[] },
+  option: QuestionOption,
+  given: string | undefined,
+): string | undefined {
   const text = given?.trim() || undefined;
   if (option.takesText && !text) {
     throw refuseQuestion(
