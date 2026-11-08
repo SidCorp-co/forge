@@ -23,6 +23,7 @@ import { meetRoomConfirmWaits } from '../../src/feedback/index.js';
 import { api, type Body } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 import { ago, feedback, issue, type World, world } from '../helpers/forecast-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 /** The Forge home project, and the reporter's own project with its master box. */
 let home: World;
@@ -75,6 +76,11 @@ beforeAll(async () => {
     INSERT INTO instance_settings (id, forge_home_project_id) VALUES (1, ${home.projectId})
     ON CONFLICT (id) DO UPDATE SET forge_home_project_id = ${home.projectId}
   `);
+  // owner 2026-11-08 (D5): outside strict a shipped item is verified by its ship and owes no confirm;
+  // the confirm these tests read is owed only where a project keeps it, under strict
+  for (const id of [home.projectId, own.projectId]) {
+    await declareControls(id, home.userId, { gates: { profile: 'strict' } });
+  }
 }, 120_000);
 
 /** FB-470: an item about Forge the channel agent filed from its own project, shipped. */

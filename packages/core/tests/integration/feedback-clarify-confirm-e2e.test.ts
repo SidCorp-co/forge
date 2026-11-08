@@ -31,6 +31,7 @@ import {
   createTestUser,
 } from '../helpers/factories.js';
 import { ago, feedback, issue, type World, world } from '../helpers/forecast-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 let w: World;
 let member = '';
@@ -99,6 +100,11 @@ beforeAll(async () => {
     INSERT INTO instance_settings (id, forge_home_project_id) VALUES (1, ${w.projectId})
     ON CONFLICT (id) DO UPDATE SET forge_home_project_id = ${w.projectId}
   `);
+  // owner 2026-11-08 (D5): outside strict a shipped item is verified by its ship and owes no confirm;
+  // the confirm these tests read is owed only where a project keeps it, under strict
+  for (const id of [w.projectId, own.projectId]) {
+    await declareControls(id, w.userId, { gates: { profile: 'strict' } });
+  }
 }, 120_000);
 
 describe('a clarification carries the answer recommended, one at a time to each reporter (BC-4)', () => {
