@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import {
   type ItemStanding,
   STEWARD_ACT_RUNTIME,
+  STEWARD_CHECK_ACTS,
   type StewardAct,
   type StewardFailureKind,
 } from '@forge/contracts/steward';
@@ -83,7 +84,7 @@ async function runGatewayActs(
 }
 
 /** The acts that check a requirement before its delivery (REQ-67): `delivery-check.ts` reads their end. */
-const CHECK_ACTS: readonly StewardAct[] = ['intake_check', 'breakdown_check'];
+const CHECK_ACTS: readonly StewardAct[] = STEWARD_CHECK_ACTS;
 
 /**
  * A check finishes or fails on its own (ISS-1084): a run carrying one beside other acts takes the

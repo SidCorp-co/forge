@@ -396,6 +396,12 @@ export const STEWARD_ACTS = [
 ] as const;
 export type StewardAct = (typeof STEWARD_ACTS)[number];
 
+/** The acts that check a requirement before its delivery (REQ-67). */
+export const STEWARD_CHECK_ACTS = [
+	"intake_check",
+	"breakdown_check",
+] as const satisfies readonly StewardAct[];
+
 /** Where an act runs: a core turn on the assistant's gateway, or an agent job on a runner. */
 export const STEWARD_RUNTIMES = ["gateway_turn", "runner_job"] as const;
 export type StewardRuntime = (typeof STEWARD_RUNTIMES)[number];

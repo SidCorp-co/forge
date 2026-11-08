@@ -6,6 +6,13 @@ const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
 const AGENT_EMAIL_DOMAIN = 'agents.forge.invalid';
 
+/** The random bytes an agent's minted address carries, hex-encoded after its handle. */
+const AGENT_EMAIL_NONCE_BYTES = 6;
+
+const AGENT_EMAIL_PATTERN = new RegExp(
+  `^([a-z0-9][a-z0-9-]*[a-z0-9])\\.[0-9a-f]{${AGENT_EMAIL_NONCE_BYTES * 2}}@${AGENT_EMAIL_DOMAIN.replaceAll('.', '\\.')}$`,
+);
+
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 export function isAgentHandle(handle: string): boolean {
@@ -22,7 +29,7 @@ export function handleNameForProject(slug: string, projectId: string): string {
 }
 
 function synthesizeAgentEmail(handle: string): string {
-  return `${handle}.${randomBytes(6).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
+  return `${handle}.${randomBytes(AGENT_EMAIL_NONCE_BYTES).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
 }
 
 /**
@@ -31,7 +38,7 @@ function synthesizeAgentEmail(handle: string): string {
  * address, which is never cut into a guess.
  */
 export function handleOfAgentEmail(email: string): string | null {
-  const m = /^([a-z0-9][a-z0-9-]*[a-z0-9])\.[0-9a-f]{12}@agents\.forge\.invalid$/.exec(email);
+  const m = AGENT_EMAIL_PATTERN.exec(email);
   return m?.[1] ?? null;
 }
 

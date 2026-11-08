@@ -7,6 +7,7 @@
 // question under the comment's own id (ISS-1084), so either act is read by the question it names.
 
 import { requirementKey } from '@forge/contracts/requirements';
+import { STEWARD_CHECK_ACTS } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
@@ -18,7 +19,10 @@ export async function breakdownsHeldBySteward(projectId: string): Promise<string
       JOIN steward_runs sr ON sr.id = a.run_id
       JOIN requirements r ON r.id = sr.subject_id
      WHERE a.project_id = ${projectId}
-       AND a.act IN ('intake_check', 'breakdown_check')
+       AND a.act IN (${sql.join(
+         STEWARD_CHECK_ACTS.map((a) => sql`${a}`),
+         sql`, `,
+       )})
        AND a.undone_at IS NULL
        AND sr.subject_kind = 'requirement'
        AND r.status IN ('agreed', 'in_delivery', 'delivered')

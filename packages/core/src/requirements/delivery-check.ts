@@ -26,6 +26,7 @@ import type {
   RequirementDeliveryCheck,
 } from '@forge/contracts/delivery-check';
 import { REQUIREMENT_LIFECYCLE, requirementKey } from '@forge/contracts/requirements';
+import { STEWARD_CHECK_ACTS } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -224,7 +225,7 @@ async function linkGaps(tx: Tx, row: CheckedRow): Promise<DeliveryGap[]> {
 }
 
 /** The steward's acts that check a requirement before its delivery: a run ending done finished one. */
-const CHECK_ACTS = sql.raw(`ARRAY['intake_check', 'breakdown_check']::text[]`);
+const CHECK_ACTS = sql.raw(`ARRAY[${STEWARD_CHECK_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
 
 /** When its head was agreed: the runs that count are those live or ended since. */
 const agreedAt = (row: CheckedRow) => sql`(
