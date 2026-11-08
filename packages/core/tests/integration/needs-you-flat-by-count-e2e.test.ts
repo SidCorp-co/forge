@@ -10,6 +10,7 @@
 
 import { appendFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { db } from '../../src/db/client.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestUser } from '../helpers/factories.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
@@ -38,10 +39,31 @@ let token: string;
 let app: Awaited<typeof import('../../src/index.js')>['app'];
 
 /** Each named part of one GET needs-you's `Server-Timing`, with the statements it sent. */
-async function partsOf(projectId: string): Promise<Map<string, number>> {
-  const res = await app.request(`/api/projects/${projectId}/needs-you`, {
-    headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
-  });
+async function partsOf(projectId: string, trace?: string): Promise<Map<string, number>> {
+  const client = (db as unknown as { $client: { options: { debug: unknown } } }).$client;
+  const sent: string[] = [];
+  if (trace) client.options.debug = (_c: number, q: string) => sent.push(q.replace(/\s+/g, ' ').slice(0, 220));
+  const res = await app
+    .request(`/api/projects/${projectId}/needs-you`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
+    })
+    .finally(() => {
+      client.options.debug = false;
+    });
+  if (trace) {
+    const rel = (await (
+      await app.request(`/api/projects/${projectId}/releases`, {
+        headers: { Authorization: `Bearer ${token}`, 'X-Forge-Lifecycle': '10' },
+      })
+    ).json()) as { releases: { state: string; issueCount: number }[] };
+    appendFileSync(trace, `releases: ${JSON.stringify(rel.releases.map((r) => `${r.state}:${r.issueCount}`))}\n`);
+    const by = new Map<string, number>();
+    for (const q of sent) by.set(q, (by.get(q) ?? 0) + 1);
+    appendFileSync(
+      trace,
+      `## ${projectId} ${sent.length}\n${[...by].sort((a, b) => b[1] - a[1]).map(([q, n]) => `${String(n).padStart(4)} ${q}`).join('\n')}\n`,
+    );
+  }
   expect(res.status, await res.clone().text()).toBe(200);
   await res.text();
   const timing = res.headers.get('Server-Timing') ?? '';
@@ -75,6 +97,11 @@ beforeAll(async () => {
   const manyId = await seedAtScale(ownerId, MANY);
   few = await measured(fewId);
   many = await measured(manyId);
+  // NY_FLAT_TRACE=<file> lists each statement one read of each sent, by how often
+  if (process.env.NY_FLAT_TRACE) {
+    await partsOf(fewId, process.env.NY_FLAT_TRACE);
+    await partsOf(manyId, process.env.NY_FLAT_TRACE);
+  }
   // SLOW_READS_OUT=<file> keeps each part's statements, few against many
   if (process.env.SLOW_READS_OUT)
     appendFileSync(

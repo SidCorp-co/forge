@@ -307,6 +307,11 @@ async function requirementStates(p: string, ownerId: string): Promise<void> {
         status = (ARRAY['agreed', 'in_delivery', 'delivered', 'accepted', 'dropped'])[req_seq % 6],
         accepted_at = CASE WHEN req_seq % 6 = 4 THEN now() END
        WHERE project_id = ${p} AND req_seq % 6 <> 0`);
+    // the open issues over every status an issue waits in, the kinds of a park among them
+    await tx.execute(sql`
+      UPDATE issues SET status = (ARRAY['draft', 'open', 'reopen', 'in_progress', 'approved', 'needs_info', 'on_hold', 'awaiting_release'])[1 + iss_seq % 8],
+             waiting_kind = CASE WHEN iss_seq % 8 = 5 THEN (ARRAY['needs_answer', 'needs_decision', 'needs_resource'])[1 + iss_seq % 3] END
+       WHERE project_id = ${p} AND status NOT IN ('closed', 'dropped')`);
     // each status reached through the kernel, the path every requirement walked to it
     await tx.execute(sql`
       INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)

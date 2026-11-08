@@ -68,6 +68,7 @@ const SCALE: Scale = {
   feedback: 500,
   activityPerIssue: 20,
   live: true,
+  states: true,
 };
 
 /**
@@ -86,6 +87,7 @@ const SHARE: Scale = {
   activityPerIssue: 8,
   open: 20,
   live: true,
+  states: true,
 };
 /**
  * The share project `n` holds: projects differ in shape, as forge-dev's do (ISS-1070 r9). One holds no
@@ -104,7 +106,8 @@ function shareOf(n: number): Scale {
     case 3:
       return { ...SHARE, requirements: 6, issues: 60, releases: 10, feedback: 20, open: 30 };
     default:
-      return SHARE;
+      // recorded landings on a branch, as catalog-api and adminhub-api hold them (ISS-1070 r10)
+      return { ...SHARE, batches: 40 };
   }
 }
 /** The projects the person across projects is a member of, forge's among them. */
@@ -218,6 +221,7 @@ async function measured(path: string, as: string = token): Promise<Measure> {
       timing: res.headers.get('Server-Timing') ?? '',
       statements,
       body: (text ? JSON.parse(text) : null) as Doc,
+      bytes: Buffer.byteLength(text),
     };
   } finally {
     client.unsafe = unsafe;

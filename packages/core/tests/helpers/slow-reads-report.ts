@@ -25,6 +25,8 @@ export interface Measure {
   timing: string;
   statements: Statement[];
   body: Doc;
+  /** The answer's size in bytes, as the wire carries it. */
+  bytes: number;
 }
 
 export function report(label: string, m: Measure): string {
@@ -33,7 +35,7 @@ export function report(label: string, m: Measure): string {
   for (const s of m.statements) same.set(s.text, (same.get(s.text) ?? 0) + 1);
   const repeated = [...same].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
   return [
-    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
+    `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${m.bytes} bytes, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
     ...slowest.map(
       (s) => `  ${s.ms.toFixed(1).padStart(8)} ms  ${s.text.replace(/\s+/g, ' ').slice(0, 260)}`,
     ),
