@@ -1,1 +1,0 @@
-**Your attention page no longer waits on each project's Coolify and production probe.** It shows what production served when last read, saying when, and never a reading over five minutes old. Every response now times its outbound calls.

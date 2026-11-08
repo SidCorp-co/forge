@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.601] - 2026-11-08
+
+A judge can sign in to apps whose sign-in is a GraphQL mutation
+
+### Fixed
+
+- **Your attention page no longer waits on each project's Coolify and production probe.** It shows what production served when last read, saying when, and never a reading over five minutes old. Every response now times its outbound calls.
+- **A judge can sign in to an app whose sign-in is a GraphQL mutation.** A testing secret may carry `loginBody`, with `$account` and `$password` leaves, and `tokenPath`. The secret merge door, core's probe and `judge-login` all read both.
+
 ## [0.4.0-dev.600] - 2026-11-08
 
 A testing account's sign-in route can be added without retyping its password
