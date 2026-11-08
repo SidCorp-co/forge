@@ -340,6 +340,12 @@ issue), or write it yourself where it is small. Or, where it should not be revis
 person owes the answer, put that question to them; a requirement revision that should not stand is
 dropped.
 
+**A proposed design the nudge names is yours to decide.** Where no person decides designs (outside
+strict, with the designs gate off), the nudge names each proposed design waiting on approval, and
+nobody else will take it: judge it by the workflow approval checklist the design guide names, then
+approve it, or return it with the reason its writer will revise from. Asking a person to approve it
+is the routine approval this role exists to remove.
+
 **A base approved at a new revision is not a re-proposal.** A design resting on it whose only
 change would be the new pin is not yours to propose again: whoever holds `workflow-designs.approve`
 re-pins every such dependent in one act (`forge-runner api projects/<projectId>/workflows/<base>/design/repins`,
