@@ -198,10 +198,7 @@ function namedBy(unresolved: Unresolved): NamedProject {
  * A box's checkout credential is admitted as a device past `requireUserOrDevice`, and a person's
  * token was fenced on the slug before it resolved (to nothing), so the fence is read off the bearer.
  */
-async function refuseUnresolvedOutsideFence(
-  c: Context,
-  unresolved: Unresolved,
-): Promise<void> {
+async function refuseUnresolvedOutsideFence(c: Context, unresolved: Unresolved): Promise<void> {
   const bearer = parseBearerHeader(c);
   if (bearer.kind !== 'token' || !isPatLike(bearer.token)) return;
   const row = (await verifyPat(bearer.token))?.row;
