@@ -26,6 +26,7 @@ import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-q
 import type { OpenPersonQuestion } from '../questions/index.js';
 import type { AttentionRow } from './needs-you.js';
 import { NameOf, nameOf } from './needs-you-named.js';
+import { ruleRecommended } from './needs-you-rule-recommended.js';
 
 const QUESTION_MAX = 2000;
 
@@ -286,61 +287,6 @@ function noRecommendationOf(
   return `${asked}.`;
 }
 
-/** What "Let the run decide" sends the run that asked: its go, under `decision-authority`. */
-export const RUN_DECIDES_TEXT =
-  'Decide it yourself, and record your choice and why on the item. Ask again only for something irreversible, real money, credentials or a new product direction.';
-
-/**
- * Forge's own recommendation on a round nobody recommended an answer for (ISS-686 c1, REQ-68 BC-1):
- * the run decides, as `decision-authority` lets it, one click. A sensitive round asks for what the
- * person alone holds, a secret no run can decide, so it says why it recommends none instead.
- */
-function ruleRecommended(
-  base: Omit<DecisionBody, 'group' | 'recommended' | 'noRecommendation' | 'answers'> & {
-    group: 'answer';
-  },
-  q: OpenPersonQuestion,
-  step: QuestionStep,
-  typed: DecisionAnswer,
-  path: string,
-): Built {
-  if (step.sensitive) {
-    return {
-      questionId: q.id,
-      decision: {
-        ...base,
-        recommended: null,
-        noRecommendation: 'It asks for something only you hold, so nobody can recommend it.',
-        answers: [typed],
-      },
-    };
-  }
-  return {
-    questionId: q.id,
-    decision: {
-      ...base,
-      recommended: {
-        answerId: 'decide',
-        why: 'Nobody recommended an answer, and the run may decide anything not irreversible, money, credentials or a new direction.',
-        by: 'rule',
-      },
-      noRecommendation: null,
-      answers: [
-        answer({
-          id: 'decide',
-          label: 'Let the run decide',
-          act: 'question.answer',
-          path,
-          body: { round: step.round, text: RUN_DECIDES_TEXT },
-          effect: 'Tells the run that asked to choose itself and record why.',
-          recommended: true,
-        }),
-        typed,
-      ],
-    },
-  };
-}
-
 /**
  * A free-text round whose asker recommended nothing: the assistant's suggestion for this round where
  * it drafted one (REQ-41 BC-2), sent as it stands by one click; else Forge's rule (`ruleRecommended`).
@@ -355,7 +301,8 @@ function unrecommendedDecision(
   path: string,
 ): Built {
   const suggested = suggestionFor(q.suggestion, step.round);
-  if (!suggested) return ruleRecommended(base, q, step, typed, path);
+  if (!suggested)
+    return { questionId: q.id, decision: { ...base, ...ruleRecommended(step, typed, path) } };
   return {
     questionId: q.id,
     decision: {

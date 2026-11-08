@@ -196,7 +196,9 @@ describe('a steward job prepared twice (ISS-972)', () => {
     expect(started.status, JSON.stringify(started.body)).toBe(200);
     await settleOutbox();
     expect(await works(token)).toBe(true);
-    const [run] = await rows<{ state: string }>(sql`SELECT state FROM steward_runs WHERE id = ${runId}`);
+    const [run] = await rows<{ state: string }>(
+      sql`SELECT state FROM steward_runs WHERE id = ${runId}`,
+    );
     expect(run?.state).toBe('running');
     const done = await call(
       token,

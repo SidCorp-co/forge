@@ -122,13 +122,11 @@ const suggestionOf = async (id: string) =>
     )
   )[0]?.suggestion ?? null;
 
-// each question asks in words of its own: one asked word for word while another stands open on the
-// same subject is refused QUESTION_ALREADY_OPEN (ISS-918), which several here would be
 const bare = (id: string, over: Record<string, unknown> = {}) =>
   ask({
     id,
     projectId,
-    prompt: `Which identifier should the referral import match on? (${id.slice(0, 8)})`,
+    prompt: `Which identifier should the referral import match on? (${id.slice(0, 8)})`, // ISS-918
     blockerKind: 'human',
     answer: { shape: 'free_text', needed: 'the identifier' },
     ...over,
@@ -272,7 +270,6 @@ describe('a question with no recommended answer (REQ-41 BC-2)', () => {
       code: 'QUESTION_SUGGESTION_MODEL_FAILED',
       attempts: 1,
     });
-    // nothing drafted yet: Forge's rule recommends the run decide (ISS-686 c1), the miss recorded
     const card = await cardOf(id);
     expect(card?.recommended).toMatchObject({ answerId: 'decide', by: 'rule' });
     expect(card?.noRecommendation).toBeNull();
