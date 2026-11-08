@@ -4,12 +4,12 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { formatCount, formatDelta, formatUsd } from "../format";
 import type { AdminOverview } from "../types";
 
-function Tile({ label, value, note }: { label: string; value: string; note?: string | null }) {
+function Tile({ label, value, note, noteTitle }: { label: string; value: string; note?: string | null; noteTitle?: string }) {
   return (
     <PageSection className="py-3.5">
       <p className="fg-overline">{label}</p>
       <p className="fg-h1 mt-1 font-mono tabular-nums">{value}</p>
-      {note && <p className="fg-caption mt-0.5">{note}</p>}
+      {note && <p className="fg-caption mt-0.5" title={noteTitle}>{note}</p>}
     </PageSection>
   );
 }
@@ -38,21 +38,19 @@ export function Kpis({ overview }: { overview: AdminOverview }) {
 
   return (
     <div className="grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-4">
-      <Tile
-        label={t("operator.kpi.openAlerts")}
-        value={formatCount(kpis.openAlerts)}
-        note={kpis.openAlerts === 0 ? null : t("operator.kpi.needsOperator")}
-      />
+      <Tile label={t("operator.kpi.openAlerts")} value={formatCount(kpis.openAlerts)} />
       <Tile label={t("operator.kpi.jobsInFlight")} value={formatCount(kpis.inFlightJobs)} />
       <Tile
         label={t("operator.kpi.activeWorkspaces")}
         value={formatCount(counts.activeWorkspaces)}
-        note={t("operator.kpi.workspacesOf", { projects: formatCount(counts.projects), online: formatCount(counts.devicesOnline), total: formatCount(counts.devicesTotal) })}
+        note={t("operator.kpi.workspacesOf", { projects: formatCount(counts.projects) })}
+        noteTitle={t("operator.kpi.runnersOnline", { online: formatCount(counts.devicesOnline), total: formatCount(counts.devicesTotal) })}
       />
       <Tile
         label={t("operator.kpi.spend")}
         value={formatUsd(kpis.spendWindowUsd)}
-        note={spendDelta ? t("operator.kpi.spendVs", { delta: spendDelta }) : t("operator.kpi.noBaseline")}
+        note={spendDelta ?? t("operator.kpi.noBaseline")}
+        noteTitle={spendDelta ? t("operator.kpi.spendVs", { delta: spendDelta }) : undefined}
       />
     </div>
   );

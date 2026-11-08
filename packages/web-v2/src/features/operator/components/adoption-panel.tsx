@@ -81,8 +81,9 @@ export function AdoptionChart({ buckets }: { buckets: readonly AdminAdoptionBuck
           })}
           <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" />
         </svg>
+        {/* the first and the last week name the span; every week's date is the chart's own label (aria) */}
         <ol className="mt-2 flex justify-between">
-          {buckets.map((b) => (
+          {buckets.filter((_, i) => i === 0 || i === buckets.length - 1).map((b) => (
             <li key={b.bucketStart} className="fg-caption font-mono">
               {formatWeek(b.bucketStart)}
             </li>

@@ -14,6 +14,8 @@ vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/features/projects/hooks", () => ({ useOrgScopedProjects: () => ({ projects: [], projectSlugs: new Set<string>() }) }));
 vi.mock("../hooks", () => ({ useAttention: () => hook }));
 
+import { APPROVALS_READ } from "@/test/approvals-read";
+import { renderWithQuery } from "@/test/render";
 import { AttentionScreen } from "./attention-screen";
 
 // the 60vh shell, on the spacing scale (`lib/api/query-boundary.tsx` HEIGHTS)
@@ -46,5 +48,21 @@ describe("the attention screen's states", () => {
     const { container } = render(<AttentionScreen />);
     expect(container.querySelector(SHELL)).toBeNull();
     expect(screen.getByText("Attention")).toBeTruthy();
+  });
+
+  // ISS-1137: each decision is its question and its buttons; what it changes, its impact and the
+  // recommendation open on its own page, never inline under every row (ui-copy-rule)
+  it("draws each project's decisions as their question and buttons, their consequences on demand", () => {
+    hook.view = { ...empty, needsYou: [{ projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3), owed: APPROVALS_READ.notDecisions }], counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: APPROVALS_READ.total };
+    try {
+      const { container } = renderWithQuery(<AttentionScreen />);
+      expect(screen.getAllByTestId("needs-you-decision").length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "Return" })).toBeTruthy();
+      expect(container.textContent).not.toContain("It waits on this until it is decided");
+      expect(container.textContent).not.toContain("No recommendation");
+      expect(screen.queryByTestId("needs-you-left-out")).toBeNull();
+    } finally {
+      hook.view = empty;
+    }
   });
 });

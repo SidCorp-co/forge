@@ -110,9 +110,8 @@ function AlertItem({ alert }: { alert: AdminAlert }) {
         <span className="fg-label">{isAlertId(alert.id) ? t(`operator.alert.${alert.id}`) : alert.key}</span>
         <StatusBadge family="alert" value={alert.status} />
         {alert.count > 0 && <span className="fg-caption font-mono">{alert.count}</span>}
-        <span className="fg-caption ml-auto" title={alert.changedAt ?? undefined}>
+        <span className="fg-caption ml-auto" title={[alert.changedAt, since ? t("operator.alerts.oldest", { since }) : null].filter(Boolean).join(" · ") || undefined}>
           {changedLabel(alert, t)}
-          {since ? ` · ${t("operator.alerts.oldest", { since })}` : ""}
         </span>
       </div>
       <p className="fg-body-sm pl-4">{alert.detail}</p>
@@ -136,19 +135,33 @@ function AlertItem({ alert }: { alert: AdminAlert }) {
   );
 }
 
+// ISS-1137: an alert at OK says nothing an operator acts on, so the OK ones fold behind one row and
+// open on demand; what fires keeps its detail, its time and its jobs in view
 export function AlertFeed({ alerts }: { alerts: readonly AdminAlert[] }) {
   const t = useCopy();
+  const [openQuiet, setOpenQuiet] = useState(false);
+  const sorted = sortAlerts(alerts);
+  const firing = sorted.filter((a) => a.status !== "ok");
+  const quiet = sorted.filter((a) => a.status === "ok");
   return (
     <PageSection>
       <PageSectionHeader>
         <PageSectionTitle>{t("operator.alerts.title")}</PageSectionTitle>
-        <span className="fg-caption">{t("operator.alerts.critFirst")}</span>
       </PageSectionHeader>
       <PageSectionBody>
         <ul className="flex flex-col">
-          {sortAlerts(alerts).map((a) => (
+          {firing.map((a) => (
             <AlertItem key={a.id} alert={a} />
           ))}
+          {quiet.length > 0 && !openQuiet ? (
+            <li className="py-3 first:pt-0">
+              <button type="button" className="fg-label flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:shadow-focus" aria-expanded={false} onClick={() => setOpenQuiet(true)} data-testid="alerts-ok-folded">
+                <StatusBadge family="alert" value="ok" /> {t("operator.alerts.okFolded", { n: quiet.length })}
+              </button>
+            </li>
+          ) : (
+            quiet.map((a) => <AlertItem key={a.id} alert={a} />)
+          )}
         </ul>
       </PageSectionBody>
     </PageSection>

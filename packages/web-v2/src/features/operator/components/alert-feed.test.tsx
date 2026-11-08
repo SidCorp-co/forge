@@ -1,11 +1,12 @@
 /**
  * REQ-22 (ISS-547): the operator console lists every alert core sends, each with its level and
- * when that level changed, as the sweep recorded it.
+ * when that level changed, as the sweep recorded it. The alerts at OK fold behind one row that opens
+ * them (ISS-1137): what fires keeps its detail in view.
  *
  * @direct-test-of packages/web-v2/src/features/operator/components/alert-feed.tsx
  */
 
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { renderWithQuery } from "@/test/render";
 import type { AdminAlert } from "../types";
@@ -32,9 +33,25 @@ function rowOf(title: string): HTMLElement {
   return row;
 }
 
+/** The feed with its OK alerts opened, as an operator reads them on demand. */
+function renderOpen() {
+  renderWithQuery(<AlertFeed alerts={SIX} />);
+  fireEvent.click(screen.getByTestId("alerts-ok-folded"));
+}
+
 describe("AlertFeed", () => {
-  it("lists every alert it is given, crit first, each with its level", () => {
+  it("folds the alerts at OK behind one row counting them, and keeps what fires in view", () => {
     renderWithQuery(<AlertFeed alerts={SIX} />);
+    expect(screen.getAllByTestId("status-badge").map((b) => b.getAttribute("data-value"))).toEqual(["crit", "warn", "warn", "ok"]);
+    expect(screen.getByTestId("alerts-ok-folded").textContent).toContain("3 at OK");
+    expect(screen.queryByText("Orphan jobs")).toBeNull();
+    expect(screen.getByText("detail A2")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("alerts-ok-folded"));
+    expect(screen.getByText("Orphan jobs")).toBeTruthy();
+  });
+
+  it("lists every alert it is given, crit first, each with its level", () => {
+    renderOpen();
     const levels = screen.getAllByTestId("status-badge").map((b) => b.getAttribute("data-value"));
     expect(levels).toEqual(["crit", "warn", "warn", "ok", "ok", "ok"]);
     for (const title of ["Orphan jobs", "Stuck jobs", "Runner-starved projects", "Spend spike", "Automation failing", "Dead outbox deliveries"]) {
@@ -43,7 +60,7 @@ describe("AlertFeed", () => {
   });
 
   it("says when each level changed, with the exact time on hover", () => {
-    renderWithQuery(<AlertFeed alerts={SIX} />);
+    renderOpen();
     const stuck = within(rowOf("Stuck jobs")).getByText("for 5m");
     expect(stuck.getAttribute("title")).toBe(SIX[1]?.changedAt);
     expect(within(rowOf("Spend spike")).getByText("changed just now")).toBeTruthy();
@@ -51,7 +68,7 @@ describe("AlertFeed", () => {
   });
 
   it("names a level the sweep has not recorded yet, and an alert that never left ok", () => {
-    renderWithQuery(<AlertFeed alerts={SIX} />);
+    renderOpen();
     expect(within(rowOf("Automation failing")).getByText("not yet recorded")).toBeTruthy();
     expect(within(rowOf("Orphan jobs")).getByText("no change recorded")).toBeTruthy();
   });
