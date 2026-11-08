@@ -23,8 +23,9 @@ export async function liveBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
   own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],
+  read: BuildRead = buildRead(),
 ): Promise<LiveBuildHolds | null> {
-  const owners = await issueProjectsOf(rows.map((r) => r.issueId));
+  const owners = await read.owners(rows.map((r) => r.issueId));
   const theirs = new Map<string, StandingIssueCriterion[]>();
   const mine: StandingIssueCriterion[] = [];
   for (const r of rows) {
@@ -32,24 +33,57 @@ export async function liveBuildOf(
     if (at === projectId) mine.push(r);
     else theirs.set(at, [...(theirs.get(at) ?? []), r]);
   }
-  const holds = await projectBuildOf(projectId, mine, own);
+  const holds = await projectBuildOf(projectId, mine, own, read);
   if (theirs.size === 0) return holds;
   const foreign = new Map<string, LiveBuildHolds | null>();
   for (const [other, those] of theirs) {
-    const build = await projectBuildOf(other, those);
+    const build = await projectBuildOf(other, those, [], read);
     for (const r of those) foreign.set(r.issueId.toLowerCase(), build);
   }
   return { ...(holds ?? NOTHING_ASKED), foreign };
+}
+
+/**
+ * What one read shares across the requirements it weighs: each issue's project, and each project's
+ * recorded release line. Neither depends on a requirement's own verdicts, so reading them once per
+ * read keeps each requirement's build its own (`liveBuildsOf`) without a statement per requirement.
+ */
+interface BuildRead {
+  owners(issueIds: readonly string[]): Promise<Map<string, string>>;
+  released(projectId: string): ReturnType<ReturnType<typeof requirementDependents>['releasedLine']>;
+}
+
+function buildRead(prefetched?: Promise<Map<string, string>>): BuildRead {
+  const lines = new Map<string, ReturnType<BuildRead['released']>>();
+  return {
+    owners: async (ids) => {
+      const known = prefetched ? await prefetched : new Map<string, string>();
+      const missing = ids.filter((id) => !known.has(id));
+      if (missing.length === 0) return known;
+      return new Map([...known, ...(await issueProjectsOf(missing))]);
+    },
+    released: (projectId) => {
+      let line = lines.get(projectId);
+      if (!line) {
+        line = requirementDependents().releasedLine(projectId);
+        lines.set(projectId, line);
+      }
+      return line;
+    },
+  };
 }
 
 /** How many requirements' builds one read weighs at once. */
 const LIVE_BUILD_READS = 4;
 
 /**
- * Each requirement's build, read from its own traced verdicts and its own requirement verdicts alone,
- * exactly as its record and its accept read it (`acceptance.ts:liveBuildOfRequirement`): one read over
- * every listed row let another requirement's verdicts decide which build this one's were weighed on,
- * so the list read REQ-78 passing 0/7 while its record read 7/7 (owner 2026-11-08, D2).
+ * Each requirement's build, as its record and its accept read it (`acceptance.ts:liveBuildOfRequirement`):
+ * one read over every listed row once let another requirement's own verdicts decide which build this
+ * one's were weighed on (a verdict at a requirement swapped the landing's holds for the live build's
+ * of that verdict's commit alone), so the list read REQ-78 passing 0/7 while its record read 7/7
+ * (owner 2026-11-08, D2). A requirement with a verdict of its own, or none of its traced rows judged,
+ * is read alone; the rest share one read of their traced rows, which holds the same of each one's
+ * commits as its own read would (each map is keyed by commit or issue), at one read's statements.
  */
 export async function liveBuildsOf(
   projectId: string,
@@ -59,15 +93,40 @@ export async function liveBuildsOf(
     own: readonly Pick<StandingRequirementVerdict, 'commit'>[];
   }[],
 ): Promise<Map<string, LiveBuildHolds | null>> {
-  const limit = createLimiter(LIVE_BUILD_READS);
-  return new Map(
-    await Promise.all(
-      rows.map((r) =>
-        limit.run(async () => [r.id, await liveBuildOf(projectId, r.traced, r.own)] as const),
-      ),
-    ),
+  const read = buildRead(
+    issueProjectsOf([...new Set(rows.flatMap((r) => r.traced.map((c) => c.issueId)))]),
   );
+  const alone = rows.filter((r) => r.own.some((v) => v.commit) || !weighsAny(r.traced));
+  const shared = rows.filter((r) => !alone.includes(r));
+  const limit = createLimiter(LIVE_BUILD_READS);
+  const [together, ...each] = await Promise.all([
+    shared.length > 0
+      ? liveBuildOf(
+          projectId,
+          shared.flatMap((r) => r.traced),
+          [],
+          read,
+        )
+      : Promise.resolve(null),
+    ...alone.map((r) =>
+      limit.run(async () => [r.id, await liveBuildOf(projectId, r.traced, r.own, read)] as const),
+    ),
+  ]);
+  return new Map([...shared.map((r) => [r.id, together] as const), ...each]);
 }
+
+/** Whether any of `rows` holds a verdict a build weighs (`commitBuildOf`'s gate), a voided one's included. */
+const weighsAny = (rows: readonly StandingIssueCriterion[]): boolean =>
+  rows.some(
+    (r) =>
+      r.beforeReopen?.identity?.kind === 'commit' ||
+      [r, ...(r.earlier ?? [])].some(
+        (v) =>
+          v.verdict !== null &&
+          v.verdict !== 'skipped' &&
+          (v.identity?.kind === 'commit' || v.identity?.kind === 'runtime'),
+      ),
+  );
 
 /** A build nothing was asked of: what carries another project's holds where this one's read none. */
 const NOTHING_ASKED: LiveBuildHolds = {
@@ -91,10 +150,11 @@ async function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string,
 async function projectBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
-  own: readonly Pick<StandingRequirementVerdict, 'commit'>[] = [],
+  own: readonly Pick<StandingRequirementVerdict, 'commit'>[],
+  read: BuildRead,
 ): Promise<LiveBuildHolds | null> {
   const [released, build] = await Promise.all([
-    requirementDependents().releasedLine(projectId),
+    read.released(projectId),
     commitBuildOf(projectId, rows, own),
   ]);
   return released ? { ...(build ?? NOTHING_ASKED), released } : build;

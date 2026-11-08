@@ -17,7 +17,6 @@ import type {
 import { changedSincePlan } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
-import { reasonedDecisionsOnItems } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { rowsPerId } from '../db/read-memo.js';
 import type { issues } from '../db/schema.js';
@@ -187,12 +186,11 @@ const sinceOf = (since: ReadonlyMap<string, Date>, id: string): Date => {
 };
 
 async function besideFactsOf(ids: readonly string[]) {
-  const [uncovered, follows, asked, { since: statusSince, decisions }, held] = await Promise.all([
+  const [uncovered, follows, asked, { since: statusSince, decisions, held }] = await Promise.all([
     uncoveredOf(ids),
     followReadsAcross(ids),
     askedOf(ids),
     statusFactsOf(ids),
-    reasonedDecisionsOnItems('requirement', ids),
   ]);
   return (id: string) => ({
     statusSince: sinceOf(statusSince, id),
@@ -201,7 +199,7 @@ async function besideFactsOf(ids: readonly string[]) {
     tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
     stewardAsked: asked.steward.has(id),
     questionAsked: asked.person.has(id),
-    decision: held.find((d) => d.subjectId === id) ?? null,
+    decision: held.get(id) ?? null,
   });
 }
 
