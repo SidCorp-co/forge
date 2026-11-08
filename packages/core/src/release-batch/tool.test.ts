@@ -81,7 +81,9 @@ describe('forge_release on a cancelled version', () => {
   it('names the refusal that ended the attempt wearing it, and the issue it names', () => {
     expect(view.attempt?.refusal?.code).toBe('RELEASE_NOT_VERIFIED');
     expect(view.attempt?.refusal?.text).toContain('ISS-54');
-    expect(view.attempt?.refusal?.meaning).toMatch(/could not be proven/);
+    // ISS-936: nothing refuses RELEASE_NOT_VERIFIED since releases closed on the agent's record, so an
+    // attempt that wore it reads through the line every unlisted code reads through, code kept.
+    expect(view.attempt?.refusal?.meaning).toMatch(/refused \(RELEASE_NOT_VERIFIED\)/);
   });
 
   it('carries the abort account, what carries the version, its roster, and where the roster went on', () => {

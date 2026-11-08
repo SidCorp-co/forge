@@ -365,13 +365,12 @@ body: \`{ kind: 'request', request: { method, path, headers?, body?, as, service
 or \`{ kind: 'command', command: { argv, cwd? }, expect: { exitCode, stdoutIncludes? } }\`.
 \`bodyIncludes\` and \`stdoutIncludes\` are lists of strings, each one the output must contain:
 \`["held"]\`, never \`"held"\`. The path is
-on the production environment's \`url\`, or on the \`service\` it names: each verified deploy replays it
-there and records the result on the served build, and a fail reopens the issue. The environment's
+on the production environment's \`url\`, or on the \`service\` it names; core runs no probe, and a
+release closes on its run's record, so a kept probe is the evidence a later judge reruns. The environment's
 \`routes\` say which path prefixes each service answers, and \`url\` answers the rest; a request the
 resolved origin does not answer, or one on a production with services and no \`routes\`, is refused
 \`VERDICT_PROBE_ROUTE\` naming the service that answers it. It carries no
-credential: \`as: 'replayer'\` has the replayer attach its own, which it does only on this Forge's
-own origin. A command probe is not replayed yet. It is kept on the criterion
+credential: \`as: 'replayer'\` has whoever reruns it attach its own. It is kept on the criterion
 (\`GET /api/issues/:id/criteria\` answers it as \`probe\`), and a later verdict that sends none rests on
 it. A \`pass\` or \`short\` on an observable criterion with no probe sent and none kept is refused
 \`VERDICT_PROBE_REQUIRED\`; a malformed probe \`VERDICT_PROBE_SHAPE\` at its path, one holding a

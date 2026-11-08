@@ -28,8 +28,8 @@ type DeclaredEnvironment = IssueProjectDocument['environments'][string] & {
 };
 
 /**
- * The production environment a kept request probe is replayed against; null where none is: no
- * production, or one deployed outside Forge, which no release run deploys and so none replays on.
+ * The production environment whose origin a kept request probe is checked against; null where none
+ * is: no production, or one deployed outside Forge, which no release run deploys.
  */
 async function productionRouting(projectId: string): Promise<ProbeRouting | null> {
   const document = (await readProjectDocument(projectId))?.document ?? null;
@@ -57,8 +57,7 @@ export async function keptProbeIdOf(tx: Tx, criterionId: string): Promise<string
 /**
  * The probe a verdict rests on, kept first where the verdict sends one; null where it rests on none.
  * Refuses, before anything is written, a probe holding a credential, a probe on a code property or
- * a server-side check, a request the production origin it would be replayed against does not
- * answer, and a pass or short on an observable criterion that neither sends a probe nor finds one
+ * a server-side check, a request the production origin it names does not answer, and a pass or short on an observable criterion that neither sends a probe nor finds one
  * kept.
  */
 export async function probeOfVerdict(

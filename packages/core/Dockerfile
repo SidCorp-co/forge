@@ -52,15 +52,9 @@ RUN node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('package.
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# Runtime deps for the per-project git deploy-key flow
-# (packages/core/src/git/ssh-keys.ts and git/remote-divergence.ts shell out to
-# these). Alpine's base image has none of them:
-#   openssh-keygen — `ssh-keygen` for generate/derive/fingerprint (without it
-#                    the git-credential endpoints fail with KEYPAIR_FAILED).
-#   openssh-client — `ssh`, used by git for SSH remotes with the deploy key.
-#   git            — `git ls-remote` for the deploy-key connection test, and a
-#                    commits-only fetch comparing a promote project's base
-#                    branch with its live branch where it has no GitHub binding.
+# Core holds no git client and no deploy key: both live on the runner (repo_cred.rs), and nothing
+# in core's own code shells out to git or ssh. They stay installed for the `forge` CLI the
+# assistant runs (assistant/tools/forge-cli.ts) until it is shown not to need them (ISS-936).
 RUN apk add --no-cache openssh-keygen openssh-client git
 
 COPY --from=build /prod/core ./

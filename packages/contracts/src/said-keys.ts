@@ -1685,9 +1685,6 @@ export const SAID = {
 	},
 	"forecast.event.runEndedAny": { en: "a run ended" },
 	"forecast.event.none": { en: "Nothing moved" },
-	"releases.refused.notVerified": {
-		en: "Production does not serve every change this release landed, so its close could not be proven.",
-	},
 	"releases.refused.nothingRecorded": {
 		en: "Nothing in this release was recorded as shipped, so there was nothing to close.",
 	},

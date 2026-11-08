@@ -153,7 +153,7 @@ describe('HOP: one roster cut three times, nothing outside Forge carrying the ve
     expect(shown.cuts[0]?.refusal).toEqual({
       code: 'RELEASE_NOT_VERIFIED',
       text: REFUSAL,
-      says: { key: 'releases.refused.notVerified' },
+      says: { key: 'releases.refused.other', vars: { code: 'RELEASE_NOT_VERIFIED' } },
     });
     expect(shown.cuts[0]?.decidedBy?.name).toBeTruthy();
     expect(shown.cuts.map((c) => c.rule.decided)).toEqual(['first', 'reused', 'reused']);

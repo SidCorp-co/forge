@@ -115,7 +115,6 @@ function ruleOf(metadata: Record<string, unknown>): ReleaseVersionRule {
 
 /** What a finish refusal means, said by key so a reader in another language reads it; the text stays verbatim beside it. */
 const REFUSAL_SAYS: Readonly<Record<string, Said>> = {
-  RELEASE_NOT_VERIFIED: say('releases.refused.notVerified'),
   RELEASE_NOTHING_RECORDED: say('releases.refused.nothingRecorded'),
   RELEASE_FINISHED_FOR_OTHER_COMMIT: say('releases.refused.otherCommit'),
   CONTRACT_PROVIDER_NOT_LIVE: say('releases.refused.providerNotLive'),

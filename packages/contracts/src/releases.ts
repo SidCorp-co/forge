@@ -1060,7 +1060,6 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_ISSUES_UNNAMED",
 	"CONTRACT_PROVIDER_NOT_LIVE",
 	"RELEASE_VERDICT_NOT_YOURS",
-	"RELEASE_NOT_VERIFIED",
 	/** Under release mode `none`, a project whose source names no branch for work to land on. */
 	"RELEASE_LANDING_NO_BRANCH",
 	/** A record naming a landing's `branch` on a project with production, whose record is its version. */

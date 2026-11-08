@@ -1,4 +1,3 @@
-import type { ProbeReplayRecord } from '@forge/contracts/criterion-probes';
 import type { ReleaseAbortView } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -49,15 +48,6 @@ interface ReleaseRunState {
   methodUnloaded: boolean;
   /** The last finish attempt, `null` before the first `finish` call. */
   finish: ReleaseFinishRecord | null;
-  /** The kept probes a release replayed before releases closed on the agent's record (2026-11-01);
-   *  null on every release since, which replays none. */
-  probeReplay: ProbeReplayRecord | null;
-}
-
-/** What an earlier release recorded of its probe replay, kept as it was written. */
-function readProbeReplay(metadata: Record<string, unknown>): ProbeReplayRecord | null {
-  const value = metadata.probeReplay;
-  return value && typeof value === 'object' ? (value as ProbeReplayRecord) : null;
 }
 
 /** The probes production declares, read for this state's live line only: no close reads them. */
@@ -141,6 +131,5 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     method,
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
-    probeReplay: readProbeReplay(meta),
   };
 }

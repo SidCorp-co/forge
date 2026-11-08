@@ -1,8 +1,8 @@
 // One declaration of a kept probe (REQ-36 BC-6, BC-12; ISS-469): the stored, replayable exercise of
 // the running build a verdict on an observable criterion rests on, and the result it expects. Core's
-// table CHECKs, the verdict door and its refusals read the shape from here, and the release run that
-// replays kept probes on each verified deploy (ISS-470) reads the same one, so a probe needs no
-// person to run it again. Storing a probe never runs it.
+// table CHECKs, the verdict door and its refusals read the shape from here, and the merge check that
+// runs a claimed criterion's kept probe (`pnpm merge-check --probes`) reads the same one. Core runs
+// no probe: a release closes on the agent's record (2026-11-01). Storing a probe never runs it.
 
 import { z } from "zod";
 
@@ -140,44 +140,6 @@ export const PROBE_REFUSAL_CODES = [
 	"VERDICT_PROBE_ROUTE",
 ] as const;
 export type ProbeRefusalCode = (typeof PROBE_REFUSAL_CODES)[number];
-
-/** What one kept probe did on a verified deploy's replay (REQ-36 BC-12; ISS-470). */
-export const PROBE_REPLAY_OUTCOMES = [
-	/** It ran against the served build and answered what it expects. */
-	"held",
-	/** It ran and answered something else: a fail verdict on the served identity. */
-	"failed",
-	/** It could not be run against the served build, so it counts as no pass. */
-	"could_not_run",
-	/** A command probe: it runs only on a runner in a checkout of the served commit, never in core. */
-	"not_replayed",
-] as const;
-export type ProbeReplayOutcome = (typeof PROBE_REPLAY_OUTCOMES)[number];
-
-export interface ProbeReplayResult {
-	issueId: string;
-	criterion: number;
-	probeId: string;
-	outcome: ProbeReplayOutcome;
-	/** What it answered against what it expects, or why it did not run. Never a credential. */
-	detail: string;
-	/** The verdict the replay wrote, or null where it wrote none. */
-	verdictId: string | null;
-}
-
-/** One release run's replay of the kept probes, kept on the run and read back with its state. */
-export interface ProbeReplayRecord {
-	/** The commit the verified deploy serves, which each verdict names; null where none is named. */
-	served: string | null;
-	replayedAt: string;
-	/** Why nothing was replayed, or null where the replay ran. */
-	skipped: string | null;
-	results: ProbeReplayResult[];
-	/** The issues it sent to reopen. */
-	reopened: string[];
-	/** The claimed issues it kept from closing: a probe of theirs could not run. */
-	held: string[];
-}
 
 /**
  * The production environment a request probe is replayed against, as the project document declares

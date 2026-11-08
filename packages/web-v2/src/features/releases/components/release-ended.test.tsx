@@ -39,7 +39,7 @@ const r040 = {
   cuts: [
     cut(1, "0.3.0", "aborted"),
     cut(2, "0.4.0", "aborted", {
-      refusal: { code: "RELEASE_NOT_VERIFIED", text: NOT_VERIFIED, says: say("releases.refused.notVerified") },
+      refusal: { code: "RELEASE_NOT_VERIFIED", text: NOT_VERIFIED, says: say("releases.refused.other", { code: "RELEASE_NOT_VERIFIED" }) },
       abort: {
         recorded: true,
         reason: "193 has never been published; ISS-110 owns it.",
@@ -61,7 +61,7 @@ describe("a cancelled release's own page", () => {
     renderWithQuery(<EndedAttempt r={r040 as never} slug="hop" />);
     const ended = screen.getByTestId("release-ended");
     expect(ended).toHaveTextContent("Why 0.4.0 was cancelled");
-    expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("could not be proven");
+    expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("The release was refused");
     expect(within(ended).getByTestId("release-ended-refusal")).toHaveTextContent("RELEASE_NOT_VERIFIED");
     expect(within(ended).getByTestId("release-ended-abort")).toHaveTextContent("ISS-110");
   });
