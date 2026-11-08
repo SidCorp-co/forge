@@ -62,7 +62,9 @@ beforeEach(async () => {
 /** A recording: an issue landed and moved to `awaiting_release`. */
 async function recorded(): Promise<string> {
   const id = await fx.insertIssue('awaiting_release');
-  await db.execute(sql`UPDATE issues SET merged_commit_sha = ${'ab12'.repeat(10)} WHERE id = ${id}`);
+  await db.execute(
+    sql`UPDATE issues SET merged_commit_sha = ${'ab12'.repeat(10)} WHERE id = ${id}`,
+  );
   return id;
 }
 
