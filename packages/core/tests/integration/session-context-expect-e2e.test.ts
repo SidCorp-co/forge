@@ -7,6 +7,8 @@
  * ISS-54: the lease lives on `issue_work_state`) read `FOR UPDATE` inside the
  * write's own transaction, and a fake query builder cannot tell that apart from
  * a read-then-write, which is the exact race the rule closes.
+ *
+ * @direct-test-of packages/core/src/issues/session-context.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -64,8 +66,23 @@ describe('ISS-959 A — conditional sessionContext write', () => {
     return first && { code: first.code, path: first.path };
   }
 
-  const leaseA = { lease: { holder: 'session-a', pid: '1' } };
-  const leaseB = { lease: { holder: 'session-b', pid: '2' } };
+  const RENEWED = new Date().toISOString();
+  const leaseA = { lease: { holder: 'session-a', pid: '1', renewedAt: RENEWED, minutes: 60 } };
+  const leaseB = { lease: { holder: 'session-b', pid: '2', renewedAt: RENEWED, minutes: 60 } };
+
+  // ISS-995: `{holder, until, next}` was stored with 200, and only the next move refused NO_HOLDER
+  it('refuses a lease of the wrong shape at the write, naming the shape, and stores nothing', async () => {
+    const { id, token } = await seed(leaseA);
+    const res = await patch(id, token, {
+      sessionContext: { lease: { holder: 'session-b', until: RENEWED, next: 'build' } },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('renewedAt is not a parseable timestamp');
+    expect(JSON.stringify(res.body)).toContain(
+      '{ holder: string, renewedAt: ISO timestamp, minutes: positive number }',
+    );
+    expect(await storedContext(id)).toEqual(leaseA);
+  });
 
   it('AC1 — a write with no `expect` stores the value, exactly as before this change', async () => {
     const { id, token } = await seed(leaseA);
@@ -92,7 +109,7 @@ describe('ISS-959 A — conditional sessionContext write', () => {
     });
     expect(first.status).toBe(200);
 
-    const loser = { lease: { holder: 'session-c', pid: '3' } };
+    const loser = { lease: { holder: 'session-c', pid: '3', renewedAt: RENEWED, minutes: 60 } };
     const second = await patch(id, token, {
       sessionContext: loser,
       expect: { sessionContext: leaseA },
@@ -127,9 +144,15 @@ describe('ISS-959 A — conditional sessionContext write', () => {
   });
 
   it('AC7 — an `expect` differing only in key order is accepted', async () => {
-    const stored = { lease: { holder: 'session-a', pid: '1' }, branch: 'ISS-959' };
+    const stored = {
+      lease: { holder: 'session-a', pid: '1', renewedAt: RENEWED, minutes: 60 },
+      branch: 'ISS-959',
+    };
     const { id, token } = await seed(stored);
-    const reordered = { branch: 'ISS-959', lease: { pid: '1', holder: 'session-a' } };
+    const reordered = {
+      branch: 'ISS-959',
+      lease: { minutes: 60, renewedAt: RENEWED, pid: '1', holder: 'session-a' },
+    };
     const res = await patch(id, token, {
       sessionContext: leaseB,
       expect: { sessionContext: reordered },
@@ -180,13 +203,18 @@ describe('ISS-959 A — conditional sessionContext write', () => {
     const [one, two] = await Promise.all([
       patch(id, token, { sessionContext: leaseB, expect: { sessionContext: leaseA } }),
       patch(id, token, {
-        sessionContext: { lease: { holder: 'session-c', pid: '3' } },
+        sessionContext: {
+          lease: { holder: 'session-c', pid: '3', renewedAt: RENEWED, minutes: 60 },
+        },
         expect: { sessionContext: leaseA },
       }),
     ]);
     const statuses = [one.status, two.status].sort();
     expect(statuses).toEqual([200, 422]);
-    const winner = one.status === 200 ? leaseB : { lease: { holder: 'session-c', pid: '3' } };
+    const winner =
+      one.status === 200
+        ? leaseB
+        : { lease: { holder: 'session-c', pid: '3', renewedAt: RENEWED, minutes: 60 } };
     expect(await storedContext(id)).toEqual(winner);
   });
 });

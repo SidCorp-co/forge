@@ -161,6 +161,17 @@ type LeaseFields =
   | { ok: true; expiresAt: Date; stopped: string | null; session: string | null }
   | { ok: false; detail: string };
 
+/**
+ * Why a lease written into `sessionContext` is no lease, or null where it reads as one (ISS-995): the
+ * write refuses it by name, rather than the next move refusing NO_HOLDER over a blob stored as sent.
+ */
+export function leaseShapeRefusal(lease: unknown): string | null {
+  const read = readLeaseFields(lease);
+  return read.ok
+    ? null
+    : `${read.detail}; a lease is { holder: string, renewedAt: ISO timestamp, minutes: positive number }, with optional stopped, session and heartbeat`;
+}
+
 function readLeaseFields(lease: unknown): LeaseFields {
   if (typeof lease !== 'object' || lease === null || Array.isArray(lease)) {
     return { ok: false, detail: `lease is ${Array.isArray(lease) ? 'an array' : typeof lease}` };

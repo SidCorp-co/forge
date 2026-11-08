@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { leaseShapeRefusal } from './session-claim.js';
 
 const VERIFIED_KEY_RE = /^verified/i;
 const VERIFIED_CLAIM_MAX_NODES = 100_000;
@@ -102,6 +103,9 @@ export const sessionContextSchema = z
     if (violation) {
       ctx.addIssue({ code: 'custom', path: [violation.path], message: violation.message });
     }
+    // a lease is kernel input: a wrong shape is refused at the write, by name (ISS-995)
+    const lease = v.lease === null || v.lease === undefined ? null : leaseShapeRefusal(v.lease);
+    if (lease) ctx.addIssue({ code: 'custom', path: ['lease'], message: lease });
     const worklog = (v.worklog && typeof v.worklog === 'object' ? v.worklog : {}) as Record<
       string,
       unknown
