@@ -20,6 +20,7 @@ const planned = (over: Partial<Planned>): Planned => ({
   status: 'agreed',
   plannedRevision: 3,
   currentRevision: 3,
+  proposedRevision: null,
   ...over,
 });
 
@@ -143,6 +144,39 @@ describe("the issue-ready record reader's words", () => {
     for (const sentence of EVERY_ANSWER.flatMap(sentencesOf)) {
       expect(sentence, sentence).not.toMatch(/\bplan\b/i);
     }
+  });
+});
+
+// ISS-1133: a requirement whose first revision is proposed is judged on that revision, as its own
+// ready checklist is; only a requirement with neither a current nor a proposed revision owes one
+describe('the requirement revision under review', () => {
+  const underReview = planned({
+    status: 'draft',
+    plannedRevision: null,
+    currentRevision: null,
+    proposedRevision: 1,
+  });
+
+  it('traces the criteria against the proposed revision where there is no current one', () => {
+    expect(criteriaAnswerOf([trace(1, true)], underReview)).toEqual({
+      value: '1 criterion, tracing BC-1 of REQ-7 revision 1, proposed and not accepted yet',
+    });
+  });
+
+  it('says a first revision is owed only where there is neither', () => {
+    const neither = planned({
+      status: 'agreed',
+      plannedRevision: null,
+      currentRevision: null,
+      proposedRevision: null,
+    });
+    expect(requirementAnswer(neither)).toMatchObject({
+      gap: 'It is linked to REQ-7, which has no current or proposed revision yet.',
+    });
+    expect(requirementAnswer({ ...neither, proposedRevision: 2 })).toEqual({
+      value:
+        "REQ-7 at revision 2, proposed and not accepted yet, which the run's plan is written against",
+    });
   });
 });
 

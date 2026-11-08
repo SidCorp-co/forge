@@ -15,7 +15,7 @@ import type { RequirementSpec } from '@forge/contracts/requirements';
 import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
 import { CRITERION_STEPS_ROUTE, criterionStepsCall } from '@forge/contracts/workflow-health';
 import { type WrittenLang, writtenLangOfText } from '@forge/contracts/written-lang';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
   requirementCriteria,
@@ -53,10 +53,19 @@ const labelled = (lang: WrittenLang | null, label: GoalLabel) =>
 const LABEL_FIX =
   "Write it on the label's line, or as a list on the lines directly under it (no blank line between).";
 
-/** What the head revision of a requirement holds, as the ready checklist reads it. */
+/**
+ * Which revision the ready checklist judges (ISS-1133): the one under review, the current revision
+ * or, with none yet, the proposed one a person is asked to accept. Null only where there is neither.
+ */
+export type JudgedState = 'current' | 'proposed';
+
+/** What the revision under review of a requirement holds, as the ready checklist reads it. */
 export interface ReadyFacts {
   key: string;
+  /** The revision judged; null where the requirement has neither a current nor a proposed one. */
   head: number | null;
+  /** Whether `head` is the current revision or the proposed one under review; null with no head. */
+  state: JudgedState | null;
   spec: RequirementSpec;
   kind: string | null;
   /** The codes of the business criteria live at the head. */
@@ -98,12 +107,12 @@ function tracedAnswer(f: ReadyFacts): RecordAnswer {
   };
 }
 
-/** The record answers of the ready checklist, from what the head revision holds. */
+/** The record answers of the ready checklist, from what the revision under review holds. */
 export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
   if (f.head === null) {
     const none: RecordAnswer = {
-      gap: `${f.key} has no current revision yet.`,
-      fix: 'Write its first revision.',
+      gap: `${f.key} has no current or proposed revision yet.`,
+      fix: 'Write its first revision and propose it.',
     };
     return Object.fromEntries(
       [
@@ -138,7 +147,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
     kind: f.kind
       ? { value: f.kind }
       : {
-          gap: 'Its head revision names no kind.',
+          gap: `Revision ${f.head} names no kind.`,
           fix: 'Set the kind, or leave it to be assumed.',
         },
     who: personas.length
@@ -202,7 +211,10 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
 
 type Reader = Pick<Tx, 'select' | 'execute'>;
 
-/** The ready checklist's record answers for `requirementId` at its head, read through `tx`. */
+/**
+ * The ready checklist's record answers for `requirementId` at its revision under review, read
+ * through `tx`. The agree reads it on its current revision, the only one it signs off.
+ */
 export async function requirementReadyRecord(
   tx: Tx,
   requirementId: string,
@@ -210,6 +222,11 @@ export async function requirementReadyRecord(
   return readyAnswersOf(await readyFactsIn(tx, requirementId));
 }
 
+/**
+ * The ready facts of the revision under review (ISS-1133): the current revision, else the proposed
+ * one awaiting its accept, the revision the accept makes current and the agree then signs off
+ * (`agree.ts:agreeRequirement`); an accept that re-baselines judges it too (`agree.ts:readyRefusalsAt`).
+ */
 export async function readyFactsIn(tx: Tx, requirementId: string): Promise<ReadyFacts> {
   const [row] = await tx
     .select({ reqSeq: requirements.reqSeq, head: requirements.currentRevision })
@@ -218,10 +235,23 @@ export async function readyFactsIn(tx: Tx, requirementId: string): Promise<Ready
   if (!row)
     throw new Error(`requirement checklist: requirement ${requirementId} has no row to read`);
   const key = `REQ-${row.reqSeq}`;
-  if (row.head === null) {
+  if (row.head !== null) return readyFactsAt(tx, requirementId, key, row.head, 'current');
+  const [proposed] = await tx
+    .select({ revision: requirementRevisions.revision })
+    .from(requirementRevisions)
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, requirementId),
+        eq(requirementRevisions.state, 'proposed'),
+      ),
+    )
+    .orderBy(desc(requirementRevisions.revision))
+    .limit(1);
+  if (!proposed) {
     return {
       key,
       head: null,
+      state: null,
       spec: {},
       kind: null,
       criteria: [],
@@ -231,7 +261,7 @@ export async function readyFactsIn(tx: Tx, requirementId: string): Promise<Ready
       writtenLang: null,
     };
   }
-  return readyFactsAt(tx, requirementId, key, row.head);
+  return readyFactsAt(tx, requirementId, key, proposed.revision, 'proposed');
 }
 
 /** The ready facts of `revision`, which may be a proposed revision about to become the head. */
@@ -240,6 +270,7 @@ export async function readyFactsAt(
   requirementId: string,
   key: string,
   revision: number,
+  state: JudgedState,
 ): Promise<ReadyFacts> {
   const [rev] = await tx
     .select({
@@ -268,6 +299,7 @@ export async function readyFactsAt(
   return {
     key,
     head: revision,
+    state,
     spec,
     kind: rev.kind ?? null,
     criteria,

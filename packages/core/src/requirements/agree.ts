@@ -58,7 +58,7 @@ export async function readyRefusalsAt(
   row: { id: string; reqSeq: number; projectId: string },
   revision: number,
 ): Promise<RequirementRefusal[]> {
-  const facts = await readyFactsAt(tx, row.id, requirementKey(row.reqSeq), revision);
+  const facts = await readyFactsAt(tx, row.id, requirementKey(row.reqSeq), revision, 'proposed');
   const ready = evaluateChecklist(REQUIREMENT_READY_CHECKLIST, {
     given: {},
     record: readyAnswersOf(facts),

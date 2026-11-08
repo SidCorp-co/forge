@@ -15,6 +15,7 @@ import { acceptanceAnswersOf, type ReadyFacts, readyAnswersOf } from './checklis
 const ready: ReadyFacts = {
   key: 'REQ-7',
   head: 2,
+  state: 'current',
   spec: {
     goal: 'Problem: referrals are lost.\nValue: every referral reaches a clinician.\nMeasured by: lost referrals per month.\nRoadmap: now.',
     personas: ['Referral manager'],
@@ -240,10 +241,12 @@ describe('the ready checklist, read from the head revision', () => {
     expect(gap?.detail).toContain('a line of its own with no label, or after "Problem:"');
   });
 
-  it('names every question a requirement with no current revision leaves open', () => {
-    const e = judge({ ...ready, head: null });
+  it('names every question a requirement with neither a current nor a proposed revision leaves open', () => {
+    const e = judge({ ...ready, head: null, state: null });
     expect(e.complete).toBe(false);
-    expect(e.gaps.every((g) => g.detail.includes('REQ-7 has no current revision yet.'))).toBe(true);
+    expect(
+      e.gaps.every((g) => g.detail.includes('REQ-7 has no current or proposed revision yet.')),
+    ).toBe(true);
   });
 });
 

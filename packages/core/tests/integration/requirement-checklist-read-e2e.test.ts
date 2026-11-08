@@ -57,13 +57,32 @@ const gapOn = (evaluation: Doc, question: string) =>
   (evaluation.gaps as Doc[]).find((g) => g.question === question);
 
 describe("a requirement's checklists read", () => {
-  it('reads a draft with no head as having none, naming it on every question', async () => {
+  it('reads a draft with neither a current nor a proposed revision as having none, naming it on every question', async () => {
     const key = await draft();
     const r = await read(key);
     expect(r.revision).toBeNull();
+    expect(r.revisionState).toBeNull();
     const now = checklist(r, 'requirement_ready').now as Doc;
     expect(now.complete).toBe(false);
-    expect(gapOn(now, 'problem')?.detail).toContain(`${key} has no current revision yet.`);
+    expect(gapOn(now, 'problem')?.detail).toContain(
+      `${key} has no current or proposed revision yet.`,
+    );
+  });
+
+  it('reads a draft whose first revision is proposed against that revision, naming it (ISS-1133)', async () => {
+    const key = await draft();
+    await ok(on('POST', `/requirements/${key}/revisions/1/propose`, {}));
+    const r = await read(key);
+    const now = checklist(r, 'requirement_ready').now as Doc;
+    expect(gapOn(now, 'problem')?.detail ?? '').not.toContain('no current revision');
+    expect(r.revision).toBe(1);
+    expect(r.revisionState).toBe('proposed');
+    expect(JSON.stringify(now)).not.toContain('no current');
+    expect(answerTo(now, 'criteria')).toMatchObject({
+      value: '1 criterion: BC-1',
+      provenance: 'given',
+    });
+    expect(gapOn(now, 'who')?.detail).toContain('It names nobody it is for.');
   });
 
   it('reads a draft against its ready checklist: gaps in plain words, assumed answers with their source, no acceptance yet', async () => {
@@ -75,6 +94,7 @@ describe("a requirement's checklists read", () => {
     const r = await read(key);
     expect(r.key).toBe(key);
     expect(r.revision).toBe(1);
+    expect(r.revisionState).toBe('current');
     expect((r.checklists as Doc[]).map((c) => c.id)).toEqual([
       'requirement_ready',
       'requirement_acceptance',

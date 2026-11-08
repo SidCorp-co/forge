@@ -51,8 +51,13 @@ export interface ChecklistRead {
 export interface RequirementChecklistsRead {
 	requirementId: string;
 	key: string;
-	/** The head revision `now` reads; null while it has none. */
+	/**
+	 * The revision the ready checklist's `now` judges: the current revision, else the proposed one under
+	 * review (ISS-1133); null while it has neither.
+	 */
 	revision: number | null;
+	/** Whether `revision` is the current one or the proposed one awaiting its accept; null with none. */
+	revisionState: "current" | "proposed" | null;
 	checklists: ChecklistRead[];
 }
 

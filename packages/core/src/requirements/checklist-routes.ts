@@ -26,7 +26,8 @@ import { requiresOnParam } from '../permissions/index.js';
 import { deliveryIn, liveBuildOfRequirement } from './acceptance.js';
 import {
   acceptanceAnswersOf,
-  requirementReadyRecord,
+  readyAnswersOf,
+  readyFactsIn,
   uncitedVerdictsIn,
 } from './checklist-record.js';
 import { type Row, rowIn } from './read.js';
@@ -49,8 +50,8 @@ async function acceptanceRecord(projectId: string, row: Row): Promise<RecordAnsw
 
 /**
  * `GET /api/projects/:id/requirements/:req/checklist` — the ready and the acceptance checklists, as
- * one definition gives each (REQ-34 BC-3, BC-5): the form, the input a mover sends, how the head
- * revision stands against it now (each answer given or assumed with its source, each gap in plain
+ * one definition gives each (REQ-34 BC-3, BC-5): the form, the input a mover sends, how the
+ * revision under review stands against it now (the current one, else the proposed one, ISS-1133) (each answer given or assumed with its source, each gap in plain
  * words), and its moves, a move recorded before the checklist reading `no_checklist` (BC-9). `now`
  * is null for a checklist the requirement has not reached: acceptance on a draft.
  */
@@ -63,8 +64,9 @@ requirementChecklistRoutes.get(
     const { id, req } = c.req.valid('param');
     const row = await rowIn(db, id, req);
     const moves = await gatedMovesOf(db, REQUIREMENT_MACHINE, row.id);
+    const judged = await readyFactsIn(db, row.id);
     const asked: [Checklist, () => Promise<RecordAnswers>][] = [
-      [REQUIREMENT_READY_CHECKLIST, () => requirementReadyRecord(db, row.id)],
+      [REQUIREMENT_READY_CHECKLIST, async () => readyAnswersOf(judged)],
       [REQUIREMENT_ACCEPTANCE_CHECKLIST, () => acceptanceRecord(id, row)],
     ];
     const checklists: ChecklistRead[] = [];
@@ -88,7 +90,8 @@ requirementChecklistRoutes.get(
     const read: RequirementChecklistsRead = {
       requirementId: row.id,
       key: requirementKey(row.reqSeq),
-      revision: row.currentRevision,
+      revision: judged.head,
+      revisionState: judged.state,
       checklists,
     };
     return c.json(read);

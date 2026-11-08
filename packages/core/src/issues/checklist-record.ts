@@ -33,6 +33,11 @@ export interface Planned {
   plannedRevision: number | null;
   /** The requirement's current revision: the one a plan not written yet is written against. */
   currentRevision: number | null;
+  /**
+   * Its proposed revision, the one under review where it has no current one yet (ISS-1133): the
+   * requirement's own ready checklist judges it then (`requirements/checklist-record.ts:readyFactsIn`).
+   */
+  proposedRevision: number | null;
 }
 
 /** What the issue says of itself: the minimum it opens on outside strict. */
@@ -44,14 +49,27 @@ interface Itself {
 
 /**
  * The revision the issue plans against (Issue lifecycle ready-check, item 1): its plan's, else the
- * requirement's current one. The plan is the run's to write once it claims the open issue, so a
- * draft is never asked for one (ISS-778); the move into build asks for it (`plan-checkpoint.ts:unplannedForBuild`).
+ * requirement's revision under review, its current one or, with none, its proposed one (ISS-1133).
+ * The plan is the run's to write once it claims the open issue, so a draft is never asked for one
+ * (ISS-778); the move into build asks for it (`plan-checkpoint.ts:unplannedForBuild`).
  */
-export const plannedAgainst = (p: Planned): number | null => p.plannedRevision ?? p.currentRevision;
+export const plannedAgainst = (p: Planned): number | null =>
+  p.plannedRevision ?? p.currentRevision ?? p.proposedRevision;
+
+/** How a revision the issue is judged against is named: a proposed one says it is not accepted yet. */
+const revisionWords = (p: Planned, revision: number) =>
+  p.plannedRevision === null && p.currentRevision === null && p.proposedRevision === revision
+    ? `revision ${revision}, proposed and not accepted yet`
+    : `revision ${revision}`;
+
+/** The requirement's proposed revision, as SQL over its row `r` (one open revision at a time). */
+const PROPOSED_OF_R = sql`(SELECT max(rr.revision) FROM requirement_revisions rr
+                           WHERE rr.requirement_id = r.id AND rr.state = 'proposed')`;
 
 async function plannedOf(exec: Reader, issueId: string): Promise<Planned & { itself: Itself }> {
   const rows = (await exec.execute(sql`
     SELECT r.req_seq, r.status, i.planned_revision, r.current_revision, i.project_id,
+           ${PROPOSED_OF_R} AS proposed_revision,
            coalesce(btrim(i.description), '') <> '' AS described, nullif(btrim(i.category), '') AS kind,
            CASE WHEN r.project_id <> i.project_id THEN p.slug END AS project
       FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id
@@ -63,6 +81,7 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned & { its
     status: string | null;
     planned_revision: number | null;
     current_revision: number | null;
+    proposed_revision: number | null;
     project_id: string;
     described: boolean;
     kind: string | null;
@@ -75,6 +94,7 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned & { its
     status: row.status,
     plannedRevision: row.planned_revision,
     currentRevision: row.current_revision,
+    proposedRevision: row.proposed_revision,
     itself: { projectId: row.project_id, described: row.described, kind: row.kind },
   };
 }
@@ -133,15 +153,18 @@ export function requirementAnswer(p: Planned): RecordAnswer {
     };
   }
   if (p.plannedRevision !== null) return { value: `${key} at revision ${p.plannedRevision}` };
-  if (p.currentRevision === null) {
+  const revision = plannedAgainst(p);
+  if (revision === null) {
     return {
-      gap: `It is linked to ${key}, which has no current revision yet.`,
-      fix: `A person accepts a revision of ${key} first.`,
+      gap: `It is linked to ${key}, which has no current or proposed revision yet.`,
+      fix: `Its author writes and proposes a first revision of ${key}.`,
     };
   }
-  return {
-    value: `${key} at revision ${p.currentRevision}, its current one, which the run's plan is written against`,
-  };
+  const which =
+    p.currentRevision === null
+      ? revisionWords(p, revision)
+      : `revision ${revision}, its current one`;
+  return { value: `${key} at ${which}, which the run's plan is written against` };
 }
 
 const criteriaCount = (n: number) => `${n} ${n === 1 ? 'criterion' : 'criteria'}`;
@@ -163,9 +186,9 @@ async function criteriaRows(exec: Reader, issueId: string): Promise<CriterionTra
     SELECT c.n, rc.code, c.statement,
            (rc.id IS NOT NULL
             AND rc.requirement_id = i.requirement_id
-            AND rc.since_revision <= COALESCE(i.planned_revision, r.current_revision)
+            AND rc.since_revision <= COALESCE(i.planned_revision, r.current_revision, ${PROPOSED_OF_R})
             AND (rc.retired_revision IS NULL
-                 OR rc.retired_revision > COALESCE(i.planned_revision, r.current_revision))) AS traced
+                 OR rc.retired_revision > COALESCE(i.planned_revision, r.current_revision, ${PROPOSED_OF_R}))) AS traced
       FROM issue_criteria c
       JOIN issues i ON i.id = c.issue_id
       LEFT JOIN requirements r ON r.id = i.requirement_id
@@ -204,13 +227,13 @@ export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): R
         ? ''
         : ` ${strayOne ? 'Criterion' : 'Criteria'} ${stray.join(', ')} ${strayOne ? 'names its' : 'name their'} BC after the start of ${strayOne ? 'its line' : 'their lines'}, which traces nothing.`;
     return {
-      gap: `${one ? 'Criterion' : 'Criteria'} ${untraced.map((r) => r.n).join(', ')} ${one ? 'is' : 'are'} not traced to a business criterion (BC) that stands at ${p.key} revision ${revision}.${strayGap}`,
+      gap: `${one ? 'Criterion' : 'Criteria'} ${untraced.map((r) => r.n).join(', ')} ${one ? 'is' : 'are'} not traced to a business criterion (BC) that stands at ${p.key} ${revisionWords(p, revision)}.${strayGap}`,
       fix: `Start ${one ? 'its line' : 'each line'} with the BC it proves, as "(${p.key} BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing.`,
     };
   }
   const codes = [...new Set(rows.map((r) => r.code))].join(', ');
   return {
-    value: `${criteriaCount(rows.length)}, tracing ${codes} of ${p.key} revision ${revision}`,
+    value: `${criteriaCount(rows.length)}, tracing ${codes} of ${p.key} ${revisionWords(p, revision)}`,
   };
 }
 
