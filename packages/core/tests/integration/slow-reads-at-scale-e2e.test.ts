@@ -351,8 +351,9 @@ const HOME_ACROSS_CPU_MS = 800;
 const ATTENTION_STATEMENTS = 148;
 // ISS-1070 r10: the home names each project's live releases without the list's summary (122 to 70)
 // ISS-1070 r18: Moving's issue waits come from the forecast's simulation, the routed requirements'
-// issues from its feedback links, and the live runs are read once (74 to 66 alone, 63 for twelve)
-const HOME_STATEMENTS = 66;
+// issues from its feedback links, and the live runs are read once (74 to 66 alone, 63 for twelve);
+// ISS-1159's failing-criteria read of the feedback list adds one (66 to 67)
+const HOME_STATEMENTS = 67;
 /**
  * ISS-1070 r10's seed puts beside forge projects that record landings and hold requirements in every
  * state; on the code before r10 the attention read sent 163 and the home 141 for twelve, against 149
