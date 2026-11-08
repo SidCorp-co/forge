@@ -42,6 +42,19 @@ pub struct Args {
     /// The Claude Code hook event name, e.g. `Stop` or `UserPromptSubmit`.
     #[arg(long)]
     pub event: String,
+    /// A channel agent's pane (ISS-946): append the event to this file and nothing else. The
+    /// pane's sandbox holds no door into the daemon, so the box reads its turns' ends here.
+    #[arg(long)]
+    pub chat_pane_events: Option<std::path::PathBuf>,
+}
+
+/// What a chat pane's hook prints: the status line a person attached to the pane reads, or `{}`.
+pub fn chat_pane_said(event: &str) -> &'static str {
+    if event == runner_core::chat_pane_events::STATUS_LINE {
+        "forge chat pane"
+    } else {
+        "{}"
+    }
 }
 
 fn drain() -> Vec<u8> {
@@ -128,6 +141,14 @@ pub fn said_for(refusal: Option<&str>) -> (String, bool) {
 
 pub async fn run(ctx: Ctx, args: Args) {
     let payload = drain();
+    if let Some(path) = args.chat_pane_events.as_deref() {
+        let at = runner_core::agent_activity::now_ms();
+        if let Err(e) = runner_core::chat_pane_events::append(path, &args.event, &payload, at) {
+            eprintln!("forge-runner hook: {} not recorded in {}: {e}", args.event, path.display());
+        }
+        println!("{}", chat_pane_said(&args.event));
+        return;
+    }
     let token = session_tokens::token_from_env().ok();
     if args.event == Event::PermissionRequested.wire() {
         let project = std::env::var("FORGE_PROJECT_ID")

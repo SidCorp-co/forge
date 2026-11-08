@@ -229,6 +229,11 @@ pub struct RunnerSettings {
     /// can send what it reads, so the default is none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chat_egress_allow: Vec<String>,
+    /// Whether a channel agent's resident session runs interactive in a tmux pane its owner
+    /// attaches to (`forge-chat-<slug>`, ISS-946) rather than headless. Off unless a box says so;
+    /// a box that cannot make the pane runs the session headless and says why.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chat_panes: bool,
 }
 
 impl Default for RunnerSettings {
@@ -237,6 +242,7 @@ impl Default for RunnerSettings {
             duplex_max_sessions: default_duplex_max_sessions(),
             max_job_panes: default_max_job_panes(),
             chat_egress_allow: Vec::new(),
+            chat_panes: false,
         }
     }
 }

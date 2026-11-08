@@ -73,6 +73,9 @@ enum Command {
     /// Inside a confined chat session's sandbox: carry its proxy port to the runner's egress.
     #[command(name = "egress-bridge", hide = true)]
     EgressBridge(cmd::egress_bridge::Args),
+    /// As a channel agent's pane command: exec the confined session the box wrote a launch for.
+    #[command(name = "chat-pane-exec", hide = true)]
+    ChatPaneExec(cmd::chat_pane_exec::Args),
     /// Inside an owner-mode channel agent's sandbox: run `gh` holding a token for its own repository.
     #[command(name = "session-gh", hide = true)]
     SessionGh(cmd::session_gh::Args),
@@ -134,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
         Command::EgressBridge(a) => cmd::egress_bridge::run(a).await,
+        Command::ChatPaneExec(a) => cmd::chat_pane_exec::run(a),
         Command::SessionGh(a) => cmd::session_gh::run(ctx, a).await,
     }
 }
