@@ -319,6 +319,16 @@ interface Ceiling {
  */
 const ATTENTION_ACROSS_MS = 2560;
 const HOME_ACROSS_MS = 1880;
+/**
+ * The main-thread CPU the attention and home reads may spend for a person in twelve projects
+ * (`Measure.cpuMs`, median of the reads). Measured interleaved with the code before r11 on a loaded
+ * box (ISS-1070 r11): attention 1,596 and 1,676 ms before, 1,429 and 1,512 after; home 632 and 589
+ * before, 660 and 517 after. The cut is a tenth, inside what load moves, so these hold a fifth's
+ * headroom over the after and do not separate the two: they refuse a read that freezes its answers
+ * through and through again (r6's 405 ms), not r11's own cut.
+ */
+const ATTENTION_ACROSS_CPU_MS = 1800;
+const HOME_ACROSS_CPU_MS = 800;
 
 /**
  * The statements the shell's attention and home reads send, the one ceiling at one project and at
@@ -395,6 +405,7 @@ const READS_ACROSS = (p: string): Ceiling[] => [
     // ISS-1070 r11: 165,453 and 165,892 on the code before r11 (97d264900), the seed's spread; priced alike
     buffers: 167000,
     ms: ATTENTION_ACROSS_MS,
+    cpuMs: ATTENTION_ACROSS_CPU_MS,
     beyondAlone: ATTENTION_BEYOND_ALONE,
   },
   {
@@ -402,6 +413,7 @@ const READS_ACROSS = (p: string): Ceiling[] => [
     statements: HOME_STATEMENTS,
     buffers: 60000,
     ms: HOME_ACROSS_MS,
+    cpuMs: HOME_ACROSS_CPU_MS,
     beyondAlone: HOME_BEYOND_ALONE,
   },
   { path: '/api/me/whats-new', statements: 80, buffers: 11000 },
