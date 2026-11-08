@@ -63,6 +63,8 @@ const CI_COVERAGE = {
   'pnpm --filter @forge/core test': 'pnpm test',
   'pnpm --filter @forge/core build': 'pnpm build',
   'pnpm --filter @forge/core test:integration:ci': 'pnpm --filter @forge/core test:integration',
+  'Install the pinned Rust toolchain':
+    "verify's scripts/check-runner-gates.mjs, which refuses by name to run under any rustc but the one rust-toolchain.toml pins (ISS-965)",
   'Lockfile sync + fmt + clippy + test':
     "verify's scripts/check-runner-gates.mjs for the lockfile, fmt and clippy when packages/runner changed, and pnpm test:changed / pnpm merge-check for the touched modules' own tests — the runner's whole suite runs in this job on main and in a whole-suite run, never in verify (ISS-472)",
   'node scripts/check-whole-tree-gates.mjs --run':
