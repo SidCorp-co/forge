@@ -22,7 +22,7 @@ const draft = { ...proposed, state: "draft", proposedAt: null } as RequirementRe
 
 /** The fixture with only these revisions: agreed with nothing open, a draft open, or a proposal open. */
 const withRevisions = (...revisions: RequirementRevision[]) =>
-  ({ ...reqDetail, status: "agreed", revisions, standing: { ...reqDetail.standing, attentionGroup: "moving" } }) as RequirementDetail;
+  ({ ...reqDetail, status: "agreed", revisions, standing: { ...reqDetail.standing, attentionGroup: "running" } }) as RequirementDetail;
 const agreed = withRevisions(head);
 const drafting = withRevisions(draft, head);
 const proposing = withRevisions(proposed, head);

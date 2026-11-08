@@ -24,7 +24,7 @@ describe("whom the strip names once the work has landed or parked", () => {
     ref: "ISS-458",
     refers: "issue" as const,
   };
-  const withWait = (w: RequirementDetail["standing"]["waitingOn"]) => ({ ...reqDetail, standing: { ...reqDetail.standing, state: "in_delivery", attentionGroup: "moving", waitingOn: w } }) as RequirementDetail;
+  const withWait = (w: RequirementDetail["standing"]["waitingOn"]) => ({ ...reqDetail, standing: { ...reqDetail.standing, state: "in_delivery", attentionGroup: "running", waitingOn: w } }) as RequirementDetail;
 
   it("names the person owing the release cut and links the release, on the page and in the peek", () => {
     core();

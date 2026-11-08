@@ -31,7 +31,7 @@ const agreed = {
   status: "agreed",
   revisions: [head],
   contracts: [{ providerProjectId: "p2", contract: "kho/api", contractSlug: "api", currentVersion: "1.2.0" }],
-  standing: { ...reqDetail.standing, attentionGroup: "moving" },
+  standing: { ...reqDetail.standing, attentionGroup: "running" },
 } as RequirementDetail;
 
 const DESIGN_DOC = {

@@ -15,7 +15,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 afterEach(() => vi.unstubAllGlobals());
 
-const d = { ...reqDetail, contracts: [{ providerProjectId: "p2", contract: "kho/api", contractSlug: "api", currentVersion: "1.2.0" }], standing: { ...reqDetail.standing, attentionGroup: "moving" } } as RequirementDetail;
+const d = { ...reqDetail, contracts: [{ providerProjectId: "p2", contract: "kho/api", contractSlug: "api", currentVersion: "1.2.0" }], standing: { ...reqDetail.standing, attentionGroup: "running" } } as RequirementDetail;
 const designs = ["w1", "w2", "w3"].map((id, i) => ({ document: { id, flow: `f${i}`, title: `Design ${id}`, steps: [] } }));
 
 function core(write: (c: Call) => { status?: number; body: unknown } = () => ({ body: d })) {

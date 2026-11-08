@@ -24,7 +24,7 @@ const d = {
   revisions: reqDetail.revisions.filter((r) => r.state === "current"),
   workflows: [reqDetail.workflows[0]],
   traces: [{ code: "BC-1", workflowId: "w1", flow: "thanh-toan", steps: ["pay"], edges: [{ from: "pay", to: "refund" }] }],
-  standing: { ...reqDetail.standing, attentionGroup: "moving" },
+  standing: { ...reqDetail.standing, attentionGroup: "running" },
 } as RequirementDetail;
 
 function show(detail: RequirementDetail) {
