@@ -60,7 +60,10 @@ export function RowState({ r }: { r: RequirementSummary }) {
       ? REQUIREMENT_STAGE_LABELS[stage]
       : null;
   const open = r.latestRevision;
-  const newer = r.currentRevision !== null && open && open.revision > r.currentRevision && (open.state === "draft" || open.state === "proposed") ? open : null;
+  const opened = r.currentRevision !== null && open && open.revision > r.currentRevision && (open.state === "draft" || open.state === "proposed") ? open : null;
+  // the open revision once: where the row's Waits on already names it ("accept r2"), the chip would say it twice (ISS-1131)
+  const named = r.standing.attentionGroup !== "done" && opened !== null && r.standing.waitingOn.says?.act?.vars?.r === opened.revision;
+  const newer = named ? null : opened;
   if (!word && !newer) return null;
   return (
     <span className="inline-flex flex-none items-center gap-1.5 text-12 text-subtle" data-testid="req-row-state">

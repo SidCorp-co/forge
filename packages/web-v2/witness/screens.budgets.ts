@@ -29,7 +29,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "project-home": { budget: 100 },
   "issues-list": { budget: 90 },
   "issue-detail": { budget: 80 },
-  "requirements-list": { budget: 80, amnesty: waits(93) },
+  "requirements-list": { budget: 80 },
   "requirement-detail": { budget: 100 },
   "feedback-list": { budget: 100 },
   "feedback-detail": { budget: 90 },

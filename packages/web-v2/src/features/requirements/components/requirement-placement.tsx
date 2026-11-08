@@ -4,7 +4,7 @@
 
 import type { RequirementAreaRef, RequirementSummary } from "@forge/contracts/requirements";
 import { useState } from "react";
-import { Button, Fact, Select, Textarea } from "@/design";
+import { Button, Fact, IconButton, Select, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAcceptAllPlacements, usePlacement, useProposePlacements, useRequirementAreas, useSetAreas } from "../hooks";
@@ -48,9 +48,14 @@ export function AreasEditor({ projectId, areas }: { projectId: string; areas: Re
   const [text, setText] = useState("");
   if (!open) {
     return (
-      <Button type="button" size="sm" variant="ghost" onClick={() => { setText(areas.map((a) => a.name).join("\n")); setOpen(true); }}>
-        {t("requirements.areas.edit")}
-      </Button>
+      // an editor's act beside the area filter, named by its icon and label rather than two more words on the toolbar (ISS-1131)
+      <IconButton
+        icon="settings"
+        size="sm"
+        aria-label={t("requirements.areas.edit")}
+        title={t("requirements.areas.edit")}
+        onClick={() => { setText(areas.map((a) => a.name).join("\n")); setOpen(true); }}
+      />
     );
   }
   return (
