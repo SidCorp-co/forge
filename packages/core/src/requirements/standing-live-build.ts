@@ -5,11 +5,7 @@
  * (ISS-1018). Moved out of `standing-facts.ts`, which reads the requirement's own facts.
  */
 
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { uuidArray } from '../db/raw-sql.js';
-import { memoizedPerId } from '../db/read-memo.js';
-import { issues } from '../db/schema.js';
+import { issueCoresOf } from '../issues/index.js';
 import { requirementDependents } from './dependents.js';
 import { recordedLandingsOf } from './recorded-landings.js';
 import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
@@ -53,17 +49,10 @@ const NOTHING_ASKED: LiveBuildHolds = {
   unanswered: new Map(),
 };
 
-/** The project of each issue named. */
-function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string, string>> {
-  // an issue's project is its own: every project's asks are one read (ISS-1070 r6)
-  return memoizedPerId('issueProject', issueIds, async (ids) => {
-    if (ids.length === 0) return new Map();
-    const rows = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(sql`${issues.id} = ANY(${uuidArray(ids)})`);
-    return new Map(rows.map((r) => [r.id, r.projectId]));
-  });
+/** The project of each issue named, from the one read of each issue every reader shares. */
+async function issueProjectsOf(issueIds: readonly string[]): Promise<Map<string, string>> {
+  const cores = await issueCoresOf(issueIds);
+  return new Map([...cores].map(([id, c]) => [id, c.projectId]));
 }
 
 /**

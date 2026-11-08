@@ -2,6 +2,7 @@
 // its statements, where each was sent from, and what their plans touch. SLOW_READS_ALL adds every
 // statement's shape with how many times the read sent it, so two reads can be compared shape by shape.
 
+import { fingerprintOf, shapeTextOf } from '../../src/db/statement-shapes.js';
 import type { Doc } from './ecosystem-world.js';
 
 export interface Statement {
@@ -31,18 +32,25 @@ export interface Measure {
 
 export function report(label: string, m: Measure): string {
   const slowest = [...m.statements].sort((a, b) => b.ms - a.ms).slice(0, 8);
+  // one shape however many ids each send carried, as an operator reads it live
+  // (`middleware/server-timing.ts:repeatedShapesOf`): a batch split in two reads as one shape twice
   const same = new Map<string, number>();
-  for (const s of m.statements) same.set(s.text, (same.get(s.text) ?? 0) + 1);
+  for (const s of m.statements) {
+    const fp = fingerprintOf(s.text);
+    same.set(fp, (same.get(fp) ?? 0) + 1);
+  }
   const repeated = [...same].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
   return [
     `## ${label} ${m.path} -> ${m.status}: ${m.ms.toFixed(0)} ms, ${m.statements.length} statements, ${m.bytes} bytes, ${repeated.reduce((n, [, c]) => n + c - 1, 0)} repeats | ${m.timing}`,
     ...slowest.map(
       (s) => `  ${s.ms.toFixed(1).padStart(8)} ms  ${s.text.replace(/\s+/g, ' ').slice(0, 260)}`,
     ),
-    ...repeated.slice(0, process.env.SLOW_READS_STACKS ? 20 : 5).map(([t, n]) => {
-      const sites = [...new Set(m.statements.filter((x) => x.text === t).map((x) => x.site))];
+    ...repeated.slice(0, process.env.SLOW_READS_STACKS ? 20 : 8).map(([fp, n]) => {
+      const sites = [
+        ...new Set(m.statements.filter((x) => fingerprintOf(x.text) === fp).map((x) => x.site)),
+      ];
       const at = process.env.SLOW_READS_STACKS ? `\n      from ${sites.join('\n      from ')}` : '';
-      return `  x${n} ${t.replace(/\s+/g, ' ').slice(0, 200)}${at}`;
+      return `  x${n} ${fp} ${(shapeTextOf(fp) ?? '').slice(0, 200)}${at}`;
     }),
     ...(process.env.SLOW_READS_STACKS ? sitesOf(m) : []),
     ...(process.env.SLOW_READS_ALL ? everyShape(m) : []),
@@ -98,16 +106,14 @@ function sitesOf(m: Measure): string[] {
     );
 }
 
-/** Every statement's text, its lists of parameters folded, with how many times the read sent it. */
+/** Every statement's shape (`db/statement-shapes.ts:shapeOf`), with how many times the read sent it. */
 function everyShape(m: Measure): string[] {
   const by = new Map<string, number>();
   for (const s of m.statements) {
-    const shape = s.text
-      .replace(/\s+/g, ' ')
-      .replace(/\$\d+(, \$\d+)*/g, '$')
-      .trim()
-      .slice(0, 220);
-    by.set(shape, (by.get(shape) ?? 0) + 1);
+    const fp = fingerprintOf(s.text);
+    by.set(fp, (by.get(fp) ?? 0) + 1);
   }
-  return [...by].sort((a, b) => b[1] - a[1]).map(([shape, n]) => `  = ${n} ${shape}`);
+  return [...by]
+    .sort((a, b) => b[1] - a[1])
+    .map(([fp, n]) => `  = ${n} ${fp} ${(shapeTextOf(fp) ?? '').slice(0, 220)}`);
 }

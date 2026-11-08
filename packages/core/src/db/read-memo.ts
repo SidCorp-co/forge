@@ -18,6 +18,7 @@ import {
   orderOf,
   stepOf,
 } from './read-order.js';
+import { slotsOf } from './read-slots.js';
 
 /**
  * One read request's answers to the lookups its handlers repeat: who the caller is in a project,
@@ -214,8 +215,6 @@ async function waitingOn<T>(step: string | undefined, fn: () => Promise<T>): Pro
   }
 }
 
-const slotOf = (key: string, id: string) => `${key}\u0000${id}`;
-
 /**
  * Holds `id` under `key` as its batch's answer: one promise and one freeze a batch, not one an id, so
  * a person's twelve projects asking four thousand issues wait on a handful of promises (ISS-1070 r6).
@@ -226,7 +225,7 @@ function hold(
   id: string,
   batch: PendingBatch,
 ): void {
-  memo.set(slotOf(key, id), batch.answered);
+  slotsOf(memo, key).set(id, batch.answered);
 }
 
 const batches = new WeakMap<Map<string, Promise<unknown>>, Map<string, PendingBatch>>();
@@ -260,8 +259,9 @@ function batchOf(
       open.delete(key);
       // a read by project reads every project the read across declared and nothing holds yet
       if (byProject) {
+        const slots = slotsOf(memo, key);
         for (const id of across.get(memo) ?? []) {
-          if (pending.ids.has(id) || memo.has(slotOf(key, id))) continue;
+          if (pending.ids.has(id) || slots.has(id)) continue;
           pending.ids.add(id);
           hold(memo, key, id, pending);
         }
@@ -277,8 +277,8 @@ function batchOf(
   });
   // a read that fails is not kept: each id it held is asked again by the next read
   pending.answered.catch(() => {
-    for (const id of pending.ids)
-      if (memo.get(slotOf(key, id)) === pending.answered) memo.delete(slotOf(key, id));
+    const slots = slotsOf(memo, key);
+    for (const id of pending.ids) if (slots.get(id) === pending.answered) slots.delete(id);
   });
   open.set(key, pending);
   return pending;
@@ -392,8 +392,8 @@ async function perId<V>(
   // a request reading one project at most has no other project's read to wait for
   if ((across.get(memo)?.size ?? 0) <= 1) return perSet(memo, key, unique, read);
   const step = asked(memo, key);
-  const slot = (id: string) => slotOf(key, id);
-  const missing = unique.filter((id) => !memo.has(slot(id)));
+  const slots = slotsOf(memo, key);
+  const missing = unique.filter((id) => !slots.has(id));
   if (missing.length > 0) {
     const batch = batchOf(memo, key, read, byProject);
     for (const id of missing) {
@@ -406,7 +406,7 @@ async function perId<V>(
     await waitingOn(step, () => new Promise<void>((answered) => whenQuiet(answered)));
   }
   // each id waits on its batch's answer: a handful of batches however many ids
-  const held = unique.map((id) => memo.get(slot(id)) as Promise<ReadonlyMap<string, V>>);
+  const held = unique.map((id) => slots.get(id) as Promise<ReadonlyMap<string, V>>);
   const batchesOf = [...new Set(held)];
   const answers = new Map(
     (await waitingOn(step, () => Promise.all(batchesOf))).map((m, i) => [
@@ -498,6 +498,17 @@ export function rowsPerId<R>(
   return rowsOf(key, ids, fetch, idOf, false);
 }
 
+/**
+ * One id's rows of one statement: the statement's whole answer, shared by every id it read, and
+ * where in it this id's rows stand. No wrapper an row, so a person's twelve projects asking fifty
+ * thousand rows build no object for each (ISS-1070 r11).
+ */
+interface RowsOfId<R> {
+  sent: number;
+  rows: readonly R[];
+  at: readonly number[];
+}
+
 async function rowsOf<R>(
   key: string,
   ids: readonly string[],
@@ -505,24 +516,33 @@ async function rowsOf<R>(
   idOf: (row: R) => string,
   byProject: boolean,
 ): Promise<R[]> {
-  const byId = await perId(
+  const byId = await perId<RowsOfId<R>>(
     key,
     ids,
     async (some) => {
-      const out = new Map<string, { sent: number; at: number; row: R }[]>(
-        some.map((id) => [id, []]),
-      );
       const sent = ++statementsSent;
       const rows = await fetch(some);
-      for (const [at, row] of rows.entries()) out.get(idOf(row))?.push({ sent, at, row });
-      return out;
+      const at = new Map<string, number[]>(some.map((id) => [id, []]));
+      rows.forEach((row, i) => {
+        at.get(idOf(row))?.push(i);
+      });
+      return new Map([...at].map(([id, own]) => [id, { sent, rows, at: own }]));
     },
     byProject,
   );
-  return [...byId.values()]
-    .flat()
-    .sort((a, b) => a.sent - b.sent || a.at - b.at)
-    .map((r) => r.row);
+  // each statement's rows in the order it sent them, an earlier statement's first
+  const statements = new Map<number, { rows: readonly R[]; at: number[] }>();
+  for (const { sent, rows, at } of byId.values()) {
+    const held = statements.get(sent);
+    if (!held) statements.set(sent, { rows, at: [...at] });
+    else for (const i of at) held.at.push(i);
+  }
+  const out: R[] = [];
+  for (const sent of [...statements.keys()].sort((a, b) => a - b)) {
+    const { rows, at } = statements.get(sent) as { rows: readonly R[]; at: number[] };
+    for (const i of Int32Array.from(at).sort()) out.push(rows[i] as R);
+  }
+  return out;
 }
 
 /**

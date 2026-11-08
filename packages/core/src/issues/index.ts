@@ -103,7 +103,12 @@ export {
   dispatchOrderSql,
   dispatchPriorityRank,
 } from './dispatch-order.js';
-export { issueDisplayIds, issueKeysAndTitles } from './display-ids.js';
+export {
+  type IssueCore,
+  issueCoresOf,
+  issueDisplayIds,
+  issueKeysAndTitles,
+} from './display-ids.js';
 export { draftMissingReleaseNotes } from './draft-release-notes.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
 export { registerFailReopen } from './fail-reopen.js';

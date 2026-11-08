@@ -31,12 +31,12 @@ import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
-import { issues } from '../db/schema.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import {
   type Carriage,
   currentMarkClaims,
-  issueDisplayIds,
+  type IssueCore,
+  issueCoresOf,
   type StandingCriterion,
   standingCriteriaOf,
 } from '../issues/index.js';
@@ -165,19 +165,13 @@ async function recordedLandingsRead(
  */
 function noCommitWhy(
   key: string,
-  row: {
-    id: string;
-    mergedAt: Date | null;
-    status: string;
-    artifacts: readonly unknown[] | null;
-    paths: unknown;
-  },
+  row: Pick<IssueCore, 'id' | 'mergedAt' | 'status' | 'landedOutsideGit'>,
 ): string {
   if (row.mergedAt === null) {
     return `${key} has not merged, so nothing has landed for a verdict to count on`;
   }
   const closed = row.status === 'closed';
-  if ((row.artifacts?.length ?? 0) > 0 && row.paths === null) {
+  if (row.landedOutsideGit) {
     return closed
       ? `${key}'s merge names its landing outside git (artifacts, no commit), so no build holds it for a verdict to count on; it is closed, and shipped on its own record`
       : `${key}'s merge names its landing outside git (artifacts, no commit), so no build holds it for a verdict to count on: its holder closes it met in scope, and it ships on its own record with no release`;
@@ -194,33 +188,16 @@ export async function landedBuildsOf(
   const out = new Map<string, LandedBuild>();
   const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
   if (ids.length === 0) return out;
-  const rows = await rowsPerId(
-    'landedBuildRows',
-    ids,
-    (some) =>
-      db
-        .select({
-          id: issues.id,
-          mergedAt: issues.mergedAt,
-          sha: issues.mergedCommitSha,
-          head: issues.mergedHead,
-          status: issues.status,
-          artifacts: issues.mergedArtifacts,
-          paths: issues.mergedPaths,
-        })
-        .from(issues)
-        .where(sql`${issues.id} = ANY(${uuidArray(some)})`),
-    (r) => r.id,
-  );
-  const [recorded, claims, shown] = await Promise.all([
+  // the issue's row every reader of a request shares (`issues/display-ids.ts:issueCoresOf`)
+  const [cores, recorded, claims] = await Promise.all([
+    issueCoresOf(ids),
     recordedLandings(ids),
     currentMarkClaims(ids),
-    issueDisplayIds(ids),
   ]);
-  for (const row of rows) {
-    const key = shown.get(row.id) ?? row.id;
+  for (const row of cores.values()) {
+    const key = row.key;
     const record = recorded.get(row.id);
-    const merged = row.sha?.trim().toLowerCase() ?? '';
+    const merged = row.mergedCommitSha?.trim().toLowerCase() ?? '';
     const claimed = claims.get(row.id);
     const observed = WHOLE.test(merged);
     // a merge Forge observed after the record supersedes it: the record named an earlier landing
@@ -243,7 +220,7 @@ export async function landedBuildsOf(
         basis: record
           ? `${key} merged as \`${short(merged)}\`, which Forge observed after the landing record at \`${short(record.commit)}\` and which supersedes it`
           : `${key} merged as \`${short(merged)}\`, which Forge observed`,
-        head: row.head ?? null,
+        head: row.mergedHead ?? null,
       });
     } else if (claimed) {
       out.set(row.id, {

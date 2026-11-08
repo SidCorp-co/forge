@@ -139,8 +139,18 @@ export function coverageOf(
   const issues = new Map(
     input.issues.filter((i) => i.status !== 'dropped').map((i) => [i.id, i] as const),
   );
+  // each traced criterion under the code of the wording it traces, in the order held: a criterion
+  // reads its own, not every issue criterion of the requirement once for each (ISS-1070 r11)
+  const tracedByCode = new Map<string, CoverageInput['issueCriteria'][number][]>();
+  for (const traced of input.issueCriteria) {
+    const code = byId.get(traced.requirementCriterionId)?.code;
+    if (code === undefined) continue;
+    const held = tracedByCode.get(code);
+    if (held) held.push(traced);
+    else tracedByCode.set(code, [traced]);
+  }
   return live.map((bc) => {
-    const links = input.issueCriteria.flatMap((traced) => {
+    const links = (tracedByCode.get(bc.code) ?? []).flatMap((traced) => {
       const wording = byId.get(traced.requirementCriterionId);
       const issue = issues.get(traced.issueId);
       if (!wording || wording.code !== bc.code || !issue) return [];
@@ -236,6 +246,8 @@ function requirementVerdictsOn(
     current.map((v) => ({ ...v, byBuilder: false, recordedAt: v.verdictAt })),
     input.judge,
   );
+  // most criteria hold no verdict at the requirement: nothing below is read for them
+  if (mine.length === 0) return [];
   const live = input.liveBuild ?? null;
   // the issues whose criteria trace this business criterion, at any wording; a dropped one proves nothing
   const dropped = new Set(input.issues.filter((i) => i.status === 'dropped').map((i) => i.id));
