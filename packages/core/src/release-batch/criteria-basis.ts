@@ -38,6 +38,7 @@
 import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerItem } from '../db/read-memo.js';
 import { waitingForReleaseSql } from '../issues/index.js';
 import { type ReleasePath, readReleasePath } from '../project-config/index.js';
 import { type LandedCriterion, landedBuildsOf, landedStandings } from './landed-build.js';
@@ -154,28 +155,56 @@ async function productionMoves(
 ): Promise<ProductionMoves> {
   if (reading === null) return 'none';
   if (reading.kind !== 'serving' || reading.served.length === 0) return 'unread';
-  const served = [...new Set(reading.served.map((s) => s.commit.toLowerCase()))];
-  const rows = await db.execute<{ shipped: number; untaken: boolean }>(sql`
-    WITH serving AS (
-      SELECT max(r.release_released_at) AS at, count(DISTINCT lower(r.metadata -> 'finish' ->> 'commit')) AS n
-        FROM pipeline_runs r
-       WHERE r.project_id = ${projectId}
+  const served = [...new Set(reading.served.map((s) => s.commit.toLowerCase()))].sort();
+  const asked: MovesAsked = { projectId, served, id: `${projectId}:${JSON.stringify(served)}` };
+  const held = await memoizedPerItem('productionMoves', [asked], (a) => a.id, movesRead);
+  return held.get(asked.id) ?? 'lands';
+}
+
+/** One project's served commits, asked how production moved. */
+interface MovesAsked {
+  projectId: string;
+  served: readonly string[];
+  id: string;
+}
+
+/**
+ * How production moved for each asked project, in one statement however many projects a person's
+ * read weighs (ISS-1070 r13: forge-dev sent it once a project deployed through a binding).
+ */
+async function movesRead(items: readonly MovesAsked[]): Promise<Map<string, ProductionMoves>> {
+  const rows = await db.execute<{ id: string; shipped: number; untaken: boolean }>(sql`
+    WITH asked AS (
+      SELECT a.id, a.project_id, a.served::jsonb AS served
+        FROM unnest(${sql.param(items.map((i) => i.id))}::text[],
+                    ${sql.param(items.map((i) => i.projectId))}::uuid[],
+                    ${sql.param(items.map((i) => JSON.stringify(i.served)))}::text[])
+             AS a(id, project_id, served)
+    ), serving AS (
+      SELECT a.id, a.project_id, max(r.release_released_at) AS at,
+             count(DISTINCT lower(r.metadata -> 'finish' ->> 'commit')) AS n
+        FROM asked a
+        LEFT JOIN pipeline_runs r
+          ON r.project_id = a.project_id
          AND r.metadata ->> 'source' = 'release-batch'
          AND r.metadata -> 'finish' ->> 'state' = 'finished'
          AND r.release_released_at IS NOT NULL
-         AND lower(r.metadata -> 'finish' ->> 'commit') IN (${sql.join(
-           served.map((c) => sql`${c}`),
-           sql`, `,
-         )})
+         AND lower(r.metadata -> 'finish' ->> 'commit') IN (SELECT jsonb_array_elements_text(a.served))
+       GROUP BY a.id, a.project_id
     )
-    SELECT serving.n::int AS shipped,
+    SELECT serving.id, serving.n::int AS shipped,
            EXISTS (SELECT 1 FROM issues i
-                    WHERE i.project_id = ${projectId} AND ${waitingForReleaseSql(sql`i`)}
+                    WHERE i.project_id = serving.project_id AND ${waitingForReleaseSql(sql`i`)}
                       AND i.merged_at > serving.at) AS untaken
       FROM serving
   `);
-  const [row] = [...rows];
-  return row && row.shipped === served.length && row.untaken ? 'releases' : 'lands';
+  const servedOf = new Map(items.map((i) => [i.id, i.served.length]));
+  return new Map(
+    [...rows].map((row) => [
+      row.id,
+      row.shipped === servedOf.get(row.id) && row.untaken ? 'releases' : 'lands',
+    ]),
+  );
 }
 
 /**

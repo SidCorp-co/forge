@@ -31,6 +31,13 @@ export async function seedEcosystem(ownerId: string, orgId: string): Promise<str
 /** A deployed commit the stub Coolify records and the stub probe answers. */
 export const LIVE_COMMIT = 'c0ffee1'.padEnd(40, '0');
 
+/** How long the stub takes to answer `path`: 40 to 190 ms, the same every time for one path. */
+function latencyOf(path: string): number {
+  let h = 0;
+  for (const c of path) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return 40 + (h % 7) * 25;
+}
+
 /** Where a wired project's production probe answers: an https address, as a document requires. */
 const PROBE_HOST = 'https://probe.live.test';
 
@@ -50,17 +57,17 @@ export function liveCoolify() {
       const path = String(req.url).split('?')[0] ?? '';
       calls.set(path, (calls.get(path) ?? 0) + 1);
       res.setHeader('content-type', 'application/json');
-      if (path.startsWith('/commit/')) {
-        res.end(JSON.stringify({ commit: LIVE_COMMIT }));
-        return;
-      }
       const deployment = {
         deployment_uuid: `d-${path.split('/').pop()}`,
         status: 'finished',
         created_at: '2026-11-08T08:00:00.000Z',
         commit: LIVE_COMMIT,
       };
-      res.end(JSON.stringify({ count: 1, deployments: [deployment] }));
+      const body = path.startsWith('/commit/')
+        ? { commit: LIVE_COMMIT }
+        : { count: 1, deployments: [deployment] };
+      // each platform answers in its own time, as forge-dev's do: one project's read waits longer
+      setTimeout(() => res.end(JSON.stringify(body)), latencyOf(path));
     });
     await new Promise<void>((done) => s.listen(0, '127.0.0.1', done));
     server = s;

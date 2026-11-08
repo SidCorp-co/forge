@@ -52,6 +52,27 @@ const PER_PROJECT: Record<string, string> = {
   '00fdfd0e': 'suggestions/waiting-read.ts:targetsOf (requirements)',
   e36db292: 'issues/issue-prefix-read.ts (a project prefix)',
 };
+/**
+ * The shapes forge-dev sent four to seven times a read after r12 (2026-11-08), on the projects
+ * deployed through a binding: each project's read waited on its Coolify and probe in its own time,
+ * so the batch its projects share was read once for each project that came back late (ISS-1070 r13).
+ */
+const SUBSET: Record<string, string> = {
+  '7ec2153a': 'issues/mark-trail.ts:markClaimsRead',
+  '97b781a2': 'release-batch/served-ancestry.ts:carriagesOf',
+  '4afdafad': 'release-batch/landed-build.ts:recordedLandingsRead',
+  '7984d841': 'issues/release-evidence.ts:closedAtRead',
+  f5460a1f: 'issues/release-evidence.ts:reopenedAtRead',
+  '0a5ffc6e': 'issues/criteria (criterion classes)',
+  '2c596d45': 'issues/criteria-anchors.ts:currentContracts',
+  '560d08b7': 'feedback (feedback list)',
+  '2f55baf0': 'feedback/ship-notice.ts:noticesRead',
+  fef8b6eb: 'feedback (home feedback)',
+  a8b54f77: 'forecast (home forecasts)',
+  e7d7b685: 'issues/standing-rows.ts:rowsWhere',
+  bf72f0ab: 'development/needs-you-signoff-words.ts:wordsOf',
+};
+
 /** How often a read may send one of them: a batch split once by the order its projects ask in. */
 const MOST = 2;
 
@@ -135,7 +156,10 @@ async function sentBy(path: string, token: string): Promise<Sent> {
  * The median of the reads by wall time (three, or SLOW_READS_RUNS), after a warm-up that pays the
  * prepared statements; each read's times are kept beside it.
  */
-async function measured(path: string, token: string): Promise<Sent & { all: number[] }> {
+async function measured(
+  path: string,
+  token: string,
+): Promise<Sent & { all: number[]; cold: Sent }> {
   const warm = await sentBy(path, token);
   const runs: Sent[] = [];
   for (let n = 0; n < Math.max(1, Number(process.env.SLOW_READS_RUNS ?? 3)); n++)
@@ -145,7 +169,7 @@ async function measured(path: string, token: string): Promise<Sent & { all: numb
   const http = new Map<string, number>();
   for (const r of [warm, ...runs])
     for (const [at, n] of r.http) http.set(at, Math.max(n, http.get(at) ?? 0));
-  return { ...median, http, all: runs.map((r) => Math.round(r.ms)) };
+  return { ...median, http, cold: warm, all: runs.map((r) => Math.round(r.ms)) };
 }
 
 const sum = (m: ReadonlyMap<string, number> | undefined) =>
@@ -156,15 +180,53 @@ function overMost(path: string, sent: Sent): string[] {
   const out: string[] = [];
   for (const [area, by] of sent.areas)
     for (const [fp, n] of by)
-      if (PER_PROJECT[fp] && n > MOST)
-        out.push(`${path} ${area} sent ${fp} ${n} times (${PER_PROJECT[fp]}), more than ${MOST}`);
+      if ((PER_PROJECT[fp] || SUBSET[fp]) && n > MOST)
+        out.push(
+          `${path} ${area} sent ${fp} ${n} times (${PER_PROJECT[fp] ?? SUBSET[fp]}), more than ${MOST}`,
+        );
   return out;
 }
 
-const reads = new Map<
-  string,
-  { across: Sent & { all: number[] }; one: Sent & { all: number[] } }
->();
+/** Server-Timing's legs: a leg's description may hold a comma of its own. */
+const legsIn = (timing: string) => timing.split(/, (?=[a-z-]+[;,]|[a-z-]+$)/);
+
+/** Each shape a read sent more than once, by area, with its statement. */
+const repeatsIn = (sent: Sent) =>
+  [...sent.areas]
+    .flatMap(([a, by]) =>
+      [...by]
+        .filter(([, n]) => n > 1)
+        .map(([fp, n]) => `  ${a} ${fp}*${n} ${(shapeTextOf(fp) ?? '').slice(0, 160)}`),
+    )
+    .join('\n');
+
+/** What SLOW_READS_OUT keeps of a read: its calls, its times, each area's statements, its repeats. */
+function reportOf(path: string, { across, one }: Measured): string {
+  const calls = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0);
+  const head = (t: string) => legsIn(t).slice(0, 3).join(', ');
+  const httpLegs = (t: string) =>
+    legsIn(t)
+      .filter((l) => l.startsWith('http') || /calls?"/.test(l))
+      .join(', ');
+  const areas = [...across.areas.keys()]
+    .map((a) => `${a} ${sum(one.areas.get(a))}/${sum(across.areas.get(a))}`)
+    .join(', ');
+  return [
+    `${path} http twelve ${calls(across.http)} calls (most ${Math.max(0, ...across.http.values())} a path), one ${calls(one.http)}; cold ${httpLegs(across.cold.timing)}`,
+    `${path} one ${one.total} / twelve ${across.total}; twelve ${Math.round(across.ms)} ms (${across.all.join(', ')}) ${head(across.timing)}; one ${Math.round(one.ms)} ms (${one.all.join(', ')}) ${head(one.timing)}: ${areas}`,
+    repeatsIn(across),
+    `${path} cold twelve ${across.cold.total} statements, ${Math.round(across.cold.ms)} ms, ${head(across.cold.timing)}`,
+    repeatsIn(across.cold),
+    '',
+  ].join('\n');
+}
+
+type Read = Sent & { all: number[]; cold: Sent };
+interface Measured {
+  across: Read;
+  one: Read;
+}
+const reads = new Map<string, Measured>();
 
 beforeAll(async () => {
   testEnv();
@@ -176,7 +238,9 @@ beforeAll(async () => {
   const ecosystemId = await seedEcosystem(ownerId, orgId);
   const ids: string[] = [];
   for (let n = 0; n < PROJECTS; n++) {
-    const id = await seedAtScale(ownerId, SMALL, { orgId });
+    // projects differ as forge-dev's do: some hold requirements in no state but agreed, some fewer issues
+    const scale = { ...SMALL, states: n % 3 !== 1, issues: SMALL.issues - 6 * (n % 4) };
+    const id = await seedAtScale(ownerId, scale, { orgId });
     await wireLive(id, ownerId, ecosystemId, n % 2 === 0 ? coolify.url() : undefined);
     ids.push(id);
   }
@@ -194,24 +258,8 @@ beforeAll(async () => {
     });
   // SLOW_READS_OUT=<file> keeps each area's statements, one project against twelve
   if (process.env.SLOW_READS_OUT)
-    for (const [path, { across, one }] of reads)
-      appendFileSync(
-        process.env.SLOW_READS_OUT,
-        `${path} http twelve ${[...across.http.values()].reduce((a, b) => a + b, 0)} calls (most ${Math.max(0, ...across.http.values())} a path), one ${[...one.http.values()].reduce((a, b) => a + b, 0)}; ${across.timing
-          .split(/, (?=[a-z-]+[;,]|[a-z-]+$)/)
-          .filter((l) => l.startsWith('http') || /calls?"/.test(l))
-          .join(
-            ', ',
-          )}\n${path} one ${one.total} / twelve ${across.total}; twelve ${Math.round(across.ms)} ms (${across.all.join(', ')}) ${across.timing.split(', ').slice(0, 3).join(', ')}; one ${Math.round(one.ms)} ms (${one.all.join(', ')}) ${one.timing.split(', ').slice(0, 3).join(', ')}: ${[...across.areas.keys()].map((a) => `${a} ${sum(one.areas.get(a))}/${sum(across.areas.get(a))}`).join(', ')}\n${[
-          ...across.areas,
-        ]
-          .flatMap(([a, by]) =>
-            [...by]
-              .filter(([, n]) => n > 1)
-              .map(([fp, n]) => `  ${a} ${fp}*${n} ${(shapeTextOf(fp) ?? '').slice(0, 160)}`),
-          )
-          .join('\n')}\n`,
-      );
+    for (const [path, read] of reads)
+      appendFileSync(process.env.SLOW_READS_OUT, reportOf(path, read));
 }, 900_000);
 
 afterAll(closeWorld);
