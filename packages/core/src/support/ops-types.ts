@@ -20,15 +20,24 @@ export type OperationsActInput =
   | {
       action: 'move';
       thread: string;
+      message: string;
       issue: string;
       project?: string | undefined;
       to: IssueStatus;
       reason?: string | undefined;
     }
-  | { action: 'draft_requirement'; thread: string; project: string; title: string; summary: string }
+  | {
+      action: 'draft_requirement';
+      thread: string;
+      message: string;
+      project: string;
+      title: string;
+      summary: string;
+    }
   | {
       action: 'draft_feedback';
       thread: string;
+      message: string;
       project: string;
       kind: SupportRecordKind;
       title: string;

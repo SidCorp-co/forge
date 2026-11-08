@@ -1,8 +1,8 @@
 // REQ-75 r4 BC-20..BC-24, end to end: two bot accounts on one chat server, each with its role on
 // its rocketchat connection — babo (read, deliver) in an organization-wide operations room and in
 // one project's group, sy (read, draft, research) in an organization-wide room — answered by
-// sessions on a box, through forge_support under each turn's token. A write runs as the thread's
-// latest writer under that member's own permissions; the role's grant and the room's scope are
+// sessions on a box, through forge_support under each turn's token. A write runs as the writer of
+// the message it names, one handed to the turn, under that member's own permissions; the role's grant and the room's scope are
 // checked first. The chat server is `ops-chat-server.ts`'s: a stand-in, or a real Rocket.Chat.
 
 import { sql } from 'drizzle-orm';
@@ -53,6 +53,10 @@ const SY = {
 
 /** The acts that name the thread they are taken for. */
 const THREADED = new Set(['move', 'draft_requirement', 'draft_feedback', 'research', 'record']);
+/** The acts that run as the member whose message asked for them, naming it (ISS-716). */
+const ASKED = new Set(['move', 'draft_requirement', 'draft_feedback']);
+/** What a member writes into a thread while a turn works on another member's command there. */
+const INTERJECTION = 'hmm, wait';
 
 let core: Served;
 let chat: OpsChat;
@@ -105,11 +109,34 @@ beforeAll(async () => {
   await box.connect();
   box.model = async (turn, act) => {
     for (const m of turn.messages) {
+      if (m.from !== 'forge' && m.text === INTERJECTION) {
+        await act({ action: 'reply', thread: m.thread, text: 'noted' });
+        continue;
+      }
       if (m.from === 'forge' || !m.text.startsWith('do ')) continue;
-      const args = JSON.parse(m.text.slice(3)) as Record<string, unknown>;
+      // `interject` has a member write in the thread before the act runs; `name` has the session
+      // name another thread and message than the one it was handed, as a confused session would
+      const {
+        interject,
+        name,
+        ...args
+      }: Record<string, unknown> & {
+        interject?: { who: MemberName; room: RoomName };
+        name?: { thread: string; message: string };
+      } = JSON.parse(m.text.slice(3));
+      if (interject) {
+        const id = await chat.say(interject.who, interject.room, INTERJECTION, m.thread);
+        await expect
+          .poll(
+            async () =>
+              (await rows(sql`SELECT 1 FROM support_actions WHERE external_id = ${id}`)).length,
+          )
+          .toBe(1);
+      }
       const out = await act({
         ...args,
-        ...(THREADED.has(String(args.action)) ? { thread: m.thread } : {}),
+        ...(THREADED.has(String(args.action)) ? { thread: name?.thread ?? m.thread } : {}),
+        ...(ASKED.has(String(args.action)) ? { message: name?.message ?? m.message } : {}),
       });
       answered.set(m.thread, out);
       await act({ action: 'reply', thread: m.thread, text: out.isError ? 'refused' : 'done' });
@@ -286,6 +313,25 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
     expect(await statusOf(2)).toBe('open');
   });
 
+  // ISS-716 c1: the act ran as the thread's latest writer, so a member writing while the turn
+  // worked, or a thread named from another, made a viewer's command run as the owner
+  it('runs the act as the member whose message asked, not one who wrote in the thread since (BC-21)', async () => {
+    const out = await ask('bob', 'ops', { ...move(2), interject: { who: 'alice', room: 'ops' } });
+    expect(refusal(out)?.code, JSON.stringify(out)).toBe('PERMISSION_FORBIDDEN');
+    expect(refusal(out)?.detail).toContain('project.write');
+    expect(await statusOf(2)).toBe('open');
+  });
+
+  it('refuses an act naming a message this turn was not handed, from another thread (BC-21)', async () => {
+    await settleWarm();
+    const alices = await chat.say('alice', 'ops', `do ${JSON.stringify({ action: 'projects' })}`);
+    await expect.poll(() => answered.has(alices), { timeout: 30_000, interval: 50 }).toBe(true);
+    const out = await ask('bob', 'ops', { ...move(2), name: { thread: alices, message: alices } });
+    expect(refusal(out)?.code, JSON.stringify(out)).toBe('OPS_ASKER_MESSAGE_UNKNOWN');
+    expect(refusal(out)?.detail).toContain(alices);
+    expect(await statusOf(2)).toBe('open');
+  });
+
   it('lets an unmapped member read and nothing else, and maps no unverified address (BC-21)', async () => {
     const read = await ask('carol', 'ops', { action: 'issues', project: slug.catalog });
     expect(read, JSON.stringify(read)).toMatchObject({ project: slug.catalog, total: 6 });
@@ -293,6 +339,7 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
       const out = await ask(who, 'ops', move(3));
       expect(refusal(out)?.code, `${who}: ${JSON.stringify(out)}`).toBe('OPS_ASKER_UNMAPPED');
       expect(refusal(out)?.detail).toContain('can only read');
+      expect(refusal(out)?.detail).toContain('project.write');
     }
     expect(await statusOf(3)).toBe('open');
   });

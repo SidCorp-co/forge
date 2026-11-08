@@ -60,7 +60,12 @@ export class GrantedRoom {
       for (const m of turn.messages) {
         if (m.from === 'forge' || !armed) continue;
         armed = false;
-        out = await act({ ...args, thread: m.thread });
+        out = await act({
+          ...args,
+          thread: m.thread,
+          // a move runs as the writer of the message that asked for it (ISS-716)
+          ...(args.action === 'move_issue' ? { message: m.message } : {}),
+        });
       }
     };
     const thread = await w.chat.say(who, text);

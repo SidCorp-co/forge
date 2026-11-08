@@ -121,6 +121,14 @@ const threadId = z
 	.describe(
 		"the thread: the id the message you answer carries as `thread` in what you were handed",
 	);
+const askingMessage = z
+	.string()
+	.min(1)
+	.max(64)
+	.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+	.describe(
+		"the member's message that asked for this act, as it carries `message` in what you were handed: the act runs as its writer",
+	);
 const projectRef = z
 	.string()
 	.trim()
@@ -147,6 +155,7 @@ export const operationsRequirementsRequestSchema = z.strictObject({
 });
 export const operationsMoveRequestSchema = z.strictObject({
 	thread: threadId,
+	message: askingMessage,
 	issue: issueKey,
 	/** Named only where two projects of the scope share the key's prefix. */
 	project: projectRef.optional(),
@@ -155,12 +164,14 @@ export const operationsMoveRequestSchema = z.strictObject({
 });
 export const operationsDraftRequirementRequestSchema = z.strictObject({
 	thread: threadId,
+	message: askingMessage,
 	project: projectRef,
 	title: z.string().trim().min(3).max(200),
 	summary: z.string().trim().min(3).max(4000),
 });
 export const operationsDraftFeedbackRequestSchema = z.strictObject({
 	thread: threadId,
+	message: askingMessage,
 	project: projectRef,
 	kind: z.enum(SUPPORT_RECORD_KINDS),
 	title: z.string().trim().min(3).max(200),

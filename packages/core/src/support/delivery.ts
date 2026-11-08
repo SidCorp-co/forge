@@ -433,3 +433,34 @@ export async function roomOfAction(actionId: string): Promise<string | null> {
     .limit(1);
   return row?.roomId ?? null;
 }
+
+/**
+ * The member who wrote `message` in `thread`, where that message was handed to the room's current
+ * turn: delivered to the session with a path, at or after the turn's own hand-over (the newest
+ * `start` or `send`), so one written into the running turn counts and one an earlier turn took does
+ * not. Null where the room holds no such message. An operations act runs for this writer (ISS-716).
+ */
+export async function writerOfHandedMessage(
+  roomId: string,
+  thread: string,
+  message: string,
+): Promise<{ key: string; label: string | null } | null> {
+  const turnStart = sql`(SELECT max(t.delivered_at) FROM support_actions t
+    WHERE t.room_id = ${roomId} AND t.kind = 'message_in' AND t.output->>'path' IN ('start', 'send'))`;
+  const [row] = await db
+    .select({ key: supportActions.actorKey, label: supportActions.actorLabel })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.thread, thread),
+        eq(supportActions.externalId, message),
+        eq(supportActions.kind, 'message_in'),
+        eq(supportActions.actorKind, 'member'),
+        HANDED,
+        sql`${supportActions.deliveredAt} >= ${turnStart}`,
+      ),
+    )
+    .limit(1);
+  return row?.key ? { key: row.key, label: row.label } : null;
+}

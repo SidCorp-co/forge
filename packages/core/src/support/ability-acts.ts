@@ -1,4 +1,4 @@
-// The acts a room's grant opens (REQ-75 r5 BC-27): move an issue as the member who asked
+// The acts a room's grant opens (REQ-75 r5 BC-27): move an issue as the member whose message asked
 // (`deliver`), run a command on a named host (`run_commands`), deploy a bound target (`deploy`) and
 // push a build (`build`). Each is gated by the room's grant first (`grants.ts`), refused by name when
 // not granted (BC-28). A command that only reads runs at once; a build, a deploy and a command that
@@ -35,7 +35,13 @@ async function askingMember(room: RoomRow, thread: string) {
 /** Move an issue of the room's project as the member who asked (`deliver`). */
 export async function moveIssue(
   room: RoomRow,
-  input: { thread: string; issue: string; to: IssueStatus; reason?: string | undefined },
+  input: {
+    thread: string;
+    message: string;
+    issue: string;
+    to: IssueStatus;
+    reason?: string | undefined;
+  },
 ): Promise<OpsOutcome<unknown>> {
   const refused = await abilityRefusal(room, await grantOf(room), 'deliver');
   if (refused) return refused;

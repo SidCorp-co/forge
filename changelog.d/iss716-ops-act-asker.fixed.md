@@ -1,0 +1,1 @@
+**An operations room's write runs as the member who asked for it.** Each move or draft names the message that asked, and a member writing in the thread meanwhile, or another thread named, can no longer lend the act their permissions.

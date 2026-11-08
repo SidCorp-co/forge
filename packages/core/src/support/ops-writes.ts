@@ -1,5 +1,5 @@
-// An operations room's writes (REQ-75 BC-21): each runs as the member who wrote last in the thread
-// (`ops-asker.ts`), under that member's own permissions — the same `requireCan` and kernel guards
+// An operations room's writes (REQ-75 BC-21): each runs as the member whose message, handed to this
+// turn, asked for it (`ops-asker.ts`), under that member's own permissions — the same `requireCan` and kernel guards
 // their own click would meet, under the turn's token acting for them — and never under a permission
 // of the bot's.
 
@@ -55,7 +55,7 @@ export async function move(
 ): Promise<OpsOutcome<unknown>> {
   const project = await projectOfKey(room, input.issue, input.project);
   if (!project.ok) return project;
-  const asker = await askerOf(room, input.thread);
+  const asker = await askerOf(room, input.thread, input.message, 'project.write');
   if (!asker.ok) return asker;
   const listed = await listIssues(
     project.value.id,
@@ -106,7 +106,7 @@ export async function draftRequirementAct(
 ): Promise<OpsOutcome<unknown>> {
   const project = await projectInScope(room, input.project);
   if (!project.ok) return project;
-  const asker = await askerOf(room, input.thread);
+  const asker = await askerOf(room, input.thread, input.message, 'project.write');
   if (!asker.ok) return asker;
   return refusalsOf(() =>
     asAsker(asker.value, project.value.id, async () => {
@@ -136,7 +136,7 @@ export async function draftFeedbackAct(
 ): Promise<OpsOutcome<unknown>> {
   const project = await projectInScope(room, input.project);
   if (!project.ok) return project;
-  const asker = await askerOf(room, input.thread);
+  const asker = await askerOf(room, input.thread, input.message, 'project.write');
   if (!asker.ok) return asker;
   return refusalsOf(() =>
     asAsker(asker.value, project.value.id, async () => {

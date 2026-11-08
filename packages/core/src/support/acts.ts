@@ -81,6 +81,7 @@ export type SupportActInput =
   | {
       action: 'move_issue';
       thread: string;
+      message: string;
       issue: string;
       to: IssueStatus;
       reason?: string | undefined;

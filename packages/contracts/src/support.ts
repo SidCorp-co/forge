@@ -948,6 +948,14 @@ export const supportLinkRequestSchema = z.strictObject({
 
 export const supportMoveIssueRequestSchema = z.strictObject({
 	thread: threadId,
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.describe(
+			"the member's message that asked for the move, as it carries `message` in what you were handed: the move runs as its writer",
+		),
 	issue: z
 		.string()
 		.trim()
@@ -1312,6 +1320,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"OPS_ROLE_NOT_GRANTED",
 	"OPS_OUT_OF_SCOPE",
 	"OPS_ASKER_UNMAPPED",
+	/** An act runs as the writer of the message it names, which this turn was not handed in that thread (ISS-716). */
+	"OPS_ASKER_MESSAGE_UNKNOWN",
 	"OPS_ISSUE_UNKNOWN",
 	"OPS_RESEARCH_REFUSED",
 	"SUPPORT_ABILITY_NOT_GRANTED",
@@ -1487,6 +1497,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	OPS_ROLE_NOT_GRANTED: 403,
 	OPS_OUT_OF_SCOPE: 403,
 	OPS_ASKER_UNMAPPED: 403,
+	OPS_ASKER_MESSAGE_UNKNOWN: 409,
 	OPS_ISSUE_UNKNOWN: 404,
 	SUPPORT_ABILITY_NOT_GRANTED: 403,
 	SUPPORT_NOT_A_CONFIRMER: 403,
