@@ -13,7 +13,7 @@ import type {
 } from '@forge/contracts/suggestions';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsPerProject } from '../db/read-memo.js';
+import { memoizedPerId, rowsPerProject } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -43,6 +43,46 @@ interface Named {
   title: string;
 }
 
+/** A target's number and short title, as each target type's read answers it. */
+interface Titled {
+  seq: number;
+  title: string;
+}
+
+/**
+ * Each target of one type by its number and short title. A target's row is its own, so every
+ * project's suggestions a person's read asks before the quiet point are read in one statement of
+ * each type (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12): each was one a project.
+ */
+const titledOf = (
+  type: 'requirement' | 'feedback' | 'issue',
+  ids: readonly string[],
+): Promise<Map<string, Titled>> =>
+  ids.length === 0
+    ? Promise.resolve(new Map())
+    : memoizedPerId(`suggestionTarget:${type}`, ids, async (some) => {
+        const rows =
+          type === 'requirement'
+            ? await db
+                .select({
+                  id: requirements.id,
+                  seq: requirements.reqSeq,
+                  title: sql<string>`coalesce(${requirements.shortName}, ${requirements.title})`,
+                })
+                .from(requirements)
+                .where(inArray(requirements.id, [...some]))
+            : type === 'feedback'
+              ? await db
+                  .select({ id: feedback.id, seq: feedback.fbSeq, title: feedback.title })
+                  .from(feedback)
+                  .where(inArray(feedback.id, [...some]))
+              : await db
+                  .select({ id: issues.id, seq: issues.issSeq, title: issues.title })
+                  .from(issues)
+                  .where(inArray(issues.id, [...some]));
+        return new Map(rows.map(({ id, ...r }) => [id, r]));
+      });
+
 /** Each target's key and short title, one set read per target type. */
 export async function targetsOf(
   projectId: string,
@@ -52,28 +92,9 @@ export async function targetsOf(
     ...new Set(rows.map(targetOfRow).flatMap((t) => (t.type === type ? [t.id] : []))),
   ];
   const [reqs, fbs, iss, flows, prefix] = await Promise.all([
-    ids('requirement').length
-      ? db
-          .select({
-            id: requirements.id,
-            seq: requirements.reqSeq,
-            title: sql<string>`coalesce(${requirements.shortName}, ${requirements.title})`,
-          })
-          .from(requirements)
-          .where(inArray(requirements.id, ids('requirement')))
-      : [],
-    ids('feedback').length
-      ? db
-          .select({ id: feedback.id, seq: feedback.fbSeq, title: feedback.title })
-          .from(feedback)
-          .where(inArray(feedback.id, ids('feedback')))
-      : [],
-    ids('issue').length
-      ? db
-          .select({ id: issues.id, seq: issues.issSeq, title: issues.title })
-          .from(issues)
-          .where(inArray(issues.id, ids('issue')))
-      : [],
+    titledOf('requirement', ids('requirement')),
+    titledOf('feedback', ids('feedback')),
+    titledOf('issue', ids('issue')),
     ids('workflow').length
       ? db
           .select({
@@ -87,9 +108,9 @@ export async function targetsOf(
     ids('issue').length ? activeIssuePrefix(projectId) : null,
   ]);
   const named = new Map<string, Named>();
-  for (const r of reqs) named.set(r.id, { key: requirementKey(r.seq), title: r.title });
-  for (const f of fbs) named.set(f.id, { key: feedbackKey(f.seq), title: f.title });
-  for (const i of iss) named.set(i.id, { key: formatIssueRef(prefix, i.seq), title: i.title });
+  for (const [id, r] of reqs) named.set(id, { key: requirementKey(r.seq), title: r.title });
+  for (const [id, f] of fbs) named.set(id, { key: feedbackKey(f.seq), title: f.title });
+  for (const [id, i] of iss) named.set(id, { key: formatIssueRef(prefix, i.seq), title: i.title });
   for (const w of flows) named.set(w.id, { key: w.flow, title: w.title });
   return named;
 }

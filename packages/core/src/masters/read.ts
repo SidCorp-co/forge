@@ -27,7 +27,8 @@ import type { MasterServing } from '@forge/contracts/steward';
 import { type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
-import { memoizedRead, onePerProject } from '../db/read-memo.js';
+import { uuidArray } from '../db/raw-sql.js';
+import { memoizedRead, onePerId, onePerProject } from '../db/read-memo.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import {
   masterLastBeatSql,
@@ -37,6 +38,7 @@ import {
   SESSION_SILENCE_TIMEOUT_S,
 } from '../devices/index.js';
 import { NOT_PARKED } from '../jobs/index.js';
+import { issueTitleOf, runsOutOf, slotsHeld } from './held-reads.js';
 import { liveMaster, type MasterRow } from './live-master.js';
 import { slotsOf } from './rules.js';
 import { masterStateOf, storedPane } from './state.js';
@@ -181,36 +183,25 @@ export function readClosedPass(
   );
 }
 
-async function slotsHeld(deviceId: string): Promise<{ jobPanes: number; runs: number }> {
-  const [row] = rowsOf<{ jobs: number; runs: number }>(
-    await db.execute(sql`
-      SELECT
-        (SELECT count(*) FROM jobs j
-           LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-          WHERE j.device_id = ${deviceId} AND ${OCCUPYING})::int AS jobs,
-        (SELECT count(*) FROM agent_sessions s
-          WHERE s.device_id = ${deviceId}
-            AND s.kind = ${RUN_SESSION_KIND}
-            AND s.status IN (${list(LIVE_SESSION_STATUSES)})
-            AND ${NOT_PARKED})::int AS runs`),
-  );
-  return { jobPanes: row?.jobs ?? 0, runs: row?.runs ?? 0 };
-}
-
-// the runs this project's master declared and still has out: live run sessions of this project on
-// its box, the same predicate `slotsHeld` counts box-wide, so a master between passes with its own run
-// out never reads idle
-async function runsOutOf(projectId: string, deviceId: string): Promise<number> {
-  const [row] = rowsOf<{ runs: number }>(
-    await db.execute(sql`
-      SELECT count(*)::int AS runs FROM agent_sessions s
-       WHERE s.device_id = ${deviceId}
-         AND s.project_id = ${projectId}
-         AND s.kind = ${RUN_SESSION_KIND}
-         AND s.status IN (${list(LIVE_SESSION_STATUSES)})
-         AND ${NOT_PARKED}`),
-  );
-  return row?.runs ?? 0;
+/**
+ * The open pass of a live master session. A person's read asks it for each project whose master is
+ * live, and the forecast and the runs ask it again: every ask before the quiet point is one statement
+ * (`db/read-memo.ts:onePerId`, ISS-1070 r12), where each was one a project and an ask.
+ */
+function heldOpenPass(sessionId: string): Promise<MasterOpenPass | undefined> {
+  return onePerId('masterOpenPass', sessionId, async (ids) => {
+    const rows = rowsOf<PassRow>(
+      await db.execute(sql`
+        SELECT ${PASS_COLUMNS} FROM master_passes
+         WHERE master_session_id = ANY(${uuidArray(ids)}) AND ended_at IS NULL`),
+    );
+    const out = new Map<string, MasterOpenPass>();
+    for (const r of rows) {
+      const id = String(r.master_session_id);
+      if (!out.has(id)) out.set(id, openPassOf(r));
+    }
+    return out;
+  });
 }
 
 /**
@@ -257,18 +248,6 @@ export function masterServingOf(projectId: string): Promise<MasterServing> {
   });
 }
 
-/** The title of the project's issue a pass's key names by its number (`ISS-412`), or null where it names none (ISS-864). */
-async function issueTitleOf(projectId: string, key: string): Promise<string | null> {
-  const seq = /-(\d+)$/.exec(key)?.[1];
-  if (!seq) return null;
-  const [row] = rowsOf<{ title: string }>(
-    await db.execute(
-      sql`SELECT title FROM issues WHERE project_id = ${projectId} AND iss_seq = ${Number(seq)}`,
-    ),
-  );
-  return row?.title ?? null;
-}
-
 export async function readMasterStanding(projectId: string): Promise<MasterStanding> {
   const [master, lastPass] = await Promise.all([
     liveMaster(projectId),
@@ -304,7 +283,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       ? { id: master.device_id, name: master.device_name }
       : null;
   const [pass, held, runsOut] = await Promise.all([
-    readOpenPass(db, master.id),
+    heldOpenPass(master.id).then((p) => p ?? null),
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
     master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
   ]);

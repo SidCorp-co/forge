@@ -10,7 +10,7 @@ import { uuidArray } from '../db/raw-sql.js';
 import { rowsPerId } from '../db/read-memo.js';
 import { issues, projects } from '../db/schema.js';
 import { feedback, feedbackOccurrences } from '../db/schema-feedback.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import { activeIssuePrefixes } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 
@@ -122,7 +122,13 @@ export async function forgeOriginsOf(feedbackIds: readonly string[]): Promise<Fo
   const rows = (
     await rowsPerId('forgeOrigins', feedbackIds, originRowsOf, (r) => r.feedbackId)
   ).sort((a, b) => a.at.getTime() - b.at.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const people = await peopleOf(rows.map((r) => r.reportedBy));
+  // the issues a report names are of many projects: their prefixes in one read, never one a row
+  const [people, prefixes] = await Promise.all([
+    peopleOf(rows.map((r) => r.reportedBy)),
+    activeIssuePrefixes([
+      ...new Set(rows.flatMap((r) => (r.issueId && r.issueProjectId ? [r.issueProjectId] : []))),
+    ]),
+  ]);
   const out = new Map<string, FeedbackOriginView>();
   // an item stays live while one of its reports came from a live project, or from no project at all
   const live = new Set(
@@ -138,7 +144,7 @@ export async function forgeOriginsOf(feedbackIds: readonly string[]): Promise<Fo
     }
     const issueKey =
       r.issueId && r.issueProjectId && r.issueSeq !== null
-        ? formatIssueRef(await activeIssuePrefix(r.issueProjectId), r.issueSeq)
+        ? formatIssueRef(prefixes.get(r.issueProjectId) ?? null, r.issueSeq)
         : null;
     out.set(r.feedbackId, {
       occurrences: 1,

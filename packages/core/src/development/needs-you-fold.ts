@@ -27,6 +27,7 @@ import {
 import { cutAtWord } from '@forge/contracts/title-text';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { feedback } from '../db/schema-feedback.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
@@ -268,9 +269,16 @@ function previewDecision(place: Placement, p: ApprovablePreview): DecisionBody {
   };
 }
 
-/** The feedback items the triage suggestions are on, with what the reporter said. */
-async function triagedItemsOf(ids: readonly string[]): Promise<Map<string, TriagedItem>> {
-  if (ids.length === 0) return new Map();
+/**
+ * The feedback items the triage suggestions are on, with what the reporter said: every project's
+ * asks before the quiet point in one statement (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12).
+ */
+function triagedItemsOf(ids: readonly string[]): Promise<Map<string, TriagedItem>> {
+  if (ids.length === 0) return Promise.resolve(new Map());
+  return memoizedPerId('triagedFeedbackItems', ids, triagedItemsRead);
+}
+
+async function triagedItemsRead(ids: readonly string[]): Promise<Map<string, TriagedItem>> {
   const rows = await db
     .select({
       id: feedback.id,

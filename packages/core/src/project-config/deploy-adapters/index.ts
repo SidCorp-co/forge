@@ -2,8 +2,8 @@ import type { EnvironmentStateRefusalCode } from '@forge/contracts/project-confi
 import type { TargetedDeployAdapter } from '../../integrations/deploy/index.js';
 import {
   buildContextFromBinding,
-  findBindingWithConnectionById,
   getAdapter,
+  heldBindingWithConnection,
 } from '../../integrations/index.js';
 import { refuser } from '../../lib/refusal.js';
 
@@ -14,7 +14,7 @@ export async function deployAdapterForBinding(
   bindingId: string,
   timeoutMs: number,
 ): Promise<TargetedDeployAdapter | null> {
-  const pair = await findBindingWithConnectionById(bindingId);
+  const pair = await heldBindingWithConnection(bindingId);
   if (!pair || pair.binding.projectId !== projectId || !pair.binding.active) return null;
   if (pair.binding.role !== 'deploy') {
     throw refuse(

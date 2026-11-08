@@ -24,6 +24,7 @@ export {
   type ReportableBinding,
   reportedBindingIdentities,
 } from './binding-name.js';
+export { heldBindingWithConnection } from './binding-read.js';
 export {
   applyClaimedInbound,
   findDeliveryById,

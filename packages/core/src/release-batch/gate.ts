@@ -3,10 +3,7 @@ import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { onePerProject } from '../db/read-memo.js';
 import { type IssueStatus, projects } from '../db/schema.js';
-import {
-  type BindingWithConnection,
-  findBindingWithConnectionById,
-} from '../integrations/index.js';
+import { type BindingWithConnection, heldBindingWithConnection } from '../integrations/index.js';
 import {
   bindingOf,
   type NamedEnvironment,
@@ -75,7 +72,7 @@ async function productionBinding(
       reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), names no door that deploys it, and no promotion crosses into the branch it deploys from, so there is nowhere Forge can land a release — name the door (\`deployment.target\`, a release is then your record of its deploy), declare that promotion (a release is then its change request), give it a deploy binding, or declare no production environment if Forge ships nothing`,
     };
   }
-  const pair = await findBindingWithConnectionById(id);
+  const pair = await heldBindingWithConnection(id);
   const live =
     pair?.binding.projectId === projectId && pair.binding.active && pair.connection.active;
   if (!pair || !live) {

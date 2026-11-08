@@ -1,6 +1,6 @@
 import { eq, inArray } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { perProjectRead } from '../db/read-memo.js';
+import { memoizedPerId, perProjectRead } from '../db/read-memo.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
@@ -33,6 +33,24 @@ export async function activeIssuePrefix(
     (r) => r.id,
     (rows) => rows[0]?.issuePrefix ?? null,
   );
+}
+
+/**
+ * The active prefix of each of these projects, in one statement for every project a read asks
+ * before its quiet point (`db/read-memo.ts:memoizedPerId`): a list naming issues of many projects
+ * (Forge's own feedback, ISS-1070 r12) asked one project's prefix at a time, one statement each.
+ */
+export async function activeIssuePrefixes(
+  projectIds: readonly string[],
+): Promise<Map<string, string | null>> {
+  if (projectIds.length === 0) return new Map();
+  return memoizedPerId('issuePrefixById', projectIds, async (ids) => {
+    const rows = await defaultDb
+      .select({ id: projects.id, issuePrefix: projects.issuePrefix })
+      .from(projects)
+      .where(inArray(projects.id, [...ids]));
+    return new Map(rows.map((r) => [r.id, r.issuePrefix]));
+  });
 }
 
 /** Every prefix this project has ever held, for parsing a reference somebody published earlier. */

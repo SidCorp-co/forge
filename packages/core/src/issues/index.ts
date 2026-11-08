@@ -148,6 +148,7 @@ export {
 } from './issue-lease-read.js';
 export {
   activeIssuePrefix,
+  activeIssuePrefixes,
   everyIssuePrefix,
   heldIssuePrefixes,
 } from './issue-prefix-read.js';
