@@ -35,6 +35,16 @@ export interface StubIssue {
   releaseNotes?: Record<string, unknown> | null;
 }
 
+/** A release pressed on beta (ISS-988): a run claiming `issueIds`, and each abort reason sent. */
+export interface StubRelease {
+  runId: string;
+  version: string | null;
+  startedAt: string;
+  status: 'running' | 'aborted';
+  issueIds: string[];
+  aborts: string[];
+}
+
 /** A release record beta was sent, and the code it refused it with, where it did. */
 export interface StubRecord {
   projectId: string;
@@ -92,6 +102,8 @@ export const beta = {
   /** Every mark beta refused, with its code. */
   refusedMarks: [] as { issueId: string; code: string; body: Record<string, unknown> }[],
   transitions: [] as { issueId: string; toStatus: string; reason: string }[],
+  /** The releases pressed on each beta project (ISS-988), by project id. */
+  releases: new Map<string, StubRelease[]>(),
   /** How long the project list takes to answer: a slow beta. */
   delayMs: 0,
   requests: 0,
@@ -128,6 +140,9 @@ function recordRefusal(projectId: string, body: Record<string, unknown>): string
   }
   const issues = ids.map((id) => (beta.issues.get(projectId) ?? []).find((i) => i.id === id));
   if (issues.some((i) => i === undefined)) return 'CLAIM_CONFLICT';
+  // an issue a running release claims is held by it: beta records no other release over it
+  const claimed = (beta.releases.get(projectId) ?? []).filter((r) => r.status === 'running');
+  if (ids.some((id) => claimed.some((r) => r.issueIds.includes(id)))) return 'CLAIM_CONFLICT';
   const found = issues as StubIssue[];
   if (found.some((i) => !i.releaseNotes)) return 'RELEASE_RECORD_MISSING';
   if (found.some((i) => !i.mergedAt)) return 'RELEASE_WORK_UNMERGED';
@@ -184,6 +199,69 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   return text ? (JSON.parse(text) as Record<string, unknown>) : {};
 }
 
+/** Beta's release reads and its abort door (ISS-988); whether it answered the request. */
+async function answerRelease(
+  req: IncomingMessage,
+  url: URL,
+  parts: string[],
+  send: (status: number, body: unknown) => void,
+): Promise<boolean> {
+  const answered = (status: number, body: unknown) => {
+    send(status, body);
+    return true;
+  };
+  if (req.method === 'GET' && parts[1] === 'projects' && parts[3] === 'pipeline-runs') {
+    // beta's run list, newest first, filtered by status; a job run carries its issue
+    const status = url.searchParams.get('status');
+    const items = [...(beta.releases.get(parts[2] as string) ?? [])]
+      .filter((r) => !status || r.status === status)
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+      .map((r) => ({
+        id: r.runId,
+        issueId: null,
+        kind: 'system',
+        status: r.status,
+        startedAt: r.startedAt,
+      }));
+    const job = { id: randomUUID(), issueId: randomUUID(), kind: 'issue', lane: 'job' };
+    const rows =
+      status && status !== 'running'
+        ? items
+        : [{ ...job, status: 'running', startedAt: new Date().toISOString() }, ...items];
+    return answered(200, { items: rows, total: rows.length, hasMore: false });
+  }
+  if (parts[1] === 'projects' && parts[3] === 'release-batches' && parts[4]) {
+    const release = (beta.releases.get(parts[2] as string) ?? []).find((r) => r.runId === parts[4]);
+    if (!release) return answered(404, { code: 'NOT_FOUND', message: 'release batch not found' });
+    if (req.method === 'GET' && parts.length === 5) {
+      const issues = release.issueIds.map((id) => findIssue(id) as StubIssue);
+      return answered(200, {
+        runId: release.runId,
+        projectId: parts[2],
+        gateStatus: 'awaiting_release',
+        version: release.version,
+        issues: issues.map(({ id, displayId, title, status, releaseNotes }) => ({
+          id,
+          displayId,
+          title,
+          status,
+          releaseNotes: releaseNotes ?? null,
+        })),
+      });
+    }
+    if (req.method === 'POST' && parts[5] === 'abort') {
+      const body = await readBody(req);
+      release.aborts.push(String(body.reason));
+      if (release.status !== 'running') {
+        return answered(409, { code: 'RELEASE_RUN_ENDED', message: 'this release already ended' });
+      }
+      release.status = 'aborted';
+      return answered(200, { aborted: true, releasedIds: release.issueIds });
+    }
+  }
+  return false;
+}
+
 let server: Server | undefined;
 
 /** Starts the stub on a free port; its base URL. */
@@ -224,6 +302,7 @@ export function startBeta(): Promise<string> {
           : { declared: false, revision: null, document: null },
       );
     }
+    if (await answerRelease(req, url, parts, send)) return;
     if (req.method === 'GET' && parts[1] === 'projects' && parts[3] === 'issues') {
       const items = (beta.issues.get(parts[2] as string) ?? []).map((i) => {
         if (!beta.bare.has(i.id)) return i;
@@ -357,6 +436,25 @@ export function betaIssue(seq: number, over: Partial<StubIssue> = {}): StubIssue
     releaseNotes: null,
     ...over,
   };
+}
+
+/** A release pressed on beta project `projectId` over `issues`, now unless `startedAt` says. */
+export function pressRelease(
+  projectId: string,
+  issues: readonly StubIssue[],
+  over: Partial<StubRelease> = {},
+): StubRelease {
+  const release: StubRelease = {
+    runId: randomUUID(),
+    version: '0.3.7',
+    startedAt: new Date().toISOString(),
+    status: 'running',
+    issueIds: issues.map((i) => i.id),
+    aborts: [],
+    ...over,
+  };
+  beta.releases.set(projectId, [...(beta.releases.get(projectId) ?? []), release]);
+  return release;
 }
 
 export interface FireRow {
