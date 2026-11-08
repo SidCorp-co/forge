@@ -114,11 +114,17 @@ function sitesOf(m: Measure): string[] {
 /** Every statement's shape (`db/statement-shapes.ts:shapeOf`), with how many times the read sent it. */
 function everyShape(m: Measure): string[] {
   const by = new Map<string, number>();
+  const sites = new Map<string, Set<string>>();
   for (const s of m.statements) {
     const fp = fingerprintOf(s.text);
     by.set(fp, (by.get(fp) ?? 0) + 1);
+    if (s.site) sites.set(fp, (sites.get(fp) ?? new Set()).add(s.site));
   }
+  // under SLOW_READS_STACKS each shape names the code that sent it, so a live fingerprint reads as a site
   return [...by]
     .sort((a, b) => b[1] - a[1])
-    .map(([fp, n]) => `  = ${n} ${fp} ${(shapeTextOf(fp) ?? '').slice(0, 220)}`);
+    .map(
+      ([fp, n]) =>
+        `  = ${n} ${fp} ${(shapeTextOf(fp) ?? '').slice(0, 220)}${[...(sites.get(fp) ?? [])].map((at) => `\n      from ${at}`).join('')}`,
+    );
 }
