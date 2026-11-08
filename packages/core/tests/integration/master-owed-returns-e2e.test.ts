@@ -30,6 +30,7 @@ import {
   createTestProject,
   createTestUser,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 // F32 / FB-84: a returned design or requirement revision waits on the project's master, so the
 // master is woken for it and core counts it on every verdict its box asks for, naming it on the
@@ -174,12 +175,54 @@ const askVerdict = (who: Who = 'box') =>
 /** What core told the box the master is owed besides issues, as the pass is told it. */
 const owedLine = async (): Promise<string> => ok(await askVerdict()).work.owedLine;
 
+/** The pass's sentence on proposed designs alone, so a returned one named elsewhere is not read as it. */
+const approvalsLine = async (): Promise<string> =>
+  /proposed designs? waits? on your approval[^;]*/.exec(await owedLine())?.[0] ?? '';
+
+// ISS-1158 (FB-586): outside strict the master holds workflow-designs.approve, so a proposed design
+// is its act; support-group r4 sat proposed for days, its pass naming nothing, while ISS-1014 waited
+describe('a proposed design on a project that is not strict is owed to the project master', () => {
+  it('is named on the pass as owed its approval, its read names the master, and it leaves once decided', async () => {
+    const id = await proposedDesign('approval-flow');
+    expect(await approvalsLine()).toContain(`approval-flow r1, workflow ${id}`);
+    expect(await owedLine()).toContain(`workflows/${id}/design/decision`);
+    const read = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
+    expect(read.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: "The project's master",
+      act: 'approve or return the design',
+    });
+    ok(
+      await say('master', 'POST', at(`/workflows/${id}/design/decision`), {
+        revision: 1,
+        decision: 'approve',
+      }),
+    );
+    expect(await owedLine()).not.toContain(id);
+  });
+
+  it('is kept off the pass on a strict project, whose read names the holders of the approval', async () => {
+    const id = await proposedDesign('strict-flow');
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    try {
+      expect(await owedLine()).not.toContain(id);
+      const read = ok(await say('master', 'GET', at(`/workflows/${id}/design`)));
+      expect(read.waitingOn).toMatchObject({ kind: 'person', who: 'Design approver' });
+      expect(read.waitingOn.says.who).toMatchObject({ vars: { perm: 'workflow-designs.approve' } });
+    } finally {
+      await declareControls(projectId, ownerId, { gates: { profile: 'standard' } });
+    }
+    await returnDesign(id, 'leave the pass clean');
+  });
+});
+
 describe('a returned design no issue carries is owed to the project master', () => {
   it('is named on the pass with its flow, revision and workflow, and names the master on its read', async () => {
     const id = await proposedDesign('owed-flow');
-    expect(await owedLine()).not.toContain(id);
+    expect(await owedLine()).not.toContain(`returned design owes a revision no issue carries (owed-flow`);
     await returnDesign(id, 'draw the edge proxy, not LE DNS-01');
     expect(await owedLine()).toContain(`owed-flow r1, workflow ${id}`);
+    expect(await approvalsLine()).not.toContain(id);
     const read = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
     expect(read.waitingOn).toMatchObject({
       kind: 'agent',
@@ -203,7 +246,9 @@ describe('a returned design no issue carries is owed to the project master', () 
     ok(await say('master', 'PUT', at(`/workflows/${id}`), { baseRevision: 1, document: d }));
     const read = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
     expect(read.status).toBe('proposed');
-    expect(await owedLine()).not.toContain(id);
+    // the revision proposed is now owed its approval, no longer a revision
+    expect(await owedLine()).not.toContain(`revised-flow r1, workflow ${id}`);
+    expect(await approvalsLine()).toContain(`revised-flow r2, workflow ${id}`);
   });
 
   it('is not listed while a live issue it was drawn under carries the return', async () => {
