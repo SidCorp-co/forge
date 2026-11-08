@@ -1,0 +1,1 @@
+`source.merged` leaves the outbox: the GitHub, GitLab and read-projection adapters stop emitting a merge fact nothing consumed since ISS-774, migration 0642 retires its rows and type, and an outbox event type with no consumer is refused by its type and by a contracts test (ISS-822).

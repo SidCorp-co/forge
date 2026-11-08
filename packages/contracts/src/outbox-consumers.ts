@@ -51,8 +51,6 @@ export const OUTBOX_CONSUMERS = {
 	"runner.provisionRequested": ["ws-broadcast"],
 	"runner.provisionStatus": ["ws-broadcast"],
 	"source.pushed": ["ecosystem-builder", "on-land-deploy"],
-	// information only: a host's report of a merge writes no issue, release or roster state (ISS-774)
-	"source.merged": [],
 	"source.reviewed": ["review-note"],
 	"integration.changed": ["ws-broadcast", "support-rooms"],
 	"workflow.designDecided": [
@@ -122,7 +120,9 @@ export const OUTBOX_CONSUMERS = {
 	// the project's open pages, a triage's Feedback list among them (ISS-1131)
 	"decision.settled": ["org-activity", "ws-broadcast"],
 } as const satisfies {
-	readonly [T in OutboxEventType]: readonly string[];
+	// an event nobody consumes is refused (ISS-822): `source.merged` was emitted by three adapters for
+	// a year with `[]` here; an event with no consumer is not emitted, and leaves the registry
+	readonly [T in OutboxEventType]: readonly [string, ...string[]];
 };
 
 export type OutboxConsumerOf<T extends OutboxEventType> =

@@ -23,7 +23,6 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
-import { emitEvent } from '../../src/outbox/index.js';
 import { settleChangeRequestRelease } from '../../src/release-batch/index.js';
 import { releaseMergesOwed } from '../../src/release-batch/merges-owed.js';
 import { api, userToken } from '../helpers/api.js';
@@ -162,17 +161,6 @@ const mergedInProjection = (number: number) =>
     UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${MERGE}, merged_at = now()
      WHERE project_id = ${world.projectId} AND number = ${number}`);
 
-/** The host's report of that merge, as its hook tells the outbox: ISS-774 gave it no consumer. */
-const hostReportsMerge = () =>
-  emitEvent(db, 'source.merged', {
-    projectId: world.projectId,
-    headRef: STG,
-    baseRef: PROD,
-    commitSha: MERGE,
-    mergedAt: new Date().toISOString(),
-    head: null,
-  });
-
 const recordDeploy = (issueIds: string[], version: string) =>
   call('POST', '/release-records', {
     issueIds,
@@ -247,9 +235,9 @@ describe('a promotion release tags the promotion merge the moment Forge sees it 
       { runId, next: { number: 5053 }, merged: 0, total: 1 },
     ]);
 
-    // merged on GitLab: the hook's report writes nothing (ISS-774), and the record stays owed
+    // merged on GitLab: the projection reads it and nothing else is written (ISS-774, ISS-822), and
+    // the record stays owed
     await mergedInProjection(5053);
-    await hostReportsMerge();
     await settleOutbox();
     expect(planted.writes).toEqual([]);
     expect(await tagOnPage(version)).toBeNull();

@@ -8,7 +8,6 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
-import { emitEvent } from '../../src/outbox/index.js';
 import { api, userToken } from './api.js';
 import { settleOutbox } from './ecosystem-world.js';
 import {
@@ -123,7 +122,7 @@ export const issueRow = async (id: string) =>
 export const mergeOf = (issueId: string, pullRequest: number) =>
   api(world.token, 'POST', `/api/issues/${issueId}/merge-pull-request`, { pullRequest });
 
-/** GitLab's report that it merged the request on `headRef` at `commitSha`, as its hook emits it. */
+/** GitLab's merge of the request on `headRef` at `commitSha`, as the projection reads it: no event (ISS-822). */
 export async function hostMerged(
   number: number,
   headRef: string,
@@ -135,14 +134,6 @@ export async function hostMerged(
   await db.execute(sql`
     UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${commitSha}, merged_at = now()
      WHERE project_id = ${world.projectId} AND number = ${number}`);
-  await emitEvent(db, 'source.merged', {
-    projectId: world.projectId,
-    headRef,
-    baseRef: BRANCH,
-    commitSha,
-    mergedAt,
-    head: null,
-  });
   await settleOutbox();
 }
 

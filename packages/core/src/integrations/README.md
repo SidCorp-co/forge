@@ -15,8 +15,8 @@ protocol and nothing else:
 
 - What a vendor delivers is reported, not acted on. `handleInbound` returns `facts` (`./types.ts:InboundFact`),
   the webhook door (`integration-door/webhook-inbound-routes.ts`) writes them to the outbox, and the module that owns
-  each effect consumes them: `source.pushed` (ecosystem, projects), `source.merged` (issues),
-  `source.reviewed` (comments).
+  each effect consumes them: `source.pushed` (ecosystem, projects) and `source.reviewed` (comments).
+  A merge the host reports is the projection row's own state, and no fact (ISS-822).
 - What an adapter must know about Forge's own rows (a project's declared repository, the issue a branch
   names) is handed in at boot through `forge-reads.ts:provideForgeReads`, never imported.
 - A write that must share a transaction with a Forge row takes the caller's writer: the merge verb

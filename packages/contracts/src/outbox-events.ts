@@ -30,7 +30,6 @@ export const OUTBOX_EVENT_TYPES = [
 	"runner.provisionRequested",
 	"runner.provisionStatus",
 	"source.pushed",
-	"source.merged",
 	"source.reviewed",
 	"integration.changed",
 	"workflow.designDecided",
@@ -388,18 +387,6 @@ export interface OutboxEventPayloads
 		bindingId: string;
 		branch: string | null;
 		commit: string | null;
-	};
-	/** A source host reported a change request merged (on the host, not through Forge's merge). */
-	"source.merged": {
-		projectId: string;
-		headRef: string;
-		/** The branch the request merged into: the target the issue's merge stamp records. */
-		baseRef: string;
-		commitSha: string;
-		/** ISO 8601. */
-		mergedAt: string;
-		/** The request's head and whether its tree is the landing's, read from the host when the merge was reported. */
-		head: MergedHead | null;
 	};
 	/** A review was submitted on a change request, on the host or through Forge. */
 	"source.reviewed": {

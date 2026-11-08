@@ -17,7 +17,6 @@ import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
 import { promotionStampSkip } from '../../src/issues/merge-stamp-skip.js';
 import { owedMarks } from '../../src/issues/owed-merges.js';
-import { emitEvent } from '../../src/outbox/index.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -82,14 +81,6 @@ async function promoted(): Promise<void> {
     UPDATE repo_pull_requests SET state = 'merged', merge_commit_sha = ${PROMOTION},
            merged_at = now() + interval '1 hour'
      WHERE project_id = ${world.projectId} AND number = 5020`);
-  await emitEvent(db, 'source.merged', {
-    projectId: world.projectId,
-    headRef: BRANCH,
-    baseRef: PRODUCTION,
-    commitSha: PROMOTION,
-    mergedAt: '2026-10-27T08:14:42.683Z',
-    head: null,
-  });
   await settleOutbox();
 }
 

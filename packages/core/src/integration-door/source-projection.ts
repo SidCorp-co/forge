@@ -1,12 +1,9 @@
 /**
  * What the source door's projection routes do once the host has answered: roll a commit's checks up,
- * and write a change request the host answered for onto Forge's record, emitting the merge it
- * reports (`source.merged`) for the stamp's own consumer. Kept out of the route file, which reads
- * and writes nothing itself.
+ * and write a change request the host answered for onto Forge's record. Kept out of the route file,
+ * which reads and writes nothing itself.
  */
 
-import { db } from '../db/client.js';
-import type { InboundFact } from '../integrations/index.js';
 import {
   type HostCheck,
   projectReadChangeRequest,
@@ -15,7 +12,6 @@ import {
   type SourceHost,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
-import { emitEvents } from '../outbox/index.js';
 
 /**
  * What a commit's checks say together: `failure` once any latest run failed, `pending` while any
@@ -34,15 +30,9 @@ export function checksAt(sha: string, checks: HostCheck[]) {
   return { sha, state, rollup, checks };
 }
 
-async function emit(facts: InboundFact[]): Promise<void> {
-  if (facts.length > 0) await db.transaction((tx) => emitEvents(tx, facts));
-}
-
-/** Project what the host answered and emit the merge it reports; throws where it cannot write. */
+/** Project what the host answered; throws where it cannot write. */
 export async function project(host: SourceHost, projectId: string, read: ReadChangeRequest) {
-  const { projection, facts } = await projectReadChangeRequest({ projectId, host, read });
-  await emit(facts);
-  return projection;
+  return projectReadChangeRequest({ projectId, host, read });
 }
 
 /** After a write the host accepted: the projection, or why it was not written, never a throw. */

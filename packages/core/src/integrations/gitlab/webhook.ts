@@ -13,13 +13,11 @@ import {
   applyPullRequestEvent,
   branchOfPush,
   type ProjectionContext,
-  readMergedHead,
   SourceHostCallError,
   SourceHostUnavailable,
 } from '../source-host/index.js';
 import { buildGitLabClient } from './client.js';
 import { landingOf, type MergeRequestBody } from './merge.js';
-import { gitlabSameTree } from './source-host.js';
 import { checkStatusOf, conclusionOf } from './status.js';
 import type { GitLabConfig, GitLabSecrets } from './types.js';
 
@@ -121,43 +119,6 @@ async function onPush(ctx: GitLabDeliveryContext, payload: PushHook): Promise<Gi
   return { actions: 1 };
 }
 
-/**
- * The merge a hook reports, for the issue's merge stamp. The commit is GitLab's landing (merge
- * commit, else squash, else the fast-forwarded head); the time is `merged_at` where the hook carries
- * it, else the `updated_at` of the `merge` action itself; the target is the request's base branch;
- * and the head is its last commit, with whether its tree is the landing's read from GitLab now.
- */
-async function reportMerged(
-  ctx: GitLabDeliveryContext,
-  mr: NonNullable<MergeRequestHook['object_attributes']>,
-): Promise<number> {
-  if (mr.state !== 'merged' || !mr.source_branch || !mr.target_branch) return 0;
-  const commitSha = landingOf({
-    merge_commit_sha: mr.merge_commit_sha ?? null,
-    squash_commit_sha: mr.squash_commit_sha ?? null,
-    sha: mr.last_commit?.id ?? null,
-  });
-  const at = gitlabTime(mr.merged_at) ?? (mr.action === 'merge' ? gitlabTime(mr.updated_at) : null);
-  if (!commitSha || !at) return 0;
-  const head = await readMergedHead(
-    (a, b) => gitlabSameTree(buildGitLabClient({ ...ctx, background: true }), a, b),
-    mr.last_commit?.id ?? null,
-    commitSha,
-  );
-  ctx.facts.push({
-    type: 'source.merged',
-    payload: {
-      projectId: ctx.projectId,
-      headRef: mr.source_branch,
-      baseRef: mr.target_branch,
-      commitSha,
-      mergedAt: at,
-      head,
-    },
-  });
-  return 1;
-}
-
 /** The merge request's base sha, which the hook does not carry, read from GitLab. */
 async function baseShaOf(
   ctx: GitLabDeliveryContext,
@@ -193,7 +154,6 @@ async function onMergeRequest(
         'GITLAB_PAYLOAD_INCOMPLETE: the Merge Request Hook carried no iid, branches or last commit, so nothing was recorded',
     };
   }
-  const stamped = await reportMerged(ctx, mr);
   const base = await baseShaOf(ctx, mr.iid);
   if (typeof base !== 'string') {
     logger.warn(
@@ -201,7 +161,7 @@ async function onMergeRequest(
       'gitlab: merge request not projected',
     );
     return {
-      actions: stamped,
+      actions: 0,
       refusal: `GITLAB_PROJECTION_UNREAD: merge request !${mr.iid} was not written to the projection — ${base.refusal}`,
     };
   }
@@ -232,7 +192,7 @@ async function onMergeRequest(
     },
     repository: { full_name: payload.project?.path_with_namespace ?? ctx.config.projectPath ?? '' },
   });
-  return { actions: written + stamped };
+  return { actions: written };
 }
 
 async function onPipeline(

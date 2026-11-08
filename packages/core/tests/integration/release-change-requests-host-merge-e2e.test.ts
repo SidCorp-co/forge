@@ -1,8 +1,9 @@
 /**
- * REQ-63 BC-4 under ISS-774: a merge GitLab reports (`source.merged`, from its merge request hook) is
- * information. It stamps no issue and closes no release; every issue the request delivers reads the
- * mark it owes, and a change-request release closes on Forge's own merge or the agent's mark. The
- * outbox runs as the server boots it, so a consumer that still wrote would show here.
+ * REQ-63 BC-4 under ISS-774: a merge GitLab reports (from its merge request hook) is information:
+ * the projection row's state and, since ISS-822, no event. It stamps no issue and closes no release;
+ * every issue the request delivers reads the mark it owes, and a change-request release closes on
+ * Forge's own merge or the agent's mark. The outbox runs as the server boots it, so a consumer that
+ * still wrote would show here.
  */
 
 import { sql } from 'drizzle-orm';
@@ -11,7 +12,6 @@ import { db } from '../../src/db/client.js';
 import { unlinkChangeRequestIssue } from '../../src/integrations/source-host/change-request-links.js';
 import { owedMarks } from '../../src/issues/owed-merges.js';
 import { issueWaitsOf } from '../../src/issues/standing-read.js';
-import { emitEvent } from '../../src/outbox/index.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -203,35 +203,6 @@ describe('a merge through Forge records the target and the head on every issue i
     const row = await issueRow(one);
     expect(row?.merged_head?.treeIdentical).toBeNull();
     expect(row?.merged_head?.why).toContain('GitLab answered 503');
-  });
-
-  it('keeps a tree reading when the host replays the same merge with no head or an unread one', async () => {
-    await settleOutbox();
-    await seedWorld({ approval: { required: true } });
-    const { one } = await stack();
-    expect((await mergeOf(one, 10)).status).toBe(200);
-    const read = { sha: `0010${'a'.repeat(36)}`, treeIdentical: true, why: null };
-
-    for (const head of [
-      {
-        ...read,
-        treeIdentical: null,
-        why: 'GitLab answered 503',
-        readAt: new Date().toISOString(),
-      },
-      null,
-    ]) {
-      await emitEvent(db, 'source.merged', {
-        projectId: world.projectId,
-        headRef: 'feat/req3-site-write-iss-1',
-        baseRef: BRANCH,
-        commitSha: merged.get(10) as string,
-        mergedAt: '2026-10-25T09:10:00.000Z',
-        head,
-      });
-      await settleOutbox();
-      expect((await issueRow(one))?.merged_head).toMatchObject(read);
-    }
   });
 
   // catalog-fe ISS-11..19, 2026-10-26: !312 and !313 merged into `dev`, and the column read

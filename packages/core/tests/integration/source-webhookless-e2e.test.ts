@@ -216,12 +216,11 @@ describe('refresh: a merge request opened outside Forge, projected by its number
     const res = await api(world.token, 'POST', door('14/refresh'));
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(await row(14)).toMatchObject({ state: 'merged', merge_commit_sha: LANDING });
-    const facts = await rows<{ payload: { commitSha: string; headRef: string } }>(sql`
-      SELECT payload FROM pipeline_outbox
-       WHERE type = 'source.merged' AND project_id = ${world.projectId}`);
-    expect(facts.map((f) => f.payload)).toMatchObject([
-      { commitSha: LANDING, headRef: 'feat/admin-login-iss-1' },
-    ]);
+    // the merge is the row's state, and no event: nothing consumed one since ISS-774 (ISS-822)
+    const facts = await rows<{ type: string }>(sql`
+      SELECT type FROM pipeline_outbox
+       WHERE project_id = ${world.projectId} AND payload->>'commitSha' = ${LANDING}`);
+    expect(facts).toEqual([]);
   });
 
   it('refuses a request the host answers without a base, and writes nothing', async () => {

@@ -80,7 +80,7 @@ vi.mock('../integrations/source-host/index.js', async (importOriginal) => {
     projectReadChangeRequest: async (args: { read: unknown }) => {
       if (state.projectError) throw state.projectError;
       state.projected.push(args.read);
-      return { projection: { outcome: 'recorded', issueIds: [] }, facts: [] };
+      return { outcome: 'recorded', issueIds: [] };
     },
   };
 });

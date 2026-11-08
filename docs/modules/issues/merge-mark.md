@@ -170,9 +170,9 @@ into `release/production`, 2026-10-27) had overwritten ISS-23/24/25's own merges
 
 ## A merge the host reports writes nothing
 
-The host's report of a merge (`source.merged`, from a hook or from `POST
-…/change-requests/:number/refresh`) is information: no consumer stamps an issue, files one or settles
-a release from it (ISS-774, owner 2026-10-29: Forge tells the agent and the agent records). What it
+The host's report of a merge (from a hook or from `POST …/change-requests/:number/refresh`) is the
+projection row's state, and no event (ISS-822): nothing stamps an issue, files one or settles a
+release from it (ISS-774, owner 2026-10-29: Forge tells the agent and the agent records). What it
 leaves is owed, read from the projection
 (`packages/core/src/issues/owed-merges.ts`): an issue a merged request delivers with no mark reads
 "mark merged !N at <sha>" in its standing, waiting on its run or the master, and is listed in the

@@ -4,13 +4,12 @@
  * The row, its issue links and its checks are written by the writers a delivery reaches —
  * `applyPullRequestEvent` for the row and links, `storeHostChecks` folding each check under the
  * `check_run` rule — so a read and a webhook produce one record, and the links are derived by one
- * rule (REQ-63 BC-4). A merge the read reports is handed back as the `source.merged` fact a hook
- * would report, for the caller to emit: it stamps the issues the request delivers, once.
+ * rule (REQ-63 BC-4). A merge the read reports is the row's own state: nothing else is emitted for
+ * it, since no consumer read a merge fact after ISS-774 (ISS-822).
  */
 
-import { forgeReads, type InboundFact } from '../index.js';
+import { forgeReads } from '../index.js';
 import { SourceHostCallError } from './errors.js';
-import { readMergedHead } from './merged-head.js';
 import { applyPullRequestEvent, type ProjectionContext, storeHostChecks } from './projection.js';
 import { linkedIssuesOfNumber, type NamedLink } from './repo-projection.js';
 import type { ReadChangeRequest, SourceHost } from './types.js';
@@ -83,14 +82,13 @@ async function projectChecks(
 
 /**
  * Write the request a host just answered for onto the projection, with its links and the checks on
- * its head, and answer the merge it reports as a fact. A field the row cannot be written without is
- * refused by name before anything is written.
+ * its head. A field the row cannot be written without is refused by name before anything is written.
  */
 export async function projectReadChangeRequest(args: {
   projectId: string;
   host: SourceHost;
   read: ReadChangeRequest;
-}): Promise<{ projection: ReadProjection; facts: InboundFact[] }> {
+}): Promise<ReadProjection> {
   const { host, read } = args;
   const missing = missingOf(read);
   if (missing.length > 0) throw new ChangeRequestReadIncomplete(host, read.number, missing);
@@ -122,7 +120,7 @@ export async function projectReadChangeRequest(args: {
   const checks: ChecksProjection = row
     ? await projectChecks(host, { id: row.id, number: read.number }, headSha)
     : { outcome: 'unread', headSha, reason: 'no projection row stands for it to carry them' };
-  const projection: ReadProjection = {
+  return {
     outcome: written > 0 ? 'recorded' : 'superseded',
     state: read.state,
     issueIds: row?.issueIds ?? [],
@@ -137,25 +135,6 @@ export async function projectReadChangeRequest(args: {
           })
         : null,
     checks,
-  };
-  if (read.state !== 'merged') return { projection, facts: [] };
-  const commitSha = read.mergeCommitSha as string;
-  const head = await readMergedHead((a, b) => host.sameTree(a, b), headSha, commitSha);
-  return {
-    projection,
-    facts: [
-      {
-        type: 'source.merged',
-        payload: {
-          projectId: args.projectId,
-          headRef: read.headRef,
-          baseRef: read.baseRef,
-          commitSha,
-          mergedAt: read.mergedAt as string,
-          head,
-        },
-      },
-    ],
   };
 }
 
