@@ -286,20 +286,6 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
       ],
       [{ set: { storageKey: 7 } }, 'dev', 'judge', 422, 'SECRET_STORAGE_INVALID'],
       [{ set: { storageKey: '' } }, 'dev', 'judge', 422, 'SECRET_STORAGE_INVALID'],
-      [
-        { set: { storageOrigin: 'https://admin.epod.test/vi/login' } },
-        'dev',
-        'judge',
-        422,
-        'SECRET_STORAGE_INVALID',
-      ],
-      [
-        { set: { storageOrigin: 'http://admin.epod.test' } },
-        'dev',
-        'judge',
-        422,
-        'SECRET_STORAGE_INVALID',
-      ],
       [{ set: { loginRoute: '/x' } }, 'dev', 'plain', 422, 'SECRET_NOT_JSON_OBJECT'],
       [{ set: { loginRoute: '/x' } }, 'dev', 'absent', 404, 'SECRET_NOT_FOUND'],
       [{ set: { loginRoute: '/x' } }, 'var', 'judge', 422, 'SECRET_SCOPE_RESERVED'],
@@ -429,6 +415,14 @@ describe('a secret describes the browser session it hands a judge (ISS-1145)', (
 
   it('storageOrigin names the origin the session is written for, and stands only beside storage (ISS-1146)', async () => {
     await ok(put('dev', 'judge', JSON.stringify({ ...STORED, ...GRAPHQL_SET })));
+    // a path, or http to another machine, is no origin, refused before the value is read
+    for (const storageOrigin of ['https://admin.epod.test/vi/login', 'http://admin.epod.test']) {
+      const res = await patch('dev', 'judge', { set: { storageOrigin } });
+      expect(res.status, storageOrigin).toBe(422);
+      expect(refusalsOf(res)).toEqual([
+        expect.objectContaining({ code: 'SECRET_STORAGE_INVALID', path: '/set/storageOrigin' }),
+      ]);
+    }
     // with nothing to write there it is refused, and the stored value is kept
     const alone = await patch('dev', 'judge', {
       set: { storageOrigin: 'https://admin.epod.test' },
