@@ -10,6 +10,8 @@
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/db/read-order.ts
 // @direct-test-of packages/core/src/feedback/list-read.ts
+// @direct-test-of packages/core/src/feedback/ship-notice.ts
+// @direct-test-of packages/core/src/issues/standing-rows.ts
 // @direct-test-of packages/core/src/forecast/release.ts
 // @direct-test-of packages/core/src/release-batch/release-list-read.ts
 // @direct-test-of packages/core/src/release-batch/release-facts.ts
@@ -55,10 +57,18 @@ const NAMED: Record<string, string> = {
   e7d7b685: 'issues/standing-rows.ts:rowsWhere',
   '9542b7f7': 'release-batch/release-facts.ts (carried verdicts)',
   '70ac3d41': 'requirements/standing-live-build.ts (a build read once a requirement)',
+  '585593d8': 'issues/standing-facts-memo.ts:edgesPerIssue',
+  '5ba7200c': 'issues/standing-facts-read.ts:modulesOf',
+  '8088855b': 'issues/standing-rows.ts:issueRowsById',
 };
 
-/** How often a warm read may send one shape in one area: a batch read again for a later step. */
+/**
+ * How often a warm read may send one shape in one area: a batch read again for a later step. Home
+ * sends each once since its open list reads the blockers holding it with its page and its ship
+ * notices read their releases and writers in their own statements (ISS-1070 r19).
+ */
 const MOST = 2;
+const HOME_MOST = 1;
 
 const coolify = liveCoolify();
 const autoflow = liveAutoflow();
@@ -157,14 +167,14 @@ async function overWaves(path: string): Promise<string[]> {
 /** A statement that locks a row or opens a transaction: a read a person makes needs neither. */
 const LOCKS = /^\s*begin\b|\bfor (no key )?update\b|\bfor share\b/i;
 
-/** Each shape a warm read sent over {@link MOST} times in one area, with the code that sends it. */
-async function overMost(path: string): Promise<string[]> {
+/** Each shape a warm read sent over `most` times in one area, with the code that sends it. */
+async function overMost(path: string, most = MOST): Promise<string[]> {
   // the first read is cold: it pays the platforms and teaches each project's way
   await sentBy(path);
   const out: string[] = [];
   for (const [area, by] of (await sentBy(path)).areas)
     for (const [fp, n] of by)
-      if (n > MOST)
+      if (n > most)
         out.push(
           `${path} ${area} sent ${fp} ${n} times (${NAMED[fp] ?? (shapeTextOf(fp) ?? '').slice(0, 100)})`,
         );
@@ -215,8 +225,8 @@ describe("a person's reads of fourteen projects of forge-dev's kinds", () => {
     expect(await overMost('/api/me/attention')).toEqual([]);
   });
 
-  it('sends each shape of home at most twice an area on a warm read', async () => {
-    expect(await overMost('/api/me/home')).toEqual([]);
+  it('sends each shape of home once an area on a warm read', async () => {
+    expect(await overMost('/api/me/home', HOME_MOST)).toEqual([]);
   });
 
   it("sends each shape of forge's own needs-you at most twice an area on a warm read", async () => {
