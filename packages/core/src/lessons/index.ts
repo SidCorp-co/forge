@@ -11,6 +11,7 @@ export { registerLessonCorrections } from './consumers.js';
 export { type CorrectionInput, recordCorrection } from './corrections.js';
 export {
   approveLesson,
+  classifyLesson,
   type LessonActor,
   type LessonEdit,
   type LessonMoved,

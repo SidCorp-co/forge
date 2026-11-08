@@ -4,7 +4,8 @@
 // `LESSON_PROPOSE_MIN` or more as a lesson authored by the steward account. It then settles what waits
 // (`lessons-review.ts`): each proposal approved, edited or rejected, and each reported confusion kept,
 // edited or retired, each with a reason. It retires each lesson superseded or unused for
-// `LESSON_UNUSED_DAYS` days with a reason, and files each owed check as a draft issue. Lessons are
+// `LESSON_UNUSED_DAYS` days with a reason, and files each owed check by what its record says it is
+// about, classifying one whose record does not say first (`lessons-classify.ts`). Lessons are
 // internal to Forge (BC-9): no person is asked to decide any of it.
 
 import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
@@ -12,6 +13,7 @@ import {
   LESSON_ITEM_KINDS,
   LESSON_PROPOSE_MIN,
   LESSON_UNUSED_DAYS,
+  type LessonAbout,
   type LessonScope,
   lessonKey,
 } from '@forge/contracts/lessons';
@@ -22,6 +24,7 @@ import { callFastModelObject } from '../integrations/llm/index.js';
 import { createIssue } from '../issues/index.js';
 import {
   checksOwed,
+  classifyLesson,
   type GatherCorrection,
   type GatherLesson,
   gatherInput,
@@ -41,6 +44,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { stewardAccountOf } from './account.js';
+import { ABOUT_WORDS, type Classifier, modelClassifier } from './lessons-classify.js';
 import {
   modelReviewer,
   modelSettler,
@@ -75,6 +79,8 @@ export const groupingSchema = z.object({
       z.object({
         sentence: z.string().min(1).max(240),
         scope: z.enum(['project', 'area', 'item_kind']),
+        // read as said, so a proposal naming none, or another word, is refused by name, not dropped unread
+        about: z.string().nullish(),
         areaId: z.string().nullish(),
         itemKind: z.enum(LESSON_ITEM_KINDS).nullish(),
         corrections: z.array(z.string()),
@@ -100,6 +106,7 @@ export function groupingPrompt(input: {
     `1. Reject a correction that is not one (\`rejections\`: its \`correction\` id and a \`reason\` of one sentence under ${GROUP_REASON_CHARS} characters): it names nothing the agent did wrong, it is a test or probe, or it is a question, thanks or noise. A rejected correction never feeds a lesson. Reject only what plainly is not a correction.`,
     '2. Link a correction to an existing lesson only when it repeats that lesson (`links`: its `correction` id and the `lesson` number).',
     `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative \`sentence\` an agent can apply, the \`corrections\` ids it came from, and a \`scope\`: \`project\`, \`area\` (with the corrections' \`areaId\`) or \`item_kind\` (with an \`itemKind\`: requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
+    `Every proposal says what it is about in ${ABOUT_WORDS}`,
     'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     `Lessons:\n${input.lessons.map((l) => `- ${lessonKey(l.number)} (${l.status}, ${l.scope}): ${l.sentence}`).join('\n') || '(none)'}`,
@@ -171,6 +178,8 @@ async function proposeGroups(
         body: {
           sentence: p.sentence,
           scope,
+          // proposeLesson refuses a missing or unknown one by name, with the valid shape
+          about: p.about as LessonAbout,
           corrections,
           ...(p.supersedes ? { supersedes: p.supersedes } : {}),
         },
@@ -196,16 +205,27 @@ function checkBody(owed: OwedCheck): string {
 }
 
 /**
- * Each lesson owed a check (BC-6), by what it is about on its record (ISS-1136): an app-behaviour
- * lesson keeps its "Add a check" draft in the project's backlog; a process lesson, about an agent's
- * judgement or a Forge step no code in the project's repo can catch, is routed once to Forge as its
- * feedback, naming the step, and never lands in the project's backlog asking for a code check.
+ * Each lesson owed a check (BC-6), by what its record says it is about (ISS-1167), never its scope: an
+ * app lesson keeps its "Add a check" draft in the project's backlog, one routed to Forge before it
+ * was classified included; a process lesson, about an agent's judgement or a Forge step no code in the
+ * project's repo can catch, is routed once to Forge as its feedback, naming the step. One whose record
+ * does not say is classified by the steward from its corrections first, and filed neither way until
+ * it is: it waits for the next pass, counted `unclassified`.
  */
-async function fileChecks(projectId: string, stewardId: string): Promise<number> {
-  let filed = 0;
+async function fileChecks(
+  projectId: string,
+  stewardId: string,
+  classify: Classifier,
+  tally: LessonsPassTally,
+): Promise<void> {
   for (const owed of await checksOwed(projectId)) {
-    if (owed.about === 'process') {
-      if (await routeToForge(projectId, stewardId, owed)) filed += 1;
+    const about = owed.about ?? (await classified(projectId, stewardId, classify, owed));
+    if (!about) {
+      tally.unclassified += 1;
+      continue;
+    }
+    if (about === 'process') {
+      if (!owed.routed && (await routeToForge(projectId, stewardId, owed))) tally.checks += 1;
       continue;
     }
     const made = await createIssue(
@@ -226,9 +246,33 @@ async function fileChecks(projectId: string, stewardId: string): Promise<number>
     );
     const issueId = made.deduped ? made.existingIssueId : made.issue.id;
     await recordCheckIssue(owed.id, issueId);
-    filed += 1;
+    tally.checks += 1;
   }
-  return filed;
+}
+
+/** The steward's classification of a lesson its record does not say, written once; null while it gives none. */
+async function classified(
+  projectId: string,
+  stewardId: string,
+  classify: Classifier,
+  owed: OwedCheck,
+): Promise<LessonAbout | null> {
+  const answer = await classify(projectId, owed);
+  if (!answer) {
+    logger.warn(
+      { projectId, lesson: lessonKey(owed.number) },
+      'steward: a lesson owed a check is owed its classification first; it is asked again next pass',
+    );
+    return null;
+  }
+  const wrote = await classifyLesson({
+    projectId,
+    ref: owed.id,
+    actor: { userId: stewardId, agency: 'agent' },
+    about: answer.about,
+  });
+  // classified meanwhile by another hand: the next pass reads what its record now says
+  return wrote ? answer.about : null;
 }
 
 /** The Forge step a process lesson names: the kind of agent output it is scoped to, else the project's agents. */
@@ -307,6 +351,8 @@ export interface LessonsPassTally extends SettleTally {
   ungrouped: number;
   retired: number;
   checks: number;
+  /** Lessons owed a check whose record does not say what they are about, and the steward gave none. */
+  unclassified: number;
   failed: number;
 }
 
@@ -314,6 +360,7 @@ interface Judges {
   group: Grouper;
   review: Reviewer;
   settle: Settler;
+  classify: Classifier;
 }
 
 async function passProject(projectId: string, now: Date, judges: Judges, tally: LessonsPassTally) {
@@ -343,7 +390,7 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
   }
   await settleLessons(projectId, stewardId, judges, tally);
   tally.retired += await retireDue(projectId, stewardId, now);
-  tally.checks += await fileChecks(projectId, stewardId);
+  await fileChecks(projectId, stewardId, judges.classify, tally);
   await recordLessonsMonths(projectId, now);
 }
 
@@ -354,6 +401,7 @@ export async function runLessonsPass(
     group?: Grouper;
     review?: Reviewer;
     settle?: Settler;
+    classify?: Classifier;
     projectIds?: readonly string[];
   } = {},
 ): Promise<LessonsPassTally> {
@@ -362,6 +410,7 @@ export async function runLessonsPass(
     group: opts.group ?? modelGrouper,
     review: opts.review ?? modelReviewer,
     settle: opts.settle ?? modelSettler,
+    classify: opts.classify ?? modelClassifier,
   };
   const tally: LessonsPassTally = {
     projects: 0,
@@ -376,6 +425,7 @@ export async function runLessonsPass(
     waiting: 0,
     retired: 0,
     checks: 0,
+    unclassified: 0,
     failed: 0,
   };
   for (const projectId of opts.projectIds ?? (await projectsWithLessonWork(now))) {

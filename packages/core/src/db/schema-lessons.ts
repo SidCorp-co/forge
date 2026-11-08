@@ -1,6 +1,7 @@
 import {
   CORRECTION_ITEM_KINDS,
   CORRECTION_SOURCES,
+  LESSON_ABOUTS,
   LESSON_CONFUSION_KINDS,
   LESSON_ITEM_KINDS,
   LESSON_OUTPUT_KINDS,
@@ -47,6 +48,12 @@ export const lessons = pgTable(
     // no action, so an area a lesson is scoped to is not deleted from under it
     scopeAreaId: uuid('scope_area_id').references(() => requirementAreas.id),
     scopeItemKind: text('scope_item_kind', { enum: LESSON_ITEM_KINDS }),
+    /**
+     * What it is about, set by whoever drafts it (0643, ISS-1167): `app` or `process`. Null on a row
+     * drafted before, where an area lesson was backfilled `app` and every other one is owed its
+     * classification; its scope is never read for it.
+     */
+    about: text('about', { enum: LESSON_ABOUTS }),
     status: text('status', { enum: LESSON_STATUSES }).notNull().default('proposed'),
     proposedBy: uuid('proposed_by')
       .notNull()
@@ -88,6 +95,10 @@ export const lessons = pgTable(
     scopeChk: check(
       'lessons_scope_chk',
       sql`(${t.scopeKind} = 'area') = (${t.scopeAreaId} IS NOT NULL) AND (${t.scopeKind} = 'item_kind') = (${t.scopeItemKind} IS NOT NULL)`,
+    ),
+    aboutChk: check(
+      'lessons_about_chk',
+      sql`${t.about} IS NULL OR ${t.about} IN (${inList(LESSON_ABOUTS)})`,
     ),
     statusChk: check('lessons_status_chk', sql`${t.status} IN (${inList(LESSON_STATUSES)})`),
     agencyChk: check('lessons_agency_chk', sql`${t.proposedAgency} IN ('human', 'agent')`),

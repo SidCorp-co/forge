@@ -9,6 +9,7 @@
 
 import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import {
+  LESSON_ABOUTS,
   LESSON_ITEM_KINDS,
   LESSON_LIMITS,
   LESSON_RESOLUTIONS,
@@ -47,6 +48,7 @@ const reviewSchema = z.object({
   scope: z.enum(['project', 'area', 'item_kind']).nullable(),
   areaId: z.string().nullable(),
   itemKind: z.enum(LESSON_ITEM_KINDS).nullable(),
+  about: z.enum(LESSON_ABOUTS).nullish(),
   reason,
 });
 export type LessonReview = z.infer<typeof reviewSchema>;
@@ -85,10 +87,10 @@ export function reviewPrompt(input: ReviewInput): string {
   return [
     "You are the project's steward. You proposed the lesson below from corrections made to the project's agents; now check it before any agent applies it. No person reviews it after you.",
     '- `approve` when its sentence says what the corrections meant, in one imperative an agent can apply, and contradicts no requirement, design or approved lesson below.',
-    '- `edit` when the point is right but the wording or the scope is not: give the new `sentence`, or the narrowest `scope` that fits (`area` with its areaId, `item_kind` with its itemKind), or both.',
+    "- `edit` when the point is right but the wording or the scope is not: give the new `sentence`, or the narrowest `scope` that fits (`area` with its areaId, `item_kind` with its itemKind), or `about` where the corrections are about the other kind (`app`: the app's own behaviour; `process`: an agent's judgement or a Forge step), or several.",
     '- `reject` when the corrections do not make one point, when it contradicts a requirement, design or approved lesson (name which), or when an approved lesson already says it.',
     'Always give a one-sentence `reason`.',
-    `The lesson: ${lessonKey(lesson.number)}, scope ${scopeWords(lesson.scope)}${lesson.supersedes ? `, replacing ${lessonKey(lesson.supersedes)}` : ''}: ${lesson.sentence}`,
+    `The lesson: ${lessonKey(lesson.number)}, scope ${scopeWords(lesson.scope)}, about ${lesson.about ?? 'nothing said'}${lesson.supersedes ? `, replacing ${lessonKey(lesson.supersedes)}` : ''}: ${lesson.sentence}`,
     `The corrections it came from:\n${markUntrusted(
       lesson.corrections.map((c) => `- ${c.itemKey}: ${c.reason}`).join('\n') || '(none)',
       { source: 'the corrections people said' },
@@ -164,8 +166,9 @@ function editOf(r: LessonReview): LessonEdit | null {
     if (!r.itemKind) return null;
     scope = { kind: 'item_kind', itemKind: r.itemKind };
   }
-  if (!r.sentence && !scope) return null;
-  return { sentence: r.sentence ?? undefined, scope };
+  const about = r.about ?? undefined;
+  if (!r.sentence && !scope && !about) return null;
+  return { sentence: r.sentence ?? undefined, scope, about };
 }
 
 export interface SettleTally {

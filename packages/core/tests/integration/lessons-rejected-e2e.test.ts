@@ -81,7 +81,12 @@ describe('a rejected correction feeds no lesson (BC-2)', () => {
     const refused = await proposeLesson({
       projectId: own.id,
       actor: { userId: own.stewardId, agency: 'agent' },
-      body: { sentence: 'Name the ward.', scope: { kind: 'project' }, corrections: [a, gone] },
+      body: {
+        sentence: 'Name the ward.',
+        scope: { kind: 'project' },
+        about: 'app',
+        corrections: [a, gone],
+      },
     }).then(
       () => [],
       (err: { refusals?: { code: string; detail?: string }[] }) => err.refusals ?? [],

@@ -48,6 +48,16 @@ export type LessonItemKind = (typeof LESSON_ITEM_KINDS)[number];
 export const LESSON_SCOPE_KINDS = ["project", "area", "item_kind"] as const;
 export type LessonScopeKind = (typeof LESSON_SCOPE_KINDS)[number];
 
+/**
+ * What a lesson is about, on its record, set by whoever drafts it from its corrections: `app`, the
+ * app's own behaviour, which a check in the project's code can catch; `process`, an agent's
+ * judgement or a Forge step, which no code in the project's repo can. Its scope says only where it
+ * applies, never what it is about.
+ */
+export const LESSON_ABOUTS = ["app", "process"] as const;
+export type LessonAbout = (typeof LESSON_ABOUTS)[number];
+export const LESSON_ABOUT_SHAPE = `about: ${LESSON_ABOUTS.join(" | ")} (app: the app's own behaviour, a check in its code can catch; process: an agent's judgement or a Forge step)`;
+
 export const LESSON_STATUSES = [
 	"proposed",
 	"approved",
@@ -122,6 +132,7 @@ export const LESSON_REFUSAL_CODES = [
 	"LESSON_DECIDED",
 	"LESSON_NOT_APPLICABLE",
 	"LESSON_SCOPE_INVALID",
+	"LESSON_ABOUT_INVALID",
 	"LESSON_CORRECTIONS_INVALID",
 	"LESSON_CONFUSION_INVALID",
 	"LESSON_CONFUSION_DECIDED",
@@ -158,6 +169,7 @@ export type LessonScope = z.infer<typeof lessonScopeSchema>;
 export const proposeLessonRequestSchema = z.strictObject({
 	sentence,
 	scope: lessonScopeSchema,
+	about: z.enum(LESSON_ABOUTS),
 	corrections: z.array(z.uuid()).min(1).max(LESSON_LIMITS.correctionsPerLesson),
 	supersedes: lessonNumber.optional(),
 });

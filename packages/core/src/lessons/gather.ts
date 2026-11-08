@@ -8,6 +8,7 @@
 import {
   LESSON_CHECK_AFTER,
   LESSON_UNUSED_DAYS,
+  type LessonAbout,
   type LessonConfusionKind,
   type LessonResolution,
   type LessonRetireReason,
@@ -217,6 +218,7 @@ export interface ProposedLesson {
   number: number;
   sentence: string;
   scope: LessonScope;
+  about: LessonAbout | null;
   supersedes: number | null;
   /** Each correction it was grouped from: the item it corrected and the reason as said. */
   corrections: { itemKey: string; reason: string }[];
@@ -233,6 +235,7 @@ export async function proposedLessons(projectId: string): Promise<ProposedLesson
       scopeKind: lessons.scopeKind,
       scopeAreaId: lessons.scopeAreaId,
       scopeItemKind: lessons.scopeItemKind,
+      about: lessons.about,
       supersedes: superseded.number,
     })
     .from(lessons)
@@ -263,6 +266,7 @@ export async function proposedLessons(projectId: string): Promise<ProposedLesson
     number: r.number,
     sentence: r.sentence,
     scope: scopeOf(r),
+    about: r.about,
     supersedes: r.supersedes,
     corrections: said
       .filter((c) => c.lessonId === r.id)
@@ -364,18 +368,21 @@ export interface OwedCheck {
   reasons: string[];
   repeats: number;
   /**
-   * What the lesson is about, read off its scope on the record (ISS-1136): a product area's behaviour,
-   * which a check in the project's code can catch, or an agent's judgement or a Forge step (scoped to
-   * the whole project or to a kind of agent output), which no code in the project's repo can.
+   * What the lesson is about, read from its record (ISS-1167), never its scope: `app`, which a check
+   * in the project's code can catch, or `process`, which none can. Null where the record does not say:
+   * the lesson is owed its classification first and is filed neither way until it has one.
    */
-  about: 'app' | 'process';
+  about: LessonAbout | null;
+  /** Routed to Forge as a process lesson before its record said `app`; its check is still owed here. */
+  routed: boolean;
   /** The kind of agent output a process lesson is scoped to, where it names one. */
   output: string | null;
 }
 
 /**
  * The approved lessons owed a check in code (BC-6): corrected again after approval, or corrected
- * `LESSON_CHECK_AFTER` times, and no check filed yet.
+ * `LESSON_CHECK_AFTER` times, and no check filed yet. One routed to Forge stays owed until its record
+ * says `process`, so a lesson routed before it was classified comes back once it says `app`.
  */
 export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
   const rows = await db
@@ -384,7 +391,8 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
       number: lessons.number,
       sentence: lessons.sentence,
       approvedAt: lessons.approvedAt,
-      scopeKind: lessons.scopeKind,
+      about: lessons.about,
+      routedFeedbackId: lessons.routedFeedbackId,
       scopeItemKind: lessons.scopeItemKind,
       reason: corrections.reason,
       saidAt: corrections.saidAt,
@@ -399,7 +407,7 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
         eq(lessons.projectId, projectId),
         eq(lessons.status, 'approved'),
         isNull(lessons.checkIssueId),
-        isNull(lessons.routedFeedbackId),
+        or(isNull(lessons.routedFeedbackId), sql`${lessons.about} IS DISTINCT FROM 'process'`),
       ),
     );
   const byLesson = new Map<string, OwedCheck>();
@@ -410,7 +418,8 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
       sentence: r.sentence,
       reasons: [],
       repeats: 0,
-      about: r.scopeKind === 'area' ? 'app' : 'process',
+      about: r.about,
+      routed: r.routedFeedbackId !== null,
       output: r.scopeItemKind,
     };
     owed.reasons.push(r.reason);

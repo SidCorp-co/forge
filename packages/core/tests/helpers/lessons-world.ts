@@ -74,6 +74,8 @@ export async function pass(answer: {
   seen?: (input: { corrections: Doc[]; lessons: Doc[] }) => void;
   review?: Answer<Doc, Doc>;
   settle?: Answer<Doc, Doc>;
+  /** What the steward says a lesson owed a check is about, where its record does not say. */
+  classify?: Answer<Doc, Doc>;
   now?: Date;
   /** The project the pass runs over: the world's own unless a case opened one of its own. */
   project?: string;
@@ -92,6 +94,7 @@ export async function pass(answer: {
     },
     review: async (_p, input) => answerOf(answer.review, input as never) as never,
     settle: async (_p, input) => answerOf(answer.settle, input as never) as never,
+    classify: async (_p, input) => answerOf(answer.classify, input as never) as never,
   });
   expect(tally.failed, 'a lessons pass failed on the project').toBe(0);
   return tally;
@@ -122,8 +125,9 @@ export async function lesson(
   project = w.projectId,
 ): Promise<Doc & { corrections: Doc[]; applications: Doc[]; confusions: Doc[] }> {
   const [row] = await rows<Doc>(sql`
-    SELECT l.id, l.number, l.sentence, l.status, l.scope_kind, l.scope_item_kind, l.proposed_by,
-           l.decided_reason, l.applied_count, l.check_issue_id, s.number AS superseded_by
+    SELECT l.id, l.number, l.sentence, l.status, l.scope_kind, l.scope_item_kind, l.about, l.proposed_by,
+           l.decided_reason, l.applied_count, l.check_issue_id, l.routed_feedback_id,
+           s.number AS superseded_by
     FROM lessons l LEFT JOIN lessons s ON s.id = l.superseded_by_id
     WHERE l.project_id = ${project} AND l.number = ${n}`);
   if (!row) throw new Error(`lessons-world: no L-${n}`);
@@ -156,12 +160,13 @@ export async function numberOf(sentence: string): Promise<number> {
   return row.number;
 }
 
+/** A proposal the grouping answers; it says it is about a process unless `scope` says otherwise. */
 export const proposal = (
   sentence: string,
   corrections: string[],
   scope: Doc = { scope: 'project', areaId: null, itemKind: null },
   supersedes: number | null = null,
-) => ({ sentence, corrections, ...scope, supersedes });
+) => ({ sentence, corrections, about: 'process', ...scope, supersedes });
 
 /** An approved lesson: proposed by the steward from two corrections, approved by its review. */
 export async function approved(sentence: string, scope?: Doc): Promise<number> {
@@ -182,7 +187,7 @@ export async function proposed(sentence: string, project = w.projectId): Promise
   const made = await proposeLesson({
     projectId: project,
     actor: { userId: await stewardAccountOf(project), agency: 'agent' },
-    body: { sentence, scope: { kind: 'project' }, corrections: [one] },
+    body: { sentence, scope: { kind: 'project' }, about: 'process', corrections: [one] },
   });
   return Number(made.key.slice(2));
 }

@@ -8,9 +8,14 @@
  */
 
 import { LESSON_MACHINE } from '@forge/contracts/lesson-machine';
-import type { LessonScope, LessonStatus, ProposeLessonRequest } from '@forge/contracts/lessons';
-import { lessonKey } from '@forge/contracts/lessons';
-import { and, eq, inArray, max } from 'drizzle-orm';
+import type {
+  LessonAbout,
+  LessonScope,
+  LessonStatus,
+  ProposeLessonRequest,
+} from '@forge/contracts/lessons';
+import { LESSON_ABOUT_SHAPE, LESSON_ABOUTS, lessonKey } from '@forge/contracts/lessons';
+import { and, eq, inArray, isNull, max } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { corrections, lessons } from '../db/schema-lessons.js';
 import { requirementAreas } from '../db/schema-requirements.js';
@@ -38,6 +43,7 @@ export interface LessonMoved {
 export interface LessonEdit {
   sentence?: string | undefined;
   scope?: LessonScope | undefined;
+  about?: LessonAbout | undefined;
 }
 
 export const kernelActor = (actor: LessonActor) => ({
@@ -77,6 +83,19 @@ async function scopeColumns(tx: Tx, projectId: string, scope: LessonScope) {
     scopeAreaId: scope.kind === 'area' ? scope.areaId : null,
     scopeItemKind: scope.kind === 'item_kind' ? scope.itemKind : null,
   };
+}
+
+/**
+ * What the lesson is about, as its drafter said: `app` or `process`, refused by name otherwise. Never
+ * read off its scope, and never defaulted (ISS-1167).
+ */
+function aboutOf(value: unknown): LessonAbout {
+  if (LESSON_ABOUTS.includes(value as LessonAbout)) return value as LessonAbout;
+  throw refuse(
+    'LESSON_ABOUT_INVALID',
+    `${value === undefined || value === null ? 'a lesson says what it is about' : `"${String(value)}" is not what a lesson can be about`}; send ${LESSON_ABOUT_SHAPE}`,
+    '/about',
+  );
 }
 
 /** The metadata a lesson's knowledge entry carries, so a prompt scopes it without this table. */
@@ -132,6 +151,7 @@ export async function proposeLesson(input: {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, projectId);
+    const about = aboutOf(body.about);
     const scope = await scopeColumns(tx, projectId, body.scope);
     const wanted = [...new Set(body.corrections)];
     const found = await tx
@@ -166,6 +186,7 @@ export async function proposeLesson(input: {
         number: (top?.n ?? 0) + 1,
         sentence: body.sentence,
         ...scope,
+        about,
         proposedBy: actor.userId,
         proposedAgency: actor.agency,
         supersedesId: supersedes?.id ?? null,
@@ -200,6 +221,7 @@ export async function approveLesson(input: {
     const edits = {
       ...(input.edit?.sentence ? { sentence: input.edit.sentence } : {}),
       ...(input.edit?.scope ? await scopeColumns(tx, input.projectId, input.edit.scope) : {}),
+      ...(input.edit?.about !== undefined ? { about: aboutOf(input.edit.about) } : {}),
     };
     const now = new Date();
     movedRow(
@@ -230,6 +252,31 @@ export async function approveLesson(input: {
     return row.id;
   });
   return movedOf(input.projectId, id);
+}
+
+/**
+ * Say what a lesson drafted before its record said it is about: the steward classifies it from its
+ * corrections. A lesson already classified is left as it is; whether this call classified it is
+ * returned, so a lesson is classified once.
+ */
+export async function classifyLesson(input: {
+  projectId: string;
+  ref: string;
+  actor: LessonActor;
+  about: LessonAbout;
+}): Promise<boolean> {
+  await requireDecider(input.actor, input.projectId, 'classifying a lesson');
+  const about = aboutOf(input.about);
+  return db.transaction(async (tx) => {
+    await lockLessons(tx, input.projectId);
+    const row = await lessonIn(tx, input.projectId, input.ref);
+    const set = await tx
+      .update(lessons)
+      .set({ about, updatedAt: new Date() })
+      .where(and(eq(lessons.id, row.id), isNull(lessons.about)))
+      .returning({ id: lessons.id });
+    return set.length > 0;
+  });
 }
 
 /** Reject a proposal, saying why; it never reaches a prompt, and its corrections stay its provenance. */
