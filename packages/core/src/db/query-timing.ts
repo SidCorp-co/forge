@@ -135,6 +135,27 @@ function open(t: QueryTiming): () => void {
   };
 }
 
+/** Scopes a wait for a quiet point keeps ({@link carryToQuietPoints}). */
+const carried: AsyncLocalStorage<unknown>[] = [];
+
+/**
+ * Keeps `store`'s value across a wait for a quiet point ({@link whenQuiet}): what runs there runs
+ * with the value the code that waited held, never the value of whichever answer set the point going.
+ * A person's read (`db/observed-reads.ts:withObservedReads`) lost its scope there, so a batch it
+ * opened read a platform afresh, behind a lock, on every warm home read (ISS-1070 r16).
+ */
+export function carryToQuietPoints(store: AsyncLocalStorage<unknown>): void {
+  if (!carried.includes(store)) carried.push(store);
+}
+
+/** `fn` bound to the value each carried scope holds now. */
+function carriedNow(fn: () => void): () => void {
+  return carried.reduce<() => void>((inner, store) => {
+    const value = store.getStore();
+    return value === undefined ? () => store.exit(inner) : () => store.run(value, inner);
+  }, fn);
+}
+
 /**
  * Runs `fn` at the request's next quiet point: once every statement it has sent is answered and what
  * those answers set going has run, so every read of the request is then waiting on something not yet
@@ -152,7 +173,8 @@ export function whenQuiet(fn: () => void, held?: () => number): void {
   }
   // what runs at the point counts to the part that waited for it, never to whichever answer set it going
   const leg = legs.getStore();
-  const run = leg ? () => legs.run(leg, fn) : () => legs.exit(fn);
+  const own = carriedNow(fn);
+  const run = leg ? () => legs.run(leg, own) : () => legs.exit(own);
   t.quiet.push({ run, held });
   if (t.quiet.length === 1) setImmediate(() => settle(t));
 }

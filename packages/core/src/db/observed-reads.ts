@@ -15,9 +15,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
+import { carryToQuietPoints } from './query-timing.js';
 import { inReadMemo, withoutReadMemo } from './read-memo.js';
 
 const observed = new AsyncLocalStorage<true>();
+// a batch a person's read waits on runs as that read, wherever the answer that fired it came from
+carryToQuietPoints(observed as AsyncLocalStorage<unknown>);
 
 /**
  * Runs `fn` as a person's read of what waits on them (Needs you, attention, home): a reading of a

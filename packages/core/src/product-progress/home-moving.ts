@@ -8,7 +8,6 @@ import type { FeedbackSummary } from '@forge/contracts/feedback';
 import type { HomeMovingItem } from '@forge/contracts/owner-home';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
-import { withObservedReads } from '../db/observed-reads.js';
 import { withQueryLeg } from '../db/query-timing.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
@@ -81,21 +80,13 @@ async function ownedIssues(projectId: string, userId: string) {
 /**
  * Reads one project's part as `viewer`; the caller has checked `project.read` on it. Its forecasts
  * read at `now`, the clock its Moving rows read the project's dates at, so one simulation answers both.
- * A person's home, it may show what a platform answered a moment ago and says when
- * (`db/observed-reads.ts:withObservedReads`), as their attention does.
+ * The home routes read it as a person's read, which may show what a platform answered a moment ago
+ * and says when (`db/observed-reads.ts:withObservedReads`), as their attention does.
  */
-export function readHomeProject(
+export async function readHomeProject(
   viewer: HomeViewer,
   projectId: string,
   now: Date = new Date(),
-): Promise<HomeProjectReads> {
-  return withObservedReads(() => homeProjectOf(viewer, projectId, now));
-}
-
-async function homeProjectOf(
-  viewer: HomeViewer,
-  projectId: string,
-  now: Date,
 ): Promise<HomeProjectReads> {
   // each part a named part of the request's `Server-Timing`, with the statements it sends
   const listed = await withQueryLeg('home-feedback', () => listFeedbackAs(viewer, projectId, {}));

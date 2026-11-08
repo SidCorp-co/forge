@@ -55,8 +55,14 @@ let app: Awaited<typeof import('../../src/index.js')>['app'];
 let token: string;
 let forge: string;
 
-/** Each area's statements by shape, of one GET. */
-async function sentBy(path: string): Promise<Map<string, Map<string, number>>> {
+/** Every call either stub has answered so far, by path. */
+const callsNow = () => new Map([...coolify.calls, ...autoflow.calls]);
+
+/** Each area's statements by shape, of one GET, and each call it made to a stub platform, by path. */
+async function sentBy(
+  path: string,
+): Promise<{ areas: Map<string, Map<string, number>>; http: Map<string, number> }> {
+  const before = callsNow();
   const client = (db as unknown as { $client: { unsafe: (...a: unknown[]) => unknown } }).$client;
   const unsafe = client.unsafe;
   let timing: QueryTiming | undefined;
@@ -83,21 +89,45 @@ async function sentBy(path: string): Promise<Map<string, Map<string, number>>> {
   };
   for (const [name, leg] of timing.legs) add(name, leg.sent);
   add('unnamed', timing.sent);
-  return areas;
+  const http = new Map<string, number>();
+  for (const [at, n] of callsNow())
+    if (n > (before.get(at) ?? 0)) http.set(at, n - (before.get(at) ?? 0));
+  return { areas, http };
 }
+
+/** A statement that locks a row or opens a transaction: a read a person makes needs neither. */
+const LOCKS = /^\s*begin\b|\bfor (no key )?update\b|\bfor share\b/i;
 
 /** Each shape a warm read sent over {@link MOST} times in one area, with the code that sends it. */
 async function overMost(path: string): Promise<string[]> {
   // the first read is cold: it pays the platforms and teaches each project's way
   await sentBy(path);
   const out: string[] = [];
-  for (const [area, by] of await sentBy(path))
+  for (const [area, by] of (await sentBy(path)).areas)
     for (const [fp, n] of by)
       if (n > MOST)
         out.push(
           `${path} ${area} sent ${fp} ${n} times (${NAMED[fp] ?? (shapeTextOf(fp) ?? '').slice(0, 100)})`,
         );
   return out;
+}
+
+/**
+ * What a warm read locked, opened a transaction for, or asked a platform: a person's read is shown
+ * what a platform answered a moment ago (`db/observed-reads.ts:observedReading`), so it needs no token
+ * (`integrations/autoflow/refresh.ts:ensureFreshAutoflowToken`), no lock and no call (ISS-1070 r16).
+ */
+async function warmWrites(path: string): Promise<string[]> {
+  await sentBy(path);
+  const { areas, http } = await sentBy(path);
+  return [
+    ...[...areas].flatMap(([area, by]) =>
+      [...by]
+        .filter(([fp]) => LOCKS.test(shapeTextOf(fp) ?? ''))
+        .map(([fp, n]) => `${path} ${area} sent ${n}× ${(shapeTextOf(fp) ?? fp).slice(0, 80)}`),
+    ),
+    ...[...http].map(([at, n]) => `${path} asked ${at} ${n} times`),
+  ];
 }
 
 beforeAll(async () => {
@@ -132,5 +162,12 @@ describe("a person's reads of fourteen projects of forge-dev's kinds", () => {
 
   it("sends each shape of forge's own needs-you at most twice an area on a warm read", async () => {
     expect(await overMost(`/api/projects/${forge}/needs-you`)).toEqual([]);
+  });
+
+  it('takes no lock, opens no transaction and asks no platform on a warm read', async () => {
+    const found = [];
+    for (const path of ['/api/me/attention', '/api/me/home', `/api/projects/${forge}/needs-you`])
+      found.push(...(await warmWrites(path)));
+    expect(found).toEqual([]);
   });
 });

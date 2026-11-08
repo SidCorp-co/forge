@@ -14,6 +14,7 @@ import {
 } from '@forge/contracts/owner-home';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { withObservedReads } from '../db/observed-reads.js';
 import { withQueryLeg } from '../db/query-timing.js';
 import { readAcross } from '../db/read-memo.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -80,23 +81,26 @@ meHomeRoutes.get(
     const projects = await withQueryLeg('home-projects', () =>
       readableProjects(viewer.userId, orgId ?? null),
     );
-    // every project read side by side, each fact read once for all of them (`db/read-memo.ts:readAcross`)
-    const parts = await readAcross(
-      projects,
-      (p) => p.id,
-      async (p) => {
-        const [part, releases] = await Promise.all([
-          readHomeProject(viewer, p.id, now),
-          withQueryLeg('home-live', () => liveReleasesOf(p.id)),
-        ]);
-        const mine = new Set([
-          ...part.issues.map((i) => i.key),
-          ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
-        ]);
-        const items = await withQueryLeg('home-items', () => homeItemsOf(p, part, now));
-        return { ...items, live: liveOf(p, releases, mine) };
-      },
-      'home',
+    // every project read side by side, each fact read once for all of them (`db/read-memo.ts:readAcross`),
+    // as a person's read: what a platform answered a moment ago, said so (`db/observed-reads.ts`)
+    const parts = await withObservedReads(() =>
+      readAcross(
+        projects,
+        (p) => p.id,
+        async (p) => {
+          const [part, releases] = await Promise.all([
+            readHomeProject(viewer, p.id, now),
+            withQueryLeg('home-live', () => liveReleasesOf(p.id)),
+          ]);
+          const mine = new Set([
+            ...part.issues.map((i) => i.key),
+            ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
+          ]);
+          const items = await withQueryLeg('home-items', () => homeItemsOf(p, part, now));
+          return { ...items, live: liveOf(p, releases, mine) };
+        },
+        'home',
+      ),
     );
     const moving = parts.flatMap((p) => p.moving).sort(byLastMove);
     const response: HomeResponse = {
@@ -124,17 +128,19 @@ meHomeRoutes.get(
     const { q, orgId } = c.req.valid('query');
     const viewer = viewerOf(c);
     const projects = await readableProjects(viewer.userId, orgId ?? null);
-    const found = await readAcross(
-      projects,
-      (p) => p.id,
-      async (p) => {
-        const [part, releases] = await Promise.all([
-          readHomeProject(viewer, p.id),
-          releasesOf(p.id),
-        ]);
-        return findIn(p, part, releases, q);
-      },
-      'home-find',
+    const found = await withObservedReads(() =>
+      readAcross(
+        projects,
+        (p) => p.id,
+        async (p) => {
+          const [part, releases] = await Promise.all([
+            readHomeProject(viewer, p.id),
+            releasesOf(p.id),
+          ]);
+          return findIn(p, part, releases, q);
+        },
+        'home-find',
+      ),
     );
     const items = found.flatMap((f) => f.items);
     const total = found.reduce((n, f) => n + f.total, 0);
