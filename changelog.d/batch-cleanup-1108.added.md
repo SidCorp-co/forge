@@ -1,2 +1,4 @@
 - The owner can waive a support channel switch's duties by their word, recorded as a waiver; only the organization's owner gives it (ISS-945).
 - A direct-mcp integration's credential hand-off is the declared egress surface `integration.credential`, and a declaration naming none is refused at boot (ISS-825).
+- A question's option can be asked to be answered in words (`takesText`): chosen with its text it records both, without text it is refused `QUESTION_OPTION_TEXT_REQUIRED`, and text on an option taking none is refused `QUESTION_OPTION_TAKES_NO_TEXT` naming the one that does; the answer panel writes the words under the option (ISS-826).
+- The requirement revision editor writes each criterion's short title (ISS-1137).

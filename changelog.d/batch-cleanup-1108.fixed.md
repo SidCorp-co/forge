@@ -34,3 +34,6 @@
 - Who lowers a gate profile Forge raised is the `gates.lower` permission, never the writer's user kind (ISS-823).
 - A room or job turn that put a subagent or a shell in the background is no longer reported done at its first result: the runner holds it until every backgrounded task has reported and the turn that answered it ended (ISS-764 b).
 - A direct message to a room's session from the project's owner or an admin runs as the room's turn, with its grants, and an act it names runs as the sender; anyone else is refused by name with nothing run (ISS-950).
+- Attention lists each decision as its question and its buttons; what it changes opens on its own page. The operator overview folds its alerts at OK behind one row, and the docs landing drops its explaining paragraph. Twenty-nine screens no witness drew before are now held to a first-view word budget (ISS-1137).
+- The steward's budget note names what waited in words, never the event that carried it, such as `feedback.filed` (ISS-1137).
+- A step opened beside a design's canvas folds the facts rail and the minimap, so neither covers a card and the canvas keeps its width (ISS-806).
