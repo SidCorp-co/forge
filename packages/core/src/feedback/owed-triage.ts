@@ -9,12 +9,15 @@
  * one rule (`@forge/contracts/who-owes:whoOwes`, `feedback.triage`, ISS-1132): where the project's
  * policy gives triage to the master, the suggestion is the master's own work item and stays on this
  * list naming it; where the policy keeps triage a person's, it waits on them, and a rejection owes
- * it again.
+ * it again. An item triaged once whose carrier is gone (no route, its issues all dropped, its
+ * requirement dropped, its revision suggestion settled without being taken) owes a triage again and is
+ * listed beside them (ISS-1086: agenfold FB-108, 51 and 31 were never named): its standing waits on
+ * the same triager a fresh item's does (`standing.ts`, `feedback.rule.carrierGone`).
  */
 
 import { FEEDBACK_SEVERITIES, type FeedbackSeverity, feedbackKey } from '@forge/contracts/feedback';
 import { whoOwes } from '@forge/contracts/who-owes';
-import { and, asc, eq, inArray, isNull, lte, notExists, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, notExists, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -26,10 +29,23 @@ export interface OwedTriage {
   key: string;
   title: string;
   severity: FeedbackSeverity;
-  status: 'new' | 'reopened';
+  /** `triaged` for one whose carrier is gone, which owes a triage again. */
+  status: 'new' | 'reopened' | 'triaged';
   /** The feedback_triage suggestion proposed on it, where one is: the master accepts or rejects it. */
   proposed: string | null;
 }
+
+/** A triaged item that carries nothing any more, as `standing.ts:phaseOf` reads it back to triaged. */
+const carrierGoneSql = sql`(${feedback.status} = 'triaged' AND (
+  ${feedback.route} IS NULL
+  OR (${feedback.route} = 'issue' AND NOT EXISTS (
+        SELECT 1 FROM feedback_route_issues ri JOIN issues i ON i.id = ri.issue_id
+         WHERE ri.feedback_id = ${feedback.id} AND i.status <> 'dropped'))
+  OR (${feedback.route} = 'new_requirement' AND EXISTS (
+        SELECT 1 FROM requirements q WHERE q.id = ${feedback.routedRequirementId} AND q.status = 'dropped'))
+  OR (${feedback.route} = 'revision' AND NOT EXISTS (
+        SELECT 1 FROM suggestions s WHERE s.id = ${feedback.routedSuggestionId}
+           AND s.status IN ('proposed', 'accepted')))))`;
 
 export async function owedTriages(projectId: string, exec: Tx = db): Promise<OwedTriage[]> {
   const masterTriages = whoOwes('feedback.triage', await readOwedPolicy(projectId)).by === 'master';
@@ -45,7 +61,7 @@ export async function owedTriages(projectId: string, exec: Tx = db): Promise<Owe
     .where(
       and(
         eq(feedback.projectId, projectId),
-        inArray(feedback.status, ['new', 'reopened']),
+        or(inArray(feedback.status, ['new', 'reopened']), carrierGoneSql),
         // a snoozed item is owed to nobody until its date; the read returns it, no timer does
         or(isNull(feedback.snoozedUntil), lte(feedback.snoozedUntil, new Date())),
         notExists(

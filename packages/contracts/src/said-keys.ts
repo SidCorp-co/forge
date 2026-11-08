@@ -1576,10 +1576,10 @@ export const SAID = {
 	},
 	"feedback.act.route": { en: "route it to work" },
 	"feedback.rule.noRoute": {
-		en: "triaged with no route: a holder of feedback.approve routes it",
+		en: "triaged with no route: whoever triages it routes it",
 	},
 	"feedback.rule.carrierGone": {
-		en: "triaged: its carrier is gone; a holder of feedback.approve reroutes it",
+		en: "triaged: its carrier is gone, so whoever triages it reroutes it",
 	},
 	"feedback.rule.answered": {
 		en: "resolved: answered; the reporter confirms it settled",

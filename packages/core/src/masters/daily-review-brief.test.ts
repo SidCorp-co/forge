@@ -59,7 +59,8 @@ describe('the daily review brief', () => {
 
   it('tells a project with no thread recorded where to record one, and that a post is refused', () => {
     expect(unthreaded).toContain('SUPPORT_PROJECT_THREAD_UNRECORDED');
-    expect(unthreaded).toContain('operations.threads["<rid>"]["adminhub-api"]');
+    // ISS-1086: the key sits under the binding document's target; at its top level it is refused
+    expect(unthreaded).toContain('document.target.operations.threads["<rid>"]["adminhub-api"]');
     expect(unthreaded).not.toMatch(/thread \S+ of room/);
   });
 

@@ -21,7 +21,11 @@ const wait = (
   extra: { dueAt?: string | null } = {},
 ) => waitingOn(kind, { who, act, rule }, extra);
 
-const MASTER = say('standing.who.projectMaster');
+export const MASTER = say('standing.who.projectMaster');
+
+/** Whether the project's master takes its triage now: the one rule gives it, and a runner is bound to serve it. */
+export const masterTakesTriage = (facts: Pick<StandingFacts, 'masterTriages' | 'runnerBound'>) =>
+  facts.masterTriages && facts.runnerBound !== false;
 
 export function triageWait(
   phase: FeedbackPhase,
@@ -29,7 +33,7 @@ export function triageWait(
   facts: StandingFacts,
 ): Owed {
   const router = say('standing.who.holderOf', { perm: viewer.routeAsks });
-  const master = facts.masterTriages && facts.runnerBound !== false;
+  const master = masterTakesTriage(facts);
   if (facts.snoozedUntil) {
     const act = say('feedback.act.triageAfterSnooze', { date: facts.snoozedUntil.slice(0, 10) });
     const rule = say('feedback.rule.snoozed', { phase, until: facts.snoozedUntil });

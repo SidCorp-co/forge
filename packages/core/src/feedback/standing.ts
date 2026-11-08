@@ -27,7 +27,7 @@ import {
   issueWait,
   relayWait,
 } from './standing-carrier.js';
-import { triageWait } from './standing-triage.js';
+import { MASTER, masterTakesTriage, triageWait } from './standing-triage.js';
 
 export { type CarrierStanding, carriersPhrase } from './standing-carrier.js';
 
@@ -225,28 +225,14 @@ function waitingOf(
     case 'new':
     case 'reopened':
       return triageWait(phase, viewer, facts);
-    case 'triaged':
+    case 'triaged': {
       if (facts.draftCarrier) return draftCarrierWait(facts.draftCarrier);
-      if (route === null) {
-        return {
-          wait: wait(
-            'person',
-            routerOf(viewer),
-            say('feedback.act.route'),
-            say('feedback.rule.noRoute'),
-          ),
-          yours: viewer.canRoute,
-        };
-      }
-      return {
-        wait: wait(
-          'person',
-          routerOf(viewer),
-          say('standing.act.triageAgain'),
-          say('feedback.rule.carrierGone'),
-        ),
-        yours: viewer.canRoute,
-      };
+      const act = route === null ? say('feedback.act.route') : say('standing.act.triageAgain');
+      const rule = route === null ? say('feedback.rule.noRoute') : say('feedback.rule.carrierGone');
+      // triaging it again is the same act as triaging it first, owed by the same rule (ISS-1086)
+      if (masterTakesTriage(facts)) return theirs(wait('agent', MASTER, act, rule));
+      return { wait: wait('person', routerOf(viewer), act, rule), yours: viewer.canRoute };
+    }
     case 'planned':
       if (route === 'issue') {
         return facts.carrierRelease
