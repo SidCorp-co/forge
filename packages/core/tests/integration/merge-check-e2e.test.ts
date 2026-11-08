@@ -265,6 +265,7 @@ describe("an integration red that is not the change's (ISS-1120)", () => {
     command: `(cd packages/core && pnpm exec vitest run --config vitest.integration.config.ts ${RED})`,
     startedAt: '2026-11-07T06:05:00.000Z',
     durationMs: 9000,
+    ...(result === 'fail' ? { failed: ['slow reads > reads one page'] } : {}),
   });
   const redReport = (verdict: 'base-red' | 'flaky' | 'branch-red') => {
     const checks = REQUIRED_MERGE_CHECKS.map((n) =>

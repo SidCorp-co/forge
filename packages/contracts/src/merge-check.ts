@@ -103,7 +103,7 @@ export const RERUN_FAILED_MAX = 500;
 /** What a verdict reads of one rerun: how it ended, and the tests that failed in it. */
 export interface RerunOutcome {
 	result: RerunResult;
-	failed?: readonly string[];
+	failed?: readonly string[] | undefined;
 }
 
 /**
