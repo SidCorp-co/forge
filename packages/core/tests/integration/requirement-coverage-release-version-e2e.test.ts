@@ -23,7 +23,9 @@
  * @direct-test-of packages/core/src/requirements/verdicts.ts
  */
 
+import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
@@ -270,4 +272,51 @@ describe('a project whose production reads the commit it serves keeps weighing b
       notCounted: null,
     });
   });
+});
+
+/** An issue criterion's pass judged on release `version`, by an agent that did not build it (epod's ISS-28). */
+async function passOnRelease(issueId: string, n: number, version: string): Promise<void> {
+  const [criterion] = (await db.execute(sql`
+    SELECT id FROM issue_criteria WHERE issue_id = ${issueId} AND n = ${n} AND retired_at IS NULL
+  `)) as unknown as Array<{ id: string }>;
+  await db.execute(sql`
+    INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, identity_kind,
+                                    release_version, author_user_id, author_agency, judge)
+    VALUES (${criterion?.id}, ${issueId}, 'pass', ${`passed on the served release ${version}`},
+            'release', ${version}, ${world.ownerId}, 'agent', 'qa')
+  `);
+}
+
+// ISS-1030 (FB-529, epod 2026-11-06): REQ-8's BC-1, BC-2 and BC-4 traced by ISS-28's criteria 1-3, each
+// passed on release 1.46.1, the newest record, read `{ criteria: 4, passing: 1 }` and re-asked a judge.
+describe('a traced issue criterion passed on the live release counts toward its requirement (ISS-1030)', () => {
+  for (const shippedIn of ['1.46.0', '1.46.1'] as const) {
+    it(`counts three release passes on 1.46.1 where the issue shipped in ${shippedIn}, and asks no judge`, async () => {
+      await agenfold();
+      const req = await agreedRequirement([...BCS, 'A folded workspace reopens where it was']);
+      const issue = await landedIssue(28, F4);
+      await traced(req, issue, 28, { 1: 'BC-1', 2: 'BC-2', 3: 'BC-4' });
+      if (shippedIn === '1.46.0') {
+        await recordRelease([issue], '1.46.0');
+        await recordRelease([await landedIssue(29, F4)], '1.46.1');
+      } else {
+        await recordRelease([await landedIssue(29, F4)], '1.46.0');
+        await recordRelease([issue], '1.46.1');
+      }
+      for (const n of [1, 2, 3]) await passOnRelease(issue, n, '1.46.1');
+
+      const read = await readOf(req);
+      const traced3 = read.standing.coverage.filter((c) => c.code !== 'BC-3');
+      expect(
+        traced3.map((c) => [c.code, c.verdict, c.why]),
+        JSON.stringify(read.standing.coverage),
+      ).toEqual([
+        ['BC-1', 'passing', null],
+        ['BC-2', 'passing', null],
+        ['BC-4', 'passing', null],
+      ]);
+      expect(read.standing.delivery.criteriaCoverage).toMatchObject({ criteria: 4, passing: 3 });
+      expect(JSON.stringify(read.standing.waitingOn)).not.toContain('standing.act.judge');
+    });
+  }
 });
