@@ -1,3 +1,5 @@
+// @direct-test-of packages/core/src/
+// @direct-test-when \.(insert|update|delete)\(|INSERT INTO|UPDATE \w|DELETE FROM
 // The writers of the builder rule's inputs and of its model (ISS-1070 r5, 0627). Each input table's
 // trigger marks the issue whoever writes it, so a writer needs no call of its own; what this holds is
 // the list: a module that starts writing an input is named here before it lands, so a reviewer reads
@@ -18,7 +20,11 @@ const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta
 
 /** Every module writing each input table today, by path under `src/`. */
 const WRITERS: Record<(typeof BUILDER_INPUT_TABLES)[number]['table'], readonly string[]> = {
-  criterion_verdicts: ['issues/criteria/backfill.ts', 'issues/criteria/verdict-record.ts'],
+  criterion_verdicts: [
+    'issues/criteria/backfill.ts',
+    'issues/criteria/close-verdicts.ts',
+    'issues/criteria/verdict-record.ts',
+  ],
   issue_check_runs: ['issues/check-runs.ts'],
   issue_leases: ['issues/issue-lease.ts'],
   pipeline_runs: [
@@ -57,6 +63,7 @@ const WRITERS: Record<(typeof BUILDER_INPUT_TABLES)[number]['table'], readonly s
     'issues/close-in-scope.ts',
     'issues/criteria/backfill.ts',
     'issues/criteria/criterion-reword.ts',
+    'issues/criteria/retie.ts',
     'issues/criteria/store.ts',
     'issues/criteria/tie.ts',
   ],
