@@ -2,6 +2,7 @@ import { type DesignOwed, owedWait } from '@forge/contracts/design-owed';
 import type { DesignRevisionState, DesignStatus } from '@forge/contracts/design-status';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
+import { type OwedPolicy, whoOwes } from '@forge/contracts/who-owes';
 import type {
   DesignBaseFault,
   DesignBuildGate,
@@ -12,6 +13,16 @@ import type { DesignDecision } from './design.js';
 
 type DesignWaitingOn = WaitingOn<DesignWaitingKind>;
 
+/**
+ * Whether the project's master decides its proposed designs (ISS-1158): the one rule's
+ * `design.decide` over the project's policy, which names a person only on a strict project or where
+ * the designs gate asks one. Where it names the master the project is not strict, so the master holds
+ * workflow-designs.approve there (`permissions/master-acts.ts:actsAsMaster`): the read never names a
+ * master its door would refuse. The pass and every design read ask this, never the profile alone.
+ */
+export const masterDecidesDesigns = (policy: OwedPolicy): boolean =>
+  whoOwes('design.decide', policy).by === 'master';
+
 interface DesignHeadFacts {
   status: DesignStatus | null;
   proposedRevision: number | null;
@@ -21,6 +32,11 @@ interface DesignHeadFacts {
 interface DesignStandingInput extends DesignHeadFacts {
   latest: { revision: number; author: string | null } | null;
   canDecide: boolean;
+  /**
+   * Whether the project's master decides its designs (`masterDecidesDesigns`): then a
+   * proposal waits on the master, whoever reads it, and its pass names it (ISS-1158).
+   */
+  masterDecides: boolean;
   /**
    * What the design owes a person past its step, as Needs you lists it (`@forge/contracts/design-owed`):
    * where its step owes nobody, this is what it waits on. Left out where the reader does not read it.
@@ -51,20 +67,24 @@ const wait = (kind: DesignWaitingKind, who: Said, act: Said, rule: Said): Design
 const NOBODY = say('standing.who.nobody');
 const NO_ACT = say('standing.act.none');
 
-/** A decision only the design approver takes: you where you may take it, else whoever holds approval. */
-const approverWait = (canDecide: boolean, act: Said, rule: Said): DesignWaitingOn =>
-  canDecide
+/**
+ * A decision only the design approver takes: the project's master where it decides designs, else you
+ * where you may take it, else whoever holds approval.
+ */
+const approverWait = (input: DesignStandingInput, act: Said, rule: Said): DesignWaitingOn => {
+  if (input.masterDecides) return wait('agent', say('standing.who.projectMaster'), act, rule);
+  return input.canDecide
     ? wait('you', say('standing.who.you'), act, rule)
     : wait('person', say('standing.who.holderOf', { perm: 'workflow-designs.approve' }), act, rule);
+};
 
 function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
-  return approverWait(
-    input.canDecide,
-    say('designs.act.approveOrReturn'),
-    input.canDecide
+  const rule = input.masterDecides
+    ? say('designs.rule.masterDecides', { r: revision })
+    : input.canDecide
       ? say('designs.rule.youDecide', { r: revision })
-      : say('designs.rule.approverDecides'),
-  );
+      : say('designs.rule.approverDecides');
+  return approverWait(input, say('designs.act.approveOrReturn'), rule);
 }
 
 // Every base the proposed revision waits on is proposed at the pinned revision: approving those
@@ -75,7 +95,7 @@ function baseApprovalWait(
 ): DesignWaitingOn | null {
   if (!blocked.bases.every((b) => b.state === 'proposed')) return null;
   return approverWait(
-    input.canDecide,
+    input,
     say('designs.act.approveBase', {
       bases: blocked.bases.map((b) => `${b.workflow} r${b.revision}`).join(', '),
     }),
@@ -87,8 +107,8 @@ function baseApprovalWait(
 }
 
 // Whose turn a design is, first rule wins: proposed on a base proposed at its pin → the base's
-// approver; proposed on a base it must be re-pinned off → its writer; proposed → its approver (you
-// when you may decide); returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
+// approver; proposed on a base it must be re-pinned off → its writer; proposed → its approver (the
+// project's master where it decides designs, else you when you may decide); returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
 // it; approved, withdrawn or not under approval → nobody, unless it owes a person past its step: the
 // pin-only changes its approval left, or places its code and design differ (`owedWait`), the wait
 // Needs you lists on it, so the page never says nothing is next while Needs you counts what is owed

@@ -98,6 +98,13 @@ export interface ReleaseHoldOwed {
   waitingFor: string;
 }
 
+/** A proposed design the master decides, at the revision waiting (`workflows/owed-designs.ts:owedDesignApprovals`). */
+export interface DesignApprovalOwed {
+  workflowId: string;
+  flow: string;
+  revision: number;
+}
+
 /** A request a person left waiting: a draft issue they filed, or a draft requirement proposed from a chat. */
 export interface WaitingRequest {
   kind: 'issue' | 'requirement';
@@ -132,6 +139,8 @@ interface MastersPorts {
   confirmsOwed(projectId: string): Promise<AgentConfirmOwed[]>;
   /** Returned workflow designs no live issue carries, owed a revision. */
   designsOwed(projectId: string): Promise<{ workflowId: string; flow: string; revision: number }[]>;
+  /** Proposed workflow designs owed the master's approval or return, none where a person decides designs (ISS-1158). */
+  designApprovalsOwed(projectId: string): Promise<DesignApprovalOwed[]>;
   /** Issues waiting at the release gate with no release note, which the draft release refuses. */
   releaseNotesOwed(projectId: string): Promise<{ issueId: string; key: string }[]>;
   /**

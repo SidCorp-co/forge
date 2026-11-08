@@ -1,8 +1,11 @@
 import { saidDisagreements } from '@forge/contracts/said';
+import { GATE_PROFILES } from '@forge/contracts/gate-profiles';
+import { PERSON_GATES } from '@forge/contracts/person-gates';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
 import { designRowOf, repinRowOf } from '../development/needs-you-design.js';
-import { designWaitingOn } from './design-standing.js';
+import { masterActRefusal } from '../permissions/master-acts.js';
+import { designWaitingOn, masterDecidesDesigns } from './design-standing.js';
 
 // A proposed design resting on a base not approved at the revision it names waits on its writer, and
 // says why from the refusal's facts (revision, each base and its fault), never from its English detail.
@@ -15,6 +18,7 @@ describe('a proposed design on an unapproved base', () => {
       approvedRevision: 3,
       latest: { revision: 4, author: 'Lan' },
       canDecide: true,
+      masterDecides: false,
       baseUnapproved: {
         revision: 4,
         bases: [
@@ -53,12 +57,13 @@ describe('a proposed design on an unapproved base', () => {
 
 // FB-145: a base proposed at the revision pinned waits on the base's approver, not on the writer
 describe('a proposed design on a base proposed at the revision it pins', () => {
-  const input = (canDecide: boolean) => ({
+  const input = (canDecide: boolean, masterDecides = false) => ({
     status: 'proposed' as const,
     proposedRevision: 1,
     approvedRevision: null,
     latest: { revision: 1, author: 'Lan' },
     canDecide,
+    masterDecides,
     baseUnapproved: {
       revision: 1,
       bases: [
@@ -89,6 +94,14 @@ describe('a proposed design on a base proposed at the revision it pins', () => {
     expect(w.says.act.key).toBe('designs.act.approveBase');
   });
 
+  it("names the project's master where it decides designs, whoever reads it (ISS-1158)", () => {
+    for (const canDecide of [true, false]) {
+      const w = designWaitingOn(input(canDecide, true));
+      expect(w).toMatchObject({ kind: 'agent', who: "The project's master" });
+      expect(w.says.act.key).toBe('designs.act.approveBase');
+    }
+  });
+
   it('still asks the writer to re-pin where another base is stale', () => {
     const mixed = input(true);
     mixed.baseUnapproved.bases.push({
@@ -116,6 +129,7 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
     approvedRevision: 20,
     latest: { revision: 20, author: null },
     canDecide: true,
+    masterDecides: false,
   };
   const health = {
     flow: 'issue-lifecycle',
@@ -178,5 +192,54 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
       owed: { flow: 'issue-lifecycle', repin: null, settle: 2, settleBy: 'person' as const },
     });
     expect(proposed.act).toBe('approve or return the design');
+  });
+});
+
+// ISS-1158 (FB-586): outside strict the master holds workflow-designs.approve, and a proposal read
+// "You" to the owner and named no master, so support-group r4 sat proposed for days
+describe('a proposed design where the master decides designs', () => {
+  const proposed = (canDecide: boolean, masterDecides: boolean) =>
+    designWaitingOn({
+      status: 'proposed',
+      proposedRevision: 4,
+      approvedRevision: 3,
+      latest: { revision: 4, author: 'Lan' },
+      canDecide,
+      masterDecides,
+    });
+
+  it("waits on the project's master, never on you or a person", () => {
+    for (const canDecide of [true, false]) {
+      const w = proposed(canDecide, true);
+      expect(w).toMatchObject({ kind: 'agent', who: "The project's master" });
+      expect(w.act).toBe('approve or return the design');
+      expect(w.says.rule).toEqual({ key: 'designs.rule.masterDecides', vars: { r: 4 } });
+      expect(saidDisagreements(w)).toEqual([]);
+    }
+  });
+
+  it('waits on you, or on the holders of the approval, where a person decides', () => {
+    expect(proposed(true, false).kind).toBe('you');
+    expect(proposed(false, false)).toMatchObject({ kind: 'person', who: 'Design approver' });
+  });
+});
+
+// The read and the pass name the master only where its door takes the approval: whoever decides by
+// the one rule, the master's credential is refused nothing there (`master-acts.ts:masterActRefusal`)
+describe('whom a proposal names agrees with the approval door', () => {
+  const master = { projectId: 'p', role: 'member' as const, grants: [] };
+  it.each(
+    GATE_PROFILES.flatMap((profile) => [false, true].map((gate) => [profile, gate] as const)),
+  )('on a %s project with the designs gate %s', (profile, gate) => {
+    const strict = profile === 'strict';
+    const gates = Object.fromEntries(PERSON_GATES.map((g) => [g, strict])) as Record<
+      (typeof PERSON_GATES)[number],
+      boolean
+    >;
+    const policy = { strict, gates: { ...gates, designs: strict || gate }, releaseApproval: false };
+    const door = masterActRefusal(master, 'workflow-designs.approve', { agency: 'agent', profile });
+    expect(masterDecidesDesigns(policy)).toBe(!strict && !gate);
+    if (masterDecidesDesigns(policy)) expect(door).toBeNull();
+    if (strict) expect(door?.code).toBeDefined();
   });
 });

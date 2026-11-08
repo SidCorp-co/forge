@@ -37,6 +37,7 @@ import {
   revisionStateOf,
 } from './design-standing.js';
 import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
+import { readMasterDecidesDesigns } from './owed-designs.js';
 import { readStoredWorkflow } from './schema.js';
 import {
   assertWriter,
@@ -134,6 +135,7 @@ export async function designView(
     approvedRevision: row.approvedRevision,
   };
   const canDecide = viewer ? (await approverRefusalFor(viewer, row.projectId)) === null : false;
+  const masterDecides = await readMasterDecidesDesigns(row.projectId);
   const acts = await viewerActs(viewer, row.projectId);
   // the writer a draft waits on is the working document's, as the list names it
   // (`service.ts:listedView`), so one actor carries one name on the list and the page
@@ -163,6 +165,7 @@ export async function designView(
       ...head,
       latest,
       canDecide,
+      masterDecides,
       baseUnapproved: blocked,
       owed,
     }),

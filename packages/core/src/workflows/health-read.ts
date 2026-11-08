@@ -35,6 +35,7 @@ import {
 } from './health-inputs.js';
 import { type HealthViewer, openFeedbackOf } from './health-ports.js';
 import { deriveHealth, type HealthFacts, type PlannedTarget } from './health-rules.js';
+import { readMasterDecidesDesigns } from './owed-designs.js';
 import { rootedOfAll } from './rooted.js';
 import { readStoredWorkflow } from './schema.js';
 import { liveWorkflow, type workflowsOf, workflowsRead } from './store.js';
@@ -55,6 +56,8 @@ interface ProjectHealthContext {
   slug: string;
   viewer: HealthViewer;
   canDecide: boolean;
+  /** Whether the project's master decides its designs (`design-standing.ts:masterDecidesDesigns`). */
+  masterDecides: boolean;
   threshold: HealthFacts['threshold'];
   templates: ReturnType<typeof resolveProjectTemplates>['templates'];
   feedback: Awaited<ReturnType<typeof openFeedbackOf>>;
@@ -63,7 +66,7 @@ interface ProjectHealthContext {
 }
 
 async function contextOf(projectId: string, viewer: HealthViewer): Promise<ProjectHealthContext> {
-  const [doc, slugRow, feedback, facts, held] = await Promise.all([
+  const [doc, slugRow, feedback, facts, held, masterDecides] = await Promise.all([
     readProjectDocument(projectId),
     // every project's asks before the quiet point are one read (ISS-1070 r6)
     onePerProject('projectSlug', projectId, async (ids) => {
@@ -75,6 +78,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
     openFeedbackOf(viewer, projectId),
     permissionFactsOf(viewer.userId, projectId),
     workflowsRead(projectId),
+    readMasterDecidesDesigns(projectId),
   ]);
   const workflows = doc?.document.workflows;
   return {
@@ -82,6 +86,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
     slug: slugRow ?? projectId,
     viewer,
     canDecide: designApproverRefusal(facts, await personGateOf(projectId, 'designs')) === null,
+    masterDecides,
     threshold: rewriteThresholdOf(workflows?.rewriteThreshold),
     templates: resolveProjectTemplates(workflows?.templates ?? []).templates,
     feedback,
@@ -198,6 +203,7 @@ function healthOfRow(
               approvedRevision: w.approved_revision,
               latest: { revision: w.revision, author: null },
               canDecide: ctx.canDecide,
+              masterDecides: ctx.masterDecides,
               baseUnapproved: standingBaseRefusal(Number(open.revision), open.document, ctx.held),
             }),
           }

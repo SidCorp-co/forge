@@ -73,6 +73,7 @@ describe('a withdrawn design', () => {
       approvedRevision: null,
       latest: { revision: 1, author: null },
       canDecide: true,
+      masterDecides: false,
     });
     expect(waiting.kind).toBe('none');
   });

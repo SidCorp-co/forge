@@ -1,4 +1,7 @@
 /**
+ * What a project's designs owe its master: a proposed one its approval or return where the master
+ * decides designs (`owedDesignApprovals`, below), and a returned one a revision.
+ *
  * Which returned designs owe their project master a revision (workflow project-onboarding
  * `decided`: a returned design goes back to revision). The box carrying the master reads it on
  * every sweep, so a return is master work whether or not its workflow.designDecided wake was heard.
@@ -10,6 +13,8 @@
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { readOwedPolicy } from '../project-config/index.js';
+import { masterDecidesDesigns } from './design-standing.js';
 
 export interface OwedDesignRevision {
   workflowId: string;
@@ -48,5 +53,46 @@ export async function owedDesignRevisions(projectId: string): Promise<OwedDesign
     revision: Number(r.revision),
     reason: String(r.reason ?? ''),
     returnedAt: new Date(r.decided_at as string).toISOString(),
+  }));
+}
+
+/** `design-standing.ts:masterDecidesDesigns` over the project's policy as it stands. */
+export async function readMasterDecidesDesigns(projectId: string): Promise<boolean> {
+  return masterDecidesDesigns(await readOwedPolicy(projectId));
+}
+
+export interface OwedDesignApproval {
+  workflowId: string;
+  flow: string;
+  revision: number;
+  proposedAt: string;
+}
+
+/**
+ * The proposed designs owed the master's approval or return (ISS-1158, FB-586): every design at
+ * `proposed`, its newest revision the one waiting, where the master decides designs; none where a
+ * person does. Deciding it, or withdrawing it, takes it off.
+ */
+export async function owedDesignApprovals(projectId: string): Promise<OwedDesignApproval[]> {
+  if (!(await readMasterDecidesDesigns(projectId))) return [];
+  const rows = (await db.execute(sql`
+    SELECT w.id AS workflow_id, w.flow, d.revision, d.proposed_at
+      FROM project_workflows w
+      JOIN LATERAL (
+        SELECT revision, proposed_at
+          FROM project_workflow_designs
+         WHERE workflow_id = w.id
+         ORDER BY revision DESC
+         LIMIT 1
+      ) d ON true
+     WHERE w.project_id = ${projectId}
+       AND w.design_status = 'proposed'
+     ORDER BY d.proposed_at, w.flow
+  `)) as unknown as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    workflowId: String(r.workflow_id),
+    flow: String(r.flow),
+    revision: Number(r.revision),
+    proposedAt: new Date(r.proposed_at as string).toISOString(),
   }));
 }

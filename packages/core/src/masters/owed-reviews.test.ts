@@ -7,6 +7,7 @@ import type { ReviewOwed } from './ports.js';
 
 const none: Parameters<typeof owedLine>[0] = {
   designs: [],
+  designApprovals: [],
   revisions: [],
   breakdowns: [],
   triages: [],

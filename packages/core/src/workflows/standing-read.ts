@@ -12,6 +12,7 @@ import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { withTimes } from '../lib/standing-times.js';
 import { designWaitingOn } from './design-standing.js';
+import { readMasterDecidesDesigns } from './owed-designs.js';
 
 /** One workflow's standing: its flow is the key every page and note names it by. */
 export interface WorkflowStanding {
@@ -48,6 +49,8 @@ export function workflowStandingOf(
     /** The newest design revision, which a return names to revise; null where none was drawn. */
     latestRevision: number | null;
     since: Date;
+    /** Whether the project's master decides its designs (`design-standing.ts:masterDecidesDesigns`). */
+    masterDecides: boolean;
   },
   master: MasterServing,
   now: Date,
@@ -58,6 +61,7 @@ export function workflowStandingOf(
     approvedRevision: row.approvedRevision,
     latest: row.latestRevision === null ? null : { revision: row.latestRevision, author: null },
     canDecide: false,
+    masterDecides: row.masterDecides,
   });
   const owing = row.step !== null && OWING.has(row.step);
   const { group, times } = withTimes<StandingGroup>(
@@ -84,6 +88,7 @@ export async function workflowStandingsOf(
   master: MasterServing,
   now: Date = new Date(),
 ): Promise<WorkflowStanding[]> {
+  const masterDecides = await readMasterDecidesDesigns(projectId);
   const rows = rowsOf<Row>(
     await db.execute(sql`
       SELECT w.id, w.flow, w.design_status, w.approved_revision,
@@ -111,6 +116,7 @@ export async function workflowStandingsOf(
         proposedRevision: r.proposed_revision === null ? null : Number(r.proposed_revision),
         latestRevision: r.latest_revision === null ? null : Number(r.latest_revision),
         since: new Date(r.since),
+        masterDecides,
       },
       master,
       now,

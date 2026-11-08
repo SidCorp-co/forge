@@ -14,6 +14,7 @@ import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import { agrees } from '../lib/plural.js';
 import { confirmsLine } from './owed-confirms.js';
+import { approvalsLine, returnedLine } from './owed-designs.js';
 import {
   carriersLine,
   intakeFailuresLine,
@@ -31,6 +32,7 @@ import { triagesLine } from './owed-triages.js';
 import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
 import {
   type AgentConfirmOwed,
+  type DesignApprovalOwed,
   type FilingOwed,
   type FilingRecordOwed,
   type MarkOwed,
@@ -52,6 +54,8 @@ type Admissible = Awaited<ReturnType<typeof readAdmissibleIssues>>['items'][numb
 /** Everything a project's master is owed besides its admissible issues, as one read. */
 interface Owed {
   designs: { workflowId: string; flow: string; revision: number }[];
+  /** Proposed designs the master decides, each owed its approval or return (ISS-1158). */
+  designApprovals: DesignApprovalOwed[];
   revisions: { key: string; revision: number }[];
   breakdowns: { key: string; overdue: boolean }[];
   /** Each naming its proposed feedback_triage suggestion, which the master decides (ISS-1132). */
@@ -116,20 +120,6 @@ interface Owed {
 
 /** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
 const method = (slug: GuideSlug) => `\`${guideCall(slug)}\``;
-
-function returnedLine(owed: Owed): string {
-  let line = '';
-  const { designs, revisions } = owed;
-  if (designs.length > 0) {
-    const keys = designs.map((d) => `${d.flow} r${d.revision}, workflow ${d.workflowId}`);
-    line += ` ${designs.length} returned design${agrees(designs.length, ' owes', 's owe')} a revision no issue carries (${keys.join('; ')}): read each return's reason (\`forge-runner api projects/<projectId>/workflows/<workflowId>/design\`), then get the next revision written and proposed in a declared run, or record why it waits; ${method('workflow-design')} is how a revision is written and proposed, and the forge-master skill's returned-work section is the master's part.`;
-  }
-  if (revisions.length > 0) {
-    const keys = revisions.map((r) => `${r.key} r${r.revision}`);
-    line += ` ${revisions.length} returned requirement revision${agrees(revisions.length, ' owes', 's owe')} a revise (${keys.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`, its revision's \`returnReason\`), then write and propose it again, or drop it; ${method('requirement-lifecycle')} is how, and the forge-master skill's returned-work section is the master's part.`;
-  }
-  return line;
-}
 
 /** What an answer did to the park it stopped, as the nudge says it. */
 function outcomeOf(outcome: AnswerResume | null): string {
@@ -245,6 +235,7 @@ function wedgeLandedLine(landed: Owed['landedWork']): string {
 export function owedLine(owed: Owed): string {
   let line =
     returnedLine(owed) +
+    approvalsLine(owed.designApprovals) +
     answersLine(owed.answers) +
     stewardAsksLine(owed.stewardAsks) +
     questionsLine(owed.questions) +
@@ -321,6 +312,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
   });
   const ids = [
     ...owed.designs.map((d) => `design:${d.workflowId}#r${d.revision}`),
+    ...owed.designApprovals.map((d) => `design-approval:${d.workflowId}#r${d.revision}`),
     ...owed.revisions.map((r) => `revision:${r.key}#r${r.revision}`),
     ...owed.breakdowns.map((b) => `breakdown:${b.key}`),
     ...owed.triages.map((t) => `triage:${t.key}${t.proposed ? `|${t.proposed}` : ''}`),
@@ -409,6 +401,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     triages,
     confirms,
     designs,
+    designApprovals,
     releaseNotes,
     unnamedReleases,
     contentLanguage,
@@ -429,6 +422,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.triagesOwed(projectId),
     ports.confirmsOwed(projectId),
     ports.designsOwed(projectId),
+    ports.designApprovalsOwed(projectId),
     ports.releaseNotesOwed(projectId),
     releasesTheMasterNames(projectId),
     ports.contentLanguageOf(projectId),
@@ -463,6 +457,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     admissible.items,
     {
       designs,
+      designApprovals,
       revisions,
       breakdowns: breakdownsDue,
       triages,

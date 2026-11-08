@@ -6,6 +6,7 @@ import { masterWork } from './owed.js';
 // The owed-work fixture of owed.test.ts, cut to the work a direct-mode pass is composed over.
 const none = {
   designs: [],
+  designApprovals: [],
   revisions: [],
   breakdowns: [],
   triages: [] as { key: string }[],

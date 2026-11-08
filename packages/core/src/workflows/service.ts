@@ -22,6 +22,7 @@ import {
 import { baseRefusals, standingBaseRefusal } from './design-bases.js';
 import { requirementKeysOf } from './design-requirements.js';
 import { designListReadingOf } from './design-standing.js';
+import { readMasterDecidesDesigns } from './owed-designs.js';
 import { reaskSupersededDesignQuestions } from './ports.js';
 import {
   checkWorkflow,
@@ -391,7 +392,7 @@ async function mayDecideDesigns(userId: string, projectId: string): Promise<bool
 
 function listedView(
   row: StoredWorkflow,
-  canDecide: boolean,
+  decides: { canDecide: boolean; masterDecides: boolean },
   writerName: string | undefined,
   returnReason: string | null | undefined,
   held: readonly StoredWorkflow[],
@@ -404,7 +405,7 @@ function listedView(
       proposedRevision: row.designStatus === 'proposed' ? row.revision : null,
       approvedRevision: row.approvedRevision,
       latest: { revision: row.revision, author: view.writerName },
-      canDecide,
+      ...decides,
       baseUnapproved:
         row.designStatus === 'proposed'
           ? standingBaseRefusal(row.revision, row.document, held)
@@ -418,20 +419,21 @@ function listedView(
 
 /** The list and the single read answer one view: writer name, return reason and the viewer's acts. */
 async function listedViews(userId: string, projectId: string, rows: readonly StoredWorkflow[]) {
-  const [names, reasons, canDecide, held, requirements] = await Promise.all([
+  const [names, reasons, canDecide, masterDecides, held, requirements] = await Promise.all([
     userNames(rows.map((r) => r.writtenByUser)),
     returnReasonsOf(
       db,
       rows.filter((r) => r.designStatus === 'returned').map((r) => r.id),
     ),
     mayDecideDesigns(userId, projectId),
+    readMasterDecidesDesigns(projectId),
     rows.some((r) => r.designStatus === 'proposed') ? workflowsOf(db, projectId) : [],
     requirementKeysOf(rows.map((r) => r.id)),
   ]);
   return rows.map((row) =>
     listedView(
       row,
-      canDecide,
+      { canDecide, masterDecides },
       names.get(row.writtenByUser),
       reasons.get(row.id),
       held,

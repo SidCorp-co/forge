@@ -21,6 +21,7 @@ const dispatched = (
 
 const none = {
   designs: [],
+  designApprovals: [],
   revisions: [],
   breakdowns: [],
   triages: [],
@@ -237,6 +238,22 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     );
     expect(line).toContain('1 returned requirement revision owes a revise (REQ-2 r2)');
     expect(line).not.toContain('builder run');
+  });
+
+  // ISS-1158 (FB-586): a proposal the master decides is named with its door, and moves the digest
+  it('names a proposed design the master decides with its revision, workflow, door and checklist', () => {
+    const owed = {
+      ...none,
+      designApprovals: [{ workflowId: 'w9', flow: 'support-group', revision: 4 }],
+    };
+    const line = owedLine(owed);
+    expect(line).toContain('1 proposed design waits on your approval (support-group r4, workflow w9)');
+    expect(line).toContain('workflows/<workflowId>/design/decision -X POST');
+    expect(line).toContain('workflow approval checklist `forge-runner api guides/workflow-design.md`');
+    expect(line).not.toContain('returned design');
+    expect(dispatched([], owed).owed).toBe(1);
+    expect(workDigest([], owed)).not.toBe(workDigest([], none));
+    expect(owedLine(none)).not.toContain('proposed design');
   });
 
   it('names an overdue breakdown as overdue, and a thread reply by its comment id', () => {

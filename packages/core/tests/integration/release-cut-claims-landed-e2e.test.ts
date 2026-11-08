@@ -283,6 +283,7 @@ describe('an abort over a roster an earlier release already shipped (ISS-888 sha
 
 const NONE: Parameters<typeof owedLine>[0] = {
   designs: [],
+  designApprovals: [],
   revisions: [],
   breakdowns: [],
   triages: [],

@@ -60,6 +60,7 @@ function restated(text: string, source?: GuideSlug): string[] {
 
 const none = {
   designs: [],
+  designApprovals: [],
   revisions: [],
   breakdowns: [],
   triages: [],
