@@ -200,7 +200,6 @@
     "shell.needsHint.repeated": "{act} ({n})",
     "shell.needsHint.some": "{label} · waiting on you {n}: {acts}",
     "shell.notFound.home": "Back to home",
-    "shell.notFound.message": "This page moved or never existed",
     "shell.notFound.title": "Page not found",
     "shell.notify.desktop": "Desktop notifications",
     "shell.notify.desktopBlocked": "Blocked in your browser settings; re-enable notifications for this site.",

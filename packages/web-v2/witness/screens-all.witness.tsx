@@ -122,7 +122,10 @@ window.__witness = {
         const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement, { whole: WHOLE });
         const narrow = window.innerWidth >= 1024 ? "" : `@${window.innerWidth}`;
         console.log(`${WHOLE ? "WHOLE" : "WORDS"}${narrow} ${p.name} ${t} ${count} :: ${words.slice(0, 400).join(" ")}`);
-        return count < 8 ? [`the ${p.name} page drew ${count} words: it did not draw its screen`] : [];
+        // the shell alone draws five words ("Feedback to Forge", "Ask Agent"): a page adding none drew no screen;
+        // a bare page (sign-in, 404) has no shell, and a name and one act are three (ISS-1131: the 404 says six)
+        const floor = p.bare ? 3 : 6;
+        return count < floor ? [`the ${p.name} page drew ${count} words: it did not draw its screen`] : [];
       },
     })),
   ),

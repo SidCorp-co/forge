@@ -64,7 +64,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   docs: { budget: 100 },
   "sign-in": { budget: 11 },
   register: { budget: 15 },
-  "not-found": { budget: 8, amnesty: waits(12) },
+  "not-found": { budget: 8 },
 };
 
 /** One drawn count per screen: `WORDS <screen> <theme> <n>` as the witness prints it. */
