@@ -23,6 +23,7 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 import { vouchedByPassingCriterion } from '../helpers/loop-close.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
@@ -91,6 +92,9 @@ beforeAll(async () => {
     environments: {},
     extra: { contentLanguage: 'vi' },
   });
+  // owner 2026-11-08 (D5): outside strict a shipped item is verified by its ship; the triager's
+  // verify from the record these tests read is owed only where a project keeps it, under strict
+  await declareControls(projectId, people.owner, { gates: { profile: 'strict' } });
   await db.execute(sql`
     INSERT INTO user_preferences (user_id, language) VALUES (${people.ann}, 'en')
   `);

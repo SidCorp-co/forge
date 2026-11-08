@@ -274,11 +274,14 @@ describe('a round that needs the owner is asked once, in a thread, in the room l
     model.turns.length = 0;
     await drain(new Date(Date.now() + 3_600_000));
     expect(posted).toEqual([]);
-    const again = await parked('Which payment provider goes first?');
+    // ISS-918: re-parked word for word while the first is open, it is refused naming the first
+    await expect(parked('Which payment provider goes first?')).rejects.toThrow(
+      new RegExp(`QUESTION_ALREADY_OPEN: question ${id} asks this`),
+    );
     await drain(new Date(Date.now() + 3_600_000));
     expect(posted).toEqual([]);
     expect(model.turns).toEqual([]);
-    expect(await threadOf(again)).toBe(await threadOf(id));
+    expect(await threadOf(id)).toBeDefined();
   });
 
   it('refuses a question holding a code by name, and posts the rewrite in plain words', async () => {
