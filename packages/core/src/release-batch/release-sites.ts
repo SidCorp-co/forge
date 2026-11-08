@@ -79,7 +79,8 @@ const STATE_WORDS: Record<ReleaseSiteState, string> = {
  * The sites a release's record ships, admitted against the sites production declares: every one
  * named once, and none still waiting on its confirm on this run. A production of one site whose
  * record names none records that site serving `fallback` (the commit the finish names, else the
- * version): a single-binding document reads as one site, and its finish as before.
+ * version) and is refused nothing new: a single-binding document reads as one site, and the body a
+ * release job sends today finishes it as before.
  *
  * THROWS `RELEASE_SITE_UNDECLARED` for a name production does not declare or a site named twice, and
  * `RELEASE_SITE_NOT_SHIPPED` naming each site the record leaves out or that waits on its confirm.
@@ -99,8 +100,11 @@ export function admitSiteRecord(
     }
     return [];
   }
-  const sites: readonly SiteRecord[] =
-    named ?? (channels.length === 1 ? [{ name: declared[0] as string, serves: ctx.fallback }] : []);
+  // a production of one site finishes as it always has: today's body, read as that site (ISS-1077)
+  if (named === undefined && channels.length === 1) {
+    return [{ name: declared[0] as string, serves: ctx.fallback }];
+  }
+  const sites: readonly SiteRecord[] = named ?? [];
   const seen = new Set<string>();
   for (const s of sites) {
     if (!declared.includes(s.name) || seen.has(s.name)) {

@@ -255,6 +255,8 @@ const releaseRecordBodySchema = z
     providerRef: z.string().trim().max(500).optional(),
     /** A landing's branch, where it is not the one work lands on (adminhub-api !5020, 2026-10-27). */
     branch: z.string().trim().min(1).max(255).optional(),
+    /** Each production site the release reached, with what it serves; required where production has several (ISS-1077). */
+    sites: sitesSchema.optional(),
   })
   .strict();
 

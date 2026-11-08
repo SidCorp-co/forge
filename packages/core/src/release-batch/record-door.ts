@@ -6,6 +6,7 @@ import { recordPromotionRelease } from './promotion-release.js';
 import { recordPerformedRelease } from './recorded.js';
 import { recordLanding } from './recorded-landing.js';
 import { refuseRelease } from './refuse.js';
+import type { SiteRecord } from './release-sites.js';
 import { closeResidue, residueRelease } from './residue.js';
 import { givenVersionOrRefuse } from './version-store.js';
 
@@ -36,6 +37,7 @@ export async function recordRelease(sent: {
   account: string;
   providerRef?: string | undefined;
   branch?: string | undefined;
+  sites?: SiteRecord[] | undefined;
 }) {
   const { projectId } = sent;
   const declared = await resolveReleaseDeclaration(projectId);

@@ -20,13 +20,14 @@ import { isRefusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { closeRunIfOneShotInTx, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
-import type { RecordedVerification } from './channel.js';
+import { type RecordedVerification, resolveReleaseChannels } from './channel.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { carryNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
 import { reasonOf } from './refuse.js';
+import { admitSiteRecord, type SiteRecord } from './release-sites.js';
 import { oweReleaseTag } from './release-tag.js';
 import { holdResidue, markResidue } from './residue.js';
 import { takeGivenVersion } from './version-store.js';
@@ -52,6 +53,8 @@ export interface RecordPerformedReleaseArgs {
   providerRef?: string | undefined;
   /** Under release mode `none`, the branch the commit is on; the declared landing branch where absent. */
   branch?: string | undefined;
+  /** Each production site the release reached, with what it serves (ISS-1077); required where production has several. */
+  sites?: SiteRecord[] | undefined;
   userId: string;
 }
 
@@ -187,6 +190,13 @@ export async function recordPerformedRelease(
   const providerRef = args.providerRef ?? null;
   const verification: RecordedVerification = RECORDED_VERIFICATION;
 
+  // every production site is named shipped before anything is written (ISS-1077)
+  const sites = admitSiteRecord(await resolveReleaseChannels(projectId), args.sites, {
+    metadata: null,
+    fallback: commit ?? args.version,
+    remedy:
+      'Deploy each one and watch it go live, then record the release naming every site; nothing was written.',
+  });
   const { issueIds } = await admitRoster(projectId, args.issueIds, 'record');
   const roster = await admissibleIssues(projectId, issueIds);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
@@ -206,6 +216,7 @@ export async function recordPerformedRelease(
         providerRef,
         recordedBy: userId,
         issues: roster,
+        ...(sites.length > 0 ? { sites } : {}),
         ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
       },
     });
