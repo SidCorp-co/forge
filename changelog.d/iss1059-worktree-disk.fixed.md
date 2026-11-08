@@ -1,1 +1,0 @@
-**Worktrees stop filling the disk.** A worktree builds the runner into its checkout's shared target, a test's Chrome dies with its killed test process, and the whole-tree guard removes its directories on dev too.

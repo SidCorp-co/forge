@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.596] - 2026-11-08
+
+Worktrees stop filling the disk with runner builds and orphan test browsers
+
+### Fixed
+
+- **Worktrees stop filling the disk.** A worktree builds the runner into its checkout's shared target, a test's Chrome dies with its killed test process, and the whole-tree guard removes its directories on dev too.
+- **Your attention and home pages spend less time assembling their answer.** Each linked issue is read once for every part, shared answers are protected more cheaply, and operators can see which statements a page repeats.
+
 ## [0.4.0-dev.595] - 2026-11-08
 
 A release pressed on a beta project now runs on its dev twin
