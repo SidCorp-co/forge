@@ -57,6 +57,8 @@ interface Kind {
   judgedAtRequirement?: boolean;
   /** Open issues held by closed blockers whose design is not approved yet: blockers no open list reads. */
   heldFromOutside?: boolean;
+  /** Shipped items whose release sent their reporter its notice, and a person wrote them since. */
+  toldShipped?: boolean;
 }
 
 /** forge-dev's mix, forge first. */
@@ -68,6 +70,7 @@ export const LIVE_MIX: readonly Kind[] = [
     linkedFeedback: true,
     judgedAtRequirement: true,
     heldFromOutside: true,
+    toldShipped: true,
   },
   { scale: SMALL, deploys: 'offline', storefront: true },
   { scale: SMALL, deploys: 'coolify', storefront: true, onLand: true },
@@ -75,7 +78,7 @@ export const LIVE_MIX: readonly Kind[] = [
   { scale: TINY, deploys: 'offline' },
   { scale: null },
   { scale: { ...SMALL, live: false, states: false }, outsideGit: true },
-  { scale: SMALL, deploys: 'coolify', onLand: true, linkedFeedback: true },
+  { scale: SMALL, deploys: 'coolify', onLand: true, linkedFeedback: true, toldShipped: true },
   { scale: MID, deploys: 'offline', linkedFeedback: true, judgedAtRequirement: true },
   { scale: { ...SMALL, batches: 2 } },
   { scale: TINY, deploys: 'coolify', onLand: true },
@@ -120,6 +123,7 @@ export async function seedLiveMix(input: {
     if (kind.linkedFeedback) await linkFeedback(id);
     if (kind.judgedAtRequirement) await judgeAtRequirement(id);
     if (kind.heldFromOutside) await holdFromOutside(id, ownerId);
+    if (kind.toldShipped) await tellShipped(id);
     // an agent filed most of it: the person owns one issue in seven and one item in five
     await db.execute(
       sql`UPDATE issues SET created_by_id = ${agentId} WHERE project_id = ${id} AND iss_seq % 7 <> 0`,
@@ -205,6 +209,28 @@ export async function holdFromOutside(projectId: string, ownerId: string): Promi
       JOIN (SELECT i.id, row_number() OVER (ORDER BY i.iss_seq DESC) AS n
               FROM issues i WHERE i.project_id = ${projectId} AND i.status NOT IN ('closed', 'dropped')) o
         ON o.n = d.n * 5`);
+}
+
+/**
+ * Each shipped item routed to an issue has its release's notice to its reporter, keyed by the run
+ * that shipped it, and every other one a message a person wrote them since, as forge-dev's do: the
+ * feedback list reads the notice's release and the writer's name (`feedback/ship-notice.ts`).
+ */
+async function tellShipped(projectId: string): Promise<void> {
+  const writer = (await createTestUser({ verified: true })).id;
+  await db.execute(sql`
+    INSERT INTO notifications (project_id, type, kind, tier, state, title, severity, dedupe_key)
+    SELECT f.project_id, 'feedback_shipped', 'task', 'ticket', 'open', 'Shipped', 'success',
+           'feedback-shipped:' || f.id || ':' || r.id
+      FROM feedback f
+      CROSS JOIN LATERAL (SELECT p.id FROM pipeline_runs p WHERE p.project_id = f.project_id
+                            AND p.release_version IS NOT NULL ORDER BY p.release_released_at DESC LIMIT 1) r
+     WHERE f.project_id = ${projectId} AND f.route = 'issue' AND f.status IN ('verified', 'triaged')`);
+  await db.execute(sql`
+    INSERT INTO feedback_messages (project_id, feedback_id, audience, body, recipients, sent_by, sent_agency)
+    SELECT f.project_id, f.id, 'reporter', 'It shipped.', ARRAY[f.reported_by], ${writer}, 'human'
+      FROM feedback f
+     WHERE f.project_id = ${projectId} AND f.route = 'issue' AND f.fb_seq % 2 = 0`);
 }
 
 /** A project with no repository whose closed issues landed outside git, each naming what changed. */
