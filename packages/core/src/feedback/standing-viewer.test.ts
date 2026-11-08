@@ -141,6 +141,51 @@ describe('a new item is placed by the one rule, read with the project policy', (
     },
   );
 
+  // FB-434's shape: a wait on a master nothing can place sat stuck nobody_serves for hours. With no
+  // runner bound no master ever comes, so the triage falls to a holder, named, with why
+  it('falls to a holder of feedback.approve where no runner is bound to place a master', () => {
+    const s = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      triager,
+      null,
+      { ...NO_STANDING_FACTS, masterTriages: true, runnerBound: false },
+      { ...AT, master: 'none' },
+    );
+    expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'triage it' });
+    expect(s.waitingOn.rule).toContain('no runner is bound');
+    expect(s.attentionGroup).toBe('needs_you');
+    const other = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      viewer(),
+      null,
+      { ...NO_STANDING_FACTS, masterTriages: true, runnerBound: false },
+      { ...AT, master: 'none' },
+    );
+    expect(other.waitingOn).toMatchObject({ kind: 'person', who: 'Feedback triager' });
+  });
+
+  it('reads stuck nobody_serves, never a person’s turn, where a runner is bound and no master serves yet', () => {
+    const s = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      triager,
+      null,
+      { ...NO_STANDING_FACTS, masterTriages: true, runnerBound: true },
+      { ...AT, master: 'none' },
+    );
+    expect(s.waitingOn).toMatchObject({ kind: 'agent', who: "The project's master" });
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.times.stuck).toMatchObject({ code: 'nobody_serves' });
+  });
+
   it('still names a holder of feedback.approve where the policy keeps triage a person’s', () => {
     const s = feedbackStandingOf(
       'new',

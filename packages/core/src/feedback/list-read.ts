@@ -23,7 +23,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { readOwedPolicy } from '../project-config/index.js';
-import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
+import { deliveredAmong, nodesOfDesign, runnerBoundIn } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { type ForgeOrigins, forgeOriginsOf } from './forge-reads.js';
@@ -86,6 +86,8 @@ export interface Linked extends StandingFacts {
   names: Map<string, string>;
   /** Whether the one rule gives a new item's triage to the project's master (`who-owes.ts:whoOwes`, ISS-1132). */
   masterTriages: boolean;
+  /** Whether a runner is bound to the project, so a master can be placed (FB-434); read only where an item owes a triage. */
+  runnerBound: boolean;
   /** Whether the project's master owes a resolved item's confirm (`who-owes.ts:whoOwes`, ISS-1058). */
   masterVerifies: boolean;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
@@ -220,7 +222,8 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   const atGate = issueRows.some(
     (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
   );
-  const [gate, windowDays, origins, standing, shippedReleases, policy] = await Promise.all([
+  const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
+  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound] = await Promise.all([
     releaseGateOf(projectId, atGate),
     allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
     forgeOriginsOf(rows.map((r) => r.id)),
@@ -230,6 +233,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
     ),
     readOwedPolicy(projectId),
+    owesTriage ? runnerBoundIn(projectId) : true,
   ]);
   const { release, releaseHolders } = gate;
   const linked: Linked = {
@@ -239,6 +243,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterTriages: whoOwes('feedback.triage', policy).by === 'master',
+    runnerBound,
     masterVerifies: whoOwes('feedback.verify', policy).by === 'master',
     release,
     prefix,
@@ -419,6 +424,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       : null,
     {
       masterTriages: l.masterTriages,
+      runnerBound: l.runnerBound,
       masterVerifies: l.masterVerifies,
       snoozedUntil: snoozed?.until ?? null,
       recordCheckAt: recordCheckOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,

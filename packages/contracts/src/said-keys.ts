@@ -1560,6 +1560,10 @@ export const SAID = {
 		en: "{phase}: the master owes a triage; feedback.approve holders may triage first",
 		vars: { phase: "code" },
 	},
+	"feedback.rule.noRunner": {
+		en: "{phase}: no runner is bound to place a master, so a triager triages it, or binds a runner",
+		vars: { phase: "code" },
+	},
 	"feedback.rule.triagerTriages": {
 		en: "{phase}: a holder of feedback.approve triages it",
 		vars: { phase: "code" },

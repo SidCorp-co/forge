@@ -158,6 +158,13 @@ export interface StandingFacts {
    */
   masterTriages: boolean;
   /**
+   * Whether a runner is bound to the project, so a master can be placed for what it owes (FB-77,
+   * `requirements/standing.ts` reads it the same way). False, no master ever comes, so a triage the
+   * rule gives the master falls to a holder of the triage permission, named, never a stuck wait on
+   * nobody. Absent reads bound.
+   */
+  runnerBound?: boolean;
+  /**
    * Whether the project's master owes a resolved item's confirm, by the one rule
    * (`@forge/contracts/who-owes:whoOwes`, `feedback.verify`, ISS-1058): confirming an answer or a fix
    * holds is routine, so it is the master's unless the project is strict.
@@ -228,8 +235,8 @@ function waitingOf(
       if (facts.snoozedUntil) {
         return theirs(
           wait(
-            facts.masterTriages ? 'agent' : 'person',
-            facts.masterTriages ? MASTER : routerOf(viewer),
+            facts.masterTriages && facts.runnerBound !== false ? 'agent' : 'person',
+            facts.masterTriages && facts.runnerBound !== false ? MASTER : routerOf(viewer),
             say('feedback.act.triageAfterSnooze', { date: facts.snoozedUntil.slice(0, 10) }),
             say('feedback.rule.snoozed', { phase, until: facts.snoozedUntil }),
             { dueAt: facts.snoozedUntil },
@@ -237,7 +244,20 @@ function waitingOf(
         );
       }
       // the one rule places it (ISS-1132): holding feedback.approve lets a person triage first, and
-      // puts nothing on their Needs you
+      // puts nothing on their Needs you. With a runner bound and no master serving, it reads stuck
+      // nobody_serves while the box's sweep counts it as owed work and places one
+      // (`masters/verdict.ts`); with no runner bound none ever comes, so a person does (FB-434)
+      if (facts.masterTriages && facts.runnerBound === false) {
+        return {
+          wait: wait(
+            'person',
+            routerOf(viewer),
+            say('standing.act.triageIt'),
+            say('feedback.rule.noRunner', { phase }),
+          ),
+          yours: viewer.canRoute,
+        };
+      }
       if (facts.masterTriages)
         return theirs(
           wait(

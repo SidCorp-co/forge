@@ -306,3 +306,31 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
     });
   });
 });
+
+// FB-434's shape: a wait on "the master" that nothing can place sits stuck nobody_serves. A project no
+// runner is bound to never gets a master, so its new item's triage falls to a holder, named
+describe('a project no runner is bound to', () => {
+  it('names a holder of feedback.approve for a new item, never a master that cannot come', async () => {
+    const { id: unbound } = await createTestProject(ownerId);
+    const target = ok(
+      await say('owner', 'POST', `/api/projects/${unbound}/issues`, { title: 'The list view' }),
+      201,
+    ).id;
+    const made = ok(
+      await say('owner', 'POST', `/api/projects/${unbound}/feedback`, {
+        kind: 'bug',
+        severity: 'medium',
+        title: 'The list loses its sort',
+        issue: target,
+      }),
+      201,
+    );
+    const list = ok(await say('owner', 'GET', `/api/projects/${unbound}/feedback`));
+    const row = list.feedback.find((f: Doc) => f.key === made.feedback.key);
+    expect(row).toMatchObject({
+      attentionGroup: 'needs_you',
+      waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
+    });
+    expect(row.waitingOn.rule).toContain('no runner is bound');
+  });
+});
