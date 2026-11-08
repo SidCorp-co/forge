@@ -124,6 +124,39 @@ describe("a job for a box's second project, on a box whose PAT is fenced to the 
     expect(said(res.body)).toContain(ghost);
   });
 
+  // ISS-723 c2: a missing project named by slug or by an issue key's projectId was answered 404
+  // (PROJECT_SLUG_UNKNOWN, 'project not found') before the fence ran, beside the 403 an existing one
+  // gets, so a fenced credential could tell which projects exist; a checkout credential alike
+  it('says the same by slug in the path or query, and by issue key, for a box PAT and a checkout credential', async () => {
+    const boxPat = await patToken(world.ownerId, [world.forge.id], BOX_PAT_NAME);
+    const forgePane = await checkoutCredential(world.forge.id);
+    const ghost = '00000000-0000-4000-8000-00000000beef';
+    for (const credential of [boxPat, forgePane]) {
+      const asks = [
+        ['/api/projects/judge-nope/release-batches/active', 'judge-nope'],
+        [`/api/issues/ISS-723?projectId=judge-nope`, 'judge-nope'],
+        [`/api/issues/ISS-723?projectId=${ghost}`, ghost],
+        [`/api/issues/ISS-99999?projectId=${world.mail.id}`, world.mail.id],
+      ] as const;
+      for (const [path, named] of asks) {
+        const res = await api(credential, 'GET', path);
+        expect([res.status, res.body.code], `${path}: ${said(res.body)}`).toEqual([
+          403,
+          'PAT_PROJECT_OUTSIDE_FENCE',
+        ]);
+        expect(said(res.body)).toContain(named);
+        expect(said(res.body)).toContain(world.forge.id);
+      }
+    }
+    // the token's own project still names a key it does not hold, and a slug nobody has, by name
+    const ownKey = await api(boxPat, 'GET', `/api/issues/ISS-99999?projectId=${world.forge.id}`);
+    expect(ownKey.status, said(ownKey.body)).toBe(404);
+    const wide = (await mintPat({ userId: world.ownerId, name: 'wide', permissions: ['*'] }))
+      .plaintext;
+    const unfenced = await api(wide, 'GET', '/api/projects/judge-nope/release-batches/active');
+    expect([unfenced.status, unfenced.body.code]).toEqual([404, 'PROJECT_SLUG_UNKNOWN']);
+  });
+
   it('still answers the fenced PAT on the project it reaches, and an unfenced token on both', async () => {
     const boxPat = await patToken(world.ownerId, [world.forge.id], BOX_PAT_NAME);
     const own = await api(

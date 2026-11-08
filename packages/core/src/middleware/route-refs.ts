@@ -1,6 +1,11 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
+import { verifyPat } from '../credentials/pat.js';
+import { isPatLike } from '../credentials/pat-format.js';
+import { tokenFence } from '../credentials/token-fence.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, requireUserOrDevice } from './auth.js';
+import { parseBearerHeader } from './bearer.js';
+import { type NamedProject, refuseOutsideFence } from './pat-fence.js';
 
 /**
  * A page holds a project's slug and an issue's display key off its URL before it holds either uuid.
@@ -48,7 +53,7 @@ const ISSUE_KEY = /^(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\d{1,10}$/;
 const UNRESOLVED_HEADER = 'x-forge-unresolved-ref';
 
 type Unresolved =
-  | { kind: 'project'; slug: string }
+  | { kind: 'project'; slug: string; by: 'path' | 'query' }
   | { kind: 'issue'; key: string; projectId: string };
 
 const lookupMs = new WeakMap<Request, number>();
@@ -137,7 +142,7 @@ async function resolveRouteRefs(req: Request): Promise<Request> {
       url.searchParams.set('projectId', projectId);
       changed = true;
     } else {
-      unresolved = { kind: 'project', slug: queryRef };
+      unresolved = { kind: 'project', slug: queryRef, by: 'query' };
     }
   }
 
@@ -149,7 +154,7 @@ async function resolveRouteRefs(req: Request): Promise<Request> {
         segments[3] = id;
         changed = true;
       } else {
-        unresolved ??= { kind: 'project', slug: head };
+        unresolved ??= { kind: 'project', slug: head, by: 'path' };
       }
     } else if (
       segments[2] === 'issues' &&
@@ -177,8 +182,43 @@ async function resolveRouteRefs(req: Request): Promise<Request> {
 }
 
 /**
+ * The project an unresolved reference names, as the fence reads it: the slug where it was one, the
+ * project id the issue key was looked up under where it was a key.
+ */
+function namedBy(unresolved: Unresolved): NamedProject {
+  return unresolved.kind === 'project'
+    ? { by: unresolved.by, ref: unresolved.slug }
+    : { by: 'query', ref: unresolved.projectId };
+}
+
+/**
+ * A fenced credential naming a project outside its fence is refused PAT_PROJECT_OUTSIDE_FENCE here,
+ * before the reference is said to name nothing (ISS-723 c2): the refusal reads the same whether the
+ * project exists or not, so a fenced token cannot learn which slugs exist from a 404 beside a 403.
+ * A box's checkout credential is admitted as a device past `requireUserOrDevice`, and a person's
+ * token was fenced on the slug before it resolved (to nothing), so the fence is read off the bearer.
+ */
+async function refuseUnresolvedOutsideFence(
+  c: Context,
+  unresolved: Unresolved,
+): Promise<void> {
+  const bearer = parseBearerHeader(c);
+  if (bearer.kind !== 'token' || !isPatLike(bearer.token)) return;
+  const row = (await verifyPat(bearer.token))?.row;
+  if (!row) return;
+  await refuseOutsideFence({
+    tokenId: row.id,
+    fence: tokenFence(row),
+    named: namedBy(unresolved),
+    method: c.req.method,
+    path: c.req.path,
+  });
+}
+
+/**
  * Refuses a request whose reference named nothing: the caller is authenticated as any route would
- * (so a stranger learns nothing a 401 does not say), then told which reference failed and why.
+ * (so a stranger learns nothing a 401 does not say), a fenced credential is held to its fence, then
+ * the caller is told which reference failed and why.
  */
 export function refuseUnresolvedRefs(): MiddlewareHandler<{ Variables: AuthVars }> {
   const authenticate = requireUserOrDevice();
@@ -189,6 +229,7 @@ export function refuseUnresolvedRefs(): MiddlewareHandler<{ Variables: AuthVars 
     let refusal: unknown = null;
     await authenticate(c, async () => {
       try {
+        await refuseUnresolvedOutsideFence(c, unresolved);
         if (unresolved.kind === 'project') {
           throw refuse(
             'PROJECT_SLUG_UNKNOWN',

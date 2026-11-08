@@ -1,0 +1,1 @@
+**A fenced credential naming a project outside its reach is refused the same whether that project exists or not.** A missing slug or an issue key under another project now reads PAT_PROJECT_OUTSIDE_FENCE, for a box's token and a pane's checkout credential alike.
