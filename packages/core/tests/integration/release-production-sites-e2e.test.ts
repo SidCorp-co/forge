@@ -250,4 +250,58 @@ describe('a release over a production of two sites (ISS-1077)', () => {
     ]);
     expect(await fx.stored(issueId)).toMatchObject({ status: 'closed' });
   });
+
+  it('a production of one site still ships on the finish body a release job sends today', async () => {
+    // the release-flow skill ships on its own clock: `{}` and `{ commit }` must keep finishing
+    await seedProjectDocument(projectId, ownerId, {
+      defaultBranch: 'main',
+      promotions: [{ from: 'main', to: 'production', via: 'merge' }],
+      environments: {
+        live: {
+          tier: 'production',
+          deploysFrom: 'production',
+          deployment: { binding: mail, trigger: 'on-request' },
+          url: 'https://mail.example.test',
+        },
+      },
+    });
+    const { runId, version, issueId } = await cut();
+
+    await call('POST', `/release-batches/${runId}/finish`, { commit: COMMIT });
+    const { finishReleaseBatch } = await import('../../src/release-batch/finish.js');
+    await finishReleaseBatch(runId, { type: 'user', id: ownerId, agency: 'agent' });
+
+    const read = await release(version);
+    expect(read.state).toBe('shipped');
+    expect(read.sites).toEqual([
+      { name: 'live', state: 'shipped', serves: COMMIT, url: 'https://mail.example.test' },
+    ]);
+    expect(await fx.stored(issueId)).toMatchObject({ status: 'closed' });
+  });
+
+  it('a release recorded by hand over two sites names each, or is refused by the one it leaves out', async () => {
+    const issueId = await fx.insertIssue();
+    const body = {
+      issueIds: [issueId],
+      version: '1.4.0',
+      account: 'deployed both sites through the integration and watched each come up',
+    };
+    const refused = await send('POST', '/release-records', body);
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain('RELEASE_SITE_NOT_SHIPPED');
+    expect(await fx.stored(issueId)).toMatchObject({ status: 'awaiting_release' });
+
+    await call('POST', '/release-records', {
+      ...body,
+      sites: [
+        { name: 'live', serves: '1.4.0' },
+        { name: 'webmail', serves: '1.4.0' },
+      ],
+    });
+    expect(statesOf((await release('1.4.0')).sites)).toEqual([
+      ['live', 'shipped'],
+      ['webmail', 'shipped'],
+    ]);
+    expect(await fx.stored(issueId)).toMatchObject({ status: 'closed' });
+  });
 });
