@@ -57,6 +57,13 @@ function failureTitle(f: NonNullable<ReleaseCutView["failure"]>): string {
   return f.step ? `${f.code} · ${f.step}` : f.code;
 }
 
+/** Who cut it: Forge's unattended cut names nobody (ISS-1153); a person's names them. */
+function CutBy({ c }: { c: ReleaseCutView }) {
+  const t = useCopy();
+  if (c.cutAs === "automatic") return <span className="text-12 text-muted" data-testid="cut-by">{t("releases.attemptCutAutomatically")}</span>;
+  return c.cutBy ? <span className="text-12 text-muted" data-testid="cut-by">{t("releases.attemptCutBy", { who: c.cutBy.name })}</span> : null;
+}
+
 function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -76,7 +83,7 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
         <span className="text-12 text-muted" title={time.dateTime(c.cutAt)}>
           {time.relative(c.cutAt)}
         </span>
-        {c.cutBy ? <span className="text-12 text-muted">{t("releases.attemptCutBy", { who: c.cutBy.name })}</span> : null}
+        <CutBy c={c} />
         {ended && c.outcome !== "shipped" && c.outcome !== "landed" ? (
           <span className="text-12 text-muted" data-testid="cut-decided-by">
             {c.decidedBy ? t("releases.attemptEndedBy", { who: c.decidedBy.name }) : t("releases.attemptEndedByForge")}

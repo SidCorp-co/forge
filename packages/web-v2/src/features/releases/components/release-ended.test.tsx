@@ -17,6 +17,7 @@ const cut = (n: number, version: string, outcome: string, over: object = {}) => 
   version,
   cutAt: "2026-10-07T20:00:00.000Z",
   cutBy: null,
+  cutAs: "person",
   outcome,
   endedAt: null,
   refusal: null,
@@ -150,5 +151,22 @@ describe("a release its close failed", () => {
     renderWithQuery(<ReleaseAttempts r={repaired as never} slug="catalog" />);
     expect(screen.getByTestId("cut-repair")).toHaveTextContent("Shipped, recorded by Lan: It landed and served.");
     expect(screen.getByTestId("cut-failure")).toHaveTextContent("ISS-12");
+  });
+});
+
+// ISS-1153, sid-desk 0.20.0: the sweep cut after a landing and the attempt read "cut by orchestrator".
+describe("who cut an attempt", () => {
+  const lan = { id: "u1", name: "Lan", kind: "human" };
+  const attempts = (over: object) => ({ ...r040, cuts: [cut(1, "0.4.0", "shipped", over)] });
+
+  it("says Forge's own cut was automatic and names nobody", () => {
+    renderWithQuery(<ReleaseAttempts r={attempts({ cutAs: "automatic" }) as never} slug="hop" />);
+    expect(screen.getByTestId("cut-by")).toHaveTextContent("cut automatically");
+    expect(screen.getByTestId("release-cut")).not.toHaveTextContent("cut by");
+  });
+
+  it("names the person who cut it", () => {
+    renderWithQuery(<ReleaseAttempts r={attempts({ cutBy: lan }) as never} slug="hop" />);
+    expect(screen.getByTestId("cut-by")).toHaveTextContent("cut by Lan");
   });
 });

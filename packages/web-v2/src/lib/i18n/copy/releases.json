@@ -13,6 +13,7 @@
     "releases.attemptFailure": "Failed:",
     "releases.attemptRepaired": "Shipped, recorded by {who}:",
     "releases.attemptCutBy": "cut by {who}",
+    "releases.attemptCutAutomatically": "cut automatically",
     "releases.attemptEndedBy": "ended by {who}",
     "releases.attemptEndedByForge": "ended by Forge",
     "releases.attemptN": "Attempt {n}",
