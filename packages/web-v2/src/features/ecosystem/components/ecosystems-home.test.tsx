@@ -41,4 +41,16 @@ describe("the Ecosystem page", () => {
     expect(screen.getByText("Eco A")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Threads/ })).toBeNull();
   });
+
+  // ISS-1137: a row is the ecosystem's name and its steward's; "Steward" is the name's hover, not a word per row
+  it("names each ecosystem's steward without a label repeated on every row", () => {
+    renderWithQuery(
+      <Seeded data={[[["ecosystem", "mine"], { ...read([]), ecosystems: [{ ...ECO, steward: { id: "o1", name: "SidCorp", mine: false } }] }]]}>
+        <EcosystemsHome />
+      </Seeded>,
+    );
+    const steward = screen.getByText("SidCorp");
+    expect(steward).toHaveAttribute("title", "Steward · SidCorp");
+    expect(screen.queryByText(/Steward/)).toBeNull();
+  });
 });

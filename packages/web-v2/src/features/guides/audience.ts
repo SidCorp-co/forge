@@ -28,9 +28,6 @@ export const DOORS: Record<Audience, Door> = {
 
 export const AGENT_SECTION = "Rules agents are held to";
 
-export const ONE_CORPUS =
-  "Forge's documentation is one set of pages — the same content, two ways in. Pick the door that sounds like you; search reaches every page behind both.";
-
 /** One term per door, each finding a page behind its own door, short enough for a phone. */
 export const SEARCH_EXAMPLES: ReadonlyArray<{ audience: Audience; term: string }> = [
   { audience: "user", term: "status" },

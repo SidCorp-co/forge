@@ -116,7 +116,7 @@ export function EcosystemsHome() {
               <Link href={ecosystemRoutes.ecosystem(e.id)} className="flex items-center gap-3 py-3 hover:bg-hover">
                 <MonoTag hue="cobalt">{e.code}</MonoTag>
                 <b className="min-w-0 truncate">{e.name}</b>
-                {e.steward.name ? <span className="fg-caption truncate">{t("ecosystem.screen.steward", { name: e.steward.name })}</span> : null}
+                {e.steward.name ? <span className="fg-caption truncate" title={t("ecosystem.screen.steward", { name: e.steward.name })}>{e.steward.name}</span> : null}
                 {owed > 0 ? (
                   <span className="ml-auto">
                     <Badge tone="accent">{owed}</Badge>

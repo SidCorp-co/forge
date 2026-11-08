@@ -5,9 +5,9 @@
 
 import type { ReactNode } from "react";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
-import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";
+import { buildCorpus, searchPlaceholder } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
-import { PublicLanding, PublicReader } from "@/features/guides/components/public-docs";
+import { PublicLanding } from "@/features/guides/components/public-docs";
 import { OperatorClientGate, OperatorGroup, OperatorOverviewScreen } from "@/features/operator";
 import { Route as ActivityRoute } from "@/routes/_workspace/activity/index";
 import { Route as AttentionRoute } from "@/routes/_workspace/attention/index";
@@ -47,9 +47,9 @@ const routeOf = (route: { options: { component?: unknown } }, workspace = true) 
 };
 const bareOf = (route: { options: { component?: unknown } }) => routeOf(route, false);
 
-/** The guides read core's published guides in their route's loader; the help pages the web carries are enough to draw them. */
+/** The guides read core's published guides in their route's loader; the help pages the web carries are enough to draw the landing.
+ *  A guide's own page is an article, its words what it is for, so it is not held to a first-view budget (witness/screens.inventory.mjs). */
 const corpus = () => buildCorpus(HELP_DOCS, []);
-const GUIDE = HELP_DOCS[0]?.slug ?? "";
 
 const operator = (page: ReactNode) => <AuthProvider><OperatorClientGate>{page}</OperatorClientGate></AuthProvider>;
 
@@ -74,7 +74,6 @@ export const REST_PAGES: ScreenPage[] = [
   { name: "link-chat", path: `/link-chat?projectId=${PROJECT}&source=rocketchat&externalId=u-77`, pattern: "/link-chat", render: () => bareOf(LinkChatRoute), bare: true },
   { name: "oauth-consent", path: "/oauth/authorize?client_id=c1&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&scope=forge&state=s&code_challenge=x&code_challenge_method=S256&response_type=code", pattern: "/oauth/authorize", render: () => bareOf(AuthorizeRoute), bare: true },
   { name: "guides", path: "/guides", pattern: "/guides", render: () => <GuideShell><PublicLanding corpus={corpus()} placeholder={searchPlaceholder(corpus())} /></GuideShell>, bare: true },
-  { name: "guide-page", path: `/guides/${GUIDE}`, pattern: "/guides/$slug", render: () => <GuideShell><PublicReader corpus={corpus()} view={{ kind: "page", href: helpPageHref(GUIDE) }} /></GuideShell>, bare: true },
   { name: "shared-answer", path: `/s/${SHARE_TOKEN}`, pattern: "/s/$token", render: () => bareOf(ShareRoute), bare: true },
   { name: "widget", path: `/w/${WIDGET_SITE}`, pattern: "/w/$siteKey", render: () => bareOf(WidgetRoute), bare: true },
   { name: "widget-status", path: `/w/status/${WIDGET_STATUS}`, pattern: "/w/status/$token", render: () => bareOf(WidgetStatusRoute), bare: true },

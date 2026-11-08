@@ -15,7 +15,7 @@ import {
 } from "@/features/docs";
 import { deriveToc, searchDocs } from "@/features/docs";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { AUDIENCES, type Audience, DOORS, ONE_CORPUS } from "../audience";
+import { AUDIENCES, type Audience, DOORS } from "../audience";
 import { type PublicDoc, docsBehind, doorHref, doorSections } from "../corpus";
 import { INDEX_HREF, type Refusal } from "../missing";
 
@@ -48,10 +48,8 @@ export function PublicLanding({
   const { query, setQuery, results } = useSearch(corpus);
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <PageTitle className="fg-h2 text-fg">Forge documentation</PageTitle>
-        <p className="fg-body mt-2 max-w-xl text-muted">{ONE_CORPUS}</p>
-      </div>
+      {/* the doors and the search say how in: no paragraph explains them (ISS-1137) */}
+      <PageTitle className="fg-h2 text-fg">Forge documentation</PageTitle>
       <div className="max-w-xl">
         <DocsSearchField
           query={query}

@@ -21,6 +21,13 @@
 // @direct-test-of packages/web-v2/src/features/feedback/components/my-forge-feedback.tsx
 // @direct-test-of packages/web-v2/src/features/shell/components/not-found-body.tsx
 // @direct-test-of packages/web-v2/src/design/patterns/mascot-loaders.tsx
+// ISS-1137: the screens no fixture drew before, and the copy their rollout cut
+// @direct-test-of packages/web-v2/witness/screens.pages-rest.tsx
+// @direct-test-of packages/web-v2/witness/screens-rest.reads.ts
+// @direct-test-of packages/web-v2/src/features/guides/components/public-docs.tsx
+// @direct-test-of packages/web-v2/src/features/operator/components/kpi-row.tsx
+// @direct-test-of packages/web-v2/src/features/operator/components/glance-cards.tsx
+// @direct-test-of packages/web-v2/src/features/operator/components/adoption-panel.tsx
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
