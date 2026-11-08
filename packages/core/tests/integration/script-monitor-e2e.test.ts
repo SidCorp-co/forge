@@ -369,6 +369,34 @@ describe("ISS-707: a script's ops call takes its credential from a project secre
     expect(JSON.stringify(res.body)).toContain('secrets');
   });
 
+  // the priced amnesty `script-ops-box-credential`: epod's live watch was saved before secrets were asked
+  it('runs a stored declaration with no secret on the box credential, warning by name on each call', async () => {
+    const made = await create({
+      name: 'legacy watch',
+      script: `const s = await ctx.ops.status(); ctx.log(s.stdout);`,
+      ops: { ...PRODUCTION_WATCH_OPS, calls: [status] },
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const id = String(made.body.id);
+    await db.execute(sql`
+      UPDATE schedules SET ops = ${JSON.stringify({ program: PRODUCTION_WATCH_OPS.program, calls: [status] })}::jsonb
+       WHERE id = ${id}`);
+    const before = opsReads().length;
+    expect((await api(owner, 'POST', `/api/schedules/${id}/run`)).status).toBe(202);
+    const fire = await fireOf(id);
+    // [STORED_NO_SECRET_GOES_DARK] before the fix: the fire failed, and the live watch with it
+    expect(fire.status, String(fire.error)).toBe('success');
+    expect(fire.ops_calls).toEqual([
+      expect.objectContaining({
+        name: 'status',
+        outcome: 'answered',
+        warning: expect.stringContaining('legacy watch declares no secrets'),
+      }),
+    ]);
+    expect(opsReads().length).toBe(before + 1);
+    expect(opsReads().at(-1)?.data.env).toBeUndefined();
+  });
+
   it('fails the call by name while the secret is unset, then hands it for that call alone and cuts it', async () => {
     const made = await create({
       name: 'credential',

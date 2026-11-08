@@ -8,7 +8,7 @@
 // and ctx.state is what the last successful firing left (BC-3), written back only when this one
 // succeeds. Every call, filing and state change is recorded on the fire.
 
-import { type ScriptOpsDeclaration, scriptOpsSchema } from '@forge/contracts/script-sandbox';
+import { type ScriptOpsDeclaration, storedScriptOpsSchema } from '@forge/contracts/script-sandbox';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
@@ -70,7 +70,8 @@ export async function routeScheduleScriptFire(
   const doors = await doorsOf(schedule.id);
   let decl: ScriptOpsDeclaration | null = null;
   if (doors.ops !== null) {
-    const parsed = scriptOpsSchema.safeParse(doors.ops);
+    // read back by the stored shape, which carries the `script-ops-box-credential` amnesty (ISS-707)
+    const parsed = storedScriptOpsSchema.safeParse(doors.ops);
     const refusals = parsed.success
       ? opsRefusals(parsed.data)
       : [
@@ -103,7 +104,11 @@ export async function routeScheduleScriptFire(
     ttlMs: SCRIPT_WALL_MS + TOKEN_MARGIN_MS,
   });
   // ops and filings reach the schedule's own project, never a target another slug names
-  const ops = openOpsCaller({ projectId: schedule.projectId, decl });
+  const ops = openOpsCaller({
+    projectId: schedule.projectId,
+    decl,
+    scheduleName: schedule.name ?? 'script schedule',
+  });
   const filer = openFiler({
     projectId: schedule.projectId,
     schedule: { id: schedule.id, name: schedule.name ?? 'script schedule' },

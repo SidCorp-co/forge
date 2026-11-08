@@ -120,6 +120,8 @@ const refused = (code: ScriptDoorRefusal, message: string): ReadOutcome => ({
 export function openOpsCaller(args: {
   projectId: string;
   decl: ScriptOpsDeclaration | null;
+  /** The schedule's name, which a call's amnesty warning names. */
+  scheduleName?: string;
   /** Stand-in for the box in a unit test; the project's box otherwise. */
   run?: (argv: string[], timeoutMs: number) => ReturnType<typeof runOpsRead>;
 }): { names: string[]; call: ScriptOpsCaller; calls(): ScriptOpsCall[] } {
@@ -129,7 +131,8 @@ export function openOpsCaller(args: {
   const run =
     args.run ??
     (async (argv: string[], timeoutMs: number) => {
-      // the credential is the declaration's project secret, handed for this call alone (ISS-707)
+      // the credential is the declaration's project secret, handed for this call alone (ISS-707); a
+      // stored declaration with none runs on the box's own, under amnesty `script-ops-box-credential`
       const env = await secretEnvOf(args.projectId, argv[1] ?? '', args.decl?.secrets);
       if (!env.ok) return { ok: false as const, why: env.refusals.map((r) => r.detail).join('; ') };
       box ??= projectReadBox(args.projectId);
@@ -142,7 +145,7 @@ export function openOpsCaller(args: {
         name: argv[1] ?? '',
         argv,
         timeoutMs,
-        env: env.env,
+        ...(args.decl?.secrets ? { env: env.env } : {}),
       });
       if (!ran.ok) return { ok: false as const, why: withoutSecrets(ran.why, env.env) };
       return {
@@ -154,6 +157,13 @@ export function openOpsCaller(args: {
         },
       };
     });
+
+  // amnesty `script-ops-box-credential` (ISS-707, .forge/conformance.json): a declaration stored before
+  // secrets were asked names none, so its calls run on the box's own forge-ops credential, each saying so
+  const boxCredential =
+    args.decl && !args.decl.secrets
+      ? `${args.scheduleName ?? 'this schedule'} declares no secrets, so this call ran on the box's own forge-ops credential (ISS-707 amnesty); save the schedule with ops.secrets naming its credential as a project secret`
+      : null;
 
   const call: ScriptOpsCaller = async (name, given) => {
     const said = name.slice(0, 64);
@@ -199,6 +209,7 @@ export function openOpsCaller(args: {
     log.push({
       name: said,
       outcome: 'answered',
+      ...(boxCredential ? { warning: boxCredential } : {}),
       exitCode: v.exitCode,
       ...(v.timedOut ? { timedOut: true } : {}),
       durationMs: Math.max(0, Math.round(v.durationMs)),

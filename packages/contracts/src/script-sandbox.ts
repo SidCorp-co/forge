@@ -148,19 +148,22 @@ export type ScriptOpsCallDeclaration = z.infer<typeof scriptOpsCallSchema>;
  * forge-ops credential as project secrets (ISS-707): core reads each from the vault and the box sets
  * it on that one call's process, so no call runs on a credential the box holds of its own.
  */
+const scriptOpsSecretsSchema = z
+	.array(supportReadSecretSchema)
+	.min(
+		1,
+		"name the forge-ops credential as a project secret: secrets: [{ env, secret: secret://<scope>/<name> }]",
+	)
+	.max(5)
+	.refine(
+		(ss) => new Set(ss.map((x) => x.env)).size === ss.length,
+		"two secrets share a variable; a variable is named once",
+	);
+
+/** A declaration as it is saved: its credential named as project secrets, always (ISS-707). */
 export const scriptOpsSchema = z.strictObject({
 	program: opsProgramSchema,
-	secrets: z
-		.array(supportReadSecretSchema)
-		.min(
-			1,
-			"name the forge-ops credential as a project secret: secrets: [{ env, secret: secret://<scope>/<name> }]",
-		)
-		.max(5)
-		.refine(
-			(ss) => new Set(ss.map((x) => x.env)).size === ss.length,
-			"two secrets share a variable; a variable is named once",
-		),
+	secrets: scriptOpsSecretsSchema,
 	calls: z
 		.array(scriptOpsCallSchema)
 		.min(1)
@@ -170,7 +173,18 @@ export const scriptOpsSchema = z.strictObject({
 			"two calls share a name; a name names one call",
 		),
 });
-export type ScriptOpsDeclaration = z.infer<typeof scriptOpsSchema>;
+
+/**
+ * A declaration as a firing reads it back. Priced amnesty `script-ops-box-credential` (ISS-707,
+ * .forge/conformance.json): a declaration stored before `secrets` was asked holds none, and it still
+ * runs on the box's own forge-ops credential, each call warning by name, so a live watch does not go
+ * dark. It trades a credential Forge does not hold or audit for that schedule; it ends when the
+ * schedule is saved with `secrets`, which every save requires.
+ */
+export const storedScriptOpsSchema = scriptOpsSchema.extend({
+	secrets: scriptOpsSecretsSchema.optional(),
+});
+export type ScriptOpsDeclaration = z.infer<typeof storedScriptOpsSchema>;
 
 /** One ops call a firing made, as its run history keeps it: never what the call printed. */
 export const ScriptOpsCallSchema = z
@@ -182,6 +196,8 @@ export const ScriptOpsCallSchema = z
 		timedOut: z.boolean().optional(),
 		code: z.enum(SCRIPT_DOOR_REFUSALS).optional(),
 		durationMs: z.number().int().min(0).optional(),
+		/** Why the call ran on a credential Forge does not hold (amnesty `script-ops-box-credential`, ISS-707). */
+		warning: z.string().max(400).optional(),
 	})
 	.strict();
 export type ScriptOpsCall = z.infer<typeof ScriptOpsCallSchema>;
