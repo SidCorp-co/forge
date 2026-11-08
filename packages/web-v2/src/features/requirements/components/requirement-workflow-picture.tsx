@@ -12,7 +12,7 @@ import { NativeSelect } from "@/design";
 import { templateFor } from "@/features/workflows";
 import { presentTrace } from "@/features/workflows";
 import { WorkflowCanvas } from "@/features/workflows";
-import { useWorkflowTemplates, useWorkflows } from "@/features/workflows";
+import { useWorkflow, useWorkflowTemplates } from "@/features/workflows";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { workflowHref } from "@/lib/routes/workflows";
@@ -26,9 +26,10 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   // the pane is as tall as the drawing once laid out (ISS-903): no empty band, no tall box at phone width
   const [fitted, setFitted] = useState<{ flow: string; height: number } | null>(null);
   const w = traced.find((x) => x.workflowId === chosen) ?? (traced[0]);
-  const list = useWorkflows(projectId);
+  // the one design it draws, by its id: the project's whole set was 538 KB on forge to draw one (ISS-921)
+  const one = useWorkflow(projectId, w.workflowId);
   const templates = useWorkflowTemplates(projectId);
-  const record = list.data?.workflows.find((r) => r.document.id === w.workflowId) ?? null;
+  const record = one.data ?? null;
   const traces = w.steps.size + w.edges.size > 0;
   const shown = useMemo(() => (record ? presentTrace(w, record.document.steps.map((s) => s.id)) : { steps: w.steps, edges: w.edges, gone: [] }), [w, record]);
   const lit = shown.steps.size + shown.edges.size > 0;
@@ -57,7 +58,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   if (record) {
     const template = templateFor(record.document, (templates.data?.templates ?? []).map((x) => x.template));
     canvas = <WorkflowCanvas key={w.workflowId} doc={record.document} template={template} highlight={highlight} compact onFitted={(height) => setFitted({ flow: w.flow, height })} />;
-  } else if (list.isError || list.isSuccess) {
+  } else if (one.isError || one.isSuccess) {
     canvas = <p className="p-4 text-13 text-muted">{t("requirements.picture.workflow.unread", { flow: w.flow })}</p>;
   } else {
     canvas = <p className="p-4 text-13 text-muted">{t("requirements.picture.workflow.loading")}</p>;

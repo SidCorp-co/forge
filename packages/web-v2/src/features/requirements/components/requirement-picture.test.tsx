@@ -7,7 +7,7 @@
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CanvasHighlight } from "@/features/workflows/canvas/workflow-canvas";
+import type { CanvasHighlight } from "@/features/workflows";
 import { BOARD, CHART, core, detail, FLOW, PROJECT, page, picture, sentPictures, TABLE } from "@/test/requirement-pictures";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
@@ -26,14 +26,13 @@ vi.mock("@/features/board/board-canvas", () => ({
 }));
 vi.mock("@/features/board/board-editor", async () => {
   const { useEffect } = await import("react");
-  return {
-    default: ({ onScene }: { onScene: (els: unknown[]) => void }) => {
-      useEffect(() => {
-        onScene([{ id: "pay", type: "rectangle", x: 10, y: 10, width: 100, height: 40, customData: { wf: "button" } }]);
-      }, [onScene]);
-      return <div data-testid="board-editor-stub" />;
-    },
-  };
+  function BoardEditorStub({ onScene }: { onScene: (els: unknown[]) => void }) {
+    useEffect(() => {
+      onScene([{ id: "pay", type: "rectangle", x: 10, y: 10, width: 100, height: 40, customData: { wf: "button" } }]);
+    }, [onScene]);
+    return <div data-testid="board-editor-stub" />;
+  }
+  return { default: BoardEditorStub };
 });
 
 afterEach(() => {
@@ -99,7 +98,7 @@ describe("the requirement page opens on its picture", () => {
   });
 
   it("draws a process's linked workflow with the steps and links its live criteria trace lit, a retired criterion's trace lighting nothing", async () => {
-    core("viewer");
+    const calls = core("viewer");
     picture(
       detail(
         { kind: "process", picture: FLOW },
@@ -120,6 +119,9 @@ describe("the requirement page opens on its picture", () => {
     expect([...(last?.highlight?.steps ?? [])]).toEqual(["pay"]);
     expect([...(last?.highlight?.edges ?? [])]).toEqual(["cart>pay"]);
     expect(screen.queryByRole("figure", { name: "Cart leads to pay." })).toBeNull();
+    // it read the one design it draws, never every design of the project (ISS-921: 538 KB on forge)
+    expect(calls.map((c) => c.path)).toContain(`/projects/${PROJECT}/workflows/w1`);
+    expect(calls.map((c) => c.path)).not.toContain(`/projects/${PROJECT}/workflows`);
   });
 });
 

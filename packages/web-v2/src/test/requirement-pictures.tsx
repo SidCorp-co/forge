@@ -69,12 +69,13 @@ export const workflow = {
 /** The link a process requirement has to the Checkout workflow. */
 export const CHECKOUT_LINK = { workflowId: "w1", flow: "checkout", title: "Checkout", designStatus: "approved" as const, approvedRevision: 3 };
 
-/** Core as the page reads it: the viewer's role, the project's workflows, and what each write answers. */
+/** Core as the page reads it: the viewer's role, the one workflow it links, read by its id, and what each write answers. The
+ *  project's whole set is never answered: a picture that reads it waits forever (ISS-921). */
 export function core(role: "viewer" | "member", write: (c: Call) => { status?: number; body: unknown } | undefined = () => undefined) {
   return fakeCore((c) => {
     if (c.method === "PUT") return write(c);
     if (c.path === "/projects") return { body: [{ id: PROJECT, slug: "hop", name: "Hop", role }] };
-    if (c.path === `/projects/${PROJECT}/workflows`) return { body: { workflows: [workflow], returned: 1 } };
+    if (c.path === `/projects/${PROJECT}/workflows/w1`) return { body: workflow };
     if (c.path === `/projects/${PROJECT}/workflow-templates`) return { body: { templates: [] } };
     return HANG;
   });

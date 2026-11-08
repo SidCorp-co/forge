@@ -5,6 +5,8 @@ import type { DesignDecisionBody, DesignDocument, WorkflowBody, RepinActBody, Re
 
 export const workflowsApi = {
   list: (projectId: string) => apiClient<WorkflowList>(`/projects/${projectId}/workflows`),
+  /** One workflow by its id, as the list reads it without its health: what a page drawing one design reads, never the whole set (ISS-921). */
+  one: (projectId: string, workflowId: string) => apiClient<Omit<WorkflowRecord, "health">>(`/projects/${projectId}/workflows/${workflowId}`),
   templates: (projectId: string) =>
     apiClient<WorkflowTemplateList>(`/projects/${projectId}/workflow-templates`),
   /** One template with the built-in example drawn in it, null for a template that has none. */
