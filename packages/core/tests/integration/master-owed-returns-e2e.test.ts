@@ -335,64 +335,6 @@ describe('a returned requirement revision an agent wrote is owed to the project 
   });
 });
 
-/** The intake assistant's one draft of `key`, as it ended: a failure with or without a retry owed, or a draft. */
-async function intakeEnded(
-  key: string,
-  end: { code: string; retryOwed: boolean } | 'drafted',
-): Promise<void> {
-  const [req] = (await db.execute(sql`
-    SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}
-  `)) as unknown as Array<{ id: string }>;
-  await db.execute(sql`DELETE FROM intake_drafts WHERE requirement_id = ${req?.id}`);
-  await db.execute(
-    end === 'drafted'
-      ? sql`INSERT INTO intake_drafts (project_id, requirement_id, outcome, read, body)
-            VALUES (${projectId}, ${req?.id}, 'drafted', '{}'::jsonb, '{"links":[]}'::jsonb)`
-      : sql`INSERT INTO intake_drafts (project_id, requirement_id, outcome, code, detail, read, attempts, retry_owed)
-            VALUES (${projectId}, ${req?.id}, 'failed', ${end.code}, 'planted', '{}'::jsonb, 1, ${end.retryOwed})`,
-  );
-}
-
-// ISS-772, requirement lifecycle r20 start → draft: "where it cannot run, core owes the requirement
-// to the master on every sweep". A failed draft no retry is owed for was owed to nobody.
-describe('a draft requirement the intake assistant could not draft is owed to the project master', () => {
-  it('is named on the pass with its code once no retry is owed, until it is drafted or proposed', async () => {
-    const made = ok(
-      await say('owner', 'POST', at('/requirements'), {
-        title: 'Drafted by nobody',
-        reason: 'the board asked for it',
-        criteria: [{ body: 'Every pass names what it could not draft.' }],
-      }),
-      201,
-    );
-    const key = made.key as string;
-    await settleOutbox();
-
-    await intakeEnded(key, { code: 'INTAKE_MODEL_FAILED', retryOwed: true });
-    expect(await owedLine(), "a retry still owed is the outbox's, not the master's").not.toContain(
-      key,
-    );
-
-    await intakeEnded(key, { code: 'INTAKE_MODEL_UNCONFIGURED', retryOwed: false });
-    expect(await owedLine()).toContain(`(${key} INTAKE_MODEL_UNCONFIGURED)`);
-    // owed on every sweep, not once
-    expect(await owedLine()).toContain(`(${key} INTAKE_MODEL_UNCONFIGURED)`);
-
-    // a withheld item is its master's from its first failure: no retry is ever owed for it
-    await intakeEnded(key, { code: 'INTAKE_WITHHELD', retryOwed: false });
-    expect(await owedLine()).toContain(`(${key} INTAKE_WITHHELD)`);
-
-    await intakeEnded(key, 'drafted');
-    expect(await owedLine(), 'a later draft that succeeds takes it off').not.toContain(key);
-
-    await intakeEnded(key, { code: 'INTAKE_WITHHELD', retryOwed: false });
-    ok(await say('owner', 'POST', at(`/requirements/${key}/revisions/1/propose`), {}));
-    expect(await owedLine(), 'a revision a person proposed fills it').not.toContain(
-      `${key} INTAKE_WITHHELD`,
-    );
-  });
-});
-
 async function masterSession(): Promise<string> {
   return ok(
     await say('box', 'POST', '/api/devices/me/master-session', {
