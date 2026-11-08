@@ -227,6 +227,38 @@ export function memoizedPerId<V>(
   return perId(key, ids, read, false);
 }
 
+/** The items each memo's {@link memoizedPerItem} reads were asked with, by key and id. */
+const itemsOf = new WeakMap<Map<string, Promise<unknown>>, Map<string, Map<string, unknown>>>();
+
+/**
+ * {@link memoizedPerId} for a read that needs each item, not only its id (a run's row, which its
+ * tables are read from): every item asked under `key` in the read is held by its id, and the batch
+ * reads the items of the ids it gathered. An item's answer must depend on that item alone.
+ */
+export function memoizedPerItem<I, V>(
+  key: string,
+  items: readonly I[],
+  idOf: (item: I) => string,
+  read: (items: readonly I[]) => Promise<ReadonlyMap<string, V>>,
+): Promise<Map<string, V>> {
+  const memo = memos.getStore();
+  if (!memo)
+    return items.length === 0 ? Promise.resolve(new Map()) : read(items).then((m) => new Map(m));
+  let byKey = itemsOf.get(memo);
+  if (!byKey) {
+    byKey = new Map();
+    itemsOf.set(memo, byKey);
+  }
+  let held = byKey.get(key);
+  if (!held) {
+    held = new Map();
+    byKey.set(key, held);
+  }
+  const registry = held;
+  for (const item of items) if (!registry.has(idOf(item))) registry.set(idOf(item), item);
+  return memoizedPerId(key, items.map(idOf), (ids) => read(ids.map((id) => registry.get(id) as I)));
+}
+
 /**
  * {@link memoizedPerId} for a read made inside one project (`read(projectId, ids)`): each id is held
  * as the project's, and the asks of every project's read are answered by one batch, which reads each

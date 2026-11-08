@@ -21,7 +21,7 @@ import { say, sayEn } from '@forge/contracts/said';
 import { needsViewer } from '@forge/contracts/standing';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memoizedPerId, rowsPerProject } from '../db/read-memo.js';
+import { memoizedPerId, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { canonicalIssueKeySql, runGroupHolds } from '../lib/issue-run-group.js';
@@ -285,7 +285,22 @@ export async function latestRunsOfIssues(
     .map(([issue_id, l]) => ({ issue_id, run_id: l.run_id }));
   if (latest.length === 0) return [];
   const runIds = [...new Set(latest.map((l) => l.run_id))];
-  const base = await baseRuns(projectId, sql`r.id::text IN (${inList(runIds)})`, runIds.length, 0);
+  // every project's latest runs in one statement, as their issues' (ISS-1070 r8)
+  const base = (
+    await rowsPerId(
+      'baseRunById',
+      runIds,
+      async (some) =>
+        rowsOf<BaseRun>(
+          await db.execute(sql`
+            SELECT ${BASE_COLUMNS}
+              FROM pipeline_runs r LEFT JOIN issues i ON i.id = r.issue_id
+             WHERE ${RUN_SCOPE_SQL} AND r.id::text IN (${inList(some)})
+             ORDER BY r.started_at DESC, r.id`),
+        ),
+      (r) => r.id,
+    )
+  ).filter((r) => r.project_id === projectId);
   const { ctx } = await contextFor(projectId, viewer);
   const byId = new Map((await standingsOf(projectId, base, ctx)).map((run) => [run.id, run]));
   return latest.flatMap((l) => {

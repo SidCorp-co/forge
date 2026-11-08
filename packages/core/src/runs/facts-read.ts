@@ -11,6 +11,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerItem } from '../db/read-memo.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql } from '../devices/index.js';
 import { landedSql } from '../issues/index.js';
@@ -131,20 +132,20 @@ async function latestFlips(entity: 'run' | 'session', ids: string[], to: readonl
 // an attempt is a run: the nth run over the same issue in this project, its retryOf the run before it
 // (decision on agent-run-standing: the next attempt is a new run); a group run counts under its first issue,
 // keyed by sequence number so the key itself is built only by `lib/issue-ref.ts`
-async function attemptsOf(projectId: string, ids: string[]) {
+async function attemptsOf(projectIds: string[], ids: string[]) {
   const rows = await q(sql`
     WITH keyed AS (
-      SELECT r.id, r.started_at,
+      SELECT r.id, r.project_id, r.started_at,
              COALESCE(i.iss_seq, CASE
                WHEN r.metadata -> ${RUN_GROUP_METADATA_KEY} ->> 0 ~ '^[A-Za-z]+-[0-9]+$'
                THEN regexp_replace(r.metadata -> ${RUN_GROUP_METADATA_KEY} ->> 0, '^[A-Za-z]+-', '')::int
              END) AS work_seq
         FROM pipeline_runs r LEFT JOIN issues i ON i.id = r.issue_id
-       WHERE r.project_id = ${projectId} AND ${RUN_SCOPE_SQL}
+       WHERE r.project_id IN (${uuids(projectIds)}) AND ${RUN_SCOPE_SQL}
     ), ranked AS (
       SELECT id, work_seq,
-             row_number() OVER (PARTITION BY work_seq ORDER BY started_at, id) AS n,
-             lag(id) OVER (PARTITION BY work_seq ORDER BY started_at, id) AS retry_of
+             row_number() OVER (PARTITION BY project_id, work_seq ORDER BY started_at, id) AS n,
+             lag(id) OVER (PARTITION BY project_id, work_seq ORDER BY started_at, id) AS retry_of
         FROM keyed WHERE work_seq IS NOT NULL
     )
     SELECT id, work_seq, n, retry_of FROM ranked WHERE id IN (${uuids(ids)})`);
@@ -173,7 +174,7 @@ function groupsOf(base: BaseRun[]) {
   );
 }
 
-function runRows(projectId: string, ids: string[]) {
+function runRows(projectIds: string[], ids: string[]) {
   return Promise.all([
     q(sql`
       SELECT DISTINCT ON (s.pipeline_run_id) s.id, s.pipeline_run_id, s.status, s.runtime_state,
@@ -207,8 +208,8 @@ function runRows(projectId: string, ids: string[]) {
       SELECT run_id, issue_key, session_id, acquired_at FROM issue_leases
        WHERE run_id IN (${uuids(ids)})`),
     q(sql`
-      SELECT run_id, environment, subject, acquired_at, expires_at, reclaimed_from_run_id
-        FROM deploy_locks WHERE project_id = ${projectId} AND run_id IN (${uuids(ids)})`),
+      SELECT project_id, run_id, environment, subject, acquired_at, expires_at, reclaimed_from_run_id
+        FROM deploy_locks WHERE project_id IN (${uuids(projectIds)}) AND run_id IN (${uuids(ids)})`),
     q(sql`
       SELECT run_id, id, requested_at FROM release_approvals
        WHERE run_id IN (${uuids(ids)}) AND decision IS NULL ORDER BY requested_at`),
@@ -216,7 +217,7 @@ function runRows(projectId: string, ids: string[]) {
       SELECT DISTINCT ON (run_id) run_id, stage, verdict, started_at FROM release_attempts
        WHERE run_id IN (${uuids(ids)}) ORDER BY run_id, started_at DESC`),
     latestFlips('run', ids, TERMINAL_PIPELINE_RUN_STATUSES),
-    attemptsOf(projectId, ids),
+    attemptsOf(projectIds, ids),
     q(sql`
       SELECT DISTINCT ON (run_id) run_id, phase FROM phase_journal
        WHERE ended_at IS NULL AND run_id IN (${uuids(ids)})
@@ -224,24 +225,24 @@ function runRows(projectId: string, ids: string[]) {
   ]);
 }
 
-function issueRowsOf(projectId: string, seqs: number[]) {
-  return when(seqs.length > 0, () =>
+/** The issues each run carries, by its project and sequence number. */
+function issueRowsOf(asked: readonly { projectId: string; seq: number }[]) {
+  return when(asked.length > 0, () =>
     q(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, i.merged_at, ${landedSql(sql`i`)} AS landed, w.step, w.step_started_at, w.lease,
+      SELECT i.project_id, i.id, i.iss_seq, i.title, i.status, i.merged_at, ${landedSql(sql`i`)} AS landed, w.step, w.step_started_at, w.lease,
              i.session_context -> 'strand' AS strand,
              (SELECT max(kt.created_at) FROM kernel_transitions kt
                WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status)
                AS status_since
-        FROM issues i LEFT JOIN issue_work_state w ON w.issue_id = i.id
-       WHERE i.project_id = ${projectId} AND i.iss_seq IN (${sql.join(
-         seqs.map((n) => sql`${n}`),
-         sql`, `,
-       )})`),
+        FROM unnest(${sql.param(asked.map((a) => a.projectId))}::uuid[], ${sql.param(asked.map((a) => a.seq))}::int[])
+               AS k(project_id, iss_seq)
+        JOIN issues i ON i.project_id = k.project_id AND i.iss_seq = k.iss_seq
+        LEFT JOIN issue_work_state w ON w.issue_id = i.id`),
   );
 }
 
 function holderRows(
-  projectId: string,
+  projectIds: string[],
   args: { sessionIds: string[]; issueIds: string[]; masterIds: string[]; since: string },
 ) {
   const { sessionIds, issueIds, masterIds, since } = args;
@@ -256,8 +257,8 @@ function holderRows(
     latestFlips('session', sessionIds, terminalAgentSessionStatuses),
     when(sessionIds.length + issueIds.length > 0, () =>
       q(sql`
-        SELECT id, agent_session_id, issue_id, created_at, steps FROM agent_questions
-         WHERE project_id = ${projectId} AND status = 'open' AND blocker_kind = 'human'
+        SELECT project_id, id, agent_session_id, issue_id, created_at, steps FROM agent_questions
+         WHERE project_id IN (${uuids(projectIds)}) AND status = 'open' AND blocker_kind = 'human'
            AND (${sessionIds.length ? sql`agent_session_id IN (${uuids(sessionIds)})` : sql`false`}
              OR ${issueIds.length ? sql`issue_id IN (${uuids(issueIds)})` : sql`false`})
          ORDER BY created_at`),
@@ -289,26 +290,56 @@ function holderRows(
 
 const byKey = (rows: Row[], key: string) => new Map(rows.map((r) => [String(r[key]), r]));
 
-export async function readTables(projectId: string, base: BaseRun[]): Promise<Tables> {
+/**
+ * The tables each run of `base` is derived from, by run id. Every run asked before a read's quiet
+ * point, of every project, is read in one set of statements (`db/read-memo.ts:memoizedPerItem`),
+ * where each project's runs read their own (ISS-1070 r8: a person's workflow health read the
+ * standing of its builds' runs once a project). A run's tables are its project's: a row a project
+ * scopes (an issue by its number, a deploy lock, a question) is never another project's.
+ */
+export async function readTables(base: BaseRun[]): Promise<(runId: string) => Tables> {
+  const held = await memoizedPerItem(
+    'runTables',
+    base,
+    (b) => b.id,
+    async (runs) => {
+      const byProject = await tablesAcross(runs);
+      return new Map(runs.map((r) => [r.id, byProject.get(r.project_id) as Tables]));
+    },
+  );
+  return (runId) => {
+    const t = held.get(runId);
+    if (!t) throw new Error(`run standing: run ${runId} was read for its tables and not answered`);
+    return t;
+  };
+}
+
+async function tablesAcross(base: readonly BaseRun[]): Promise<Map<string, Tables>> {
   const ids = base.map((b) => b.id);
-  const groups = groupsOf(base);
-  const seqs = [
-    ...new Set(
-      [...groups.values()].flatMap((g) => g.keys.map(seqOf)).filter((n): n is number => n !== null),
-    ),
+  const projectIds = [...new Set(base.map((b) => b.project_id))];
+  const groups = groupsOf([...base]);
+  const asked = [
+    ...new Map(
+      base.flatMap((b) =>
+        (groups.get(b.id)?.keys ?? []).flatMap((key) => {
+          const seq = seqOf(key);
+          return seq === null ? [] : [[`${b.project_id}:${seq}`, { projectId: b.project_id, seq }]];
+        }),
+      ) as Iterable<[string, { projectId: string; seq: number }]>,
+    ).values(),
   ];
   const [
     [sessions, jobs, liveness, leases, locks, approvals, releases, runFlips, attempts, phases],
     issues,
     lockRefusals,
   ] = await Promise.all([
-    runRows(projectId, ids),
-    issueRowsOf(projectId, seqs),
+    runRows(projectIds, ids),
+    issueRowsOf(asked),
     q(sql`
-      SELECT run_id, environment, holder_run_id, holder_subject, holder_acquired_at,
+      SELECT project_id, run_id, environment, holder_run_id, holder_subject, holder_acquired_at,
              refused_until, refused_at
         FROM deploy_lock_refusals
-       WHERE project_id = ${projectId} AND run_id IN (${uuids(ids)})`),
+       WHERE project_id IN (${uuids(projectIds)}) AND run_id IN (${uuids(ids)})`),
   ]);
   const masterIds = [
     ...new Set(
@@ -317,9 +348,11 @@ export async function readTables(projectId: string, base: BaseRun[]): Promise<Ta
       ),
     ),
   ];
+  // the earliest start of every run read: a later run weighs only the passes and moves after its own
+  // start (`facts.ts:masterFacts`, `issueMovesOf`), so one bound serves every project's runs
   const since = new Date(Math.min(...base.map((b) => must(b.started_at).getTime()))).toISOString();
   const [ledgers, sessionFlips, questions, masters, passes, issueMoves] = await holderRows(
-    projectId,
+    projectIds,
     {
       sessionIds: sessions.map((s) => String(s.id)),
       issueIds: issues.map((i) => String(i.id)),
@@ -327,25 +360,35 @@ export async function readTables(projectId: string, base: BaseRun[]): Promise<Ta
       since,
     },
   );
-  return {
+  const shared = {
     groups,
     sessionByRun: byKey(sessions, 'pipeline_run_id'),
     jobByRun: byKey(jobs, 'pipeline_run_id'),
     liveness,
     leases,
-    locks,
-    lockRefusals,
     approvals,
     releases,
     runFlips,
     attempts,
-    issueBySeq: new Map(issues.map((i) => [Number(i.iss_seq), i])),
     phases,
     ledgerBySession: byKey(ledgers, 'session_id'),
     sessionFlips,
-    questions,
     masterById: byKey(masters, 'id'),
     passes,
     issueMoves,
   };
+  const own = (rows: Row[], projectId: string) =>
+    rows.filter((r) => str(r.project_id) === projectId);
+  return new Map(
+    projectIds.map((projectId) => [
+      projectId,
+      {
+        ...shared,
+        locks: own(locks, projectId),
+        lockRefusals: own(lockRefusals, projectId),
+        questions: own(questions, projectId),
+        issueBySeq: new Map(own(issues, projectId).map((i) => [Number(i.iss_seq), i])),
+      },
+    ]),
+  );
 }

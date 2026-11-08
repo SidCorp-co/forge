@@ -351,12 +351,11 @@ function factsOf(
 
 export async function gatherFacts(prefix: string | null, base: BaseRun[]): Promise<RunFacts[]> {
   if (base.length === 0) return [];
-  const projectId = base[0]?.project_id as string;
-  const t = await readTables(projectId, base);
+  const tablesOf = await readTables(base);
   const display: Display = (key) => {
     const n = seqOf(key);
     return n === null ? key : formatIssueRef(prefix, n);
   };
   const now = new Date();
-  return base.map((b) => factsOf(b, t, prefix, display, now));
+  return base.map((b) => factsOf(b, tablesOf(b.id), prefix, display, now));
 }
