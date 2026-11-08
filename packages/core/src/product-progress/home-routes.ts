@@ -89,7 +89,7 @@ meHomeRoutes.get(
         (p) => p.id,
         async (p) => {
           const [part, releases] = await Promise.all([
-            readHomeProject(viewer, p.id, now),
+            readHomeProject(viewer, p.id, now, { items: true }),
             withQueryLeg('home-live', () => liveReleasesOf(p.id)),
           ]);
           const mine = new Set([

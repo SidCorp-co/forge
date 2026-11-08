@@ -6,6 +6,7 @@
  */
 
 import { FORECAST_LABEL, type Forecast } from '@forge/contracts/forecast';
+import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import {
   activeIssuePrefix,
   compareDispatchOrder,
@@ -47,6 +48,8 @@ export interface Facts {
   anchor: Anchor;
   run: ForecastRun;
   keyOf: Map<string, string>;
+  /** Each open issue's standing wait, as the simulation read it. */
+  waits: Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>;
   projectWait: Wait | null;
   prefix: string | null;
 }
@@ -136,6 +139,7 @@ export async function simulate(projectId: string, now: Date, anchored?: Anchor):
     anchor,
     run,
     keyOf: new Map(items.map((i) => [i.id, i.key])),
+    waits: new Map(standing.issues.map((s) => [s.id, { key: s.key, standing: s.standing }])),
     projectWait,
     prefix,
   };

@@ -15,5 +15,5 @@ export {
   readRequirementForecast,
   readRequirementForecasts,
 } from './scope.js';
-export { readProjectForecast } from './simulation.js';
+export { readProjectForecast, simulatedWaitsOf } from './simulation.js';
 export { forecastViewerOf } from './viewer.js';

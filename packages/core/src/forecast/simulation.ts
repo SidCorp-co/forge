@@ -3,7 +3,9 @@
 // simulation reads the project's whole open standing. Held for the request only (`db/read-memo.ts`).
 
 import type { ProjectForecast } from '@forge/contracts/forecast';
+import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import { heldRead, offerRead } from '../db/read-memo.js';
+import { issueWaitsOf } from '../issues/index.js';
 import type { Anchor } from './facts.js';
 import { type Facts, pausedOf, simulate, stamp } from './read.js';
 
@@ -31,4 +33,26 @@ export async function readProjectForecast(
       return forecast ? [{ issueId, key, forecast }] : [];
     }),
   };
+}
+
+/**
+ * Each of `ids`' standing wait as the project's simulation read it with every open issue, so a reader
+ * of a few of them beside the forecast sends no standing of its own (ISS-1070 r18: the home's Moving
+ * read its owned issues' standing again, a wave behind); an id it did not read is read on its own.
+ */
+export async function simulatedWaitsOf(
+  projectId: string,
+  ids: readonly string[],
+  now: Date = new Date(),
+): Promise<Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>> {
+  const f = await simulated(projectId, now);
+  const out = new Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>();
+  const missing: string[] = [];
+  for (const id of ids) {
+    const held = f.waits.get(id);
+    if (held) out.set(id, held);
+    else missing.push(id);
+  }
+  for (const [id, w] of await issueWaitsOf(projectId, missing, now)) out.set(id, w);
+  return out;
 }

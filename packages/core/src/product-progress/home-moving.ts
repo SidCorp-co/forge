@@ -5,13 +5,20 @@
 // serve; nothing here computes a date.
 
 import type { FeedbackSummary } from '@forge/contracts/feedback';
+import type { Forecast } from '@forge/contracts/forecast';
+import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { HomeMovingItem } from '@forge/contracts/owner-home';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
 import { withQueryLeg } from '../db/query-timing.js';
 import { listFeedbackAs } from '../feedback/index.js';
-import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
-import { issueDisplayIds, issueWaitsOf, ownedIssuesIn } from '../issues/index.js';
+import {
+  forecastViewerOf,
+  readFeedbackForecasts,
+  readProjectForecast,
+  simulatedWaitsOf,
+} from '../forecast/index.js';
+import { issueDisplayIds, ownedIssuesIn } from '../issues/index.js';
 import { type FeedbackReads, feedbackProgress } from './feedback-views.js';
 import { feedbackEnded, feedbackStage, isIdle, issueStage, lastMoveOf } from './home-stage.js';
 import { liveRunsByIssue, type Progress, routedRequirementWork, runsOn } from './progress.js';
@@ -45,6 +52,37 @@ export interface HomeProjectReads {
   /** Issue keys a live run works now. */
   running: Set<string>;
   reads: FeedbackReads;
+  /** The open issues' waits and dates, where the read was asked for its Moving items; null for none open. */
+  issueReads?: IssueReads | null;
+}
+
+/** What Moving reads of a person's open issues: each one's standing wait, and its forecast date. */
+interface IssueReads {
+  waits: Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>;
+  dates: Map<string, Forecast>;
+}
+
+type OwnedIssue = HomeProjectReads['issues'][number];
+
+const isOpen = (i: OwnedIssue) => issueStage(i.status, false, i.claimed) !== null;
+
+/** The open issues' waits and dates; null where none is open. */
+async function issueReadsOf(
+  projectId: string,
+  issues: readonly OwnedIssue[],
+  now: Date,
+): Promise<IssueReads | null> {
+  const open = issues.filter(isOpen);
+  if (open.length === 0) return null;
+  const [waits, forecast] = await Promise.all([
+    simulatedWaitsOf(
+      projectId,
+      open.map((i) => i.id),
+      now,
+    ),
+    readProjectForecast(projectId, now),
+  ]);
+  return { waits, dates: new Map(forecast.issues.map((f) => [f.key, f.forecast])) };
 }
 
 async function ownedIssues(projectId: string, userId: string) {
@@ -81,6 +119,8 @@ export async function readHomeProject(
   viewer: HomeViewer,
   projectId: string,
   now: Date = new Date(),
+  /** Whether Moving reads this part: its open issues' waits are then read as the issues are known. */
+  { items = false }: { items?: boolean } = {},
 ): Promise<HomeProjectReads> {
   // each part a named part of the request's `Server-Timing`, with the statements it sends; none
   // waits on the feedback list but the lines that read its items, so the forecast, the runs and the
@@ -88,14 +128,18 @@ export async function readHomeProject(
   const fViewer = withQueryLeg('home-forecast-viewer', () =>
     forecastViewerOf(projectId, viewer.userId),
   );
-  const [listed, forecasts, runs, requirementIssues, issues] = await Promise.all([
+  const owned = withQueryLeg('home-owned', () => ownedIssues(projectId, viewer.userId));
+  const [listed, forecasts, runs, requirementIssues, issues, issueReads] = await Promise.all([
     withQueryLeg('home-feedback', () => listFeedbackAs(viewer, projectId, {})),
     withQueryLeg('home-forecasts', async () =>
       readFeedbackForecasts(viewer, projectId, await fViewer, now),
     ),
     withQueryLeg('home-runs', () => liveRunsByIssue(projectId, viewer.userId)),
     withQueryLeg('home-requirement-issues', () => routedRequirementWork(projectId)),
-    withQueryLeg('home-owned', () => ownedIssues(projectId, viewer.userId)),
+    owned,
+    items
+      ? owned.then((is) => withQueryLeg('home-items', () => issueReadsOf(projectId, is, now)))
+      : undefined,
   ]);
   const allFeedback = listed.ok ? listed.list.feedback : [];
   const reads: FeedbackReads = {
@@ -115,6 +159,7 @@ export async function readHomeProject(
     issues,
     running,
     reads,
+    ...(issueReads === undefined ? {} : { issueReads }),
   };
 }
 
@@ -167,18 +212,13 @@ export async function homeItemsOf(
       idle: isIdle(lastMovedAt, progress.running, now),
     });
   }
-  const open = part.issues.filter((i) => issueStage(i.status, false, i.claimed) !== null);
-  if (open.length === 0) return out;
-  const [waits, forecast] = await Promise.all([
-    issueWaitsOf(
-      project.id,
-      open.map((i) => i.id),
-      now,
-    ),
-    readProjectForecast(project.id, now),
-  ]);
-  const dates = new Map(forecast.issues.map((f) => [f.key, f.forecast]));
-  for (const i of open) {
+  const read =
+    part.issueReads === undefined
+      ? await issueReadsOf(project.id, part.issues, now)
+      : part.issueReads;
+  if (!read) return out;
+  const { waits, dates } = read;
+  for (const i of part.issues.filter(isOpen)) {
     const runs = runsOn(part.reads.runs, [i.key]);
     const running = part.running.has(i.key);
     const standing = waits.get(i.id)?.standing;
