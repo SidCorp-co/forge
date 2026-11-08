@@ -1411,4 +1411,71 @@ mod tests {
         finish_with_one_line(&client).await;
         assert_eq!(patches(&seen), Vec::<Value>::new());
     }
+
+    /// The lines every `/events` batch carried, in order.
+    fn posted_lines(seen: &Seen) -> Vec<Value> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, p, _)| m == "POST" && p.ends_with("/events"))
+            .flat_map(|(_, _, b)| {
+                let body: Value = serde_json::from_str(b).unwrap();
+                body["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|e| e["data"]["line"].clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// ISS-946: a pane's turn ends on its session's Stop hook, and closes with the write a
+    /// headless turn's `result` closes with, `completed`, once its transcript lines and the
+    /// `result` line made from them and the status line's cost are posted.
+    #[tokio::test]
+    async fn a_pane_turn_its_stop_hook_ends_closes_with_the_completed_write() {
+        let (client, seen) = fake_core(200, "").await;
+        let dir = std::env::temp_dir().join(format!("pane-turn-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let events = dir.join("events.jsonl");
+        let transcript = dir.join("t.jsonl");
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
+        let (tx, rx) = mpsc::channel(64);
+        pane::test_turn(&runner, "sess", "s1", events.clone(), transcript.clone(), tx).await;
+        std::fs::write(
+            &transcript,
+            concat!(
+                r#"{"type":"user","message":{"role":"user","content":"hi"}}"#,
+                "\n",
+                r#"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"ALPHA"}],"usage":{"input_tokens":2,"output_tokens":13}}}"#,
+                "\n",
+                r#"{"type":"system","subtype":"turn_duration","durationMs":1200}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        let stop = runner_core::agent_activity::now_ms();
+        let other = br#"{"session_id":"someone-else"}"#;
+        runner_core::chat_pane_events::append(&events, "Stop", other, stop).unwrap();
+        let ours = br#"{"session_id":"s1"}"#;
+        runner_core::chat_pane_events::append(&events, "Stop", ours, stop).unwrap();
+        let cost = br#"{"cost":{"total_cost_usd":0.0042}}"#;
+        runner_core::chat_pane_events::append(&events, "StatusLine", cost, stop + 300).unwrap();
+
+        let ran = tokio::time::timeout(Duration::from_secs(10), consume(&client, "sess", 0, rx)).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(ran.is_ok(), "the Stop hook did not end the pane's turn");
+        let outcome = outcome_patches(&seen);
+        assert_eq!(outcome.len(), 1, "{outcome:?}");
+        assert_eq!(outcome[0]["status"], "completed", "{outcome:?}");
+        assert_eq!(outcome[0]["claudeSessionId"], "s1", "{outcome:?}");
+        let lines = posted_lines(&seen);
+        let kinds: Vec<&str> = lines.iter().filter_map(|l| l["type"].as_str()).collect();
+        assert_eq!(kinds, ["user", "assistant", "result"], "{lines:?}");
+        let result = &lines[2];
+        assert_eq!(result["usage"]["output_tokens"], 13, "{result}");
+        assert_eq!(result["total_cost_usd"], 0.0042, "{result}");
+        assert_eq!(result["duration_ms"], 1200, "{result}");
+    }
 }

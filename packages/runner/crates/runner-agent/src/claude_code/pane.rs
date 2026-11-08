@@ -221,6 +221,7 @@ impl ClaudeCodeRunner {
                 self.core_url.clone(),
                 self.device_token.clone(),
             ),
+            check_alive: true,
         };
         let checkout = spec
             .confinement
@@ -446,6 +447,8 @@ struct Watch {
     transcript_from: u64,
     cost_base: Option<f64>,
     core: runner_transport::CoreClient,
+    /// Whether the pane is asked after on this box's tmux; a test's turn has no pane.
+    check_alive: bool,
 }
 
 impl Watch {
@@ -460,7 +463,7 @@ impl Watch {
         loop {
             tokio::time::sleep(READ_EVERY).await;
             reads = reads.wrapping_add(1);
-            if reads % ALIVE_EVERY == 0 && !terminal::alive(&self.pane).await {
+            if self.check_alive && reads % ALIVE_EVERY == 0 && !terminal::alive(&self.pane).await {
                 let gone = self.panes.lock().await.remove(&self.id);
                 if let Some(s) = gone {
                     end_pane(&self.id, s, "its pane is gone").await;
@@ -625,6 +628,59 @@ pub fn pane_for(
     Some(terminal::chat_pane(slug).map_err(|e| e.to_string()))
 }
 
+/// A pane turn with no pane: session `id` in a turn whose lines go to `tx`, its session `sid`
+/// writing `events` and `transcript`, read as a live pane's are. For the tests of what closes it.
+#[cfg(test)]
+pub(crate) async fn test_turn(
+    runner: &ClaudeCodeRunner,
+    id: &str,
+    sid: &str,
+    events: PathBuf,
+    transcript: PathBuf,
+    tx: mpsc::Sender<RunnerEvent>,
+) {
+    let core = runner_transport::CoreClient::new(runner.core_url.clone(), "t");
+    let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.into())).await;
+    let watch = Watch {
+        panes: runner.panes.clone(),
+        id: id.into(),
+        sid: sid.into(),
+        pane: format!("forge-chat-{id}"),
+        events: events.clone(),
+        transcript,
+        transcript_from: 0,
+        cost_base: Some(0.0),
+        core,
+        check_alive: false,
+    };
+    let mut map = runner.panes.lock().await;
+    map.insert(
+        id.into(),
+        PaneSession {
+            pane: ChatPane {
+                name: format!("forge-chat-{id}"),
+                socket: PathBuf::from("/nonexistent/tmux.sock"),
+            },
+            claude_session_id: sid.into(),
+            turn_tx: Arc::new(Mutex::new(tx)),
+            in_turn: true,
+            unsubmitted: Vec::new(),
+            pending_inbox: Vec::new(),
+            turns: 0,
+            bearer_dir: None,
+            mcp_path: PathBuf::from("/nonexistent/mcp.json"),
+            events_dir: events.parent().map(PathBuf::from).unwrap_or_default(),
+            model: None,
+            head_sha: None,
+            checkout: crate::CheckoutView::default(),
+            siblings: Vec::new(),
+            repo_path: PathBuf::new(),
+            watcher: Some(tokio::spawn(watch.run())),
+            _egress: None,
+        },
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,6 +708,7 @@ mod tests {
             transcript_from: 0,
             cost_base: None,
             core: runner_transport::CoreClient::new("http://127.0.0.1:9", "t"),
+            check_alive: false,
         };
         assert!(w.ours(&serde_json::json!({"session_id":"s1"})));
         assert!(!w.ours(&serde_json::json!({"session_id":"s2"})));
