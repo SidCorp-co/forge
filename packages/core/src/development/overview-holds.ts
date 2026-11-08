@@ -108,6 +108,31 @@ function liveKindOf(run: RunStanding): OverviewHoldKind | null {
   return null;
 }
 
+/**
+ * What the live runs say of each issue they carry, the one source Moving, Stuck and Holds read alike
+ * (ISS-684): an issue a run is working is moving whatever its issue standing guessed from its lease,
+ * and an issue whose run is held (stuck, behind a gate, a held job) is never drawn moving beside its
+ * hold. Held wins where two runs carry one issue.
+ */
+export interface RunSides {
+  running: ReadonlySet<string>;
+  held: ReadonlySet<string>;
+}
+
+const WORKING: ReadonlySet<RunStanding['state']> = new Set(['claimed', 'running']);
+
+export function runSidesOf(live: readonly RunStanding[]): RunSides {
+  const running = new Set<string>();
+  const heldKeys = new Set<string>();
+  for (const run of live) {
+    const keys = issuesOf(run);
+    if (liveKindOf(run) !== null) for (const k of keys) heldKeys.add(k);
+    else if (WORKING.has(run.state)) for (const k of keys) running.add(k);
+  }
+  for (const k of heldKeys) running.delete(k);
+  return { running, held: heldKeys };
+}
+
 function stuckWho(run: RunStanding): WaitingOn {
   const s = run.stuck;
   if (s.source === 'stuck' && s.failsAt) {
@@ -118,7 +143,7 @@ function stuckWho(run: RunStanding): WaitingOn {
   return master(s.source === 'stuck' ? s.says.detail : run.says.rule);
 }
 
-const issuesOf = (run: RunStanding): string[] =>
+export const issuesOf = (run: RunStanding): string[] =>
   run.issues.length > 0 ? run.issues : run.issue ? [run.issue.key] : [];
 
 function hold(

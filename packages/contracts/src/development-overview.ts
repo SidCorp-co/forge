@@ -13,13 +13,6 @@ import type { WaitingOn } from "./standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
 
-interface OverviewUnavailable {
-	available: false;
-	reason: string;
-	/** `reason` as said (`said.ts`). */
-	says: { reason: Said };
-}
-
 export interface OverviewContractWindow {
 	contract: string;
 	version: string;
@@ -45,8 +38,6 @@ export interface OverviewMasterSignal {
 }
 
 export interface OverviewSignals {
-	ci: OverviewUnavailable;
-	postMerge: OverviewUnavailable;
 	contracts: OverviewContractsSignal;
 	master: OverviewMasterSignal;
 }

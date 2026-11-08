@@ -11,7 +11,6 @@ import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { slotsNoteOf, slotsNoteSaid } from '@forge/contracts/master-standing';
 import { modulePaths } from '@forge/contracts/modules';
-import { type Said, say, sayEn } from '@forge/contracts/said';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
@@ -26,11 +25,12 @@ import {
   type ModuleFact,
   modulesOf,
   movingOf,
+  movingRowsOf,
   OPEN_CONTRACT_CHANGE,
   type ProposedVersionFact,
   stuckOf,
 } from './overview.js';
-import { holdsOf } from './overview-holds.js';
+import { holdsOf, runSidesOf } from './overview-holds.js';
 import { deliveryRunsOf } from './ports.js';
 
 const terminalSessions = sql.join(
@@ -38,19 +38,10 @@ const terminalSessions = sql.join(
   sql`, `,
 );
 
-const unavailable = (reason: Said) => ({
-  available: false as const,
-  reason: sayEn(reason),
-  says: { reason },
-});
-const CI_UNAVAILABLE = say('overview.signal.ciNote');
-const POST_MERGE_UNAVAILABLE = say('overview.signal.postMergeNote');
-
 async function laneFacts(
   projectId: string,
-  rows: readonly IssueStandingRow[],
+  moving: readonly IssueStandingRow[],
 ): Promise<Map<string, LaneFacts>> {
-  const moving = rows.filter((r) => r.standing.attentionGroup === 'moving');
   const out = new Map<string, LaneFacts>();
   if (moving.length === 0) return out;
   const ids = idList(moving.map((r) => r.id));
@@ -239,27 +230,27 @@ export async function readDevelopmentOverview(
     listIssueStanding(projectId, 'closed', now),
   ]);
   const rows = [...open.issues, ...closed.issues];
-  const [lanes, mods, master, proposed, changes, runs] = await Promise.all([
-    laneFacts(projectId, open.issues),
+  const [{ runs, sides, lanes }, mods, master, proposed, changes] = await Promise.all([
+    deliveryRunsOf(projectId, viewer).then(async (runs) => {
+      const sides = runSidesOf(runs.live);
+      return { runs, sides, lanes: await laneFacts(projectId, movingRowsOf(open.issues, sides)) };
+    }),
     moduleFacts(projectId),
     masterSignal(projectId),
     proposedVersions(projectId),
     contractChanges(projectId),
-    deliveryRunsOf(projectId, viewer),
   ]);
   const oldest = closed.issues.at(-1);
   const cutoff = now.getTime() - OVERVIEW_WINDOW_DAYS * 86_400_000;
   return {
     generatedAt: now.toISOString(),
     signals: {
-      ci: unavailable(CI_UNAVAILABLE),
-      postMerge: unavailable(POST_MERGE_UNAVAILABLE),
       contracts: contractsSignal(changes, proposed),
       master,
     },
     flow: flowOf(rows, now),
-    moving: movingOf(open.issues, lanes, now),
-    stuck: stuckOf(open.issues),
+    moving: movingOf(open.issues, lanes, now, sides),
+    stuck: stuckOf(open.issues, sides),
     holds: holdsOf({
       rows: open.issues,
       live: runs.live,
