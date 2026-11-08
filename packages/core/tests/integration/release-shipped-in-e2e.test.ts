@@ -8,6 +8,7 @@
  * Against real Postgres, with a planted host that counts every call it is asked.
  *
  * @direct-test-of packages/core/src/release-batch/shipped-in.ts
+ * @direct-test-of packages/core/src/release-batch/roster-blockers.ts
  */
 
 import { randomUUID } from 'node:crypto';
