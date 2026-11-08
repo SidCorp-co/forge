@@ -1,5 +1,6 @@
 // @direct-test-of packages/core/src/requirements/standing-draft.ts
 import { saidDisagreements } from '@forge/contracts/said';
+import type { OwedPolicy } from '@forge/contracts/who-owes';
 import { describe, expect, it } from 'vitest';
 import { deriveStanding as deriveStanding_, type StandingIssue } from './standing.js';
 
@@ -459,6 +460,47 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     expect(s.waitingOn.act).toMatch(
       /^check BC-1, BC-3, BC-5 against the traceability matrix now; /,
     );
+  });
+
+  // owner 2026-11-08 (D1, ISS-616): where no person gate asks them, the moves and the accept are made
+  // by rule (`steward/requirement-rule-moves.ts`); nobody is asked to move, mark or check it
+  describe('where no person gate asks the moves (D1)', () => {
+    const gatesOff = {
+      admit: false,
+      triage: false,
+      agree: false,
+      revisions: false,
+      breakdown: false,
+      accept: false,
+      designs: false,
+    } as OwedPolicy['gates'];
+    const routine: OwedPolicy = { strict: false, gates: gatesOff, releaseApproval: false };
+    const at = (status: 'agreed' | 'in_delivery' | 'delivered', owed: OwedPolicy) =>
+      deriveStanding({
+        ...input([issue(1, 'closed', false), issue(2, 'closed', false)]),
+        status,
+        criteria: [bc(1), bc(3), bc(5)],
+        issueCriteria: [traced(1, 1, 'pass'), traced(1, 3, 'pass'), traced(2, 5, 'pass')],
+        judge: 'independent',
+        liveBuild,
+        owed,
+      });
+
+    it.each([
+      ['agreed', 'move it into delivery by rule on its next sweep'],
+      ['in_delivery', 'mark it delivered by rule on its next sweep'],
+      ['delivered', 'accept it by rule on its next sweep'],
+    ] as const)('%s with every BC passing waits on Forge, never on a person or the master', (status, act) => {
+      const s = at(status, routine);
+      expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Forge', act });
+      expect(s.attentionGroup).toBe('waiting');
+      expect(s.tasks.map((t) => t.kind)).not.toContain('check');
+    });
+
+    it('keeps the BA check where the accept gate asks a person', () => {
+      const s = at('delivered', { ...routine, gates: { ...gatesOff, accept: true } });
+      expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
+    });
   });
 });
 

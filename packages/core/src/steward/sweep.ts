@@ -43,6 +43,7 @@ import {
 import { raiseOwedChecks } from './owed-checks.js';
 import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
+import { sweepRequirementRuleMoves } from './requirement-rule-moves.js';
 import { diagnosesOnBasis, ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
 
 export interface SweepTally {
@@ -211,6 +212,8 @@ export async function sweepProjectStandings(
 }
 
 export async function sweepStandings(now = new Date()): Promise<SweepTally> {
+  // D1, D3 (ISS-616): the moves no person gate asks are made first, so the standings read after them
+  await sweepRequirementRuleMoves();
   const tally: SweepTally = {
     projects: 0,
     stuck: 0,

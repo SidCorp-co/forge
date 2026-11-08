@@ -1,4 +1,4 @@
-export { acceptDelivery, dropAsDuplicateIn, dropRequirement } from './acceptance.js';
+export { acceptDelivery, dropAsDuplicateIn, dropRequirement, moveDelivery } from './acceptance.js';
 export { acceptRevision, agreeRequirement } from './agree.js';
 export { latestBaselineIn } from './baselines.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
@@ -50,6 +50,7 @@ export { proposePlacement, proposePlacementLater } from './placement.js';
 export { changedTracedOf } from './plan-drift.js';
 export { listRequirementsAs, readRequirementAs, requirementIdIn, rowIn } from './read.js';
 export { registerReasonAnswers } from './reason-question.js';
+export { repinRequirement } from './repin.js';
 export { proposedDraftRequirements } from './requests-waiting.js';
 export { criteriaRefusalsAt } from './revision-criteria.js';
 export {

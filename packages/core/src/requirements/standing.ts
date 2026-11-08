@@ -21,7 +21,7 @@ import {
   type RequirementWaitingKind,
   type RequirementWaitingOn,
 } from '@forge/contracts/requirements';
-import { type Said, type SaidKey, say } from '@forge/contracts/said';
+import { type Said, say } from '@forge/contracts/said';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
@@ -53,10 +53,11 @@ import {
   signerInsteadOfMaster,
   signerWait,
 } from './standing-gates.js';
-import { type DeliveryHold, heldTurn } from './standing-held.js';
+import type { DeliveryHold } from './standing-held.js';
+import { moveTurn, ruleTurn } from './standing-moves.js';
 import { proofTurn, releaseAsksOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
-import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
+import { breakdownTaskOf, byRule, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
 
 export type {
@@ -328,6 +329,16 @@ function turnOf(
   if (pinned) return pinned;
   const move = moveTurn(input, live, coverage);
   if (move) return move;
+  // D1: a delivered requirement every criterion of which passes is accepted by rule where no person
+  // gate asks it; the BA's check is a person's step, asked only where the accept gate is on (ISS-616)
+  if (
+    input.status === 'delivered' &&
+    byRule(input) &&
+    coverage.length > 0 &&
+    coverage.every((c) => c.verdict === 'passing')
+  ) {
+    return ruleTurn(say('standing.act.acceptByRule'));
+  }
   const check = checkTaskOf(input, live);
   if (check) {
     const date = check.dueAt.slice(0, 10);
@@ -419,31 +430,6 @@ function deliveryOf(
     closedIssues: live.filter((i) => i.status === 'closed').length,
     criteriaCoverage: criteriaCoverageOf(coverage),
   };
-}
-
-/**
- * The explicit move (REQ-74 BC-8) a requirement waits on once its live issues all closed and every
- * live criterion passes: into delivery, then delivered. Asked of whoever may make it, never made here.
- */
-const MOVE_ASKED: Partial<Record<RequirementStatus, readonly [SaidKey, SaidKey]>> = {
-  agreed: ['standing.act.startDelivery', 'requirements.rule.startDelivery'],
-  in_delivery: ['standing.act.markDelivered', 'requirements.rule.markDelivered'],
-};
-
-function moveTurn(
-  input: StandingInput,
-  live: readonly StandingIssue[],
-  coverage: readonly RequirementCoverage[],
-): Turn | null {
-  const done =
-    live.length > 0 &&
-    live.every((i) => i.status === 'closed') &&
-    coverage.length > 0 &&
-    coverage.every((c) => c.verdict === 'passing');
-  const move = done ? MOVE_ASKED[input.status] : undefined;
-  if (!move) return null;
-  const held = input.status === 'agreed' ? heldTurn(input.deliveryHold, input.viewer) : null;
-  return held ?? actWait(input, 'accept', say(move[0]), say(move[1]));
 }
 
 /** The live issues, their counts and BC coverage at `revision`: the one computation the standing, the moves and the accept read. */
