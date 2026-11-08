@@ -8,6 +8,7 @@ vi.hoisted(() => {
 
 import { readMasterWork } from '../../src/masters/owed.js';
 import { addProjectMember, createTestUser, rows } from '../helpers/factories.js';
+import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/inbound.ts
@@ -48,9 +49,13 @@ describe('ISS-1046: a member message the room cannot take is never lost silently
     ]);
     // the person is told in the thread that the message is kept, never asked to send it again
     await expect
-      .poll(() => w.chat.linesIn(w.chat.rid).filter((l) => l.tmid === first).length, {
-        timeout: 15_000,
-      })
+      .poll(
+        () =>
+          (w.chat as StandInRocketChat).linesIn(w.chat.rid).filter((l) => l.tmid === first).length,
+        {
+          timeout: 15_000,
+        },
+      )
       .toBe(1);
     const [runner] = await rows<{ device_id: string }>(
       sql`SELECT device_id FROM runners WHERE project_id = ${w.projectId}::uuid LIMIT 1`,
