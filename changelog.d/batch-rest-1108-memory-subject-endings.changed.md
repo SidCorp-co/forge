@@ -1,0 +1,1 @@
+Memory recall now answers a subject held by several entries once, by its newest entry naming the others, and a temporary entry whose endsWhen names a path, route, config key or rule is retired when a landing or rule rewrite meets it, while one naming an ending core cannot see is warned and flagged for re-check once its note window passes.

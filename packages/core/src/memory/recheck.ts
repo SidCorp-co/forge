@@ -3,7 +3,7 @@
 // names is rewritten, the memory is flagged with the release flag every reader already shows
 // (`staleSince`, `supersededBy`, `staleReason`; `needsCheck` `flagged`), naming the change and the
 // anchor it met. The next agent confirms it (`verify`), rewrites it (a write clears the flag) or
-// retires it. A landing also flags the project's knowledge and its org's rules the same way
+// retires it. An entry whose `endsWhen` the change meets has ended, and is retired (endings.ts). A landing also flags the project's knowledge and its org's rules the same way
 // (`knowledge/recheck.ts`).
 
 import { MEMORY_AUTHORED_SOURCES } from '@forge/contracts/memory';
@@ -17,10 +17,15 @@ import {
   type RecheckChange,
 } from '../knowledge/index.js';
 import { logger } from '../lib/logger.js';
+import { endedByChange, endingAnchors } from './endings.js';
 import { memoryIssueReads } from './ports.js';
 import { recordUpkeep, upkeepRecorded } from './upkeep.js';
 
-/** Flag the project's live curated memories whose `recheckWhen` the change meets; how many were. */
+/**
+ * Weigh the change against the project's live curated memories: one whose `endsWhen` the change meets
+ * has ended and is retired (endings.ts); one whose `recheckWhen` it meets is flagged. How many were
+ * flagged; the retired are logged.
+ */
 export async function flagMemoriesForChange(
   projectId: string,
   change: RecheckChange,
@@ -34,15 +39,28 @@ export async function flagMemoriesForChange(
         eq(memories.projectId, projectId),
         isNull(memories.archivedAt),
         inArray(memories.source, [...MEMORY_AUTHORED_SOURCES]),
-        sql`${memories.metadata}->'curation'->>'recheckWhen' IS NOT NULL`,
+        sql`(${memories.metadata}->'curation'->>'recheckWhen' IS NOT NULL OR ${memories.metadata}->'curation'->>'endsWhen' IS NOT NULL)`,
       ),
     );
   let flagged = 0;
+  let ended = 0;
   for (const row of rows) {
-    const recheckWhen = (
-      (row.metadata as Record<string, unknown>).curation as Record<string, unknown>
-    ).recheckWhen as string;
-    const matched = anchorsMet(anchorsOf(recheckWhen), change);
+    const curation = (row.metadata as Record<string, unknown>).curation as Record<string, unknown>;
+    const ending = endingAnchors(typeof curation.endsWhen === 'string' ? curation.endsWhen : null);
+    const endedOn = ending ? anchorsMet(ending, change) : [];
+    if (endedOn.length > 0) {
+      await db
+        .update(memories)
+        .set({
+          archivedAt: sql`now()`,
+          metadata: sql`${memories.metadata} || jsonb_build_object('archivedBy', ${endedByChange(change.by, endedOn)}::text)`,
+        })
+        .where(eq(memories.id, row.id));
+      ended++;
+      continue;
+    }
+    if (typeof curation.recheckWhen !== 'string') continue;
+    const matched = anchorsMet(anchorsOf(curation.recheckWhen), change);
     if (matched.length === 0) continue;
     const flag = {
       staleSince: at,
@@ -55,6 +73,11 @@ export async function flagMemoriesForChange(
       .where(eq(memories.id, row.id));
     flagged++;
   }
+  if (ended > 0)
+    logger.info(
+      { projectId, by: change.by, ended },
+      'memory.recheck: retired entries the change ended',
+    );
   return flagged;
 }
 

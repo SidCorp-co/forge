@@ -29,7 +29,7 @@ function daysAgoParam(days: number): SQL {
 interface DecayResult {
   archived: number;
   /** Notes retired by the note rules (ISS-1063): their issue ended, or their window passed unchecked. */
-  notesRetired: { issueEnded: number; expired: number };
+  notesRetired: { issueEnded: number; expired: number; endingUnobserved: number };
   purged: number;
   durationMs: number;
 }

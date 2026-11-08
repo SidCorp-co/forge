@@ -12,6 +12,7 @@ import { RETRIEVAL_FLAGS, type RetrievalFlags } from '../lib/retrieval-flags.js'
 import { clampTopK } from '../lib/search-fusion.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { noteWindowDays, standingOf } from './note-lifetime.js';
+import { foldBySubject, sameSubjectPairs } from './one-per-subject.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import {
   hybridSearchMemories,
@@ -97,6 +98,8 @@ interface MemorySearchResult {
   expanded: boolean;
   /** How many retrieved hits were moved below the fresh ones because they carry `staleSince` or `staleRefs`. Absent when none were. */
   demotedStale?: number;
+  /** How many retrieved entries were folded into the entry answering their subject (its `duplicates`). Absent when none were. */
+  duplicatesFolded?: number;
 }
 
 /** What one search did beyond retrieving — the fields the response carries. */
@@ -106,6 +109,25 @@ interface SearchOutcome {
   rerankHoldout?: true;
   expanded: boolean;
   demotedStale?: number;
+}
+
+/**
+ * One hit per subject (REQ-89 BC-2, one-per-subject.ts). A failed read of which hits share a subject
+ * leaves them as they were and says so in the log: the search still answers.
+ */
+async function onePerSubject(
+  projectId: string,
+  hits: MemoryHit[],
+): Promise<{ hits: MemoryHit[]; folded: number }> {
+  try {
+    return foldBySubject(hits, await sameSubjectPairs(hits));
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message, projectId },
+      'memory.search: reading which hits share a subject failed, hits are not folded',
+    );
+    return { hits, folded: 0 };
+  }
 }
 
 /** Flagged by a release, or naming a record that no longer resolves. */
@@ -173,7 +195,7 @@ async function retrieve(
   const requested: MemorySearchStrategy = input.strategy ?? 'semantic';
   const base = {
     projectId: input.projectId,
-    topK: input.topK,
+    topK: poolTopK,
     sourceFilter: input.sourceFilter,
   };
   if (requested === 'keyword') {
@@ -242,8 +264,10 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   const holdout = eligible && inRerankHoldout();
   const willRerank = eligible && !holdout;
 
-  const retrieved = await retrieve(input, willRerank ? rerankPoolSize(topK) : topK);
-  let hits = retrieved.hits;
+  // a subject held twice takes one slot: the pool is wider than topK so the slot it frees is filled
+  const retrieved = await retrieve(input, willRerank ? rerankPoolSize(topK) : clampTopK(topK * 2));
+  const subjects = await onePerSubject(input.projectId, retrieved.hits);
+  let hits = subjects.hits;
   const outcome: SearchOutcome = { reranked: false, expanded: false };
   if (holdout) outcome.rerankHoldout = true;
 
@@ -298,5 +322,6 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     ...(outcome.rerankHoldout ? { rerankHoldout: true as const } : {}),
     expanded: outcome.expanded,
     ...(outcome.demotedStale ? { demotedStale: outcome.demotedStale } : {}),
+    ...(subjects.folded > 0 ? { duplicatesFolded: subjects.folded } : {}),
   };
 }

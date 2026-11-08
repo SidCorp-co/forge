@@ -8,6 +8,7 @@ import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { curationOf, isCuratedSource, memoryCurationInputSchema } from './curation.js';
+import { ENDING_ISSUE_KEY, unobservedEndingWarning } from './endings.js';
 import {
   embedForIndex,
   heldSubject,
@@ -267,8 +268,6 @@ async function landingOfCuratedWrite(input: WriteMemoryInput): Promise<{
   };
 }
 
-const ISSUE_KEY = /\b([A-Z][A-Z0-9]{0,15}-[1-9]\d{0,8})\b/;
-
 /**
  * A temporary note names what ends it (REQ-89 BC-5): one ending with an issue is written for that
  * issue, so it retires when the issue closes or drops (`note-lifetime.ts`).
@@ -276,7 +275,7 @@ const ISSUE_KEY = /\b([A-Z][A-Z0-9]{0,15}-[1-9]\d{0,8})\b/;
 function endsWithIssue(input: WriteMemoryInput): Record<string, unknown> {
   const md = input.metadata ?? {};
   if (input.source !== 'note' || !input.endsWhen || md.about || md.issueId) return {};
-  const key = ISSUE_KEY.exec(input.endsWhen)?.[1];
+  const key = ENDING_ISSUE_KEY.exec(input.endsWhen)?.[1];
   return key ? { about: key } : {};
 }
 
@@ -294,6 +293,9 @@ export async function runMemoryWrite(
   const { carried, existing } = await carriedFromExisting(input);
   const revisionBefore = existing ? await latestRevisionId(existing.id) : null;
   const said = curated ? curationOf(input) : null;
+  const warnings = said
+    ? [...said.warnings, ...unobservedEndingWarning(input.source, input.endsWhen)]
+    : [];
   const metadata = {
     ...(input.metadata ?? {}),
     ...endsWithIssue(input),
@@ -317,7 +319,7 @@ export async function runMemoryWrite(
     ...(mirrored.landedAs ? { landedAs: mirrored.landedAs } : {}),
     ...(landedOn ? { landedOn } : {}),
     ...(replaced ? { replaced } : {}),
-    ...(said && said.warnings.length > 0 ? { warnings: said.warnings } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

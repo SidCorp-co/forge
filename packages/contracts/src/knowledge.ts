@@ -36,7 +36,8 @@ export const CURATED_ENTRY_TYPE_SHAPE =
  * listed as owing it until a rewrite answers it.
  */
 export interface CurationWarning {
-	code: "CURATION_OWED";
+	/** CURATION_OWED: an answer left out. ENDING_UNOBSERVED: an `endsWhen` naming nothing core can see happen (ISS-1156). */
+	code: "CURATION_OWED" | "ENDING_UNOBSERVED";
 	/** The field left out, as a JSON pointer into the write. */
 	path: string;
 	detail: string;

@@ -15,6 +15,7 @@ import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { readEffectivePolicy } from '../project-config/index.js';
+import { flagUnobservedEndings } from './endings.js';
 import { memoryIssueReads } from './ports.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -188,11 +189,15 @@ async function expireIssuelessNotes(now: number): Promise<number> {
   return expired;
 }
 
-/** The note rules' pass, run with decay: notes of ended issues, then issue-less notes past their window. */
+/**
+ * The note rules' pass, run with decay: notes of ended issues, then issue-less notes past their window,
+ * then entries whose ending core cannot observe, flagged for re-check past their window (endings.ts).
+ */
 export async function retireLapsedNotes(
   now: number = Date.now(),
-): Promise<{ issueEnded: number; expired: number }> {
+): Promise<{ issueEnded: number; expired: number; endingUnobserved: number }> {
   const issueEnded = await retireNotesOfEndedIssues();
   const expired = await expireIssuelessNotes(now);
-  return { issueEnded, expired };
+  const endingUnobserved = await flagUnobservedEndings(now, noteWindowDays);
+  return { issueEnded, expired, endingUnobserved };
 }
