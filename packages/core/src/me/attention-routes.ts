@@ -2,6 +2,7 @@ import type { NeedsYouProjectDecisions } from '@forge/contracts/needs-you-decisi
 import { inActiveOrg } from '@forge/contracts/org-scope';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { withQueryLeg } from '../db/query-timing.js';
 import { readNeedsYouAcross } from '../development/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -160,12 +161,12 @@ meAttentionRoutes.get(
       visible,
     ] = await Promise.all([
       readNeedsYouAcross(userId, agency),
-      selectMentions(userId),
-      selectFailedJobs(userId),
-      selectChannelGates(userId),
-      selectStatusReports(userId),
-      selectOfflineDevices(userId),
-      listVisibleProjectsWithRole(userId),
+      withQueryLeg('at-mentions', () => selectMentions(userId)),
+      withQueryLeg('at-failed-jobs', () => selectFailedJobs(userId)),
+      withQueryLeg('at-channel-gates', () => selectChannelGates(userId)),
+      withQueryLeg('at-status-reports', () => selectStatusReports(userId)),
+      withQueryLeg('at-offline', () => selectOfflineDevices(userId)),
+      withQueryLeg('at-projects', () => listVisibleProjectsWithRole(userId)),
     ]);
 
     // the active org's projects; a row with no project (a device alert) is always kept

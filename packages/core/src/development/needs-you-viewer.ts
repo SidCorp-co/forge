@@ -5,6 +5,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { withQueryLeg } from '../db/query-timing.js';
 import { readAcross } from '../db/read-memo.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
@@ -54,7 +55,7 @@ export async function readNeedsYouAcross(
     names,
     (p) => p.id,
     async (p): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
-      const access = await effectiveProjectRole(userId, p.id);
+      const access = await withQueryLeg('ny-access', () => effectiveProjectRole(userId, p.id));
       if (!access || !holds(access, 'project.read')) return [];
       const { read, ids } = await readNeedsYouDecisionsBare(
         p.id,
@@ -78,7 +79,7 @@ export async function readNeedsYouAcross(
   );
   // what every project's decisions rest on, in one read for all of them (REQ-48 r3 BC-15)
   const sections = perProject.flat();
-  const evidenced = await withEvidence(sections);
+  const evidenced = await withQueryLeg('ny-evidence', () => withEvidence(sections));
   return sections.map(({ ids: _ids, ...s }, i) => ({
     ...s,
     decisions: evidenced[i] ?? s.decisions,

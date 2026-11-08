@@ -8,6 +8,7 @@ import type { FeedbackSummary } from '@forge/contracts/feedback';
 import type { HomeMovingItem } from '@forge/contracts/owner-home';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
+import { withQueryLeg } from '../db/query-timing.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts, readProjectForecast } from '../forecast/index.js';
 import { issueDisplayIds, issueWaitsOf, ownedIssuesIn } from '../issues/index.js';
@@ -85,16 +86,23 @@ export async function readHomeProject(
   projectId: string,
   now: Date = new Date(),
 ): Promise<HomeProjectReads> {
-  const listed = await listFeedbackAs(viewer, projectId, {});
+  // each part a named part of the request's `Server-Timing`, with the statements it sends
+  const listed = await withQueryLeg('home-feedback', () => listFeedbackAs(viewer, projectId, {}));
   const allFeedback = listed.ok ? listed.list.feedback : [];
-  const fViewer = await forecastViewerOf(projectId, viewer.userId);
+  const fViewer = await withQueryLeg('home-forecast-viewer', () =>
+    forecastViewerOf(projectId, viewer.userId),
+  );
   const [forecasts, runs, reqIds, issues] = await Promise.all([
-    readFeedbackForecasts(viewer, projectId, fViewer, now),
-    liveRunsByIssue(projectId, viewer.userId),
-    requirementIdsOf(projectId, routedRequirements(allFeedback)),
-    ownedIssues(projectId, viewer.userId),
+    withQueryLeg('home-forecasts', () => readFeedbackForecasts(viewer, projectId, fViewer, now)),
+    withQueryLeg('home-runs', () => liveRunsByIssue(projectId, viewer.userId)),
+    withQueryLeg('home-requirement-ids', () =>
+      requirementIdsOf(projectId, routedRequirements(allFeedback)),
+    ),
+    withQueryLeg('home-owned', () => ownedIssues(projectId, viewer.userId)),
   ]);
-  const reqIssues = await issuesOfRequirements(projectId, [...reqIds.values()]);
+  const reqIssues = await withQueryLeg('home-requirement-issues', () =>
+    issuesOfRequirements(projectId, [...reqIds.values()]),
+  );
   const reads: FeedbackReads = {
     asOf: forecasts.asOf,
     forecasts: new Map(forecasts.items.map((f) => [f.key, f])),

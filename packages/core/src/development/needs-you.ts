@@ -15,6 +15,7 @@ import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { StandingTimes } from '@forge/contracts/steward';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
+import { withQueryLeg } from '../db/query-timing.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
@@ -86,7 +87,12 @@ export const newestFirst = (a: AttentionRow, b: AttentionRow) =>
  * someone (`readNeedsYouAttention`), and lists the same rows either way.
  */
 export function readAttention(projectId: string, viewer: NeedsYouViewer, now: Date = new Date()) {
-  return attentionOf(projectId, viewer, now, listReleases(projectId, viewer));
+  return attentionOf(
+    projectId,
+    viewer,
+    now,
+    withQueryLeg('ny-releases', () => listReleases(projectId, viewer)),
+  );
 }
 
 /**
@@ -99,7 +105,12 @@ export function readNeedsYouAttention(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ) {
-  return attentionOf(projectId, viewer, now, listReleasesInPlay(projectId, viewer));
+  return attentionOf(
+    projectId,
+    viewer,
+    now,
+    withQueryLeg('ny-releases', () => listReleasesInPlay(projectId, viewer)),
+  );
 }
 
 /** One attention read, as `readNeedsYouAttention` makes it; the project status's is wider and fits it. */
@@ -123,16 +134,17 @@ async function attentionOf<R extends Pick<ReleaseListResponse, 'releases'>>(
     repins,
     designSettler,
   ] = await Promise.all([
-    listRequirementsAs(viewer, projectId),
-    listFeedbackAs(viewer, projectId),
+    // each area a named part of the request's `Server-Timing`, with the statements it sends
+    withQueryLeg('ny-requirements', () => listRequirementsAs(viewer, projectId)),
+    withQueryLeg('ny-feedback', () => listFeedbackAs(viewer, projectId)),
     releasesRead,
-    listIssueStanding(projectId, 'open', now),
-    readContractStanding(projectId, viewer.userId, now),
-    automationOf(projectId, viewer.userId, now),
-    designHealthOf(viewer, projectId),
-    questionRowsOf(projectId, viewer),
-    designRepinsOf(viewer, projectId),
-    designSettlerOf(projectId),
+    withQueryLeg('ny-issues', () => listIssueStanding(projectId, 'open', now)),
+    withQueryLeg('ny-contracts', () => readContractStanding(projectId, viewer.userId, now)),
+    withQueryLeg('ny-automation', () => automationOf(projectId, viewer.userId, now)),
+    withQueryLeg('ny-design-health', () => designHealthOf(viewer, projectId)),
+    withQueryLeg('ny-questions', () => questionRowsOf(projectId, viewer)),
+    withQueryLeg('ny-repins', () => designRepinsOf(viewer, projectId)),
+    withQueryLeg('ny-design-settler', () => designSettlerOf(projectId)),
   ]);
   if (!feedback.ok) {
     throw new Error(

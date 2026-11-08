@@ -13,6 +13,7 @@ import {
   needsYouDecisionsSchema,
   questionDecisionId,
 } from '@forge/contracts/needs-you-decisions';
+import { withQueryLeg } from '../db/query-timing.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { type NeedsYouViewer, readNeedsYouAttention } from './needs-you.js';
 import { agentTakesItem, agentTakesOf } from './needs-you-agent-takes.js';
@@ -46,8 +47,8 @@ export async function needsYouListOf(
   now: Date = new Date(),
 ) {
   const [{ owed, left, listed, owedRows }, folded] = await Promise.all([
-    decisionsOf(projectId, attention),
-    foldedDecisions(projectId, viewer, access, attention),
+    withQueryLeg('ny-decisions', () => decisionsOf(projectId, attention)),
+    withQueryLeg('ny-folded', () => foldedDecisions(projectId, viewer, access, attention)),
   ]);
   if (folded.unreadable.length > 0) left.set('unreadable', folded.unreadable.map(unreadableItem));
   const all = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions])
@@ -55,8 +56,10 @@ export async function needsYouListOf(
     .sort(byDecisionOrder);
   // a release decision reads what its release carries that cannot be undone (ISS-1058)
   const carried = new Map(attention.releases.releases.map((r) => [r.version, r.irreversible]));
-  const agentTakes = await agentTakesOf(projectId, (d) =>
-    d.opens?.kind === 'release' ? { irreversible: carried.get(d.opens.key) ?? [] } : null,
+  const agentTakes = await withQueryLeg('ny-agent-takes', () =>
+    agentTakesOf(projectId, (d) =>
+      d.opens?.kind === 'release' ? { irreversible: carried.get(d.opens.key) ?? [] } : null,
+    ),
   );
   const taken = all.filter(agentTakes);
   if (taken.length > 0) left.set('agent_takes', taken.map(agentTakesItem));

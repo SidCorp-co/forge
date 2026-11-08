@@ -15,6 +15,20 @@ export interface QueryTiming {
   sending: number;
   /** What waits for the request's next quiet point ({@link whenQuiet}). */
   quiet: QuietWait[];
+  /** The request's named parts ({@link withQueryLeg}), in the order first entered. */
+  legs: Map<string, QueryLeg>;
+}
+
+/**
+ * One named part of a request (a needs-you area, a part of home): the statements sent inside it
+ * and no inner part, and the wall time from its first start to its last end, however many projects
+ * ran it side by side.
+ */
+export interface QueryLeg {
+  of: QueryTiming;
+  queries: number;
+  startedAt: number;
+  endedAt: number;
 }
 
 /**
@@ -27,6 +41,7 @@ interface QuietWait {
 }
 
 const timings = new AsyncLocalStorage<QueryTiming>();
+const legs = new AsyncLocalStorage<QueryLeg>();
 
 export const newQueryTiming = (): QueryTiming => ({
   queries: 0,
@@ -35,6 +50,7 @@ export const newQueryTiming = (): QueryTiming => ({
   openedAt: 0,
   sending: 0,
   quiet: [],
+  legs: new Map(),
 });
 
 /** The timing of the request this code runs inside, if any. */
@@ -52,6 +68,30 @@ export function withQueryTiming<T>(timing: QueryTiming, fn: () => T): T {
  */
 export function withoutQueryTiming<T>(fn: () => T): T {
   return timings.exit(fn);
+}
+
+/**
+ * Runs `fn` as the request's part `name`: its statements count to that part as well as to the
+ * request, so the request's `Server-Timing` names which part sends them
+ * (`middleware/server-timing.ts:serverTimingValue`). A part run again (once a project) adds to its
+ * one count. A statement counts to the innermost part only, and a batch read at a quiet point to the
+ * part that opened it. Outside a timed request it only runs `fn`.
+ */
+export async function withQueryLeg<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  const t = timings.getStore();
+  if (!t) return fn();
+  const now = performance.now();
+  let leg = t.legs.get(name);
+  if (!leg) {
+    leg = { of: t, queries: 0, startedAt: now, endedAt: now };
+    t.legs.set(name, leg);
+  }
+  const own = leg;
+  try {
+    return await legs.run(own, fn);
+  } finally {
+    own.endedAt = Math.max(own.endedAt, performance.now());
+  }
 }
 
 function open(t: QueryTiming): () => void {
@@ -79,7 +119,10 @@ export function whenQuiet(fn: () => void, held?: () => number): void {
     setImmediate(fn);
     return;
   }
-  t.quiet.push({ run: fn, held });
+  // what runs at the point counts to the part that waited for it, never to whichever answer set it going
+  const leg = legs.getStore();
+  const run = leg ? () => legs.run(leg, fn) : () => legs.exit(fn);
+  t.quiet.push({ run, held });
   if (t.quiet.length === 1) setImmediate(() => settle(t));
 }
 
@@ -118,6 +161,8 @@ function timedUnsafe(unsafe: Unsafe): Unsafe {
     const t = timings.getStore();
     if (!t) return query;
     t.queries += 1;
+    const leg = legs.getStore();
+    if (leg?.of === t) leg.queries += 1;
     const handle = query.handle;
     query.handle = function (this: LazyQuery) {
       if (!this.executed) {

@@ -1,3 +1,5 @@
+// @direct-test-of packages/core/src/db/query-timing.ts
+// @direct-test-of packages/core/src/middleware/server-timing.ts
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
@@ -63,6 +65,26 @@ describe('Server-Timing', () => {
     );
     expect(res.status).toBe(404);
     expect(timingOf(res.headers).queries).toBeGreaterThan(0);
+  });
+
+  it('names each Needs you area with its own statements, each counted to one area only', async () => {
+    const res = await api(token, 'GET', `/api/projects/${projectId}/needs-you`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const raw = res.headers.get('server-timing') ?? '';
+    const parts = new Map(
+      [...raw.matchAll(/(?:^|, )([a-z-]+)(?:;dur=[0-9.]+)?;desc="(-?\d+) quer/g)].map((m) => [
+        m[1] as string,
+        Number(m[2]),
+      ]),
+    );
+    const areas = ['ny-requirements', 'ny-feedback', 'ny-releases', 'ny-issues', 'ny-decisions'];
+    for (const area of areas)
+      expect(raw).toMatch(new RegExp(`${area};dur=[0-9.]+;desc="\\d+ quer`));
+    // the areas share the request's count: never more than it, the rest sent outside every area
+    const named = [...parts].filter(([n]) => n.startsWith('ny-')).reduce((n, [, q]) => n + q, 0);
+    const outside = parts.get('unnamed');
+    expect(outside, raw).toBeGreaterThanOrEqual(0);
+    expect(named + (outside ?? 0), raw).toBe(parts.get('db'));
   });
 
   it('lets an allowed page read it cross-origin, and no other', async () => {

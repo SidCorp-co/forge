@@ -14,6 +14,7 @@ import {
 } from '@forge/contracts/owner-home';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { withQueryLeg } from '../db/query-timing.js';
 import { readAcross } from '../db/read-memo.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -75,7 +76,9 @@ meHomeRoutes.get(
     const { orgId } = c.req.valid('query');
     const viewer = viewerOf(c);
     const now = new Date();
-    const projects = await readableProjects(viewer.userId, orgId ?? null);
+    const projects = await withQueryLeg('home-projects', () =>
+      readableProjects(viewer.userId, orgId ?? null),
+    );
     // every project read side by side, each fact read once for all of them (`db/read-memo.ts:readAcross`)
     const parts = await readAcross(
       projects,
@@ -83,13 +86,14 @@ meHomeRoutes.get(
       async (p) => {
         const [part, releases] = await Promise.all([
           readHomeProject(viewer, p.id, now),
-          liveReleasesOf(p.id),
+          withQueryLeg('home-live', () => liveReleasesOf(p.id)),
         ]);
         const mine = new Set([
           ...part.issues.map((i) => i.key),
           ...part.feedback.flatMap(({ s }) => carriersOf(s, part.reads)),
         ]);
-        return { ...(await homeItemsOf(p, part, now)), live: liveOf(p, releases, mine) };
+        const items = await withQueryLeg('home-items', () => homeItemsOf(p, part, now));
+        return { ...items, live: liveOf(p, releases, mine) };
       },
     );
     const moving = parts.flatMap((p) => p.moving).sort(byLastMove);
