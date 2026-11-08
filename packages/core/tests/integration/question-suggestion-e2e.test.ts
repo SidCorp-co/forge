@@ -122,11 +122,13 @@ const suggestionOf = async (id: string) =>
     )
   )[0]?.suggestion ?? null;
 
+// each question asks in words of its own: one asked word for word while another stands open on the
+// same subject is refused QUESTION_ALREADY_OPEN (ISS-918), which several here would be
 const bare = (id: string, over: Record<string, unknown> = {}) =>
   ask({
     id,
     projectId,
-    prompt: 'Which identifier should the referral import match on?',
+    prompt: `Which identifier should the referral import match on? (${id.slice(0, 8)})`,
     blockerKind: 'human',
     answer: { shape: 'free_text', needed: 'the identifier' },
     ...over,
@@ -270,10 +272,11 @@ describe('a question with no recommended answer (REQ-41 BC-2)', () => {
       code: 'QUESTION_SUGGESTION_MODEL_FAILED',
       attempts: 1,
     });
+    // nothing drafted yet: Forge's rule recommends the run decide (ISS-686 c1), the miss recorded
     const card = await cardOf(id);
-    expect(card?.recommended).toBeNull();
-    expect(card?.noRecommendation).toContain('QUESTION_SUGGESTION_MODEL_FAILED');
-    expect(card?.answers.map((a) => a.id)).toEqual(['write']);
+    expect(card?.recommended).toMatchObject({ answerId: 'decide', by: 'rule' });
+    expect(card?.noRecommendation).toBeNull();
+    expect(card?.answers.map((a) => a.id)).toEqual(['decide', 'write']);
     const [open] = await rows<{ status: string }>(
       sql`SELECT status FROM agent_questions WHERE id = ${id}`,
     );
@@ -307,8 +310,8 @@ describe('a question the assistant cannot draft an answer for (REQ-41 BC-2)', ()
     await settleOutbox();
     expect(await suggestionOf(id)).toMatchObject({ outcome: 'failed', code });
     const card = await cardOf(id);
-    expect(card?.recommended).toBeNull();
-    expect(card?.noRecommendation).toContain(code);
+    expect(card?.recommended).toMatchObject({ answerId: 'decide', by: 'rule' });
+    expect(card?.noRecommendation).toBeNull();
     // a final miss is not drafted again by the sweep
     const calls = seen.length;
     expect(await sweep()).toEqual({ suggested: 0, failed: 0 });
@@ -331,7 +334,7 @@ describe('a question the assistant cannot draft an answer for (REQ-41 BC-2)', ()
       code: 'QUESTION_SUGGESTION_NO_RECORD',
     });
     const card = await cardOf(id);
-    expect(card?.noRecommendation).toContain('QUESTION_SUGGESTION_NO_RECORD');
+    expect(card?.recommended).toMatchObject({ answerId: 'decide', by: 'rule' });
     await api(token, 'POST', card?.answers[0]?.path ?? '', {
       ...card?.answers[0]?.body,
       text: 'by hand',

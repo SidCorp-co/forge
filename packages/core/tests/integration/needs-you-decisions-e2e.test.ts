@@ -282,10 +282,21 @@ describe('each decision shows its question, a recommended answer and a button (R
     expect(d?.answers[1]).toMatchObject({ id: 'write', needsReason: true });
   });
 
-  it('a question asked with no recommendation says why there is none', async () => {
+  // ISS-686 c1 (judge K101, ISS-1148): a free-text round nobody recommended an answer for showed
+  // "No recommendation" and one "Write the answer", so the person formed the answer alone
+  it('a question asked with no recommendation carries Forge’s: the run decides, one click', async () => {
     const d = byKey((await read()).decisions, ids.freeBare);
-    expect(d?.recommended).toBeNull();
-    expect(d?.noRecommendation).toContain('The run that asked gave no recommended answer');
+    expect(d).toMatchObject({
+      recommended: { answerId: 'decide', by: 'rule' },
+      noRecommendation: null,
+    });
+    expect(d?.recommended?.why).toContain('Nobody recommended an answer');
+    expect(d?.answers.map((a) => [a.id, a.recommended, a.needsReason])).toEqual([
+      ['decide', true, false],
+      ['write', false, true],
+    ]);
+    expect(d?.answers[0]?.body).toMatchObject({ round: 1 });
+    expect((d?.answers[0]?.body as { text?: string } | null)?.text).toContain('Decide it yourself');
   });
 
   // an accept is a sign-off and records why (REQ-4 BC-16): its button carries the recommendation's
