@@ -4,7 +4,8 @@
  * assistant's real window routing; only the model is scripted, and a gate holds it to make a turn
  * outlast the call. Each refusal is asked by the call a client would make.
  *
- * @direct-test-of packages/core/src/assistant/bot-door.ts
+ * @direct-test-of packages/core/src/product-door/bot-tool.ts
+ * @direct-test-of packages/core/src/assistant/bot-actions.ts
  * @direct-test-of packages/core/src/assistant/bot-thread.ts
  * @direct-test-of packages/core/src/assistant/conversation-send.ts
  * @direct-test-of packages/core/src/conversations/keyed-messages.ts

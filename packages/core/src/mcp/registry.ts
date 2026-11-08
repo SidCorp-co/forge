@@ -4,11 +4,11 @@
 // REST and has no tool here; this server is for the product layer.
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
-import { forgeBotTool } from '../assistant/bot-door.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import { forgeFeedbackTool } from '../forge-door/index.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import {
+  forgeBotTool,
   forgeDesignTool,
   forgeIssuesTool,
   forgeQuestionsTool,
