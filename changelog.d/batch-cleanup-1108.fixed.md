@@ -32,3 +32,4 @@
 - The Coolify env door reads an empty variable as empty, refuses a token without write ability as COOLIFY_TOKEN_CANNOT_WRITE naming its connection, and names the deploy binding ids; a connection PATCH refuses a key it does not take (ISS-938).
 - A release run removes each worktree it made once it finishes or aborts, or names one it could not (ISS-1076).
 - Who lowers a gate profile Forge raised is the `gates.lower` permission, never the writer's user kind (ISS-823).
+- A room or job turn that put a subagent or a shell in the background is no longer reported done at its first result: the runner holds it until every backgrounded task has reported and the turn that answered it ended (ISS-764 b).

@@ -27,6 +27,30 @@ const QUEUED: &str = r#"{"type":"system","subtype":"init","session_id":"s-1"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text"}]},"session_id":"s-1"}
 {"type":"result","subtype":"success","is_error":false,"num_turns":1,"session_id":"s-1"}"#;
 
+/// The turn launched a background subagent and ended (ISS-764 b, agenfold 2026-11-01 01:56Z):
+/// Claude Code 2.1.319 printed the turn's `result` while the subagent still ran, then, when the
+/// subagent reported, answered its notification as a turn of its own with a `result` of its own.
+/// The caller's turn ends at that second `result`, never while the process still makes calls.
+const BACKGROUNDED: &str = r#"{"type":"system","subtype":"init","session_id":"s-1"}
+{"type":"user","message":{"role":"user","content":[{"type":"text"}]},"isReplay":true,"session_id":"s-1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_bg","name":"Agent","input":{"run_in_background":true}}]},"session_id":"s-1"}
+{"type":"system","subtype":"task_started","task_id":"a5bf","tool_use_id":"toolu_bg","session_id":"s-1"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_bg"}]},"session_id":"s-1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text"}]},"session_id":"s-1"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":2,"session_id":"s-1"}
+{"type":"system","subtype":"task_notification","task_id":"a5bf","tool_use_id":"toolu_bg","status":"completed","session_id":"s-1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text"}]},"session_id":"s-1"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":1,"session_id":"s-1"}"#;
+
+/// A subagent the turn waited on (`run_in_background` absent, `is_backgrounded` false) is over by
+/// the turn's `result`, notification or not: the turn ends there.
+const AWAITED: &str = r#"{"type":"system","subtype":"init","session_id":"s-1"}
+{"type":"user","message":{"role":"user","content":[{"type":"text"}]},"isReplay":true,"session_id":"s-1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_fg","name":"Agent","input":{"prompt":"x"}}]},"session_id":"s-1"}
+{"type":"system","subtype":"task_started","task_id":"f1","tool_use_id":"toolu_fg","is_backgrounded":false,"session_id":"s-1"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_fg"}]},"session_id":"s-1"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":2,"session_id":"s-1"}"#;
+
 fn session(unreplayed: u32) -> Session {
     let (tx, _rx) = mpsc::channel(1);
     Session {
@@ -141,4 +165,39 @@ fn a_tool_result_is_no_replayed_message() {
     assert!(!stream::is_replayed_user_message(&tool_result));
     let replay: Value = serde_json::from_str(JOINED.lines().nth(4).unwrap()).unwrap();
     assert!(stream::is_replayed_user_message(&replay));
+}
+
+#[tokio::test]
+async fn a_turn_that_backgrounded_a_subagent_ends_when_the_subagent_reported_not_at_its_first_result(
+) {
+    // one end, and it is the second `result`'s: the first held, the notified turn's closed it
+    let ends = turn_ends(BACKGROUNDED, 1).await;
+    assert_eq!(
+        ends.len(),
+        1,
+        "[TURN_DONE_WHILE_RUNNING] the turn was declared done while its background subagent still ran: {ends:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_task_claude_code_marks_backgrounded_holds_the_turn_without_the_tool_flag() {
+    let bash = BACKGROUNDED
+        .replace(
+            r#""name":"Agent","input":{"run_in_background":true}"#,
+            r#""name":"Bash","input":{}"#,
+        )
+        .replace(
+            r#""tool_use_id":"toolu_bg","session_id""#,
+            r#""tool_use_id":"toolu_bg","is_backgrounded":true,"session_id""#,
+        );
+    assert_eq!(turn_ends(&bash, 1).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_subagent_the_turn_waited_on_does_not_hold_its_result() {
+    assert_eq!(
+        turn_ends(AWAITED, 1).await.len(),
+        1,
+        "the awaited subagent held the turn"
+    );
 }

@@ -21,10 +21,12 @@ pub(crate) fn spawn_reader(
         let mut got_sid = false;
         let mut got_limit = false;
         let mut got_init = false;
+        let mut background = BackgroundTasks::default();
         while let Ok(Some(line)) = lines.next_line().await {
             let Ok(json) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
+            background.read(&json);
             if !got_sid {
                 if let Some(sid) = json.get("session_id").and_then(Value::as_str) {
                     if let Some(s) = sessions.lock().await.get_mut(&job_id) {
@@ -83,11 +85,19 @@ pub(crate) fn spawn_reader(
                     .await
                     .get(&job_id)
                     .map_or(0, |s| s.unreplayed);
-                if queued == 0 {
+                let running = background.running();
+                if queued == 0 && running == 0 {
                     result_notify.notify_one();
-                } else {
+                } else if queued > 0 {
                     tracing::info!(
                         "[claude] job={job_id} a result with {queued} message(s) still queued — the turn goes on"
+                    );
+                } else {
+                    // ISS-764 b: the process is still making calls for this turn. Claude Code
+                    // answers each task's notification as a turn of its own, and the caller's
+                    // turn ends with the `result` after which no backgrounded task still runs.
+                    tracing::info!(
+                        "[claude] job={job_id} a result with {running} background task(s) still running — the turn goes on"
                     );
                 }
             }
@@ -95,6 +105,63 @@ pub(crate) fn spawn_reader(
             let _ = tx.send(RunnerEvent::Stdout(json)).await;
         }
     })
+}
+
+/// The tasks a session put in the background and that have not reported: a `run_in_background`
+/// tool call (a subagent or a shell), or a `task_started` Claude Code marked `is_backgrounded`,
+/// until its `task_notification`. A task the turn waited on is over by the turn's `result`, so it
+/// holds nothing.
+#[derive(Default)]
+pub(crate) struct BackgroundTasks {
+    /// Tool calls launched with `run_in_background`, by tool-use id, until their task starts.
+    launched: std::collections::HashSet<String>,
+    /// Backgrounded tasks still running, by task id.
+    running: std::collections::HashSet<String>,
+}
+
+impl BackgroundTasks {
+    pub(crate) fn read(&mut self, json: &Value) {
+        let str_of = |k: &str| json.get(k).and_then(Value::as_str);
+        match (str_of("type"), str_of("subtype")) {
+            (Some("assistant"), _) => {
+                let calls = json
+                    .pointer("/message/content")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten();
+                for call in calls {
+                    let backgrounded = call.get("type").and_then(Value::as_str) == Some("tool_use")
+                        && call
+                            .pointer("/input/run_in_background")
+                            .and_then(Value::as_bool)
+                            == Some(true);
+                    if let (true, Some(id)) = (backgrounded, call.get("id").and_then(Value::as_str))
+                    {
+                        self.launched.insert(id.to_string());
+                    }
+                }
+            }
+            (Some("system"), Some("task_started")) => {
+                let Some(task) = str_of("task_id") else {
+                    return;
+                };
+                let launched = str_of("tool_use_id").is_some_and(|t| self.launched.remove(t));
+                if launched || json.get("is_backgrounded").and_then(Value::as_bool) == Some(true) {
+                    self.running.insert(task.to_string());
+                }
+            }
+            (Some("system"), Some("task_notification")) => {
+                if let Some(task) = str_of("task_id") {
+                    self.running.remove(task);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn running(&self) -> usize {
+        self.running.len()
+    }
 }
 
 /// A user message Claude Code echoed back from stdin (`--replay-user-messages`): one written
