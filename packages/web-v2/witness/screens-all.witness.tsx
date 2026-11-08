@@ -26,6 +26,9 @@ import { SCREEN_PAGES } from "./screens.pages";
 
 const THEMES = (import.meta.env.VITE_WITNESS_THEMES ?? "light").split(",") as ("light" | "dark")[];
 const WHOLE = import.meta.env.VITE_WITNESS_WHOLE === "1";
+// VITE_WITNESS_WIDTHS=1440,390 also draws each page on a phone; a phone's count prints as `WORDS@390`,
+// which the word budget (witness/screens.budgets.ts:countsOf) does not read: its budget is the 1440 one.
+const WIDTHS = (import.meta.env.VITE_WITNESS_WIDTHS ?? "1440").split(",").map(Number);
 
 const replace = window.history.replaceState.bind(window.history);
 window.history.replaceState = (data, unused, url) => {
@@ -93,7 +96,7 @@ const theme = (t: "light" | "dark") => {
 };
 
 window.__witness = {
-  cases: [{ name: "wide-1440", width: 1440 }],
+  cases: WIDTHS.map((width) => ({ name: width >= 1024 ? `wide-${width}` : `phone-${width}`, width })),
   ready: () => Boolean(q("[data-witness=page]")),
   stages: SHOWN.flatMap((p, i) =>
     THEMES.map((t) => ({
@@ -112,7 +115,8 @@ window.__witness = {
         if (threw) return [`the ${p.name} page threw: ${threw.innerText.slice(0, 300)}`];
         if (window.innerHeight !== 900) return [`the window is ${window.innerHeight} px tall, not 900`];
         const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement, { whole: WHOLE });
-        console.log(`${WHOLE ? "WHOLE" : "WORDS"} ${p.name} ${t} ${count} :: ${words.slice(0, 400).join(" ")}`);
+        const narrow = window.innerWidth >= 1024 ? "" : `@${window.innerWidth}`;
+        console.log(`${WHOLE ? "WHOLE" : "WORDS"}${narrow} ${p.name} ${t} ${count} :: ${words.slice(0, 400).join(" ")}`);
         return count < 8 ? [`the ${p.name} page drew ${count} words: it did not draw its screen`] : [];
       },
     })),
