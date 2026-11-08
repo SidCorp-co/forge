@@ -25,6 +25,7 @@ import { db } from '../../src/db/client.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
 import { ago, feedback, issue, type World, world } from '../helpers/forecast-world.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 /** The Forge home project, and the reporter's own project with its master box. */
 let home: World;
@@ -86,6 +87,11 @@ beforeAll(async () => {
     INSERT INTO instance_settings (id, forge_home_project_id) VALUES (1, ${home.projectId})
     ON CONFLICT (id) DO UPDATE SET forge_home_project_id = ${home.projectId}
   `);
+  // owner 2026-11-08 (D5): outside strict a shipped item is verified by its ship and owes no confirm;
+  // the confirm these tests read is owed only where a project keeps it, under strict
+  // the item sits in the home project, whose policy decides; the master's own project keeps the
+  // master's grant, which it holds outside strict alone (REQ-79 r6 BC-11)
+  await declareControls(home.projectId, home.userId, { gates: { profile: 'strict' } });
 }, 120_000);
 
 /** FB-473: an item about Forge the channel agent filed from its own project, routed to an issue that closed. */
@@ -226,6 +232,8 @@ describe('the master of the reporting agent’s project settles its shipped Forg
 
 describe('the project-door twin admits the same master', () => {
   it('lists an item of the project’s own, and its master verifies it with a note', async () => {
+    // outside strict its ship verifies it (D5); the confirm is owed where the project keeps it
+    await declareControls(own.projectId, own.userId, { gates: { profile: 'strict' } });
     const key = await shippedOwnItem();
     const line = await owedLine();
     expect(owedKeys(line), line).toContain(key);
