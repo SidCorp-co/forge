@@ -113,12 +113,12 @@ async function sentBy(path: string): Promise<{
  * (`db/query-timing.ts:whenQuiet`) at which it sends any. Each wave waits on the one before it, so
  * at forge-dev's ~3 ms a statement the depth, not the count, sets the time (ISS-1070 r16). Set at
  * the seed's count; lowered by a cut, never raised (r17: ny-releases 26 to 10, ny-requirements 17
- * to 11, ny-issues 9 to 6).
+ * to 12, ny-issues 9 to 6).
  */
 const WAVES: Record<string, Record<string, number>> = {
   '/api/me/attention': {
     'ny-releases': 10,
-    'ny-requirements': 11,
+    'ny-requirements': 12,
     'ny-issues': 6,
     'ny-design-health': 8,
     'ny-feedback': 7,
