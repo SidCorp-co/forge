@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { types } from 'node:util';
@@ -135,6 +135,38 @@ export function reapGuardDirs(parent, running, { list = readdirSync, remove = rm
     const pid = guardDirOwner(name);
     if (pid === null || running(pid)) continue;
     remove(join(parent, name), { recursive: true, force: true });
+    reaped.push(name);
+  }
+  return reaped;
+}
+
+/** What the guard named each worker's directory before it kept them under `GUARD_DIRS`: a
+ * `mkdtemp` suffix on this prefix, straight under the system's temporary directory. */
+const LEGACY_GUARD_DIR = /^whole-tree-guard-[A-Za-z0-9]{6}$/;
+/** A legacy directory nothing has written to for this long is no live worker's (ISS-1059). */
+export const LEGACY_GUARD_DIR_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Remove every directory the guard made before ISS-1315 under `parent` that nothing has written to
+ * for `LEGACY_GUARD_DIR_AGE_MS`: neither the directory nor any log in it. Its name carries no process,
+ * so age is what says no worker owns it; a worker on the old guard writes a log there for each test
+ * file it runs. One that cannot be read is left alone. Answers the names it removed. */
+export function reapLegacyGuardDirs(
+  parent,
+  { now = Date.now(), list = readdirSync, stat = statSync, remove = rmSync } = {},
+) {
+  const reaped = [];
+  for (const name of list(parent)) {
+    if (!LEGACY_GUARD_DIR.test(name)) continue;
+    const dir = join(parent, name);
+    const old = (path) => now - stat(path).mtimeMs >= LEGACY_GUARD_DIR_AGE_MS;
+    try {
+      // the directory first: a fresh one is skipped without listing it, which keeps a worker's start
+      // cheap while thousands of fresh ones stand
+      if (!old(dir) || !list(dir).every((f) => old(join(dir, f)))) continue;
+    } catch {
+      continue;
+    }
+    remove(dir, { recursive: true, force: true });
     reaped.push(name);
   }
   return reaped;

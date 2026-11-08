@@ -5,11 +5,25 @@
 // @direct-test-of scripts/lib/whole-tree-child.mjs
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { GUARD_DIRS, guardDirOwner, reapGuardDirs } from './whole-tree-gates.mjs';
+import {
+  GUARD_DIRS,
+  guardDirOwner,
+  LEGACY_GUARD_DIR_AGE_MS,
+  reapGuardDirs,
+  reapLegacyGuardDirs,
+} from './whole-tree-gates.mjs';
 
 describe('guardDirOwner', () => {
   it('reads the process off a directory the guard made', () => {
@@ -43,6 +57,40 @@ describe('reapGuardDirs', () => {
 
   it('leaves a directory whose process may still be running, and one that names no process', () => {
     expect(run([10, 20, 30]).reaped).toEqual([]);
+  });
+});
+
+describe('reapLegacyGuardDirs', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'whole-tree-legacy-'));
+  afterAll(() => rmSync(parent, { recursive: true, force: true }));
+  const now = Date.now();
+  /** A directory named `name`, last written `age` ms ago, holding a log written `logAge` ms ago. */
+  const seed = (name, age, logAge) => {
+    const dir = join(parent, name);
+    mkdirSync(dir);
+    if (logAge !== undefined) {
+      writeFileSync(join(dir, 'children-1.jsonl'), '');
+      utimesSync(join(dir, 'children-1.jsonl'), (now - logAge) / 1000, (now - logAge) / 1000);
+    }
+    utimesSync(dir, (now - age) / 1000, (now - age) / 1000);
+  };
+  const DAY = LEGACY_GUARD_DIR_AGE_MS;
+
+  it('removes an old-style directory nothing has written to for a day, and leaves every other', () => {
+    seed('whole-tree-guard-Old2dA', 2 * DAY, 2 * DAY);
+    seed('whole-tree-guard-NewHrA', 60 * 60 * 1000);
+    seed('whole-tree-guard-LogNow', 2 * DAY, 60 * 1000);
+    seed('whole-tree-guardian-2d', 2 * DAY);
+    seed('4321-aB3dEf', 2 * DAY);
+    expect(reapLegacyGuardDirs(parent, { now })).toEqual(['whole-tree-guard-Old2dA']);
+    expect(existsSync(join(parent, 'whole-tree-guard-Old2dA'))).toBe(false);
+    for (const kept of [
+      'whole-tree-guard-NewHrA',
+      'whole-tree-guard-LogNow',
+      'whole-tree-guardian-2d',
+      '4321-aB3dEf',
+    ])
+      expect(existsSync(join(parent, kept)), `${kept} was removed`).toBe(true);
   });
 });
 
@@ -99,5 +147,18 @@ describe('the directories a run of the guard makes', () => {
     const r = vitest(['after'], join(root, 'dirs-after.txt'));
     expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
     expect(existsSync(left), `${left} was not reaped by the run after it`).toBe(false);
+  }, 60_000);
+
+  it('reaps an old-style directory a guard before ISS-1315 left two days ago, on the next run', () => {
+    const old = join(tmpdir(), 'whole-tree-guard-I1059x');
+    mkdirSync(old, { recursive: true });
+    const twoDaysAgo = (Date.now() - 2 * LEGACY_GUARD_DIR_AGE_MS) / 1000;
+    utimesSync(old, twoDaysAgo, twoDaysAgo);
+    file('after');
+    const r = vitest(['after'], join(root, 'dirs-legacy.txt'));
+    const left = existsSync(old);
+    rmSync(old, { recursive: true, force: true });
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    expect(left, `${old}, two days old, survived the run`).toBe(false);
   }, 60_000);
 });

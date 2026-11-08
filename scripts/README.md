@@ -146,6 +146,9 @@ The guard keeps each worker's child logs in a directory of its own,
 could leaves a directory named for a process that is gone, and the next guard to start reaps it by
 that name (`whole-tree-gates.mjs:reapGuardDirs`). A directory per worker that nothing removed piled
 up to 598,704 on one box (ISS-1315).
+The guard before that left each worker's directory as `<tmpdir>/whole-tree-guard-<random>`, a name
+that carries no process; a guard starting removes one that nothing has written to for a day
+(`whole-tree-gates.mjs:reapLegacyGuardDirs`). This box held 16,346 of them on 2026-11-08 (ISS-1059).
 
 ### Why size is its own row
 

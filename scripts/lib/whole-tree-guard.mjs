@@ -19,6 +19,7 @@ import {
   logLines,
   processRunning,
   reapGuardDirs,
+  reapLegacyGuardDirs,
 } from './whole-tree-gates.mjs';
 import { installWatch, ROOT } from './whole-tree-watch.mjs';
 
@@ -48,6 +49,8 @@ if (!state.dir) {
   const parent = join(tmpdir(), GUARD_DIRS);
   mkdirSync(parent, { recursive: true });
   reapGuardDirs(parent, running);
+  // and what the guard left straight under the temporary directory before it kept them there
+  reapLegacyGuardDirs(tmpdir());
   const made = mkdtempSync(join(parent, `${process.pid}-`));
   state.dir = made;
   const remove = () => rmSync(made, { recursive: true, force: true });
