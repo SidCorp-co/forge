@@ -24,6 +24,8 @@ describe('paneAttachOf: the attach command comes from what the box declared, nev
 
   it('quotes a socket path holding a quote, so the command stays one argument', () => {
     const caps = { chatPanes: { socket: "/r/it's/tmux.sock", sessions: { s1: 'forge-chat-p' } } };
-    expect(paneAttachOf(caps, 's1')).toBe(`tmux -S '/r/it'\\''s/tmux.sock' attach -t 'forge-chat-p'`);
+    expect(paneAttachOf(caps, 's1')).toBe(
+      `tmux -S '/r/it'\\''s/tmux.sock' attach -t 'forge-chat-p'`,
+    );
   });
 });

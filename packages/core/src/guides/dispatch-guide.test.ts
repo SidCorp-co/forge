@@ -140,8 +140,6 @@ describe('the dispatch guide teaches the master to write a pending decision its 
 // ISS-946: a channel agent's session runs in a pane on its box, which its owner watches as a master is watched
 describe('the dispatch guide gives the command that attaches to a channel agent', () => {
   it('names the pane beside the master on the runner socket', () => {
-    expect(DISPATCH_GUIDE.body).toContain(
-      '`tmux -S <runner socket> attach -t forge-chat-<slug>`',
-    );
+    expect(DISPATCH_GUIDE.body).toContain('`tmux -S <runner socket> attach -t forge-chat-<slug>`');
   });
 });
