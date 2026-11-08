@@ -12,6 +12,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import {
   draftMissingReleaseNotes,
+  issueCoresOf,
   issueDisplayIds,
   landingShortfall,
   releaseRecordGaps,
@@ -89,13 +90,14 @@ async function resolveRoster(
   // Sized like the roster; an empty named list falls through to read the gate.
   if (issueIds && issueIds.length > 0) {
     if (issueIds.length > RELEASE_ROSTER_LIMIT) out.push(oversize(issueIds.length));
+    // each issue's project from the request's one read of its issues (`issues/display-ids.ts`,
+    // ISS-1070 r12): every project's draft weighed in a read asks it in one statement
     const named = await evaluate(
       'roster',
-      async () =>
-        await db
-          .select({ id: issues.id })
-          .from(issues)
-          .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds))),
+      async () => {
+        const cores = await issueCoresOf([...new Set(issueIds.map((id) => id.toLowerCase()))]);
+        return [...cores.values()].filter((c) => c.projectId === projectId);
+      },
       out,
     );
     if (!named) return undefined;

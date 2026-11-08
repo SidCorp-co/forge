@@ -1,6 +1,7 @@
 import { ReleaseNotesSectionSchema } from '@forge/contracts/release-notes';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 
 /** A stored note whose section the cut cannot place: the section it holds, null where it holds none. */
@@ -18,11 +19,20 @@ export async function releaseRecordGaps(
   issueIds: string[],
 ): Promise<{ missing: string[]; unplaceable: UnplaceableReleaseNote[] }> {
   if (issueIds.length === 0) return { missing: [], unplaceable: [] };
-  const rows = await db
-    .select({ id: issues.id, releaseNotes: issues.releaseNotes })
-    .from(issues)
-    .where(inArray(issues.id, issueIds))
-    .limit(issueIds.length);
+  // an issue's note is its own: every project's roster a read weighs asks it in one statement
+  // (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12), in the order the roster names them
+  const held = await memoizedPerId(
+    'releaseNotesOf',
+    [...new Set(issueIds.map((id) => id.toLowerCase()))],
+    async (some) => {
+      const read = await db
+        .select({ id: issues.id, releaseNotes: issues.releaseNotes })
+        .from(issues)
+        .where(inArray(issues.id, [...some]));
+      return new Map(read.map((r) => [r.id.toLowerCase(), r]));
+    },
+  );
+  const rows = [...held.values()];
   const unplaceable: UnplaceableReleaseNote[] = [];
   for (const r of rows) {
     if (!r.releaseNotes) continue;

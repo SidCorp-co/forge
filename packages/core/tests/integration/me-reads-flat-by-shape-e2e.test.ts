@@ -15,8 +15,17 @@
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
 // @direct-test-of packages/core/src/feedback/forge-reads.ts
 // @direct-test-of packages/core/src/issues/release-evidence.ts
+// @direct-test-of packages/core/src/release-batch/blockers.ts
+// @direct-test-of packages/core/src/release-batch/claim-conflicts.ts
+// @direct-test-of packages/core/src/release-batch/shipped-in.ts
+// @direct-test-of packages/core/src/release-batch/queries.ts
+// @direct-test-of packages/core/src/release-batch/channel.ts
+// @direct-test-of packages/core/src/issues/release-record-required.ts
+// @direct-test-of packages/core/src/issues/criteria-standing.ts
+// @direct-test-of packages/core/src/issues/standing-on.ts
 
 import { appendFileSync } from 'node:fs';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { currentQueryTiming, type QueryTiming } from '../../src/db/query-timing.js';
@@ -63,6 +72,8 @@ let app: Awaited<typeof import('../../src/index.js')>['app'];
 let acrossToken: string;
 let oneToken: string;
 let home: string;
+/** The wired projects, forge's first. */
+let wired: string[];
 
 /** What one GET sent, each named part's statements by shape (the unnamed ones under `unnamed`). */
 interface Sent {
@@ -139,6 +150,7 @@ beforeAll(async () => {
     ids.push(id);
   }
   home = ids[0] as string;
+  wired = ids;
   await forgeDoorReports(home, ids.slice(1), ownerId);
   // a person in the one project: what a read of one project sends, each area's floor
   const oneId = (await createTestUser({ verified: true })).id;
@@ -179,28 +191,65 @@ describe('a person in twelve projects wired as forge-dev holds them', () => {
   });
 
   it('sends each area of attention and home for twelve projects in as many statements as for one', () => {
-    const grew = [...reads].flatMap(([path, { across, one }]) =>
-      [...across.areas].flatMap(([area, by]) => {
-        const twelve = sum(by);
-        const alone = sum(one.areas.get(area));
-        // the shapes it repeats most, as the operator header names them live
+    const grew = [...reads].flatMap(([path, { across, one }]) => {
+      // a batch counts to the area that opened it, which can differ between the two reads: a shape
+      // one project sends in another area is that statement moved, not one more
+      const elsewhere = new Map<string, number>();
+      for (const by of one.areas.values())
+        for (const [fp, n] of by) elsewhere.set(fp, (elsewhere.get(fp) ?? 0) + n);
+      return [...across.areas].flatMap(([area, by]) => {
+        const own = one.areas.get(area);
+        const alone = sum(own);
+        const moved = [...by]
+          .filter(([fp]) => !own?.has(fp))
+          .reduce((n, [fp, c]) => n + Math.min(c, elsewhere.get(fp) ?? 0), 0);
+        const twelve = sum(by) - moved;
+        // the shapes it repeats most, as the operator header names them live, and those one project never sends
         const top = [...by]
-          .filter(([, n]) => n > 1)
+          .filter(([fp, n]) => n > 1 || !elsewhere.has(fp))
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
           .map(([fp, n]) => `${fp}*${n} ${(shapeTextOf(fp) ?? '').slice(0, 120)}`);
         return twelve > alone + MOST
           ? [
-              `${path} ${area} sent ${twelve} statements for ${PROJECTS} projects, ${alone} for one: ${top.join(' | ')}`,
+              `${path} ${area} sent ${twelve} statements for ${PROJECTS} projects (${moved} more moved in from other areas), ${alone} for one: ${top.join(' | ')}`,
             ]
           : [];
-      }),
-    );
+      });
+    });
     expect(grew).toEqual([]);
   });
 
   it("reads Forge's feedback reported from many projects' issues in one statement of their prefixes", async () => {
     const needsYou = await measured(`/api/projects/${home}/needs-you`, acrossToken);
     expect(overMost('needs-you', needsYou)).toEqual([]);
+  });
+
+  it("weighs each project's draft to the same blockers read alone as read beside the other projects", async () => {
+    const { collectReleaseBlockers } = await import('../../src/release-batch/blockers.js');
+    const { placeDraft } = await import('../../src/release-batch/release-read.js');
+    const { readAcross } = await import('../../src/db/read-memo.js');
+    // a release already running on each: its blocker names each project's own run
+    for (const p of wired.slice(0, 4))
+      await db.execute(sql`
+        INSERT INTO pipeline_runs (project_id, kind, status, started_at, release_version, metadata)
+        VALUES (${p}, 'system', 'running', now() - interval '2 minutes', '9.9.9',
+                '{"source":"release-batch"}'::jsonb)`);
+    const weigh = async (p: string) => {
+      const draft = await placeDraft(p);
+      if (!draft) throw new Error(`project ${p} holds no draft to weigh`);
+      return {
+        roster: draft.part.issueIds,
+        report: await collectReleaseBlockers(p, { issueIds: draft.part.issueIds, door: 'batch' }),
+      };
+    };
+    const alone: Awaited<ReturnType<typeof weigh>>[] = [];
+    for (const p of wired) alone.push(await weigh(p));
+    const beside = await readAcross(wired, (p) => p, weigh, 'draft-weighing');
+    expect(alone.every((a) => a.roster.length > 0)).toBe(true);
+    expect(
+      alone.filter((a) => a.report.blockers.some((b) => b.code === 'BATCH_IN_FLIGHT')),
+    ).toHaveLength(4);
+    expect(beside).toEqual(alone);
   });
 });

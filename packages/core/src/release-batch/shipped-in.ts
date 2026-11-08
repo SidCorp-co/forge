@@ -23,6 +23,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { activityLog, type IssueStatus, issues } from '../db/schema.js';
 import { resolveSourceHost } from '../integrations/source-host/index.js';
 import {
@@ -77,6 +78,39 @@ interface CutRelease {
   issueIds: readonly string[];
 }
 
+/** One issue as a late mark reads it: its project, its landing, and whether it waits unclaimed. */
+interface WaitingRow {
+  id: string;
+  projectId: string;
+  landedAt: Date | null;
+  waiting: boolean;
+}
+
+/**
+ * The issues of `issueIds` on `projectId` waiting for a release with no release claiming them. An
+ * issue's row is its own, so every project's asks in a read before the quiet point are one statement
+ * (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12); each was one a project's draft.
+ */
+async function waitingRowsOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<{ id: string; landedAt: Date | null }[]> {
+  const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
+  const held = await memoizedPerId('shippedInWaiting', ids, async (some) => {
+    const rows: WaitingRow[] = await db
+      .select({
+        id: issues.id,
+        projectId: issues.projectId,
+        landedAt: issues.mergedAt,
+        waiting: sql<boolean>`(${waitingForReleaseSql(sql`${issues}`)} AND ${isNull(issues.releaseBatchRunId)})`,
+      })
+      .from(issues)
+      .where(inArray(issues.id, [...some]));
+    return new Map(rows.map((r) => [r.id.toLowerCase(), r]));
+  });
+  return [...held.values()].filter((r) => r.projectId === projectId && r.waiting === true);
+}
+
 /**
  * Of `issueIds`, each waiting unclaimed for a release (`waitingForReleaseSql`) whose landing one of
  * `releases` holds by the one rule a
@@ -93,17 +127,7 @@ export async function heldBy<R extends CutRelease>(
 ): Promise<Map<string, { releases: readonly R[]; commit: MarkedCommit | null }>> {
   const out = new Map<string, { releases: readonly R[]; commit: MarkedCommit | null }>();
   if (issueIds.length === 0 || releases.length === 0) return out;
-  const rows = await db
-    .select({ id: issues.id, landedAt: issues.mergedAt })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        inArray(issues.id, [...issueIds]),
-        waitingForReleaseSql(sql`${issues}`),
-        isNull(issues.releaseBatchRunId),
-      ),
-    );
+  const rows = await waitingRowsOf(projectId, issueIds);
   const landed = rows.flatMap((r) => (r.landedAt ? [{ id: r.id, landedAt: r.landedAt }] : []));
   if (landed.length === 0) return out;
   const ids = landed.map((r) => r.id);

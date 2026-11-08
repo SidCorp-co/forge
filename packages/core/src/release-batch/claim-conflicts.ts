@@ -2,8 +2,9 @@
 // sentence `CLAIM_CONFLICT` answers from every door — the batch, the record, the race at the claim.
 
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import {
   claimIssuesForRelease,
@@ -63,22 +64,13 @@ type ClaimConflict =
     }
   | { id: string; key: string; standing: 'absent' };
 
-/**
- * The standing of each of `issueIds` that a release on `projectId` cannot claim. A claim is the
- * standing only where releasing it could leave the issue claimable — waiting for a release
- * (`waitingAtSql`: at the gate, or closed met in scope with no shipped release holding it), whether
- * or not a release still holds it at its `release` step (the old `releasing`, ISS-54). Anywhere else
- * the status bars it, whatever run claims it.
- */
-export async function readClaimConflicts(
-  projectId: string,
-  gateStatus: IssueStatus,
-  issueIds: string[],
-  executor: Tx = db,
-): Promise<ClaimConflict[]> {
-  if (issueIds.length === 0) return [];
-  const rows = await executor
+/** One issue's row as a claim reads it, the project it belongs to with it. */
+type ClaimRow = Awaited<ReturnType<typeof claimRowsRead>>[number];
+
+function claimRowsRead(ex: Tx, gateStatus: IssueStatus, ids: readonly string[]) {
+  return ex
     .select({
+      projectId: issues.projectId,
       id: issues.id,
       status: issues.status,
       claimed: issues.releaseBatchRunId,
@@ -95,7 +87,50 @@ export async function readClaimConflicts(
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
-    .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds)));
+    .where(inArray(issues.id, [...ids]));
+}
+
+/**
+ * The rows of `issueIds` on `projectId`. An issue's row is its own, so in a read every project's
+ * draft asks before the quiet point are read in one statement (`db/read-memo.ts:memoizedPerId`,
+ * ISS-1070 r12); an issue of another project reads as absent, as the project's own filter read it.
+ */
+async function claimRowsOf(
+  projectId: string,
+  gateStatus: IssueStatus,
+  issueIds: readonly string[],
+  executor: Tx,
+): Promise<ClaimRow[]> {
+  const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
+  const rows =
+    executor === db
+      ? [
+          ...(
+            await memoizedPerId(`claimRows:${gateStatus}`, ids, async (some) => {
+              const read = await claimRowsRead(db, gateStatus, some);
+              return new Map(read.map((r) => [r.id.toLowerCase(), r]));
+            })
+          ).values(),
+        ]
+      : await claimRowsRead(executor, gateStatus, ids);
+  return rows.filter((r) => r.projectId === projectId);
+}
+
+/**
+ * The standing of each of `issueIds` that a release on `projectId` cannot claim. A claim is the
+ * standing only where releasing it could leave the issue claimable — waiting for a release
+ * (`waitingAtSql`: at the gate, or closed met in scope with no shipped release holding it), whether
+ * or not a release still holds it at its `release` step (the old `releasing`, ISS-54). Anywhere else
+ * the status bars it, whatever run claims it.
+ */
+export async function readClaimConflicts(
+  projectId: string,
+  gateStatus: IssueStatus,
+  issueIds: string[],
+  executor: Tx = db,
+): Promise<ClaimConflict[]> {
+  if (issueIds.length === 0) return [];
+  const rows = await claimRowsOf(projectId, gateStatus, issueIds, executor);
   // A uuid is one id in either letter case; the rows carry it lower-case.
   const found = new Map(rows.map((r) => [r.id.toLowerCase(), r]));
   const ended = new Set<string>(TERMINAL_PIPELINE_RUN_STATUSES);

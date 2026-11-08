@@ -16,6 +16,8 @@ import type { ReleaseRangeUnchecked } from '@forge/contracts/release-page';
 import type { ReleaseEndedRunHold, ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsOf, uuidArray } from '../db/raw-sql.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import {
   activeIssuePrefix,
@@ -206,21 +208,31 @@ interface ActiveReleaseBatchInfo {
 export async function getActiveReleaseBatch(
   projectId: string,
 ): Promise<ActiveReleaseBatchInfo | null> {
-  const [run] = await db.execute<{
-    id: string;
-    metadata: unknown;
-    started_at: Date;
-    release_version: string | null;
-  }>(sql`
-    SELECT r.id, r.metadata, r.started_at, r.release_version
-    FROM pipeline_runs r
-    WHERE r.project_id = ${projectId}
-      AND r.kind = 'system'
-      AND r.status IN ('running', 'paused')
-      AND (r.metadata->>'source') = 'release-batch'
-    ORDER BY r.started_at DESC
-    LIMIT 1
-  `);
+  // each project's newest running batch, every project a read weighs in one statement
+  // (`db/read-memo.ts:rowsPerProject`, ISS-1070 r12); a write reads its own
+  const [run] = await rowsPerProject(
+    'activeReleaseBatch',
+    projectId,
+    async (ids) =>
+      rowsOf<{
+        id: string;
+        project_id: string;
+        metadata: unknown;
+        started_at: Date;
+        release_version: string | null;
+      }>(
+        await db.execute(sql`
+          SELECT DISTINCT ON (r.project_id) r.id, r.project_id::text AS project_id, r.metadata,
+                 r.started_at, r.release_version
+            FROM pipeline_runs r
+           WHERE r.project_id = ANY(${uuidArray(ids)})
+             AND r.kind = 'system'
+             AND r.status IN ('running', 'paused')
+             AND (r.metadata->>'source') = 'release-batch'
+           ORDER BY r.project_id, r.started_at DESC`),
+      ),
+    (r) => r.project_id,
+  );
   if (!run) return null;
 
   const claimedIssues = await db

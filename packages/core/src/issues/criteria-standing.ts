@@ -13,6 +13,7 @@ import { recognisableIdentity } from '../messaging/verdict-identity.js';
 import { listCriteria } from './criteria/store.js';
 import { type CriterionVerdict, latestByNumber } from './criteria-verdicts.js';
 import { criterionRoutesOf } from './design-record.js';
+import { issueCoresOf } from './display-ids.js';
 import { readJudge, readProjectDocument } from './ports.js';
 import { releasedLineOf } from './released-line-reads.js';
 import { declaresProduction, standingOn, standingsOn } from './standing-on.js';
@@ -47,10 +48,12 @@ export async function standingCriteriaOf(
 ): Promise<Map<string, IssueStandingCriteria>> {
   const out = new Map<string, IssueStandingCriteria>();
   if (issueIds.length === 0) return out;
-  const rows = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(inArray(issues.id, [...issueIds]));
+  // each issue's project from the request's one read of its issues (`display-ids.ts:issueCoresOf`,
+  // ISS-1070 r12): every project's landings a read weighs ask it in one statement
+  const rows = [...(await issueCoresOf(issueIds)).values()].map(({ id, projectId }) => ({
+    id,
+    projectId,
+  }));
   const projects = new Map<
     string,
     {

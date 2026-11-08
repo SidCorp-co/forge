@@ -5,6 +5,7 @@
 
 import { verifiedOf } from '@forge/contracts/verified-rule';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { type AuthoredVerdict, liveVerdictsOfIssues } from './criteria/live-verdicts.js';
 import { type CriterionWithVerdict, listCriteriaOf } from './criteria/store.js';
 import type { readJudge } from './ports.js';
@@ -68,7 +69,11 @@ export async function standingsOn(
 ): Promise<Map<string, Standing>> {
   const [criteria, history, reopened] = await Promise.all([
     listCriteriaOf(db, issueIds),
-    liveVerdictsOfIssues(db, issueIds),
+    // an issue's verdicts are its own: every project's landings a read weighs ask them in one
+    // statement (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12)
+    issueIds.length === 0
+      ? new Map<string, Map<number, AuthoredVerdict[]>>()
+      : memoizedPerId('liveVerdicts', issueIds, (some) => liveVerdictsOfIssues(db, some)),
     reopenedAtOf(db, issueIds),
   ]);
   return new Map(

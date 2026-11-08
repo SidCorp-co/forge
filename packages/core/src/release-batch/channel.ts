@@ -1,6 +1,8 @@
 import type { ReleaseVerifiedBy } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsOf, uuidArray } from '../db/raw-sql.js';
+import { rowsPerProject } from '../db/read-memo.js';
 import { effectiveConfig, getIntegration } from '../integrations/index.js';
 import { getKnowledgeEntry } from '../knowledge/index.js';
 import type { NamedEnvironment } from '../project-config/index.js';
@@ -162,11 +164,19 @@ export async function resolveReleaseDeviceIds(projectId: string, label: string):
  * that exists with nothing online, which is `NO_RUNNER_ONLINE` and always was.
  */
 export async function projectRunnerDeviceIds(projectId: string): Promise<string[]> {
-  const rows = await db.execute<{ device_id: string }>(sql`
-    SELECT DISTINCT device_id
-    FROM runners
-    WHERE project_id = ${projectId}
-      AND device_id IS NOT NULL
-  `);
+  // every project's draft a read weighs asks in one statement (`db/read-memo.ts:rowsPerProject`, ISS-1070 r12)
+  const rows = await rowsPerProject(
+    'projectRunnerDevices',
+    projectId,
+    async (ids) =>
+      rowsOf<{ project_id: string; device_id: string }>(
+        await db.execute(sql`
+          SELECT DISTINCT project_id::text AS project_id, device_id
+            FROM runners
+           WHERE project_id = ANY(${uuidArray(ids)})
+             AND device_id IS NOT NULL`),
+      ),
+    (r) => r.project_id,
+  );
   return rows.map((r) => r.device_id);
 }
