@@ -518,14 +518,15 @@ describe("a close is its builder's verdict where the project judges its own work
     await lease(id);
     const r = await close(id);
     expect(r.status, JSON.stringify(r.json)).toBe(200);
-    const { CLOSE_VERDICT_REASON } = await import('../../src/issues/criteria/close-verdicts.js');
     expect(await verdictsOf(id)).toEqual([
       {
         n: 1,
         verdict: 'pass',
         identity_kind: 'commit',
         commit_sha: SHA,
-        reason: CLOSE_VERDICT_REASON,
+        // the close's source, as every reader shows it beside the verdict (`CLOSE_VERDICT_REASON`)
+        reason:
+          "met in scope at the issue's close: the project judges its own work, so the close is its builder's verdict",
       },
     ]);
   });
