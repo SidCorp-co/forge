@@ -98,6 +98,8 @@ export interface Shared {
   ownerDeploys: boolean;
   current: string | null;
   required: boolean;
+  /** Whether the project document declares a production environment. */
+  production?: boolean;
   viewer: ViewerFacts | null;
   approvers: ReleasePerson[];
   /** Who holds project.admin, by name. */
@@ -159,6 +161,7 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
     merges: p.mergeSteps ? p.mergeSteps.length : null,
     landedOn: p.landedOn,
     required: s.required,
+    production: s.production === true,
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,

@@ -62,6 +62,8 @@ interface TurnFacts {
   landedOn: string | null;
   /** `release.approval.required` of the project document. */
   required: boolean;
+  /** Whether the project document declares a production environment; absent reads as none. */
+  production?: boolean;
   approval: {
     decision: 'approved' | 'returned' | null;
     requestedBy: ReleasePerson;
@@ -312,18 +314,38 @@ function approvalTurn(f: TurnFacts): Turn {
  * A release that landed on a branch production does not deploy from. Production does not serve it:
  * where the project requires a release approval, a holder of releases.approve reviews it and
  * promotes it, and until then it is theirs. Where none is required and no production is declared,
- * the landing is the delivery (owner ruling 2026-10-22) and nobody owes anything. On a project
+ * the landing is the delivery (owner ruling 2026-10-22) and nobody owes anything. Where none is
+ * required and production is declared, production does not serve it yet: whoever cuts its releases
+ * promotes it, and it is never read done (ISS-709, judge K104). On a project
  * naming its testing environment, the review waits until every carried criterion passes there
  * (`untestedTurn`).
  */
+/** A landed release with production declared and no approval asked: its cutter promotes it. */
+function promotionTurn(f: TurnFacts, branch: string): Turn {
+  const act = say('standing.act.reviewAndPromote', { v: f.version });
+  const rule = say('releases.rule.landedOwesPromotion', { branch });
+  if (f.owes('release.cut').by === 'master')
+    return turn('waiting', 'agent', { who: MASTER, act, rule });
+  if (f.viewer?.isAdmin) return turn('needs_you', 'you', { who: YOU, act, rule });
+  if (f.admins.length === 0) {
+    return turn('stuck', 'none', {
+      who: holdersWho(f.admins),
+      act: nobodyHoldsAct(act, 'project.admin'),
+      rule,
+    });
+  }
+  return turn('waiting', 'person', { who: holdersWho(f.admins), act, rule });
+}
+
 function landedTurn(f: TurnFacts): Turn {
   const branch = f.landedOn ?? '';
-  if (!f.required) {
+  if (!f.required && !f.production) {
     return {
       attentionGroup: 'done',
       waitingOn: nobodyWaits(say('releases.rule.landedDelivered', { branch })),
     };
   }
+  if (!f.required) return promotionTurn(f, branch);
   const untested = untestedTurn(f);
   if (untested) return untested;
   const rule = say('releases.rule.landedOwesProduction', { branch });
@@ -460,4 +482,3 @@ export function completionOf(
     remaining: { issues, criteria },
     coverage: criteriaCoverageOf(req.coverage),
   };
-}

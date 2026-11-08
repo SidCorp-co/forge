@@ -263,8 +263,8 @@ export async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels, changeRequestLinks, doc] = await Promise.all(
-    [
+  const [facts, approvers, admins, language, channels, changeRequestLinks, doc, deploysFrom] =
+    await Promise.all([
       loadReleaseFacts(
         projectId,
         parts.flatMap((p) => p.issueIds),
@@ -279,11 +279,12 @@ export async function sharedFor(
         parts.flatMap((p) => p.issueIds),
       ),
       readProjectDocument(projectId),
-    ],
-  );
+      deploysFromOf(projectId),
+    ]);
   return {
     projectId,
     ownerDeploys: releaseThroughChangeRequests(doc?.document),
+    production: deploysFrom !== null,
     current,
     required,
     viewer,
