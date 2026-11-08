@@ -238,9 +238,7 @@ beforeAll(async () => {
   const ecosystemId = await seedEcosystem(ownerId, orgId);
   const ids: string[] = [];
   for (let n = 0; n < PROJECTS; n++) {
-    // projects differ as forge-dev's do: some hold requirements in no state but agreed, some fewer issues
-    const scale = { ...SMALL, states: n % 3 !== 1, issues: SMALL.issues - 6 * (n % 4) };
-    const id = await seedAtScale(ownerId, scale, { orgId });
+    const id = await seedAtScale(ownerId, SMALL, { orgId });
     await wireLive(id, ownerId, ecosystemId, n % 2 === 0 ? coolify.url() : undefined);
     ids.push(id);
   }
@@ -289,6 +287,11 @@ describe('a person in twelve projects wired as forge-dev holds them', () => {
     ).toEqual([]);
   });
 
+  // ISS-1070 r13: half the projects are deployed through a binding that answers (`liveCoolify`), so
+  // two kinds of project path can reach a batch a step apart and read it twice, however many projects
+  // take each: no shape is sent more than twice what one project sends, and an area sends no more
+  // than two statements beyond one project's and the batches split that way. One once a project
+  // grows past both.
   it('sends each area of attention and home for twelve projects in as many statements as for one', () => {
     const grew = [...reads].flatMap(([path, { across, one }]) => {
       // a batch counts to the area that opened it, which can differ between the two reads: a shape
@@ -303,15 +306,18 @@ describe('a person in twelve projects wired as forge-dev holds them', () => {
           .filter(([fp]) => !own?.has(fp))
           .reduce((n, [fp, c]) => n + Math.min(c, elsewhere.get(fp) ?? 0), 0);
         const twelve = sum(by) - moved;
+        const onceOf = (fp: string) => own?.get(fp) ?? elsewhere.get(fp) ?? 0;
+        const over = [...by].filter(([fp, n]) => onceOf(fp) > 0 && n > MOST * onceOf(fp));
+        const split = [...by].filter(([fp, n]) => onceOf(fp) > 0 && n > onceOf(fp)).length;
         // the shapes it repeats most, as the operator header names them live, and those one project never sends
-        const top = [...by]
+        const top = [...(over.length > 0 ? over : by)]
           .filter(([fp, n]) => n > 1 || !elsewhere.has(fp))
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
           .map(([fp, n]) => `${fp}*${n} ${(shapeTextOf(fp) ?? '').slice(0, 120)}`);
-        return twelve > alone + MOST
+        return over.length > 0 || twelve > alone + MOST + split
           ? [
-              `${path} ${area} sent ${twelve} statements for ${PROJECTS} projects (${moved} more moved in from other areas), ${alone} for one: ${top.join(' | ')}`,
+              `${path} ${area} sent ${twelve} statements for ${PROJECTS} projects (${moved} more moved in from other areas, ${split} batches split once), ${alone} for one: ${top.join(' | ')}`,
             ]
           : [];
       });

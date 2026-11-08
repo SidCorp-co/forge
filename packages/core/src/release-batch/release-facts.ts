@@ -335,12 +335,23 @@ export async function loadReleaseFacts(
   issueIds: readonly string[],
   runIds: readonly string[],
 ): Promise<ReleaseFacts> {
-  const released = await releasedLineOf(projectId);
+  // each issue's reopen and close are asked beside the released line, which asks them of its own
+  // issues: one batch of the read, not one more a step later (ISS-1070 r13, f5460a1f and 7984d841)
+  const [released] = await Promise.all([
+    releasedLineOf(projectId),
+    reopenedAtOf(db, issueIds),
+    closedAtOf(db, issueIds),
+  ]);
   // a verdict names a release only where the line is the agent's record (`VERDICT_RELEASE_UNUSED`
   // refuses one anywhere else), so a project with no line holds none, and its reads ask nothing more
   const judgedOnRelease = released ? await issuesJudgedOnRelease(projectId) : [];
   const ids = [...new Set([...issueIds, ...judgedOnRelease])];
-  const [rows, prefix, cutters, judge, held, landing] = await Promise.all([
+  // the landing basis waits on production's reading where a project has one: the reads after these
+  // do not wait on it, so a project deployed through a binding asks them beside every other project
+  const landingRead = landingEarnedOf(projectId, ids);
+  // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
+  landingRead.catch(() => undefined);
+  const [rows, prefix, cutters, judge, held] = await Promise.all([
     rowsPerId(
       'releaseIssueRows',
       ids,
@@ -369,7 +380,6 @@ export async function loadReleaseFacts(
     cuttersOf(runIds),
     readVerifiedJudge(projectId),
     readProjectDocument(projectId),
-    landingEarnedOf(projectId, ids),
   ]);
   const [criteria, reopened, closed, reqs] = await Promise.all([
     listCriteriaOf(db, ids),
@@ -439,7 +449,7 @@ export async function loadReleaseFacts(
     judgedOn: judgedOnOf(held?.document.delivery),
     released,
     judgedOnRelease,
-    landing,
+    landing: await landingRead,
   };
 }
 
