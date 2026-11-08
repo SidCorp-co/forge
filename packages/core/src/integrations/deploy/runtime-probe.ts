@@ -9,6 +9,8 @@
  * every request sent past a cache.
  */
 
+import { asProvider } from '../../lib/outbound-timing.js';
+
 export interface RuntimeProbeTarget {
   url: string;
   /** Dot path into the JSON body. Omitted → the whole body, trimmed. */
@@ -84,11 +86,13 @@ export async function readRuntimeProbe(
   const fetchImpl = options.fetch ?? fetch;
   let res: Response;
   try {
-    res = await fetchImpl(url, {
-      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    res = await asProvider('probe', () =>
+      fetchImpl(url, {
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(timeoutMs),
+      }),
+    );
   } catch (err) {
     return {
       kind: 'unreachable',

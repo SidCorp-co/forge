@@ -21,7 +21,23 @@ export interface QueryTiming {
   legs: Map<string, QueryLeg>;
   /** Each statement text sent outside every part, with how many times: its shapes are read from it. */
   sent: Map<string, number>;
+  /** Every outbound HTTP call the request waited on, and each provider's share ({@link outboundCall}). */
+  http: HttpClock;
+  httpBy: Map<string, HttpClock>;
 }
+
+/**
+ * Outbound HTTP calls: how many were made, and the wall time during which at least one was
+ * outstanding. Counts and times only; no URL, host or header is kept.
+ */
+export interface HttpClock {
+  calls: number;
+  ms: number;
+  inFlight: number;
+  openedAt: number;
+}
+
+const newHttpClock = (): HttpClock => ({ calls: 0, ms: 0, inFlight: 0, openedAt: 0 });
 
 /**
  * One named part of a request (a needs-you area, a part of home): the statements sent inside it
@@ -38,6 +54,8 @@ export interface QueryLeg {
    * shapes (`db/statement-shapes.ts:repeatedShapes`), never a bound value, which travels apart.
    */
   sent: Map<string, number>;
+  /** Outbound HTTP calls made inside the part ({@link outboundCall}). */
+  calls: number;
 }
 
 /**
@@ -62,6 +80,8 @@ export const newQueryTiming = (): QueryTiming => ({
   points: 0,
   legs: new Map(),
   sent: new Map(),
+  http: newHttpClock(),
+  httpBy: new Map(),
 });
 
 /** The timing of the request this code runs inside, if any. */
@@ -94,7 +114,7 @@ export async function withQueryLeg<T>(name: string, fn: () => Promise<T>): Promi
   const now = performance.now();
   let leg = t.legs.get(name);
   if (!leg) {
-    leg = { of: t, queries: 0, startedAt: now, endedAt: now, sent: new Map() };
+    leg = { of: t, queries: 0, startedAt: now, endedAt: now, sent: new Map(), calls: 0 };
     t.legs.set(name, leg);
   }
   const own = leg;
@@ -153,6 +173,42 @@ function settle(t: QueryTiming): void {
 
 /** How many quiet points the request this code runs inside has reached; 0 outside one. */
 export const quietPoints = (): number => timings.getStore()?.points ?? 0;
+
+function openHttp(clock: HttpClock): () => void {
+  clock.calls += 1;
+  if (clock.inFlight++ === 0) clock.openedAt = performance.now();
+  return () => {
+    if (--clock.inFlight === 0) clock.ms += performance.now() - clock.openedAt;
+  };
+}
+
+/**
+ * Marks one outbound HTTP call of the request this code runs inside made, as `provider`'s
+ * (`lib/outbound-timing.ts` names it); the function it returns marks it answered, once. Outside a
+ * timed request it is undefined: a call nobody waits on is no request's.
+ */
+export function outboundCall(provider: string): (() => void) | undefined {
+  const t = timings.getStore();
+  if (!t) return undefined;
+  const leg = legs.getStore();
+  if (leg?.of === t) leg.calls += 1;
+  let by = t.httpBy.get(provider);
+  if (!by) {
+    by = newHttpClock();
+    t.httpBy.set(provider, by);
+  }
+  const closes = [openHttp(t.http), openHttp(by)];
+  let answered = false;
+  return () => {
+    if (answered) return;
+    answered = true;
+    for (const close of closes) close();
+  };
+}
+
+/** The wall time `clock`'s calls were outstanding, a call still unanswered counted to now. */
+export const httpMsOf = (clock: HttpClock, now = performance.now()): number =>
+  clock.ms + (clock.inFlight > 0 ? now - clock.openedAt : 0);
 
 /** Marks a statement of `t` sent; the function it returns marks it answered, once. */
 export function statementSent(t: QueryTiming): () => void {

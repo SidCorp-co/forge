@@ -1,6 +1,9 @@
 // @direct-test-of packages/core/src/db/query-timing.ts
 // @direct-test-of packages/core/src/middleware/server-timing.ts
 // @direct-test-of packages/core/src/db/statement-shapes.ts
+// @direct-test-of packages/core/src/lib/outbound-timing.ts
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -14,6 +17,8 @@ vi.hoisted(() => {
 import { db } from '../../src/db/client.js';
 import { withQueryLeg } from '../../src/db/query-timing.js';
 import { fingerprintOf, shapeTextOf } from '../../src/db/statement-shapes.js';
+import { CoolifyClient } from '../../src/integrations/deploy/coolify/client.js';
+import { readRuntimeProbe } from '../../src/integrations/deploy/runtime-probe.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../src/middleware/auth.js';
 import { STATEMENT_SHAPES_HEADER, serverTiming } from '../../src/middleware/server-timing.js';
 import { api, userToken } from '../helpers/api.js';
@@ -166,5 +171,78 @@ describe('Server-Timing', () => {
       expect(ny.headers.get('server-timing')).toMatch(/ny-requirements;/);
       expect(ny.headers.get(STATEMENT_SHAPES_HEADER)).toBeNull();
     });
+  });
+});
+
+// ISS-1070 r13: live legs ran ~850 ms over ten statements, a wait nothing named; every outbound
+// HTTP call a request waits on is counted and timed, overall and by the provider that made it
+describe('the outbound HTTP calls', () => {
+  const TOKEN = 'coolify-secret-token';
+  let base = '';
+  let served = 0;
+  const stub = createServer((req, res) => {
+    served += 1;
+    // each answer takes a while, so a call's time is read in the leg
+    setTimeout(() => {
+      res.setHeader('content-type', 'application/json');
+      res.end(
+        String(req.url).startsWith('/commit')
+          ? JSON.stringify({ commit: 'abc1234' })
+          : JSON.stringify({ count: 0, deployments: [] }),
+      );
+    }, 30);
+  });
+  beforeAll(async () => {
+    await new Promise<void>((done) => stub.listen(0, '127.0.0.1', done));
+    base = `http://127.0.0.1:${(stub.address() as AddressInfo).port}`;
+    return () => new Promise<void>((done) => stub.close(() => done()));
+  });
+  const timed = new Hono();
+  timed.use(
+    '*',
+    serverTiming(() => false),
+  );
+  timed.get('/none', (c) => c.json({ ok: true }));
+  timed.get('/calls', async (c) => {
+    const coolify = new CoolifyClient({ baseUrl: base, apiToken: TOKEN });
+    await withQueryLeg('reads-coolify', () =>
+      Promise.all([
+        coolify.listApplicationDeployments('app-1', { skip: 0, take: 5 }),
+        coolify.listApplicationDeployments('app-2', { skip: 0, take: 5 }),
+      ]),
+    );
+    await readRuntimeProbe({ url: `${base}/commit`, path: 'commit' });
+    await (await fetch(`${base}/elsewhere`)).text();
+    return c.json({ ok: true });
+  });
+  const legOf = (raw: string, name: string) => {
+    const m = new RegExp(`(?:^|, )${name};dur=([0-9.]+);desc="(\\d+) calls?"`).exec(raw);
+    if (!m) throw new Error(`Server-Timing "${raw}" names no ${name} leg`);
+    return { ms: Number(m[1]), calls: Number(m[2]) };
+  };
+
+  it('names a request that made no call as no calls and no time', async () => {
+    const res = await timed.fetch(new Request('http://forge.test/none'));
+    expect(legOf(res.headers.get('server-timing') ?? '', 'http')).toEqual({ ms: 0, calls: 0 });
+  });
+
+  it('counts and times every call, by the provider that made it, and the part that waited on it', async () => {
+    served = 0;
+    const res = await timed.fetch(new Request('http://forge.test/calls'));
+    expect(res.status).toBe(200);
+    const raw = res.headers.get('server-timing') ?? '';
+    expect(served).toBe(4);
+    const http = legOf(raw, 'http');
+    expect(http.calls).toBe(4);
+    // two side by side and two in turn: at least three answers' waits, never more than the total
+    expect(http.ms).toBeGreaterThanOrEqual(85);
+    expect(http.ms).toBeLessThanOrEqual(Number(/total;dur=([0-9.]+)/.exec(raw)?.[1]));
+    expect(legOf(raw, 'http-coolify').calls).toBe(2);
+    expect(legOf(raw, 'http-coolify').ms).toBeGreaterThanOrEqual(28);
+    expect(legOf(raw, 'http-probe').calls).toBe(1);
+    expect(legOf(raw, 'http-other').calls).toBe(1);
+    expect(raw).toMatch(/reads-coolify;dur=[0-9.]+;desc="0 queries, 2 calls"/);
+    // counts and times only: no address, path or credential reaches the header
+    expect(raw).not.toMatch(/127\.0\.0\.1|elsewhere|commit|app-1|coolify-secret/);
   });
 });

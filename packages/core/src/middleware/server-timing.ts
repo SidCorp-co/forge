@@ -1,7 +1,8 @@
 import type { Context, MiddlewareHandler } from 'hono';
-import { newQueryTiming, type QueryTiming, withQueryTiming } from '../db/query-timing.js';
+import { httpMsOf, newQueryTiming, type QueryTiming, withQueryTiming } from '../db/query-timing.js';
 import { type RepeatedShape, repeatedShapes, shapeTextOf } from '../db/statement-shapes.js';
 import { logger } from '../lib/logger.js';
+import { timeOutboundHttp } from '../lib/outbound-timing.js';
 import { authUserRow } from './auth.js';
 import { onAdminList } from './require-admin.js';
 import { routeRefMs } from './route-refs.js';
@@ -21,6 +22,22 @@ const ms = (n: number) => n.toFixed(1);
 
 const queriesOf = (n: number) => `${n} ${n === 1 ? 'query' : 'queries'}`;
 
+const callsOf = (n: number) => `${n} ${n === 1 ? 'call' : 'calls'}`;
+
+/**
+ * `http;dur=…;desc="N calls"`, every outbound HTTP call the request waited on, then
+ * `http-<provider>;dur=…;desc="N calls"` for each provider that made one: counts and times, never a
+ * URL, host or secret.
+ */
+function httpLegsOf(timing: QueryTiming, now: number): string[] {
+  const leg = (name: string, clock: QueryTiming['http']) =>
+    `${name};dur=${ms(httpMsOf(clock, now))};desc="${callsOf(clock.calls)}"`;
+  return [
+    leg('http', timing.http),
+    ...[...timing.httpBy].map(([provider, clock]) => leg(`http-${provider}`, clock)),
+  ];
+}
+
 /**
  * Each named part of the request (`db/query-timing.ts:withQueryLeg`) as `name;dur=…;desc="N queries"`,
  * then `unnamed;desc="N queries"` for the statements sent outside every part: names, times and
@@ -30,7 +47,7 @@ function legsOf(timing: QueryTiming): string[] {
   if (timing.legs.size === 0) return [];
   const named = [...timing.legs].map(
     ([name, leg]) =>
-      `${name};dur=${ms(leg.endedAt - leg.startedAt)};desc="${queriesOf(leg.queries)}"`,
+      `${name};dur=${ms(leg.endedAt - leg.startedAt)};desc="${queriesOf(leg.queries)}${leg.calls > 0 ? `, ${callsOf(leg.calls)}` : ''}"`,
   );
   const inLegs = [...timing.legs.values()].reduce((n, leg) => n + leg.queries, 0);
   return [...named, `unnamed;desc="${queriesOf(timing.queries - inLegs)}"`];
@@ -38,8 +55,9 @@ function legsOf(timing: QueryTiming): string[] {
 
 /**
  * `db;dur=…;desc="N queries", app;dur=…, total;dur=…` — what the origin spent, readable in any
- * browser; `ref;dur=…` ahead of them when a slug or display key was resolved before routing, and
- * each named part after them where the route names its parts.
+ * browser; `ref;dur=…` ahead of them when a slug or display key was resolved before routing, the
+ * outbound HTTP calls after them ({@link httpLegsOf}, inside `app`), and each named part last where
+ * the route names its parts, with the calls made inside it.
  */
 export function serverTimingValue(timing: QueryTiming, totalMs: number, refMs?: number): string {
   const db = Math.min(timing.dbMs, totalMs);
@@ -48,6 +66,7 @@ export function serverTimingValue(timing: QueryTiming, totalMs: number, refMs?: 
     `db;dur=${ms(db)};desc="${queriesOf(timing.queries)}"`,
     `app;dur=${ms(totalMs - db)}`,
     `total;dur=${ms(totalMs)}`,
+    ...httpLegsOf(timing, performance.now()),
     ...legsOf(timing),
   ].join(', ');
 }
@@ -111,6 +130,7 @@ function logShapes(parts: ReadonlyMap<string, RepeatedShape[]>): void {
  * cross-origin page reads it only where `Timing-Allow-Origin` names it, which `allowOrigin` decides.
  */
 export const serverTiming = (allowOrigin: (origin: string) => boolean): MiddlewareHandler => {
+  timeOutboundHttp();
   return async (c, next) => {
     const started = performance.now();
     const timing = newQueryTiming();

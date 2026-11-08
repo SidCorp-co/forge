@@ -1,4 +1,5 @@
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
+import { asProvider } from '../../../lib/outbound-timing.js';
 import type {
   CoolifyApplicationDeploymentsResponse,
   CoolifyApplicationLogsResponse,
@@ -130,7 +131,7 @@ export class CoolifyClient {
           signal: controller.signal,
         };
         if (body !== undefined) init.body = JSON.stringify(body);
-        const res = await this.fetchImpl(url, init);
+        const res = await asProvider('coolify', () => this.fetchImpl(url, init));
         clearTimeout(timer);
         if (res.status === 401 && this.previousApiToken && token === this.apiToken) {
           lastErr = new CoolifyApiError(
