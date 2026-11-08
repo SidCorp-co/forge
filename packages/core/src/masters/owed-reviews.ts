@@ -1,6 +1,6 @@
 import { guideCall } from '../guides/index.js';
-import type { ReviewOwed } from './ports.js';
 import { agrees } from '../lib/plural.js';
+import type { ReviewOwed } from './ports.js';
 
 const at = (r: ReviewOwed) =>
   r.status === 'awaiting_release' ? 'at `awaiting_release`' : 'at `in_progress`, its test step';

@@ -5,13 +5,13 @@
 
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
 import { guideCall } from '../guides/index.js';
+import { agrees } from '../lib/plural.js';
 import type {
   FilingRecordOwed,
   ReleaseActOwed,
   ReleaseHoldOwed,
   ReleaseMergeOwed,
 } from './ports.js';
-import { agrees } from '../lib/plural.js';
 
 /** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
 const method = (slug: Parameters<typeof guideCall>[0]) => `\`${guideCall(slug)}\``;

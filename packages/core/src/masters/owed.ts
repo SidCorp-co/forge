@@ -12,6 +12,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
+import { agrees } from '../lib/plural.js';
 import { confirmsLine } from './owed-confirms.js';
 import {
   carriersLine,
@@ -42,7 +43,6 @@ import {
   type UnhandledRoomMessages,
   type WaitingRequest,
 } from './ports.js';
-import { agrees } from '../lib/plural.js';
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';

@@ -1,7 +1,7 @@
 import { guideCall } from '../guides/index.js';
+import { agrees } from '../lib/plural.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { AgentConfirmOwed } from './ports.js';
-import { agrees } from '../lib/plural.js';
 
 /**
  * The door the master settles an item through for its agent reporter (ISS-880): the Forge door for

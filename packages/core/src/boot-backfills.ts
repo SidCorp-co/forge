@@ -126,7 +126,9 @@ const FILL_BATCH = 200;
  * again stays among the oldest, so draining to an empty table could reread the same rows for as long
  * as that writer runs; what a short batch leaves is the ten-minute sweep's.
  */
-async function fillMarked(drain: (ex: typeof db, limit: number) => Promise<number>): Promise<number> {
+async function fillMarked(
+  drain: (ex: typeof db, limit: number) => Promise<number>,
+): Promise<number> {
   let total = 0;
   for (;;) {
     const n = await drain(db, FILL_BATCH);

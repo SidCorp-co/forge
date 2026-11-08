@@ -13,8 +13,8 @@ import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 // The contract's own copy, as core loads it: built, since a script cannot import a workspace package.
 import {
-  RERUN_RESULTS,
   rerunVerdictOf as contractVerdictOf,
+  RERUN_RESULTS,
 } from '../../packages/contracts/dist/merge-check.js';
 import { redChecks, reportOf } from './merge-check.mjs';
 import {

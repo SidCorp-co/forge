@@ -1,6 +1,6 @@
 import { type GuideSlug, guideCall } from '../guides/index.js';
-import type { UnhandledRoomMessages, WaitingRequest } from './ports.js';
 import { agrees } from '../lib/plural.js';
+import type { UnhandledRoomMessages, WaitingRequest } from './ports.js';
 
 const method = (slug: GuideSlug) => `\`${guideCall(slug)}\``;
 
