@@ -1597,7 +1597,7 @@ export const SAID = {
 		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
 	"feedback.rule.shippedSettles": {
-		en: "resolved: its work shipped or was answered, which verifies it; the next sweep records it",
+		en: "resolved: shipped or answered, so the next sweep records it verified",
 	},
 	"feedback.rule.verifyHeld": {
 		en: "resolved: past its window, a triager answers: {why}",
@@ -1925,7 +1925,7 @@ export const SAID = {
 		vars: { rule: "said", until: "text", why: "text" },
 	},
 	"requirements.rule.byRule": {
-		en: "no person gate asks this move on this project, so Forge makes it by rule; a guard that refuses it is named here",
+		en: "no person gate asks this move, so Forge makes it by rule",
 	},
 	"requirements.rule.markDelivered": {
 		en: "every criterion passes on the running build; an act marks it",
