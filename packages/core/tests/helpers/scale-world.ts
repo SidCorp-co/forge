@@ -30,6 +30,22 @@ export interface Scale {
    * serve and the issues building them.
    */
   live?: boolean;
+  /**
+   * Requirements over every state a project's hold, as forge-dev's projects hold them (ISS-1070 r10):
+   * one in six each draft (a proposed first revision, no baseline), agreed, in delivery, delivered,
+   * accepted and dropped; half revised once, the revision retiring a criterion and adding one, a
+   * fifth carrying an open proposal; each status reached through the kernel. Where the plain seed
+   * held every requirement agreed at one revision, a read that asks once per requirement or per
+   * state looked flat.
+   */
+  states?: boolean;
+  /**
+   * How many of the newest releases are recorded landings on a branch, as catalog-api and adminhub-api
+   * record theirs (ISS-1070 r10): their project declares no production, so each stays `landed`, a
+   * release that can still wait on someone, and Needs you weighs every one. With every release
+   * shipped, a read once per release in play looked flat.
+   */
+  batches?: number;
 }
 
 const SHA = 'a'.repeat(40);
@@ -52,16 +68,21 @@ export async function seedAtScale(
       INSERT INTO requirements (id, project_id, req_seq, title, status)
       SELECT gen_random_uuid(), ${p}, g, 'requirement ' || g, 'draft' FROM generate_series(1, ${s.requirements}) g`);
     await tx.execute(sql`
-      INSERT INTO requirement_revisions (requirement_id, revision, state, spec, reason, author_id, author_agency, decided_by, decided_at)
-      SELECT id, 1, 'current', '{}'::jsonb, 'first cut', ${ownerId}, 'human', ${ownerId}, now()
-        FROM requirements WHERE project_id = ${p}`);
+      INSERT INTO requirement_revisions (requirement_id, revision, state, spec, reason, author_id, author_agency, decided_by, decided_at, proposed_by, proposed_at)
+      SELECT id, 1, CASE WHEN draft THEN 'proposed' ELSE 'current' END, '{}'::jsonb, 'first cut', ${ownerId}, 'human',
+             CASE WHEN NOT draft THEN ${ownerId}::uuid END, CASE WHEN NOT draft THEN now() END,
+             CASE WHEN draft THEN ${ownerId}::uuid END, CASE WHEN draft THEN now() END
+        FROM (SELECT id, ${s.states === true} AND req_seq % 6 = 0 AS draft FROM requirements WHERE project_id = ${p}) r`);
+    // a {@link Scale.states} draft stays a draft, its first revision proposed
     await tx.execute(
-      sql`UPDATE requirements SET current_revision = 1, status = 'agreed' WHERE project_id = ${p}`,
+      sql`UPDATE requirements SET current_revision = 1, status = 'agreed'
+           WHERE project_id = ${p} AND NOT (${s.states === true} AND req_seq % 6 = 0)`,
     );
-    // each agreed requirement holds the baseline its agree wrote
+    // each agreed requirement holds the baseline its agree wrote; one {@link Scale.states} keeps a draft holds none
     await tx.execute(sql`
       INSERT INTO requirement_baselines (requirement_id, revision, seq, act, agreed_by, agreed_kind)
-      SELECT id, 1, 1, 'agree', ${ownerId}, 'person' FROM requirements WHERE project_id = ${p}`);
+      SELECT id, 1, 1, 'agree', ${ownerId}, 'person' FROM requirements
+       WHERE project_id = ${p} AND NOT (${s.states === true} AND req_seq % 6 = 0)`);
   });
   await db.execute(sql`
     INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
@@ -120,8 +141,10 @@ export async function seedAtScale(
     SELECT f.id, (SELECT id FROM issues WHERE project_id = ${p} AND iss_seq = f.fb_seq)
       FROM feedback f WHERE f.project_id = ${p} AND f.route = 'issue'`);
   });
+  if (s.batches) await recordedLandings(p, s.batches);
   if (s.live) await liveFeedback(p, s);
   if (s.live) await liveWorkflows(p, ownerId, s);
+  if (s.states) await requirementStates(p, ownerId);
   await db.execute(sql`
     INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
     SELECT i.id, 'user', ${ownerId}, 'human', 'issue.statusChanged',
@@ -179,6 +202,8 @@ async function liveShape(p: string, s: Scale): Promise<void> {
                         ELSE ${releaseCommit(sql`(i.iss_seq + 1) / 2`)} END,
       runtime_ref = CASE WHEN i.iss_seq % 4 = 0 THEN ${releaseCommit(sql`(i.iss_seq + 1) / 2`)} END
       FROM issues i WHERE i.id = v.issue_id AND i.project_id = ${p} AND i.iss_seq <= ${2 * s.releases}`);
+  // {@link Scale.states} spreads them over every state in its own place
+  if (s.states) return;
   await withKernelMarker(db, async (tx) => {
     await tx.execute(sql`
       UPDATE requirements SET status = CASE WHEN req_seq % 4 = 0 THEN 'dropped' ELSE 'accepted' END
@@ -245,4 +270,69 @@ async function liveWorkflows(p: string, ownerId: string, s: Scale): Promise<void
          AND i.iss_seq % ${count} = substr(w.flow, 6)::int % ${count} AND i.iss_seq <= ${4 * count}
        WHERE w.project_id = ${p}`);
   });
+}
+
+/** {@link Scale.states}: the plain seed's agreed requirements spread over every state, revised and proposed. */
+async function requirementStates(p: string, ownerId: string): Promise<void> {
+  await withKernelMarker(db, async (tx) => {
+    // half revised once: the first revision superseded, the second current, a criterion retired and one added
+    await tx.execute(sql`
+      UPDATE requirement_revisions v SET state = 'superseded' FROM requirements r
+       WHERE r.id = v.requirement_id AND r.project_id = ${p} AND r.req_seq % 2 = 0 AND r.req_seq % 6 <> 0 AND v.revision = 1`);
+    await tx.execute(sql`
+      INSERT INTO requirement_revisions (requirement_id, revision, state, base_revision, spec, reason, author_id, author_agency, decided_by, decided_at)
+      SELECT id, 2, 'current', 1, '{}'::jsonb, 'revised', ${ownerId}, 'agent', ${ownerId}, now()
+        FROM requirements WHERE project_id = ${p} AND req_seq % 2 = 0 AND req_seq % 6 <> 0`);
+    await tx.execute(sql`
+      UPDATE requirements SET current_revision = 2 WHERE project_id = ${p} AND req_seq % 2 = 0 AND req_seq % 6 <> 0`);
+    await tx.execute(sql`
+      UPDATE requirement_criteria c SET retired_revision = 2 FROM requirements r
+       WHERE r.id = c.requirement_id AND r.project_id = ${p} AND r.req_seq % 2 = 0 AND r.req_seq % 6 <> 0 AND c.code = 'BC-1'`);
+    await tx.execute(sql`
+      INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
+      SELECT id, 'BC-90', 'it holds since the revision', 2 FROM requirements
+       WHERE project_id = ${p} AND req_seq % 2 = 0 AND req_seq % 6 <> 0`);
+    await tx.execute(sql`
+      INSERT INTO requirement_baselines (requirement_id, revision, seq, act, agreed_by, agreed_kind)
+      SELECT id, 2, 1, 'agree', ${ownerId}, 'person' FROM requirements
+       WHERE project_id = ${p} AND req_seq % 2 = 0 AND req_seq % 6 <> 0`);
+    // a fifth carry an open proposal beside the revision that stands
+    await tx.execute(sql`
+      INSERT INTO requirement_revisions (requirement_id, revision, state, base_revision, spec, reason, author_id, author_agency, proposed_by, proposed_at)
+      SELECT id, current_revision + 1, 'proposed', current_revision, '{}'::jsonb, 'a change asked', ${ownerId}, 'agent', ${ownerId}, now()
+        FROM requirements WHERE project_id = ${p} AND req_seq % 5 = 0 AND req_seq % 6 <> 0`);
+    // one in six of each state; a draft was seeded with its first revision proposed and no baseline
+    await tx.execute(sql`
+      UPDATE requirements SET
+        status = (ARRAY['agreed', 'in_delivery', 'delivered', 'accepted', 'dropped'])[req_seq % 6],
+        accepted_at = CASE WHEN req_seq % 6 = 4 THEN now() END
+       WHERE project_id = ${p} AND req_seq % 6 <> 0`);
+    // each status reached through the kernel, the path every requirement walked to it
+    await tx.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)
+      SELECT 'requirement', r.id, m.f, m.t, 'user', 'human', ${ownerId}, 'test', r.created_at + make_interval(mins => m.n)
+        FROM requirements r CROSS JOIN (VALUES (1, 'draft', 'agreed', 1), (2, 'agreed', 'in_delivery', 2),
+                                               (3, 'in_delivery', 'delivered', 3), (4, 'delivered', 'accepted', 4)) AS m(n, f, t, upto)
+       WHERE r.project_id = ${p} AND r.req_seq % 6 > 0 AND m.upto <= least(r.req_seq % 6, 4)`);
+    await tx.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, reason, created_at)
+      SELECT 'requirement', r.id, 'agreed', 'dropped', 'user', 'human', ${ownerId}, 'test', 'no longer wanted', r.created_at + make_interval(mins => 9)
+        FROM requirements r WHERE r.project_id = ${p} AND r.req_seq % 6 = 5`);
+  });
+}
+
+/** {@link Scale.batches}: the newest `n` releases recorded as landings on `release/stg`, each with its attempt. */
+async function recordedLandings(p: string, n: number): Promise<void> {
+  await db.execute(sql`
+    UPDATE pipeline_runs SET metadata = metadata || jsonb_build_object(
+             'source', 'release-record', 'gateStatus', 'awaiting_release', 'verification', 'landed',
+             'branch', 'release/stg', 'identity', metadata->'finish'->'commit', 'commit', metadata->'finish'->'commit',
+             'recordedBy', null)
+     WHERE id IN (SELECT id FROM pipeline_runs WHERE project_id = ${p} AND release_version IS NOT NULL
+                   ORDER BY release_released_at DESC LIMIT ${n})`);
+  await db.execute(sql`
+    INSERT INTO release_attempts (run_id, stage, idempotency_key, commit, identity, verdict, verdict_reason, started_at, settled_at)
+    SELECT id, 'deploy', 'record:' || id, metadata->>'commit', metadata->>'commit', 'recorded', 'landed on release/stg',
+           release_released_at, release_released_at
+      FROM pipeline_runs WHERE project_id = ${p} AND metadata->>'source' = 'release-record'`);
 }
