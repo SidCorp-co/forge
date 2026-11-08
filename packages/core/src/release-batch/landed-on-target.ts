@@ -56,13 +56,15 @@ export async function landedOnTargetOf(
   }>;
   const toRead: Array<{ id: string; commit: string }> = [];
   for (const r of rows) {
+    // a merge into another branch (release/production) is no landing on the target (ISS-702 K93)
+    const onBranch = r.target === null || r.target === branch;
     const merged = r.merged?.trim().toLowerCase() ?? '';
-    if (WHOLE.test(merged)) {
+    if (WHOLE.test(merged) && onBranch) {
       out.set(r.id, { branch, commit: merged, from: 'host-merge' });
       continue;
     }
     const marked = r.marked?.trim().toLowerCase() ?? '';
-    if (WHOLE.test(marked) && (r.target === null || r.target === branch)) {
+    if (WHOLE.test(marked) && onBranch) {
       toRead.push({ id: r.id, commit: marked });
     }
   }

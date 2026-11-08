@@ -239,6 +239,15 @@ describe('the roster needs no change request for work already on the target bran
     expect(after?.status).toBe('completed');
   });
 
+  // ISS-702, judge K93 at dev.320: a request the host merged into release/production read as on dev
+  it('asks a change request of an issue whose host merge went into another branch', async () => {
+    const one = await marked(1, F550);
+    await db.execute(sql`
+      UPDATE issues SET merged_commit_sha = ${F550}, merged_target = 'release/production' WHERE id = ${one}`);
+
+    expect(await missingOf()).toEqual(['ISS-1']);
+  });
+
   it('still refuses a cut of the issue whose commit is on no host branch, naming the request it lacks', async () => {
     const twelve = await marked(12, LOCAL);
 
