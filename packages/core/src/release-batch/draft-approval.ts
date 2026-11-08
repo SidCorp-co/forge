@@ -25,6 +25,7 @@ import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { readReleasePath } from '../project-config/index.js';
 import type { Carry } from './approval-carry.js';
+import { settledValue } from './blocker-kit.js';
 import { draftedVersion } from './draft-version.js';
 import { runCutAs } from './naming.js';
 import { waitingIssueIds } from './queries.js';
@@ -57,12 +58,6 @@ export async function draftNotApprovableWhy(projectId: string): Promise<string |
   return null;
 }
 
-/** What a settled read answered, or its failure thrown where it is reached. */
-function settled<T>(read: PromiseSettledResult<T>): T {
-  if (read.status === 'rejected') throw read.reason;
-  return read.value;
-}
-
 /** Why a draft decision on a version is refused: its code, its reason, and the field it names. */
 export interface DraftDecisionRefusal {
   code: 'RELEASE_DRAFT_NOT_APPROVABLE' | 'RELEASE_VERSION_UNKNOWN';
@@ -86,15 +81,15 @@ export async function draftDecisionRefusal(
     runCutAs(projectId, version),
     draftedVersion(projectId),
   ]);
-  const notApprovable = settled(why);
+  const notApprovable = settledValue(why);
   if (notApprovable) return { code: 'RELEASE_DRAFT_NOT_APPROVABLE', why: notApprovable };
-  if (settled(cut)) {
+  if (settledValue(cut)) {
     return {
       code: 'RELEASE_DRAFT_NOT_APPROVABLE',
       why: `${version} is cut as a run, not a draft: its approval is asked on the run and decided there`,
     };
   }
-  const draft = settled(drafted);
+  const draft = settledValue(drafted);
   if (draft === version) return null;
   return {
     code: 'RELEASE_VERSION_UNKNOWN',

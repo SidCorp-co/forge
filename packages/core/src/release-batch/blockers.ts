@@ -6,22 +6,14 @@
 // the doors refuse in, a door refusing with every blocker in one envelope, the first first.
 
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
-import {
-  draftMissingReleaseNotes,
-  issueCoresOf,
-  issueDisplayIds,
-  landingShortfall,
-  releaseRecordGaps,
-  waitingAtSql,
-} from '../issues/index.js';
-import { logger } from '../lib/logger.js';
+import { draftMissingReleaseNotes, issueCoresOf, waitingAtSql } from '../issues/index.js';
 import { readGateProfile } from '../project-config/index.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
-import { attempt, blocker, evaluate } from './blocker-kit.js';
+import { attempt, blocker, collected, evaluate, settledValue } from './blocker-kit.js';
 import {
   type CollectReleaseBlockersOptions,
   type ReleaseBlocker,
@@ -45,9 +37,8 @@ import { endedRunBlocker } from './ended-claims.js';
 import { RELEASE_GATE_STATUS, type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import { promotionBlockers } from './promotion-standing.js';
 import { getActiveReleaseBatch } from './queries.js';
-import { releaseRecordBlocker } from './record-blocker.js';
 import { blockerRefusal, releaseBlockedRefusal } from './refuse.js';
-import { shippedInBlocker } from './shipped-in.js';
+import { rosterBlockers } from './roster-blockers.js';
 import { versionBlocker } from './version-blocker.js';
 
 export * from './blocker-sentences.js';
@@ -146,67 +137,6 @@ async function claimBlockers(
   out.push(blocker('CLAIM_CONFLICT', claimConflictDetails(projectId, gateStatus, conflicts)));
 }
 
-/** `ISS-nn` for each, in the order given, so a refusal names the rows it is about (ISS-1346). A
- *  failed read costs the names and not the reason: the refusal still counts them, and says so. */
-async function namedAs(ids: string[]): Promise<string[]> {
-  try {
-    const shown = await issueDisplayIds(ids);
-    return ids.map((id) => shown.get(id) ?? id);
-  } catch (err) {
-    logger.warn({ err }, 'release-blockers: the refused issues could not be named');
-    return [];
-  }
-}
-
-/** What the roster owes before it may be closed: a note, and a merge. */
-async function rosterBlockers(
-  projectId: string,
-  door: ReleaseDoor,
-  issueIds: string[],
-  out: ReleaseBlocker[],
-): Promise<void> {
-  if (issueIds.length === 0) return;
-  if (door !== 'record') {
-    const owed = await evaluate('shipped-in', () => shippedInBlocker(projectId, issueIds), out);
-    if (owed) out.push(owed);
-  }
-  const gaps = await evaluate(
-    'release-record',
-    async () => ({
-      gaps: await releaseRecordGaps(issueIds),
-      profile: await readGateProfile(projectId),
-    }),
-    out,
-  );
-  const owed = gaps && (await releaseRecordBlocker(gaps.gaps, namedAs, gaps.profile));
-  if (owed) out.push(owed);
-  if (door !== 'record') return;
-  // Unmerged means what the close would refuse: no mark at all (`landing-evidence.ts`, ISS-1017).
-  // Judged inside the read, so a query that fails is this check unevaluated, by name.
-  const unmerged = await evaluate(
-    'merged',
-    async () => {
-      const rows = await db
-        .select({
-          id: issues.id,
-          mergedAt: issues.mergedAt,
-          mergedCommitSha: issues.mergedCommitSha,
-          mergedLanding: issues.mergedLanding,
-        })
-        .from(issues)
-        .where(inArray(issues.id, issueIds));
-      return rows.filter((r) => landingShortfall(r) !== null);
-    },
-    out,
-  );
-  if (!unmerged) return;
-  if (unmerged.length > 0) {
-    const ids = unmerged.map((r) => r.id);
-    const displayIds = await namedAs(ids);
-    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, displayIds }));
-  }
-}
-
 /** Which boxes could take this release, and whether the declared one is among them. */
 async function poolBlockers(
   projectId: string,
@@ -217,18 +147,20 @@ async function poolBlockers(
   const pool = await evaluate(
     'runner-pool',
     async () => {
-      const labelled = label ? await resolveReleaseDeviceIds(projectId, label) : [];
-      const preferred =
-        labelled.length === 0
-          ? []
-          : await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds: labelled });
-      const eligible =
-        preferred.length > 0 ? preferred : await onlineCapableDeviceIds(projectId, {});
-      return {
-        preferenceMet: preferred.length > 0,
-        eligible,
-        fleet: await projectRunnerDeviceIds(projectId),
-      };
+      // the whole pool and the fleet are asked beside the labelled boxes, not after them (ISS-1070 r17)
+      const [labelledPool, anyPool, fleet] = await Promise.allSettled([
+        (async () => {
+          const labelled = label ? await resolveReleaseDeviceIds(projectId, label) : [];
+          return labelled.length === 0
+            ? []
+            : await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds: labelled });
+        })(),
+        onlineCapableDeviceIds(projectId, {}),
+        projectRunnerDeviceIds(projectId),
+      ]);
+      const preferred = settledValue(labelledPool);
+      const eligible = preferred.length > 0 ? preferred : settledValue(anyPool);
+      return { preferenceMet: preferred.length > 0, eligible, fleet: settledValue(fleet) };
     },
     out,
   );
@@ -392,55 +324,92 @@ async function gatedBlockers(
   warnings: ReleaseWarning[],
 ): Promise<ReleaseChannel[] | null> {
   const { issueIds } = options;
-  // Both groups are READ here and REPORTED in the order the door refuses in.
-  // A channel read that failed must not outrank a roster reason the batch door
-  // reached first, or a reason an operator already knows is buried under an unread check.
-  const ch = await attempt('channels', async () => await resolveReleaseChannels(projectId));
+  const batch = door === 'batch';
+  // Every check is READ at once, each into a list of its own, and REPORTED in the order the door
+  // refuses in: a read of a draft waits on the deepest check, not on all of them in turn (ISS-1070
+  // r17). A channel read that failed must not outrank a roster reason the batch door reached first,
+  // or a reason an operator already knows is buried under an unread check.
+  const chRead = attempt('channels', async () => await resolveReleaseChannels(projectId));
+  const foundRead = collected((o) => resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, o));
+  const [ch, found, claims, owed, ended, pool, rest] = await Promise.all([
+    chRead,
+    foundRead,
+    issueIds && issueIds.length > 0
+      ? collected((o) => claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, o))
+      : null,
+    foundRead.then((f) => collected((o) => rosterBlockers(projectId, door, f.value?.ids ?? [], o))),
+    batch ? collected((o) => endedRunBlocker(projectId, o)) : null,
+    batch ? chRead.then((c) => machineryBlockers(projectId, c.value ?? null)) : null,
+    batch ? foundRead.then((f) => batchBlockers(projectId, options, f.value)) : null,
+  ]);
   const channels = ch.value ?? null;
-
-  const roster: ReleaseBlocker[] = [];
-  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, roster);
-  if (issueIds && issueIds.length > 0) {
-    await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
-  }
-  await rosterBlockers(projectId, door, found?.ids ?? [], roster);
-  if (door === 'batch') await endedRunBlocker(projectId, roster);
-
-  const machinery: ReleaseBlocker[] = [];
-  if (ch.failure) machinery.push(ch.failure);
-  if (channels) {
-    if (door === 'batch') {
-      await poolBlockers(projectId, releaseRunnerLabelOf(channels), machinery, warnings);
-      unreadableProbeBlockers(channels, machinery);
-    }
-  } else if (door === 'batch') {
-    await poolBlockers(projectId, null, machinery, warnings);
-  }
-
-  out.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
-
-  if (door === 'batch') {
-    const active = await evaluate(
-      'in-flight',
-      async () => await getActiveReleaseBatch(projectId),
-      out,
-    );
-    if (active) {
-      out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId, version: active.version }));
-    }
-    await versionBlocker(projectId, issueIds && issueIds.length > 0 ? issueIds : found?.ids, out);
-    if (!issueIds && found) {
-      await criteriaHold(
-        projectId,
-        found.unclaimed,
-        out,
-        warnings,
-        options.serving,
-        options.weighing,
-      );
-    }
+  const roster = [...found.out, ...(claims?.out ?? []), ...owed.out, ...(ended?.out ?? [])];
+  const machinery = [...(ch.failure ? [ch.failure] : []), ...(pool?.out ?? [])];
+  out.push(...(batch ? [...roster, ...machinery] : [...machinery, ...roster]));
+  warnings.push(...(pool?.value ?? []));
+  if (rest) {
+    out.push(...rest.out);
+    warnings.push(...rest.value);
   }
   return channels;
+}
+
+/** The runner pool a batch would take, and the probes it could not read; with the warnings they raise. */
+function machineryBlockers(projectId: string, channels: ReleaseChannel[] | null) {
+  return collected(async (o) => {
+    const warnings: ReleaseWarning[] = [];
+    if (channels) {
+      await poolBlockers(projectId, releaseRunnerLabelOf(channels), o, warnings);
+      unreadableProbeBlockers(channels, o);
+    } else {
+      await poolBlockers(projectId, null, o, warnings);
+    }
+    return warnings;
+  });
+}
+
+/**
+ * What a batch owes after its roster and machinery, read at once and reported in order: a release
+ * already running, the version, and where the whole gate is weighed, its criteria. Either door
+ * reading a batch asks these.
+ */
+function batchBlockers(
+  projectId: string,
+  options: CollectReleaseBlockersOptions,
+  found: RosterRead | undefined,
+) {
+  const { issueIds } = options;
+  return collected(async (o) => {
+    const warnings: ReleaseWarning[] = [];
+    const [active, version, held] = await Promise.all([
+      collected((a) =>
+        evaluate('in-flight', async () => await getActiveReleaseBatch(projectId), a),
+      ),
+      collected((v) =>
+        versionBlocker(projectId, issueIds && issueIds.length > 0 ? issueIds : found?.ids, v),
+      ),
+      !issueIds && found
+        ? collected((c) =>
+            criteriaHold(
+              projectId,
+              found.unclaimed,
+              c,
+              warnings,
+              options.serving,
+              options.weighing,
+            ),
+          )
+        : null,
+    ]);
+    o.push(...active.out);
+    if (active.value) {
+      o.push(
+        blocker('BATCH_IN_FLIGHT', { runId: active.value.runId, version: active.value.version }),
+      );
+    }
+    o.push(...version.out, ...(held?.out ?? []));
+    return warnings;
+  });
 }
 
 /**
@@ -456,34 +425,36 @@ async function changeRequestReleaseBlockers(
   read: Extract<ReleaseDeclaration, { kind: 'change-requests' | 'promotion' }>,
 ): Promise<void> {
   const { issueIds } = options;
-  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, out);
-  if (issueIds && issueIds.length > 0) {
-    await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, out);
-  }
-  const roster = issueIds && issueIds.length > 0 ? (found?.ids ?? []) : (found?.unclaimed ?? []);
-  await rosterBlockers(projectId, 'batch', roster, out);
-  await endedRunBlocker(projectId, out);
-  if (read.kind === 'change-requests') await changeRequestBlockers(projectId, roster, out);
-  else await promotionBlockers(projectId, read, roster, out);
-  const active = await evaluate(
-    'in-flight',
-    async () => await getActiveReleaseBatch(projectId),
-    out,
+  const named = issueIds !== undefined && issueIds.length > 0;
+  // every check is read at once and reported in the order the door refuses in (ISS-1070 r17)
+  const foundRead = collected((o) => resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, o));
+  const rosterOf = (found: RosterRead | undefined) =>
+    named ? (found?.ids ?? []) : (found?.unclaimed ?? []);
+  const [found, claims, owed, ended, requests, rest] = await Promise.all([
+    foundRead,
+    named ? collected((o) => claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, o)) : null,
+    foundRead.then((f) =>
+      collected((o) => rosterBlockers(projectId, 'batch', rosterOf(f.value), o)),
+    ),
+    collected((o) => endedRunBlocker(projectId, o)),
+    foundRead.then((f) =>
+      collected((o) =>
+        read.kind === 'change-requests'
+          ? changeRequestBlockers(projectId, rosterOf(f.value), o)
+          : promotionBlockers(projectId, read, rosterOf(f.value), o),
+      ),
+    ),
+    foundRead.then((f) => batchBlockers(projectId, options, f.value)),
+  ]);
+  out.push(
+    ...found.out,
+    ...(claims?.out ?? []),
+    ...owed.out,
+    ...ended.out,
+    ...requests.out,
+    ...rest.out,
   );
-  if (active) {
-    out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId, version: active.version }));
-  }
-  await versionBlocker(projectId, issueIds && issueIds.length > 0 ? issueIds : found?.ids, out);
-  if (!issueIds && found) {
-    await criteriaHold(
-      projectId,
-      found.unclaimed,
-      out,
-      warnings,
-      options.serving,
-      options.weighing,
-    );
-  }
+  warnings.push(...rest.value);
 }
 
 export * from './blocker-kit.js';

@@ -13,6 +13,7 @@ import {
   readReleasePath,
   sitesOf,
 } from '../project-config/index.js';
+import { settledValue } from './blocker-kit.js';
 import { blockerRefusal } from './refuse.js';
 
 /** The one status an issue waits at for release. */
@@ -73,12 +74,6 @@ function externalTarget(production: NamedEnvironment): string | null {
 }
 
 type SiteBinding = { ok: true; pair: BindingWithConnection } | { ok: false; reason: string };
-
-/** What a settled read answered, or its failure thrown where it is reached. */
-function settledValue<T>(read: PromiseSettledResult<T>): T {
-  if (read.status === 'rejected') throw read.reason;
-  return read.value;
-}
 
 async function siteBinding(
   projectId: string,
