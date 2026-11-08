@@ -15,7 +15,7 @@ const AT = {
   master: 'serves' as const,
   now: new Date('2026-10-02T00:00:00Z'),
 };
-const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+const NO_STANDING_FACTS = { masterTriages: false, carrierRelease: null };
 
 const routedTo = (...statuses: string[]): PhaseFacts => ({
   status: 'triaged',
@@ -144,7 +144,7 @@ describe('a planned item waits on every carrier still owed, each named', () => {
       reader,
       null,
       {
-        masterOwesTriage: false,
+        masterTriages: false,
         carrierRelease: 'manual',
         releaseHolders: ['Ada'],
       },

@@ -4,18 +4,22 @@
  * Severity orders the list and admits nothing: a low item left out of it is one nobody is woken for
  * (ISS-253). The box carrying the master reads it on every sweep, so a filed item is master work
  * whether or not its feedback.filed wake was heard. An item whose one clarification is open waits
- * on the reporter, not the master, and the reporter's answer wakes the master and owes it again;
- * one carrying a proposed feedback_triage suggestion waits on whoever accepts or rejects it, and a
- * rejection owes it again.
+ * on the reporter, not the master, and the reporter's answer wakes the master and owes it again.
+ * One carrying a proposed feedback_triage suggestion waits on whoever accepts or rejects it, by the
+ * one rule (`@forge/contracts/who-owes:whoOwes`, `feedback.triage`, ISS-1132): where the project's
+ * policy gives triage to the master, the suggestion is the master's own work item and stays on this
+ * list naming it; where the policy keeps triage a person's, it waits on them, and a rejection owes
+ * it again.
  */
 
 import { FEEDBACK_SEVERITIES, type FeedbackSeverity, feedbackKey } from '@forge/contracts/feedback';
+import { whoOwes } from '@forge/contracts/who-owes';
 import { and, asc, eq, inArray, isNull, lte, notExists, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { projectHasLiveMaster } from '../devices/index.js';
+import { readOwedPolicy } from '../project-config/index.js';
 
 export interface OwedTriage {
   feedbackId: string;
@@ -23,9 +27,12 @@ export interface OwedTriage {
   title: string;
   severity: FeedbackSeverity;
   status: 'new' | 'reopened';
+  /** The feedback_triage suggestion proposed on it, where one is: the master accepts or rejects it. */
+  proposed: string | null;
 }
 
 export async function owedTriages(projectId: string, exec: Tx = db): Promise<OwedTriage[]> {
+  const masterTriages = whoOwes('feedback.triage', await readOwedPolicy(projectId)).by === 'master';
   const rows = await exec
     .select({
       id: feedback.id,
@@ -49,33 +56,52 @@ export async function owedTriages(projectId: string, exec: Tx = db): Promise<Owe
               and(eq(agentQuestions.feedbackId, feedback.id), eq(agentQuestions.status, 'open')),
             ),
         ),
-        notExists(
-          exec
-            .select({ id: suggestions.id })
-            .from(suggestions)
-            .where(
-              and(
-                eq(suggestions.feedbackId, feedback.id),
-                eq(suggestions.kind, 'feedback_triage'),
-                eq(suggestions.status, 'proposed'),
-              ),
+        masterTriages
+          ? undefined
+          : notExists(
+              exec
+                .select({ id: suggestions.id })
+                .from(suggestions)
+                .where(
+                  and(
+                    eq(suggestions.feedbackId, feedback.id),
+                    eq(suggestions.kind, 'feedback_triage'),
+                    eq(suggestions.status, 'proposed'),
+                  ),
+                ),
             ),
-        ),
       ),
     )
     .orderBy(asc(feedback.fbSeq));
+  const proposed =
+    masterTriages && rows.length > 0
+      ? await exec
+          .select({ id: suggestions.id, feedbackId: suggestions.feedbackId })
+          .from(suggestions)
+          .where(
+            and(
+              inArray(
+                suggestions.feedbackId,
+                rows.map((r) => r.id),
+              ),
+              eq(suggestions.kind, 'feedback_triage'),
+              eq(suggestions.status, 'proposed'),
+            ),
+          )
+          .orderBy(asc(suggestions.createdAt))
+      : [];
+  const proposalOf = new Map<string, string>();
+  for (const p of proposed) {
+    if (p.feedbackId && !proposalOf.has(p.feedbackId)) proposalOf.set(p.feedbackId, p.id);
+  }
   return bySeverity(rows).map((r) => ({
     feedbackId: r.id,
     key: feedbackKey(r.fbSeq),
     title: r.title,
     severity: r.severity,
     status: r.status as OwedTriage['status'],
+    proposed: proposalOf.get(r.id) ?? null,
   }));
-}
-
-/** What the project's live master owes: with no master live, nobody is woken for these, so none. */
-export async function liveMasterOwedTriages(projectId: string): Promise<OwedTriage[]> {
-  return (await projectHasLiveMaster(projectId)) ? owedTriages(projectId) : [];
 }
 
 /** Most severe first, and in filing order within one severity: the sort is stable. */

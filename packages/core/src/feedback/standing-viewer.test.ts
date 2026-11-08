@@ -8,7 +8,7 @@ const AT = {
   master: 'serves' as const,
   now: new Date('2026-10-02T00:00:00Z'),
 };
-const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+const NO_STANDING_FACTS = { masterTriages: false, carrierRelease: null };
 
 /** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
 const checked = <T>(v: T): T => {
@@ -99,7 +99,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
       viewer({ canTriage: true, canRoute: true }),
       null,
       {
-        masterOwesTriage: true,
+        masterTriages: true,
         carrierRelease: null,
       },
       AT,
@@ -111,6 +111,49 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
     });
     expect(s.waitingOn.rule).toContain('feedback.approve');
     expect(s.attentionGroup).toBe('moving');
+  });
+});
+
+// ISS-1132: FB-577 sat seven hours at "You: triage it" on forge, a yolo project, because the triage
+// wait asked who held feedback.approve and whether a master was live, never the project's policy
+describe('a new item is placed by the one rule, read with the project policy', () => {
+  const triager = viewer({ canTriage: true, canRoute: true });
+
+  it.each(['new', 'reopened'] as const)(
+    'reads %s as the master’s on a project whose policy gives it triage, never a holder’s Needs you',
+    (phase) => {
+      const s = feedbackStandingOf(
+        phase,
+        null,
+        [],
+        'Reporter',
+        triager,
+        null,
+        { ...NO_STANDING_FACTS, masterTriages: true },
+        AT,
+      );
+      expect(s.waitingOn).toMatchObject({
+        kind: 'agent',
+        who: "The project's master",
+        act: 'triage it',
+      });
+      expect(s.attentionGroup).toBe('moving');
+    },
+  );
+
+  it('still names a holder of feedback.approve where the policy keeps triage a person’s', () => {
+    const s = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      triager,
+      null,
+      { ...NO_STANDING_FACTS, masterTriages: false },
+      AT,
+    );
+    expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'triage it' });
+    expect(s.attentionGroup).toBe('needs_you');
   });
 });
 
@@ -128,7 +171,7 @@ describe('an item planned on an issue at the release gate names who releases it'
       v,
       null,
       {
-        masterOwesTriage: false,
+        masterTriages: false,
         carrierRelease: release,
         releaseHolders,
       },
@@ -213,7 +256,7 @@ describe('a resolved item is never Moving', () => {
       'Reporter',
       viewer(),
       null,
-      { ...NO_STANDING_FACTS, masterOwesTriage: true },
+      { ...NO_STANDING_FACTS, masterTriages: true },
       fresh,
     );
     expect(s.waitingOn.kind).toBe('agent');

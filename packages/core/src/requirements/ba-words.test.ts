@@ -35,7 +35,7 @@ const AT = {
   master: 'serves' as const,
   now: new Date('2026-10-02T00:00:00Z'),
 };
-const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+const NO_STANDING_FACTS = { masterTriages: false, carrierRelease: null };
 
 const at = (iso: string) => new Date(iso);
 const KERNEL = /re-pin|repin|roster|[a-z]+-[a-z-]+ r\d+\b/i;
@@ -151,7 +151,7 @@ describe('the act a feedback item waits on reads in a BA’s words', () => {
       viewer(),
       null,
       {
-        masterOwesTriage: false,
+        masterTriages: false,
         carrierRelease: 'approval',
         carrierVersion: '0.4.0-dev.97',
         releaseHolders: ['Ana'],

@@ -92,6 +92,19 @@ describe("who owes an act (ISS-1058): one table, serious or routine", () => {
 		);
 	});
 
+	// ISS-1132 (FB-577): triage's switch is on wherever a project sets nothing, yolo included, and names
+	// feedback.approve, which the master holds outside strict; only strict keeps triage a person's
+	it("gives a new item's triage to the master unless the project is strict, whatever the triage switch says", () => {
+		const triageOn = { ...OPEN, gates: { ...OPEN.gates, triage: true } };
+		expect(whoOwes("feedback.triage", OPEN).by).toBe("master");
+		expect(whoOwes("feedback.triage", triageOn).by).toBe("master");
+		expect(whoOwes("feedback.triage", { ...triageOn, strict: true })).toMatchObject({
+			by: "person",
+			because: "policy",
+			on: "strict",
+		});
+	});
+
 	it("keeps an act a person's where the project's own policy turned that person's gate on", () => {
 		const approval = { ...OPEN, releaseApproval: true };
 		expect(whoOwes("release.decide", approval)).toMatchObject({

@@ -9,7 +9,7 @@ const AT = {
   master: 'serves' as const,
   now: new Date('2026-10-02T00:00:00Z'),
 };
-const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+const NO_STANDING_FACTS = { masterTriages: false, carrierRelease: null };
 
 const now = new Date('2026-10-07T00:00:00Z');
 const inDays = (n: number) => new Date(now.getTime() + n * 86_400_000);
@@ -57,7 +57,7 @@ describe('snooze', () => {
       viewer,
       null,
       {
-        masterOwesTriage: false,
+        masterTriages: false,
         carrierRelease: null,
         snoozedUntil: until,
       },

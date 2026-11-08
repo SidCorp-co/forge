@@ -30,7 +30,6 @@ import { type ForgeOrigins, forgeOriginsOf } from './forge-reads.js';
 import { carrierIssueRows, owedCarriers, unreleasedCarrierKeys } from './list-carriers.js';
 import { releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
-import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
 import { routeIssuesOf } from './relations.js';
 import { NONE_UNTOLD, notToldOf, type UntoldAmong, untoldAmong } from './ship-notice.js';
@@ -85,8 +84,8 @@ export interface Linked extends StandingFacts {
   >;
   roots: Map<string, Row>;
   names: Map<string, string>;
-  /** Items of these rows the project's live master owes a triage; none where no master is live. */
-  masterOwed: Set<string>;
+  /** Whether the one rule gives a new item's triage to the project's master (`who-owes.ts:whoOwes`, ISS-1132). */
+  masterTriages: boolean;
   /** Whether the project's master owes a resolved item's confirm (`who-owes.ts:whoOwes`, ISS-1058). */
   masterVerifies: boolean;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
@@ -221,10 +220,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   const atGate = issueRows.some(
     (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
   );
-  const [owed, gate, windowDays, origins, standing, shippedReleases, policy] = await Promise.all([
-    allRows.some((r) => r.status === 'new' || r.status === 'reopened')
-      ? liveMasterOwedTriages(projectId)
-      : [],
+  const [gate, windowDays, origins, standing, shippedReleases, policy] = await Promise.all([
     releaseGateOf(projectId, atGate),
     allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
     forgeOriginsOf(rows.map((r) => r.id)),
@@ -242,7 +238,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     ...standing,
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
-    masterOwed: new Set(owed.map((o) => o.feedbackId)),
+    masterTriages: whoOwes('feedback.triage', policy).by === 'master',
     masterVerifies: whoOwes('feedback.verify', policy).by === 'master',
     release,
     prefix,
@@ -422,7 +418,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       ? revisionStageOf(l.suggestions.get(r.routedSuggestionId) ?? null)
       : null,
     {
-      masterOwesTriage: l.masterOwed.has(r.id),
+      masterTriages: l.masterTriages,
       masterVerifies: l.masterVerifies,
       snoozedUntil: snoozed?.until ?? null,
       recordCheckAt: recordCheckOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,

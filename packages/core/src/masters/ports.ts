@@ -120,8 +120,8 @@ interface MastersPorts {
   breakdownsOwed(projectId: string): Promise<{ key: string; overdue: boolean }[]>;
   /** Agent-written requirement revisions a signer returned, owed a revise. */
   revisionsOwed(projectId: string): Promise<{ key: string; revision: number }[]>;
-  /** Feedback items owed a triage. */
-  triagesOwed(projectId: string): Promise<{ key: string }[]>;
+  /** Feedback items owed a triage, each naming the feedback_triage suggestion proposed on it where the master decides one (ISS-1132). */
+  triagesOwed(projectId: string): Promise<{ key: string; proposed: string | null }[]>;
   /** Shipped feedback items an agent of this project reported, owing that agent's confirm or reopen (REQ-66 BC-8). */
   confirmsOwed(projectId: string): Promise<AgentConfirmOwed[]>;
   /** Returned workflow designs no live issue carries, owed a revision. */

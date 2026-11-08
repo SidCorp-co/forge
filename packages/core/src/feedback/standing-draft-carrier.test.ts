@@ -46,7 +46,7 @@ describe("FB-74's shape: feedback routed to a draft issue", () => {
     'Reporter',
     reader,
     null,
-    { masterOwesTriage: false, carrierRelease: null, draftCarrier: 'ISS-284' },
+    { masterTriages: false, carrierRelease: null, draftCarrier: 'ISS-284' },
     AT,
   );
 
@@ -80,7 +80,7 @@ describe('a declined item (FB-89)', () => {
       'Reporter',
       reader,
       null,
-      { masterOwesTriage: false, carrierRelease: null },
+      { masterTriages: false, carrierRelease: null },
       AT,
     );
     expect(s.attentionGroup).toBe('done');

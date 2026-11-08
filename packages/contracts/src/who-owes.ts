@@ -56,10 +56,12 @@ export type OwedActRule =
 			byContent?: true;
 	  };
 
-/** The acts no decision button carries as its own act: a breakdown's accept, and the release acts owed at the gate or after a landing. */
+/** The acts no decision button carries as its own act: a breakdown's accept, a new item's triage, and the release acts owed at the gate or after a landing. */
 export const OTHER_OWED_ACTS = [
 	/** a suggestion accepted as a requirement's breakdown, which follows the breakdown gate (`suggestions/accept-gate.ts`) */
 	"breakdown.accept",
+	/** triaging a new or reopened feedback item: no one press answers it, so it is taken on the item's page */
+	"feedback.triage",
 	"release.record",
 	"release.split",
 	"release.settleClaim",
@@ -141,6 +143,14 @@ export const OWED_ACTS: Readonly<Record<OwedActKind, OwedActRule>> = {
 	"suggestion.reject": {
 		serious: false,
 		why: "declining a suggestion the agents wrote is the master's",
+		personWhen: [STRICT],
+	},
+	// ISS-1132 (FB-577): the triage switch (`person-gates.ts`, triage) names the permission a route
+	// asks, feedback.approve, which the master holds outside strict (`MASTER_GRANTS`), so it keeps no
+	// act a person's; only a project that asked for control does
+	"feedback.triage": {
+		serious: false,
+		why: "triaging new feedback (reading it, finding its duplicate, routing it or proposing its route) is intake the master holds feedback.approve for outside strict (REQ-79 BC-11, BC-12)",
 		personWhen: [STRICT],
 	},
 	"feedback.verify": {

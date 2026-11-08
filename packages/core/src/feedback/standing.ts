@@ -149,8 +149,14 @@ export interface StandingViewer {
 export type CarrierRelease = ReleaseMode;
 
 export interface StandingFacts {
-  /** An item the project's live master owes a triage (`owed-triage.ts:owedTriages`). */
-  masterOwesTriage: boolean;
+  /**
+   * Whether the one rule gives a new or reopened item's triage to the project's master
+   * (`@forge/contracts/who-owes:whoOwes`, `feedback.triage`, ISS-1132): it is routine intake, so it is
+   * the master's unless the project is strict. Whether a master is live now is not asked: the
+   * master's sweep lists every item it owes (`owed-triage.ts:owedTriages`), and a project owing one
+   * gets a master placed for it.
+   */
+  masterTriages: boolean;
   /**
    * Whether the project's master owes a resolved item's confirm, by the one rule
    * (`@forge/contracts/who-owes:whoOwes`, `feedback.verify`, ISS-1058): confirming an answer or a fix
@@ -222,19 +228,21 @@ function waitingOf(
       if (facts.snoozedUntil) {
         return theirs(
           wait(
-            'person',
-            routerOf(viewer),
+            facts.masterTriages ? 'agent' : 'person',
+            facts.masterTriages ? MASTER : routerOf(viewer),
             say('feedback.act.triageAfterSnooze', { date: facts.snoozedUntil.slice(0, 10) }),
             say('feedback.rule.snoozed', { phase, until: facts.snoozedUntil }),
             { dueAt: facts.snoozedUntil },
           ),
         );
       }
-      if (facts.masterOwesTriage)
+      // the one rule places it (ISS-1132): holding feedback.approve lets a person triage first, and
+      // puts nothing on their Needs you
+      if (facts.masterTriages)
         return theirs(
           wait(
             'agent',
-            say('standing.who.projectMaster'),
+            MASTER,
             say('standing.act.triageIt'),
             say('feedback.rule.masterOwes', { phase }),
           ),
