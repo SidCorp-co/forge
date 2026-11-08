@@ -17,6 +17,7 @@ import type { CoreGuide } from './types.js';
  */
 export const PRODUCTION_WATCH_OPS: ScriptOpsDeclaration = {
   program: '/home/dev/.local/bin/forge-ops',
+  secrets: [{ env: 'FORGE_OPS_TOKEN', secret: 'secret://ops/forge-ops-token' }],
   calls: [
     { name: 'status', tool: 'status', args: { target: 'epod-production' } },
     {
@@ -144,8 +145,10 @@ summary stays a once-a-day \`prompt\` or \`status_report\` schedule.
 - \`ctx.forge.get\`, \`ctx.log\`, \`ctx.notify\`, \`ctx.params\` as before.
 
 ### Rules
-1. **Declare every call, read-only.** \`ops: { program, calls: [{ name, tool, args, timeoutMs?, readOnlyBecause? }] }\`
-   on the schedule (\`POST /api/schedules\` or \`PUT /api/schedules/:id\`). A call is read-only when its tool is
+1. **Declare every call, read-only.** \`ops: { program, secrets, calls: [{ name, tool, args, timeoutMs?, readOnlyBecause? }] }\`
+   on the schedule (\`POST /api/schedules\` or \`PUT /api/schedules/:id\`). \`secrets\` names the forge-ops
+   credential as project secrets (\`[{ env, secret: secret://<scope>/<name> }]\`): each call's process alone is
+   handed them, never the box's own, and an unset one fails the call by name. A call is read-only when its tool is
    ${readTools}, or \`${FORGE_OPS_EXEC_TOOL}\` in one of two forms:
    - **A named command** (\`{ target, service, command }\`): \`command\` is a name the ops dashboard vetted
      for that service (\`health\`), never a shell line, and the call says why it only reads in

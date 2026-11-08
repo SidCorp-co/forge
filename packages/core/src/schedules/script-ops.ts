@@ -20,10 +20,9 @@ import {
   type ScriptOpsCallDeclaration,
   type ScriptOpsDeclaration,
 } from '@forge/contracts/script-sandbox';
-import { SUPPORT_BOX_CAPABILITIES } from '@forge/contracts/support';
-import { boxLacks } from '../agent-sessions/index.js';
-import { onlineCapableDeviceIds, runOpsRead } from '../runners/index.js';
+import { runOpsRead } from '../runners/index.js';
 import type { ReadOutcome, ScriptOpsCaller } from '../sandbox/index.js';
+import { projectReadBox, secretEnvOf, withoutSecrets } from '../support/index.js';
 import { schedulesPorts } from './ports.js';
 
 const READ_TOOLS: readonly string[] = FORGE_OPS_READ_TOOLS;
@@ -107,28 +106,6 @@ export function opsArgv(decl: ScriptOpsDeclaration, call: ScriptOpsCallDeclarati
   return [decl.program, call.tool, JSON.stringify(call.args ?? {})];
 }
 
-/** The box a project's ops calls run on: one online box bound to it that runs a declared read. */
-async function opsBoxOf(
-  projectId: string,
-): Promise<{ ok: true; deviceId: string } | { ok: false; why: string }> {
-  const need = SUPPORT_BOX_CAPABILITIES.reads;
-  const online = await onlineCapableDeviceIds(projectId, undefined, {
-    includeLimited: true,
-    includeBelowFloor: true,
-  });
-  for (const deviceId of online) {
-    const box = await boxLacks(deviceId, [need]);
-    if (box && box.lacks.length === 0) return { ok: true, deviceId };
-  }
-  return {
-    ok: false,
-    why:
-      online.length === 0
-        ? 'no box bound to this project is online to run it'
-        : `no online box bound to this project declares ${need}: its forge-runner predates it (\`forge-runner update\` on the box)`,
-  };
-}
-
 const refused = (code: ScriptDoorRefusal, message: string): ReadOutcome => ({
   ok: false,
   name: code === 'SCRIPT_OPS_FAILED' ? 'ScriptOpsFailed' : 'ScriptOpsRefused',
@@ -148,20 +125,34 @@ export function openOpsCaller(args: {
 }): { names: string[]; call: ScriptOpsCaller; calls(): ScriptOpsCall[] } {
   const log: ScriptOpsCall[] = [];
   const declared = new Map((args.decl?.calls ?? []).map((c) => [c.name, c]));
-  let box: Promise<Awaited<ReturnType<typeof opsBoxOf>>> | null = null;
+  let box: ReturnType<typeof projectReadBox> | null = null;
   const run =
     args.run ??
     (async (argv: string[], timeoutMs: number) => {
-      box ??= opsBoxOf(args.projectId);
+      // the credential is the declaration's project secret, handed for this call alone (ISS-707)
+      const env = await secretEnvOf(args.projectId, argv[1] ?? '', args.decl?.secrets);
+      if (!env.ok) return { ok: false as const, why: env.refusals.map((r) => r.detail).join('; ') };
+      box ??= projectReadBox(args.projectId);
       const picked = await box;
-      if (!picked.ok) return { ok: false as const, why: picked.why };
-      return runOpsRead({
-        deviceId: picked.deviceId,
+      if (!picked.ok)
+        return { ok: false as const, why: picked.refusals.map((r) => r.detail).join('; ') };
+      const ran = await runOpsRead({
+        deviceId: picked.value,
         projectId: args.projectId,
         name: argv[1] ?? '',
         argv,
         timeoutMs,
+        env: env.env,
       });
+      if (!ran.ok) return { ok: false as const, why: withoutSecrets(ran.why, env.env) };
+      return {
+        ok: true as const,
+        value: {
+          ...ran.value,
+          stdout: withoutSecrets(ran.value.stdout, env.env),
+          stderr: withoutSecrets(ran.value.stderr, env.env),
+        },
+      };
     });
 
   const call: ScriptOpsCaller = async (name, given) => {

@@ -4,6 +4,7 @@
 // meets. The engine and its host live in core's `sandbox` module.
 
 import { z } from "zod";
+import { supportReadSecretSchema } from "./support.js";
 
 /** The one language the sandbox runs. */
 export const SCRIPT_LANGUAGE = "javascript" as const;
@@ -123,7 +124,10 @@ export const scriptOpsCallSchema = z.strictObject({
 		),
 	/** The tool's arguments, fixed here: the script passes none (`{ target, command }` for exec_command). */
 	args: z
-		.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,39}$/), opsArgValueSchema)
+		.record(
+			z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,39}$/),
+			opsArgValueSchema,
+		)
 		.optional(),
 	timeoutMs: z
 		.number()
@@ -139,9 +143,24 @@ export const scriptOpsCallSchema = z.strictObject({
 });
 export type ScriptOpsCallDeclaration = z.infer<typeof scriptOpsCallSchema>;
 
-/** What a script schedule declares it may call (REQ-87 BC-1), saved on the schedule. */
+/**
+ * What a script schedule declares it may call (REQ-87 BC-1), saved on the schedule. `secrets` is the
+ * forge-ops credential as project secrets (ISS-707): core reads each from the vault and the box sets
+ * it on that one call's process, so no call runs on a credential the box holds of its own.
+ */
 export const scriptOpsSchema = z.strictObject({
 	program: opsProgramSchema,
+	secrets: z
+		.array(supportReadSecretSchema)
+		.min(
+			1,
+			"name the forge-ops credential as a project secret: secrets: [{ env, secret: secret://<scope>/<name> }]",
+		)
+		.max(5)
+		.refine(
+			(ss) => new Set(ss.map((x) => x.env)).size === ss.length,
+			"two secrets share a variable; a variable is named once",
+		),
 	calls: z
 		.array(scriptOpsCallSchema)
 		.min(1)

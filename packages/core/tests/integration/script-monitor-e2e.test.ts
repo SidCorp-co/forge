@@ -1,5 +1,11 @@
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+vi.hoisted(() => {
+  // the forge-ops credential is a project secret, sealed in the integration vault (ISS-707)
+  process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
+});
+
 import { db } from '../../src/db/client.js';
 import {
   PRODUCTION_WATCH_OPS,
@@ -67,6 +73,11 @@ beforeAll(async () => {
   await db.execute(
     sql`UPDATE devices SET capabilities = ${SUPPORT_BOX_CAPS}::jsonb WHERE id = ${deviceId}`,
   );
+  // the forge-ops credential the example declares, set as the project secret it names (ISS-707)
+  const cred = await api(owner, 'PUT', `/api/projects/${projectId}/secrets/ops/forge-ops-token`, {
+    value: 'fo_watch_token',
+  });
+  expect(cred.status, JSON.stringify(cred.body)).toBeLessThan(300);
   box = new SessionBox(core.base, await boxToken(o.id, deviceId), deviceId);
   // the forge-ops CLI on the box, as it would print: the service status, df, and the metrics document
   box.readAnswer = (d) => {
@@ -125,7 +136,7 @@ describe('a declaration that is not read-only is refused by name when it is save
     const res = await create({
       name: `refused ${call.name}`,
       script: 'return 1;',
-      ops: { program: PRODUCTION_WATCH_OPS.program, calls: [call] },
+      ops: { ...PRODUCTION_WATCH_OPS, calls: [call] },
     });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     const refusals = (
@@ -158,7 +169,7 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
       name: 'undeclared',
       script: `try { await ctx.ops.deploy(); } catch (e) { ctx.log(e.code, e.message); }
                const s = await ctx.ops.status(); ctx.log(s.stdout);`,
-      ops: { program: PRODUCTION_WATCH_OPS.program, calls: [PRODUCTION_WATCH_OPS.calls[0]] },
+      ops: { ...PRODUCTION_WATCH_OPS, calls: [PRODUCTION_WATCH_OPS.calls[0]] },
     });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     const before = opsReads().length;
@@ -186,12 +197,12 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
     const made = await create({
       name: 'stopped reading',
       script: `ctx.log('the script ran'); await ctx.ops.status();`,
-      ops: { program: PRODUCTION_WATCH_OPS.program, calls: [PRODUCTION_WATCH_OPS.calls[0]] },
+      ops: { ...PRODUCTION_WATCH_OPS, calls: [PRODUCTION_WATCH_OPS.calls[0]] },
     });
     const id = String(made.body.id);
     await db.execute(sql`
       UPDATE schedules SET ops = ${JSON.stringify({
-        program: PRODUCTION_WATCH_OPS.program,
+        ...PRODUCTION_WATCH_OPS,
         calls: [{ name: 'status', tool: 'deploy', args: { target: 'epod-production' } }],
       })}::jsonb WHERE id = ${id}`);
     const before = opsReads().length;
@@ -335,5 +346,56 @@ describe('a script fire a core restart orphaned is closed by name, never left ru
     expect(o?.finished_at).not.toBeNull();
     const [f] = await rows(sql`SELECT status FROM schedule_runs WHERE id = ${fresh}`);
     expect(f?.status).toBe('running');
+  });
+});
+
+// ISS-707: a script's forge-ops calls ran under whatever credential the box's own forge-ops held. The
+// declaration now names its credential as a project secret, which core reads from the vault and hands
+// the box for that one call; an unset secret fails the call by name before the box is asked, and what
+// the call printed is cut of it before the script reads it.
+describe("ISS-707: a script's ops call takes its credential from a project secret, never the box", () => {
+  const CRED = { env: 'FORGE_OPS_TOKEN', secret: 'secret://ops/script-ops-token' };
+  const TOKEN = 'fo_sched_9d2c41';
+  const status = PRODUCTION_WATCH_OPS.calls[0];
+
+  it('refuses at save a declaration that names no credential secret', async () => {
+    const res = await create({
+      name: 'no credential',
+      script: 'return 1;',
+      ops: { program: PRODUCTION_WATCH_OPS.program, calls: [status] },
+    });
+    // [SCRIPT_OPS_BOX_CREDENTIAL] before the fix: saved, and run on the box's own credential
+    expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(res.body)).toContain('secrets');
+  });
+
+  it('fails the call by name while the secret is unset, then hands it for that call alone and cuts it', async () => {
+    const made = await create({
+      name: 'credential',
+      script: `try { const s = await ctx.ops.status(); ctx.log(s.stdout); } catch (e) { ctx.log(e.code, e.message); }`,
+      ops: { ...PRODUCTION_WATCH_OPS, calls: [status], secrets: [CRED] },
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const id = String(made.body.id);
+    const before = opsReads().length;
+    expect((await api(owner, 'POST', `/api/schedules/${id}/run`)).status).toBe(202);
+    const unset = await fireOf(id);
+    expect(unset.ops_calls).toEqual([
+      { name: 'status', outcome: 'failed', code: 'SCRIPT_OPS_FAILED' },
+    ]);
+    expect(String(unset.output)).toContain('ops/script-ops-token');
+    expect(opsReads().length).toBe(before);
+    const set = await api(owner, 'PUT', `/api/projects/${projectId}/secrets/ops/script-ops-token`, {
+      value: TOKEN,
+    });
+    expect(set.status, JSON.stringify(set.body)).toBeLessThan(300);
+    const answer = box.readAnswer;
+    box.readAnswer = () => ({ exitCode: 0, stdout: `epod-api running as ${TOKEN}`, stderr: '' });
+    expect((await api(owner, 'POST', `/api/schedules/${id}/run`)).status).toBe(202);
+    const ran = await fireOf(id);
+    box.readAnswer = answer;
+    expect(opsReads().at(-1)?.data).toMatchObject({ env: { FORGE_OPS_TOKEN: TOKEN } });
+    expect(String(ran.output)).toContain('epod-api running as [secret FORGE_OPS_TOKEN]');
+    expect(JSON.stringify(ran)).not.toContain(TOKEN);
   });
 });

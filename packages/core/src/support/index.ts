@@ -39,6 +39,7 @@ import { agentSwitchGate } from './switches.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
 export { classifyCommand } from './command-class.js';
+export { projectReadBox, secretEnvOf, withoutSecrets } from './declared-read.js';
 export { forgetMemberships } from './health.js';
 export { roomWriterUserId } from './ops-asker.js';
 export { unhandledMessagesOf } from './room-reads.js';

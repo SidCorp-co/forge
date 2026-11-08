@@ -42,6 +42,7 @@ beforeAll(() => {
 
 const decl = (calls: ScriptOpsDeclaration['calls']): ScriptOpsDeclaration => ({
   program: '/home/dev/.local/bin/forge-ops',
+  secrets: [{ env: 'FORGE_OPS_TOKEN', secret: 'secret://ops/forge-ops-token' }],
   calls,
 });
 
@@ -155,14 +156,29 @@ describe('a declared call is read-only on the forge-ops target, or refused by na
     }
   });
 
+  // ISS-707: a call runs on the credential the declaration names as a project secret, never the box's
+  it('refuses a declaration that names no credential secret', () => {
+    const { secrets: _none, ...bare } = decl([{ name: 'a', tool: 'status' }]);
+    const parsed = scriptOpsSchema.safeParse(bare);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain('secrets');
+    expect(scriptOpsSchema.safeParse(decl([{ name: 'a', tool: 'status' }])).success).toBe(true);
+  });
+
   it('refuses a program that is not the forge-ops CLI, and two calls of one name', () => {
     expect(
-      scriptOpsSchema.safeParse({ program: '/bin/sh', calls: [{ name: 'a', tool: 'status' }] })
-        .success,
+      scriptOpsSchema.safeParse({
+        ...decl([]),
+        program: '/bin/sh',
+        calls: [{ name: 'a', tool: 'status' }],
+      }).success,
     ).toBe(false);
     expect(
-      scriptOpsSchema.safeParse({ program: 'forge-ops', calls: [{ name: 'a', tool: 'status' }] })
-        .success,
+      scriptOpsSchema.safeParse({
+        ...decl([]),
+        program: 'forge-ops',
+        calls: [{ name: 'a', tool: 'status' }],
+      }).success,
     ).toBe(false);
     expect(
       scriptOpsSchema.safeParse(
