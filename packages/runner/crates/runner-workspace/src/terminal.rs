@@ -17,12 +17,14 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
+pub mod chat_pane;
 pub mod deny;
 pub mod held;
 mod launch;
 mod pane_env;
 mod submit;
 mod typing;
+pub use chat_pane::{chat_pane, ChatPane, ChatPaneRefused, CHAT_PREFIX};
 pub use launch::*;
 pub use pane_env::{missing_binaries, pane_env, pane_env_in, pane_env_read};
 use runner_platform::error::{Error, Result};
