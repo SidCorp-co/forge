@@ -72,11 +72,19 @@ function externalTarget(production: NamedEnvironment): string | null {
   return 'mode' in deployment ? (deployment.target ?? null) : null;
 }
 
+type SiteBinding = { ok: true; pair: BindingWithConnection } | { ok: false; reason: string };
+
+/** What a settled read answered, or its failure thrown where it is reached. */
+function settledValue<T>(read: PromiseSettledResult<T>): T {
+  if (read.status === 'rejected') throw read.reason;
+  return read.value;
+}
+
 async function siteBinding(
   projectId: string,
   production: NamedEnvironment,
   site: EnvironmentSite,
-): Promise<{ ok: true; pair: BindingWithConnection } | { ok: false; reason: string }> {
+): Promise<SiteBinding> {
   const id = site.binding;
   const named =
     site.name === production.name
@@ -117,13 +125,19 @@ async function productionBindings(
   projectId: string,
   production: NamedEnvironment,
 ): Promise<{ ok: true; sites: GatedSite[] } | { ok: false; reason: string }> {
-  const sites: GatedSite[] = [];
+  // every deployed site's binding is asked at once and weighed in order: the first that cannot be
+  // deployed refuses the whole, and a later site's failure is thrown only where it is reached
+  // (ISS-1070 r17); a further site deployed outside Forge is skipped before any binding is asked
   const external = new Set(externalSitesOf(production).map((s) => s.name));
-  for (const site of sitesOf(production)) {
-    if (external.has(site.name)) continue;
-    const bound = await siteBinding(projectId, production, site);
-    if (!bound.ok) return bound;
-    sites.push({ site, binding: bound.pair });
+  const deployed = sitesOf(production).filter((site) => !external.has(site.name));
+  const bound = await Promise.allSettled(
+    deployed.map((site) => siteBinding(projectId, production, site)),
+  );
+  const sites: GatedSite[] = [];
+  for (const [i, site] of deployed.entries()) {
+    const b = settledValue(bound[i] as PromiseSettledResult<SiteBinding>);
+    if (!b.ok) return b;
+    sites.push({ site, binding: b.pair });
   }
   return { ok: true, sites };
 }
@@ -134,14 +148,24 @@ export async function resolveReleaseDeclaration(
 ): Promise<ReleaseDeclaration | null> {
   // a read asks this of each release it weighs and each landing it reads, and of every project it
   // reads beside this one: each is asked once, all of them in one statement (ISS-1070 r6)
-  const row = await onePerProject('projectExists', projectId, async (ids) => {
-    const rows = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(inArray(projects.id, [...ids]));
-    return new Map(rows.map((r) => [r.id, r]));
-  });
-  if (!row) return null;
+  // the project's row and its declaration are read at once: a declaration waits on the wave its row
+  // and its bindings share, not on the row's and then the binding's (ISS-1070 r17)
+  const [row, declared] = await Promise.allSettled([
+    onePerProject('projectExists', projectId, async (ids) => {
+      const rows = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(inArray(projects.id, [...ids]));
+      return new Map(rows.map((r) => [r.id, r]));
+    }),
+    declarationOf(projectId),
+  ]);
+  if (!settledValue(row)) return null;
+  return settledValue(declared);
+}
+
+/** What the project document declares, each production site's binding held. */
+async function declarationOf(projectId: string): Promise<ReleaseDeclaration> {
   const read = await readReleasePath(projectId);
   if (!read.ok) return { kind: 'undeclared-target', reason: read.reason };
   const { path } = read;

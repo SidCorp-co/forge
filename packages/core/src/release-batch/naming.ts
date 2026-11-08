@@ -144,9 +144,13 @@ export async function draftNaming(
   projectId: string,
   version: string,
 ): Promise<ReleaseNaming | null> {
-  const pending = await pendingNaming(projectId, version);
+  // both asked at once: the attempt is the draft's own refusal's ask too, so it costs no statement
+  // and the naming waits on one wave, not two (ISS-1070 r17)
+  const [pending, run] = await Promise.all([
+    pendingNaming(projectId, version),
+    runCutAs(projectId, version),
+  ]);
   if (pending) return { name: pending.name, summary: pending.summary };
-  const run = await runCutAs(projectId, version);
   return run ? readReleaseNaming(run.metadata) : null;
 }
 

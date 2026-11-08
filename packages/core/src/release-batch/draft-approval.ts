@@ -57,6 +57,12 @@ export async function draftNotApprovableWhy(projectId: string): Promise<string |
   return null;
 }
 
+/** What a settled read answered, or its failure thrown where it is reached. */
+function settled<T>(read: PromiseSettledResult<T>): T {
+  if (read.status === 'rejected') throw read.reason;
+  return read.value;
+}
+
 /** Why a draft decision on a version is refused: its code, its reason, and the field it names. */
 export interface DraftDecisionRefusal {
   code: 'RELEASE_DRAFT_NOT_APPROVABLE' | 'RELEASE_VERSION_UNKNOWN';
@@ -73,22 +79,29 @@ export async function draftDecisionRefusal(
   projectId: string,
   version: string,
 ): Promise<DraftDecisionRefusal | null> {
-  const why = await draftNotApprovableWhy(projectId);
-  if (why) return { code: 'RELEASE_DRAFT_NOT_APPROVABLE', why };
-  if (await runCutAs(projectId, version)) {
+  // the three are read at once and weighed in order, a later one's failure thrown only where it is
+  // reached: a read of the draft waits on one wave, not three (ISS-1070 r17)
+  const [why, cut, drafted] = await Promise.allSettled([
+    draftNotApprovableWhy(projectId),
+    runCutAs(projectId, version),
+    draftedVersion(projectId),
+  ]);
+  const notApprovable = settled(why);
+  if (notApprovable) return { code: 'RELEASE_DRAFT_NOT_APPROVABLE', why: notApprovable };
+  if (settled(cut)) {
     return {
       code: 'RELEASE_DRAFT_NOT_APPROVABLE',
       why: `${version} is cut as a run, not a draft: its approval is asked on the run and decided there`,
     };
   }
-  const drafted = await draftedVersion(projectId);
-  if (drafted === version) return null;
+  const draft = settled(drafted);
+  if (draft === version) return null;
   return {
     code: 'RELEASE_VERSION_UNKNOWN',
     why:
-      drafted === null
+      draft === null
         ? `${version} is not drafted in this project: nothing waits at the release gate, so no release is drafted to decide`
-        : `${version} is not the drafted release of this project; the draft is ${drafted}, and a decision names the version it decides`,
+        : `${version} is not the drafted release of this project; the draft is ${draft}, and a decision names the version it decides`,
   };
 }
 

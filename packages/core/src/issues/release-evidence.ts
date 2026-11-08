@@ -286,12 +286,13 @@ export async function reopenedRoundsOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
 ): Promise<Map<string, IssueRounds>> {
-  const reopened = await reopenedAtOf(executor, issueIds);
-  const ids = [...reopened.keys()];
-  if (ids.length === 0) return new Map();
-  const [closed, markedAt] = await Promise.all([
-    closedAtOf(executor, ids),
-    mergedAtOf(executor, ids),
+  // the three are asked at once, of every issue: a reopen no longer waits for its close and mark to
+  // be asked a wave later, and an issue never reopened is dropped from what they answer (ISS-1070 r17)
+  if (issueIds.length === 0) return new Map();
+  const [reopened, closed, markedAt] = await Promise.all([
+    reopenedAtOf(executor, issueIds),
+    closedAtOf(executor, issueIds),
+    mergedAtOf(executor, issueIds),
   ]);
   return new Map(
     [...reopened].map(([id, reopenedAt]) => [
