@@ -19,6 +19,14 @@ describe('the support brief states goals, and the consent a change waits on', ()
     expect(brief).toContain('never claim it ran or was recorded until agree says so');
     expect(brief).not.toContain('type a code');
   });
+
+  // ISS-1162 (REQ-75 BC-12): a diagnose posts nothing in the room; its check is on the action.
+  it('says a diagnose posts nothing in the room and its check is recorded on the action', () => {
+    expect(brief).not.toContain('the group sees each check');
+    expect(brief).toContain(
+      'a diagnose posts nothing in the room and each check is recorded on its action',
+    );
+  });
 });
 
 // ISS-1032 (owner, 2026-11-06): where the agent has no permission it goes to the master and waits
