@@ -1,1 +1,0 @@
-**Five more screens show only what you decide on.** Integrations, Requirements, Workflows, your Forge feedback and Not found drop repeated detail; criteria show short titles; a triage refreshes open lists.

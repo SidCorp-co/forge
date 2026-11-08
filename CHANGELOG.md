@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.594] - 2026-11-08
+
+Forge screens show less by default, and criteria get short titles
+
+### Changed
+
+- **Five more screens show only what you decide on.** Integrations, Requirements, Workflows, your Forge feedback and Not found drop repeated detail; criteria show short titles; a triage refreshes open lists.
+
+### Fixed
+
+- **Your attention and home reads stay one set of reads when your projects differ in shape.** A project without releases, feedback or open work no longer splits a read the others share.
+
 ## [0.4.0-dev.593] - 2026-11-08
 
 New feedback triaged by the master; requirement proof waits on the live build's ancestry
