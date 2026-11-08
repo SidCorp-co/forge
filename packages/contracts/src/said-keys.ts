@@ -1561,7 +1561,7 @@ export const SAID = {
 		vars: { phase: "code" },
 	},
 	"feedback.rule.noRunner": {
-		en: "{phase}: no runner is bound to place a master, so a triager triages it, or binds a runner",
+		en: "{phase}: no runner is bound, so a triager triages it",
 		vars: { phase: "code" },
 	},
 	"feedback.rule.triagerTriages": {
