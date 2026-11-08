@@ -177,7 +177,7 @@ const owedLine = async (): Promise<string> => ok(await askVerdict()).work.owedLi
 
 /** The pass's sentence on proposed designs alone, so a returned one named elsewhere is not read as it. */
 const approvalsLine = async (): Promise<string> =>
-  /proposed designs? waits? on your approval[^;]*/.exec(await owedLine())?.[0] ?? '';
+  /proposed designs? waits? on your approval \([^)]*\)/.exec(await owedLine())?.[0] ?? '';
 
 // ISS-1158 (FB-586): outside strict the master holds workflow-designs.approve, so a proposed design
 // is its act; support-group r4 sat proposed for days, its pass naming nothing, while ISS-1014 waited
@@ -185,7 +185,7 @@ describe('a proposed design on a project that is not strict is owed to the proje
   it('is named on the pass as owed its approval, its read names the master, and it leaves once decided', async () => {
     const id = await proposedDesign('approval-flow');
     expect(await approvalsLine()).toContain(`approval-flow r1, workflow ${id}`);
-    expect(await owedLine()).toContain(`workflows/${id}/design/decision`);
+    expect(await owedLine()).toContain('workflows/<workflowId>/design/decision -X POST');
     const read = ok(await say('owner', 'GET', at(`/workflows/${id}/design`)));
     expect(read.waitingOn).toMatchObject({
       kind: 'agent',
@@ -219,7 +219,9 @@ describe('a proposed design on a project that is not strict is owed to the proje
 describe('a returned design no issue carries is owed to the project master', () => {
   it('is named on the pass with its flow, revision and workflow, and names the master on its read', async () => {
     const id = await proposedDesign('owed-flow');
-    expect(await owedLine()).not.toContain(`returned design owes a revision no issue carries (owed-flow`);
+    expect(await owedLine()).not.toContain(
+      `returned design owes a revision no issue carries (owed-flow`,
+    );
     await returnDesign(id, 'draw the edge proxy, not LE DNS-01');
     expect(await owedLine()).toContain(`owed-flow r1, workflow ${id}`);
     expect(await approvalsLine()).not.toContain(id);

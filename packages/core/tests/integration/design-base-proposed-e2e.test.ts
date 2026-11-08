@@ -127,7 +127,9 @@ describe('a design pinned to the revision its base has put to the approver', () 
       key: 'designs.act.approveBase',
       vars: { bases: 'pending-base r2' },
     });
-    expect(page.waitingOn.kind, 'the owner may approve the base, so it is theirs').toBe('you');
+    // ISS-1158: outside strict, with no designs gate on, approving the base is the master's
+    expect(page.waitingOn.kind, 'the master approves the base, whoever reads it').toBe('agent');
+    expect(page.waitingOn.says.who.key).toBe('standing.who.projectMaster');
     expect(page.waitingOn.says.rule.key).toBe('designs.rule.baseAwaitsApproval');
 
     // the health reading and the workflows list say the same

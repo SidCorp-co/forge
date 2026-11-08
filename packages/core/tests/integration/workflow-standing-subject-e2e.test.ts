@@ -86,8 +86,9 @@ describe('a workflow is a standing subject (REQ-68 BC-5)', () => {
     const flows = items.filter((i) => i.subject.kind === 'workflow').map((i) => i.subject.key);
     expect(flows.sort()).toEqual(['discharge', 'ward-round']);
     const proposed = items.find((i) => i.subject.key === 'ward-round');
-    expect(proposed?.waitingOn.kind).toBe('person');
-    expect(proposed?.waitingOn.says.who.key).toBe('standing.who.holderOf');
+    // ISS-1158: this project is not strict and its designs gate asks no person, so its master decides
+    expect(proposed?.waitingOn.kind).toBe('agent');
+    expect(proposed?.waitingOn.says.who.key).toBe('standing.who.projectMaster');
     expect(proposed?.waitingOn.says.act.key).toBe('designs.act.approveOrReturn');
     const returned = await standingOfSubject(projectId, 'workflow', 'discharge');
     expect(returned?.waitingOn.kind).toBe('agent');
