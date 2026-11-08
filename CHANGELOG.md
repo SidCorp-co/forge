@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.602] - 2026-11-08
+
+Judges get signed-in browser sessions for apps keeping sign-in in local storage
+
+### Fixed
+
+- **Your attention page and home no longer wait on Autoflow for a storefront's drafts.** They show the drafts as last read, saying when, never over five minutes old.
+- **A judge's browser session restores from the localStorage a secret describes.** An actor secret's `storage` maps each key to a JSON pointer into the sign-in's answer; the merge door takes it and `storageKey`, and probes each pointer.
+
 ## [0.4.0-dev.601] - 2026-11-08
 
 A judge can sign in to apps whose sign-in is a GraphQL mutation
