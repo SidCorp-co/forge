@@ -1,0 +1,1 @@
+**A lesson's own record now says whether it is about the app or a process, and its scope no longer decides it.** A project-scoped lesson about the app's screens keeps its check in its project instead of going to Forge.
