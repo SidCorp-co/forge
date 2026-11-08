@@ -67,12 +67,18 @@ describe('a repeat, or three corrections, becomes a check in code (BC-6)', () =>
     expect((await lesson(two)).check_issue_id).toBeNull();
   });
 
-  it('routes a process lesson to Forge once, and drafts no check in the project', async () => {
+  /** Forge's own home project, where a process lesson is routed as feedback. */
+  const forgeHome = async () => {
     const home = (await createTestProject(w.ownerId)).id;
     await rows(sql`
       INSERT INTO instance_settings (id, forge_home_project_id, revision, updated_by)
       VALUES (1, ${home}, 1, ${w.ownerId})
       ON CONFLICT (id) DO UPDATE SET forge_home_project_id = EXCLUDED.forge_home_project_id`);
+    return home;
+  };
+
+  it('routes a process lesson to Forge once, and drafts no check in the project', async () => {
+    const home = await forgeHome();
     const n = await approved('Judge a contract upgrade against its call sites.');
     const repeat = await correction('The upgrade was judged without its call sites again.');
     await pass({ links: [{ correction: repeat, lesson: n }] });
@@ -87,5 +93,33 @@ describe('a repeat, or three corrections, becomes a check in code (BC-6)', () =>
       title: 'A Forge step keeps being corrected: Judge a contract upgrade against its call sites.',
     });
     expect((await pass({})).checks, 'routed once').toBe(0);
+  });
+
+  // ISS-1167: what a lesson is about is on its record, set by the steward that drafts it; its scope
+  // says only where it applies. Agenfold's L-25 and L-29, scoped to the project and about its screens,
+  // were routed to Forge as FB-588 and FB-589
+  it('drafts the check in its own project for a project-scoped lesson whose record says app', async () => {
+    await forgeHome();
+    const sentence = 'Show every task that waits on the operator on one screen.';
+    const said = [
+      await correction('The tasks waiting on me are split across three screens.'),
+      await correction('There is no Tasks screen.'),
+      await correction('I could not find what waits on me.'),
+    ];
+    await pass({
+      proposals: [{ ...proposal(sentence, said), about: 'app' }],
+      review: (i) => ((i.lesson as Doc).sentence === sentence ? approve() : null),
+    });
+    const view = await lesson(await numberOf(sentence));
+    expect(view.scope_kind).toBe('project');
+    const routed = await rows<{ project_id: string }>(sql`
+      SELECT f.project_id FROM feedback f JOIN lessons l ON l.routed_feedback_id = f.id
+       WHERE l.id = ${view.id as string}`);
+    expect(routed, 'an app lesson is never routed to Forge').toEqual([]);
+    const [issue] = await checkOf(view.id as string);
+    expect(issue, 'its "Add a check" draft is in its own project').toMatchObject({
+      status: 'draft',
+      title: `Add a check: ${sentence}`,
+    });
   });
 });
