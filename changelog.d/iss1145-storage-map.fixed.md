@@ -1,0 +1,1 @@
+**A judge's browser session restores from the localStorage a secret describes.** An actor secret's `storage` maps each key to a JSON pointer into the sign-in's answer; the merge door takes it and `storageKey`, and probes each pointer.

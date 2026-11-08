@@ -33,7 +33,11 @@ import {
   parseActorSecret,
   type SecretAt,
   SIGN_IN_KEYS,
+  STORAGE_KEYS,
+  sessionKeysRefusal,
   signInUrl,
+  storageKeyRefusal,
+  storageRefusal,
   tokenPathRefusal,
 } from './actor-sign-in.js';
 import { type ApiRefusal, pointer } from './documents.js';
@@ -203,9 +207,10 @@ export async function writeSecret(input: {
   };
 }
 
-/** The keys a merge may set on a stored secret: the sign-in route (ISS-1140), and the body and
- * token pointer of a sign-in the secret describes (ISS-1141). */
-export const MERGEABLE_SECRET_KEYS = ['loginRoute', ...SIGN_IN_KEYS] as const;
+/** The keys a merge may set on a stored secret: the sign-in route (ISS-1140), the body and token
+ * pointer of a sign-in the secret describes (ISS-1141), and the browser session it describes
+ * (ISS-1145). */
+export const MERGEABLE_SECRET_KEYS = ['loginRoute', ...SIGN_IN_KEYS, ...STORAGE_KEYS] as const;
 
 /** Each mergeable key's check and the code its refusal carries. */
 const MERGE_CHECKS: Record<
@@ -221,6 +226,8 @@ const MERGE_CHECKS: Record<
   },
   loginBody: { code: 'SECRET_LOGIN_BODY_INVALID', why: loginBodyRefusal },
   tokenPath: { code: 'SECRET_TOKEN_PATH_INVALID', why: tokenPathRefusal },
+  storageKey: { code: 'SECRET_STORAGE_INVALID', why: storageKeyRefusal },
+  storage: { code: 'SECRET_STORAGE_INVALID', why: storageRefusal },
 };
 
 /** The refusals a merge's `set` earns before the stored value is read; none where it is usable. */
@@ -301,7 +308,18 @@ export async function mergeSecret(input: {
       ],
     };
   }
-  const value = JSON.stringify({ ...(held as Record<string, unknown>), ...input.set });
+  const merged = { ...(held as Record<string, unknown>), ...input.set };
+  // `storageKey` and `storage` are judged together on the merged value: one may already be stored
+  const session = STORAGE_KEYS.some((k) => k in input.set) ? sessionKeysRefusal(merged) : null;
+  if (session !== null) {
+    return {
+      ok: false,
+      refusals: [
+        { code: 'SECRET_STORAGE_INVALID', path: '/set', detail: `${session}; nothing was written` },
+      ],
+    };
+  }
+  const value = JSON.stringify(merged);
   if (value.length > SECRET_VALUE_MAX) {
     return {
       ok: false,

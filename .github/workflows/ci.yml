@@ -485,6 +485,7 @@ jobs:
               - 'packages/runner/crates/runner-daemon/src/wake_source.rs'
               - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session.rs'
               - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session/described.rs'
+              - 'packages/runner/crates/forge-runner/src/cmd/judge_login/session/storage.rs'
             runner:
               - 'packages/runner/**'
               - '.github/workflows/ci.yml'

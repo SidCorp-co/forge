@@ -8,10 +8,12 @@ import {
   loginRouteDoor,
   parseActorSecret,
   SIGN_IN_KEYS,
+  STORAGE_KEYS,
 } from './actor-sign-in.js';
 
 // @direct-test-of packages/runner/crates/forge-runner/src/cmd/judge_login/session.rs
 // @direct-test-of packages/runner/crates/forge-runner/src/cmd/judge_login/session/described.rs
+// @direct-test-of packages/runner/crates/forge-runner/src/cmd/judge_login/session/storage.rs
 
 // Core's write-time sign-in check and judge-login read one secret the same way (ISS-959): a secret
 // that passes here is one judge-login signs in with. The account fields are two lists in two
@@ -226,5 +228,129 @@ describe('the keys a secret describes its sign-in with (ISS-1141)', () => {
     // the example is itself a merge the door takes
     const set = (JSON.parse(GRAPHQL_SET) as { set: Record<string, unknown> }).set;
     expect(Object.keys(set).sort()).toEqual(['loginBody', 'loginRoute', 'tokenPath']);
+  });
+});
+
+// ISS-1145: epod's admin restores a browser session from five localStorage keys, every one of them
+// in the sign-in's answer once the mutation selects them.
+const STORAGE_RS = fileURLToPath(
+  new URL(
+    '../../../runner/crates/forge-runner/src/cmd/judge_login/session/storage.rs',
+    import.meta.url,
+  ),
+);
+const EPOD_MUTATION =
+  'mutation Login($email: String!, $password: String!) { login(email: $email, password: $password) { access_token expires_at user { id email name role } organization { id code name email phone status } } }';
+const EPOD_LOGIN = {
+  access_token: GQL_TOKEN,
+  expires_at: '2026-11-09T13:21:00Z',
+  user: { id: 'user-1145', email: 'owner@epod.test', role: 'admin' },
+  organization: { id: 'org-1145', code: 'TS', name: 'Test Store' },
+};
+const EPOD_STORAGE = {
+  auth_token: '/data/login/access_token',
+  auth_token_expires_at: '/data/login/expires_at',
+  user: '/data/login/user',
+  organization: '/data/login/organization',
+  organization_id: '/data/login/organization/id',
+};
+const EPOD_SECRET = {
+  ...GQL_SECRET,
+  loginBody: { query: EPOD_MUTATION, variables: { email: '$account', password: '$password' } },
+  storage: EPOD_STORAGE,
+};
+const EPOD_VALUES = [
+  GQL_ACCOUNT,
+  GQL_PASSWORD,
+  GQL_TOKEN,
+  EPOD_LOGIN.expires_at,
+  'org-1145',
+  'user-1145',
+];
+
+describe('a secret describes the browser session (ISS-1145)', () => {
+  it('names the same keys in core and in judge-login', () => {
+    const source = readFileSync(STORAGE_RS, 'utf8');
+    const keys = source.match(/const STORAGE_KEYS: \[&str; \d+\] = \[([^\]]*)\];/);
+    if (!keys?.[1]) throw new Error(`no STORAGE_KEYS array found in ${STORAGE_RS}`);
+    expect([...keys[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([...STORAGE_KEYS]);
+  });
+
+  it('signs in when the answer holds every pointer the storage map names', async () => {
+    graphqlDouble(() => Response.json({ data: { login: EPOD_LOGIN } }));
+    const parsed = parseActorSecret(JSON.stringify(EPOD_SECRET));
+    if ('why' in parsed) throw new Error(parsed.why);
+    expect(parsed.secret.storage).toEqual(EPOD_STORAGE);
+    expect(await trySignIn(parsed.secret, new URL(GQL_URL))).toEqual({
+      answer: 'signs-in',
+      at: GQL_URL,
+      status: 200,
+    });
+  });
+
+  it('refuses an answer lacking a pointer, naming the key and the pointer and never a value', async () => {
+    const cases: [string, unknown, string][] = [
+      [
+        'the organization is null',
+        { ...EPOD_LOGIN, organization: null },
+        'with nothing at `/data/login/organization` for the storage key `organization`',
+      ],
+      [
+        'a selection of the token alone',
+        { access_token: GQL_TOKEN },
+        'with nothing at `/data/login/expires_at` for the storage key `auth_token_expires_at`',
+      ],
+    ];
+    for (const [name, login, says] of cases) {
+      graphqlDouble(() => Response.json({ data: { login } }));
+      const parsed = parseActorSecret(JSON.stringify(EPOD_SECRET));
+      if ('why' in parsed) throw new Error(parsed.why);
+      const answered = await trySignIn(parsed.secret, new URL(GQL_URL));
+      expect(answered.answer, name).toBe('refused');
+      const said = JSON.stringify(answered);
+      expect(said, name).toContain(says);
+      for (const v of EPOD_VALUES) expect(said, name).not.toContain(v);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps storageKey as shorthand for the token, and refuses one with no token to store', async () => {
+    const parsed = parseActorSecret(JSON.stringify({ ...GQL_SECRET, storageKey: 'auth_token' }));
+    if ('why' in parsed) throw new Error(parsed.why);
+    expect(parsed.secret.storageKey).toBe('auth_token');
+    graphqlDouble();
+    expect((await trySignIn(parsed.secret, new URL(GQL_URL))).answer).toBe('signs-in');
+    vi.restoreAllMocks();
+    // a session of cookies alone answers no token for the key
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{}', { status: 200, headers: { 'set-cookie': 'sid=x; Path=/' } }),
+    );
+    const { loginBody: _b, tokenPath: _t, ...plain } = GQL_SECRET;
+    const cookieOnly = parseActorSecret(JSON.stringify({ ...plain, storageKey: 'auth_token' }));
+    if ('why' in cookieOnly) throw new Error(cookieOnly.why);
+    const answered = await trySignIn(cookieOnly.secret, new URL(GQL_URL));
+    expect(answered).toMatchObject({ answer: 'refused' });
+    expect(JSON.stringify(answered)).toContain("no token to store under the secret's `storageKey`");
+  });
+
+  it('refuses a storage map or key it cannot use, by name', () => {
+    const cases: [Record<string, unknown>, string][] = [
+      [{ storage: 'auth_token' }, '`storage` is a JSON object of 1 to 32 localStorage keys'],
+      [{ storage: {} }, '`storage` is a JSON object'],
+      [{ storage: [] }, '`storage` is a JSON object'],
+      [{ storage: { user: 'data.login.user' } }, '`storage` at `user` is no JSON pointer'],
+      [{ storage: { user: 7 } }, '`storage` at `user` is no JSON pointer'],
+      [{ storageKey: 7 }, '`storageKey` is the localStorage key'],
+      [{ storageKey: ' auth_token' }, '`storageKey` is the localStorage key'],
+      [
+        { storageKey: 'auth_token', storage: { auth_token: '/data/login/access_token' } },
+        '`storageKey` and `storage` both name `auth_token`',
+      ],
+    ];
+    for (const [extra, says] of cases) {
+      const parsed = parseActorSecret(JSON.stringify({ ...GQL_SECRET, ...extra }));
+      expect('why' in parsed ? parsed.why : 'signs in', JSON.stringify(extra)).toContain(says);
+      if ('why' in parsed) for (const v of EPOD_VALUES) expect(parsed.why).not.toContain(v);
+    }
   });
 });

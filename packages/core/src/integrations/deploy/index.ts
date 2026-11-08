@@ -36,4 +36,10 @@ export {
   type RuntimeProbeTarget,
   readRuntimeProbe,
 } from './runtime-probe.js';
-export { type SignInAnswer, type SignInBody, shown, trySignIn } from './sign-in-probe.js';
+export {
+  keySaid,
+  type SignInAnswer,
+  type SignInBody,
+  shown,
+  trySignIn,
+} from './sign-in-probe.js';

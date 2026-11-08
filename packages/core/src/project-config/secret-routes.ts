@@ -165,7 +165,7 @@ projectSecretRoutes.put(
 );
 
 // a stored secret gains keys without its value being read or retyped (ISS-1140): core merges `set`
-// (`loginRoute`, `loginBody`, `tokenPath`; ISS-1140, ISS-1141) into the JSON object it holds, then writes and checks it as the PUT does,
+// (`loginRoute`, `loginBody`, `tokenPath`, `storageKey`, `storage`; ISS-1140, ISS-1141, ISS-1145) into the JSON object it holds, then writes and checks it as the PUT does,
 // answering what the PUT answers and never the value, its keys' values or its length
 projectSecretRoutes.patch(
   '/:id/secrets/:scope/:name',
@@ -175,7 +175,7 @@ projectSecretRoutes.patch(
     'json',
     mergeBody,
     invalid(
-      `the body is { "set": { ${MERGEABLE_SECRET_KEYS.map((k) => `"${k}": ${k === 'loginBody' ? 'object' : 'string'}`).join(', ')} } }, any of them, and nothing else`,
+      `the body is { "set": { ${MERGEABLE_SECRET_KEYS.map((k) => `"${k}": ${k === 'loginBody' || k === 'storage' ? 'object' : 'string'}`).join(', ')} } }, any of them, and nothing else`,
       'SECRET_MERGE_SHAPE',
     ),
   ),

@@ -24,13 +24,19 @@ export const TOKEN_PATHS = [
   '/data/jwt',
 ] as const;
 
-/** The non-empty string `body` holds at the JSON pointer `path`, or null. */
-export function tokenAt(body: unknown, path: string): string | null {
+/** What `body` holds at the JSON pointer `path`; undefined where it holds nothing there. */
+function valueAt(body: unknown, path: string): unknown {
   let at: unknown = body;
   for (const raw of path.slice(1).split('/')) {
     const key = raw.replaceAll('~1', '/').replaceAll('~0', '~');
     at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[key] : undefined;
   }
+  return at;
+}
+
+/** The non-empty string `body` holds at the JSON pointer `path`, or null. */
+export function tokenAt(body: unknown, path: string): string | null {
+  const at = valueAt(body, path);
   return typeof at === 'string' && at !== '' ? at : null;
 }
 
@@ -56,6 +62,11 @@ export interface SignInBody {
   password: string;
   template?: Record<string, unknown>;
   tokenPath?: string;
+  /** The browser session the secret describes (ISS-1145): each `localStorage` key and the JSON
+   * pointer into the answer its value is read at; the probe confirms each resolves. */
+  storage?: Record<string, string>;
+  /** The `localStorage` key the bearer token is stored under; the probe confirms there is one. */
+  storageKey?: string;
 }
 
 /** The body a sign-in POSTs: whole leaves alone are replaced, so `$email` inside a string stays. */
@@ -83,6 +94,27 @@ function graphqlErrors(body: unknown): boolean {
 /** A `tokenPath` as a refusal may say it: a pointer of short keys, else `the secret's \`tokenPath\``. */
 function pathSaid(path: string): string {
   return /^(\/[A-Za-z0-9_-]{1,32}){1,8}$/.test(path) ? `\`${path}\`` : "the secret's `tokenPath`";
+}
+
+/** A `localStorage` key as a line may say it: in backticks when it is short and plain, else
+ * "a key". judge-login says it the same way (`session/storage.rs`: `key_said`). */
+export function keySaid(k: string): string {
+  return /^[A-Za-z0-9_.:-]{1,64}$/.test(k) ? `\`${k}\`` : 'a key';
+}
+
+/** Why the answer cannot fill the browser session the secret describes (ISS-1145): the key and the
+ * pointer it lacks, never a value; null where every key is filled. */
+function storageGap(secret: SignInBody, body: unknown, bearer: boolean): string | null {
+  if (secret.storageKey !== undefined && !bearer) {
+    return "with no token to store under the secret's `storageKey`";
+  }
+  for (const [key, path] of Object.entries(secret.storage ?? {})) {
+    const value = valueAt(body, path);
+    if (value === undefined || value === null) {
+      return `with nothing at ${pathSaid(path)} for the storage key ${keySaid(key)}, so the browser session the secret describes cannot be written`;
+    }
+  }
+  return null;
 }
 
 /** A key, kind or code as a line may say it: a short identifier, never a value. */
@@ -188,5 +220,8 @@ export async function trySignIn(secret: SignInBody, url: URL): Promise<SignInAns
       says: `answered ${status} with no token (${TOKENS_SAID}) and set no cookie, so there is no session to hand a judge`,
     };
   }
+  const gap = storageGap(secret, body, bearer);
+  if (gap !== null)
+    return { answer: 'refused', at, status, code, says: `answered ${status} ${gap}` };
   return { answer: 'signs-in', at, status };
 }

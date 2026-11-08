@@ -257,7 +257,9 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
 
     // a selection of the token alone answers no user: the same storage is refused at the probe
     const tokenOnly = await patch('dev', 'judge', { set: { loginBody: GRAPHQL_SET.loginBody } });
-    expect(refusalsOf(tokenOnly)[0]?.detail).toContain('with nothing at `/data/login/user`');
+    expect(refusalsOf(tokenOnly)[0]?.detail).toContain(
+      'with nothing at `/data/login/expires_at` for the storage key `auth_token_expires_at`',
+    );
   });
 
   it('storageKey stays shorthand for the token under one key, and both naming one key is refused (ISS-1145)', async () => {
@@ -388,9 +390,7 @@ describe('a secret gains loginRoute without its value being read or retyped (ISS
     answers.push(await patch('dev', 'judge', { set: GRAPHQL_SET }));
     answers.push(await patch('dev', 'judge', { set: { loginBody: { u: '$account' } } }));
     answers.push(await patch('dev', 'judge', { set: EPOD_STORAGE_SET }));
-    answers.push(
-      await patch('dev', 'judge', { set: { storage: { user: '/data/login/nobody' } } }),
-    );
+    answers.push(await patch('dev', 'judge', { set: { storage: { user: '/data/login/nobody' } } }));
     logger.level = level;
     expect(answers.map((a) => a.status)).toEqual([200, 422, 422, 422, 200, 422, 200, 422]);
     expect(said.length, 'no line was written to watch').toBeGreaterThan(0);

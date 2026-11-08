@@ -138,7 +138,7 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"SECRET_DOES_NOT_SIGN_IN",
 	/** A merge into a stored secret names no key in `set` (ISS-1140). */
 	"SECRET_MERGE_EMPTY",
-	/** A merge names a key it does not set: `loginRoute`, `loginBody` or `tokenPath` (ISS-1140, ISS-1141). */
+	/** A merge names a key it does not set: `loginRoute`, `loginBody`, `tokenPath`, `storageKey` or `storage` (ISS-1140, ISS-1141, ISS-1145). */
 	"SECRET_MERGE_KEY_UNKNOWN",
 	/** A merged `loginRoute` is no `[POST ]<https URL | /path>` a sign-in can use (ISS-1140). */
 	"SECRET_LOGIN_ROUTE_INVALID",
@@ -146,6 +146,8 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"SECRET_LOGIN_BODY_INVALID",
 	/** A merged `tokenPath` is no JSON pointer (ISS-1141). */
 	"SECRET_TOKEN_PATH_INVALID",
+	/** A merged `storage` is no map of localStorage keys to JSON pointers, a `storageKey` no key, or both name one key (ISS-1145). */
+	"SECRET_STORAGE_INVALID",
 	/** A merge into a stored secret whose value is no JSON object (ISS-1140). */
 	"SECRET_NOT_JSON_OBJECT",
 	/** A merge whose result is over the length a secret holds (ISS-1140). */

@@ -15,6 +15,9 @@
  *   mutation): `loginBody`, a JSON object sent as the body, whose string leaves that are exactly
  *   `$account` or `$password` become the account and password; and `tokenPath`, the JSON pointer
  *   the answer's token is read at in place of `TOKEN_PATHS`.
+ * - optional, for an app that restores its session from `localStorage` (ISS-1145, epod's admin):
+ *   `storage`, a map from a key to a JSON pointer into the sign-in's answer, which the probe
+ *   confirms resolves; and `storageKey`, shorthand for `{<key>: <the token>}`.
  *
  * The value leaves only as the request body the adapter (`integrations/deploy/sign-in-probe.ts`)
  * sends to that one origin, following no redirect: no answer, refusal, log line or stored row holds
@@ -22,7 +25,7 @@
  */
 
 import { serviceRouting } from '@forge/contracts/criterion-probes';
-import { type SignInBody, shown } from '../integrations/deploy/index.js';
+import { keySaid, type SignInBody, shown } from '../integrations/deploy/index.js';
 import type { JudgedDeployment } from './testing-secret-values.js';
 
 /** The fields an account may be named by, each also the field its sign-in route reads. judge-login
@@ -38,6 +41,13 @@ const FIELDS_SAID = `${ACCOUNT_FIELDS.slice(0, -1)
  * same keys (`judge_login/session/described.rs`: `SIGN_IN_KEYS`), held equal by
  * `actor-sign-in.test.ts`. */
 export const SIGN_IN_KEYS = ['loginBody', 'tokenPath'] as const;
+
+/** The keys a secret describes the browser session with (ISS-1145). judge-login reads the same
+ * keys (`judge_login/session/storage.rs`: `STORAGE_KEYS`), held equal by `actor-sign-in.test.ts`. */
+export const STORAGE_KEYS = ['storageKey', 'storage'] as const;
+
+/** The most keys a `storage` map names. */
+const STORAGE_MOST = 32;
 
 /** The whole leaves of a `loginBody` replaced with the secret's account and password. */
 export const PLACEHOLDERS = ['$account', '$password'] as const;
@@ -81,11 +91,56 @@ export function loginBodyRefusal(body: unknown): string | null {
   return null;
 }
 
+/** A JSON pointer of non-empty segments, as `tokenPath` and each `storage` value are. */
+const isPointer = (p: unknown): p is string =>
+  typeof p === 'string' && /^(\/[^/\s]+)+$/.test(p) && p.length <= 256;
+
 /** Why `path` is no `tokenPath`; null where it is a JSON pointer. */
 export function tokenPathRefusal(path: unknown): string | null {
-  return typeof path === 'string' && /^(\/[^/\s]+)+$/.test(path) && path.length <= 256
+  return isPointer(path)
     ? null
     : "`tokenPath` is a JSON pointer to the token in the sign-in's answer, such as `/data/login/access_token`";
+}
+
+/** Why `key` is no `storageKey`; null where it is one. */
+export function storageKeyRefusal(key: unknown): string | null {
+  return typeof key === 'string' && key !== '' && key.length <= 128 && key.trim() === key
+    ? null
+    : '`storageKey` is the localStorage key the app reads its bearer token from, a non-empty string';
+}
+
+/** Why `map` is no `storage` map; null where it is one. Names keys, never a value. */
+export function storageRefusal(map: unknown): string | null {
+  const entries =
+    map !== null && typeof map === 'object' && !Array.isArray(map) ? Object.entries(map) : [];
+  if (entries.length === 0 || entries.length > STORAGE_MOST) {
+    return `\`storage\` is a JSON object of 1 to ${STORAGE_MOST} localStorage keys, each a JSON pointer into the sign-in's answer, such as {"auth_token":"/data/login/access_token"}`;
+  }
+  for (const [key, path] of entries) {
+    if (key === '' || key.length > 128) {
+      return '`storage` names a key that is empty or over 128 characters';
+    }
+    if (!isPointer(path)) {
+      return `\`storage\` at ${keySaid(key)} is no JSON pointer into the sign-in's answer, such as \`/data/login/user\``;
+    }
+  }
+  return null;
+}
+
+/** Why the secret's `storageKey` and `storage` cannot stand together or alone; null where they can.
+ * A key named by both is refused: which of the two values the app should read is not guessed. */
+export function sessionKeysRefusal(o: Record<string, unknown>): string | null {
+  if (o.storageKey !== undefined) {
+    const why = storageKeyRefusal(o.storageKey);
+    if (why) return why;
+  }
+  if (o.storage === undefined) return null;
+  const why = storageRefusal(o.storage);
+  if (why) return why;
+  if (typeof o.storageKey === 'string' && Object.hasOwn(o.storage as object, o.storageKey)) {
+    return `\`storageKey\` and \`storage\` both name ${keySaid(o.storageKey)}; name it in \`storage\` alone`;
+  }
+  return null;
 }
 
 /** Why the secret's `loginBody` or `tokenPath` is unusable; null where neither is named or both are usable. */
@@ -94,7 +149,11 @@ function signInKeysRefusal(o: Record<string, unknown>): string | null {
     const why = loginBodyRefusal(o.loginBody);
     if (why) return why;
   }
-  return o.tokenPath !== undefined ? tokenPathRefusal(o.tokenPath) : null;
+  if (o.tokenPath !== undefined) {
+    const why = tokenPathRefusal(o.tokenPath);
+    if (why) return why;
+  }
+  return sessionKeysRefusal(o);
 }
 
 function keysOf(o: Record<string, unknown>): string {
@@ -205,6 +264,8 @@ export function parseActorSecret(
       route: target,
       ...(obj.loginBody !== undefined && { template: obj.loginBody as Record<string, unknown> }),
       ...(obj.tokenPath !== undefined && { tokenPath: obj.tokenPath as string }),
+      ...(obj.storage !== undefined && { storage: obj.storage as Record<string, string> }),
+      ...(obj.storageKey !== undefined && { storageKey: obj.storageKey as string }),
     },
   };
 }
