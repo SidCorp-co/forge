@@ -31,6 +31,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { OrgActivityLegs } from '../../src/activity/read.js';
 import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -43,6 +44,32 @@ import {
 
 /** What the orchestrator asked of the live read: under a second. */
 const READ_BUDGET_MS = 1_000;
+/**
+ * ISS-1028: the integration pool runs other files on the same Postgres, so one read's wall time
+ * carries their load (a cold read took 1552 ms once, mostly waiting in `backlog`, and passed alone).
+ * The read's own cost is the fastest of a few: load slows some attempts, while a leg that is itself
+ * slow slows every one, so a regression still goes red and contention alone does not.
+ */
+const ATTEMPTS = 3;
+
+/** The fastest of `ATTEMPTS` runs of `read`, with the legs of that run, after `before` each time. */
+async function fastestOf(
+  read: (legs: OrgActivityLegs) => Promise<unknown>,
+  before: () => void = () => {},
+): Promise<{ took: number; legs: OrgActivityLegs; tried: number[] }> {
+  const tried: number[] = [];
+  let best: { took: number; legs: OrgActivityLegs } | null = null;
+  for (let i = 0; i < ATTEMPTS; i++) {
+    before();
+    const legs: OrgActivityLegs = new Map();
+    const started = performance.now();
+    await read(legs);
+    const took = performance.now() - started;
+    tried.push(Math.round(took));
+    if (!best || took < best.took) best = { took, legs };
+  }
+  return { ...(best as { took: number; legs: OrgActivityLegs }), tried };
+}
 /** forge-dev's workspace: thirteen projects. */
 const PROJECTS = 13;
 /** The big one: about what forge holds. */
@@ -140,16 +167,18 @@ describe('ISS-951 round 3 (1) the workspace read answers under a second', () => 
   it('a cold read of thirteen projects waits on nothing kept off its path, whatever is read behind it', async () => {
     const { readOrgActivity, peopleGlances } = await import('../../src/activity/read.js');
     const { releaseGlances } = await import('../../src/activity/release-glance.js');
-    peopleGlances.forget();
-    releaseGlances.forget();
-    const legs = new Map();
-    const started = performance.now();
-    const cold = await readOrgActivity(orgId, viewer(), new Date(), { legs });
-    const took = performance.now() - started;
+    const forget = () => {
+      peopleGlances.forget();
+      releaseGlances.forget();
+    };
+    let cold = null as unknown as Awaited<ReturnType<typeof readOrgActivity>>;
+    const { took, legs, tried } = await fastestOf(async (legs) => {
+      cold = await readOrgActivity(orgId, viewer(), new Date(), { legs });
+    }, forget);
     expect(cold.projects).toHaveLength(PROJECTS);
     expect(
       took,
-      `a cold read took ${took.toFixed(0)} ms: ${JSON.stringify([...legs])}`,
+      `the fastest of ${ATTEMPTS} cold reads took ${took.toFixed(0)} ms (${tried.join(', ')}): ${JSON.stringify([...legs])}`,
     ).toBeLessThan(READ_BUDGET_MS);
     // nothing was held, so nothing kept off the path is claimed: each says pending, never none
     expect(cold.refreshing).toBe(true);
@@ -163,16 +192,13 @@ describe('ISS-951 round 3 (1) the workspace read answers under a second', () => 
 
   it('reads again under a second while everything kept off the path is still being read behind it', async () => {
     const { readOrgActivity } = await import('../../src/activity/read.js');
-    for (let i = 0; i < 3; i++) {
-      const legs = new Map();
-      const started = performance.now();
-      await readOrgActivity(orgId, viewer(), new Date(), { legs });
-      const took = performance.now() - started;
-      expect(
-        took,
-        `read ${i + 1} took ${took.toFixed(0)} ms: ${JSON.stringify([...legs])}`,
-      ).toBeLessThan(READ_BUDGET_MS);
-    }
+    const { took, legs, tried } = await fastestOf((legs) =>
+      readOrgActivity(orgId, viewer(), new Date(), { legs }),
+    );
+    expect(
+      took,
+      `the fastest of ${ATTEMPTS} reads took ${took.toFixed(0)} ms (${tried.join(', ')}): ${JSON.stringify([...legs])}`,
+    ).toBeLessThan(READ_BUDGET_MS);
   });
 
   it('the route names each leg on Server-Timing, with no data in it, and its counted statements are its own', async () => {
