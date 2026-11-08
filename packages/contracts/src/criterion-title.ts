@@ -31,30 +31,32 @@ export function criterionTitleFault(
 	return `a criterion's title holds at most ${CRITERION_TITLE_MAX_WORDS} words; "${title}" has ${n}. Put the rest in the criterion's sentence, which opens under its title.`;
 }
 
-/** How many characters a first clause shown in place of a title may run to before it is cut. */
+/** How long a first clause shown in place of a title may run, in words and characters, before it is cut. */
+const CLAUSE_MAX_WORDS = 10;
 const CLAUSE_MAX_CHARS = 72;
 
 /**
  * What a criterion's row shows: its title, else its first clause (up to the first comma, colon,
- * semicolon, dash or sentence end), cut at a word boundary with an ellipsis where it runs long,
- * never inside a word. `cut` says whether anything of the sentence was left out.
+ * semicolon, dash or sentence end), cut at a word boundary with an ellipsis where it runs past ten
+ * words or 72 characters, never inside a word. `cut` says whether anything of the sentence was left
+ * out, so the row offers the whole sentence on demand.
  */
 export function criterionShortTitle(c: {
-	title?: string | null;
+	title?: string | null | undefined;
 	text: string;
 }): { short: string; cut: boolean } {
 	const whole = c.text.trim().replace(/\s+/g, " ");
 	if (c.title) return { short: c.title, cut: c.title !== whole };
 	const clause = whole.split(/(?<=\S)(?:[,;:]\s|\s[–—-]\s|\.\s)/)[0] ?? whole;
-	if (clause.length <= CLAUSE_MAX_CHARS)
-		return { short: clause, cut: clause !== whole };
 	const words = clause.split(" ");
 	let short = "";
-	for (const w of words) {
+	for (const [i, w] of words.entries()) {
 		const next = short ? `${short} ${w}` : w;
-		if (next.length > CLAUSE_MAX_CHARS) break;
+		if (i >= CLAUSE_MAX_WORDS || (short && next.length > CLAUSE_MAX_CHARS))
+			break;
 		short = next;
 	}
-	// one word longer than the whole budget is shown whole rather than cut inside it
-	return { short: `${short || (words[0] ?? "")}…`, cut: true };
+	const kept = short.replace(/[.,;:]$/, "");
+	if (short === clause) return { short: kept, cut: clause !== whole };
+	return { short: `${kept}…`, cut: true };
 }

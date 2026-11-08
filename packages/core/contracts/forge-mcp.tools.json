@@ -1479,6 +1479,18 @@
                     "scenario"
                   ],
                   "type": "string"
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "required": [
@@ -2881,5 +2893,5 @@
       }
     }
   ],
-  "version": "5.2.3"
+  "version": "5.3.0"
 }
