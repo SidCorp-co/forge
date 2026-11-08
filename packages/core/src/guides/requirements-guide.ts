@@ -109,8 +109,9 @@ none: its standing asks for an issue of its own under the requirement, or a revi
    Vietnamese (\`writtenLang: vi\`) may label them in its own language, ${(['problem', 'value', 'measured', 'roadmap'] as const).map((l) => `\`${GOAL_LABEL_WORDS.vi[l]}:\``).join(', ')},
    and the English labels are read in either. Each blocking gap is
    refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. \`GET …/requirements/:req/checklist\`
-   reads the ready and the acceptance checklists before you move: each one's form, how the head stands
-   against it now (\`now\`: answers given or assumed with their source, gaps in plain words; null for
+   reads the ready and the acceptance checklists before you move: each one's form, how the revision under
+   review stands against it now (the current one, else the proposed one, named by \`revision\` and
+   \`revisionState\`; a first revision is owed only with neither) (\`now\`: answers given or assumed with their source, gaps in plain words; null for
    acceptance on a draft) and the moves it judged, with the answers each was judged by. Also refused by name:
    \`REQUIREMENT_REVISION_NOT_CURRENT\` (no current head, or the head is not current),
    \`REQUIREMENT_DESIGN_UNAPPROVED\` naming every linked design with no approved revision, and

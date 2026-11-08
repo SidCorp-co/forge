@@ -4,6 +4,8 @@
  * kernel judges it whatever door the move came through — a person's session (the web), a personal
  * access token (the API), an agent's token (the agent's tool, which calls the same route), and a
  * box's own move (a lane run) — and records how each move stood.
+ *
+ * @direct-test-of packages/core/src/issues/checklist-record.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -348,5 +350,44 @@ describe('GET /api/issues/:id/checklist', () => {
       ['passed', true],
       ['no_checklist', false],
     ]);
+  });
+
+  // ISS-1133: a requirement whose first revision is proposed is judged on it, as its own ready
+  // checklist is; the issue's criteria trace that revision's BCs, and the read says it is proposed
+  it("traces the criteria against the requirement's proposed revision where it has no current one", async () => {
+    const id = await draftIssue();
+    const requirementId = randomUUID();
+    await withKernelMarker(db, async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO requirements (id, project_id, req_seq, title, status)
+        VALUES (${requirementId}, ${projectId}, 41, 'req 41', 'draft')
+      `);
+      await tx.execute(sql`
+        INSERT INTO requirement_revisions (requirement_id, revision, state, spec, reason, author_id, author_agency)
+        VALUES (${requirementId}, 1, 'proposed', '{}'::jsonb, 'first cut', ${ownerId}, 'human')
+      `);
+    });
+    const [bc] = await rows<{ id: string }>(sql`
+      INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
+      VALUES (${requirementId}, 'BC-1', 'it holds', 1) RETURNING id
+    `);
+    await db.execute(sql`UPDATE issues SET requirement_id = ${requirementId} WHERE id = ${id}`);
+    await db.execute(sql`
+      INSERT INTO issue_criteria (issue_id, n, statement, position, requirement_criterion_id)
+      VALUES (${id}, 1, 'it holds here', 0, ${bc?.id ?? null})
+    `);
+
+    const res = await api(doors.web, 'GET', `/api/issues/${id}/checklist`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const [checklist] = res.body.checklists as Array<{
+      now: {
+        answers: Array<{ question: string; value: unknown }>;
+        gaps: Array<{ question: string }>;
+      };
+    }>;
+    expect(checklist?.now.gaps.map((g) => g.question)).not.toContain('criteria');
+    expect(checklist?.now.answers.find((a) => a.question === 'criteria')?.value).toBe(
+      '1 criterion, tracing BC-1 of REQ-41 revision 1, proposed and not accepted yet',
+    );
   });
 });

@@ -1,0 +1,1 @@
+**A requirement awaiting its first accept is judged on what it proposes.** Its ready checklist reads the proposed revision where none is current yet, and says which revision it judged; a linked issue traces its criteria the same way.
