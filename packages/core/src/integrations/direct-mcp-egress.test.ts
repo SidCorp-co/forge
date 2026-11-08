@@ -45,7 +45,7 @@ describe('a direct-mcp credential hand-off is a declared egress surface', () => 
     const declare = (agentPath: unknown) => () =>
       declareIntegration({
         ...sentryIntegration,
-        provider: 'planted',
+        provider: 'planted' as never,
         capabilities: { ...sentryIntegration.capabilities, agentPath: agentPath as typeof path },
       });
     expect(declare(bare)).toThrow(
