@@ -93,6 +93,8 @@ function renderReach(projectId: string, runId: string): string {
 Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with. Right after you push the release commit, before you deploy it, \`forge-runner release range --project-id ${projectId} --run ${runId} --head <sha>\`, run in the checkout you cut the release in, reports what its commit range ships on the same credential: the release page reads what an admin must do from it, and Forge tags that commit \`v<version>\` on the source host, so the build you deploy can read its version.
 
 If the first call is refused, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying so, with the refusal's text. Do not look for another credential on this machine.
+
+A deploy that answers \`pendingHumanConfirm\` waits on a person's confirm, named in its \`waitsOn\`; they are told in Needs you, and this run stays open for them. Hold it: never abort a release for that wait. Once they confirm, the deploy goes out on this run and you carry it on to \`finish\`.
 `;
 }
 
