@@ -46,6 +46,10 @@ export const kernelTransitions = pgTable(
     entityIdx: index('kernel_transitions_entity_idx').on(t.entity, t.entityId),
     createdAtIdx: index('kernel_transitions_created_at_idx').on(t.createdAt),
     reasonIdx: index('kernel_transitions_reason_idx').on(t.reason),
+    /** An issue's newest move into `closed`, which a release roster asks of each closed issue (0635, ISS-1070 r10). */
+    issueClosedIdx: index('kernel_transitions_issue_closed_idx')
+      .on(t.entityId, t.createdAt.desc(), t.id.desc())
+      .where(sql`${t.entity} = 'issue' AND ${t.toStatus} = 'closed'`),
     checklistChk: check(
       'kernel_transitions_checklist_chk',
       sql`(${t.checklist} IS NULL AND ${t.checklistVersion} IS NULL AND ${t.checklistAnswers} IS NULL) OR (${t.checklist} IS NOT NULL AND ${t.checklistVersion} >= 1 AND jsonb_typeof(${t.checklistAnswers}) = 'array')`,

@@ -51,6 +51,10 @@ export const activityLog = pgTable(
         RECORD_ACTIONS.map((a) => `'${a}'`).join(', '),
       )})`,
     ),
+    /** An issue's first move to `in_progress`, the forecast's start of work (0635, ISS-1070 r10). */
+    issueStartedIdx: index('activity_log_issue_started_idx')
+      .on(t.issueId, t.createdAt)
+      .where(sql`${t.action} = 'issue.statusChanged' AND (${t.payload} ->> 'to') = 'in_progress'`),
     /** The readers that replaced comment parsing walk one issue's records of a kind, in order. */
     recordIssueIdx: index('activity_log_record_issue_idx')
       .on(t.issueId, t.action, t.createdAt)

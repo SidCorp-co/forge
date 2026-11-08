@@ -4040,6 +4040,13 @@
       "when": 1837728000000,
       "tag": "0634_a_criterion_carries_a_short_title",
       "breakpoints": true
+    },
+    {
+      "idx": 635,
+      "version": "7",
+      "when": 1837814400000,
+      "tag": "0635_the_close_and_start_lookups_read_one_index_entry",
+      "breakpoints": true
     }
   ]
 }
