@@ -94,6 +94,13 @@ const EXEC = ["assistant.exec"] as const;
  */
 const ENV = ["env.manage"] as const;
 
+/**
+ * Lower a gate profile Forge raised after a failed deploy or a rollback (REQ-76 BC-13; REQ-12 BC-20,
+ * ISS-823): a permission, never the writer's kind. Admin's by default; a member holds it only where
+ * the project's grant names it, and a named token grant only where it names it.
+ */
+const GATES = ["gates.lower"] as const;
+
 export const PROJECT_PERMISSIONS = [
 	...READ,
 	...WRITE,
@@ -103,6 +110,7 @@ export const PROJECT_PERMISSIONS = [
 	...PUBLIC_SHARE,
 	...EXEC,
 	...ENV,
+	...GATES,
 	...ADMIN,
 ] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
@@ -141,6 +149,7 @@ export const ROLE_PERMISSIONS: Readonly<
 		...PUBLIC_SHARE,
 		...EXEC,
 		...ENV,
+		...GATES,
 		...ADMIN,
 	],
 };
@@ -180,6 +189,7 @@ export const PERMISSION_ROLE_LABELS: Readonly<Record<Permission, string>> = {
 	"shares.public": "Admin",
 	"assistant.exec": "Admin",
 	"env.manage": "Admin",
+	"gates.lower": "Admin",
 	"project.admin": "Admin",
 	"members.admin": "Admin",
 	"issues.admit": "Admin",
@@ -219,6 +229,7 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"shares.public",
 	"assistant.exec",
 	"env.manage",
+	"gates.lower",
 	...APPROVE,
 ];
 

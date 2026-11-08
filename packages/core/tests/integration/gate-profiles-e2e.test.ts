@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { mintPat } from '../../src/credentials/pat.js';
 import { db } from '../../src/db/client.js';
 import { applyDeploySettlement } from '../../src/release-batch/coolify-confirm.js';
 import { raiseOnIncident } from '../../src/release-batch/gate-raise.js';
@@ -30,6 +31,7 @@ let ownerId: string;
 let owner: string;
 let member: string;
 let agent: string;
+let botId: string;
 
 beforeEach(async () => {
   await truncateAll();
@@ -41,6 +43,7 @@ beforeEach(async () => {
   await addProjectMember(projectId, memberId, 'member');
   member = await userToken(memberId);
   const bot = await createTestUser({ kind: 'agent' });
+  botId = bot.id;
   await addProjectMember(projectId, bot.id, 'admin');
   agent = await patToken(bot.id, [projectId]);
   await seedProjectDocument(projectId, ownerId, {
@@ -409,7 +412,7 @@ describe('BC-13: a failed deploy raises a yolo project, and only a person lowers
     return runId;
   }
 
-  it('raises to standard on the failure, refuses an agent lowering it, and lets a person', async () => {
+  it('raises to standard on the failure, refuses a caller without gates.lower lowering it, and lets one with it', async () => {
     expect((await setGates(owner, { profile: 'yolo' })).status).toBe(200);
     const runId = await failedDeploy();
 
@@ -428,18 +431,42 @@ describe('BC-13: a failed deploy raises a yolo project, and only a person lowers
     });
     expect(raised.changes[0]?.reason).toContain('the container exited 137');
 
-    const byAgent = await setGates(agent, { profile: 'yolo', reason: 'back to speed' });
-    expect(byAgent.status).toBe(403);
-    expect(codes(byAgent)).toEqual(['GATE_PROFILE_RAISED']);
-    const tighter = await setGates(agent, { profile: 'strict', reason: 'tighter is fine' });
+    // ISS-823 (REQ-12 BC-20): who lowers it is the permission `gates.lower`, never the writer's kind
+    const narrow = async (userId: string, extra: string[] = []) =>
+      (
+        await mintPat({
+          userId,
+          name: `narrow-${randomUUID().slice(0, 8)}`,
+          projectIds: [projectId],
+          permissions: ['projects:read', 'projects:write', ...extra] as never,
+        })
+      ).plaintext;
+    const person = await narrow(ownerId);
+    const byPersonWithout = await setGates(person, { profile: 'yolo', reason: 'back to speed' });
+    expect(byPersonWithout.status).toBe(403);
+    expect(codes(byPersonWithout)).toEqual(['GATE_PROFILE_RAISED']);
+    expect(JSON.stringify(byPersonWithout.body)).toContain('only a holder of `gates.lower`');
+    const byAgentWithout = await setGates(await narrow(botId), {
+      profile: 'yolo',
+      reason: 'back to speed',
+    });
+    expect(codes(byAgentWithout)).toEqual(['GATE_PROFILE_RAISED']);
+    const tighter = await setGates(await narrow(botId), {
+      profile: 'strict',
+      reason: 'tighter is fine',
+    });
     expect(tighter.status, JSON.stringify(tighter.body)).toBe(200);
     expect((await gatesOf()).raised).toMatchObject({ cause: 'deploy_failed' });
 
-    const byPerson = await setGates(owner, { profile: 'yolo', reason: 'fixed the deploy' });
-    expect(byPerson.status, JSON.stringify(byPerson.body)).toBe(200);
+    const byAgentGranted = await setGates(await narrow(botId, ['gates.lower']), {
+      profile: 'yolo',
+      reason: 'fixed the deploy',
+    });
+    expect(byAgentGranted.status, JSON.stringify(byAgentGranted.body)).toBe(200);
     const lowered = await gatesOf();
     expect(lowered.profile).toBe('yolo');
     expect(lowered.raised).toBeNull();
+    expect(lowered.changes[0]).toMatchObject({ profileTo: 'yolo', actorKind: 'agent' });
   });
 
   it('a rolled-back release raises it too; a standard project is left as it is', async () => {

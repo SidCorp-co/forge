@@ -24,6 +24,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { users } from '../db/schema-auth.js';
 import { projectGateChanges } from '../db/schema-gate-changes.js';
+import { actorFor, can, projectResource } from '../permissions/index.js';
 import type { ApiRefusal } from './documents.js';
 import type { ProjectDocument } from './schema.js';
 import {
@@ -108,7 +109,8 @@ export interface GatesWrite {
   reason: string;
 }
 
-async function actorKind(userId: string): Promise<'person' | 'agent'> {
+/** Who the change record names as its author: attribution only, never who may act (REQ-12 BC-20). */
+async function authorKindOf(userId: string): Promise<'person' | 'agent'> {
   const [row] = await db.select({ kind: users.kind }).from(users).where(eq(users.id, userId));
   return row?.kind === 'agent' ? 'agent' : 'person';
 }
@@ -147,9 +149,10 @@ export function gatesWriteRefusals(input: Pick<GatesWrite, 'overrides' | 'reason
 
 /**
  * Sets a project's profile and overrides (BC-2, BC-3), recording the change with who made it and why
- * (BC-12). A profile Forge raised after an incident (BC-13) is lowered only by a person: an agent's
- * write that would loosen any gate while the raise stands is refused GATE_PROFILE_RAISED. A person's
- * write ends the raise.
+ * (BC-12). A profile Forge raised after an incident (BC-13) is lowered only by a holder of
+ * `gates.lower` (ISS-823: a permission, agent tokens included, never the writer's kind): another's
+ * write that would loosen any gate while the raise stands is refused GATE_PROFILE_RAISED, and a
+ * holder's write ends the raise.
  */
 export async function writeGates(input: GatesWrite): Promise<WriteOutcome<ProjectDocument>> {
   const early = gatesWriteRefusals(input);
@@ -168,17 +171,20 @@ export async function writeGates(input: GatesWrite): Promise<WriteOutcome<Projec
     };
   }
   const before = held.document.gates;
-  const kind = await actorKind(input.userId);
+  const [kind, lowers] = await Promise.all([
+    authorKindOf(input.userId),
+    can(actorFor(input.userId), 'gates.lower', projectResource(input.projectId)),
+  ]);
   const overrides = Object.fromEntries(
     Object.entries(input.overrides).filter(([, m]) => m !== undefined),
   ) as Partial<Record<GateId, GateMode>>;
   const next: GatesConfig = {
     profile: input.profile,
     ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
-    ...(before?.raised && kind === 'agent' ? { raised: before.raised } : {}),
+    ...(before?.raised && !lowers ? { raised: before.raised } : {}),
   };
   const document: ProjectDocument = { ...held.document, gates: next };
-  if (before?.raised && kind === 'agent') {
+  if (before?.raised && !lowers) {
     const looser = loosened(projectGates(held.document, policy), projectGates(document, policy));
     if (looser.length > 0 || PROFILE_TIGHTNESS[input.profile] < PROFILE_TIGHTNESS[before.profile]) {
       return {
@@ -187,7 +193,7 @@ export async function writeGates(input: GatesWrite): Promise<WriteOutcome<Projec
           {
             code: 'GATE_PROFILE_RAISED',
             path: '/profile',
-            detail: `Forge raised this project from \`${before.raised.from}\` to \`${before.profile}\` after a ${before.raised.cause === 'deploy_failed' ? 'failed deploy' : 'rolled-back release'} (${before.raised.ref}) on ${before.raised.at}, and only a person lowers it again (REQ-76 BC-13); this write would loosen ${looser.length > 0 ? looser.map((g) => `\`${g}\``).join(', ') : 'the profile'}. Ask a person to set it.`,
+            detail: `Forge raised this project from \`${before.raised.from}\` to \`${before.profile}\` after a ${before.raised.cause === 'deploy_failed' ? 'failed deploy' : 'rolled-back release'} (${before.raised.ref}) on ${before.raised.at}, and only a holder of \`gates.lower\` lowers it again (REQ-76 BC-13), which this caller does not hold; this write would loosen ${looser.length > 0 ? looser.map((g) => `\`${g}\``).join(', ') : 'the profile'}. Ask a holder of \`gates.lower\` to set it, or have it granted.`,
           },
         ],
       };

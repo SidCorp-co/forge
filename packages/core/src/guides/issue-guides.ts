@@ -232,8 +232,8 @@ project's, and \`PUT\` it with \`{ baseRevision, profile, overrides, reason }\` 
 it, recorded with who and why. A refusal a gate makes names the gate, the profile and the key that
 relaxes it. The kernel holds under every profile: \`NO_HOLDER\`, \`NOT_THE_HOLDER\`,
 \`MERGE_NOT_RECORDED\`, \`CLOSE_CRITERION_UNPLACED\` and \`CLOSE_REQUIRES_SHIPPED\` are never relaxed. A
-failed deploy or a rollback raises a yolo project to standard, and only a person lowers it again
-(\`GATE_PROFILE_RAISED\`). Where \`issue_before_code\` is off (yolo) a merge onto the base branch naming
+failed deploy or a rollback raises a yolo project to standard, and only a holder of \`gates.lower\` lowers
+it again (\`GATE_PROFILE_RAISED\`). Where \`issue_before_code\` is off (yolo) a merge onto the base branch naming
 no issue files nothing: the master is owed its filing, listed on its pass for 14 days. It files the issue
 and marks it merged at that merge's commit, which the mark takes as the landing of that one issue though
 the commit names none, after the 14 days too; a commit declaring another issue is never this one's.

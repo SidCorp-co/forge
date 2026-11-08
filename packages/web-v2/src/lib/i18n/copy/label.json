@@ -617,6 +617,7 @@
     "label.workStep.release": "Release",
     "label.workStep.test": "Test",
     "label.workStep.triage": "Triage",
-    "label.permissionRole.env.manage": "Admin"
+    "label.permissionRole.env.manage": "Admin",
+    "label.permissionRole.gates.lower": "Admin"
   }
 }
