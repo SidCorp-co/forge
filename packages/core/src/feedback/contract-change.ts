@@ -13,7 +13,12 @@ interface ContractChangeFiling {
   provider: { id: string; slug: string };
   contractSlug: string;
   version: string;
-  breaking: readonly { element: string; text: string }[];
+  /**
+   * Why this consumer owes the upgrade, by what its links record, and the breaking entries as weighed
+   * there: each with the call sites and fields it reaches, or all of them where nothing could be
+   * weighed (ISS-1135, `ecosystem/contract/impact.ts:upgradeOwed`).
+   */
+  weighed: { lead: string; entries: readonly string[] };
   dueAt: Date;
   filer: { userId: string; agency: ActorAgency };
 }
@@ -23,9 +28,9 @@ const contractChangeKey = (providerId: string, slug: string, version: string) =>
 
 function bodyOf(f: ContractChangeFiling): string {
   const ref = `${f.provider.slug}/${f.contractSlug}`;
-  const lines = f.breaking.map((c) => `- ${c.element}: ${c.text}`);
+  const lines = f.weighed.entries.map((e) => `- ${e}`);
   const head = `${ref} ${f.version} is approved and breaking. Adapt before ${f.dueAt.toISOString().slice(0, 10)}, the end of ${f.provider.slug}'s commitment window.`;
-  return [head, ...(lines.length ? ['', ...lines] : [])].join('\n').slice(0, FEEDBACK_LIMITS.body);
+  return [head, '', f.weighed.lead, ...lines].join('\n').slice(0, FEEDBACK_LIMITS.body);
 }
 
 export async function fileContractChangeIn(

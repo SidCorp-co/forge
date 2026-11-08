@@ -1,0 +1,1 @@
+A breaking contract version files a consumer's upgrade item only where a breaking entry reaches what that consumer's links record; the item names each entry and the call sites it reaches, or says why every entry is owed a check (no link, no recorded call site, nothing measured) (ISS-1135).

@@ -1,4 +1,4 @@
-import type { CallSite } from '../link-schema.js';
+import { type CallSite, callSiteAt } from '../link-schema.js';
 import type { ChangeKind, ChangeLevel, MeasuredClassification } from './diff.js';
 import { compareVersions, type Versioning } from './naming.js';
 
@@ -211,4 +211,66 @@ export function recipientsOf(
     }
   }
   return out.sort((a, b) => a.consumer.localeCompare(b.consumer));
+}
+
+/**
+ * Whether a breaking version owes a consumer an upgrade item, weighed against what its links to the
+ * contract record (ISS-1135, FB-580: admin-api-v1 14.0.0 to 16.0.0 each broke only operations
+ * catalog-api never calls, and each drafted an item its master answered "no upgrade needed"):
+ * `touched`, naming each breaking entry and the recorded call sites and fields it reaches; owed too
+ * where no link records its call sites (`unlinked`, `unrecorded`) or nothing measured the version
+ * (`unmeasured`), each saying so; not owed where no breaking entry reaches anything a link records.
+ */
+export type UpgradeOwed =
+  | { owed: true; why: 'touched'; breaks: ImpactBreak[] }
+  | { owed: true; why: 'unlinked' | 'unrecorded' | 'unmeasured' }
+  | { owed: false; links: string[] };
+
+const recordsNothing = (l: ImpactLink) =>
+  l.callSites.length === 0 && l.fieldsUsed.length === 0 && l.outsideContract.length === 0;
+
+export function upgradeOwed(
+  versioning: Versioning,
+  version: string,
+  measured: ImpactMeasurement | null,
+  links: readonly ImpactLink[],
+): UpgradeOwed {
+  if (links.length === 0) return { owed: true, why: 'unlinked' };
+  if (links.some(recordsNothing)) return { owed: true, why: 'unrecorded' };
+  const impacts = links.map((l) => linkImpact(versioning, version, measured, l));
+  const breaks = impacts.flatMap((i) => i.breaks);
+  if (breaks.length > 0) return { owed: true, why: 'touched', breaks };
+  if (impacts.some((i) => i.reason === 'unmeasured')) return { owed: true, why: 'unmeasured' };
+  return { owed: false, links: links.map((l) => l.id) };
+}
+
+const UNWEIGHED: Record<Exclude<UpgradeOwed, { owed: false }>['why'], string> = {
+  touched: "It reaches what this project's links to it record:",
+  unlinked:
+    'No link of this project to it records the calls it makes, so every breaking entry is owed a check against its code:',
+  unrecorded:
+    'A link of this project to it records no call site or field, so every breaking entry is owed a check against its code:',
+  unmeasured:
+    'Nothing measured this version against what its links record, so every breaking entry is owed a check against its code:',
+};
+
+/** What a consumer's upgrade item says of the breaking entries: those its links reach, and where, or all of them and why. */
+export function upgradeWords(
+  owed: Exclude<UpgradeOwed, { owed: false }>,
+  breaking: readonly { element: string; text: string }[],
+): { lead: string; entries: string[] } {
+  if (owed.why !== 'touched') {
+    return { lead: UNWEIGHED[owed.why], entries: breaking.map((c) => `${c.element}: ${c.text}`) };
+  }
+  return {
+    lead: UNWEIGHED.touched,
+    entries: owed.breaks.map((b) => {
+      const at = [
+        ...b.callSites.map((c) => `${c.operation} at ${callSiteAt(c)}`),
+        ...b.fields.map((f) => `field \`${f}\``),
+        ...b.outsideContract.map((o) => `${o}, outside the contract`),
+      ];
+      return `${b.element}: ${b.text}${at.length > 0 ? ` (reaches ${at.join('; ')})` : ''}`;
+    }),
+  };
 }

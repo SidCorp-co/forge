@@ -96,6 +96,7 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
     const approved: Approved = {
       provider: { id: project.id, slug: project.slug },
       version: decided,
+      versioning,
       noticeDays: iface.document.commitments.deprecationNoticeDays,
       filer: actor,
     };

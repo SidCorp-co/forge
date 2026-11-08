@@ -4,6 +4,10 @@ import { fileContractChangeIn } from '../../feedback/index.js';
 import { dataPolicyOf } from '../../lib/data-egress.js';
 import { emitEvent } from '../../outbox/index.js';
 import { consumersOf } from '../interface-store.js';
+import { impactLink } from '../link-service.js';
+import { linksWhere } from '../link-store.js';
+import { upgradeOwed, upgradeWords } from './impact.js';
+import type { Versioning } from './naming.js';
 import type { StoredVersion } from './store.js';
 
 const DAY_MS = 86_400_000;
@@ -11,6 +15,8 @@ const DAY_MS = 86_400_000;
 export interface Approved {
   provider: { id: string; slug: string };
   version: StoredVersion;
+  /** How the provider numbers its versions, which says whether a link is pinned at or past this one. */
+  versioning: Versioning;
   noticeDays: number;
   filer: { userId: string; agency: ActorAgency };
 }
@@ -27,8 +33,20 @@ async function consumersOfContract(tx: Tx, providerId: string, slug: string) {
 
 const isBreaking = (v: StoredVersion) => v.document.diff.classification === 'breaking';
 
+/** The consumer's links to the approved contract, as the impact check reads them. */
+async function linksOfConsumer(tx: Tx, consumerId: string, a: Approved) {
+  const rows = await linksWhere(tx, { consumerId });
+  return rows
+    .filter(
+      (l) => l.providerProjectId === a.provider.id && l.contractSlug === a.version.contractSlug,
+    )
+    .map(impactLink);
+}
+
 // a breaking approval files its consumers' items inside its own transaction, so no approval
-// commits owing an item it did not file; the key makes a retry find the item instead of a twin (E3)
+// commits owing an item it did not file; the key makes a retry find the item instead of a twin (E3).
+// Each consumer is weighed first against what its links record (ISS-1135): one no breaking entry
+// reaches is filed nothing
 export async function fileBreakingIn(tx: Tx, a: Approved): Promise<string[]> {
   if (!isBreaking(a.version)) return [];
   const decidedAt = a.version.decidedAt ?? new Date();
@@ -38,13 +56,20 @@ export async function fileBreakingIn(tx: Tx, a: Approved): Promise<string[]> {
     .map((c) => ({ element: c.element, text: c.text }));
   const filed: string[] = [];
   for (const consumer of await consumersOfContract(tx, a.provider.id, a.version.contractSlug)) {
+    const owed = upgradeOwed(
+      a.versioning,
+      a.version.version,
+      a.version.document.diff,
+      await linksOfConsumer(tx, consumer.id, a),
+    );
+    if (!owed.owed) continue;
     const out = await fileContractChangeIn(tx, {
       consumerId: consumer.id,
       level: await dataPolicyOf(consumer.id),
       provider: a.provider,
       contractSlug: a.version.contractSlug,
       version: a.version.version,
-      breaking,
+      weighed: upgradeWords(owed, breaking),
       dueAt,
       filer: a.filer,
     });
