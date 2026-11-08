@@ -269,7 +269,7 @@ export function forgeMcpInstructions(): string {
 It lists five tools, so you load only what you use: \`forge_find { query }\` finds the actions that do what you want, \`forge_describe { action }\` gives one action's input and its own guide, and \`forge_call { action, args }\` runs it; \`search\` and \`fetch\` read the issues, requirements and knowledge of the projects you can read. An action is \`<door>.<action>\`, for example \`requirements.create\`. The doors:
 
 - \`requirements\` — list, read, draft and revise requirements (REQ-n), propose a draft revision, and answer a question standing on one with what the person said; agreeing and accepting stay a person's act on the requirement page.
-- \`project_feedback\` — a project's own feedback (FB-n): list, read and file it, find similar items, and ask a reporter a clarification; triage stays a person's act.
+- \`project_feedback\` — a project's own feedback (FB-n): list, read and file it, find similar items, and ask a reporter a clarification; triage is not done here, and is the project's master's unless the project is strict.
 - \`feedback\` — feedback about Forge itself (its CLI, routes, tools, guides, web app), from any project: filed as you into Forge's own home project, never into the project you work in; list and read the items you reported and how they are going.
 - \`releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
 - \`design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.

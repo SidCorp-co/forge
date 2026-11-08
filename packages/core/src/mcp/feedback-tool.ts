@@ -85,7 +85,7 @@ const DESCRIPTION = [
   `submit ${CREATE_FEEDBACK_SHAPE}: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with requirements.similar).`,
   `attach {feedback, ${FEEDBACK_ATTACHMENT_SHAPE.slice(2, -2)}}: attach a file to an existing item, as anyone who may comment on it may; label approved_design marks a mockup a person approved. The bytes are base64; the type and size limits are an issue attachment's. Answers the new attachmentId; get lists every attachment, and uploads.fetch {data:{target:"feedback", attachmentId}} reads one.`,
   'clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Refused while one is open on the item or to the same reporter, or when the item is past triage.',
-  'Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work.',
+  'Triage, decline, verify and retarget are not done here: triage is the project’s master’s, a person’s only on a strict project, on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
 ].join(' ');
 

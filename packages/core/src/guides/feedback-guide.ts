@@ -143,7 +143,9 @@ reporter's confirm in the fix's preview does as theirs (below).
   permission, the gate and what relaxes it. Without it, send \`POST /api/projects/:id/suggestions\`
   \`{ kind: 'feedback_triage', feedback, payload }\`, the payload a triage with its \`answers\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
   item (\`dedup\`, or why dedup did not run); a holder accepts it (\`POST /api/projects/:id/suggestions/:sid/accept\`), and the
-  accept is the triage (${guideRef('suggestions')}).
+  accept is the triage (${guideRef('suggestions')}). Outside strict, triaging a new item is routine intake and
+  the master's: it routes the item, or accepts or rejects a proposed triage, with no person's click; it asks a person
+  only a choice that is serious (irreversible, real money, credentials or product direction).
 - Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any
   other phase is \`FEEDBACK_STATUS_INVALID\`.
 
@@ -248,8 +250,9 @@ another item is filed about one of them it is \`FEEDBACK_REDACT_MOCKUP_TARGETED\
 
 ### Reading the list
 \`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer:
-whoever \`approvals.triage\` asks (\`feedback.approve\` unless the project turned it off) to triage a new or reopened item or a triaged one whose carrier died (the project's master, where one is
-live, for any item it owes a triage), the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
+the project's master to triage a new or reopened item, or to accept or reject a triage proposed on one, unless the
+project is strict, where whoever \`approvals.triage\` asks triages it (the one rule of who owes an act; a live master is not
+asked); whoever \`approvals.triage\` asks to reroute a triaged one whose carrier died; the carrier to ship a planned one, or, where that carrier waits at \`awaiting_release\`, whoever
 makes the release (a release approver, a writer cutting it, or with no release model a writer releasing it by hand), and anyone
 to verify a resolved one, which is owed by nobody and so reads \`You\` for no one. It reads \`You\` only where the viewer holds that act.
 \`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates. How a requirement a
