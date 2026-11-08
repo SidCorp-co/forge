@@ -1,10 +1,8 @@
-import type {
-  RequirementAttentionGroup,
-  RequirementWaitingKind,
-} from '@forge/contracts/requirements';
+import type { RequirementWaitingKind } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { RevisionState } from '../db/schema-requirements.js';
+import type { TurnGroup } from '../lib/attention-group.js';
 
 export interface StandingRevision {
   revision: number;
@@ -33,12 +31,12 @@ export interface RequirementViewer {
 const RULE = say('requirements.rule.draftAuthor');
 
 const turn = (
-  group: RequirementAttentionGroup,
+  group: TurnGroup,
   kind: RequirementWaitingKind,
   who: Said,
   act: Said,
   rule: Said,
-): { group: RequirementAttentionGroup; waitingOn: WaitingOn<RequirementWaitingKind> } => ({
+): { group: TurnGroup; waitingOn: WaitingOn<RequirementWaitingKind> } => ({
   group,
   waitingOn: waitingOn(kind, { who, act, rule }),
 });

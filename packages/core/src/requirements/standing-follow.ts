@@ -3,13 +3,11 @@
  * signer does, and what doing it changes. Split from `standing.ts` to keep that file one read.
  */
 
-import type {
-  RequirementAttentionGroup,
-  RequirementWaitingOn,
-} from '@forge/contracts/requirements';
+import type { RequirementWaitingOn } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import { whoOwes } from '@forge/contracts/who-owes';
+import type { TurnGroup } from '../lib/attention-group.js';
 import type { StandingInput } from './standing.js';
 import type { RequirementViewer } from './standing-draft.js';
 
@@ -78,7 +76,7 @@ export function reviseForDesignAct(changes: readonly TracedChange[]): Said {
 export function pinBehindTurn(
   input: Pick<StandingInput, 'stalePins' | 'staleContractPins' | 'owner' | 'owed'>,
   viewer: RequirementViewer | null,
-): { group: RequirementAttentionGroup; waitingOn: RequirementWaitingOn } | null {
+): { group: TurnGroup; waitingOn: RequirementWaitingOn } | null {
   if (input.stalePins.length === 0 && input.staleContractPins.length === 0) return null;
   const says = {
     act: updateToApprovedAct(input.stalePins, input.staleContractPins),

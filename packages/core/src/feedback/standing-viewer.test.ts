@@ -1,4 +1,5 @@
-import { saidDisagreements } from '@forge/contracts/said';
+import { saidDisagreements, say } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
 import { feedbackStandingOf as feedbackStandingOf_, type StandingViewer } from './standing.js';
 
@@ -110,7 +111,7 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
       act: 'triage it',
     });
     expect(s.waitingOn.rule).toContain('feedback.approve');
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('waiting');
   });
 });
 
@@ -137,7 +138,7 @@ describe('a new item is placed by the one rule, read with the project policy', (
         who: "The project's master",
         act: 'triage it',
       });
-      expect(s.attentionGroup).toBe('moving');
+      expect(s.attentionGroup).toBe('waiting');
     },
   );
 
@@ -182,7 +183,7 @@ describe('a new item is placed by the one rule, read with the project policy', (
       { ...AT, master: 'none' },
     );
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: "The project's master" });
-    expect(s.attentionGroup).toBe('stuck');
+    expect(s.attentionGroup).toBe('overdue');
     expect(s.times.stuck).toMatchObject({ code: 'nobody_serves' });
   });
 
@@ -264,19 +265,34 @@ describe('an item planned on an issue at the release gate names who releases it'
       who: 'ISS-9',
       act: 'ship',
     });
-    expect(planned('automatic').attentionGroup).toBe('moving');
+    expect(planned('automatic').attentionGroup).toBe('waiting');
   });
 });
 
-// ISS-1072 round 3: Feedback listed items Resolved under Moving where the confirm they wait on is an
-// agent's (a channel agent reporter, or the master verifying): a resolved item is shipped and waits
-// on its confirm, someone else's turn, never Moving.
-describe('a resolved item is never Moving', () => {
-  it.each<[string, Record<string, boolean>, 'issue' | 'answer']>([
-    ['an agent reporter confirms it', { reporterIsAgent: true }, 'issue'],
-    ['the master verifies it', { masterVerifies: true }, 'issue'],
-    ['the master confirms an answer', { masterVerifies: true }, 'answer'],
-  ])('waits, not moves, where %s', (_, facts, route) => {
+// ISS-1072 round 3 and owner 2026-11-08 (D5): a resolved item has shipped. Under strict it waits on
+// its confirm, someone else's turn, never Running; outside strict the ship IS its verify, so it is
+// Done, nothing waits on its reporter or the master, and its chip says Done (FB-583).
+describe('a resolved item is never Running', () => {
+  it('waits on its agent reporter under strict', () => {
+    const s = feedbackStandingOf(
+      'resolved',
+      'issue',
+      [],
+      'Channel agent',
+      viewer(),
+      null,
+      { ...NO_STANDING_FACTS, reporterIsAgent: true },
+      AT,
+    );
+    expect(s.waitingOn.kind).toBe('agent');
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.chip).toBe('done');
+  });
+
+  it.each<[string, 'issue' | 'answer']>([
+    ['its fix shipped', 'issue'],
+    ['it was answered', 'answer'],
+  ])('is done outside strict where %s, owed by nobody', (_, route) => {
     const s = feedbackStandingOf(
       'resolved',
       route,
@@ -284,12 +300,17 @@ describe('a resolved item is never Moving', () => {
       'Channel agent',
       viewer(),
       null,
-      { ...NO_STANDING_FACTS, ...facts },
+      { ...NO_STANDING_FACTS, masterVerifies: true, reporterIsAgent: true, relayOwed: true },
       AT,
     );
-    expect(s.waitingOn.kind).toBe('agent');
-    expect(s.attentionGroup).not.toBe('moving');
-    expect(s.attentionGroup).toBe('waiting');
+    expect(s.attentionGroup).toBe('done');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'none',
+      says: { rule: { key: 'feedback.rule.shippedSettles' } },
+    });
+    expect(s.times.stuck).toBeNull();
+    expect(s.times.dueAt).toBeNull();
+    expect(s.chip).toBe('done');
   });
 
   it('still moves while an agent works it before it ships: the master triaging a new item', () => {
@@ -305,6 +326,35 @@ describe('a resolved item is never Moving', () => {
       fresh,
     );
     expect(s.waitingOn.kind).toBe('agent');
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.chip).toBe('new');
+  });
+
+  it('reads Running with its chip while a carrier issue is in progress', () => {
+    const s = feedbackStandingOf(
+      'planned',
+      'issue',
+      ['ISS-9'],
+      'Reporter',
+      viewer(),
+      null,
+      {
+        ...NO_STANDING_FACTS,
+        carrierRunning: true,
+        carrier: {
+          key: 'ISS-9',
+          waitingOn: waitingOn('run', {
+            who: say('issues.standing.who.run'),
+            act: say('standing.act.none'),
+            rule: say('standing.act.none'),
+          }),
+          since: AT.now,
+          stuck: null,
+        },
+      },
+      AT,
+    );
+    expect(s.attentionGroup).toBe('running');
+    expect(s.chip).toBe('running');
   });
 });

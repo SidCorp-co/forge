@@ -146,7 +146,7 @@ describe('whose turn an open draft revision is', () => {
 
   it('waits on the master, never on the viewer, when an agent wrote it under their account', () => {
     const s = deriveStanding(draftBy('agent'));
-    expect(s.attentionGroup).toBe('waiting');
+    expect(s.attentionGroup).toBe('queued');
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'propose or drop r1' });
   });
 
@@ -298,7 +298,7 @@ describe('an agreed requirement whose live issues are drafts', () => {
 
   it('reads stuck on its draft carrier, which the steward diagnoses (REQ-48 BC-5)', () => {
     const s = deriveStanding({ ...input([issue(1, 'draft', false)]), viewer: signer });
-    expect(s.attentionGroup).toBe('stuck');
+    expect(s.attentionGroup).toBe('overdue');
     expect(s.times.stuck).toMatchObject({ code: 'draft_carrier', via: 'ISS-1' });
   });
 
@@ -308,7 +308,7 @@ describe('an agreed requirement whose live issues are drafts', () => {
       viewer: signer,
     });
     expect(s.waitingOn.act).not.toContain('promote');
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('queued');
   });
 });
 

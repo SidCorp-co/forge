@@ -1,16 +1,13 @@
-import type {
-  RequirementAttentionGroup,
-  RequirementCoverage,
-  RequirementWaitingKind,
-} from '@forge/contracts/requirements';
+import type { RequirementCoverage, RequirementWaitingKind } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
+import type { TurnGroup } from '../lib/attention-group.js';
 import { askedOnRelease, holdsFor, type LiveBuildHolds } from './standing-identity.js';
 
 export interface Turn {
-  group: RequirementAttentionGroup;
+  group: TurnGroup;
   waitingOn: WaitingOn<RequirementWaitingKind>;
 }
 

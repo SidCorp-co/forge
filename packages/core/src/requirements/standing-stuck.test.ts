@@ -115,7 +115,7 @@ describe("REQ-45's shape: a reopened carrier no master serves", () => {
 
   it('reads the requirement stuck by ISS-498, never Moving, with the issue named', () => {
     const s = deriveStanding(requirement([carrier('reopen', 'none')], 'none'));
-    expect(s.attentionGroup).toBe('stuck');
+    expect(s.attentionGroup).toBe('overdue');
     expect(s.attentionGroup).not.toBe('moving');
     expect(s.times).toMatchObject({ carriedBy: 'ISS-498' });
     expect(s.times.stuck).toMatchObject({ code: 'nobody_serves', via: 'ISS-498' });
@@ -135,7 +135,7 @@ describe("REQ-45's shape: a reopened carrier no master serves", () => {
   // clock, however long it has waited, so the requirement it carries is moving, never stuck by it
   it('keeps an open carrier a serving master has not yet taken moving, a week on', () => {
     const s = deriveStanding(requirement([carrier('open', 'serves')], 'serves'));
-    expect(s.attentionGroup).toBe('moving');
+    expect(s.attentionGroup).toBe('queued');
     expect(s.times.stuck).toBeNull();
     expect(s.times.dueAt).toBeNull();
   });

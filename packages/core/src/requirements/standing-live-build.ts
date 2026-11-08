@@ -6,6 +6,7 @@
  */
 
 import { issueCoresOf } from '../issues/index.js';
+import { createLimiter } from '../lib/bounded-concurrency.js';
 import { requirementDependents } from './dependents.js';
 import { recordedLandingsOf } from './recorded-landings.js';
 import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
@@ -39,6 +40,33 @@ export async function liveBuildOf(
     for (const r of those) foreign.set(r.issueId.toLowerCase(), build);
   }
   return { ...(holds ?? NOTHING_ASKED), foreign };
+}
+
+/** How many requirements' builds one read weighs at once. */
+const LIVE_BUILD_READS = 4;
+
+/**
+ * Each requirement's build, read from its own traced verdicts and its own requirement verdicts alone,
+ * exactly as its record and its accept read it (`acceptance.ts:liveBuildOfRequirement`): one read over
+ * every listed row let another requirement's verdicts decide which build this one's were weighed on,
+ * so the list read REQ-78 passing 0/7 while its record read 7/7 (owner 2026-11-08, D2).
+ */
+export async function liveBuildsOf(
+  projectId: string,
+  rows: readonly {
+    id: string;
+    traced: readonly StandingIssueCriterion[];
+    own: readonly Pick<StandingRequirementVerdict, 'commit'>[];
+  }[],
+): Promise<Map<string, LiveBuildHolds | null>> {
+  const limit = createLimiter(LIVE_BUILD_READS);
+  return new Map(
+    await Promise.all(
+      rows.map((r) =>
+        limit.run(async () => [r.id, await liveBuildOf(projectId, r.traced, r.own)] as const),
+      ),
+    ),
+  );
 }
 
 /** A build nothing was asked of: what carries another project's holds where this one's read none. */

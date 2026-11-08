@@ -8,6 +8,7 @@ import type {
   FeedbackAttentionGroup,
   FeedbackPhase,
   FeedbackRoute,
+  FeedbackRowChip,
   FeedbackStatus,
   FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
@@ -17,6 +18,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type Standing, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing, StandingTimes } from '@forge/contracts/steward';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
+import { attentionGroupOf, type TurnGroup } from '../lib/attention-group.js';
 import { withTimes } from '../lib/standing-times.js';
 import {
   type CarrierStanding,
@@ -155,9 +157,9 @@ export interface StandingFacts {
   /** A runner is bound, so a master can be placed (FB-77); false, a holder triages instead. Absent reads bound. */
   runnerBound?: boolean;
   /**
-   * Whether the project's master owes a resolved item's confirm, by the one rule
-   * (`@forge/contracts/who-owes:whoOwes`, `feedback.verify`, ISS-1058): confirming an answer or a fix
-   * holds is routine, so it is the master's unless the project is strict.
+   * Whether a resolved item's confirm is routine, by the one rule (`@forge/contracts/who-owes:whoOwes`,
+   * `feedback.verify`, ISS-1058): outside strict the shipped carrier or the answer settles it (owner
+   * 2026-11-08, D5) and nothing waits on anyone; under strict its reporter or a triager confirms it.
    */
   masterVerifies?: boolean;
   /** Set only where the item is planned on issues every one still owed of which stands at `awaiting_release`. */
@@ -182,6 +184,8 @@ export interface StandingFacts {
   reporterIsAgent?: boolean;
   /** The first draft issue carrying it, where one does: it reads triaged and stuck (draft_carrier). */
   draftCarrier?: string | null;
+  /** An issue carrying it is in progress: the item reads Running (FB-583). */
+  carrierRunning?: boolean;
   /** An owed carrier's own standing, a stuck one first: what a planned item rolls up (REQ-48 BC-9). */
   carrier?: CarrierStanding | null;
 }
@@ -202,8 +206,6 @@ export interface FeedbackTimesFacts {
 export type Owed = { wait: FeedbackWaitingOn; yours: boolean };
 
 const TRIAGER = say('standing.who.holderOf', { perm: 'feedback.approve' });
-/** The project's master, which the one rule gives a routine act (ISS-1058). */
-const MASTER = say('standing.who.projectMaster');
 /** Who routes an item on this project: whom its `approvals.triage` asks (ISS-639). */
 const routerOf = (viewer: StandingViewer) =>
   say('standing.who.holderOf', { perm: viewer.routeAsks });
@@ -253,13 +255,16 @@ function waitingOf(
       }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
-      if (route === 'answer' && facts.masterVerifies) {
+      // owner 2026-11-08 (D5): outside strict, the shipped carrier or the answer is the verify, and the
+      // sweep records it (`loop-check.ts:verifyByShip`); nothing waits on the reporter or the master
+      if (facts.masterVerifies) {
         return theirs(
           wait(
-            'agent',
-            MASTER,
-            say('standing.act.confirmAnswer'),
-            say('feedback.rule.masterConfirms'),
+            'none',
+            say('standing.who.nobody'),
+            say('standing.act.none'),
+            say('feedback.rule.shippedSettles'),
+            { ref: facts.carrierVersion ?? null },
           ),
         );
       }
@@ -277,17 +282,6 @@ function waitingOf(
       if (facts.relayOwed) return relayWait(reporter, viewer, facts);
       // Feedback lifecycle r14 loop-check: past the window the item waits on a holder of
       // feedback.approve, naming the question and what the record reads; nothing answers it for them
-      if (facts.verifyHeld && facts.masterVerifies) {
-        return theirs(
-          wait(
-            'agent',
-            MASTER,
-            say('standing.act.sayIfGone'),
-            say('feedback.rule.masterAnswersHeld', { why: facts.verifyHeld }),
-            { ref: facts.carrierVersion ?? null },
-          ),
-        );
-      }
       if (facts.verifyHeld) {
         return {
           wait: wait(
@@ -303,19 +297,17 @@ function waitingOf(
       return {
         // REQ-66 BC-8: an agent reporter is asked as a person is, and confirms or reopens through its own door
         wait: wait(
-          facts.reporterIsAgent || facts.masterVerifies ? 'agent' : 'person',
-          facts.masterVerifies && !facts.reporterIsAgent ? MASTER : named(reporter),
+          facts.reporterIsAgent ? 'agent' : 'person',
+          named(reporter),
           facts.carrierVersion
             ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
             : say('standing.act.verifyFix'),
           say(
             facts.reporterIsAgent
               ? 'feedback.rule.agentConfirms'
-              : facts.masterVerifies
-                ? 'feedback.rule.masterConfirms'
-                : facts.recordCanSay
-                  ? 'feedback.rule.verifyByRecord'
-                  : 'feedback.rule.verifyByPerson',
+              : facts.recordCanSay
+                ? 'feedback.rule.verifyByRecord'
+                : 'feedback.rule.verifyByPerson',
           ),
           { ref: facts.carrierVersion ?? null, dueAt: facts.recordCheckAt ?? null },
         ),
@@ -371,13 +363,13 @@ function plannedWait(
 }
 
 /**
- * The list's group for an item, from whether the act it waits on is the viewer's own. A resolved item
- * has shipped and waits on its confirm, someone else's turn even where an agent owes it (ISS-1072):
- * it never reads Moving.
+ * The turn's group for an item, from whether the act it waits on is the viewer's own. A resolved item
+ * outside strict is done (D5); under strict it has shipped and waits on its confirm, someone else's
+ * turn even where an agent owes it (ISS-1072): it never reads Running.
  */
-function groupOf(phase: FeedbackPhase, owed: Owed): FeedbackAttentionGroup {
+function groupOf(phase: FeedbackPhase, owed: Owed, facts: StandingFacts): TurnGroup {
   if (owed.yours) return 'needs_you';
-  if (phase === 'resolved') return 'waiting';
+  if (phase === 'resolved') return facts.masterVerifies ? 'done' : 'waiting';
   if (phase === 'planned' || owed.wait.kind === 'agent') return 'moving';
   if (phase === 'verified' || phase === 'declined') return 'done';
   return 'waiting';
@@ -459,7 +451,10 @@ export function feedbackStandingOf(
   revision: RevisionStage | null,
   facts: StandingFacts,
   at: FeedbackTimesFacts,
-): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> & { times: StandingTimes } {
+): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> & {
+  times: StandingTimes;
+  chip: FeedbackRowChip;
+} {
   const owed = waitingOf(phase, route, carriers, reporter, revision, viewer, facts);
   const waiting = owed.yours
     ? waitingOn(
@@ -474,7 +469,7 @@ export function feedbackStandingOf(
       ? { key: carrier.key, stuck: carrier.stuck }
       : null;
   const { group, times } = withTimes(
-    { group: groupOf(phase, owed), waitingOn: waiting },
+    { group: groupOf(phase, owed, facts), waitingOn: waiting },
     {
       since: carrier?.since ?? at.since,
       master: at.master,
@@ -485,5 +480,29 @@ export function feedbackStandingOf(
     },
     'waiting',
   );
-  return { attentionGroup: group, waitingOn: waiting, times };
+  const attentionGroup = attentionGroupOf(group, waiting, {
+    running: phase === 'planned' && facts.carrierRunning === true,
+    dropped: phase === 'declined',
+  }) as FeedbackAttentionGroup;
+  return { attentionGroup, waitingOn: waiting, times, chip: chipOf(phase, attentionGroup) };
+}
+
+/**
+ * The row's one word (FB-583): new until something carries it, planned while carried, running while
+ * a carrier works, done once shipped or confirmed (a resolved item is done, D5), declined.
+ */
+export function chipOf(phase: FeedbackPhase, group: FeedbackAttentionGroup): FeedbackRowChip {
+  switch (phase) {
+    case 'new':
+    case 'reopened':
+    case 'triaged':
+      return 'new';
+    case 'planned':
+      return group === 'running' ? 'running' : 'planned';
+    case 'resolved':
+    case 'verified':
+      return 'done';
+    case 'declined':
+      return 'declined';
+  }
 }

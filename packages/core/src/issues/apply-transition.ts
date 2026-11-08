@@ -26,6 +26,7 @@ import {
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { issueChecklistRecord } from './checklist-record.js';
 import { type MovedCriterion, postMovedOut, type UnmetInput } from './close-in-scope.js';
+import { closeRecordsVerdicts, recordCloseVerdicts } from './criteria/close-verdicts.js';
 import { designCheckOf } from './design-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
@@ -41,6 +42,7 @@ import { repointPark, repointsPark } from './park-repoint.js';
 import { planCheckpointHolds, unplannedForBuild } from './plan-checkpoint.js';
 import {
   postIssueNotice,
+  readJudge,
   readProjectDocument,
   settleOpenQuestions,
   voidStewardDecisionsOnMove,
@@ -384,6 +386,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   const failReturned: { note: string | null } = { note: null };
   // the criteria a close moves out, left by its `in_scope` guard once it lets the close go
   const closeMoves: { moves: MovedCriterion[] } = { moves: [] };
+  const closeJudge = toStatus === 'closed' ? await readJudge(issue.projectId) : null;
   let movedOut: string[] = [];
   const parked: { question: ParkQuestion | null } = { question: null };
   const write = (exec: KernelExecutor) =>
@@ -486,6 +489,11 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         }
         if (toStatus === 'closed' && closeMoves.moves.length > 0) {
           movedOut = await postMovedOut(tx, issue.id, by, closeMoves.moves);
+        }
+        // the close is its builder's verdict where the project judges its own work (D2): each
+        // traced criterion it did not move out, holding no verdict, is recorded passing at its landing
+        if (toStatus === 'closed' && closeRecordsVerdicts(closeJudge)) {
+          await recordCloseVerdicts(tx, issue.id, { userId: by, agency: actorAgency(actor) });
         }
         if (toStatus === 'dropped') {
           unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);

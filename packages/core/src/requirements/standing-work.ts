@@ -18,7 +18,6 @@ import { isOwedLeg, type ReleaseLeg } from '@forge/contracts/forecast';
 import { PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import type {
-  RequirementAttentionGroup,
   RequirementWaitingKind,
   RequirementWaitingOn,
   RequirementWaitRefers,
@@ -26,6 +25,7 @@ import type {
 import { type Said, say } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { StuckReading } from '@forge/contracts/steward';
+import type { TurnGroup } from '../lib/attention-group.js';
 import type { Carried } from '../lib/standing-times.js';
 
 /** What a parked issue waits on, as its own standing says it. */
@@ -50,7 +50,7 @@ export interface WorkIssue {
 
 /** A turn and what `withTimes` reads beyond it: the issue it was carried from, and since when it waits. */
 export interface WorkTurn {
-  group: RequirementAttentionGroup;
+  group: TurnGroup;
   waitingOn: RequirementWaitingOn;
   carried?: Carried | null;
   since?: Date | null;
@@ -81,7 +81,7 @@ const wait = (
   ...(about ? { refers: about.refers } : {}),
 });
 
-const groupOf = (kind: RequirementWaitingKind): RequirementAttentionGroup =>
+const groupOf = (kind: RequirementWaitingKind): TurnGroup =>
   kind === 'you' ? 'needs_you' : 'moving';
 
 /** The issue's act said on the requirement; an answer it waits on names no act, only the issue it is for. */
