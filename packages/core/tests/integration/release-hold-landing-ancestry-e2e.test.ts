@@ -4,15 +4,18 @@
  * verdicts at 87a8c61, which is the commit v0.139.0 shipped and does not hold 7e24f05: no verdict there
  * could be about ISS-171, so the hold could never be earned.
  *
- * Planted as agenfold stood: production deploys `on-land`, a Coolify deployment names the commit it
- * serves, that commit is the one release 0.139.0 shipped, and ISS-171 landed before 0.139.0 was
- * stamped shipped (so production's reading keeps the served basis) without being in it. What the
- * served commit holds of the landing is the project's ancestry source's answer, planted per case.
- * Against real Postgres; production's deployment is planted.
+ * Planted with production deploying `on-land` and a Coolify deployment naming the commit it serves.
+ * ISS-997's served basis is planted where that commit is one no release shipped (a landing reached
+ * production); what it holds of the landing is the project's ancestry source's answer, planted per
+ * case. Where the served commit is the one release 0.139.0 shipped, as agenfold stood, production
+ * moves only by its releases however the issue's landing time falls (ISS-970, agenfold ISS-163 on
+ * 0.133.0, FB-541): ISS-171 is weighed at its landing, and a pass there carries it. Against real
+ * Postgres; production's deployment is planted.
+ *
+ * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
  *
  * @direct-test-of packages/core/src/release-batch/criteria-hold-words.ts
  * @direct-test-of packages/core/src/release-batch/runtime-weighing.ts
- * @direct-test-of packages/core/src/release-batch/criteria-basis.ts
  * @direct-test-of packages/core/src/release-batch/release-sweep.ts
  */
 
@@ -36,6 +39,8 @@ import {
 
 /** 87a8c61, the commit release 0.139.0 shipped and production serves. */
 const SERVED = '87a8c6100000000000000000000000000000c610';
+/** A commit no release names, which a landing deployed. */
+const UNNAMED = 'b'.repeat(40);
 /** 7e24f05, where ISS-171 landed. */
 const LANDED = '7e24f05000000000000000000000000000000f05';
 const APP = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
@@ -128,10 +133,10 @@ async function land(id: string): Promise<string> {
 const landedBeforeTheStamp = async (): Promise<string> => land(await unlanded());
 
 describe('a release hold asks for verdicts only at a commit holding the landing (ISS-997)', () => {
-  it('names no commit where production serves a shipped release that does not hold the landing', async () => {
-    await shipped('0.139.0', SERVED, 30);
+  it('names no commit where production serves a landing that does not hold this one', async () => {
+    await shipped('0.139.0', UNNAMED, 30);
     const id = await landedBeforeTheStamp();
-    // the served basis stands, as it did for agenfold's 0.140.0
+    // a landing reached production: the served basis stands
     expect(await criteriaBasisOf(projectId)).toMatchObject({ kind: 'serving' });
     const draft = await draftedVersion(projectId);
 
@@ -150,16 +155,15 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
       `its criteria are owed after the release that carries it, release ${draft}, drafted from what waits at the gate`,
     );
     expect(reason).toContain('`POST /api/projects/:id/release-batches` with `issueIds`');
-    // what the served commit is, from the records: never "a commit no release shipped"
-    expect(reason).toContain('production serves (the commit release 0.139.0 shipped)');
-    expect(reason).not.toContain('a commit no release shipped');
+    // what the served commit is, from the records
+    expect(reason).toContain('production serves (a commit no release names)');
     expect(hold?.waitingFor).toBe(
       'the release that carries it to ship, then a verdict on each criterion named',
     );
   });
 
   it('earns nothing on passes judged at a served commit that does not hold the landing', async () => {
-    await shipped('0.139.0', SERVED, 30);
+    await shipped('0.139.0', UNNAMED, 30);
     const id = await unlanded();
     // what the old hold asked for: passes judged at 87a8c61, recorded before the merge was, since the
     // verdict door refuses one at a commit the recorded landing does not hold (ISS-981)
@@ -180,20 +184,20 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
 
   it('asks for verdicts at what production serves where it holds the landing', async () => {
     ancestry = 'holds';
-    await shipped('0.139.0', SERVED, 30);
+    await shipped('0.139.0', UNNAMED, 30);
     const id = await landedBeforeTheStamp();
 
     await sweepAutomaticReleases();
 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain(`judged at a commit this project is serving — \`${SERVED}\``);
-    expect(reason).toContain('production serves (the commit release 0.139.0 shipped)');
+    expect(reason).toContain('production serves (a commit no release names)');
     expect(reason).not.toContain('owed after the release');
   });
 
   it('says by name why it cannot tell where no ancestry can be read, and asks at no commit', async () => {
     ancestry = 'none';
-    await shipped('0.139.0', SERVED, 30);
+    await shipped('0.139.0', UNNAMED, 30);
     const id = await landedBeforeTheStamp();
 
     await sweepAutomaticReleases();
@@ -214,7 +218,7 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
   it('says a served commit no release names is one, never that it is a release', async () => {
     ancestry = 'holds';
     // production serves a commit no release shipped: the release Forge recorded is elsewhere
-    await shipped('0.139.0', 'b'.repeat(40), 30);
+    await shipped('0.139.0', UNNAMED, 30);
     const id = await landedBeforeTheStamp();
 
     await sweepAutomaticReleases();
@@ -222,5 +226,45 @@ describe('a release hold asks for verdicts only at a commit holding the landing 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('production serves (a commit no release names)');
     expect(reason).not.toContain('0.139.0 shipped');
+  });
+});
+
+// ISS-970 (agenfold ISS-163 on 0.133.0, FB-541): production serves only what its releases shipped, and
+// an issue that landed before the latest release was stamped, held out of it, no longer flips the
+// project to the served basis: it is weighed at its landing, and the hold never calls the shipped
+// commit unshipped
+describe('a production serving only shipped releases weighs every waiting issue at its landing (ISS-970)', () => {
+  const pass = (n: number, commit: string) =>
+    [`criterion: ${n}`, 'verdict: pass', `commit: ${commit}`, 'evidence: judge.txt'].join('\n');
+
+  it('holds one landed before the release was stamped at its landing, naming the release truly', async () => {
+    await shipped('0.139.0', SERVED, 30);
+    const id = await landedBeforeTheStamp();
+    expect(await criteriaBasisOf(projectId)).toMatchObject({ kind: 'landing', why: 'release-only' });
+
+    await sweepAutomaticReleases();
+
+    const reason = String((await fx.holdOf(id))?.reason);
+    expect(reason).toContain(`judged at its landing commit \`${LANDED.slice(0, 12)}\``);
+    expect(reason).toContain('it serves only what its releases shipped while a change waits');
+    expect(reason).not.toContain('a commit no release shipped');
+    expect(reason).not.toContain(SERVED.slice(0, 7));
+  });
+
+  it('carries it on passes at its landing, whenever it landed', async () => {
+    await shipped('0.139.0', SERVED, 30);
+    const id = await landedBeforeTheStamp();
+    await fx.postVerdict(id, verdictComment([pass(1, LANDED), pass(2, LANDED)]), 'judge.txt');
+
+    const result = await sweepAutomaticReleases();
+
+    expect(result, JSON.stringify(await fx.holdOf(id))).toMatchObject({ issuesCut: 1 });
+    expect(await fx.holdOf(id)).toBeNull();
+  });
+
+  it('reads a release recorded by an abbreviated commit as the one served (FB-541)', async () => {
+    await shipped('0.139.0', SERVED.slice(0, 12), 30);
+    await landedBeforeTheStamp();
+    expect(await criteriaBasisOf(projectId)).toMatchObject({ kind: 'landing', why: 'release-only' });
   });
 });

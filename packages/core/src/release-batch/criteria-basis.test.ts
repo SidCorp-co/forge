@@ -132,7 +132,7 @@ describe('the words a hold names its basis in', () => {
   it('says production moves only by a release, by what it serves, never that it names no commit where it does', () => {
     const words = landing(binding('on-land'));
     expect(words).toContain(
-      'production is deployed only by a release (`on-land`: it serves only what its releases shipped while a change landed since waits)',
+      'production is deployed only by a release (`on-land`: it serves only what its releases shipped while a change waits)',
     );
     expect(words).not.toContain('names no commit');
     expect(landing({ mode: 'external' })).toContain('(deployed outside Forge: it serves only');

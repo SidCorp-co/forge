@@ -40,6 +40,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedPerItem } from '../db/read-memo.js';
 import { waitingForReleaseSql } from '../issues/index.js';
+import { sameIdentity } from '../messaging/verdict-identity.js';
 import { type ReleasePath, readReleasePath } from '../project-config/index.js';
 import { type LandedCriterion, landedBuildsOf, landedStandings } from './landed-build.js';
 import {
@@ -85,9 +86,9 @@ export type CriteriaBasis =
 
 /**
  * What production's reading says of how it moves: `releases` where it serves only what releases
- * shipped while a change landed after them waits, `lands` where a landing reached it or nothing says
- * otherwise, `unread` where the reading names no commit, and `none` where the caller has no reading
- * and reaches no network (`productionMoves`).
+ * shipped while a change waits, `lands` where a landing reached it or nothing waits to say otherwise,
+ * `unread` where the reading names no commit, and `none` where the caller has no reading and reaches
+ * no network (`productionMoves`).
  */
 export type ProductionMoves = 'releases' | 'lands' | 'unread' | 'none';
 
@@ -102,11 +103,13 @@ export type ProductionMoves = 'releases' | 'lands' | 'unread' | 'none';
  * at its release step, `coolify-commands.ts`). But a door outside Forge may deploy it on every push:
  * forge-dev's CI under `external` or `on-land`, a provider's own hook under `provider`, a Coolify app
  * watching its branch under any. The declaration never says which, so production's reading answers:
- * - it serves only commits releases shipped, though a change waiting at the gate landed after the
- *   latest of them: that landing did not reach it, so it moves only by its releases, and a waiting
- *   change is weighed at its landing (agenfold's 0.125.0, held for verdicts at its 0.123.0 build);
+ * - it serves only commits releases shipped while a change waits at the gate: it moves only by its
+ *   releases, and a waiting change is weighed at its landing, or at a later build holding it, what is
+ *   served included (agenfold's 0.125.0, held for verdicts at its 0.123.0 build; ISS-970, whenever
+ *   the change landed);
  * - it names no commit and nothing answers (no source probe, no deployment record, ISS-957): the same;
- * - it serves a commit no release shipped, or nothing waits to tell: at what it serves, as before;
+ * - it serves a commit no release shipped, or nothing waits to tell: at what it serves, each issue
+ *   only where that holds its landing (ISS-997);
  * - the caller has no reading and reaches no network: the served basis, as before ISS-964.
  * The landing never deadlocks where the reading is wrong: a pass at a later build holding the landing,
  * production's included, still counts there.
@@ -144,10 +147,15 @@ export function basisOfPath(path: ReleasePath, moves: ProductionMoves): Criteria
 }
 
 /**
- * How production moves, read off `reading` (ISS-964): `releases` where it serves only commits releases
- * of the project shipped and a change waiting at the gate landed after the latest of those shipped, so
- * production did not take that landing; `lands` where it serves a commit no release shipped, or nothing
- * waits to say otherwise (the served basis, as before); `unread` where the reading names no commit.
+ * How production moves, read off `reading` (ISS-964): `releases` where every commit it serves is one a
+ * finished release of the project shipped while a change waits at the gate, so no landing of it
+ * reached production; `lands` where it serves a commit no release shipped, or nothing waits to say
+ * otherwise; `unread` where the reading names no commit. A served commit matches a release's recorded
+ * one spelled out or abbreviated (FB-541). Whether a waiting issue's landing is in what is served is
+ * that issue's own question, read by ancestry where it is weighed (ISS-970), never inferred here from
+ * when it landed: agenfold's ISS-163, landed before 0.133.0 was stamped shipped and held out of it,
+ * flipped the whole project to the served basis and its hold called 0.133.0's commit "a commit no
+ * release shipped".
  */
 async function productionMoves(
   projectId: string,
@@ -170,40 +178,39 @@ interface MovesAsked {
 
 /**
  * How production moved for each asked project, in one statement however many projects a person's
- * read weighs (ISS-1070 r13: forge-dev sent it once a project deployed through a binding).
+ * read weighs (ISS-1070 r13: forge-dev sent it once a project deployed through a binding): whether a
+ * change waits there, and the commits its finished releases shipped, each served commit matched to
+ * one spelled out or abbreviated (FB-541, ISS-970).
  */
 async function movesRead(items: readonly MovesAsked[]): Promise<Map<string, ProductionMoves>> {
-  const rows = await db.execute<{ id: string; shipped: number; untaken: boolean }>(sql`
+  const rows = await db.execute<{ id: string; waits: boolean; shipped: string[] }>(sql`
     WITH asked AS (
-      SELECT a.id, a.project_id, a.served::jsonb AS served
+      SELECT a.id, a.project_id
         FROM unnest(${sql.param(items.map((i) => i.id))}::text[],
-                    ${sql.param(items.map((i) => i.projectId))}::uuid[],
-                    ${sql.param(items.map((i) => JSON.stringify(i.served)))}::text[])
-             AS a(id, project_id, served)
-    ), serving AS (
-      SELECT a.id, a.project_id, max(r.release_released_at) AS at,
-             count(DISTINCT lower(r.metadata -> 'finish' ->> 'commit')) AS n
-        FROM asked a
-        LEFT JOIN pipeline_runs r
-          ON r.project_id = a.project_id
-         AND r.metadata ->> 'source' = 'release-batch'
-         AND r.metadata -> 'finish' ->> 'state' = 'finished'
-         AND r.release_released_at IS NOT NULL
-         AND lower(r.metadata -> 'finish' ->> 'commit') IN (SELECT jsonb_array_elements_text(a.served))
-       GROUP BY a.id, a.project_id
+                    ${sql.param(items.map((i) => i.projectId))}::uuid[])
+             AS a(id, project_id)
     )
-    SELECT serving.id, serving.n::int AS shipped,
+    SELECT a.id,
            EXISTS (SELECT 1 FROM issues i
-                    WHERE i.project_id = serving.project_id AND ${waitingForReleaseSql(sql`i`)}
-                      AND i.merged_at > serving.at) AS untaken
-      FROM serving
+                    WHERE i.project_id = a.project_id AND ${waitingForReleaseSql(sql`i`)}) AS waits,
+           COALESCE((SELECT array_agg(DISTINCT r.metadata -> 'finish' ->> 'commit')
+                       FROM pipeline_runs r
+                      WHERE r.project_id = a.project_id
+                        AND r.metadata ->> 'source' = 'release-batch'
+                        AND r.metadata -> 'finish' ->> 'state' = 'finished'
+                        AND r.release_released_at IS NOT NULL
+                        AND r.metadata -> 'finish' ->> 'commit' IS NOT NULL),
+                    '{}'::text[]) AS shipped
+      FROM asked a
   `);
-  const servedOf = new Map(items.map((i) => [i.id, i.served.length]));
+  const servedOf = new Map(items.map((i) => [i.id, i.served]));
   return new Map(
-    [...rows].map((row) => [
-      row.id,
-      row.shipped === servedOf.get(row.id) && row.untaken ? 'releases' : 'lands',
-    ]),
+    [...rows].map((row): [string, ProductionMoves] => {
+      const byRelease = (served: string) =>
+        row.shipped.some((c) => sameIdentity(c, served, { abbreviating: true }));
+      const onlyReleased = (servedOf.get(row.id) ?? []).every(byRelease);
+      return [row.id, row.waits && onlyReleased ? 'releases' : 'lands'];
+    }),
   );
 }
 
@@ -234,7 +241,7 @@ export function landingWhere(basis: Extract<CriteriaBasis, { kind: 'landing' }>)
   // a production naming no commit it serves is read on its agent's release record (ISS-957)
   const seen = basis.byRecord
     ? 'it names no commit it serves, and the release its record says is live cannot hold a change that has not shipped'
-    : 'it serves only what its releases shipped while a change landed since waits';
+    : 'it serves only what its releases shipped while a change waits';
   const how =
     basis.deployment === 'external' ? 'deployed outside Forge' : `\`${basis.deployment}\``;
   return `this project's production is deployed only by a release (${how}: ${seen}), and no environment it judges a change on (\`delivery.judgedOn\`) serves the change before that release, so what production serves cannot hold it`;

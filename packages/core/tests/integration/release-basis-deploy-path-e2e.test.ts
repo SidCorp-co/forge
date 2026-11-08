@@ -125,7 +125,7 @@ describe('a production that moves only by its releases weighs a waiting issue at
     expect(hold?.reason).toContain(`judged at its landing commit \`${LANDED.slice(0, 12)}\``);
     expect(hold?.reason).toContain('production is deployed only by a release');
     expect(hold?.reason).toContain(
-      '`on-land`: it serves only what its releases shipped while a change landed since waits',
+      '`on-land`: it serves only what its releases shipped while a change waits',
     );
     expect(hold?.reason).not.toContain(SERVED);
   });
