@@ -23,17 +23,21 @@ import type { ForgeFeedbackItem } from "../types";
 type Copy = ReturnType<typeof useCopy>;
 type Time = ReturnType<typeof useTimeFormat>;
 
-/** Where one item stands, as short facts: its kind, where it came from, its reports and its forecast. */
-function standingOf(item: ForgeFeedbackItem, t: Copy, language: string, time: Time) {
+/**
+ * Where one item stands, as short facts: where it came from, its reports, whether work runs, its forecast
+ * and its age. Its kind and when it was sent open with the row (ISS-1131), and its key is the title's hover.
+ */
+function standingOf(item: ForgeFeedbackItem, t: Copy, time: Time) {
   const origin = item.origin;
   const eta = item.progress.eta;
   return [
-    enumLabel("feedbackKind", item.kind, language),
-    ...(origin?.project ? [t("feedback.row.from", { project: origin.project.name })] : []),
+    ...(origin?.project ? [origin.project.name] : []),
     ...(origin && origin.occurrences > 1 ? [t("feedback.row.reports", { n: origin.occurrences })] : []),
     ...(item.progress.running ? [t("feedback.forge.running")] : []),
     ...(eta.estimate ? [t("feedback.forge.likelyBy", { date: time.date(eta.likelyBy) })] : []),
-    t("feedback.forge.sent", { age: time.age(item.createdAt) }),
+    <span key="age" title={t("feedback.forge.sent", { age: time.age(item.createdAt) })}>
+      {time.age(item.createdAt)}
+    </span>,
   ];
 }
 
@@ -79,9 +83,8 @@ export function MyForgeFeedback() {
             <RowItem
               key={item.key}
               rowKey={item.key}
-              lead={item.key}
-              title={item.title}
-              facts={standingOf(item, t, language, time)}
+              title={<span title={item.key}>{item.title}</span>}
+              facts={standingOf(item, t, time)}
               trailing={<StatusBadge family="feedbackPhase" value={item.phase} />}
               onClick={() => setOpen(open === item.key ? null : item.key)}
               expanded={open === item.key}
@@ -89,6 +92,11 @@ export function MyForgeFeedback() {
             >
               {open === item.key ? (
                 <>
+                  <p className="text-13 text-muted">
+                    {[enumLabel("feedbackKind", item.kind, language), item.origin?.project ? t("feedback.row.from", { project: item.origin.project.name }) : null, t("feedback.forge.sent", { age: time.age(item.createdAt) })]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
                   <p className="text-13 text-muted">{item.progress.says}</p>
                   <Told item={item} t={t} />
                 </>

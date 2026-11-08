@@ -58,7 +58,7 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "settings-account": { budget: 50 },
   approvals: { budget: 110 },
   status: { budget: 100 },
-  "forge-feedback": { budget: 50, amnesty: waits(64) },
+  "forge-feedback": { budget: 50 },
   "ecosystems-home": { budget: 20 },
   "ecosystem-detail": { budget: 100 },
   docs: { budget: 100 },
