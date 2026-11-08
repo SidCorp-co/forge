@@ -236,6 +236,24 @@ describe('a release pressed on beta is run on dev and written back once (ISS-988
     expect(await devReleases(dev.id)).toHaveLength(1);
   });
 
+  it('a beta whose release read is not served is refused by name, and no release is taken as none', async () => {
+    const b = betaIssue(88, { status: 'awaiting_release' });
+    const { dev, betaId } = await world([b]);
+    const pressed = pressRelease(betaId, [b], { version: '0.4.2' });
+    beta.releaseReadAbsent = true;
+    try {
+      const refused = await fire();
+      expect(refused.output).toContain(`${dev.slug} releases: ROUTE_ABSENT`);
+      expect(await takenRow(pressed)).toBeUndefined();
+      expect(await devReleases(dev.id)).toEqual([]);
+    } finally {
+      beta.releaseReadAbsent = false;
+    }
+    // served again: the release is taken, since nothing was marked
+    await fire();
+    expect((await takenRow(pressed))?.state).toBe('requested');
+  });
+
   it('cuts no partial roster: waits, naming each dev issue not at the release gate, and cuts once all are', async () => {
     const ready = betaIssue(85, { status: 'awaiting_release' });
     const behind = betaIssue(86, { status: 'awaiting_release' });

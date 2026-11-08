@@ -42,8 +42,11 @@ async function readPeerRelease(
 ): Promise<PeerAnswer<PeerRelease | null>> {
   const route = `/projects/${encodeURIComponent(projectId)}/release-batches/${encodeURIComponent(runId)}`;
   const got = await call(peer, 'GET', route);
-  // the peer's read answers 404 for a run that is no release batch (`loadRunForProject`)
-  if (!got.ok && got.refusal.status === 404) return { ok: true, value: null };
+  // the peer's read answers 404 NOT_FOUND for a run that is no release batch (`loadRunForProject`);
+  // any other refusal, a route the peer does not serve among them, is named, never read as "none"
+  if (!got.ok && got.refusal.status === 404 && got.refusal.code === 'NOT_FOUND') {
+    return { ok: true, value: null };
+  }
   if (!got.ok) return got;
   if (got.value === null) return { ok: true, value: null };
   if (!isRecord(got.value) || !Array.isArray(got.value.issues)) {

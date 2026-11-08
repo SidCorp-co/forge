@@ -102,8 +102,9 @@ export const beta = {
   /** Every mark beta refused, with its code. */
   refusedMarks: [] as { issueId: string; code: string; body: Record<string, unknown> }[],
   transitions: [] as { issueId: string; toStatus: string; reason: string }[],
-  /** The releases pressed on each beta project (ISS-988), by project id. */
+  /** The releases pressed on each beta project (ISS-988), and a beta serving no release read. */
   releases: new Map<string, StubRelease[]>(),
+  releaseReadAbsent: false,
   /** How long the project list takes to answer: a slow beta. */
   delayMs: 0,
   requests: 0,
@@ -223,15 +224,14 @@ async function answerRelease(
         status: r.status,
         startedAt: r.startedAt,
       }));
-    const job = { id: randomUUID(), issueId: randomUUID(), kind: 'issue', lane: 'job' };
-    const rows =
-      status && status !== 'running'
-        ? items
-        : [{ ...job, status: 'running', startedAt: new Date().toISOString() }, ...items];
+    const at = new Date().toISOString();
+    const job = { id: randomUUID(), issueId: randomUUID(), status: 'running', startedAt: at };
+    const rows = status && status !== 'running' ? items : [job, ...items];
     return answered(200, { items: rows, total: rows.length, hasMore: false });
   }
   if (parts[1] === 'projects' && parts[3] === 'release-batches' && parts[4]) {
     const release = (beta.releases.get(parts[2] as string) ?? []).find((r) => r.runId === parts[4]);
+    if (beta.releaseReadAbsent) return answered(404, { code: 'ROUTE_ABSENT', message: 'no route' });
     if (!release) return answered(404, { code: 'NOT_FOUND', message: 'release batch not found' });
     if (req.method === 'GET' && parts.length === 5) {
       const issues = release.issueIds.map((id) => findIssue(id) as StubIssue);
