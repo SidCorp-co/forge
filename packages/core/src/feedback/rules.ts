@@ -160,39 +160,6 @@ export function declineRefusal(
   return null;
 }
 
-// verify follows resolved and nothing else: never before its fix shipped (FEEDBACK_NOT_RESOLVED)
-export function verifyRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
-  if (phase === 'resolved') return null;
-  return refusal(
-    'FEEDBACK_NOT_RESOLVED',
-    '/status',
-    `the item reads ${phase}; it is verified only once its linked work shipped (resolved), by its reporter or a person on their behalf.`,
-  );
-}
-
-// the reporter is asked only about a resolved item (FEEDBACK_NOT_RESOLVED), and never by themselves
-// (FEEDBACK_VERIFY_ASK_SELF): the reporter verifies their own item directly
-export function verifyAskRefusal(
-  phase: FeedbackPhase,
-  askerIsReporter: boolean,
-): FeedbackRefusal | null {
-  if (phase !== 'resolved') {
-    return refusal(
-      'FEEDBACK_NOT_RESOLVED',
-      '/status',
-      `the item reads ${phase}; the reporter is asked to verify it only once its linked work shipped (resolved).`,
-    );
-  }
-  if (askerIsReporter) {
-    return refusal(
-      'FEEDBACK_VERIFY_ASK_SELF',
-      '',
-      'you reported this item; verify it (POST .../verify) or reopen it (POST .../reopen) instead of asking yourself.',
-    );
-  }
-  return null;
-}
-
 // a reopen follows resolved, or a verify that was wrong (owner 2026-11-08, D5: a verify by ship or
 // on someone's behalf is no one's last word), and carries the reason (FEEDBACK_REOPEN_REASON_REQUIRED)
 export function reopenRefusal(

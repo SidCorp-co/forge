@@ -44,6 +44,7 @@ import {
   revisionStageOf,
   type StandingViewer,
 } from './standing.js';
+import { shippedFailingOf } from './standing-carrier.js';
 import { targetView } from './target-view.js';
 import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
 import type { ViewerCan } from './viewer-can.js';
@@ -60,6 +61,8 @@ export interface Linked extends StandingFacts {
       releaseVersion: string | null;
       /** Closed met in scope and no shipped release holds it yet (`closedUnreleasedSql`). */
       unreleased: boolean;
+      /** Its live criteria whose latest verdict is `fail`, by number (`list-carriers.ts`, ISS-1159). */
+      failing: readonly number[];
     }
   >;
   /** The issues each issue-routed item names as its carriers, by item id, oldest issue first. */
@@ -226,6 +229,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           status: i.status,
           releaseVersion: i.releaseVersion ?? shippedReleases.get(i.id)?.version ?? null,
           unreleased: i.unreleased,
+          failing: i.failing,
         },
       ]),
     ),
@@ -295,7 +299,16 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
     route: r.route,
     routedIssues: (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
       const issue = l.issues.get(id);
-      return issue ? [{ status: issue.status, unreleased: issue.unreleased }] : [];
+      return issue
+        ? [
+            {
+              key: issue.key,
+              status: issue.status,
+              unreleased: issue.unreleased,
+              failing: issue.failing,
+            },
+          ]
+        : [];
     }),
     suggestion: s
       ? {
@@ -315,9 +328,19 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
 }
 
 export function phaseIn(r: Row, l: Linked): FeedbackPhase {
+  return phaseOf(factsIn(r, l));
+}
+
+function factsIn(r: Row, l: Linked): PhaseFacts {
   const root = r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
   const rootPhase = root ? phaseOf(phaseFacts(root, l, null)) : null;
-  return phaseOf(phaseFacts(r, l, rootPhase));
+  return phaseFacts(r, l, rootPhase);
+}
+
+/** The criteria its carriers shipped failing (`ISS-18 c2`, ISS-1159); a duplicate reads its original's. */
+export function shippedFailingIn(r: Row, l: Linked): string[] {
+  const root = r.route === 'duplicate' && r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
+  return shippedFailingOf(factsIn(root ?? r, l));
 }
 
 const one = (carrier: FeedbackCarrierView): FeedbackCarrierView[] => [carrier];
@@ -416,6 +439,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       draftCarrier: carried.draft,
       carrier: carried.carrier,
       carrierRunning: r.route === 'issue' && owed.some((c) => c.status === 'in_progress'),
+      shippedFailing: phase === 'planned' ? shippedFailingOf(factsIn(r, l)) : [],
     },
     {
       since: l.decidedAt.get(r.id) ?? r.createdAt,

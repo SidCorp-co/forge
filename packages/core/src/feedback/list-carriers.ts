@@ -19,6 +19,17 @@ export function carrierIssueRows(issueIds: readonly string[]) {
   return rowsPerId('carrierIssueRows', issueIds, carrierRowsOf, (r) => r.id);
 }
 
+/**
+ * The numbers of an issue's live criteria whose latest verdict is `fail`, read inside the carriers'
+ * own statement (ISS-1159): a carrier that shipped with one does not resolve the item it carries.
+ */
+const failingCriteriaSql = sql<number[]>`ARRAY(
+  SELECT c.n FROM issue_criteria c
+  WHERE c.issue_id = ${issues.id} AND c.retired_at IS NULL
+    AND (SELECT v.verdict FROM criterion_verdicts v WHERE v.criterion_id = c.id
+         ORDER BY v.created_at DESC, v.id DESC LIMIT 1) = 'fail'
+  ORDER BY c.n)`;
+
 const carrierRowsOf = (issueIds: readonly string[]) =>
   db
     .select({
@@ -28,6 +39,7 @@ const carrierRowsOf = (issueIds: readonly string[]) =>
       status: issues.status,
       releaseVersion: pipelineRuns.releaseVersion,
       unreleased: sql<boolean>`${closedUnreleasedSql(sql`${issues}`)}`,
+      failing: failingCriteriaSql,
     })
     .from(issues)
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))

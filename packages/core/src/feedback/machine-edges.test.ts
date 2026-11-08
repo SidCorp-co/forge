@@ -1,7 +1,8 @@
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { edgeBetween, exitsOf } from '@forge/contracts/state-machine';
 import { describe, expect, it } from 'vitest';
-import { personalActRefusal, reopenRefusal, verifyRefusal } from './rules.js';
+import { personalActRefusal, reopenRefusal } from './rules.js';
+import { verifyRefusal } from './verify-rules.js';
 
 describe('feedback-lifecycle: the machine draws only the moves the rules can take', () => {
   it('has no reopened → verified edge, because verify follows resolved and a reopened item never reads resolved', () => {

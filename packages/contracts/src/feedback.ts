@@ -353,6 +353,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_ALREADY_TOLD",
 	"FEEDBACK_STATUS_INVALID",
 	"FEEDBACK_NOT_RESOLVED",
+	/** Its carrier shipped with a criterion whose latest verdict is `fail`: nothing verifies it (ISS-1159). */
+	"FEEDBACK_CARRIER_FAILED",
 	"FEEDBACK_VERIFY_ASK_SELF",
 	"FEEDBACK_ALREADY_REDACTED",
 	/** A redaction would delete a mockup another item is filed about (REQ-49 BC-4): retarget that item first. */

@@ -24,7 +24,9 @@ import {
   type CarrierStanding,
   carrierWait,
   draftCarrierWait,
+  issuePhaseOf,
   issueWait,
+  type RoutedIssueFacts,
   relayWait,
 } from './standing-carrier.js';
 import { MASTER, masterTakesTriage, triageWait } from './standing-triage.js';
@@ -40,9 +42,9 @@ export interface PhaseFacts {
   /**
    * Every issue an issue route names, by its own status (ISS-265), and whether it is closed met in
    * scope with no shipped release holding it yet (`issues/waiting-for-release.ts:closedUnreleasedSql`);
-   * empty on any other route.
+   * empty on any other route; `failing`, its live criteria whose latest verdict is `fail` (ISS-1159).
    */
-  routedIssues: readonly { status: string; unreleased: boolean }[];
+  routedIssues: readonly RoutedIssueFacts[];
   suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
   routedRequirementStatus: string | null;
   /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
@@ -56,15 +58,13 @@ export interface PhaseFacts {
 // plans nothing yet (nothing takes a draft on by itself), and the item is resolved once each that
 // still carries it is closed and released: `closed` says its criteria were met in scope, and one its
 // holder closed waits for the release that carries it, so its reporter is asked to confirm only once
-// the work is live (ISS-1062). verified is only ever the stored decision of a person
+// the work is live (ISS-1062); one shipped with a failing criterion resolves nothing (ISS-1159,
+// `standing-carrier.ts:issuePhaseOf`). verified is only ever the stored decision of a person
 export function phaseOf(f: PhaseFacts): FeedbackPhase {
   if (f.status !== 'triaged') return f.status;
   switch (f.route) {
-    case 'issue': {
-      const carrying = f.routedIssues.filter((i) => i.status !== 'dropped');
-      if (carrying.length === 0 || carrying.some((i) => i.status === 'draft')) return 'triaged';
-      return carrying.every((i) => i.status === 'closed' && !i.unreleased) ? 'resolved' : 'planned';
-    }
+    case 'issue':
+      return issuePhaseOf(f.routedIssues);
     case 'revision':
       if (!f.suggestion) return 'triaged';
       if (f.suggestion.status === 'accepted') {
@@ -191,6 +191,8 @@ export interface StandingFacts {
   carrierRunning?: boolean;
   /** An owed carrier's own standing, a stuck one first: what a planned item rolls up (REQ-48 BC-9). */
   carrier?: CarrierStanding | null;
+  /** The criteria its carriers shipped failing (`ISS-18 c2`): it stays planned on them (ISS-1159). */
+  shippedFailing?: readonly string[];
 }
 
 /** What the times read beyond the turn (`lib/standing-times.ts:withTimes`). */
@@ -240,7 +242,7 @@ function waitingOf(
       if (route === 'issue') {
         return facts.carrierRelease
           ? issueWait(carriers, viewer, { ...facts, carrierRelease: facts.carrierRelease })
-          : carrierWait(facts.carrier ?? null, carriers);
+          : carrierWait(facts.carrier ?? null, carriers, facts.shippedFailing);
       }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':

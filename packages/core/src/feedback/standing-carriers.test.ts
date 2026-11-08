@@ -8,6 +8,7 @@ import {
   type PhaseFacts,
   phaseOf,
 } from './standing.js';
+import { shippedFailingOf } from './standing-carrier.js';
 
 /** When the times read: a master serves, so no wait here reads stuck by the master alone. */
 const AT = {
@@ -109,6 +110,57 @@ describe('a carrier its holder closed met in scope resolves the item only once a
 
   it('still re-triages on a draft carrier, whatever the closed ones wait for', () => {
     expect(phaseOf(closedUnreleased('draft'))).toBe('triaged');
+  });
+});
+
+// ISS-1159: sid-desk FB-9 read resolved, and was verified by ship, on 0.20.0, which shipped its
+// carrier ISS-18 with c2's latest verdict `fail`. Planted red by reading every closed, released
+// carrier as resolving whatever its verdicts say.
+describe('a carrier shipped with a failing criterion resolves nothing, and names it (ISS-1159)', () => {
+  const shippedWith = (failing: number[], ...others: string[]): PhaseFacts => ({
+    ...routedTo(...others),
+    routedIssues: [
+      { key: 'ISS-18', status: 'closed', unreleased: false, failing },
+      ...others.map((status) => ({ status, unreleased: false })),
+    ],
+  });
+
+  it('stays planned while a shipped carrier fails a criterion, naming issue and criterion', () => {
+    expect(phaseOf(shippedWith([2]))).toBe('planned');
+    expect(phaseOf(shippedWith([2], 'closed'))).toBe('planned');
+    expect(shippedFailingOf(shippedWith([2, 4]))).toEqual(['ISS-18 c2', 'ISS-18 c4']);
+  });
+
+  it('resolves once no shipped carrier fails, as before', () => {
+    expect(phaseOf(shippedWith([]))).toBe('resolved');
+    expect(phaseOf(shippedWith([], 'closed'))).toBe('resolved');
+    expect(shippedFailingOf(shippedWith([]))).toEqual([]);
+  });
+
+  it('reads a failing criterion on a carrier still owed as planned, without naming it shipped', () => {
+    const open: PhaseFacts = {
+      ...routedTo(),
+      routedIssues: [{ key: 'ISS-18', status: 'in_progress', unreleased: false, failing: [2] }],
+    };
+    expect(phaseOf(open)).toBe('planned');
+    expect(shippedFailingOf(open)).toEqual([]);
+  });
+
+  it('waits on the release that ships it passing, naming the failing criterion', () => {
+    const w = feedbackStandingOf(
+      'planned',
+      'issue',
+      [],
+      'R',
+      reader,
+      null,
+      { ...NO_STANDING_FACTS, shippedFailing: ['ISS-18 c2'] },
+      AT,
+    ).waitingOn;
+    expect(w).toMatchObject({ kind: 'issue', who: 'ISS-18 c2', ref: 'ISS-18' });
+    expect(w.rule).toBe(
+      'planned: ISS-18 c2 failed when it shipped; a release with it passing resolves it',
+    );
   });
 });
 

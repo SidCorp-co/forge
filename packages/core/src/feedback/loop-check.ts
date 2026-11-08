@@ -35,12 +35,13 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { fixConfirmationsOf } from '../previews/index.js';
 import { agencyOf, issueOfPreview, shippedPatchOf } from './confirm-reads.js';
-import { type Linked, linkedOf, phaseIn, routeView } from './list-read.js';
+import { type Linked, linkedOf, phaseIn, routeView, shippedFailingIn } from './list-read.js';
 import { goneByRecord, loopCloseFactsOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { tellStepToReporters } from './reporters.js';
-import { personalActRefusal, reopenRefusal, verifyRefusal } from './rules.js';
+import { personalActRefusal, reopenRefusal } from './rules.js';
 import { decide, feedbackKernelActor, inTx, lockFeedback, roleFacts } from './service.js';
+import { verifyRefusal } from './verify-rules.js';
 import { recordCheckAt, verifyWindowDays } from './verify-window.js';
 
 export interface AutoVerifySweepResult {
@@ -80,8 +81,8 @@ async function verifyByShip(row: Row, projectId: string, linked: Linked): Promis
     await lockFeedback(tx, projectId);
     const now = await rowIn(tx, projectId, row.id, true);
     if (now.status !== 'triaged') return;
-    const phase = phaseIn(now, await linkedOf(projectId, [now]));
-    if (verifyRefusal(phase)) return;
+    const held = await linkedOf(projectId, [now]);
+    if (verifyRefusal(phaseIn(now, held), shippedFailingIn(now, held))) return;
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {
         to: 'verified',
@@ -159,9 +160,12 @@ async function closeByConfirm(
     await lockFeedback(tx, projectId);
     const now = await rowIn(tx, projectId, row.id, true);
     if (now.status !== 'triaged') return null;
-    const phase = phaseIn(now, await linkedOf(projectId, [now]));
+    const held = await linkedOf(projectId, [now]);
+    const phase = phaseIn(now, held);
     const refused =
-      act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, confirm.note ?? undefined);
+      act === 'verified'
+        ? verifyRefusal(phase, shippedFailingIn(now, held))
+        : reopenRefusal(phase, confirm.note ?? undefined);
     if (refused) return null;
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {

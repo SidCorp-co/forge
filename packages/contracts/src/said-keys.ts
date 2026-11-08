@@ -1596,6 +1596,10 @@ export const SAID = {
 	"feedback.rule.agentConfirms": {
 		en: "resolved: the reporter checks the fix, then confirms or reopens it",
 	},
+	"feedback.rule.shippedFailing": {
+		en: "planned: {failing} failed when it shipped; a release with it passing resolves it",
+		vars: { failing: "text" },
+	},
 	"feedback.rule.shippedSettles": {
 		en: "resolved: shipped or answered, so the next sweep records it verified",
 	},

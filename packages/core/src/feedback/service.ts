@@ -31,7 +31,7 @@ import { masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { keepDeclineAsCorrection } from './correction.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { phaseOfRow } from './list-read.js';
+import { linkedOf, phaseIn, phaseOfRow, shippedFailingIn } from './list-read.js';
 import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import { declinedNotice, tellReporters } from './reporter-notices.js';
@@ -43,10 +43,9 @@ import {
   redactedRefusal,
   reopenRefusal,
   targetCountRefusal,
-  verifyAskRefusal,
-  verifyRefusal,
 } from './rules.js';
 import { agentEvidenceRefusal } from './verb-rules.js';
+import { verifyAskRefusal, verifyRefusal } from './verify-rules.js';
 
 export type FeedbackOutcome =
   | { ok: true; feedback: FeedbackView; created?: boolean; effect?: FeedbackTriageEffect }
@@ -389,10 +388,12 @@ export async function personalActIn(
   act: 'verified' | 'reopened',
   note: string | undefined,
 ): Promise<Refusal | null> {
-  const phase = await phaseOfRow(row.projectId, row);
+  const linked = await linkedOf(row.projectId, [row]);
+  const phase = phaseIn(row, linked);
   const refused =
-    (act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, note)) ??
-    agentEvidenceRefusal(actor.agency, act, note);
+    (act === 'verified'
+      ? verifyRefusal(phase, shippedFailingIn(row, linked))
+      : reopenRefusal(phase, note)) ?? agentEvidenceRefusal(actor.agency, act, note);
   if (refused) return refused;
   const moved = await transition(tx, FEEDBACK_MACHINE, {
     to: act,

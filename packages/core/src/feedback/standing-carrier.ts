@@ -10,7 +10,7 @@ import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import { type Said, say } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { StuckReading } from '@forge/contracts/steward';
-import type { Owed, StandingFacts, StandingViewer } from './standing.js';
+import type { Owed, PhaseFacts, StandingFacts, StandingViewer } from './standing.js';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
 
@@ -23,6 +23,15 @@ const wait = (
 ): FeedbackWaitingOn => waitingOn(kind, { who, act, rule }, extra);
 
 const named = (name: string) => say('standing.who.named', { name });
+
+/** A routed issue as an item's phase reads it (`standing.ts:PhaseFacts`). */
+export interface RoutedIssueFacts {
+  key?: string;
+  status: string;
+  unreleased: boolean;
+  /** Its live criteria whose latest verdict is `fail`, by number (ISS-1159). */
+  failing?: readonly number[];
+}
 
 /** An owed carrier issue's own standing (`issues/standing.ts`), as the item rolls it up. */
 export interface CarrierStanding {
@@ -72,7 +81,12 @@ const parkedSays = (kind: IssueWaitingKind, key: string) =>
 const MASTER = say('standing.who.projectMaster');
 
 /** The carrier's own wait, said as the item's: who it names, its act on the carrier, its rule. */
-export function carrierWait(c: CarrierStanding | null, carriers: readonly string[]): Owed {
+export function carrierWait(
+  c: CarrierStanding | null,
+  carriers: readonly string[],
+  shippedFailing: readonly string[] = [],
+): Owed {
+  if (shippedFailing.length > 0) return { wait: shippedFailingWait(shippedFailing), yours: false };
   if (!c) {
     const key = carriers[0] ?? null;
     return {
@@ -215,4 +229,46 @@ export function issueWait(
     wait: wait('person', holdersWho(holders), owed.act, owed.rule, owed.extra),
     yours: owed.yours,
   };
+}
+
+/**
+ * The criteria an issue route's carriers shipped failing, as `ISS-18 c2`: each carrier closed and
+ * released whose latest verdict on a live criterion is `fail` (ISS-1159: sid-desk FB-9 read resolved,
+ * and was verified by ship, on the release that shipped its carrier's failing c2). Empty on any other
+ * route.
+ */
+export function shippedFailingOf(f: PhaseFacts): string[] {
+  return f.status === 'triaged' && f.route === 'issue' ? failingOf(f.routedIssues) : [];
+}
+
+const failingOf = (routed: readonly RoutedIssueFacts[]): string[] =>
+  routed.flatMap((i) =>
+    i.status === 'closed' && !i.unreleased
+      ? (i.failing ?? []).map((n) => `${i.key ?? 'its carrier'} c${n}`)
+      : [],
+  );
+
+/**
+ * An issue route's phase (`standing.ts:phaseOf`): triaged while nothing carries it or a draft does,
+ * resolved once every carrier is closed and released with no criterion failing, else planned.
+ */
+export function issuePhaseOf(
+  routed: readonly RoutedIssueFacts[],
+): 'triaged' | 'planned' | 'resolved' {
+  const carrying = routed.filter((i) => i.status !== 'dropped');
+  if (carrying.length === 0 || carrying.some((i) => i.status === 'draft')) return 'triaged';
+  const shipped = carrying.every((i) => i.status === 'closed' && !i.unreleased);
+  return shipped && failingOf(carrying).length === 0 ? 'resolved' : 'planned';
+}
+
+/** A planned item whose carrier shipped failing waits on a release that ships it passing. */
+function shippedFailingWait(shippedFailing: readonly string[]): FeedbackWaitingOn {
+  const failing = shippedFailing.join(', ');
+  return wait(
+    'issue',
+    named(failing),
+    say('standing.act.beResolved'),
+    say('feedback.rule.shippedFailing', { failing }),
+    { ref: shippedFailing[0]?.split(' ')[0] ?? null },
+  );
 }
