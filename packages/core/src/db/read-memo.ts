@@ -154,6 +154,15 @@ export function readAcross<P, T>(
   });
 }
 
+/**
+ * Whether this code runs inside a read of more than one project ({@link readAcross}): there every ask
+ * made before a quiet point under one key is one statement, so a read may ask ahead of its need.
+ */
+export function readsAcrossProjects(): boolean {
+  const memo = memos.getStore();
+  return memo !== undefined && (across.get(memo)?.size ?? 0) > 1;
+}
+
 /** How many projects' reads of each memo have asked each key. */
 const askersOf = new WeakMap<Map<string, Promise<unknown>>, Map<string, number>>();
 

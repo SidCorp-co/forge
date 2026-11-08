@@ -62,6 +62,16 @@ export function blockedByUnsettledSql(args: { issueId: SQL; projectId: SQL | str
   )})`;
 }
 
+/**
+ * Joins each live `blocks` edge `on` names (`d`) to its blocker (`b`) where that blocker still holds,
+ * by the same predicate: a read following the blockers that hold an issue's rows outside them.
+ */
+export function holdingEdgesSql(on: SQL): SQL {
+  return sql`JOIN issue_dependencies d ON ${on} AND d.kind = ${DISPATCH_GATING_KIND}
+    AND (d.valid_until IS NULL OR d.valid_until > now())
+    JOIN issues b ON b.id = d.from_issue_id AND ${blockerUnsettledSql(sql`b`)}`;
+}
+
 /** The `iss_seq` of each blocker whose live `blocks` edge holds this issue, by the same predicate. */
 export function holdingBlockerSeqsSql(args: { issueId: SQL; projectId: SQL }): SQL {
   return sql`ARRAY(SELECT b.iss_seq ${liveBlockingEdges(

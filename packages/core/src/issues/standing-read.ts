@@ -20,7 +20,7 @@ import type { MasterServing } from '@forge/contracts/steward';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { db } from '../db/client.js';
-import { memoizedInProject } from '../db/read-memo.js';
+import { memoizedInProject, readsAcrossProjects } from '../db/read-memo.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
@@ -52,10 +52,13 @@ import {
 import { settledGroups } from './standing-groups.js';
 import { ownerIdOf } from './standing-owner.js';
 import {
+  BLOCKER_DEPTH,
   type IssueRowRaw,
   issueRowOf,
+  issueRowsAndHolders,
   issueRowsById,
   issueRowsIn,
+  newestWriteFirst,
   scopeCounts,
 } from './standing-rows.js';
 import { wavesOf } from './standing-waves.js';
@@ -217,14 +220,36 @@ function draftsReadAt(mine: Facts['criteria']): { draftsReadAt?: string } {
   return at ? { draftsReadAt: at } : {};
 }
 
-/** How far a read follows live blockers outside the rows it was asked for; past it a blocker reads unread. */
-const BLOCKER_DEPTH = 4;
+const NONE_KNOWN: ReadonlyMap<string, IssueRowRaw> = new Map();
 
+/**
+ * The rows of `ids` in `projectId`, newest write first as `issueRowsById` answers them: those `known`
+ * holds as already read, the rest read by id.
+ */
+async function rowsOfIds(
+  projectId: string,
+  ids: readonly string[],
+  known: ReadonlyMap<string, IssueRowRaw>,
+): Promise<IssueRowRaw[]> {
+  const have = ids.flatMap((id) => {
+    const r = known.get(id);
+    return r && r.project_id === projectId ? [r] : [];
+  });
+  const rest = ids.filter((id) => !have.some((r) => r.id === id));
+  const read = rest.length > 0 ? await issueRowsById(projectId, rest) : [];
+  return [...have, ...read].sort(newestWriteFirst);
+}
+
+/**
+ * Each of `raws`' standing. A live blocker outside them is followed by its own standing, its row
+ * taken from `known` where the read already holds it (`standing-rows.ts:issueRowsAndHolders`).
+ */
 async function standingRows(
   projectId: string,
   raws: readonly IssueRowRaw[],
   now: Date,
   depth = 0,
+  known: ReadonlyMap<string, IssueRowRaw> = NONE_KNOWN,
 ): Promise<IssueStandingRow[]> {
   if (raws.length === 0) return [];
   const ids = raws.map((r) => r.id);
@@ -293,8 +318,8 @@ async function standingRows(
     inputs.map(([r, input]) => [r.id, input] as const),
     depth < BLOCKER_DEPTH
       ? async (outside) => {
-          const raws = await issueRowsById(projectId, outside);
-          const read = await standingRows(projectId, raws, now, depth + 1);
+          const raws = await rowsOfIds(projectId, outside, known);
+          const read = await standingRows(projectId, raws, now, depth + 1, known);
           return new Map(read.map((r) => [r.id, r.standing.attentionGroup]));
         }
       : null,
@@ -335,12 +360,20 @@ export async function listIssueStanding(
   now: Date = new Date(),
   limit: number = STANDING_LIMIT,
 ): Promise<IssueStandingList> {
-  const [raws, counts, releaseApproval] = await Promise.all([
-    issueRowsIn(projectId, scope, limit),
+  const [{ page: raws, holders }, counts, releaseApproval] = await Promise.all([
+    issueRowsAndHolders(projectId, scope, limit),
     scopeCounts(projectId),
     approvalRequired(projectId),
   ]);
-  const issues = await standingRows(projectId, raws, now);
+  const known = new Map([...raws, ...holders].map((r) => [r.id, r]));
+  const [issues] = await Promise.all([
+    standingRows(projectId, raws, now, 0, known),
+    // across projects, the holders' facts are asked beside the page's, in its statements, so the
+    // standing follows them to answers already held (ISS-1070 r19); its own answer is the page's
+    holders.length > 0 && readsAcrossProjects()
+      ? standingRows(projectId, holders, now, BLOCKER_DEPTH)
+      : undefined,
+  ]);
   return {
     issues,
     counts: {

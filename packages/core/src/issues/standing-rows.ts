@@ -14,7 +14,7 @@ import { rowsOf, uuidArray } from '../db/raw-sql.js';
 import { onePerProject, rowsPerId, rowsPerProject } from '../db/read-memo.js';
 import { scopeHeldSql } from '../db/schema-issue-designs.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
-import { blockerUnsettledSql } from './blocked-by.js';
+import { blockerUnsettledSql, holdingEdgesSql } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { designOnlyMarkSql, designReturnedUnderSql } from './design-delivery.js';
 import { landedSql, mergeSinceLastReopenSql } from './host-landing.js';
@@ -144,28 +144,75 @@ async function rowsWhere(where: SQL): Promise<IssueRowRaw[]> {
   );
 }
 
+/** How far a read follows live blockers outside the rows it was asked for; past it a blocker reads unread. */
+export const BLOCKER_DEPTH = 4;
+
+const inScope = (scope: IssueStandingScope, status: IssueStatus) =>
+  scope === 'all' || ISSUE_TERMINAL_STATUSES.includes(status) === (scope === 'closed');
+
+/** A project's page of one scope, and the rows of the blockers outside it that hold it. */
+export interface PageAndHolders {
+  page: IssueRowRaw[];
+  /**
+   * Every issue outside the page whose live `blocks` edge holds one of its rows, and those holding
+   * them in turn, {@link BLOCKER_DEPTH} edges deep: the rows the standing follows them to
+   * (`standing-read.ts:standingRows`).
+   */
+  holders: IssueRowRaw[];
+}
+
 /**
  * A project's newest `limit` issues in `scope`, every project asked with it read in one statement
- * (ISS-1070 r6): each project's newest are ranked inside it, as its own read ranks them.
+ * (ISS-1070 r6): each project's newest are ranked inside it, as its own read ranks them. The same
+ * statement reads the blockers outside the page that hold it: the standing followed each of them in
+ * a read of its own, two waves later, so forge-dev's open list sent its blockers' edges, modules and
+ * carried feedback twice (ISS-1070 r19).
  */
-export function issueRowsIn(
+export async function issueRowsAndHolders(
   projectId: string,
   scope: IssueStandingScope,
   limit: number,
-): Promise<IssueRowRaw[]> {
-  return rowsPerProject(
+): Promise<PageAndHolders> {
+  const rows = await rowsPerProject(
     `issueRows:${scope}:${limit}`,
     projectId,
     (ids) =>
       rowsWhere(sql`i.id IN (
-        SELECT top.id FROM unnest(${uuidArray(ids)}) AS p(id)
-        CROSS JOIN LATERAL (
-          SELECT i.id FROM issues i
-           WHERE i.project_id = p.id AND i.archived_at IS NULL ${scopeSql(scope)}
-           ORDER BY i.updated_at DESC, i.iss_seq DESC
-           LIMIT ${limit}) top)`),
+        WITH RECURSIVE page AS (
+          SELECT top.id, top.project_id FROM unnest(${uuidArray(ids)}) AS p(id)
+          CROSS JOIN LATERAL (
+            SELECT i.id, i.project_id FROM issues i
+             WHERE i.project_id = p.id AND i.archived_at IS NULL ${scopeSql(scope)}
+             ORDER BY i.updated_at DESC, i.iss_seq DESC
+             LIMIT ${limit}) top
+        ), held(id, project_id, hop) AS (
+          SELECT d.from_issue_id, d.project_id, 1 FROM page pg
+            ${holdingEdgesSql(sql`d.project_id = pg.project_id AND d.to_issue_id = pg.id`)}
+          UNION
+          SELECT d.from_issue_id, d.project_id, h.hop + 1 FROM held h
+            ${holdingEdgesSql(sql`d.project_id = h.project_id AND d.to_issue_id = h.id`)}
+           WHERE h.hop < ${BLOCKER_DEPTH}
+        )
+        SELECT id FROM page UNION SELECT id FROM held)`),
     (r) => r.project_id,
   );
+  // the page is the newest `limit` rows in scope, so a holder in scope ranks after every one of them
+  const page: IssueRowRaw[] = [];
+  const holders: IssueRowRaw[] = [];
+  for (const r of rows) {
+    if (page.length < limit && inScope(scope, r.status)) page.push(r);
+    else holders.push(r);
+  }
+  return { page, holders };
+}
+
+/** A project's newest `limit` issues in `scope` ({@link issueRowsAndHolders}'s page). */
+export async function issueRowsIn(
+  projectId: string,
+  scope: IssueStandingScope,
+  limit: number,
+): Promise<IssueRowRaw[]> {
+  return (await issueRowsAndHolders(projectId, scope, limit)).page;
 }
 
 /** The issues of `projectId` among `ids`, newest write first; every project's asks are one read. */
@@ -181,14 +228,12 @@ export async function issueRowsById(
     (some) => rowsWhere(sql`i.id = ANY(${uuidArray(some)})`),
     (r) => r.id,
   );
-  return rows
-    .filter((r) => r.project_id === projectId)
-    .sort(
-      (a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime() ||
-        b.iss_seq - a.iss_seq,
-    );
+  return rows.filter((r) => r.project_id === projectId).sort(newestWriteFirst);
 }
+
+/** The order the issue reads answer rows in: newest write first. */
+export const newestWriteFirst = (a: IssueRowRaw, b: IssueRowRaw) =>
+  new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime() || b.iss_seq - a.iss_seq;
 
 /** The issue `issSeq` names in `projectId`, alone. */
 export const issueRowOf = (projectId: string, issSeq: number) =>
