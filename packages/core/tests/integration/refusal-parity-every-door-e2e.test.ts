@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/permissions/can.ts
  * @direct-test-of packages/core/src/assistant/agreement/roles.ts
  * @direct-test-of packages/core/src/mcp/requirements-tool.ts
+ * @direct-test-of packages/core/src/product-door/releases-tool.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -33,7 +34,15 @@ import {
   rows,
 } from '../helpers/factories.js';
 
-type Who = 'owner' | 'web' | 'api' | 'chat' | 'agent' | 'memberPerson' | 'memberAgent';
+type Who =
+  | 'owner'
+  | 'ownerApi'
+  | 'web'
+  | 'api'
+  | 'chat'
+  | 'agent'
+  | 'memberPerson'
+  | 'memberAgent';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let tokens: Record<Who, string>;
 let projectId = '';
@@ -119,6 +128,7 @@ beforeAll(async () => {
 
   tokens = {
     owner: session,
+    ownerApi: await pat(owner),
     web: await signUserToken(viewer),
     api: await pat(viewer),
     chat: await mintSessionCredential({
@@ -141,7 +151,11 @@ const at = `/api/projects/${'{id}'}/requirements`;
 const draftAt = () => at.replace('{id}', projectId);
 
 /** The forge_requirements tool's answer, read as the JSON body its text carries. */
-async function tool(who: Who, args: Doc): Promise<{ isError: boolean; body: Doc }> {
+async function tool(
+  who: Who,
+  args: Doc,
+  name = 'forge_requirements',
+): Promise<{ isError: boolean; body: Doc }> {
   const r = await api(
     tokens[who],
     'POST',
@@ -150,7 +164,7 @@ async function tool(who: Who, args: Doc): Promise<{ isError: boolean; body: Doc 
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'forge_requirements', arguments: { projectId, ...args } },
+      params: { name, arguments: { projectId, ...args } },
     },
     { accept: 'application/json, text/event-stream' },
   );
@@ -223,5 +237,29 @@ describe('REQ-72 BC-4: a permission decides, never whether a person or an agent 
       expect(r.status, `${who}: ${JSON.stringify(r.json).slice(0, 300)}`).toBe(201);
     }
     expect(await drafts()).toBe(2);
+  });
+});
+
+describe('REQ-72 BC-5: a release naming its schema refuses answers alike at the API and forge_releases', () => {
+  // ISS-689 c2: the tool took name and summary as plain strings, so a summary of one sentence was
+  // refused 400 at /summary by the API and RELEASE_VERSION_UNKNOWN at /version by the tool
+  it('refuses a one-sentence summary with the same code and details at both doors', async () => {
+    const naming = { name: 'Judge probe', summary: 'judge k96 test, refused' };
+    const version = '0.0.0-judge-k96';
+    const rest = await say('ownerApi', 'PUT', `/api/projects/${projectId}/releases/${version}/naming`, naming);
+    expect(rest.status, JSON.stringify(rest.json).slice(0, 300)).toBe(400);
+    const mcp = await tool('ownerApi', { action: 'name', version, ...naming }, 'forge_releases');
+    expect(mcp.isError).toBe(true);
+    const rows = (body: Doc) =>
+      (body.error as { code: string; refusals: { code: string; path: string; detail: string }[] })
+        .refusals;
+    const expected = rows(rest.json);
+    expect(expected).toEqual([expect.objectContaining({ code: 'BAD_REQUEST', path: '/summary' })]);
+    // the tool door adds its own shape after the detail a tool caller is told; the fault is the same
+    const got = rows(mcp.body);
+    expect(got.map(({ code, path }) => ({ code, path }))).toEqual(
+      expected.map(({ code, path }) => ({ code, path })),
+    );
+    got.forEach((r, n) => expect(r.detail.startsWith(expected[n]?.detail ?? '?')).toBe(true));
   });
 });

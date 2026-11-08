@@ -109,6 +109,14 @@ function inputRefusal(error: unknown, { hint, code }: Shape, bodySchema?: unknow
 }
 
 /**
+ * The answer a route's `zValidator('json', schema)` gives a body `schema` refused, for a door that
+ * reads the same body past routing (a tool calling the route's service): one act, one refusal.
+ */
+export function bodyRefusal(schema: unknown, error: unknown): HTTPException {
+  return inputRefusal(error, { code: 'BAD_REQUEST' }, schema);
+}
+
+/**
  * The one answer to an input its schema refuses: 400, a refusal row per failing field, and `hint`
  * (the valid shape, in words) as the envelope's detail where the route gives one. A query naming a
  * key its schema does not take is refused by that key, with the keys the route takes.
