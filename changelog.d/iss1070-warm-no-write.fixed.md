@@ -1,0 +1,1 @@
+**Your home no longer waits on a storefront's platform when you open it again.** A read made a moment after another shows the drafts it read then, with when, instead of locking the connection and asking Autoflow each time.
