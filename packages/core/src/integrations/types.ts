@@ -653,7 +653,7 @@ export function declareIntegration<
   const path = input.capabilities.agentPath;
   if (path?.kind === 'direct-mcp' && !isEgressSurface(path.egressSurface)) {
     throw new Error(
-      `INTEGRATION_EGRESS_UNDECLARED: provider ${input.provider} hands its credential to an agent session (agentPath direct-mcp) and names ${path.egressSurface === undefined ? 'no egress surface' : `egress surface "${String(path.egressSurface)}", which lib/data-egress.ts:EGRESS_SURFACES does not declare`}; set agentPath.egressSurface to 'integration.credential' (REQ-12 BC-22)`,
+      `integration declared with an undeclared egress: provider ${input.provider} hands its credential to an agent session (agentPath direct-mcp) and names ${path.egressSurface === undefined ? 'no egress surface' : `egress surface "${String(path.egressSurface)}", which lib/data-egress.ts:EGRESS_SURFACES does not declare`}; set agentPath.egressSurface to 'integration.credential' (REQ-12 BC-22)`,
     );
   }
   return {

@@ -48,11 +48,9 @@ describe('a direct-mcp credential hand-off is a declared egress surface', () => 
         provider: 'planted' as never,
         capabilities: { ...sentryIntegration.capabilities, agentPath: agentPath as typeof path },
       });
-    expect(declare(bare)).toThrow(
-      /INTEGRATION_EGRESS_UNDECLARED: provider planted .* names no egress surface/,
-    );
+    expect(declare(bare)).toThrow(/undeclared egress: provider planted .* names no egress surface/);
     expect(declare({ ...bare, egressSurface: 'mcp.credential' })).toThrow(
-      /INTEGRATION_EGRESS_UNDECLARED: .*"mcp\.credential", which lib\/data-egress\.ts:EGRESS_SURFACES does not declare/,
+      /undeclared egress: .*"mcp\.credential", which lib\/data-egress\.ts:EGRESS_SURFACES does not declare/,
     );
   });
 });
