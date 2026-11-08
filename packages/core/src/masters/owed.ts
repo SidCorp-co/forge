@@ -20,6 +20,7 @@ import {
   releasesLine,
 } from './owed-release-gate.js';
 import { reviewsLine } from './owed-reviews.js';
+import { triagesLine } from './owed-triages.js';
 import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
 import {
   type AgentConfirmOwed,
@@ -45,7 +46,7 @@ interface Owed {
   designs: { workflowId: string; flow: string; revision: number }[];
   revisions: { key: string; revision: number }[];
   breakdowns: { key: string; overdue: boolean }[];
-  /** Each with the feedback_triage suggestion proposed on it where one is, which the master decides (ISS-1132). */
+  /** Each naming its proposed feedback_triage suggestion, which the master decides (ISS-1132). */
   triages: { key: string; proposed?: string | null }[];
   /** Shipped feedback items an agent of this project reported, each owing that agent's confirm (REQ-66 BC-8). */
   confirms: AgentConfirmOwed[];
@@ -230,17 +231,6 @@ function wedgeLandedLine(landed: Owed['landedWork']): string {
   return ` ${landed.length} issue${plural(landed.length, ' sits', 's sit')} at \`in_progress\` with ${plural(landed.length, 'its', 'their')} work landed and nothing holding ${plural(landed.length, 'it', 'them')} (${keys.join('; ')}): the reconciler left each there rather than hand it back. Check that the mark is this work, then move it on (\`forge-runner api issues/<id>/transition -X POST -d '{"toStatus":"awaiting_release","reason":"<the commit it landed>"}'\`), as ${method('issue-flow')} (Land, mark, move) says; a mark that is not this work is cleared (\`forge-runner api issues/<id>/merge -X DELETE\`), and the issue is then yours to hand back or carry on.`;
 }
 
-/**
- * The feedback_triage suggestions proposed on items whose triage the project's policy gives the
- * master (ISS-1132): its own work item, never a person's task, so it accepts or rejects each.
- */
-function proposedTriagesLine(triages: Owed['triages']): string {
-  const proposed = triages.filter((t) => t.proposed);
-  if (proposed.length === 0) return '';
-  const named = proposed.map((t) => `${t.key} suggestion ${t.proposed}`);
-  return ` ${proposed.length} feedback item${plural(proposed.length, ' carries', 's carry')} a proposed triage that is yours to decide (${named.join('; ')}): read the item and the suggestion, then accept it (\`forge-runner api projects/<projectId>/suggestions/<id>/accept -X POST\`) or reject it saying why (\`forge-runner api projects/<projectId>/suggestions/<id>/reject -X POST\`) and route the item yourself; ${method('feedback-triage')} is how.`;
-}
-
 /** The drafts a feedback triage routed an item to (ISS-840): the master takes each on, or drops it. */
 function carriersLine(carriers: { key: string }[]): string {
   if (carriers.length === 0) return '';
@@ -296,11 +286,7 @@ export function owedLine(owed: Owed): string {
     const keys = breakdowns.map((b) => (b.overdue ? `${b.key} overdue` : b.key));
     line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion, as ${method('suggestions')} says; an overdue one is past its breakdown SLA. One whose capability already shipped owes no verifying issue: judge each criterion at the requirement instead (\`forge-runner api projects/<id>/requirements/<key>/verdicts -X POST\`).`;
   }
-  const fresh = triages.filter((t) => !t.proposed);
-  if (fresh.length > 0) {
-    line += ` ${fresh.length} feedback item${plural(fresh.length, ' owes', 's owe')} a triage (${fresh.map((t) => t.key).join(', ')}): read each (\`forge-runner api projects/<projectId>/feedback/<key>\`, and \`/similar\` for its nearest), then route it (\`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST\`) or propose a \`feedback_triage\` suggestion (\`forge-runner api projects/<projectId>/suggestions -X POST\`); ${method('feedback-triage')} is how, and the forge-master skill's feedback section is when a master routes and when it proposes.`;
-  }
-  line += proposedTriagesLine(triages);
+  line += triagesLine(triages);
   if (comments.length > 0) {
     // a question is cleared only by a reply threaded under it (devices/comment-inbox.ts), so each
     // is named with the comment id the reply's parentId takes

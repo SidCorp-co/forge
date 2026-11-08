@@ -70,7 +70,9 @@ export function shippedTurn(
   const unjudged = unproven.filter((c) => c.verdict !== 'failing' && !awaitsAncestry(c));
   const parts = [
     unjudged.length > 0 ? say('requirements.rule.unjudged', { codes: codesOf(unjudged) }) : null,
-    pending.length > 0 ? say('requirements.rule.ancestryUnread', { codes: codesOf(pending) }) : null,
+    pending.length > 0
+      ? say('requirements.rule.ancestryUnread', { codes: codesOf(pending) })
+      : null,
     unjudged.length > 0 && release === 'none' ? say('requirements.rule.noReleaseRecorded') : null,
     failing.length > 0 ? say('requirements.rule.failed', { codes: codesOf(failing) }) : null,
   ].filter((p): p is Said => p !== null);

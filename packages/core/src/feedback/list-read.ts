@@ -223,18 +223,19 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
   );
   const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
-  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound] = await Promise.all([
-    releaseGateOf(projectId, atGate),
-    allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
-    forgeOriginsOf(rows.map((r) => r.id)),
-    standingFactsOf(projectId, allRows, issueRows, carrying),
-    shippedCarriersOf(
-      projectId,
-      issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
-    ),
-    readOwedPolicy(projectId),
-    owesTriage ? runnerBoundIn(projectId) : true,
-  ]);
+  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound] =
+    await Promise.all([
+      releaseGateOf(projectId, atGate),
+      allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
+      forgeOriginsOf(rows.map((r) => r.id)),
+      standingFactsOf(projectId, allRows, issueRows, carrying),
+      shippedCarriersOf(
+        projectId,
+        issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
+      ),
+      readOwedPolicy(projectId),
+      owesTriage ? runnerBoundIn(projectId) : true,
+    ]);
   const { release, releaseHolders } = gate;
   const linked: Linked = {
     untold: NONE_UNTOLD,

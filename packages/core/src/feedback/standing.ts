@@ -25,6 +25,7 @@ import {
   issueWait,
   relayWait,
 } from './standing-carrier.js';
+import { triageWait } from './standing-triage.js';
 
 export { type CarrierStanding, carriersPhrase } from './standing-carrier.js';
 
@@ -149,20 +150,9 @@ export interface StandingViewer {
 export type CarrierRelease = ReleaseMode;
 
 export interface StandingFacts {
-  /**
-   * Whether the one rule gives a new or reopened item's triage to the project's master
-   * (`@forge/contracts/who-owes:whoOwes`, `feedback.triage`, ISS-1132): it is routine intake, so it is
-   * the master's unless the project is strict. Whether a master is live now is not asked: the
-   * master's sweep lists every item it owes (`owed-triage.ts:owedTriages`), and a project owing one
-   * gets a master placed for it.
-   */
+  /** The one rule gives a new item's triage to the master (`who-owes.ts:whoOwes`, ISS-1132), live or not. */
   masterTriages: boolean;
-  /**
-   * Whether a runner is bound to the project, so a master can be placed for what it owes (FB-77,
-   * `requirements/standing.ts` reads it the same way). False, no master ever comes, so a triage the
-   * rule gives the master falls to a holder of the triage permission, named, never a stuck wait on
-   * nobody. Absent reads bound.
-   */
+  /** A runner is bound, so a master can be placed (FB-77); false, a holder triages instead. Absent reads bound. */
   runnerBound?: boolean;
   /**
    * Whether the project's master owes a resolved item's confirm, by the one rule
@@ -232,50 +222,7 @@ function waitingOf(
   switch (phase) {
     case 'new':
     case 'reopened':
-      if (facts.snoozedUntil) {
-        return theirs(
-          wait(
-            facts.masterTriages && facts.runnerBound !== false ? 'agent' : 'person',
-            facts.masterTriages && facts.runnerBound !== false ? MASTER : routerOf(viewer),
-            say('feedback.act.triageAfterSnooze', { date: facts.snoozedUntil.slice(0, 10) }),
-            say('feedback.rule.snoozed', { phase, until: facts.snoozedUntil }),
-            { dueAt: facts.snoozedUntil },
-          ),
-        );
-      }
-      // the one rule places it (ISS-1132): holding feedback.approve lets a person triage first, and
-      // puts nothing on their Needs you. With a runner bound and no master serving, it reads stuck
-      // nobody_serves while the box's sweep counts it as owed work and places one
-      // (`masters/verdict.ts`); with no runner bound none ever comes, so a person does (FB-434)
-      if (facts.masterTriages && facts.runnerBound === false) {
-        return {
-          wait: wait(
-            'person',
-            routerOf(viewer),
-            say('standing.act.triageIt'),
-            say('feedback.rule.noRunner', { phase }),
-          ),
-          yours: viewer.canRoute,
-        };
-      }
-      if (facts.masterTriages)
-        return theirs(
-          wait(
-            'agent',
-            MASTER,
-            say('standing.act.triageIt'),
-            say('feedback.rule.masterOwes', { phase }),
-          ),
-        );
-      return {
-        wait: wait(
-          'person',
-          routerOf(viewer),
-          say('standing.act.triageIt'),
-          say('feedback.rule.triagerTriages', { phase }),
-        ),
-        yours: viewer.canRoute,
-      };
+      return triageWait(phase, viewer, facts);
     case 'triaged':
       if (facts.draftCarrier) return draftCarrierWait(facts.draftCarrier);
       if (route === null) {

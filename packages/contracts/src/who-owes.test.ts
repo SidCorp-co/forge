@@ -98,7 +98,9 @@ describe("who owes an act (ISS-1058): one table, serious or routine", () => {
 		const triageOn = { ...OPEN, gates: { ...OPEN.gates, triage: true } };
 		expect(whoOwes("feedback.triage", OPEN).by).toBe("master");
 		expect(whoOwes("feedback.triage", triageOn).by).toBe("master");
-		expect(whoOwes("feedback.triage", { ...triageOn, strict: true })).toMatchObject({
+		expect(
+			whoOwes("feedback.triage", { ...triageOn, strict: true }),
+		).toMatchObject({
 			by: "person",
 			because: "policy",
 			on: "strict",

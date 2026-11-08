@@ -288,7 +288,9 @@ export function proofTurn(
   const gaps = unproven.filter((c) => c.verdict === 'gap');
   const parts = [
     unjudged.length > 0 ? say('requirements.rule.unjudged', { codes: codesOf(unjudged) }) : null,
-    pending.length > 0 ? say('requirements.rule.ancestryUnread', { codes: codesOf(pending) }) : null,
+    pending.length > 0
+      ? say('requirements.rule.ancestryUnread', { codes: codesOf(pending) })
+      : null,
     unjudged.length > 0 && release === 'none' ? say('requirements.rule.noReleaseRecorded') : null,
     failing.length > 0 ? say('requirements.rule.failed', { codes: codesOf(failing) }) : null,
     gaps.length > 0 ? say('requirements.rule.untraced', { codes: codesOf(gaps) }) : null,
@@ -359,7 +361,11 @@ export function proofTurn(
   if (rejudge.length > 0) {
     return {
       group: 'waiting',
-      waitingOn: wait(JUDGE_WHO[judge ?? 'self'], codesAct('standing.act.judgeShipped', rejudge), rule),
+      waitingOn: wait(
+        JUDGE_WHO[judge ?? 'self'],
+        codesAct('standing.act.judgeShipped', rejudge),
+        rule,
+      ),
     };
   }
   if (failing.length > 0) {

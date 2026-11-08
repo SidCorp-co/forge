@@ -222,20 +222,6 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     );
   });
 
-  // ISS-1132: a feedback_triage suggestion proposed where the policy gives triage to the master is
-  // the master's own work item, so its line names the suggestion to accept or reject, not a route
-  it('names a proposed triage as the master’s to accept or reject, apart from a fresh triage', () => {
-    const line = owedLine({
-      ...none,
-      triages: [{ key: 'FB-2' }, { key: 'FB-7', proposed: 'sg-1' }],
-    });
-    expect(line).toContain('1 feedback item owes a triage (FB-2)');
-    expect(line).toContain('1 feedback item carries a proposed triage that is yours to decide (FB-7 suggestion sg-1)');
-    expect(line).toContain('suggestions/<id>/accept -X POST');
-    const plain = workDigest([], { ...none, triages: [{ key: 'FB-7' }] });
-    expect(workDigest([], { ...none, triages: [{ key: 'FB-7', proposed: 'sg-1' }] })).not.toBe(plain);
-  });
-
   it('names returned designs with their workflow, and returned revisions with their revision', () => {
     const line = owedLine({
       ...none,
