@@ -7,8 +7,8 @@
 import type { PoolClaimRefusalCode } from '@forge/contracts/devices';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
-import { and, eq, isNull, like, or, sql } from 'drizzle-orm';
-import { lockPatName } from '../credentials/pat.js';
+import { and, eq, like, or, sql } from 'drizzle-orm';
+import { lockPatName, revokeLiveTokens } from '../credentials/pat.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -138,10 +138,7 @@ function jobActsOf(job: { id: string; payload: unknown }): StewardAct[] {
 
 /** Revoke every live steward token of one job: its end's act, never a prepare's. */
 const revokeLiveJobTokens = (tx: Tx, stewardId: string, jobId: string) =>
-  tx
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(and(ofJob(stewardId, jobId), isNull(personalAccessTokens.revokedAt)));
+  revokeLiveTokens({ userId: stewardId, family: jobTokenName(jobId) }, tx);
 
 /** The next prepare's token name, counting every token the job was ever handed. */
 async function nextJobTokenName(tx: Tx, stewardId: string, jobId: string): Promise<string> {

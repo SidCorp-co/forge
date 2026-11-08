@@ -1,5 +1,5 @@
 import argon2 from 'argon2';
-import { and, desc, eq, type InferSelectModel, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, type InferSelectModel, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, tokenFenceChanges, type UserKind, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -133,9 +133,14 @@ export async function lockPatName(tx: Tx, name: string): Promise<void> {
   await lockXact(tx, 'patName', name);
 }
 
-/** Who a live token is revoked for: its holder, the box it was issued to, its name, or its holder's name for it. */
+/**
+ * Who a live token is revoked for: its holder, the box it was issued to, its name, its holder's name
+ * for it, or its holder's family of names (`family` and each `<family> #<n>` beneath it, one steward
+ * job's tokens, ISS-1004).
+ */
 type TokenHolder =
   | { userId: string; name?: string }
+  | { userId: string; family: string }
   | { deviceId: string }
   | { deviceIds: readonly string[] }
   | { name: string };
@@ -144,16 +149,24 @@ type TokenHolder =
 export async function revokeLiveTokens(holder: TokenHolder, tx: Tx = db): Promise<number> {
   if ('deviceIds' in holder && holder.deviceIds.length === 0) return 0;
   const of =
-    'userId' in holder
+    'family' in holder
       ? and(
           eq(personalAccessTokens.userId, holder.userId),
-          holder.name === undefined ? undefined : eq(personalAccessTokens.name, holder.name),
+          or(
+            eq(personalAccessTokens.name, holder.family),
+            like(personalAccessTokens.name, `${holder.family} #%`),
+          ),
         )
-      : 'deviceId' in holder
-        ? eq(personalAccessTokens.deviceId, holder.deviceId)
-        : 'deviceIds' in holder
-          ? inArray(personalAccessTokens.deviceId, [...holder.deviceIds])
-          : eq(personalAccessTokens.name, holder.name);
+      : 'userId' in holder
+        ? and(
+            eq(personalAccessTokens.userId, holder.userId),
+            holder.name === undefined ? undefined : eq(personalAccessTokens.name, holder.name),
+          )
+        : 'deviceId' in holder
+          ? eq(personalAccessTokens.deviceId, holder.deviceId)
+          : 'deviceIds' in holder
+            ? inArray(personalAccessTokens.deviceId, [...holder.deviceIds])
+            : eq(personalAccessTokens.name, holder.name);
   const rows = await tx
     .update(personalAccessTokens)
     .set({ revokedAt: sql`now()` })
