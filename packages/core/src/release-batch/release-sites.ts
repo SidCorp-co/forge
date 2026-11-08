@@ -6,7 +6,7 @@
 // is recorded or the run is aborted: no `partial` state lets its issues close while a site serves the
 // old build.
 
-import type { ReleaseSiteState, ReleaseSiteView } from '@forge/contracts/releases';
+import type { ReleaseSiteState, ReleaseSiteView, ReleaseState } from '@forge/contracts/releases';
 import { deployHoldsOf } from '../pipeline/index.js';
 import { pendingConfirmBindingsOf } from './coolify-prod-gate.js';
 import { refuseRelease } from './refuse.js';
@@ -130,4 +130,30 @@ export function admitSiteRecord(
     );
   }
   return [...sites];
+}
+
+const ENDED: ReadonlySet<ReleaseState> = new Set(['shipped', 'landed', 'failed', 'aborted']);
+
+/**
+ * Each production site and where it stands on a cut release (ISS-1077). An open run reads every site
+ * production declares now; an ended run its own record, else, where it never shipped, what its own
+ * deploys say. A release that shipped before sites were recorded lists none: nothing says which it reached.
+ */
+export function releaseSitesOf(
+  run: { runMetadata?: unknown; releasedAt: Date | null; state: ReleaseState },
+  declared: readonly SiteChannel[],
+): ReleaseSiteView[] {
+  if (run.runMetadata === undefined) return [];
+  const recorded = recordedSitesOf(run.runMetadata);
+  const open = run.releasedAt === null && !ENDED.has(run.state);
+  if (open || (recorded === null && run.state !== 'shipped')) {
+    return siteStatesOf(declared, run.runMetadata);
+  }
+  const urls = new Map(declared.map((c) => [c.site, c.url]));
+  return (recorded ?? []).map((r) => ({
+    name: r.name,
+    state: 'shipped' as const,
+    serves: r.serves,
+    url: urls.get(r.name) ?? null,
+  }));
 }

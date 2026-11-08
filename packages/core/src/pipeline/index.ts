@@ -5,9 +5,9 @@ export {
 } from './autonomous-mode.js';
 export {
   abandonDeployDispatchHold,
+  deployHoldsOf,
   isCloseDeferred,
   openDeployDispatchHold,
-  deployHoldsOf,
   readDeployHolds,
   replaceDispatchHoldWithTargets,
   resolveDeployGate,

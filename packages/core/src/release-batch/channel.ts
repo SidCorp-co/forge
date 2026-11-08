@@ -47,9 +47,7 @@ function classifyRollback(provider: string, raw: unknown): ReleaseRollback | nul
 }
 
 /** A release proves the commit it shipped, so only a probe identifying the source can prove it. */
-export function releaseProbesOf(production: {
-  verification?: EnvironmentSite['verification'];
-}): {
+export function releaseProbesOf(production: { verification?: EnvironmentSite['verification'] }): {
   verify: VerifyConfig | null;
   verifySource: ReleaseChannel['verifySource'];
 } {

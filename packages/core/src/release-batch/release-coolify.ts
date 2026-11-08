@@ -18,12 +18,17 @@ import {
   RELEASE_DEPLOY_IN_FLIGHT_STEP,
   setCurrentStep,
 } from '../pipeline/index.js';
-import { type DeployMap, readDeployMap } from '../project-config/index.js';
+import { readDeployMap } from '../project-config/index.js';
 import {
   getProdGateStateForRun,
   markPendingHumanConfirm,
   reportUnwitnessedDeploy,
 } from './coolify-prod-gate.js';
+import {
+  deploysItselfOnLand,
+  reachesProductionOf,
+  resourceUuidsOf,
+} from './coolify-production-reach.js';
 import { type AlreadySent, type DeployCaller, deployOnce } from './deploy-once.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import {
@@ -144,20 +149,6 @@ export async function liveActionNeedsHumanConfirm(
   ));
 }
 
-/**
- * Whether a deploy reaching production goes out with no person's confirm (ISS-1077): a production
- * site's own binding by its own trigger, so each site keeps its own rule; a binding that reaches
- * production only by sharing its application, where every site of production deploys on land.
- */
-async function deploysItselfOnLand(
-  map: DeployMap,
-  binding: { id: string },
-  everySiteOnLand: () => Promise<boolean>,
-): Promise<boolean> {
-  const site = map.productionBindings.has(binding.id) ? map.environments.get(binding.id) : undefined;
-  return site ? site.trigger === 'on-land' : await everySiteOnLand();
-}
-
 /** Whether this binding deploys the production environment's box. */
 export async function bindingReachesProduction(
   projectId: string,
@@ -165,38 +156,6 @@ export async function bindingReachesProduction(
 ): Promise<boolean> {
   const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   return reachesProductionOf(await readDeployMap(projectId), pairs)(binding);
-}
-
-/**
- * Which of these bindings reach the production box — by being a production site's binding, or by
- * deploying to an application such a binding also deploys to.
- *
- * Built from the WHOLE binding set before any filter, because the shared resource is only
- * visible while the production binding is still in the list: drop it first and the one beside
- * it stops looking like production — measured on forge-dev, whose two deploy bindings both
- * target `y8w4c4kss8ogo8gc44ow44kc`.
- */
-function reachesProductionOf(
-  map: DeployMap,
-  pairs: ReadonlyArray<{ binding: { id: string; config: unknown } }>,
-): (binding: { id: string; config: unknown }) => boolean {
-  const live = new Set(
-    pairs
-      .filter((p) => map.productionBindings.has(p.binding.id))
-      .flatMap((p) => resourceUuidsOf(p.binding.config)),
-  );
-  return (binding) =>
-    map.productionBindings.has(binding.id) ||
-    resourceUuidsOf(binding.config).some((u) => live.has(u));
-}
-
-/** The Coolify applications a binding's config names, however sparse it is. */
-function resourceUuidsOf(config: unknown): string[] {
-  const targets = (config as { targets?: unknown } | null)?.targets;
-  if (!Array.isArray(targets)) return [];
-  return targets
-    .map((t) => (t as { resourceUuid?: unknown })?.resourceUuid)
-    .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
 async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): Promise<void> {

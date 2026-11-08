@@ -174,7 +174,10 @@ describe('a production of several sites', () => {
       refusals({
         production: { ...mail, deployment: { mode: 'external' }, sites: [webmail] },
       }),
-    ).toContainEqual({ code: 'PRODUCTION_SITE_UNBOUND', path: '/environments/production/deployment' });
+    ).toContainEqual({
+      code: 'PRODUCTION_SITE_UNBOUND',
+      path: '/environments/production/deployment',
+    });
     const { deployment: _none, ...unbound } = webmail;
     const read = parse({ production: { ...mail, sites: [unbound] } });
     expect(read.ok).toBe(false);

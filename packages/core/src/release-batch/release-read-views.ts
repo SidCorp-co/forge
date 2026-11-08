@@ -15,7 +15,6 @@ import {
   type ReleaseIssueView,
   type ReleasePerson,
   type ReleaseShippedFailing,
-  type ReleaseSiteView,
   type ReleaseSplit,
   type ReleaseState,
   type ReleaseSummary,
@@ -38,9 +37,9 @@ import { type CriterionReading, criterionReadingsAt } from './criterion-reading.
 import { judgedOnReleaseAt } from './judged-on-release.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
-import { recordedSitesOf, type SiteChannel, siteStatesOf } from './release-sites.js';
 import { noteSections } from './release-notes-view.js';
 import { irreversibleOf, releaseOwesOf } from './release-owes.js';
+import { releaseSitesOf, type SiteChannel } from './release-sites.js';
 import {
   completionOf,
   proofOf,
@@ -117,30 +116,6 @@ export interface Shared {
   /** Each production site production declares now, its own first (ISS-1077); absent, none is read. */
   sites?: readonly SiteChannel[];
 }
-
-/**
- * Each production site and where it stands on this release (ISS-1077). An open run reads every site
- * production declares now; an ended run its own record, else, where it never shipped, what its own
- * deploys say. A release that shipped before sites were recorded lists none: nothing says which it reached.
- */
-export function sitesOfPart(p: Part, s: Shared): ReleaseSiteView[] {
-  if (p.runId === null || p.runMetadata === undefined) return [];
-  const declared = s.sites ?? [];
-  const recorded = recordedSitesOf(p.runMetadata);
-  const open = p.releasedAt === null && !ENDED.has(p.state);
-  if (open || (recorded === null && p.state !== 'shipped')) {
-    return siteStatesOf(declared, p.runMetadata);
-  }
-  const urls = new Map(declared.map((c) => [c.site, c.url]));
-  return (recorded ?? []).map((r) => ({
-    name: r.name,
-    state: 'shipped' as const,
-    serves: r.serves,
-    url: urls.get(r.name) ?? null,
-  }));
-}
-
-const ENDED: ReadonlySet<ReleaseState> = new Set(['shipped', 'landed', 'failed', 'aborted']);
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
@@ -487,7 +462,7 @@ export function detailOf(
     feedbackAnswered.filter((f) => f.told === told).length;
   return {
     ...summary,
-    sites: sitesOfPart(p, s),
+    sites: p.runId === null ? [] : releaseSitesOf(p, s.sites ?? []),
     feedbackAnswered,
     feedbackToldCounts: {
       on_ship: toldCount('on_ship'),

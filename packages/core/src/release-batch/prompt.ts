@@ -44,7 +44,11 @@ Each issue above names the commit its mark claims. Cut this release from a head 
 }
 
 /** One deploy channel; on a production of several sites, the site it deploys, its origin and probe (ISS-1077). */
-function channelLine(c: ReleasePlan['channels'][number], _i: number, all: readonly unknown[]): string {
+function channelLine(
+  c: ReleasePlan['channels'][number],
+  _i: number,
+  all: readonly unknown[],
+): string {
   const base = `- ${c.provider}${c.label ? ` [${c.label}]` : ''}, binding ${c.bindingId}`;
   if (all.length < 2) return base;
   const url = c.url ? `, ${c.url}` : '';
