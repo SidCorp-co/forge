@@ -1,1 +1,0 @@
-**Your attention and home reads no longer slow down with each project you are in.** The requirements feedback was routed to, their status and the shipped releases are read once for all your projects, not once per project or item.

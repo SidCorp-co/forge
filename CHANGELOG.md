@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.593] - 2026-11-08
+
+New feedback triaged by the master; requirement proof waits on the live build's ancestry
+
+### Fixed
+
+- **Your attention and home reads no longer slow down with each project you are in.** The requirements feedback was routed to, their status and the shipped releases are read once for all your projects, not once per project or item.
+- **New feedback waits on the project's master to triage it, not on you.** Outside a strict project, holding the triage permission no longer puts a new item or its proposed triage on your Needs you.
+- **A requirement no longer reads not delivered for a minute after each deploy.** While Forge still checks whether the live build holds its passing verdicts, it says so, and never asks to file work for nothing.
+
 ## [0.4.0-dev.592] - 2026-11-08
 
 Production confirm waits hold the release open; readiness judges a proposed first revision
