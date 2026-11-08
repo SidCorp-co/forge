@@ -13,7 +13,8 @@
 // recorded here for the reads that follow.
 
 import type { ServingReading } from '@forge/contracts/releases';
-import { inReadMemo, observedReadsAllowed, withoutReadMemo } from '../db/read-memo.js';
+import { observedReadsAllowed } from '../db/observed-reads.js';
+import { inReadMemo, withoutReadMemo } from '../db/read-memo.js';
 import { background } from '../lib/background.js';
 import { logger } from '../lib/logger.js';
 
@@ -35,7 +36,7 @@ const refreshes = background();
 
 /**
  * Whether a reading here may be one observed earlier: a person's read of what waits on them
- * (`db/read-memo.ts:withObservedReads`), inside a read request.
+ * (`db/observed-reads.ts:withObservedReads`), inside a read request.
  */
 const mayObserve = () => observedReadsAllowed() && inReadMemo();
 
@@ -67,7 +68,7 @@ function readShared(
 
 /**
  * The reading `read` makes under `key` (a project, the environment and its declaration), as a
- * person's read may be shown it (`db/read-memo.ts:withObservedReads`): observed earlier where it is still to be
+ * person's read may be shown it (`db/observed-reads.ts:withObservedReads`): observed earlier where it is still to be
  * trusted, read afresh otherwise. Anywhere else it is read afresh, and recorded.
  */
 export async function observedReading(

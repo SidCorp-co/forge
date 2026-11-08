@@ -15,7 +15,6 @@ import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { StandingTimes } from '@forge/contracts/steward';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
-import { withObservedReads } from '../db/read-memo.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
@@ -23,7 +22,7 @@ import { listReleases, listReleasesInPlay } from '../release-batch/release-list-
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, designSettlerOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
-import { designHealthOf, designRepinsOf, timedArea } from './ports.js';
+import { designHealthOf, designRepinsOf, observedAttention, timedArea } from './ports.js';
 import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
 export interface NeedsYouViewer {
@@ -87,7 +86,7 @@ export const newestFirst = (a: AttentionRow, b: AttentionRow) =>
  * someone (`readNeedsYouAttention`), and lists the same rows either way.
  */
 export function readAttention(projectId: string, viewer: NeedsYouViewer, now: Date = new Date()) {
-  return withObservedReads(() =>
+  return observedAttention(() =>
     attentionOf(
       projectId,
       viewer,
@@ -108,7 +107,7 @@ export function readNeedsYouAttention(
   now: Date = new Date(),
 ) {
   // what production serves, as observed a moment ago and said so (`serving-observed.ts`)
-  return withObservedReads(() =>
+  return observedAttention(() =>
     attentionOf(
       projectId,
       viewer,

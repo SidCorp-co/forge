@@ -6,6 +6,7 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
+import { withObservedReads } from '../db/observed-reads.js';
 import { withQueryLeg } from '../db/query-timing.js';
 import type { NotificationType } from '../db/schema.js';
 import type { ReleaseApprovalRow } from '../db/schema-release-ledger.js';
@@ -17,6 +18,13 @@ import { portSlot } from '../lib/port-slot.js';
  * areas without reaching one module more.
  */
 export const timedArea = withQueryLeg;
+
+/**
+ * Runs a person's attention read, whose readings of what production serves may be ones observed a
+ * moment ago and said so (`db/observed-reads.ts:withObservedReads`), reached through here as
+ * {@link timedArea} is.
+ */
+export const observedAttention = withObservedReads;
 
 /** The notice Needs you's upkeep sends a person about a decision that has aged. */
 interface DecisionReminderInput {
