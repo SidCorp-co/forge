@@ -2,7 +2,7 @@
 // The session page's sticky header: back, title and status, and its acts. The id, the task count and
 // the rail toggles are the developer view's (REQ-43 BC-7), switched beside the acts.
 import { useRouter } from "@/lib/navigation/router";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Badge, Button, IconButton, Menu, type MenuItem, MonoTag, PageTitle, type RecordView, RecordViewSwitch, StatusBadge } from "@/design";
 import { type deriveSessionDisplayStatus, sessionStep, statusToChip, useCancelSession, useRerunSession } from "@/features/sessions";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -112,6 +112,7 @@ export function SessionHeader({
               </Badge>
             )}
           </div>
+          {developer && session.paneAttach && <PaneAttach command={session.paneAttach} />}
         </div>
         <SessionActs
           session={session}
@@ -222,5 +223,32 @@ function SessionActs({
             </>
           )}
         </div>
+  );
+}
+
+/** The command its owner types to watch a channel agent's session live in its pane (ISS-946), as its box named it, with a copy control. */
+function PaneAttach({ command }: { command: string }) {
+  const t = useCopy();
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-1 flex min-w-0 items-center gap-2" data-testid="pane-attach">
+      <span className="shrink-0 text-13 text-muted">{t("sessions.detail.watchLive")}</span>
+      <code className="min-w-0 truncate font-mono text-13 text-fg" title={command}>
+        {command}
+      </code>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={copied ? "check" : "link"}
+        onClick={() =>
+          void navigator.clipboard?.writeText(command).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+        }
+      >
+        {copied ? t("sessions.detail.copied") : t("sessions.detail.copy")}
+      </Button>
+    </div>
   );
 }

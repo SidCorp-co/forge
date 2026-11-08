@@ -4,7 +4,7 @@
 
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SCREENS } from "@/test/vi-chrome-sessions";
+import { ROOM_PANE_ATTACH, roomPaneSession, SCREENS } from "@/test/vi-chrome-sessions";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -87,5 +87,29 @@ describe("a chat session's page", () => {
     expect(screen.getAllByText("may-1").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Idle")).toHaveLength(1);
     expect(screen.queryByText("2 tasks")).toBeNull();
+  });
+});
+
+// ISS-946: a channel agent's session runs in a tmux pane on its box; the page prints the command its
+// owner types to watch it, as the box named it, beside the box's other facts in the Developer view
+describe("a channel agent's session running in a pane", () => {
+  it("prints the attach command with a copy control in the Developer view", async () => {
+    render(roomPaneSession(true));
+    await screen.findAllByText("Da xong phan mot.");
+    const line = screen.getByTestId("pane-attach");
+    expect(line).toHaveTextContent(ROOM_PANE_ATTACH);
+    expect(within(line).getByText("Watch live")).toBeInTheDocument();
+    expect(within(line).getByRole("button", { name: "Copy" })).toBeInTheDocument();
+  });
+
+  it("keeps the box's socket out of the person's view (REQ-43 BC-7)", async () => {
+    render(roomPaneSession(false));
+    await screen.findAllByText("Da xong phan mot.");
+    expect(screen.queryByTestId("pane-attach")).toBeNull();
+  });
+
+  it("shows none for a session no pane holds", async () => {
+    await open("Session · chat · developer");
+    expect(screen.queryByTestId("pane-attach")).toBeNull();
   });
 });

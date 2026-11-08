@@ -104,6 +104,9 @@ export interface SessionRow {
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */
   lastMessagePreview?: string | null;
+  /** `tmux -S <socket> attach -t <pane>` where a channel agent's session runs in a pane on its
+   *  box (ISS-946), as the box named it; on the `GET /:id` detail row only. */
+  paneAttach?: string | null;
 }
 
 /** `GET /api/agent-sessions/queue-stats` response (per-device counters). */

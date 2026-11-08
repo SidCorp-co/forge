@@ -96,6 +96,9 @@ const data = (): [QueryKey, unknown][] => [
   // a chat, and a pipeline run's session with its run
   [["agent-session", "s-chat"], detail({ id: "s-chat", kind: "chat", metadata: { type: "interactive" }, status: "idle", messages: [] })],
   [["agent-session", "s-chat", "turns", 40], { turns: TURNS, nextCursor: null }],
+  // a channel agent's resident session, running in a pane its box named (ISS-946)
+  [["agent-session", "s-room"], detail({ id: "s-room", kind: "chat", metadata: { type: "interactive" }, status: "idle", messages: [], paneAttach: ROOM_PANE_ATTACH })],
+  [["agent-session", "s-room", "turns", 40], { turns: TURNS, nextCursor: null }],
   [["agent-session", "s-run"], detail({ id: "s-run", pipelineRunId: "run-1", status: "failed", failureReason: "agent_exited_without_result", metadata: { type: "pipeline", issueId: "i1", step: "code" } })],
   [["agent-session", "s-run", "turns", 40], { turns: TURNS, nextCursor: null }],
   [["agent-session", "s-run", "cost"], { sessionId: "s-run", projectId: P, estimatedCost: 1.25, inputTokens: 12000, outputTokens: 3400, cacheReadTokens: 800, cacheCreationTokens: 400, requests: 12, sampleCount: 12, models: [{ model: "mo-hinh", requests: 12 }] }],
@@ -139,6 +142,11 @@ const wrap = (children: React.ReactNode, search = "") => {
 };
 // the agent's working — tool calls, the rail, the report's lenses — is drawn in the Developer view (REQ-43 BC-7)
 const DEV = "?view=developer";
+/** What the box's heartbeat named for the room session's pane, as core composes it. */
+export const ROOM_PANE_ATTACH = "tmux -S '/home/dev/.forge-dev-runner/xdg/forge-runner/tmux.sock' attach -t 'forge-chat-hop'";
+/** A channel agent's session page, its pane named (ISS-946); drawn by its own test, not the screen budget. */
+export const roomPaneSession = (developer: boolean) =>
+  wrap(<SessionScreen sessionId="s-room" projectSlug="hop" />, developer ? DEV : "");
 const stuck = new Set(["s12", "run-1"]);
 // a button found by its label in either language: the rail test draws each screen in en as well
 const clickLabel = (key: ProductCopyKey) => () => {
