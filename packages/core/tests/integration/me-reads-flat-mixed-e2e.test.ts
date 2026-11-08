@@ -12,7 +12,12 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { currentQueryTiming, type QueryTiming } from '../../src/db/query-timing.js';
+import {
+  currentLegName,
+  currentQueryTiming,
+  type QueryTiming,
+  quietPoints,
+} from '../../src/db/query-timing.js';
 import { fingerprintOf, shapeTextOf } from '../../src/db/statement-shapes.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestUser, seedOrg } from '../helpers/factories.js';
@@ -59,15 +64,20 @@ let forge: string;
 const callsNow = () => new Map([...coolify.calls, ...autoflow.calls]);
 
 /** Each area's statements by shape, of one GET, and each call it made to a stub platform, by path. */
-async function sentBy(
-  path: string,
-): Promise<{ areas: Map<string, Map<string, number>>; http: Map<string, number> }> {
+async function sentBy(path: string): Promise<{
+  areas: Map<string, Map<string, number>>;
+  http: Map<string, number>;
+  waves: Map<string, Set<number>>;
+}> {
   const before = callsNow();
+  const waves = new Map<string, Set<number>>();
   const client = (db as unknown as { $client: { unsafe: (...a: unknown[]) => unknown } }).$client;
   const unsafe = client.unsafe;
   let timing: QueryTiming | undefined;
   client.unsafe = (...args: unknown[]) => {
     timing ??= currentQueryTiming();
+    const area = currentLegName() ?? 'unnamed';
+    waves.set(area, (waves.get(area) ?? new Set<number>()).add(quietPoints()));
     return unsafe(...args);
   };
   try {
@@ -92,7 +102,47 @@ async function sentBy(
   const http = new Map<string, number>();
   for (const [at, n] of callsNow())
     if (n > (before.get(at) ?? 0)) http.set(at, n - (before.get(at) ?? 0));
-  return { areas, http };
+  return { areas, http, waves };
+}
+
+/**
+ * How many waves each area of a warm read sends its statements in at most: the quiet points
+ * (`db/query-timing.ts:whenQuiet`) at which it sends any. Each wave waits on the one before it, so
+ * at forge-dev's ~3 ms a statement the depth, not the count, sets the time (ISS-1070 r16). Set at
+ * the seed's count; lowered by a cut, never raised.
+ */
+const WAVES: Record<string, Record<string, number>> = {
+  '/api/me/attention': {
+    'ny-releases': 26,
+    'ny-requirements': 17,
+    'ny-issues': 9,
+    'ny-design-health': 8,
+    'ny-feedback': 7,
+    'ny-folded': 4,
+    'ny-automation': 4,
+    'ny-contracts': 3,
+  },
+  '/api/me/home': {
+    'home-forecasts': 15,
+    'home-feedback': 10,
+    'home-runs': 5,
+    'home-live': 4,
+    'home-projects': 3,
+    'home-items': 2,
+    'home-owned': 2,
+  },
+};
+
+/** Each area of a warm read that sent its statements in more waves than {@link WAVES} allows it. */
+async function overWaves(path: string): Promise<string[]> {
+  await sentBy(path);
+  const { waves } = await sentBy(path);
+  const most = WAVES[path] ?? {};
+  return [...waves].flatMap(([area, points]) =>
+    points.size > (most[area] ?? 2)
+      ? [`${path} ${area} sent in ${points.size} waves, more than ${most[area] ?? 2}`]
+      : [],
+  );
 }
 
 /** A statement that locks a row or opens a transaction: a read a person makes needs neither. */
@@ -162,6 +212,13 @@ describe("a person's reads of fourteen projects of forge-dev's kinds", () => {
 
   it("sends each shape of forge's own needs-you at most twice an area on a warm read", async () => {
     expect(await overMost(`/api/projects/${forge}/needs-you`)).toEqual([]);
+  });
+
+  it('sends each area of attention and home in no more waves than it did', async () => {
+    expect([
+      ...(await overWaves('/api/me/attention')),
+      ...(await overWaves('/api/me/home')),
+    ]).toEqual([]);
   });
 
   it('takes no lock, opens no transaction and asks no platform on a warm read', async () => {
