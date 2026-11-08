@@ -94,6 +94,9 @@ describe("a requirement row in the one vocabulary", () => {
     expect(groups.find((g) => g.id === "done")?.rows.map((r) => r.key)).toEqual(["D"]);
     expect(groups.find((g) => g.id === "dropped")).toMatchObject({ collapsed: true, rows: [expect.objectContaining({ key: "X" })] });
     expect(groups.filter((g) => g.collapsed).map((g) => g.id)).toEqual(["done", "dropped"]);
+    // each group wears its own tone, as the feedback list's do: Running is not drawn as Queued
+    expect(groups.find((g) => g.id === "running")?.tone).toBe("run");
+    expect(groups.find((g) => g.id === "overdue")?.tone).toBe("blocked");
   });
 });
 
