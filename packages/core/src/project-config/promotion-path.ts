@@ -92,6 +92,28 @@ export function productionSitesOf(document: ProjectDocument): EnvironmentSite[] 
   return production ? sitesOf(production) : [];
 }
 
+/**
+ * An environment and each of its further sites, every one read as an environment of its own: a site
+ * by its name, its own binding, origin and runtime verification (ISS-1077). What a deployed-state
+ * read reads, so each site's deployment record is its own application's, never the environment's.
+ */
+export function deployedPlacesOf(env: NamedEnvironment): NamedEnvironment[] {
+  const { sites, ...own } = env.declaration;
+  return [
+    { name: env.name, declaration: own },
+    ...(sites ?? []).map((site) => ({
+      name: site.name,
+      declaration: {
+        tier: own.tier,
+        ...(own.deploysFrom === undefined ? {} : { deploysFrom: own.deploysFrom }),
+        deployment: site.deployment,
+        ...(site.url === undefined ? {} : { url: site.url }),
+        ...(site.verification === undefined ? {} : { verification: site.verification }),
+      },
+    })),
+  ];
+}
+
 export function defaultBranchOf(document: ProjectDocument | null | undefined): string | null {
   return document?.source.type === 'git' ? document.source.git.defaultBranch : null;
 }

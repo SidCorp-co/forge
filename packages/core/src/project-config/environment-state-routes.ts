@@ -5,6 +5,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { readEnvironmentState } from './environment-state.js';
+import { deployedPlacesOf, environmentsOf } from './promotion-path.js';
 import { readProjectDocument } from './service.js';
 
 const projectParam = z.object({ id: z.uuid() });
@@ -39,10 +40,11 @@ environmentStateRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const { revision, document } = await storedDocument(id);
+    // each further production site reads as its own entry, by its name (ISS-1077)
     const environments = await Promise.all(
-      Object.entries(document.environments).map(([name, declaration]) =>
-        readEnvironmentState(id, document, { name, declaration }),
-      ),
+      environmentsOf(document)
+        .flatMap(deployedPlacesOf)
+        .map((place) => readEnvironmentState(id, document, place)),
     );
     return c.json({ revision, environments });
   },
@@ -56,16 +58,17 @@ environmentStateRoutes.get(
   async (c) => {
     const { id, name } = c.req.valid('param');
     const { revision, document } = await storedDocument(id);
-    const decl = Object.hasOwn(document.environments, name)
-      ? document.environments[name]
-      : undefined;
-    if (!decl) {
+    // an environment by its name, or a further production site by its own (ISS-1077)
+    const place = environmentsOf(document)
+      .flatMap(deployedPlacesOf)
+      .find((p) => p.name === name);
+    if (!place) {
       const declared = Object.keys(document.environments).join(', ') || 'none';
       throw new HTTPException(404, {
         message: `project document revision ${revision} declares no environment \`${name}\` (declared: ${declared})`,
         cause: { code: 'ENVIRONMENT_NOT_FOUND' },
       });
     }
-    return c.json(await readEnvironmentState(id, document, { name, declaration: decl }));
+    return c.json(await readEnvironmentState(id, document, place));
   },
 );

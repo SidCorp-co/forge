@@ -113,6 +113,11 @@ function coolifyDeployAdapter(client: CoolifyClient): DeployAdapter<CoolifyDeplo
   };
 }
 
+/**
+ * The deployment-record read of one site (ISS-1077): an environment's own deployment, or one of its
+ * further `sites`, each through its own binding naming its own application. One binding naming
+ * several applications is refused here, by name: a record read would pick one and leave the rest unread.
+ */
 export function coolifyDeploymentRecords(
   ctx: AdapterContext<CoolifyConfig, CoolifySecrets>,
   timeoutMs: number,
@@ -121,7 +126,7 @@ export function coolifyDeploymentRecords(
   const [only] = targets;
   if (targets.length !== 1 || !only) {
     throw new Error(
-      `coolify binding ${ctx.bindingId} names ${targets.length} deploy targets; an environment reads the deployment record of exactly one application`,
+      `coolify binding ${ctx.bindingId} names ${targets.length} deploy targets; a site reads the deployment record of exactly one application, so production serving several applications declares each as a site of its own, with its own binding (\`environments.<production>.sites\`)`,
     );
   }
   return {

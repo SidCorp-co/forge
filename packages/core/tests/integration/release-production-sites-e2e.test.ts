@@ -14,6 +14,8 @@
  * @direct-test-of packages/core/src/release-batch/gate.ts
  * @direct-test-of packages/core/src/release-batch/channel.ts
  * @direct-test-of packages/core/src/release-batch/release-read-views.ts
+ * @direct-test-of packages/core/src/project-config/environment-state-routes.ts
+ * @direct-test-of packages/core/src/integrations/deploy/coolify/deployment-records.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -29,6 +31,7 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import {
+  fakeCoolify,
   registerAllIntegrations,
   releaseWorld,
   seedDeployBinding,
@@ -52,6 +55,7 @@ let token = '';
 let mail = '';
 let webmail = '';
 const fx = releaseWorld(() => ({ projectId, ownerId }));
+const records = fakeCoolify();
 
 beforeAll(async () => {
   testEnv();
@@ -303,5 +307,28 @@ describe('a release over a production of two sites (ISS-1077)', () => {
       ['webmail', 'shipped'],
     ]);
     expect(await fx.stored(issueId)).toMatchObject({ status: 'closed' });
+  });
+
+  it('reads each site’s deployment record off its own application, by the site’s name', async () => {
+    const served = 'ab12cd34'.padEnd(40, '0');
+    // the record read goes to a Coolify answering over HTTP in this process, never a real one
+    await db.execute(sql`
+      UPDATE integration_bindings
+         SET config = jsonb_set(config, '{baseUrl}', to_jsonb(${records.url()}::text))
+       WHERE project_id = ${projectId}`);
+    records.deployed('mail-uuid', 'dep-mail', COMMIT, '2026-11-07T10:00:00Z');
+    records.deployed('webmail-uuid', 'dep-webmail', served, '2026-11-07T11:00:00Z');
+
+    const list = (await call('GET', '/environments/state')).environments as Doc[];
+    expect(list.map((e) => [e.environment, (e.source as Doc | undefined)?.revision])).toEqual([
+      ['live', COMMIT],
+      ['webmail', served],
+    ]);
+    const one = await call('GET', '/environments/webmail/state');
+    expect(one).toMatchObject({
+      environment: 'webmail',
+      deployment: { id: 'dep-webmail' },
+      source: { revision: served },
+    });
   });
 });
