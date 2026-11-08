@@ -11,13 +11,22 @@ const log = process.env[LOG_ENV];
 const where = isMainThread
   ? `child process ${process.pid}`
   : `worker ${threadId} of process ${process.pid}`;
+/** Append a line to the log, unless the worker that reads it has exited and removed it: a process
+ * that outlives that worker writes for nobody, and is counted as the root by the file it outlived. */
+function write(line) {
+  try {
+    appendFileSync(log, line);
+  } catch (e) {
+    if (e?.code !== 'ENOENT') throw e;
+  }
+}
 if (log) {
-  if (isMainThread) appendFileSync(log, `${JSON.stringify({ started: process.pid })}\n`);
+  if (isMainThread) write(`${JSON.stringify({ started: process.pid })}\n`);
   installWatch(
     (entries) => {
       for (const e of entries) {
         if (!coversRoot(ROOT, e.dir)) continue;
-        appendFileSync(log, `${JSON.stringify({ ...e, via: `${e.via} in ${where}` })}\n`);
+        write(`${JSON.stringify({ ...e, via: `${e.via} in ${where}` })}\n`);
       }
     },
     log,

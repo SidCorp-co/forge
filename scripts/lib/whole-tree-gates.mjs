@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { types } from 'node:util';
@@ -114,6 +114,30 @@ export function processRunning(pid, { signal, stat }) {
   } catch (e) {
     return e?.code !== 'ENOENT' || !existsSync('/proc/self');
   }
+}
+
+/** The directory under the system's temporary one that holds every guard worker's log directory. */
+export const GUARD_DIRS = 'forge-whole-tree-guard';
+
+/** The process a guard log directory was made by, read off its `<pid>-<random>` name; null where the
+ * name carries none, which is no directory this guard made. */
+export function guardDirOwner(name) {
+  const m = /^([1-9]\d*)-[^/]+$/.exec(name);
+  return m ? Number(m[1]) : null;
+}
+
+/** Remove every guard log directory under `parent` whose process is gone: what a worker that was
+ * killed before its exit could remove left. A name that carries no process is left alone, and so is
+ * one whose process `running` cannot rule out. Answers the names it removed. */
+export function reapGuardDirs(parent, running, { list = readdirSync, remove = rmSync } = {}) {
+  const reaped = [];
+  for (const name of list(parent)) {
+    const pid = guardDirOwner(name);
+    if (pid === null || running(pid)) continue;
+    remove(join(parent, name), { recursive: true, force: true });
+    reaped.push(name);
+  }
+  return reaped;
 }
 
 /**

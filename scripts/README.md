@@ -140,6 +140,13 @@ judged by the config a fixture may set, `lib/whole-tree-shell.mjs:REPO_CONFIG_KE
 allowlist: a fixture key off it is refused even when it runs nothing, so each such key is one
 reviewed line there or a declaration on the test.
 
+The guard keeps each worker's child logs in a directory of its own,
+`<tmpdir>/forge-whole-tree-guard/<pid>-<random>`, and the worker removes it as it ends — on
+`SIGTERM`, which is how vitest ends a fork and which runs no exit handler. A worker killed before it
+could leaves a directory named for a process that is gone, and the next guard to start reaps it by
+that name (`whole-tree-gates.mjs:reapGuardDirs`). A directory per worker that nothing removed piled
+up to 598,704 on one box (ISS-1315).
+
 ### Why size is its own row
 
 biome **declares** the two length rules (a file over 500 lines, a function over 150) but has no
