@@ -199,13 +199,13 @@ describe('a release pressed on beta is run on dev and written back once (ISS-988
     expect(settled.output).toContain(
       `forge-beta release 0.3.7 (${pressed.runId}): dev ${run?.version} shipped, written back on beta`,
     );
-    expect((await takenRow(pressed))?.written_back_at).not.toBeNull();
 
     // written back once: no second end, no second comment
     const comments = [one, two].map((b) => commentsOn(b).length);
     await fire();
     expect(pressed.aborts).toHaveLength(1);
     expect([one, two].map((b) => commentsOn(b).length)).toEqual(comments);
+    expect((await takenRow(pressed))?.written_back_at).not.toBeNull();
   });
 
   it('names a beta issue with no dev twin, in the report and in the release request, and cuts nothing for a release none of whose issues has one', async () => {
