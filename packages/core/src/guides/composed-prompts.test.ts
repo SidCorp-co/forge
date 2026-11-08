@@ -85,6 +85,7 @@ const none = {
   endedRunHolds: [] as Parameters<typeof owedLine>[0]['endedRunHolds'],
   requests: [] as Parameters<typeof owedLine>[0]['requests'],
   carriers: [] as Parameters<typeof owedLine>[0]['carriers'],
+  intakeFailures: [] as Parameters<typeof owedLine>[0]['intakeFailures'],
   reviews: [] as Parameters<typeof owedLine>[0]['reviews'],
   contentLanguage: 'vi',
 };
@@ -138,6 +139,10 @@ const OWED_KINDS = {
   },
   requests: { item: { kind: 'requirement', key: 'REQ-9' }, guide: 'requirement-lifecycle' },
   carriers: { item: { key: 'ISS-26' }, guide: 'issue-flow' },
+  intakeFailures: {
+    item: { key: 'REQ-12', code: 'INTAKE_MODEL_UNCONFIGURED' },
+    guide: 'requirement-lifecycle',
+  },
   reviews: {
     item: { issueId: 'u27', key: 'ISS-27', status: 'awaiting_release', criteria: [1] },
     guide: 'qa',

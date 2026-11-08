@@ -308,6 +308,7 @@ const NONE: Parameters<typeof owedLine>[0] = {
   endedRunHolds: [],
   requests: [],
   carriers: [],
+  intakeFailures: [],
   reviews: [],
   contentLanguage: 'en',
 };
