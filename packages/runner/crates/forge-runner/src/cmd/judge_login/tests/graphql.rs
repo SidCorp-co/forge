@@ -324,45 +324,48 @@ pub(super) fn refusals(api: &str) -> Vec<(&'static str, Value, &'static str)> {
             ),
             "`storageKey` and `storage` both name `auth_token`",
         ),
-        (
-            "a storageOrigin with a path (ISS-1146)",
-            answer(
+    ]
+}
+
+/// Each `storageOrigin` `judge-login` refuses (ISS-1146): one that is no origin, and one with
+/// nothing to write there.
+pub(super) fn origin_refusals(api: &str) -> Vec<(&'static str, Value, &'static str)> {
+    const NO_ORIGIN: &str = "`storageOrigin` is the origin the browser session is written for";
+    let keyed = |origin: Value| {
+        answer(
+            api,
+            &graphql_secret(
                 api,
-                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": "https://admin.forge.test/vi/login" })),
+                json!({ "storageKey": "auth_token", "storageOrigin": origin }),
             ),
-            "`storageOrigin` is the origin the browser session is written for",
+        )
+    };
+    let mut out: Vec<(&'static str, Value, &'static str)> = [
+        (
+            "a storageOrigin with a path",
+            json!("https://admin.forge.test/vi/login"),
         ),
         (
             "a storageOrigin over http to another machine",
-            answer(
-                api,
-                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": "http://admin.forge.test" })),
-            ),
-            "`storageOrigin` is the origin the browser session is written for",
+            json!("http://admin.forge.test"),
         ),
         (
             "a storageOrigin with a user part",
-            answer(
-                api,
-                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": "https://u@admin.forge.test" })),
-            ),
-            "`storageOrigin` is the origin the browser session is written for",
+            json!("https://u@admin.forge.test"),
         ),
-        (
-            "a storageOrigin that is no string",
-            answer(
-                api,
-                &graphql_secret(api, json!({ "storageKey": "auth_token", "storageOrigin": 7 })),
-            ),
-            "`storageOrigin` is the origin the browser session is written for",
-        ),
-        (
-            "a storageOrigin with nothing to write there",
-            answer(
-                api,
-                &graphql_secret(api, json!({ "storageOrigin": "https://admin.forge.test" })),
-            ),
-            "`storageOrigin` names where the browser session is written, and the secret names no `storage` or `storageKey`",
-        ),
+        ("a storageOrigin that is no string", json!(7)),
     ]
+    .into_iter()
+    .map(|(case, origin)| (case, keyed(origin), NO_ORIGIN))
+    .collect();
+    out.push((
+        "a storageOrigin with nothing to write there",
+        answer(
+            api,
+            &graphql_secret(api, json!({ "storageOrigin": "https://admin.forge.test" })),
+        ),
+        "`storageOrigin` names where the browser session is written, and the secret names no \
+         `storage` or `storageKey`",
+    ));
+    out
 }

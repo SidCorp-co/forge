@@ -568,6 +568,7 @@ async fn a_profile_it_cannot_sign_in_for_is_refused_by_name_and_nothing_is_writt
     for (i, (case, answered, says)) in refusals(&api, &redirecting)
         .into_iter()
         .chain(graphql::refusals(&api))
+        .chain(graphql::origin_refusals(&api))
         .enumerate()
     {
         let dir = root.0.join(format!("case-{i}"));
