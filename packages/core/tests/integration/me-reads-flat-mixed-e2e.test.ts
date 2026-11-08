@@ -9,6 +9,9 @@
 // @direct-test-of packages/core/src/db/read-order.ts
 // @direct-test-of packages/core/src/feedback/list-read.ts
 // @direct-test-of packages/core/src/forecast/release.ts
+// @direct-test-of packages/core/src/release-batch/release-list-read.ts
+// @direct-test-of packages/core/src/release-batch/release-facts.ts
+// @direct-test-of packages/core/src/release-batch/blockers.ts
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -109,13 +112,14 @@ async function sentBy(path: string): Promise<{
  * How many waves each area of a warm read sends its statements in at most: the quiet points
  * (`db/query-timing.ts:whenQuiet`) at which it sends any. Each wave waits on the one before it, so
  * at forge-dev's ~3 ms a statement the depth, not the count, sets the time (ISS-1070 r16). Set at
- * the seed's count; lowered by a cut, never raised.
+ * the seed's count; lowered by a cut, never raised (r17: ny-releases 26 to 10, ny-requirements 17
+ * to 11, ny-issues 9 to 6).
  */
 const WAVES: Record<string, Record<string, number>> = {
   '/api/me/attention': {
-    'ny-releases': 26,
-    'ny-requirements': 17,
-    'ny-issues': 9,
+    'ny-releases': 10,
+    'ny-requirements': 11,
+    'ny-issues': 6,
     'ny-design-health': 8,
     'ny-feedback': 7,
     'ny-folded': 4,

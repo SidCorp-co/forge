@@ -1,0 +1,1 @@
+**Needs you opens faster across many projects.** A release's facts, blockers and cuts, and a requirement's live build, are read together rather than one after another, so the attention read waits on far fewer round trips.
