@@ -27,13 +27,24 @@ const READ_EVERY: Duration = Duration::from_millis(200);
 /// Every how many reads the pane is asked whether it is still there.
 const ALIVE_EVERY: u32 = 10;
 
+/// How long a message typed into a running turn may go unreported by `UserPromptSubmit` before the
+/// turn stops waiting for it. Measured on 2.1.319, the hook fires within half a second of the paste.
+const UNSUBMITTED_WITHIN: Duration = Duration::from_secs(30);
+
+/// Whether `reported`, a `UserPromptSubmit` prompt, is the message `typed`: the same text, its
+/// whitespace aside.
+fn same_prompt(typed: &str, reported: &str) -> bool {
+    let words = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    words(typed) == words(reported)
+}
+
 pub(crate) struct PaneSession {
     pane: ChatPane,
     claude_session_id: String,
     turn_tx: TurnTx,
     in_turn: bool,
-    /// Messages typed into the running turn that the session has not yet said it took.
-    unsubmitted: Vec<String>,
+    /// Messages typed into the running turn that the session has not yet said it took, and when.
+    unsubmitted: Vec<(String, std::time::Instant)>,
     pending_inbox: Vec<(String, u64)>,
     turns: u64,
     bearer_dir: Option<PathBuf>,
@@ -345,7 +356,8 @@ impl ClaudeCodeRunner {
                 .ok_or_else(|| Error::Other("session not found".into()))?;
             let joined = s.in_turn;
             if joined {
-                s.unsubmitted.push(message.to_string());
+                s.unsubmitted
+                    .push((message.to_string(), std::time::Instant::now()));
             } else {
                 s.in_turn = true;
             }
@@ -356,7 +368,7 @@ impl ClaudeCodeRunner {
             let mut map = self.panes.lock().await;
             if let Some(s) = map.get_mut(id) {
                 if joined {
-                    if let Some(i) = s.unsubmitted.iter().rposition(|m| m == message) {
+                    if let Some(i) = s.unsubmitted.iter().rposition(|(m, _)| m == message) {
                         s.unsubmitted.remove(i);
                     }
                 } else {
@@ -565,18 +577,34 @@ impl Watch {
             return;
         };
         if let Some(s) = self.panes.lock().await.get_mut(&self.id) {
-            if let Some(i) = s.unsubmitted.iter().position(|m| m == prompt) {
+            if let Some(i) = s.unsubmitted.iter().position(|(m, _)| same_prompt(m, prompt)) {
                 s.unsubmitted.remove(i);
             }
         }
     }
 
+    /// Messages typed into the turn the session has not said it took. One it has not named within
+    /// [`UNSUBMITTED_WITHIN`] is let go, said in the log: a prompt Claude Code reported in another
+    /// form than it was typed must not hold the turn open for ever.
     async fn unsubmitted(&self) -> usize {
-        self.panes
-            .lock()
-            .await
-            .get(&self.id)
-            .map_or(0, |s| s.unsubmitted.len())
+        let mut map = self.panes.lock().await;
+        let Some(s) = map.get_mut(&self.id) else {
+            return 0;
+        };
+        s.unsubmitted.retain(|(m, at)| {
+            let waiting = at.elapsed() < UNSUBMITTED_WITHIN;
+            if !waiting {
+                tracing::warn!(
+                    "[chat {}] a message typed into the turn {}s ago was never reported taken; the turn \
+                     no longer waits for it: {}",
+                    self.id,
+                    UNSUBMITTED_WITHIN.as_secs(),
+                    m.chars().take(80).collect::<String>()
+                );
+            }
+            waiting
+        });
+        s.unsubmitted.len()
     }
 
     /// The turn's verdict, after every inbox write it took is reported applied.
@@ -697,6 +725,12 @@ mod tests {
     }
 
     #[test]
+    fn a_reported_prompt_is_the_typed_message_whatever_its_whitespace() {
+        assert!(same_prompt("hello\n  there ", "hello there"));
+        assert!(!same_prompt("hello", "hello there"));
+    }
+
+    #[test]
     fn a_stop_for_another_session_is_not_this_pane_s() {
         let w = Watch {
             panes: Arc::default(),
@@ -712,5 +746,54 @@ mod tests {
         };
         assert!(w.ours(&serde_json::json!({"session_id":"s1"})));
         assert!(!w.ours(&serde_json::json!({"session_id":"s2"})));
+    }
+
+    /// Whether `rx` yields `Done` within `within`, the lines before it dropped.
+    async fn done_within(rx: &mut mpsc::Receiver<RunnerEvent>, within: Duration) -> bool {
+        tokio::time::timeout(within, async {
+            while let Some(ev) = rx.recv().await {
+                if matches!(ev, RunnerEvent::Done) {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    /// Measured on 2.1.319: a message typed while the model writes its last text is queued, the
+    /// turn's Stop fires, and the message runs as a turn of its own straight after with a second
+    /// Stop. The turn core handed ends with the second.
+    #[tokio::test]
+    async fn a_stop_while_a_typed_message_is_still_queued_does_not_end_the_turn() {
+        let dir = std::env::temp_dir().join(format!("pane-queued-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (events, transcript) = (dir.join("events.jsonl"), dir.join("t.jsonl"));
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
+        let (tx, mut rx) = mpsc::channel(64);
+        test_turn(&runner, "q", "s1", events.clone(), transcript.clone(), tx).await;
+        let line = |v: serde_json::Value| format!("{v}\n");
+        let mut t = line(serde_json::json!({"type":"user","message":{"content":"story"}}));
+        t += &line(serde_json::json!({"type":"queue-operation","operation":"enqueue","content":"HOTEL"}));
+        std::fs::write(&transcript, &t).unwrap();
+        let now = runner_core::agent_activity::now_ms();
+        chat_pane_events::append(&events, "Stop", br#"{"session_id":"s1"}"#, now).unwrap();
+        chat_pane_events::append(&events, STATUS_LINE, br#"{"cost":{"total_cost_usd":0.01}}"#, now + 1)
+            .unwrap();
+        assert!(
+            !done_within(&mut rx, Duration::from_millis(1500)).await,
+            "the turn ended on a Stop with a typed message still queued"
+        );
+        t += &line(serde_json::json!({"type":"queue-operation","operation":"dequeue"}));
+        t += &line(serde_json::json!({"type":"user","message":{"content":"HOTEL"}}));
+        std::fs::write(&transcript, &t).unwrap();
+        let now = runner_core::agent_activity::now_ms();
+        chat_pane_events::append(&events, "Stop", br#"{"session_id":"s1"}"#, now).unwrap();
+        chat_pane_events::append(&events, STATUS_LINE, br#"{"cost":{"total_cost_usd":0.02}}"#, now + 1)
+            .unwrap();
+        let ended = done_within(&mut rx, Duration::from_secs(5)).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(ended, "the second Stop, with nothing queued, did not end the turn");
     }
 }
