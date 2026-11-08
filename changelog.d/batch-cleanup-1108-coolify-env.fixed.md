@@ -1,0 +1,1 @@
+**The Coolify env door reads an empty variable as empty and names the deploy binding ids.** A token that cannot write is refused `COOLIFY_TOKEN_CANNOT_WRITE` naming its connection; a connection PATCH refuses a key it does not take (ISS-938).

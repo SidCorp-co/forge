@@ -1,1 +1,1 @@
-**The support rooms read names each room's recent threads, who asked and the feedback filed from them.** A master posting into a users' thread already told a result is refused unless it names that message as the one it follows up.
+**The support rooms read names each room's recent threads, who asked and the feedback filed from them.** A master repeating a told result in a users' thread is refused unless it names that message as the one it follows up.

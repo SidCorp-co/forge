@@ -1,1 +1,1 @@
-A production serving only what its releases shipped weighs every waiting issue at its landing, whenever it landed: an issue held out of the last release no longer flips the project to the served basis, and a release recorded by an abbreviated commit is read as the one served (ISS-970).
+**An issue held out of the last release no longer flips its project to the served basis.** Every waiting issue is weighed at its landing, and a release recorded by an abbreviated commit reads as the one served (ISS-970).

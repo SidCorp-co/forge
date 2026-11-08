@@ -1,0 +1,1 @@
+**An owner act names the room message asking for it and is logged beside it.** The product is told via `X-Forge-Via` it came through the assistant; an act naming an unhanded message is refused `SUPPORT_MESSAGE_UNKNOWN` (ISS-1014).

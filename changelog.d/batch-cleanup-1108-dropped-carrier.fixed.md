@@ -1,0 +1,1 @@
+**A feedback item whose carrier was dropped owes its re-triage on the master's pass,** to whoever triages there; the daily review names the binding key a project's thread is recorded under (ISS-1086).
