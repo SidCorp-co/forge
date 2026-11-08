@@ -146,6 +146,8 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"SECRET_NOT_JSON_OBJECT",
 	/** A merge whose result is over the length a secret holds (ISS-1140). */
 	"SECRET_MERGE_TOO_LONG",
+	/** A merge into a stored secret this core cannot decrypt (ISS-1140). */
+	"SECRET_MERGE_UNREADABLE",
 	"BINDING_ID_MISMATCH",
 	"BINDING_TARGET_UNSUPPORTED",
 	"BINDING_NOT_REPRESENTABLE",

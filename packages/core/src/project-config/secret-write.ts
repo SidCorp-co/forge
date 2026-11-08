@@ -231,9 +231,7 @@ export function mergeSetRefusals(set: Record<string, unknown>): ApiRefusal[] {
   });
 }
 
-export type SecretMergeOutcome =
-  | SecretWriteOutcome
-  | { ok: false; code: 'SECRET_NOT_FOUND' | 'SECRET_VALUE_UNREADABLE' };
+export type SecretMergeOutcome = SecretWriteOutcome | { ok: false; code: 'SECRET_NOT_FOUND' };
 
 /**
  * `PATCH /api/projects/:id/secrets/:scope/:name`: the stored value, a JSON object, gains the keys
@@ -250,10 +248,18 @@ export async function mergeSecret(input: {
   if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };
   const ref = secretRefOf(input.scope, input.name);
   const read = await readProjectSecrets(input.projectId, [ref]);
+  if (!read.ok && read.code === 'SECRET_VALUE_MISSING')
+    return { ok: false, code: 'SECRET_NOT_FOUND' };
   if (!read.ok) {
     return {
       ok: false,
-      code: read.code === 'SECRET_VALUE_MISSING' ? 'SECRET_NOT_FOUND' : read.code,
+      refusals: [
+        {
+          code: 'SECRET_MERGE_UNREADABLE',
+          path: '',
+          detail: `${ref} does not decrypt with this core's INTEGRATION_MASTER_KEY, so there is nothing to merge into; nothing was written. Write the whole value with PUT /api/projects/${input.projectId}/secrets/${input.scope}/${input.name}`,
+        },
+      ],
     };
   }
   let held: unknown;

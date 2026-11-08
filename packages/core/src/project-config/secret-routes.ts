@@ -203,12 +203,6 @@ projectSecretRoutes.patch(
         cause: { code: 'SECRET_NOT_FOUND' },
       });
     }
-    if (!outcome.ok && outcome.code === 'SECRET_VALUE_UNREADABLE') {
-      throw new HTTPException(409, {
-        message: `${secretRefOf(scope, name)} does not decrypt with this core's INTEGRATION_MASTER_KEY, so there is nothing to merge into; nothing was written. Write the whole value with PUT.`,
-        cause: { code: 'SECRET_VALUE_UNREADABLE' },
-      });
-    }
     if (!outcome.ok) throw vaultUnset(outcome.code);
     return c.json({ ...secretView(outcome.secret), signIn: outcome.signIn });
   },
