@@ -347,7 +347,8 @@ const HOME_ACROSS_CPU_MS = 800;
  * 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
 // ISS-1070 r11: each linked issue read once for every reader (`issues/display-ids.ts:issueCoresOf`), 149 to 147
-const ATTENTION_STATEMENTS = 147;
+// ISS-1159: the feedback list reads its shipped carriers' failing criteria (`list-carriers.ts:failingCriteriaOf`), 147 to 148
+const ATTENTION_STATEMENTS = 148;
 // ISS-1070 r10: the home names each project's live releases without the list's summary (122 to 70)
 const HOME_STATEMENTS = 74;
 /**
@@ -364,19 +365,22 @@ const ATTENTION_ACROSS_STATEMENTS = 153;
 const ATTENTION_BEYOND_ALONE = 6;
 const HOME_BEYOND_ALONE = 4;
 /** Needs you and its decisions, as {@link ATTENTION_STATEMENTS} counts the live shape's few. */
-// ISS-1070 r11: 141 to 139 and 140, as attention's
-const NEEDS_YOU_STATEMENTS = 140;
+// ISS-1070 r11: 141 to 139 and 140, as attention's; ISS-1159: 140 to 141, as attention's
+const NEEDS_YOU_STATEMENTS = 141;
 
 // Over the live shape the plans touch more pages, its verdicts naming many commits and runtimes rather
 // than one and its designs' health reading their builds (ISS-1070 r8, measured: Needs you 41k,
 // attention 39k, home 32.4k, What's new 7.9k, the newest shipped 16.7k, where r7's seed read under
-// 27k, 24k, 30k, 7k and 15k)
+// 27k, 24k, 30k, 7k and 15k). ISS-1159 prices +4,000 on each read that lists feedback: its shipped
+// carriers' failing criteria, one latest verdict per criterion, touched 3,931 buffers on this seed,
+// where every criterion carries `fail` verdicts under its latest pass; on forge a fail is rare. Priced
+// until a stored latest verdict per criterion answers it without the scan.
 const READS = (p: string): Ceiling[] => [
-  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 43000 },
+  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 47000 },
   {
     path: `/api/projects/${p}/needs-you/decisions`,
     statements: NEEDS_YOU_STATEMENTS,
-    buffers: 43000,
+    buffers: 47000,
   },
   // ISS-1070 r10's seed moved it: 20,283 buffers on the code before r10, 20,075 after
   { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 84, buffers: 20500 },
@@ -385,10 +389,10 @@ const READS = (p: string): Ceiling[] => [
   // ISS-1070 r11: over one seed the code before r11 and after touch the same 5,625; across seeds r11
   // measured 4,816 to 5,889, so the seed's spread and not the read crosses 5,800: priced alike
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 6000 },
-  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 41000 },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 45000 },
   // ISS-1070 r11: the code before r11 (97d264900) touched 27,011 and 27,023 buffers on this seed,
   // over the 26,000 r8 set; the seed and not the read moved it, priced until a read model replaces its scans
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 27500 },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 31500 },
   // ISS-1070 r10's seed moved it: 10,481 buffers on the code before r10, 10,673 after
   { path: '/api/me/whats-new', statements: 80, buffers: 11000 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
@@ -410,7 +414,8 @@ const READS_ACROSS = (p: string): Ceiling[] => [
     path: '/api/me/attention',
     statements: ATTENTION_ACROSS_STATEMENTS,
     // ISS-1070 r11: 165,453 and 165,892 on the code before r11 (97d264900), the seed's spread; priced alike
-    buffers: 167000,
+    // ISS-1159: +4,000 for the shipped carriers' failing criteria, priced as {@link READS} says
+    buffers: 171000,
     ms: ATTENTION_ACROSS_MS,
     cpuMs: ATTENTION_ACROSS_CPU_MS,
     beyondAlone: ATTENTION_BEYOND_ALONE,
@@ -418,18 +423,19 @@ const READS_ACROSS = (p: string): Ceiling[] => [
   {
     path: '/api/me/home',
     statements: HOME_STATEMENTS,
-    buffers: 60000,
+    // ISS-1159: +4,000 for the shipped carriers' failing criteria, priced as {@link READS} says
+    buffers: 64000,
     ms: HOME_ACROSS_MS,
     cpuMs: HOME_ACROSS_CPU_MS,
     beyondAlone: HOME_BEYOND_ALONE,
   },
   { path: '/api/me/whats-new', statements: 80, buffers: 11000 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
-  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 43000 },
+  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 47000 },
   {
     path: `/api/projects/${p}/needs-you/decisions`,
     statements: NEEDS_YOU_STATEMENTS,
-    buffers: 43000,
+    buffers: 47000,
   },
 ];
 

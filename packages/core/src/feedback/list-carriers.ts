@@ -7,28 +7,19 @@
 
 import type { FeedbackCarrierView, FeedbackRouteView } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsPerId } from '../db/read-memo.js';
+import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { issues, pipelineRuns } from '../db/schema.js';
+import { issueCriteria } from '../db/schema-issue-criteria.js';
 import { closedUnreleasedSql } from '../issues/index.js';
+import type { Row } from './read.js';
 
 /** Each issue a page of feedback names, with the release claiming it and whether it waits for one. */
 export function carrierIssueRows(issueIds: readonly string[]) {
   // an issue's row is its own: every project's asks are one read (ISS-1070 r6)
   return rowsPerId('carrierIssueRows', issueIds, carrierRowsOf, (r) => r.id);
 }
-
-/**
- * The numbers of an issue's live criteria whose latest verdict is `fail`, read inside the carriers'
- * own statement (ISS-1159): a carrier that shipped with one does not resolve the item it carries.
- */
-const failingCriteriaSql = sql<number[]>`ARRAY(
-  SELECT c.n FROM issue_criteria c
-  WHERE c.issue_id = ${issues.id} AND c.retired_at IS NULL
-    AND (SELECT v.verdict FROM criterion_verdicts v WHERE v.criterion_id = c.id
-         ORDER BY v.created_at DESC, v.id DESC LIMIT 1) = 'fail'
-  ORDER BY c.n)`;
 
 const carrierRowsOf = (issueIds: readonly string[]) =>
   db
@@ -39,7 +30,6 @@ const carrierRowsOf = (issueIds: readonly string[]) =>
       status: issues.status,
       releaseVersion: pipelineRuns.releaseVersion,
       unreleased: sql<boolean>`${closedUnreleasedSql(sql`${issues}`)}`,
-      failing: failingCriteriaSql,
     })
     .from(issues)
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
@@ -72,4 +62,53 @@ export function owedCarriers(
   return route.carriers.filter(
     (c) => !finished.includes(c.status) || (c.key !== null && unreleased.has(c.key)),
   );
+}
+
+/**
+ * The numbers of each issue's live criteria whose latest verdict is `fail` (ISS-1159): a carrier that
+ * shipped with one does not resolve the item it carries. Asked only for the carriers that would
+ * otherwise resolve an item (`list-read.ts:linkedOf`), and every project's asks are one statement
+ * (`db/read-memo.ts:memoizedPerId`), so the shell's reads stay within their buffer ceilings.
+ */
+export function failingCriteriaOf(issueIds: readonly string[]) {
+  return memoizedPerId('feedbackCarrierFailing', issueIds, async (some) => {
+    const rows = await db
+      .select({ issueId: issueCriteria.issueId, n: issueCriteria.n })
+      .from(issueCriteria)
+      .where(
+        and(
+          inArray(issueCriteria.issueId, [...some]),
+          isNull(issueCriteria.retiredAt),
+          sql`(SELECT v.verdict FROM criterion_verdicts v WHERE v.criterion_id = ${issueCriteria.id}
+                ORDER BY v.created_at DESC LIMIT 1) = 'fail'`,
+        ),
+      )
+      .orderBy(issueCriteria.n);
+    const failing = new Map<string, number[]>(some.map((id) => [id, []]));
+    for (const r of rows) failing.get(r.issueId)?.push(r.n);
+    return failing;
+  });
+}
+
+/**
+ * The carriers whose failing criteria an item's phase reads (ISS-1159): those of a triaged issue-routed
+ * item every carrier of which is closed and released, which would otherwise read resolved.
+ */
+export function shippedCarriersOfTriaged(
+  rows: readonly Pick<Row, 'id' | 'status' | 'route'>[],
+  routeIssues: ReadonlyMap<string, string[]>,
+  issueRows: readonly { id: string; status: string; unreleased: boolean }[],
+): string[] {
+  const byId = new Map(issueRows.map((i) => [i.id, i]));
+  const shipped = rows.flatMap((r) => {
+    if (r.status !== 'triaged' || r.route !== 'issue') return [];
+    const carrying = (routeIssues.get(r.id) ?? []).flatMap((id) => {
+      const issue = byId.get(id);
+      return issue && issue.status !== 'dropped' ? [issue] : [];
+    });
+    return carrying.every((i) => i.status === 'closed' && !i.unreleased)
+      ? carrying.map((i) => i.id)
+      : [];
+  });
+  return [...new Set(shipped)];
 }

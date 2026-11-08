@@ -30,7 +30,13 @@ import {
   suggestionRowsOf,
   workflowRowsOf,
 } from './linked-rows.js';
-import { carrierIssueRows, owedCarriers, unreleasedCarrierKeys } from './list-carriers.js';
+import {
+  carrierIssueRows,
+  failingCriteriaOf,
+  owedCarriers,
+  shippedCarriersOfTriaged,
+  unreleasedCarrierKeys,
+} from './list-carriers.js';
 import { releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import type { FeedbackActor, Row } from './read.js';
@@ -193,7 +199,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
   );
   const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
-  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound] =
+  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound, failing] =
     await Promise.all([
       releaseGateOf(projectId, atGate),
       allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
@@ -205,6 +211,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ),
       readOwedPolicy(projectId),
       owesTriage ? runnerBoundIn(projectId) : true,
+      failingCriteriaOf(shippedCarriersOfTriaged(allRows, routeIssues, issueRows)),
     ]);
   const { release, releaseHolders } = gate;
   const linked: Linked = {
@@ -229,7 +236,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           status: i.status,
           releaseVersion: i.releaseVersion ?? shippedReleases.get(i.id)?.version ?? null,
           unreleased: i.unreleased,
-          failing: i.failing,
+          failing: failing.get(i.id) ?? [],
         },
       ]),
     ),
