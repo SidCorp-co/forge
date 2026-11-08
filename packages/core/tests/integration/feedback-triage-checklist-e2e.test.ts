@@ -28,6 +28,7 @@ import {
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { agreedRequirement as agreedRequirementIn } from '../helpers/loop-close.js';
+import { declareControls } from '../helpers/project-controls.js';
 
 const LIVE = '9999999999999999999999999999999999999999';
 const FIXED = '3333333333333333333333333333333333333333';
@@ -373,6 +374,11 @@ describe('a suggestion accept meets the same check (criterion 3)', () => {
 });
 
 describe('loop close reads the record for a person (criterion 4)', () => {
+  // the window and the record are a strict project's: outside strict the ship is the verify (D5)
+  beforeEach(async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+  });
+
   /** A bug routed to a closed issue that traces BC-1 of an agreed requirement, naming BC-1 violated. */
   async function resolvedAgainstBc1(seq: number) {
     const req = await agreedRequirement();

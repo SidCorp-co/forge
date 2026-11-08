@@ -109,7 +109,7 @@ describe('Feedback reads stuck only what nobody moves (ISS-1072)', () => {
     await reportedFrom(fb, liveId);
     await aged(fb, 30);
     const row = await rowOf(fb);
-    expect(row.attentionGroup).toBe('stuck');
+    expect(row.attentionGroup).toBe('overdue');
     expect(row.times.stuck).not.toBeNull();
   });
 
@@ -118,7 +118,7 @@ describe('Feedback reads stuck only what nobody moves (ISS-1072)', () => {
     await reportedFrom(fb, archivedId);
     await aged(fb, 30);
     const row = await rowOf(fb);
-    expect(row.attentionGroup).not.toBe('stuck');
+    expect(row.attentionGroup).not.toBe('overdue');
     expect(row.times).toMatchObject({ stuck: null, dueAt: null });
   });
 
@@ -127,10 +127,11 @@ describe('Feedback reads stuck only what nobody moves (ISS-1072)', () => {
     await reportedFrom(fb, archivedId);
     await reportedFrom(fb, liveId);
     await aged(fb, 30);
-    expect((await rowOf(fb)).attentionGroup).toBe('stuck');
+    expect((await rowOf(fb)).attentionGroup).toBe('overdue');
   });
 
-  it('a resolved item whose confirm is long owed keeps its wait and never reads stuck', async () => {
+  // D5 (owner 2026-11-08): outside strict the answer settles it, so it is done and owed by nobody
+  it('a resolved item, long answered, is done and never reads stuck', async () => {
     const fb = await filed('Is the blank row a bug?');
     ok(
       await say('owner', 'POST', at(`/feedback/${fb}/triage`), {
@@ -142,8 +143,8 @@ describe('Feedback reads stuck only what nobody moves (ISS-1072)', () => {
     await aged(fb, 30);
     const row = await rowOf(fb);
     expect(row.phase).toBe('resolved');
-    expect(row.attentionGroup).not.toBe('stuck');
-    expect(row.waitingOn.kind).not.toBe('none');
+    expect(row.attentionGroup).toBe('done');
+    expect(row.waitingOn.kind).toBe('none');
     expect(row.times).toMatchObject({ stuck: null, dueAt: null });
   });
 });

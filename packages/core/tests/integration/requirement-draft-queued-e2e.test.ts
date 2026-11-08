@@ -86,7 +86,7 @@ describe("an agent's draft waiting on its master's propose-or-drop (ISS-1072)", 
   it('reads stuck while no master serves the project, by who serves it', async () => {
     const key = await agentDraft('A draft nobody serves');
     const row = await rowOf(key);
-    expect(row.attentionGroup, JSON.stringify(row.waitingOn)).toBe('stuck');
+    expect(row.attentionGroup, JSON.stringify(row.waitingOn)).toBe('overdue');
     expect((row.times as Doc).stuck).toMatchObject({ code: 'nobody_serves' });
   });
 
@@ -97,7 +97,7 @@ describe("an agent's draft waiting on its master's propose-or-drop (ISS-1072)", 
     expect((row.waitingOn as Doc).says).toMatchObject({
       act: { key: 'standing.act.proposeOrDrop' },
     });
-    expect(row.attentionGroup).toBe('waiting');
+    expect(row.attentionGroup).toBe('queued');
     expect((row.times as Doc).actClass).toBe('queue');
     expect((row.times as Doc).stuck).toBeNull();
     expect((row.times as Doc).dueAt).toBeNull();

@@ -249,39 +249,23 @@ afterAll(async () => {
   await closeWorld();
 });
 
-// ISS-1068: REQ-65's re-pin read as a person's wait on dev.356; the requirement's own standing now
-// asks the one rule (`whoOwes('requirement.repin')`), so where no gate asks a person it names the master
-describe('the planted re-pin names the master in its own wait, by the one rule', () => {
-  it('reads as a wait on the master naming the re-pin act', async () => {
+// ISS-1068, then owner 2026-11-08 (D3): where no gate asks a person and no traced step changed, the
+// re-pin is made by rule on the standing sweep; its wait names Forge, never the master or a person
+describe('the planted re-pin is made by rule, never asked', () => {
+  it('reads as a wait on Forge naming the re-pin act', async () => {
     const { openStandings } = await import('../../src/standing/index.js');
     const row = (await openStandings(projectId)).find((r) => r.subject.key === repinMasterTakes);
     expect(row?.waitingOn.kind).toBe('agent');
-    expect(row?.waitingOn.says.who.key).toBe('standing.who.master');
-    expect(row?.waitingOn.says.act.key).toBe('standing.acts');
+    expect(row?.waitingOn.says.who.key).toBe('standing.who.forge');
+    expect(row?.waitingOn.says.act.key).toBe('standing.act.moveByRule');
     expect(JSON.stringify(row?.waitingOn.says.act)).toContain('standing.act.updateToDesign');
   });
-});
 
-describe('a re-pin the master may take is asked of the master, and is on no person list (c1)', () => {
-  it('Needs you leaves it to the master', async () => {
+  it('Needs you leaves it to the rule', async () => {
     await setMasterRole('member');
     const read = await needsYou();
-    // the wait names the master itself, so no person's decision is built for it to leave out
     expect(read.listed).not.toContain(repinMasterTakes);
     expect(read.masterTakes).not.toContain(repinMasterTakes);
-  });
-
-  it('the steward asks the master, never reading it as a person act', async () => {
-    await askRun(repinMasterTakes);
-    expect(lastTurn()).not.toContain("a person's act");
-    expect(await masterAsksAbout(repinMasterTakes)).toHaveLength(1);
-  });
-
-  it('the sweep keeps that ask while the standing holds', async () => {
-    clock += 60_000;
-    expect((await steward.sweepStandings(new Date(clock))).settledAsks).toBe(0);
-    const open = await steward.openStewardAsks(projectId);
-    expect(open.filter((a) => a.ask.startsWith(`${repinMasterTakes}:`))).toHaveLength(1);
   });
 });
 
@@ -301,17 +285,13 @@ describe('a re-pin the project keeps for a person is the person’s, and the mas
     expect(lastTurn()).toContain(`${repinPersonOwes} waits on`);
     expect(lastTurn()).toContain("a person's act");
   });
-
-  it('an ask of the master standing from before is settled once the master may not take it', async () => {
-    clock += 60_000;
-    await steward.sweepStandings(new Date(clock));
-    const open = await steward.openStewardAsks(projectId);
-    expect(open.filter((a) => a.ask.startsWith(`${repinMasterTakes}:`))).toEqual([]);
-  });
 });
 
 describe('a release approval a person kind names stays a held act (c3, boundary)', () => {
   it('routes to the approve holders, never as a person act', async () => {
+    // the re-pins above are no longer this run's: a run started on one would take the scripted call
+    shown.delete(repinPersonOwes);
+    shown.delete(repinMasterTakes);
     await setMasterRole('viewer');
     const made = await createTestIssue(projectId, ownerId, 9001, {
       status: 'open',
@@ -349,5 +329,18 @@ describe('a release approval a person kind names stays a held act (c3, boundary)
     expect(lastTurn()).toContain('"askedOf\\":\\"releases.approve');
     expect(lastTurn()).not.toContain("a person's act");
     extra = [];
+  });
+});
+
+// last: it turns the project standard, which every describe above reads as strict
+describe('once no gate asks a person, the standing sweep re-pins by rule and asks nobody', () => {
+  it('re-pins it, and no ask of the master stands', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'standard' } });
+    clock += 60_000;
+    await steward.sweepStandings(new Date(clock));
+    const { openStandings } = await import('../../src/standing/index.js');
+    const row = (await openStandings(projectId)).find((r) => r.subject.key === repinMasterTakes);
+    expect(JSON.stringify(row?.waitingOn.says ?? {})).not.toContain('standing.act.updateToDesign');
+    expect(await masterAsksAbout(repinMasterTakes)).toEqual([]);
   });
 });
