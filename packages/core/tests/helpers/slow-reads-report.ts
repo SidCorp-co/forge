@@ -29,8 +29,8 @@ export interface Measure {
   /** The answer's size in bytes, as the wire carries it. */
   bytes: number;
   /**
-   * The process's own CPU time while it answered (`process.cpuUsage`): parsing, joining, freezing,
-   * whatever the database and the box's other load took meanwhile left out (ISS-1070 r11).
+   * The process's own CPU time while it answered (`process.threadCpuUsage`): parsing, joining, freezing,
+   * the process's main thread alone, so neither its collector's helper threads nor the box's other load count (ISS-1070 r11).
    */
   cpuMs: number;
 }

@@ -207,7 +207,7 @@ async function measured(path: string, as: string = token): Promise<Measure> {
   }
   try {
     const started = performance.now();
-    const cpu = process.cpuUsage();
+    const cpu = process.threadCpuUsage();
     const res = await app.request(path, {
       headers: { Authorization: `Bearer ${as}`, 'X-Forge-Lifecycle': '10' },
     });
@@ -220,7 +220,7 @@ async function measured(path: string, as: string = token): Promise<Measure> {
       path,
       status: res.status,
       ms: performance.now() - started,
-      cpuMs: ((u) => (u.user + u.system) / 1000)(process.cpuUsage(cpu)),
+      cpuMs: ((u) => (u.user + u.system) / 1000)(process.threadCpuUsage(cpu)),
       timing: res.headers.get('Server-Timing') ?? '',
       statements,
       body: (text ? JSON.parse(text) : null) as Doc,
