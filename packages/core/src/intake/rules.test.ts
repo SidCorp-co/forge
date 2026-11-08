@@ -140,6 +140,10 @@ const faultsOf = (answer: IntakeAnswer, item = requirement, touched: readonly st
   return out.ok ? [] : out.faults;
 };
 
+/** A feedback draft's triage faults: refused on their own while the value check stands (ISS-690 c1). */
+const triageFaultsOf = (out: ReturnType<typeof judge>) =>
+  out.ok ? out.draft.triageFaults : out.faults;
+
 const link = (
   relation: IntakeAnswer['links'][number]['relation'],
   ref: string,
@@ -241,7 +245,9 @@ describe('an intake draft judged against what it read', () => {
         ),
       ],
     };
-    expect(faultsOf(fb, feedbackItem)).toEqual([
+    const missing = judge(fb, feedbackItem);
+    expect(missing.ok, 'a triage fault leaves the value check standing').toBe(true);
+    expect(triageFaultsOf(missing)).toEqual([
       'triage is missing: a feedback draft carries its triage checklist',
     ]);
     const wrong = judge(
@@ -249,8 +255,10 @@ describe('an intake draft judged against what it read', () => {
       feedbackItem,
       () => 'route: invalid',
     );
-    expect(wrong.ok ? [] : wrong.faults).toEqual(['triage: route: invalid']);
-    expect(judge({ ...fb, triage: { route: 'issue' } }, feedbackItem).ok).toBe(true);
+    expect(triageFaultsOf(wrong)).toEqual(['triage: route: invalid']);
+    expect(wrong.ok && wrong.draft.triage, 'a refused triage is never proposed').toBeUndefined();
+    const taken = judge({ ...fb, triage: { route: 'issue' } }, feedbackItem);
+    expect(taken.ok && taken.draft.triageFaults).toEqual([]);
     expect(faultsOf({ ...base, triage: { route: 'issue' } })).toEqual([
       'triage is set on a requirement draft: leave it out',
     ]);
@@ -390,7 +398,7 @@ describe('the value check judged against what it read (REQ-65 BC-2..BC-5)', () =
         },
         feedbackItem,
       );
-      return out.ok ? out : out.faults;
+      return out.ok && out.draft.triageFaults.length === 0 ? out : triageFaultsOf(out);
     };
     expect(
       fb({ outcome: { kind: 'refuse', reason: 'Not a problem.' } }, { route: 'issue' }),

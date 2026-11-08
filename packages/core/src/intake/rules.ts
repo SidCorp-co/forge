@@ -37,8 +37,14 @@ export interface JudgedDraft {
   questions: IntakeQuestion[];
   nothingToAsk: string | null;
   value: JudgedValue;
-  /** A feedback draft's triage checklist, parsed by the suggestion's own schema; absent while the check is held. */
+  /** A feedback draft's triage checklist, parsed by the suggestion's own schema; absent while the check is held, or refused. */
   triage: unknown;
+  /**
+   * What refused a feedback draft's triage while its value check stood (ISS-690 c1): the check is
+   * kept and the triage left to the master, never the whole draft thrown away for the triage's
+   * faults. Empty where the triage was taken or none was judged.
+   */
+  triageFaults: string[];
 }
 
 export type Judged = { ok: true; draft: JudgedDraft } | { ok: false; faults: string[] };
@@ -344,22 +350,25 @@ export function judgeDraft(answer: IntakeAnswer, input: JudgeInput): Judged {
     );
   }
 
+  // a feedback draft's triage is judged apart from its value check: a triage fault refuses the triage
+  // alone, so a sound check is never lost to it (ISS-690 c1: 32 of 39 INTAKE_SHAPE failures)
+  const triageFaults: string[] = [];
   if (item.kind === 'feedback') {
     // a held check proposes no triage, so none is judged: the reporter's answer comes first
     const outcome = judged.value.outcome;
     if (outcome && answer.triage === undefined) {
-      faults.push('triage is missing: a feedback draft carries its triage checklist');
+      triageFaults.push('triage is missing: a feedback draft carries its triage checklist');
     } else if (outcome) {
       const wrong = input.triageFault(answer.triage);
-      if (wrong) faults.push(`triage: ${wrong}`);
-      faults.push(...triageRestFaults(answer.triage, links, refused));
-      faults.push(...triageFollowsFaults(answer.triage, outcome));
+      if (wrong) triageFaults.push(`triage: ${wrong}`);
+      triageFaults.push(...triageRestFaults(answer.triage, links, refused));
+      triageFaults.push(...triageFollowsFaults(answer.triage, outcome));
     }
   } else if (answer.triage !== undefined) {
     faults.push('triage is set on a requirement draft: leave it out');
   }
 
-  if (faults.length) return { ok: false, faults };
+  if (faults.length) return { ok: false, faults: [...faults, ...triageFaults] };
   return {
     ok: true,
     draft: {
@@ -369,7 +378,8 @@ export function judgeDraft(answer: IntakeAnswer, input: JudgeInput): Judged {
       questions: answer.questions,
       nothingToAsk: asks ? null : answer.nothingToAsk,
       value: judged.value,
-      triage: held ? undefined : answer.triage,
+      triage: held || triageFaults.length > 0 ? undefined : answer.triage,
+      triageFaults,
     },
   };
 }

@@ -112,6 +112,8 @@ export async function draftIntake(item: IntakeItem, deps: DraftDeps): Promise<Dr
   };
   const spent: Spent[] = [];
   let model: string | null = null;
+  // a draft whose value check stood while its triage was refused: kept if the retry does no better
+  let kept: JudgedDraft | null = null;
   for (const attempt of [1, 2]) {
     const answer = await deps.complete(scope, messages, {
       temperature: 0,
@@ -142,11 +144,17 @@ export async function draftIntake(item: IntakeItem, deps: DraftDeps): Promise<Dr
         touched,
         triageFault: deps.triageFault,
       });
-      if (judged.ok) return { outcome: 'drafted', draft: judged.draft, read, model, spent };
-      refused = judged.faults;
+      if (judged.ok && (judged.draft.triageFaults.length === 0 || attempt === 2)) {
+        return { outcome: 'drafted', draft: judged.draft, read, model, spent };
+      }
+      if (judged.ok) {
+        kept = judged.draft;
+        refused = judged.draft.triageFaults;
+      } else refused = judged.faults;
     }
     const why = refused.slice(0, 12).join('; ');
     if (attempt === 2) {
+      if (kept) return { outcome: 'drafted', draft: kept, read, model, spent };
       return {
         outcome: 'failed',
         code: 'INTAKE_SHAPE',
