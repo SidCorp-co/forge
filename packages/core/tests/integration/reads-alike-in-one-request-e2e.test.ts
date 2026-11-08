@@ -14,6 +14,7 @@
 // its feedback lines and its own dates: each project's reads answer there what they answer alone.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/issues/standing-read.ts
+// @direct-test-of packages/core/src/issues/standing-rows.ts
 // @direct-test-of packages/core/src/issues/standing-facts-memo.ts
 // @direct-test-of packages/core/src/requirements/standing-share.ts
 // @direct-test-of packages/core/src/requirements/read.ts
@@ -54,6 +55,7 @@ import { listShippedReleases } from '../../src/release-batch/release-list-read.j
 import { listRequirementsAs } from '../../src/requirements/index.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestUser, seedOrg } from '../helpers/factories.js';
+import { holdFromOutside } from '../helpers/live-mix.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
 
 let ownerId: string;
@@ -175,6 +177,9 @@ describe("inside one read across a person's projects, each project's reads answe
       worlds.push(
         await seedAtScale(personId, n === 1 ? { ...SMALL, batches: 3 } : SMALL, { orgId }),
       );
+    // closed blockers whose design is unapproved hold open issues: the open list follows them
+    // outside its page, from rows its own statement read (ISS-1070 r19)
+    await holdFromOutside(worlds[0] as string, personId);
   }, 180_000);
 
   it("answers each project's Needs you, open issues, requirements, newest releases and home part alike", async () => {
@@ -217,6 +222,12 @@ describe("inside one read across a person's projects, each project's reads answe
         expect(shipped.releases).toHaveLength(3);
         expect(live.releases.length).toBeGreaterThan(0);
       }
+      const [first] = alone as Awaited<ReturnType<typeof reads>>[];
+      expect(
+        first?.[2].issues.some((i) =>
+          i.standing.blockedBy.some((b) => b.status === 'closed' && b.group !== null),
+        ),
+      ).toBe(true);
       expect(together).toEqual(alone);
       // the home's live read names what the release list's summaries of the same releases name
       for (const id of worlds) {

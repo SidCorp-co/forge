@@ -180,7 +180,7 @@ async function judgeAtRequirement(projectId: string): Promise<void> {
  * (`issues/blocked-by.ts:blockerUnsettledSql`), so the open list follows it outside the rows it read
  * (`issues/standing-read.ts:standingRows`), as forge-dev's design issues do (ISS-1070 r19).
  */
-async function holdFromOutside(projectId: string, ownerId: string): Promise<void> {
+export async function holdFromOutside(projectId: string, ownerId: string): Promise<void> {
   await withKernelMarker(db, async (tx) => {
     await tx.execute(sql`
       WITH held AS (
