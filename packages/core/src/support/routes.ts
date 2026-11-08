@@ -49,6 +49,7 @@ import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
 import { mountOwnerRoutes } from './owner-routes.js';
 import { mountRoomBriefRoutes } from './room-brief.js';
+import { mountRunReadRoutes } from './run-reads.js';
 import { mountTurnRecordRoutes } from './turn-record.js';
 
 export { ownerSignInCallbackRoutes } from './owner-routes.js';
@@ -66,8 +67,9 @@ import { supportTurnsOf } from './turns.js';
 export const supportRoutes = new Hono<{ Variables: AuthVars }>();
 
 // what every support door was held to while other project routers' `use('*')` gates ran ahead of
-// these (ISS-925): a credential, and a verified email for a person; `agent-roles` is this router's too
-for (const path of ['/:id/support/*', '/:id/agent-roles']) {
+// these (ISS-925): a credential, and a verified email for a person; `agent-roles` and a run's
+// `ops-reads` (ISS-707) are this router's too
+for (const path of ['/:id/support/*', '/:id/agent-roles', '/:id/ops-reads/*']) {
   supportRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -461,6 +463,7 @@ supportRoutes.post(
 mountChannelRoutes(supportRoutes);
 mountTurnRecordRoutes(supportRoutes);
 mountRoomBriefRoutes(supportRoutes);
+mountRunReadRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
 

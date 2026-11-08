@@ -6,13 +6,15 @@
 // printed is cut of every secret value and scrubbed by the asker's own scrubber before anyone reads it.
 
 import {
+  SUPPORT_BOX_CAPABILITIES,
   SUPPORT_READ_TIMEOUT_DEFAULT_MS,
   type SupportRead,
   type SupportReadResult,
   type SupportReadSecret,
 } from '@forge/contracts/support';
+import { boxLacks } from '../agent-sessions/index.js';
 import { readProjectSecrets } from '../project-config/index.js';
-import { runOpsRead } from '../runners/index.js';
+import { onlineCapableDeviceIds, runOpsRead } from '../runners/index.js';
 import { type ReadArgs, readArgv } from './ops-read-args.js';
 import { no, type Outcome } from './outcome.js';
 
@@ -46,6 +48,29 @@ export async function secretEnvOf(
     ok: true,
     env: Object.fromEntries(declared.map((d) => [d.env, got.values.get(d.secret) as string])),
   };
+}
+
+/**
+ * The box a read asked outside a room runs on (a run's, a script's): one online box bound to the
+ * project that runs a declared read, so any runner of the project serves it.
+ */
+export async function projectReadBox(projectId: string): Promise<Outcome<string>> {
+  const need = SUPPORT_BOX_CAPABILITIES.reads;
+  const online = await onlineCapableDeviceIds(projectId, undefined, {
+    includeLimited: true,
+    includeBelowFloor: true,
+  });
+  for (const deviceId of online) {
+    const box = await boxLacks(deviceId, [need]);
+    if (box && box.lacks.length === 0) return { ok: true, value: deviceId };
+  }
+  return no(
+    'SUPPORT_READ_FAILED',
+    '/name',
+    online.length === 0
+      ? 'no box bound to this project is online to run it'
+      : `no online box bound to this project declares ${need}: its forge-runner predates it (\`forge-runner update\` on the box)`,
+  );
 }
 
 /** `text` with every handed secret's value cut out, named by its variable. */
