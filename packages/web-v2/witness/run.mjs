@@ -26,11 +26,11 @@
 // Chrome reaches no network on some boxes, so everything is a `file://` page in `<out>`; the
 // browser binary is `WITNESS_CHROME`, else `google-chrome`.
 
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildPage, viteFor } from "./build-page.mjs";
+import { spawnTied } from "./chrome-tied.mjs";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = "usage: node witness/run.mjs <entry.witness.tsx> --out <dir> [--clip]";
@@ -304,7 +304,8 @@ async function main() {
   const ceiling = clip ? await clipCeiling() : null;
   const profile = resolve(out, ".chrome-profile");
   rmSync(profile, { recursive: true, force: true });
-  const chrome = spawn(
+  // its own process group, ended whole below, and tied to this run so a run killed first leaves no Chrome
+  const chrome = spawnTied(
     process.env.WITNESS_CHROME || "google-chrome",
     ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
     { stdio: "ignore" },
@@ -340,7 +341,11 @@ async function main() {
     console.log(`witness: ${basename(entry)}, ${cases.length} case(s), screenshots${clip ? " and clips" : ""} in ${out}`);
   } finally {
     cdp?.close();
-    chrome.kill("SIGKILL");
+    try {
+      if (chrome.pid !== undefined) process.kill(-chrome.pid, "SIGKILL");
+    } catch {
+      // the group is already gone
+    }
     await pause(200);
     rmSync(profile, { recursive: true, force: true });
   }

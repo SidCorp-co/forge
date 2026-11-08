@@ -10,7 +10,7 @@
 // cannot read inside, so it counts it as listing the root; it reads only its own fresh profile.
 // @gate-input whole-tree
 
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { spawnTied } from "../../../witness/chrome-tied.mjs";
 import { MockupFrame } from "./components/mockup-preview";
 
 const SECRET = "forge-session-secret";
@@ -126,10 +127,10 @@ async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: st
 async function launch(): Promise<{ proc: ChildProcess; page: string; profile: string }> {
   const bin = process.env.WITNESS_CHROME ?? "google-chrome";
   const profile = mkdtempSync(join(tmpdir(), "mockup-isolation-"));
-  const proc = spawn(bin, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", "--remote-allow-origins=*", `--user-data-dir=${profile}`, "about:blank"], {
+  // its own process group, so `stop` can end every helper and not the browser alone, tied to this
+  // process so a worker killed before `stop` leaves no Chrome behind
+  const proc = spawnTied(bin, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", "--remote-allow-origins=*", `--user-data-dir=${profile}`, "about:blank"], {
     stdio: ["ignore", "ignore", "pipe"],
-    // its own process group, so `stop` can end every helper and not the browser alone
-    detached: true,
   });
   // what Chrome said on stderr, so a start that never answers is named by Chrome's own words
   let said = "";
