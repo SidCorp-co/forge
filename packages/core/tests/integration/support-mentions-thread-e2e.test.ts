@@ -143,13 +143,19 @@ describe('ISS-985: a room answering only mentions', () => {
     const followUp = 'and for contractors?';
     failing.set(followUp, 1);
     await w.chat.say(w.chat.bob, followUp, opener);
+    // ISS-1074: one 30 s wait spanned the failed turn, its 5 s back-off and the retried turn, and
+    // under four integration workers the answer landed after it. Each step waits on its own signal:
+    // the retry core records when the failed turn ends, then the retried turn's answer.
+    const retried = async () =>
+      (await w.actions(roomId)).filter(
+        (a) => a.kind === 'refused' && a.tool === 'turn_retry' && a.thread === opener,
+      ) as { output: Record<string, unknown> }[];
+    await expect.poll(async () => (await retried()).length, { timeout: 30_000 }).toBe(1);
     await answered(opener, followUp);
     expect(handedTexts().filter((m) => m.text === followUp)).toHaveLength(2);
-    const tries = (await w.actions(roomId)).filter(
-      (a) => a.kind === 'refused' && a.tool === 'turn_retry' && a.thread === opener,
-    ) as { output: Record<string, unknown> }[];
+    const tries = await retried();
     expect(tries).toHaveLength(1);
     expect(tries[0]?.output).toMatchObject({ try: 1, of: 3 });
     expect(String(tries[0]?.output.cause)).toMatch(/ended failed/);
-  }, 60_000);
+  }, 90_000);
 });
