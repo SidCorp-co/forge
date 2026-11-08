@@ -20,7 +20,7 @@ export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas
   const newest = (a: RequirementSummary, b: RequirementSummary) => b.standing.touchedAt.localeCompare(a.standing.touchedAt);
   const groups: ListGroup<RequirementSummary>[] =
     by === "attention"
-      ? REQUIREMENT_ATTENTION_GROUPS.map((g) => ({ id: g, label: label(g), rows: rows.filter((r) => r.standing.attentionGroup === g), collapsed: REQUIREMENT_ATTENTION_LABELS[g].collapsed }))
+      ? REQUIREMENT_ATTENTION_GROUPS.map((g) => ({ id: g, label: label(g), rows: rows.filter((r) => r.standing.attentionGroup === g), tone: REQUIREMENT_ATTENTION_LABELS[g].tone, collapsed: REQUIREMENT_ATTENTION_LABELS[g].collapsed }))
       : [
           ...areas.map((a) => ({ id: a.id, label: a.name, rows: rows.filter((r) => r.area?.id === a.id) })),
           { id: "none", label: noArea, rows: rows.filter((r) => !r.area) },
