@@ -351,29 +351,32 @@ const HOME_ACROSS_MS = 1880;
  * feedback list reads its duplicates' roots and the requirements items were routed to with their
  * delivered status (+3, every read); the home reads those requirements by number and their issues
  * (+3), the forecast's requirement lines (+2) and a release over a runtime (+1); attention and Needs
- * you read requirements accepted and dropped beside agreed ones (+1). Over r7's uniform seed the
- * reads still send 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
+ * you read requirements accepted and dropped beside agreed ones (+1); and the health of forge's 25
+ * approved designs, its inputs and its builds' latest runs, once for every design (Needs you and
+ * attention +32, What's new and the newest shipped +3). Over r7's uniform seed the reads still send
+ * 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
-const ATTENTION_STATEMENTS = 117;
-const HOME_STATEMENTS = 120;
+const ATTENTION_STATEMENTS = 149;
+const HOME_STATEMENTS = 123;
 /** Needs you and its decisions, as {@link ATTENTION_STATEMENTS} counts the live shape's few. */
-const NEEDS_YOU_STATEMENTS = 109;
+const NEEDS_YOU_STATEMENTS = 142;
 
 // Over the live shape the plans touch more pages, its verdicts naming many commits and runtimes rather
-// than one (ISS-1070 r8, measured 24.2k, 32.4k, 7.9k and 16.7k where r7's seed read under 24k, 30k,
-// 7k and 15k): attention, home, What's new and the newest shipped
+// than one and its designs' health reading their builds (ISS-1070 r8, measured: Needs you 41k,
+// attention 39k, home 32.4k, What's new 7.9k, the newest shipped 16.7k, where r7's seed read under
+// 27k, 24k, 30k, 7k and 15k)
 const READS = (p: string): Ceiling[] => [
-  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 27000 },
+  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 43000 },
   {
     path: `/api/projects/${p}/needs-you/decisions`,
     statements: NEEDS_YOU_STATEMENTS,
-    buffers: 27000,
+    buffers: 43000,
   },
-  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 17500 },
+  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 84, buffers: 17500 },
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
-  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 25000 },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 41000 },
   { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 34000 },
-  { path: '/api/me/whats-new', statements: 77, buffers: 8500 },
+  { path: '/api/me/whats-new', statements: 80, buffers: 8500 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
@@ -391,17 +394,17 @@ const READS_ACROSS = (p: string): Ceiling[] => [
   {
     path: '/api/me/attention',
     statements: ATTENTION_STATEMENTS,
-    buffers: 80000,
+    buffers: 110000,
     ms: ATTENTION_ACROSS_MS,
   },
   { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000, ms: HOME_ACROSS_MS },
-  { path: '/api/me/whats-new', statements: 77, buffers: 8500 },
+  { path: '/api/me/whats-new', statements: 80, buffers: 8500 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
-  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 27000 },
+  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 43000 },
   {
     path: `/api/projects/${p}/needs-you/decisions`,
     statements: NEEDS_YOU_STATEMENTS,
-    buffers: 27000,
+    buffers: 43000,
   },
 ];
 
@@ -494,8 +497,10 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
       ...plans,
     ].join('\n');
     if (out) appendFileSync(out, `${line}\n`);
-    const alone = ALONE.get(path);
-    if (alone === undefined) ALONE.set(path, median.statements.length);
+    // a person's own reads across their projects: a project's page reads one project for anyone
+    const across = path.startsWith('/api/me/');
+    const alone = across ? ALONE.get(path) : undefined;
+    if (across && alone === undefined) ALONE.set(path, median.statements.length);
     failures.push(
       ...(alone !== undefined && median.statements.length > alone
         ? [
