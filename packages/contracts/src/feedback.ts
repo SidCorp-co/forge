@@ -20,11 +20,12 @@ import {
 } from "./pipeline-registry.js";
 import { REASON_LINE_MAX } from "./reason-text.js";
 import { type Said, saidSchema } from "./said.js";
-import type {
-	Standing,
-	StandingGroup,
-	StandingGroupLabels,
-	WaitingKind,
+import {
+	ATTENTION_LABELS,
+	type AttentionGroup,
+	type Standing,
+	type StandingGroupLabels,
+	type WaitingKind,
 } from "./standing.js";
 import { titleText } from "./title-text.js";
 import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
@@ -124,14 +125,17 @@ export const FEEDBACK_DECISIONS = [
 ] as const;
 export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 
-/** Who a row waits on, as the list groups it for the viewer. */
+/** Who a row waits on, as the list groups it for the viewer: the shared vocabulary (FB-583), with no
+ *  `deferred`, which an item never is. A declined item is `dropped`, never Done. */
 export const FEEDBACK_ATTENTION_GROUPS = [
 	"needs_you",
-	"stuck",
-	"moving",
+	"running",
+	"queued",
+	"overdue",
 	"waiting",
 	"done",
-] as const satisfies readonly StandingGroup[];
+	"dropped",
+] as const satisfies readonly AttentionGroup[];
 export type FeedbackAttentionGroup = (typeof FEEDBACK_ATTENTION_GROUPS)[number];
 
 export const FEEDBACK_PHASE_LABELS: Record<FeedbackPhase, string> = {
@@ -171,32 +175,46 @@ export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
 
 export const FEEDBACK_ATTENTION_LABELS: StandingGroupLabels<FeedbackAttentionGroup> =
 	{
-		needs_you: {
-			label: "Needs you",
-			tone: "you",
-			collapsed: false,
-		},
-		stuck: {
-			label: "Stuck",
-			tone: "blocked",
-			collapsed: false,
-		},
-		moving: {
-			label: "Moving",
-			tone: "run",
-			collapsed: false,
-		},
-		waiting: {
-			label: "Someone else’s turn",
-			tone: "neutral",
-			collapsed: false,
-		},
-		done: {
-			label: "Done",
-			tone: "done",
-			collapsed: true,
-		},
+		needs_you: ATTENTION_LABELS.needs_you,
+		running: ATTENTION_LABELS.running,
+		queued: ATTENTION_LABELS.queued,
+		overdue: ATTENTION_LABELS.overdue,
+		waiting: ATTENTION_LABELS.waiting,
+		done: ATTENTION_LABELS.done,
+		dropped: ATTENTION_LABELS.dropped,
 	};
+
+/**
+ * The one word a feedback row's chip says (FB-583): new until something carries it, planned while it
+ * is carried, running while its carrier works, done once it shipped or was confirmed, declined where
+ * it was refused. A resolved item is done: the shipped carrier is its verify (owner 2026-11-08), and
+ * nothing waits on its reporter.
+ */
+export const FEEDBACK_ROW_CHIPS = [
+	"new",
+	"planned",
+	"running",
+	"done",
+	"declined",
+] as const;
+export type FeedbackRowChip = (typeof FEEDBACK_ROW_CHIPS)[number];
+
+export const FEEDBACK_ROW_CHIP_LABELS: Record<FeedbackRowChip, string> = {
+	new: "New",
+	planned: "Planned",
+	running: "Running",
+	done: "Done",
+	declined: "Declined",
+};
+
+export const FEEDBACK_ROW_CHIP_TONES: Record<FeedbackRowChip, IssueStatusTone> = {
+	new: "neutral",
+	planned: "ready",
+	running: "run",
+	done: "done",
+	declined: "neutral",
+};
+
 
 export const FEEDBACK_PHASE_TONES: Record<FeedbackPhase, IssueStatusTone> = {
 	new: "you",
@@ -919,6 +937,8 @@ export interface FeedbackSummary
 	severity: FeedbackSeverity;
 	status: FeedbackStatus;
 	phase: FeedbackPhase;
+	/** The one word the row's chip says (`FEEDBACK_ROW_CHIPS`), from its phase and group, never the client's. */
+	chip: FeedbackRowChip;
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };
