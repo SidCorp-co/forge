@@ -8,3 +8,6 @@
 - The master's pass names no shipped feedback item as owing a confirm where its ship already verifies it (ISS-1085).
 - Landed work a standing decision holds at in progress is no longer named owed its move on every pass, until the decision ends or the work lands again (ISS-996).
 - A feedback item whose carrier was dropped owes its re-triage to whoever triages on that project and reaches the master's pass; the daily review names the binding key a project's thread is recorded under (ISS-1086).
+- A feedback row's ETA reads as a date, or "Shipped vX" once its carrier shipped.
+- The feedback list drops its reporter column; Age is the last column.
+- Steward notes are no longer shown on list rows.
