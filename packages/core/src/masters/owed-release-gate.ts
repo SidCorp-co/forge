@@ -11,8 +11,7 @@ import type {
   ReleaseHoldOwed,
   ReleaseMergeOwed,
 } from './ports.js';
-
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+import { agrees } from '../lib/plural.js';
 
 /** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
 const method = (slug: Parameters<typeof guideCall>[0]) => `\`${guideCall(slug)}\``;
@@ -30,11 +29,11 @@ export function recordingsLine(recordings: FilingRecordOwed[]): string {
     const keys = ready.map(
       (r) => `${r.key} ${r.issueId}: !${r.number} at ${r.commit}, ${r.release}`,
     );
-    line += ` ${ready.length} draft${plural(ready.length, '', 's')} filed for an owed merge and marked at it ${plural(ready.length, 'waits', 'wait')} on ${plural(ready.length, 'its', 'their')} record on a release that shipped the merge, and a release cut after it landed has shipped (${keys.join('; ')}): record each on that release (\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<version>","evidence":"<git>"}'\`), which checks the release's commit contains the merge and closes the draft there; where it does not, name the shipped release whose commit does, as ${method('issue-flow')} (Land, mark, move) says.`;
+    line += ` ${ready.length} draft${agrees(ready.length, '', 's')} filed for an owed merge and marked at it ${agrees(ready.length, 'waits', 'wait')} on ${agrees(ready.length, 'its', 'their')} record on a release that shipped the merge, and a release cut after it landed has shipped (${keys.join('; ')}): record each on that release (\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<version>","evidence":"<git>"}'\`), which checks the release's commit contains the merge and closes the draft there; where it does not, name the shipped release whose commit does, as ${method('issue-flow')} (Land, mark, move) says.`;
   }
   if (waiting.length > 0) {
     const keys = waiting.map((r) => `${r.key} ${r.issueId}: !${r.number} at ${r.commit}`);
-    line += ` ${waiting.length} draft${plural(waiting.length, '', 's')} filed for an owed merge ${plural(waiting.length, 'is', 'are')} marked, awaiting a release that contains the merge (${keys.join('; ')}): no cut claims a draft, so nothing is owed until one ships; this line then names the record to make.`;
+    line += ` ${waiting.length} draft${agrees(waiting.length, '', 's')} filed for an owed merge ${agrees(waiting.length, 'is', 'are')} marked, awaiting a release that contains the merge (${keys.join('; ')}): no cut claims a draft, so nothing is owed until one ships; this line then names the record to make.`;
   }
   return line;
 }
@@ -58,10 +57,10 @@ export function releaseHoldsLine(
   const other = holds.filter((h) => h.code !== SHIPPED_IN_OWED);
   let line = '';
   if (shippedIn.length > 0) {
-    line += ` ${shippedIn.length} issue${plural(shippedIn.length, ' waits', 's wait')} at the release gate on the record of the release that shipped ${plural(shippedIn.length, 'it', 'them')}, which you owe (${named(shippedIn)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold\` names the releases and the landing), check with git which shipped release contains the landing, and record it (\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<the shipped release holding it>","evidence":"<the git command and its answer>"}'\`), which closes the issue into it; send \`"version":null\` where none holds it, and the next release takes it.`;
+    line += ` ${shippedIn.length} issue${agrees(shippedIn.length, ' waits', 's wait')} at the release gate on the record of the release that shipped ${agrees(shippedIn.length, 'it', 'them')}, which you owe (${named(shippedIn)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold\` names the releases and the landing), check with git which shipped release contains the landing, and record it (\`forge-runner api projects/<projectId>/shipped-in-records -X POST -d '{"issueId":"<id>","version":"<the shipped release holding it>","evidence":"<the git command and its answer>"}'\`), which closes the issue into it; send \`"version":null\` where none holds it, and the next release takes it.`;
   }
   if (other.length > 0) {
-    line += ` ${other.length} issue${plural(other.length, ' waits', 's wait')} at the release gate on a hold whose act is yours (${named(other)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold.reason\` names the act and its door) and take that act, or move the issue out of \`awaiting_release\` if it is not to ship, saying why.`;
+    line += ` ${other.length} issue${agrees(other.length, ' waits', 's wait')} at the release gate on a hold whose act is yours (${named(other)}): read each hold (\`forge-runner api issues/<id>\`, its \`releaseHold.reason\` names the act and its door) and take that act, or move the issue out of \`awaiting_release\` if it is not to ship, saying why.`;
   }
   return endedRunHoldsLine(ended) + line;
 }
@@ -77,7 +76,7 @@ function endedRunHoldsLine(holds: ReleaseEndedRunHold[]): string {
   const passing = holds.filter((h) => h.act === 'sweep');
   let line = '';
   if (owed.length > 0) {
-    line += ` ${owed.length} release run${plural(owed.length, ' that ended still claims', 's that ended still claim')} issues at the release gate and ${plural(owed.length, 'owes its', 'owe their')} abort, which you owe; no cut is taken until then: ${owed.map((h) => h.sentence).join(' ')}`;
+    line += ` ${owed.length} release run${agrees(owed.length, ' that ended still claims', 's that ended still claim')} issues at the release gate and ${agrees(owed.length, 'owes its', 'owe their')} abort, which you owe; no cut is taken until then: ${owed.map((h) => h.sentence).join(' ')}`;
   }
   if (passing.length > 0) {
     line += ` ${passing.map((h) => h.sentence).join(' ')}`;
@@ -99,7 +98,7 @@ export function endedRunHoldsWork(holds: ReleaseEndedRunHold[]): string[] {
 function releaseActsLine(acts: readonly ReleaseActOwed[]): string {
   if (acts.length === 0) return '';
   const named = acts.map((a) => `${a.version}: ${a.act}`).join('; ');
-  return ` ${acts.length} release${plural(acts.length, ' waits', 's wait')} on an act that is yours (${named}): read each release's page (\`forge-runner api projects/<projectId>/releases/<version>\`, its \`waitingOn\` and gates name the act and its door) and take it; a release whose changes cannot be undone names a person instead, and is not on this line. ${method('issue-flow')} (Land, mark, move) is how.`;
+  return ` ${acts.length} release${agrees(acts.length, ' waits', 's wait')} on an act that is yours (${named}): read each release's page (\`forge-runner api projects/<projectId>/releases/<version>\`, its \`waitingOn\` and gates name the act and its door) and take it; a release whose changes cannot be undone names a person instead, and is not on this line. ${method('issue-flow')} (Land, mark, move) is how.`;
 }
 
 const releaseName = (r: { runId: string; version: string | null }) =>
@@ -113,14 +112,14 @@ export function releasesLine(
 ): string {
   let line = releaseActsLine(acts);
   if (releaseApprovals.length > 0) {
-    line += ` ${releaseApprovals.length} running release${plural(releaseApprovals.length, ' waits', 's wait')} for an approval request, which this project requires before any production act (${releaseApprovals.map(releaseName).join(', ')}): ask for each with \`forge-runner api projects/<projectId>/release-batches/<runId>/approvals -X POST -d '{"evidence":{"environment":"<where the reading was taken, omitted on a release that merges change requests>","commit":"<the full sha read>","reading":"<what was read there>"}}'\`, and a project admin accepts or returns it.`;
+    line += ` ${releaseApprovals.length} running release${agrees(releaseApprovals.length, ' waits', 's wait')} for an approval request, which this project requires before any production act (${releaseApprovals.map(releaseName).join(', ')}): ask for each with \`forge-runner api projects/<projectId>/release-batches/<runId>/approvals -X POST -d '{"evidence":{"environment":"<where the reading was taken, omitted on a release that merges change requests>","commit":"<the full sha read>","reading":"<what was read there>"}}'\`, and a project admin accepts or returns it.`;
   }
   if (releaseMerges.length > 0) {
     const steps = releaseMerges.map(
       (m) =>
         `${releaseName(m)}: ${m.next.label} next, ${m.merged} of ${m.total} merged, through ${m.next.issueKey} ${m.next.issueId}`,
     );
-    line += ` ${releaseMerges.length} accepted release${plural(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head is not the one the owner accepted, so abort the release and cut it again on the new head, or have the new head approved.`;
+    line += ` ${releaseMerges.length} accepted release${agrees(releaseMerges.length, ' waits', 's wait')} for you to merge its requests in their declared order (${steps.join('; ')}): merge each next one with \`forge-runner api issues/<issueId>/merge-pull-request -X POST -d '{"pullRequest":<number>}'\`, one at a time; the release ends at its last merge, and where its owner deploys nothing is deployed for it. A refusal names its fault: \`RELEASE_MERGE_HEAD_MOVED\` means the request's head is not the one the owner accepted, so abort the release and cut it again on the new head, or have the new head approved.`;
   }
   return line;
 }

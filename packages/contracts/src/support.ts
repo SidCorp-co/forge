@@ -900,7 +900,6 @@ export const supportSilentRequestSchema = z.strictObject({
 		.describe("the message you stay silent on, as it carries `message` in what you were handed"),
 	reason: supportWhySchema.describe("one line: why nothing is posted for it"),
 });
-export type SupportSilentRequest = z.infer<typeof supportSilentRequestSchema>;
 export const supportRunRequestSchema = z.strictObject({
 	thread: threadId,
 	tool: z.string().min(1).max(48),

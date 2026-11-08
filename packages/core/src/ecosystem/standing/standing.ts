@@ -10,6 +10,7 @@ import type {
 } from '@forge/contracts/contract-standing';
 import { say } from '@forge/contracts/said';
 import { type WaitingOn, type WaitingSays, waitingOn } from '@forge/contracts/standing';
+import { agrees } from '../../lib/plural.js';
 
 type ContractWaitingOn = WaitingOn<ContractWaitingKind>;
 
@@ -124,8 +125,6 @@ function stateOf(
   return 'published';
 }
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
-
 interface Turn {
   group: ContractAttentionGroup;
   waitingOn: ContractWaitingOn;
@@ -187,7 +186,7 @@ function providedTurn(
         : say('contracts.act.behind', {
             n: behind,
             total: f.consumers.length,
-            consumers: plural(f.consumers.length, 'consumer', 'consumers'),
+            consumers: agrees(f.consumers.length, 'consumer', 'consumers'),
           });
   return turn('steady', 'none', { who: NOBODY, act, rule: say('contracts.rule.providedSteady') });
 }

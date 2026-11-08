@@ -18,6 +18,7 @@ import { and, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { putLessonsMonthEntry } from '../knowledge/index.js';
+import { counted } from '../lib/plural.js';
 
 export interface LessonsMonth {
   month: string;
@@ -158,8 +159,6 @@ export async function lessonsMonth(input: {
 /** Most confusions a month's entry lists one by one; the counts above them hold every one. */
 const LISTED_CONFUSIONS = 40;
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /**
  * The month as an agent reads it. An open confusion is listed with when it was raised, not its hours
  * so far, so the text changes only when a figure does and a pass that finds nothing new rewrites
@@ -180,12 +179,12 @@ export function lessonsMonthText(m: LessonsMonth): string {
   for (const c of m.confusions.items.slice(0, LISTED_CONFUSIONS)) {
     lines.push(
       c.settledAt
-        ? `- ${c.lessonKey} ${c.kind}: raised ${c.raisedAt}, settled ${c.settledAt}, after ${plural(c.hours, 'hour', 'hours')}`
+        ? `- ${c.lessonKey} ${c.kind}: raised ${c.raisedAt}, settled ${c.settledAt}, after ${counted(c.hours, 'hour', 'hours')}`
         : `- ${c.lessonKey} ${c.kind}: raised ${c.raisedAt}, still open`,
     );
   }
   const unlisted = m.confusions.items.length - LISTED_CONFUSIONS;
-  if (unlisted > 0) lines.push(`- and ${plural(unlisted, 'more confusion', 'more confusions')}`);
+  if (unlisted > 0) lines.push(`- and ${counted(unlisted, 'more confusion', 'more confusions')}`);
   return lines.join('\n');
 }
 

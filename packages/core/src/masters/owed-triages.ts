@@ -1,6 +1,6 @@
 import { guideCall } from '../guides/index.js';
+import { agrees } from '../lib/plural.js';
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 const method = `\`${guideCall('feedback-triage')}\``;
 
 /**
@@ -14,10 +14,10 @@ export function triagesLine(triages: readonly { key: string; proposed?: string |
   const named = triages.filter((t) => t.proposed).map((t) => `${t.key} suggestion ${t.proposed}`);
   let line = '';
   if (fresh.length > 0) {
-    line += ` ${fresh.length} feedback item${plural(fresh.length, ' owes', 's owe')} a triage (${fresh.join(', ')}): read each (\`forge-runner api projects/<projectId>/feedback/<key>\`, and \`/similar\` for its nearest), then route it (\`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST\`) or propose a \`feedback_triage\` suggestion (\`forge-runner api projects/<projectId>/suggestions -X POST\`); ${method} is how, and the forge-master skill's feedback section is when a master routes and when it proposes.`;
+    line += ` ${fresh.length} feedback item${agrees(fresh.length, ' owes', 's owe')} a triage (${fresh.join(', ')}): read each (\`forge-runner api projects/<projectId>/feedback/<key>\`, and \`/similar\` for its nearest), then route it (\`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST\`) or propose a \`feedback_triage\` suggestion (\`forge-runner api projects/<projectId>/suggestions -X POST\`); ${method} is how, and the forge-master skill's feedback section is when a master routes and when it proposes.`;
   }
   if (named.length > 0) {
-    line += ` ${named.length} feedback item${plural(named.length, ' carries', 's carry')} a proposed triage that is yours to decide (${named.join('; ')}): read the item and the suggestion, then accept it (\`forge-runner api projects/<projectId>/suggestions/<id>/accept -X POST\`) or reject it saying why (\`forge-runner api projects/<projectId>/suggestions/<id>/reject -X POST\`) and route the item yourself; ${method} is how.`;
+    line += ` ${named.length} feedback item${agrees(named.length, ' carries', 's carry')} a proposed triage that is yours to decide (${named.join('; ')}): read the item and the suggestion, then accept it (\`forge-runner api projects/<projectId>/suggestions/<id>/accept -X POST\`) or reject it saying why (\`forge-runner api projects/<projectId>/suggestions/<id>/reject -X POST\`) and route the item yourself; ${method} is how.`;
   }
   return line;
 }

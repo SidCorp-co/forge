@@ -18,7 +18,6 @@ export const RELEASE_TRIGGER_KINDS = [
 	"target",
 	"request",
 ] as const;
-export type ReleaseTriggerKind = (typeof RELEASE_TRIGGER_KINDS)[number];
 
 /**
  * How a project-document write naming `release.cutoff` is refused: a `kind` that is no trigger, or a

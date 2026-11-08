@@ -1,8 +1,7 @@
 import { guideCall } from '../guides/index.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { AgentConfirmOwed } from './ports.js';
-
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+import { agrees } from '../lib/plural.js';
 
 /**
  * The door the master settles an item through for its agent reporter (ISS-880): the Forge door for
@@ -53,5 +52,5 @@ export function confirmsLine(all: readonly AgentConfirmOwed[]): string {
 
 function agentConfirmsLine(confirms: readonly AgentConfirmOwed[]): string {
   if (confirms.length === 0) return '';
-  return ` ${confirms.length} shipped feedback item${plural(confirms.length, ' an agent of this project reported owes its', 's agents of this project reported owe their')} confirm (${confirms.map(listed).join('; ')}): each one's fix shipped and the item waits on the agent that reported it. Check on the running build what each reported, then confirm it for that agent with what you ran and saw (\`-d '{"evidence":"<what you ran and saw>"}'\` on the Forge door, \`{"note":…}\` on a project's), or reopen it the same way with \`/reopen\` (\`reason\` on a project's door) where it is not fixed. Where only a later event can test it, set a wait on it the same way with \`/confirm-wait\` (\`-d '{"until":"<ISO date>","on":"room_message","reason":"<why it waits>"}'\`, \`on\` optional; a room message counts only in the item's own room thread, or in the \`"rid"\` and \`"thread"\` you send): it leaves this line until the date passes or the event happens, and the item shows why it waits; \`${guideCall('feedback-triage')}\` (verify and reopen) is how.`;
+  return ` ${confirms.length} shipped feedback item${agrees(confirms.length, ' an agent of this project reported owes its', 's agents of this project reported owe their')} confirm (${confirms.map(listed).join('; ')}): each one's fix shipped and the item waits on the agent that reported it. Check on the running build what each reported, then confirm it for that agent with what you ran and saw (\`-d '{"evidence":"<what you ran and saw>"}'\` on the Forge door, \`{"note":…}\` on a project's), or reopen it the same way with \`/reopen\` (\`reason\` on a project's door) where it is not fixed. Where only a later event can test it, set a wait on it the same way with \`/confirm-wait\` (\`-d '{"until":"<ISO date>","on":"room_message","reason":"<why it waits>"}'\`, \`on\` optional; a room message counts only in the item's own room thread, or in the \`"rid"\` and \`"thread"\` you send): it leaves this line until the date passes or the event happens, and the item shows why it waits; \`${guideCall('feedback-triage')}\` (verify and reopen) is how.`;
 }
