@@ -178,3 +178,43 @@ describe('a step whose gate asks no person (ISS-1108)', () => {
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'accept r2' });
   });
 });
+
+// ISS-1078 (FB-534, sidpeak REQ-1): a decision dated in the future, written since the wait began,
+// holds the wait: it reads waiting, never stuck or overdue, until that date, and names the decision.
+describe('a requirement whose wait a dated decision holds', () => {
+  const owed = (decision: StandingInput['decision']) =>
+    turn(base({ owed: revisionsGate, viewer: null, decision }));
+
+  it('reads overdue with no decision, as the wait fell due', () => {
+    expect(owed(null).attentionGroup).toBe('overdue');
+  });
+
+  it('reads waiting until the date the decision names, naming it', () => {
+    const s = owed({
+      at: at('2026-10-25T00:00:00Z'),
+      why: 'held for the owner until the vendor answers',
+      until: at('2026-11-12T00:00:00Z'),
+      condition: null,
+    });
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.times.stuck).toBeNull();
+    expect(s.waitingOn.rule).toContain('a decision holds it until 2026-11-12');
+  });
+
+  it('holds no longer once its date passed, nor when it was written before the wait began', () => {
+    const passed = {
+      at: at('2026-10-25T00:00:00Z'),
+      why: 'x',
+      until: at('2026-11-01T00:00:00Z'),
+      condition: null,
+    };
+    expect(owed(passed).attentionGroup).toBe('overdue');
+    const before = {
+      at: at('2026-10-01T00:00:00Z'),
+      why: 'x',
+      until: at('2026-11-12T00:00:00Z'),
+      condition: null,
+    };
+    expect(owed(before).attentionGroup).toBe('overdue');
+  });
+});

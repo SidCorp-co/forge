@@ -53,7 +53,7 @@ import {
   signerInsteadOfMaster,
   signerWait,
 } from './standing-gates.js';
-import type { DeliveryHold } from './standing-held.js';
+import { type DeliveryHold, heldByDecision, heldRule } from './standing-held.js';
 import { moveTurn, ruleTurn } from './standing-moves.js';
 import { proofTurn, releaseAsksOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
@@ -176,6 +176,12 @@ export interface StandingInput {
    * delivery clock. The read always sets it; absent reads as asked.
    */
   verdictsRequired?: boolean;
+  /**
+   * The newest reasoned decision written on the requirement (`comments/decision-answers.ts`), where one
+   * was read: one written since its wait began, dated in the future or naming a condition, holds the
+   * wait, which then never reads stuck or overdue and names the decision (ISS-1078). Absent reads none.
+   */
+  decision?: { at: Date; why: string; until: Date | null; condition: string | null } | null;
   now: Date;
 }
 
@@ -459,10 +465,14 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       say('requirements.rule.noOwner'),
     );
   }
+  const since = turn.since ?? input.statusSince;
+  const held = heldByDecision(input.decision ?? null, since, input.now);
+  if (held) waitingOn = { ...waitingOn, ...heldRule(waitingOn, held) };
   const timed = withTimes(
     { group, waitingOn },
     {
-      since: turn.since ?? input.statusSince,
+      since,
+      settled: held !== null,
       master: input.master,
       ownerless,
       draftCarrier: turn.draftCarrier ?? null,

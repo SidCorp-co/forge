@@ -5,7 +5,8 @@
  * its door. Pure, like `standing.ts`, whose move turn reads it.
  */
 
-import { say } from '@forge/contracts/said';
+import type { RequirementWaitingOn } from '@forge/contracts/requirements';
+import { say, sayEn } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import { signerWait } from './standing-gates.js';
 import type { WorkTurn } from './standing-work.js';
@@ -59,4 +60,29 @@ export function heldTurn(
       { dueAt: null },
     ),
   };
+}
+
+/** The decision holding the wait that began at `since`, where one does now (ISS-1078); else null. */
+export function heldByDecision(
+  d: { at: Date; why: string; until: Date | null; condition: string | null } | null,
+  since: Date,
+  now: Date,
+): { why: string; until: string } | null {
+  if (!d || d.at.getTime() < since.getTime()) return null;
+  if (d.until) {
+    return d.until.getTime() > now.getTime()
+      ? { why: d.why, until: `until ${d.until.toISOString().slice(0, 10)}` }
+      : null;
+  }
+  return d.condition ? { why: d.why, until: `while ${d.condition}` } : null;
+}
+
+/** The wait's rule, naming the decision that holds it. */
+export function heldRule(w: RequirementWaitingOn, held: { why: string; until: string }) {
+  const rule = say('requirements.rule.heldByDecision', {
+    rule: w.says.rule,
+    until: held.until,
+    why: held.why,
+  });
+  return { rule: sayEn(rule), says: { ...w.says, rule } };
 }
