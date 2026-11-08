@@ -6,9 +6,17 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RunStanding } from '@forge/contracts/run-standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
+import { withQueryLeg } from '../db/query-timing.js';
 import type { NotificationType } from '../db/schema.js';
 import type { ReleaseApprovalRow } from '../db/schema-release-ledger.js';
 import { portSlot } from '../lib/port-slot.js';
+
+/**
+ * Runs one Needs you area as a named part of the request's `Server-Timing`, with the statements it
+ * sends (`db/query-timing.ts:withQueryLeg`): reached through here so the attention read names its
+ * areas without reaching one module more.
+ */
+export const timedArea = withQueryLeg;
 
 /** The notice Needs you's upkeep sends a person about a decision that has aged. */
 interface DecisionReminderInput {

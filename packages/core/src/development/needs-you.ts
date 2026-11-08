@@ -15,7 +15,6 @@ import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { StandingTimes } from '@forge/contracts/steward';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
-import { withQueryLeg } from '../db/query-timing.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
@@ -23,7 +22,7 @@ import { listReleases, listReleasesInPlay } from '../release-batch/release-list-
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, designSettlerOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
-import { designHealthOf, designRepinsOf } from './ports.js';
+import { designHealthOf, designRepinsOf, timedArea } from './ports.js';
 import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
 export interface NeedsYouViewer {
@@ -91,7 +90,7 @@ export function readAttention(projectId: string, viewer: NeedsYouViewer, now: Da
     projectId,
     viewer,
     now,
-    withQueryLeg('ny-releases', () => listReleases(projectId, viewer)),
+    timedArea('ny-releases', () => listReleases(projectId, viewer)),
   );
 }
 
@@ -109,7 +108,7 @@ export function readNeedsYouAttention(
     projectId,
     viewer,
     now,
-    withQueryLeg('ny-releases', () => listReleasesInPlay(projectId, viewer)),
+    timedArea('ny-releases', () => listReleasesInPlay(projectId, viewer)),
   );
 }
 
@@ -135,16 +134,16 @@ async function attentionOf<R extends Pick<ReleaseListResponse, 'releases'>>(
     designSettler,
   ] = await Promise.all([
     // each area a named part of the request's `Server-Timing`, with the statements it sends
-    withQueryLeg('ny-requirements', () => listRequirementsAs(viewer, projectId)),
-    withQueryLeg('ny-feedback', () => listFeedbackAs(viewer, projectId)),
+    timedArea('ny-requirements', () => listRequirementsAs(viewer, projectId)),
+    timedArea('ny-feedback', () => listFeedbackAs(viewer, projectId)),
     releasesRead,
-    withQueryLeg('ny-issues', () => listIssueStanding(projectId, 'open', now)),
-    withQueryLeg('ny-contracts', () => readContractStanding(projectId, viewer.userId, now)),
-    withQueryLeg('ny-automation', () => automationOf(projectId, viewer.userId, now)),
-    withQueryLeg('ny-design-health', () => designHealthOf(viewer, projectId)),
-    withQueryLeg('ny-questions', () => questionRowsOf(projectId, viewer)),
-    withQueryLeg('ny-repins', () => designRepinsOf(viewer, projectId)),
-    withQueryLeg('ny-design-settler', () => designSettlerOf(projectId)),
+    timedArea('ny-issues', () => listIssueStanding(projectId, 'open', now)),
+    timedArea('ny-contracts', () => readContractStanding(projectId, viewer.userId, now)),
+    timedArea('ny-automation', () => automationOf(projectId, viewer.userId, now)),
+    timedArea('ny-design-health', () => designHealthOf(viewer, projectId)),
+    timedArea('ny-questions', () => questionRowsOf(projectId, viewer)),
+    timedArea('ny-repins', () => designRepinsOf(viewer, projectId)),
+    timedArea('ny-design-settler', () => designSettlerOf(projectId)),
   ]);
   if (!feedback.ok) {
     throw new Error(
