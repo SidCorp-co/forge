@@ -1,0 +1,1 @@
+A closed issue on a project that judges its own work now counts as passing its criteria at the commit its merge mark names, so requirements on a forge with no source host stop waiting on a judge that never comes.

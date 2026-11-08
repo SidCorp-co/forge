@@ -113,6 +113,22 @@ export function markClaimsCommitSql(i: SQL): SQL {
 }
 
 /**
+ * The commit the issue row aliased `i` is marked at, lower-cased, as `markedCommitsOf` reads it: the
+ * observed merge's `merged_commit_sha`, else the whole commit its current mark claims. NULL where
+ * neither: a mark naming no whole commit, an unmark, or no mark at all.
+ */
+export function markedCommitSql(i: SQL): SQL {
+  return sql`coalesce(nullif(lower(${i}.merged_commit_sha), ''), (
+    SELECT CASE WHEN a.action = ${MARK_RECORD}
+                 AND a.payload ->> 'commit' ~* '^[0-9a-f]{40}$'
+                THEN lower(a.payload ->> 'commit') END
+      FROM activity_log a
+     WHERE a.issue_id = ${i}.id AND (${IS_STAMPED_MARK} OR ${IS_UNMARK})
+     ORDER BY a.created_at DESC, (a.action = ${MARK_RECORD}) ASC
+     LIMIT 1))`;
+}
+
+/**
  * The commit each issue's current mark claims, by issue id; an issue whose newest trail record is an
  * unmark, or a mark naming no whole commit, is absent. On an exact tie the unmark is read as newer,
  * so a withdrawn claim is never the one that stands.

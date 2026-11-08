@@ -531,6 +531,64 @@ describe("a close is its builder's verdict where the project judges its own work
     ]);
   });
 
+  // forge-dev 2026-11-08: no source host, so every mark is asserted and `merged_commit_sha` is empty;
+  // reading only that column recorded no verdict for any issue closed there (ISS-690, ISS-60, …)
+  it('records at the commit an asserted mark claims, where no merge was observed', async () => {
+    const claimed = 'cd34'.repeat(10);
+    const { id } = await landed([]);
+    await completeIssueReadyRecord(projectId, ownerId, id, seq);
+    await rows(sql`UPDATE issues SET merged_commit_sha = NULL WHERE id = ${id}`);
+    await rows(sql`
+      INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload)
+      VALUES (${id}, 'user', ${ownerId}, 'agent', 'issue.mergeMarked',
+              ${JSON.stringify({ commit: claimed, stamped: true })}::jsonb)`);
+    await lease(id);
+    const r = await close(id);
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect((await verdictsOf(id)).map((v) => [v.n, v.verdict, v.commit_sha])).toEqual([
+      [1, 'pass', claimed],
+    ]);
+  });
+
+  // an issue closed before the close recorded its verdict, its criterion holding a fail from an earlier
+  // landing (ISS-690: failed on 0.4.0-dev.557, met again and closed at 946913bbcd) or a reading of a
+  // runtime: the backfill answers it at the landing; a verdict written after the close is kept as newest
+  it('backfills at the landing over a verdict from an earlier landing, never over one after the close', async () => {
+    const { backfillCloseVerdicts, CLOSE_VERDICTS_BACKFILL_KEY } = await import(
+      '../../src/issues/criteria/close-verdicts.js'
+    );
+    const earlier = 'ef56'.repeat(10);
+    const before = await landed([], 'closed');
+    await completeIssueReadyRecord(projectId, ownerId, before.id, seq);
+    const after = await landed([], 'closed');
+    await completeIssueReadyRecord(projectId, ownerId, after.id, seq);
+    for (const { id } of [before, after]) {
+      await rows(sql`
+        INSERT INTO kernel_transitions (id, entity, entity_id, from_status, to_status, actor_type,
+                                        actor_agency, source, created_at)
+        VALUES (${randomUUID()}, 'issue', ${id}, 'awaiting_release', 'closed', 'system', 'agent',
+                'fixture', now() - interval '1 hour')`);
+    }
+    const failAt = (id: string, at: string) =>
+      rows(sql`
+        INSERT INTO criterion_verdicts
+          (criterion_id, issue_id, verdict, reason, identity_kind, commit_sha, author_agency, created_at)
+        SELECT id, issue_id, 'fail', 'not met', 'commit', ${earlier}, 'agent', now() - ${at}::interval
+          FROM issue_criteria WHERE issue_id = ${id} AND n = 1`);
+    await failAt(before.id, '1 day');
+    await failAt(after.id, '1 minute');
+    await rows(sql`DELETE FROM backfill_markers WHERE key = ${CLOSE_VERDICTS_BACKFILL_KEY}`);
+    const report = await backfillCloseVerdicts();
+    expect(report?.verdicts).toBeGreaterThanOrEqual(1);
+    expect((await verdictsOf(before.id)).map((v) => [v.verdict, v.commit_sha]).sort()).toEqual([
+      ['fail', earlier],
+      ['pass', SHA],
+    ]);
+    expect((await verdictsOf(after.id)).map((v) => v.verdict)).toEqual(['fail']);
+    // once: the marker holds it, and a second boot writes nothing
+    expect(await backfillCloseVerdicts()).toBeNull();
+  });
+
   it('records nothing where an independent judge owes the criteria', async () => {
     await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     const { id } = await landed([]);
