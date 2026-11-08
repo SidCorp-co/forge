@@ -8,7 +8,7 @@ import {
   releaseDeployLocksForRun,
 } from '../pipeline/index.js';
 
-/** The project-document environments each binding's deploy reaches, which is what it holds. */
+/** The boxes each binding's deploy reaches, by environment name, or by site name for a further production site (ISS-1077): what it holds. */
 export interface DeployLockIntent {
   projectId: string;
   environments: string[];

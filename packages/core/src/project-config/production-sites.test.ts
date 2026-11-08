@@ -123,6 +123,22 @@ describe('a production of several sites', () => {
     expect([...readDeployMapOf(doc).productionBindings]).toEqual([MAIL]);
   });
 
+  it('refuses a site named as another environment is, since the name is the box its deploy holds', () => {
+    expect(
+      refusals({
+        production: { ...mail, sites: [{ ...webmail, name: 'staging' }] },
+        staging: {
+          tier: 'staging',
+          deploysFrom: 'master',
+          deployment: { binding: STAGING, trigger: 'on-land' },
+        },
+      }),
+    ).toContainEqual({
+      code: 'PRODUCTION_SITE_NAME_TAKEN',
+      path: '/environments/production/sites/0/name',
+    });
+  });
+
   it('refuses two sites under one name, the environment’s own included', () => {
     expect(refusals({ production: { ...mail, sites: [webmail, webmail] } })).toContainEqual({
       code: 'PRODUCTION_SITE_NAME_TAKEN',

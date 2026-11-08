@@ -210,19 +210,28 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
 }
 
 /**
- * The bindings this dispatch sends to — every environment's own binding but one that deploys
- * itself (`trigger: provider`) — and how each one maps onto environments and production.
+ * The bindings this dispatch sends to — every environment's and site's own binding but one that
+ * deploys itself (`trigger: provider`) — and how each one maps onto the boxes it reaches. A box is
+ * held by its site's name, the environment's own for its own deployment (ISS-1077), so two sites of
+ * one production deploy side by side, each holding its own; a binding sharing a production site's
+ * application holds that site's box too.
  */
 async function deployTargets(projectId: string, integrationId: string | null, allowLive: boolean) {
   const allPairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const map = await readDeployMap(projectId);
   const reachesLive = reachesProductionOf(map, allPairs);
-  const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.name ?? null;
-  const [first] = map.productionBindings;
-  const production = first ? (map.environments.get(first)?.name ?? null) : null;
+  const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.site ?? null;
+  const liveBoxes = new Map<string, Set<string>>();
+  for (const { binding } of allPairs) {
+    const site = map.productionBindings.has(binding.id) ? envOf(binding) : null;
+    if (site === null) continue;
+    for (const uuid of resourceUuidsOf(binding.config)) {
+      liveBoxes.set(uuid, new Set([...(liveBoxes.get(uuid) ?? []), site]));
+    }
+  }
   const reachedBy = (binding: { id: string; config: unknown }): string[] => {
     const own = envOf(binding);
-    const reached = production !== null && reachesLive(binding) ? [production] : [];
+    const reached = resourceUuidsOf(binding.config).flatMap((u) => [...(liveBoxes.get(u) ?? [])]);
     return [...new Set([...(own ? [own] : []), ...reached])];
   };
   const pairs = allPairs.filter((p) => {

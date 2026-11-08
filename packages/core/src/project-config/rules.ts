@@ -259,7 +259,11 @@ function deploymentsOf(
  * and every site, the environment's own included, deploys through a binding of its own; a binding
  * two sites name is BINDING_IN_USE (`checkEnvironments`).
  */
-function checkSites(name: string, env: EnvironmentDeclaration): ConfigRefusal[] {
+function checkSites(
+  name: string,
+  env: EnvironmentDeclaration,
+  environments: readonly string[],
+): ConfigRefusal[] {
   const sites = env.sites;
   if (sites === undefined) return [];
   if (env.tier !== 'production') {
@@ -272,13 +276,21 @@ function checkSites(name: string, env: EnvironmentDeclaration): ConfigRefusal[] 
     ];
   }
   const out: ConfigRefusal[] = [];
-  const seen = new Set([name]);
+  // a site's name is the box its deploy holds (`release-coolify.ts:deployTargets`), so it is unique
+  // among the project's environments as well as its sites
+  const seen = new Set(environments);
   sites.forEach((site, i) => {
     if (seen.has(site.name)) {
+      const what =
+        site.name === name
+          ? `environment "${name}"'s own deployment, the site named by the environment`
+          : environments.includes(site.name)
+            ? `environment "${site.name}"`
+            : `another site of environment "${name}"`;
       out.push({
         code: 'PRODUCTION_SITE_NAME_TAKEN',
         path: pointer('environments', name, 'sites', i, 'name'),
-        detail: `site "${site.name}" is already a site of environment "${name}"${site.name === name ? ' (its own deployment is the site named by the environment)' : ''}; each site has a name of its own.`,
+        detail: `site "${site.name}" names ${what}; each site has a name no environment or other site has.`,
       });
     }
     seen.add(site.name);
@@ -381,7 +393,7 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
         detail: `deploysFrom names a git branch, and this project's source.type is "${doc.source.type}"; remove it.`,
       });
     }
-    out.push(...checkSites(name, env));
+    out.push(...checkSites(name, env, Object.keys(doc.environments)));
     for (const { deployment, at, site } of deploymentsOf(name, env)) {
       if (!('binding' in deployment)) continue;
       const id = deployment.binding;
