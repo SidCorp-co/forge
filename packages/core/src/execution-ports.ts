@@ -140,7 +140,13 @@ import {
   releaseNamerOf,
   stewardJobCredential,
 } from './steward/index.js';
-import { classifyCommand, unhandledMessagesOf } from './support/index.js';
+import {
+  classifyCommand,
+  projectReadBox,
+  secretEnvOf,
+  unhandledMessagesOf,
+  withoutSecrets,
+} from './support/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -351,6 +357,9 @@ export function provideExecutionPorts(): void {
     createReleaseBatch,
     sendStatusReport,
     commandReads: classifyCommand,
+    secretEnvOf,
+    projectReadBox,
+    withoutSecrets,
     fileScriptFeedback,
   });
 

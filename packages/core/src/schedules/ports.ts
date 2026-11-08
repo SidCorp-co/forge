@@ -4,6 +4,7 @@
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import type { ReleaseCutAs } from '@forge/contracts/releases';
+import type { SupportReadSecret } from '@forge/contracts/support';
 import type { NotificationType } from '../db/schema.js';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -41,9 +42,25 @@ interface ScriptFilingAsk {
   };
 }
 
+/** A declared read refused: each detail names what could not stand (`support/outcome.ts:Outcome`). */
+type ReadRefused = { ok: false; refusals: readonly { detail: string }[] };
+
 interface SchedulesPorts {
   /** Whether a command a forge-ops `exec_command` runs only reads (support's classifier, REQ-75 r5 BC-27). */
   commandReads(command: string): { reads: true } | { reads: false; why: string };
+  /**
+   * A script's ops call takes its credential and box by support's one declared-read path
+   * (`support/declared-read.ts`, ISS-707): each declared secret's value, or the refusal naming the
+   * ones the vault does not hold; the project's box that runs a declared read; and a text cut of
+   * every handed secret's value.
+   */
+  secretEnvOf(
+    projectId: string,
+    name: string,
+    secrets: readonly SupportReadSecret[] | undefined,
+  ): Promise<{ ok: true; env: Record<string, string> } | ReadRefused>;
+  projectReadBox(projectId: string): Promise<{ ok: true; value: string } | ReadRefused>;
+  withoutSecrets(text: string, env: Record<string, string>): string;
   /**
    * File a script schedule's feedback on its own project as the project's own agent, joined by its
    * signal key (REQ-87 BC-2): the item's key, and whether it was filed new or joined.

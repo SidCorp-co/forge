@@ -22,7 +22,6 @@ import {
 } from '@forge/contracts/script-sandbox';
 import { runOpsRead } from '../runners/index.js';
 import type { ReadOutcome, ScriptOpsCaller } from '../sandbox/index.js';
-import { projectReadBox, secretEnvOf, withoutSecrets } from '../support/index.js';
 import { schedulesPorts } from './ports.js';
 
 const READ_TOOLS: readonly string[] = FORGE_OPS_READ_TOOLS;
@@ -127,12 +126,13 @@ export function openOpsCaller(args: {
 }): { names: string[]; call: ScriptOpsCaller; calls(): ScriptOpsCall[] } {
   const log: ScriptOpsCall[] = [];
   const declared = new Map((args.decl?.calls ?? []).map((c) => [c.name, c]));
-  let box: ReturnType<typeof projectReadBox> | null = null;
+  let box: ReturnType<ReturnType<typeof schedulesPorts>['projectReadBox']> | null = null;
   const run =
     args.run ??
     (async (argv: string[], timeoutMs: number) => {
       // the credential is the declaration's project secret, handed for this call alone (ISS-707); a
       // stored declaration with none runs on the box's own, under amnesty `script-ops-box-credential`
+      const { secretEnvOf, projectReadBox, withoutSecrets } = schedulesPorts();
       const env = await secretEnvOf(args.projectId, argv[1] ?? '', args.decl?.secrets);
       if (!env.ok) return { ok: false as const, why: env.refusals.map((r) => r.detail).join('; ') };
       box ??= projectReadBox(args.projectId);
