@@ -16548,6 +16548,14 @@
                                 "minimum": 0,
                                 "type": "integer"
                               },
+                              "failed": {
+                                "items": {
+                                  "maxLength": 500,
+                                  "type": "string"
+                                },
+                                "maxItems": 500,
+                                "type": "array"
+                              },
                               "note": {
                                 "maxLength": 500,
                                 "type": "string"
