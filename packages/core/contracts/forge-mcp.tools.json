@@ -66,6 +66,159 @@
       }
     },
     {
+      "description": "Converse with the Forge bot (the project's chat assistant, the one in the Forge UI's chat) in a persistent project thread. It answers status questions from live reads of the project as you, naming its sources, and routes work through Feedback, Requirements and triage within your own permissions; you never act as anyone else. A thread is a chat room of the project, readable in the Forge UI too.\n- action=threads { projectId, limit? }: your threads in this project, most recent first, to resume one.\n- action=open { projectId, thread?, title?, about? }: opens a new thread, or resumes `thread`; `about` ({ kind: requirement|issue|feedback|release|workflow|mockup, key }) names the record the next turns are about. Answers the thread, its newest messages and `cursor`.\n- action=send { projectId, thread, message, clientKey, about?, mode?, waitSeconds? }: says `message` and waits up to `waitSeconds` (default 20, at most 50) for the bot's turn. Answers `turn` { id, state, reason } and the replies so far: state is queued, running, completed, failed or needs-input (the bot asked you something: answer with another send in the same thread). `processing: true` means the turn is still working: follow it with bot.read { turn, after: cursor }, never by sending again. `clientKey` is your own id for this message: a retry under the same key starts no second turn and answers the first one's; the same key with other text is refused BOT_CLIENT_KEY_REUSED.\n- action=read { projectId, thread, turn?, after?, waitSeconds?, limit? }: the messages after `after` (the cursor an answer gave), waiting up to `waitSeconds` for one, and the state of `turn` (default: your newest message's). Reading never starts a turn.\n- action=cancel { projectId, thread }: ends the turn this thread is running, where this server runs it; a turn handed to a paired box or another server is refused by name.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "about": {
+            "additionalProperties": false,
+            "description": "open, send: the record the conversation is about, e.g. { kind: \"requirement\", key: \"REQ-90\" }",
+            "properties": {
+              "key": {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "issue",
+                  "requirement",
+                  "feedback",
+                  "workflow",
+                  "mockup",
+                  "release"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "key"
+            ],
+            "type": "object"
+          },
+          "action": {
+            "enum": [
+              "threads",
+              "read",
+              "open",
+              "send",
+              "cancel"
+            ],
+            "type": "string"
+          },
+          "after": {
+            "description": "read: the cursor an answer gave",
+            "maximum": 9007199254740991,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "clientKey": {
+            "description": "send: your own id for this message; a retry under it starts no second turn",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "message": {
+            "description": "send: what you say",
+            "maxLength": 40000,
+            "type": "string"
+          },
+          "mode": {
+            "description": "send: the first message only",
+            "enum": [
+              "assistant",
+              "agent"
+            ],
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "thread": {
+            "description": "open, send, read, cancel: the thread bot.open answered",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "title": {
+            "description": "open: a new thread’s title",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "turn": {
+            "description": "read: the turn.id a send answered",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "waitSeconds": {
+            "maximum": 50,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_bot",
+      "x-forge-permission": {
+        "cancel": {
+          "floor": {
+            "on": {
+              "arg": "projectId"
+            },
+            "permission": "project.write"
+          },
+          "rule": "conversations/access.ts:writableConversation",
+          "why": "a writer in the thread: a writing role on its project, and only its own people"
+        },
+        "open": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.write"
+        },
+        "read": {
+          "floor": {
+            "on": {
+              "arg": "projectId"
+            },
+            "permission": "project.read"
+          },
+          "rule": "conversations/access.ts:readableConversation",
+          "why": "a reader of the thread: a role reaching its project, and only its own people"
+        },
+        "send": {
+          "floor": {
+            "on": {
+              "arg": "projectId"
+            },
+            "permission": "project.write"
+          },
+          "rule": "conversations/access.ts:writableConversation",
+          "why": "a writer in the thread: a writing role on its project, and only its own people"
+        },
+        "threads": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        }
+      }
+    },
+    {
       "description": "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes. Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page). Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides). The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli. Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason. You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project. A refusal comes back as { code, path, detail }; say what was refused and why.",
       "inputSchema": {
         "additionalProperties": false,
@@ -2893,5 +3046,5 @@
       }
     }
   ],
-  "version": "5.3.0"
+  "version": "5.4.0"
 }

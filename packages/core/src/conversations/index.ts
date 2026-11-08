@@ -38,6 +38,12 @@ export { type RoomDocument, readRoomDocumentByName, readRoomDocumentByRef } from
 export { existingProjectHandle, type ProjectHandle, resolveProjectHandle } from './handles.js';
 export { runHeartbeatTick } from './heartbeat.js';
 export {
+  awaitingReplies,
+  earlierUnderKey,
+  messageInRoom,
+  windowCovering,
+} from './keyed-messages.js';
+export {
   claimLastResort,
   LAST_RESORT_LINES,
   type LastResortKind,

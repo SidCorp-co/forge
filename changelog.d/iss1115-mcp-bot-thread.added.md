@@ -1,0 +1,1 @@
+**An MCP client can talk to the Forge bot in a project thread.** `bot.open`, `bot.send` and `bot.read` reach the chat assistant as you; a long turn answers processing with a handle, and a retried send starts no second turn.

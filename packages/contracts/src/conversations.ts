@@ -34,6 +34,9 @@ export const CONVERSATION_REFUSAL_CODES = [
 	"FILE_TOO_LARGE",
 	"MIME_NOT_ALLOWED",
 	"DOCUMENT_UNREADABLE",
+	"BOT_THREAD_NOT_IN_PROJECT",
+	"BOT_CLIENT_KEY_REUSED",
+	"BOT_TURN_UNKNOWN",
 ] as const;
 
 export type ConversationRefusalCode =
@@ -47,6 +50,9 @@ export type ConversationRefusalCode =
 export const CONVERSATION_REFUSAL_STATUSES = {
 	ASSISTANT_MODEL_NOT_CONFIGURED: 503,
 	CONVERSATION_PAGE_OUT_OF_DATE: 400,
+	BOT_THREAD_NOT_IN_PROJECT: 404,
+	BOT_CLIENT_KEY_REUSED: 409,
+	BOT_TURN_UNKNOWN: 404,
 } as const satisfies RefusalStatuses<ConversationRefusalCode>;
 
 /**

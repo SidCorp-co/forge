@@ -6,6 +6,18 @@ export {
 } from './agreement/rest-hold.js';
 export { recordedIn as agreedRecordsIn } from './agreement/store.js';
 export { provideHeldWriteVets } from './agreement/vet.js';
+export {
+  BOT_MODES,
+  BOT_READ_MAX,
+  BOT_WAIT_DEFAULT_S,
+  BOT_WAIT_MAX_S,
+  type BotArgs,
+  botCancel,
+  botOpen,
+  botRead,
+  botSend,
+  botThreads,
+} from './bot-actions.js';
 export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
 export {
   type ChannelAgentRound,
