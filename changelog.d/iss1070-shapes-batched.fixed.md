@@ -1,0 +1,1 @@
+**Your attention and home pages read each project's master, ecosystem, production binding, suggestions and release draft once for all your projects.** Each was read once a project, so twelve projects sent hundreds more statements than one.
