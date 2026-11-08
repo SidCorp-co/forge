@@ -227,7 +227,15 @@ function firstScreenWords(): string[] {
   return words > 300 ? [`the first screen shows ${words} words, over 300`] : [];
 }
 
-const all = () => [...opensReadable(), ...oneToolbar(), ...standsAsMarks(), ...stateOnce(), ...firstScreenWords()];
+/** ISS-806 C6: on a phone the Facts row names its groups whole, never cut by an ellipsis. */
+function factsWhole(): string[] {
+  if (!phone) return [];
+  const groups = document.querySelector<HTMLElement>("[data-testid=rail-facts-groups]");
+  if (!groups) return ["ISS-806 C6: no Facts row on the phone"];
+  return groups.scrollWidth > groups.clientWidth + 1 ? [`ISS-806 C6: the Facts row is cut: "${groups.innerText}" needs ${groups.scrollWidth} px in ${groups.clientWidth}`] : [];
+}
+
+const all = () => [...opensReadable(), ...oneToolbar(), ...standsAsMarks(), ...stateOnce(), ...firstScreenWords(), ...factsWhole()];
 
 /** ISS-806 C1: no two cards overlap, the long Rule card among them, at every zoom the bar steps through. */
 async function noOverlapAtEveryZoom(): Promise<string[]> {
