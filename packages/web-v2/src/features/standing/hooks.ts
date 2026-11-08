@@ -17,19 +17,6 @@ export function useStandings(projectId: string | undefined): ReadonlyMap<string,
   return useMemo(() => new Map((q.data?.standings ?? []).map((s) => [standingKeyOf(s.subject.kind, s.subject.key), s])), [q.data]);
 }
 
-/** Each current note's line 1 by item key, for one kind's list rows; a stale note leaves its row bare. */
-export function useNoteLines(projectId: string | undefined, kind: StandingSubjectKind): ReadonlyMap<string, string> {
-  const standings = useStandings(projectId);
-  return useMemo(() => {
-    const lines = new Map<string, string>();
-    for (const s of standings.values()) {
-      const line = s.note && !s.note.stale ? s.note.lines[0] : undefined;
-      if (s.subject.kind === kind && line) lines.set(s.subject.key, line);
-    }
-    return lines;
-  }, [standings, kind]);
-}
-
 /** Why an item is stuck and who acts on it next (REQ-74 BC-5), in the viewer's language; `line` says both at once. */
 export interface StuckReason {
   reason: string;

@@ -127,8 +127,8 @@ function RequirementBanner({ standing, slug, className }: { standing: Requiremen
   const t = useCopy();
   const language = useInterfaceLanguage();
   const w = saidView(standing.waitingOn, language);
-  const stuck = standing.attentionGroup === "stuck" ? standing.times.stuck : null;
-  const done = standing.attentionGroup === "done";
+  const stuck = standing.attentionGroup === "overdue" ? standing.times.stuck : null;
+  const done = standing.attentionGroup === "done" || standing.attentionGroup === "dropped";
   return (
     <WaitBanner
       tone={stuck ? "blocked" : BANNER_TONE[w.kind]}

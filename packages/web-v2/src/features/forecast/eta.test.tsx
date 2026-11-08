@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi as mock } from "vitest";
 import { GroupedList, type ListGroup, sortGroupsBy } from "@/design";
 import { EtaCell, EtaInline } from "./components/eta-cell";
-import { type EtaClock, etaInline, etaLines, etaOfDelivery, etaOfFeedback, etaOfForecast, etaSortValue } from "./eta";
+import { type EtaClock, etaDay, etaInline, etaLines, etaOfDelivery, etaOfFeedback, etaOfForecast, etaSortValue } from "./eta";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { forecastWait, RULE, say } from "@/test/said";
 
@@ -174,6 +174,38 @@ describe("shipped work that still owes judgement", () => {
     if (!eta) throw new Error("no eta");
     expect(eta.kind).toBe("shipped");
     expect(etaLines(eta, en)).toEqual({ line: "Shipped 0.4.0-dev.532", sub: null });
+  });
+});
+
+// FB-583: the Feedback list's ETA mixed "20:02", "Tomorrow 20:43", "Nov 17" and "Shipped 0.4.0-dev.589 /
+// Awaiting judgement" in one column. Its cell reads one format: the date, or "Shipped v", and nothing for
+// a wait, which the row's Waiting on already says.
+describe("the ETA in one format, as a list reads it", () => {
+  const shipped: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-3000) }, release: null, inHands: null, shipped: { version: "0.4.0-dev.589", at: at(-2880) } };
+
+  it("reads today, tomorrow and next week each as a date", () => {
+    expect(etaDay(etaOfForecast(TODAY, en), en)).toEqual({ line: "Oct 7", late: false });
+    expect(etaDay(etaOfForecast(range(1850, 1900), en), en)?.line).toBe("Oct 8");
+    expect(etaDay(etaOfForecast(range(60 * 24 * 10, 60 * 24 * 11), en), en)?.line).toBe("Oct 17");
+  });
+
+  it("keeps a past expected date as the date, marked late", () => {
+    expect(etaDay(etaOfForecast(range(-60 * 24 * 2, 60), en), en)).toEqual({ line: "Oct 5", late: true });
+  });
+
+  it("reads shipped work as Shipped and its version alone, judgement owed or not", () => {
+    for (const owes of ["judgement", null] as const) {
+      const eta = etaOfFeedback({ key: "FB-1", triage: null, delivery: shipped, owes }, en);
+      if (!eta) throw new Error("no eta");
+      expect(etaDay(eta, en)).toEqual({ line: "Shipped 0.4.0-dev.589", late: false });
+      render(<EtaCell eta={eta} clock={en} day />);
+      expect(screen.getAllByTestId("eta-cell").at(-1)?.textContent).toBe("Shipped 0.4.0-dev.589");
+    }
+  });
+
+  it("draws nothing for a wait", () => {
+    const paused: Forecast = { ...stamp, kind: "paused", ...forecastWait(say("standing.who.named", { name: "Ana" }), say("issues.standing.act.answer"), RULE), ref: null, since: null, late: null };
+    expect(etaDay(etaOfForecast(paused, en), en)).toBeNull();
   });
 });
 

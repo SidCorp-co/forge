@@ -2,9 +2,13 @@
 // The Feedback list (`forge-prototype.html` #/feedback): the grouping in the top header, a search,
 // the triage funnel, then the shared GroupedList — the same columns as Requirements and Issues — by
 // whose turn it is or by what each item is about. A row leads with its title: the key and the
-// target's key are tooltips, and the reporter is the owner column, never a fact beside it (REQ-11). Whose turn comes from core's read model
+// target's key are tooltips (REQ-11). Whose turn comes from core's read model
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`). ISS-903: the funnel is one
-// line shut to its name, and a row's kind, subject and severity are its phase chip's hover.
+// line shut to its name, and a row's kind, subject and severity are its chip's hover. FB-583: the
+// groups are the vocabulary requirements share (Needs you, Running, Queued, Overdue, Waiting on
+// others, Done, Dropped); the chip is core's one word (`FeedbackSummary.chip`); the ETA reads one
+// format; who acts next is Waiting on, and no column names the reporter; a row carries no steward
+// sentence, which the item's own page shows.
 
 import { Written } from "@/lib/i18n/written";
 import { countsAsReport, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
@@ -14,7 +18,6 @@ import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-fil
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
 import { useState } from "react";
 import {
-  ActorChip,
   Button,
   EmptyState,
   enumLabel,
@@ -49,7 +52,6 @@ import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
 import { FeedbackPeek } from "./feedback-peek";
-import { useNoteLines } from "@/features/standing";
 
 const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
 
@@ -154,28 +156,27 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping, label: ReturnType<typeo
   });
 }
 
+/** Ended, done or declined: nothing is owed, so the row is quiet. */
+const ended = (r: FeedbackSummary) => r.attentionGroup === "done" || r.attentionGroup === "dropped";
+
 const rowOf =
-  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: ReturnType<typeof useTimeFormat>, notes: ReadonlyMap<string, string>) =>
+  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: ReturnType<typeof useTimeFormat>) =>
   (r: FeedbackSummary): ListRowView => {
     const language = clock.lang;
-    const reporter = r.reporter.name ?? t("feedback.unknownReporter");
     return {
       key: r.key,
       href: feedbackHref(slug, r.key),
       title: <Written text={r.title} lang={r.writtenLang} />,
       facts: [
-        // the steward's current line 1 leads the secondary line (REQ-48 BC-7)
-        ...(notes.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : []),
         ...(r.snoozed ? [t("feedback.row.snoozedUntil", { date: time.dateTime(r.snoozed.until) })] : []),
-        ...(r.origin?.project ? [t("feedback.row.from", { project: r.origin.project.name })] : []),
         ...(r.origin && r.origin.occurrences > 1 ? [t("feedback.row.reports", { n: r.origin.occurrences })] : []),
       ],
-      eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
-      // what it is, what it is about and how bad: the phase chip's hover and focus, never a line on the face
+      eta: <EtaCell eta={etaOf(r.key)} clock={clock} day />,
+      // what it is, what it is about and how bad: the chip's hover and focus, never a line on the face
       state: (
         <StatusChip
-          family="feedbackPhase"
-          value={r.phase}
+          family="feedbackChip"
+          value={r.chip}
           reason={[
             enumLabel("feedbackKind", r.kind, language),
             t("feedback.row.about", { about: aboutLine(r, t, language) }),
@@ -184,10 +185,11 @@ const rowOf =
           testId="feedback-row-state"
         />
       ),
-      waitingOn: <WaitingOn w={r.waitingOn} />,
-      owner: <ActorChip name={reporter} kind={r.reporter.agency} size={20} />,
+      // who acts next, the one owner a row names (FB-583): never the reporter or the project it came from
+      waitingOn: ended(r) ? null : <WaitingOn w={r.waitingOn} />,
+      owner: null,
       age: { text: time.age(r.updatedAt), title: t("feedback.row.ageTitle", { sent: time.dateTime(r.createdAt), changed: time.dateTime(r.updatedAt) }) },
-      dim: r.attentionGroup === "done",
+      dim: ended(r),
     };
   };
 
@@ -203,7 +205,6 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   // the page's New feedback is its one feedback action: the bar's Feedback yields to it (ISS-1072)
   usePageFilesFeedback();
   const forecastQ = useFeedbackForecasts(projectId);
-  const notes = useNoteLines(projectId, "feedback");
   const forecasts = new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i]));
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
@@ -272,12 +273,13 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 ariaLabel={t("feedback.title")}
                 groups={list.groups}
                 fold={list.fold}
-                row={rowOf(slug, rowEtaOf, clock, t, time, notes)}
+                row={rowOf(slug, rowEtaOf, clock, t, time)}
                 eta={{ label: ETA_COPY[clock.lang].header, sort: { label: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort } }}
                 selected={peek.open}
                 onPeek={list.togglePeek}
                 empty={t("feedback.noMatch")}
                 keyColumn={false}
+                columns={{ meta: t("feedback.col.age") }}
               />
             </>
           )}

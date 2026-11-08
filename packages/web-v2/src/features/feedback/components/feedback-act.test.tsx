@@ -1,6 +1,6 @@
 // Feedback shows on its face what a person acts on (REQ-11 BC-18, BC-19): a row leads with the item's
-// title, what it is about reads as the target's title, the keys sit in tooltips, and the reporter is
-// drawn once, as the row's owner.
+// title, what it is about reads as the target's title, and the keys sit in tooltips. A row names who
+// acts next, never the reporter (FB-583).
 
 import type { QueryKey } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
@@ -40,7 +40,7 @@ describe("Feedback leads with titles, never keys (REQ-11 BC-19)", () => {
     expect(row.querySelector(`[title='${row.dataset.key}']`)?.textContent).toBe("Login loops");
   });
 
-  it("says what an item is, what it is about by the target's title, and how bad on its phase chip's hover (ISS-903)", () => {
+  it("says what an item is, what it is about by the target's title, and how bad on its chip's hover (ISS-903)", () => {
     const { container } = feedback();
     const chip = screen.getAllByTestId("feedback-row-state")[0];
     expect(chip).toHaveAttribute("data-reason", expect.stringContaining("About Requirement Dang nhap"));
@@ -49,9 +49,14 @@ describe("Feedback leads with titles, never keys (REQ-11 BC-19)", () => {
     expect(container.textContent).not.toContain("REQ-1");
   });
 
-  it("names the reporter once per row, as its owner, never again in the facts line", () => {
+  it("never names the reporter on a row: who acts next is its Waiting on", () => {
     feedback();
-    for (const facts of screen.getAllByTestId("row-facts")) expect(facts.textContent).not.toMatch(/\bLan\b/);
+    for (const row of screen.getAllByTestId("list-row")) {
+      // Lan may be who acts next on a row; anywhere else on it she is the reporter
+      const rest = row.cloneNode(true) as HTMLElement;
+      rest.querySelector("[data-testid=waiting-on]")?.remove();
+      expect(rest.textContent).not.toMatch(/\bLan\b/);
+    }
   });
 
   it("stays within the first view's budget of 300 words (BC-21)", () => {

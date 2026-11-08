@@ -79,6 +79,12 @@ export function whenText(iso: string, c: EtaClock, inline = false): string {
   return copy.date(p.d, p.m);
 }
 
+/** The calendar date alone, "Nov 17", whatever day it falls on: a list column that reads one format. */
+export function dateText(iso: string, c: EtaClock): string {
+  const p = partsOf(Date.parse(iso), c.timeZone);
+  return ETA_COPY[c.lang].date(p.d, p.m);
+}
+
 /** The day something already happened: "Today", "Yesterday", else its date. */
 export function doneDayText(iso: string, c: EtaClock): string {
   const copy = ETA_COPY[c.lang];

@@ -2,7 +2,7 @@ import { type DeliveryForecast, deliveryDatesOf, type FeedbackForecast, type For
 import type { Said } from "@forge/contracts/said";
 import { formatDateTime } from "@/lib/i18n/format";
 import { said, saysKey } from "@/lib/i18n/said";
-import { type EtaClock, doneDayText, partsOf, whenText } from "@/lib/i18n/eta-clock-words";
+import { type EtaClock, dateText, doneDayText, partsOf, whenText } from "@/lib/i18n/eta-clock-words";
 import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { deliveryText, forecastText, spanText, statusWord } from "./text";
 
@@ -150,6 +150,28 @@ export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | nul
       return { line: copy.shippedLine(e.version), sub: null, also: copy.awaitingJudgement };
     case "none":
       return { line: "—", sub: null };
+  }
+}
+
+/**
+ * The ETA in one format (FB-583): the date it is expected or was done ("Nov 17"), or "Shipped v" once it
+ * is in people's hands; anything else (a wait, a landing not yet released, no forecast) draws nothing,
+ * since the row's Waiting on says who it waits on. A past expected date is `late`, never reworded.
+ */
+export function etaDay(e: Eta, c: EtaClock): { line: string; late: boolean } | null {
+  const copy = ETA_COPY[c.lang];
+  switch (e.kind) {
+    case "range":
+      return { line: dateText(e.p50At, c), late: Date.parse(e.p50At) < c.now };
+    case "done":
+      return e.at ? { line: dateText(e.at, c), late: false } : null;
+    case "shipped":
+    case "judging":
+      return { line: copy.shippedLine(e.version), late: false };
+    case "waits":
+    case "landed":
+    case "none":
+      return null;
   }
 }
 

@@ -6,7 +6,7 @@
 import { render, screen } from "@testing-library/react";
 import type { RequirementSummary } from "@forge/contracts/requirements";
 import { describe, expect, it, vi } from "vitest";
-import { RequirementsList } from "./requirements-list";
+import { listGroupsOf, RequirementsList } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -26,6 +26,7 @@ const row = (over: Partial<RequirementSummary["standing"]> = {}) =>
       state: "agreed",
       attentionGroup: "you",
       facts: { criteria: 0, passing: 0 },
+      coverage: [],
       waitingOn: { who: "You", act: "review the breakdown", kind: "you" },
       owner: null,
       // area and short name were just written: the touched time is a minute old
@@ -54,6 +55,45 @@ describe("a requirement's row on the list", () => {
     expect(waits.className).toMatch(/\bwhitespace-nowrap\b/);
     expect(waits.className).not.toMatch(/\bbreak-words\b/);
     expect(waits.getAttribute("title")).toContain(long);
+  });
+});
+
+// FB-583 (owner, 2026-11-08): "I don't understand their states". A row spoke four vocabularies: the
+// group, a stage word beside the name ("Agreed" on 34 of 37 rows, "Your check" on a row the master
+// owed), Passing read from another count than the record's (REQ-78 0/7 here, 7/7 on its page), and a
+// steward sentence restating the cause. The group is the one state now; a row says nothing it repeats.
+describe("a requirement row in the one vocabulary", () => {
+  const passing = (code: string) => ({ code, body: code, verdict: "passing", verdicts: [], issues: [] });
+  const master = { who: "Master", act: "check BC-1", kind: "agent", rule: "", ref: null, dueAt: null, says: { who: { key: "standing.who.projectMaster" }, act: { key: "standing.act.none" }, rule: { key: "standing.act.none" } } };
+
+  it("reads Passing from the coverage the record reads, not from a count beside it", () => {
+    const codes = ["BC-1", "BC-2", "BC-3", "BC-4", "BC-5", "BC-6", "BC-7"];
+    line(row({ attentionGroup: "waiting", facts: { criteria: 7, passing: 0, judged: 0 }, coverage: codes.map(passing) } as never));
+    expect(screen.getByTestId("req-passing")).toHaveTextContent("7/7");
+    expect(screen.getByTestId("req-passing")).not.toHaveTextContent("0/7");
+  });
+
+  it("draws no stage word beside the name: not Agreed, and no Your check on a wait the viewer does not owe", () => {
+    line(row({ state: "agreed", attentionGroup: "queued", waitingOn: master } as never));
+    expect(screen.getByTestId("list-row")).not.toHaveTextContent("Agreed");
+    line(row({ state: "delivered", attentionGroup: "waiting", waitingOn: master } as never));
+    for (const r of screen.getAllByTestId("list-row")) expect(r).not.toHaveTextContent(/Your check|Your\b/);
+    expect(screen.queryByTestId("req-row-state")).toBeNull();
+  });
+
+  it("still says an accept by decision, which no group says", () => {
+    line(row({ state: "accepted", attentionGroup: "done", acceptedByDecision: { by: "Lan" } } as never));
+    expect(screen.getByTestId("req-row-state")).toHaveTextContent("Accepted by decision");
+  });
+
+  it("groups in the shared order, Dropped its own folded group and never inside Done", () => {
+    const at = (key: string, attentionGroup: string, state = "agreed") => ({ ...row({ attentionGroup, state } as never), key, id: key });
+    const rows = [at("D", "done", "accepted"), at("X", "dropped", "dropped"), at("O", "overdue"), at("W", "waiting"), at("Q", "queued"), at("R", "running"), at("N", "needs_you")];
+    const groups = listGroupsOf(rows, "attention", [], (g) => g, "");
+    expect(groups.map((g) => g.id)).toEqual(["needs_you", "running", "queued", "overdue", "waiting", "done", "dropped"]);
+    expect(groups.find((g) => g.id === "done")?.rows.map((r) => r.key)).toEqual(["D"]);
+    expect(groups.find((g) => g.id === "dropped")).toMatchObject({ collapsed: true, rows: [expect.objectContaining({ key: "X" })] });
+    expect(groups.filter((g) => g.collapsed).map((g) => g.id)).toEqual(["done", "dropped"]);
   });
 });
 

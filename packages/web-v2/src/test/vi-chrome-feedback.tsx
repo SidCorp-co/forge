@@ -40,6 +40,7 @@ const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummar
     severity: "high",
     status: "new",
     phase: "new",
+    chip: "new",
     attentionGroup: "needs_you",
     waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.triageIt"), rule: RULE }),
     target: { type: "requirement", key: "REQ-1", title: "Dang nhap" },
@@ -57,10 +58,10 @@ const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummar
 const ROWS: FeedbackSummary[] = [
   summary(1),
   summary(2, { target: { type: "screen", key: "Bang dieu khien", title: null }, snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" } }),
-  summary(3, { phase: "planned", status: "triaged", attentionGroup: "moving", waitingOn: waitingOn("issue", { who: say("standing.who.linkedIssue"), act: say("standing.act.beResolved"), rule: RULE }, { ref: "ISS-4" }) }),
-  summary(4, { phase: "resolved", status: "triaged", attentionGroup: "waiting", waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) }),
-  summary(5, { phase: "verified", status: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) }),
-  summary(6, { phase: "declined", status: "declined", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) }),
+  summary(3, { phase: "planned", chip: "running", status: "triaged", attentionGroup: "running", waitingOn: waitingOn("issue", { who: say("standing.who.linkedIssue"), act: say("standing.act.beResolved"), rule: RULE }, { ref: "ISS-4" }) }),
+  summary(4, { phase: "resolved", chip: "done", status: "triaged", attentionGroup: "waiting", waitingOn: waitingOn("person", { who: LAN, act: say("standing.act.verifyFixIn", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) }),
+  summary(5, { phase: "verified", chip: "done", status: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) }),
+  summary(6, { phase: "declined", chip: "declined", status: "declined", attentionGroup: "dropped", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) }),
   summary(7, { phase: "reopened", status: "reopened" }),
 ];
 

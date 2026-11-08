@@ -1,12 +1,15 @@
 
-// The list (REQ-29 BC-4, BC-5): one line per requirement, in groups by attention or by area, the
-// finished group folded, drawn by the shared GroupedList every entity list uses. Its columns are a
-// requirement's: Passing where an issue has State, Waits on, and the age of its current state. A row
-// leads with the requirement's name; its key is the name's tooltip (REQ-11 BC-19).
+// The list (REQ-29 BC-4, BC-5): one line per requirement, in groups by attention or by area, drawn by
+// the shared GroupedList every entity list uses. The attention groups are the one vocabulary a
+// requirement and a feedback row share (FB-583): Needs you, Running, Queued, Overdue, Waiting on
+// others, Deferred, Done, Dropped, each folded as the contract says, so Dropped is never inside Done.
+// Its columns are a requirement's: Passing where an issue has State, Waits on, and the age of its
+// current state. A row leads with the requirement's name; its key is the name's tooltip (REQ-11
+// BC-19). The group says where it stands, so a row says it nowhere twice: no stage word, and no
+// steward sentence restating the cause, which the requirement's own page shows (REQ-48 BC-7).
 
-import { REQUIREMENT_ATTENTION_GROUPS, type RequirementSummary } from "@forge/contracts/requirements";
+import { REQUIREMENT_ATTENTION_GROUPS, REQUIREMENT_ATTENTION_LABELS, type RequirementSummary } from "@forge/contracts/requirements";
 import { GroupedList, type ListGroup, useGroupFold, WaitingOn } from "@/design";
-import { useNoteLines } from "@/features/standing";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
 import { ageShort, nameOf, Passing, RowState } from "./requirement-line";
@@ -17,7 +20,7 @@ export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas
   const newest = (a: RequirementSummary, b: RequirementSummary) => b.standing.touchedAt.localeCompare(a.standing.touchedAt);
   const groups: ListGroup<RequirementSummary>[] =
     by === "attention"
-      ? REQUIREMENT_ATTENTION_GROUPS.map((g) => ({ id: g, label: label(g), rows: rows.filter((r) => r.standing.attentionGroup === g), collapsed: g === "done" }))
+      ? REQUIREMENT_ATTENTION_GROUPS.map((g) => ({ id: g, label: label(g), rows: rows.filter((r) => r.standing.attentionGroup === g), collapsed: REQUIREMENT_ATTENTION_LABELS[g].collapsed }))
       : [
           ...areas.map((a) => ({ id: a.id, label: a.name, rows: rows.filter((r) => r.area?.id === a.id) })),
           { id: "none", label: noArea, rows: rows.filter((r) => !r.area) },
@@ -25,10 +28,10 @@ export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas
   return groups.filter((g) => g.rows.length > 0).map((g) => ({ ...g, rows: [...g.rows].sort(newest) }));
 }
 
-/** The steward's current line 1 for a row (REQ-48 BC-7), by requirement key; a stale note is not shown on a row. */
-export type NoteLines = ReadonlyMap<string, string>;
+/** Ended, delivered or not: nothing is owed, so the row is quiet and names no wait. */
+const ended = (r: RequirementSummary) => r.standing.attentionGroup === "done" || r.standing.attentionGroup === "dropped";
 
-export function RequirementsList({ groups, slug, now, selected, onPeek, notes }: { groups: ListGroup<RequirementSummary>[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void; notes?: NoteLines }) {
+export function RequirementsList({ groups, slug, now, selected, onPeek }: { groups: ListGroup<RequirementSummary>[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void }) {
   const t = useCopy();
   const time = useTimeFormat();
   const fold = useGroupFold("requirements-list");
@@ -52,13 +55,13 @@ export function RequirementsList({ groups, slug, now, selected, onPeek, notes }:
               <RowState r={r} />
             </span>
           ),
-          facts: notes?.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : [],
+          facts: [],
           state: <Passing r={r} wide={false} />,
           // the shared one-line cell (ISS-1072): whose turn and a short act, the whole sentence its tooltip
-          waitingOn: r.standing.attentionGroup === "done" ? null : <WaitingOn w={r.standing.waitingOn} />,
+          waitingOn: ended(r) ? null : <WaitingOn w={r.standing.waitingOn} />,
           owner: null,
           age: { text: ageShort(r.standing.stateSince, now), title: time.dateTime(r.standing.stateSince) },
-          dim: r.standing.attentionGroup === "done",
+          dim: ended(r),
         })}
       />
     </div>
@@ -69,12 +72,4 @@ export function RequirementsList({ groups, slug, now, selected, onPeek, notes }:
 export function useAttentionLabel() {
   const label = useLabel();
   return (g: string) => label("requirementAttention", g);
-}
-
-type ListProps = Parameters<typeof RequirementsList>[0];
-
-/** The list with each row's line from the steward's current note, read from the one standing read (REQ-48 BC-7). */
-export function NotedRequirementsList({ projectId, ...props }: Omit<ListProps, "notes"> & { projectId: string }) {
-  const notes = useNoteLines(projectId, "requirement");
-  return <RequirementsList {...props} notes={notes} />;
 }
