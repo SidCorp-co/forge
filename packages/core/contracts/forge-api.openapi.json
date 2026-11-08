@@ -98,7 +98,7 @@
   "info": {
     "description": "Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-query-closed` marks a read whose query refuses a key it does not take; every GET carries it, or carries `x-forge-query-open` naming why a third party chooses its keys. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Every 4XX and 5XX answers `application/problem+json` (`components.responses.Problem`); a success response is undeclared: Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.",
     "title": "forge-api",
-    "version": "16.1.0",
+    "version": "17.0.0",
     "x-forge-generator": "packages/core/src/contracts-generate.ts"
   },
   "openapi": "3.1.0",
@@ -11654,6 +11654,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "active": {
                     "type": "boolean"
@@ -23517,6 +23518,7 @@
                             "shares.public",
                             "assistant.exec",
                             "env.manage",
+                            "gates.lower",
                             "requirements.approve",
                             "mockups.approve",
                             "suggestions.approve",
@@ -47019,7 +47021,6 @@
                       "type": "object"
                     },
                     "maxItems": 40,
-                    "minItems": 1,
                     "type": "array",
                     "x-forge-refinements": [
                       "a duty's key is named once"
@@ -47052,7 +47053,10 @@
                   "outsideBot",
                   "duties"
                 ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "a switch passes at least one duty, or is the owner's waiver: no duties and `ownerWord: true`, the owner's word standing in place of the duty list"
+                ]
               }
             }
           },
@@ -47485,6 +47489,11 @@
                     "minItems": 1,
                     "type": "array"
                   },
+                  "followsUp": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "rid": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -47792,6 +47801,68 @@
           {
             "in": "path",
             "name": "roomId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "on": {
+            "param": "id"
+          },
+          "permission": "project.read"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
+    "/api/projects/{id}/support/rooms/{roomId}/turns/{turnId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "roomId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turnId",
             "required": true,
             "schema": {
               "format": "uuid",
@@ -48583,6 +48654,13 @@
                     ],
                     "type": "string"
                   },
+                  "message": {
+                    "description": "the member's message that asked for this act, as it carries `message` in what you were handed: the act runs as its writer",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "project": {
                     "description": "a project of this room's scope, by slug",
                     "maxLength": 100,
@@ -48619,6 +48697,7 @@
                 },
                 "required": [
                   "thread",
+                  "message",
                   "project",
                   "kind",
                   "title",
@@ -48897,6 +48976,13 @@
                     "pattern": "^[A-Za-z][A-Za-z0-9]{0,15}-\\d{1,9}$",
                     "type": "string"
                   },
+                  "message": {
+                    "description": "the member's message that asked for the move, as it carries `message` in what you were handed: the move runs as its writer",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "reason": {
                     "maxLength": 2000,
                     "minLength": 1,
@@ -48928,6 +49014,7 @@
                 },
                 "required": [
                   "thread",
+                  "message",
                   "issue",
                   "to"
                 ],
@@ -49224,6 +49311,13 @@
                     "pattern": "^[A-Za-z][A-Za-z0-9]{0,15}-\\d{1,9}$",
                     "type": "string"
                   },
+                  "message": {
+                    "description": "the member's message that asked for this act, as it carries `message` in what you were handed: the act runs as its writer",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "project": {
                     "description": "a project of this room's scope, by slug",
                     "maxLength": 100,
@@ -49260,6 +49354,7 @@
                 },
                 "required": [
                   "thread",
+                  "message",
                   "issue",
                   "to"
                 ],
@@ -49326,6 +49421,13 @@
                     },
                     "type": "object"
                   },
+                  "message": {
+                    "description": "the message asking for the act: the id it carries as `message` in what you were handed",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "thread": {
                     "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
                     "maxLength": 64,
@@ -49341,6 +49443,7 @@
                 },
                 "required": [
                   "thread",
+                  "message",
                   "tool"
                 ],
                 "type": "object"
@@ -50166,6 +50269,12 @@
                     "minLength": 1,
                     "pattern": "^[A-Za-z0-9_-]+$",
                     "type": "string"
+                  },
+                  "why": {
+                    "description": "one line: why this message asked for a reply, kept on the reply's row",
+                    "maxLength": 300,
+                    "minLength": 3,
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -50222,6 +50331,13 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "message": {
+                    "description": "the member's message that asked for this act, as it carries `message` in what you were handed: the act runs as its writer",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
                   "project": {
                     "description": "a project of this room's scope, by slug",
                     "maxLength": 100,
@@ -50248,6 +50364,7 @@
                 },
                 "required": [
                   "thread",
+                  "message",
                   "project",
                   "title",
                   "summary"
@@ -50606,6 +50723,81 @@
                 },
                 "required": [
                   "query"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/support/session/silences": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "message": {
+                    "description": "the message you stay silent on, as it carries `message` in what you were handed",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "one line: why nothing is posted for it",
+                    "maxLength": 300,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "thread": {
+                    "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "thread",
+                  "reason"
                 ],
                 "type": "object"
               }
@@ -60368,6 +60560,10 @@
                           "maxLength": 500,
                           "minLength": 1,
                           "type": "string"
+                        },
+                        "takesText": {
+                          "description": "the option is answered in words too: choosing it sends `text` beside `optionId` (ISS-826)",
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -60549,8 +60745,7 @@
                 ],
                 "type": "object",
                 "x-forge-refinements": [
-                  "the answer is required: send optionId or text",
-                  "send optionId or text, never both"
+                  "the answer is required: send optionId or text"
                 ]
               }
             }
