@@ -56,8 +56,11 @@ export const useDraftDuplicates = (projectId: string, draft: SimilarFeedbackDraf
 export const useFeedbackChoices = (projectId: string, type: "requirement" | "workflow" | "release" | null) =>
   useQuery(readOf(["feedback-choices", projectId, type], () => feedbackApi.choices(projectId, type as "requirement" | "workflow" | "release")));
 
-/** What every write to feedback changes: the list, the items, the suggestions about them and their forecast. */
-const touched = (projectId: string) => [feedbackKeys.list(projectId), feedbackKeys.items(projectId), ["suggestions", projectId], feedbackForecastKey(projectId)];
+/**
+ * What every write to feedback changes: the list, the items, the suggestions about them, their forecast,
+ * and the attention list that counts a triage owed (ISS-1131); Needs you is read again after every write.
+ */
+const touched = (projectId: string) => [feedbackKeys.list(projectId), feedbackKeys.items(projectId), ["suggestions", projectId], feedbackForecastKey(projectId), ["attention"]];
 
 export const useReportFeedback = (projectId: string) => useWrite((body: FeedbackReportRequest) => feedbackApi.report(projectId, body), { touches: touched(projectId) });
 

@@ -8,6 +8,9 @@ import { scheduleInvalidation } from "./invalidation-coalescer";
 const RUNS_STANDING_ROOT = "runs-standing";
 /** The workspace's Activity read (activity `ORG_ACTIVITY_ROOT`); an org frame invalidates it. */
 const ORG_ACTIVITY_ROOT = "org-activity";
+/** A project's feedback list and its items (feedback `feedbackKeys`); a feedback decision invalidates both. */
+const FEEDBACK_LIST_ROOT = "feedback";
+const FEEDBACK_ITEM_ROOT = "feedback-item";
 /** The support rooms' turns the project bar reads (agents `SUPPORT_TURNS_ROOT`). */
 const SUPPORT_TURNS_ROOT = "support-turns";
 
@@ -137,6 +140,17 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 			if (data?.projectId) {
 				scheduleInvalidation(qc, [RUNS_STANDING_ROOT, data.projectId]);
 				scheduleInvalidation(qc, [SUPPORT_TURNS_ROOT, data.projectId]);
+			}
+			return true;
+		}
+		// a person's decision settled: what lists it as waiting reads again, and a feedback decision's
+		// list, peek and grouping with it (ISS-1131, FB-568: a triage the master made left them on "New")
+		case "decision.settled": {
+			scheduleInvalidation(qc, ["needs-you"]);
+			scheduleInvalidation(qc, ["attention"]);
+			if (data.act.startsWith("feedback.")) {
+				scheduleInvalidation(qc, [FEEDBACK_LIST_ROOT, data.projectId]);
+				scheduleInvalidation(qc, [FEEDBACK_ITEM_ROOT, data.projectId]);
 			}
 			return true;
 		}

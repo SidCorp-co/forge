@@ -711,10 +711,12 @@ export interface OutboxEventPayloads
 	};
 	/**
 	 * A person's decision settled through an act no other event reports (ISS-1053): a revision's
-	 * accept, a re-pin, a suggestion's accept or reject, a design re-pin, a contract version's decision.
-	 * `act` is the Needs you decision act (`needs-you-decisions.ts:DECISION_ACTS`), or a suggestion's
-	 * withdrawal, which clears one, and `subject` the record it settled, by key or id. Its one reader tells the workspace's Activity, so a settled item
-	 * leaves "waiting on you" without waiting out the held glance.
+	 * accept, a re-pin, a suggestion's accept or reject, a design re-pin, a contract version's decision,
+	 * and every feedback decision (ISS-1131: a triage, a decline, a retarget, as `feedback.<decision>`).
+	 * `act` is the Needs you decision act (`needs-you-decisions.ts:DECISION_ACTS`), a suggestion's
+	 * withdrawal, which clears one, or a feedback decision, and `subject` the record it settled, by key
+	 * or id. Its readers tell the workspace's Activity, so a settled item leaves "waiting on you" without
+	 * waiting out the held glance, and the project's open pages, which read it again.
 	 */
 	"decision.settled": {
 		projectId: string;

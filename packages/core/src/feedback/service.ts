@@ -118,6 +118,13 @@ export async function decide(
     fromSuggestionId: d.fromSuggestionId ?? null,
     inReplyTo: d.inReplyTo ?? null,
   });
+  // every open view of the item reads it again: a triage the master made left the Feedback list, its
+  // peek and its grouping on "You triage it" while the item read triaged (ISS-1131, FB-568)
+  await emitEvent(tx, 'decision.settled', {
+    projectId: row.projectId,
+    act: `feedback.${d.decision}`,
+    subject: feedbackKey(row.fbSeq),
+  });
 }
 
 // a route picked closes the assistant's open clarification (feedback-lifecycle new -> triaged)

@@ -104,7 +104,22 @@ function assertAudience(event: string, userIds: unknown): void {
   }
 }
 
+/**
+ * A person's decision settled: the project's open pages read it again, a triage's Feedback list, its
+ * peek and its grouping among them (ISS-1131, FB-568: a triage the master made left them on "New").
+ */
+function registerDecisionBroadcast(): void {
+  on('decision.settled', (p) => {
+    frame(projectRoom(p.projectId), 'decision.settled', {
+      projectId: p.projectId,
+      act: p.act,
+      subject: p.subject,
+    });
+  });
+}
+
 export function registerWsBroadcastSubscribers(): void {
+  registerDecisionBroadcast();
   // every open view of either side refetches the edge
   on('issue.dependency.changed', (p) => {
     frame(projectRoom(p.projectId), 'dependencyChanged', {

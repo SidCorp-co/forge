@@ -118,8 +118,9 @@ export const OUTBOX_CONSUMERS = {
 	"standing.stuck": ["steward"],
 	"standing.changed": ["steward"],
 	"release.held": ["steward"],
-	// a person's decision no other event reports, told to the workspace's Activity (ISS-1053)
-	"decision.settled": ["org-activity"],
+	// a person's decision no other event reports, told to the workspace's Activity (ISS-1053) and to
+	// the project's open pages, a triage's Feedback list among them (ISS-1131)
+	"decision.settled": ["org-activity", "ws-broadcast"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

@@ -139,6 +139,11 @@ export interface WsFramePayloads extends JobFrames {
 	"project.now.changed": ProjectNowFrame;
 	/** One of a workspace's projects moved: its Activity page reads again (ISS-951). */
 	"org.activity.changed": OrgActivityFrame;
+	/**
+	 * A person's decision settled on a project's record (outbox `decision.settled`): every open view of
+	 * it reads again, a feedback item's list, peek and grouping among them (ISS-1131, FB-568).
+	 */
+	"decision.settled": OutboxEventPayload<"decision.settled">;
 	"device.statusChanged": { deviceId: string };
 	"device.login": Record<string, unknown>;
 	"device.paired": { deviceId: string };
