@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.606] - 2026-11-08
+
+Judges check screens at desktop widths; off-target merges no longer count as landed
+
+### Fixed
+
+- **Your home no longer waits on a storefront's platform when you open it again.** A read made a moment after another shows the drafts it read then, with when, instead of locking the connection and asking Autoflow each time.
+- **Judges check screens at desktop widths too.** A judge now works a screen at a narrow width and at 1280x800 and 1440x900, side panels open and folded, and a break at any of them fails the verdict.
+
 ## [0.4.0-dev.604] - 2026-11-08
 
 One state vocabulary for requirement and feedback lists, room bots act with the asker's grants
