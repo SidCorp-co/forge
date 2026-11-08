@@ -5,7 +5,11 @@ export {
   fetchCoolifyApplications,
   summarizeApplication,
 } from './coolify/applications.js';
-export { CoolifyApiError, describeCoolifyForbidden } from './coolify/client.js';
+export {
+  CoolifyApiError,
+  coolifyAbilityForRoute,
+  describeCoolifyForbidden,
+} from './coolify/client.js';
 export { type HealthReading, probeHealth } from './coolify/health-probe.js';
 export {
   buildClient,

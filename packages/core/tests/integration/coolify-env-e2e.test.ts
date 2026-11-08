@@ -12,6 +12,8 @@
  * @direct-test-of packages/core/src/release-batch/coolify-env.ts
  * @direct-test-of packages/core/src/release-batch/coolify-controls.ts
  * @direct-test-of packages/core/src/integrations/deploy/coolify/client.ts
+ * @direct-test-of packages/core/src/release-batch/coolify-commands.ts
+ * @direct-test-of packages/core/src/integrations/provider-schemas.ts
  */
 
 import { createServer, type Server } from 'node:http';
@@ -34,6 +36,8 @@ const CORE = { id: 't-core', label: 'core', resourceUuid: 'core-uuid' };
 const STRANGER_APP = 'other-project-app';
 /** An application whose writes Coolify refuses, quoting the value it was sent. */
 const REFUSING = { id: 't-refusing', label: 'refusing', resourceUuid: 'refusing-uuid' };
+/** An application whose writes Coolify refuses 403: the token lacks `api.ability:write` (ISS-938). */
+const NO_WRITE = { id: 't-no-write', label: 'no-write', resourceUuid: 'no-write-uuid' };
 
 interface Held {
   uuid: string;
@@ -68,6 +72,9 @@ const appEnvs = (app: string) => {
 
 function answerEnv(method: string, app: string, envUuid: string | undefined, body: Doc) {
   const held = appEnvs(app);
+  if (app === NO_WRITE.resourceUuid && method !== 'GET') {
+    return [403, { message: 'Missing required permissions: write' }] as const;
+  }
   if (app === REFUSING.resourceUuid && method !== 'GET') {
     return [422, { message: `the value ${String(body.value)} is not accepted` }] as const;
   }
@@ -169,7 +176,7 @@ beforeAll(async () => {
   bound = await project();
   bindingId = await seedDeployBinding(bound, owner, {
     baseUrl: coolifyUrl,
-    targets: [WEB, CORE, REFUSING],
+    targets: [WEB, CORE, REFUSING, NO_WRITE],
   });
   unbound = await project();
   twice = await project();
@@ -352,6 +359,23 @@ describe('refused by name (c4)', () => {
     expect(res.body.error?.refusals?.[0]?.detail).toContain('pass integrationId');
   });
 
+  // ISS-938: forge-core-61 passed the CONNECTION id, and was told only that nothing matched
+  it('a connection id passed as integrationId, naming the binding ids the project holds', async () => {
+    const [conn] = await rows<{ connection_id: string }>(
+      sql`SELECT connection_id FROM integration_bindings WHERE id = ${bindingId}`,
+    );
+    const res = await call('PUT', env(bound, 'K'), {
+      integrationId: conn?.connection_id,
+      resourceUuid: WEB.resourceUuid,
+      value: SECRET,
+    });
+    expect(codes(res)).toEqual(['COOLIFY_INTEGRATION_UNRESOLVED']);
+    const detail = String(res.body.error?.refusals?.[0]?.detail);
+    expect(detail).toContain("the deploy binding's id, never a connection's");
+    expect(detail).toContain(`this project's bindings are ${bindingId}`);
+    expect(calls).toEqual([]);
+  });
+
   it('a delete of a key the application does not hold, naming the list to read', async () => {
     const res = await call('DELETE', env(bound, 'NEVER_SET'), { resourceUuid: WEB.resourceUuid });
     expect(codes(res)).toEqual(['COOLIFY_ENV_KEY_UNKNOWN']);
@@ -426,6 +450,54 @@ describe('a refused write (c3)', () => {
       'Coolify answered HTTP 422 to POST /api/v1/applications/refusing-uuid/envs',
     ]);
     expect(await queued()).toEqual([]);
+  });
+});
+
+// ISS-938, from forge-core-61 setting the Sentry DSNs on forge-dev, 2026-11-04
+describe('the env door reads and refuses what it was hiding', () => {
+  it('reads an empty variable as empty, and a set one as masked', async () => {
+    appEnvs(WEB.resourceUuid).set('SENTRY_DSN_CORE', {
+      uuid: 'env-dsn',
+      value: '',
+      isPreview: false,
+    });
+    const res = await call('GET', `${env(bound)}?resourceUuid=${WEB.resourceUuid}`);
+    const value = (key: string) =>
+      (res.body.env as Doc[]).find((e) => e.key === key && e.isPreview === false)?.value;
+    expect([value('SENTRY_DSN_CORE'), value('DATABASE_URL')]).toEqual(['', '********']);
+  });
+
+  it("refuses Coolify's 403 to a write by name, naming the connection whose token lacks write", async () => {
+    const [conn] = await rows<{ connection_id: string }>(
+      sql`SELECT connection_id FROM integration_bindings WHERE id = ${bindingId}`,
+    );
+    const put = await call('PUT', env(bound, 'SENTRY_DSN_WEB'), {
+      resourceUuid: NO_WRITE.resourceUuid,
+      value: SECRET,
+    });
+    expect([put.status, codes(put)]).toEqual([422, ['COOLIFY_TOKEN_CANNOT_WRITE']]);
+    const detail = String(put.body.error?.refusals?.[0]?.detail);
+    expect(detail).toContain(`connection ${conn?.connection_id}`);
+    expect(detail).toContain('api.ability:write');
+  });
+
+  it('refuses a connection PATCH key it does not take, naming it and the ones it takes', async () => {
+    const [conn] = await rows<{ connection_id: string }>(
+      sql`SELECT connection_id FROM integration_bindings WHERE id = ${bindingId}`,
+    );
+    const res = await api(
+      adminToken,
+      'PATCH',
+      `/api/integration-connections/${conn?.connection_id}`,
+      {
+        secret: { apiToken: SECRET },
+      },
+    );
+    answers.push(JSON.stringify(res.body));
+    expect(res.status).toBe(400);
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('a connection PATCH takes no `secret`');
+    expect(said).toContain('it takes displayName, config, secrets, active');
   });
 });
 

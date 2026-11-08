@@ -82,16 +82,19 @@ export function resolveIntegrationRow<T extends { id: string }>(
       ? rows[0]
       : undefined;
   if (row) return row;
+  // ISS-938: the parameter is a deploy binding's id; a connection's id was refused as if unknown
+  const held = rows.length ? rows.map((r) => r.id).join(', ') : 'none';
   if (input.integrationId) {
     throw refuseCoolify(
       'COOLIFY_INTEGRATION_UNRESOLVED',
-      'no active Coolify integration with that integrationId',
+      `integrationId ${input.integrationId} is not an active Coolify deploy binding of this project: it takes the deploy binding's id, never a connection's; this project's bindings are ${held}`,
+      '/integrationId',
     );
   }
   if (rows.length === 0) return null;
   throw refuseCoolify(
     'COOLIFY_INTEGRATION_UNRESOLVED',
-    'multiple active Coolify integrations — pass integrationId',
+    `multiple active Coolify integrations — pass integrationId, the deploy binding's id: ${held}`,
   );
 }
 

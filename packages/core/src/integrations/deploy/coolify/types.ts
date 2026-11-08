@@ -118,4 +118,8 @@ export interface CoolifyEnvKey {
   key: string;
   /** `true` for a preview-deployment variable, which Forge's env door neither sets nor deletes. */
   isPreview: boolean;
+  /** `true` where Coolify answered the value as the empty string: an unset variable, which the
+   *  door reads as empty rather than masking it as set (ISS-938). A value it does not answer is
+   *  not called empty. */
+  empty: boolean;
 }

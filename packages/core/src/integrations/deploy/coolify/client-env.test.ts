@@ -40,8 +40,8 @@ describe('listApplicationEnvKeys', () => {
     ]);
     const keys = await client.listApplicationEnvKeys('app-1');
     expect(keys).toEqual([
-      { uuid: 'e1', key: 'API_KEY', isPreview: false },
-      { uuid: 'e2', key: 'API_KEY', isPreview: true },
+      { uuid: 'e1', key: 'API_KEY', isPreview: false, empty: false },
+      { uuid: 'e2', key: 'API_KEY', isPreview: true, empty: false },
     ]);
     expect(JSON.stringify(keys)).not.toContain(SECRET);
     expect(seen).toEqual([

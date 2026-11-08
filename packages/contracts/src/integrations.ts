@@ -542,6 +542,8 @@ export const COOLIFY_REFUSAL_CODES = [
 	"COOLIFY_DEPLOYMENT_UNNAMED",
 	"COOLIFY_CONTROL_FAILED",
 	"COOLIFY_ENV_KEY_UNKNOWN",
+	/** Coolify refused an env write with 403: the connection's token lacks `api.ability:write`. */
+	"COOLIFY_TOKEN_CANNOT_WRITE",
 	"MISSING_CREDENTIALS",
 ] as const;
 export type CoolifyRefusalCode = (typeof COOLIFY_REFUSAL_CODES)[number];

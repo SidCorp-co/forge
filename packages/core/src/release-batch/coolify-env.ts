@@ -6,8 +6,9 @@
  *
  * A value goes one way, from the caller to Coolify. The client drops values where it parses
  * Coolify's list and drops Coolify's answer body from a failed env call
- * (`integrations/deploy/coolify/client.ts`), every listed value is answered as the mask, and the
- * audit row each write leaves names the key and nothing of the value.
+ * (`integrations/deploy/coolify/client.ts`), every listed value that is set is answered as the mask
+ * and an empty one as empty (ISS-938: an unset variable read as set), and the audit row each write
+ * leaves names the key and nothing of the value.
  *
  * Authorisation is the caller's: the REST routes declare `deploys.run` on the project.
  */
@@ -19,12 +20,13 @@ import {
   type CoolifyConfig,
   type CoolifySecrets,
   type CoolifyTarget,
+  coolifyAbilityForRoute,
 } from '../integrations/deploy/index.js';
 import { buildContextFromBinding, recordDelivery, updateDelivery } from '../integrations/index.js';
 import { type CoolifyIntegrationRow, refuseCoolify, runCoolifyDeploy } from './coolify-commands.js';
 import { requireIntegration, requireTarget } from './coolify-controls.js';
 
-/** What every listed value is answered as: the same for every value, so it says nothing of one. */
+/** What every set value is answered as: the same for every value, so it says nothing of one. */
 export const COOLIFY_ENV_MASK = '********';
 
 interface EnvScope {
@@ -54,13 +56,17 @@ const where = (row: CoolifyIntegrationRow, target: CoolifyTarget) => ({
   targetLabel: target.label,
 });
 
-/** The production variables' names of one bound application, every value masked. */
+/** The production variables' names of one bound application, every set value masked. */
 export async function listCoolifyEnv(input: EnvScope) {
   const { row, target, client } = await scoped(input);
   const keys = await client.listApplicationEnvKeys(target.resourceUuid);
   return {
     ...where(row, target),
-    env: keys.map((k) => ({ key: k.key, value: COOLIFY_ENV_MASK, isPreview: k.isPreview })),
+    env: keys.map((k) => ({
+      key: k.key,
+      value: k.empty ? '' : COOLIFY_ENV_MASK,
+      isPreview: k.isPreview,
+    })),
   };
 }
 
@@ -149,7 +155,7 @@ async function audited(
       durationMs: Date.now() - started,
       completedAt: new Date(),
     });
-    throw err;
+    throw cannotWrite(row, err) ?? err;
   }
   await updateDelivery(deliveryId, {
     status: 'ok',
@@ -157,6 +163,19 @@ async function audited(
     durationMs: Date.now() - started,
     completedAt: new Date(),
   });
+}
+
+/**
+ * Coolify's 403 to an env write is its token lacking `api.ability:write`: refused by name, naming the
+ * connection whose token it is, never passed on as a generic COOLIFY_API_ERROR (ISS-938).
+ */
+function cannotWrite(row: CoolifyIntegrationRow, err: unknown) {
+  if (!(err instanceof CoolifyApiError) || err.status !== 403) return null;
+  if (coolifyAbilityForRoute(err.route) !== 'write') return null;
+  return refuseCoolify(
+    'COOLIFY_TOKEN_CANNOT_WRITE',
+    `the Coolify token on connection ${row.pair.connection.id} lacks api.ability:write, which ${err.route} requires: widen that token's abilities in Coolify, or put a write-capable token on the connection (PATCH /api/integration-connections/${row.pair.connection.id} with secrets)`,
+  );
 }
 
 /** The deploy act, for the one application written to; `null` when no redeploy was asked. */

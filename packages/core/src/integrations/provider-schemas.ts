@@ -117,11 +117,20 @@ export const connectionCreateSchema = z
     return { ...value, provider: decl.provider, config, secrets };
   });
 
-export const connectionUpdateSchema = z.object({
+const connectionUpdateShape = {
   displayName: z.string().min(1).max(200).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
+};
+
+/** A connection PATCH refuses a key it does not take, naming it and the ones it does: a misspelled
+ *  `secrets` answered 200 and vanished (ISS-938). */
+export const connectionUpdateSchema = z.strictObject(connectionUpdateShape, {
+  error: (iss) =>
+    iss.code === 'unrecognized_keys'
+      ? `a connection PATCH takes no ${iss.keys.map((k) => `\`${k}\``).join(', ')}; it takes ${Object.keys(connectionUpdateShape).join(', ')}`
+      : undefined,
 });
 
 export function configSchemaForProvider(provider: string): z.ZodTypeAny {

@@ -262,9 +262,11 @@ export class CoolifyClient {
   async listApplicationEnvKeys(resourceUuid: string): Promise<CoolifyEnvKey[]> {
     const list = await withoutBody(this.request<unknown>('GET', envsPath(resourceUuid)));
     return (Array.isArray(list) ? list : []).flatMap((raw) => {
-      const e = raw as { uuid?: unknown; key?: unknown; is_preview?: unknown };
+      const e = raw as { uuid?: unknown; key?: unknown; value?: unknown; is_preview?: unknown };
       if (typeof e.uuid !== 'string' || typeof e.key !== 'string') return [];
-      return [{ uuid: e.uuid, key: e.key, isPreview: e.is_preview === true }];
+      return [
+        { uuid: e.uuid, key: e.key, isPreview: e.is_preview === true, empty: e.value === '' },
+      ];
     });
   }
 
