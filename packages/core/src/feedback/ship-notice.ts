@@ -14,10 +14,16 @@ import { type Said, say, sayEn } from '@forge/contracts/said';
 import { and, desc, eq, inArray, like, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedPerId, onePerProject, rowsPerId } from '../db/read-memo.js';
-import { issues, notificationDeliveryMembers, notifications, pipelineRuns } from '../db/schema.js';
+import {
+  issues,
+  notificationDeliveryMembers,
+  notifications,
+  pipelineRuns,
+  users,
+} from '../db/schema.js';
 import { feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { pipelineOutbox } from '../db/schema-outbox.js';
-import { userNames } from '../lib/people.js';
+import { personLabel } from '../lib/people.js';
 import { holderNames } from '../permissions/index.js';
 import { type ShippedRelease, shippedReleasesOf } from '../pipeline/index.js';
 
@@ -120,35 +126,37 @@ function noticesOf(feedbackIds: readonly string[]): Promise<Map<string, SentNoti
 }
 
 async function noticesRead(feedbackIds: readonly string[]): Promise<Map<string, SentNotice>> {
+  // each notice's release read in its own statement, from the run its key names after the item's
+  // prefix: a second read of the runs came a wave later, on forge-dev every read (ISS-1070 r19)
   const rows = await db
     .select({
       dedupeKey: notifications.dedupeKey,
       createdAt: notifications.createdAt,
       delivered: sql<number>`(SELECT count(*)::int FROM ${notificationDeliveryMembers} m WHERE m.notification_id = ${notifications.id})`,
+      version: pipelineRuns.releaseVersion,
     })
     .from(notifications)
+    .leftJoin(
+      pipelineRuns,
+      sql`${pipelineRuns.id} = nullif(regexp_replace(${notifications.dedupeKey}, '^[^:]*:[^:]*:', ''), '')::uuid`,
+    )
     .where(
       or(
         ...feedbackIds.map((id) => like(notifications.dedupeKey, `${feedbackShippedPrefix(id)}%`)),
       ),
     )
     .orderBy(desc(notifications.createdAt));
-  const out = new Map<string, SentNotice & { runId: string }>();
+  const out = new Map<string, SentNotice>();
   for (const r of rows) {
     const id = feedbackIds.find((f) => r.dedupeKey?.startsWith(feedbackShippedPrefix(f)));
     if (!id || out.has(id)) continue;
-    const runId = r.dedupeKey?.slice(feedbackShippedPrefix(id).length) ?? '';
-    out.set(id, { feedbackId: id, at: r.createdAt, delivered: r.delivered, release: null, runId });
+    out.set(id, {
+      feedbackId: id,
+      at: r.createdAt,
+      delivered: r.delivered,
+      release: r.version ?? null,
+    });
   }
-  const runIds = [...new Set([...out.values()].map((n) => n.runId).filter(Boolean))];
-  const runs = runIds.length
-    ? await db
-        .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
-        .from(pipelineRuns)
-        .where(inArray(pipelineRuns.id, runIds))
-    : [];
-  const versions = new Map(runs.map((r) => [r.id, r.version]));
-  for (const n of out.values()) n.release = versions.get(n.runId) ?? null;
   return out;
 }
 
@@ -156,6 +164,8 @@ interface SentMessage {
   feedbackId: string;
   at: Date;
   by: string;
+  /** The writer's name (`lib/people.ts:personLabel`), read with the message. */
+  byName: string | null;
   relayed: boolean;
 }
 
@@ -165,7 +175,11 @@ async function reporterMessagesOf(feedbackIds: readonly string[]): Promise<SentM
   const rows = (
     await rowsPerId('reporterMessages', feedbackIds, messageRowsOf, (r) => r.feedbackId)
   ).sort((a, b) => b.at.getTime() - a.at.getTime());
-  return rows.map((r) => ({ ...r, relayed: r.recipients.length === 0 }));
+  return rows.map(({ displayName, email, ...r }) => ({
+    ...r,
+    byName: email === null ? null : personLabel({ displayName, email }),
+    relayed: r.recipients.length === 0,
+  }));
 }
 
 const messageRowsOf = (feedbackIds: readonly string[]) =>
@@ -175,8 +189,12 @@ const messageRowsOf = (feedbackIds: readonly string[]) =>
       at: feedbackMessages.createdAt,
       by: feedbackMessages.sentBy,
       recipients: feedbackMessages.recipients,
+      // the writer's name read with the message, not by a read of its own a wave later (ISS-1070 r19)
+      displayName: users.displayName,
+      email: users.email,
     })
     .from(feedbackMessages)
+    .leftJoin(users, eq(users.id, feedbackMessages.sentBy))
     .where(
       and(
         inArray(feedbackMessages.feedbackId, [...feedbackIds]),
@@ -233,7 +251,9 @@ export async function shipNoticesOf(
     reporterMessagesOf(ids),
     noticesBeganIn(projectId),
   ]);
-  const names = await userNames(messages.map((m) => m.by));
+  const names = new Map(
+    messages.flatMap((m) => (m.byName === null ? [] : [[m.by, m.byName] as const])),
+  );
   for (const item of shippedItems) {
     const ship = shipped.get(item.id) ?? { at: null, release: null };
     if (item.reporterAgency === 'agent' && ship.at) {
