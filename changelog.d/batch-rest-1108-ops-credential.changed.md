@@ -1,1 +1,1 @@
-**A script schedule's forge-ops calls take their credential from a project secret, and a pipeline run reads production through the project's declared reads.** Each read or call is handed its secret for that process alone, and a run's read is kept on its issue.
+**A script schedule's forge-ops calls take their credential from a project secret.** A pipeline run reads production through the project's declared reads; each process alone is handed its secret, and a run's read is kept on its issue.
