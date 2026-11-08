@@ -144,12 +144,6 @@ async function rowsWhere(where: SQL): Promise<IssueRowRaw[]> {
   );
 }
 
-const uuids = (ids: readonly string[]) =>
-  sql`(${sql.join(
-    ids.map((id) => sql`${id}::uuid`),
-    sql`, `,
-  )})`;
-
 /**
  * A project's newest `limit` issues in `scope`, every project asked with it read in one statement
  * (ISS-1070 r6): each project's newest are ranked inside it, as its own read ranks them.
@@ -182,7 +176,9 @@ export async function issueRowsById(
   const rows = await rowsPerId(
     'issueRowsById',
     ids,
-    (some) => rowsWhere(sql`i.id IN ${uuids(some)}`),
+    // the ids bound as one array: one statement text however many, so its plan is not made again
+    // for every count of ids (ISS-1070 r9: 20 to 35 ms planning it, three times a read)
+    (some) => rowsWhere(sql`i.id = ANY(${uuidArray(some)})`),
     (r) => r.id,
   );
   return rows
@@ -205,7 +201,7 @@ export async function scopeCounts(projectId: string): Promise<{ open: number; cl
       await db.execute(sql`
         SELECT project_id, count(*) FILTER (WHERE status NOT IN ${DONE_SQL})::int AS open,
                count(*) FILTER (WHERE status IN ${DONE_SQL})::int AS closed
-          FROM issues WHERE project_id IN ${uuids(ids)} AND archived_at IS NULL
+          FROM issues WHERE project_id = ANY(${uuidArray(ids)}) AND archived_at IS NULL
          GROUP BY project_id`),
     );
     return new Map(rows.map((r) => [r.project_id, { open: r.open, closed: r.closed }]));
