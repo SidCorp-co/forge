@@ -7,6 +7,8 @@
 
 pub(crate) mod confine;
 mod outcome;
+pub mod pane;
+mod pane_turn;
 #[doc(hidden)]
 pub mod own_testkit;
 use outcome::*;
@@ -116,6 +118,8 @@ pub struct ClaudeCodeRunner {
     close_grace: Duration,
     /// Each chat session's one running turn and the seqs its turns numbered (ISS-977).
     chat_turns: crate::chat_turns::ChatTurns,
+    /// Channel agents' sessions running in a pane their owner attaches to (ISS-946).
+    panes: pane::Panes,
 }
 
 /// A turn core handed this box for a session, held from the moment its frame is read until the
@@ -158,6 +162,7 @@ impl ClaudeCodeRunner {
             placing: Arc::new(std::sync::Mutex::new(HashMap::new())),
             close_grace: CLOSE_GRACE,
             chat_turns: crate::chat_turns::ChatTurns::default(),
+            panes: Arc::default(),
         }
     }
 
@@ -311,6 +316,9 @@ pub(crate) fn args_with_plugins(spec: &JobSpec, plugins: &PluginLaunch) -> Vec<S
 impl ClaudeCodeRunner {
     /// What the live duplex session for `id` was spawned with, if there is one.
     pub async fn resident(&self, id: &SessionId) -> Option<Resident> {
+        if let Some(r) = self.pane_resident(id).await {
+            return Some(r);
+        }
         let map = self.sessions.lock().await;
         let s = map.get(id)?;
         s.stdin.as_ref()?;
@@ -326,9 +334,12 @@ impl ClaudeCodeRunner {
 
     /// Hand a resident session the token of the turn about to be written into it.
     pub async fn refresh_bearer(&self, id: &SessionId, credential: &str) -> Result<()> {
-        let dir = {
-            let map = self.sessions.lock().await;
-            map.get(id).and_then(|s| s.bearer_dir.clone())
+        let dir = match self.pane_bearer_dir(id).await {
+            Some(dir) => dir,
+            None => {
+                let map = self.sessions.lock().await;
+                map.get(id).and_then(|s| s.bearer_dir.clone())
+            }
         };
         let dir = dir.ok_or_else(|| {
             Error::Other("the resident session reads no bearer file to hand a token to".into())
@@ -351,6 +362,9 @@ impl ClaudeCodeRunner {
         pending: (String, u64),
     ) -> Result<()> {
         self.placed(id).await;
+        if self.holds_pane(id).await {
+            return self.pane_inject(id, message, pending).await;
+        }
         {
             let map = self.sessions.lock().await;
             let sess = map
@@ -371,7 +385,9 @@ impl ClaudeCodeRunner {
     /// handed a turn for it that is not yet in a process. A session it does not hold is one it can
     /// say nothing about, which is not the same as one that ended.
     pub async fn holds(&self, id: &SessionId) -> bool {
-        self.placing_turn(id) || self.sessions.lock().await.contains_key(id)
+        self.placing_turn(id)
+            || self.holds_pane(id).await
+            || self.sessions.lock().await.contains_key(id)
     }
 
     pub async fn send_resident(
@@ -397,6 +413,9 @@ impl ClaudeCodeRunner {
 
     /// Record the checkout the session has just been told about.
     pub async fn note_head(&self, id: &SessionId, head_sha: Option<String>) {
+        if self.pane_note_head(id, head_sha.clone()).await {
+            return;
+        }
         if let Some(s) = self.sessions.lock().await.get_mut(id) {
             s.head_sha = head_sha;
         }
@@ -435,6 +454,7 @@ impl ClaudeCodeRunner {
     /// each spawn its own handle is also what keeps two processes off one Claude session: the
     /// replacement resumes the same transcript the closed one would otherwise still be writing.
     pub(crate) async fn retire(&self, id: &str) -> Result<()> {
+        self.close_pane(id, "closed between turns").await;
         let ended = {
             let mut map = self.sessions.lock().await;
             let Some(s) = map.get_mut(id) else {
@@ -532,8 +552,8 @@ impl ClaudeCodeRunner {
     }
 
     pub async fn close_all_resident(&self) -> Vec<SessionId> {
+        let mut closed = self.close_all_panes().await;
         let mut map = self.sessions.lock().await;
-        let mut closed = Vec::new();
         for (id, s) in map.iter_mut() {
             if s.stdin.take().is_some() {
                 closed.push(id.clone());
@@ -813,6 +833,9 @@ impl Runner for ClaudeCodeRunner {
         message: String,
         tx: mpsc::Sender<RunnerEvent>,
     ) -> Result<()> {
+        if self.holds_pane(session).await {
+            return self.pane_send(session, &message, tx, None).await;
+        }
         let mut map = self.sessions.lock().await;
         let sess = map
             .get_mut(session)
@@ -842,6 +865,9 @@ impl Runner for ClaudeCodeRunner {
     }
 
     async fn abort(&self, session: &SessionId) -> Result<()> {
+        if self.close_pane(session, "aborted").await {
+            return Ok(());
+        }
         let mut s = self.sessions.lock().await;
         if let Some(sess) = s.get_mut(session) {
             sess.stdin = None;

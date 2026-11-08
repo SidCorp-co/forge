@@ -33,7 +33,7 @@ use crate::chat_attachments::{
     augment_prompt, cleanup_attachments, stage_attachments, AttachmentRef,
 };
 use crate::chat_checkout;
-use crate::claude_code::{ClaudeCodeRunner, Resident, TurnPlacing};
+use crate::claude_code::{pane, ClaudeCodeRunner, Resident, TurnPlacing};
 use crate::CheckoutView;
 use crate::Confinement;
 use crate::JobSpec;
@@ -472,11 +472,11 @@ async fn run_turn(
                 // the resident may still be alive (its bearer could not be handed over): it is
                 // closed rather than left beside the process that replaces it
                 runner.close(&session_id).await;
-                runner.start(spec, tx).await.map(|_| ())
+                spawn_turn(&runner, spec, &turn, tx).await
             }
         }
     } else {
-        runner.start(spec, tx).await.map(|_| ())
+        spawn_turn(&runner, spec, &turn, tx).await
     };
     drop(placing);
     if let Err(e) = started {
@@ -495,6 +495,39 @@ async fn run_turn(
     // returns). Leaking a temp dir is harmless but we don't want to accumulate.
     cleanup_attachments(turn.attachment_dir.as_deref()).await;
     Ok(())
+}
+
+/// Spawn the session a turn runs in: in its pane where this box runs a channel agent's resident
+/// session in one (ISS-946), else headless. A pane that cannot be made is said in the log and on
+/// the heartbeat, and the turn runs headless.
+async fn spawn_turn(
+    runner: &ClaudeCodeRunner,
+    spec: JobSpec,
+    turn: &Turn,
+    tx: mpsc::Sender<RunnerEvent>,
+) -> Result<()> {
+    let on = runner_platform::config::Config::load().is_ok_and(|c| c.runner.chat_panes);
+    let placed = pane::pane_for(
+        on,
+        turn.keep_resident,
+        turn.confined,
+        turn.ungated,
+        turn.project_slug.as_deref(),
+    );
+    match placed {
+        None => runner.start(spec, tx).await.map(|_| ()),
+        Some(Ok(at)) => match runner.start_in_pane(spec.clone(), at, tx.clone()).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                pane::pane_refused(&turn.session_id, &e.to_string());
+                runner.start(spec, tx).await.map(|_| ())
+            }
+        },
+        Some(Err(why)) => {
+            pane::pane_refused(&turn.session_id, &why);
+            runner.start(spec, tx).await.map(|_| ())
+        }
+    }
 }
 
 /// Drain the runner event stream for one chat turn: deliver its raw stream-json

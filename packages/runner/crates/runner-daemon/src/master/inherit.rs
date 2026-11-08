@@ -568,52 +568,8 @@ pub(crate) fn transcript_under(
 ) -> std::path::PathBuf {
     home.join(".claude")
         .join("projects")
-        .join(project_dir_name(cwd))
+        .join(runner_core::claude_paths::project_dir_name(cwd))
         .join(format!("{conversation_id}.jsonl"))
-}
-
-/// The directory Claude Code names for a project run in `cwd`: each UTF-16
-/// unit of the path that is not an ASCII letter or digit becomes `-`, and a
-/// name past 200 units is cut there and followed by a hash of the whole path.
-/// A drive's `:` and `\` are replaced like any other, so on Windows the name
-/// is one component and never an absolute path that `join` would put in place
-/// of the home it is under.
-fn project_dir_name(cwd: &std::path::Path) -> String {
-    const CAP: usize = 200;
-    let path = cwd.to_string_lossy();
-    let units: Vec<u16> = path.encode_utf16().collect();
-    let name: String = units
-        .iter()
-        .map(|&u| match u8::try_from(u) {
-            Ok(b) if b.is_ascii_alphanumeric() => char::from(b),
-            _ => '-',
-        })
-        .collect();
-    if name.len() <= CAP {
-        return name;
-    }
-    let hash = units.iter().fold(0i32, |h, &u| {
-        h.wrapping_shl(5).wrapping_sub(h).wrapping_add(i32::from(u))
-    });
-    format!(
-        "{}-{}",
-        &name[..CAP],
-        base36(i64::from(hash).unsigned_abs())
-    )
-}
-
-fn base36(mut n: u64) -> String {
-    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
-    let mut out = Vec::new();
-    loop {
-        out.push(DIGITS[(n % 36) as usize]);
-        n /= 36;
-        if n == 0 {
-            break;
-        }
-    }
-    out.reverse();
-    String::from_utf8(out).expect("base-36 digits are ASCII")
 }
 
 pub(crate) fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
