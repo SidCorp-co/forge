@@ -69,6 +69,7 @@ export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { backfillCloseVerdicts } from './criteria/close-verdicts.js';
 export { namedCriteriaOf } from './criteria/criterion-names.js';
 export { requirementRecordingSessionOf } from './criteria/recording-session.js';
+export { retieTracedCriteria } from './criteria/retie.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export { type VerdictRefusal, verdictDraftFault } from './criteria/verdict-input.js';
 export {

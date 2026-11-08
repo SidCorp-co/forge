@@ -3,10 +3,10 @@
  * written for a revision, judged where a list is proposed, and reset when a draft is rewritten.
  */
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { issueCriteria } from '../db/schema-issue-criteria.js';
 import { type CriterionForm, requirementCriteria } from '../db/schema-requirements.js';
+import { retieTracedCriteria } from '../issues/index.js';
 import {
   type CriterionInput,
   type LiveCriterion,
@@ -76,13 +76,7 @@ async function retieUnchanged(
       (c) => c.code === old.code && c.body === old.body && c.form === old.form,
     );
     const to = same ? newId.get(same.code) : undefined;
-    if (!to) continue;
-    await tx
-      .update(issueCriteria)
-      .set({ requirementCriterionId: to })
-      .where(
-        and(eq(issueCriteria.requirementCriterionId, old.id), isNull(issueCriteria.retiredAt)),
-      );
+    if (to) await retieTracedCriteria(tx, old.id, to);
   }
 }
 
