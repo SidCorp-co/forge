@@ -540,6 +540,36 @@ and the opening names it (`support/prompt.ts:agentOpening`):
 
 These need orbit's binding to grant `deploy` with `deployTargets` naming 1445bbb7.
 
+## A channel agent's session in a pane its owner attaches to (ISS-946): proposed, not built
+
+The owner, 2026-11-04: watch a channel agent's session by `tmux attach`, as a master is watched; a
+headless view and a log tail were shown and rejected. Today the session is the resident above: a
+`claude --output-format stream-json` child of the chat host, confined, with no pane.
+
+**Shape.** The box runs the agent's one resident Claude Code interactive in a tmux session
+`forge-chat-<slug>` on the runner's socket (`runner-workspace/src/terminal.rs:socket_path`), next to
+`forge-master-<slug>`, launched with the line a job pane takes (`terminal/launch.rs:job_argv`) inside
+the confinement the chat host applies now (`runner-agent/src/claude_code/confine.rs`), so bwrap and
+the egress bridge stay. The session page and the master guide print
+`tmux -S <socket> attach -t forge-chat-<slug>`; the pane name is checked against the socket-path bound
+(`terminal.rs:fits_a_unix_socket`) when it is made. No Rocket.Chat plugin is needed: turns already
+reach the session through the box, and its replies leave through core's doors (`support.reply`),
+never its output.
+
+| Headless guarantee | Kept by, in a pane |
+|---|---|
+| Turn hand-over (`agent:start`, `agent:send`) | typed into the pane (`terminal/typing.rs:send_line`), as a master's wake is |
+| A message written into a running turn (`support/inject.ts`) | typed while the turn runs. Owed: proof on the pinned CLI that typed input queues into the running turn as stdin does |
+| Turn end (`runner-agent/src/chat.rs:close_turn`, on the stream's `result`) | a Stop hook through `forge-runner hook` tells the daemon, which closes the turn with the same write |
+| Lost turns (`support/lost-turns.ts`) and the silence reap (`SESSION_SILENCE_REAP_MS`) | unchanged: both read the turn beat, which the daemon keeps writing while the pane's turn runs |
+| The turn record and cost and token totals (`agent-sessions/turn-events.ts`, `support/turn-record.ts`) | the session's transcript file, tailed and posted as the same `stdout` events: its lines carry the `assistant` and `user` shape `turn-record.ts:stepsOf` reads, and each assistant line its token usage. Owed: the cost, which only the stream's `result` line carries and a transcript does not write |
+| One token per turn (`mcp/config/mod.rs:write_refreshable`) | unchanged: the pane reads the same helper file |
+| The tool permits of a confined session (`claude_code/permits.rs`) | the same permits as the pane's settings file; never `bypassPermissions`, which a master holds and a session reading strangers' text must not |
+
+**Done when** (the issue's own): on forge-dev's runner the pane answers a real room message, its reply
+reaches the room through core, the session page shows the attach command, and each row above is
+shown kept. Building it takes a runner release; nothing of it is built yet.
+
 ## Honest costs
 
 - **A box per project.** The session runs on a paired runner bound to the project with a checkout,
