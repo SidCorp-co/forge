@@ -10,6 +10,7 @@ export const INVENTORY = [
   // ── workspace ──
   { route: "/", component: "HomeScreen", feature: "overview", drawn: "owner-home" },
   { route: "/attention", component: "AttentionScreen", feature: "attention", files: ["features/attention/components/attention-screen.tsx"] },
+  { route: "/activity", component: "ActivityScreen (lanes, peek, cleanup)", feature: "activity", files: ["features/activity/components/activity-screen.tsx", "features/activity/components/lanes.tsx", "features/activity/components/activity-peek.tsx", "features/activity/components/cleanup.tsx"] },
   { route: "/projects", component: "ProjectsConsole", feature: "projects", files: ["features/projects/components/projects-console.tsx"] },
   { route: "/ops", redirect: "Activity" },
   { route: "/runners", component: "RunnersScreen", feature: "runners", drawn: "runners" },
@@ -55,7 +56,7 @@ export const INVENTORY = [
   { route: `${P}/channels/$channel`, component: "ChannelScreen", feature: "channels", files: ["features/channels/components/channel-screen.tsx"] },
   { route: `${P}/modules`, component: "ModulesScreen", feature: "modules", files: ["features/modules/components/modules-screen.tsx"] },
   { route: `${P}/modules/$module`, component: "ModuleScreen", feature: "modules", files: ["features/modules/components/module-screen.tsx", "features/modules/components/module-detail.tsx"] },
-  { route: `${P}/pipeline`, component: "PipelineBoard", feature: "pipeline", files: ["features/pipeline/components/pipeline-board.tsx"] },
+  { route: `${P}/pipeline`, redirect: "Issues › Waves (ISS-1073)" },
   { route: `${P}/rooms/$room`, component: "RoomScreen", feature: "previews", files: ["features/previews/components/room-screen.tsx"] },
   { route: `${P}/ecosystem/api`, component: "ApiPageScreen", feature: "ecosystem", files: ["features/ecosystem/components/api-page-screen.tsx"] },
   { route: `${P}/ecosystem/channel/$ref`, component: "DocumentScreen", feature: "ecosystem", files: ["features/ecosystem/components/document-screen.tsx"] },
