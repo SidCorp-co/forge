@@ -58,7 +58,8 @@ function Stakes({ d }: { d: NeedsYouDecision }) {
             </>
           ) : (
             <>
-              <span className="font-semibold text-fg">{t("needsYou.decisions.recommended")}:</span> {recommended.label}. {d.recommended.why}
+              {/* the recommended answer is the star on its button: the line says why, never its label again (ISS-686) */}
+              <span className="font-semibold text-fg">{t("needsYou.decisions.recommended")}:</span> {d.recommended.why}
             </>
           )}
         </p>
@@ -129,6 +130,49 @@ function DenseQuestion({ d, href }: { d: NeedsYouDecision; href: string | null }
         )}
       </Tooltip>
     </p>
+  );
+}
+
+/**
+ * A decision's answers. Where any answer says what it does, each is a button with its effect as text
+ * beside it, so a phone reads it and the label is said once (ISS-686: a card named an option four
+ * times, in the question, its button, a "label: effect" line and the recommendation); else one row of
+ * buttons. A row's answers are never the page's primary, the recommended one included: the page has
+ * one primary and it is the page's own next act (ISS-903); the recommendation is the star.
+ */
+function AnswerButtons({ d, dense, pending, onPress }: { d: NeedsYouDecision; dense: boolean; pending: string | null; onPress: (a: DecisionAnswer) => void }) {
+  const button = (a: DecisionAnswer) => (
+    <Button
+      key={a.id}
+      size="sm"
+      variant="secondary"
+      // a long answer wraps inside the column instead of widening the page (ISS-691)
+      className="h-auto min-h-8 max-w-full flex-none whitespace-normal py-1 text-left"
+      icon={a.recommended ? "star" : undefined}
+      data-recommended={a.recommended || undefined}
+      title={a.effect ?? undefined}
+      loading={pending === a.id}
+      data-testid="needs-you-decision-answer"
+      data-answer={a.id}
+      onClick={() => onPress(a)}
+    >
+      {a.label}
+    </Button>
+  );
+  if (dense || !d.answers.some((a) => a.effect)) return <div className="flex flex-wrap items-center gap-2">{d.answers.map(button)}</div>;
+  return (
+    <ul className="flex flex-col gap-1.5" data-testid="needs-you-decision-effects">
+      {d.answers.map((a) => (
+        <li key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          {button(a)}
+          {a.effect ? (
+            <span className="fg-caption min-w-0 text-muted" data-testid="needs-you-decision-effect">
+              {a.effect}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -205,47 +249,20 @@ function OwedDecision({
           </div>
         </form>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          {d.answers.map((a) => (
-            <Button
-              key={a.id}
-              size="sm"
-              // a row's answers are never the page's primary, the recommended one included: the page has one
-              // primary and it is the page's own next act (ISS-903); the recommendation is the star and the line
-              variant="secondary"
-              // a long answer wraps inside the column instead of widening the page (ISS-691)
-              className="h-auto min-h-8 max-w-full whitespace-normal py-1 text-left"
-              icon={a.recommended ? "star" : undefined}
-              data-recommended={a.recommended || undefined}
-              title={a.effect ?? undefined}
-              loading={press.isPending && press.variables?.answer.id === a.id}
-              data-testid="needs-you-decision-answer"
-              data-answer={a.id}
-              onClick={() => {
-                const asItStands = wordsAsItStands(a);
-                if (!a.needsReason) press.mutate({ answer: a, text: null });
-                else if (asItStands !== null) press.mutate({ answer: a, text: asItStands });
-                else {
-                  setTyped(prefillOf(a));
-                  setTyping(a);
-                }
-              }}
-            >
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      )}
-      {!dense && !sent && !typing && d.answers.some((a) => a.effect) && (
-        <ul className="fg-caption flex flex-col gap-0.5 text-muted" data-testid="needs-you-decision-effects">
-          {d.answers.flatMap((a) =>
-            a.effect ? [
-              <li key={a.id}>
-                <span className="font-semibold text-fg">{a.label}:</span> {a.effect}
-              </li>,
-            ] : [],
-          )}
-        </ul>
+        <AnswerButtons
+          d={d}
+          dense={dense}
+          pending={press.isPending ? press.variables?.answer.id ?? null : null}
+          onPress={(a) => {
+            const asItStands = wordsAsItStands(a);
+            if (!a.needsReason) press.mutate({ answer: a, text: null });
+            else if (asItStands !== null) press.mutate({ answer: a, text: asItStands });
+            else {
+              setTyped(prefillOf(a));
+              setTyping(a);
+            }
+          }}
+        />
       )}
       {press.isError && (
         <p className="fg-caption text-danger" role="alert">

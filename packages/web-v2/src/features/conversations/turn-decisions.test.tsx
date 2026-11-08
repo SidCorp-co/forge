@@ -60,7 +60,7 @@ describe("the chat draws the decisions its turn read (REQ-41 BC-2)", () => {
   it("renders each decision with its recommended answer and buttons under the turn; a question on nothing opens no link", () => {
     renderWithQuery(<TurnDecisions blocks={[block("forge_needs_you", READ)] as never} slug="hop" />);
     expect(screen.getAllByTestId("needs-you-decision")).toHaveLength(1);
-    expect(screen.getByTestId("needs-you-decision-recommended")).toHaveTextContent("Recommended: At the next release.");
+    expect(screen.getByTestId("needs-you-decision-recommended")).toHaveTextContent('Recommended: Whoever asked recommends "At the next release".');
     expect(screen.getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["At the next release", "Now"]);
     expect(screen.queryByRole("link")).toBeNull();
   });

@@ -73,6 +73,13 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** How often a card says `words` outside the question and the why core wrote for it. */
+function timesOutsideCoreWords(card: HTMLElement, words: string): number {
+  const rest = card.cloneNode(true) as HTMLElement;
+  for (const el of rest.querySelectorAll("[data-testid=needs-you-decision-question], [data-testid=needs-you-decision-recommended]")) el.remove();
+  return (rest.textContent ?? "").split(words).length - 1;
+}
+
 describe("the decisions only you can make (REQ-41 BC-2)", () => {
   it("shows each question with its recommended answer and why, under its group, and names what was left out", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" />);
@@ -81,7 +88,7 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     const first = rows[0];
     if (!first) throw new Error("no decision row");
     expect(within(first).getByTestId("needs-you-decision-question")).toHaveTextContent("Keep the old export format or move to the new one?");
-    expect(within(first).getByTestId("needs-you-decision-recommended")).toHaveTextContent('Recommended: Move to the new one. Whoever asked recommends "Move to the new one".');
+    expect(within(first).getByTestId("needs-you-decision-recommended")).toHaveTextContent('Recommended: Whoever asked recommends "Move to the new one".');
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["Move to the new one", "Keep the old format"]);
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.hasAttribute("data-recommended"))).toEqual([true, false]);
     // the item's title leads its link; its key sits behind it (ISS-865)
@@ -212,14 +219,16 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     });
   });
 
-  // REQ-68 BC-1, judged red on dev.325 (K98): what an answer does was a hover title, so a phone never showed it
-  it("draws what each answer does as text beside the buttons, not only as a hover title", () => {
+  // REQ-68 BC-1, judged red on dev.325 (K98): what an answer does was a hover title, so a phone never showed it.
+  // Judged red again at dev.327 (ISS-686): a card then named each option up to four times, in the question,
+  // its button, a "label: effect" line and the recommendation. Each answer's label is its button alone.
+  it("draws what each answer does as text beside its own button, the label said once", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" />);
     const first = screen.getAllByTestId("needs-you-decision")[0];
     if (!first) throw new Error("no decision drawn");
-    expect(within(first).getByTestId("needs-you-decision-effects")).toHaveTextContent(
-      "Move to the new one: Sends this answer to the run that asked.",
-    );
+    const answer = within(within(first).getByTestId("needs-you-decision-effects")).getByRole("button", { name: "Move to the new one" });
+    expect(answer.closest("li")?.textContent).toBe("Move to the new oneSends this answer to the run that asked.");
+    expect(timesOutsideCoreWords(first, "Move to the new one")).toBe(1);
   });
 
   it("shows the route's own refusal where the press is refused", async () => {
