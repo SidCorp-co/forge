@@ -38,6 +38,24 @@ function adminOnly(steps: unknown): boolean {
   return options.length > 0 && options.every((o) => o.authority === 'admin');
 }
 
+/** Each issue's moves in the order read, their times parsed once a read (ISS-1070 r9). */
+const movesIndex = new WeakMap<Row[], Map<string, { at: number; to: IssueStatus }[]>>();
+function movesByIssue(moves: Row[]): Map<string, { at: number; to: IssueStatus }[]> {
+  let held = movesIndex.get(moves);
+  if (!held) {
+    held = new Map();
+    for (const m of moves) {
+      const id = String(m.entity_id);
+      const move = { at: must(m.created_at).getTime(), to: String(m.to_status) as IssueStatus };
+      const own = held.get(id);
+      if (own) own.push(move);
+      else held.set(id, [move]);
+    }
+    movesIndex.set(moves, held);
+  }
+  return held;
+}
+
 // where each carried issue stood when the run ended: its last kernel transition inside the run's window,
 // else the status the run opened it at, which nothing has moved since
 function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display, end: Date) {
@@ -58,12 +76,11 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
     if (merged && merged.getTime() >= start && merged.getTime() <= end.getTime()) {
       landedAt[key] = merged;
     }
-    const moves = t.issueMoves.filter((m) => {
-      const at = must(m.created_at).getTime();
-      return String(m.entity_id) === String(row.id) && at >= start && at <= end.getTime();
-    });
+    const moves = (movesByIssue(t.issueMoves).get(String(row.id)) ?? []).filter(
+      (m) => m.at >= start && m.at <= end.getTime(),
+    );
     const last = moves[moves.length - 1];
-    if (last) endStatuses[key] = String(last.to_status) as IssueStatus;
+    if (last) endStatuses[key] = last.to;
     else if (opened) endStatuses[key] = opened as IssueStatus;
   }
   return { openingStatuses, endStatuses, landedAt };

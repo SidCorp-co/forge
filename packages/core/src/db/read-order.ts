@@ -18,20 +18,25 @@ export interface Made {
  * The order one read across projects (`db/read-memo.ts:readAcross`, by its name) asks in, learned
  * from the project reads it has run: the steps a project's read asked at a later quiet point than
  * each step, and the most times any asked each key. It names reads and counts, never ids, so it holds
- * no answer and no project's data, only how the code is laid out. It learns while the order still
- * changes, and again every {@link RELEARN}th read, so a new shape is learned without each read paying
- * for it (ISS-1070 r9).
+ * no answer and no project's data, only how the code is laid out. It learns from its first reads
+ * until the order holds unchanged or {@link LEARNING} have taught it (two projects' reads side by side
+ * never ask in quite the same order, so it can grow a little on every read), and again every
+ * {@link RELEARN}th read, so a new shape is learned without each read paying for it (ISS-1070 r9:
+ * learning on every read cost the home 28 ms of its 12 projects).
  */
 export interface Order {
   after: Map<string, Set<string>>;
   most: Map<string, number>;
-  /** Reads in a row that left the order unchanged, and reads in all. */
+  /** Reads in a row that left the order unchanged, reads that taught it, and reads in all. */
   steady: number;
+  taught: number;
   reads: number;
 }
 
 /** How many reads in a row leave the order unchanged before it stops being learned on every read. */
 const STEADY = 3;
+/** How many reads teach the order at most before it is learned only every {@link RELEARN}th read. */
+const LEARNING = 8;
 const RELEARN = 50;
 const orders = new Map<string, Order>();
 
@@ -39,7 +44,7 @@ const orders = new Map<string, Order>();
 export function orderOf(name: string): Order {
   let order = orders.get(name);
   if (!order) {
-    order = { after: new Map(), most: new Map(), steady: 0, reads: 0 };
+    order = { after: new Map(), most: new Map(), steady: 0, taught: 0, reads: 0 };
     orders.set(name, order);
   }
   return order;
@@ -48,7 +53,7 @@ export function orderOf(name: string): Order {
 /** Counts a read of `order` begun; answers whether this read learns from its project reads. */
 export function begun(order: Order): boolean {
   order.reads += 1;
-  return order.steady < STEADY || order.reads % RELEARN === 0;
+  return (order.steady < STEADY && order.taught < LEARNING) || order.reads % RELEARN === 0;
 }
 
 /** Learns from the asks of each project read of a read that has ended. */
@@ -58,6 +63,7 @@ export function learned(
 ) {
   // a read that asked nothing across projects (one project's, which reads each ask as it comes) teaches nothing
   if (reads.every((r) => r.made.length === 0)) return;
+  order.taught += 1;
   const changed = reads.map((r) => learnFrom(order, r.asks, r.made)).some(Boolean);
   order.steady = changed ? 0 : order.steady + 1;
 }
