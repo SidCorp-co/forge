@@ -182,7 +182,7 @@ describe('a step whose gate asks no person (ISS-1108)', () => {
 // ISS-1078 (FB-534, sidpeak REQ-1): a decision dated in the future, written since the wait began,
 // holds the wait: it reads waiting, never stuck or overdue, until that date, and names the decision.
 describe('a requirement whose wait a dated decision holds', () => {
-  const owed = (decision: StandingInput['decision']) =>
+  const owed = (decision: NonNullable<StandingInput['decision']> | null) =>
     turn(base({ owed: revisionsGate, viewer: null, decision }));
 
   it('reads overdue with no decision, as the wait fell due', () => {

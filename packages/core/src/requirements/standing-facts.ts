@@ -7,6 +7,7 @@
 import type { ChecklistAnswer } from '@forge/contracts/checklists';
 import type { RequirementAcceptanceDecision } from '@forge/contracts/requirements';
 import { desc, inArray, sql } from 'drizzle-orm';
+import { type ItemDecision, itemDecisionOf } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
 import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
@@ -153,14 +154,14 @@ export async function acceptanceDecisionsOf(
  * placement, a short name or any other edit moves no status, so it never restarts that time), and,
  * for one standing accepted, whether that move into accepted was a decision (`acceptanceDecisionsOf`).
  */
-export async function statusFactsOf(ids: readonly string[]): Promise<{
-  since: Map<string, Date>;
-  decisions: Map<string, RequirementAcceptanceDecision>;
-}> {
+export async function statusFactsOf(ids: readonly string[]): Promise<StatusFacts> {
   const read = await memoizedPerId('statusFacts', ids, async (some) => {
-    const { since, decisions } = await statusFactsRead(some);
+    const { since, decisions, held } = await statusFactsRead(some);
     return new Map(
-      [...since].map(([id, at]) => [id, { since: at, decision: decisions.get(id) ?? null }]),
+      [...since].map(([id, at]) => [
+        id,
+        { since: at, decision: decisions.get(id) ?? null, held: held.get(id) ?? null },
+      ]),
     );
   });
   return {
@@ -168,18 +169,35 @@ export async function statusFactsOf(ids: readonly string[]): Promise<{
     decisions: new Map(
       [...read].flatMap(([id, f]) => (f.decision ? [[id, f.decision] as const] : [])),
     ),
+    held: new Map([...read].flatMap(([id, f]) => (f.held ? [[id, f.held] as const] : []))),
   };
 }
 
-async function statusFactsRead(ids: readonly string[]): Promise<{
+interface StatusFacts {
   since: Map<string, Date>;
   decisions: Map<string, RequirementAcceptanceDecision>;
-}> {
-  if (ids.length === 0) return { since: new Map(), decisions: new Map() };
+  /**
+   * Its latest reasoned decision comment (ISS-1078), read in the same statement: what holds a move the
+   * rule would make (`standing-held.ts:heldByDecision`).
+   */
+  held: Map<string, ItemDecision>;
+}
+
+async function statusFactsRead(ids: readonly string[]): Promise<StatusFacts> {
+  if (ids.length === 0) return { since: new Map(), decisions: new Map(), held: new Map() };
   const rows = (await db.execute(sql`
     SELECT r.id, r.status, COALESCE(last.created_at, r.created_at) AS at,
-           last.to_status, last.reason, last.checklist_answers AS answers
+           last.to_status, last.reason, last.checklist_answers AS answers,
+           decided.created_at AS decided_at, decided.decision AS decided
       FROM requirements r
+      LEFT JOIN LATERAL (
+        SELECT c.created_at, c.decision
+          FROM comments c
+         WHERE c.requirement_id = r.id AND c.intent = 'decision'
+           AND btrim(coalesce(c.decision ->> 'reason', '')) <> ''
+         ORDER BY c.created_at DESC, c.id DESC
+         LIMIT 1
+      ) decided ON true
       LEFT JOIN LATERAL (
         SELECT kt.created_at, kt.to_status, kt.reason, kt.checklist_answers
           FROM kernel_transitions kt
@@ -194,11 +212,16 @@ async function statusFactsRead(ids: readonly string[]): Promise<{
     to_status: string | null;
     reason: string | null;
     answers: ChecklistAnswer[] | null;
+    decided_at: Date | string | null;
+    decided: Parameters<typeof itemDecisionOf>[2];
   }>;
   const since = new Map<string, Date>();
   const decisions = new Map<string, RequirementAcceptanceDecision>();
+  const held = new Map<string, ItemDecision>();
   for (const r of rows) {
     since.set(r.id, new Date(r.at));
+    const decided = r.decided_at ? itemDecisionOf(r.id, new Date(r.decided_at), r.decided) : null;
+    if (decided) held.set(r.id, decided);
     if (r.status !== 'accepted' || r.to_status !== 'accepted') continue;
     const waived = waivedOf({ answers: r.answers ?? [] });
     if (waived.length === 0) continue;
@@ -208,7 +231,7 @@ async function statusFactsRead(ids: readonly string[]): Promise<{
       waived,
     });
   }
-  return { since, decisions };
+  return { since, decisions, held };
 }
 
 /** When each linked issue last closed (closed ones only) and first moved past draft and open. */

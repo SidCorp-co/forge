@@ -65,21 +65,40 @@ export async function reasonedDecisionsOnItems(
   const except = new Set(exceptUserIds);
   return rows.flatMap((row) => {
     if (except.has(row.authorId) || !row.subjectId) return [];
-    const why = trimmed(row.decision?.reason);
-    if (!why) return [];
-    const until = trimmed(row.decision?.reversedWhen);
-    const read = until ? readDecisionUntil(until) : null;
-    return [
-      {
-        subjectId: row.subjectId,
-        at: row.at,
-        decision: trimmed(row.decision?.decision),
-        why,
-        until: read?.kind === 'date' ? read.at : null,
-        condition: read?.kind === 'condition' ? read.text : null,
-      },
-    ];
+    const read = itemDecisionOf(row.subjectId, row.at, row.decision);
+    return read ? [read] : [];
   });
+}
+
+/**
+ * One decision comment's fields as a reasoned decision on `subjectId`; null where it gives no reason.
+ * A read that already holds the comment (`requirements/standing-facts.ts:statusFactsOf`) shapes it
+ * here, so the rule for what holds and until when is this module's alone.
+ */
+export function itemDecisionOf(
+  subjectId: string,
+  at: Date,
+  fields:
+    | {
+        decision?: string | undefined;
+        reason?: string | undefined;
+        reversedWhen?: string | undefined;
+      }
+    | null
+    | undefined,
+): ItemDecision | null {
+  const why = trimmed(fields?.reason);
+  if (!why) return null;
+  const until = trimmed(fields?.reversedWhen);
+  const read = until ? readDecisionUntil(until) : null;
+  return {
+    subjectId,
+    at,
+    decision: trimmed(fields?.decision),
+    why,
+    until: read?.kind === 'date' ? read.at : null,
+    condition: read?.kind === 'condition' ? read.text : null,
+  };
 }
 
 /**
