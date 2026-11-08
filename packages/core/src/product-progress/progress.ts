@@ -24,7 +24,7 @@ import {
   type RunStanding,
   type RunState,
 } from '@forge/contracts/run-standing';
-import { issueRowsOfRequirements, requirementBySeq } from '../forecast/index.js';
+import { issueRowsOfRequirements, requirementsBySeq } from '../forecast/index.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { etaOf } from '../report-queries/index.js';
@@ -106,14 +106,20 @@ export async function requirementIdsOf(
   projectId: string,
   keys: readonly string[],
 ): Promise<Map<string, string>> {
-  const found = await Promise.all(
-    [...new Set(keys)].map(async (key) => {
+  const seqOf = new Map(
+    [...new Set(keys)].flatMap((key) => {
       const seq = /^REQ-(\d+)$/.exec(key)?.[1];
-      const row = seq ? await requirementBySeq(projectId, Number(seq)) : null;
-      return row ? ([key, row.id] as const) : null;
+      return seq ? [[key, Number(seq)] as const] : [];
     }),
   );
-  return new Map(found.filter((f): f is readonly [string, string] => f !== null));
+  // one statement for every key, and for every project of a read across them (ISS-1070 r8)
+  const rows = await requirementsBySeq(projectId, [...seqOf.values()]);
+  return new Map(
+    [...seqOf].flatMap(([key, seq]) => {
+      const row = rows.get(seq);
+      return row ? [[key, row.id] as const] : [];
+    }),
+  );
 }
 
 /** The unfinished runs on any of `keys`, each once. */

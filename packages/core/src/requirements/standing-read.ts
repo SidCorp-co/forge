@@ -50,6 +50,7 @@ import {
   issueTimesOf,
   latestContractPinsOf,
   latestPinsOf,
+  requirementStatusesOf,
   statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
@@ -478,10 +479,7 @@ export async function deliveredAmong(
   ids: readonly string[],
 ): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
-  const rows = await db
-    .select({ id: requirements.id, status: requirements.status })
-    .from(requirements)
-    .where(and(eq(requirements.projectId, projectId), inArray(requirements.id, [...ids])));
+  const rows = (await requirementStatusesOf(ids)).filter((r) => r.projectId === projectId);
   const decided = await acceptanceDecisionsOf(rows.map((r) => r.id));
   return new Set(
     rows

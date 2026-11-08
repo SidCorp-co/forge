@@ -18,7 +18,14 @@ import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf, uuidArray } from '../db/raw-sql.js';
-import { idOfParts, memoizedRead, onePerProject, partsOf, rowsPerId } from '../db/read-memo.js';
+import {
+  idOfParts,
+  memoizedPerId,
+  memoizedRead,
+  onePerProject,
+  partsOf,
+  rowsPerId,
+} from '../db/read-memo.js';
 import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
@@ -460,6 +467,39 @@ export async function requirementBySeq(
       SELECT id, req_seq, title FROM requirements WHERE project_id = ${projectId} AND req_seq = ${reqSeq}`),
   );
   return req ?? null;
+}
+
+/**
+ * The project's requirements numbered `reqSeqs`, by number; a number naming none is left out. Every
+ * project's asks before the read's quiet point are one statement (`db/read-memo.ts:memoizedPerId`):
+ * the home asked one statement for each requirement its feedback was routed to, in each project
+ * (ISS-1070 r8).
+ */
+export async function requirementsBySeq(
+  projectId: string,
+  reqSeqs: readonly number[],
+): Promise<Map<number, RequirementRow>> {
+  const held = await memoizedPerId(
+    'requirementBySeq',
+    reqSeqs.map((n) => idOfParts(projectId, String(n))),
+    async (keys) => {
+      const pairs = keys.map(partsOf);
+      const rows = rowsOf<RequirementRow & { project_id: string }>(
+        await db.execute(sql`
+          SELECT r.id, r.req_seq, r.title, r.project_id
+            FROM unnest(${uuidArray(pairs.map(([project]) => project as string))},
+                        ${sql.param(pairs.map(([, seq]) => Number(seq)))}::int[]) AS k(project_id, req_seq)
+            JOIN requirements r ON r.project_id = k.project_id AND r.req_seq = k.req_seq`),
+      );
+      return new Map(
+        rows.map((r) => [
+          idOfParts(r.project_id, String(r.req_seq)),
+          { id: r.id, req_seq: r.req_seq, title: r.title },
+        ]),
+      );
+    },
+  );
+  return new Map([...held.values()].map((r) => [r.req_seq, r]));
 }
 
 /** Every requirement of the project not dropped, by REQ number. */

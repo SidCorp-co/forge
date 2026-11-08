@@ -159,6 +159,7 @@ describe("inside one read across a person's projects, each project's reads answe
     feedback: 20,
     activityPerIssue: 2,
     open: 30,
+    live: true,
   };
   let personId: string;
   let worlds: string[];
@@ -185,6 +186,7 @@ describe("inside one read across a person's projects, each project's reads answe
           listRequirementsAs(viewer, projectId),
           listShippedReleases(projectId, viewer, 3),
           liveReleasesOf(projectId),
+          shippedReleaseRuns(projectId),
           readHomeProject(home, projectId, now).then(async (part) => ({
             feedback: part.feedback,
             issues: part.issues,
@@ -201,8 +203,9 @@ describe("inside one read across a person's projects, each project's reads answe
       );
       // each world holds what the shared facts are about, so no read compares two empty answers
       for (const answer of alone as Awaited<ReturnType<typeof reads>>[]) {
-        const [, , open, requirements, shipped, live] = answer;
+        const [, , open, requirements, shipped, live, runs] = answer;
         expect(open.issues.some((i) => i.standing.blockedBy.length > 0)).toBe(true);
+        expect(runs.length).toBeGreaterThan(0);
         expect(requirements.length).toBeGreaterThan(0);
         expect(shipped.releases).toHaveLength(3);
         expect(live.releases.length).toBeGreaterThan(0);

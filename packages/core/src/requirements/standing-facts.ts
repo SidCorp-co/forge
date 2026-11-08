@@ -11,6 +11,7 @@ import { db, type Tx } from '../db/client.js';
 import { uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { requirementCriterionVerdicts } from '../db/schema-requirement-verdicts.js';
+import { requirements } from '../db/schema-requirements.js';
 import { waivedOf } from './acceptance-waived.js';
 import { storedIssueCriteria } from './criteria-facts.js';
 import { everyVerdictRead, liveIssueCriteria } from './criteria-facts-live.js';
@@ -120,6 +121,26 @@ async function latestContractPinsRead(ids: readonly string[]) {
  * reading of "accepted by decision": the standing, the duplicate check and the delivered reads all
  * ask it, so none counts what a decision waived as proven.
  */
+/**
+ * The project and status of each of the requirements `ids`: every project's asks in a read across
+ * projects, one statement (`db/read-memo.ts:memoizedPerId`); each project's feedback list read its
+ * own (ISS-1070 r8).
+ */
+export async function requirementStatusesOf(ids: readonly string[]) {
+  const held = await memoizedPerId('requirementStatus', ids, async (some) => {
+    const rows = await db
+      .select({
+        id: requirements.id,
+        projectId: requirements.projectId,
+        status: requirements.status,
+      })
+      .from(requirements)
+      .where(inArray(requirements.id, [...some]));
+    return new Map(rows.map((r) => [r.id, r]));
+  });
+  return [...held.values()];
+}
+
 export async function acceptanceDecisionsOf(
   ids: readonly string[],
 ): Promise<Map<string, RequirementAcceptanceDecision>> {

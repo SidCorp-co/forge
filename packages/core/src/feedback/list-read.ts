@@ -13,6 +13,7 @@ import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { whoOwes } from '@forge/contracts/who-owes';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { pipelineRuns, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
@@ -131,6 +132,26 @@ async function rootsOf(rows: Row[]): Promise<Row[]> {
   return rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [];
 }
 
+/**
+ * The requirements `ids` name: every project's asks in a read across projects, one statement
+ * (`db/read-memo.ts:memoizedPerId`); each project's feedback list read them on its own (ISS-1070 r8).
+ */
+async function requirementRowsOf(ids: readonly string[]) {
+  const held = await memoizedPerId('feedbackRequirementRow', ids, async (some) => {
+    const rows = await db
+      .select({
+        id: requirements.id,
+        seq: requirements.reqSeq,
+        title: requirements.title,
+        status: requirements.status,
+      })
+      .from(requirements)
+      .where(inArray(requirements.id, [...some]));
+    return new Map(rows.map((r) => [r.id, r]));
+  });
+  return [...held.values()];
+}
+
 export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
   const allRows = [...rows, ...(await rootsOf(rows))];
   const routeIssues = await routeIssuesOf(allRows);
@@ -146,17 +167,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     [
       activeIssuePrefix(projectId),
       carrierIssueRows(issueIds),
-      reqIds.length
-        ? db
-            .select({
-              id: requirements.id,
-              seq: requirements.reqSeq,
-              title: requirements.title,
-              status: requirements.status,
-            })
-            .from(requirements)
-            .where(inArray(requirements.id, reqIds))
-        : [],
+      requirementRowsOf(reqIds),
       releaseIds.length
         ? db
             .select({ id: pipelineRuns.id, version: pipelineRuns.releaseVersion })
