@@ -26,10 +26,9 @@ import {
   releaseVerifiedBy,
   resolveReleaseChannels,
 } from './channel.js';
-import { pendingProdConfirmOf } from './coolify-prod-gate.js';
+import { pendingProdConfirmOf, productionAsksConfirm } from './coolify-prod-gate.js';
 import { draftDecisionRefusal, standingDraftApproval } from './draft-approval.js';
 import { draftVersionOf } from './draft-version.js';
-import { productionAsksConfirm } from './production-trigger.js';
 
 // the Needs you read lists each project's releases: it primes their claimed gate rows at once
 

@@ -18,8 +18,8 @@ import { projectCreatorOf } from '../projects/index.js';
 import { mergeStepsOf, type ReleaseMergeStep } from './change-request-roster.js';
 import { settleChangeRequestRelease } from './change-request-settle.js';
 import { resolveReleaseChannels } from './channel.js';
+import { productionAsksConfirm } from './coolify-prod-gate.js';
 import { releaseBatchPath } from './plan.js';
-import { productionAsksConfirm } from './production-trigger.js';
 import { wakeMastersForRelease } from './provider-live.js';
 
 type Decided = OutboxEventPayload<'release.approvalDecided'>;
