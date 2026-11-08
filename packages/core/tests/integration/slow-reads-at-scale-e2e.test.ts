@@ -346,18 +346,34 @@ const HOME_ACROSS_MS = 1880;
  * The statements the shell's attention and home reads send, the one ceiling at one project and at
  * twelve: a person's reads ask each fact once for every project they hold (ISS-1070 r6). One project
  * sends a few more than twelve: alone, it reads each set as asked rather than wait to batch them.
+ * Over forge's live shape (ISS-1070 r8) a read sends statements the uniform seed never asked for, once
+ * a read however many projects or rows, measured by each part's `Server-Timing` at one project: the
+ * feedback list reads its duplicates' roots and the requirements items were routed to with their
+ * delivered status (+3, every read); the home reads those requirements by number and their issues
+ * (+3), the forecast's requirement lines (+2) and a release over a runtime (+1); attention and Needs
+ * you read requirements accepted and dropped beside agreed ones (+1). Over r7's uniform seed the
+ * reads still send 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
-const ATTENTION_STATEMENTS = 113;
-const HOME_STATEMENTS = 111;
+const ATTENTION_STATEMENTS = 117;
+const HOME_STATEMENTS = 120;
+/** Needs you and its decisions, as {@link ATTENTION_STATEMENTS} counts the live shape's few. */
+const NEEDS_YOU_STATEMENTS = 109;
 
+// Over the live shape the plans touch more pages, its verdicts naming many commits and runtimes rather
+// than one (ISS-1070 r8, measured 24.2k, 32.4k, 7.9k and 16.7k where r7's seed read under 24k, 30k,
+// 7k and 15k): attention, home, What's new and the newest shipped
 const READS = (p: string): Ceiling[] => [
-  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
-  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
-  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 15000 },
+  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 27000 },
+  {
+    path: `/api/projects/${p}/needs-you/decisions`,
+    statements: NEEDS_YOU_STATEMENTS,
+    buffers: 27000,
+  },
+  { path: `/api/projects/${p}/releases/shipped?limit=3`, statements: 81, buffers: 17500 },
   { path: `/api/projects/${p}/issues/standing?scope=open`, statements: 26, buffers: 5200 },
-  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 24000 },
-  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 30000 },
-  { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
+  { path: '/api/me/attention', statements: ATTENTION_STATEMENTS, buffers: 25000 },
+  { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 34000 },
+  { path: '/api/me/whats-new', statements: 77, buffers: 8500 },
   { path: '/api/me/whats-new/summary', statements: 3, buffers: 100 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
 ];
@@ -379,10 +395,14 @@ const READS_ACROSS = (p: string): Ceiling[] => [
     ms: ATTENTION_ACROSS_MS,
   },
   { path: '/api/me/home', statements: HOME_STATEMENTS, buffers: 150000, ms: HOME_ACROSS_MS },
-  { path: '/api/me/whats-new', statements: 77, buffers: 7000 },
+  { path: '/api/me/whats-new', statements: 77, buffers: 8500 },
   { path: '/api/ecosystems/mine', statements: 6, buffers: 50 },
-  { path: `/api/projects/${p}/needs-you`, statements: 106, buffers: 27000 },
-  { path: `/api/projects/${p}/needs-you/decisions`, statements: 106, buffers: 27000 },
+  { path: `/api/projects/${p}/needs-you`, statements: NEEDS_YOU_STATEMENTS, buffers: 27000 },
+  {
+    path: `/api/projects/${p}/needs-you/decisions`,
+    statements: NEEDS_YOU_STATEMENTS,
+    buffers: 27000,
+  },
 ];
 
 beforeAll(async () => {
@@ -408,6 +428,14 @@ beforeAll(async () => {
 }, 900_000);
 
 afterAll(closeWorld);
+
+/**
+ * What each path sent read for one project: a read for a person across projects sends no more, since
+ * every fact is asked once for all of them. A statement sent once a project or once a row its seed
+ * holds more of puts the read over it (ISS-1070 r8: on forge-dev the attention read sent 840
+ * statements where one project's Needs you sent 201).
+ */
+const ALONE = new Map<string, number>();
 
 /**
  * Reads each path as `as`, a warm-up then three, holds each statement to its buffer ceiling, and
@@ -466,7 +494,14 @@ async function judged(label: string, reads: Ceiling[], as: string): Promise<stri
       ...plans,
     ].join('\n');
     if (out) appendFileSync(out, `${line}\n`);
+    const alone = ALONE.get(path);
+    if (alone === undefined) ALONE.set(path, median.statements.length);
     failures.push(
+      ...(alone !== undefined && median.statements.length > alone
+        ? [
+            `${label} ${path} sent ${median.statements.length} statements, more than the ${alone} it sends for one project`,
+          ]
+        : []),
       ...(median.statements.length > ceiling.statements
         ? [
             `${label} ${path} sent ${median.statements.length} statements, over its ceiling of ${ceiling.statements}`,
