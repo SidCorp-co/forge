@@ -24,6 +24,21 @@ export const can = (level: 'project.read' | 'project.write'): MiddlewareHandler 
   requiresOnParam(level, 'projectId');
 
 /**
+ * The host's failure, said as HOST_UNAVAILABLE; a rate-limited read names when it may be asked
+ * again, as a time in its sentence and as `retryAt` / `retryAfterSeconds` in its details (ISS-1144).
+ */
+export function hostCallRefused(err: SourceHostCallError, now = Date.now()) {
+  const said = err.detail ? ` The host said: ${err.detail}` : '';
+  const retryAt = err.retryAt;
+  if (!retryAt) return refuse('HOST_UNAVAILABLE', `${err.message}.${said}`);
+  const retryAfterSeconds = Math.max(1, Math.ceil((retryAt.getTime() - now) / 1000));
+  return refuse(
+    'HOST_UNAVAILABLE',
+    `${err.message}.${said} Ask again at ${retryAt.toISOString()} (in ${retryAfterSeconds} s).`,
+  ).withDetails({ retryAt: retryAt.toISOString(), retryAfterSeconds });
+}
+
+/**
  * The project's source host for an agent, then the call. A binding that is missing, switched off,
  * on another host or not granted to agents is refused by name, and so is the host failing: a retry
  * of HOST_UNAVAILABLE may succeed.
@@ -38,10 +53,7 @@ export async function onHost<T>(
     if (err instanceof SourceHostUnavailable) {
       throw refuse('SOURCE_HOST_UNAVAILABLE', `${err.message} (${err.reason})`);
     }
-    if (err instanceof SourceHostCallError) {
-      const said = err.detail ? ` The host said: ${err.detail}` : '';
-      throw refuse('HOST_UNAVAILABLE', `${err.message}.${said}`);
-    }
+    if (err instanceof SourceHostCallError) throw hostCallRefused(err);
     throw err;
   }
 }

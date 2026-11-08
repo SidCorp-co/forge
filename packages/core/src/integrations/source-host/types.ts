@@ -295,6 +295,8 @@ export interface SourceHostFactory {
     bindingId: string;
     config: Record<string, unknown>;
     secrets: Record<string, unknown>;
+    /** Built for a sweep (`kernel`), which yields the host's rate-limit window to a read someone waits on. */
+    background?: boolean;
   }): SourceHost;
   /** What `GET /api/projects/:id/integrations/source` reports for this provider's bindings on a project. Contacts no host. */
   listBindings?(projectId: string): Promise<Array<{ provider: string } & Record<string, unknown>>>;

@@ -5,6 +5,12 @@
  * token that drew it; one naming none (GitLab's plain "Too many requests", Retry-After 60) is read as
  * the host refusing this address, and holds every token on that host. The wait is the host's
  * `Retry-After`, else its `RateLimit-Reset`, else a minute.
+ *
+ * A background caller (a sweep, a webhook's follow-up: a `kernel` host) waits longer than the host
+ * named, a minute past it on the first 429 and doubling on each repeat inside half an hour, up to
+ * half an hour (ISS-1144, FB-582: a master's change-request read was refused 429 on every pass for
+ * 23 hours, the window each wait opened spent before the read could take it). The read someone
+ * waits on takes the window first.
  */
 
 import { createHash } from 'node:crypto';
@@ -14,6 +20,11 @@ const DEFAULT_WAIT_MS = 60_000;
 const MAX_WAIT_MS = 15 * 60_000;
 
 const until = new Map<string, number>();
+/** How long past the host's wait a background caller is held, and the 429s that set it. */
+const STRIKE_WINDOW_MS = 30 * 60_000;
+const MAX_BACKGROUND_EXTRA_MS = 30 * 60_000;
+const backgroundUntil = new Map<string, number>();
+const strikes = new Map<string, { n: number; at: number }>();
 
 const tokenKey = (host: string, token: string) =>
   `${host}#${createHash('sha256').update(token).digest('hex').slice(0, 16)}`;
@@ -45,17 +56,32 @@ export function holdAfter429(
   const scoped = headers.get('ratelimit-name') !== null;
   const key = scoped ? tokenKey(host, token) : host;
   until.set(key, Math.max(until.get(key) ?? 0, at));
+  const last = strikes.get(key);
+  const n = last && now - last.at < STRIKE_WINDOW_MS ? last.n + 1 : 1;
+  strikes.set(key, { n, at: now });
+  const extra = Math.min(DEFAULT_WAIT_MS * 2 ** (n - 1), MAX_BACKGROUND_EXTRA_MS);
+  backgroundUntil.set(key, Math.max(backgroundUntil.get(key) ?? 0, at + extra));
   return new Date(at);
 }
 
-/** Until when a call to `host` as `token` is held, or null where it may go now. */
-export function heldUntil(host: string, token: string, now = Date.now()): Date | null {
+/**
+ * Until when a call to `host` as `token` is held, or null where it may go now: a `background`
+ * caller's hold runs past the host's own wait (above).
+ */
+export function heldUntil(
+  host: string,
+  token: string,
+  now = Date.now(),
+  background = false,
+): Date | null {
   let latest = 0;
   for (const key of [host, tokenKey(host, token)]) {
-    const t = until.get(key);
-    if (t === undefined) continue;
-    if (t <= now) until.delete(key);
-    else latest = Math.max(latest, t);
+    for (const held of background ? [until, backgroundUntil] : [until]) {
+      const t = held.get(key);
+      if (t === undefined) continue;
+      if (t <= now) held.delete(key);
+      else latest = Math.max(latest, t);
+    }
   }
   return latest > 0 ? new Date(latest) : null;
 }
@@ -63,4 +89,6 @@ export function heldUntil(host: string, token: string, now = Date.now()): Date |
 /** Test seam: forget every hold. */
 export function clearGitLabHolds(): void {
   until.clear();
+  backgroundUntil.clear();
+  strikes.clear();
 }

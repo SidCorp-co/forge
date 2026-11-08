@@ -47,7 +47,7 @@ function hostProviders(): string[] {
     .map((d) => d.provider);
 }
 
-function buildFrom(pair: BindingWithConnection): SourceHost {
+function buildFrom(pair: BindingWithConnection, purpose: SourceHostPurpose = 'agent'): SourceHost {
   const factory = factoryOf(pair.binding.provider);
   if (!factory) {
     throw new SourceHostUnavailable(
@@ -60,6 +60,7 @@ function buildFrom(pair: BindingWithConnection): SourceHost {
     bindingId: pair.binding.id,
     config: effectiveConfig(pair),
     secrets: decryptConnectionSecrets(pair.connection),
+    ...(purpose === 'kernel' ? { background: true } : {}),
   });
 }
 
@@ -117,7 +118,7 @@ export async function resolveSourceHost(
     );
   }
 
-  if (purpose === 'kernel') return buildFrom(onHost[0] as BindingWithConnection);
+  if (purpose === 'kernel') return buildFrom(onHost[0] as BindingWithConnection, 'kernel');
 
   const usable = onHost.filter((p) => p.binding.active && p.connection.active);
   const first = usable[0];

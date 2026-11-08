@@ -140,7 +140,7 @@ async function reportMerged(
   const at = gitlabTime(mr.merged_at) ?? (mr.action === 'merge' ? gitlabTime(mr.updated_at) : null);
   if (!commitSha || !at) return 0;
   const head = await readMergedHead(
-    (a, b) => gitlabSameTree(buildGitLabClient(ctx), a, b),
+    (a, b) => gitlabSameTree(buildGitLabClient({ ...ctx, background: true }), a, b),
     mr.last_commit?.id ?? null,
     commitSha,
   );
@@ -164,7 +164,7 @@ async function baseShaOf(
   iid: number,
 ): Promise<string | { refusal: string }> {
   try {
-    const client = buildGitLabClient(ctx);
+    const client = buildGitLabClient({ ...ctx, background: true });
     const read = await client.json<MergeRequestBody>(
       'GET',
       client.project(`/merge_requests/${iid}`),

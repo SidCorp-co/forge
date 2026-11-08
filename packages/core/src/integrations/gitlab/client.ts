@@ -64,6 +64,8 @@ export function buildGitLabClient(args: {
   bindingId: string;
   config: GitLabConfig;
   secrets: GitLabSecrets;
+  /** A sweep's or a webhook's host, which yields to a read someone waits on after a 429 (`cooldown.ts`). */
+  background?: boolean;
 }): GitLabClient {
   const { projectPath, projectId } = args.config;
   if (!projectPath && !projectId) {
@@ -89,7 +91,7 @@ export function buildGitLabClient(args: {
   async function send(method: Method, path: string, body?: unknown): Promise<Response> {
     const caller = gitlabCaller();
     const host = gitlabHostOf(args.config);
-    const held = heldUntil(host, token as string);
+    const held = heldUntil(host, token as string, Date.now(), args.background === true);
     if (held) {
       logGitLabHeld({ caller, host, method, path, until: held });
       const err = new SourceHostCallError(

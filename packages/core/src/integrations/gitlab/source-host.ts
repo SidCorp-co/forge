@@ -42,6 +42,42 @@ interface CompareBody {
 
 const enc = encodeURIComponent;
 
+const FULL_SHA = /^[0-9a-f]{40}$/;
+/** The compares kept per process: two commits' compare never changes, so it is asked once. */
+const COMPARES_KEPT = 256;
+const compares = new Map<string, Promise<CompareBody>>();
+
+/**
+ * The compare of `from..to`, asked of GitLab once per process where both are full commit shas
+ * (ISS-1144, FB-582: the connection's request budget went on compares of pairs it had already read,
+ * dev core drawing 2,524 in ten minutes on 2026-10-30, and a master's change-request read stayed
+ * refused 429 for 23 hours). Two asks of one pair at once share the one call; a failed ask is not
+ * kept. A branch or a short sha moves, so it is asked every time.
+ */
+function compareBody(client: GitLabClient, from: string, to: string): Promise<CompareBody> {
+  const ask = () =>
+    client.json<CompareBody>(
+      'GET',
+      client.project(`/repository/compare?from=${enc(from)}&to=${enc(to)}`),
+    );
+  if (!FULL_SHA.test(from) || !FULL_SHA.test(to)) return ask();
+  const key = `${client.baseUrl}|${client.fullName}|${from}|${to}`;
+  const kept = compares.get(key);
+  if (kept) return kept;
+  if (compares.size >= COMPARES_KEPT) compares.delete(compares.keys().next().value as string);
+  const read = ask();
+  compares.set(key, read);
+  read.catch(() => {
+    if (compares.get(key) === read) compares.delete(key);
+  });
+  return read;
+}
+
+/** Test seam: forget every kept compare. */
+export function clearGitLabCompares(): void {
+  compares.clear();
+}
+
 function notFound(err: unknown): boolean {
   return err instanceof SourceHostCallError && err.phase === 'request' && err.status === 404;
 }
@@ -67,12 +103,7 @@ export async function gitlabSameTree(client: GitLabClient, a: string, b: string)
 /** The GitLab host over one binding's client. */
 function gitlabSourceHostOf(client: GitLabClient): SourceHost {
   const commitsBetween = async (from: string, to: string): Promise<CommitBody[]> =>
-    (
-      await client.json<CompareBody>(
-        'GET',
-        client.project(`/repository/compare?from=${enc(from)}&to=${enc(to)}`),
-      )
-    ).commits ?? [];
+    (await compareBody(client, from, to)).commits ?? [];
   const branchHead = async (branch: string): Promise<string> => {
     const read = await client.json<{ commit?: { id?: string } }>(
       'GET',
@@ -97,10 +128,7 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
   const compareFiles = async (base: string, head: string): Promise<HostFileCompare> => {
     const [status, read] = await Promise.all([
       compare(base, head),
-      client.json<CompareBody>(
-        'GET',
-        client.project(`/repository/compare?from=${enc(base)}&to=${enc(head)}`),
-      ),
+      compareBody(client, base, head),
     ]);
     if (!Array.isArray(read.diffs)) return { why: `${client.fullName} answered no file list` };
     const named = (p: unknown): p is string => typeof p === 'string' && p !== '';
@@ -233,12 +261,13 @@ export const gitlabSourceHost: SourceHostFactory = {
   label: 'GitLab',
   sigil: MR_SIGIL,
   hostOf: gitlabHostOf,
-  build: ({ bindingId, config, secrets }) =>
+  build: ({ bindingId, config, secrets, background }) =>
     gitlabSourceHostOf(
       buildGitLabClient({
         bindingId,
         config: config as GitLabConfig,
         secrets: secrets as GitLabSecrets,
+        ...(background ? { background } : {}),
       }),
     ),
   listBindings: gitlabBindingReports,
