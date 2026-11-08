@@ -6,6 +6,7 @@
 //
 // @direct-test-of packages/core/src/steward/dispatch.ts
 // @direct-test-of packages/core/src/steward/runs-store.ts
+// @direct-test-of packages/core/src/steward/policy.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -92,7 +93,16 @@ describe("a filed item's run starts within the bound while the day's runner jobs
     const { STEWARD_DEBOUNCE_MS } = await import('@forge/contracts/steward');
     const pid = await spentDay();
     const now = new Date();
-    expect((await budgetDayOf(pid, now)).handoff.runnerJobs.spent).toBe(10);
+    const day = await budgetDayOf(pid, now);
+    expect(day.handoff.runnerJobs.spent).toBe(10);
+    // ISS-1148 (ISS-1137 6a): the day's runner jobs are spent, so judging waits for the next 00:00Z,
+    // which the Feedback list says once above its rows; a project with jobs left says nothing
+    expect(day).toMatchObject({
+      judgingPaused: true,
+      resumesAt: new Date(midnight(now)).toISOString(),
+    });
+    const fresh = (await createTestProject(ownerId)).id;
+    expect((await budgetDayOf(fresh, now)).judgingPaused).toBe(false);
     expect(await stewardJobLive(pid)).toBe(false);
     const key = await createTestFeedback(pid, ownerId, 292);
     const [fb] = await rows<{ id: string }>(sql`

@@ -206,6 +206,7 @@ export async function budgetDayOf(projectId: string, now: Date): Promise<Steward
   return {
     day: day.toISOString(),
     resumesAt: nextUtcDay(now).toISOString(),
+    judgingPaused: all.runnerJobs >= budget.runnerJobs,
     handoff: { ...view(handed, less(budget, swept)), kept: shares.handoff },
     sweep: view(swept, less(shares.sweep, borrowed)),
     paced,

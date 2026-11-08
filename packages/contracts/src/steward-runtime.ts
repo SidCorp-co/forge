@@ -197,6 +197,11 @@ export interface StewardHandoffShareView extends StewardShareView {
 export interface StewardBudgetView {
 	day: string;
 	resumesAt: string;
+	/**
+	 * Today's steward jobs (UTC day) have reached the project's daily budget, so judging and every
+	 * other runner act waits until `resumesAt` (ISS-1148): the Feedback list says so in one line.
+	 */
+	judgingPaused: boolean;
 	handoff: StewardHandoffShareView;
 	sweep: StewardShareView;
 	paced: number;
