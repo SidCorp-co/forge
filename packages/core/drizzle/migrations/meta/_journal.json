@@ -4047,6 +4047,13 @@
       "when": 1837814400000,
       "tag": "0635_the_close_and_start_lookups_read_one_index_entry",
       "breakpoints": true
+    },
+    {
+      "idx": 636,
+      "version": "7",
+      "when": 1837900800000,
+      "tag": "0636_a_beta_release_is_taken_once_and_run_on_dev",
+      "breakpoints": true
     }
   ]
 }
