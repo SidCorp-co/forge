@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.603] - 2026-11-08
+
+A judge's browser session lands on the app origin that signed in
+
+### Fixed
+
+- **A judge's browser session is written for the app that signed in.** An absolute `loginRoute` names the origin judge-login writes localStorage for; a secret may name `storageOrigin` instead, mergeable and checked by name, and the printed line names it.
+
 ## [0.4.0-dev.602] - 2026-11-08
 
 Judges get signed-in browser sessions for apps keeping sign-in in local storage
