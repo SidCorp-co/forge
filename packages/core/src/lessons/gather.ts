@@ -363,6 +363,14 @@ export interface OwedCheck {
   sentence: string;
   reasons: string[];
   repeats: number;
+  /**
+   * What the lesson is about, read off its scope on the record (ISS-1136): a product area's behaviour,
+   * which a check in the project's code can catch, or an agent's judgement or a Forge step (scoped to
+   * the whole project or to a kind of agent output), which no code in the project's repo can.
+   */
+  about: 'app' | 'process';
+  /** The kind of agent output a process lesson is scoped to, where it names one. */
+  output: string | null;
 }
 
 /**
@@ -376,6 +384,8 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
       number: lessons.number,
       sentence: lessons.sentence,
       approvedAt: lessons.approvedAt,
+      scopeKind: lessons.scopeKind,
+      scopeItemKind: lessons.scopeItemKind,
       reason: corrections.reason,
       saidAt: corrections.saidAt,
     })
@@ -389,6 +399,7 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
         eq(lessons.projectId, projectId),
         eq(lessons.status, 'approved'),
         isNull(lessons.checkIssueId),
+        isNull(lessons.routedFeedbackId),
       ),
     );
   const byLesson = new Map<string, OwedCheck>();
@@ -399,6 +410,8 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
       sentence: r.sentence,
       reasons: [],
       repeats: 0,
+      about: r.scopeKind === 'area' ? 'app' : 'process',
+      output: r.scopeItemKind,
     };
     owed.reasons.push(r.reason);
     if (r.approvedAt && r.saidAt > r.approvedAt) owed.repeats += 1;
@@ -407,6 +420,14 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
   return [...byLesson.values()].filter(
     (o) => o.repeats > 0 || o.reasons.length >= LESSON_CHECK_AFTER,
   );
+}
+
+/** The Forge feedback a process lesson was routed to, kept so it is routed once (ISS-1136). */
+export async function recordRoutedFeedback(lessonId: string, feedbackId: string): Promise<void> {
+  await db
+    .update(lessons)
+    .set({ routedFeedbackId: feedbackId, updatedAt: new Date() })
+    .where(and(eq(lessons.id, lessonId), isNull(lessons.routedFeedbackId)));
 }
 
 /** The check filed for a lesson, kept so it is filed once. */

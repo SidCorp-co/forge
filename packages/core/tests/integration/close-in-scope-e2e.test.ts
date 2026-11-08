@@ -19,6 +19,7 @@
  * @direct-test-of packages/core/src/issues/close-in-scope.ts
  * @direct-test-of packages/core/src/issues/transition-guards.ts
  * @direct-test-of packages/core/src/issues/apply-transition.ts
+ * @direct-test-of packages/core/src/issues/criteria/close-verdicts.ts
  * @direct-test-of packages/core/src/issues/transition-body.ts
  * @direct-test-of packages/core/src/issues/merged-at.ts
  * @direct-test-of packages/core/src/issues/release-evidence.ts
@@ -61,6 +62,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
@@ -486,5 +488,55 @@ describe('a release carries an issue its holder closed (ISS-1062)', () => {
     expect(await phase(), 'closed met in scope is not live').toBe('planned');
     ok(await recordRelease([carrier.id], '4.2.0'), 201);
     expect(await phase()).toBe('resolved');
+  });
+});
+
+// owner 2026-11-08 (D2, G2): where the project judges its own work, a close is its builder's
+// verdict: each traced criterion it did not move out, holding no verdict, is recorded passing at its
+// landing, sourced the close, so no requirement owes "judge BC-x on ISS-y" for ever. An independent
+// judge still owes it. Last in the file: it turns the shared project's judge independent.
+describe("a close is its builder's verdict where the project judges its own work (D2)", () => {
+  const verdictsOf = (issueId: string) =>
+    rows<{
+      n: number;
+      verdict: string;
+      identity_kind: string;
+      commit_sha: string;
+      reason: string;
+    }>(sql`
+      SELECT c.n, v.verdict, v.identity_kind, v.commit_sha, v.reason
+        FROM criterion_verdicts v JOIN issue_criteria c ON c.id = v.criterion_id
+       WHERE v.issue_id = ${issueId} ORDER BY c.n`);
+
+  it('records each traced criterion holding no verdict passing at the landing, and nothing else', async () => {
+    const { id } = await landed([]);
+    await completeIssueReadyRecord(projectId, ownerId, id, seq);
+    // criterion 2 traces nothing: no requirement waits on it, so the close records nothing for it
+    await rows(sql`
+      INSERT INTO issue_criteria (issue_id, n, statement, position)
+      VALUES (${id}, 2, 'its own outcome', 1)`);
+    await lease(id);
+    const r = await close(id);
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    const { CLOSE_VERDICT_REASON } = await import('../../src/issues/criteria/close-verdicts.js');
+    expect(await verdictsOf(id)).toEqual([
+      {
+        n: 1,
+        verdict: 'pass',
+        identity_kind: 'commit',
+        commit_sha: SHA,
+        reason: CLOSE_VERDICT_REASON,
+      },
+    ]);
+  });
+
+  it('records nothing where an independent judge owes the criteria', async () => {
+    await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
+    const { id } = await landed([]);
+    await completeIssueReadyRecord(projectId, ownerId, id, seq);
+    await lease(id);
+    const r = await close(id);
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(await verdictsOf(id)).toEqual([]);
   });
 });

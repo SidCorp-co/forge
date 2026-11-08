@@ -17,6 +17,7 @@ import {
 } from '@forge/contracts/lessons';
 import { cutAtWord } from '@forge/contracts/title-text';
 import { z } from 'zod';
+import { fileForgeFeedback } from '../feedback/index.js';
 import { callFastModelObject } from '../integrations/llm/index.js';
 import { createIssue } from '../issues/index.js';
 import {
@@ -31,6 +32,7 @@ import {
   type RetirementDue,
   recordCheckIssue,
   recordLessonsMonths,
+  recordRoutedFeedback,
   rejectCorrections,
   retireLesson,
   retirementsDue,
@@ -193,9 +195,19 @@ function checkBody(owed: OwedCheck): string {
   ].join('\n\n');
 }
 
+/**
+ * Each lesson owed a check (BC-6), by what it is about on its record (ISS-1136): an app-behaviour
+ * lesson keeps its "Add a check" draft in the project's backlog; a process lesson, about an agent's
+ * judgement or a Forge step no code in the project's repo can catch, is routed once to Forge as its
+ * feedback, naming the step, and never lands in the project's backlog asking for a code check.
+ */
 async function fileChecks(projectId: string, stewardId: string): Promise<number> {
   let filed = 0;
   for (const owed of await checksOwed(projectId)) {
+    if (owed.about === 'process') {
+      if (await routeToForge(projectId, stewardId, owed)) filed += 1;
+      continue;
+    }
     const made = await createIssue(
       {
         projectId,
@@ -217,6 +229,42 @@ async function fileChecks(projectId: string, stewardId: string): Promise<number>
     filed += 1;
   }
   return filed;
+}
+
+/** The Forge step a process lesson names: the kind of agent output it is scoped to, else the project's agents. */
+const stepOf = (owed: OwedCheck) =>
+  owed.output ? `the agent step that produces a ${owed.output}` : "the project's agents' judgement";
+
+/** Routes a process lesson to Forge's own feedback, once; a refusal (no Forge home) is logged and retried next pass. */
+async function routeToForge(
+  projectId: string,
+  stewardId: string,
+  owed: OwedCheck,
+): Promise<boolean> {
+  const filed = await fileForgeFeedback({
+    actor: { userId: stewardId, agency: 'agent' },
+    request: {
+      kind: 'change_request',
+      title: cutAtWord(`A Forge step keeps being corrected: ${owed.sentence}`, CHECK_TITLE_CHARS),
+      whereSeen: stepOf(owed),
+      body: [
+        `${lessonKey(owed.number)} is about ${stepOf(owed)}, which no check in the project's code can catch: the Forge step that makes this judgement should make it right.`,
+        'The corrections it learned from:',
+        ...owed.reasons.map((r) => `- ${r}`),
+      ].join('\n\n'),
+      signalKey: `lesson-process/${owed.id}`,
+    },
+    source: { projectId, issueId: null, runId: null, clientVersion: null },
+  });
+  if (!filed.ok) {
+    logger.warn(
+      { projectId, lesson: lessonKey(owed.number), refusals: filed.refusals.map((r) => r.code) },
+      'steward: a process lesson was not routed to Forge; it is tried again next pass',
+    );
+    return false;
+  }
+  await recordRoutedFeedback(owed.id, filed.id);
+  return true;
 }
 
 const retireWhy = (due: RetirementDue) =>

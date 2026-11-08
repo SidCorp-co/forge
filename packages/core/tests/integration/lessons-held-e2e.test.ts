@@ -1,6 +1,6 @@
 // REQ-50 r2 BC-5..BC-9: a confusion an agent reports holds its lesson until the steward settles it,
 // with a reason and no person asked, and nothing of a lesson reaches Needs you or the status read; a
-// repeat, or three corrections, becomes a check; the steward retires an unused or superseded lesson
+// repeat, or three corrections, becomes a check (`lessons-check-e2e.test.ts`); the steward retires an unused or superseded lesson
 // with a reason, never deleting it; and core counts the month. Through the app's own routes against
 // real Postgres (`../helpers/lessons-world.ts`).
 //
@@ -13,7 +13,7 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { type Doc, ok } from '../helpers/ecosystem-world.js';
-import { createTestProject, rows, seedIssueStatus } from '../helpers/factories.js';
+import { createTestProject, rows } from '../helpers/factories.js';
 import {
   approve,
   approved,
@@ -293,48 +293,6 @@ describe('the steward reaches every waiting item in turn, however many keep fail
     expect((await lesson(1, own.id)).confusions.filter((c) => c.resolution === null)).toHaveLength(
       SETTLED_PER_PASS + 1,
     );
-  });
-});
-
-describe('a repeat, or three corrections, becomes a check in code (BC-6)', () => {
-  const checkOf = async (id: string) =>
-    rows<{ id: string; title: string; status: string }>(sql`
-      SELECT id, title, status FROM issues WHERE project_id = ${w.projectId} AND detector_key = ${`lesson-check/${id}`}`);
-
-  it('files one draft check for a lesson corrected again after approval, and never again, even once dropped', async () => {
-    const n = await proposed('Show the ward on the wristband.');
-    await pass({ review: (i) => ((i.lesson as Doc).number === n ? approve() : null) });
-    const repeat = await correction('The wristband has no ward again.');
-    await pass({ links: [{ correction: repeat, lesson: n }] });
-    const view = await lesson(n);
-    expect(view.corrections).toHaveLength(2);
-    expect(view.check_issue_id).not.toBeNull();
-    const [issue] = await checkOf(view.id as string);
-    expect(issue).toMatchObject({
-      status: 'draft',
-      title: 'Add a check: Show the ward on the wristband.',
-    });
-    expect((await pass({})).checks).toBe(0);
-    await seedIssueStatus(issue?.id as string, 'dropped');
-    expect((await pass({})).checks).toBe(0);
-    expect(await checkOf(view.id as string)).toHaveLength(1);
-  });
-
-  it('files a check for a lesson learned from three corrections, and none for one learned from two', async () => {
-    const two = await approved('Name the ward in the letter subject.');
-    const three = [
-      await correction('Bed is missing (1)'),
-      await correction('Bed is missing (2)'),
-      await correction('Bed is missing (3)'),
-    ];
-    await pass({
-      proposals: [proposal('Name the bed in every handover.', three)],
-      review: (i) =>
-        (i.lesson as Doc).sentence === 'Name the bed in every handover.' ? approve() : null,
-    });
-    const n = await numberOf('Name the bed in every handover.');
-    expect((await lesson(n)).check_issue_id).not.toBeNull();
-    expect((await lesson(two)).check_issue_id).toBeNull();
   });
 });
 

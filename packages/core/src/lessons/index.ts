@@ -35,6 +35,7 @@ export {
   proposedLessons,
   type RetirementDue,
   recordCheckIssue,
+  recordRoutedFeedback,
   rejectCorrections,
   retirementsDue,
 } from './gather.js';
