@@ -7,11 +7,15 @@
 // base too is base-red, green again is flaky, and neither refuses the change; a red the base does not
 // share is refused as before.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+// The contract's own copy, as core loads it: built, since a script cannot import a workspace package.
+import {
+  RERUN_RESULTS,
+  rerunVerdictOf as contractVerdictOf,
+} from '../../packages/contracts/dist/merge-check.js';
 import { redChecks, reportOf } from './merge-check.mjs';
 import {
   baseWorktreePath,
@@ -22,10 +26,6 @@ import {
   rerunVerdictOf,
 } from './merge-check-reruns.mjs';
 
-const CONTRACT = readFileSync(
-  fileURLToPath(new URL('../../packages/contracts/src/merge-check.ts', import.meta.url)),
-  'utf8',
-);
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
 const RED = 'packages/core/tests/integration/slow-reads-at-scale.test.ts';
@@ -71,8 +71,21 @@ function world({ json = true } = {}) {
   };
 }
 
-/** An exec standing in for the commands: the rerun at the head and at the base end as told. */
-function fakeExec({ head, base, install = true, baseHolds = true }) {
+const ONE = 'slow reads at scale > reads one page';
+const TWO = 'slow reads at scale > reads two pages';
+
+/**
+ * An exec standing in for the commands: the rerun at the head and at the base end as told, a red one
+ * writing a vitest JSON report naming `headFailed` or `baseFailed` failed (`null` writes none).
+ */
+function fakeExec({
+  head,
+  base,
+  install = true,
+  baseHolds = true,
+  headFailed = [ONE],
+  baseFailed = [ONE],
+}) {
   const ran = [];
   const exec = (argv, cwd) => {
     ran.push({ argv, cwd });
@@ -93,7 +106,14 @@ function fakeExec({ head, base, install = true, baseHolds = true }) {
     if (argv[0] === 'git') return ok(true);
     if (argv.includes('install')) return ok(install);
     const atBase = cwd.includes('merge-check-base-');
-    return ok((atBase ? base : head) === 'pass');
+    const passed = (atBase ? base : head) === 'pass';
+    const out = argv.find((a) => a.startsWith('--outputFile.json='))?.slice(18);
+    const failed = atBase ? baseFailed : headFailed;
+    if (!passed && out && failed) {
+      const assertionResults = failed.map((fullName) => ({ fullName, status: 'failed' }));
+      writeFileSync(out, JSON.stringify({ testResults: [{ status: 'failed', assertionResults }] }));
+    }
+    return ok(passed);
   };
   return { exec, ran };
 }
@@ -127,7 +147,34 @@ describe('a red integration test is rerun, and only the red one (ISS-1120)', () 
     // only the red file ran again, never the selection
     const tests = f.ran.filter((r) => r.argv.includes('vitest'));
     expect(tests).toHaveLength(2);
-    expect(tests.every((r) => r.argv.at(-1).endsWith(RED))).toBe(true);
+    expect(tests.every((r) => r.argv.some((a) => a.endsWith(RED)))).toBe(true);
+    expect(reruns[0].runs.map((r) => r.failed)).toEqual([[ONE], [ONE]]);
+  });
+
+  it('refuses a file red at the base for another test as the change’s own red', () => {
+    const w = world();
+    const f = fakeExec({ head: 'fail', base: 'fail', headFailed: [ONE, TWO], baseFailed: [ONE] });
+    const { reruns } = reran(w, f.exec);
+    expect(reruns.map((x) => x.verdict)).toEqual(['branch-red']);
+    expect(redChecks([w.check], reruns)).toEqual([w.check]);
+  });
+
+  it('reads a suite that did not load as base-red only beside a base failing the same way', () => {
+    const w = world();
+    const both = reran(
+      w,
+      fakeExec({ head: 'fail', base: 'fail', headFailed: [], baseFailed: [] }).exec,
+    );
+    expect(both.reruns.map((x) => x.verdict)).toEqual(['base-red']);
+    const headOnly = reran(w, fakeExec({ head: 'fail', base: 'fail', headFailed: [] }).exec);
+    expect(headOnly.reruns.map((x) => x.verdict)).toEqual(['branch-red']);
+  });
+
+  it('refuses a red whose rerun wrote no report, since nothing shows the base holds it', () => {
+    const w = world();
+    const { reruns } = reran(w, fakeExec({ head: 'fail', base: 'fail', baseFailed: null }).exec);
+    expect(reruns[0].runs[1]).not.toHaveProperty('failed');
+    expect(reruns.map((x) => x.verdict)).toEqual(['branch-red']);
   });
 
   it('makes the base worktree detached under the repository’s .claude/worktrees and removes it after', () => {
@@ -229,15 +276,23 @@ describe('what the reruns read and write', () => {
     expect(redFilesOf('{}', '/r').refusal).toContain('no testResults');
   });
 
-  it('bears the verdicts the contract holds a report to', () => {
-    expect(rerunVerdictOf('pass', null)).toBe('flaky');
-    expect(rerunVerdictOf('fail', 'fail')).toBe('base-red');
-    expect(rerunVerdictOf('fail', 'pass')).toBe('branch-red');
-    expect(rerunVerdictOf('fail', 'absent')).toBe('branch-red');
-    expect(rerunVerdictOf('fail', 'error')).toBe('branch-red');
-    expect(CONTRACT).toContain('if (head === "pass") return "flaky";');
-    expect(CONTRACT).toContain(
-      'return head === "fail" && base === "fail" ? "base-red" : "branch-red";',
+  it('bears the verdict the contract holds a report to, for every outcome alike', () => {
+    const lists = [undefined, [], [ONE], [TWO], [ONE, TWO]];
+    const outcomes = RERUN_RESULTS.flatMap((result) => lists.map((failed) => ({ result, failed })));
+    for (const head of outcomes)
+      for (const base of [null, ...outcomes])
+        expect(rerunVerdictOf(head, base), JSON.stringify({ head, base })).toBe(
+          contractVerdictOf(head, base),
+        );
+    expect(rerunVerdictOf({ result: 'pass' }, null)).toBe('flaky');
+    expect(
+      rerunVerdictOf({ result: 'fail', failed: [ONE] }, { result: 'fail', failed: [ONE, TWO] }),
+    ).toBe('base-red');
+    expect(
+      rerunVerdictOf({ result: 'fail', failed: [TWO] }, { result: 'fail', failed: [ONE] }),
+    ).toBe('branch-red');
+    expect(rerunVerdictOf({ result: 'fail', failed: [ONE] }, { result: 'pass' })).toBe(
+      'branch-red',
     );
   });
 

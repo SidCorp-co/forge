@@ -11,10 +11,37 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
 import { VITEST_COLLECTIONS } from './direct-tests.mjs';
 import { buildsOwed, rebuildPackages } from './package-builds.mjs';
 
-/** The verdict a rerun's outcomes bear, as `packages/contracts/src/merge-check.ts:rerunVerdictOf` reads it. */
+/**
+ * The verdict a rerun's outcomes bear, as `packages/contracts/src/merge-check.ts:rerunVerdictOf`
+ * reads it: `head` and `base` are `{ result, failed? }`. Red at the base is base-red only where every
+ * test failing at the head failed there too; `merge-check-reruns.test.mjs` holds the two alike.
+ */
 export function rerunVerdictOf(head, base) {
-  if (head === 'pass') return 'flaky';
-  return head === 'fail' && base === 'fail' ? 'base-red' : 'branch-red';
+  if (head.result === 'pass') return 'flaky';
+  if (head.result !== 'fail' || base?.result !== 'fail') return 'branch-red';
+  const [h, b] = [head.failed, base.failed];
+  if (!h || !b) return 'branch-red';
+  const covered = h.length === 0 ? b.length === 0 : h.every((t) => b.includes(t));
+  return covered ? 'base-red' : 'branch-red';
+}
+
+/**
+ * The tests a rerun's vitest JSON report says failed, by full name; an empty list where the file
+ * failed with no test failed (its suite did not load), and null for a report that cannot be read.
+ */
+export function failedTestsOf(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed?.testResults)) return null;
+  return parsed.testResults.flatMap((t) =>
+    (t.assertionResults ?? [])
+      .filter((a) => a.status === 'failed')
+      .map((a) => a.fullName ?? a.title),
+  );
 }
 
 const isVitestRun = (argv) => argv.includes('vitest') && argv.includes('run');
@@ -66,9 +93,26 @@ export function redFilesOf(text, root) {
 
 const sameFiles = (a, b) => a.length === b.length && a.every((f) => b.includes(f));
 
-/** The vitest command that reruns one file of `collection` in `root`. */
-function rerunArgv(root, collection, file) {
-  return ['pnpm', 'exec', 'vitest', 'run', '--config', collection.config, join(root, file)];
+/** The vitest command that reruns one file of `collection` in `root`, its JSON report written to `json`. */
+function rerunArgv(root, collection, file, json) {
+  return [
+    'pnpm',
+    'exec',
+    'vitest',
+    'run',
+    '--config',
+    collection.config,
+    join(root, file),
+    '--reporter=default',
+    '--reporter=json',
+    `--outputFile.json=${json}`,
+  ];
+}
+
+/** The tests one rerun's report names failed, read once its run ended red; absent where it passed. */
+function failedOf(r, json) {
+  if (r.ok) return undefined;
+  return (existsSync(json) && failedTestsOf(readFileSync(json, 'utf8'))) || undefined;
 }
 
 const commandOf = (collection, file) =>
@@ -112,7 +156,11 @@ function baseCheckout({ root, commonGitDir, base, collections, exec, rebuild }) 
   return { path, ready: true, remove };
 }
 
-const runOf = (at, sha, result, command, r, note) => ({
+/** The most failing test names one rerun records, as the contract bounds them. */
+const RERUN_FAILED_MAX = 500;
+
+/** One rerun as the report takes it; past the bound its failing tests go unnamed, so it shows nothing base-red. */
+const runOf = (at, sha, result, command, r, note, failed) => ({
   at,
   sha,
   result,
@@ -120,6 +168,7 @@ const runOf = (at, sha, result, command, r, note) => ({
   startedAt: new Date(r.startedAt).toISOString(),
   durationMs: r.durationMs,
   ...(note ? { note } : {}),
+  ...(failed && failed.length <= RERUN_FAILED_MAX ? { failed } : {}),
 });
 
 /**
@@ -144,65 +193,76 @@ export function rerunReds({
   const reruns = [];
   const unclassed = [];
   const owed = [];
-  for (const check of checks) {
-    if (check.name !== 'integration-tests' || check.result !== 'fail' || !check.command) continue;
-    const collection = VITEST_COLLECTIONS.find((c) => c.name === check.scope);
-    const call = calls.find((c) => sameFiles(c.files, check.files));
-    if (!collection || !call) {
-      unclassed.push(
-        `${check.scope}: the run's own record was not found, so its red stays the change's`,
-      );
-      continue;
-    }
-    const red = existsSync(call.json)
-      ? redFilesOf(readFileSync(call.json, 'utf8'), root)
-      : { files: [], refusal: 'it wrote no JSON report' };
-    if (red.refusal) {
-      unclassed.push(`${check.scope}: ${red.refusal}, so its red stays the change's`);
-      continue;
-    }
-    for (const file of red.files.filter((f) => check.files.includes(f))) {
-      console.log(`\nmerge-check: ${file} went red; rerunning it once at the head`);
-      const r = exec(rerunArgv(root, collection, file), join(root, collection.cwd));
-      const at = runOf('head', head, r.ok ? 'pass' : 'fail', commandOf(collection, file), r);
-      const rerun = { check: check.id, file, runs: [at] };
-      reruns.push(rerun);
-      if (!r.ok) owed.push({ rerun, collection });
-    }
-  }
-  if (owed.length) {
-    const collections = [...new Set(owed.map((o) => o.collection))];
-    console.log(
-      `\nmerge-check: ${owed.length} file(s) stayed red; rerunning them at the merge base ${base.slice(0, 12)}`,
-    );
-    const checkout = baseCheckout({ root, commonGitDir, base, collections, exec, rebuild });
-    try {
-      for (const { rerun, collection } of owed) {
-        const command = `${commandOf(collection, rerun.file)} at ${base.slice(0, 12)}`;
-        if (!checkout.ready) {
-          const r = { startedAt: Date.now(), durationMs: 0 };
-          rerun.runs.push(runOf('base', base, 'error', command, r, checkout.note));
-          continue;
-        }
-        if (!existsSync(join(checkout.path, rerun.file))) {
-          const r = { startedAt: Date.now(), durationMs: 0 };
-          rerun.runs.push(
-            runOf('base', base, 'absent', command, r, 'the merge base holds no such file'),
-          );
-          continue;
-        }
-        const r = exec(
-          rerunArgv(checkout.path, collection, rerun.file),
-          join(checkout.path, collection.cwd),
+  const reports = mkdtempSync(join(tmpdir(), 'forge-merge-check-reruns-'));
+  const reportOf = (at, n) => join(reports, `${at}-${n}.json`);
+  try {
+    for (const check of checks) {
+      if (check.name !== 'integration-tests' || check.result !== 'fail' || !check.command) continue;
+      const collection = VITEST_COLLECTIONS.find((c) => c.name === check.scope);
+      const call = calls.find((c) => sameFiles(c.files, check.files));
+      if (!collection || !call) {
+        unclassed.push(
+          `${check.scope}: the run's own record was not found, so its red stays the change's`,
         );
-        rerun.runs.push(runOf('base', base, r.ok ? 'pass' : 'fail', command, r));
+        continue;
       }
-    } finally {
-      checkout.remove();
+      const red = existsSync(call.json)
+        ? redFilesOf(readFileSync(call.json, 'utf8'), root)
+        : { files: [], refusal: 'it wrote no JSON report' };
+      if (red.refusal) {
+        unclassed.push(`${check.scope}: ${red.refusal}, so its red stays the change's`);
+        continue;
+      }
+      for (const file of red.files.filter((f) => check.files.includes(f))) {
+        console.log(`\nmerge-check: ${file} went red; rerunning it once at the head`);
+        const json = reportOf('head', reruns.length);
+        const r = exec(rerunArgv(root, collection, file, json), join(root, collection.cwd));
+        const result = r.ok ? 'pass' : 'fail';
+        const command = commandOf(collection, file);
+        const at = runOf('head', head, result, command, r, undefined, failedOf(r, json));
+        const rerun = { check: check.id, file, runs: [at] };
+        reruns.push(rerun);
+        if (!r.ok) owed.push({ rerun, collection });
+      }
     }
+    if (owed.length) {
+      const collections = [...new Set(owed.map((o) => o.collection))];
+      console.log(
+        `\nmerge-check: ${owed.length} file(s) stayed red; rerunning them at the merge base ${base.slice(0, 12)}`,
+      );
+      const checkout = baseCheckout({ root, commonGitDir, base, collections, exec, rebuild });
+      try {
+        for (const { rerun, collection } of owed) {
+          const command = `${commandOf(collection, rerun.file)} at ${base.slice(0, 12)}`;
+          if (!checkout.ready) {
+            const r = { startedAt: Date.now(), durationMs: 0 };
+            rerun.runs.push(runOf('base', base, 'error', command, r, checkout.note));
+            continue;
+          }
+          if (!existsSync(join(checkout.path, rerun.file))) {
+            const r = { startedAt: Date.now(), durationMs: 0 };
+            rerun.runs.push(
+              runOf('base', base, 'absent', command, r, 'the merge base holds no such file'),
+            );
+            continue;
+          }
+          const json = reportOf('base', reruns.indexOf(rerun));
+          const r = exec(
+            rerunArgv(checkout.path, collection, rerun.file, json),
+            join(checkout.path, collection.cwd),
+          );
+          const result = r.ok ? 'pass' : 'fail';
+          rerun.runs.push(runOf('base', base, result, command, r, undefined, failedOf(r, json)));
+        }
+      } finally {
+        checkout.remove();
+      }
+    }
+  } finally {
+    rmSync(reports, { recursive: true, force: true });
   }
   for (const rerun of reruns) {
-    const at = (w) => rerun.runs.find((x) => x.at === w)?.result ?? null;
+    const at = (w) => rerun.runs.find((x) => x.at === w) ?? null;
     rerun.verdict = rerunVerdictOf(at('head'), at('base'));
   }
   return {

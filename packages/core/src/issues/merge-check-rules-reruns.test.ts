@@ -44,13 +44,18 @@ function redOver() {
   return { checks, integration };
 }
 
-const at = (where: 'head' | 'base', result: 'pass' | 'fail' | 'absent' | 'error') => ({
+const at = (
+  where: 'head' | 'base',
+  result: 'pass' | 'fail' | 'absent' | 'error',
+  failed: string[] = ['slow reads > reads one page'],
+) => ({
   at: where,
   sha: where === 'head' ? HEAD : BASE,
   result,
   command: `(cd packages/core && pnpm exec vitest run --config vitest.integration.config.ts ${RED})`,
   startedAt: '2026-11-07T06:05:00.000Z',
   durationMs: 9000,
+  ...(result === 'fail' ? { failed } : {}),
 });
 
 const withReruns = (checks: MergeCheckReport['checks'], reruns: unknown[]) =>
@@ -159,6 +164,16 @@ describe('the reruns a report may name', () => {
     ]);
     expect(out.success).toBe(false);
     expect(JSON.stringify(out.error?.issues)).toContain('branch-red');
+    const other = result((id) => [
+      {
+        check: id,
+        file: RED,
+        verdict: 'base-red',
+        runs: [at('head', 'fail', ['slow reads > reads two pages']), at('base', 'fail')],
+      },
+    ]);
+    expect(other.success).toBe(false);
+    expect(JSON.stringify(other.error?.issues)).toContain('branch-red');
   });
 
   it('refuses a rerun of a file its check did not run, or of a check that did not go red', () => {

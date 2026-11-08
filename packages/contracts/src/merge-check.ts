@@ -97,13 +97,32 @@ export type RerunResult = (typeof RERUN_RESULTS)[number];
 export const RERUN_VERDICTS = ["base-red", "flaky", "branch-red"] as const;
 export type RerunVerdict = (typeof RERUN_VERDICTS)[number];
 
-/** The verdict a rerun's outcomes bear: green again at the head is flaky, red at the base too is base-red. */
+/** The most failing test names one rerun records. */
+export const RERUN_FAILED_MAX = 500;
+
+/** What a verdict reads of one rerun: how it ended, and the tests that failed in it. */
+export interface RerunOutcome {
+	result: RerunResult;
+	failed?: readonly string[];
+}
+
+/**
+ * The verdict a rerun's outcomes bear: green again at the head is flaky; red at the base is base-red
+ * only where every test failing at the head failed at the base too (ISS-1120's debt d365e95e: a
+ * file red at both for different tests is the change's red). A file failing with no test failed (its
+ * suite did not load) is base-red only beside a base failing the same way, and a run naming no tests
+ * cannot show the base holds its red.
+ */
 export function rerunVerdictOf(
-	head: RerunResult,
-	base: RerunResult | null,
+	head: RerunOutcome,
+	base: RerunOutcome | null,
 ): RerunVerdict {
-	if (head === "pass") return "flaky";
-	return head === "fail" && base === "fail" ? "base-red" : "branch-red";
+	if (head.result === "pass") return "flaky";
+	if (head.result !== "fail" || base?.result !== "fail") return "branch-red";
+	const [h, b] = [head.failed, base.failed];
+	if (!h || !b) return "branch-red";
+	const covered = h.length === 0 ? b.length === 0 : h.every((t) => b.includes(t));
+	return covered ? "base-red" : "branch-red";
 }
 
 /** One rerun of a red file, held to the bounds a check run is (`./check-runs.ts:CHECK_RUN_LIMITS`). */
@@ -115,6 +134,10 @@ const rerunRunSchema = z.strictObject({
 	startedAt: z.iso.datetime({ offset: true }),
 	durationMs: z.number().int().nonnegative().max(CHECK_RUN_LIMITS.durationMs),
 	note: z.string().max(CHECK_RUN_LIMITS.text).optional(),
+	failed: z
+		.array(z.string().max(CHECK_RUN_LIMITS.text))
+		.max(RERUN_FAILED_MAX)
+		.optional(),
 });
 
 /**
@@ -286,7 +309,7 @@ export const mergeCheckReportSchema = z
 					message: `${x.file} is rerun at the merge base once at most`,
 				});
 			}
-			const bears = rerunVerdictOf(head.result, bases[0]?.result ?? null);
+			const bears = rerunVerdictOf(head, bases[0] ?? null);
 			if (bears !== x.verdict) {
 				ctx.addIssue({
 					code: "custom",
@@ -313,7 +336,7 @@ export const mergeCheckReportSchema = z
 	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], reruns?: [{ check: <id of a red integration-tests check>, file, verdict: base-red | flaky | branch-red, runs: [{ at: head | base, sha, result: pass | fail | absent | error, command, startedAt, durationMs, note? }] }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], reruns?: [{ check: <id of a red integration-tests check>, file, verdict: base-red | flaky | branch-red, runs: [{ at: head | base, sha, result: pass | fail | absent | error, command, startedAt, durationMs, note?, failed?: [<test name>] }] }], lane?: fast | full, patchId?: <40 hex, required on the fast lane>, impact?: { type, rating: low | medium | high, reason }, debts?: [{ kind: red | debt | simplify, check?, where, detail, impact }] }`;
 
 /** A kept probe of a criterion the change claims that the report did not run, a claimed observable criterion keeping none, or a standing reading core does not hold. */
 export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;
