@@ -62,6 +62,32 @@ describe("accepting a suggested triage", () => {
   });
 });
 
+// ISS-1149 / FB-79: the panel showed only the route, so a person accepted without reading what it files
+describe("what accepting a suggested triage files, read before the click", () => {
+  const show = (payload: Record<string, unknown>) => {
+    fakeCore(() => ({ body: { suggestions: [{ ...triage, payload }], open: 1 } }));
+    renderWithQuery(<Proposals projectId="p1" f={item({ title: "Board crashes on save" })} />);
+  };
+
+  it("shows the title and description the assistant wrote", async () => {
+    show({ route: "issue", createIssue: { title: "Save refuses an empty board", description: "Repro: save with no cards." } });
+    const preview = await screen.findByTestId("triage-filed-preview");
+    expect(preview).toHaveTextContent("Save refuses an empty board");
+    expect(preview).toHaveTextContent("Repro: save with no cards.");
+  });
+
+  it("shows the item's own title where the route files a draft the assistant titled nothing", async () => {
+    show({ route: "issue" });
+    expect(await screen.findByTestId("triage-filed-preview")).toHaveTextContent("Board crashes on save");
+  });
+
+  it("shows no preview where the route links an existing issue and files nothing", async () => {
+    show({ route: "issue", issue: "ISS-4" });
+    expect(await screen.findByText(/ISS-4/)).toBeInTheDocument();
+    expect(screen.queryByTestId("triage-filed-preview")).toBeNull();
+  });
+});
+
 describe("rejecting a suggested triage", () => {
   it("takes a required reason through the shared reject step, Cancel sends nothing, and the route is unchanged", async () => {
     const calls = fakeCore((c) => (c.method === "GET" ? { body: { suggestions: [triage], open: 1 } } : { body: { suggestion: { ...triage, status: "rejected" } } }));
@@ -97,7 +123,7 @@ describe("a decision an accepted suggestion wrote, in the History", () => {
 
   it("shows the person's accept reason beside the agent's note", () => {
     renderWithQuery(<FeedbackHistory f={item({ decisions: [{ ...decision, acceptReason: "Support lead confirmed" }] } as Partial<FeedbackView>)} />);
-    const row = within(screen.getByTestId("feedback-history")).getAllByRole("listitem")[0] as HTMLElement;
+    const row = within(screen.getByTestId("feedback-history")).getAllByRole("listitem")[0];
     expect(row).toHaveTextContent("Same as the board crash");
     expect(row).toHaveTextContent("Accepted: Support lead confirmed");
   });

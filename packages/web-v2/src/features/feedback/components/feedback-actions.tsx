@@ -171,12 +171,15 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
   );
 }
 
-/** What accepting will file: the title and the description the assistant wrote, read before the click (FB-79). */
-function FiledPreview({ payload }: { payload: unknown }) {
+/** What accepting will file: the title and the description the assistant wrote, read before the click (FB-79).
+ *  An issue route naming no existing issue files a draft titled with the item's own title where the
+ *  assistant wrote none (`route-write.ts:fileIssueIn`), so that title is what the preview shows (ISS-1149). */
+function FiledPreview({ payload, itemTitle }: { payload: unknown; itemTitle: string }) {
   const t = useCopy();
-  const p = (payload ?? {}) as { createIssue?: unknown; title?: string; description?: string };
-  const made = typeof p.createIssue === "object" && p.createIssue ? (p.createIssue as { title?: string; description?: string }) : null;
-  const title = made?.title ?? p.title;
+  const p = (payload ?? {}) as Partial<FeedbackTriage> & { description?: string };
+  const made = typeof p.createIssue === "object" ? p.createIssue : null;
+  const filesDraft = p.route === "issue" && (made !== null || p.issue === undefined);
+  const title = made?.title ?? p.title ?? (filesDraft ? itemTitle : undefined);
   const description = made?.description ?? p.description;
   if (!title && !description) return null;
   return (
@@ -214,7 +217,7 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
               {t("feedback.proposal.head", { who: s.producerKind === "person" ? t("feedback.proposal.aPerson") : t("feedback.proposal.anAgent") })}
             </span>
             <span className="text-13">{routeLine(s, t, language)}</span>
-            <FiledPreview payload={s.payload} />
+            <FiledPreview payload={s.payload} itemTitle={f.title} />
             {note ? <span className="text-12 text-muted">{note}</span> : null}
             {dedup ? (
               <span className="text-12 text-muted">
