@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TOKEN_PATHS, tokenIn, trySignIn } from '../integrations/deploy/sign-in-probe.js';
-import { ACCOUNT_FIELDS, parseActorSecret } from './actor-sign-in.js';
+import {
+  ACCOUNT_FIELDS,
+  GRAPHQL_SET,
+  loginRouteDoor,
+  parseActorSecret,
+  SIGN_IN_KEYS,
+} from './actor-sign-in.js';
 
 // @direct-test-of packages/runner/crates/forge-runner/src/cmd/judge_login/session.rs
 
@@ -93,7 +99,10 @@ function graphqlDouble(answer?: (body: Record<string, unknown>) => Response) {
     if (answer) return answer(body);
     const vars = (body.variables ?? {}) as Record<string, unknown>;
     if (body.query !== MUTATION) {
-      return Response.json({ errors: [{ message: 'Must provide query string.' }] }, { status: 422 });
+      return Response.json(
+        { errors: [{ message: 'Must provide query string.' }] },
+        { status: 422 },
+      );
     }
     if (vars.email !== GQL_ACCOUNT || vars.password !== GQL_PASSWORD) {
       return Response.json({ errors: [{ message: `no user ${String(vars.email)}` }], data: null });
@@ -116,5 +125,98 @@ describe('a sign-in the secret describes: a GraphQL mutation (ISS-1141)', () => 
     expect(seen).toEqual([
       { query: MUTATION, variables: { email: GQL_ACCOUNT, password: GQL_PASSWORD } },
     ]);
+  });
+
+  it('reads the token at tokenPath alone, and refuses a 2xx with none there or with `errors`', async () => {
+    const cases: [string, Response, string][] = [
+      [
+        'no token at the pointer, though one sits where the fixed list reads',
+        Response.json({ data: { access_token: GQL_TOKEN } }),
+        'answered 200 with no token at `/data/login/access_token`',
+      ],
+      [
+        'a GraphQL error whose text echoes the account',
+        Response.json({ errors: [{ message: `no user ${GQL_ACCOUNT}` }], data: null }),
+        'answered 200 with a GraphQL `errors` array, so it signed nobody in',
+      ],
+      [
+        '`errors` beside a token',
+        Response.json({
+          errors: [{ message: GQL_PASSWORD }],
+          data: { login: { access_token: GQL_TOKEN } },
+        }),
+        'GraphQL `errors` array',
+      ],
+    ];
+    for (const [name, res, says] of cases) {
+      graphqlDouble(() => res);
+      const parsed = parseActorSecret(JSON.stringify(GQL_SECRET));
+      if ('why' in parsed) throw new Error(parsed.why);
+      const answered = await trySignIn(parsed.secret, new URL(GQL_URL));
+      expect(answered.answer, name).toBe('refused');
+      const said = JSON.stringify(answered);
+      expect(said, name).toContain(says);
+      for (const v of [GQL_ACCOUNT, GQL_PASSWORD, GQL_TOKEN]) expect(said, name).not.toContain(v);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('refuses a $-word that is no placeholder, a body never sending $password, and a bad pointer, by name', () => {
+    const cases: [Record<string, unknown>, string][] = [
+      [
+        { loginBody: { query: MUTATION, variables: { email: '$email', password: '$password' } } },
+        '`loginBody` at /variables/email is `$email`',
+      ],
+      [
+        {
+          loginBody: {
+            query: MUTATION,
+            variables: { email: '$account', password: 'pw $password' },
+          },
+        },
+        'has no leaf that is exactly `$password`',
+      ],
+      [{ loginBody: MUTATION }, '`loginBody` is a JSON object'],
+      [{ loginBody: [] }, '`loginBody` is a JSON object'],
+      [{ tokenPath: 'data.login.access_token' }, '`tokenPath` is a JSON pointer'],
+      [{ tokenPath: '/' }, '`tokenPath` is a JSON pointer'],
+    ];
+    for (const [extra, says] of cases) {
+      const parsed = parseActorSecret(JSON.stringify({ ...GQL_SECRET, ...extra }));
+      expect('why' in parsed ? parsed.why : 'signs in', JSON.stringify(extra)).toContain(says);
+      if ('why' in parsed) {
+        expect(parsed.why).not.toContain(GQL_ACCOUNT);
+        expect(parsed.why).not.toContain(GQL_PASSWORD);
+      }
+    }
+  });
+
+  it('sends {<account field>, password} and reads the fixed list where the secret names neither key', async () => {
+    const seen = graphqlDouble(() => Response.json({ data: { access_token: GQL_TOKEN } }));
+    const { loginBody: _b, tokenPath: _t, ...plain } = GQL_SECRET;
+    const parsed = parseActorSecret(JSON.stringify(plain));
+    if ('why' in parsed) throw new Error(parsed.why);
+    expect((await trySignIn(parsed.secret, new URL(GQL_URL))).answer).toBe('signs-in');
+    expect(seen).toEqual([{ username: GQL_ACCOUNT, password: GQL_PASSWORD }]);
+  });
+});
+
+describe('the keys a secret describes its sign-in with (ISS-1141)', () => {
+  it('are the same in core and in judge-login', () => {
+    const source = readFileSync(SESSION_RS, 'utf8');
+    const keys = source.match(/const SIGN_IN_KEYS: \[&str; \d+\] = \[([^\]]*)\];/);
+    if (!keys?.[1]) throw new Error(`no SIGN_IN_KEYS array found in ${SESSION_RS}`);
+    expect([...keys[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])).toEqual([...SIGN_IN_KEYS]);
+    const example = source.match(/const GRAPHQL_SET: &str = r#"(.*)"#;/);
+    expect(example?.[1]).toBe(GRAPHQL_SET);
+  });
+
+  it('are named, with the GraphQL example, by the refusal that sends a person to the door', () => {
+    const door = loginRouteDoor({ projectId: 'p', scope: 'test-store', name: 'forge-bot' });
+    expect(door).toContain('`loginBody` and `tokenPath`');
+    expect(door).toContain(`PATCH /api/projects/p/secrets/test-store/forge-bot ${GRAPHQL_SET}`);
+    // the example is itself a merge the door takes
+    const set = (JSON.parse(GRAPHQL_SET) as { set: Record<string, unknown> }).set;
+    expect(Object.keys(set).sort()).toEqual(['loginBody', 'loginRoute', 'tokenPath']);
   });
 });

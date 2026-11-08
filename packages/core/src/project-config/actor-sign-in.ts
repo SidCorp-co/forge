@@ -64,7 +64,7 @@ function leavesOf(v: unknown, at: string[] = []): { at: string[]; leaf: string }
 /** Why `body` is no `loginBody` a sign-in can send; null where it is one. Names keys, never a value. */
 export function loginBodyRefusal(body: unknown): string | null {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-    return '`loginBody` is a JSON object sent as the sign-in\'s body, whose string leaves that are exactly `$account` or `$password` become the account and password';
+    return "`loginBody` is a JSON object sent as the sign-in's body, whose string leaves that are exactly `$account` or `$password` become the account and password";
   }
   const leaves = leavesOf(body);
   for (const { at, leaf } of leaves) {
@@ -83,7 +83,7 @@ export function loginBodyRefusal(body: unknown): string | null {
 export function tokenPathRefusal(path: unknown): string | null {
   return typeof path === 'string' && /^(\/[^/\s]+)+$/.test(path) && path.length <= 256
     ? null
-    : '`tokenPath` is a JSON pointer to the token in the sign-in\'s answer, such as `/data/login/access_token`';
+    : "`tokenPath` is a JSON pointer to the token in the sign-in's answer, such as `/data/login/access_token`";
 }
 
 /** Why the secret's `loginBody` or `tokenPath` is unusable; null where neither is named or both are usable. */

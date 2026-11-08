@@ -75,7 +75,8 @@ export function signInBody(secret: SignInBody): Record<string, unknown> {
 
 /** Whether a 2xx answer is a GraphQL error: an `errors` array with an entry. Its text is never read. */
 function graphqlErrors(body: unknown): boolean {
-  const errors = body !== null && typeof body === 'object' ? (body as { errors?: unknown }).errors : undefined;
+  const errors =
+    body !== null && typeof body === 'object' ? (body as { errors?: unknown }).errors : undefined;
   return Array.isArray(errors) && errors.length > 0;
 }
 
