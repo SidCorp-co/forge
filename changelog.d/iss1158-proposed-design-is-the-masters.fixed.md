@@ -1,1 +1,0 @@
-**A proposed workflow design no person decides now waits on the project's master.** On a project that is not strict and asks nobody to approve designs, the master's pass names each one to approve or return.

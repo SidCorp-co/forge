@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.608] - 2026-11-08
+
+Proposed workflow designs wait on the project's master, not an untold person
+
+### Fixed
+
+- **A proposed workflow design no person decides now waits on the project's master.** On a project that is not strict and asks nobody to approve designs, the master's pass names each one to approve or return.
+
 ## [0.4.0-dev.607] - 2026-11-08
 
 Automatic release cuts read as cut automatically, naming no person
