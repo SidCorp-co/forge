@@ -19,6 +19,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { CLOSE_VERDICT_REASON } from '../../src/issues/criteria/close-verdicts.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
 import { api } from '../helpers/api.js';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
@@ -60,8 +61,9 @@ beforeEach(async () => {
   await seedPromotionWorld(EXTERNAL, { verdictsRequired: true });
 });
 
-/** ISS-163: landed at `LANDING` on release/stg, both its criteria passed there by QA. */
-async function earnedAtItsLanding(): Promise<string> {
+/** ISS-163: landed at `LANDING` on release/stg, both its criteria passed there by QA, or by its
+ *  close alone (`close-verdicts.ts`: the close's reason, no judge), as `by` says. */
+async function earnedAtItsLanding(by: 'qa' | 'close' = 'qa'): Promise<string> {
   const [id] = await landedIssues([LANDING]);
   const issue = id as string;
   await seedIssueStatus(issue, 'in_progress');
@@ -73,8 +75,8 @@ async function earnedAtItsLanding(): Promise<string> {
   await db.execute(sql`
     INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, identity_kind, commit_sha,
                                     author_user_id, author_agency, judge)
-    SELECT id, ${issue}, 'pass', 'held on stg at the landing', 'commit', ${LANDING},
-           ${world.ownerId}, 'agent', 'qa'
+    SELECT id, ${issue}, 'pass', ${by === 'qa' ? 'held on stg at the landing' : CLOSE_VERDICT_REASON},
+           'commit', ${LANDING}, ${world.ownerId}, 'agent', ${by === 'qa' ? 'qa' : null}
       FROM issue_criteria WHERE issue_id = ${issue} AND retired_at IS NULL`);
   return issue;
 }
@@ -105,6 +107,28 @@ describe('a release reads each issue proven where the issue weighs it earned (FB
     expect(release.contents.flatMap((g) => g.issues.map((i) => [i.key, i.proof]))).toEqual([
       ['ISS-1', 'proven'],
     ]);
+  });
+
+  // ISS-1148: a close's verdict is its builder's word at the landing, which the issue weighs earned
+  // and its requirement counts; it never proves the release that carries it
+  it("counts no criterion earned at the landing on its close's verdict alone on the release", async () => {
+    const issue = await earnedAtItsLanding('close');
+    await promotionRequest(5053, HEAD);
+    const cut = await call('POST', '/release-batches', {
+      issueIds: [issue],
+      promotion: { request: 5053 },
+    });
+    expect(cut.status, JSON.stringify(cut.body)).toBe(201);
+    const read = await call('GET', `/releases/${String(cut.body.version)}`);
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    expect((read.body.release as { verified: unknown }).verified).toMatchObject({
+      proven: 0,
+      total: 2,
+    });
+    const page = await call('GET', `/releases/${String(cut.body.version)}/page`);
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    const header = (page.body as { header: { verified: unknown } }).header;
+    expect(header.verified).toMatchObject({ proven: 0, total: 2 });
   });
 
   // adminhub-api 0.10.0 on dev.515: 110/111 at the top, ISS-25 "9 open" under Technical

@@ -24,6 +24,7 @@ import {
   closedAtOf,
   criterionRoutesOf,
   listCriteriaOf,
+  notCloseVerdictSql,
   readWithBuilderFacts,
   reopenedAtOf,
   voidedUpTo,
@@ -32,7 +33,11 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument, readVerifiedJudge } from '../project-config/index.js';
 import { completionStandingsOf, issueNamingOf, namedIssue } from '../requirements/index.js';
-import { criteriaBasisOf, landingCriteriaReports } from './criteria-basis.js';
+import {
+  criteriaBasisOf,
+  type LandingCriteriaReport,
+  landingCriteriaReports,
+} from './criteria-basis.js';
 import type { CompletionFacts } from './release-view.js';
 import { holdsReleasedLine, releasedLineOf } from './released-line.js';
 
@@ -44,7 +49,8 @@ export interface IssueFact {
   updatedAt: Date;
   releaseNotes: ReleaseNotes | null;
   requirementId: string | null;
-  /** Each live criterion read by its latest verdict: what a release with no cut build counts. */
+  /** Each live criterion read by its latest verdict but a close's (ISS-1148): what a release with no
+   *  cut build counts. */
   criteria: ReleaseCriterionView[];
   /** Each live criterion's class in the issue's design, by its number; one with none recorded is
    *  absent, and reads as an observable one (`countedForClass`, ISS-914). */
@@ -107,17 +113,41 @@ export interface LandingEarned {
   earned: ReadonlySet<number>;
 }
 
-/** Each of `issueIds` weighed at its landing, where the project's basis is the landing; else null. */
-async function landingEarnedOf(
+type LandingCounted = LandingCriteriaReport['counted'];
+
+/** What each of `issueIds` counts at its landing, where the project's basis is the landing; else null. */
+async function landingCountedOf(
   projectId: string,
   issueIds: readonly string[],
-): Promise<Map<string, LandingEarned> | null> {
+): Promise<Map<string, LandingCounted> | null> {
   if (issueIds.length === 0) return null;
   const basis = await criteriaBasisOf(projectId);
   if (basis.kind !== 'landing') return null;
   const reports = await landingCriteriaReports(projectId, issueIds);
+  return new Map(reports.map((r) => [r.issueId, r.counted]));
+}
+
+/**
+ * What each issue earned at its landing on a verdict other than its close's (ISS-1148): the close's
+ * is its builder's word, which the issue weighs earned and its requirement counts, but which proves no
+ * release. An issue's carried verdicts hold none of a close's (`carriedRowsOf`), so a criterion counts
+ * where one of them names the commit its landing counted it at; one judged on a release is never a
+ * close's.
+ */
+function earnedByJudge(
+  counted: ReadonlyMap<string, LandingCounted> | null,
+  facts: ReadonlyMap<string, IssueFact>,
+): Map<string, LandingEarned> | null {
+  if (!counted) return null;
   return new Map(
-    reports.map((r) => [r.issueId, { earned: new Set(r.counted.map((c) => c.criterion)) }]),
+    [...counted].map(([id, list]) => {
+      const judged = (n: number, at: string) =>
+        (facts.get(id)?.verdicts.get(n) ?? []).some(
+          (v) => (v.commitSha ?? v.runtimeRef)?.toLowerCase() === at.toLowerCase(),
+        );
+      const earned = list.filter((c) => c.release !== undefined || judged(c.criterion, c.at));
+      return [id, { earned: new Set(earned.map((c) => c.criterion)) }];
+    }),
   );
 }
 
@@ -205,7 +235,13 @@ const carriedRowsOf = (ids: readonly string[]) =>
           authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
         })
         .from(criterionVerdicts)
-        .where(inArray(criterionVerdicts.criterionId, [...ids]))
+        // a close's verdict is its builder's word, never a judging of what shipped (ISS-1148)
+        .where(
+          and(
+            inArray(criterionVerdicts.criterionId, [...ids]),
+            notCloseVerdictSql(criterionVerdicts.reason),
+          ),
+        )
         .orderBy(asc(criterionVerdicts.createdAt)),
     (v) => (v.factOwed ? { issueId: v.issueId, missing: v.factMissing } : null),
   );
@@ -373,7 +409,7 @@ export async function loadReleaseFacts(
   const ids = [...new Set([...issueIds, ...judgedOnRelease])];
   // the landing basis waits on production's reading where a project has one: the reads after these
   // do not wait on it, so a project deployed through a binding asks them beside every other project
-  const landingRead = landingEarnedOf(projectId, ids);
+  const landingRead = landingCountedOf(projectId, ids);
   // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   landingRead.catch(() => undefined);
   const [rows, prefix, cutters, judge, held, criteria, reopened, closed] = await Promise.all([
@@ -405,7 +441,8 @@ export async function loadReleaseFacts(
     cuttersOf(runIds),
     readVerifiedJudge(projectId),
     readProjectDocument(projectId),
-    listCriteriaOf(db, ids),
+    // a criterion reads its newest verdict but a close's, as its carried verdicts do (ISS-1148)
+    listCriteriaOf(db, ids, true),
     reopenedAtOf(db, ids),
     closedAtOf(db, ids),
   ]);
@@ -472,7 +509,7 @@ export async function loadReleaseFacts(
     judgedOn: judgedOnOf(held?.document.delivery),
     released: await releasedRead,
     judgedOnRelease,
-    landing: await landingRead,
+    landing: earnedByJudge(await landingRead, byIssue),
   };
 }
 

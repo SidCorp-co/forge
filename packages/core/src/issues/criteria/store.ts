@@ -30,6 +30,7 @@ import {
 } from '../../db/schema-issue-criteria.js';
 import { refuser } from '../../lib/refusal.js';
 import { tracedCodesOf, traceWordingsOf } from '../ports.js';
+import { notCloseVerdictSql } from './close-verdicts.js';
 import {
   parseCriteriaText,
   renderCriteriaText,
@@ -393,7 +394,7 @@ export async function syncCriteriaFromText(
   );
 }
 
-const LIST_SQL = (issueIds: readonly string[]) => sql`
+const LIST_SQL = (issueIds: readonly string[], judged = false) => sql`
   SELECT c.issue_id, c.id, c.n, c.statement, c.title, c.position, c.requirement_criterion_id,
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
@@ -402,7 +403,7 @@ const LIST_SQL = (issueIds: readonly string[]) => sql`
     FROM issue_criteria c
     LEFT JOIN LATERAL (
       SELECT * FROM criterion_verdicts cv
-       WHERE cv.criterion_id = c.id
+       WHERE cv.criterion_id = c.id${judged ? sql` AND ${notCloseVerdictSql(sql`cv.reason`)}` : sql``}
        ORDER BY cv.created_at DESC, cv.id DESC
        LIMIT 1
     ) v ON true
@@ -490,8 +491,7 @@ export async function listCriteria(
   executor: Pick<Tx, 'execute'>,
   issueId: string,
 ): Promise<CriterionWithVerdict[]> {
-  const rows = (await executor.execute(LIST_SQL([issueId]))) as unknown as ListRow[];
-  return [...rows].map(criterionOf);
+  return ((await executor.execute(LIST_SQL([issueId]))) as unknown as ListRow[]).map(criterionOf);
 }
 
 /** A criterion a reword, a removal or a re-tie retired, with every verdict it earned, newest first. */
@@ -547,20 +547,23 @@ export async function listRetiredCriteria(
 export async function listCriteriaOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
+  judged = false, // each read by its newest verdict but a close's, as a release reads (ISS-1148)
 ): Promise<Map<string, CriterionWithVerdict[]>> {
-  if (executor !== db) return listCriteriaRead(executor, issueIds);
+  if (executor !== db) return listCriteriaRead(executor, issueIds, judged);
   // an issue's criteria are its own: every project's asks are one read (ISS-1070 r6)
-  const held = await memoizedPerId('listCriteria', issueIds, (some) => listCriteriaRead(db, some));
+  const key = judged ? 'listJudgedCriteria' : 'listCriteria';
+  const held = await memoizedPerId(key, issueIds, (some) => listCriteriaRead(db, some, judged));
   return new Map(issueIds.map((id) => [id, held.get(id) ?? []]));
 }
 
 async function listCriteriaRead(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
+  judged: boolean,
 ): Promise<Map<string, CriterionWithVerdict[]>> {
   const out = new Map<string, CriterionWithVerdict[]>(issueIds.map((id) => [id, []]));
   if (issueIds.length === 0) return out;
-  const rows = (await executor.execute(LIST_SQL(issueIds))) as unknown as ListRow[];
+  const rows = (await executor.execute(LIST_SQL(issueIds, judged))) as unknown as ListRow[];
   for (const row of rows) out.get(row.issue_id)?.push(criterionOf(row));
   return out;
 }

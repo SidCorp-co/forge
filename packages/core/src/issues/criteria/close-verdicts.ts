@@ -20,7 +20,7 @@
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
-import { sql } from 'drizzle-orm';
+import { type SQLWrapper, sql } from 'drizzle-orm';
 import { backfillMarkedIn, markBackfillIn } from '../../db/backfill-markers.js';
 import { db, type Tx } from '../../db/client.js';
 import { rowsOf } from '../../db/raw-sql.js';
@@ -31,6 +31,15 @@ import { readJudge } from '../ports.js';
 /** The reason a close's verdict carries: its source, which every reader shows beside it. */
 export const CLOSE_VERDICT_REASON =
   "met in scope at the issue's close: the project judges its own work, so the close is its builder's verdict";
+
+/**
+ * Over a verdict's `reason` column, that it is not a close's: the close's verdict is its builder's own
+ * word under `qa: self`, which counts toward a requirement's coverage but never toward a release's
+ * proven or verified level or its page's claims, which say the shipped build was judged (ISS-1148).
+ * The one reader of `CLOSE_VERDICT_REASON` besides its writer.
+ */
+export const notCloseVerdictSql = (reason: SQLWrapper) =>
+  sql`${reason} IS DISTINCT FROM ${CLOSE_VERDICT_REASON}`;
 
 /** Whether a close records its traced criteria's verdicts on a project whose judge is `judge`. */
 export const closeRecordsVerdicts = (judge: VerifiedJudge | null): boolean =>

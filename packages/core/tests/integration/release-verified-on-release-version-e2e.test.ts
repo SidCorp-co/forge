@@ -24,11 +24,13 @@
  * @direct-test-of packages/contracts/src/release-page.ts
  */
 
+import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CLOSE_VERDICT_REASON } from '../../src/issues/criteria/close-verdicts.js';
 import { reopenOnFail } from '../../src/issues/fail-reopen.js';
 import { api } from '../helpers/api.js';
-import { seedIssueStatus } from '../helpers/factories.js';
-import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
+import { rows, seedIssueStatus } from '../helpers/factories.js';
+import { agreedRequirement, bcOf, traced } from '../helpers/landed-requirement.js';
 import { F4, landedIssue, ok, seedLandedWorld, statusOf, world } from '../helpers/landed-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
@@ -127,6 +129,44 @@ describe('a release reads a criterion judged on a release it is or carries (ISS-
     const earlier = await releaseOf('0.75.0');
     expect(earlier.criteria).toMatchObject({ proven: 0, total: 2 });
     expect(earlier.verified.level).toBe('some_criteria');
+    expect(reads.n).toBe(0);
+  });
+
+  // ISS-1148: where the project judges its own work, the close records its builder's pass at the
+  // landing. It counts for the requirement (D2), never as a judging of the release that shipped it.
+  it("proves a release by none of its criteria where only their close's verdicts stand", async () => {
+    await agenfold();
+    const req = await agreedRequirement([
+      'A member opens the workspace',
+      'A workspace lists its folds',
+    ]);
+    const iss1 = await landedIssue(1, F4, [
+      'A member opens the workspace',
+      'A workspace lists its folds',
+    ]);
+    await traced(req, iss1, 1, { 1: 'BC-1', 2: 'BC-2' });
+    await recordRelease([iss1], '0.75.0');
+    const held = await rows<{ reason: string }>(
+      sql`SELECT reason FROM criterion_verdicts WHERE issue_id = ${iss1}`,
+    );
+    expect(held.map((v) => v.reason)).toEqual([CLOSE_VERDICT_REASON, CLOSE_VERDICT_REASON]);
+
+    const release = await releaseOf('0.75.0');
+    expect(release.criteria).toMatchObject({ proven: 0, total: 2 });
+    expect(release.verified).toMatchObject({ level: 'some_criteria', proven: 0, total: 2 });
+    const shown = release.issueCriteria.find((i) => i.key === 'ISS-1');
+    expect(shown?.criteria.map((c) => c.identity)).toEqual([null, null]);
+    const page = (await ok(
+      api(world.token, 'GET', `/api/projects/${world.projectId}/releases/0.75.0/page`),
+    )) as unknown as {
+      header: { verified: { proven: number; total: number } };
+      requirements: Array<{ business: { proven: Array<{ code: string }> } }>;
+    };
+    expect(page.header.verified).toMatchObject({ proven: 0, total: 2 });
+    expect(page.requirements[0]?.business.proven ?? []).toEqual([]);
+    // the requirement still reads the close as its builder's verdict
+    expect((await bcOf(req, 'BC-1')).verdict).toBe('passing');
+    expect((await bcOf(req, 'BC-2')).verdict).toBe('passing');
     expect(reads.n).toBe(0);
   });
 
