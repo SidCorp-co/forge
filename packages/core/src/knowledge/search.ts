@@ -4,7 +4,8 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { knowledgeEntries } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
+import { clampTopK } from '../lib/search-fusion.js';
+import { anyWordQuery } from './any-word.js';
 import { notAWithdrawnLesson } from './lesson-entries.js';
 import { recheckDueOf } from './recheck.js';
 
@@ -86,9 +87,11 @@ export async function keywordSearchKnowledge(
 ): Promise<KnowledgeHit[]> {
   const k = clampTopK(topK);
   const trimmed = query.trim();
-  if (!trimmed) return [];
+  const words = anyWordQuery(trimmed);
+  if (!words) return [];
 
-  const tsQuery = sql`websearch_to_tsquery('english', ${trimmed})`;
+  // any word, as the org's rulings match (`any-word.ts`, ISS-1142); ts_rank weighs how many it holds
+  const tsQuery = sql`to_tsquery('english', ${words})`;
   const identQuery = identifierTsQuery(trimmed);
   const rows = await db
     .select({
@@ -107,19 +110,4 @@ export async function keywordSearchKnowledge(
     .orderBy(desc(sql`rank`))
     .limit(k);
   return rows.map(({ rank, ...r }) => hitOf(r, Number(rank)));
-}
-
-/** Hybrid search — dense + keyword fused with weighted RRF. */
-export async function hybridSearchKnowledge(
-  projectId: string,
-  queryVec: number[],
-  query: string,
-  topK?: number,
-): Promise<KnowledgeHit[]> {
-  const k = clampTopK(topK);
-  const [semantic, keyword] = await Promise.all([
-    searchKnowledge(projectId, queryVec, k),
-    keywordSearchKnowledge(projectId, query, k),
-  ]);
-  return fuseHybrid(semantic, keyword, k);
 }

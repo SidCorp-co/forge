@@ -5,7 +5,7 @@ import { clampTopK, fuseHybrid } from '../lib/search-fusion.js';
 import { keywordOrgRecall, type OrgRecallHit, semanticOrgRecall } from './org-recall.js';
 import { knowledgePort } from './ports.js';
 import type { KnowledgeHit } from './search.js';
-import { hybridSearchKnowledge, keywordSearchKnowledge, searchKnowledge } from './search.js';
+import { keywordSearchKnowledge, searchKnowledge } from './search.js';
 
 type UnifiedScope = 'knowledge' | 'memory' | 'all';
 type UnifiedStrategy = 'semantic' | 'keyword' | 'hybrid';
@@ -84,19 +84,17 @@ async function embeddedKnowledge(
 ): Promise<KnowledgeRecallHit[]> {
   const k = clampTopK(topK);
   const [mine, org] = await Promise.all([
-    strategy === 'hybrid'
-      ? hybridSearchKnowledge(projectId, queryVec, query, k)
-      : searchKnowledge(projectId, queryVec, k),
+    searchKnowledge(projectId, queryVec, k),
     semanticOrgRecall([projectId], queryVec, k),
   ]);
-  if (strategy === 'semantic') return byScore(own(mine), org ?? [], k);
-  // hybrid: the org's cosine and keyword orders fused as the project's are, then the two ranked
-  const orgFused = fuseHybrid<KnowledgeRecallHit>(
-    org ?? [],
-    await keywordOrgRecall([projectId], query, k),
-    k,
-  );
-  return byScore(own(mine), orgFused, k);
+  // cosine beside cosine is one kind of score: the semantic order is both stores' by score
+  const semantic = byScore(own(mine), org ?? [], k);
+  if (strategy === 'semantic') return semantic;
+  // hybrid (ISS-1142): the keyword order is both stores' merged by rank, since a ts_rank of one store
+  // is no measure of the other's, and the two orders are fused by rank. Fusing each store on its own
+  // and comparing the fused scores capped a project hit at half an org hit's: the org's keyword arm
+  // matched any word and the project's every word.
+  return fuseHybrid<KnowledgeRecallHit>(semantic, await keywordKnowledge(projectId, query, k), k);
 }
 
 /**

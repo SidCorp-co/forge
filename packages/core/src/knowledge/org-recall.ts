@@ -6,8 +6,9 @@
 //
 // An org entry is embedded on first recall and kept for the process under its id and last write, so a
 // rewrite is embedded again and an org of a few dozen rulings costs one batch per process. An
-// embeddings outage leaves the keyword arm, which reads each word of the query on its own (`simple`,
-// any word), so a Vietnamese question is weighed by its words rather than by English stemming.
+// embeddings outage leaves the keyword arm, which reads each word of the query on its own (any word,
+// `any-word.ts`), under the one rule a project entry is matched by (ISS-1142): the same `english`
+// configuration, so a stop word ("the", "when") matches no ruling, as it matches no project entry.
 
 import type { CuratedEntryType, RecheckDue } from '@forge/contracts/knowledge';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
@@ -15,6 +16,7 @@ import { db } from '../db/client.js';
 import { knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { EmbeddingUnavailableError, embedBatch } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
+import { anyWordQuery } from './any-word.js';
 import { knowledgeEmbedInput } from './entry-input.js';
 import { recheckDueOf } from './recheck.js';
 
@@ -134,12 +136,6 @@ export async function semanticOrgRecall(
     .slice(0, topK);
 }
 
-/** Each word of the query, letters and digits of any script, as `simple` lexemes OR'd together. */
-const anyWordQuery = (query: string): string | null => {
-  const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])];
-  return words.length > 0 ? words.join(' | ') : null;
-};
-
 /**
  * The org entries the projects reach whose slug, title or body holds a word of the query, ranked by
  * how much of it they hold; an entry whose slug the query names outright ranks first.
@@ -153,8 +149,8 @@ export async function keywordOrgRecall(
   if (!words || projectIds.length === 0) return [];
   const ids = (await reachable(projectIds)).map((r) => r.id);
   if (ids.length === 0) return [];
-  const doc = sql`to_tsvector('simple', ${orgKnowledgeEntries.slug} || ' ' || replace(${orgKnowledgeEntries.slug}, '-', ' ') || ' ' || ${orgKnowledgeEntries.title} || ' ' || ${orgKnowledgeEntries.body})`;
-  const tsq = sql`to_tsquery('simple', ${words})`;
+  const doc = sql`to_tsvector('english', ${orgKnowledgeEntries.slug} || ' ' || replace(${orgKnowledgeEntries.slug}, '-', ' ') || ' ' || ${orgKnowledgeEntries.title} || ' ' || ${orgKnowledgeEntries.body})`;
+  const tsq = sql`to_tsquery('english', ${words})`;
   const named = sql`(position(${orgKnowledgeEntries.slug} in ${query.toLowerCase()}) > 0 OR position(replace(${orgKnowledgeEntries.slug}, '-', ' ') in ${query.toLowerCase()}) > 0)`;
   const rows = await db
     .select({

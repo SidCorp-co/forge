@@ -215,3 +215,50 @@ describe('BC-7: MCP search and fetch read the same entries', () => {
     },
   );
 });
+
+// ISS-1142 (the ISS-1119 benchmark on forge data, 2026-11-08): in hybrid and keyword mode the org's
+// rulings filled the top 5 and pushed out the project's lesson. A project entry had to hold every word
+// of the query while an org ruling held any, and the two were merged by their fused scores, which
+// capped a project hit at half an org hit's. Planted: six org rulings sharing three of the query's
+// words, each out-scoring the exact project lesson on the old merge.
+describe('ISS-1142: the project lesson a question asks for is recalled first in every strategy', () => {
+  const ASK = 'what the master does when a landing push hangs';
+  let lessonId = '';
+
+  beforeAll(async () => {
+    for (let i = 1; i <= 6; i += 1) {
+      const put = await api(w.token, 'PUT', `/api/orgs/${w.orgId}/knowledge/master-note-${i}`, {
+        title: `Master note ${i}`,
+        body: `The master hangs a note ${i} on the board; a push of the board hangs the master view.`,
+        injection: 'on_demand',
+        source: 'owner ruling',
+        scope: 'every project of the org',
+        recheckWhen: 'the owner rules again',
+      });
+      expect(put.status, JSON.stringify(put.body)).toBe(200);
+    }
+    const title = 'Stuck landing';
+    const body = 'When a landing is stuck the master rebases on dev and retries the push once.';
+    const [row] = await db.execute<{ id: string }>(sql`
+      INSERT INTO knowledge_entries (project_id, kind, slug, title, body, embedding, entry_type)
+      VALUES (${w.projectId}, 'rule', 'stuck-landing-retry', ${title}, ${body},
+              ${`[${wordVector(`${title}\n\n${body}`).join(',')}]`}::vector, 'fact')
+      RETURNING id`);
+    lessonId = (row as { id: string }).id;
+  });
+
+  it.each(['semantic', 'hybrid', 'keyword'] as const)(
+    'recalls it first by %s, ahead of the org rulings sharing the question’s words',
+    async (strategy) => {
+      const res = await api(w.token, 'POST', `/api/projects/${w.projectId}/knowledge/search`, {
+        query: ASK,
+        scope: 'knowledge',
+        strategy,
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const found = (res.body.knowledge as Body[]).map((h) => h.id as string);
+      expect(found[0], JSON.stringify(found)).toBe(lessonId);
+      expect(found.length).toBeGreaterThan(1);
+    },
+  );
+});
