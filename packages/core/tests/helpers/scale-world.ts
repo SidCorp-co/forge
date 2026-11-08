@@ -25,7 +25,9 @@ export interface Scale {
    * The shape forge has on forge-dev (2026-11-08) where the plain seed is uniform: verdicts judged at
    * the commit of the release that carried their issue, a runtime serving it, or a commit no release
    * names, rather than all at one; requirements accepted and dropped beside agreed; feedback answered,
-   * duplicated and routed to a new requirement beside the issue route, most of it reported by agents.
+   * duplicated and routed to a new requirement beside the issue route, most of it reported by agents;
+   * approved workflow designs (25 for forge's size) with their revisions, the requirements they
+   * serve and the issues building them.
    */
   live?: boolean;
 }
@@ -119,6 +121,7 @@ export async function seedAtScale(
       FROM feedback f WHERE f.project_id = ${p} AND f.route = 'issue'`);
   });
   if (s.live) await liveFeedback(p, s);
+  if (s.live) await liveWorkflows(p, ownerId, s);
   await db.execute(sql`
     INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
     SELECT i.id, 'user', ${ownerId}, 'human', 'issue.statusChanged',
@@ -200,5 +203,46 @@ async function liveFeedback(p: string, s: Scale): Promise<void> {
     await tx.execute(
       sql`UPDATE feedback SET status = 'verified' WHERE project_id = ${p} AND route = 'issue' AND fb_seq % 4 = 0`,
     );
+  });
+}
+
+/**
+ * {@link Scale.live}: approved workflow designs, one per four requirements, each at a revision up to
+ * twenty with every revision approved, serving its requirements and built by four closed issues.
+ */
+async function liveWorkflows(p: string, ownerId: string, s: Scale): Promise<void> {
+  const { readFileSync } = await import('node:fs');
+  const doc = JSON.parse(
+    readFileSync(
+      new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
+      'utf8',
+    ),
+  ) as Record<string, unknown>;
+  const count = Math.max(1, Math.round(s.requirements / 4));
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO project_workflows (project_id, flow, kind, revision, document, design_status, approved_revision, written_by_user)
+      SELECT ${p}, 'flow-' || g, 'flow', 1 + g % 20,
+             ${JSON.stringify(doc)}::jsonb || jsonb_build_object('project', ${p}::text, 'flow', 'flow-' || g),
+             'approved', 1 + g % 20, ${ownerId}
+        FROM generate_series(1, ${count}) g`);
+    await tx.execute(sql`
+      INSERT INTO project_workflow_designs (workflow_id, revision, document, proposed_by_user, decision, decided_by_user, decided_kind, decided_at)
+      SELECT w.id, r, w.document, ${ownerId}, 'approve', ${ownerId}, 'person', now() - make_interval(hours => w.revision - r)
+        FROM project_workflows w CROSS JOIN LATERAL generate_series(1, w.revision) r
+       WHERE w.project_id = ${p}`);
+    await tx.execute(sql`
+      INSERT INTO requirement_workflows (requirement_id, workflow_id, linked_by)
+      SELECT r.id, w.id, ${ownerId} FROM project_workflows w
+        JOIN requirements r ON r.project_id = w.project_id
+         AND r.req_seq % ${count} = substr(w.flow, 6)::int % ${count}
+       WHERE w.project_id = ${p}`);
+    await tx.execute(sql`
+      INSERT INTO workflow_builds (issue_id, workflow_id, project_id, linked_by_user, step_ids)
+      SELECT i.id, w.id, ${p}, ${ownerId}, ARRAY[w.document->'steps'->0->>'id']
+        FROM project_workflows w
+        JOIN issues i ON i.project_id = w.project_id AND i.status = 'closed'
+         AND i.iss_seq % ${count} = substr(w.flow, 6)::int % ${count} AND i.iss_seq <= ${4 * count}
+       WHERE w.project_id = ${p}`);
   });
 }

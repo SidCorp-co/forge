@@ -38,7 +38,7 @@ import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { deliveryHoldsOf } from './delivery-check.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
-import { followReadsOf } from './follow-reads.js';
+import { followReadsAcross } from './follow-reads.js';
 import { type IssueNaming, issueNamingOf, linkedIssuesOf, namedIssue } from './issue-projects.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
@@ -188,7 +188,7 @@ const sinceOf = (since: ReadonlyMap<string, Date>, id: string): Date => {
 async function besideFactsOf(ids: readonly string[]) {
   const [uncovered, follows, asked, { since: statusSince, decisions }] = await Promise.all([
     uncoveredOf(ids),
-    followReadsOf(db, ids),
+    followReadsAcross(ids),
     askedOf(ids),
     statusFactsOf(ids),
   ]);

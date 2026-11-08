@@ -8,7 +8,13 @@ import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList } from '../db/raw-sql.js';
-import { onePerProject, rowsPerProject } from '../db/read-memo.js';
+import {
+  idOfParts,
+  memoizedPerId,
+  onePerProject,
+  partsOf,
+  rowsPerProject,
+} from '../db/read-memo.js';
 import { notFound } from '../middleware/route-errors.js';
 import { permissionFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { personGateOf, readProjectDocument } from '../project-config/index.js';
@@ -102,18 +108,36 @@ async function inputsOf(
   rows: readonly WorkflowRow[],
 ): Promise<(w: WorkflowRow) => HealthInputs> {
   const ids = rows.map((w) => w.id);
+  // each input by design, every project's designs asked before a read's quiet point in one
+  // statement (`db/read-memo.ts:memoizedPerId`): each project's health read its own (ISS-1070 r8)
+  const across = <V>(key: string, read: (some: readonly string[]) => Promise<Map<string, V>>) =>
+    memoizedPerId(`workflowHealth:${key}`, ids, read);
+  // the rooted view reads the approved revision its design row holds, carried in the id it is asked by
+  const approvedOf = (w: WorkflowRow) => idOfParts(w.id, String(w.approved_revision ?? ''));
   const [designs, criteria, contractPins, suggestions, builds, observation, decisions, rooted] =
     await Promise.all([
-      designRowsOf(ids),
-      criteriaOf(ids),
-      contractPinsOf(ids),
-      suggestionsOf(ids),
+      across('designs', designRowsOf),
+      across('criteria', criteriaOf),
+      across('contractPins', contractPinsOf),
+      across('suggestions', suggestionsOf),
       buildsOf(viewer, projectId, ids),
-      observationOf(ids),
-      decisionsOf(ids),
-      rootedOfAll(
-        db,
-        rows.map((w) => ({ id: w.id, approvedRevision: w.approved_revision })),
+      across('observation', observationOf),
+      across('decisions', decisionsOf),
+      memoizedPerId('workflowHealth:rooted', rows.map(approvedOf), async (some) => {
+        const asked = some.map((part) => {
+          const [id, approved] = partsOf(part) as [string, string];
+          return { id, approvedRevision: approved === '' ? null : Number(approved) };
+        });
+        const read = await rootedOfAll(db, asked);
+        return new Map(asked.map((w, i) => [some[i] as string, read.get(w.id)]));
+      }).then(
+        (held) =>
+          new Map(
+            rows.flatMap((w) => {
+              const view = held.get(approvedOf(w));
+              return view ? [[w.id, view] as const] : [];
+            }),
+          ),
       ),
     ]);
   return (w) => {

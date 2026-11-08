@@ -10,7 +10,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { rowsPerId } from '../db/read-memo.js';
+import { memoizedPerId, rowsPerId } from '../db/read-memo.js';
 import { requirementCriteria, requirementCriterionSteps } from '../db/schema-requirements.js';
 import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
 import type { TracedChange } from './standing-follow.js';
@@ -262,4 +262,19 @@ export async function followReadsOf(
     ]);
   }
   return out;
+}
+
+/**
+ * {@link followReadsOf} for a read's requirements: every project's asks before the read's quiet point
+ * in one set of statements (`db/read-memo.ts:memoizedPerId`), where each project's requirement list
+ * read its own (ISS-1070 r8). A requirement no design follows is answered by its absence, as there.
+ */
+export async function followReadsAcross(
+  ids: readonly string[],
+): Promise<Map<string, StaleDesignFollow[]>> {
+  const held = await memoizedPerId('followReads', ids, async (some) => {
+    const read = await followReadsOf(db, some);
+    return new Map(some.map((id) => [id, read.get(id) ?? null]));
+  });
+  return new Map([...held].flatMap(([id, f]) => (f ? [[id, f] as const] : [])));
 }

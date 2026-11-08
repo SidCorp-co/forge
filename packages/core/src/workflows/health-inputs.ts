@@ -15,6 +15,7 @@ import {
 } from '@forge/contracts/workflow-health';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { type HealthViewer, latestRunsOf } from './health-ports.js';
@@ -213,69 +214,118 @@ function suggestionOf(r: {
   };
 }
 
+/** One workflow's builds with the traces and latest verdicts of their issues, as read. */
+interface BuildRows {
+  builds: BuildRow[];
+  traces: TraceRow[];
+  verdicts: VerdictRow[];
+}
+type BuildRow = {
+  workflow_id: string;
+  issue_id: string;
+  iss_seq: number;
+  status: string;
+  reopen_count: number;
+  updated_at: string;
+  merged_at: string | null;
+  linked_at: string;
+  step_ids: string[] | null;
+  observed_step_ids: string[] | null;
+  release_version: string | null;
+  release_released_at: string | null;
+};
+type TraceRow = {
+  issue_id: string;
+  workflow_id: string;
+  step_id: string | null;
+  edge_from: string | null;
+  edge_to: string | null;
+  edge_label: string | null;
+};
+type VerdictRow = {
+  issue_id: string;
+  n: number;
+  verdict: string;
+  reason: string | null;
+  design_workflow_id: string | null;
+  design_revision: number | null;
+  created_at: string;
+};
+
+/**
+ * The builds of `workflowIds` with their issues' traces and verdicts, by workflow: three statements
+ * for every design asked before a read's quiet point, of every project (`db/read-memo.ts:
+ * memoizedPerId`), where each project's health read its own (ISS-1070 r8).
+ */
+function buildRowsOf(workflowIds: readonly string[]): Promise<Map<string, BuildRows>> {
+  return memoizedPerId('workflowHealth:builds', workflowIds, async (some) => {
+    const builds = rowsOf<BuildRow>(
+      await db.execute(sql`
+        SELECT b.workflow_id, i.id AS issue_id, i.iss_seq, i.status, i.reopen_count, i.updated_at,
+               i.merged_at, b.linked_at, b.step_ids, b.observed_step_ids, r.release_version,
+               r.release_released_at
+          FROM workflow_builds b JOIN issues i ON i.id = b.issue_id
+          LEFT JOIN pipeline_runs r ON r.id = i.release_batch_run_id AND r.release_version IS NOT NULL
+         WHERE b.workflow_id IN (${ids(some)}) AND i.archived_at IS NULL`),
+    );
+    const issueIds = [...new Set(builds.map((b) => b.issue_id))];
+    const [traces, verdicts] =
+      issueIds.length === 0
+        ? [[], []]
+        : await Promise.all([
+            db
+              .execute(sql`
+                SELECT ic.issue_id, s.workflow_id, s.step_id, s.edge_from, s.edge_to, s.edge_label
+                  FROM issue_criteria ic
+                  JOIN requirement_criteria c ON c.id = ic.requirement_criterion_id
+                  JOIN requirement_criterion_steps s ON s.requirement_id = c.requirement_id AND s.code = c.code
+                       AND s.workflow_id IN (${ids(some)})
+                 WHERE ic.issue_id::text IN (${ids(issueIds)}) AND ic.retired_at IS NULL`)
+              .then((r) => rowsOf<TraceRow>(r)),
+            db
+              .execute(sql`
+                SELECT DISTINCT ON (v.criterion_id) ic.issue_id, ic.n, v.verdict, v.reason,
+                       v.design_workflow_id, v.design_revision, v.created_at
+                  FROM issue_criteria ic JOIN criterion_verdicts v ON v.criterion_id = ic.id
+                 WHERE ic.issue_id::text IN (${ids(issueIds)}) AND ic.retired_at IS NULL
+                 ORDER BY v.criterion_id, v.created_at DESC`)
+              .then((r) => rowsOf<VerdictRow>(r)),
+          ]);
+    return new Map(
+      some.map((id) => {
+        const own = builds.filter((b) => b.workflow_id === id);
+        const issues = new Set(own.map((b) => b.issue_id));
+        return [
+          id,
+          {
+            builds: own,
+            traces: traces.filter((t) => t.workflow_id === id && issues.has(t.issue_id)),
+            verdicts: verdicts.filter((v) => issues.has(v.issue_id)),
+          },
+        ];
+      }),
+    );
+  });
+}
+
 export async function buildsOf(
   viewer: HealthViewer,
   projectId: string,
   workflowIds: readonly string[],
 ): Promise<Map<string, HealthFacts['builds']>> {
   if (workflowIds.length === 0) return new Map();
-  const builds = rowsOf<{
-    workflow_id: string;
-    issue_id: string;
-    iss_seq: number;
-    status: string;
-    reopen_count: number;
-    updated_at: string;
-    merged_at: string | null;
-    linked_at: string;
-    step_ids: string[] | null;
-    observed_step_ids: string[] | null;
-    release_version: string | null;
-    release_released_at: string | null;
-  }>(
-    await db.execute(sql`
-      SELECT b.workflow_id, i.id AS issue_id, i.iss_seq, i.status, i.reopen_count, i.updated_at,
-             i.merged_at, b.linked_at, b.step_ids, b.observed_step_ids, r.release_version,
-             r.release_released_at
-        FROM workflow_builds b JOIN issues i ON i.id = b.issue_id
-        LEFT JOIN pipeline_runs r ON r.id = i.release_batch_run_id AND r.release_version IS NOT NULL
-       WHERE b.workflow_id IN (${ids(workflowIds)}) AND i.archived_at IS NULL`),
-  );
+  const held = await buildRowsOf(workflowIds);
+  const all = workflowIds.map((id) => held.get(id) ?? { builds: [], traces: [], verdicts: [] });
+  const builds = all.flatMap((w) => w.builds);
   if (builds.length === 0) return new Map(workflowIds.map((id) => [id, []]));
   const issueIds = [...new Set(builds.map((b) => b.issue_id))];
-  const [traces, verdicts, runs] = await Promise.all([
-    db.execute(sql`
-      SELECT ic.issue_id, s.workflow_id, s.step_id, s.edge_from, s.edge_to, s.edge_label
-        FROM issue_criteria ic
-        JOIN requirement_criteria c ON c.id = ic.requirement_criterion_id
-        JOIN requirement_criterion_steps s ON s.requirement_id = c.requirement_id AND s.code = c.code
-             AND s.workflow_id IN (${ids(workflowIds)})
-       WHERE ic.issue_id::text IN (${ids(issueIds)}) AND ic.retired_at IS NULL`),
-    db.execute(sql`
-      SELECT DISTINCT ON (v.criterion_id) ic.issue_id, ic.n, v.verdict, v.reason,
-             v.design_workflow_id, v.design_revision, v.created_at
-        FROM issue_criteria ic JOIN criterion_verdicts v ON v.criterion_id = ic.id
-       WHERE ic.issue_id::text IN (${ids(issueIds)}) AND ic.retired_at IS NULL
-       ORDER BY v.criterion_id, v.created_at DESC`),
-    latestRunsOf(viewer, projectId, issueIds),
-  ]);
-  const traceRows = rowsOf<{
-    issue_id: string;
-    workflow_id: string;
-    step_id: string | null;
-    edge_from: string | null;
-    edge_to: string | null;
-    edge_label: string | null;
-  }>(traces);
-  const verdictRows = rowsOf<{
-    issue_id: string;
-    n: number;
-    verdict: string;
-    reason: string | null;
-    design_workflow_id: string | null;
-    design_revision: number | null;
-    created_at: string;
-  }>(verdicts);
+  const runs = await latestRunsOf(viewer, projectId, issueIds);
+  const traceRows = all.flatMap((w) => w.traces);
+  const verdictRows = [
+    ...new Map(
+      all.flatMap((w) => w.verdicts).map((v) => [`${v.issue_id}:${v.n}:${v.created_at}`, v]),
+    ).values(),
+  ];
   const runOf = new Map(runs.map((r) => [r.issueId, r.run]));
   return byWorkflow(workflowIds, builds, (b) => {
     const traced = traceRows
