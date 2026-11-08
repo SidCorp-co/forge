@@ -39,7 +39,7 @@ const TURNS_LISTED = 50;
 const turnsQuery = zValidator(
   'query',
   z.strictObject({ thread: z.string().min(1).max(200).optional() }),
-  invalid('invalid query: thread is the id of one of the room\'s threads'),
+  invalid("invalid query: thread is the id of one of the room's threads"),
 );
 
 const turnParam = zValidator(

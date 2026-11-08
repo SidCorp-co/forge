@@ -227,15 +227,19 @@ describe('ISS-1029: a room action names its turn, and the turn keeps what the se
 
 // ISS-1118 (REQ-92): the binding's owner project read neither a room's turns by thread nor the brief,
 // grants and routes its agent works under, so "where did the agent read stale state" had no answer
-describe('ISS-1118: a binding owner reads its room agent\'s turns, and the brief, grants and routes in force', () => {
-  it('lists a room\'s turns by thread and reads one: its trigger, calls, results and reply', async () => {
+describe("ISS-1118: a binding owner reads its room agent's turns, and the brief, grants and routes in force", () => {
+  it("lists a room's turns by thread and reads one: its trigger, calls, results and reply", async () => {
     await w.settleWarm();
     let seq = 2_000_000;
     let replied: Record<string, unknown> | null = null;
     w.box.model = async (turn, act) => {
       const m = turn.messages.find((x) => x.from !== 'forge');
       if (!m) return;
-      const line = (l: Record<string, unknown>) => ({ seq: seq++, kind: 'stdout', data: { line: l } });
+      const line = (l: Record<string, unknown>) => ({
+        seq: seq++,
+        kind: 'stdout',
+        data: { line: l },
+      });
       // a read of another project's record through a grant, as the runner posts the session's stream
       const posted = await fetch(`${w.core.base}/api/agent-sessions/${turn.sessionId}/events`, {
         method: 'POST',
@@ -244,17 +248,28 @@ describe('ISS-1118: a binding owner reads its room agent\'s turns, and the brief
           events: [
             line({
               type: 'assistant',
-              message: { content: [{ type: 'tool_use', name: 'support.releases', input: { project: 'adminhub' } }] },
+              message: {
+                content: [
+                  { type: 'tool_use', name: 'support.releases', input: { project: 'adminhub' } },
+                ],
+              },
             }),
             line({
               type: 'user',
-              message: { content: [{ type: 'tool_result', content: 'adminhub v1.31.1: awaiting release' }] },
+              message: {
+                content: [{ type: 'tool_result', content: 'adminhub v1.31.1: awaiting release' }],
+              },
             }),
           ],
         }),
       });
       expect(posted.status, await posted.clone().text()).toBe(200);
-      replied = await act({ action: 'reply', thread: m.thread, text: 'v1.31.1 is not live yet.', why: 'asked if it shipped' });
+      replied = await act({
+        action: 'reply',
+        thread: m.thread,
+        text: 'v1.31.1 is not live yet.',
+        why: 'asked if it shipped',
+      });
     };
     const asked = await w.chat.say(w.chat.alice, 'Is v1.31.1 live?');
     await expect.poll(() => replied, { timeout: 15_000 }).not.toBeNull();
@@ -270,31 +285,49 @@ describe('ISS-1118: a binding owner reads its room agent\'s turns, and the brief
     expect(read.status, JSON.stringify(read.body)).toBe(200);
     const turn = read.body.turn as Record<string, unknown>;
     // [TURN_TRIGGER_UNREAD] before the fix: the record held the stream alone, not what started it or what it posted
-    expect(turn.trigger).toEqual([expect.objectContaining({ thread: asked, text: 'Is v1.31.1 live?' })]);
+    expect(turn.trigger).toEqual([
+      expect.objectContaining({ thread: asked, text: 'Is v1.31.1 live?' }),
+    ]);
     expect(turn.acts).toContainEqual(
-      expect.objectContaining({ kind: 'reply', thread: asked, input: expect.objectContaining({ text: 'v1.31.1 is not live yet.' }) }),
+      expect.objectContaining({
+        kind: 'reply',
+        thread: asked,
+        input: expect.objectContaining({ text: 'v1.31.1 is not live yet.' }),
+      }),
     );
-    expect(turn.steps).toContainEqual({ kind: 'answered', text: 'adminhub v1.31.1: awaiting release' });
+    expect(turn.steps).toContainEqual({
+      kind: 'answered',
+      text: 'adminhub v1.31.1: awaiting release',
+    });
     // the fence: a caller outside the binding's owner project is refused, by name
     const outside = await api(w.stranger, 'GET', base);
     expect(outside.status).toBe(403);
-    expect(outside.body).toMatchObject({ code: 'FORBIDDEN', detail: expect.stringContaining('project.read') });
+    expect(outside.body).toMatchObject({
+      code: 'FORBIDDEN',
+      detail: expect.stringContaining('project.read'),
+    });
   });
 
-  it('reads the room\'s brief, grants and routes in force with when each last changed, and no secret', async () => {
+  it("reads the room's brief, grants and routes in force with when each last changed, and no secret", async () => {
     const room = await roomId();
     const path = `/api/projects/${w.projectId}/support/rooms/${room}/brief`;
     // [BINDING_BRIEF_UNREAD] before the fix: no route read a room's brief and grants as its agent holds them
     const got = await api(w.owner, 'GET', path);
     expect(got.status, JSON.stringify(got.body)).toBe(200);
     const brief = got.body.brief as Record<string, unknown>;
-    expect(brief.binding).toMatchObject({ revision: expect.any(Number), changedAt: expect.any(String) });
+    expect(brief.binding).toMatchObject({
+      revision: expect.any(Number),
+      changedAt: expect.any(String),
+    });
     expect(brief.brief).toMatchObject({ product: 'Catalog, the shop back office' });
     expect(brief.grants).toMatchObject({ abilities: ['read_checkout', 'file_items'] });
     expect(brief.routes).toEqual(expect.any(Array));
     expect('routesChangedAt' in brief).toBe(true);
     expect(JSON.stringify(got.body)).not.toContain(w.chat.bot.authToken);
     const outside = await api(w.stranger, 'GET', path);
-    expect(outside.body).toMatchObject({ code: 'FORBIDDEN', detail: expect.stringContaining('project.read') });
+    expect(outside.body).toMatchObject({
+      code: 'FORBIDDEN',
+      detail: expect.stringContaining('project.read'),
+    });
   });
 });

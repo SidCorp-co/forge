@@ -125,7 +125,11 @@ export function runOpsRead(
     deviceId: input.deviceId,
     projectId: input.projectId,
     event: 'ops.read',
-    data: { argv: input.argv, timeoutMs: input.timeoutMs, ...(input.env ? { env: input.env } : {}) },
+    data: {
+      argv: input.argv,
+      timeoutMs: input.timeoutMs,
+      ...(input.env ? { env: input.env } : {}),
+    },
     timeoutMs: input.timeoutMs + 15_000,
     deps,
     read: (raw) => {

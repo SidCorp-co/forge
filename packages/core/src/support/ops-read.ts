@@ -48,7 +48,9 @@ async function placeOf(
   return { ok: true, value: { thread: TOP_LEVEL, conversationId: null } };
 }
 
-type ReadEnv = { ok: true; env: Record<string, string> } | { ok: false; refs: string[]; code: string };
+type ReadEnv =
+  | { ok: true; env: Record<string, string> }
+  | { ok: false; refs: string[]; code: string };
 
 /** The variables a read's process is handed: each declared secret's value, or which refs have none. */
 async function envOf(projectId: string, read: SupportRead): Promise<ReadEnv> {
