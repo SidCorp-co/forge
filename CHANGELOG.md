@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.607] - 2026-11-08
+
+Automatic release cuts read as cut automatically, naming no person
+
+### Fixed
+
+- **The merge check no longer excuses a new failing test in a file that was already red.** A rerun counts as red on the base only where every test failing at the head failed there too.
+- **Needs you opens faster across many projects.** A release's facts, blockers and cuts, and a requirement's live build, are read together rather than one after another, so the attention read waits on far fewer round trips.
+- **An automatic release no longer reads as a person's cut.** A release Forge cuts after a landing, or on a schedule, reads 'Cut automatically' and names nobody; a person's cut still names them. Earlier releases read as before.
+
 ## [0.4.0-dev.606] - 2026-11-08
 
 Judges check screens at desktop widths; off-target merges no longer count as landed
