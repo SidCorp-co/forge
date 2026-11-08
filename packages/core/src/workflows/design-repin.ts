@@ -7,7 +7,7 @@
  */
 
 import type { DesignStatus } from '@forge/contracts/design-status';
-import type { WorkflowTemplate } from '@forge/contracts/workflow-templates';
+import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { PinMove, PinOnlyChange, RepinSource } from '@forge/contracts/workflows';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import {
@@ -17,7 +17,8 @@ import {
   fingerprintShape,
 } from './design.js';
 import { baseApprovalRefusal, readBases } from './design-bases.js';
-import type { WorkflowWrite } from './schema.js';
+import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
+import type { StoredDesign } from './store.js';
 
 /** Every path at which two canonical values differ: object keys by name, arrays by position. */
 export function canonicalDiff(a: unknown, b: unknown, path: (string | number)[] = []): string[] {
@@ -369,4 +370,18 @@ export function planRepins(
     out.ready.push(planned.step);
   }
   return out;
+}
+
+/** The newest revision against the approved one, where only the base revisions it pins differ. */
+export function pinOnlyOf(
+  designs: readonly StoredDesign[],
+  approvedRevision: number | null,
+  templates: readonly WorkflowTemplate[] | undefined,
+): PinOnlyChange | null {
+  const approved = readStoredWorkflow(
+    designs.find((d) => d.revision === approvedRevision)?.document,
+  );
+  const proposed = readStoredWorkflow(designs[0]?.document);
+  if (!approved || !proposed || designs[0]?.revision === approvedRevision) return null;
+  return pinOnlyChange(approved, proposed, findTemplate(templates ?? [], proposed.template));
 }

@@ -7,6 +7,7 @@ import type { AgentConfirmOwed } from './ports.js';
 // @direct-test-of packages/core/src/masters/owed-confirms.ts
 // @direct-test-of packages/core/src/masters/owed.ts
 // @direct-test-of packages/core/src/masters/owed-release-gate.ts
+// @direct-test-of packages/core/src/masters/owed-designs.ts
 
 const none: Parameters<typeof owedLine>[0] = {
   designs: [],
@@ -287,5 +288,28 @@ describe('the triages the master owes', () => {
     expect(workDigest([], { ...none, triages: [{ key: 'FB-7', proposed: 'sg-1' }] })).not.toBe(
       plain,
     );
+  });
+});
+
+// ISS-1158 (FB-586): a proposal the master decides is named with its door, and moves the digest
+describe('approvalsLine: the proposed designs the master decides', () => {
+  const owed = {
+    ...none,
+    designApprovals: [{ workflowId: 'w9', flow: 'support-group', revision: 4 }],
+  };
+
+  it('names each with its revision, workflow, door and checklist, and counts it', () => {
+    const line = owedLine(owed);
+    expect(line).toContain(
+      '1 proposed design waits on your approval (support-group r4, workflow w9)',
+    );
+    expect(line).toContain('workflows/<workflowId>/design/decision -X POST');
+    expect(line).toContain(
+      'workflow approval checklist `forge-runner api guides/workflow-design.md`',
+    );
+    expect(line).not.toContain('returned design');
+    expect(dispatched(owed).owed).toBe(1);
+    expect(workDigest([], owed)).not.toBe(workDigest([], none));
+    expect(owedLine(none)).not.toContain('proposed design');
   });
 });

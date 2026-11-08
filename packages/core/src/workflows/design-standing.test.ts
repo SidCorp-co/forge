@@ -1,6 +1,6 @@
-import { saidDisagreements } from '@forge/contracts/said';
 import { GATE_PROFILES } from '@forge/contracts/gate-profiles';
 import { PERSON_GATES } from '@forge/contracts/person-gates';
+import { saidDisagreements } from '@forge/contracts/said';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
 import { designRowOf, repinRowOf } from '../development/needs-you-design.js';

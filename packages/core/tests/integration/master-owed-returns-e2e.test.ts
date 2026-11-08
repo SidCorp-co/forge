@@ -219,9 +219,7 @@ describe('a proposed design on a project that is not strict is owed to the proje
 describe('a returned design no issue carries is owed to the project master', () => {
   it('is named on the pass with its flow, revision and workflow, and names the master on its read', async () => {
     const id = await proposedDesign('owed-flow');
-    expect(await owedLine()).not.toContain(
-      `returned design owes a revision no issue carries (owed-flow`,
-    );
+    expect(await approvalsLine()).toContain(id);
     await returnDesign(id, 'draw the edge proxy, not LE DNS-01');
     expect(await owedLine()).toContain(`owed-flow r1, workflow ${id}`);
     expect(await approvalsLine()).not.toContain(id);

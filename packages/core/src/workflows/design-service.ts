@@ -1,7 +1,6 @@
 import type { DesignOwed } from '@forge/contracts/design-owed';
 import { verbatim } from '@forge/contracts/said';
-import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
-import { KERNEL_DECIDER_NAME, type PinOnlyChange } from '@forge/contracts/workflows';
+import { KERNEL_DECIDER_NAME } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -28,7 +27,7 @@ import {
 import { revisionChangesOf } from './design-changes.js';
 import { type DesignIssueOutcome, handBack, redrawWaitingDesign } from './design-issue.js';
 import { recordDecision, recordWithdrawal } from './design-record.js';
-import { pinOnlyChange } from './design-repin.js';
+import { pinOnlyOf } from './design-repin.js';
 import { designRequirementsOf, matchingRequirementOf } from './design-requirements.js';
 import {
   buildGateOf,
@@ -55,7 +54,6 @@ import {
   lockWorkflows,
   moveDesign,
   readWorkflow,
-  type StoredDesign,
   type StoredWorkflow,
   setBuildSteps,
   workflowsOf,
@@ -86,20 +84,6 @@ export async function rowIn(projectId: string, id: string): Promise<StoredWorkfl
     throw notFound(`project ${projectId} holds no workflow ${id}`);
   }
   return row;
-}
-
-/** The newest revision against the approved one, where only the base revisions it pins differ. */
-function pinOnlyOf(
-  designs: readonly StoredDesign[],
-  approvedRevision: number | null,
-  templates: readonly WorkflowTemplate[] | undefined,
-): PinOnlyChange | null {
-  const approved = readStoredWorkflow(
-    designs.find((d) => d.revision === approvedRevision)?.document,
-  );
-  const proposed = readStoredWorkflow(designs[0]?.document);
-  if (!approved || !proposed || designs[0]?.revision === approvedRevision) return null;
-  return pinOnlyChange(approved, proposed, findTemplate(templates ?? [], proposed.template));
 }
 
 /**
