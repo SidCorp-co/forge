@@ -170,22 +170,31 @@ function asked(memo: Map<string, Promise<unknown>>, key: string): string | undef
 
 /**
  * How long a read by id asked by a project's read waits (`db/query-timing.ts:whenQuiet`): not at all
- * once every project's read still running waits on it. A read waiting on something else that, as its
- * read's order shows ({@link Order}), asks the key after it holds the key longer than a read that
- * does not: the batch is read once the reads a step behind have reached it, so a key two projects
- * reach at different steps, or ask again further on, is still read once (ISS-1070 r9). Where every
- * read waits on a key another may yet ask, the keys fewest of them asked are read first.
+ * once no other project's read still running may ask it. A read waiting on something else that, as
+ * its read's order shows ({@link Order}), asks the key after it holds the key past every key only
+ * one that never asked it may ask: the batch is read once the reads a step behind have reached it,
+ * so a key two projects reach at different steps, or ask again further on, is still read once
+ * (ISS-1070 r9). Among keys held alike, those most reads asked are read first: the reads on the path
+ * most of them take go on together, and a read off it joins them where the paths meet.
  */
 const heldFor = (memo: Map<string, Promise<unknown>>, key: string) => () => {
+  const fewer = MOST_READS - (askersOf.get(memo)?.get(key) ?? 0);
   let held = 0;
   for (const f of flowsOf.get(memo) ?? []) {
     if ([...f.waiting.keys()].some((w) => isStepOf(w, key))) continue;
-    if (mayAsk(f.order, f.waiting.keys(), key, f.asks.get(key) ?? 0))
-      return (askersOf.get(memo)?.get(key) ?? 0) + 2;
-    held = 1;
+    const made = f.asks.get(key) ?? 0;
+    const may = mayAsk(f.order, f.waiting.keys(), key, made);
+    if (may === 'yes') return HELD_IN_ORDER + fewer;
+    // where the order knows nothing yet, a read that has never asked the key may
+    if (may === 'unknown' && made === 0) held = fewer;
   }
   return held;
 };
+
+/** Above how many project reads ask any one key, so a key more of them asked holds less. */
+const MOST_READS = 1_000_000;
+/** What a key a running read is known to ask later holds for: past any key one only may. */
+const HELD_IN_ORDER = 2 * MOST_READS;
 
 /** Runs `fn` as a wait of the project's read running this code on `step`, where one does. */
 async function waitingOn<T>(step: string | undefined, fn: () => Promise<T>): Promise<T> {

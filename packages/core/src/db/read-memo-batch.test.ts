@@ -122,13 +122,13 @@ describe('a batch at the quiet point', () => {
       const j = perId();
       await timed(() =>
         readAcross(['a', 'b', 'c'], String, async (p) => {
-          // b asks j first, a step a and c do not take, then every read asks k
-          if (p === 'b') await memoizedPerId('j', [p], j.read);
+          // a and c ask j first, a step b does not take, then every read asks k
+          if (p !== 'b') await memoizedPerId('j', [p], j.read);
           return memoizedPerId('k', [p], k.read);
         }),
       );
-      expect(j.asked).toEqual([['b']]);
-      expect(k.asked).toEqual([['a', 'c', 'b']]);
+      expect(j.asked).toEqual([['a', 'c']]);
+      expect(k.asked).toEqual([['b', 'a', 'c']]);
     });
 
     it('reads each ask apart where the reads run side by side without it', async () => {
@@ -182,8 +182,9 @@ describe('a batch at the quiet point', () => {
     });
 
     it('reads a key two shapes reach at different steps once, as the order learned from earlier reads shows', async () => {
-      // a takes a step b skips: x before y; b asks y at once. Alone, each waits on a key the other has
-      // not asked, both are read at the stall, and a asks y again a step later (ISS-1070 r9)
+      // a takes a step b and c skip: x before y; b and c ask y at once. Unlearned, each waits on a key
+      // another has not asked, the key more of them asked is read first, and a asks y a step later
+      // (ISS-1070 r9)
       const read = async () => {
         const x = perId();
         const y = perId();
@@ -192,7 +193,7 @@ describe('a batch at the quiet point', () => {
             ['a', 'b', 'c'],
             String,
             async (p) => {
-              if (p !== 'b') await memoizedPerId('x', [p], x.read);
+              if (p === 'a') await memoizedPerId('x', [p], x.read);
               return memoizedPerId('y', [p], y.read);
             },
             'two shapes',
@@ -200,10 +201,10 @@ describe('a batch at the quiet point', () => {
         );
         return y.asked;
       };
-      expect(await read()).toEqual([['b'], ['a', 'c']]);
+      expect(await read()).toEqual([['b', 'c'], ['a']]);
       // the first read taught the order: a read waiting on x asks y after it
-      expect(await read()).toEqual([['b', 'a', 'c']]);
-      expect(await read()).toEqual([['b', 'a', 'c']]);
+      expect(await read()).toEqual([['b', 'c', 'a']]);
+      expect(await read()).toEqual([['b', 'c', 'a']]);
     });
 
     it('reads a key by project for every project declared, the first ask among them', async () => {
