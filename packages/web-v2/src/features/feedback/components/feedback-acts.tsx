@@ -55,10 +55,11 @@ export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => vo
   const t = useCopy();
   const label = actLabel(f, t, useInterfaceLanguage());
   if (!label) return null;
-  // reopening a confirmed fix is on offer, never asked for: it is no primary act
-  const owed = !(f.can.reopen && !f.can.verify && !f.can.askVerify && !f.can.triage && !f.can.snooze);
+  // only an act the item asks for is loud: reopening a confirmed fix, or dropping an item its carrier
+  // still works, is on offer, never asked for (ISS-1179)
+  const owed = f.can.triage || f.can.snooze || f.can.verify || f.can.askVerify || f.can.tellShipped;
   return (
-    <Button type="button" variant={owed ? "primary" : "secondary"} size="sm" onClick={onAct} data-testid="feedback-primary">
+    <Button type="button" variant={owed ? "primary" : "secondary"} size="sm" onClick={onAct} data-testid="feedback-primary" data-weight={owed ? "primary" : "quiet"}>
       {label}
     </Button>
   );
