@@ -205,10 +205,7 @@ describe('the agree of a requirement whose criterion cannot be checked on the ru
     ]);
     expect(rebaseline.status).toBe(422);
     expect(refusalsOf(rebaseline.body).map((r) => [r.question, r.detail])).toEqual([
-      [
-        'checkable',
-        expect.stringContaining('BC-2 (it says what to check, not what holds)'),
-      ],
+      ['checkable', expect.stringContaining('BC-2 (it says what to check, not what holds)')],
     ]);
   });
 });

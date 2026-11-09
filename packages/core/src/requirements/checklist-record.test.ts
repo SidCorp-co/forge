@@ -128,33 +128,6 @@ describe('the ready checklist, read from the head revision', () => {
     );
   });
 
-  // REQ-67 BC-1: a requirement is agreed only when each criterion can be checked on the running product
-  it('refuses a head holding a criterion that cannot be checked on the running product, naming it and why', () => {
-    const live = [
-      { code: 'BC-1', form: 'statement', body: 'Verify the referral is saved.' },
-      { code: 'BC-2', form: 'statement', body: 'Check-in shows every referral of the day.' },
-      { code: 'BC-3', form: 'scenario', body: 'Given a referral\nThen it is saved' },
-      { code: 'BC-4', form: 'scenario', body: 'Given a referral\nWhen it is sent\nThen it is saved' },
-      { code: 'BC-5', form: 'statement', body: 'Ensure that clinicians see it.' },
-    ];
-    const uncheckable = live.flatMap((c) => {
-      const why = uncheckableWhy(c);
-      return why ? [{ code: c.code, why }] : [];
-    });
-    expect(uncheckable.map((c) => c.code)).toEqual(['BC-1', 'BC-3', 'BC-5']);
-    const refusals = checklistRefusals(
-      judge({ ...ready, criteria: live.map((c) => c.code), uncheckable }),
-    );
-    expect(refusals.map((r) => [r.code, r.question, r.path])).toEqual([
-      ['CHECKLIST_INCOMPLETE', 'checkable', '/answers/checkable'],
-    ]);
-    expect(refusals[0]?.detail).toContain(
-      'Not checkable on the running product: BC-1 (it says what to check, not what holds); BC-3 (its scenario does not read Given, When, Then); BC-5',
-    );
-    expect(refusals[0]?.detail).not.toContain('BC-2');
-    expect(judge({ ...ready, uncheckable: [] }).complete).toBe(true);
-  });
-
   it('takes the recommended answer for kind, out of scope and roadmap, recorded as assumed', () => {
     const e = judge({
       ...ready,
@@ -393,5 +366,38 @@ describe('the acceptance checklist, read from the delivery', () => {
   it('refuses a requirement no live issue delivers', () => {
     const e = accept({ liveIssues: 0, unshipped: [], shipped: false, unproven: [] }, []);
     expect(checklistRefusals(e).map((r) => r.question)).toEqual(['shipped']);
+  });
+});
+
+// REQ-67 BC-1: a requirement is agreed only when each criterion can be checked on the running product
+describe('the ready checklist on criteria that cannot be checked', () => {
+  it('refuses a head holding a criterion that cannot be checked on the running product, naming it and why', () => {
+    const live = [
+      { code: 'BC-1', form: 'statement', body: 'Verify the referral is saved.' },
+      { code: 'BC-2', form: 'statement', body: 'Check-in shows every referral of the day.' },
+      { code: 'BC-3', form: 'scenario', body: 'Given a referral\nThen it is saved' },
+      {
+        code: 'BC-4',
+        form: 'scenario',
+        body: 'Given a referral\nWhen it is sent\nThen it is saved',
+      },
+      { code: 'BC-5', form: 'statement', body: 'Ensure that clinicians see it.' },
+    ];
+    const uncheckable = live.flatMap((c) => {
+      const why = uncheckableWhy(c);
+      return why ? [{ code: c.code, why }] : [];
+    });
+    expect(uncheckable.map((c) => c.code)).toEqual(['BC-1', 'BC-3', 'BC-5']);
+    const refusals = checklistRefusals(
+      judge({ ...ready, criteria: live.map((c) => c.code), uncheckable }),
+    );
+    expect(refusals.map((r) => [r.code, r.question, r.path])).toEqual([
+      ['CHECKLIST_INCOMPLETE', 'checkable', '/answers/checkable'],
+    ]);
+    expect(refusals[0]?.detail).toContain(
+      'Not checkable on the running product: BC-1 (it says what to check, not what holds); BC-3 (its scenario does not read Given, When, Then); BC-5',
+    );
+    expect(refusals[0]?.detail).not.toContain('BC-2');
+    expect(judge({ ...ready, uncheckable: [] }).complete).toBe(true);
   });
 });

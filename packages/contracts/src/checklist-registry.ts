@@ -100,8 +100,7 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 	questions: [
 		{
 			id: "kind",
-			prompt:
-				"Is it a bug, change request, question, idea or contract change?",
+			prompt: "Is it a bug, change request, question, idea or contract change?",
 			fix: "Correct what it is with the triage.",
 			answer: {
 				kind: "choice",
@@ -310,7 +309,11 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 	id: "requirement_acceptance",
 	title: "Acceptance",
-	gates: { machine: "requirement", from: ["agreed", "in_delivery", "delivered"], to: "accepted" },
+	gates: {
+		machine: "requirement",
+		from: ["agreed", "in_delivery", "delivered"],
+		to: "accepted",
+	},
 	design: {
 		flow: "requirement-lifecycle",
 		revision: 15,
