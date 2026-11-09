@@ -71,10 +71,10 @@ const COMPACT_READABLE = 0.8;
 /**
  * Where a compact pane (a requirement's picture) opens, and how tall it is: the whole drawing fitted to
  * the width, never above its own size nor below a readable zoom; a drawing wider than that starts at its
- * first step, never cut at the pane's left edge, and scrolls sideways. The height follows the drawing,
- * so no band stands empty above or below it (ISS-903).
+ * first lit step (REQ-67 BC-2), else its first step, never cut at the pane's left edge, and scrolls
+ * sideways. The height follows the drawing, so no band stands empty above or below it (ISS-903).
  */
-export function compactView(width: number, boxes: readonly Box[]): { viewport: Viewport; height: number } {
+export function compactView(width: number, boxes: readonly Box[], lit: readonly Box[] = []): { viewport: Viewport; height: number } {
   // the drawing's own bounds: a layout's size carries margins around its nodes, which drew as empty bands
   const x0 = Math.min(...boxes.map((b) => b.x));
   const y0 = Math.min(...boxes.map((b) => b.y));
@@ -83,8 +83,10 @@ export function compactView(width: number, boxes: readonly Box[]): { viewport: V
   const zoom = Math.min(1, Math.max(COMPACT_READABLE, (width - 2 * COMPACT_PAD) / w));
   const drawn = w * zoom;
   const room = width - 2 * COMPACT_PAD;
-  // wider than the pane: from the drawing's first step, the lit ones lit wherever they stand, and the rest a sideways scroll away
-  const left = drawn <= room ? (width - drawn) / 2 : COMPACT_PAD;
+  // wider than the pane: from the first lit step, else the drawing's first, the rest a sideways scroll
+  // away; never pulled past the drawing's right end
+  const from = lit.length > 0 ? Math.min(...lit.map((b) => b.x)) : x0;
+  const left = drawn <= room ? (width - drawn) / 2 : Math.max(width - COMPACT_PAD - drawn, COMPACT_PAD - (from - x0) * zoom);
   return { viewport: { x: left - x0 * zoom, y: COMPACT_TOP - y0 * zoom, zoom }, height: Math.ceil(COMPACT_TOP + h * zoom + COMPACT_PAD) };
 }
 
@@ -174,7 +176,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       if (!first || !wrapRef.current) return;
       const litBoxes = [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []);
       if (props.compact && props.onFitted && positions.size > 0) {
-        const fitted = compactView(wrapRef.current.clientWidth, [...positions.values()]);
+        const fitted = compactView(wrapRef.current.clientWidth, [...positions.values()], litBoxes);
         void rf.setViewport(fitted.viewport);
         props.onFitted(fitted.height);
         return;

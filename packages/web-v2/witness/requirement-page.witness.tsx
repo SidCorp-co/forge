@@ -80,6 +80,8 @@ window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://witness.test").pathname.replace(/^\/api/, "");
   if (path === "/projects") return json([{ id: P, slug: "hop", name: "Hop", role: "viewer", orgId: null }]);
   if (path === `/projects/${P}/workflows`) return json({ workflows: [WORKFLOW], returned: 1 });
+  // the picture reads the one design it links, by its id (ISS-921)
+  if (path === `/projects/${P}/workflows/${WORKFLOW.workflowId}`) return json(WORKFLOW);
   if (path === `/projects/${P}/workflow-templates`) return json({ templates: [] });
   // a read no fixture answers stays in flight, drawing its loading state
   return new Promise<Response>(() => {});
@@ -115,7 +117,21 @@ const firstView = (t: "light" | "dark") => async () => {
     const wide = window.innerWidth >= 1000;
     if (wide && nodes.some((n) => n.left < box.left || n.right > box.right)) wrong.push("a step of the workflow is cut at the pane's edge at 1440");
     if (!wide && nodes.some((n) => n.left < box.left - 1 && n.right > box.left + 1)) wrong.push("a step of the workflow is cut at the pane's left edge");
+    // REQ-67 BC-2: the steps the criteria touch are lit, a state of their own, and every other step dimmed
+    const cards = [...pane.querySelectorAll<HTMLElement>(".wfc-card[data-step]")];
+    const lit = cards.filter((c) => c.dataset.traced === "true").map((c) => c.dataset.step);
+    if (lit.join(",") !== "pay,confirm") wrong.push(`the touched steps lit are [${lit.join(", ")}], not [pay, confirm]`);
+    // a traced link keeps its two ends undimmed (address > pay), so cart and ship are the untouched ones
+    const faded = cards.filter((c) => ["cart", "ship"].includes(c.dataset.step ?? "") && Number(getComputedStyle(c).opacity) >= 1).map((c) => c.dataset.step);
+    if (faded.length > 0) wrong.push(`steps no criterion touches stand undimmed: ${faded.join(", ")}`);
+    const bright = cards.filter((c) => c.dataset.traced === "true" && Number(getComputedStyle(c).opacity) < 1).map((c) => c.dataset.step);
+    if (bright.length > 0) wrong.push(`touched steps stand dimmed: ${bright.join(", ")}`);
+    // the pane opens on a touched step at every width: a phone does not scroll sideways to find the light
+    const first = cards.find((c) => c.dataset.traced === "true")?.getBoundingClientRect();
+    if (first && (first.left < box.left - 1 || first.right > box.right + 1)) wrong.push(`the first touched step stands outside the pane at ${window.innerWidth} px`);
   }
+  const root = document.documentElement;
+  if (root.scrollWidth > root.clientWidth) wrong.push(`the page scrolls sideways: ${root.scrollWidth} px wide in a ${root.clientWidth} px window`);
   // the tabs stand in one row at every width: a phone keeps the open one and puts the rest behind More (ISS-903)
   const rows = new Set([...document.querySelectorAll<HTMLElement>("[data-testid=requirement-tabs] [role=tab]")].map((x) => Math.round(x.getBoundingClientRect().top)));
   if (rows.size > 1) wrong.push(`the tabs wrap onto ${rows.size} rows at ${window.innerWidth} px`);

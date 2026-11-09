@@ -9,6 +9,7 @@ import { act, render, renderHook } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { productCopy } from "@/lib/i18n/product-copy";
+import { compactView } from "./flow-canvas";
 import { type Canvas, readCanvas } from "./model";
 import { focusChrome, litOf, presentTrace, useStepFocus } from "./step-focus";
 import { WorkflowCanvas } from "./workflow-canvas";
@@ -132,5 +133,26 @@ describe("a page's highlight on the drawn canvas", () => {
       ["false", "false"],
     ]);
     expect(container.querySelector("[data-dim]")?.getAttribute("data-dim")).toBe("true");
+  });
+});
+
+// REQ-67 BC-2 at a phone's width: a requirement's picture wider than its pane opens on the first lit step,
+// not on the drawing's first, so the light is in view without a sideways scroll
+describe("where a compact pane opens", () => {
+  const box = (i: number) => ({ x: i * 260, y: 0, width: 200, height: 60 });
+  const [cart, , pay, confirm, ship] = [0, 1, 2, 3, 4].map(box);
+  const row = [0, 1, 2, 3, 4].map(box);
+  const shownAt = (view: ReturnType<typeof compactView>, b = cart) => view.viewport.x + (b?.x ?? 0) * view.viewport.zoom;
+
+  it("opens a drawing wider than the pane on its first lit step, never past the drawing's right end", () => {
+    expect(pay && confirm && ship).toBeTruthy();
+    expect(shownAt(compactView(390, row, pay && confirm ? [pay, confirm] : []), pay)).toBe(16);
+    const last = compactView(390, row, ship ? [ship] : []);
+    expect(shownAt(last, ship) + 200 * last.viewport.zoom).toBeCloseTo(390 - 16);
+  });
+
+  it("opens on the drawing's first step where nothing is lit, and centres a drawing that fits", () => {
+    expect(shownAt(compactView(390, row))).toBe(16);
+    expect(shownAt(compactView(1440, row, confirm ? [confirm] : []))).toBe((1440 - 1240) / 2);
   });
 });
