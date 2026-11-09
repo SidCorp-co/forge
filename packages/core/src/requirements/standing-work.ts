@@ -5,7 +5,9 @@
 //    carried up so the requirement reads stuck by it, the oldest stuck first (REQ-48 BC-9);
 // 1. an issue parked (`PARK_STATUSES`) → what that issue waits on, by its own standing, its key linked;
 // 2. every issue not yet shipped has landed (`awaiting_release`) → whoever owes the release cut (or the
-//    release itself where the project releases on its own), the version linked;
+//    release itself where the project releases on its own), the version linked; where an open release
+//    run claims every one of them, that run's own act instead: its approvers approving its version, or
+//    the run at work (ISS-1186), never a cut of the next version, which holds none of them;
 // 3. an issue in progress → the issues, running a of b;
 // 4. an issue open, approved or reopened with none of the above → the master, which takes them next,
 //    since the oldest of them came to wait (`withTimes` reads it stuck where no master serves);
@@ -49,6 +51,16 @@ export interface WorkIssue {
   parkedOn: ParkedWait | null;
   /** Its own standing while it is not shipped; null where it was not read (shipped, dropped). */
   own?: OwnStanding | null;
+  /** The release run that claims it; null or absent where none does. */
+  claimedBy?: string | null;
+}
+
+/** An open release run claiming landed issues, and the act it waits on (`forecast/release.ts:releaseClaimsFor`). */
+export interface ClaimingRun {
+  /** The version it was cut as; null where it records none. */
+  version: string | null;
+  /** The act a person or the master owes it (its approvers approving its version); null while the run itself is at work. */
+  leg: ReleaseLeg | null;
 }
 
 /** A turn and what `withTimes` reads beyond it: the issue it was carried from, and since when it waits. */
@@ -186,11 +198,50 @@ function releaseTurn(leg: ReleaseLeg, landed: number): Turn {
 }
 
 /**
+ * The run claiming every landed issue, where one run claims them all and its act was read: what the
+ * requirement waits on instead of the next cut (ISS-1186: adminhub-api REQ-23 read "cut 0.20.0" while
+ * 0.19.0's run, waiting on its approvers, claimed its only issue). Null where any landed issue is
+ * unclaimed, claimed by a run not read, or the issues are split across runs.
+ */
+function claimingRunOf(
+  landed: readonly WorkIssue[],
+  claims: ReadonlyMap<string, ClaimingRun> | null,
+): ClaimingRun | null {
+  const runs = new Set(landed.map((i) => i.claimedBy ?? null));
+  const [only] = runs;
+  if (runs.size !== 1 || !only || !claims) return null;
+  return claims.get(only) ?? null;
+}
+
+function claimedTurn(run: ClaimingRun, landed: number): Turn {
+  if (run.leg) return releaseTurn(run.leg, landed);
+  return {
+    group: 'moving',
+    waitingOn: wait(
+      'release',
+      {
+        who: say('issues.standing.who.release'),
+        act: say('issues.standing.act.running'),
+        rule: say('requirements.rule.allLanded', {
+          n: landed,
+          reason: say('issues.rule.releaseRunning'),
+        }),
+      },
+      { refers: 'release', ref: run.version },
+    ),
+  };
+}
+
+/**
  * The turn of a requirement whose live issues exist and are not all drafts. `release` is what follows
  * a landing, read only where every issue not yet shipped has landed; it is a gather defect, refused
  * by name, for it to be missing there.
  */
-export function workTurn(live: readonly WorkIssue[], release: ReleaseLeg | null): Turn {
+export function workTurn(
+  live: readonly WorkIssue[],
+  release: ReleaseLeg | null,
+  claims: ReadonlyMap<string, ClaimingRun> | null = null,
+): Turn {
   const unshipped = live.filter((i) => i.status !== 'closed');
   const stuck = stuckIssues(unshipped);
   const [carrier] = stuck;
@@ -210,6 +261,8 @@ export function workTurn(live: readonly WorkIssue[], release: ReleaseLeg | null)
   if (parked.length > 0) return parkedTurn(parked);
   const landed = unshipped.filter((i) => i.status === 'awaiting_release');
   if (unshipped.length > 0 && landed.length === unshipped.length) {
+    const claiming = claimingRunOf(landed, claims);
+    if (claiming) return claimedTurn(claiming, landed.length);
     if (!release) {
       throw new Error(
         `requirements: ${landed.map((i) => i.displayId).join(', ')} all await release but the release was not read; standing-read.ts reads it whenever every unshipped issue has landed`,

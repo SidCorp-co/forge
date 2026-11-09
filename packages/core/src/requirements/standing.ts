@@ -59,7 +59,7 @@ import { issuesNamed } from './standing-names.js';
 import { criteriaNamed, proofTurn, releaseAsksOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
 import { breakdownTaskOf, byRule, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
-import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
+import { type ClaimingRun, type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
 
 export type {
   LiveBuildHolds,
@@ -98,6 +98,8 @@ export interface StandingIssue {
   plannedRevision?: number | null;
   /** Where it is parked (`PARK_STATUSES`), what it waits on by its own standing; null otherwise. */
   parkedOn: ParkedWait | null;
+  /** The release run that claims it (`issues.release_batch_run_id`); null or absent where none does. */
+  claimedBy?: string | null;
 }
 
 export interface StandingInput {
@@ -157,6 +159,11 @@ export interface StandingInput {
    * issue not yet shipped awaits release (`standing-work.ts:awaitsReleaseOnly`); null elsewhere.
    */
   release: ReleaseLeg | null;
+  /**
+   * Each open release run claiming one of its landed issues, and the act it waits on
+   * (`forecast/release.ts:releaseClaimsFor`, ISS-1186); absent or null where none was read.
+   */
+  releaseClaims?: ReadonlyMap<string, ClaimingRun> | null;
   updatedAt: Date;
   /**
    * When its status last moved (its kernel transitions), else when it was filed. Never `updatedAt`:
@@ -428,7 +435,7 @@ function turnOf(
     const draftCarrier = drafts[0]?.displayId ?? null;
     return { group: 'waiting', waitingOn: wait('agent', MASTER, act, rule), draftCarrier };
   }
-  return workTurn(live, input.release);
+  return workTurn(live, input.release, input.releaseClaims ?? null);
 }
 
 // workflow requirement-to-delivery step `rollup`: what the live issues and the coverage count. Which

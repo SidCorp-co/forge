@@ -244,7 +244,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       kind: 'person' as const,
       mode: 'approval' as const,
       who: 'Dana Lee',
-      act: 'approve 0.19.0',
+      act: sayEn(say('standing.act.approveReleaseV', { v: '0.19.0' })),
       reason: sayEn(say('forecast.reason.approval', { holders: null })),
       says: {
         who: holdersWho(['Dana Lee']),
@@ -263,7 +263,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
       expect(s.waitingOn).toMatchObject({
         kind: 'person',
         who: 'Dana Lee',
-        act: 'approve 0.19.0',
+        act: sayEn(say('standing.act.approveReleaseV', { v: '0.19.0' })),
         refers: 'release',
         ref: '0.19.0',
       });

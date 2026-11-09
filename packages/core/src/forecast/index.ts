@@ -6,7 +6,7 @@ export {
 } from './feedback.js';
 export { issueProgressOf } from './progress.js';
 export { readIssueForecast } from './read.js';
-export { type ForecastViewer, releaseLegFor } from './release.js';
+export { type ForecastViewer, releaseClaimsFor, releaseLegFor } from './release.js';
 export { forecastRoutes } from './routes.js';
 export {
   readComingNext,

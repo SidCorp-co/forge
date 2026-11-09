@@ -189,15 +189,21 @@ async function workFactsOf(
   const releaseOwed = rows.some((r) =>
     awaitsReleaseOnly(by(linked, r.id).filter((i) => i.status !== 'dropped')),
   );
-  const [issueWaits, release] = await Promise.all([
+  // the runs that claim the landed issues are read beside the release, so a requirement whose landed
+  // issues one release run carries names that run's act, not the next cut (ISS-1186)
+  const landed = unshipped.filter((i) => i.status === 'awaiting_release').map((i) => i.id);
+  const [issueWaits, release, claims] = await Promise.all([
     issueWaitsOf(
       projectId,
       unshipped.map((i) => i.id),
       now,
     ),
     releaseOwed ? requirementDependents().releaseLeg(projectId, viewer?.userId ?? null) : null,
+    releaseOwed
+      ? requirementDependents().releaseClaims(projectId, viewer?.userId ?? null, landed)
+      : null,
   ]);
-  return { issueWaits, release };
+  return { issueWaits, release, claims };
 }
 
 type LinkedIssue = {
@@ -344,21 +350,23 @@ export async function standingsOf(
     deliveryHoldsOf(projectId, rows),
     besideRead,
   ]);
-  const { issueWaits, release } = work;
+  const { issueWaits, release, claims } = work;
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const criteriaByIssue = criteriaIndexOf(issueCriteria);
   const builds = await buildsRead;
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
-    const mine = of(linked, row.id).map((i) =>
-      standingIssueOf(i, row.currentRevision, {
-        naming,
-        releaseApproval: gates.releaseApproval,
-        times,
-        changedTraced,
-        issueWaits,
-      }),
-    );
+    const mine = of(linked, row.id)
+      .map((i) =>
+        standingIssueOf(i, row.currentRevision, {
+          naming,
+          releaseApproval: gates.releaseApproval,
+          times,
+          changedTraced,
+          issueWaits,
+        }),
+      )
+      .map((i) => ({ ...i, claimedBy: claims?.byIssue.get(i.id) ?? null }));
     const issueIds = new Set(mine.map((i) => i.id));
     out.set(
       row.id,
@@ -400,6 +408,7 @@ export async function standingsOf(
         runnerBound,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
+        releaseClaims: claims?.runs ?? null,
         updatedAt: row.updatedAt,
         master,
         owed,

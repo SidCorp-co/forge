@@ -98,6 +98,25 @@ function masterLeg(
 /** Whether the one rule gives the master this act; read as a person's where no rule was read. */
 const mastersAct = (r: ReleaseFacts, kind: OwedActKind): boolean => r.owes?.(kind).by === 'master';
 
+/**
+ * The act an open release run waiting on its approval owes (ISS-1186): its approvers approving its
+ * version, the viewer's where they hold the grant, else its holders by name, else nobody and where the
+ * grant is given. What a requirement whose landed issues that run claims waits on, never a cut.
+ */
+export function approveRunLeg(
+  r: Pick<ReleaseFacts, 'holders' | 'viewerOwes'>,
+  version: string,
+): ReleaseLeg {
+  const names = (r.holders ?? []).map((h) => h.name).join(', ');
+  return personLeg({ mode: 'approval', nextVersion: version, lags: [], ...r }, 'approval', {
+    act: say('standing.act.approveReleaseV', { v: version }),
+    reason: say('forecast.reason.approval', {
+      holders: names ? say('runs.rule.paren', { text: names }) : null,
+    }),
+    version,
+  });
+}
+
 const cutAct = (v: string | null) =>
   v ? say('standing.act.cut', { v, more: null }) : say('forecast.act.cutNext');
 

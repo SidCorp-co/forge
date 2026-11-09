@@ -20,7 +20,7 @@ import { holds, namedHolders } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { draftReleaseIssueIds, nextDraftVersion, readReleaseOwes } from '../release-batch/index.js';
-import { type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
+import { approveRunLeg, type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 
 /** Who reads a forecast, with the grants that decide whether a person's act it names is theirs. */
 export interface ForecastViewer {
@@ -67,6 +67,19 @@ export async function readReleaseFacts(
   };
 }
 
+/** The viewer `userId` is on the project, with the grants a release act asks; null with no grant. */
+async function viewerOn(projectId: string, userId: string | null): Promise<ForecastViewer | null> {
+  const access = userId ? await effectiveProjectRole(userId, projectId) : null;
+  return userId && access
+    ? {
+        userId,
+        isAdmin: holds(access, 'project.admin'),
+        mayApprove: holds(access, 'releases.approve'),
+        canWrite: holds(access, 'project.write'),
+      }
+    : null;
+}
+
 /**
  * What follows a landing on this project, as `userId` reads it: the release on its own, or the act a
  * person owes (theirs where they hold its grant, else its holders by name), for a read model outside
@@ -77,17 +90,67 @@ export async function releaseLegFor(
   userId: string | null,
   now: Date = new Date(),
 ): Promise<ReleaseLeg> {
-  const access = userId ? await effectiveProjectRole(userId, projectId) : null;
-  const viewer =
-    userId && access
-      ? {
-          userId,
-          isAdmin: holds(access, 'project.admin'),
-          mayApprove: holds(access, 'releases.approve'),
-          canWrite: holds(access, 'project.write'),
-        }
-      : null;
-  return releaseLegOf(await readReleaseFacts(projectId, now, viewer));
+  return releaseLegOf(await readReleaseFacts(projectId, now, await viewerOn(projectId, userId)));
+}
+
+/** An open release run claiming landed issues, and the act it waits on; null while it is at work. */
+export interface ReleaseClaim {
+  version: string | null;
+  leg: ReleaseLeg | null;
+}
+
+/**
+ * Of `issueIds`, each claimed by an open release run (not shipped, not ended), the run that claims it
+ * (`byIssue`), and each such run with the act it waits on as `userId` reads it (`runs`): its approvers
+ * approving its version where it waits on its approval (an approval asked and not decided, or none
+ * asked on a project that requires one, as `versions.ts:versionStatus` reads it), else null, the run
+ * at work (ISS-1186: adminhub-api REQ-23 read "cut 0.20.0" while 0.19.0's run, at awaiting_approval,
+ * claimed its only issue). One statement over every issue asked, read beside the release leg, and the
+ * approvers by name only where some run waits on them.
+ */
+export async function releaseClaimsFor(
+  projectId: string,
+  userId: string | null,
+  issueIds: readonly string[],
+): Promise<{ byIssue: Map<string, string>; runs: Map<string, ReleaseClaim> }> {
+  const ids = [...new Set(issueIds)].filter((id) => new RegExp(CANONICAL_UUID).test(id));
+  if (ids.length === 0) return { byIssue: new Map(), runs: new Map() };
+  const [rows, mode, viewer] = await Promise.all([
+    db.execute(sql`
+      SELECT i.id::text AS issue_id, r.id::text AS run_id, r.release_version AS version,
+             (SELECT a.decision FROM release_approvals a WHERE a.run_id = r.id
+               ORDER BY a.requested_at DESC, a.id DESC LIMIT 1) AS decision,
+             EXISTS (SELECT 1 FROM release_approvals a WHERE a.run_id = r.id) AS asked
+        FROM issues i
+        JOIN pipeline_runs r ON r.id = i.release_batch_run_id AND r.project_id = i.project_id
+       WHERE i.project_id = ${projectId}::uuid AND i.id = ANY(${uuidArray(ids)})
+         AND r.metadata ->> 'source' = 'release-batch'
+         AND r.status IN ('running', 'paused') AND r.release_released_at IS NULL`),
+    readReleaseMode(projectId),
+    viewerOn(projectId, userId),
+  ]);
+  const open = rowsOf<{
+    issue_id: string;
+    run_id: string;
+    version: string | null;
+    decision: string | null;
+    asked: boolean;
+  }>(rows);
+  const awaiting = (r: (typeof open)[number]) =>
+    r.version !== null && (r.asked ? r.decision === null : mode === 'approval');
+  const holders = open.some(awaiting)
+    ? await namedHolders(RELEASE_ACT_PERMISSION.approval, projectId)
+    : [];
+  const runs = new Map<string, ReleaseClaim>();
+  for (const r of open) {
+    runs.set(r.run_id, {
+      version: r.version,
+      leg: awaiting(r)
+        ? approveRunLeg({ holders, viewerOwes: viewer?.mayApprove ?? false }, r.version as string)
+        : null,
+    });
+  }
+  return { byIssue: new Map(open.map((r) => [r.issue_id, r.run_id])), runs };
 }
 
 /**

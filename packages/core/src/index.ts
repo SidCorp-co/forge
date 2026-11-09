@@ -35,7 +35,7 @@ import { contractHolding, contractVersionReads, interfaceContractsOf } from './e
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
-import { releaseLegFor } from './forecast/index.js';
+import { releaseClaimsFor, releaseLegFor } from './forecast/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { valueCheckHeld } from './intake/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
@@ -297,6 +297,7 @@ provideRequirementDependents({
   revised: staleOnTargetRevised,
   proposeDuplicate: proposeRequirementDuplicate,
   releaseLeg: releaseLegFor,
+  releaseClaims: releaseClaimsFor,
   liveBuildHolds,
   ...landingReads,
   ...releasedLineReads,

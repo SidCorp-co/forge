@@ -7,6 +7,7 @@ import { portSlot } from '../lib/port-slot.js';
 import type { ProposeDuplicate } from './near-duplicate.js';
 import type { LiveBuildHolds } from './standing.js';
 import type { LandedHolds, ReleasedLine } from './standing-identity.js';
+import type { ClaimingRun } from './standing-work.js';
 
 /**
  * What feedback and suggestions answer for, and file on, a requirement, what the release owes the
@@ -28,6 +29,15 @@ export interface RequirementDependents {
   proposeDuplicate: ProposeDuplicate;
   /** What follows a landing on the project as `userId` reads it (`forecast/release.ts:releaseLegFor`): the release on its own, or the act a person owes. */
   releaseLeg(projectId: string, userId: string | null): Promise<ReleaseLeg>;
+  /**
+   * Of `issueIds`, the open release run claiming each, and each such run with the act it waits on as
+   * `userId` reads it (`forecast/release.ts:releaseClaimsFor`, ISS-1186).
+   */
+  releaseClaims(
+    projectId: string,
+    userId: string | null,
+    issueIds: readonly string[],
+  ): Promise<{ byIssue: ReadonlyMap<string, string>; runs: ReadonlyMap<string, ClaimingRun> }>;
   /** What the project's live build holds of verdict commits, and the commit each verdict runtime served (`release-batch/judged-build.ts:liveBuildHolds`); null where nothing was asked. */
   liveBuildHolds(
     projectId: string,

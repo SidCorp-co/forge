@@ -1,0 +1,1 @@
+**A requirement waits on the release that already carries it.** When an open release run claims all its landed issues, it names that run's approvers approving its version, or the run at work, never a cut of the next version.

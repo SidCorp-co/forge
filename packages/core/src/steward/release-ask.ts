@@ -51,8 +51,11 @@ const RELEASE_SETUP: HeldAct = {
   door: 'NOTIFY project admins',
 };
 
+// `approveReleaseV`: a requirement whose landed issues an open release run claims waits on that run's
+// approvers (ISS-1186), never on the master to cut the next version
 const APPROVE_KEYS: ReadonlySet<string> = new Set([
   'standing.act.approve',
+  'standing.act.approveReleaseV',
   'standing.act.approveOrReturn',
   'standing.act.reviewAndPromote',
 ]);
