@@ -167,7 +167,13 @@ async function requirementRowsOf(ids: readonly string[]) {
 
 export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
   const allRows = [...rows, ...(await rootsOf(rows))];
-  const routeIssues = await routeIssuesOf(allRows);
+  // the reporters' names are asked as soon as the rows are known, at the one step every project's
+  // list reaches together, not after its links, which some projects' read a step or two later than
+  // others' and so read the names again (ISS-1070 r21)
+  const [routeIssues, names] = await Promise.all([
+    routeIssuesOf(allRows),
+    userNames(allRows.map((r) => r.reportedBy)),
+  ]);
   const issueIds = ids([...rows.map((r) => r.issueId), ...[...routeIssues.values()].flat()]);
   const reqIds = ids([
     ...rows.map((r) => r.requirementId),
@@ -268,7 +274,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ]),
     ),
     roots: new Map(allRows.map((r) => [r.id, r])),
-    names: await userNames(allRows.map((r) => r.reportedBy)),
+    names,
   };
   const shipped = allRows.flatMap((r) => {
     const phase = r.route === 'issue' ? phaseIn(r, linked) : null;

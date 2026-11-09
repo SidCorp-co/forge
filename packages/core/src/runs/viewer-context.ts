@@ -9,9 +9,8 @@ import {
   RESULT_QUIET_MINUTES,
 } from '../jobs/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { peopleOf } from '../lib/people.js';
 import { readMasterStanding } from '../masters/read.js';
-import { holderNames, holds } from '../permissions/index.js';
+import { holderNames, holds, personBesideHolders } from '../permissions/index.js';
 import type { StandingContext } from './standing.js';
 import { RUN_NEED_PERMISSION } from './standing-types.js';
 
@@ -21,12 +20,12 @@ export interface RunViewer {
 
 async function viewerOf(viewer: RunViewer | null, projectId: string) {
   if (!viewer) return null;
-  const [access, people] = await Promise.all([
+  const [access, self] = await Promise.all([
     effectiveProjectRole(viewer.userId, projectId),
-    peopleOf([viewer.userId]),
+    personBesideHolders(projectId, viewer.userId),
   ]);
   // A person's wait addresses its viewer as "You" only when the viewer is a person.
-  const person = people.get(viewer.userId)?.kind !== 'agent';
+  const person = self?.kind !== 'agent';
   return {
     canWrite: person && access !== null && holds(access, 'project.write'),
     isAdmin: person && access !== null && holds(access, 'project.admin'),

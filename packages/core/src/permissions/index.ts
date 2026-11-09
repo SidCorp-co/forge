@@ -55,7 +55,12 @@ export {
   type ToolPermission,
   toolPermissionFor,
 } from './declared.js';
-export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
+export {
+  holderNames,
+  type NamedHolder,
+  namedHolders,
+  personBesideHolders,
+} from './holders-named.js';
 export {
   actsAsMaster,
   isMasterCredential,

@@ -1,6 +1,6 @@
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { memoizedRead } from '../db/read-memo.js';
-import { peopleOf } from '../lib/people.js';
+import { type Person, peopleOf } from '../lib/people.js';
 import { holdersOfEach } from './can.js';
 
 // Who a wait on a permission names: the holders `can.ts:holdersOfEach` finds, by name. The words
@@ -52,4 +52,18 @@ export async function holderNames(
   projectId: string,
 ): Promise<string[]> {
   return (await namedHolders(permission, projectId)).map((h) => h.name);
+}
+
+/**
+ * `userId` as the people read names them, asked with the project's holders: a read that names its
+ * viewer beside the holders a wait names (`runs/viewer-context.ts`) sends the two in one statement
+ * at the holders' step, where the viewer's alone went a step ahead of them and a person's home read
+ * the names twice (ISS-1070 r21).
+ */
+export async function personBesideHolders(
+  projectId: string,
+  userId: string,
+): Promise<Person | undefined> {
+  const byPermission = await holdersOfEach(projectId);
+  return (await peopleOf([userId, ...Object.values(byPermission).flat()])).get(userId);
 }
