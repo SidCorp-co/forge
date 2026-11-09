@@ -84,10 +84,11 @@ describe("what a row names", () => {
     expect(toNotificationItem(row({}))).toMatchObject({ subjectKey: "ISS-12", project: "HOP" });
   });
 
-  it("does not repeat the project when the project is the subject", () => {
-    const item = toNotificationItem(row({ subject: { kind: "project", key: "hop", id: "p1" } }));
-    expect(item.subjectKey).toBe("hop");
-    expect(item.project).toBeUndefined();
+  // the owner's review of forge-dev, 2026-11-09: bell rows led with "sid-desk", "sidpeak", "epod" (ISS-1179)
+  it("names a project that is the subject by its name, never by its slug as a key", () => {
+    const item = toNotificationItem(row({ subject: { kind: "project", key: "sid-desk", id: "p1" }, project: { slug: "sid-desk", name: "Sid Desk" } }));
+    expect(item.subjectKey, "a slug is a raw identifier, never a row's lead").toBeUndefined();
+    expect(item.project).toBe("Sid Desk");
   });
 
   it("folds a grouped delivery into one row naming how many of its records are open", () => {

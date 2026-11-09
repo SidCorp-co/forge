@@ -25,6 +25,15 @@ describe("a notification row", () => {
     expect(row).not.toHaveTextContent("STRANDED");
   });
 
+  it("leads with its line, the key and the project after it, never a key first (ISS-1179)", () => {
+    render(<NotificationsMenu items={[{ ...stranded, project: "Catalog API" }]} />);
+    const row = screen.getByTestId("notification-row");
+    const line = within(row).getByText("is waiting on you — hop");
+    const key = within(row).getByTestId("notification-key");
+    expect(Boolean(line.compareDocumentPosition(key) & Node.DOCUMENT_POSITION_FOLLOWING), "the row's line comes before its key").toBe(true);
+    expect(within(row).getByTestId("notification-project")).toHaveTextContent("Catalog API");
+  });
+
   it("keeps the long body behind Details, closed until asked, without opening the entity", () => {
     const onSelect = vi.fn();
     render(<NotificationsMenu items={[stranded]} onSelect={onSelect} />);
