@@ -11,7 +11,7 @@ import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsPerId, rowsPerProject } from '../db/read-memo.js';
+import { rowsPerId } from '../db/read-memo.js';
 import { issues, jobs, pipelineRuns } from '../db/schema.js';
 import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -38,6 +38,7 @@ import {
   type LandingCriteriaReport,
   landingCriteriaReports,
 } from './criteria-basis.js';
+import { issuesJudgedOnRelease } from './judged-on-release.js';
 import type { CompletionFacts } from './release-view.js';
 import { holdsReleasedLine, releasedLineOf } from './released-line.js';
 
@@ -62,10 +63,7 @@ export interface IssueFact {
   voided: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** The issue's last move to `reopen`: its note and mark after it are a later round's. */
   reopenedAt: Date | null;
-  /**
-   * Every move of the issue into `closed`, oldest first: the moments releases shipped it. Read for
-   * a reopened issue, the one a reopen's void reads it of; empty for any other.
-   */
+  /** Every move of a reopened issue into `closed`, oldest first (empty for any other issue). */
   closedAt: Date[];
   /** The merged mark's columns, which `landing-surfaces.ts` reads what the landing changed from. */
   merged: {
@@ -415,12 +413,9 @@ export async function loadReleaseFacts(
   const landingRead = landingCountedOf(projectId, ids);
   // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   landingRead.catch(() => undefined);
-  // a close is read of the reopened issues alone, as their rounds read it (`issues/release-evidence.ts:
-  // reopenedRoundsOf`), and nothing but a reopen's void reads it (`judged-before-reopen.ts`): asked
-  // of every issue beside the reopen, it went a step ahead of the rounds' ask and was read twice
-  // (ISS-1070 r21). Nothing below waits on it until the facts are put together.
+  // only a reopen's void reads a close: read of the reopened alone, as `reopenedRoundsOf` asks it,
+  // it is one statement, not two a step apart (ISS-1070 r21); its failure is thrown where awaited
   const closedRead = reopenedAtOf(db, ids).then((r) => closedAtOf(db, [...r.keys()]));
-  // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   closedRead.catch(() => undefined);
   const [rows, prefix, cutters, judge, held, criteria, reopened] = await Promise.all([
     rowsPerId(
@@ -521,22 +516,4 @@ export async function loadReleaseFacts(
     judgedOnRelease,
     landing: earnedByJudge(await landingRead, byIssue),
   };
-}
-
-/** The issues of `projectId` holding a verdict judged on a release (ISS-900). */
-async function issuesJudgedOnRelease(projectId: string): Promise<string[]> {
-  const rows = await rowsPerProject(
-    'issuesJudgedOnRelease',
-    projectId,
-    (ids) =>
-      db
-        .selectDistinct({ id: criterionVerdicts.issueId, projectId: issues.projectId })
-        .from(criterionVerdicts)
-        .innerJoin(issues, eq(issues.id, criterionVerdicts.issueId))
-        .where(
-          and(inArray(issues.projectId, [...ids]), eq(criterionVerdicts.identityKind, 'release')),
-        ),
-    (r) => r.projectId,
-  );
-  return rows.map((r) => r.id);
 }

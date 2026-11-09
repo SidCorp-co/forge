@@ -3,6 +3,11 @@
 // agent's record says carries it, whichever release shipped its issue.
 
 import { versionsCountedOn } from '@forge/contracts/released-line';
+import { and, eq, inArray } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { rowsPerProject } from '../db/read-memo.js';
+import { issues } from '../db/schema.js';
+import { criterionVerdicts } from '../db/schema-issue-criteria.js';
 import { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
 import { voidedStillRead } from './judged-before-reopen.js';
 import type { IssueFact, ReleaseFacts } from './release-facts.js';
@@ -42,4 +47,22 @@ export function judgedOnReleaseAt(
     const read = { ...issue, criteria: judged, verdicts };
     return [{ issue, readings: criterionReadingsAt(read, null, facts, version) }];
   });
+}
+
+/** The issues of `projectId` holding a verdict judged on a release (ISS-900). */
+export async function issuesJudgedOnRelease(projectId: string): Promise<string[]> {
+  const rows = await rowsPerProject(
+    'issuesJudgedOnRelease',
+    projectId,
+    (ids) =>
+      db
+        .selectDistinct({ id: criterionVerdicts.issueId, projectId: issues.projectId })
+        .from(criterionVerdicts)
+        .innerJoin(issues, eq(issues.id, criterionVerdicts.issueId))
+        .where(
+          and(inArray(issues.projectId, [...ids]), eq(criterionVerdicts.identityKind, 'release')),
+        ),
+    (r) => r.projectId,
+  );
+  return rows.map((r) => r.id);
 }
