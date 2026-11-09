@@ -41,7 +41,21 @@ function deps(
         }
       return out;
     },
-    servedReads: async () => ({ previous: PREVIOUS, liveSince }),
+    servedBefore: async (_projectId, live, commits) =>
+      new Map(
+        commits.map((c) => {
+          const bridge = kept[carriageKey(PREVIOUS, live)];
+          return [
+            c,
+            {
+              previous: PREVIOUS,
+              liveSince,
+              descends: bridge ? bridge.kind === 'descends' : null,
+              heldByPrevious: kept[carriageKey(c, PREVIOUS)]?.kind === 'descends',
+            },
+          ];
+        }),
+      ),
   };
 }
 

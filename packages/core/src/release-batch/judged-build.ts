@@ -25,6 +25,7 @@ import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import { persistedCarriage } from './served-ancestry.js';
+import { heldBefore, servedBefore } from './served-builds.js';
 import { servedOnJudgedOn } from './serving-reading.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
@@ -54,6 +55,9 @@ export interface JudgedBuildDeps {
   /** What the source host answered about served and judged commits, as kept (`served-ancestry.ts`);
    *  absent, nothing was kept. */
   heldAncestry?: typeof persistedCarriage;
+  /** What production was read serving before the live build, per commit asked (`served-builds.ts`);
+   *  absent, nothing was kept. */
+  servedBefore?: typeof servedBefore;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -64,6 +68,7 @@ const LIVE_DEPS: JudgedBuildDeps = {
   landed: landedJudgedBuild,
   testing: servedOnJudgedOn,
   heldAncestry: persistedCarriage,
+  servedBefore,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -276,6 +281,8 @@ export async function liveBuildHolds(
   holds: Map<string, boolean>;
   runtimes: Map<string, string | null>;
   unanswered: Map<string, string>;
+  /** Per commit held on the previous build's answer while the new one's is asked, how (ISS-1182). */
+  rechecking?: Map<string, string>;
 } | null> {
   const clean = (xs: readonly string[]) => [
     ...new Set(xs.map((c) => c.trim().toLowerCase()).filter((c) => c !== '')),
@@ -318,17 +325,38 @@ export async function liveBuildHolds(
   const held = deps.heldAncestry
     ? await deps.heldAncestry(projectId, unplaced, [live.sha])
     : new Map<string, Carriage>();
+  const open: string[] = [];
   for (const commit of unplaced) {
     const answer = held.get(carriageKey(commit, live.sha));
     if (answer?.kind === 'descends') holds.set(commit, true);
     else if (answer?.kind === 'differs') holds.set(commit, false);
-    else
+    else open.push(commit);
+  }
+  const rechecking = new Map<string, string>();
+  const before = deps.servedBefore
+    ? await heldBefore(projectId, live.sha, open, releases, deps.servedBefore)
+    : new Map();
+  for (const commit of open) {
+    const kept = before.get(commit);
+    if (kept === true) holds.set(commit, true);
+    else if (typeof kept === 'object') {
+      holds.set(commit, true);
+      rechecking.set(commit, kept.rechecking);
+    } else
       unanswered.set(
         commit,
-        `no release Forge verified, and no answer the source host gave Forge, shows whether the live build \`${live.sha}\` holds it`,
+        typeof kept === 'string'
+          ? kept
+          : `no release Forge verified, and no answer the source host gave Forge, shows whether the live build \`${live.sha}\` holds it`,
       );
   }
-  return { sha: live.sha, holds, runtimes, unanswered };
+  return {
+    sha: live.sha,
+    holds,
+    runtimes,
+    unanswered,
+    ...(rechecking.size > 0 ? { rechecking } : {}),
+  };
 }
 
 // A list of requirements reads its coverage on every load, so the commit production serves is read

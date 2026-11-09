@@ -39,3 +39,27 @@ export const servedAncestry = pgTable(
     ),
   }),
 );
+
+/**
+ * Each whole commit a project's production was read serving by the served-ancestry pass, with when it
+ * was first and last read so (`release-batch/served-ancestry.ts`, ISS-1182). A record of readings,
+ * never what is served now (that is read when asked, ISS-1286): after a deploy it names the build
+ * served before, so a verdict that build held keeps its answer, marked as re-checked, until the host
+ * says whether the new build descends from it, and one pair a deploy is asked, not one a commit.
+ */
+export const servedBuilds = pgTable(
+  'served_builds',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** The whole commit production answered serving, lower case. */
+    commit: text('commit').notNull(),
+    firstReadAt: timestamp('first_read_at', { withTimezone: true }).notNull().defaultNow(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.projectId, t.commit] }),
+    wholeChk: check('served_builds_whole_chk', sql`${t.commit} ~ '^[0-9a-f]{40}$'`),
+  }),
+);
