@@ -158,6 +158,8 @@ export type RunClose = RunEnd & {
   reason: CascadeReason;
   actor: KernelActor;
   source: string;
+  /** The act's own event that reports the move, so the kernel writes no `run.transitioned` (ISS-1181). */
+  reportedBy?: TransitionArgs<'run', never>['reportedBy'];
 };
 
 /** The record a failed close leaves on its run, merged over whatever `set.metadata` writes. */
@@ -276,6 +278,7 @@ export async function closeRunsInTx(
       reason: close.reason,
       actor: close.actor,
       source: close.source,
+      reportedBy: close.reportedBy,
     }),
   );
   const cascades: Array<{ runId: string; result: CascadeResult }> = [];

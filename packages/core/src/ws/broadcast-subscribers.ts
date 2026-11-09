@@ -349,12 +349,17 @@ export function registerWsBroadcastSubscribers(): void {
     for (const userId of p.userIds) pub(userRoom(userId), p.event, p.data);
   });
 
-  // a pause, a resume, a cancel and a close all reach the project room through the run's own move
-  consume('run.transitioned', {
+  // a pause, a resume, a cancel and a close all reach the project room through the run's own move,
+  // or, for a ship that closed its run in the same unit, through that ship (ISS-1181)
+  const runMoved = async (runId: string) => {
+    const run = await runStatusView(runId);
+    if (run) frame(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
+  };
+  consume('run.transitioned', { name: 'run-status-broadcast', handle: (p) => runMoved(p.id) });
+  consume('release.shipped', {
     name: 'run-status-broadcast',
     handle: async (p) => {
-      const run = await runStatusView(p.id);
-      if (run) frame(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
+      if (p.runCompleted) await runMoved(p.runId);
     },
   });
 

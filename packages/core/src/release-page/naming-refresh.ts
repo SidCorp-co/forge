@@ -128,4 +128,11 @@ export function registerReleaseNaming(): void {
       if (version) await nameReleaseIfOwed(p.projectId, version);
     },
   });
+  // a ship that closed its run reports that move itself (ISS-1181)
+  consume('release.shipped', {
+    name: 'release-naming',
+    handle: async (p) => {
+      if (p.runCompleted) await nameReleaseIfOwed(p.projectId, p.version);
+    },
+  });
 }

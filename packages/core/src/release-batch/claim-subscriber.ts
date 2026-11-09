@@ -10,16 +10,26 @@ export function registerReleaseBatchClaimSubscriber(): void {
   consume('run.transitioned', {
     name: 'release-batch-claims',
     handle: async (p) => {
-      if (!TERMINAL_STATUSES.has(p.to)) return;
-      const { claimsCleared, recovered } = await recoverStrandedReleasing(p.id, {
-        reason: `The release batch run ended ${p.to} without finishing or aborting`,
-      });
-      if (claimsCleared.length > 0) {
-        logger.info(
-          { runId: p.id, count: claimsCleared.length, recovered: recovered.length },
-          'release-batch: claims released on run close',
-        );
-      }
+      if (TERMINAL_STATUSES.has(p.to)) await releaseClaimsOnClose(p.id, p.to);
     },
   });
+  // a ship that closed its run in the same unit is that close's one report (ISS-1181)
+  consume('release.shipped', {
+    name: 'release-batch-claims',
+    handle: async (p) => {
+      if (p.runCompleted) await releaseClaimsOnClose(p.runId, 'completed');
+    },
+  });
+}
+
+async function releaseClaimsOnClose(runId: string, to: string): Promise<void> {
+  const { claimsCleared, recovered } = await recoverStrandedReleasing(runId, {
+    reason: `The release batch run ended ${to} without finishing or aborting`,
+  });
+  if (claimsCleared.length > 0) {
+    logger.info(
+      { runId, count: claimsCleared.length, recovered: recovered.length },
+      'release-batch: claims released on run close',
+    );
+  }
 }

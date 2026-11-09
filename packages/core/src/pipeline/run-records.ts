@@ -2,6 +2,7 @@
 // and ship stamps. The pipeline owns `pipeline_runs`, so these are its only writes on another
 // module's behalf; a run's status moves only through the kernel transition.
 
+import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { and, eq, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -61,6 +62,19 @@ export async function stampReleaseVersion(
  * closed hear of it exactly when it is on record and a retry never tells them twice.
  */
 export async function stampReleaseShipped(runId: string, executor: Tx = db): Promise<void> {
+  const ship = await stampShipUntold(runId, executor);
+  if (ship) await emitEvent(executor, 'release.shipped', ship);
+}
+
+/**
+ * The ship's stamp, once, answering what its `release.shipped` says, or null where it was already
+ * stamped: for an act that closes the run in the same unit and tells both by that one event
+ * (`release-batch/recorded.ts:endRecordRun`, ISS-1181).
+ */
+export async function stampShipUntold(
+  runId: string,
+  executor: Tx = db,
+): Promise<OutboxEventPayload<'release.shipped'> | null> {
   const rows = await executor
     .update(pipelineRuns)
     .set({ releaseReleasedAt: sql`now()`, updatedAt: sql`now()` })
@@ -77,12 +91,12 @@ export async function stampReleaseShipped(runId: string, executor: Tx = db): Pro
       metadata: pipelineRuns.metadata,
     });
   const shipped = rows[0];
-  if (!shipped?.version) return;
+  if (!shipped?.version) return null;
   const ids = (shipped.metadata as { issueIds?: unknown } | null)?.issueIds;
-  await emitEvent(executor, 'release.shipped', {
+  return {
     projectId: shipped.projectId,
     runId,
     version: shipped.version,
     issueIds: Array.isArray(ids) ? ids.filter((i): i is string => typeof i === 'string') : [],
-  });
+  };
 }

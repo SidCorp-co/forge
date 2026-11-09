@@ -77,6 +77,7 @@ export {
 export {
   stampReleaseShipped,
   stampReleaseVersion,
+  stampShipUntold,
   writeRunMetadata,
 } from './run-records.js';
 export {
@@ -85,6 +86,7 @@ export {
   closeRun,
   closeRunIfOneShot,
   closeRunIfOneShotInTx,
+  closeShippedRunInTx,
   insertOneShotRun,
   type OneShotRunSpec,
   openIssueRun,

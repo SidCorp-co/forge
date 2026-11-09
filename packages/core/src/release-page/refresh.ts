@@ -118,6 +118,13 @@ export function registerReleaseHighlightsRefresh(): void {
       await refreshReleaseHighlights(p.projectId, p.id);
     },
   });
+  // a ship that closed its run reports that move itself (ISS-1181)
+  consume('release.shipped', {
+    name: 'release-highlights',
+    handle: async (p) => {
+      if (p.runCompleted) await refreshReleaseHighlights(p.projectId, p.runId);
+    },
+  });
   consume('verdict.recorded', {
     name: 'release-highlights',
     handle: async (p) => {

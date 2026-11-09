@@ -121,6 +121,8 @@ export const OUTBOX_CONSUMERS = {
 	],
 	"feedback.reporterTold": ["notify-feedback"],
 	"release.cut": ["release-naming", "org-activity"],
+	// a ship that closes its run in the same unit is that close's one report (`runCompleted`), so the
+	// run's own readers hear it here too (ISS-1181)
 	"release.shipped": [
 		"notify-feedback",
 		"steward",
@@ -128,6 +130,11 @@ export const OUTBOX_CONSUMERS = {
 		"support-results",
 		"support-release-notes",
 		"org-activity",
+		"paused-run-wedge-resolve",
+		"release-batch-claims",
+		"run-status-broadcast",
+		"release-highlights",
+		"release-naming",
 	],
 	"release.committed": ["release-tag"],
 	"release.approvalDecided": ["release-approval-wake", "org-activity"],

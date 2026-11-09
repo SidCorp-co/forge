@@ -10,4 +10,11 @@ export function registerPausedRunWedgeResolve(): void {
       await resolvePipelineWedge(pausedRunWedgeEntityId(p.id));
     },
   });
+  // a ship that closed its run reports that move itself (ISS-1181)
+  consume('release.shipped', {
+    name: 'paused-run-wedge-resolve',
+    handle: async (p) => {
+      if (p.runCompleted) await resolvePipelineWedge(pausedRunWedgeEntityId(p.runId));
+    },
+  });
 }

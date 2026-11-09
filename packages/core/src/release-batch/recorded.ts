@@ -18,7 +18,12 @@ import { accountActor, releaseRunClaims, transitionIssueStatus } from '../issues
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { closeRunIfOneShotInTx, insertOneShotRun, stampReleaseShipped } from '../pipeline/index.js';
+import {
+  closeRunIfOneShotInTx,
+  closeShippedRunInTx,
+  insertOneShotRun,
+  stampShipUntold,
+} from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import { type RecordedVerification, resolveReleaseSites } from './channel.js';
 import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
@@ -301,8 +306,15 @@ export async function endRecordRun(
         failed.map((f) => f.id),
         tx,
       );
-      await stampReleaseShipped(runId, tx);
-      await closeRunIfOneShotInTx(tx, runId, 'completed');
+      // the ship is stamped before the close, which refuses a release run closing unshipped; its one
+      // `release.shipped` then tells both, the close included (ISS-1181)
+      const ship = await stampShipUntold(runId, tx);
+      if (!ship) {
+        await closeRunIfOneShotInTx(tx, runId, 'completed');
+        return;
+      }
+      const closed = await closeShippedRunInTx(tx, runId);
+      await emitEvent(tx, 'release.shipped', closed ? { ...ship, runCompleted: true } : ship);
       return;
     }
     await closeRunIfOneShotInTx(tx, runId, 'failed', {

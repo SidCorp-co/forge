@@ -145,7 +145,7 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
   source: string;
   /** The act's own event that reports this move, so the kernel writes no `<entity>.transitioned`
    *  beside it: one fact, one event (REQ-12 BC-18). The move is recorded in `kernel_transitions`. */
-  reportedBy?: OutboxEventType;
+  reportedBy?: OutboxEventType | undefined;
   /** The implementation of each guard the reached edges name, but the checklist's. */
   guards?: Readonly<Record<string, Guard<E>>>;
   /** Required where a reached edge names a checklist; answers sent to one that names none refuse. */

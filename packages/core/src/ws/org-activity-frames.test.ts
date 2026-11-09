@@ -328,3 +328,26 @@ describe('a decision another event reports reaches the project room from that ev
     },
   );
 });
+
+describe('a ship that closed its run in the same unit tells the run move it carries (ISS-1181)', () => {
+  beforeEach(() => {
+    consumers.clear();
+    published.length = 0;
+    registerWsBroadcastSubscribers();
+  });
+
+  it.each([
+    [{ runCompleted: true }, 1],
+    [{}, 0],
+  ] as const)('a release.shipped %o sends %i run status frame', async (moved, frames) => {
+    await deliver('release.shipped', {
+      projectId: 'p2',
+      runId: 'r1',
+      version: '1.2.0',
+      issueIds: [],
+      ...moved,
+    });
+    const status = published.filter((p) => p.event === 'pipeline_run.status_changed');
+    expect(status).toHaveLength(frames);
+  });
+});

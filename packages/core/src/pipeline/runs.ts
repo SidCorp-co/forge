@@ -259,14 +259,25 @@ export async function closeRunIfOneShotInTx(
   return closeOneShotInTx(tx, runId, outcome, cause);
 }
 
+/**
+ * A shipped release run's close to `completed`, in the ship's own transaction: its `release.shipped`
+ * reports the move (`runCompleted`), so the kernel writes no `run.transitioned` beside it (REQ-12
+ * BC-18, ISS-1181). Answers whether this call closed the run.
+ */
+export async function closeShippedRunInTx(tx: Tx, runId: string): Promise<boolean> {
+  return closeOneShotInTx(tx, runId, 'completed', undefined, 'release.shipped');
+}
+
 async function closeOneShotInTx(
   tx: Tx,
   runId: string,
   outcome: RunOutcome,
   cause: RunFailureCause | undefined,
+  reportedBy?: 'release.shipped',
 ): Promise<boolean> {
   const { rows, cascades } = await closeRunsInTx(tx, {
     ...runEndOf(outcome, cause, 'runs'),
+    reportedBy,
     where: and(
       eq(pipelineRuns.id, runId),
       inArray(pipelineRuns.kind, ['interactive', 'system']),

@@ -569,12 +569,21 @@ export interface OutboxEventPayloads
 		version: string;
 		commit: string | null;
 	};
-	/** A release run's ship was stamped: the version is live, carrying `issueIds`; whoever reported feedback they close is told. */
+	/**
+	 * A release run's ship was stamped: the version is live, carrying `issueIds`; whoever reported
+	 * feedback they close is told. Also written alone for an issue a later record ships
+	 * (`release-batch/shipped-in.ts`), where nothing moves.
+	 */
 	"release.shipped": {
 		projectId: string;
 		runId: string;
 		version: string;
 		issueIds: string[];
+		/**
+		 * The act also closed the release run to `completed`, in the ship's own unit: this event is that
+		 * move's one report, and the kernel wrote no `run.transitioned` for it (REQ-12 BC-18, ISS-1181).
+		 */
+		runCompleted?: true;
 	};
 	/** An admin approved or returned a release run's approval request; the run that asked is told. */
 	"release.approvalDecided": {
