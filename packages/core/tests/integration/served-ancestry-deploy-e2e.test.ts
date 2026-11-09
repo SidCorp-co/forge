@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
+import { backgroundSettled } from '../../src/lib/background.js';
 import { type JudgedBuildDeps, liveBuildHolds } from '../../src/release-batch/judged-build.js';
 import {
   keepHolding,
@@ -24,7 +25,6 @@ import {
   readServedAncestry,
 } from '../../src/release-batch/served-ancestry.js';
 import { keepLiveBuild, servedBefore } from '../../src/release-batch/served-builds.js';
-import { backgroundSettled } from '../../src/lib/background.js';
 import { shippedReleaseRuns } from '../../src/release-batch/shipped-releases.js';
 import {
   addProjectMember,
@@ -318,4 +318,3 @@ describe('two deploys a few minutes apart keep what the builds before held (ISS-
     expect(settled?.rechecking).toBeUndefined();
   });
 });
-
