@@ -42,9 +42,10 @@ const short = (sha: string) => sha.slice(0, 12);
 const H = vi.hoisted(() => {
   /** Each commit's ancestors, itself included: release/production's history through the promotion. */
   const history: Record<string, readonly string[]> = {};
-  const state = { calls: 0, refusing: false };
+  /** `process` names the repository afresh per test: the process's carriage cache holds nothing. */
+  const state = { calls: 0, refusing: false, process: 0 };
   const host = () => ({
-    fullName: 'acme/adminhub-api',
+    fullName: `acme/adminhub-api#process-${state.process}`,
     compare: async (base: string, head: string) => {
       state.calls += 1;
       if (state.refusing) throw new Error('429 Too Many Requests');
@@ -149,6 +150,7 @@ beforeEach(async () => {
   await promotionProject();
   await productionMarked();
   H.state.calls = 0;
+  H.state.process += 1;
   H.state.refusing = false;
   for (const k of Object.keys(H.history)) delete H.history[k];
   Object.assign(H.history, {

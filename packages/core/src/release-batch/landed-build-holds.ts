@@ -23,7 +23,7 @@ import {
   holdingPair,
   type LandedBuild,
 } from './landed-build.js';
-import { recordedHolding } from './recorded-holding.js';
+import { recordedHolding, unkept } from './recorded-holding.js';
 import { persistedCarriage } from './served-ancestry.js';
 import { shippedAskKey, shippedCommitHolding } from './shipped-holding.js';
 
@@ -152,9 +152,10 @@ function laterCommitsOf(
 /**
  * Per issue whose build is a landing, whether each later commit its verdicts name holds that landing,
  * or why that was not read: the one reading of a pass on a later build, answered from the landings
- * Forge recorded (`recorded-holding.ts`), or, at the commit a shipped release recorded shipping, from
- * the release holding the issue and the ancestry Forge kept (`shipped-holding.ts`, ISS-1079), never
- * from the host.
+ * Forge recorded (`recorded-holding.ts`), at the commit a shipped release recorded shipping from the
+ * release holding the issue (`shipped-holding.ts`, ISS-1079), and where neither places it from the
+ * source host's answer Forge kept (`served-ancestry.ts`, ISS-1169: adminhub-api's production f6ff753,
+ * marked on `release/production`, holds the landings marked on `release/stg`), never from the host.
  */
 export async function laterHoldersOf(
   projectId: string,
@@ -163,31 +164,36 @@ export async function laterHoldersOf(
   judgedOnFor: (issueId: string) => string | null,
 ): Promise<Map<string, Map<string, Holding>>> {
   const later = laterCommitsOf(builds, judged, judgedOnFor);
-  const answers = await recordedHolding(
-    projectId,
-    [...later.values()].flatMap(({ landing, shas }) =>
-      shas.map((sha) => holdingPair(landing, sha)),
+  const asked = [...later.values()];
+  // the kept answers are asked beside the marks, at the quiet point `earlierCarriageOf` asks its own
+  const [answers, kept] = await Promise.all([
+    recordedHolding(
+      projectId,
+      asked.flatMap(({ landing, shas }) => shas.map((sha) => holdingPair(landing, sha))),
     ),
-  );
-  const answerOf = (landing: string, sha: string) =>
-    answers.get(pairKey(holdingPair(landing, sha)));
+    persistedCarriage(
+      projectId,
+      asked.map(({ landing }) => landing),
+      asked.flatMap(({ shas }) => shas),
+    ),
+  ]);
+  const placed = (landing: string, sha: string) =>
+    answers.get(pairKey(holdingPair(landing, sha))) === true ||
+    kept.get(carriageKey(landing, sha))?.kind === 'descends';
   const shipped = await shippedCommitHolding(
     projectId,
     [...later].flatMap(([issueId, { landing, shas }]) =>
-      shas
-        .filter((sha) => answerOf(landing, sha) !== true)
-        .map((sha) => ({ issueId, landing, sha })),
+      shas.filter((sha) => !placed(landing, sha)).map((sha) => ({ issueId, landing, sha })),
     ),
   );
   const out = new Map<string, Map<string, Holding>>();
   for (const [issueId, { landing, shas }] of later) {
     const holdingAt = (sha: string): Holding => {
-      const recorded = answerOf(landing, sha);
-      if (recorded === true) return true;
-      return (
-        shipped.get(shippedAskKey({ issueId, sha })) ??
-        recorded ?? { unread: 'the ancestry reader gave no answer' }
-      );
+      if (placed(landing, sha)) return true;
+      const released = shipped.get(shippedAskKey({ issueId, sha }));
+      if (released !== undefined) return released;
+      if (kept.get(carriageKey(landing, sha))?.kind === 'differs') return false;
+      return unkept(answers.get(pairKey(holdingPair(landing, sha))), holdingPair(landing, sha));
     };
     out.set(issueId, new Map(shas.map((sha): [string, Holding] => [sha, holdingAt(sha)])));
   }

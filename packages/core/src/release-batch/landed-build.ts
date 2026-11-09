@@ -34,6 +34,7 @@ import { db } from '../db/client.js';
 import { memoizedPerId } from '../db/read-memo.js';
 import {
   type Carriage,
+  carriageKey,
   currentMarkClaims,
   type IssueCore,
   issueCoresOf,
@@ -55,6 +56,7 @@ import {
   weighOnLanded,
 } from './landed-weighing.js';
 import { recordedHolding } from './recorded-holding.js';
+import { persistedCarriage } from './served-ancestry.js';
 
 const WHOLE = /^[0-9a-f]{40}$/;
 
@@ -414,9 +416,11 @@ export async function landedStandings(
  * Before a record, the build each issue will be recorded at, as the steward and coverage read it.
  * Where every live criterion of an issue not yet recorded stands on a counting pass at one commit,
  * and that commit is a landing Forge recorded after the one its merge names, on its branch
- * (`recorded-holding.ts`, never the host), that commit is the build: the record a master makes there will count every one of
- * them. A pass split across commits, or at a commit not containing the landing, leaves the landing
- * as it was. A recorded landing is never moved.
+ * (`recorded-holding.ts`), or one the source host's answer Forge kept says holds it
+ * (`served-ancestry.ts`, ISS-1169: a promotion's commit on another branch), never the host, that
+ * commit is the build: the record a master makes there will count every one of them. A pass split
+ * across commits, or at a commit not containing the landing, leaves the landing as it was. A
+ * recorded landing is never moved.
  */
 export async function aheadBuildsOf(
   projectId: string,
@@ -444,8 +448,23 @@ export async function aheadBuildsOf(
     projectId,
     [...ahead.values()].map((a) => holdingPair(a.landing, a.sha)),
   );
+  // where the marks cannot place it (another branch: a promotion's), the host's kept answer can
+  const unplaced = [...ahead.values()].filter(
+    (a) => held.get(pairKey(holdingPair(a.landing, a.sha))) !== true,
+  );
+  const kept =
+    unplaced.length > 0
+      ? await persistedCarriage(
+          projectId,
+          unplaced.map((a) => a.landing),
+          unplaced.map((a) => a.sha),
+        )
+      : new Map<string, Carriage>();
   for (const [issueId, { landing, sha }] of ahead) {
-    if (held.get(pairKey(holdingPair(landing, sha))) !== true) continue;
+    const holds =
+      held.get(pairKey(holdingPair(landing, sha))) === true ||
+      kept.get(carriageKey(landing, sha))?.kind === 'descends';
+    if (!holds) continue;
     out.set(issueId, {
       sha,
       from: 'ahead',

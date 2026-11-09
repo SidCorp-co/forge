@@ -1,0 +1,1 @@
+**A pass judged across a promotion counts at its landing.** Where merge marks cannot place a landing and a commit on another branch, coverage and the steward read the source host's kept answer, which the served-ancestry pass now asks for each landing pair.

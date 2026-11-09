@@ -63,6 +63,19 @@ export async function recordedHolding(
 }
 
 /**
+ * A pair neither the marks nor a source host answer Forge kept (`served_ancestry`) places: what the
+ * marks said, and the answer that is missing. The marks answer only on one branch, so a landing on
+ * the branch work lands on and a later commit on the branch a promotion carries it to are placed
+ * only by the host's answer, which the pass that reads what a project serves asks once and keeps
+ * (`served-ancestry.ts`, ISS-1169); a read never asks it.
+ */
+export function unkept(marked: Holding | undefined, pair: AncestryPair): { unread: string } {
+  const said = typeof marked === 'object' ? `${marked.unread}; ` : '';
+  const missing = `no answer of the source host is kept on whether ${short(pair.release)} holds ${short(pair.commit)} (\`served_ancestry\`): the pass that reads what this project serves asks it once and keeps it`;
+  return { unread: `${said}${missing}` };
+}
+
+/**
  * The newest merged issue's mark at each of `shas` on the project: its time and branch. A mark at a
  * commit is the project's own, so every project's asks before the quiet point are one read
  * (`db/read-memo.ts:memoizedPerId`): the issues and trail marks of all of them in two statements,

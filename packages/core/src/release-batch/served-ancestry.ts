@@ -7,11 +7,13 @@
  * every runtime verdict a deploy ago read unread (REQ-79, 2026-10-30).
  *
  * Each pass reads what each project serves (production, and the environment its changes are judged
- * on), and asks for every pair it holds no row and no release record for, newest verdict first. It
- * also asks, first, whether each commit a shipped release recorded shipping holds the landing of each
- * issue whose verdicts name it (`owedShippedPairs`, ISS-1079): sidcorp-mail's ISS-7 shipped in 0.9.0
- * and was judged at 62a4ac7, which 0.16.0 shipped, and only a kept answer lets coverage count that
- * (`shipped-holding.ts`). A door that asks the host the same question keeps a `holds` answer too
+ * on), and asks for every pair it holds no row and no release record for, newest verdict first. In
+ * turn with those it asks whether each commit an issue's verdicts name holds that issue's landing, or
+ * the landing descends from it, where no landing mark and no kept row says (`owedLandingPairs`):
+ * sidcorp-mail's ISS-7 shipped in 0.9.0 and was judged at 62a4ac7, which 0.16.0 shipped (ISS-1079,
+ * `shipped-holding.ts`), and adminhub-api's landings on `release/stg` were judged on production's
+ * `release/production` (ISS-1169); only a kept answer lets coverage count either. A door that asks the
+ * host the same question keeps a `holds` answer too
  * (`keepHolding`, from `verdict-commit-placement.ts:commitPlacedOnLanding`). A host
  * that does not answer writes nothing, so the pair stays unread with its reason and the next pass asks
  * again. The work is bounded: at most `ANCESTRY_PROJECTS_PER_PASS` projects are read a pass, and at most
@@ -196,14 +198,18 @@ interface Owed {
 }
 
 /**
- * Per issue whose newest live verdicts name a commit a shipped release of the project recorded
- * shipping, other than its landing, the pair (landing, that commit) no landing mark and no kept row
- * answers (`shipped-holding.ts:shippedCommitHolding` reads it unread): what the pass asks of the host.
- * Where that commit is kept not holding the landing, whether the landing descends from it instead is
- * asked too (`back`), so the pass a hotfix holds is weighed as carried or as another build
+ * Per issue whose newest live verdicts name a whole commit other than its landing, the pair (landing,
+ * that commit) that no landing mark and no kept row answers: what a requirement's coverage and the
+ * release hold read at the landing (`landed-build-holds.ts:laterHoldersOf`, `earlierCarriageOf`), and
+ * what the pass asks of the host. The marks answer only on one branch, so a project that lands on one
+ * and promotes to another needs the host for every pass judged across them (ISS-1169: adminhub-api's
+ * passes at production f6ff753 and at e663b765, its landing e2c9c827's parent). At a commit a shipped
+ * release recorded shipping, the release holding the issue answers first (`shipped-holding.ts`,
+ * ISS-1079). Where the commit does not hold the landing, whether the landing descends from it is asked
+ * too (`back`), so a pass at an earlier build is weighed as carried or as another build
  * (`landed-build-holds.ts:earlierCarriageOf`), never left unread.
  */
-async function owedShippedPairs(projectId: string): Promise<Owed[]> {
+async function owedLandingPairs(projectId: string): Promise<Owed[]> {
   const rows = (await db.execute(sql`
     SELECT DISTINCT newest.issue_id, newest.judged FROM (
       SELECT DISTINCT ON (c.id) c.issue_id::text AS issue_id,
@@ -214,10 +220,7 @@ async function owedShippedPairs(projectId: string): Promise<Owed[]> {
        WHERE i.project_id = ${projectId} AND i.status <> 'dropped' AND c.retired_at IS NULL
        ORDER BY c.id, v.created_at DESC, v.id DESC
     ) newest
-     WHERE newest.judged IN (
-       SELECT lower(r.metadata -> 'finish' ->> 'commit') FROM pipeline_runs r
-        WHERE r.project_id = ${projectId} AND r.metadata ->> 'source' = 'release-batch'
-          AND r.metadata -> 'finish' ->> 'state' = 'finished' AND r.release_released_at IS NOT NULL)
+     WHERE newest.judged ~ '^[0-9a-f]{40}$'
   `)) as unknown as Array<{ issue_id: string; judged: string }>;
   if (rows.length === 0) return [];
   const builds = await landedBuildsOf([...new Set(rows.map((r) => r.issue_id))]);
@@ -225,25 +228,40 @@ async function owedShippedPairs(projectId: string): Promise<Owed[]> {
     const landing = builds.get(r.issue_id.toLowerCase())?.sha ?? null;
     return landing && landing !== r.judged ? [{ issueId: r.issue_id, landing, sha: r.judged }] : [];
   });
-  const [marked, shipped, kept] = await Promise.all([
+  if (asks.length === 0) return [];
+  const landings = asks.map((a) => a.landing);
+  const shas = asks.map((a) => a.sha);
+  const [marked, shipped, forth, back] = await Promise.all([
     recordedHolding(
       projectId,
-      asks.map((a) => holdingPair(a.landing, a.sha)),
+      asks.flatMap((a) => [holdingPair(a.landing, a.sha), holdingPair(a.sha, a.landing)]),
     ),
     shippedCommitHolding(projectId, asks),
-    persistedCarriage(
-      projectId,
-      asks.map((a) => a.sha),
-      asks.map((a) => a.landing),
-    ),
+    persistedCarriage(projectId, landings, shas),
+    persistedCarriage(projectId, shas, landings),
   ]);
   return asks.flatMap((a): Owed[] => {
-    if (marked.get(pairKey(holdingPair(a.landing, a.sha))) === true) return [];
+    const markedEither =
+      marked.get(pairKey(holdingPair(a.landing, a.sha))) === true ||
+      marked.get(pairKey(holdingPair(a.sha, a.landing))) === true;
     const held = shipped.get(shippedAskKey(a));
-    if (typeof held === 'object') return [{ judged: a.landing, served: a.sha, back: true }];
-    const back = held === false && !kept.has(carriageKey(a.sha, a.landing));
-    return back ? [{ judged: a.sha, served: a.landing }] : [];
+    const kept = forth.get(carriageKey(a.landing, a.sha));
+    if (markedEither || held === true || kept?.kind === 'descends') return [];
+    if (held === false || kept?.kind === 'differs') {
+      return back.has(carriageKey(a.sha, a.landing)) ? [] : [{ judged: a.sha, served: a.landing }];
+    }
+    return [{ judged: a.landing, served: a.sha, back: true }];
   });
+}
+
+/** `a` and `b` taken in turn, so one budget is spent on both kinds of pair, neither starving. */
+function interleaved<T>(a: readonly T[], b: readonly T[]): T[] {
+  const out: T[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if (i < a.length) out.push(a[i] as T);
+    if (i < b.length) out.push(b[i] as T);
+  }
+  return out;
 }
 
 /**
@@ -291,11 +309,13 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
     if (spent >= ANCESTRY_ASKS_PER_PASS) break;
     result.projects += 1;
     const served = await servedNow(projectId);
-    // a shipped release's commit against each landing it is judged for first: few, and nothing else asks
-    const pairs: Owed[] = uniquePairs([
-      ...(await owedShippedPairs(projectId)),
-      ...(served.length > 0 ? await owedPairs(projectId, served) : []),
-    ]);
+    // each landing against the commits its verdicts name, in turn with each served commit against them
+    const pairs: Owed[] = uniquePairs(
+      interleaved(
+        await owedLandingPairs(projectId),
+        served.length > 0 ? await owedPairs(projectId, served) : [],
+      ),
+    );
     if (pairs.length === 0) continue;
     const host = await hostOf(projectId);
     if ('why' in host) {
