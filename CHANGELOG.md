@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.617] - 2026-11-09
+
+Older feedback items show their progress; verified items offer only Reopen
+
+### Fixed
+
+- **Older feedback items show their progress again.** An item older than the list's newest 500 now shows where its work stands instead of an error, and a verified item offers only Reopen.
+- **Home and releases read a person's projects' names and release notes once.** A run's viewer is named with the holders, reporters as rows arrive, and release notes and closes once: attention 193 to 189, home 82 to 81 statements.
+
 ## [0.4.0-dev.616] - 2026-11-09
 
 Early channel pane messages are taken instead of lost or hung
