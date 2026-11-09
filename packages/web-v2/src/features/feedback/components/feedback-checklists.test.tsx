@@ -9,7 +9,7 @@ import type { ChecklistRead } from "@forge/contracts/checklist-read";
 import type { ChecklistAnswer } from "@forge/contracts/checklists";
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { optionLabel, passed, readOf, record, row } from "@/test/checklist-reads";
+import { optionLabel, passed, readOf, record, row, unfold } from "@/test/checklist-reads";
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { feedbackDetail } from "@/test/vi-chrome-feedback";
 
@@ -56,6 +56,7 @@ describe("a feedback item's triage checklist on its page", () => {
     feedbackPage(readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug", requirement: "REQ-1" }), [{ ...passed(answers), from: "new", to: "triaged", gate: "feedback_triage" }]), "developer");
     const section = await screen.findByTestId("checklist");
     expect(section.dataset.standing).toBe("passed");
+    await unfold(section);
     expect(within(section).queryAllByTestId("checklist-gap")).toEqual([]);
     expect(row(section, "severity")).toHaveTextContent(optionLabel(FEEDBACK_TRIAGE_CHECKLIST, "severity", "high"));
     expect(row(section, "severity")).toHaveTextContent("Given in the move");

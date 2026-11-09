@@ -1,6 +1,8 @@
 {
   "en": {
     "checklist.passed": "Passed {at}",
+    "checklist.waived": "Waived {at}",
+    "checklist.waivedAnswer": "Waived",
     "checklist.complete": "Complete",
     "checklist.open": "{n} open",
     "checklist.noChecklist": "No checklist",

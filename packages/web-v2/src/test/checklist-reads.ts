@@ -4,6 +4,7 @@
 import type { ChecklistMove, ChecklistRead } from "@forge/contracts/checklist-read";
 import { type Checklist, type ChecklistAnswer, checklistFormOf, evaluateChecklist, type RecordAnswers } from "@forge/contracts/checklists";
 import { within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const AT = "2026-10-09T10:00:00.000Z";
 
@@ -68,3 +69,8 @@ export const optionLabel = (checklist: Checklist, question: string, value: strin
 /** One question's row in a drawn checklist. */
 export const row = (section: HTMLElement, question: string) => within(section).getAllByTestId("checklist-row").find((r) => r.dataset.question === question) as HTMLElement;
 
+/** Opens a drawn checklist's fold, which a checklist with nothing for the reader to answer starts shut. */
+export async function unfold(section: HTMLElement) {
+  const [trigger] = within(section).getAllByRole("button");
+  if (trigger && trigger.getAttribute("aria-expanded") !== "true") await userEvent.setup().click(trigger);
+}

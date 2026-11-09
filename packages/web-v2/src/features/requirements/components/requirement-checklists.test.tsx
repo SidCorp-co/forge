@@ -16,7 +16,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { label, passed, readOf, record, row, waivedBy } from "@/test/checklist-reads";
+import { label, passed, readOf, record, row, unfold, waivedBy } from "@/test/checklist-reads";
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import { RequirementPage } from "./requirement-detail";
@@ -91,8 +91,11 @@ describe("a requirement's checklists on its page", () => {
       ],
       2,
     );
-    const [ready, acceptance] = await screen.findAllByTestId("checklist");
-    expect(ready?.dataset.standing).toBe("passed");
+    const [ready, acceptance] = (await screen.findAllByTestId("checklist")) as [HTMLElement, HTMLElement];
+    expect(ready.dataset.standing).toBe("passed");
+    expect(within(ready).queryByTestId("checklist-row"), "a passed checklist starts folded to its name and state").toBeNull();
+    await unfold(ready);
+    await unfold(acceptance);
     expect(ready).toHaveTextContent("Passed");
     const kind = row(ready, "kind");
     expect(kind.dataset.state).toBe("corrected");
@@ -104,7 +107,7 @@ describe("a requirement's checklists on its page", () => {
     // an assumed answer nothing has answered since stays as the move recorded it
     expect(row(ready, "outOfScope").dataset.state).toBe("assumed");
 
-    expect(acceptance?.dataset.checklist).toBe("requirement_acceptance");
+    expect(acceptance.dataset.checklist).toBe("requirement_acceptance");
     expect(acceptance).toHaveTextContent("1 open");
     expect(row(acceptance, "shipped").dataset.state).toBe("gap");
   });
@@ -130,6 +133,11 @@ describe("a requirement's checklists on its page", () => {
     expect(section.dataset.standing).toBe("waived");
     expect(section).toHaveTextContent("Waived");
     expect(section, "a waived gap is not owed: the heading must not read it as open").not.toHaveTextContent(/\d+ open/);
+    await unfold(section);
+    expect(row(section, "verdicts").dataset.state).toBe("waived");
+    expect(row(section, "evidence").dataset.state).toBe("waived");
+    // the waived gap's long words are the mark's tooltip, never inlined text (ISS-1179 item 3)
+    expect(row(section, "verdicts")).not.toHaveTextContent("It has none for verdicts");
   });
 
   it('reads "No checklist" where the agree was recorded before the checklist and nothing stands now (BC-9)', async () => {

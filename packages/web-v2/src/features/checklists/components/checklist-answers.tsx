@@ -4,21 +4,25 @@
 // in the developer view (agent text, REQ-43 BC-7);
 // each gap is the question still to answer, in core's words, beside where it is answered. Once a move
 // passed, the page shows the answers that move was judged by, so an assumed one stays visible as an
-// assumption; a later revision that answers it reads as the correction, never an edit in place.
+// assumption; a later revision that answers it reads as the correction, never an edit in place. A move a
+// decision took over the gate's gaps (REQ-74) stands the same way: each waived question reads as
+// waived, never as still open, so the checklist agrees with the item's "Nothing owed" (ISS-1179). The
+// answers fold under the checklist's name and its state, opened on demand, unless a gap carries the
+// reader's own act to answer it.
 
 import type { ChecklistMove, ChecklistRead } from "@forge/contracts/checklist-read";
 import type { ChecklistAnswer, ChecklistFormField, ChecklistGap } from "@forge/contracts/checklists";
 import type { ReactNode } from "react";
-import { ToneBadge, ViewHeading } from "@/design";
+import { Disclosure, ToneBadge } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 
 type Row =
   | { kind: "answer"; field: ChecklistFormField; answer: ChecklistAnswer; now: ChecklistAnswer | null }
   | { kind: "gap"; field: ChecklistFormField; gap: ChecklistGap };
 
-/** The move whose answers stand: the newest that passed with its answers kept. */
+/** The move whose answers stand: the newest that passed, or a decision waived, with its answers kept. */
 const standingMove = (read: ChecklistRead): ChecklistMove | null =>
-  read.moves.find((m) => m.countsAsPassed && m.answers !== null) ?? null;
+  read.moves.find((m) => (m.countsAsPassed || m.standing === "waived") && m.answers !== null) ?? null;
 
 /** Each question in the form's order: its answer, or its gap; one not asked is left out. */
 function rowsOf(read: ChecklistRead, move: ChecklistMove | null): Row[] {
@@ -69,6 +73,19 @@ function RecordedAnswer({ row, revision, developer }: { row: Extract<Row, { kind
   const { field, answer } = row;
   const corrected = correctedBy(answer, row.now);
   const state = corrected ? "corrected" : answer.provenance;
+  if (answer.provenance === "waived") {
+    // a waived answer holds the gap's own words: the question and its mark say it, the words a tooltip
+    return (
+      <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:flex" data-testid="checklist-row" data-question={field.name} data-state="waived">
+        <dt className="min-w-0 text-13 text-muted md:flex-2">{field.label}</dt>
+        <dd className="min-w-0 md:flex-3">
+          <span title={answer.value}>
+            <ToneBadge tone="neutral" label={t("checklist.waivedAnswer")} title={answer.value} />
+          </span>
+        </dd>
+      </div>
+    );
+  }
   return (
     <div className="grid gap-x-6 gap-y-1 border-t border-line-subtle py-2.5 first:border-t-0 md:flex" data-testid="checklist-row" data-question={field.name} data-state={state}>
       <dt className="min-w-0 text-13 text-muted md:flex-2">{field.label}</dt>
@@ -133,8 +150,9 @@ export function ChecklistAnswers({
   const open = rows.filter((r) => r.kind === "gap").length;
   // a move recorded before the checklist judged nothing, but the item's own reading still stands:
   // the heading says how it reads now
+  const waived = move?.standing === "waived";
   const state = move ? (
-    <span title={time.dateTime(move.at)}>{t("checklist.passed", { at: time.relative(move.at) })}</span>
+    <span title={time.dateTime(move.at)}>{t(waived ? "checklist.waived" : "checklist.passed", { at: time.relative(move.at) })}</span>
   ) : rows.length === 0 ? (
     t("checklist.noChecklist")
   ) : open === 0 ? (
@@ -142,10 +160,13 @@ export function ChecklistAnswers({
   ) : (
     t("checklist.open", { n: open })
   );
+  // open at once only where a gap carries the reader's own act to answer it; else the name and state
+  const actable = answerAt !== undefined && rows.some((r) => r.kind === "gap" && answerAt(r.field) !== null);
   return (
-    <section data-testid="checklist" data-checklist={read.id} data-standing={move ? "passed" : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
-      <ViewHeading right={<span className="text-13 text-muted">{state}</span>}>{read.form.title}</ViewHeading>
-      {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <RecordedAnswer key={r.field.name} row={r} revision={revision} developer={developer} /> : <UnansweredQuestion key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
+    <section data-testid="checklist" data-checklist={read.id} data-standing={move ? (waived ? "waived" : "passed") : unrecorded ? "no_checklist" : read.now?.complete ? "complete" : "open"}>
+      <Disclosure title={read.form.title} summary={state} defaultOpen={actable} testId="checklist-fold">
+        {rows.length > 0 ? <dl className="grid">{rows.map((r) => (r.kind === "answer" ? <RecordedAnswer key={r.field.name} row={r} revision={revision} developer={developer} /> : <UnansweredQuestion key={r.field.name} row={r} answerAt={answerAt} />))}</dl> : null}
+      </Disclosure>
     </section>
   );
 }
