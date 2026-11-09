@@ -232,7 +232,7 @@ describe('what a hand-deployed served commit carries is kept (forge-dev ISS-780,
     expect(holds?.unanswered.size).toBe(0);
   });
 
-  it('keeps nothing where the host refuses, reads unread, and asks again next pass', async () => {
+  it('keeps nothing where the host refuses, reads unread, and asks again after a growing wait', async () => {
     await forgeDevProject();
     const id = await judgedIssue([['runtime', K157]]);
     H.state.refusing.add(K157);
@@ -242,6 +242,12 @@ describe('what a hand-deployed served commit carries is kept (forge-dev ISS-780,
     expect(read.get(1)).toMatchObject({ earned: null, standing: 'unread' });
     expect(read.get(1)?.reason).toContain(READ_PATH_HELD_ONLY);
 
+    // named in the pass's log line; refused again, it waits a pass, then is asked (ISS-1182 r2: nine
+    // or ten pairs were asked and left unread on every pass)
+    const again = await readServedAncestry();
+    expect(again).toMatchObject({ asked: 1, written: 0, unread: 1 });
+    expect(again.unreadPairs[0]).toContain(`${K157.toLowerCase()}>`);
+    expect(await readServedAncestry()).toMatchObject({ asked: 0, deferred: 1 });
     H.state.refusing.clear();
     expect(await readServedAncestry()).toMatchObject({ written: 1 });
     expect((await criteriaRead(id)).get(1)).toMatchObject({ earned: true, standing: 'carried' });

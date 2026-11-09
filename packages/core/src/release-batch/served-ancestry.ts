@@ -59,7 +59,23 @@ export interface ServedAncestryPassResult {
   unread: number;
   /** Pairs kept as held because a build served before held them and the live one descends from it. */
   derived: number;
+  /** Pairs the host left unanswered on an earlier pass, not asked this one (`UNANSWERED`). */
+  deferred: number;
+  /** The pairs the host did not answer this pass, `project judged>served: why`, ten at most. */
+  unreadPairs: string[];
 }
+
+/**
+ * Pairs the host did not answer, by project and pair: asked again after 1, 2, 4 … 64 passes (about an
+ * hour at a pass a minute), so a pair it can never answer (a commit gone from it, two commits with no
+ * common ancestor) stops spending every pass's budget. Before ISS-1182 round 2 nine or ten pairs were
+ * asked and left unread on every pass. Kept in this process only: a restart asks each once more, and
+ * the pass's log line names each one it leaves unread. A bridge after a deploy is never deferred.
+ */
+const UNANSWERED = new Map<string, { misses: number; next: number }>();
+const UNANSWERED_LIMIT = 2_000;
+const unansweredKey = (projectId: string, pair: Owed) =>
+  `${projectId}\u0000${carriageKey(pair.judged, pair.served)}`;
 
 /** The projects holding a live criterion whose newest verdict names a whole commit or runtime. */
 async function judgedProjects(): Promise<string[]> {
@@ -324,6 +340,8 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
     written: 0,
     unread: 0,
     derived: 0,
+    deferred: 0,
+    unreadPairs: [],
   };
   const projects = rotated(await judgedProjects(), passes).slice(0, ANCESTRY_PROJECTS_PER_PASS);
   passes += 1;
@@ -360,7 +378,7 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
       result.unread += bridges.length + (bridges.length > 0 ? (await owed()).length : first.length);
       continue;
     }
-    await askAndKeep(projectId, host, bridges, result, budget);
+    await askAndKeep(projectId, host, bridges, result, budget, true);
     await askAndKeep(projectId, host, bridges.length > 0 ? await owed() : first, result, budget);
   }
   if (result.asked > 0 || result.unread > 0 || result.derived > 0) {
@@ -376,17 +394,31 @@ async function askAndKeep(
   pairs: Owed[],
   result: ServedAncestryPassResult,
   budget: { left: () => boolean; spend: () => string | null },
+  bridges = false,
 ): Promise<void> {
   for (let i = 0; i < pairs.length; i += 1) {
     if (!budget.left()) break;
     const pair = pairs[i] as Owed;
+    const key = unansweredKey(projectId, pair);
+    const missed = UNANSWERED.get(key);
+    if (!bridges && missed && missed.next > passes) {
+      result.deferred += 1;
+      continue;
+    }
     const carriage = await carriageOf(host, pair.judged, pair.served, budget.spend);
     result.asked += 1;
     if (carriage.kind === 'unread' || carriage.kind === 'lacks') {
-      // a host that did not answer writes nothing: the pair stays unread and is asked again
+      // a host that did not answer writes nothing: the pair stays unread, asked again later
       result.unread += 1;
+      const why = carriage.why;
+      if (result.unreadPairs.length < 10)
+        result.unreadPairs.push(`${projectId} ${pair.judged}>${pair.served}: ${why}`);
+      const misses = (missed?.misses ?? 0) + 1;
+      if (UNANSWERED.size >= UNANSWERED_LIMIT) UNANSWERED.clear();
+      UNANSWERED.set(key, { misses, next: passes + 2 ** Math.min(misses - 1, 6) });
       continue;
     }
+    UNANSWERED.delete(key);
     const carried = carriage.kind === 'descends';
     const written = await db
       .insert(servedAncestry)
