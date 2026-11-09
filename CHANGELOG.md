@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.626] - 2026-11-09
+
+A requirement's passing proof holds across a deploy while it is re-checked
+
+### Fixed
+
+- **A deploy no longer drops proven criteria to "not judged".** A pass the previous live build held keeps counting, marked as re-checked, until the source host says whether the new build descends from it: one question a deploy.
+
 ## [0.4.0-dev.625] - 2026-11-09
 
 MCP door starts a Product role on status, needs-you and decisions

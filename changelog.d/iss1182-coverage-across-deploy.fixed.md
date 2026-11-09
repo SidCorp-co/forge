@@ -1,1 +1,0 @@
-**A deploy no longer drops proven criteria to "not judged".** A pass the previous live build held keeps counting, marked as re-checked, until the source host says whether the new build descends from it: one question a deploy.
