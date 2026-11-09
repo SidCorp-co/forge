@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.627] - 2026-11-09
+
+MCP actions describe their own document shapes, so callers need no refusals
+
+### Fixed
+
+- **Describe over MCP is enough to call a write.** Each create names its own fields, its document schema at a URL that resolves, and an example accepted as written; designs fill their own stamps, and templates and gates are reachable.
+
 ## [0.4.0-dev.626] - 2026-11-09
 
 A requirement's passing proof holds across a deploy while it is re-checked
