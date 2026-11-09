@@ -12,7 +12,7 @@ export function record(checklist: Checklist, values: Record<string, string>): Re
   return Object.fromEntries(
     checklist.questions
       .filter((q) => q.answeredBy.by === "record")
-      .map((q) => [q.id, values[q.id] !== undefined ? { value: values[q.id] as string } : { gap: `It has none for ${q.id}.`, fix: "Write one." }]),
+      .map((q) => [q.id, values[q.id] !== undefined ? { value: values[q.id] } : { gap: `It has none for ${q.id}.`, fix: "Write one." }]),
   );
 }
 
@@ -41,6 +41,21 @@ export const passed = (answers: ChecklistAnswer[], standing: ChecklistMove["stan
   actor: { type: "user", agency: "human", id: "u1" },
   source: "requirements",
   countsAsPassed: standing === "passed",
+});
+
+/** An accept by decision (REQ-74): the gate's gaps waived, each kept as an answer of provenance `waived`. */
+export const waivedBy = (answers: ChecklistAnswer[], gate = "requirement_acceptance"): ChecklistMove => ({
+  at: AT,
+  from: "in_delivery",
+  to: "accepted",
+  gate,
+  standing: "waived",
+  checklist: { id: gate, version: 1 },
+  answers,
+  refusals: null,
+  actor: { type: "user", agency: "human", id: "u1" },
+  source: "requirements",
+  countsAsPassed: false,
 });
 
 /** A question's words, as the contract's form gives them. */

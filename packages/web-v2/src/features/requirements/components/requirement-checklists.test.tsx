@@ -11,12 +11,12 @@
 
 import { REQUIREMENT_ACCEPTANCE_CHECKLIST, REQUIREMENT_READY_CHECKLIST } from "@forge/contracts/checklist-registry";
 import type { ChecklistRead } from "@forge/contracts/checklist-read";
-import { evaluateChecklist } from "@forge/contracts/checklists";
+import { evaluateChecklist, waivedEvaluation } from "@forge/contracts/checklists";
 import { QueryClient } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { label, passed, readOf, record, row } from "@/test/checklist-reads";
+import { label, passed, readOf, record, row, waivedBy } from "@/test/checklist-reads";
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import { RequirementPage } from "./requirement-detail";
@@ -118,6 +118,18 @@ describe("a requirement's checklists on its page", () => {
     // no line explains why no move is shown: the heading reads how it stands
     expect(section).not.toHaveTextContent("Moved on before this checklist existed");
     expect(row(section, "criteria").dataset.state).toBe("given");
+  });
+
+  it("reads an accept by decision as waived, never as open, so the page agrees with its Nothing owed (ISS-1179 defect 1, REQ-66)", async () => {
+    const atAccept = evaluateChecklist(REQUIREMENT_ACCEPTANCE_CHECKLIST, { given: {}, record: record(REQUIREMENT_ACCEPTANCE_CHECKLIST, { shipped: "All 10 live issues shipped." }) });
+    requirementPage(
+      [readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, record(REQUIREMENT_ACCEPTANCE_CHECKLIST, { shipped: "All 10 live issues shipped." }), [waivedBy([...waivedEvaluation(atAccept).answers])])],
+      4,
+    );
+    const section = await screen.findByTestId("checklist");
+    expect(section.dataset.standing).toBe("waived");
+    expect(section).toHaveTextContent("Waived");
+    expect(section, "a waived gap is not owed: the heading must not read it as open").not.toHaveTextContent(/\d+ open/);
   });
 
   it('reads "No checklist" where the agree was recorded before the checklist and nothing stands now (BC-9)', async () => {
