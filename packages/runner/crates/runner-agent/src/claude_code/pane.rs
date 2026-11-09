@@ -12,8 +12,11 @@
 //! - a message written into a running turn is typed while it runs, and the turn ends only once the
 //!   session has taken it.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+#[cfg(test)]
+use super::pane_first_turn::first_turn_base;
+use super::pane_first_turn::{first_turn, launch_prompt};
 use super::pane_turn::{status_cost, turn_cost, Tally, COST_AFTER_STOP_MS};
 use super::*;
 use crate::pane_launch::{self, PaneArgs, SessionStart};
@@ -23,15 +26,10 @@ use runner_workspace::terminal::{self, ChatPane};
 pub(crate) type Panes = Arc<Mutex<HashMap<String, PaneSession>>>;
 
 /// How often the pane's events and transcript are read while it lives.
-const READ_EVERY: Duration = Duration::from_millis(200);
+pub(super) const READ_EVERY: Duration = Duration::from_millis(200);
 
 /// Every how many reads the pane is asked whether it is still there.
 const ALIVE_EVERY: u32 = 10;
-
-/// How long a resumed pane's first turn waits after the launch for the status line its cost is
-/// measured from, before it is typed in without one. Measured on 2.1.319, a launched session's
-/// first status line comes 3.3–3.5 s after the launch, before any prompt.
-const BASELINE_WITHIN: Duration = Duration::from_secs(10);
 
 /// How long a message typed into a running turn may go unreported by `UserPromptSubmit` before the
 /// turn stops waiting for it. Measured on 2.1.319, the hook fires within half a second of the paste.
@@ -522,66 +520,6 @@ fn launch_path(name: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("{name}.launch.json")))
 }
 
-/// The pane's first turn, handed in: a new session's ran as its launch prompt; a resumed one's is
-/// typed in once its baseline is read. Answers the running cost the turn is measured from. Where
-/// the turn cannot be typed the pane is ended with what was made for it, and the turn runs
-/// headless.
-async fn first_turn(
-    id: &str,
-    pane: &str,
-    (session, prompt): (&SessionStart, &str),
-    events: &Path,
-    (mcp_path, bearer_dir, events_dir): (&Path, Option<&Path>, &Path),
-) -> Result<Option<f64>> {
-    let base = first_turn_base(session, events, BASELINE_WITHIN).await;
-    if launch_prompt(session, prompt).is_some() {
-        return Ok(base);
-    }
-    let Err(why) = terminal::send_line(pane, prompt).await else {
-        return Ok(base);
-    };
-    if let Err(e) = terminal::kill(pane).await {
-        tracing::error!("[chat {id}] {pane}: {e}");
-    }
-    let _ = std::fs::remove_file(mcp_path);
-    if let Some(dir) = bearer_dir {
-        let _ = std::fs::remove_dir_all(dir);
-    }
-    let _ = std::fs::remove_dir_all(events_dir);
-    Err(Error::Other(format!("[CHAT_PANE_NOT_TYPED] {why}")))
-}
-
-/// The first turn as the pane's launch prompt: a new session's. A resumed session's is typed in
-/// once its baseline is read, since a launch prompt would run before any status line stood.
-fn launch_prompt<'a>(session: &SessionStart, prompt: &'a str) -> Option<&'a str> {
-    matches!(session, SessionStart::New(_)).then_some(prompt)
-}
-
-/// The running cost the pane's first turn is measured from. A session the box just named has
-/// spent nothing. A resumed one restores its earlier running cost (2.1.319 reads it back from the
-/// transcript's `cost-state`), so it is read from the first status line the launched session
-/// writes to `events`, waited for at most `within`; with none, there is no baseline.
-async fn first_turn_base(session: &SessionStart, events: &Path, within: Duration) -> Option<f64> {
-    if matches!(session, SessionStart::New(_)) {
-        return Some(0.0);
-    }
-    let until = tokio::time::Instant::now() + within;
-    let mut at = 0u64;
-    loop {
-        if let Ok((lines, next)) = chat_pane_events::read_from(events, at) {
-            at = next;
-            let costs = lines.iter().filter(|l| l.event == STATUS_LINE);
-            if let Some(c) = costs.filter_map(|l| status_cost(&l.payload)).next() {
-                return Some(c);
-            }
-        }
-        if tokio::time::Instant::now() >= until {
-            return None;
-        }
-        tokio::time::sleep(READ_EVERY).await;
-    }
-}
-
 /// The task that reads one pane while it lives, and closes each of its turns.
 struct Watch {
     panes: Panes,
@@ -1067,7 +1005,7 @@ mod tests {
     #[tokio::test]
     async fn a_new_pane_session_is_measured_from_nothing_spent_without_waiting() {
         let started = std::time::Instant::now();
-        let none = Path::new("/nonexistent/events.jsonl");
+        let none = std::path::Path::new("/nonexistent/events.jsonl");
         let new = SessionStart::New("n".into());
         let base = first_turn_base(&new, none, Duration::from_secs(30)).await;
         assert_eq!(base, Some(0.0));

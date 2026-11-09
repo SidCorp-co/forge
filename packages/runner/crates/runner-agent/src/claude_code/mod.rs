@@ -10,6 +10,7 @@ mod outcome;
 #[doc(hidden)]
 pub mod own_testkit;
 pub mod pane;
+mod pane_first_turn;
 mod pane_turn;
 use outcome::*;
 mod permits;
