@@ -7,7 +7,9 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackActions } from "./feedback-actions";
+import { PROGRESS_CASES } from "@/test/feedback-progress";
 import { LinkedFeedback } from "./feedback-facts";
+import { FeedbackProgress } from "./feedback-progress";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -65,6 +67,24 @@ describe("the issues that carry an item", () => {
       expect.stringMatching(/^ISS-7.*In progress/i),
       expect.stringMatching(/^ISS-9.*Dropped/i),
     ]);
+  });
+
+  // FB-521's peek on forge-dev, 2026-11-09: "Carried by REQ-88" in the progress block, and again in
+  // the facts under it (ISS-1179 item 8)
+  it("names what carries the item once: the facts under the progress block leave its carriers to it", async () => {
+    const p = PROGRESS_CASES.find((c) => c.key === "FB-14");
+    if (!p) throw new Error("no progress case FB-14");
+    fakeCore((c) => (c.path === `/projects/p1/forecast/feedback/${p.key}` ? { body: p } : undefined));
+    const f = view({ key: p.key, route: { route: "new_requirement", carriers: [{ key: "REQ-7", status: "agreed" }], answer: null } });
+    renderWithQuery(
+      <>
+        <FeedbackProgress projectId="p1" slug="hop" fbKey={p.key} />
+        <LinkedFeedback f={f} slug="hop" projectId="p1" />
+      </>,
+    );
+    await screen.findByTestId("feedback-progress-carriers");
+    await waitFor(() => expect(screen.queryByTestId("facts-route-carriers")).toBeNull());
+    expect(screen.getAllByText("Carried by")).toHaveLength(1);
   });
 
   it("lists none for an answered item, which nothing carries", () => {
