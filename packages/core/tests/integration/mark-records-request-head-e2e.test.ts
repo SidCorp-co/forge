@@ -10,6 +10,9 @@
  * @direct-test-of packages/core/src/issues/host-mark.ts
  * @direct-test-of packages/core/src/issues/merged-head-backfill.ts
  * @direct-test-of packages/core/src/issues/merge-record.ts
+ * @direct-test-of packages/core/src/issues/request-head-port.ts
+ * @direct-test-of packages/core/src/issues/observed-merges.ts
+ * @direct-test-of packages/core/src/issues/host-landing.ts
  */
 
 import { sql } from 'drizzle-orm';
