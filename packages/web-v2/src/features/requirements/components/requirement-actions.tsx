@@ -289,10 +289,27 @@ function decisionOf(d: RequirementDetail, head: Head): number | null {
   return isDeliveringStatus(d.status) ? head.revision : null;
 }
 
-/** The explicit move into delivery or to delivered (REQ-74 BC-8); core names each unmet condition. */
+/** The criteria not passing on the running build, which core refuses a mark-delivered over (REQUIREMENT_CRITERIA_UNPROVEN). */
+const notPassing = (d: RequirementDetail) => (d.standing.coverage ?? []).filter((c) => c.verdict !== "passing").map((c) => c.code);
+
+/**
+ * The explicit move into delivery or to delivered (REQ-74 BC-8); core names each unmet condition. While
+ * a criterion does not pass, Mark delivered is held off the primary, naming which, so the header never
+ * offers as next the act the banner says is not due (ISS-1179); Accept by decision stays beside it.
+ */
 function DeliveryMove({ projectId, d, kind }: { projectId: string; d: RequirementDetail; kind: DeliveryKind }) {
   const t = useCopy();
   const words = kind === "start-delivery" ? "startDelivery" : "markDelivered";
+  const unproven = kind === "mark-delivered" ? notPassing(d) : [];
+  if (unproven.length > 0) {
+    return (
+      <Tooltip label={t("requirements.act.markDeliveredHeld", { codes: unproven.join(", ") })} multiline>
+        <Button type="button" size="sm" variant="secondary" disabled data-testid="mark-delivered-held">
+          {t("requirements.act.markDelivered")}
+        </Button>
+      </Tooltip>
+    );
+  }
   return (
     <SignOff
       projectId={projectId}

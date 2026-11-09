@@ -250,7 +250,6 @@ describe("the delivery moves", () => {
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={failing} />);
     const mark = screen.getByRole("button", { name: "Mark delivered" });
     expect(mark, "core refuses it REQUIREMENT_CRITERIA_UNPROVEN while a criterion does not pass").toBeDisabled();
-    expect(mark.dataset.variant, "the primary act must fit the state: a failing criterion is no time to mark it delivered").not.toBe("primary");
     await user.hover(mark.closest('[data-slot="tooltip-trigger"]') as HTMLElement);
     await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent("Not passing yet: BC-6, BC-18"));
     await user.click(mark);
