@@ -1,0 +1,1 @@
+**A resumed chat pane's first turn records its cost.** The runner measures it from the status line the session starts with. Where a cost stays unread, the session's result says why instead of nothing.

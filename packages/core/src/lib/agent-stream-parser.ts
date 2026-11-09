@@ -96,6 +96,9 @@ export interface AgentMessage {
  *  unchanged. */
 export interface RunTotals {
   totalCostUsd?: number | undefined;
+  /** Why a chat pane's turn carries no `totalCostUsd`: the box's `forge_pane.cost.unread`
+   *  (runner `pane_turn.rs:turn_cost`). Never a figure; an unread cost is not a free turn. */
+  costUnread?: string | undefined;
   durationMs?: number | undefined;
   durationApiMs?: number | undefined;
   numTurns?: number | undefined;
@@ -282,6 +285,19 @@ function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
+/** The reason a pane's result line gives for carrying no cost, at `forge_pane.cost.unread`. */
+function paneCostUnread(data: Record<string, unknown>): string | undefined {
+  const pane = data.forge_pane as { cost?: { unread?: unknown } } | null | undefined;
+  const why = typeof pane === 'object' ? pane?.cost?.unread : undefined;
+  return typeof why === 'string' ? why : undefined;
+}
+
+function resultContent(totals: RunTotals): string {
+  if (totals.totalCostUsd !== undefined) return `Cost: $${totals.totalCostUsd.toFixed(4)}`;
+  if (totals.costUnread !== undefined) return `Cost unread: ${totals.costUnread}`;
+  return 'Agent finished.';
+}
+
 function parseResultMessage(
   data: Record<string, unknown>,
   timestamp: number,
@@ -289,6 +305,7 @@ function parseResultMessage(
 ): ParseResult {
   const totals: RunTotals = {
     totalCostUsd: num(data.total_cost_usd) ?? num(data.cost_usd),
+    costUnread: paneCostUnread(data),
     durationMs: num(data.duration_ms),
     durationApiMs: num(data.duration_api_ms),
     numTurns: num(data.num_turns),
@@ -298,10 +315,17 @@ function parseResultMessage(
     stopReason: typeof data.stop_reason === 'string' ? data.stop_reason : undefined,
     isError: data.is_error === true ? true : undefined,
   };
-  const cost = totals.totalCostUsd;
-  const content = cost !== undefined ? `Cost: $${cost.toFixed(4)}` : 'Agent finished.';
   return {
-    messages: [{ id: makeId(), type: 'system', timestamp, content, subtype: 'result', totals }],
+    messages: [
+      {
+        id: makeId(),
+        type: 'system',
+        timestamp,
+        content: resultContent(totals),
+        subtype: 'result',
+        totals,
+      },
+    ],
   };
 }
 
