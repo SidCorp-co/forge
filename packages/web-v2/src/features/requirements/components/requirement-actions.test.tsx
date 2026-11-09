@@ -210,6 +210,10 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/repin", body: { revision: 1, reason: "checkout r3 approved" } }]),
     );
   });
+});
+
+describe("the delivery moves", () => {
+  const step = () => screen.getByTestId("accept-step");
 
   // REQ-74 BC-8: the delivery moves and the accept by decision are offered to whoever approvals.accept
   // lets accept (`canAccept`), a writer where the switch is off, and to nobody else
@@ -234,6 +238,25 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/mark-delivered", body: { reason: "all criteria pass" } }]),
     );
+  });
+
+  it("holds Mark delivered off the primary while a criterion does not pass, naming which (ISS-1179 defect 2, REQ-12)", async () => {
+    const calls = fakeCore(() => undefined);
+    const user = userEvent.setup();
+    const failing = {
+      ...inDelivery(true, true),
+      standing: { ...inDelivery(true, true).standing, coverage: [{ code: "BC-6", verdict: "not_judged" }, { code: "BC-13", verdict: "passing" }, { code: "BC-18", verdict: "failing" }] },
+    } as unknown as RequirementDetail;
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={failing} />);
+    const mark = screen.getByRole("button", { name: "Mark delivered" });
+    expect(mark, "core refuses it REQUIREMENT_CRITERIA_UNPROVEN while a criterion does not pass").toBeDisabled();
+    expect(mark.dataset.variant, "the primary act must fit the state: a failing criterion is no time to mark it delivered").not.toBe("primary");
+    await user.hover(mark.closest('[data-slot="tooltip-trigger"]') as HTMLElement);
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent("Not passing yet: BC-6, BC-18"));
+    await user.click(mark);
+    expect(calls).toEqual([]);
+    // the act that does go over the gaps stays offered, by its own name
+    expect(screen.getByRole("button", { name: "Accept by decision" })).toBeInTheDocument();
   });
 
   it("offers a signer the accept switch does not admit neither move nor decision", () => {
