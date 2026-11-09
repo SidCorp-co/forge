@@ -271,3 +271,24 @@ describe('a draft is compared with the filed items before it is sent', () => {
     expect(extra.status).toBe(400);
   });
 });
+
+// forge-dev 2026-11-09: FB-1..FB-90 answered 500 on their progress, the item read finding no line in
+// the list's newest 500. An item named by key is read past that window (REQ-47 BC-3).
+describe('an item older than the list window still reads its progress', () => {
+  it('answers the oldest item once 500 newer ones fill the list', async () => {
+    const old = await file('The oldest report on the board');
+    ok(await say('owner', 'POST', item(old, 'triage'), { route: 'decline', note: 'Not ours.' }));
+    await rows(sql`
+      INSERT INTO feedback (project_id, fb_seq, kind, title, reporter_agency, reported_by, where_seen, created_at)
+      SELECT ${projectId}, 100000 + g, 'bug', 'A newer report ' || g, 'human',
+             (SELECT reported_by FROM feedback WHERE project_id = ${projectId} LIMIT 1), 'The board',
+             now() + make_interval(secs => g)
+        FROM generate_series(1, 500) g`);
+    const listed = ok(await say('member', 'GET', at('/feedback')));
+    expect((listed.feedback as Array<{ key: string }>).some((f) => f.key === old)).toBe(false);
+
+    const p = await progress(old);
+    expect(p.key).toBe(old);
+    expect(p.work.state).toBe('no_work');
+  });
+});

@@ -84,6 +84,14 @@ describe("the feedback page's face", () => {
     expect(within(sheet).queryByTestId("feedback-triage")).toBeNull();
   });
 
+  // FB-81 on forge-dev, 2026-11-09: a verified item drew a primary "Confirm the fix" beside "Verified"
+  it("offers a verified item only a quiet Reopen, never Confirm the fix", async () => {
+    render(feedbackDetail({ can: { ...NO_ACTS, reopen: true } }));
+    const primary = await screen.findByTestId("feedback-primary");
+    expect(primary).toHaveTextContent("Reopen");
+    expect(primary).not.toHaveTextContent("Confirm the fix");
+  });
+
   it("opens the sheet from a link to its anchor, as the checklist's Answer is", async () => {
     render(feedbackDetail());
     await screen.findByTestId("feedback-detail");

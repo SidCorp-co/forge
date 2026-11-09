@@ -88,6 +88,11 @@ export async function readFeedbackLines(
   projectId: string,
   forecastViewer: ForecastViewer | null,
   now: Date = new Date(),
+  /**
+   * Items a door names, read whole beside the list: the list holds only the newest window
+   * (`list-page-read.ts:LIST_WINDOW`), and an older item one door asks for is read past it (REQ-47 BC-3).
+   */
+  named: readonly string[] = [],
 ): Promise<FeedbackLines> {
   // the links, the issues they route to and the simulation need no item of the list: each starts
   // beside it, so the lines wait on the slower of the two, not on both in turn (ISS-1070 r18)
@@ -106,7 +111,16 @@ export async function readFeedbackLines(
       `forecast: the feedback list refused an unfiltered read: ${listed.refusals[0]?.detail}`,
     );
   }
-  return linesOf(listed.list.feedback, await routed, reads);
+  const held = new Set(listed.list.feedback.map((s) => s.id));
+  const past = named.filter((id) => !held.has(id));
+  if (past.length === 0) return linesOf(listed.list.feedback, await routed, reads);
+  const older = await listFeedbackAs(viewer, projectId, { ids: past });
+  if (!older.ok) {
+    throw new Error(
+      `forecast: the feedback list refused the named items: ${older.refusals[0]?.detail}`,
+    );
+  }
+  return linesOf([...listed.list.feedback, ...older.list.feedback], await routed, reads);
 }
 
 /** Each of `items`' line, for a door that read the items itself (`feedback/index.ts:listFeedbackIn`). */

@@ -42,7 +42,9 @@ function useActSheet(): [boolean, (open: boolean) => void] {
 /** The words of the item's one act, or null where core offers none the sheet holds. */
 export function actLabel(f: FeedbackView, t: ReturnType<typeof useCopy>, language: string): string | null {
   if (f.can.triage || f.can.snooze) return t("feedback.act.triage");
-  if (f.can.verify || f.can.reopen || f.can.askVerify) return t("feedback.act.confirmFix");
+  if (f.can.verify || f.can.askVerify) return t("feedback.act.confirmFix");
+  // a verified item can only be reopened: its fix is confirmed, so nothing asks to confirm it again
+  if (f.can.reopen) return t("feedback.verify.reopen");
   if (f.can.drop) return t("feedback.drop.open");
   if (f.can.tellShipped) return said({ key: "feedback.act.tellNow" }, language);
   return null;
@@ -53,8 +55,10 @@ export function FeedbackPrimary({ f, onAct }: { f: FeedbackView; onAct: () => vo
   const t = useCopy();
   const label = actLabel(f, t, useInterfaceLanguage());
   if (!label) return null;
+  // reopening a confirmed fix is on offer, never asked for: it is no primary act
+  const owed = !(f.can.reopen && !f.can.verify && !f.can.askVerify && !f.can.triage && !f.can.snooze);
   return (
-    <Button type="button" variant="primary" size="sm" onClick={onAct} data-testid="feedback-primary">
+    <Button type="button" variant={owed ? "primary" : "secondary"} size="sm" onClick={onAct} data-testid="feedback-primary">
       {label}
     </Button>
   );

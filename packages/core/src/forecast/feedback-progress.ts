@@ -239,16 +239,27 @@ export async function readFeedbackProgress(
   now: Date = new Date(),
 ): Promise<FeedbackProgress> {
   const row = await rowIn(db, projectId, ref);
-  const read = await readFeedbackLines(viewer, projectId, forecastViewer, now);
+  // the item by name, past the list's newest window (FB-1..FB-90 on forge-dev answered 500 before)
+  let read = await readFeedbackLines(viewer, projectId, forecastViewer, now, [row.id]);
+  const rootOf = (r: typeof read) => {
+    const it = r.items.find((s) => s.id === row.id);
+    return it?.route?.route === 'duplicate' ? (r.links.get(row.id)?.duplicate_of ?? null) : null;
+  };
+  const rootId = rootOf(read);
+  if (rootId && !read.items.some((s) => s.id === rootId)) {
+    read = await readFeedbackLines(viewer, projectId, forecastViewer, now, [row.id, rootId]);
+  }
   const item = read.items.find((s) => s.id === row.id);
   const line = read.lines.get(row.id);
   if (!item || !line) {
     throw new Error(
-      `forecast: ${ref} was read but the feedback list holds no line for it; the list and the item read must see the same items`,
+      `forecast: ${ref} was read by name but the list read holds no line for it; the list and the item read must see the same items`,
     );
   }
-  const rootId = item.route?.route === 'duplicate' ? read.links.get(row.id)?.duplicate_of : null;
   const root = rootId ? read.items.find((s) => s.id === rootId) : undefined;
+  if (rootId && !root) {
+    throw new Error(`forecast: ${ref} is a duplicate of an item the read could not find`);
+  }
   const carried = root ?? item;
   const work = await workOf(projectId, carried, read.links.get(carried.id), root?.key ?? null);
   return {
