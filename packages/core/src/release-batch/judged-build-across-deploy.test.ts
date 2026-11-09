@@ -139,4 +139,35 @@ describe('what the live build holds right after a deploy (ISS-1182)', () => {
     expect(read?.holds.has(OLDER)).toBe(false);
     expect(read?.unanswered.get(OLDER)).toContain('re-checked');
   });
+
+  // ISS-1182 round 2: at 16:35:17Z on forge-dev REQ-12 read 12/23 with nothing re-checked while a
+  // rolling deploy replaced 9e7f8c7750, the probe answering nothing whole for a moment
+  it('keeps what the build last read held, re-checked, where production cannot be read just now', async () => {
+    const d = deps({ [carriageKey(OLDER, LIVE)]: descends });
+    expect((await liveBuildHolds('p-rolling', { commits: [OLDER] }, d))?.holds.get(OLDER)).toBe(
+      true,
+    );
+    d.served = async () => ({ ok: false, why: '502 Bad Gateway' });
+    const read = await liveBuildHolds('p-rolling', { commits: [OLDER, OTHER] }, d);
+    expect(read?.sha).toBe(LIVE);
+    expect(read?.holds.get(OLDER)).toBe(true);
+    expect(read?.rechecking?.get(OLDER)).toContain('502 Bad Gateway');
+    expect(read?.unanswered.has(OLDER)).toBe(false);
+    // a reader that never read production keeps nothing
+    const cold = deps({});
+    cold.served = async () => ({ ok: false, why: '502 Bad Gateway' });
+    const never = await liveBuildHolds('p-rolling', { commits: [OLDER] }, cold);
+    expect(never?.sha).toBeNull();
+    expect(never?.unanswered.get(OLDER)).toContain('502 Bad Gateway');
+  });
+
+  it('weighs a new live build no pass kept yet against the builds kept before it', async () => {
+    const read = await liveBuildHolds(
+      'p-new-sha',
+      { commits: [OLDER] },
+      deps({ [carriageKey(OLDER, PREVIOUS)]: descends }, null),
+    );
+    expect(read?.holds.get(OLDER)).toBe(true);
+    expect(read?.rechecking?.get(OLDER)).toContain(PREVIOUS);
+  });
 });

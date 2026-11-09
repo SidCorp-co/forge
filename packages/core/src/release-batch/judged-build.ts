@@ -25,7 +25,13 @@ import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import { persistedCarriage } from './served-ancestry.js';
-import { heldBefore, type KeptBefore, keepLiveBuild, servedBefore } from './served-builds.js';
+import {
+  heldBefore,
+  type KeptBefore,
+  keepLiveBuild,
+  RECHECK_FOR_MS,
+  servedBefore,
+} from './served-builds.js';
 import { servedOnJudgedOn } from './serving-reading.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
@@ -312,7 +318,7 @@ export async function liveBuildHolds(
   }
   // the build is kept where it is first read, not only by the pass, so one served between two passes
   // is still the build before the next (ISS-1182 round 2); a statement a new build, never a read
-  deps.keepServed?.(projectId, live.sha);
+  if (!live.unreadNow) deps.keepServed?.(projectId, live.sha);
   const releases = await deps.releases(projectId);
   const liveRun = releases.find((r) => r.commit === live.sha) ?? null;
   const unplaced: string[] = [];
@@ -360,6 +366,15 @@ export async function liveBuildHolds(
           : `no release Forge verified, and no answer the source host gave Forge, shows whether the live build \`${live.sha}\` holds it`,
       );
   }
+  // production could not be read just now (a rolling deploy): what the build last read held is kept,
+  // marked as re-checked, never dropped to not judged (ISS-1182 round 2)
+  for (const [commit, held] of holds) {
+    if (live.unreadNow && held && !rechecking.has(commit))
+      rechecking.set(
+        commit,
+        `${live.unreadNow}; \`${live.sha}\`, read before it, holds it, and that answer is being re-checked`,
+      );
+  }
   return {
     sha: live.sha,
     holds,
@@ -373,23 +388,33 @@ export async function liveBuildHolds(
 // at most once per project in LIVE_FOR_MS; a deploy shows in coverage that much later at most.
 const LIVE_FOR_MS = 30_000;
 const LIVE_READ = new Map<string, { at: number; sha: string }>();
+// The last commit each project's production answered, per reader: a read that fails within
+// RECHECK_FOR_MS of it (a container restarting under the probe) is answered from it, re-checked.
+const LAST_READ = new WeakMap<JudgedBuildDeps, Map<string, { at: number; sha: string }>>();
 
-/** The commit production serves now, whole, or why it cannot be read. */
+/** The commit production serves now, whole, or why it cannot be read; where it cannot be read just
+ *  now, the one it answered last, with why (`unreadNow`). */
 async function liveCommitFor(
   projectId: string,
   deps: JudgedBuildDeps,
-): Promise<{ sha: string } | { unread: string }> {
+): Promise<{ sha: string; unreadNow?: string } | { unread: string }> {
   const held = deps === LIVE_DEPS ? LIVE_READ.get(projectId) : undefined;
   if (held && Date.now() - held.at < LIVE_FOR_MS) return { sha: held.sha };
   const served = await deps.served(projectId);
-  if (!served.ok) return { unread: `the live build could not be read: ${served.why}` };
-  const live = liveCommitOf(served.value, await deps.releases(projectId));
+  const live = served.ok ? liveCommitOf(served.value, await deps.releases(projectId)) : null;
   if (!live) {
-    return {
-      unread: `production answers \`${served.value}\`, which names no single release Forge verified`,
-    };
+    const unread = served.ok
+      ? `production answers \`${served.value}\`, which names no single release Forge verified`
+      : `the live build could not be read: ${served.why}`;
+    const last = LAST_READ.get(deps)?.get(projectId);
+    return last && Date.now() - last.at < RECHECK_FOR_MS
+      ? { sha: last.sha, unreadNow: unread }
+      : { unread };
   }
   if (deps === LIVE_DEPS) LIVE_READ.set(projectId, { at: Date.now(), sha: live });
+  const reads = LAST_READ.get(deps) ?? new Map<string, { at: number; sha: string }>();
+  reads.set(projectId, { at: Date.now(), sha: live });
+  LAST_READ.set(deps, reads);
   return { sha: live };
 }
 
