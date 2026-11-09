@@ -111,6 +111,9 @@ describe("the release page in the report shape (ISS-1001)", () => {
     const screens = screen.getAllByTestId("page-screen").map((s) => s.textContent);
     expect(screens[0]).toMatch(/^Releases.*Releases read as pages/);
     expect(screens[1]).toMatch(/Dates show correctly\./);
+    // a change naming no screen reads under a label that says where, never "Elsewhere" (ISS-1179 item 6)
+    expect(screens[1]).toMatch(/^Across the app/);
+    expect(screen.getByTestId("page-users")).not.toHaveTextContent("Elsewhere");
     expect(rawKeysOnFace(container)).toEqual([]);
     for (const word of ["!2070", "feat(release): page"]) expect(within(screen.getByTestId("release-detail")).queryByText(word, { exact: false })).toBeNull();
   });
@@ -139,7 +142,9 @@ describe("the release page in the report shape (ISS-1001)", () => {
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
     const fold = await screen.findByTestId("release-technical-fold");
     expect(fold).not.toHaveAttribute("open");
-    expect(screen.getByTestId("release-technical-summary")).toHaveTextContent("Technical · Change requests 1");
+    // the issue count sits on the fold that lists them, never as "Issues 2" with no list (ISS-1179 item 6)
+    expect(screen.getByTestId("release-technical-summary")).toHaveTextContent("Technical · Issues 2 · Change requests 1");
+    expect(screen.getByTestId("release-proof")).not.toHaveTextContent("Issues");
     expect(screen.queryByTestId("release-technical-body")).toBeNull();
     // the developer view is not read until the section is opened
     expect(calls.some((c) => c.path.endsWith("view=developer"))).toBe(false);
