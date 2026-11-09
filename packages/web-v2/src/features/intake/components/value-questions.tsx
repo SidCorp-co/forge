@@ -1,9 +1,11 @@
 // The questions of an item's draft (REQ-65 BC-3, BC-5; REQ-34 BC-14..BC-16): the ones it needs, each a row
 // of chips with the recommended one marked. A person answers by picking one. A question that holds the
 // check says what it blocks on; any other question has its recommended answer taken until it is answered.
-// Questions answered on an earlier draft stay listed as asked and answered.
+// Questions answered on an earlier draft stay listed as asked and answered. They fold under their name and
+// state ("1 waiting", "2 assumed · 1 answered"), opened on demand, unless a blocking question waits on a
+// reader who may answer it (ISS-1184, as ISS-1179 folded the checklists).
 
-import { ChoiceChips, FieldLabel, ToneBadge } from "@/design";
+import { ChoiceChips, Disclosure, ToneBadge } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAnswerIntakeQuestion } from "../hooks";
@@ -67,12 +69,29 @@ function Question({ q, projectId, itemKey, can }: { q: IntakeQuestionView; proje
   );
 }
 
-/** The draft's questions, or that it has nothing to ask, then what was answered before it. */
+/** The questions' state in a few words: how many wait on an answer, are assumed, are answered; or Nothing. */
+function questionsState(questions: readonly IntakeQuestionView[], t: ReturnType<typeof useCopy>): string {
+  if (questions.length === 0) return t("intake.nothingToAsk");
+  const waiting = questions.filter((q) => !q.answer && q.blocks).length;
+  const assumed = questions.filter((q) => !q.answer && !q.blocks).length;
+  const answered = questions.length - waiting - assumed;
+  return [
+    waiting ? t("intake.questions.state.waiting", { n: waiting }) : null,
+    assumed ? t("intake.questions.state.assumed", { n: assumed }) : null,
+    answered ? t("intake.questions.state.answered", { n: answered }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The draft's questions, or that it has nothing to ask, then what was answered before it, folded to their state. */
 export function ValueQuestions({ draft, projectId }: { draft: IntakeDraftView; projectId: string }) {
   const t = useCopy();
+  // open at once only where a blocking question waits on a reader who may answer it
+  const owed = draft.can.answer && draft.questions.some((q) => !q.answer && q.blocks);
   return (
     <div data-testid="intake-questions">
-      <FieldLabel>{t("intake.questions")}</FieldLabel>
+      <Disclosure title={t("intake.questions")} summary={questionsState(draft.questions, t)} defaultOpen={owed} testId="intake-questions-fold">
       {draft.questions.length === 0 ? (
         <p className="text-13 leading-snug" data-testid="intake-nothing-to-ask">
           <span className="font-medium text-fg">{t("intake.nothingToAsk")}</span>
@@ -95,6 +114,7 @@ export function ValueQuestions({ draft, projectId }: { draft: IntakeDraftView; p
           ))}
         </ul>
       ) : null}
+      </Disclosure>
     </div>
   );
 }
