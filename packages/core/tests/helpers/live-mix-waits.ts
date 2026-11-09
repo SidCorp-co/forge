@@ -100,3 +100,23 @@ export async function proposeDesignChanges(projectId: string): Promise<void> {
       FROM (SELECT id, revision, document FROM project_workflows
              WHERE project_id = ${projectId} ORDER BY flow LIMIT 2) w`);
 }
+
+/**
+ * Each of the project's issue runs ran a session that ended, as forge's runs do: a run's standing
+ * reads the run's newest terminal move and its session's (`runs/facts-read.ts:latestFlips`), and the
+ * plain seed's runs held no session, so the session's read never fired (ISS-1070 r22, 682bd544 ×2).
+ */
+export async function sessionsEnded(projectId: string, ownerId: string): Promise<void> {
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`
+      WITH session AS (
+        INSERT INTO agent_sessions (project_id, pipeline_run_id, kind, status, started_at, created_at)
+        SELECT r.project_id, r.id, 'run_session', 'completed', r.started_at, r.started_at
+          FROM pipeline_runs r WHERE r.project_id = ${projectId} AND r.kind = 'issue'
+        RETURNING id, started_at
+      )
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, created_at)
+      SELECT 'session', s.id, 'running', 'completed', 'user', 'agent', ${ownerId}, 'sessions', s.started_at
+        FROM session s`);
+  });
+}

@@ -11,11 +11,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { createTestProject, createTestUser } from './factories.js';
-import { peopleAsLive } from './live-mix-people.js';
+import { consumedFromOutside, peopleAsLive } from './live-mix-people.js';
 import {
   askAboutRequirement,
   baseDesigns,
   proposeDesignChanges,
+  sessionsEnded,
   stewardFired,
 } from './live-mix-waits.js';
 import { wireLive, wireStorefront } from './live-wiring.js';
@@ -178,6 +179,8 @@ export async function seedLiveMix(input: {
     ids.push(id);
   }
   await peopleAsLive(ids);
+  if (ids[0]) await consumedFromOutside(ids[0], ecosystemId);
+  if (ids[0]) await sessionsEnded(ids[0], ownerId);
   await db.execute(sql`ANALYZE`);
   return ids;
 }

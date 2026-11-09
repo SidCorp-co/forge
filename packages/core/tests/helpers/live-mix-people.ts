@@ -8,7 +8,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { uuidArray } from '../../src/db/raw-sql.js';
-import { addProjectMember, createTestUser } from './factories.js';
+import { addProjectMember, createTestProject, createTestUser } from './factories.js';
 
 /** Agents of projects outside the person's that file feedback into them: forge's name six such. */
 const OUTSIDE = 6;
@@ -53,4 +53,22 @@ export async function peopleAsLive(projectIds: readonly string[]): Promise<void>
       LEFT JOIN project_members m ON m.user_id = f.reported_by AND m.role = 'admin'
      WHERE f.project_id = ${forge} AND f.fb_seq % 5 <> 0
        AND NOT EXISTS (SELECT 1 FROM feedback_occurrences o WHERE o.feedback_id = f.id)`);
+}
+
+/**
+ * A project of another owner in `ecosystemId` that consumes a contract `consumer` provides and
+ * provides one `consumer` consumes, as forge-dev's ecosystem holds projects a person does not read
+ * (ISS-1070 r22): the contracts read named the projects its edges reach a wave after its own, and
+ * sent the same read of project names twice (fae6e9e5).
+ */
+export async function consumedFromOutside(consumer: string, ecosystemId: string): Promise<void> {
+  const owner = (await createTestUser({ verified: true })).id;
+  const outside = (await createTestProject(owner)).id;
+  await db.execute(sql`
+    INSERT INTO ecosystem_memberships (ecosystem_id, project_id, state, invited_by, decided_by, decided_at)
+    VALUES (${ecosystemId}, ${outside}, 'active', ${owner}, ${owner}, now())`);
+  await db.execute(sql`
+    INSERT INTO ecosystem_consumptions (consumer_project_id, provider_project_id, contract_slug, ecosystem_id, built_against)
+    VALUES (${outside}, ${consumer}, 'api', ${ecosystemId}, '1.0.0'),
+           (${consumer}, ${outside}, 'events', ${ecosystemId}, '1.0.0')`);
 }
