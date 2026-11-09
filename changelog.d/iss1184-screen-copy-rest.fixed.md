@@ -1,1 +1,1 @@
-- **Screens name things, not keys:** a requirement's Waits on names its issues and criteria by title, stuck-work notices read plainly, Channels shows each room's agent, Common issues can be added, and home's Moving skips what the live bar shows.
+**Screens name things, not keys.** A requirement's Waits on names issues and criteria by title, stuck-work notices read plainly, Channels shows each room's agent, Common issues can be added, and home's Moving skips what the live bar shows.
