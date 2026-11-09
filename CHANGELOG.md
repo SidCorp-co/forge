@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.633] - 2026-11-09
+
+A brief box disconnect no longer files a production watch breach
+
+### Fixed
+
+- **A short box drop no longer reads as a production breach.** An ops read waits for its box to reconnect within its timeout, and the example watch files checks the box could not reach as one blind item.
+
 ## [0.4.0-dev.632] - 2026-11-09
 
 The bot names the live release and what its record shipped
