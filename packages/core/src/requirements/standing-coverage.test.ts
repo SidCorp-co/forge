@@ -210,14 +210,18 @@ describe('the verdict a business criterion counts', () => {
   });
 
   // forge-dev's requirements list, 2026-11-09: Waits on read "tie ISS-1112, ISS-1110 to the current
-  // wording of BC-13" (ISS-1184 item 1). The act names each item by its title, a criterion by its
-  // short title; the keys stay on demand, in the rule its tooltip reads.
+  // wording of BC-13" (ISS-1184 item 1). The act names each item by its title, an issue by its title's
+  // lead (whole titles ran REQ-90's wait to eight lines at 390 px), a criterion by its short title;
+  // the keys stay on demand, in the rule its tooltip reads.
   it('names the issues and the criterion of an act by their titles, the keys left to its rule', () => {
     const titled = (n: number, title: string) => ({ ...issue(n, 'closed', false), title });
     const s = deriveStanding({
       ...input([
         titled(1, 'Waits on names its items'),
-        titled(2, 'Bell rows read plainly'),
+        titled(
+          2,
+          'Bell rows read plainly: a stuck-work notice says what got stuck and what to do next',
+        ),
         titled(3, 'Channel names head the page'),
       ]),
       criteria: [
@@ -244,30 +248,6 @@ describe('the verdict a business criterion counts', () => {
       issues: '“Waits on names its items” and “Bell rows read plainly”',
     });
     expect(s.waitingOn.rule).toContain('BC-13');
-  });
-
-  // forge-dev's REQ-90, 2026-11-09: two whole issue titles made the wait eight lines at 390 px (the
-  // ISS-1184 witness); an issue is named by its title's lead, as a criterion's row names its first clause
-  it('names an issue by the lead of its title, never the whole sentence', () => {
-    const titled = (n: number, title: string) => ({ ...issue(n, 'closed', false), title });
-    const s = deriveStanding({
-      ...input([
-        titled(1, 'Working agreements C: agents receive the effective agreements for their task, and each run records which revisions it got'),
-        titled(2, 'Working agreements A: one authoritative agreement record per project, resolved against defaults, grants and locked guarantees'),
-      ]),
-      criteria: [
-        { ...old1, code: 'BC-13' },
-        { ...bc1, code: 'BC-13', title: null, body: 'When the feature ships, the nine owner-agreed Forge defaults are seeded.' },
-      ],
-      issueCriteria: [
-        { ...row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0') },
-        { ...row(2, 'pass', '2026-10-05T00:00:00Z', B, 'c0') },
-      ],
-      judge: 'independent',
-    });
-    expect(s.waitingOn.act).toBe(
-      'tie “Working agreements C” and “Working agreements A” to the current wording of “When the feature ships”, then judge it',
-    );
   });
 
   it('a BC judged only on another build waits on the judge to judge the issue on the live one', () => {
