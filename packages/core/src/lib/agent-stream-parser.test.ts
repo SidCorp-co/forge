@@ -21,7 +21,9 @@ describe('parseStreamMessages: a result line', () => {
     expect(message?.totals?.costUnread).toBe(
       'no status line stood before the turn to measure from',
     );
-    expect(message?.content).toBe('Cost unread: no status line stood before the turn to measure from');
+    expect(message?.content).toBe(
+      'Cost unread: no status line stood before the turn to measure from',
+    );
   });
 
   it('reads a figure the line carries unchanged, with no unread reason', () => {
