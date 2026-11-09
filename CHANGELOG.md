@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.620] - 2026-11-09
+
+Refusing a verdict on another project's contract by name
+
+### Fixed
+
+- **A verdict naming another project's contract says so.** `POST /api/issues/:id/verdicts` and a person's verdict fence refused it `VERDICT_CONTRACT_UNKNOWN` claiming this project recorded no versions; both now name whose contract it is, as the agent fence rule does.
+
 ## [0.4.0-dev.619] - 2026-11-09
 
 Event types nothing in Forge reads are now refused by name
