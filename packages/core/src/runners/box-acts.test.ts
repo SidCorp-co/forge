@@ -26,7 +26,12 @@ function flapping() {
   };
 }
 
-const read = { deviceId: 'dev-1', projectId: P, name: 'status', argv: ['forge-ops', 'status', '{}'] };
+const read = {
+  deviceId: 'dev-1',
+  projectId: P,
+  name: 'status',
+  argv: ['forge-ops', 'status', '{}'],
+};
 const answer = { projectId: P, exitCode: 0, stdout: 'all up', stderr: '', durationMs: 120 };
 
 beforeEach(() => {
