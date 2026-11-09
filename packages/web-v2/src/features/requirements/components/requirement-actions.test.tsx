@@ -240,18 +240,32 @@ describe("the delivery moves", () => {
     );
   });
 
-  it("holds Mark delivered off the primary while a criterion does not pass, naming which (ISS-1179 defect 2, REQ-12)", async () => {
+  it("holds Mark delivered off the primary while a criterion does not pass, naming which by name (ISS-1179 defect 2, ISS-1184 item 9, REQ-12)", async () => {
     const calls = fakeCore(() => undefined);
     const user = userEvent.setup();
     const failing = {
       ...inDelivery(true, true),
-      standing: { ...inDelivery(true, true).standing, coverage: [{ code: "BC-6", verdict: "not_judged" }, { code: "BC-13", verdict: "passing" }, { code: "BC-18", verdict: "failing" }] },
+      criteria: [
+        { code: "BC-6", title: "Each fact once", body: "Each fact is shown once per page." },
+        { code: "BC-13", title: null, body: "Labels are short." },
+        { code: "BC-18", title: null, body: "Screens are judged on screenshots, counting words before and after." },
+      ],
+      standing: {
+        ...inDelivery(true, true).standing,
+        coverage: [
+          { code: "BC-6", verdict: "not_judged", body: "Each fact is shown once per page." },
+          { code: "BC-13", verdict: "passing", body: "Labels are short." },
+          { code: "BC-18", verdict: "failing", body: "Screens are judged on screenshots, counting words before and after." },
+        ],
+      },
     } as unknown as RequirementDetail;
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={failing} />);
     const mark = screen.getByRole("button", { name: "Mark delivered" });
     expect(mark, "core refuses it REQUIREMENT_CRITERIA_UNPROVEN while a criterion does not pass").toBeDisabled();
     await user.hover(mark.closest('[data-slot="tooltip-trigger"]') as HTMLElement);
-    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent("Not passing yet: BC-6, BC-18"));
+    // the criteria are named as a person reads them, never by their raw codes (ISS-1184 item 9)
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent("2 criteria not passing yet: Each fact once; Screens are judged on screenshots"));
+    expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent, "a raw code is no name").not.toMatch(/BC-\d/);
     await user.click(mark);
     expect(calls).toEqual([]);
     // the act that does go over the gaps stays offered, by its own name
