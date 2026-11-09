@@ -59,8 +59,9 @@ export function toNotificationItem(
   const resolved = row.resolvedNotice || cleared;
   return {
     id: row.id,
-    ...(row.subject ? { subjectKey: row.subject.key } : {}),
-    ...(row.project && row.subject?.kind !== "project" ? { project: row.project.name } : {}),
+    // a project subject is named by its project's name, never its slug as a key (ISS-1179)
+    ...(row.subject && row.subject.kind !== "project" ? { subjectKey: row.subject.key } : {}),
+    ...(row.project ? { project: row.project.name } : {}),
     type: row.type,
     resolved,
     text: row.line,

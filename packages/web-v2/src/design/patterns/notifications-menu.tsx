@@ -141,7 +141,7 @@ function GroupMembers({
 
 type GroupProps = Pick<NotificationsMenuProps, "expandedId" | "expandedMembers" | "expandedLoading" | "onToggleGroup" | "onSelectMember">;
 
-/** One notification: key, line and age; project, type and verbs below; details and group members under it. */
+/** One notification: its line and age; key, project, type and verbs below; details and group members under it. A row leads with what happened, never a key (ISS-1179). */
 function NotificationRow({
   n,
   open,
@@ -172,17 +172,17 @@ function NotificationRow({
           onClick={() => onSelect?.(n.id)}
           className="flex w-full min-w-0 items-baseline gap-2 rounded-sm text-left focus-visible:shadow-focus focus-visible:outline-none"
         >
-          {n.subjectKey && (
-            <span className="flex-none font-mono text-12 font-semibold text-link" data-testid="notification-key">
-              {n.subjectKey}
-            </span>
-          )}
           <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={n.text}>
             {n.text}
           </span>
           <span className="fg-caption flex-none whitespace-nowrap text-subtle">{n.time}</span>
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-2">
+          {n.subjectKey && (
+            <span className="fg-caption flex-none font-mono text-muted" data-testid="notification-key">
+              {n.subjectKey}
+            </span>
+          )}
           {n.project && (
             <span className="fg-caption max-w-full truncate text-muted" data-testid="notification-project">
               {n.project}
