@@ -92,6 +92,8 @@ const DOORS: Readonly<Record<string, string>> = {
     'requireDevice refuses a chat credential TURN_CREDENTIAL_NOT_A_BOX',
   'middleware/require-pat.ts':
     'requirePat admits /mcp, where mcp/server.ts asks rest-hold.ts:refuseChatToolWrite before a tool runs',
+  'project-config/acting-secret-routes.ts':
+    'a box credential reads one secret the project declares for acting, as its master or a run it declared: GET only, decided by the declaration',
   'project-config/routes.ts':
     'callingDevice is a read on a route requireAuth admits; a chat credential names no device there',
   'project-config/testing-secrets-routes.ts':
