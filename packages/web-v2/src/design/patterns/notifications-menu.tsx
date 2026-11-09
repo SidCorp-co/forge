@@ -240,7 +240,7 @@ function NotificationRow({
   );
 }
 
-// a row reads as the prototype's: the entity key, one line and the age, with the type as an
+// a row reads as the prototype's: one line and the age, the entity key under it beside the type as an
 // EnumBadge; the long body sits behind Details, closed by default (REQ-11 BC-9, BC-15)
 export function NotificationsMenu({
   items,
