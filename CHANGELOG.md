@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.624] - 2026-11-09
+
+Screens say each fact once; channels show which agent answers the room
+
+### Fixed
+
+- **Product screens say each fact once.** A requirement accepted by decision reads its checklist as waived, Mark delivered waits while a criterion fails, and untraced diagrams, checklists and placement open on demand; bell, releases and workflows rows lead with names.
+- **A channel's page shows who answers the room.** It leads with the bound agent, live or not, its recent turns one click away; an empty record reads "Not recorded yet" beside the act that fills it, with Back to Channels.
+
 ## [0.4.0-dev.623] - 2026-11-09
 
 Each act reports one fact once in live updates and activity
