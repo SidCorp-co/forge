@@ -21,8 +21,10 @@ function Checklists({
   answerAt,
   testId,
   developer,
+  status,
 }: {
   reads: ChecklistRead[];
+  status?: string | undefined;
   revision: number | null;
   answerAt?: ((field: ChecklistFormField) => ReactNode) | undefined;
   testId: string;
@@ -31,7 +33,7 @@ function Checklists({
   return (
     <div className="grid gap-8" data-testid={testId}>
       {reads.map((read) => (
-        <ChecklistAnswers key={read.id} read={read} revision={revision} answerAt={answerAt} developer={developer} />
+        <ChecklistAnswers key={read.id} read={read} revision={revision} answerAt={answerAt} developer={developer} status={status} />
       ))}
     </div>
   );
@@ -42,9 +44,12 @@ export function RequirementChecklists({
   reqKey,
   onRevise,
   developer = false,
+  status,
 }: {
   projectId: string;
   reqKey: string;
+  /** The requirement's status now: a waived move stands only while it is where the decision put it. */
+  status?: string | undefined;
   onRevise?: (() => void) | undefined;
   developer?: boolean;
 }) {
@@ -60,7 +65,7 @@ export function RequirementChecklists({
           </Button>
         ) : null
     : undefined;
-  return <Checklists reads={q.data.checklists} revision={q.data.revision} answerAt={answerAt} testId="requirement-checklists" developer={developer} />;
+  return <Checklists reads={q.data.checklists} revision={q.data.revision} answerAt={answerAt} testId="requirement-checklists" developer={developer} status={status} />;
 }
 
 export function FeedbackChecklists({ projectId, fbKey, canTriage, developer = false }: { projectId: string; fbKey: string; canTriage: boolean; developer?: boolean }) {

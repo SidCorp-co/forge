@@ -20,9 +20,13 @@ type Row =
   | { kind: "answer"; field: ChecklistFormField; answer: ChecklistAnswer; now: ChecklistAnswer | null }
   | { kind: "gap"; field: ChecklistFormField; gap: ChecklistGap };
 
-/** The move whose answers stand: the newest that passed, or a decision waived, with its answers kept. */
-const standingMove = (read: ChecklistRead): ChecklistMove | null =>
-  read.moves.find((m) => (m.countsAsPassed || m.standing === "waived") && m.answers !== null) ?? null;
+/**
+ * The move whose answers stand: the newest that passed with its answers kept, or one a decision waived
+ * while the item still stands where that decision put it. A waiver holds for its move only: an item
+ * since moved back (REQ-12, accepted by decision, then in delivery again) owes the gaps once more.
+ */
+const standingMove = (read: ChecklistRead, status: string | undefined): ChecklistMove | null =>
+  read.moves.find((m) => m.answers !== null && (m.countsAsPassed || (m.standing === "waived" && (status === undefined || m.to === status)))) ?? null;
 
 /** Each question in the form's order: its answer, or its gap; one not asked is left out. */
 function rowsOf(read: ChecklistRead, move: ChecklistMove | null): Row[] {
@@ -132,8 +136,11 @@ export function ChecklistAnswers({
   revision = null,
   answerAt,
   developer = false,
+  status,
 }: {
   read: ChecklistRead;
+  /** The item's status now, which a waived move must still name to stand. */
+  status?: string | undefined;
   /** The developer view: where each answer came from. */
   developer?: boolean;
   /** The revision core read `now` at, named on a correction. */
@@ -143,7 +150,7 @@ export function ChecklistAnswers({
 }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const move = standingMove(read);
+  const move = standingMove(read, status);
   const unrecorded = !move && read.moves.some((m) => m.standing === "no_checklist");
   if (!move && !read.now && !unrecorded) return null;
   const rows = rowsOf(read, move);

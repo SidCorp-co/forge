@@ -107,7 +107,7 @@ export function RequirementOverview({
         </section>
       ) : null}
       <ValueCheck projectId={projectId} slug={slug} itemKey={d.key} />
-      <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} developer={developer} />
+      <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} developer={developer} status={d.status} />
       {/* nothing asked and nothing open: no empty section (ISS-1109) */}
       {d.unclear > 0 || d.questions.length > 0 ? <OpenQuestions questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} /> : null}
       {spec.assumptions?.length ? <Assumptions assumptions={spec.assumptions} revision={developer ? (shown?.revision ?? null) : null} slug={slug} /> : null}
