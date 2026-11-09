@@ -56,15 +56,15 @@ interface Entry {
 }
 
 async function worldOf(projectId: string, userId: string | null, now: Date): Promise<World> {
-  const [[self], held, memberships, changes, viewer, dues] = await Promise.all([
-    projectsWhere(db, { ids: [projectId] }),
+  // the project's own row is read with the projects its edges name, one read where two were sent
+  // (ISS-1070 r22: an edge to a project outside the reader's set was a second wave of the same shape)
+  const [held, memberships, changes, viewer, dues] = await Promise.all([
     loadInterface(projectId),
     activeEcosystemIdsOf(db, [projectId]),
     changeItems(projectId),
     viewerOf(projectId, userId),
     windowDues(projectId),
   ]);
-  if (!self) throw notFound(`project ${projectId} does not exist`);
   const graph = await loadGraph(memberships.map((m) => m.ecosystemId));
   const edges = liveEdges(graph);
   const providers = new Set<string>([
@@ -80,14 +80,15 @@ async function worldOf(projectId: string, userId: string | null, now: Date): Pro
     ...touching.flatMap((e) => [e.consumerProjectId, e.providerProjectId]),
   ]);
   const [rows, interfaces, versions] = await Promise.all([
-    projectsWhere(db, { ids: [...ids] }),
+    projectsWhere(db, { ids: [...new Set([projectId, ...ids])] }),
     Promise.all([...providers].map(async (id) => [id, await loadInterface(id)] as const)),
     versionFacts([projectId, ...providers]),
   ]);
+  const self = rows.find((p) => p.id === projectId);
+  if (!self) throw notFound(`project ${projectId} does not exist`);
   const named = new Map<string, ContractProjectRef>(
     rows.map((p) => [p.id, { id: p.id, slug: p.slug, name: p.name }]),
   );
-  named.set(self.id, { id: self.id, slug: self.slug, name: self.name });
   return {
     project: { id: self.id, slug: self.slug, name: self.name },
     held,
