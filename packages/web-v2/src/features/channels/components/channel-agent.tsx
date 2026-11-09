@@ -3,7 +3,7 @@
 // since when are the name's tooltip; the session's address is a raw id and never shown.
 
 import { FORGE_SESSION_ADDRESS_PREFIX, type AgentRoleView } from "@forge/contracts/support-channel";
-import { PageSectionTitle, ToneBadge } from "@/design";
+import { ToneBadge } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { sessionHref } from "@/lib/routes/automation";
@@ -19,21 +19,21 @@ export function ChannelAgent({ agent, slug }: { agent: AgentRoleView | null; slu
   const session = agent ? forgeSessionOf(agent.address) : null;
   const where = agent ? [agent.box ? t("channels.agent.onBox", { box: agent.box }) : null, t("channels.agent.since", { at: time.dateTime(agent.since) })].filter(Boolean).join(" · ") : undefined;
   return (
-    <section className="grid gap-2" aria-label={t("channels.agent.title")} data-testid="channel-agent">
-      <PageSectionTitle>{t("channels.agent.title")}</PageSectionTitle>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    // the page's first line, named for screen readers only: the agent's role and its state say it
+    <section className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-label={t("channels.agent.title")} data-testid="channel-agent">
+      {agent ? (
         <span className="fg-body-sm font-medium text-fg" title={where}>
-          {agent ? t(agent.answeredBy === "outside" ? "channels.agent.outside" : "channels.agent.role", { role: roleName(agent.role) }) : t("channels.agent.none")}
+          {t(agent.answeredBy === "outside" ? "channels.agent.outside" : "channels.agent.role", { role: roleName(agent.role) })}
         </span>
-        <span data-testid="channel-agent-live">
-          <ToneBadge tone={agent ? "ready" : "neutral"} label={t(agent ? "channels.agent.live" : "channels.agent.notLive")} title={where ?? t("channels.agent.notLive")} />
-        </span>
-        {session ? (
-          <Link href={sessionHref(slug, session)} className="fg-body-sm font-medium text-link hover:underline">
-            {t("channels.agent.turns")}
-          </Link>
-        ) : null}
-      </div>
+      ) : null}
+      <span data-testid="channel-agent-live">
+        <ToneBadge tone={agent ? "ready" : "neutral"} label={t(agent ? "channels.agent.live" : "channels.agent.notLive")} title={where ?? t("channels.agent.none")} />
+      </span>
+      {session ? (
+        <Link href={sessionHref(slug, session)} className="fg-body-sm font-medium text-link hover:underline">
+          {t("channels.agent.turns")}
+        </Link>
+      ) : null}
     </section>
   );
 }

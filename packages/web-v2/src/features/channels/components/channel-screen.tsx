@@ -13,7 +13,7 @@ import {
   type ChannelView,
 } from "@forge/contracts/support-channel";
 import { useState, type ReactNode } from "react";
-import { Button, Checkbox, DetailHeader, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Button, Checkbox, DetailHeader, IconButton, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAddRule, useChannel, useConfirmMember } from "../hooks";
@@ -120,9 +120,8 @@ function AddMember({ projectId, rid }: { projectId: string; rid: string }) {
       <MemberEdit member={null} projectId={projectId} rid={rid} onDone={() => setOpen(false)} />
     </div>
   ) : (
-    <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-      {t("channels.addMember")}
-    </Button>
+    // named by its label and icon, never two more words on a screen held to its budget
+    <IconButton icon="plus" size="sm" aria-label={t("channels.addMember")} title={t("channels.addMember")} onClick={() => setOpen(true)} />
   );
 }
 
@@ -132,9 +131,7 @@ function AddRule({ projectId, rid }: { projectId: string; rid: string }) {
   const add = useAddRule(projectId, rid);
   if (text === null) {
     return (
-      <Button size="sm" variant="ghost" onClick={() => setText("")}>
-        {t("channels.addRule")}
-      </Button>
+      <IconButton icon="plus" size="sm" aria-label={t("channels.addRule")} title={t("channels.addRule")} onClick={() => setText("")} />
     );
   }
   return (
