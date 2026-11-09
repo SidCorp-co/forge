@@ -114,6 +114,15 @@ describe("each design's requirement (C2)", () => {
     await screen.findAllByTestId("workflow-row");
     expect(screen.getAllByTestId("workflow-requirements").map((c) => c.textContent)).toEqual(["REQ-2 · REQ-3", "None", "REQ-4", "None"]);
   });
+
+  // forge-dev's Workflows, 2026-11-09: a row listed seven keys, "REQ-30 · REQ-31 · REQ-41 …" (ISS-1179 item 10)
+  it("names at most two keys and counts the rest, every key the count's tooltip", async () => {
+    const keys = ["REQ-30", "REQ-31", "REQ-41", "REQ-42", "REQ-50", "REQ-51", "REQ-60"];
+    screenWith([design("feedback-lifecycle", "Feedback lifecycle", { requirements: keys })]);
+    const cell = await screen.findByTestId("workflow-requirements");
+    expect(cell.textContent).toBe("REQ-30 · REQ-31 +5");
+    expect(cell.getAttribute("title")).toBe(keys.join(" · "));
+  });
 });
 
 describe("what the viewer owes, said once (C3)", () => {
@@ -145,6 +154,14 @@ describe("two counts, two labels (ISS-805)", () => {
     expect(screen.getByTestId("workflows-needs-you")).toHaveTextContent("Needs you1");
     expect(screen.getByTestId("health-needs-you")).toHaveTextContent("To settle 6");
     expect(screen.getByTestId("health-needs-you").textContent).not.toMatch(/Needs you/);
+  });
+
+  // forge-dev, 2026-11-09: "Wrong 16 / Not in design 14 / Upcoming 12" read unexplained (ISS-1179 item 10)
+  it("says what each marker means in its tooltip, never its raw kind", async () => {
+    const base = design("b", "Bravo");
+    screenWith([{ ...base, health: { ...base.health, counts: { ...base.health.counts, wrong: 2 } } }]);
+    const chip = await screen.findByTestId("health-chip");
+    expect(chip.getAttribute("title")).toBe("Wrong 2: built otherwise than the design says");
   });
 });
 
