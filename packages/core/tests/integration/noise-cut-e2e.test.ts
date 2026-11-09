@@ -211,8 +211,9 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
 
     expect((await baselines(key)).map((b) => b.act)).toEqual(['agree']);
     const s = await standingOf(key);
-    // a wait on the master where none serves this project reads stuck (REQ-48 BC-9 nobody_serves)
-    expect(s.attentionGroup).toBe('stuck');
+    // a wait on the master where none serves this project holds the stuck rule (REQ-48 BC-9
+    // nobody_serves), which the shared vocabulary groups as overdue (FB-583)
+    expect(s.attentionGroup).toBe('overdue');
     expect((s.times as Doc).stuck).toMatchObject({ code: 'nobody_serves' });
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',

@@ -8,8 +8,10 @@
 // The read's inputs are written all over core (verdicts, builder flags, criteria and their classes,
 // the requirement criteria they trace, baselines and their pins, workflows, project slugs, reopens,
 // attachments). Each input table's trigger marks the issue in `issue_criteria_facts_stale` inside the
-// writing transaction, whoever writes it (0633 names each), and every read first rewrites the marked
-// or missing issues among those it reads (`storedIssueCriteria`). An issue marked for its builder
+// writing transaction, whoever writes it (0633 names each), and every stored read first rewrites the
+// marked or missing issues among those it reads (`storedIssueCriteria`). The stored read is taken only
+// by `standing-facts.ts:issueCriteriaOf` on the pool with no issue read as back from its reopen;
+// inside a transaction, or with an issue read as returned, it reads live. An issue marked for its builder
 // facts (`issues/builder-facts.ts`, `issue_read_model_stale`) is owed too: its verdicts' builder flags
 // are part of these facts, so they are rewritten first. A mark is cleared only at the generation the
 // rewrite read, so a write racing the rewrite stays marked and is rewritten next time. A read never

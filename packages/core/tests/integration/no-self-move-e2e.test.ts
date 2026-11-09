@@ -5,7 +5,9 @@
  * pin-only design revision approves itself (REQ-41 BC-23), no resolved feedback item is verified
  * though its record reads the problem gone (Feedback triage r16), and no draft issue whose ready
  * checklist is complete opens (Issue lifecycle r15). Each waits on the door a person or an agent
- * takes. Against real Postgres, the queue started as the server starts it.
+ * takes. Against real Postgres, the queue started as the server starts it. Since the owner's rulings
+ * of 2026-11-08 (D3, D5) a project outside strict re-pins by rule and verifies on ship, so this file
+ * declares the project strict, where every one of these moves stays its mover's.
  *
  * @direct-test-of packages/core/src/timer-registry.ts
  * @direct-test-of packages/core/src/outbox-consumers.ts
@@ -33,6 +35,7 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { vouchedByPassingCriterion } from '../helpers/loop-close.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
@@ -115,6 +118,7 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
+  await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
   say = requester(app, { owner: await signUserToken(ownerId) });
 
   // BC-10 and BC-23: access moves to r2 with a change no criterion traces; ux only moves its pin

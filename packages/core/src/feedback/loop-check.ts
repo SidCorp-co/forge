@@ -77,12 +77,12 @@ async function verifyByShip(row: Row, projectId: string, linked: Linked): Promis
   const version = routeView(row, linked)?.carriers.find((c) => c.release)?.release ?? null;
   const reason = shipVerifyReason(row.route, version);
   let moved = false;
-  await inTx(async (tx) => {
+  await inTx(async (tx): Promise<null> => {
     await lockFeedback(tx, projectId);
     const now = await rowIn(tx, projectId, row.id, true);
-    if (now.status !== 'triaged') return;
+    if (now.status !== 'triaged') return null;
     const held = await linkedOf(projectId, [now]);
-    if (verifyRefusal(phaseIn(now, held), shippedFailingIn(now, held))) return;
+    if (verifyRefusal(phaseIn(now, held), shippedFailingIn(now, held))) return null;
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {
         to: 'verified',
@@ -104,6 +104,7 @@ async function verifyByShip(row: Row, projectId: string, linked: Linked): Promis
     });
     await tellStepToReporters(tx, now, 'verified', null, version);
     moved = true;
+    return null;
   });
   return moved;
 }

@@ -186,10 +186,18 @@ describe('a clarification is asked where the route takes one', () => {
         recommended: 'The default answer',
       }),
     );
+    // the second stands beside the first; the reporter is shown the oldest still open, and answers
+    // one at a time (ISS-695, `told.ts:shownClarification`)
     expect(again.feedback.clarification).toMatchObject({
       status: 'open',
-      prompt: 'And which device?',
+      prompt: 'Which browser shows it?',
     });
+    expect(
+      (again.feedback.questions as Doc[])
+        .filter((q) => q.kind === 'clarification' && q.status === 'open')
+        .map((q) => q.prompt)
+        .sort(),
+    ).toEqual(['And which device?', 'Which browser shows it?']);
   });
 
   it('reads every question about the item on the item, open and then answered, and no other item’s', async () => {

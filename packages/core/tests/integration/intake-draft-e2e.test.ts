@@ -411,7 +411,7 @@ describe('a feedback item filed in one sentence is drafted on filing, with no ch
     expect(seen.at(-1)?.system).toContain('"triage"');
   });
 
-  it('refuses a triage its accept would refuse, without the checklist answers, and proposes none', async () => {
+  it('refuses a triage its accept would refuse, without the checklist answers, keeps the value check and proposes none', async () => {
     mode = 'unchecked';
     const before = seen.length;
     const res = await api(token, 'POST', `/api/projects/${projectId}/feedback`, {
@@ -424,8 +424,10 @@ describe('a feedback item filed in one sentence is drafted on filing, with no ch
     await settleOutbox();
     expect(seen.length - before).toBe(2);
     expect(seen.at(-1)?.user).toMatch(/That was refused: triage: answers: /);
+    // ISS-690: the sound value check is kept with no triage, and the master triages the item
     const draft = await draftOf(key);
-    expect([draft?.outcome, draft?.code]).toEqual(['failed', 'INTAKE_SHAPE']);
+    expect([draft?.outcome, draft?.code]).toEqual(['drafted', null]);
+    expect([draft?.applied?.as, draft?.applied?.code]).toEqual(['none', 'INTAKE_TRIAGE_REFUSED']);
     const sugg = await rows<{ n: string }>(
       sql`SELECT count(*)::text AS n FROM suggestions s JOIN feedback f ON f.id = s.feedback_id WHERE f.project_id = ${projectId} AND f.fb_seq = ${Number(key.slice(3))}`,
     );

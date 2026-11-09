@@ -193,13 +193,15 @@ describe('REQ-75 r6: #webmail’s seed binds its group answered outside (BC-35)'
     expect(again.ruleRows).toHaveLength(RULES.length);
     expect(again.memberRows).toHaveLength(MEMBERS.length);
     expect(lines.filter((l) => l.startsWith('bound #'))).toHaveLength(1);
-    // the channel's page under Product lists it beside the binding's own group
+    // the channel's page under Product lists it beside the binding's own group; answered outside,
+    // no Forge agent answers either room (ISS-1184 names who answers each)
     const list = await api(w.owner, 'GET', channels());
     expect(list.body.channels).toEqual([
-      { rid: TEAM, name: null, members: 0, rules: 0, commonIssues: 0 },
+      { rid: TEAM, name: null, members: 0, rules: 0, commonIssues: 0, agent: null },
       {
         rid: w.chat.rid,
         name: null,
+        agent: null,
         members: MEMBERS.length,
         rules: RULES.length,
         commonIssues: 0,
