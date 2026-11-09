@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.630] - 2026-11-09
+
+Proven criteria survive back-to-back deploys; requirements wait on the release holding them
+
+### Fixed
+
+- **A requirement waits on the release that already carries it.** When an open release run claims all its landed issues, it names that run's approvers approving its version, or the run at work, never a cut of the next version.
+
 ## [0.4.0-dev.629] - 2026-11-09
 
 MCP clients can read project status again
