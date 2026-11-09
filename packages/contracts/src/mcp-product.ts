@@ -65,3 +65,19 @@ export const BOT_TOOL_ACTIONS = [
 	...BOT_TOOL_READS,
 	...BOT_TOOL_WRITES,
 ] as const;
+
+/**
+ * How a project stands, what waits on the caller and the decisions recorded (ISS-1183, REQ-78 BC-8):
+ * the `project.*` door runs the assistant's own reads, so a product role on MCP and the chat beside
+ * it cannot disagree. All three only read.
+ */
+export const PROJECT_TOOL_READS = ["status", "needs_you", "decisions"] as const;
+
+/**
+ * Where an issue comes from, said once for every text the MCP door serves on filing one (its
+ * `issues.create` guide and the server's instructions), so they cannot drift apart or from the org
+ * guide `mcp-issue-creation-is-guided` (owner rulings 2026-10-16, 2026-11-01, 2026-11-07): the caller
+ * chooses the lane and records why, and asks a person only for product direction (ISS-1183).
+ */
+export const ISSUE_FILING_LANE =
+	"An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one directly for delivery work an agreed requirement or a triaged feedback item already covers, or for a technical finding of your own (a defect against an existing expectation, security, performance, debt). Choose the lane yourself and say why in what you file; a person is asked only for product direction, never before filing.";

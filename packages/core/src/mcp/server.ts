@@ -1,3 +1,4 @@
+import { ISSUE_FILING_LANE } from '@forge/contracts/mcp-product';
 import { redactQueryParams, scrubLogText, scrubSecretsDeep } from '@forge/observability';
 import { type CallToolResult, Server, type Tool } from '@modelcontextprotocol/server';
 import { HTTPException } from 'hono/http-exception';
@@ -18,7 +19,6 @@ import { assertToolDeclaresAccess, toolGrantFor } from '../lib/tool-grant.js';
 import { toToolCallContent } from '../lib/tool-result.js';
 import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { runDeclaredTool } from '../permissions/index.js';
-import { ISSUE_FILING_LANE } from '../product-door/issues-tool.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { actionCatalog } from './action-catalog.js';
@@ -268,7 +268,7 @@ export function forgeMcpInstructions(): string {
   return `You are connected to Forge, the control plane where agents and people run one loop for a project: Product → Delivery → Release → Audit → Product. The Product leads: requirements, workflow designs and feedback say what is worth building, and Delivery builds to them in issues. This server carries the Product side, so a person, or an agent working for one as product owner, BA or project manager, works a project from an MCP client. Delivery (building, landing, deploying) is done by the project's master and its runs from a checkout, over the REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) and the \`forge\` CLI on it.
 
 **Working a project's Product** (the work this server is for):
-- How it stands, what waits on you and what was decided: \`projects.status\` first, then \`projects.needs_you\` and \`projects.decisions\`. Find the project with \`projects.list\`.
+- How it stands, what waits on you and what was decided: \`project.status\` first, then \`project.needs_you\` and \`project.decisions\`. Find the project with \`projects.list\`.
 - What is wanted: \`requirements.*\` (draft, revise, propose, answer its questions) and \`design.*\` (workflow designs, mockups, suggestions).
 - What users and owners report: \`project_feedback.*\` (file, find similar, ask the reporter).
 - What shipped and what waits on approval: \`releases.*\`. Questions waiting on a person: \`questions.*\`.
@@ -276,7 +276,7 @@ export function forgeMcpInstructions(): string {
 
 It lists five tools, so you load only what you use: \`forge_find { query }\` finds the actions that do what you want, \`forge_describe { action }\` gives one action's input and its own guide, and \`forge_call { action, args }\` runs it; \`search\` and \`fetch\` read the issues, requirements and knowledge of the projects you can read. An action is \`<door>.<action>\`, for example \`requirements.create\`. The doors:
 
-- \`projects\` — the projects you can read, one in full, a new one, and how one stands: \`status\`, \`needs_you\` and \`decisions\` are the reads the dashboard and the Forge bot answer from.
+- \`project\` — how one project stands (\`status\`), what waits on you (\`needs_you\`) and the decisions recorded (\`decisions\`): the reads the dashboard and the Forge bot answer from. \`projects.*\` lists the projects you can read and creates one.
 - \`requirements\` — list, read, draft and revise requirements (REQ-n), propose a draft revision, and answer a question standing on one with what the person said; agreeing and accepting are not done here: they are the project's master's outside a strict project, and a person's on the requirement page in one.
 - \`project_feedback\` — a project's own feedback (FB-n): list, read and file it, find similar items, and ask a reporter a clarification; triage is not done here, and is the project's master's unless the project is strict.
 - \`feedback\` — feedback about Forge itself (its CLI, routes, tools, guides, web app), from any project: filed as you into Forge's own home project, never into the project you work in; list and read the items you reported and how they are going.

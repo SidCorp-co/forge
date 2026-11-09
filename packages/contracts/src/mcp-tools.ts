@@ -21,6 +21,7 @@ export const MCP_TOOL_NAMES = [
 	"forge_config",
 	"forge_bindings",
 	"forge_bot",
+	"forge_project",
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];

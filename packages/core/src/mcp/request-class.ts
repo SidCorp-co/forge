@@ -3,6 +3,7 @@ import {
   BOT_TOOL_READS,
   DESIGN_TOOL_READS,
   ISSUES_TOOL_READS,
+  PROJECT_TOOL_READS,
   QUESTIONS_TOOL_READS,
   RELEASES_TOOL_READS,
 } from '@forge/contracts/mcp-product';
@@ -60,6 +61,7 @@ const READ_ACTIONS = {
   forge_config: new Set<string>(CONFIG_TOOL_READS),
   forge_bindings: new Set<string>(BINDINGS_TOOL_READS),
   forge_bot: new Set<string>(BOT_TOOL_READS),
+  forge_project: new Set<string>(PROJECT_TOOL_READS),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */

@@ -11,6 +11,7 @@ import {
   forgeBotTool,
   forgeDesignTool,
   forgeIssuesTool,
+  forgeProjectTool,
   forgeQuestionsTool,
   forgeReleasesProductTool,
 } from '../product-door/tool.js';
@@ -54,4 +55,5 @@ export const MCP_TOOLS = {
   // A persistent project thread with the Forge bot (REQ-91): the chat assistant's own room and turn,
   // under the caller's credential, followed by a handle where a turn outlasts the call.
   forge_bot: (ctx) => forgeBotTool(ctx),
+  forge_project: (ctx) => forgeProjectTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

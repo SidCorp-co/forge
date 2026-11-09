@@ -20,9 +20,9 @@ You work the Product. The project's master and its runs work Delivery, from a ch
 ### What you work in
 | You want | On MCP (\`forge_call\`) | Guide |
 |---|---|---|
-| How the project stands: stuck work, what shipped, what is in flight, the next release | \`projects.status\` | |
-| What waits on you, with the recommended answer | \`projects.needs_you\` | |
-| What was decided, by whom and why | \`projects.decisions\` | |
+| How the project stands: stuck work, what shipped, what is in flight, the next release | \`project.status\` | |
+| What waits on you, with the recommended answer | \`project.needs_you\` | |
+| What was decided, by whom and why | \`project.decisions\` | |
 | What is wanted: a requirement drafted, revised, proposed; a question on one answered | \`requirements.*\` | \`requirement-lifecycle\` |
 | How it should flow: a workflow design, a mockup to try, a suggestion | \`design.*\` | \`workflow-design\`, \`mockups\`, \`suggestions\` |
 | What a user or owner reported | \`project_feedback.*\` | \`feedback-triage\` |
@@ -30,7 +30,7 @@ You work the Product. The project's master and its runs work Delivery, from a ch
 | A question waiting on a person | \`questions.*\` | |
 
 On the web the same reads are the project home, Needs you, Requirements, Feedback and Releases.
-Read \`projects.status\` first: it is the read the dashboard draws, so what you say and what the page
+Read \`project.status\` first: it is the read the dashboard draws, so what you say and what the page
 shows cannot disagree. Say a figure with the read it came from, and a forecast as the range it is.
 
 ### Where what you hear goes

@@ -7,3 +7,4 @@ export { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './
 export { provideCommentPorts } from './ports.js';
 export { noteReviewOnIssue, registerReviewNotes } from './review-note.js';
 export { insertComment } from './service.js';
+export { forgeDecisionsTool } from './tool.js';

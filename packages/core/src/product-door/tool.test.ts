@@ -2,6 +2,7 @@ import type { Forecast, ForecastPaused, ScopeForecast } from '@forge/contracts/f
 import {
   DESIGN_TOOL_ACTIONS,
   DESIGN_TOOL_READS,
+  ISSUE_FILING_LANE,
   ISSUES_TOOL_ACTIONS,
   QUESTIONS_TOOL_ACTIONS,
   RELEASES_TOOL_ACTIONS,
@@ -11,7 +12,6 @@ import { isRefusal } from '../lib/refusal.js';
 import type { McpContext, McpTool } from '../lib/tool.js';
 import { assertToolDeclaresAccess, toolGrantFor, toolGrantRefusal } from '../lib/tool-grant.js';
 import { forgeMcpInstructions } from '../mcp/server.js';
-import { ISSUE_FILING_LANE } from './issues-tool.js';
 import { issueProgress, scopeProgress } from './progress.js';
 import {
   forgeDesignTool,

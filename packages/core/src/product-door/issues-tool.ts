@@ -5,7 +5,7 @@
 // and the master admits it: no person admits an issue (REQ-68 BC-6), so the door takes no `admit`.
 
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
-import { ISSUES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
+import { ISSUE_FILING_LANE, ISSUES_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { z } from 'zod';
 import { readIssueForecast, readProjectForecast } from '../forecast/index.js';
 import {
@@ -60,15 +60,6 @@ type Input = z.infer<typeof input>;
 
 const SHAPE =
   '{ action, projectId, issue?, status?, statusNot?, search?, limit?, offset?, title?, description?, priority?, category?, relations?, acceptanceCriteria? }';
-
-/**
- * Where an issue comes from, said once for every text the MCP door serves on filing one (its
- * \`issues.create\` guide and the server's instructions), so they cannot drift apart or from the org
- * guide \`mcp-issue-creation-is-guided\` (owner rulings 2026-10-16, 2026-11-01, 2026-11-07): the
- * caller chooses the lane and records why, and asks a person only for product direction (ISS-1183).
- */
-export const ISSUE_FILING_LANE =
-  'An issue is the delivery side, so start from the product: a problem or idea a person reports goes to Feedback (project_feedback.submit), and new or changed behaviour to a Requirement (requirements.create, or requirements.revise for one that exists); their triage and delivery file the issues. File one directly for delivery work an agreed requirement or a triaged feedback item already covers, or for a technical finding of your own (a defect against an existing expectation, security, performance, debt). Choose the lane yourself and say why in what you file; a person is asked only for product direction, never before filing.';
 
 const DESCRIPTION = `Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none), and the filing of one.
 - action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and \`progress\`. \`pause\` names a wait that holds the whole project, such as no runner online.

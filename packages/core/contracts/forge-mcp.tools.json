@@ -1286,24 +1286,17 @@
       }
     },
     {
-      "description": "The projects you can read, one in full, and a new one, as their REST doors answer them.\n- list { archived? }: every project you can read, each with its id, slug, name and your role. Start here to find the project you work in.\n- get { projectId }: one project with your role, its members, labels and base branch.\n- status { projectId, days? }: how the project stands now, as the dashboard reads it: what is stuck, the decisions waiting on you, what shipped, work in flight, what members owe, requirements proven, the next release, what is late and the roadmap. Read it first for status, progress or what to do next.\n- needs_you { projectId, limit? }: only the decisions waiting on you, each with its question, the recommended answer and why; `notDecisions` counts what else your Needs you list holds.\n- decisions { projectId, days?, limit? }: the decisions recorded in the project, newest first, each on its issue, requirement, design or feedback item with the reason, who decided and when.\n- create { slug, name, orgId? }: a new project in your personal org, or in the org named where you hold a role in it, as POST /api/projects creates one; a token fenced to projects is refused, since a new project is in none of them.",
+      "description": "How one project stands, what waits on you and what was decided, read as the dashboard, Needs you and the Forge bot read them.\n- status { projectId, days? }: how the project stands now: what is stuck, the decisions waiting on you, what shipped, work in flight, what members owe, requirements proven, the next release, what is late and the roadmap. Read it first for status, progress or what to do next.\n- needs_you { projectId, limit? }: only the decisions waiting on you, each with its question, the recommended answer and why; `notDecisions` counts what else your Needs you list holds.\n- decisions { projectId, days?, limit? }: the decisions recorded in the project, newest first, each on its issue, requirement, design or feedback item with the reason, who decided and when.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "action": {
             "enum": [
-              "list",
-              "get",
               "status",
               "needs_you",
-              "decisions",
-              "create"
+              "decisions"
             ],
             "type": "string"
-          },
-          "archived": {
-            "description": "list: archived projects too",
-            "type": "boolean"
           },
           "days": {
             "description": "status, decisions: the last n days",
@@ -1316,6 +1309,57 @@
             "maximum": 100,
             "minimum": 1,
             "type": "integer"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_project",
+      "x-forge-permission": {
+        "decisions": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "needs_you": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        },
+        "status": {
+          "on": {
+            "arg": "projectId"
+          },
+          "permission": "project.read"
+        }
+      }
+    },
+    {
+      "description": "The projects you can read, one in full, and a new one, as their REST doors answer them.\n- list { archived? }: every project you can read, each with its id, slug, name and your role. Start here to find the project you work in.\n- get { projectId }: one project with your role, its members, labels and base branch.\n- create { slug, name, orgId? }: a new project in your personal org, or in the org named where you hold a role in it, as POST /api/projects creates one; a token fenced to projects is refused, since a new project is in none of them.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "create"
+            ],
+            "type": "string"
+          },
+          "archived": {
+            "description": "list: archived projects too",
+            "type": "boolean"
           },
           "name": {
             "maxLength": 200,
@@ -1352,30 +1396,12 @@
           "rule": "projects/tool.ts:createProjectForTool",
           "why": "org.read on the org orgId names, else the caller's personal org, from an unfenced token"
         },
-        "decisions": {
-          "on": {
-            "arg": "projectId"
-          },
-          "permission": "project.read"
-        },
         "get": {
           "rule": "projects/tool.ts:getProjectForTool",
           "why": "project.read on the project projectId names, once its own argument rule has answered"
         },
         "list": {
           "self": "the projects the caller can see, inside its token fence"
-        },
-        "needs_you": {
-          "on": {
-            "arg": "projectId"
-          },
-          "permission": "project.read"
-        },
-        "status": {
-          "on": {
-            "arg": "projectId"
-          },
-          "permission": "project.read"
         }
       }
     },
