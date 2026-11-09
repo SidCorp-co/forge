@@ -85,6 +85,7 @@ export {
   loadReleaseRoster,
   owedReleaseNotes,
   releaseVersionsAmong,
+  runClaimsOf,
   waitingIssueIds as draftReleaseIssueIds,
   warnedReleaseNotes,
 } from './queries.js';

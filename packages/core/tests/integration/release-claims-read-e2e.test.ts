@@ -6,6 +6,7 @@
  *
  * @direct-test-of packages/core/src/forecast/release.ts
  * @direct-test-of packages/core/src/requirements/standing-read.ts
+ * @direct-test-of packages/core/src/release-batch/waiting-issues.ts
  */
 
 import { randomUUID } from 'node:crypto';

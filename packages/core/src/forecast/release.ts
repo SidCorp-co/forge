@@ -19,7 +19,12 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { holds, namedHolders } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
-import { draftReleaseIssueIds, nextDraftVersion, readReleaseOwes } from '../release-batch/index.js';
+import {
+  draftReleaseIssueIds,
+  nextDraftVersion,
+  readReleaseOwes,
+  runClaimsOf,
+} from '../release-batch/index.js';
 import { approveRunLeg, type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 
 /** Who reads a forecast, with the grants that decide whether a person's act it names is theirs. */
@@ -115,27 +120,11 @@ export async function releaseClaimsFor(
 ): Promise<{ byIssue: Map<string, string>; runs: Map<string, ReleaseClaim> }> {
   const ids = [...new Set(issueIds)].filter((id) => new RegExp(CANONICAL_UUID).test(id));
   if (ids.length === 0) return { byIssue: new Map(), runs: new Map() };
-  const [rows, mode, viewer] = await Promise.all([
-    db.execute(sql`
-      SELECT i.id::text AS issue_id, r.id::text AS run_id, r.release_version AS version,
-             (SELECT a.decision FROM release_approvals a WHERE a.run_id = r.id
-               ORDER BY a.requested_at DESC, a.id DESC LIMIT 1) AS decision,
-             EXISTS (SELECT 1 FROM release_approvals a WHERE a.run_id = r.id) AS asked
-        FROM issues i
-        JOIN pipeline_runs r ON r.id = i.release_batch_run_id AND r.project_id = i.project_id
-       WHERE i.project_id = ${projectId}::uuid AND i.id = ANY(${uuidArray(ids)})
-         AND r.metadata ->> 'source' = 'release-batch'
-         AND r.status IN ('running', 'paused') AND r.release_released_at IS NULL`),
+  const [open, mode, viewer] = await Promise.all([
+    runClaimsOf(projectId, ids),
     readReleaseMode(projectId),
     viewerOn(projectId, userId),
   ]);
-  const open = rowsOf<{
-    issue_id: string;
-    run_id: string;
-    version: string | null;
-    decision: string | null;
-    asked: boolean;
-  }>(rows);
   const awaiting = (r: (typeof open)[number]) =>
     r.version !== null && (r.asked ? r.decision === null : mode === 'approval');
   const holders = open.some(awaiting)
@@ -143,14 +132,14 @@ export async function releaseClaimsFor(
     : [];
   const runs = new Map<string, ReleaseClaim>();
   for (const r of open) {
-    runs.set(r.run_id, {
+    runs.set(r.runId, {
       version: r.version,
       leg: awaiting(r)
         ? approveRunLeg({ holders, viewerOwes: viewer?.mayApprove ?? false }, r.version as string)
         : null,
     });
   }
-  return { byIssue: new Map(open.map((r) => [r.issue_id, r.run_id])), runs };
+  return { byIssue: new Map(open.map((r) => [r.issueId, r.runId])), runs };
 }
 
 /**

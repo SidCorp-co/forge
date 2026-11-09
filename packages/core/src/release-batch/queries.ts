@@ -37,7 +37,7 @@ import { endedAccount, type ReleaseRunEnded } from './run-ended.js';
 import { carriersIn, carriersOf } from './version-rule.js';
 import { currentReleaseVersion } from './version-store.js';
 
-export { waitingIssueIds } from './waiting-issues.js';
+export { runClaimsOf, waitingIssueIds } from './waiting-issues.js';
 
 export interface ReleaseRosterEntry {
   id: string;
