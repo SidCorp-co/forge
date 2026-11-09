@@ -390,7 +390,10 @@ export async function commonIssueByKey(
   return row ?? null;
 }
 
-/** Write a common issue whole: one per question, its one answer, every thread it was asked in. */
+/**
+ * Write a common issue whole: one per question, its one answer, every thread it was asked in; a
+ * person's names none (ISS-1184).
+ */
 export async function writeCommonIssue(input: {
   channelId: string;
   question: string;

@@ -4110,6 +4110,13 @@
       "when": 1838592000000,
       "tag": "0644_production_read_serving_is_kept_per_commit",
       "breakpoints": true
+    },
+    {
+      "idx": 645,
+      "version": "7",
+      "when": 1838678400000,
+      "tag": "0645_a_person_adds_a_common_issue_on_the_channel_page",
+      "breakpoints": true
     }
   ]
 }

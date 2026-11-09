@@ -464,7 +464,10 @@ export const supportChannelRules = pgTable(
   }),
 );
 
-/** A question asked in several threads, with its one answer (BC-36); a defect links its Feedback. */
+/**
+ * A question asked in several threads, with its one answer (BC-36); a defect links its Feedback. The
+ * session's names two threads or more; one a person adds on the channel's page names none (ISS-1184).
+ */
 export const supportChannelCommonIssues = pgTable(
   'support_channel_common_issues',
   {
@@ -488,7 +491,7 @@ export const supportChannelCommonIssues = pgTable(
       .where(sql`removed_at IS NULL`),
     threadsChk: check(
       'support_channel_common_issues_threads_chk',
-      sql`cardinality(${t.threads}) >= 2`,
+      sql`cardinality(${t.threads}) >= 2 OR cardinality(${t.threads}) = 0`,
     ),
   }),
 );

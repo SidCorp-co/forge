@@ -1,11 +1,14 @@
 // A bound channel's page under Product (REQ-75 r6 BC-30): its record for a project reader, and what
-// a person writes there — a member's roles and what to ask them for, written confirmed (BC-33), and
-// rules added or removed by hand. The session writes through `/support/session/*` instead.
+// a person writes there — a member's roles and what to ask them for, written confirmed (BC-33),
+// rules added or removed by hand, and a common issue added by hand (ISS-1184). The session writes
+// through `/support/session/*` instead.
 
 import { chatUsernameSchema } from '@forge/contracts/support';
 import {
+  type ChannelCommonIssueWrite,
   type ChannelMemberWrite,
   channelAgentWriteSchema,
+  channelCommonIssueWriteSchema,
   channelMemberWriteSchema,
   channelRuleWriteSchema,
   channelSwitchOutsideStoppedSchema,
@@ -21,13 +24,15 @@ import type { AuthVars } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclaredOn, requiresOnParam } from '../permissions/index.js';
 import { agentRolesOf, declareOutsideAgent } from './agent-roles.js';
-import { privateRefusal } from './channel.js';
+import { privateRefusal, questionKey } from './channel.js';
 import { channelsOf, channelViewOf } from './channel-read.js';
 import {
   addRule,
   channelIsBound,
+  commonIssueByKey,
   ensureChannel,
   removeRule,
+  writeCommonIssue,
   writeMember,
 } from './channel-store.js';
 import { no, type Outcome } from './outcome.js';
@@ -109,6 +114,54 @@ export async function confirmMember(
   });
   if (!row) throw new Error(`support: confirming member ${username} wrote no row`);
   return { ok: true, value: { username: row.username } };
+}
+
+/** A rule a person adds on the channel's page: nothing private in it, on a channel a binding attaches. */
+async function addRuleByHand(
+  viewer: string,
+  projectId: string,
+  rid: string,
+  text: string,
+): Promise<Outcome<{ id: string; text: string }>> {
+  const refusedPrivate = privateRefusal<{ id: string; text: string }>('/text', text);
+  if (refusedPrivate) return refusedPrivate;
+  const channel = await writableChannel(viewer, projectId, rid);
+  if (!channel) return unknownChannel(rid);
+  const rule = await addRule({ channelId: channel.id, text, addedBy: viewer });
+  return { ok: true, value: { id: rule.id, text: rule.text } };
+}
+
+/**
+ * A common issue a person adds (ISS-1184), under the rule write's permission and checks: nothing
+ * private in it, on a channel a binding attaches. Over a question already held it replaces the
+ * answer and keeps the threads it was asked in.
+ */
+export async function addCommonIssue(
+  viewer: string,
+  projectId: string,
+  rid: string,
+  write: ChannelCommonIssueWrite,
+): Promise<Outcome<{ id: string; question: string; answer: string }>> {
+  for (const [path, text] of [
+    ['/question', write.question],
+    ['/answer', write.answer],
+  ] as const) {
+    const refusedPrivate = privateRefusal<never>(path, text);
+    if (refusedPrivate) return refusedPrivate;
+  }
+  const channel = await writableChannel(viewer, projectId, rid);
+  if (!channel) return unknownChannel(rid);
+  const key = questionKey(write.question);
+  const before = await commonIssueByKey(channel.id, key);
+  const row = await writeCommonIssue({
+    channelId: channel.id,
+    question: write.question,
+    questionKey: key,
+    answer: write.answer,
+    threads: before?.threads ?? [],
+    feedbackId: before?.feedbackId ?? null,
+  });
+  return { ok: true, value: { id: row.id, question: row.question, answer: row.answer } };
 }
 
 const rolesQuery = zValidator(
@@ -262,18 +315,22 @@ export function mountChannelRoutes(routes: Hono<{ Variables: AuthVars }>): void 
     strictBody(channelRuleWriteSchema, '{ text }'),
     async (c) => {
       const { id, rid } = c.req.valid('param');
-      const { text } = c.req.valid('json');
-      const refusedPrivate = privateRefusal('/text', text);
-      if (refusedPrivate && !refusedPrivate.ok) {
-        return refused(c, refusedPrivate.refusals, 'SUPPORT_REFUSED');
-      }
-      const channel = await writableChannel(c.get('userId'), id, rid);
-      if (!channel) {
-        const out = unknownChannel(rid);
-        return refused(c, out.ok ? [] : out.refusals, 'SUPPORT_REFUSED');
-      }
-      const rule = await addRule({ channelId: channel.id, text, addedBy: c.get('userId') });
-      return c.json({ rule: { id: rule.id, text: rule.text } }, 201);
+      const out = await addRuleByHand(c.get('userId'), id, rid, c.req.valid('json').text);
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ rule: out.value }, 201);
+    },
+  );
+
+  routes.post(
+    '/:id/support/channels/:rid/common-issues',
+    channelParam,
+    WRITE,
+    strictBody(channelCommonIssueWriteSchema, '{ question, answer }'),
+    async (c) => {
+      const { id, rid } = c.req.valid('param');
+      const out = await addCommonIssue(c.get('userId'), id, rid, c.req.valid('json'));
+      if (!out.ok) return refused(c, out.refusals, 'SUPPORT_REFUSED');
+      return c.json({ commonIssue: out.value }, 201);
     },
   );
 

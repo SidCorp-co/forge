@@ -199,11 +199,15 @@ export const supportRuleRequestSchema = z.strictObject({
 });
 
 /** A question asked again, with its one answer (BC-36). */
+/** A common issue's question and its one answer, as the session notes it and as a person adds it. */
+const commonIssueQuestionSchema = z.string().trim().min(3).max(300);
+const commonIssueAnswerSchema = z.string().trim().min(3).max(2000);
+
 export const supportCommonIssueRequestSchema = z.strictObject({
 	/** The threads it was asked in; a new common issue names at least two. */
 	threads: z.array(supportThreadIdSchema).min(1).max(20),
-	question: z.string().trim().min(3).max(300),
-	answer: z.string().trim().min(3).max(2000),
+	question: commonIssueQuestionSchema,
+	answer: commonIssueAnswerSchema,
 	/** The Feedback item a defect was recorded as. */
 	feedback: feedbackKeySchema.optional(),
 });
@@ -407,6 +411,18 @@ export const channelRuleWriteSchema = z.strictObject({
 	text: channelRuleTextSchema,
 });
 
+/**
+ * A common issue a person adds on the channel's page (ISS-1184): a question and its one answer. It
+ * names no thread: a person knows the question is asked again without the session having seen it.
+ */
+export const channelCommonIssueWriteSchema = z.strictObject({
+	question: commonIssueQuestionSchema,
+	answer: commonIssueAnswerSchema,
+});
+export type ChannelCommonIssueWrite = z.infer<
+	typeof channelCommonIssueWriteSchema
+>;
+
 export interface ChannelMemberView {
 	username: string;
 	roles: ChannelRole[];
@@ -451,6 +467,8 @@ export interface ChannelSummaryView {
 	members: number;
 	rules: number;
 	commonIssues: number;
+	/** The agent session answering the group now (BC-42), the list's and the page's one read; null when none is live or declared. */
+	agent: AgentRoleView | null;
 }
 
 /**
@@ -498,8 +516,6 @@ export const channelAgentWriteSchema = z.strictObject({
 export type ChannelAgentWrite = z.infer<typeof channelAgentWriteSchema>;
 
 export interface ChannelView extends ChannelSummaryView {
-	/** The agent session answering the group now (BC-42); null when none is live or declared. */
-	agent: AgentRoleView | null;
 	memberRows: ChannelMemberView[];
 	ruleRows: ChannelRuleView[];
 	commonIssueRows: ChannelCommonIssueView[];
@@ -552,22 +568,22 @@ export const channelSwitchDutySchema = z.strictObject({
  */
 export const channelSwitchPlanSchema = z
 	.strictObject({
-	outsideBot: z.strictObject({
-		/** The outside bot's account id on the chat server, as the server signs its messages. */
-		userId: z.string().trim().min(1).max(200),
-		username: z.string().trim().min(1).max(120).optional(),
-	}),
-	duties: z
-		.array(channelSwitchDutySchema)
-		.max(40)
-		.refine(
-			(d) => new Set(d.map((x) => x.key)).size === d.length,
-			"a duty's key is named once",
-		),
-	/** Another channel's switch this one waits on until a person marks it proven. */
-	after: z.uuid().optional(),
-	/** The owner's word is needed before this group switches. */
-	ownerWord: z.boolean().optional(),
+		outsideBot: z.strictObject({
+			/** The outside bot's account id on the chat server, as the server signs its messages. */
+			userId: z.string().trim().min(1).max(200),
+			username: z.string().trim().min(1).max(120).optional(),
+		}),
+		duties: z
+			.array(channelSwitchDutySchema)
+			.max(40)
+			.refine(
+				(d) => new Set(d.map((x) => x.key)).size === d.length,
+				"a duty's key is named once",
+			),
+		/** Another channel's switch this one waits on until a person marks it proven. */
+		after: z.uuid().optional(),
+		/** The owner's word is needed before this group switches. */
+		ownerWord: z.boolean().optional(),
 	})
 	.refine((p) => p.duties.length > 0 || p.ownerWord === true, {
 		path: ["duties"],

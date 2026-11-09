@@ -18,6 +18,8 @@ import type { Member } from '../helpers/support-world.js';
 // What the bot does with the record (ISS-751) is support-channel-acts-e2e.
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/channel-store.ts
+// @direct-test-of packages/core/src/support/channel-routes.ts
+// @direct-test-of packages/core/src/support/channel-read.ts
 
 const w = new ChannelWorld();
 // a GitHub token's shape, built here so no literal secret sits in the tree
@@ -32,10 +34,18 @@ describe('REQ-75 r6: the channel record and who is in it', () => {
   it('lists the bound channel under Product, with members, rules, common issues and routes (BC-30)', async () => {
     const list = await api(w.owner, 'GET', w.base());
     expect(list.status, JSON.stringify(list.body)).toBe(200);
-    expect(list.body.channels).toEqual([
-      { rid: w.rid, name: 'catalog-support', members: 0, rules: 0, commonIssues: 0 },
-    ]);
     const one = await w.channel();
+    // the list names who answers the room, the page's own read (ISS-1184)
+    expect(list.body.channels).toEqual([
+      {
+        rid: w.rid,
+        name: 'catalog-support',
+        members: 0,
+        rules: 0,
+        commonIssues: 0,
+        agent: one.agent,
+      },
+    ]);
     expect(one).toMatchObject({ memberRows: [], ruleRows: [], commonIssueRows: [] });
     expect((one.routes as { route: string }[]).map((r) => r.route)).toEqual([
       'forge',
@@ -55,14 +65,19 @@ describe('REQ-75 r6: the channel record and who is in it', () => {
         JOIN agent_sessions s ON s.id = r.session_id LEFT JOIN devices d ON d.id = s.device_id
        WHERE r.id = ${w.roomId}::uuid`);
     expect(placed?.box).toBeTruthy();
-    expect((await w.channel()).agent).toMatchObject({
+    const agent = {
       kind: 'channel',
       role: 'support',
       channel: w.rid,
       answeredBy: 'forge',
       box: placed?.box,
       address: `forge-session:${placed?.session_id}`,
-    });
+    };
+    expect((await w.channel()).agent).toMatchObject(agent);
+    // the Channels list names the same agent on the channel's row, so a reader sees who answers
+    // each room without opening it (ISS-1184)
+    const list = await api(w.owner, 'GET', w.base());
+    expect(list.body.channels[0]?.agent).toMatchObject(agent);
     // Forge's bot is read off its session, never declared by hand
     const declared = await api(w.owner, 'PUT', `${w.base()}/${w.rid}/agent`, {
       role: 'catalog Babo',
@@ -262,6 +277,78 @@ describe('REQ-75 r6: nothing private kept, and one person mentioned', () => {
     ]) {
       expect(cold.turn.text, part).toContain(part);
     }
+  });
+});
+
+// ISS-1184: Common issues read "Not recorded yet" on the channel's page with no act beside it,
+// because no person's write existed. A person adds a question and its one answer under the rule
+// write's permission and checks; the session's common issue still names two threads (BC-36).
+describe('ISS-1184: a person adds a common issue on the channel page', () => {
+  const add = (who: string, body: Record<string, unknown>, rid = w.rid) =>
+    api(who, 'POST', `${w.base()}/${rid}/common-issues`, body);
+
+  it('writes a question and its answer with no thread, read back on the page and briefed to the session', async () => {
+    const got = await add(w.owner, {
+      question: 'Where do I find last month’s invoices?',
+      answer: 'Billing, then Invoices.',
+    });
+    expect(got.status, JSON.stringify(got.body)).toBe(201);
+    expect(got.body.commonIssue).toMatchObject({
+      question: 'Where do I find last month’s invoices?',
+    });
+    const row = ((await w.channel()).commonIssueRows as Record<string, unknown>[]).find(
+      (i) => i.question === 'Where do I find last month’s invoices?',
+    );
+    expect(row).toMatchObject({ answer: 'Billing, then Invoices.', threads: 0, feedbackKey: null });
+    // a common issue naming one thread is neither the session's (two or more) nor a person's (none)
+    await expect(
+      db.execute(sql`
+        INSERT INTO support_channel_common_issues (channel_id, question, question_key, answer, threads)
+        SELECT id, 'q', 'q', 'a', ARRAY['t1'] FROM support_channels WHERE rid = ${w.rid}`),
+    ).rejects.toMatchObject({
+      cause: { constraint_name: 'support_channel_common_issues_threads_chk' },
+    });
+    // the session is told the record changed on its next turn, the person's common issue in it
+    const next = await w.ask(w.chat.bob, 'invoices again', async () => undefined);
+    expect(next.turn.text).toContain('Where do I find last month’s invoices?');
+  });
+
+  it('replaces the answer of a question already held and keeps the threads it was asked in', async () => {
+    const got = await add(w.owner, {
+      question: '  is the shop OPEN on sunday? ',
+      answer: 'Yes, from ten to five now.',
+    });
+    expect(got.status, JSON.stringify(got.body)).toBe(201);
+    const row = ((await w.channel()).commonIssueRows as Record<string, unknown>[]).find((i) =>
+      String(i.question).toLowerCase().includes('open on sunday'),
+    );
+    expect(row).toMatchObject({ answer: 'Yes, from ten to five now.', threads: 2 });
+  });
+
+  it('refuses by name what the rule write refuses: private data, a malformed body, a group not bound, a reader without write', async () => {
+    const secret = await add(w.owner, { question: 'What is the token?', answer: `It is ${TOKEN}` });
+    expect(secret.status).toBe(400);
+    expect(JSON.stringify(secret.body)).toContain('SUPPORT_CHANNEL_PRIVATE_DATA');
+    const short = await add(w.owner, { question: 'Hi', answer: 'Billing, then Invoices.' });
+    expect(short.status).toBe(400);
+    expect(JSON.stringify(short.body)).toContain('question');
+    const extra = await add(w.owner, {
+      question: 'Who answers?',
+      answer: 'Carol.',
+      threads: ['t1'],
+    });
+    expect(extra.status).toBe(400);
+    const unbound = await add(w.owner, { question: 'Who answers?', answer: 'Carol.' }, 'NOTBOUND');
+    expect(unbound.status).toBe(404);
+    expect(JSON.stringify(unbound.body)).toContain('SUPPORT_CHANNEL_UNKNOWN');
+    expect((await add(w.stranger, { question: 'Who answers?', answer: 'Carol.' })).status).toBe(
+      403,
+    );
+    expect(
+      await rows(
+        sql`SELECT 1 FROM support_channel_common_issues WHERE question_key = 'who answers?'`,
+      ),
+    ).toHaveLength(0);
   });
 });
 

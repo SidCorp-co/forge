@@ -52,7 +52,7 @@ const routesOf = (members: readonly MemberRow[]): ChannelRouteView[] =>
         : members.filter((m) => m.roles.includes(route)).map((m) => m.username),
   }));
 
-/** The project's bound channels, oldest binding first. */
+/** The project's bound channels, oldest binding first, each with the agent answering it. */
 export async function channelsOf(viewer: string, projectId: string): Promise<ChannelSummaryView[]> {
   await requireDeclaredOn(projectId, viewer, 'project.read');
   const out: ChannelSummaryView[] = [];
@@ -67,6 +67,8 @@ export async function channelsOf(viewer: string, projectId: string): Promise<Cha
       members: members.length,
       rules: rules.length,
       commonIssues: issues.length,
+      // who answers the room, the page's own read, so a row says it too (ISS-1184)
+      agent: await channelAgentOf(projectId, rid, channel),
     });
   }
   return out;
