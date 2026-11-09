@@ -89,10 +89,13 @@ afterEach(() => {
 });
 
 describe("the project Dashboard (ISS-1067)", () => {
-  it("draws Moving, Shipped and Stuck as one grouped list, and no Needs you while nothing waits", async () => {
+  // the owner's review of forge-dev, 2026-11-09: the home answered what is moving, never whether
+  // anything needs the reader (ISS-1179 item 5)
+  it("draws Needs you reading Nothing while nothing waits, then Moving, Shipped and Stuck", async () => {
     await open(0);
     await screen.findByTestId("dashboard");
-    expect(sections()).toEqual(["moving", "shipped", "stuck"]);
+    expect(sections()).toEqual(["needs", "moving", "shipped", "stuck"]);
+    expect(screen.getByTestId("dashboard-needs-none")).toHaveTextContent("Nothing");
     expect(screen.queryByText("Which login provider ships first?")).toBeNull();
   });
 
