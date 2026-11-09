@@ -1,6 +1,8 @@
 import type { ProjectStatus } from '@forge/contracts/project-status';
 import { describe, expect, it } from 'vitest';
 import { pruneStatus } from './prune.js';
+import { shippedOf } from './read.js';
+import { forgeProjectStatusTool } from './tool.js';
 
 // REQ-48 section 6: the chat read leaves out a section that holds nothing and names it in one line,
 // never a run of zeros the model reads as a finding.
@@ -121,5 +123,107 @@ describe('the status the chat reads', () => {
         shipped: null,
       },
     ]);
+  });
+});
+
+// ISS-1189 (FB-600): forge-dev served 0.4.0-dev.630, shipped with ISS-1182 and ISS-1186. Asked "which
+// release is live and what did it ship", the bot's first read was this one; it named the version and
+// no issue of it, and the bot answered "No landed release record is available".
+describe('asked what is live, the status the chat reads', () => {
+  const RELEASED = '2026-11-09T17:53:48.048Z';
+  const verified = {
+    level: 'none',
+    proven: 0,
+    total: 0,
+    check: 'recorded',
+    provider: null,
+    judgedOn: null,
+  };
+  const issue = (key: string, title: string) => ({
+    id: key,
+    key,
+    title,
+    status: 'closed',
+    proof: 'unrecorded',
+    changeRequest: null,
+  });
+  const live = {
+    version: '0.4.0-dev.630',
+    state: 'shipped',
+    current: true,
+    releasedAt: RELEASED,
+    name: 'Proven criteria hold through deploys',
+    summary: 'A criterion that held before a deploy stays holding.',
+    issueCount: 2,
+    requirements: ['REQ-6'],
+    contents: [
+      {
+        requirement: { key: 'REQ-6', title: 'Verdicts are typed records' },
+        issues: [issue('ISS-1182', 'A pass judged on an earlier build')],
+      },
+      { requirement: null, issues: [issue('ISS-1186', "A requirement's standing names the cut")] },
+    ],
+    verified,
+  };
+  const next = {
+    ...live,
+    version: '0.4.0-dev.631',
+    state: 'in_progress',
+    current: false,
+    releasedAt: null,
+    name: 'The bell counts what it shows',
+    issueCount: 1,
+    contents: [],
+  };
+  const list = (serving: string | null) =>
+    ({
+      releases: [next, live],
+      counts: {},
+      approvalRequired: false,
+      production: { ok: true, name: 'dev', url: 'https://forge-dev.example', serving },
+      landings: [],
+      endedRunHolds: [],
+    }) as unknown as Parameters<typeof shippedOf>[0];
+  const statusOf = (serving: string | null) =>
+    pruneStatus({
+      ...base,
+      shipped: shippedOf(list(serving), [], [], new Date('2026-11-02T00:00:00.000Z'), AT),
+    });
+
+  it('carries the release record of the version production serves, with the issues it shipped', () => {
+    const read = statusOf('0.4.0-dev.630');
+    // what the model reads: before ISS-1189 it held 0.4.0-dev.630 and no issue of it
+    const given = JSON.stringify(read.shipped);
+    expect(given).toContain('ISS-1182');
+    expect(given).toContain('ISS-1186');
+    expect(read.shipped?.live).toEqual({
+      version: '0.4.0-dev.630',
+      record: {
+        name: 'Proven criteria hold through deploys',
+        state: 'shipped',
+        releasedAt: RELEASED,
+        issues: [
+          { key: 'ISS-1182', title: 'A pass judged on an earlier build', requirement: 'REQ-6' },
+          { key: 'ISS-1186', title: "A requirement's standing names the cut", requirement: null },
+        ],
+      },
+    });
+  });
+
+  it('names the version it read and holds no record where no release wears it', () => {
+    expect(statusOf('0.4.0-dev.632').shipped?.live).toEqual({
+      version: '0.4.0-dev.632',
+      record: null,
+    });
+  });
+
+  it('names no live version where production serves none Forge read', () => {
+    expect(statusOf(null).shipped?.live).toBeNull();
+  });
+
+  it('sends the chat to the one-release read it holds, by the name it holds it under', () => {
+    const { description } = forgeProjectStatusTool({} as Parameters<typeof forgeProjectStatusTool>[0]);
+    expect(description).toContain('`live`');
+    expect(description).toContain('forge_release');
   });
 });

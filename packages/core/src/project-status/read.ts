@@ -131,7 +131,7 @@ export function requirementsShippedOf(
   return { inFull: inFull.sort(newest), awaitingProof: awaitingProof.sort(newest) };
 }
 
-function shippedOf(
+export function shippedOf(
   releases: ReleaseListResponse,
   scopes: readonly ScopeForecast[],
   requirements: readonly RequirementSummary[],
