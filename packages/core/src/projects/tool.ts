@@ -7,6 +7,8 @@
 
 import { scrubSecretsDeep } from '@forge/observability';
 import { z } from 'zod';
+import { forgeDecisionsTool } from '../comments/tool.js';
+import { forgeNeedsYouTool } from '../development/needs-you-tool.js';
 import {
   assertUnfenced,
   loadProjectAccess,
@@ -21,9 +23,6 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
-import { forgeDecisionsTool } from '../comments/tool.js';
-import { forgeNeedsYouTool } from '../development/needs-you-tool.js';
-import { forgeProjectStatusTool } from '../project-status/tool.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
@@ -35,6 +34,7 @@ import {
   requireOrgCan,
 } from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
+import { forgeProjectStatusTool } from '../project-status/tool.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectSchema } from './request-schemas.js';
 import { createProject } from './service.js';
@@ -50,7 +50,13 @@ const input = z.strictObject({
   name: createProjectSchema.shape.name.optional(),
   orgId: z.uuid().optional().describe('create: the org; your personal org when omitted'),
   days: z.number().int().min(1).max(365).optional().describe('status, decisions: the last n days'),
-  limit: z.number().int().min(1).max(100).optional().describe('needs_you, decisions: at most n rows'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('needs_you, decisions: at most n rows'),
 });
 type Input = z.infer<typeof input>;
 
@@ -127,7 +133,8 @@ async function projectRead(ctx: McpContext, i: Input) {
   if (i.action === 'status') {
     return forgeProjectStatusTool(ctx).handler({ projectId, days: i.days });
   }
-  if (i.action === 'needs_you') return forgeNeedsYouTool(ctx).handler({ projectId, limit: i.limit });
+  if (i.action === 'needs_you')
+    return forgeNeedsYouTool(ctx).handler({ projectId, limit: i.limit });
   return forgeDecisionsTool(ctx).handler({ projectId, days: i.days, limit: i.limit });
 }
 

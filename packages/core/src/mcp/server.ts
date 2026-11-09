@@ -5,7 +5,6 @@ import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { RETIRED_MCP_TOOLS } from '../forge-door/index.js';
-import { ISSUE_FILING_LANE } from '../product-door/issues-tool.js';
 import { env } from '../lib/env.js';
 import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
 import {
@@ -19,6 +18,7 @@ import { assertToolDeclaresAccess, toolGrantFor } from '../lib/tool-grant.js';
 import { toToolCallContent } from '../lib/tool-result.js';
 import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { runDeclaredTool } from '../permissions/index.js';
+import { ISSUE_FILING_LANE } from '../product-door/issues-tool.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { actionCatalog } from './action-catalog.js';

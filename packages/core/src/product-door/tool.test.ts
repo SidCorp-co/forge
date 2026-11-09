@@ -109,7 +109,9 @@ describe('forge_issues create', () => {
     const texts = { door: d, instructions: forgeMcpInstructions() };
     for (const [where, text] of Object.entries(texts)) {
       expect(text, where).toContain(ISSUE_FILING_LANE);
-      expect(text, where).not.toMatch(/ask (them|the person)( first)? before filing|ask the person first/);
+      expect(text, where).not.toMatch(
+        /ask (them|the person)( first)? before filing|ask the person first/,
+      );
     }
     // the door model names its actions; the retired per-surface tool name finds nothing in forge_find
     expect(d).not.toContain('forge_requirements');

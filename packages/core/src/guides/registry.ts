@@ -31,6 +31,7 @@ import {
 } from './issue-guides.js';
 import { LINK_CHAT_GUIDE } from './link-chat-guide.js';
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
+import { PRODUCT_ROLE_GUIDE } from './product-role-guide.js';
 import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import { RELEASE_TAGS_GUIDE } from './release-tags-guide.js';
@@ -38,7 +39,6 @@ import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
 import { SCRIPT_SCHEDULES_GUIDE } from './script-schedules-guide.js';
 import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
-import { PRODUCT_ROLE_GUIDE } from './product-role-guide.js';
 import type { CoreGuide, ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
 import { WORKFLOW_TEMPLATES_GUIDE } from './workflow-templates-guide.js';
@@ -361,13 +361,15 @@ const listedRank = (slug: string) => {
 
 /** Body-free index — slug/title/summary/version only, never guide bodies; the start guides first. */
 export function listGuides(): Array<Omit<ForgeGuide, 'body'>> {
-  return [...FORGE_GUIDES].sort((a, b) => listedRank(a.slug) - listedRank(b.slug)).map(({ slug, audience, title, summary, version }) => ({
-    slug,
-    audience,
-    title,
-    summary,
-    version,
-  }));
+  return [...FORGE_GUIDES]
+    .sort((a, b) => listedRank(a.slug) - listedRank(b.slug))
+    .map(({ slug, audience, title, summary, version }) => ({
+      slug,
+      audience,
+      title,
+      summary,
+      version,
+    }));
 }
 
 /** Full guide by slug, or `undefined` if unknown. */
