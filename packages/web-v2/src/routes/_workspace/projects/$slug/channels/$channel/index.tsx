@@ -9,7 +9,7 @@ function ProjectChannelPage() {
   const params = useParams<{ slug: string; channel: string }>();
   return (
     <ProjectRefGate label={t("channels.loading")}>
-      {(p) => <ChannelScreen projectId={p.ref} rid={decodeURIComponent(params.channel)} />}
+      {(p) => <ChannelScreen projectId={p.ref} slug={params.slug} rid={decodeURIComponent(params.channel)} />}
     </ProjectRefGate>
   );
 }

@@ -21,3 +21,12 @@ export function useConfirmMember(projectId: string, rid: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, projectId] }),
   });
 }
+
+/** A rule a person adds to the channel's record. */
+export function useAddRule(projectId: string, rid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => channelsApi.addRule(projectId, rid, text),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, projectId] }),
+  });
+}

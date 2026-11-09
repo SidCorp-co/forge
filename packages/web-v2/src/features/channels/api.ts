@@ -12,4 +12,10 @@ export const channelsApi = {
       `/projects/${projectId}/support/channels/${encodeURIComponent(rid)}/members/${encodeURIComponent(username)}`,
       { method: "PUT", body: JSON.stringify(write) },
     ),
+  /** A rule a person adds on the channel's page. */
+  addRule: (projectId: string, rid: string, text: string) =>
+    apiClient<{ rule: { id: string; text: string } }>(`/projects/${projectId}/support/channels/${encodeURIComponent(rid)}/rules`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
 };

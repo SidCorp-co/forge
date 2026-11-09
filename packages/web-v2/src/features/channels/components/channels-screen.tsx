@@ -10,7 +10,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useRouter } from "@/lib/navigation/router";
 import { useChannels } from "../hooks";
 
-export const channelHref = (slug: string, rid: string) => `/projects/${slug}/channels/${encodeURIComponent(rid)}`;
+export const channelsListHref = (slug: string) => `/projects/${slug}/channels`;
+export const channelHref = (slug: string, rid: string) => `${channelsListHref(slug)}/${encodeURIComponent(rid)}`;
 
 const COUNTS = ["members", "rules", "commonIssues"] as const;
 
