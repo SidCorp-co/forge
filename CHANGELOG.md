@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.619] - 2026-11-09
+
+Event types nothing in Forge reads are now refused by name
+
+### Fixed
+
+- **An outbox event type naming no consumer is refused by name.** `check-outbox-consumers` reads both registries and fails `OUTBOX_EVENT_UNCONSUMED <type>` for each type with none, in verify and the conformance job.
+
 ## [0.4.0-dev.618] - 2026-11-09
 
 Masters and declared runs can read a project's acting secrets through Forge
