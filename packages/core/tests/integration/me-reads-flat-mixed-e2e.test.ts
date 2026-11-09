@@ -259,7 +259,7 @@ beforeAll(async () => {
 afterAll(closeWorld);
 
 describe("a person's reads of fourteen projects of forge-dev's kinds", () => {
-  it('sends each shape of attention once an area, and at most twice in releases and requirements, on a warm read', async () => {
+  it('sends each shape of attention once an area, and at most twice in requirements, on a warm read', async () => {
     expect(await overMost('/api/me/attention', attentionMost)).toEqual([]);
   });
 
