@@ -31,7 +31,7 @@ pub(super) async fn first_turn(
     if launch_prompt(session, prompt).is_some() {
         return Ok(base);
     }
-    let Err(why) = terminal::send_line(pane, prompt).await else {
+    let Err(why) = terminal::brief_new_pane(pane, prompt).await else {
         return Ok(base);
     };
     if let Err(e) = terminal::kill(pane).await {

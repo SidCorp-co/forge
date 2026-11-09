@@ -25,6 +25,9 @@ use runner_workspace::terminal::{self, ChatPane};
 
 pub(crate) type Panes = Arc<Mutex<HashMap<String, PaneSession>>>;
 
+/// A message typed into a running turn, when it was typed, and the inbox write it carries.
+type Unsubmitted = (String, std::time::Instant, Option<(String, u64)>);
+
 /// How often the pane's events and transcript are read while it lives.
 pub(super) const READ_EVERY: Duration = Duration::from_millis(200);
 
@@ -47,8 +50,10 @@ pub(crate) struct PaneSession {
     claude_session_id: String,
     turn_tx: TurnTx,
     in_turn: bool,
-    /// Messages typed into the running turn that the session has not yet said it took, and when.
-    unsubmitted: Vec<(String, std::time::Instant)>,
+    /// Messages typed into the running turn that the session has not yet said it took, when each was
+    /// typed, and the inbox write each carries: reported applied only once the session takes it, so
+    /// one never taken is handed in again by core (ISS-1173).
+    unsubmitted: Vec<Unsubmitted>,
     pending_inbox: Vec<(String, u64)>,
     turns: u64,
     bearer_dir: Option<PathBuf>,
@@ -424,18 +429,20 @@ impl ClaudeCodeRunner {
             let joined = s.in_turn;
             if joined {
                 s.unsubmitted
-                    .push((message.to_string(), std::time::Instant::now()));
+                    .push((message.to_string(), std::time::Instant::now(), None));
             } else {
                 s.in_turn = true;
             }
             *s.turn_tx.lock().await = tx.clone();
             (s.pane.name.clone(), joined, s.claude_session_id.clone())
         };
-        if let Err(why) = terminal::send_line(&name, message).await {
+        // a pane launched a moment ago has drawn no composer yet, and a paste before it is lost
+        // (ISS-1173): typed once the composer reads, as a master's brief is
+        if let Err(why) = terminal::brief_new_pane(&name, message).await {
             let mut map = self.panes.lock().await;
             if let Some(s) = map.get_mut(id) {
                 if joined {
-                    if let Some(i) = s.unsubmitted.iter().rposition(|(m, _)| m == message) {
+                    if let Some(i) = s.unsubmitted.iter().rposition(|(m, ..)| m == message) {
                         s.unsubmitted.remove(i);
                     }
                 } else {
@@ -444,9 +451,13 @@ impl ClaudeCodeRunner {
             }
             return Err(Error::Other(format!("[CHAT_PANE_NOT_TYPED] {why}")));
         }
-        if let Some(p) = pending {
-            if let Some(s) = self.panes.lock().await.get_mut(id) {
-                s.pending_inbox.push(p);
+        if let Some(s) = self.panes.lock().await.get_mut(id) {
+            match s.unsubmitted.iter_mut().rfind(|(m, ..)| m == message) {
+                // the give-up counts from the paste, not from the wait for the composer
+                Some(typed) if joined => {
+                    *typed = (message.to_string(), std::time::Instant::now(), pending)
+                }
+                _ => s.pending_inbox.extend(pending),
             }
         }
         let _ = tx.send(RunnerEvent::ClaudeSessionId(sid)).await;
@@ -544,6 +555,7 @@ impl Watch {
         let mut stop_at: Option<i64> = None;
         let mut cost_after: Option<f64> = None;
         let mut reads = 0u32;
+        let mut held = false;
         loop {
             tokio::time::sleep(READ_EVERY).await;
             reads = reads.wrapping_add(1);
@@ -574,6 +586,12 @@ impl Watch {
                             }
                         } else if line.event == "UserPromptSubmit" {
                             self.submitted(&line.payload).await;
+                            if self.ours(&line.payload) {
+                                // a typed message taken: the session works again, and its next
+                                // Stop, not the one before, ends the turn
+                                stop_at = None;
+                                held = false;
+                            }
                         } else if line.event == "Stop" && self.ours(&line.payload) {
                             stop_at = Some(line.at_ms);
                             cost_after = None;
@@ -602,12 +620,9 @@ impl Watch {
                 tally.next_turn();
                 continue;
             }
-            if tally.queued() > 0 || self.unsubmitted().await > 0 {
-                tracing::info!(
-                    "[chat {}] a Stop with a message typed into the turn not yet taken — the turn goes on",
-                    self.id
-                );
-                stop_at = None;
+            // the Stop is held, not dropped, so the give-up in `unsubmitted` runs on every read: a
+            // message that never landed makes no further Stop to wait for (ISS-1173)
+            if self.held_open(&tally, &mut held).await {
                 continue;
             }
             if cost_after.is_none()
@@ -653,6 +668,19 @@ impl Watch {
             .is_none_or(|s| s == self.sid)
     }
 
+    /// Whether a Stop is held open by a message typed into the turn and not yet taken, said once.
+    async fn held_open(&self, tally: &Tally, held: &mut bool) -> bool {
+        let open = tally.queued() > 0 || self.unsubmitted().await > 0;
+        if open && !*held {
+            tracing::info!(
+                "[chat {}] a Stop with a message typed into the turn not yet taken — the turn goes on",
+                self.id
+            );
+        }
+        *held = open;
+        open
+    }
+
     async fn submitted(&self, payload: &Value) {
         let Some(prompt) = payload.get("prompt").and_then(Value::as_str) else {
             return;
@@ -661,9 +689,10 @@ impl Watch {
             if let Some(i) = s
                 .unsubmitted
                 .iter()
-                .position(|(m, _)| same_prompt(m, prompt))
+                .position(|(m, ..)| same_prompt(m, prompt))
             {
-                s.unsubmitted.remove(i);
+                let (_, _, pending) = s.unsubmitted.remove(i);
+                s.pending_inbox.extend(pending);
             }
         }
     }
@@ -676,12 +705,12 @@ impl Watch {
         let Some(s) = map.get_mut(&self.id) else {
             return 0;
         };
-        s.unsubmitted.retain(|(m, at)| {
+        s.unsubmitted.retain(|(m, at, _)| {
             let waiting = at.elapsed() < UNSUBMITTED_WITHIN;
             if !waiting {
                 tracing::warn!(
                     "[chat {}] a message typed into the turn {}s ago was never reported taken; the turn \
-                     no longer waits for it: {}",
+                     no longer waits for it, and its inbox write is left for core to hand in again: {}",
                     self.id,
                     UNSUBMITTED_WITHIN.as_secs(),
                     m.chars().take(80).collect::<String>()
@@ -911,6 +940,71 @@ mod tests {
         assert!(
             ended,
             "the second Stop, with nothing queued, did not end the turn"
+        );
+    }
+
+    /// ISS-1173, seen on forge-dev 2026-11-09: a message typed two seconds after a fresh pane's
+    /// launch, before its composer was drawn, never landed. The Stop that found it untaken dropped
+    /// out, and no later Stop came, so the turn hung until core retired it. Held, the Stop ends the
+    /// turn once the untaken message is given up. Only the message the session took carries its
+    /// inbox write to be reported applied; the one given up leaves its write for core to hand in.
+    #[tokio::test]
+    async fn a_message_typed_into_the_turn_and_never_taken_is_given_up_and_the_turn_ends() {
+        let dir = std::env::temp_dir().join(format!("pane-untaken-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (events, transcript) = (dir.join("events.jsonl"), dir.join("t.jsonl"));
+        std::fs::write(
+            &transcript,
+            "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n",
+        )
+        .unwrap();
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
+        let (tx, mut rx) = mpsc::channel(64);
+        test_turn(&runner, "u", "s1", events.clone(), transcript.clone(), tx).await;
+        let typed = std::time::Instant::now() - (UNSUBMITTED_WITHIN - Duration::from_millis(1500));
+        if let Some(s) = runner.panes.lock().await.get_mut("u") {
+            s.unsubmitted
+                .push(("ALPHA".into(), typed, Some(("s1".into(), 7))));
+            s.unsubmitted
+                .push(("BRAVO".into(), typed, Some(("s1".into(), 8))));
+        }
+        let now = runner_core::agent_activity::now_ms();
+        chat_pane_events::append(
+            &events,
+            "UserPromptSubmit",
+            br#"{"session_id":"s1","prompt":"BRAVO"}"#,
+            now,
+        )
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        {
+            let map = runner.panes.lock().await;
+            let s = map.get("u").unwrap();
+            assert_eq!(
+                s.pending_inbox,
+                vec![("s1".to_string(), 8)],
+                "only the taken message's write is applied"
+            );
+            assert_eq!(s.unsubmitted.len(), 1, "ALPHA is still waited on");
+        }
+        let now = runner_core::agent_activity::now_ms();
+        chat_pane_events::append(&events, "Stop", br#"{"session_id":"s1"}"#, now).unwrap();
+        chat_pane_events::append(
+            &events,
+            STATUS_LINE,
+            br#"{"cost":{"total_cost_usd":0.01}}"#,
+            now + 1,
+        )
+        .unwrap();
+        assert!(
+            !done_within(&mut rx, Duration::from_millis(400)).await,
+            "the turn ended while ALPHA was still waited on"
+        );
+        let ended = done_within(&mut rx, Duration::from_secs(5)).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            ended,
+            "the turn never ended once ALPHA was given up, with no Stop after it"
         );
     }
 
