@@ -63,6 +63,9 @@ describe("who answers a channel, and an empty record (ISS-1180)", () => {
     expect(within(who).getByRole("link", { name: "Recent turns" }).getAttribute("href")).toBe("/projects/forge/agents/5b0c7a52-1f43-4c55-9d43-0d3c1a7f0e11");
     expect(who.textContent, "the session's address is a raw id, never text").not.toContain("forge-session:");
     expect(screen.getByTestId("detail-back").getAttribute("href")).toBe("/projects/forge/channels");
+    // forge-dev at 390, 2026-11-09: the header held the back arrow alone; below 1152px of column the
+    // title heads the main column, so the channel's name is in the first view on a phone (ISS-1184 item 8)
+    expect(screen.getByTestId("detail-mobile-title")).toHaveTextContent("#Forge-Communicate");
   });
 
   it("reads a room nobody answers as not live, never as a blank", async () => {
