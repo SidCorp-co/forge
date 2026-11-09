@@ -201,6 +201,7 @@ export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
 export { overIssueStampSkip, promotionStampSkip } from './merge-stamp-skip.js';
 export { mergeNotRecorded } from './merged-at.js';
+export { runMarkedRequestHeadBackfillOnce } from './merged-head-backfill.js';
 export {
   filingAnsweredBy,
   filingsMarked,
@@ -271,6 +272,7 @@ export {
 export { releaseHoldWords, WORDED_RELEASE_HOLDS } from './release-hold-words.js';
 export { releaseRecordGaps } from './release-record-required.js';
 export { provideReleasedLineReads } from './released-line-reads.js';
+export { provideRequestHeadPort } from './request-head-port.js';
 export {
   type IssueCreateInput,
   type IssueFilters,

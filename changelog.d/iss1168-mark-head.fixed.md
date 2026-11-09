@@ -1,0 +1,1 @@
+**A merge mark on a change-request project records the request's head.** A verdict judged at a merged request's tree-identical head now counts for its landing, and marks already standing are given their head once.

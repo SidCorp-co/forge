@@ -4,6 +4,7 @@ import {
   drainStaleBuilderFacts,
   runActivityFieldChangesBackfillOnce,
   runCriteriaBackfillOnce,
+  runMarkedRequestHeadBackfillOnce,
   runRescueCapRehomeOnce,
 } from './issues/index.js';
 import { logger } from './lib/logger.js';
@@ -106,6 +107,10 @@ export function startDeferredBackfills(): void {
       );
     })
     .catch((err) => logger.error({ err }, 'boot: activity field-changes backfill failed'));
+  // it asks the host for each standing mark's tree, so it never holds the boot (ISS-1168)
+  void runMarkedRequestHeadBackfillOnce().catch((err) =>
+    logger.error({ err }, 'boot: giving standing merge marks their request head failed'),
+  );
   void fillBuilderFacts()
     .then((n) => {
       if (n > 0) logger.info({ issues: n }, 'boot: builder facts written for the marked issues');
