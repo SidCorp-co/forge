@@ -78,6 +78,7 @@ describe("the feedback page's face", () => {
     render(feedbackDetail({ can: { ...NO_ACTS, verify: true, reopen: true } }));
     const primary = await screen.findByTestId("feedback-primary");
     expect(primary).toHaveTextContent("Confirm the fix");
+    expect(primary.dataset.weight).toBe("primary");
     await user.click(primary);
     const sheet = await screen.findByRole("dialog");
     expect(within(sheet).getByTestId("feedback-verify")).toBeInTheDocument();
@@ -90,6 +91,15 @@ describe("the feedback page's face", () => {
     const primary = await screen.findByTestId("feedback-primary");
     expect(primary).toHaveTextContent("Reopen");
     expect(primary).not.toHaveTextContent("Confirm the fix");
+  });
+
+  // FB-521's peek on forge-dev, 2026-11-09: "Drop it" was the loud primary on an item waiting on its
+  // requirement (ISS-1179 item 8)
+  it("offers Drop it quietly, never as the loud primary, where it is the only act", async () => {
+    render(feedbackDetail({ can: { ...NO_ACTS, drop: true } }));
+    const primary = await screen.findByTestId("feedback-primary");
+    expect(primary).toHaveTextContent("Drop it");
+    expect(primary.dataset.weight).toBe("quiet");
   });
 
   it("opens the sheet from a link to its anchor, as the checklist's Answer is", async () => {
