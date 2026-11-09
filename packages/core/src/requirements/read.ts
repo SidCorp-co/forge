@@ -264,6 +264,7 @@ function detailRowsOf(requirementId: string) {
         requirementId: issues.requirementId,
         plan: issues.plan,
         plannedRevision: issues.plannedRevision,
+        releaseBatchRunId: issues.releaseBatchRunId,
       })
       .from(issues)
       .where(eq(issues.requirementId, requirementId))

@@ -85,6 +85,7 @@ export interface StandingPreload {
     | 'updatedAt'
     | 'plan'
     | 'plannedRevision'
+    | 'releaseBatchRunId'
   >[];
   baselines: readonly (typeof requirementBaselines.$inferSelect)[];
   prefix: string | null;
@@ -181,7 +182,12 @@ function criteriaOn<C extends { issueId: string }>(
 async function workFactsOf(
   projectId: string,
   rows: readonly StandingRow[],
-  linked: readonly { requirementId: string | null; id: string; status: string }[],
+  linked: readonly {
+    requirementId: string | null;
+    id: string;
+    status: string;
+    releaseBatchRunId: string | null;
+  }[],
   viewer: RequirementViewer | null,
   now: Date,
 ) {
@@ -190,8 +196,11 @@ async function workFactsOf(
     awaitsReleaseOnly(by(linked, r.id).filter((i) => i.status !== 'dropped')),
   );
   // the runs that claim the landed issues are read beside the release, so a requirement whose landed
-  // issues one release run carries names that run's act, not the next cut (ISS-1186)
-  const landed = unshipped.filter((i) => i.status === 'awaiting_release').map((i) => i.id);
+  // issues one release run carries names that run's act, not the next cut (ISS-1186); only where the
+  // issues' own rows name a claiming run, so a page with no claim reads nothing more
+  const claimed = unshipped
+    .filter((i) => i.status === 'awaiting_release' && i.releaseBatchRunId !== null)
+    .map((i) => i.id);
   const [issueWaits, release, claims] = await Promise.all([
     issueWaitsOf(
       projectId,
@@ -199,8 +208,8 @@ async function workFactsOf(
       now,
     ),
     releaseOwed ? requirementDependents().releaseLeg(projectId, viewer?.userId ?? null) : null,
-    releaseOwed
-      ? requirementDependents().releaseClaims(projectId, viewer?.userId ?? null, landed)
+    releaseOwed && claimed.length > 0
+      ? requirementDependents().releaseClaims(projectId, viewer?.userId ?? null, claimed)
       : null,
   ]);
   return { issueWaits, release, claims };

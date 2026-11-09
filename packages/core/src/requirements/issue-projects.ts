@@ -120,6 +120,7 @@ function linkedIssuesRead(requirementIds: readonly string[]) {
       updatedAt: issues.updatedAt,
       plan: issues.plan,
       plannedRevision: issues.plannedRevision,
+      releaseBatchRunId: issues.releaseBatchRunId,
     })
     .from(issues)
     .where(inArray(issues.requirementId, [...requirementIds]))
