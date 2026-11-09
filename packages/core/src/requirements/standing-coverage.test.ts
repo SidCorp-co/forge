@@ -205,8 +205,29 @@ describe('the verdict a business criterion counts', () => {
     expect(s.coverage[0]?.verdict).toBe('stale');
     expect(s.waitingOn).toMatchObject({
       who: 'Independent judge',
-      act: 'tie ISS-1 to the current wording of BC-1, then judge it',
+      act: 'tie “Issue 1” to the current wording of “rule 1”, then judge it',
     });
+  });
+
+  // forge-dev's requirements list, 2026-11-09: Waits on read "tie ISS-1112, ISS-1110 to the current
+  // wording of BC-13" (ISS-1184 item 1). The act names each item by its title, a criterion by its
+  // short title; the keys stay in what core said, behind the words, for a reader that links them.
+  it('names the issues and the criterion of an act by their titles, the keys kept behind them', () => {
+    const titled = (n: number, title: string) => ({ ...issue(n, 'closed', false), title });
+    const s = deriveStanding({
+      ...input([titled(1, 'Waits on names its items'), titled(2, 'Bell rows read plainly'), titled(3, 'Channel names head the page')]),
+      criteria: [{ ...old1, code: 'BC-13' }, { ...bc1, code: 'BC-13', title: 'Each fact once', body: 'Each fact is shown once per page, whatever reads it.' }],
+      issueCriteria: [
+        { ...row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0') },
+        { ...row(2, 'pass', '2026-10-05T00:00:00Z', B, 'c0') },
+      ],
+      judge: 'independent',
+    });
+    expect(s.waitingOn.act).toBe(
+      'tie “Waits on names its items” and “Bell rows read plainly” to the current wording of “Each fact once”, then judge it',
+    );
+    expect(s.waitingOn.act, 'a key is no name').not.toMatch(/ISS-\d|BC-\d/);
+    expect(s.waitingOn.says.act.vars).toMatchObject({ codes: 'BC-13', keys: 'ISS-1, ISS-2' });
   });
 
   it('a BC judged only on another build waits on the judge to judge the issue on the live one', () => {
