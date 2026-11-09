@@ -1,0 +1,1 @@
+**Describe over MCP is enough to call a write.** Each create names its own fields, its document schema at a URL that resolves, and an example accepted as written; designs fill their own stamps, and templates and gates are reachable.
