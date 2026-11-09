@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.615] - 2026-11-09
+
+Channel pane turns report their cost, including the first after a resume
+
+### Fixed
+
+- **A close's verdict no longer replaces a judge's.** Where a criterion was judged after its issue landed, closing the issue keeps that judgement instead of writing the builder's pass over it, and passes written that way before are withdrawn once.
+- **A resumed chat pane's first turn records its cost.** The runner measures it from the status line the session starts with. Where a cost stays unread, the session's result says why instead of nothing.
+
 ## [0.4.0-dev.614] - 2026-11-09
 
 Promoted builds hold their landings, and open tabs survive a deploy

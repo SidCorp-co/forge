@@ -1,1 +1,0 @@
-**A close's verdict no longer replaces a judge's.** Where a criterion was judged after its issue landed, closing the issue keeps that judgement instead of writing the builder's pass over it, and passes written that way before are withdrawn once.
