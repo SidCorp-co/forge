@@ -1,0 +1,1 @@
+**An outbox event type naming no consumer is refused by name.** `check-outbox-consumers` reads both registries and fails `OUTBOX_EVENT_UNCONSUMED <type>` for each type with none, in verify and the conformance job.
