@@ -57,7 +57,8 @@ const NAMED: Record<string, string> = {
   '7ec2153a': 'issues/mark-trail.ts:markClaimsRead',
   '4afdafad': 'release-batch/landed-build.ts:recordedLandingsRead',
   '97b781a2': 'release-batch/served-ancestry.ts:carriagesOf',
-  '7984d841': 'issues/release-evidence.ts:closedAtRead',
+  '7984d841':
+    'issues/release-evidence.ts:reopenedMovesOf (a reopened issue’s closes, read with its reopen since r21)',
   ca6da3c5: 'issues/criteria/service.ts:listCriteria',
   '0a5ffc6e': 'issues/design-record.ts:criterionRoutesRead',
   '2c596d45': 'feedback/list-read.ts:linkedOf (contract providers)',

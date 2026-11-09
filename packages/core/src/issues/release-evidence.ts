@@ -26,6 +26,32 @@ export function reopenedAtOf(
   issueIds: readonly string[],
   asReturned: readonly string[] = [],
 ): Promise<Map<string, Date>> {
+  return reopenedMovesOf(executor, issueIds, asReturned).then(
+    (m) => new Map([...m].map(([id, r]) => [id, r.at])),
+  );
+}
+
+/** A reopened issue's reopen, as `reopenedAtOf` reads it, and every move it made into `closed`. */
+export interface ReopenedMoves {
+  at: Date;
+  /**
+   * Every move into `closed`, oldest first, from the move history (`kernel_transitions`): a close
+   * is the issue met in scope, by the run holding it or by a release that claimed it; the release
+   * page reads its own among them, a release's close being the one inside that release's span.
+   */
+  closes: readonly Date[];
+}
+
+/**
+ * Each reopened issue's {@link ReopenedMoves}, in the one statement its reopen is read in: only a
+ * reopened issue's closes are read (a release's rounds, `reopenedRoundsOf`, and its facts'
+ * voids), so asking them a step after the reopen was a second statement (ISS-1070 r21).
+ */
+export function reopenedMovesOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+  asReturned: readonly string[] = [],
+): Promise<Map<string, ReopenedMoves>> {
   if (executor !== db) return reopenedAtRead(executor, issueIds, asReturned);
   // an issue's reopen is its own: every project's asks are one read (ISS-1070 r6)
   return memoizedPerId(`reopenedAt:${[...asReturned].sort().join(',')}`, issueIds, (some) =>
@@ -37,12 +63,15 @@ async function reopenedAtRead(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
   asReturned: readonly string[],
-): Promise<Map<string, Date>> {
+): Promise<Map<string, ReopenedMoves>> {
   if (issueIds.length === 0) return new Map();
   const returned =
     asReturned.length === 0 ? sql`false` : sql`t.entity_id = ANY(${uuidArray(asReturned)})`;
   const rows = (await executor.execute(sql`
-    SELECT t.entity_id, max(t.created_at) AS at
+    SELECT t.entity_id, max(t.created_at) AS at,
+           to_json(ARRAY(SELECT c.created_at FROM kernel_transitions c
+                  WHERE c.entity = 'issue' AND c.entity_id = t.entity_id AND c.to_status = 'closed'
+                  ORDER BY c.created_at ASC)) AS closes
       FROM kernel_transitions t
      WHERE t.entity = 'issue'
        AND t.to_status = 'reopen'
@@ -54,8 +83,19 @@ async function reopenedAtRead(
                 AND u.created_at > t.created_at
               ORDER BY u.created_at, u.id LIMIT 1),
            ${returned})
-     GROUP BY t.entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
-  return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
+     GROUP BY t.entity_id`)) as unknown as Array<{
+    entity_id: string;
+    at: Date | string;
+    closes: string[] | string;
+  }>;
+  // a json column a driver hands back unparsed is parsed here, so either reads one list
+  const list = (c: string[] | string): string[] => (typeof c === 'string' ? JSON.parse(c) : c);
+  return new Map(
+    [...rows].map((r) => [
+      r.entity_id,
+      { at: new Date(r.at), closes: list(r.closes).map((c) => new Date(c)) },
+    ]),
+  );
 }
 
 /**
@@ -74,37 +114,6 @@ export function voidedUpTo(
   const until = reopenedAt.getTime();
   const atReopen = newestFirst.find((v) => v.at !== null && new Date(v.at).getTime() <= until);
   return atReopen?.verdict === 'pass' ? null : reopenedAt;
-}
-
-/**
- * Every move of each issue into `closed`, oldest first, from the move history (`kernel_transitions`);
- * an issue never closed is absent. A close is the issue met in scope, by the run holding it or by a
- * release that claimed it; the release page reads its own among them, a release's close being the
- * one inside that release's span.
- */
-export function closedAtOf(
-  executor: Pick<Tx, 'execute'>,
-  issueIds: readonly string[],
-): Promise<Map<string, Date[]>> {
-  if (executor !== db) return closedAtRead(executor, issueIds);
-  return memoizedPerId('issueClosedAt', issueIds, (some) => closedAtRead(db, some));
-}
-
-async function closedAtRead(
-  executor: Pick<Tx, 'execute'>,
-  issueIds: readonly string[],
-): Promise<Map<string, Date[]>> {
-  if (issueIds.length === 0) return new Map();
-  const rows = (await executor.execute(sql`
-    SELECT entity_id::text AS issue_id, created_at AS at
-      FROM kernel_transitions
-     WHERE entity = 'issue'
-       AND to_status = 'closed'
-       AND entity_id = ANY(${uuidArray(issueIds)})
-     ORDER BY created_at ASC`)) as unknown as Array<{ issue_id: string; at: Date | string }>;
-  const out = new Map<string, Date[]>();
-  for (const r of rows) out.set(r.issue_id, [...(out.get(r.issue_id) ?? []), new Date(r.at)]);
-  return out;
 }
 
 /**
@@ -241,9 +250,8 @@ interface ReleaseClaimSpan {
 }
 
 /**
- * An issue's rounds as a release's claim on it is read: its move history (`reopenedAtOf`,
- * `closedAtOf`) and when its current landing was marked (`issues.merged_at`), null where no mark
- * stands now. A reopen leaves the mark; only a cleared mark (`merge-record.ts:clearIssueMerge`) or a
+ * An issue's rounds as a release's claim on it is read: its move history (`reopenedMovesOf`) and
+ * when its current landing was marked (`issues.merged_at`), null where no mark stands now. A reopen leaves the mark; only a cleared mark (`merge-record.ts:clearIssueMerge`) or a
  * re-land, which writes a new one, changes it.
  */
 export interface IssueRounds {
@@ -293,17 +301,14 @@ export async function reopenedRoundsOf(
   // the close and mark are asked of the reopened issues alone: asked of a whole line's issues beside
   // the reopen, they touched every close a project ever made (ISS-1070 r17, shipped?limit=3 20500 to
   // 21957 buffers), for a wave the line, read beside the release facts, no longer stands in front of
-  const reopened = await reopenedAtOf(executor, issueIds);
+  const reopened = await reopenedMovesOf(executor, issueIds);
   const ids = [...reopened.keys()];
   if (ids.length === 0) return new Map();
-  const [closed, markedAt] = await Promise.all([
-    closedAtOf(executor, ids),
-    mergedAtOf(executor, ids),
-  ]);
+  const markedAt = await mergedAtOf(executor, ids);
   return new Map(
-    [...reopened].map(([id, reopenedAt]) => [
+    [...reopened].map(([id, r]) => [
       id,
-      { reopenedAt, closedAt: closed.get(id) ?? [], merged: { at: markedAt.get(id) ?? null } },
+      { reopenedAt: r.at, closedAt: [...r.closes], merged: { at: markedAt.get(id) ?? null } },
     ]),
   );
 }

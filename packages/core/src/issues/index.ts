@@ -260,11 +260,11 @@ export {
 } from './release-claim.js';
 export {
   arrivedAfterOf,
-  closedAtOf,
   holdingReleaseRunsSql,
   releasedSql,
   releaseRunsHoldingSql,
   reopenedAtOf,
+  reopenedMovesOf,
   reopenedRoundsOf,
   reworkedSince,
   shipsWithdrawnOf,

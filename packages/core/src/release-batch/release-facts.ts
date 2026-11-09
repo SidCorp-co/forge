@@ -21,12 +21,11 @@ import {
   builderFactOwedSql,
   builderFactSql,
   type CriterionWithVerdict,
-  closedAtOf,
   criterionRoutesOf,
   listCriteriaOf,
   notCloseVerdictSql,
   readWithBuilderFacts,
-  reopenedAtOf,
+  reopenedMovesOf,
   voidedUpTo,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -413,10 +412,6 @@ export async function loadReleaseFacts(
   const landingRead = landingCountedOf(projectId, ids);
   // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   landingRead.catch(() => undefined);
-  // only a reopen's void reads a close: read of the reopened alone, as `reopenedRoundsOf` asks it,
-  // it is one statement, not two a step apart (ISS-1070 r21); its failure is thrown where awaited
-  const closedRead = reopenedAtOf(db, ids).then((r) => closedAtOf(db, [...r.keys()]));
-  closedRead.catch(() => undefined);
   const [rows, prefix, cutters, judge, held, criteria, reopened] = await Promise.all([
     rowsPerId(
       'releaseIssueRows',
@@ -448,23 +443,23 @@ export async function loadReleaseFacts(
     readProjectDocument(projectId),
     // a criterion reads its newest verdict but a close's, as its carried verdicts do (ISS-1148)
     listCriteriaOf(db, ids, true),
-    reopenedAtOf(db, ids),
+    // only a reopen's void reads a close: read with the reopen, as a release's rounds read it
+    reopenedMovesOf(db, ids),
   ]);
   const criterionIds = [...criteria.values()].flatMap((list) => list.map((c) => c.id));
-  const [reqs, verdicts, routes, closed] = await Promise.all([
+  const [reqs, verdicts, routes] = await Promise.all([
     requirementFacts(
       projectId,
       rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])),
     ),
     carriedVerdictsOf(criterionIds),
     criterionRoutesOf(criterionIds),
-    closedRead,
   ]);
   const byIssue = new Map<string, IssueFact>(
     rows.map((r) => {
       const read = (criteria.get(r.id) ?? []).map((c) => ({
         c,
-        ...splitAtReopen(verdicts.get(c.id) ?? [], reopened.get(r.id)),
+        ...splitAtReopen(verdicts.get(c.id) ?? [], reopened.get(r.id)?.at),
       }));
       return [
         r.id,
@@ -485,8 +480,8 @@ export async function loadReleaseFacts(
           ),
           verdicts: new Map(read.map(({ c, kept }) => [c.n, kept])),
           voided: new Map(read.map(({ c, voided }) => [c.n, voided])),
-          reopenedAt: reopened.get(r.id) ?? null,
-          closedAt: closed.get(r.id) ?? [],
+          reopenedAt: reopened.get(r.id)?.at ?? null,
+          closedAt: [...(reopened.get(r.id)?.closes ?? [])],
           merged: {
             at: r.mergedAt,
             landing: r.mergedLanding,
