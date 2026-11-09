@@ -13,7 +13,7 @@ import {
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
 import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
-import { contractLookup } from '../../messaging/verdict-contract.js';
+import { contractLookup, contractUnknownWhy } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
@@ -191,16 +191,17 @@ async function identityColumns(
     }
     case 'contract': {
       const [project = '', contract = ''] = identity.ref.trim().split('/');
-      const held = await contractLookup(tx)(projectId, {
-        project,
-        contract,
-        version: identity.version.trim(),
-      });
-      if (!held.named) {
+      const named = { project, contract, version: identity.version.trim() };
+      const why = contractUnknownWhy(
+        draft.criterion,
+        named,
+        await contractLookup(tx)(projectId, named),
+      );
+      if (why) {
         throw verdictRefused({
           code: 'VERDICT_CONTRACT_UNKNOWN',
           criterion: draft.criterion,
-          detail: `criterion ${draft.criterion} names contract \`${identity.ref}@${identity.version}\`, which this issue's project (\`${held.projectSlug}\`) has not recorded; versions recorded: ${held.versions.join(', ') || 'none'}.`,
+          detail: `${why}.`,
         });
       }
       return {

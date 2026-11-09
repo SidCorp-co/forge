@@ -1,0 +1,1 @@
+**A verdict naming another project's contract says so.** `POST /api/issues/:id/verdicts` and a person's verdict fence refused it `VERDICT_CONTRACT_UNKNOWN` claiming this project recorded no versions; both now name whose contract it is, as the agent fence rule does.

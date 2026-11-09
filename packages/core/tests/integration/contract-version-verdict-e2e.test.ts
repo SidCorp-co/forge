@@ -112,8 +112,9 @@ describe('BC-11 a verdict names only a contract version its own project recorded
     const res = await judge(`${w.slug}/api`, '9.9.9');
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(codes(res)).toEqual(['VERDICT_CONTRACT_UNKNOWN']);
-    expect(String(res.body.detail)).toContain(`\`${w.slug}/api@9.9.9\``);
-    expect(String(res.body.detail)).toContain('versions recorded: 1.0.0');
+    expect(String(res.body.detail)).toContain(
+      `names contract \`${w.slug}/api\` at version \`9.9.9\`, and this project recorded no such version of it. The versions it recorded, newest first: \`1.0.0\``,
+    );
     expect(await verdictsStored()).toBe(0);
   });
 
@@ -121,7 +122,11 @@ describe('BC-11 a verdict names only a contract version its own project recorded
     const res = await judge(`${w.otherSlug}/api`, '1.0.0');
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(codes(res)).toEqual(['VERDICT_CONTRACT_UNKNOWN']);
-    expect(String(res.body.detail)).toContain(`this issue's project (\`${w.slug}\`)`);
+    // it names whose contract it is, and never says this project recorded no version of its own
+    expect(String(res.body.detail)).toContain(
+      `which is project \`${w.otherSlug}\`'s contract, and this issue's project is \`${w.slug}\``,
+    );
+    expect(String(res.body.detail)).not.toContain('versions recorded: none');
     expect(await verdictsStored()).toBe(0);
   });
 

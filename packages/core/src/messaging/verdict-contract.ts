@@ -38,6 +38,24 @@ export function contractLookup(executor?: Tx): ContractLookup {
   return (projectId, named) => messageReads().contractHolding(projectId, named, executor ?? db);
 }
 
+/**
+ * Why a verdict on `criterion` may not name `named`, or null where its issue's project recorded it.
+ * Every door that writes a verdict says it in these words: another project's contract is named as
+ * that, never as a version this project lacks.
+ */
+export function contractUnknownWhy(
+  criterion: number | string,
+  named: ContractIdentity,
+  held: ContractHolding,
+): string | null {
+  if (held.named) return null;
+  const at = `criterion ${criterion} names contract \`${named.project}/${named.contract}\` at version \`${named.version}\``;
+  if (held.projectSlug !== named.project) {
+    return `${at}, which is project \`${named.project}\`'s contract, and this issue's project is \`${held.projectSlug}\` — a verdict is judged against a contract version of its own issue's project`;
+  }
+  return `${at}, and this project recorded no such version of it. The versions it recorded, newest first: ${listed(held.versions)}`;
+}
+
 const CONTRACT_RULE: NamedIdentityRule<ContractIdentity, ContractHolding> = {
   rule: 'verdict-contract',
   shape:
@@ -45,14 +63,7 @@ const CONTRACT_RULE: NamedIdentityRule<ContractIdentity, ContractHolding> = {
   example: EXAMPLE,
   field: CONTRACT_FIELD,
   parse: parseContractIdentity,
-  why: (block, named, held) => {
-    if (held.named) return null;
-    const at = `criterion ${block.criterion} names contract \`${named.project}/${named.contract}\` at version \`${named.version}\``;
-    if (held.projectSlug !== named.project) {
-      return `${at}, which is project \`${named.project}\`'s contract, and this issue's project is \`${held.projectSlug}\` — a verdict is judged against a contract version of its own issue's project`;
-    }
-    return `${at}, and this project recorded no such version of it. The versions it recorded, newest first: ${listed(held.versions)}`;
-  },
+  why: (block, named, held) => contractUnknownWhy(block.criterion, named, held),
 };
 
 /** Everything a `verdict` record is refused for about the contract versions its blocks name. */
