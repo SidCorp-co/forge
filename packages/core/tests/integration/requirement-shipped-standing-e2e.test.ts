@@ -261,7 +261,7 @@ describe('a shipped requirement that needs attention', () => {
     expect(two.verdict).toBe('not_live');
     expect(two.verdicts[0]?.notCounted).toContain('does not hold');
     expect(s.waitingOn.says.who.key).toBe('standing.who.independentJudge');
-    expect(s.waitingOn.says.act.vars).toEqual({ codes: 'BC-2' });
+    expect(s.waitingOn.says.act.vars).toEqual({ criteria: '“A search narrows the list”' });
   });
 
   it('names the failing criterion and the master, who now owes a breakdown for it', async () => {
