@@ -3,8 +3,9 @@
 // core's who-owes table names a person's, one "Nothing" row once read and none waits, so the home
 // always answers whether it needs the reader, ISS-1179), Moving, Shipped and Stuck, then
 // one Audit line where a cleanup window is on. Moving and Stuck are the Issues list's own groups from
-// its own read, so the two counts never disagree. Each row is a title and one badge; the rest opens on
-// its own page. A group holding nothing is not drawn.
+// its own read; Moving leaves out each issue the live bar above it already names, so a title shows
+// once (ISS-1184: the bar stays, REQ-15 BC-10; each fact once, REQ-12 BC-6). Each row is a title and
+// one badge; the rest opens on its own page. A group holding nothing is not drawn.
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { decisionLineOf } from "@forge/contracts/plain-decision";
@@ -12,6 +13,7 @@ import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { ReleaseSummary } from "@forge/contracts/releases";
 import { useQueries } from "@tanstack/react-query";
 import { GroupedList, type ListGroup, type ListRowView, ProjectLoader, StatusBadge, StatusChip, useGroupFold } from "@/design";
+import { useLiveIssueKeys } from "@/features/agents";
 import { AuditLine } from "../components/cleanup";
 import { issueRowView, issueStandingQuery, useIssueStanding, useRowWords } from "@/features/issues";
 import { decisionHref, needsYouDecisionsQuery, useNeedsYouDecisions } from "@/features/needs-you";
@@ -130,9 +132,12 @@ export function useProjectsAttention(projectIds: readonly string[]): ReadonlyMap
   return read;
 }
 
-function groupsOf(t: Copy, slug: string, read: DashRead): ListGroup<DashRow>[] {
+/** `onBar`: the issues the live bar names, left out of Moving so a title shows once (ISS-1184). */
+function groupsOf(t: Copy, slug: string, read: DashRead, onBar: ReadonlySet<string> = new Set()): ListGroup<DashRow>[] {
   const issues = (id: "moving" | "stuck") => {
-    const rows = read.issues.filter((r) => r.standing.attentionGroup === id).map((r): DashRow => ({ kind: "issue", r }));
+    const rows = read.issues
+      .filter((r) => r.standing.attentionGroup === id && !(id === "moving" && onBar.has(r.key)))
+      .map((r): DashRow => ({ kind: "issue", r }));
     return capped(id, rows, rows.length, issuesHref(slug));
   };
   const needs = capped("needs", read.decisions.listed.map((d): DashRow => ({ kind: "decision", d })), read.decisions.total, approvalsHref(slug));
@@ -157,8 +162,9 @@ export function ProjectDashboard({ projectId, slug }: { projectId: string; slug:
   const issues = issuesQ.data?.issues ?? [];
   const shipped = releasesQ.data?.releases ?? [];
   const view = useRowView(slug);
+  const onBar = useLiveIssueKeys(projectId);
   // Needs you, read and empty, draws one "Nothing" row; `groupsOf` stays the attention reading, where it holds none
-  const groups = groupsOf(t, slug, { decisions, issues, shipped }).map((g) =>
+  const groups = groupsOf(t, slug, { decisions, issues, shipped }, onBar).map((g) =>
     g.id === "needs" && needs && g.rows.length === 0 ? { ...g, rows: [{ kind: "none" as const, href: approvalsHref(slug) }], total: 0 } : g,
   );
   const hrefs = new Map(groups.flatMap((g) => g.rows.map((r) => [keyOf(r), view(r).href] as const)));

@@ -88,3 +88,17 @@ export function projectNowOf(live: Read<RunStandingList>, recent: Read<RunStandi
     lastActivityAt: newest([...finished, ...lastPass, ...roomActs]),
   };
 }
+
+/**
+ * The issues the bar names by title: the master's while it works one, each run's, each leased build's.
+ * A page under the bar leaves these out of its own rows, so a title shows once (REQ-12 BC-6, ISS-1184).
+ */
+export function liveIssueKeys(now: ProjectNow): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const item of now.items) {
+    if (item.kind === "master" && item.word === "working" && item.issue?.title) keys.add(item.issue.key);
+    if (item.kind === "run" && item.run.issue) keys.add(item.run.issue.key);
+    if (item.kind === "leased") keys.add(item.build.issue.key);
+  }
+  return keys;
+}
