@@ -1,1 +1,1 @@
-**Product screens say each fact once.** A requirement accepted by decision reads its checklist as waived, Mark delivered waits while a criterion fails, and untraced diagrams, checklists, placement and carriers open on demand; bell, releases and workflows rows lead with names.
+**Product screens say each fact once.** A requirement accepted by decision reads its checklist as waived, Mark delivered waits while a criterion fails, and untraced diagrams, checklists and placement open on demand; bell, releases and workflows rows lead with names.
