@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.631] - 2026-11-09
+
+The notification bell counts only invitations still pending
+
+### Fixed
+
+- **The bell counts an invitation only while it is pending.** An invitation accepted, declined, revoked, replaced or expired after its notice was sent no longer keeps the badge above an empty list.
+
 ## [0.4.0-dev.630] - 2026-11-09
 
 Proven criteria survive back-to-back deploys; requirements wait on the release holding them
