@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.625] - 2026-11-09
+
+MCP door starts a Product role on status, needs-you and decisions
+
+### Changed
+
+- **An agent working a project's Product over MCP is told so first.** It reads how the project stands, what waits on it and what was decided through `project.*`; the guide index opens by role.
+
 ## [0.4.0-dev.624] - 2026-11-09
 
 Screens say each fact once; channels show which agent answers the room
