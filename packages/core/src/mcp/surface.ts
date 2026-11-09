@@ -14,7 +14,7 @@ import type { McpListedTool } from '@forge/contracts/mcp-tools';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { RefusalError } from '../lib/refusal.js';
-import { type McpContext, refusedAnswer } from '../lib/tool.js';
+import { EXAMPLE_PLACEHOLDERS, type McpContext, refusedAnswer } from '../lib/tool.js';
 import { renderedPermission } from '../middleware/declared-permission.js';
 import { type ActionEntry, doorOf, findActions } from './action-catalog.js';
 import { argumentRefusals, shapeOf } from './input-gate.js';
@@ -100,6 +100,19 @@ function entryOr(deps: SurfaceDeps, action: string): ActionEntry | CallToolResul
 
 const isEntry = (v: ActionEntry | CallToolResult): v is ActionEntry => 'id' in v;
 
+/** An action's example as describe answers it, saying what each placeholder in it stands for. */
+function exampleOf(entry: ActionEntry): Record<string, unknown> {
+  const example = { action: entry.id, args: entry.example };
+  const written = JSON.stringify(entry.example);
+  const held = Object.entries(EXAMPLE_PLACEHOLDERS).filter(([p]) => written.includes(p));
+  return held.length > 0
+    ? {
+        example,
+        exampleNote: `${held.map(([p, what]) => `${p} is ${what}`).join('; ')}; the rest is sent as written.`,
+      }
+    : { example };
+}
+
 /** A call to one of the five tools. */
 export async function callSurface(
   name: SurfaceTool,
@@ -143,6 +156,8 @@ export async function callSurface(
       ...(entry.guideOf === 'door'
         ? { guideOf: 'door: this door names no action its own guide' }
         : {}),
+      ...(entry.documentSchema ? { documentSchema: entry.documentSchema } : {}),
+      ...(entry.example ? exampleOf(entry) : {}),
       call: `forge_call { action: "${entry.id}", args }`,
     });
   }

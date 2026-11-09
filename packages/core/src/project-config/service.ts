@@ -241,7 +241,7 @@ export async function writeProjectDocument(input: {
         refusals.push({
           code: 'GATES_WRITTEN_THROUGH_THEIR_DOOR',
           path: '/gates',
-          detail: `this write changes the project's gates, which only PUT /api/projects/${projectId}/gates changes, with a reason, so the change is recorded with who made it and why; send /gates as it stands (${gatesJson(current?.document)}) and change it there.`,
+          detail: `this write changes the project's gates, which only the gates door changes (PUT /api/projects/${projectId}/gates, or the MCP action config.gates_write), with a reason, so the change is recorded with who made it and why; send /gates as it stands (${gatesJson(current?.document)}) and change it there.`,
         });
       }
       refusals.push(...checkProjectConfig(document, await buildProjectConfigContext(projectId)));

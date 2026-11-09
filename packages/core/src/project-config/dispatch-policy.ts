@@ -6,6 +6,7 @@ import {
   type PolicyStateSource,
 } from '@forge/contracts/project-config';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
+import { servedSchemaUrl } from '../lib/served-schema.js';
 import { POLICY_STATE_STATUSES, type PolicyDocument } from './policy-schema.js';
 import type { Held } from './service.js';
 import { readPolicy } from './service.js';
@@ -21,7 +22,7 @@ export function policyRefusal(
   return refuse(
     code,
     code === 'POLICY_UNDECLARED'
-      ? `project ${projectId} has no policy, so nothing dispatches there. Write one with PUT /api/projects/${projectId}/policy ({ baseRevision: null, document: <policy-v1> }); the schema is /api/schemas/policy-v1.json.`
+      ? `project ${projectId} has no policy, so nothing dispatches there. Write one with PUT /api/projects/${projectId}/policy ({ baseRevision: null, document: <policy-v1> }); the schema is ${servedSchemaUrl('policy-v1.json')}.`
       : `the policy of project ${projectId} declares no state "${status}", so work at "${status}" has no model and no deny profile. Add states.${status} to the policy (PUT /api/projects/${projectId}/policy).`,
   );
 }

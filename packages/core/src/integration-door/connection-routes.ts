@@ -1,5 +1,4 @@
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -41,6 +40,7 @@ import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { providerRefused } from '../lib/provider-refusal.js';
 import { refused, refuser } from '../lib/refusal.js';
+import { servedSchemaUrl } from '../lib/served-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -242,7 +242,7 @@ integrationConnectionsRoutes.get('/:id/targets', CONNECTION_READ, noQuery, async
         {
           code: 'TARGETS_NOT_LISTED',
           path: '',
-          detail: `a ${connection.provider} connection's targets are not listed here; its binding-v1 target is typed with the fields ${SCHEMA_BASE}/binding-v1.json names for target.provider "${connection.provider}".`,
+          detail: `a ${connection.provider} connection's targets are not listed here; its binding-v1 target is typed with the fields ${servedSchemaUrl('binding-v1.json')} names for target.provider "${connection.provider}".`,
         },
       ],
       'CONFIG_REFUSED',

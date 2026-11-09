@@ -5,10 +5,11 @@
 // carries the progress block of the work the item was routed to (`product-progress.ts`).
 
 import {
-  CREATE_FEEDBACK_SHAPE,
   createFeedbackRequestSchema,
   FEEDBACK_ATTACHMENT_SHAPE,
+  FEEDBACK_KINDS,
   FEEDBACK_PHASES,
+  FEEDBACK_SEVERITIES,
   type FeedbackSummary,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
@@ -19,8 +20,10 @@ import {
   askClarification,
   createFeedback,
   detailAs,
+  feedbackTargetSchema,
   listFeedbackAs,
   similarFeedbackAs,
+  targetFieldsOf,
 } from '../feedback/index.js';
 import { forecastViewerOf, readFeedbackForecasts } from '../forecast/index.js';
 import { principalAgency } from '../issues/index.js';
@@ -54,6 +57,22 @@ const feedbackKey = z
   .regex(/^FB-\d+$/, 'a feedback item is named by its key, FB-n')
   .describe('the feedback key, e.g. FB-12');
 
+// submit names its one target in one field, as feedback.submit and the chat's door do: seven
+// optional target fields read to a client as seven independent ones, so a call validated against the
+// schema named none or two (FB-598)
+const {
+  requirement: _requirement,
+  issue: _issue,
+  release: _release,
+  workflow: _workflow,
+  endpoint: _endpoint,
+  mockup: _mockup,
+  screen: _screen,
+  ...submitFields
+} = createFeedbackRequestSchema.shape;
+
+const SUBMIT_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(' | ')}, title, target: { kind: requirement | issue | release | workflow | endpoint | mockup | screen, ref }, body?, severity?: ${FEEDBACK_SEVERITIES.join(' | ')}, whereSeen?, node?: { step } | { edge: { from, to, label? } } (with a workflow target only), writtenLang? }`;
+
 const inputSchema = z.strictObject({
   action: z.enum(ACTIONS),
   projectId: z
@@ -63,8 +82,9 @@ const inputSchema = z.strictObject({
   feedback: feedbackKey.optional(),
   phase: z.array(z.enum(FEEDBACK_PHASES)).min(1).optional().describe('list: keep these phases'),
   q: z.string().max(200).optional().describe('list: words the title holds'),
-  ...createFeedbackRequestSchema.shape,
-  requirement: keyArgument('REQ', 'a requirement').optional(),
+  ...submitFields,
+  target: feedbackTargetSchema.optional(),
+  requirement: keyArgument('REQ', 'a requirement').optional().describe('list: its feedback only'),
   kind: createFeedbackRequestSchema.shape.kind.optional(),
   title: createFeedbackRequestSchema.shape.title.optional(),
   ...feedbackClarificationRequestSchema.partial().shape,
@@ -82,12 +102,31 @@ const DESCRIPTION = [
   'get {feedback}: one in full — body, where seen, route and carriers, decisions, the open clarification and its answer, progress. NOT_FOUND when the project holds no such key.',
   'progress {feedback}: the progress block alone.',
   'similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar.',
-  `submit ${CREATE_FEEDBACK_SHAPE}: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with requirements.similar).`,
+  `submit ${SUBMIT_SHAPE}: file it as the person you speak for, at phase new. target is the one thing it is about: a requirement it touches is best (find it with requirements.similar; ref REQ-n), else an issue (ISS-n), a release (its version), a workflow (its flow slug), an endpoint (METHOD /path, a tool or a command the project serves), a mockup (MK-n) or a screen. A remark that fits none of them, about the product as a whole, names the screen it was met on in words ({ kind: screen, ref: "checkout page" }); a screen is where it was seen, so leave whereSeen out beside it.`,
   `attach {feedback, ${FEEDBACK_ATTACHMENT_SHAPE.slice(2, -2)}}: attach a file to an existing item, as anyone who may comment on it may; label approved_design marks a mockup a person approved. The bytes are base64; the type and size limits are an issue attachment's. Answers the new attachmentId; get lists every attachment, and uploads.fetch {data:{target:"feedback", attachmentId}} reads one.`,
   'clarify {feedback, prompt, needed, recommended}: ask the reporter one question; `needed` says what would settle it, `recommended` is the answer you recommend, which they send by one click. Refused while one is open on the item or to the same reporter, or when the item is past triage.',
   'Triage, decline, verify and retarget are not done here: triage is the project’s master’s, a person’s only on a strict project, on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
 ].join(' ');
+
+/** What describe tells of submit beyond its guide (REQ-78 BC-3). */
+const DESCRIBE = {
+  submit: {
+    fields: {
+      kind: 'required: bug (something broken or wrong), change_request (different behaviour of something that exists), idea (something new) or question',
+      title: 'required: the problem or the wish, in the reporter’s words',
+      target:
+        'required, exactly one: { kind, ref }, the one thing the item is about; a requirement (ref REQ-n) is best',
+      body: 'optional: what happens, where, what was expected and what happened instead',
+    },
+    example: {
+      kind: 'bug',
+      title: 'Reorder leaves the cart empty',
+      body: 'Tapping Reorder on a past order shows an empty cart.',
+      target: { kind: 'screen', ref: 'order history page' },
+    },
+  },
+} as const;
 
 const GRANT = {
   byAction: {
@@ -235,6 +274,8 @@ async function submit(ctx: McpContext, projectId: string, input: Input) {
     contentBase64: _bytes,
     redacted: _red,
     label: _label,
+    requirement: _requirement,
+    target,
     ...rest
   } = input;
   const misplaced = (
@@ -256,7 +297,17 @@ async function submit(ctx: McpContext, projectId: string, input: Input) {
       })),
     );
   }
-  const request = createFeedbackRequestSchema.safeParse(rest);
+  if (input.requirement !== undefined) {
+    throw new ArgumentRefusal([
+      {
+        path: '/requirement',
+        fault:
+          'requirement filters list; submit names a requirement as its target: { kind: requirement, ref: "REQ-n" }',
+      },
+    ]);
+  }
+  const { target: named } = need({ target }, 'submit', 'target');
+  const request = createFeedbackRequestSchema.safeParse({ ...rest, ...targetFieldsOf(named) });
   if (!request.success) throw zodArgumentRefusal(request.error);
   return written(
     ctx,
@@ -312,6 +363,7 @@ export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   permission: PERMISSION,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
+  actionDescribe: DESCRIBE,
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);

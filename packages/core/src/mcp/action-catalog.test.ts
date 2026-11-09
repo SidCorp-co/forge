@@ -5,13 +5,17 @@
 //
 // @direct-test-of packages/core/src/mcp/action-catalog.ts
 // @direct-test-of packages/core/src/support/tool.ts
+// @direct-test-of packages/core/src/product-door/design-describe.ts
 
 import { PERMISSIONS } from '@forge/contracts/permissions';
+import { BUILTIN_WORKFLOW_TEMPLATES } from '@forge/contracts/workflow-templates';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
-import type { McpContext, McpTool } from '../lib/tool.js';
+import { EXAMPLE_PLACEHOLDERS, type McpContext, type McpTool } from '../lib/tool.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
+import { projectDocumentSchema } from '../project-config/schema.js';
+import { checkWorkflow, parseWorkflow } from '../workflows/rules.js';
 import { actionCatalog, findActions } from './action-catalog.js';
 import { forgeMcpInstructions, mcpTools, toolListing } from './server.js';
 
@@ -309,6 +313,20 @@ describe('a door judging each action under its own request', () => {
 // be enough to call it. FB-595..598 read on forge-dev: requirements.create's `criteria` said
 // "revise: the whole list", every guide but its door's last ended in a dangling "-", and no create
 // action carried an example a client could send.
+/** An example as its caller sends it: each placeholder filled with the value it stands for. */
+const asCalled = (example: unknown): unknown => {
+  const held: Record<string, string> = {
+    '<project uuid>': '00000000-0000-4000-8000-0000000011a5',
+    '<project slug>': 'shop',
+    '<workflow uuid>': '00000000-0000-4000-8000-0000000011a6',
+    '<plugin sha>': '73225dedb41b5da26b4ce73518086e26e81f91b8',
+  };
+  expect(Object.keys(held).sort()).toEqual(Object.keys(EXAMPLE_PLACEHOLDERS).sort());
+  return JSON.parse(JSON.stringify(example), (_k, v) =>
+    typeof v === 'string' && v in held ? held[v] : v,
+  );
+};
+
 describe('describe is enough to call each action as written', () => {
   // the product layer's doors; channel and ecosystem are kept for forge-plugin clients under the
   // amnesty `mcp-tools-with-rest-twins` (mcp/registry.ts), and carry no example yet
@@ -339,8 +357,68 @@ describe('describe is enough to call each action as written', () => {
     const missing = creates.filter((e) => e.example === undefined).map((e) => e.id);
     expect(missing).toEqual([]);
     for (const e of creates) {
-      const valid = strict.validate(e.input, e.example);
+      const valid = strict.validate(e.input, asCalled(e.example));
       expect(valid, `${e.id}: ${JSON.stringify(strict.errors)}`).toBe(true);
     }
+  });
+});
+
+describe('the writes a client set a project up by over MCP (FB-595..598)', () => {
+  it('describes design create and revise each alone, naming its document schema where it is served', () => {
+    const create = catalog.get('design.design_create');
+    const revise = catalog.get('design.design_revise');
+    expect(create?.guide).not.toContain('design_revise');
+    expect(revise?.guide).not.toContain('design_create');
+    for (const [e, file] of [
+      [create, 'workflow-v2.json'],
+      [revise, 'workflow-v2.json'],
+      [catalog.get('config.write'), 'project-v1.json'],
+    ] as const) {
+      expect(e?.documentSchema, e?.id).toMatch(new RegExp(`/api/schemas/${file}$`));
+      expect(e?.documentSchema, e?.id).not.toContain('forge.sidcorp.co');
+    }
+    expect(revise?.example).toBeDefined();
+  });
+
+  it("design_create's example is a design the built-in templates accept, with no stamps or writtenBy", () => {
+    const body = (asCalled(catalog.get('design.design_create')?.example) as { body: unknown })
+      .body as { document: Record<string, unknown> };
+    for (const owned of ['id', 'createdAt', 'updatedAt', 'writtenBy']) {
+      expect(body.document, owned).not.toHaveProperty(owned);
+    }
+    const parsed = parseWorkflow(body.document, '00000000-0000-4000-8000-0000000011a5');
+    expect(parsed.ok, JSON.stringify(parsed)).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.writtenBy).toEqual({});
+    expect(
+      checkWorkflow(parsed.value, { templates: [...BUILTIN_WORKFLOW_TEMPLATES], designs: [] }),
+    ).toEqual([]);
+  });
+
+  it("config.write's example is a project document its schema accepts", () => {
+    const { document } = asCalled(catalog.get('config.write')?.example) as { document: unknown };
+    const parsed = projectDocumentSchema.safeParse(document);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
+  it('takes project_feedback.submit’s one target as one field, never seven', () => {
+    const submit = catalog.get('project_feedback.submit');
+    const props = Object.keys(submit?.input.properties as object);
+    expect(props).toContain('target');
+    for (const loose of ['issue', 'release', 'workflow', 'endpoint', 'mockup', 'screen']) {
+      expect(props, loose).not.toContain(loose);
+    }
+    expect(submit?.input.required).toEqual(expect.arrayContaining(['kind', 'title', 'target']));
+    expect(submit?.guide).toMatch(/fits none of them/);
+  });
+
+  it('reads and writes a project’s gates and the profile table, each its own action', () => {
+    expect(catalog.get('config.gates_get')?.input.required).toEqual(['projectId']);
+    expect(catalog.get('config.gates_write')?.input.required).toEqual(
+      expect.arrayContaining(['projectId', 'baseRevision', 'profile', 'reason']),
+    );
+    expect(catalog.get('config.gate_profiles')).toBeDefined();
+    expect(catalog.get('design.template_list')).toBeDefined();
+    expect(catalog.get('projects.create')?.guide).toMatch(/config\.write/);
   });
 });

@@ -40,6 +40,28 @@ const shapeError = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'CONFIG_WRITE_SHAPE' } });
 
 /**
+ * A create body is `{ baseRevision, document }`: the document's stamps are the server's, which
+ * assigns them on the insert, so one sent is dropped and listed under `ignored` as a PUT lists it
+ * (REQ-78 BC-3: the served schema shows them, and a create from it is accepted).
+ */
+export function createBodyOf(raw: unknown): {
+  baseRevision: number | null;
+  document: unknown;
+  ignored: IgnoredField[];
+} {
+  const { baseRevision, document } = envelopeOf(raw);
+  if (!isRecord(document)) return { baseRevision, document, ignored: [] };
+  const stripped: Record<string, unknown> = { ...document };
+  const ignored: IgnoredField[] = [];
+  for (const key of STAMP_FIELDS) {
+    if (!(key in stripped)) continue;
+    delete stripped[key];
+    ignored.push({ path: `/document/${key}`, detail: 'owned by the server and set on the create' });
+  }
+  return { baseRevision, document: stripped, ignored };
+}
+
+/**
  * A PUT body is `{ baseRevision, document, issue? }`, and what GET returned is accepted as it stands: the
  * fields the server owns are dropped and reported, and `revision` is the base when no
  * `baseRevision` is sent.

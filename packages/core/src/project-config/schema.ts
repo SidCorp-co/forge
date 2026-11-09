@@ -22,6 +22,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
+import { servedSchemaUrl } from '../lib/served-schema.js';
 import { actingSecretsSchema } from './acting-secrets-schema.js';
 import { routesFaults } from './environment-routes.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
@@ -451,7 +452,7 @@ export const bindingDocumentSchema = z.strictObject({
   target: z.discriminatedUnion('provider', BINDING_TARGETS, {
     error: (issue) =>
       issue.code === 'invalid_union'
-        ? `${providerNamed(issue.input)} is not a binding target; target.provider is one of ${BINDING_TARGET_PROVIDERS.join(', ')}, each with the fields binding-v1.json names for it.`
+        ? `${providerNamed(issue.input)} is not a binding target; target.provider is one of ${BINDING_TARGET_PROVIDERS.join(', ')}, each with the fields ${servedSchemaUrl('binding-v1.json')} names for it.`
         : undefined,
   }),
 });

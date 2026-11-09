@@ -39,6 +39,24 @@ export type ToolReach =
  */
 export type ToolRoute = PatRoute | readonly PatRoute[];
 
+/** What an example names in place of a value only its caller holds, and where the caller reads it. */
+export const EXAMPLE_PLACEHOLDERS = {
+  '<project uuid>': "your project's id (projects.list)",
+  '<project slug>': "your project's slug (projects.get)",
+  '<workflow uuid>': "the design's workflowId (design_list)",
+  '<plugin sha>': 'the 40-character commit of the agent plugin your runs are pinned to',
+} as const;
+
+/** One action's own field texts and its example, as `forge_describe` answers them. */
+export interface ActionDescribe {
+  /** Field name to the text it carries for this action alone. */
+  fields?: Readonly<Record<string, string>>;
+  /** Where the schema of the document the action writes resolves (`lib/served-schema.ts`). */
+  documentSchema?: string;
+  /** One minimal call's arguments, without `action`; an {@link EXAMPLE_PLACEHOLDERS} key stands for a value the caller holds. */
+  example: Readonly<Record<string, unknown>>;
+}
+
 export interface McpTool {
   name: string;
   description: string;
@@ -65,6 +83,12 @@ export interface McpTool {
    * and the registry refuses an entry that names other arguments than it takes (ISS-1033).
    */
   actionRequests?: Readonly<Record<string, Record<string, unknown>>>;
+  /**
+   * What `forge_describe` tells of one action beyond its guide (REQ-78 BC-3): field texts that
+   * replace the door's shared ones, which speak for every action, and one minimal call its input
+   * accepts as written. The registry refuses a field the action's input does not take.
+   */
+  actionDescribe?: Readonly<Record<string, ActionDescribe>>;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 

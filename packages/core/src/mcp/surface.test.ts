@@ -126,6 +126,17 @@ describe('forge_find and forge_describe', () => {
     expect(Buffer.byteLength(d.text)).toBeLessThan(8 * 1024);
   });
 
+  // REQ-78 BC-3: describe alone is enough to call it, so it names the document's schema where it is
+  // served and carries a call, saying what each placeholder in it stands for
+  it('answers a write its document schema and an example to call as written', async () => {
+    const d = await call('forge_describe', { action: 'design.design_create' });
+    expect(d.isError).toBe(false);
+    expect(d.data.documentSchema).toMatch(/^https?:\/\/[^/]+\/api\/schemas\/workflow-v2\.json$/);
+    expect(d.data.example).toMatchObject({ action: 'design.design_create', args: { body: {} } });
+    expect(d.data.exampleNote).toMatch(/<project uuid> is your project's id/);
+    expect(d.data.guide).not.toMatch(/\n-$/);
+  });
+
   it('refuses an action that is not one by name, with the nearest', async () => {
     const d = await call('forge_describe', { action: 'requirements.creat' });
     expect(d.isError).toBe(true);

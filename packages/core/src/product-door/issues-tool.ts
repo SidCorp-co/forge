@@ -196,10 +196,23 @@ async function create(ctx: McpContext, i: Input) {
   };
 }
 
+/** One create describe answers as written (REQ-78 BC-3). */
+const DESCRIBE = {
+  create: {
+    example: {
+      projectId: '<project uuid>',
+      title: 'Reorder fills the cart with a past order’s items',
+      description: 'Delivers the reorder requirement’s first criterion.',
+      acceptanceCriteria: '1. A past order’s page offers Reorder, which fills the cart.',
+    },
+  },
+} as const;
+
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
+  actionDescribe: DESCRIBE,
   reach: 'project',
   route: ['/api/projects', '/api/issues'],
   grant: {

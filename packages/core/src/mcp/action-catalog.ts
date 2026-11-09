@@ -39,6 +39,10 @@ export interface ActionEntry {
   input: Schema;
   /** What the action needs its caller to hold, as the tool declares it (REQ-12 BC-20); absent while amnestied. */
   permission?: DeclaredPermission;
+  /** One minimal call its input accepts as written (`McpTool.actionDescribe`), where the door gives one. */
+  example?: Readonly<Record<string, unknown>>;
+  /** Where the schema of the document it writes resolves, where it writes one. */
+  documentSchema?: string;
 }
 
 const SUMMARY_MAX = 140;
@@ -306,10 +310,47 @@ function requestInput(
 }
 
 function entriesOf(tool: McpTool): ActionEntry[] {
+  const actions = new Set(actionsOf(tool));
+  const extra = Object.keys(tool.actionDescribe ?? {}).filter((a) => !actions.has(a));
+  if (extra.length > 0) {
+    throw new Error(
+      `mcp registry: ${tool.name} describes ${extra.join(', ')}, which it does not take (mcp/action-catalog.ts)`,
+    );
+  }
   return entriesWithoutPermission(tool).map((entry) => {
     const permission = toolPermissionFor(tool.permission, entry.action);
-    return permission ? { ...entry, permission } : entry;
+    const described = describedEntry(tool, entry);
+    return permission ? { ...described, permission } : described;
   });
+}
+
+/**
+ * The entry with its action's own field texts in place of the door's shared ones, and its example:
+ * a field or an example argument the action's input does not take is refused by name, since a client
+ * calls by what describe answers.
+ */
+function describedEntry(tool: McpTool, entry: ActionEntry): ActionEntry {
+  const own = tool.actionDescribe?.[entry.action];
+  if (!own) return entry;
+  const properties = { ...((entry.input.properties as Record<string, Schema> | undefined) ?? {}) };
+  const refuse = (what: string, name: string) =>
+    new Error(
+      `mcp registry: ${tool.name}'s ${what} for ${entry.action} names \`${name}\`, which its input does not take (mcp/action-catalog.ts)`,
+    );
+  for (const [name, text] of Object.entries(own.fields ?? {})) {
+    const property = properties[name];
+    if (!property) throw refuse('field text', name);
+    properties[name] = { ...property, description: text };
+  }
+  for (const name of Object.keys(own.example)) {
+    if (!(name in properties)) throw refuse('example', name);
+  }
+  return {
+    ...entry,
+    input: { ...entry.input, properties },
+    example: own.example,
+    ...(own.documentSchema ? { documentSchema: own.documentSchema } : {}),
+  };
 }
 
 function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
@@ -371,7 +412,14 @@ function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
       summary = summaryOf(prose ?? signature);
     } else {
       const end = starts.find((s) => s > f.start) ?? text.length;
-      guide = text.slice(f.start, end).trim().replace(/^-\s*/, '');
+      // an entry ends where the next one starts, after the next one's own bullet: that bullet is the
+      // next entry's, never this one's last word
+      guide = text
+        .slice(f.start, end)
+        .trim()
+        .replace(/^-\s*/, '')
+        .replace(/\s*(?:^|\n)\s*[-*]$/, '')
+        .trim();
       summary = summaryOf(text.slice(f.body, end));
     }
     return {

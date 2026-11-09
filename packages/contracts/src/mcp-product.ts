@@ -12,6 +12,7 @@ export const RELEASES_TOOL_ACTIONS = [
 export const DESIGN_TOOL_READS = [
 	"design_list",
 	"design_get",
+	"template_list",
 	"suggestion_list",
 	"mockup_list",
 	"mockup_get",

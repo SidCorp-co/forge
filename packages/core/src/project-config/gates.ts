@@ -6,6 +6,7 @@ import {
   GATE_CATALOG,
   GATE_IDS,
   GATE_MODES,
+  GATE_PROFILES,
   type GateId,
   type GateMode,
   type GateProfile,
@@ -21,6 +22,7 @@ import {
 } from '@forge/contracts/gate-profiles';
 import { type VerifiedJudge, verifiedJudgeOf } from '@forge/contracts/verified-rule';
 import { desc, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { users } from '../db/schema-auth.js';
 import { projectGateChanges } from '../db/schema-gate-changes.js';
@@ -317,6 +319,26 @@ export interface GateChangeView {
   reason: string;
   ref: string | null;
 }
+
+/** A project's gates as they stand, with its last twenty changes: what the gates door reads. */
+export async function readGatesWithChanges(projectId: string) {
+  const [gates, changes] = await Promise.all([
+    readProjectGates(projectId),
+    readGateChanges(projectId, 20),
+  ]);
+  return { ...gates, changes };
+}
+
+/** What the gates door writes, over REST and MCP alike. */
+export const gatesWriteSchema = z.strictObject({
+  baseRevision: z.number().int().min(1),
+  profile: z.enum(GATE_PROFILES),
+  overrides: z.record(z.string(), z.enum(GATE_MODES)).default({}),
+  reason: z.string(),
+});
+
+export const GATES_WRITE_SHAPE =
+  '{ baseRevision: the project document revision you read, profile: strict | standard | yolo, overrides: { <gate>: enforce | advise | off }, reason: why }';
 
 /** The project's gate changes, newest first. */
 export async function readGateChanges(projectId: string, limit = 50): Promise<GateChangeView[]> {

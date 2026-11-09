@@ -256,6 +256,15 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   grant: GRANT,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
+  actionDescribe: {
+    submit: {
+      example: {
+        kind: 'bug',
+        title: 'The design door’s describe names no document schema',
+        target: { kind: 'tool', ref: 'forge_describe' },
+      },
+    },
+  },
   // the REST twins declare the same (forge-door/routes.ts). get, progress, verify, reopen and reply
   // are declared by the rule that decides them: who may read or settle an item depends on the row
   // (its reporter, an agent reporter's master, or a member of the home project)

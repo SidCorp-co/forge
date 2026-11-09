@@ -187,17 +187,30 @@ const workflowV2Fields = {
     .min(1)
     .max(WORKFLOW_LIMITS.bases)
     .optional(),
-  writtenBy: z.strictObject({
-    runId: uuid().optional(),
-    sessionId: uuid().optional(),
-    sha: sha().optional(),
-  }),
+  /** What wrote the revision; left out, the server fills `{}`, naming nothing. */
+  writtenBy: z
+    .strictObject({
+      runId: uuid().optional(),
+      sessionId: uuid().optional(),
+      sha: sha().optional(),
+    })
+    .default({}),
 };
 
 export const workflowWriteV2Schema = z.strictObject(workflowV2Fields);
 export type WorkflowWriteV2 = z.infer<typeof workflowWriteV2Schema>;
 
-export const workflowDocumentV2Schema = z.strictObject({ ...workflowV2Fields, ...stamps });
+/**
+ * The document a read serves and a write sends: the stamps are the server's, on every read and left
+ * out of a write (a create or a revise drops one sent and lists it under `ignored`), so the served
+ * schema (`GET /api/schemas/workflow-v2.json`) holds both.
+ */
+export const workflowDocumentV2Schema = z.strictObject({
+  ...workflowV2Fields,
+  id: stamps.id.optional(),
+  createdAt: stamps.createdAt.optional(),
+  updatedAt: stamps.updatedAt.optional(),
+});
 
 export type WorkflowWrite = WorkflowWriteV2;
 export type AnyWorkflowStep = WorkflowStepV2;

@@ -1,4 +1,3 @@
-import { GATE_MODES, GATE_PROFILES } from '@forge/contracts/gate-profiles';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,7 +10,13 @@ import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
-import { readGateChanges, readProjectGates, writeGates } from './gates.js';
+import {
+  GATES_WRITE_SHAPE,
+  gatesWriteSchema,
+  readGateChanges,
+  readGatesWithChanges,
+  writeGates,
+} from './gates.js';
 import { profileValueDoor, secretValueDoor, secretValueElsewhere } from './secret-value-door.js';
 import { signInStandings } from './secret-write.js';
 import {
@@ -97,37 +102,22 @@ projectConfigRoutes.put(
   },
 );
 
-const gatesBody = z.strictObject({
-  baseRevision: z.number().int().min(1),
-  profile: z.enum(GATE_PROFILES),
-  overrides: z.record(z.string(), z.enum(GATE_MODES)).default({}),
-  reason: z.string(),
-});
-
 projectConfigRoutes.get('/:id/gates', paramOf(idParam), READ, noQuery, async (c) => {
-  const { id } = c.req.valid('param');
-  const [gates, changes] = await Promise.all([readProjectGates(id), readGateChanges(id, 20)]);
-  return c.json({ ...gates, changes });
+  return c.json(await readGatesWithChanges(c.req.valid('param').id));
 });
 
 projectConfigRoutes.put(
   '/:id/gates',
   paramOf(idParam),
   ADMIN,
-  zValidator(
-    'json',
-    gatesBody,
-    invalid(
-      'invalid gates write: { baseRevision: the project document revision you read, profile: strict | standard | yolo, overrides: { <gate>: enforce | advise | off }, reason: why }',
-    ),
-  ),
+  zValidator('json', gatesWriteSchema, invalid(`invalid gates write: ${GATES_WRITE_SHAPE}`)),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const body = c.req.valid('json');
     const outcome = await writeGates({ projectId: id, userId, ...body });
     if (!outcome.ok) return refused(c, outcome.refusals, 'GATES_REFUSED');
-    return c.json({ ...(await readProjectGates(id)), changes: await readGateChanges(id, 20) });
+    return c.json(await readGatesWithChanges(id));
   },
 );
 

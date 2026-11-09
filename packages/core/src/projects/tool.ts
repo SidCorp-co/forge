@@ -50,7 +50,19 @@ const SHAPE = '{ action, projectId?, archived?, slug?, name?, orgId? }';
 const DESCRIPTION = `The projects you can read, one in full, and a new one, as their REST doors answer them.
 - list { archived? }: every project you can read, each with its id, slug, name and your role. Start here to find the project you work in.
 - get { projectId }: one project with your role, its members, labels and base branch.
-- create { slug, name, orgId? }: a new project in your personal org, or in the org named where you hold a role in it, as POST /api/projects creates one; a token fenced to projects is refused, since a new project is in none of them.`;
+- create { slug, name, orgId? }: a new project in your personal org, or in the org named where you hold a role in it, as POST /api/projects creates one; a token fenced to projects is refused, since a new project is in none of them. It holds a slug and a name only: config.write then sets the rest of it, its one-line description, its repository and branches and its environments, as a first write (baseRevision null).`;
+
+/** What describe tells of create beyond its guide (REQ-78 BC-3). */
+const DESCRIBE = {
+  create: {
+    fields: {
+      slug: 'required: the project’s address, unique on this Forge: 3 to 64 lower-case letters, digits or hyphens, starting with a letter (shop, acme-web)',
+      name: 'required: the project’s name as people read it',
+      orgId: 'optional: the org it is created in; your personal org when left out',
+    },
+    example: { slug: 'shop', name: 'Shop' },
+  },
+} as const;
 
 const parse = (args: unknown): Input => {
   const parsed = input.safeParse(args);
@@ -113,6 +125,7 @@ export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
+  actionDescribe: DESCRIBE,
   route: '/api/projects',
   grant: { byAction: { list: 'projects:read', get: 'projects:read', create: 'projects:write' } },
   reach: {

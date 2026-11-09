@@ -70,9 +70,7 @@ const inputSchema = z.strictObject({
   text: z.string().trim().min(3).max(8_000).optional().describe('similar: the wish to compare'),
   title: titleText(REQUIREMENT_TITLE_MAX)
     .optional()
-    .describe(
-      'create: the requirement’s title, in the person’s words; revise: the new title it gives once accepted, left out to carry the head’s',
-    ),
+    .describe('the requirement’s title, in the person’s words'),
   designs: z
     .array(z.string().trim().min(1).max(200))
     .max(10)
@@ -98,12 +96,63 @@ const inputSchema = z.strictObject({
   optionId: z.string().optional().describe('answer: the option the person chose'),
   answer: z.string().optional().describe('answer: the person’s words, on a free-text round'),
   ...revisionFields,
-  criteria: revisionFields.criteria
-    .optional()
-    .describe('revise: the whole list, each criterion that stays with its code'),
+  criteria: revisionFields.criteria.optional().describe('the requirement’s criteria'),
 });
 
 type Input = z.infer<typeof inputSchema>;
+
+const CRITERIA_TEXT =
+  'what must hold for it to be met, each { body, form?, code?, title? }: body is the criterion; form is statement (the default: a sentence a judge finds true or false on the running product) or scenario (the body reads Given …, When …, Then …, each keyword starting a line); title is a row label of at most eight words';
+
+/** Each write action's own field texts and one call it accepts as written (REQ-78 BC-3). */
+const DESCRIBE = {
+  create: {
+    fields: {
+      title: 'required: the requirement’s title, in the person’s words',
+      criteria: `optional, none when left out: ${CRITERIA_TEXT}. Leave code out: the server gives each the next BC-n`,
+      reason:
+        'optional: why the person wants it; left out, its author is asked why as a question on it',
+      spec: 'optional: { goal?, personas?, scopeIn?, scopeOut?, openQuestions?, assumptions? }',
+      tldr: 'optional: the requirement in a sentence or two',
+      kind: 'optional: process, rule, screen or report; its picture follows from it',
+      picture:
+        'optional: a rough sketch of the kind kind names (flow, example_table, wireframe or chart); leave alt out',
+      designs: 'optional: the workflow designs it relates to, by flow name or id; each is linked',
+      writtenLang: 'optional: the language the title and criteria are written in; left out, yours',
+    },
+    example: {
+      title: 'A customer can reorder a past order in one tap',
+      reason: 'Repeat customers rebuild the same cart by hand every week.',
+      criteria: [
+        { body: 'A past order’s page offers Reorder, which fills the cart with its items.' },
+        {
+          form: 'scenario',
+          body: 'Given a past order whose items are all in stock\nWhen the customer taps Reorder\nThen the cart holds those items at today’s prices',
+        },
+      ],
+    },
+  },
+  revise: {
+    fields: {
+      title:
+        'optional: the new title it gives once a person accepts the revision; left out, the head’s is carried',
+      criteria: `required, the WHOLE list: ${CRITERIA_TEXT}. A criterion that stays keeps its code; a new one has none and is given the next BC-n; one left out is retired`,
+      baseRevision:
+        'the head you read (currentRevision from get), null where it has none; or send revision instead',
+      revision: 'optional: the draft revision to rewrite whole, in place of baseRevision',
+    },
+    example: {
+      requirement: 'REQ-12',
+      baseRevision: 1,
+      criteria: [
+        {
+          code: 'BC-1',
+          body: 'A past order’s page offers Reorder, which fills the cart with its items.',
+        },
+      ],
+    },
+  },
+} as const;
 
 const DESCRIPTION = [
   "A project's requirements (REQ-n), for a BA: read them, draft and revise them, and tell the person how delivery is going.",
@@ -115,7 +164,7 @@ const DESCRIPTION = [
   'progress {requirement}: the progress block alone.',
   'similar {text}: the requirements nearest a wish; call it before create, and revise the one that covers it instead. provider_not_configured or withheld_by_policy does not mean none is similar.',
   'create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks.',
-  'revise {requirement, baseRevision, criteria, title?, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement, its title included (title, applied when a person accepts it; there is no other rename). Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a revision is open. A draft is rewritten by passing revision: n; a proposed one is frozen until a holder of requirements.approve returns or accepts it, which this tool does not, so tell the person. REQUIREMENT_REVISION_STALE: the head moved, get it again.',
+  'revise {requirement, criteria, baseRevision | revision, title?, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement, its title included (title, applied when a person accepts it; there is no other rename). Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a revision is open. A draft is rewritten by passing revision: n; a proposed one is frozen until a holder of requirements.approve returns or accepts it, which this tool does not, so tell the person. REQUIREMENT_REVISION_STALE: the head moved, get it again.',
   'propose {requirement, revision}: put a draft revision before the people who agree it.',
   'withdraw {requirement, revision, reason}: withdraw an open draft revision for good, saying why, as POST …/revisions/:n/withdraw does: its author may, anyone else needs requirements.approve. It frees the one open revision (REQUIREMENT_REVISION_OPEN) and is the one act left on a dropped requirement (REQUIREMENT_DROPPED).',
   ANSWER_LINE,
@@ -354,6 +403,7 @@ export const forgeRequirementsMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   permission: PERMISSION,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
+  actionDescribe: DESCRIBE,
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);

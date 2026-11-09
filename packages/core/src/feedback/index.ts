@@ -74,6 +74,7 @@ export {
   stewardSettleFeedbackIn,
 } from './steward-settle.js';
 export { toldOf } from './told.js';
+export { feedbackTargetSchema, targetFieldsOf } from './tool.js';
 export { triageFeedback, triageIn } from './triage.js';
 export { personIssueActsOf } from './triage-person-gate.js';
 export { unchangedTriageRefusal } from './triage-unchanged.js';

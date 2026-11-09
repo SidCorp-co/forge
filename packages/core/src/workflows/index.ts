@@ -27,7 +27,7 @@ export { owedDesignApprovals, owedDesignRevisions } from './owed-designs.js';
 export { loadPinnedContracts, renderPinnedContracts } from './pinned-contracts.js';
 export { provideWorkflowPorts } from './ports.js';
 export { designReadOf, workflowSummaryOf } from './projection.js';
-export { ignoredByWrite, readBackOf } from './read-back.js';
+export { createBodyOf, ignoredByWrite, readBackOf } from './read-back.js';
 export { renderIssueMockups } from './requirement-context.js';
 export { renderArtifactContext } from './run-context.js';
 export {
@@ -39,3 +39,4 @@ export {
 export { createWorkflow, updateWorkflow, workflowView } from './service.js';
 export { type WorkflowStanding, workflowStandingsOf } from './standing-read.js';
 export { buildsOf, linkBuild, liveWorkflow } from './store.js';
+export { listProjectTemplatesAs } from './template-service.js';

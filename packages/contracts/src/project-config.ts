@@ -279,5 +279,13 @@ export const JUDGING_JOB_TYPES = ["test", "smoke", "staging", "drive"] as const;
 /** The job id a running job's credential names itself by. */
 export const SELF_JOB = "self";
 
-// The base every Forge document schema id hangs off.
+/**
+ * The base every Forge document schema id hangs off. It is an identifier, never fetched: every
+ * stored document names its schema by it in `$schema`, and a write is refused unless it names the
+ * same, so moving it is a migration of every stored document. A schema is read at the core that
+ * serves it, under {@link SERVED_SCHEMA_PATH}.
+ */
 export const SCHEMA_BASE = "https://forge.sidcorp.co/schemas";
+
+/** Where a core serves each schema, by its file name: `<core origin>/api/schemas/<name>.json`. */
+export const SERVED_SCHEMA_PATH = "/api/schemas";

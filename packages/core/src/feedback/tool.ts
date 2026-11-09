@@ -36,23 +36,30 @@ const {
   screen: _screen,
   ...requestFields
 } = createFeedbackRequestSchema.shape;
+/** The one thing an item is about, as one field: every door a model fills takes it so (FB-598). */
+export const feedbackTargetSchema = z
+  .strictObject({
+    kind: z.enum(TARGET_KINDS),
+    ref: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen),
+  })
+  .describe(
+    'the ONE thing the item is about: { kind: requirement, ref: "REQ-n" } is best; else issue (ISS-n), release (version), workflow (its slug), endpoint (METHOD /path or tool), mockup (MK-n) or screen (the page route)',
+  );
+export type FeedbackTargetInput = z.infer<typeof feedbackTargetSchema>;
+
+/** The REST create body's fields for one target, under the target's own field. */
+export const targetFieldsOf = (target: FeedbackTargetInput) => ({ [target.kind]: target.ref });
+
 const input = z.strictObject({
   projectId: z.uuid(),
   ...requestFields,
-  target: z
-    .strictObject({
-      kind: z.enum(TARGET_KINDS),
-      ref: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen),
-    })
-    .describe(
-      'the ONE thing the item is about: { kind: requirement, ref: "REQ-n" } is best; else issue (ISS-n), release (version), workflow (its slug), endpoint (METHOD /path or tool), mockup (MK-n) or screen (the page route)',
-    ),
+  target: feedbackTargetSchema,
 });
 type Input = z.infer<typeof input>;
 
 /** The REST create body the call stands for, its one target under its own field. */
 function requestOf({ projectId: _p, target, ...rest }: Input): CreateFeedbackRequest {
-  return { ...rest, [target.kind]: target.ref };
+  return { ...rest, ...targetFieldsOf(target) };
 }
 
 /**

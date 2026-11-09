@@ -24,7 +24,6 @@ import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { keyArgument, need } from '../lib/tool-args.js';
-import { envelopeOf } from '../lib/write-envelope.js';
 import {
   acceptMockup,
   commentOnMockup,
@@ -45,11 +44,13 @@ import {
   withdrawSuggestion,
 } from '../suggestions/index.js';
 import {
+  createBodyOf,
   createWorkflow,
   DESIGN_DECISIONS,
   decideDesignAs,
   designReadOf,
   ignoredByWrite,
+  listProjectTemplatesAs,
   listWorkflowsWithHealthAs,
   proposeDesign,
   readBackOf,
@@ -61,6 +62,7 @@ import {
 } from '../workflows/index.js';
 import { parseArgs } from './args.js';
 import { actorOf, readAccess, readerOf } from './context.js';
+import { designDescribe } from './design-describe.js';
 import { DESIGN_PERMISSION } from './design-permission.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
@@ -79,12 +81,7 @@ const input = z.strictObject({
   issue: z.string().trim().min(1).max(200).optional().describe('an issue key (ISS-12) or uuid'),
   decision: z.enum(DESIGN_DECISIONS).optional(),
   reason: z.string().optional(),
-  body: z
-    .unknown()
-    .optional()
-    .describe(
-      'design_create/_revise, suggestion_create, mockup_propose, mockup_comment: the REST body',
-    ),
+  body: z.unknown().optional().describe("the action's REST body, as its entry names it"),
   requirement: keyArgument('REQ', 'a requirement').optional(),
   feedback: keyArgument('FB', 'a feedback item').optional(),
   workflow: z.string().max(200).optional(),
@@ -101,7 +98,9 @@ const DESCRIPTION = `What the product is designed as, and the decisions on it: w
 Workflow designs:
 - design_list { projectId, view? }: every workflow with its design status, revision, approved revision and health.
 - design_get { projectId, workflowId, view?: summary | steps | full, revision?, stepFrom?, stepTo? }: one design, whom it waits on, and \`progress\`: each issue building it, whether an agent works on it now, and when it is likely done. It reads the design as it stands, a draft never proposed included: \`current\` is the working document at its revision (full carries it whole), and steps reads it unless revision names a proposed one.
-- design_create { projectId, body: { baseRevision: null, document } } and design_revise { projectId, workflowId, body: { baseRevision, document, issue? } }: write a workflow document (the revision you read is the base).
+- template_list { projectId }: the diagram templates a design may be drawn in, the built-ins and the project's own: each one's id, version, what it is for, its node types and its edge kinds.
+- design_create { projectId, body: { baseRevision: null, document } }: a new workflow design at revision 1, as a draft; its document is workflow-v2, drawn in a template template_list names.
+- design_revise { projectId, workflowId, body: { baseRevision, document, issue? } }: the next revision of a design, written whole on the revision you read.
 - design_propose { projectId, workflowId, revision, issue? }: propose a revision for approval.
 - design_decide { projectId, workflowId, revision, decision: ${DESIGN_DECISIONS.join(' | ')}, reason? }: a return says why.
 - design_withdraw { projectId, workflowId, reason? }: take back a design no revision of which was approved; it leaves the list and Needs you. An approved design is refused DESIGN_WITHDRAW_APPROVED, one another live design names in basedOn DESIGN_WITHDRAW_PINNED.
@@ -135,6 +134,21 @@ async function shownDesign<T>(ctx: McpContext, projectId: string, value: T, what
 function bodyOf<S extends z.ZodTypeAny>(i: Input, schema: S, shape: string): z.infer<S> {
   const { body } = need(i, i.action, 'body');
   return parseArgs(schema, body, shape);
+}
+
+/** The templates a design may be drawn in, each with what a step and an edge drawn in it take. */
+async function template_list(ctx: McpContext, i: Input) {
+  const listed = await listProjectTemplatesAs(ctx.principal.userId, i.projectId);
+  const templates = listed.map(({ origin, template: t }) => ({
+    id: t.id,
+    version: t.version,
+    origin,
+    title: t.title,
+    purpose: t.purpose,
+    nodeTypes: t.nodeTypes.map((n) => ({ id: n.id, required: n.required })),
+    edgeKinds: (t.edgeKinds ?? []).map((e) => ({ id: e.id, required: e.required })),
+  }));
+  return { templates, returned: templates.length };
 }
 
 async function design_list(ctx: McpContext, i: Input) {
@@ -206,15 +220,18 @@ function writtenWorkflow(outcome: Awaited<ReturnType<typeof createWorkflow>>) {
 
 async function design_create(ctx: McpContext, i: Input) {
   const { body } = need(i, 'design_create', 'body');
-  const { baseRevision, document } = envelopeOf(body);
-  return writtenWorkflow(
-    await createWorkflow({
-      projectId: i.projectId,
-      writer: actorOf(ctx),
-      baseRevision,
-      raw: document,
-    }),
-  );
+  const { baseRevision, document, ignored } = createBodyOf(body);
+  return {
+    ...writtenWorkflow(
+      await createWorkflow({
+        projectId: i.projectId,
+        writer: actorOf(ctx),
+        baseRevision,
+        raw: document,
+      }),
+    ),
+    ...(ignored.length > 0 ? { ignored } : {}),
+  };
 }
 
 async function design_revise(ctx: McpContext, i: Input) {
@@ -454,6 +471,7 @@ async function mockup_withdraw(ctx: McpContext, i: Input) {
 const ACTIONS = {
   design_list,
   design_get,
+  template_list,
   design_create,
   design_revise,
   design_propose,
@@ -481,6 +499,7 @@ export const forgeDesignTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_design',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
+  actionDescribe: designDescribe(),
   reach: 'project',
   route: '/api/projects',
   grant: {

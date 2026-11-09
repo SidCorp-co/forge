@@ -6,7 +6,6 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
-import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   invalid,
@@ -30,7 +29,7 @@ import { listWorkflowsWithHealthAs } from './listed.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designReadOf, workflowSummaryOf } from './projection.js';
-import { type IgnoredField, ignoredByWrite, readBackOf } from './read-back.js';
+import { createBodyOf, type IgnoredField, ignoredByWrite, readBackOf } from './read-back.js';
 import { DESIGN, DESIGN_APPROVER, OBSERVATION_WRITE, READ, WRITE } from './route-declarations.js';
 import {
   createWorkflow,
@@ -122,11 +121,12 @@ function answer(c: Context, outcome: WorkflowOutcome, readBack?: readonly Ignore
 }
 
 workflowRoutes.post('/:id/workflows', idParam, DESIGN, envelope, async (c) => {
-  const { baseRevision, document } = envelopeOf(c.req.valid('json'));
+  const { baseRevision, document, ignored } = createBodyOf(c.req.valid('json'));
   const projectId = c.req.valid('param').id;
   return answer(
     c,
     await createWorkflow({ projectId, writer: writerOf(c), baseRevision, raw: document }),
+    ignored.length > 0 ? ignored : undefined,
   );
 });
 

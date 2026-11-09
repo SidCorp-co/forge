@@ -17,6 +17,7 @@ export const DESIGN_PERMISSION = {
   byAction: {
     design_list: READ,
     design_get: READ,
+    template_list: READ,
     design_create: DESIGN,
     design_revise: DESIGN,
     design_propose: DESIGN,
