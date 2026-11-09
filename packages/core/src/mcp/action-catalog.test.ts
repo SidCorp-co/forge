@@ -391,7 +391,10 @@ describe('the writes a client set a project up by over MCP (FB-595..598)', () =>
     if (!parsed.ok) return;
     expect(parsed.value.writtenBy).toEqual({});
     expect(
-      checkWorkflow(parsed.value, { templates: [...BUILTIN_WORKFLOW_TEMPLATES], designs: [] }),
+      checkWorkflow(parsed.value, {
+        templates: [...BUILTIN_WORKFLOW_TEMPLATES],
+        designs: new Map(),
+      }),
     ).toEqual([]);
   });
 
