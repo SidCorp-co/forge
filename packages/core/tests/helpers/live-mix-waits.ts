@@ -12,7 +12,7 @@ import { withKernelMarker } from '../../src/db/kernel-marker.js';
 /**
  * A cleanup window whose newest fire ran a session that left the steward's report, as forge's
  * cleanup fires do: the automation standing reads each fire's report through its session
- * (`automation/facts.ts:stewardActions`).
+ * (`automation/facts.ts:fireFacts`).
  */
 export async function stewardFired(projectId: string, ownerId: string): Promise<void> {
   await db.execute(sql`

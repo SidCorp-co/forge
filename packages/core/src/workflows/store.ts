@@ -199,7 +199,7 @@ export interface StoredDesign {
   designIssueId: string | null;
 }
 
-const designColumns = {
+export const designColumns = {
   workflowId: projectWorkflowDesigns.workflowId,
   revision: projectWorkflowDesigns.revision,
   document: projectWorkflowDesigns.document,
@@ -335,25 +335,25 @@ export async function designsOf(tx: Tx, workflowId: string): Promise<StoredDesig
     .orderBy(desc(projectWorkflowDesigns.revision));
 }
 
+/** A design row at its workflow's approved revision or its newest: what {@link headDesignsOf} reads. */
+export const isHeadDesign = or(
+  eq(projectWorkflowDesigns.revision, projectWorkflows.approvedRevision),
+  eq(
+    projectWorkflowDesigns.revision,
+    sql`(SELECT max(d2.revision) FROM project_workflow_designs d2 WHERE d2.workflow_id = ${projectWorkflowDesigns.workflowId})`,
+  ),
+);
+
 /**
  * Each design of the project's approved revision and newest revision, the two a pin-only reading
  * compares; one statement for the project, never one per design.
  */
 export async function headDesignsOf(tx: Tx, projectId: string): Promise<StoredDesign[]> {
-  const newest = sql`(SELECT max(d2.revision) FROM project_workflow_designs d2 WHERE d2.workflow_id = ${projectWorkflowDesigns.workflowId})`;
   return tx
     .select(designColumns)
     .from(projectWorkflowDesigns)
     .innerJoin(projectWorkflows, eq(projectWorkflows.id, projectWorkflowDesigns.workflowId))
-    .where(
-      and(
-        eq(projectWorkflows.projectId, projectId),
-        or(
-          eq(projectWorkflowDesigns.revision, projectWorkflows.approvedRevision),
-          eq(projectWorkflowDesigns.revision, newest),
-        ),
-      ),
-    )
+    .where(and(eq(projectWorkflows.projectId, projectId), isHeadDesign))
     .orderBy(asc(projectWorkflowDesigns.workflowId), desc(projectWorkflowDesigns.revision));
 }
 

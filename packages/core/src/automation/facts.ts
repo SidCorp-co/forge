@@ -7,14 +7,7 @@ import type { ScriptFiling, ScriptOpsCall, ScriptRead } from '@forge/contracts/s
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { onePerProject, rowsPerProject } from '../db/read-memo.js';
-import {
-  agentSessions,
-  issues,
-  notifications,
-  pipelineRuns,
-  scheduleRuns,
-  schedules,
-} from '../db/schema.js';
+import { issues, notifications, pipelineRuns, scheduleRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -90,9 +83,13 @@ const fireColumns = {
   stateAfter: scheduleRuns.stateAfter,
   issues: sql<number>`(SELECT count(*)::int FROM issues i WHERE i.schedule_run_id = ${scheduleRuns.id} AND i.project_id = ${scheduleRuns.projectId})`,
   notifications: sql<number>`(SELECT count(*)::int FROM notifications n WHERE n.schedule_run_id = ${scheduleRuns.id})`,
+  // the steward run report of the session the fire ran, read with the fire: read on its own, each
+  // project whose fires ran a session sent one statement a person's attention (ISS-1070 r20)
+  stewardReport: sql<unknown>`(SELECT s.metadata -> 'stewardReport' FROM agent_sessions s WHERE s.id = ${scheduleRuns.sessionId})`,
 };
 
-export type FireRow = FireFacts & { output: string | null };
+/** A fire with its output and the actions its session's steward report names, null where it ran none. */
+export type FireRow = FireFacts & { output: string | null; stewardActions: StewardAction[] | null };
 
 interface FireScope {
   projectId: string;
@@ -107,8 +104,19 @@ export async function fireFacts(scope: FireScope): Promise<{ fires: FireRow[]; t
   const names = await ownersOf(rows.map((r) => r.runAsId));
   return {
     fires: rows.map(
-      ({ scheduleId, runAsId, reads, opsCalls, filings, stateAfter, projectId: _p, ...f }) => ({
+      ({
+        scheduleId,
+        runAsId,
+        reads,
+        opsCalls,
+        filings,
+        stateAfter,
+        stewardReport,
+        projectId: _p,
+        ...f
+      }) => ({
         ...f,
+        stewardActions: stewardActionsOf(stewardReport),
         scheduleId,
         runAs: runAsId ? (names.get(runAsId) ?? { id: runAsId, name: null }) : null,
         reads: reads as ScriptRead[] | null,
@@ -191,21 +199,6 @@ function stewardActionsOf(report: unknown): StewardAction[] | null {
       ? [{ skill: x.skill, kind: x.kind, summary: typeof x.summary === 'string' ? x.summary : '' }]
       : [];
   });
-}
-
-/** The steward run report of each fire's session, read through the session the fire ran. */
-export async function stewardActions(
-  sessionIds: readonly string[],
-): Promise<Map<string, StewardAction[] | null>> {
-  if (sessionIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      id: agentSessions.id,
-      report: sql<unknown>`${agentSessions.metadata} -> 'stewardReport'`,
-    })
-    .from(agentSessions)
-    .where(inArray(agentSessions.id, [...sessionIds]));
-  return new Map(rows.map((r) => [r.id, stewardActionsOf(r.report)]));
 }
 
 async function issueKeys(

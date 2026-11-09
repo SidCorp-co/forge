@@ -12,7 +12,7 @@ import type {
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { holderNames, holds } from '../permissions/index.js';
-import { type FireRow, fireFacts, producedItems, scheduleFacts, stewardActions } from './facts.js';
+import { type FireRow, fireFacts, producedItems, scheduleFacts } from './facts.js';
 import { lastFires, readScheduleStreaks } from './ports.js';
 import {
   type AutomationViewer,
@@ -72,10 +72,8 @@ async function schedulesOf(
 
 const publicStanding = ({ facts: _facts, ...s }: ScheduleStanding & { facts: ScheduleFacts }) => s;
 
-async function firesOf(fires: readonly FireRow[], standings: Standings) {
-  const actions = await stewardActions(fires.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
-  const actionsOf = (f: FireRow): StewardAction[] | null =>
-    f.sessionId ? (actions.get(f.sessionId) ?? null) : null;
+function firesOf(fires: readonly FireRow[], standings: Standings) {
+  const actionsOf = (f: FireRow): StewardAction[] | null => f.stewardActions;
   const proposals: FireProposal[] = fires.flatMap((f) => fireProposals(f, actionsOf(f)));
   const standingsOut = fires.map((f) => ({
     row: f,
@@ -92,7 +90,7 @@ export async function readAutomationStanding(
 ): Promise<AutomationStandingResponse> {
   const { standings, failStreak } = await schedulesOf(projectId, viewer, now);
   const fired = await fireFacts({ projectId, limit: opts.firesLimit });
-  const { fires, proposals } = await firesOf(fired.fires, standings);
+  const { fires, proposals } = firesOf(fired.fires, standings);
   return {
     generatedAt: now.toISOString(),
     failStreak,
@@ -115,7 +113,7 @@ export async function readScheduleDetail(
   const standing = standings.get(scheduleId);
   if (!standing) return null;
   const fired = await fireFacts({ projectId, scheduleId, limit: opts.firesLimit });
-  const { fires, proposals } = await firesOf(fired.fires, standings);
+  const { fires, proposals } = firesOf(fired.fires, standings);
   return {
     schedule: publicStanding(standing),
     fires: fires.map((f) => ({ ...f.standing, output: f.row.output })),
@@ -137,7 +135,7 @@ export async function readFireDetail(
   const { standings } = await schedulesOf(projectId, viewer, now, row.scheduleId);
   const standing = standings.get(row.scheduleId);
   if (!standing) return null;
-  const { fires, proposals } = await firesOf([row], standings);
+  const { fires, proposals } = firesOf([row], standings);
   const fire = fires[0];
   if (!fire) return null;
   return {

@@ -11,7 +11,7 @@ import type {
   SuggestionProducer,
   SuggestionTargetType,
 } from '@forge/contracts/suggestions';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedPerId, rowsPerProject } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
@@ -83,27 +83,38 @@ const titledOf = (
         return new Map(rows.map(({ id, ...r }) => [id, r]));
       });
 
-/** Each target's key and short title, one set read per target type. */
+/** A workflow target's flow and title, as the suggestion's own row carries it where it was read with it. */
+type FlowNamed = { flow: string; title: string };
+
+/** A workflow's title, else its flow: what a reader names a design by. */
+const flowTitle = sql<string>`coalesce(${projectWorkflows.document}->>'title', ${projectWorkflows.flow})`;
+
+/**
+ * Each target's key and short title, one set read per target type; a workflow a row was read with
+ * (`workflowTarget`) is named from it.
+ */
 export async function targetsOf(
   projectId: string,
-  rows: readonly Row[],
+  rows: readonly (Row & { workflowTarget?: FlowNamed | null })[],
 ): Promise<Map<string, Named>> {
   const ids = (type: SuggestionTargetType) => [
     ...new Set(rows.map(targetOfRow).flatMap((t) => (t.type === type ? [t.id] : []))),
   ];
+  const carried = new Map(
+    rows.flatMap((r) =>
+      r.workflowId && r.workflowTarget ? [[r.workflowId, r.workflowTarget]] : [],
+    ),
+  );
+  const unread = ids('workflow').filter((id) => !carried.has(id));
   const [reqs, fbs, iss, flows, prefix] = await Promise.all([
     titledOf('requirement', ids('requirement')),
     titledOf('feedback', ids('feedback')),
     titledOf('issue', ids('issue')),
-    ids('workflow').length
+    unread.length
       ? db
-          .select({
-            id: projectWorkflows.id,
-            flow: projectWorkflows.flow,
-            title: sql<string>`coalesce(${projectWorkflows.document}->>'title', ${projectWorkflows.flow})`,
-          })
+          .select({ id: projectWorkflows.id, flow: projectWorkflows.flow, title: flowTitle })
           .from(projectWorkflows)
-          .where(inArray(projectWorkflows.id, ids('workflow')))
+          .where(inArray(projectWorkflows.id, unread))
       : [],
     ids('issue').length ? activeIssuePrefix(projectId) : null,
   ]);
@@ -111,14 +122,24 @@ export async function targetsOf(
   for (const [id, r] of reqs) named.set(id, { key: requirementKey(r.seq), title: r.title });
   for (const [id, f] of fbs) named.set(id, { key: feedbackKey(f.seq), title: f.title });
   for (const [id, i] of iss) named.set(id, { key: formatIssueRef(prefix, i.seq), title: i.title });
+  for (const [id, w] of carried) named.set(id, { key: w.flow, title: w.title });
   for (const w of flows) named.set(w.id, { key: w.flow, title: w.title });
   return named;
 }
 
-/** Every proposed suggestion of these projects, oldest first. */
-function proposedRowsOf(projectIds: readonly string[]): Promise<Row[]> {
+/**
+ * Every proposed suggestion of these projects, oldest first, each on a workflow with that
+ * workflow's flow and title: a project's design changes named their workflows in a statement of
+ * their own, a wave after the rows (ISS-1070 r20).
+ */
+function proposedRowsOf(projectIds: readonly string[]) {
   return db
-    .select()
+    .select({
+      ...getTableColumns(suggestions),
+      // the outer row named as written: a single table's columns are sent unqualified
+      workflowTarget: sql<FlowNamed | null>`(SELECT jsonb_build_object('flow', w.flow, 'title', coalesce(w.document->>'title', w.flow))
+        FROM project_workflows w WHERE w.id = "suggestions"."workflow_id")`,
+    })
     .from(suggestions)
     .where(and(inArray(suggestions.projectId, [...projectIds]), eq(suggestions.status, 'proposed')))
     .orderBy(asc(suggestions.createdAt));

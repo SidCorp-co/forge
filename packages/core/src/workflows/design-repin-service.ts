@@ -25,6 +25,7 @@ import {
   type RepinStep,
 } from './design-repin.js';
 import { actRefused, type StepInput, takeUnit, unitsOf } from './design-repin-take.js';
+import { headDesignsRead } from './head-designs-read.js';
 import { approverRefusalFor } from './design-service.js';
 import { readStoredWorkflow } from './schema.js';
 import { assertWriter, templatesOf, type WorkflowWriter } from './service.js';
@@ -51,7 +52,15 @@ async function loadDesigns(
   templates: readonly WorkflowTemplate[],
 ): Promise<Loaded> {
   const rows = await workflowsOf(tx, projectId);
-  const heads = await headDesignsOf(tx, projectId);
+  return designsLoaded(rows, await headDesignsOf(tx, projectId), templates);
+}
+
+/** The designs a re-pin reads, from the project's live workflows and their head designs as read. */
+function designsLoaded(
+  rows: StoredWorkflow[],
+  heads: readonly StoredDesign[],
+  templates: readonly WorkflowTemplate[],
+): Loaded {
   const pending = new Map<string, StoredDesign>();
   const approvedAt = new Map<string, Date | null>();
   const designs = rows.map((row): RepinDesign => {
@@ -165,8 +174,12 @@ export async function repinGroupsOf(projectId: string): Promise<RepinGroup[]> {
   const rows = await workflowsRead(projectId);
   // a design whose document declares no base has no pin to move, as stored or as approved
   if (!rows.some((r) => readStoredWorkflow(r.document)?.basedOn)) return [];
-  const { templates } = await templatesOf(projectId);
-  const loaded = await loadDesigns(db, projectId, templates);
+  // the rows already read, and the head designs read with every project's (ISS-1070 r20)
+  const [{ templates }, heads] = await Promise.all([
+    templatesOf(projectId),
+    headDesignsRead(projectId),
+  ]);
+  const loaded = designsLoaded([...rows], heads, templates);
   const roots = loaded.designs.filter(
     (b) =>
       b.approvedRevision !== null &&
