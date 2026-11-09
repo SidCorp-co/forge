@@ -93,51 +93,55 @@ export async function servedBefore(
 }
 
 async function beforeOf(ids: readonly string[]): Promise<Map<string, ServedBefore>> {
-  const asks = new Map<string, string[]>();
-  for (const id of ids) {
-    const [projectId = '', live = '', commit = ''] = partsOf(id);
-    const key = idOfParts(projectId, live);
-    asks.set(key, [...(asks.get(key) ?? []), commit]);
-  }
-  const out = new Map<string, ServedBefore>();
-  await Promise.all(
-    [...asks].map(async ([key, commits]) => {
-      const [projectId = '', live = ''] = partsOf(key);
-      const [row] = (await db.execute(sql`
-        WITH prev AS (
-          SELECT "commit" FROM served_builds
-           WHERE project_id = ${projectId} AND "commit" <> ${live}
-           ORDER BY last_read_at DESC LIMIT 1
-        )
-        SELECT (SELECT "commit" FROM prev) AS previous,
-               (SELECT first_read_at FROM served_builds
-                 WHERE project_id = ${projectId} AND "commit" = ${live}) AS live_since,
-               (SELECT a.carried FROM served_ancestry a JOIN prev ON a.judged_commit = prev."commit"
-                 WHERE a.project_id = ${projectId} AND a.served_commit = ${live}) AS descends,
-               coalesce((SELECT array_agg(a.judged_commit) FROM served_ancestry a
-                           JOIN prev ON a.served_commit = prev."commit"
-                          WHERE a.project_id = ${projectId} AND a.carried
-                            AND a.judged_commit = ANY(${sql.param(commits)}::text[])),
-                        '{}') AS held
-      `)) as unknown as Array<{
-        previous: string | null;
-        live_since: Date | string | null;
-        descends: boolean | null;
-        held: string[];
-      }>;
-      const heldBy = new Set(row?.held ?? []);
-      for (const commit of commits) {
-        out.set(idOfParts(projectId, live, commit), {
-          previous: row?.previous ?? null,
-          liveSince: row?.live_since == null ? null : new Date(row.live_since),
-          descends: row?.descends ?? null,
-          heldByPrevious: heldBy.has(commit),
-        });
-      }
-    }),
+  const asked = ids.map((id) => partsOf(id) as [string, string, string]);
+  const groups = [...new Set(asked.map(([p, l]) => idOfParts(p, l)))].map(
+    (k) => partsOf(k) as [string, string],
   );
+  // every project's live build asked before the quiet point is one statement
+  const rows = (await db.execute(sql`
+    WITH asks AS (
+      SELECT * FROM unnest(${sql.param(groups.map((g) => g[0]))}::uuid[],
+                           ${sql.param(groups.map((g) => g[1]))}::text[]) AS a(project_id, live)
+    ), prev AS (
+      SELECT DISTINCT ON (a.project_id, a.live) a.project_id, a.live, b."commit"
+        FROM asks a JOIN served_builds b ON b.project_id = a.project_id AND b."commit" <> a.live
+       ORDER BY a.project_id, a.live, b.last_read_at DESC
+    )
+    SELECT a.project_id::text AS project_id, a.live, p."commit" AS previous,
+           (SELECT s.first_read_at FROM served_builds s
+             WHERE s.project_id = a.project_id AND s."commit" = a.live) AS live_since,
+           (SELECT x.carried FROM served_ancestry x
+             WHERE x.project_id = a.project_id AND x.judged_commit = p."commit"
+               AND x.served_commit = a.live) AS descends,
+           coalesce((SELECT array_agg(x.judged_commit) FROM served_ancestry x
+                      WHERE x.project_id = a.project_id AND x.served_commit = p."commit" AND x.carried
+                        AND x.judged_commit = ANY(${sql.param([...new Set(asked.map((a) => a[2]))])}::text[])),
+                    '{}') AS held
+      FROM asks a LEFT JOIN prev p ON p.project_id = a.project_id AND p.live = a.live
+  `)) as unknown as Array<{
+    project_id: string;
+    live: string;
+    previous: string | null;
+    live_since: Date | string | null;
+    descends: boolean | null;
+    held: string[];
+  }>;
+  const byGroup = new Map(rows.map((r) => [idOfParts(r.project_id, r.live), r]));
+  const out = new Map<string, ServedBefore>();
+  for (const [projectId, live, commit] of asked) {
+    const row = byGroup.get(idOfParts(projectId, live));
+    out.set(idOfParts(projectId, live, commit), {
+      previous: row?.previous ?? null,
+      liveSince: row?.live_since == null ? null : new Date(row.live_since),
+      descends: row?.descends ?? null,
+      heldByPrevious: row?.held.includes(commit) ?? false,
+    });
+  }
   return out;
 }
+
+/** What the build served before answers of a commit (`heldBefore`). */
+export type KeptBefore = true | string | { rechecking: string };
 
 /** How long a deploy keeps the previous build's answers while the pass asks the new one's. */
 export const RECHECK_FOR_MS = 10 * 60_000;
@@ -158,8 +162,8 @@ export async function heldBefore(
   commits: readonly string[],
   releases: readonly ShippedReleaseRun[],
   read: typeof servedBefore = servedBefore,
-): Promise<Map<string, true | string | { rechecking: string }>> {
-  const out = new Map<string, true | string | { rechecking: string }>();
+): Promise<Map<string, KeptBefore>> {
+  const out = new Map<string, KeptBefore>();
   if (commits.length === 0) return out;
   const asked = await read(projectId, live, commits);
   for (const commit of commits) {

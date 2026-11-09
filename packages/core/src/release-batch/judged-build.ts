@@ -25,7 +25,7 @@ import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import { persistedCarriage } from './served-ancestry.js';
-import { heldBefore, servedBefore } from './served-builds.js';
+import { heldBefore, type KeptBefore, servedBefore } from './served-builds.js';
 import { servedOnJudgedOn } from './serving-reading.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
@@ -322,9 +322,15 @@ export async function liveBuildHolds(
   }
   // a live build no release recorded (every push deploys on forge-dev): what the host answered the
   // pass that asks once per pair (`served-ancestry.ts`), never asked from here
-  const held = deps.heldAncestry
-    ? await deps.heldAncestry(projectId, unplaced, [live.sha])
-    : new Map<string, Carriage>();
+  // what was served before is read beside it, so a deploy's answers add no wave (ISS-1182)
+  const [held, before] = await Promise.all([
+    deps.heldAncestry
+      ? deps.heldAncestry(projectId, unplaced, [live.sha])
+      : new Map<string, Carriage>(),
+    deps.servedBefore && unplaced.length > 0
+      ? heldBefore(projectId, live.sha, unplaced, releases, deps.servedBefore)
+      : new Map<string, KeptBefore>(),
+  ]);
   const open: string[] = [];
   for (const commit of unplaced) {
     const answer = held.get(carriageKey(commit, live.sha));
@@ -333,9 +339,6 @@ export async function liveBuildHolds(
     else open.push(commit);
   }
   const rechecking = new Map<string, string>();
-  const before = deps.servedBefore
-    ? await heldBefore(projectId, live.sha, open, releases, deps.servedBefore)
-    : new Map();
   for (const commit of open) {
     const kept = before.get(commit);
     if (kept === true) holds.set(commit, true);
