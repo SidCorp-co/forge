@@ -5,8 +5,8 @@
 // - REQ-12, in delivery with criteria not passing: Mark delivered is held, never the primary;
 // - #Forge-Communicate: who answers the room first and whether it is live, an empty record reading
 //   "Not recorded yet" beside the act that fills it, and the way back to Channels.
-// Each stage prints `WORDS <screen> <theme> <width> <n>` for the words on the first screen
-// (witness/first-screen.ts) and fails where the screen says what the change removed.
+// Each stage prints `WORDS <screen> <theme> <width> <n> whole <m>` for the words on the first screen and
+// on the whole page (witness/first-screen.ts) and fails where the screen says what the change removed.
 //
 //   pnpm --filter web-v2 witness witness/screens-once.witness.tsx --out <dir>
 
@@ -94,7 +94,7 @@ const SCREENS: Screen[] = [
     at: `/projects/forge/channels/${COMMUNICATE.rid}`,
     pattern: "/projects/$slug/channels/$channel",
     draw: () => <ChannelScreen projectId={P} slug="forge" rid={COMMUNICATE.rid} />,
-    ready: "[data-testid=channel-agent]",
+    ready: "section[aria-label=Members]",
     never: [[/\bNone\b/, "an empty record reads None"]],
   },
 ];
@@ -146,7 +146,8 @@ window.__witness = {
         const root = document.documentElement;
         if (root.scrollWidth > root.clientWidth) wrong.push(`the page scrolls sideways: ${root.scrollWidth} px wide in a ${root.clientWidth} px window`);
         const { count, words } = firstScreenWords(q("[data-witness=page]") as HTMLElement);
-        console.log(`WORDS ${s.name} ${t} ${window.innerWidth} ${count} :: ${words.join(" ")}`);
+        const whole = firstScreenWords(q("[data-witness=page]") as HTMLElement, { whole: true }).count;
+        console.log(`WORDS ${s.name} ${t} ${window.innerWidth} ${count} whole ${whole} :: ${words.join(" ")}`);
         const said = words.join(" ");
         for (const [re, why] of s.never) if (re.test(said)) wrong.push(`${why}: "${said.match(re)?.[0]}"`);
         return wrong;
