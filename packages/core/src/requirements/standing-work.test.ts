@@ -1,5 +1,5 @@
-import { saidDisagreements, say } from '@forge/contracts/said';
-import { waitingOn } from '@forge/contracts/standing';
+import { saidDisagreements, say, sayEn } from '@forge/contracts/said';
+import { holdersWho, waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
 import { releaseLegOf } from '../forecast/delivery.js';
 import { deriveStanding as deriveStanding_, type StandingIssue } from './standing.js';
@@ -229,4 +229,54 @@ describe('whom a requirement waits on while its issues are worked', () => {
     expect(s.attentionGroup).toBe('overdue');
     expect(s.waitingOn).toMatchObject({ who: 'Dana Lee', refers: 'release', ref: '0.1.0' });
   });
+
+  // ISS-1186 (FB-599, adminhub-api REQ-23): ISS-219 was cut into 0.19.0, whose run waits on its
+  // approvers with ISS-219 claimed by it, and REQ-23 read waiting on the master to cut 0.20.0
+  describe('where a release run already claims its landed issues', () => {
+    const cut = releaseLegOf({
+      mode: 'approval',
+      nextVersion: '0.20.0',
+      lags: [],
+      holders,
+      owes: (kind) => ({ by: kind === 'release.cut' ? 'master' : 'person' }) as never,
+    });
+    const approve = {
+      kind: 'person' as const,
+      mode: 'approval' as const,
+      who: 'Dana Lee',
+      act: 'approve 0.19.0',
+      reason: sayEn(say('forecast.reason.approval', { holders: null })),
+      says: {
+        who: holdersWho(['Dana Lee']),
+        act: say('standing.act.approveReleaseV', { v: '0.19.0' }),
+        reason: say('forecast.reason.approval', { holders: null }),
+      },
+      version: '0.19.0',
+      holders,
+    };
+    const claims = new Map([['run-0190', { version: '0.19.0', leg: approve }]]);
+    const claimed = { ...issue(219, 'awaiting_release', false), claimedBy: 'run-0190' };
+
+    it('waits on the run’s approvers to approve its version, never on the master to cut the next', () => {
+      const s = deriveStanding({ ...input([claimed]), release: cut, releaseClaims: claims });
+      expect(s.waitingOn.says.act.key).not.toBe('standing.act.cut');
+      expect(s.waitingOn).toMatchObject({
+        kind: 'person',
+        who: 'Dana Lee',
+        act: 'approve 0.19.0',
+        refers: 'release',
+        ref: '0.19.0',
+      });
+    });
+
+    it('names the cut of the next version while one landed issue no run claims', () => {
+      const s = deriveStanding({
+        ...input([claimed, issue(220, 'awaiting_release', false)]),
+        release: cut,
+        releaseClaims: claims,
+      });
+      expect(s.waitingOn).toMatchObject({ kind: 'agent', act: 'cut 0.20.0', ref: '0.20.0' });
+    });
+  });
 });
+
