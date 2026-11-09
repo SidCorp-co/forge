@@ -4,11 +4,16 @@ import { Tooltip } from "@/design";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { HEALTH_HUE } from "../canvas/style";
 
-/** One marker kind as a dot (zoomed out) or a chip with its label (full card, rail, list); snake_case only in the tooltip. */
+/**
+ * One marker kind as a dot (zoomed out) or a chip with its label (full card, rail, list); its tooltip
+ * says what the marker means, never its raw kind (ISS-1179: "Wrong 16 / Not in design 14" read
+ * unexplained on forge-dev).
+ */
 export function HealthMark({ kind, count, dot = false, title }: { kind: HealthMarkerKind; count?: number; dot?: boolean; title?: string }) {
+  const t = useCopy();
   const label = useLabel();
   const word = label("healthMarker", kind);
-  const tip = title ?? `${kind} · ${word}`;
+  const tip = title ?? `${word}${count !== undefined ? ` ${count}` : ""}: ${t(`workflows.health.meaning.${kind}`)}`;
   if (dot) {
     return <span role="img" aria-label={word} title={tip} className="inline-block size-2 flex-none rounded-pill" style={{ background: HEALTH_HUE[kind] }} data-testid="health-dot" data-kind={kind} />;
   }
@@ -30,7 +35,6 @@ export function HealthMark({ kind, count, dot = false, title }: { kind: HealthMa
 /** A design's marker counts on the workflows list: a chip per kind it carries and its needs-you count; nothing when it carries none (REQ-17 BC-18). */
 export function HealthSummaryChips({ health }: { health: WorkflowHealthSummary | undefined }) {
   const t = useCopy();
-  const label = useLabel();
   if (!health) return null;
   const kinds = HEALTH_MARKER_KINDS.filter((k) => health.counts[k] > 0);
   if (kinds.length === 0 && health.needsYou === 0) return null;
@@ -39,7 +43,7 @@ export function HealthSummaryChips({ health }: { health: WorkflowHealthSummary |
     <Tooltip label={`${scope}${health.needsYou ? ` · ${t("workflows.health.needPerson", { n: health.needsYou })}` : ""}`} side="bottom" multiline>
       <span className="flex min-w-0 flex-wrap items-center gap-1" data-testid="health-summary" data-workflow-level={health.workflowLevelOnly || undefined}>
         {kinds.map((k) => (
-          <HealthMark key={k} kind={k} count={health.counts[k]} title={`${k} · ${label("healthMarker", k)} ${health.counts[k]}`} />
+          <HealthMark key={k} kind={k} count={health.counts[k]} />
         ))}
         {health.needsYou > 0 ? (
           <span className="whitespace-nowrap text-12 font-semibold text-accent-text" data-testid="health-needs-you">

@@ -28,12 +28,17 @@ function size(r: WorkflowRecord, t: Copy): string {
     : t(n === 1 ? "workflows.count.step.one" : "workflows.count.step.many", { n });
 }
 
-/** The keys of a design's linked requirements, or None (REQ-10 BC-13). */
+/** How many keys a row names before it counts the rest (ISS-1179: a row listed seven). */
+const ROW_KEYS = 2;
+
+/** The keys of a design's linked requirements, the first two and a count of the rest, every key the tooltip; or None (REQ-10 BC-13). */
 function RequirementKeys({ keys }: { keys: readonly string[] }) {
   const t = useCopy();
+  const rest = keys.length - ROW_KEYS;
   return (
-    <span className={cn("font-mono text-12", keys.length ? "font-semibold text-fg" : "text-subtle")} data-testid="workflow-requirements">
-      {keys.length ? keys.join(" · ") : t("workflows.facts.none")}
+    <span className={cn("font-mono text-12", keys.length ? "font-semibold text-fg" : "text-subtle")} title={keys.length ? keys.join(" · ") : undefined} data-testid="workflow-requirements">
+      {keys.length ? keys.slice(0, ROW_KEYS).join(" · ") : t("workflows.facts.none")}
+      {rest > 0 ? ` +${rest}` : null}
     </span>
   );
 }
