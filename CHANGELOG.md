@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.616] - 2026-11-09
+
+Early channel pane messages are taken instead of lost or hung
+
+### Fixed
+
+- **A message reaching a channel pane in its first seconds is no longer lost.** It is typed once Claude Code is ready, a turn holding only untaken messages ends, and core hands such a message in again.
+
 ## [0.4.0-dev.615] - 2026-11-09
 
 Channel pane turns report their cost, including the first after a resume
