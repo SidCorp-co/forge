@@ -109,10 +109,11 @@ describe("the order a first-time reader reads the designs in (C1)", () => {
 });
 
 describe("each design's requirement (C2)", () => {
-  it("names the linked keys on the row, or None", async () => {
+  // forge-dev's Workflows, 2026-11-09: Core components read "None · 17d ago" in its key slot (ISS-1184 item 7)
+  it("names the linked keys on the row, or that it is not linked, never None", async () => {
     screenWith(AGENFOLD);
     await screen.findAllByTestId("workflow-row");
-    expect(screen.getAllByTestId("workflow-requirements").map((c) => c.textContent)).toEqual(["REQ-2 · REQ-3", "None", "REQ-4", "None"]);
+    expect(screen.getAllByTestId("workflow-requirements").map((c) => c.textContent)).toEqual(["REQ-2 · REQ-3", "Not linked", "REQ-4", "Not linked"]);
   });
 
   // forge-dev's Workflows, 2026-11-09: a row listed seven keys, "REQ-30 · REQ-31 · REQ-41 …" (ISS-1179 item 10)
