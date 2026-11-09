@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/projects/invitations-routes.ts
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -24,9 +25,9 @@ interface Invitee {
   token: string;
 }
 
-async function newInvitee(): Promise<Invitee> {
+async function newInvitee(): Promise<Invitee & { id: string }> {
   const user = await createTestUser({ verified: true });
-  return { email: user.email, token: await userToken(user.id) };
+  return { id: user.id, email: user.email, token: await userToken(user.id) };
 }
 
 async function invite(email: string): Promise<void> {
@@ -105,6 +106,23 @@ describe('an invitation in the bell', () => {
     await db.execute(sql`
       UPDATE project_invitations SET expires_at = now() - interval '1 minute'
        WHERE project_id = ${projectId} AND email = ${who.email}
+    `);
+    expect(await bell(who)).toEqual({ badge: 0, shown: 0 });
+  });
+
+  it('counts nothing for a notice written before notices named their invitation', async () => {
+    const who = await newInvitee();
+    const record = randomUUID();
+    const delivery = randomUUID();
+    await db.execute(sql`
+      INSERT INTO notifications (id, project_id, type, kind, tier, state, title, severity)
+      VALUES (${record}, ${projectId}, 'invitation_received', 'task', 'ticket', 'open', 'invited you', 'warning')
+    `);
+    await db.execute(
+      sql`INSERT INTO notification_deliveries (id, user_id) VALUES (${delivery}, ${who.id})`,
+    );
+    await db.execute(sql`
+      INSERT INTO notification_delivery_members (delivery_id, notification_id) VALUES (${delivery}, ${record})
     `);
     expect(await bell(who)).toEqual({ badge: 0, shown: 0 });
   });
