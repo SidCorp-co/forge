@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/release-batch/served-builds.ts
  * @direct-test-of packages/core/src/release-batch/served-ancestry.ts
  * @direct-test-of packages/core/src/release-batch/judged-build.ts
+ * @direct-test-of packages/core/src/db/schema-served-ancestry.ts
  */
 
 import { sql } from 'drizzle-orm';
