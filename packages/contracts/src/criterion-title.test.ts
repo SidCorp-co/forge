@@ -46,4 +46,18 @@ describe("a criterion's short title (ISS-1131)", () => {
 		expect(shown.length).toBeLessThanOrEqual(10);
 		for (const w of shown) expect(text.split(" ")).toContain(w);
 	});
+
+	// REQ-12 BC-12 on forge-dev, 2026-11-09: a row read "Dependency direction
+	// (scripts/lib/module-boundaries.mjs:MAY_IMPORT)" (ISS-1179 item 8)
+	it("leaves a code anchor in brackets out of the row's face, the sentence keeping it", () => {
+		expect(
+			criterionShortTitle({
+				text: "Dependency direction (scripts/lib/module-boundaries.mjs:MAY_IMPORT): door imports door, read-model, domain.",
+			}),
+		).toEqual({ short: "Dependency direction", cut: true });
+		// a bracket of plain words is the criterion's own, and stays
+		expect(
+			criterionShortTitle({ text: "Owners (and their deputies) sign off." }),
+		).toEqual({ short: "Owners (and their deputies) sign off.", cut: false });
+	});
 });
