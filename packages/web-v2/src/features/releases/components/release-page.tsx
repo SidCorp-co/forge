@@ -111,6 +111,7 @@ function TechnicalFold({ projectId, r, slug }: { projectId: string; r: ReleaseDe
   const requests = changeRequestItems(r.issues).length;
   const said = [
     t("releases.technical.title"),
+    ...(r.issueCount > 0 ? [t("releases.issuesCount", { n: r.issueCount })] : []),
     ...(requests > 0 ? [t("releases.technical.requests", { n: requests })] : []),
     ...(r.promotion ? [t("releases.technical.promotion")] : []),
   ];
@@ -147,7 +148,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
         return (
           <div className="grid max-w-4xl gap-6 px-8 py-5 max-md:px-4" data-testid="release-detail" data-key={r.key}>
             <div className="grid gap-2">
-              <ReleaseProofBar proof={releaseProofOf(r.verified)} issues={r.issueCount} />
+              <ReleaseProofBar proof={releaseProofOf(r.verified)} />
               <NextStep r={r} />
               <ReleaseSites r={r} />
               {r.continuedAs ? <ContinuedAs to={r.continuedAs} slug={slug} /> : null}

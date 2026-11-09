@@ -1,19 +1,21 @@
 // A release's one proof number drawn once (ISS-1001): a bar of its criteria proven of their total,
-// where they were judged, and how many issues it carries; and the short tags of what needs the
-// decider's attention. The list row and the page header both draw these, from `proof.ts`.
+// where they were judged, and how many issues it carries where no list of them stands beside it (the
+// list row; the page counts them on its Technical fold, which lists them, ISS-1179); and the short tags
+// of what needs the decider's attention. The list row and the page header both draw these, from `proof.ts`.
 
 import { ProgressBar } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import type { ReleaseProof } from "../proof";
 
-export function ReleaseProofBar({ proof, issues, className }: { proof: ReleaseProof | null; issues: number; className?: string }) {
+export function ReleaseProofBar({ proof, issues, className }: { proof: ReleaseProof | null; issues?: number; className?: string }) {
   const t = useCopy();
   const parts = [
     ...(proof ? [t("releases.proof.of", { proven: proof.proven, total: proof.total })] : []),
     ...(proof?.on ? [t("releases.proof.on", { env: proof.on })] : []),
-    t("releases.issuesCount", { n: issues }),
+    ...(issues === undefined ? [] : [t("releases.issuesCount", { n: issues })]),
   ];
+  if (parts.length === 0) return null;
   return (
     <span className={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1", className)} data-testid="release-proof" data-proven={proof?.proven} data-total={proof?.total}>
       {proof ? (
