@@ -62,7 +62,10 @@ export interface IssueFact {
   voided: ReadonlyMap<number, readonly CarriedVerdict[]>;
   /** The issue's last move to `reopen`: its note and mark after it are a later round's. */
   reopenedAt: Date | null;
-  /** Every move of the issue into `closed`, oldest first: the moments releases shipped it. */
+  /**
+   * Every move of the issue into `closed`, oldest first: the moments releases shipped it. Read for
+   * a reopened issue, the one a reopen's void reads it of; empty for any other.
+   */
   closedAt: Date[];
   /** The merged mark's columns, which `landing-surfaces.ts` reads what the landing changed from. */
   merged: {
@@ -412,7 +415,14 @@ export async function loadReleaseFacts(
   const landingRead = landingCountedOf(projectId, ids);
   // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
   landingRead.catch(() => undefined);
-  const [rows, prefix, cutters, judge, held, criteria, reopened, closed] = await Promise.all([
+  // a close is read of the reopened issues alone, as their rounds read it (`issues/release-evidence.ts:
+  // reopenedRoundsOf`), and nothing but a reopen's void reads it (`judged-before-reopen.ts`): asked
+  // of every issue beside the reopen, it went a step ahead of the rounds' ask and was read twice
+  // (ISS-1070 r21). Nothing below waits on it until the facts are put together.
+  const closedRead = reopenedAtOf(db, ids).then((r) => closedAtOf(db, [...r.keys()]));
+  // awaited at the end, where its failure is thrown; never an unhandled rejection meanwhile
+  closedRead.catch(() => undefined);
+  const [rows, prefix, cutters, judge, held, criteria, reopened] = await Promise.all([
     rowsPerId(
       'releaseIssueRows',
       ids,
@@ -444,16 +454,16 @@ export async function loadReleaseFacts(
     // a criterion reads its newest verdict but a close's, as its carried verdicts do (ISS-1148)
     listCriteriaOf(db, ids, true),
     reopenedAtOf(db, ids),
-    closedAtOf(db, ids),
   ]);
   const criterionIds = [...criteria.values()].flatMap((list) => list.map((c) => c.id));
-  const [reqs, verdicts, routes] = await Promise.all([
+  const [reqs, verdicts, routes, closed] = await Promise.all([
     requirementFacts(
       projectId,
       rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])),
     ),
     carriedVerdictsOf(criterionIds),
     criterionRoutesOf(criterionIds),
+    closedRead,
   ]);
   const byIssue = new Map<string, IssueFact>(
     rows.map((r) => {

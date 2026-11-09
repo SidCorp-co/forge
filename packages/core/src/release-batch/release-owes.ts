@@ -6,10 +6,7 @@
 
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { type OwedActKind, type OwedBy, type OwedPolicy, whoOwes } from '@forge/contracts/who-owes';
-import { inArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { rowsPerId } from '../db/read-memo.js';
-import { issues } from '../db/schema.js';
+import { releaseNotesOf } from '../issues/index.js';
 import { readOwedPolicy } from '../project-config/index.js';
 import { rosterApproved } from './draft-approval.js';
 
@@ -32,21 +29,17 @@ export async function readReleaseOwes(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<ReleaseOwes> {
-  const [policy, rows] = await Promise.all([
+  const [policy, notes] = await Promise.all([
     readOwedPolicy(projectId),
-    // the draft's gates, each requirement's release leg and every project's roster: one read
-    rowsPerId(
-      'issueReleaseNotes',
-      issueIds,
-      (some) =>
-        db
-          .select({ id: issues.id, releaseNotes: issues.releaseNotes })
-          .from(issues)
-          .where(inArray(issues.id, [...some])),
-      (r) => r.id,
-    ),
+    // the draft's gates, each requirement's release leg, every project's roster and the roster's
+    // record gaps: one read (`issues/release-record-required.ts:releaseNotesOf`)
+    releaseNotesOf(issueIds),
   ]);
   // a required approval that already stands for this roster frees what waited on it (ISS-1075)
   const approved = policy.releaseApproval && (await rosterApproved(projectId, issueIds));
-  return releaseOwesOf(policy, irreversibleOf(rows.map((r) => r.releaseNotes)), approved);
+  return releaseOwesOf(
+    policy,
+    irreversibleOf([...notes.values()].map((r) => r.releaseNotes)),
+    approved,
+  );
 }
