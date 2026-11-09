@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.623] - 2026-11-09
+
+Each act reports one fact once in live updates and activity
+
+### Fixed
+
+- **Each act tells one fact once.** An agree, an accept, a delivery, an answer, an approved contract and an issue's step move now write one outbox event each, and the integration suites refuse a fact told twice.
+
 ## [0.4.0-dev.622] - 2026-11-09
 
 Agreeing a requirement checks each criterion can be judged on the running product

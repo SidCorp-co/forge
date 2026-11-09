@@ -1,1 +1,0 @@
-**Each act tells one fact once.** An agree, an accept, a delivery, an answer, an approved contract and an issue's step move now write one outbox event each, and the integration suites refuse a fact told twice.
