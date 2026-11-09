@@ -13,7 +13,7 @@ import {
   type ChannelView,
 } from "@forge/contracts/support-channel";
 import { useState, type ReactNode } from "react";
-import { Button, Checkbox, DetailHeader, IconButton, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Button, Checkbox, DetailHeader, DetailMobileTitle, IconButton, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAddRule, useChannel, useConfirmMember } from "../hooks";
@@ -241,17 +241,22 @@ export function ChannelScreen({ projectId, slug, rid }: { projectId: string; slu
   const t = useCopy();
   const q = useChannel(projectId, rid);
   const name = q.data?.channel.name;
+  const title = name ? `#${name}` : t("channels.unnamed");
   return (
-    <div className="grid gap-4 px-5 py-4 max-md:px-3">
-      <DetailHeader back={{ href: channelsListHref(slug), label: t("channels.title") }} title={name ? `#${name}` : t("channels.unnamed")} />
-      <QueryBoundary query={q} loadingLabel={t("channels.loading")}>
-        {(data) => (
-          <>
-            <ChannelAgent agent={data.channel.agent} slug={slug} />
-            <ChannelRecord channel={data.channel} projectId={projectId} t={t} />
-          </>
-        )}
-      </QueryBoundary>
+    <div>
+      <DetailHeader back={{ href: channelsListHref(slug), label: t("channels.title") }} title={title} />
+      {/* below the wide column the bar holds the back control alone: the channel's name heads the page (ISS-1184) */}
+      <DetailMobileTitle title={title} />
+      <div className="grid gap-4 px-5 py-4 max-md:px-3">
+        <QueryBoundary query={q} loadingLabel={t("channels.loading")}>
+          {(data) => (
+            <>
+              <ChannelAgent agent={data.channel.agent} slug={slug} />
+              <ChannelRecord channel={data.channel} projectId={projectId} t={t} />
+            </>
+          )}
+        </QueryBoundary>
+      </div>
     </div>
   );
 }
