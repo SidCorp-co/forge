@@ -55,6 +55,8 @@
     "requirements.map.next": "Next",
     "requirements.map.later": "Later",
     "requirements.assistant.show": "Show",
+    "requirements.placement.title": "Placement",
+    "requirements.placement.toPlace": "{n} to place",
     "requirements.placement.waiting": "{n} proposed areas and names",
     "requirements.placement.acceptAll": "Accept all",
     "requirements.placement.unplaced": "{n} have no area or short name",

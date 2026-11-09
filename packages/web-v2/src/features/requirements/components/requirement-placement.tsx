@@ -4,38 +4,47 @@
 
 import type { RequirementAreaRef, RequirementSummary } from "@forge/contracts/requirements";
 import { useState } from "react";
-import { Button, Fact, IconButton, Select, Textarea } from "@/design";
+import { Button, Disclosure, Fact, IconButton, Select, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAcceptAllPlacements, usePlacement, useProposePlacements, useRequirementAreas, useSetAreas } from "../hooks";
 
-/** One row: how many requirements wait on a proposed placement, take them all, or ask for proposals. */
+/**
+ * The requirements waiting to be placed, as one folded line saying how many (ISS-1179: at 390 px its
+ * two act groups took three rows above the first requirement); Accept all and Ask the assistant open
+ * on demand.
+ */
 export function PlacementBanner({ projectId, rows, hasAreas }: { projectId: string; rows: RequirementSummary[]; hasAreas: boolean }) {
   const t = useCopy();
   const accept = useAcceptAllPlacements(projectId);
   const ask = useProposePlacements(projectId);
   const waiting = rows.filter((r) => r.placementProposal);
   const unplaced = rows.filter((r) => (!r.area || !r.shortName) && !r.placementProposal).length;
-  if (waiting.length === 0 && unplaced === 0) return null;
+  const asked = unplaced > 0 && hasAreas;
+  if (waiting.length === 0 && !asked) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2.5 border-b border-line-subtle px-5 py-2.5 text-13 text-muted max-md:px-3" data-testid="placement-banner">
-      {waiting.length > 0 ? (
-        <>
-          <span>{t("requirements.placement.waiting", { n: waiting.length })}</span>
-          <Button type="button" size="sm" variant="primary" loading={accept.isPending} onClick={() => accept.mutate(waiting.map((r) => r.key))}>
-            {t("requirements.placement.acceptAll")}
-          </Button>
-        </>
-      ) : null}
-      {unplaced > 0 && hasAreas ? (
-        <>
-          <span>{t("requirements.placement.unplaced", { n: unplaced })}</span>
-          <Button type="button" size="sm" loading={ask.isPending} disabled={ask.isSuccess} onClick={() => ask.mutate()}>
-            {ask.isSuccess ? t("requirements.placement.asked") : t("requirements.placement.ask")}
-          </Button>
-        </>
-      ) : null}
-      <RefusalLine error={accept.error ?? ask.error} />
+    <div className="border-b border-line-subtle px-5 max-md:px-3" data-testid="placement-banner">
+      <Disclosure title={t("requirements.placement.title")} summary={t("requirements.placement.toPlace", { n: waiting.length + (asked ? unplaced : 0) })}>
+        <div className="flex flex-wrap items-center gap-2.5 text-13 text-muted">
+          {waiting.length > 0 ? (
+            <>
+              <span>{t("requirements.placement.waiting", { n: waiting.length })}</span>
+              <Button type="button" size="sm" variant="primary" loading={accept.isPending} onClick={() => accept.mutate(waiting.map((r) => r.key))}>
+                {t("requirements.placement.acceptAll")}
+              </Button>
+            </>
+          ) : null}
+          {asked ? (
+            <>
+              <span>{t("requirements.placement.unplaced", { n: unplaced })}</span>
+              <Button type="button" size="sm" loading={ask.isPending} disabled={ask.isSuccess} onClick={() => ask.mutate()}>
+                {ask.isSuccess ? t("requirements.placement.asked") : t("requirements.placement.ask")}
+              </Button>
+            </>
+          ) : null}
+          <RefusalLine error={accept.error ?? ask.error} />
+        </div>
+      </Disclosure>
     </div>
   );
 }
