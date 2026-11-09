@@ -2,12 +2,14 @@
 // BC-18, BC-24; Requirement lifecycle r15 ready_check, acceptance_check): only a blocking gap stops
 // the move, named on its question in plain words; a non-blocking one takes its recommended answer.
 // @direct-test-of packages/contracts/src/requirement-goal.ts
+// @direct-test-of packages/contracts/src/criterion-checkable.ts
 
 import {
   REQUIREMENT_ACCEPTANCE_CHECKLIST,
   REQUIREMENT_READY_CHECKLIST,
 } from '@forge/contracts/checklist-registry';
 import { checklistRefusals, evaluateChecklist } from '@forge/contracts/checklists';
+import { uncheckableWhy } from '@forge/contracts/criterion-checkable';
 import { goalAnswers } from '@forge/contracts/requirement-goal';
 import { describe, expect, it } from 'vitest';
 import { acceptanceAnswersOf, type ReadyFacts, readyAnswersOf } from './checklist-record.js';
@@ -24,6 +26,7 @@ const ready: ReadyFacts = {
   },
   kind: 'process',
   criteria: ['BC-1', 'BC-2'],
+  uncheckable: [],
   openBlocking: [],
   designs: [{ flow: 'referral-intake', approvedRevision: 3 }],
   untraced: [],
@@ -123,6 +126,33 @@ describe('the ready checklist, read from the head revision', () => {
     expect(e.answers.find((a) => a.question === 'traced')?.value).toBe(
       'No linked workflow design to trace onto yet.',
     );
+  });
+
+  // REQ-67 BC-1: a requirement is agreed only when each criterion can be checked on the running product
+  it('refuses a head holding a criterion that cannot be checked on the running product, naming it and why', () => {
+    const live = [
+      { code: 'BC-1', form: 'statement', body: 'Verify the referral is saved.' },
+      { code: 'BC-2', form: 'statement', body: 'Check-in shows every referral of the day.' },
+      { code: 'BC-3', form: 'scenario', body: 'Given a referral\nThen it is saved' },
+      { code: 'BC-4', form: 'scenario', body: 'Given a referral\nWhen it is sent\nThen it is saved' },
+      { code: 'BC-5', form: 'statement', body: 'Ensure that clinicians see it.' },
+    ];
+    const uncheckable = live.flatMap((c) => {
+      const why = uncheckableWhy(c);
+      return why ? [{ code: c.code, why }] : [];
+    });
+    expect(uncheckable.map((c) => c.code)).toEqual(['BC-1', 'BC-3', 'BC-5']);
+    const refusals = checklistRefusals(
+      judge({ ...ready, criteria: live.map((c) => c.code), uncheckable }),
+    );
+    expect(refusals.map((r) => [r.code, r.question, r.path])).toEqual([
+      ['CHECKLIST_INCOMPLETE', 'checkable', '/answers/checkable'],
+    ]);
+    expect(refusals[0]?.detail).toContain(
+      'Not checkable on the running product: BC-1 (it says what to check, not what holds); BC-3 (its scenario does not read Given, When, Then); BC-5',
+    );
+    expect(refusals[0]?.detail).not.toContain('BC-2');
+    expect(judge({ ...ready, uncheckable: [] }).complete).toBe(true);
   });
 
   it('takes the recommended answer for kind, out of scope and roadmap, recorded as assumed', () => {

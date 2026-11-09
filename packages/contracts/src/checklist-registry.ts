@@ -172,7 +172,7 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 	title: "Requirement ready",
 	gates: { machine: "requirement", from: ["draft"], to: "agreed" },
 	design: { flow: "requirement-lifecycle", revision: 15, step: "ready_check" },
-	shapes: ["3d9941e4", "3c7adde3"],
+	shapes: ["3d9941e4", "3c7adde3", "ee093f3e"],
 	questions: [
 		{
 			id: "problem",
@@ -222,6 +222,20 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			id: "criteria",
 			prompt: "Which checkable business criteria does it hold?",
 			fix: "Write at least one business criterion on its head revision.",
+			answer: text(2000),
+			answeredBy: {
+				by: "record",
+				field: "revision.criteria",
+				label: "business criteria",
+			},
+			need: required,
+		},
+		{
+			// REQ-67 BC-1: a requirement is agreed only when each criterion can be checked on the
+			// running product, read off its form (`./criterion-checkable.ts`)
+			id: "checkable",
+			prompt: "Can each criterion be checked on the running product?",
+			fix: "Rewrite each named criterion as what holds.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",

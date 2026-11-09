@@ -10,6 +10,7 @@
  */
 
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
+import { uncheckableWhy } from '@forge/contracts/criterion-checkable';
 import { type GoalLabel, goalAnswers, goalLabelWords } from '@forge/contracts/requirement-goal';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
@@ -70,6 +71,8 @@ export interface ReadyFacts {
   kind: string | null;
   /** The codes of the business criteria live at the head. */
   criteria: string[];
+  /** The live criteria that cannot be checked on the running product, each with why (REQ-67 BC-1). */
+  uncheckable: { code: string; why: string }[];
   /** Blocking open questions still open, by their words and who answers them. */
   openBlocking: { question: string; whoAnswers: string }[];
   designs: { flow: string; approvedRevision: number | null }[];
@@ -107,6 +110,18 @@ function tracedAnswer(f: ReadyFacts): RecordAnswer {
   };
 }
 
+/** Whether each live criterion can be checked on the running product (REQ-67 BC-1), by its form. */
+function checkableAnswer(f: ReadyFacts): RecordAnswer {
+  if (f.criteria.length === 0) return { value: 'No business criterion to check yet.' };
+  if (f.uncheckable.length === 0) return { value: 'Each criterion says what holds.' };
+  return {
+    gap: clipped(
+      `Not checkable on the running product: ${f.uncheckable.map((c) => `${c.code} (${c.why})`).join('; ')}.`,
+    ),
+    fix: 'Rewrite each one as a statement of what holds, or as Given, When, Then lines.',
+  };
+}
+
 /** The record answers of the ready checklist, from what the revision under review holds. */
 export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
   if (f.head === null) {
@@ -122,6 +137,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
         'value',
         'measured',
         'criteria',
+        'checkable',
         'questions',
         'workflows',
         'traced',
@@ -169,6 +185,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
           gap: `Revision ${f.head} holds no business criterion.`,
           fix: 'Write at least one checkable business criterion (BC-n).',
         },
+    checkable: checkableAnswer(f),
     questions: f.openBlocking.length
       ? {
           gap: `${f.openBlocking.length === 1 ? 'A blocking question is' : `${f.openBlocking.length} blocking questions are`} still open: ${f.openBlocking
@@ -255,6 +272,7 @@ export async function readyFactsIn(tx: Tx, requirementId: string): Promise<Ready
       spec: {},
       kind: null,
       criteria: [],
+      uncheckable: [],
       openBlocking: [],
       designs: [],
       untraced: [],
@@ -287,7 +305,8 @@ export async function readyFactsAt(
     );
   if (!rev) throw new Error(`requirement checklist: ${key} has no revision ${revision} to read`);
   const spec = (rev.spec ?? {}) as RequirementSpec;
-  const criteria = await liveCodesAt(tx, requirementId, revision);
+  const live = await liveCriteriaAt(tx, requirementId, revision);
+  const criteria = live.map((c) => c.code);
   const blocking = (spec.openQuestions ?? []).filter((q) => q.blocking && q.questionId);
   const open = await openAmong(
     blocking.map((q) => q.questionId as string),
@@ -303,6 +322,10 @@ export async function readyFactsAt(
     spec,
     kind: rev.kind ?? null,
     criteria,
+    uncheckable: live.flatMap((c) => {
+      const why = uncheckableWhy(c);
+      return why ? [{ code: c.code, why }] : [];
+    }),
     openBlocking: [
       ...blocking
         .filter((q) => open.has(q.questionId as string))
@@ -341,13 +364,18 @@ async function untracedAmong(
   return codes.filter((c) => !traced.has(c));
 }
 
-async function liveCodesAt(
+/** The criteria live at `revision`, in code order, with what decides whether each is checkable. */
+async function liveCriteriaAt(
   exec: Reader,
   requirementId: string,
   revision: number,
-): Promise<string[]> {
+): Promise<{ code: string; body: string; form: string }[]> {
   const rows = await exec
-    .select({ code: requirementCriteria.code })
+    .select({
+      code: requirementCriteria.code,
+      body: requirementCriteria.body,
+      form: requirementCriteria.form,
+    })
     .from(requirementCriteria)
     .where(
       and(
@@ -356,7 +384,7 @@ async function liveCodesAt(
         sql`(${requirementCriteria.retiredRevision} IS NULL OR ${requirementCriteria.retiredRevision} > ${revision})`,
       ),
     );
-  return rows.map((r) => r.code).sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+  return rows.sort((a, b) => Number(a.code.slice(3)) - Number(b.code.slice(3)));
 }
 
 /** A counted verdict on a requirement's issue that cites nothing, by issue and criterion number. */

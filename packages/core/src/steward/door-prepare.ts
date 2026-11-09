@@ -6,13 +6,11 @@
 // Each write that lands is its own act with its own undo, and the answer is the issue-ready check as
 // the draft now stands.
 
+import { CRITERION_INSTRUCTION } from '@forge/contracts/criterion-checkable';
 import { AGREED_STATUSES } from '@forge/contracts/requirements';
 import { z } from 'zod';
 import { type DoorAnswer, type DoorRequest, doorName } from './door-call.js';
 import { type ActOf, cite, type DoorContext, type DoorSpec, issueKey, send } from './door-kit.js';
-
-/** A criterion reads as a checkable statement of the outcome, never an instruction to verify one. */
-const INSTRUCTION = /^(verify|check|ensure|confirm|test|make sure|validate)\b/i;
 
 const criterion = z.strictObject({
   statement: z
@@ -20,7 +18,8 @@ const criterion = z.strictObject({
     .trim()
     .min(10)
     .max(500)
-    .refine((s) => !INSTRUCTION.test(s), {
+    // a criterion reads as a checkable statement of the outcome, never an instruction to verify one
+    .refine((s) => !CRITERION_INSTRUCTION.test(s), {
       message:
         'a criterion is a checkable statement of what holds ("A reload shows every saved card"), never an instruction ("Verify the cards are saved")',
     }),

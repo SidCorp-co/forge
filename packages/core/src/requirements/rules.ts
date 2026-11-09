@@ -5,6 +5,7 @@
  * nothing written.
  */
 
+import { scenarioParses } from '@forge/contracts/criterion-checkable';
 import { criterionTitleFault } from '@forge/contracts/criterion-title';
 import type { ResolvedGate } from '@forge/contracts/gate-profiles';
 import type { ProjectPermission } from '@forge/contracts/permissions';
@@ -279,16 +280,6 @@ export function droppedRefusal(
   };
 }
 
-// Scenario form is optional per project (Q12); when chosen, the body must read as
-// Given … When … Then, each keyword starting a line, or it is refused rather than stored unparsed
-function scenarioParses(body: string): boolean {
-  const starts = body.split('\n').map((l) => l.trim().split(/\s+/)[0]?.toLowerCase() ?? '');
-  const g = starts.indexOf('given');
-  const w = starts.indexOf('when');
-  const t = starts.indexOf('then');
-  return g !== -1 && w > g && t > w;
-}
-
 export interface CriterionInput {
   code?: string | undefined;
   body: string;
@@ -363,6 +354,8 @@ export function planCriteria(
       });
     }
     const sent = c.title === undefined ? undefined : (c.title?.trim() ?? null) || null;
+    // Scenario form is optional per project (Q12); when chosen, the body must read as
+    // Given … When … Then, each keyword starting a line, or it is refused rather than stored unparsed
     if (form === 'scenario' && !scenarioParses(body)) {
       refusals.push({
         code: 'CRITERION_SCENARIO_UNPARSEABLE',
