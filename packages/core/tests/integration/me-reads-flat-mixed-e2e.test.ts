@@ -9,7 +9,9 @@
 // build read once a requirement (perf-cleanup-1108). Some of forge-dev's projects hold what waits on a
 // person that the others do not, and a read once such a project sent each of its statements once a
 // project (ISS-1070 r20, `tests/helpers/live-mix-waits.ts`): every attention area but releases' and
-// requirements' now sends each shape once.
+// requirements' now sends each shape once. Each project holds its own agent as an admin and feedback
+// filed by agents outside the person's projects (ISS-1070 r21, `tests/helpers/live-mix-people.ts`):
+// home and releases' areas send each shape once.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/db/read-order.ts
 // @direct-test-of packages/core/src/feedback/list-read.ts
@@ -26,6 +28,10 @@
 // @direct-test-of packages/core/src/workflows/head-designs-read.ts
 // @direct-test-of packages/core/src/workflows/design-repin-service.ts
 // @direct-test-of packages/core/src/suggestions/waiting-read.ts
+// @direct-test-of packages/core/src/runs/viewer-context.ts
+// @direct-test-of packages/core/src/permissions/holders-named.ts
+// @direct-test-of packages/core/src/release-batch/release-owes.ts
+// @direct-test-of packages/core/src/issues/release-record-required.ts
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -75,6 +81,8 @@ const NAMED: Record<string, string> = {
   a7955f0c: 'workflows/store.ts:workflowsOf (re-pin)',
   '1dbb5d8c': 'workflows/head-designs-read.ts:headDesignsRead',
   '5c493ced': 'suggestions/waiting-read.ts:targetsOf (workflows)',
+  // the live mix's base (ISS-1070 r21)
+  a271f69a: 'issues/release-record-required.ts:releaseNotesOf',
 };
 
 /**
@@ -88,9 +96,10 @@ const HOME_MOST = 1;
 /**
  * The attention areas that still send a shape twice: a batch two projects' reads reach a step apart
  * (ISS-1070 r11's split batches). Every other area sends each shape once since what waits on a
- * person in some projects alone is read with every project's (r20).
+ * person in some projects alone is read with every project's (r20), and releases' since a release's
+ * notes are one read and its facts read a close of the reopened issues alone (r21).
  */
-const ATTENTION_TWICE = new Set(['ny-releases', 'ny-requirements']);
+const ATTENTION_TWICE = new Set(['ny-requirements']);
 const attentionMost = (area: string) => (ATTENTION_TWICE.has(area) ? MOST : 1);
 
 const coolify = liveCoolify();
@@ -152,7 +161,8 @@ async function sentBy(path: string): Promise<{
  * the seed's count; lowered by a cut, never raised (r17: ny-releases 26 to 10, ny-requirements 17
  * to 12, ny-issues 9 to 6; r18: home-forecasts 15 to 11, home-feedback 10 to 8, home-runs 5 to 4,
  * once home's parts start beside its feedback list; r20: ny-releases 10 to 9, as the base sends it,
- * and ny-decisions 3 to 1 at the seed, once a question's requirement is read with every project's).
+ * and ny-decisions 3 to 1 at the seed, once a question's requirement is read with every project's; r21:
+ * home-forecasts 11 to 10, as the seed holding each project's own people sends it).
  */
 const WAVES: Record<string, Record<string, number>> = {
   '/api/me/attention': {
@@ -167,7 +177,7 @@ const WAVES: Record<string, Record<string, number>> = {
     'ny-decisions': 1,
   },
   '/api/me/home': {
-    'home-forecasts': 11,
+    'home-forecasts': 10,
     'home-feedback': 8,
     'home-runs': 4,
     'home-live': 4,
