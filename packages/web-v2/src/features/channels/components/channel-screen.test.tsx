@@ -103,6 +103,26 @@ describe("who answers a channel, and an empty record (ISS-1180)", () => {
     expect(post?.path).toBe(`/projects/p1/support/channels/${communicate.rid}/rules`);
     expect(post?.body).toEqual({ text: "Answer in Vietnamese." });
   });
+
+  // forge-dev, 2026-11-09: Common issues read "Not recorded yet" with no act beside it, because no
+  // write route existed (ISS-1184 item 6): the empty record offers the one act that fills it
+  it("fills an empty Common issues from the page, a question and its one answer", async () => {
+    const calls = fakeCore((c) => {
+      if (c.method === "GET") return { body: { channel: communicate } };
+      if (c.method === "POST") return { status: 201, body: { commonIssue: { id: "c1", question: "How do I reset my password?", answer: "Settings, then Password." } } };
+      return undefined;
+    });
+    renderWithQuery(<ChannelScreen projectId="p1" slug="forge" rid={communicate.rid} />);
+    const section = await screen.findByRole("region", { name: "Common issues" });
+    fireEvent.click(within(section).getByRole("button", { name: "Add common issue" }));
+    fireEvent.change(within(section).getByRole("textbox", { name: "Question" }), { target: { value: "How do I reset my password?" } });
+    fireEvent.change(within(section).getByRole("textbox", { name: "Answer" }), { target: { value: "Settings, then Password." } });
+    fireEvent.click(within(section).getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const post = calls.find((c) => c.method === "POST");
+    expect(post?.path).toBe(`/projects/p1/support/channels/${communicate.rid}/common-issues`);
+    expect(post?.body).toEqual({ question: "How do I reset my password?", answer: "Settings, then Password." });
+  });
 });
 
 describe("a bound channel's page (REQ-75 r6)", () => {
@@ -129,6 +149,24 @@ describe("a bound channel's page (REQ-75 r6)", () => {
     expect(list.textContent).not.toContain("GENERAL-rid-1");
     fireEvent.click(rows[0]);
     await waitFor(() => expect(window.location.pathname).toBe(`/projects/mail/channels/${webmail.rid}`));
+  });
+
+  // the list read carried no agent, so a row could not say who answers the room (ISS-1184 item 5)
+  it("shows on each row the agent answering the room and whether it is live", async () => {
+    const { memberRows: _m, ruleRows: _r, commonIssueRows: _c, routes: _routes, ...summary } = communicate;
+    fakeCore((c) =>
+      c.path === "/projects/p1/support/channels"
+        ? { body: { channels: [summary, { rid: webmail.rid, name: "webmail", members: 2, rules: 0, commonIssues: 1, agent: null }] } }
+        : undefined,
+    );
+    renderWithQuery(<ChannelsScreen projectId="p1" slug="forge" />);
+    const list = await screen.findByTestId("grouped-list");
+    const [answered, quiet] = within(list).getAllByTestId("list-row");
+    expect(within(answered).getByTestId("channel-row-agent")).toHaveTextContent("Operations agent");
+    expect(within(answered).getByTestId("channel-agent-live")).toHaveTextContent("Live");
+    expect(within(quiet).queryByTestId("channel-row-agent")).toBeNull();
+    expect(within(quiet).getByTestId("channel-agent-live")).toHaveTextContent("Not live");
+    expect(list.textContent, "the session's address is a raw id, never text").not.toContain("forge-session:");
   });
 
   it("shows Members, Rules, Common issues and Routes as four flat tables", async () => {
