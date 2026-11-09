@@ -4117,6 +4117,13 @@
       "when": 1838678400000,
       "tag": "0645_a_person_adds_a_common_issue_on_the_channel_page",
       "breakpoints": true
+    },
+    {
+      "idx": 646,
+      "version": "7",
+      "when": 1838764800000,
+      "tag": "0646_a_stuck_work_notice_reads_in_plain_words",
+      "breakpoints": true
     }
   ]
 }

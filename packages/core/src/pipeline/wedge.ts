@@ -47,11 +47,11 @@ export async function resolvePipelineWedge(entityId: string): Promise<number> {
 interface PipelineWedgeEvent {
   projectId: string;
   issueId?: string | null;
-  /** WHERE — which loop hop missed. */
+  /** Which loop hop missed: logged, and read into the title's plain words (`wedge-words.ts`). */
   hop: WedgeHop;
   entity: WedgeEntity;
   entityId: string;
-  /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
+  /** What the detector saw (logged, and the body's first line where no summary is given). */
   reason: string;
   action: string;
   /** Business-language title naming the stuck work (ISS-xx + title, no internal vocab). */
@@ -87,7 +87,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
   const title = ev.title ?? wedgeTitle(ev.hop, ev.entity);
   const body = ev.summary
     ? [ev.summary, ev.nextStep ? `Next: ${ev.nextStep}` : null].filter(Boolean).join('\n')
-    : [`WHERE: ${ev.hop} hop, ${ev.entity} ${ev.entityId}`, wedgeBody(ev)].join('\n');
+    : wedgeBody(ev);
 
   await emitNotification({
     userId: creator,

@@ -10,7 +10,9 @@ const JARGON = /wedge|hop|miss|claim|heartbeat|dispatch|\back\b|capacity|WHERE|W
 
 describe('a stuck-work notice in plain words (ISS-1184)', () => {
   it('names the session forge-dev showed as jargon in plain words', () => {
-    expect(wedgeTitle('claim', 'session')).toBe('An agent session was never picked up by a machine');
+    expect(wedgeTitle('claim', 'session')).toBe(
+      'An agent session was never picked up by a machine',
+    );
   });
 
   it('reads every hop and entity without the detector’s words', () => {
@@ -18,7 +20,10 @@ describe('a stuck-work notice in plain words (ISS-1184)', () => {
       for (const entity of WEDGE_ENTITIES) {
         const title = wedgeTitle(hop, entity);
         expect(title, `${hop} × ${entity}`).not.toMatch(JARGON);
-        expect(title.split(' ').length, `${hop} × ${entity}: a row line is at most 12 words`).toBeLessThanOrEqual(12);
+        expect(
+          title.split(' ').length,
+          `${hop} × ${entity}: a row line is at most 12 words`,
+        ).toBeLessThanOrEqual(12);
       }
     }
   });
