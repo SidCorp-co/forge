@@ -7,7 +7,8 @@
 //   pnpm --filter web-v2 witness witness/<name>.witness.tsx --out <dir> [--clip]
 //
 // An entry mounts its component over a stubbed core and sets `window.__witness` to
-// `{ cases: [{ name, width }], ready(): boolean, probe(): string[] }`: `ready` says the component has
+// `{ cases: [{ name, width, height? }], ready(): boolean, probe(): string[] }` (a case's window is
+// `height` tall, 900 where it names none: a phone is 844): `ready` says the component has
 // drawn what the probes read, and `probe` answers one sentence per thing that is wrong. Each case is
 // one fresh load at that width; its screenshot is written to `<out>/<case>.png`. An entry whose
 // component has to be used, not only looked at, declares `stages: [{ name, run() }]` in place of
@@ -239,7 +240,8 @@ async function witnessCase(cdp, session, url, c, out, ceiling, thrown) {
   const send = (method, params) => cdp.send(method, params, session);
   const metrics = (height) =>
     send("Emulation.setDeviceMetricsOverride", { width: c.width, height, deviceScaleFactor: 1, mobile: c.width < 600 });
-  await metrics(900);
+  const tall = c.height ?? 900;
+  await metrics(tall);
   const threwBefore = thrown.length;
   const loaded = cdp.next("Page.loadEventFired");
   await send("Page.navigate", { url });
@@ -274,7 +276,7 @@ async function witnessCase(cdp, session, url, c, out, ceiling, thrown) {
     await metrics(Math.ceil(cssContentSize.height));
     const shot = await send("Page.captureScreenshot", { format: "png" });
     writeFileSync(resolve(out, `${name}.png`), Buffer.from(shot.data, "base64"));
-    await metrics(900);
+    await metrics(tall);
     rec?.resume();
   };
   if (rec) {
