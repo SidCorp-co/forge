@@ -39,6 +39,7 @@ import { carriageOf } from './carriage.js';
 import { holdingPair, landedBuildsOf } from './landed-build.js';
 import { recordedCarriage } from './recorded-carriage.js';
 import { recordedHolding } from './recorded-holding.js';
+import { bridgesOwed, heldBefore, keepServedBuilds } from './served-builds.js';
 import { readJudgedOnNow, readServingNow } from './serving-reading.js';
 import { type ShippedAsk, shippedAskKey, shippedCommitHolding } from './shipped-holding.js';
 
@@ -90,15 +91,19 @@ export async function judgedCommitsOf(projectId: string): Promise<string[]> {
   return rows.map((r) => r.judged);
 }
 
-/** The whole commits the project's production and judged-on environments answer serving now. */
-async function servedNow(projectId: string): Promise<string[]> {
-  const production = await readServingNow(projectId);
+/** The whole commits the project's production and judged-on environments answer serving now, and
+ *  production's alone. */
+async function servedNow(projectId: string): Promise<{ all: string[]; production: string[] }> {
+  const whole = (xs: readonly string[]) => [...new Set(xs.map(lower).filter((c) => WHOLE.test(c)))];
+  const production = whole(servedCommits(await readServingNow(projectId)));
   const judgedOn = await readJudgedOnNow(projectId);
-  const commits = [
-    ...servedCommits(production),
-    ...(judgedOn.kind === 'read' ? servedCommits(judgedOn.serving) : []),
-  ].map(lower);
-  return [...new Set(commits.filter((c) => WHOLE.test(c)))];
+  return {
+    all: whole([
+      ...production,
+      ...(judgedOn.kind === 'read' ? servedCommits(judgedOn.serving) : []),
+    ]),
+    production,
+  };
 }
 
 /**
@@ -176,16 +181,32 @@ function uniquePairs<P extends { judged: string; served: string }>(pairs: readon
   });
 }
 
-/** The pairs of one project no row and no release record answers, newest verdict first. */
-async function owedPairs(projectId: string, served: readonly string[]) {
+/**
+ * The pairs of one project no row and no release record answers, newest verdict first. A pair at a
+ * `production` commit is not owed where the build served before it held the judged commit and the
+ * host answered the live build descends from that one (`served-builds.ts:heldBefore`, ISS-1182).
+ */
+async function owedPairs(
+  projectId: string,
+  served: readonly string[],
+  production: readonly string[] = [],
+) {
   const judged = await judgedCommitsOf(projectId);
-  const [held, recorded] = await Promise.all([
+  const [held, recorded, ...derived] = await Promise.all([
     persistedCarriage(projectId, judged, served),
     recordedCarriage(projectId, judged, served),
+    ...production.map((live) => heldBefore(projectId, live, judged, [])),
   ]);
+  const derivedOf = new Map(production.map((live, i) => [live, derived[i]] as const));
   return judged.flatMap((j) =>
     served
-      .filter((s) => s !== j && !held.has(carriageKey(j, s)) && !recorded.has(carriageKey(j, s)))
+      .filter(
+        (s) =>
+          s !== j &&
+          !held.has(carriageKey(j, s)) &&
+          !recorded.has(carriageKey(j, s)) &&
+          derivedOf.get(s)?.get(j) !== true,
+      )
       .map((s) => ({ judged: j, served: s })),
   );
 }
@@ -299,60 +320,81 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
   const projects = rotated(await judgedProjects(), passes).slice(0, ANCESTRY_PROJECTS_PER_PASS);
   passes += 1;
   let spent = 0;
-  const spend = () => {
-    spent += 1;
-    return spent <= ANCESTRY_ASKS_PER_PASS
-      ? null
-      : `it was not asked this pass: one pass asks at most ${ANCESTRY_ASKS_PER_PASS} pairs`;
+  const budget = {
+    left: () => spent < ANCESTRY_ASKS_PER_PASS,
+    spend: () => {
+      spent += 1;
+      return spent <= ANCESTRY_ASKS_PER_PASS
+        ? null
+        : `it was not asked this pass: one pass asks at most ${ANCESTRY_ASKS_PER_PASS} pairs`;
+    },
   };
   for (const projectId of projects) {
-    if (spent >= ANCESTRY_ASKS_PER_PASS) break;
+    if (!budget.left()) break;
     result.projects += 1;
-    const served = await servedNow(projectId);
+    const { all: served, production } = await servedNow(projectId);
+    await keepServedBuilds(projectId, production);
+    // whether each live build descends from the one served before is asked first: once it does, what
+    // that build held is derived (`served-builds.ts:heldBefore`), one pair a deploy (ISS-1182)
+    const bridges = await bridgesOwed(projectId, production);
     // each landing against the commits its verdicts name, in turn with each served commit against them
-    const pairs: Owed[] = uniquePairs(
-      interleaved(
-        await owedLandingPairs(projectId),
-        served.length > 0 ? await owedPairs(projectId, served) : [],
-      ),
-    );
-    if (pairs.length === 0) continue;
+    const owed = async () =>
+      uniquePairs(
+        interleaved(
+          await owedLandingPairs(projectId),
+          served.length > 0 ? await owedPairs(projectId, served, production) : [],
+        ),
+      );
+    const first = bridges.length > 0 ? [] : await owed();
+    if (bridges.length === 0 && first.length === 0) continue;
     const host = await hostOf(projectId);
     if ('why' in host) {
-      result.unread += pairs.length;
+      result.unread += bridges.length + (bridges.length > 0 ? (await owed()).length : first.length);
       continue;
     }
-    for (let i = 0; i < pairs.length; i += 1) {
-      if (spent >= ANCESTRY_ASKS_PER_PASS) break;
-      const pair = pairs[i] as Owed;
-      const carriage = await carriageOf(host, pair.judged, pair.served, spend);
-      result.asked += 1;
-      if (carriage.kind === 'unread' || carriage.kind === 'lacks') {
-        // a host that did not answer writes nothing: the pair stays unread and is asked again
-        result.unread += 1;
-        continue;
-      }
-      const carried = carriage.kind === 'descends';
-      const written = await db
-        .insert(servedAncestry)
-        .values({
-          projectId,
-          servedCommit: pair.served,
-          judgedCommit: pair.judged,
-          carried,
-          differsIn: carried ? null : carriage.paths.slice(),
-        })
-        .onConflictDoNothing()
-        .returning({ projectId: servedAncestry.projectId });
-      result.written += written.length;
-      const back = carriageKey(pair.served, pair.judged);
-      if (pair.back && !carried && !pairs.some((p) => carriageKey(p.judged, p.served) === back)) {
-        pairs.push({ judged: pair.served, served: pair.judged });
-      }
-    }
+    await askAndKeep(projectId, host, bridges, result, budget);
+    await askAndKeep(projectId, host, bridges.length > 0 ? await owed() : first, result, budget);
   }
   if (result.asked > 0 || result.unread > 0) {
     logger.info({ ...result }, 'served-ancestry: what served commits carry, read and kept');
   }
   return result;
+}
+
+/** Asks the host each of `pairs` while the pass's budget lasts, and keeps each answer it gives. */
+async function askAndKeep(
+  projectId: string,
+  host: SourceHost,
+  pairs: Owed[],
+  result: ServedAncestryPassResult,
+  budget: { left: () => boolean; spend: () => string | null },
+): Promise<void> {
+  for (let i = 0; i < pairs.length; i += 1) {
+    if (!budget.left()) break;
+    const pair = pairs[i] as Owed;
+    const carriage = await carriageOf(host, pair.judged, pair.served, budget.spend);
+    result.asked += 1;
+    if (carriage.kind === 'unread' || carriage.kind === 'lacks') {
+      // a host that did not answer writes nothing: the pair stays unread and is asked again
+      result.unread += 1;
+      continue;
+    }
+    const carried = carriage.kind === 'descends';
+    const written = await db
+      .insert(servedAncestry)
+      .values({
+        projectId,
+        servedCommit: pair.served,
+        judgedCommit: pair.judged,
+        carried,
+        differsIn: carried ? null : carriage.paths.slice(),
+      })
+      .onConflictDoNothing()
+      .returning({ projectId: servedAncestry.projectId });
+    result.written += written.length;
+    const back = carriageKey(pair.served, pair.judged);
+    if (pair.back && !carried && !pairs.some((p) => carriageKey(p.judged, p.served) === back)) {
+      pairs.push({ judged: pair.served, served: pair.judged });
+    }
+  }
 }

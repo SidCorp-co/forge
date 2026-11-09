@@ -47,6 +47,33 @@ export async function keepServedBuilds(
 }
 
 /**
+ * Per production commit `live`, the pair (the build served before it, `live`) no kept answer names:
+ * the one question the served-ancestry pass asks first after a deploy, whose `descends` derives what
+ * the live build holds from what the previous build held (ISS-1182).
+ */
+export async function bridgesOwed(
+  projectId: string,
+  production: readonly string[],
+): Promise<Array<{ judged: string; served: string }>> {
+  const owed: Array<{ judged: string; served: string }> = [];
+  for (const live of production) {
+    const [row] = (await db.execute(sql`
+      SELECT prev."commit" AS previous FROM (
+        SELECT "commit" FROM served_builds
+         WHERE project_id = ${projectId} AND "commit" <> ${live}
+         ORDER BY last_read_at DESC LIMIT 1
+      ) prev
+       WHERE NOT EXISTS (
+         SELECT 1 FROM served_ancestry a
+          WHERE a.project_id = ${projectId} AND a.judged_commit = prev."commit"
+            AND a.served_commit = ${live})
+    `)) as unknown as Array<{ previous: string }>;
+    if (row) owed.push({ judged: row.previous, served: live });
+  }
+  return owed;
+}
+
+/**
  * Per asked commit, what was served before `live` on the project: the previous build, since when the
  * live one was read, whether it descends from the previous, and whether the previous holds the
  * commit. Every commit asked of one project and live build before the quiet point is one statement
