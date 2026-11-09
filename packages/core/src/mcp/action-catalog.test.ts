@@ -304,3 +304,43 @@ describe('a door judging each action under its own request', () => {
     );
   });
 });
+
+// REQ-78 BC-3 (ISS-1185): a client loads one action by find, describe and call, so describe has to
+// be enough to call it. FB-595..598 read on forge-dev: requirements.create's `criteria` said
+// "revise: the whole list", every guide but its door's last ended in a dangling "-", and no create
+// action carried an example a client could send.
+describe('describe is enough to call each action as written', () => {
+  // the product layer's doors; channel and ecosystem are kept for forge-plugin clients under the
+  // amnesty `mcp-tools-with-rest-twins` (mcp/registry.ts), and carry no example yet
+  const PRODUCT = /^(?:requirements|project_feedback|feedback|design|issues|projects|config)\./;
+  const creates = [...catalog.values()].filter(
+    (e) => PRODUCT.test(e.id) && /(?:^|_)create$|^submit$/.test(e.action),
+  );
+
+  it('ends no guide in a bullet', () => {
+    const dangling = [...catalog.values()]
+      .filter((e) => /(?:^|\n)\s*[-*]\s*$/.test(e.guide))
+      .map((e) => e.id);
+    expect(dangling).toEqual([]);
+  });
+
+  it("gives each create action its own field texts, none of them a revise's", () => {
+    expect(creates.length).toBeGreaterThan(3);
+    const said = creates.flatMap((e) =>
+      Object.entries((e.input.properties ?? {}) as Record<string, { description?: string }>)
+        .filter(([, p]) => /revise/i.test(p.description ?? ''))
+        .map(([name, p]) => `${e.id}.${name}: ${p.description}`),
+    );
+    expect(said).toEqual([]);
+  });
+
+  it('carries, for each create action, one example its own input accepts as written', () => {
+    const strict = new Ajv2020({ strict: false, validateFormats: false });
+    const missing = creates.filter((e) => e.example === undefined).map((e) => e.id);
+    expect(missing).toEqual([]);
+    for (const e of creates) {
+      const valid = strict.validate(e.input, e.example);
+      expect(valid, `${e.id}: ${JSON.stringify(strict.errors)}`).toBe(true);
+    }
+  });
+});
