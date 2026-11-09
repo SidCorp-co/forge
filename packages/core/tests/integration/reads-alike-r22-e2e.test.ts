@@ -84,7 +84,7 @@ beforeAll(async () => {
     await db.execute(sql`
       INSERT INTO ecosystem_memberships (ecosystem_id, project_id, state, invited_by, decided_by, decided_at)
       VALUES (${ecosystemId}, ${id}, 'active', ${personId}, ${personId}, now())`);
-    await consumedFromOutside(id, ecosystemId);
+    await consumedFromOutside(id, ecosystemId, true);
     await sessionsEnded(id, personId);
     await openRequests(id);
   }

@@ -56,12 +56,16 @@ export async function peopleAsLive(projectIds: readonly string[]): Promise<void>
 }
 
 /**
- * A project of another owner in `ecosystemId` that consumes a contract `consumer` provides and
- * provides one `consumer` consumes, as forge-dev's ecosystem holds projects a person does not read
- * (ISS-1070 r22): the contracts read named the projects its edges reach a wave after its own, and
- * sent the same read of project names twice (fae6e9e5).
+ * A project of another owner in `ecosystemId` that consumes a contract `provider` provides, and
+ * where `provides`, provides one `provider` consumes, as forge-dev's ecosystem holds projects a
+ * person does not read (ISS-1070 r22): the contracts read named the projects its edges reach a wave
+ * after its own, and sent the same read of project names twice (fae6e9e5).
  */
-export async function consumedFromOutside(consumer: string, ecosystemId: string): Promise<void> {
+export async function consumedFromOutside(
+  provider: string,
+  ecosystemId: string,
+  provides = false,
+): Promise<void> {
   const owner = (await createTestUser({ verified: true })).id;
   const outside = (await createTestProject(owner)).id;
   await db.execute(sql`
@@ -69,6 +73,9 @@ export async function consumedFromOutside(consumer: string, ecosystemId: string)
     VALUES (${ecosystemId}, ${outside}, 'active', ${owner}, ${owner}, now())`);
   await db.execute(sql`
     INSERT INTO ecosystem_consumptions (consumer_project_id, provider_project_id, contract_slug, ecosystem_id, built_against)
-    VALUES (${outside}, ${consumer}, 'api', ${ecosystemId}, '1.0.0'),
-           (${consumer}, ${outside}, 'events', ${ecosystemId}, '1.0.0')`);
+    VALUES (${outside}, ${provider}, 'api', ${ecosystemId}, '1.0.0')`);
+  if (provides)
+    await db.execute(sql`
+      INSERT INTO ecosystem_consumptions (consumer_project_id, provider_project_id, contract_slug, ecosystem_id, built_against)
+      VALUES (${provider}, ${outside}, 'events', ${ecosystemId}, '1.0.0')`);
 }
