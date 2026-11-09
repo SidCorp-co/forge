@@ -11,7 +11,7 @@
 //! - a message written into a running turn is typed while it runs, and the turn ends only once the
 //!   session has taken it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::pane_turn::{status_cost, turn_cost, Tally, COST_AFTER_STOP_MS};
 use super::*;
@@ -168,6 +168,7 @@ impl ClaudeCodeRunner {
             pane.name,
             pane.attach_command()
         );
+        let cost_base = first_turn_base(&session, &events, Duration::ZERO).await;
         let sid = session.id().to_string();
         let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
         let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.clone())).await;
@@ -185,9 +186,7 @@ impl ClaudeCodeRunner {
             events,
             transcript,
             transcript_from: from,
-            // a new session has spent nothing; a resumed one's running cost is read from its first
-            // status line between turns
-            cost_base: matches!(session, SessionStart::New(_)).then_some(0.0),
+            cost_base,
             core: runner_transport::CoreClient::new(
                 self.core_url.clone(),
                 self.device_token.clone(),
@@ -516,6 +515,12 @@ fn launch_path(name: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("{name}.launch.json")))
 }
 
+/// The running cost the pane's first turn is measured from: a new session has spent nothing; a
+/// resumed one's running cost is read from its first status line between turns.
+async fn first_turn_base(session: &SessionStart, _events: &Path, _within: Duration) -> Option<f64> {
+    matches!(session, SessionStart::New(_)).then_some(0.0)
+}
+
 /// The task that reads one pane while it lives, and closes each of its turns.
 struct Watch {
     panes: Panes,
@@ -748,6 +753,19 @@ pub(crate) async fn test_turn(
     transcript: PathBuf,
     tx: mpsc::Sender<RunnerEvent>,
 ) {
+    test_turn_from(runner, id, sid, (events, transcript), Some(0.0), tx).await;
+}
+
+/// [`test_turn`] measured from `cost_base`, the running cost read before the turn.
+#[cfg(test)]
+async fn test_turn_from(
+    runner: &ClaudeCodeRunner,
+    id: &str,
+    sid: &str,
+    (events, transcript): (PathBuf, PathBuf),
+    cost_base: Option<f64>,
+    tx: mpsc::Sender<RunnerEvent>,
+) {
     let core = runner_transport::CoreClient::new(runner.core_url.clone(), "t");
     let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.into())).await;
     let watch = Watch {
@@ -758,7 +776,7 @@ pub(crate) async fn test_turn(
         events: events.clone(),
         transcript,
         transcript_from: 0,
-        cost_base: Some(0.0),
+        cost_base,
         core,
         check_alive: false,
     };
@@ -895,5 +913,104 @@ mod tests {
             ended,
             "the second Stop, with nothing queued, did not end the turn"
         );
+    }
+
+    /// The `result` line `rx` yields before `Done`, if it yields one within ten seconds.
+    async fn result_of(rx: &mut mpsc::Receiver<RunnerEvent>) -> Option<serde_json::Value> {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let mut result = None;
+            while let Some(ev) = rx.recv().await {
+                match ev {
+                    RunnerEvent::Stdout(l) if l["type"] == "result" => result = Some(l),
+                    RunnerEvent::Done => return result,
+                    _ => {}
+                }
+            }
+            None
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    /// A resumed pane's first turn, its baseline taken the way `start_in_pane` takes it from
+    /// `events` before the prompt is handed in, then the turn's Stop and the status line after it.
+    async fn resumed_first_turn(
+        tag: &str,
+        before: Option<&[u8]>,
+        within: Duration,
+    ) -> (Option<f64>, Option<serde_json::Value>) {
+        let dir = std::env::temp_dir().join(format!("pane-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (events, transcript) = (dir.join("events.jsonl"), dir.join("t.jsonl"));
+        std::fs::write(&events, b"").unwrap();
+        let launched = runner_core::agent_activity::now_ms();
+        if let Some(payload) = before {
+            chat_pane_events::append(&events, STATUS_LINE, payload, launched).unwrap();
+        }
+        let base =
+            first_turn_base(&SessionStart::Resume("s1".into()), &events, within).await;
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
+        let (tx, mut rx) = mpsc::channel(64);
+        let paths = (events.clone(), transcript.clone());
+        test_turn_from(&runner, tag, "s1", paths, base, tx).await;
+        std::fs::write(
+            &transcript,
+            concat!(
+                r#"{"type":"user","message":{"content":"hi"}}"#,
+                "\n",
+                r#"{"type":"assistant","message":{"id":"m1","content":[{"type":"text"}],"usage":{"output_tokens":3}}}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        let stop = runner_core::agent_activity::now_ms();
+        chat_pane_events::append(&events, "Stop", br#"{"session_id":"s1"}"#, stop).unwrap();
+        let after = br#"{"cost":{"total_cost_usd":0.53}}"#;
+        chat_pane_events::append(&events, STATUS_LINE, after, stop + 1).unwrap();
+        let result = result_of(&mut rx).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        (base, result)
+    }
+
+    /// ISS-1172: a resumed session's status line carries its restored running cost before any
+    /// prompt (measured on 2.1.319), so the first turn is that figure's difference, not unread.
+    #[tokio::test]
+    async fn a_resumed_pane_s_first_turn_is_measured_from_the_status_line_before_its_prompt() {
+        let before = br#"{"session_id":"s1","cost":{"total_cost_usd":0.5}}"#;
+        let (base, result) =
+            resumed_first_turn("base-read", Some(before), Duration::from_secs(5)).await;
+        assert_eq!(base, Some(0.5));
+        let result = result.expect("the turn closed with no result line");
+        assert_eq!(result["total_cost_usd"], 0.03, "{result}");
+        assert!(result["forge_pane"]["cost"].is_string(), "{result}");
+    }
+
+    /// With no status line before the prompt, the first turn stays unread, saying why, after
+    /// waiting no longer than its bound.
+    #[tokio::test]
+    async fn a_resumed_pane_with_no_status_line_before_its_prompt_says_its_cost_is_unread() {
+        let started = std::time::Instant::now();
+        let (base, result) =
+            resumed_first_turn("base-none", None, Duration::from_millis(600)).await;
+        assert_eq!(base, None);
+        let result = result.expect("the turn closed with no result line");
+        assert!(result.get("total_cost_usd").is_none(), "{result}");
+        assert_eq!(
+            result["forge_pane"]["cost"]["unread"],
+            "no status line stood before the turn to measure from"
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    /// A session the box just named has spent nothing: it is measured from 0, with no wait.
+    #[tokio::test]
+    async fn a_new_pane_session_is_measured_from_nothing_spent_without_waiting() {
+        let started = std::time::Instant::now();
+        let none = Path::new("/nonexistent/events.jsonl");
+        let new = SessionStart::New("n".into());
+        let base = first_turn_base(&new, none, Duration::from_secs(30)).await;
+        assert_eq!(base, Some(0.0));
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 }
