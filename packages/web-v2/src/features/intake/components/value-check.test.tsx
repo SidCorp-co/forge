@@ -58,6 +58,11 @@ const draft = (over: Partial<IntakeDraftView> = {}): IntakeDraftView => ({
   ...over,
 });
 
+/** The questions fold opened, as a reader opens it on demand. */
+async function openQuestions() {
+  fireEvent.click(await screen.findByRole("button", { name: /^Questions/ }));
+}
+
 function shown(view: IntakeDraftView | null, write?: (body: unknown, path: string) => { status?: number; body: unknown }) {
   const calls = fakeCore((c) => (c.method === "POST" && write ? write(c.body, c.path) : { body: { draft: view } }));
   const out = renderWithQuery(<ValueCheck projectId="p1" slug="forge" itemKey={view?.item.key ?? "REQ-9"} />);
@@ -138,8 +143,20 @@ describe("a request's value check on its page", () => {
     expect(within(screen.getByTestId("intake-question")).getByTestId("intake-question-state").textContent).toBe("Answered by Ann · Built for the weekly review");
   });
 
+  // REQ-66 on forge-dev, 2026-11-09: the Questions block stood inlined under the value check, every
+  // prompt, chip and effect on the first screen though nothing waited on the reader (ISS-1184 item 3)
+  it("folds the questions to their name and state, opened on demand, while none waits on the reader", async () => {
+    shown(draft({ questions: [question(), question({ number: 2, prompt: "Which clinics?", answer: { option: "weekly", label: "Weekly", by: { id: "u1", name: "Ann" }, at: "2026-10-25T09:00:00.000Z" } })] }));
+    const fold = await screen.findByTestId("intake-questions-fold");
+    expect(within(fold).getByRole("button", { name: /^Questions/ }).textContent).toBe("Questions1 assumed · 1 answered");
+    expect(screen.queryByTestId("intake-question"), "the prompts open on demand").toBeNull();
+    await openQuestions();
+    expect(screen.getAllByTestId("intake-question")).toHaveLength(2);
+  });
+
   it("says a gap that does not block takes its recommended answer until it is answered (BC-5)", async () => {
     shown(draft());
+    await openQuestions();
     const q = await screen.findByTestId("intake-question");
     expect(q.dataset.blocks).toBeUndefined();
     expect(within(q).getByTestId("intake-question-state").textContent).toBe("Assumed until answered · One report a week");
@@ -148,12 +165,13 @@ describe("a request's value check on its page", () => {
 
   it("shows the options without chips to a reader who may not answer, and the answers given before", async () => {
     shown(draft({ can: { answer: false, keep: false }, answered: [{ prompt: "Who reads it?", label: "Managers", by: { id: "u1", name: "Ann" }, at: "2026-10-25T09:00:00.000Z" }] }));
+    await openQuestions();
     const options = await screen.findAllByTestId("intake-option");
     expect(options.map((o) => [o.textContent, o.dataset.recommended ?? null])).toEqual([
       ["WeeklyRecommended", "true"],
       ["Monthly", null],
     ]);
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent), "no chip to press, only the fold").toEqual(["Questions1 assumed"]);
     expect(screen.getByTestId("intake-answered").textContent).toBe("Who reads it? → Managers · Ann");
   });
 
@@ -165,6 +183,8 @@ describe("a request's value check on its page", () => {
   it("says a draft made before the check was not checked", async () => {
     shown(draft({ value: null, questions: [], nothingToAsk: "The record settles it." }));
     expect((await screen.findByTestId("value-check")).textContent).toContain("Drafted before the value check");
+    expect(screen.getByRole("button", { name: /^Questions/ }).textContent).toBe("QuestionsNothing");
+    await openQuestions();
     expect(screen.getByTestId("intake-nothing-to-ask").textContent).toBe("Nothing · The record settles it.");
   });
 
