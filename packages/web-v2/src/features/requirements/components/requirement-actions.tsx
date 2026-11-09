@@ -16,6 +16,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { criterionShortTitle } from "@forge/contracts/criterion-title";
 import { draftIssuesToPromote, isDeliveringStatus } from "@forge/contracts/requirements";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
@@ -289,8 +290,23 @@ function decisionOf(d: RequirementDetail, head: Head): number | null {
   return isDeliveringStatus(d.status) ? head.revision : null;
 }
 
-/** The criteria not passing on the running build, which core refuses a mark-delivered over (REQUIREMENT_CRITERIA_UNPROVEN). */
-const notPassing = (d: RequirementDetail) => (d.standing.coverage ?? []).filter((c) => c.verdict !== "passing").map((c) => c.code);
+/** The criteria not passing on the running build, which core refuses a mark-delivered over (REQUIREMENT_CRITERIA_UNPROVEN), each by its short title. */
+function notPassing(d: RequirementDetail): string[] {
+  const unproven = (d.standing.coverage ?? []).filter((c) => c.verdict !== "passing");
+  if (unproven.length === 0) return [];
+  const titles = new Map(d.criteria.map((c) => [c.code, c.title]));
+  return unproven.map((c) => criterionShortTitle({ title: titles.get(c.code), text: c.body?.split("\n").find((l) => l.trim())?.trim() ?? c.code }).short);
+}
+
+/** How many names the held tooltip lists before it counts the rest; the criteria list on the page names them all. */
+const HELD_NAMES = 3;
+
+/** "2 criteria not passing yet: A; B", a person's names never the raw codes (ISS-1184), the first few and a count of the rest. */
+function heldLabel(t: ReturnType<typeof useCopy>, names: string[]): string {
+  const rest = names.length - HELD_NAMES;
+  const listed = names.slice(0, HELD_NAMES).join("; ") + (rest > 0 ? ` +${rest}` : "");
+  return t(names.length === 1 ? "requirements.act.markDeliveredHeld.one" : "requirements.act.markDeliveredHeld.many", { n: names.length, names: listed });
+}
 
 /**
  * The explicit move into delivery or to delivered (REQ-74 BC-8); core names each unmet condition. While
@@ -303,7 +319,7 @@ function DeliveryMove({ projectId, d, kind }: { projectId: string; d: Requiremen
   const unproven = kind === "mark-delivered" ? notPassing(d) : [];
   if (unproven.length > 0) {
     return (
-      <Tooltip label={t("requirements.act.markDeliveredHeld", { codes: unproven.join(", ") })} multiline>
+      <Tooltip label={heldLabel(t, unproven)} multiline>
         <Button type="button" size="sm" variant="secondary" disabled data-testid="mark-delivered-held">
           {t("requirements.act.markDelivered")}
         </Button>
