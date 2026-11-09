@@ -93,10 +93,11 @@ const NAMED: Record<string, string> = {
   a271f69a: 'issues/release-record-required.ts:releaseNotesOf',
   // the live mix's base (ISS-1070 r22)
   ff6cdec7: 'release-batch/change-request-build.ts:claimedRead',
-  '553f386d': 'release-batch/change-request-roster.ts:openRequestsRead',
+  '553f386d': 'release-batch/change-request-roster.ts:openChangeRequestsOf (before r22)',
   fae6e9e5: 'ecosystem/store.ts:projectsWhere (the contracts read’s edges)',
   '682bd544': 'runs/facts-read.ts:latestFlips (a run’s and its session’s, one read since r22)',
-  '2e7f692d': 'release-batch/served-builds.ts:beforeOf',
+  '23932fac': 'release-batch/change-request-roster.ts:openRequestsRead (per issue, since r22)',
+  c982c1cc: 'release-batch/served-builds.ts:beforeOf (ISS-1182)',
 };
 
 /**
