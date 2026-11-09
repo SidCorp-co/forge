@@ -31,7 +31,7 @@ function size(r: WorkflowRecord, t: Copy): string {
 /** How many keys a row names before it counts the rest (ISS-1179: a row listed seven). */
 const ROW_KEYS = 2;
 
-/** The keys of a design's linked requirements, the first two and a count of the rest, every key the tooltip; or Not linked, never None (REQ-10 BC-13, ISS-1184). */
+/** The keys of a design's linked requirements, the first two and a count of the rest, every key the tooltip; or Unlinked, one word and never None (REQ-10 BC-13, ISS-1184). */
 function RequirementKeys({ keys }: { keys: readonly string[] }) {
   const t = useCopy();
   const rest = keys.length - ROW_KEYS;

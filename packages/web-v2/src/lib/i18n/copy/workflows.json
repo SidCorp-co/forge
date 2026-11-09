@@ -91,7 +91,7 @@
     "workflows.facts.noRequirement": "no requirement",
     "workflows.facts.noVersion": "Not released",
     "workflows.facts.none": "None",
-    "workflows.facts.notLinked": "Not linked",
+    "workflows.facts.notLinked": "Unlinked",
     "workflows.facts.notObserved": "The code has not been observed yet; every step reads planned.",
     "workflows.facts.observedAt": "Code observed at",
     "workflows.facts.of": "{a} of {b}",
