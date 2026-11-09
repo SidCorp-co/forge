@@ -23,8 +23,13 @@ export default defineConfig({
     environment: 'node',
     fsModuleCache: true,
     globalSetup: ['./tests/helpers/global-setup.ts'],
-    // The guard fails a test that lists the repository root without declaring it (ISS-1314).
-    setupFiles: ['../../scripts/lib/whole-tree-guard.mjs', './tests/helpers/file-database.ts'],
+    // The guard fails a test that lists the repository root without declaring it (ISS-1314); the
+    // outbox guard, a transaction that reports one fact with two outbox events (ISS-1181).
+    setupFiles: [
+      '../../scripts/lib/whole-tree-guard.mjs',
+      './tests/helpers/file-database.ts',
+      './tests/helpers/outbox-fact-guard.ts',
+    ],
     hookTimeout: 60_000,
     testTimeout: 30_000,
     pool: 'forks',
