@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.629] - 2026-11-09
+
+MCP clients can read project status again
+
+### Fixed
+
+- **An MCP client can read a project's status.** `project.status` sends each release without its issue list and each requirement's wait and dates in short, about 43 KB instead of 113 KB on forge.
+
 ## [0.4.0-dev.628] - 2026-11-09
 
 Screens name issues and criteria by title, and channel acts gain their read and write
