@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.628] - 2026-11-09
+
+Screens name issues and criteria by title, and channel acts gain their read and write
+
+### Fixed
+
+- **Screens name things, not keys.** A requirement's Waits on names issues and criteria by title, stuck-work notices read plainly, Channels shows each room's agent, Common issues can be added, and home's Moving skips what the live bar shows.
+
 ## [0.4.0-dev.627] - 2026-11-09
 
 MCP actions describe their own document shapes, so callers need no refusals
