@@ -9,7 +9,7 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-## [0.4.0-dev.621] - 2026-11-09
+## [0.4.0-dev.622] - 2026-11-09
 
 Agreeing a requirement checks each criterion can be judged on the running product
 
