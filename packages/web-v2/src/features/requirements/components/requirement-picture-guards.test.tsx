@@ -7,7 +7,7 @@
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CanvasHighlight } from "@/features/workflows/canvas/workflow-canvas";
+import type { CanvasHighlight } from "@/features/workflows";
 import { BOARD, CHECKOUT_LINK, core, detail, FLOW, page, picture, puts, refusing, TABLE } from "@/test/requirement-pictures";
 import type { Call } from "@/test/render";
 
@@ -33,7 +33,7 @@ const board = vi.hoisted(() => ({ scene: null as unknown[] | null }));
 vi.mock("@/features/board/board-editor", async () => {
   const { useEffect } = await import("react");
   return {
-    default: ({ onScene }: { onScene: (els: unknown[]) => void }) => {
+    default: function BoardEditorStub({ onScene }: { onScene: (els: unknown[]) => void }) {
       useEffect(() => {
         if (board.scene) onScene(board.scene);
       }, [onScene]);
@@ -206,6 +206,21 @@ describe("a process that links a workflow (criteria 19, 20)", () => {
     await waitFor(() => expect(screen.getByRole("figure")).toHaveAccessibleName("The Checkout workflow, with the steps its criteria trace lit: Pay."));
     expect(screen.getByText("Traced but no longer in it: shipping.")).toBeInTheDocument();
     expect([...(canvases.at(-1)?.highlight?.steps ?? [])]).toEqual(["pay"]);
+  });
+});
+
+describe("a linked workflow its criteria trace nothing in (ISS-1179 item 3)", () => {
+  // REQ-66 on forge-dev: a 1,000 px Feedback lifecycle with raw event names stood above its criteria,
+  // lighting nothing, labelled "Not traced"
+  it("folds to the workflow's name and says it is not traced, the drawing opened on demand", async () => {
+    core("viewer");
+    picture(detail({ kind: "process" }, { workflows: [CHECKOUT_LINK], traces: [] }));
+    const fold = await screen.findByTestId("picture-workflow-fold");
+    expect(fold).toHaveTextContent("Checkout");
+    expect(fold).toHaveTextContent("Not traced");
+    expect(screen.queryByTestId("canvas-stub"), "an untraced drawing is detail, opened on demand").toBeNull();
+    fireEvent.click(within(fold).getAllByRole("button")[0]);
+    expect(await screen.findByTestId("canvas-stub")).toBeInTheDocument();
   });
 });
 
