@@ -3,7 +3,10 @@
 // declares from its fixed argv with no shell (`ops.read`, ISS-871), and commit, push and name the
 // room's working copy (`build.push`). Core decided the act may run before it asks; the box runs
 // it with its own credentials and answers on the device route under the request's id. Asked of the
-// box the session runs on, never fanned out: a command runs once.
+// box the session runs on, never fanned out: a command runs once. A box whose socket is down when
+// asked is waited for inside the answer timeout and asked once it is back (ISS-1190): nothing ran
+// yet, so waiting is safe for a write too. A frame a socket took is never sent again, since the box
+// may be running it and answers over the device route, not the socket.
 
 import type { SupportCommandResult, SupportReadResult } from '@forge/contracts/support';
 import { boxAsks } from './box-ask.js';
@@ -15,8 +18,17 @@ export const HOST_COMMAND_TIMEOUT_MS = 60_000;
 const COMMAND_ANSWER_WAIT_MS = HOST_COMMAND_TIMEOUT_MS + 15_000;
 /** A fetch, a commit and a push. */
 const BUILD_ANSWER_WAIT_MS = 120_000;
+/** How often a frame no socket took is offered again while its box reconnects. */
+export const RECONNECT_OFFER_EVERY_MS = 1_000;
 
-export type BoxActOutcome<T> = { ok: true; value: T } | { ok: false; why: string };
+/**
+ * `transport` names a failure of the way to the box, not of the act: `disconnected` where no socket
+ * took the frame within the wait, `unanswered` where one took it and no answer came. A failure the
+ * box answered (the program would not start) carries none.
+ */
+export type BoxActOutcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; why: string; transport?: 'disconnected' | 'unanswered' };
 
 export interface BuildPushed {
   branch: string;
@@ -57,15 +69,18 @@ function askBox<T>(input: {
         event: input.event,
         data: { projectId: input.projectId, ...input.data },
         timeoutMs: input.timeoutMs,
+        awaitReconnectEveryMs: RECONNECT_OFFER_EVERY_MS,
         send: input.deps.send,
         settle: resolve,
         unanswered: (): BoxActOutcome<T> => ({
           ok: false,
+          transport: 'unanswered',
           why: `the box was asked (${input.event}) and did not answer within ${input.timeoutMs / 1000}s; a forge-runner older than this core does not take ${input.event} (\`forge-runner update\`)`,
         }),
         disconnected: (): BoxActOutcome<T> => ({
           ok: false,
-          why: `the box disconnected before it could be asked (${input.event})`,
+          transport: 'disconnected',
+          why: `the box disconnected before it could be asked (${input.event}) and did not reconnect within ${input.timeoutMs / 1000}s`,
         }),
       },
     );
