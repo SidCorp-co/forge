@@ -210,6 +210,11 @@ jobs:
       # credential into a runner box's MCP config and puts Forge outside the call path, and the
       # field is the only place that decision is written down.
       - run: node scripts/check-integration-declarations.mjs --all
+      # Outbox consumers (ISS-1175, REQ-12 BC-18): every outbox event type names a consumer, each
+      # one that does not refused OUTBOX_EVENT_UNCONSUMED <type>. The type on OUTBOX_CONSUMERS
+      # refuses an empty list too, but its error names a line, not the event. It reads the two
+      # registries with the TypeScript parser, so it needs node_modules and belongs in this job.
+      - run: node scripts/check-outbox-consumers.mjs
       # Lazy module init (ISS-1067): `lib/env.ts` validates the environment and `db/client.ts`
       # constructs the postgres pool on the first READ of their exports, never at import. One new
       # module-scope read of either puts the side effect back for every module downstream of that

@@ -29,6 +29,7 @@ const CI_COVERAGE = {
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-provider-literals.mjs --all': 'verify',
   'node scripts/check-integration-declarations.mjs --all': 'verify',
+  'node scripts/check-outbox-consumers.mjs': 'verify',
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/check-migration-order.mjs': 'verify',
   'node scripts/conformance-status.mjs': 'verify',

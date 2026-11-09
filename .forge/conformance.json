@@ -23,8 +23,8 @@
   "axes": {
     "form": {
       "level": 2,
-      "gate": "biome (core) + eslint (web-v2) + check-provider-literals + check-integration-declarations",
-      "owns": "file & function length; whitespace, import order, recommended rules; web-v2's code standard (React and the compiler's rules, TanStack Query, Next, a11y, type-aware TypeScript, feature and design-layer boundaries, and the UI stack bans in packages/web-v2/CODE-STANDARD.md); where an integration provider's name may be written, and whether every provider's declaration carries the fields the generic paths read",
+      "gate": "biome (core) + eslint (web-v2) + check-provider-literals + check-integration-declarations + check-outbox-consumers",
+      "owns": "file & function length; whitespace, import order, recommended rules; web-v2's code standard (React and the compiler's rules, TanStack Query, Next, a11y, type-aware TypeScript, feature and design-layer boundaries, and the UI stack bans in packages/web-v2/CODE-STANDARD.md); where an integration provider's name may be written, whether every provider's declaration carries the fields the generic paths read; and whether every outbox event type names a consumer",
       "$length": "packages/core holds biome's two length rules (a file over 500 lines, a function over 150) at `error` with nothing frozen; packages/web-v2 holds the same two as ESLint's max-lines and max-lines-per-function at `error`, under the same suppressions as every other web-v2 rule.",
       "baseline": {
         "$why": "web-v2 moved its lint from biome to ESLint on 2026-10-10 (FB-36) with its code standard, and the violations the standard found in the existing tree are frozen as ESLint bulk suppressions. ESLint refuses a file that gains a violation of a rule; `down` refuses a re-freeze (`eslint --suppress-all`) that raises a count. The UI sweep drains it; at zero the file is deleted and form returns to 3.",

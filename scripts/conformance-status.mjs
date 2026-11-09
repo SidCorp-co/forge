@@ -11,7 +11,7 @@ import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequis
 
 const PROBES = {
   form: {
-    gate: 'biome (core) + eslint (web-v2) + check-provider-literals + check-integration-declarations',
+    gate: 'biome (core) + eslint (web-v2) + check-provider-literals + check-integration-declarations + check-outbox-consumers',
     probe: ['pnpm', '--filter', '@forge/core', 'lint'],
     from: 'none',
     needs: ['deps'],
@@ -19,6 +19,7 @@ const PROBES = {
       { from: 'baseline', needs: ['deps'], probe: ['pnpm', '--filter', 'web-v2', 'lint'] },
       { from: 'none', probe: ['node', 'scripts/check-provider-literals.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-integration-declarations.mjs'] },
+      { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-outbox-consumers.mjs'] },
     ],
   },
   knowledge: {

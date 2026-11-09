@@ -164,6 +164,14 @@ export const CHECKS = [
     unit: 'providers',
   },
   {
+    axis: 'form',
+    label: 'outbox-consumers',
+    cmd: ['node', 'scripts/check-outbox-consumers.mjs'],
+    scanned: /^outbox-consumers: (\d+) event type\(s\) declared/m,
+    needs: ['deps'],
+    unit: 'event types',
+  },
+  {
     axis: 'relations',
     label: 'merged-at-writers',
     cmd: ['node', 'scripts/check-merged-at-writers.mjs', '--all'],
