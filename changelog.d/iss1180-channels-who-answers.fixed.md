@@ -1,1 +1,1 @@
-**A channel's page shows who answers the room.** It leads with the bound agent, live or not, its recent turns one click away; an empty record reads "Not recorded yet" beside the act that fills it, and Back returns to Channels.
+**A channel's page shows who answers the room.** It leads with the bound agent, live or not, its recent turns one click away; an empty record reads "Not recorded yet" beside the act that fills it, with Back to Channels.
