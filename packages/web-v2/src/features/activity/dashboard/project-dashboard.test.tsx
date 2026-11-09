@@ -58,12 +58,17 @@ const LEDGER_ON: DebtLedgerView = {
   windowOff: null,
 };
 
-function serve(n: number | "unanswered"): Call[] {
+/** The run standing the project bar reads (`runs/standing?scope=live`): nothing runs, the master idle. */
+const idleMaster = { state: "idle", pass: null, passIssueTitle: null, lastPass: null, device: null };
+const NOTHING_RUNS = { items: [], leased: [], master: idleMaster };
+
+function serve(n: number | "unanswered", world: { issues?: unknown; live?: unknown } = {}): Call[] {
   return fakeCore((c) => {
     const path = c.path.split("?")[0] ?? "";
     if (path === "/projects") return { body: [project] };
     if (path.endsWith("/needs-you/decisions")) return n === "unanswered" ? HANG : { body: decisions(n) };
-    if (path.endsWith("/issues/standing")) return { body: STANDING_LIST };
+    if (path.endsWith("/issues/standing")) return { body: world.issues ?? STANDING_LIST };
+    if (path.endsWith("/runs/standing") && c.path.includes("scope=live")) return { body: world.live ?? NOTHING_RUNS };
     if (path.endsWith("/releases/shipped") && c.path.endsWith("?limit=3")) return { body: SHIPPED };
     if (path.endsWith("/debts")) return { body: LEDGER_ON };
     // anything else the page asks for is a read it should not send; answer it so the count says so
@@ -71,8 +76,8 @@ function serve(n: number | "unanswered"): Call[] {
   });
 }
 
-async function open(n: number | "unanswered" = 0) {
-  const calls = serve(n);
+async function open(n: number | "unanswered" = 0, world: { issues?: unknown; live?: unknown } = {}) {
+  const calls = serve(n, world);
   await renderRoute({ at: "/projects/forge", pattern: "/projects/$slug", page: componentOf(DashboardRoute, "routes/_workspace/projects/$slug/index.tsx") });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 300));
@@ -111,6 +116,34 @@ describe("the project Dashboard (ISS-1067)", () => {
     await screen.findByTestId("dashboard");
     expect(sections()).toEqual(["moving", "shipped", "stuck"]);
     expect(screen.getByTestId("dashboard-needs-reading")).toBeTruthy();
+  });
+
+  // forge-dev's home, 2026-11-09: the titles the live bar names stood again in Moving under it. The
+  // decision on ISS-1184 keeps the bar (REQ-15 BC-10) and drops from Moving what the bar shows (REQ-12 BC-6)
+  it("leaves out of Moving each issue the live bar already names, so a title shows once", async () => {
+    const [first] = STANDING_LIST.issues;
+    const second = { ...first, id: "i7", key: "ISS-7", title: "Muc ISS-7" };
+    const live = {
+      ...NOTHING_RUNS,
+      master: { ...idleMaster, state: "in_pass", pass: { issueKey: "ISS-7" }, passIssueTitle: "Muc ISS-7" },
+      items: [{ id: "r1", lane: "issue", state: "running", issue: { key: "ISS-1", title: "Muc ISS-1", status: "in_progress" }, step: { source: "work_state", step: "build", since: null }, startedAt: AT, finishedAt: null, device: null, release: null, deployLocks: [] }],
+    };
+    await open(0, { issues: { ...STANDING_LIST, issues: [...STANDING_LIST.issues, second] }, live });
+    const moving = (await screen.findAllByTestId("list-group")).find((g) => g.getAttribute("data-group") === "moving");
+    expect(moving, "every Moving title is on the live bar: the group holds nothing to draw").toBeUndefined();
+    expect(sections()).toEqual(["needs", "shipped", "stuck"]);
+  });
+
+  it("keeps an issue in Moving that the live bar does not name", async () => {
+    const [first] = STANDING_LIST.issues;
+    const second = { ...first, id: "i7", key: "ISS-7", title: "Muc ISS-7" };
+    const live = { ...NOTHING_RUNS, items: [{ id: "r1", lane: "issue", state: "running", issue: { key: "ISS-1", title: "Muc ISS-1", status: "in_progress" }, step: { source: "work_state", step: "build", since: null }, startedAt: AT, finishedAt: null, device: null, release: null, deployLocks: [] }] };
+    await open(0, { issues: { ...STANDING_LIST, issues: [...STANDING_LIST.issues, second] }, live });
+    const moving = (await screen.findAllByTestId("list-group")).find((g) => g.getAttribute("data-group") === "moving") as HTMLElement;
+    expect(within(moving).getByTestId("group-count").textContent).toBe("1");
+    const titles = screen.getAllByTestId("list-row").map((r) => r.textContent ?? "");
+    expect(titles.some((t) => t.includes("Muc ISS-1")), "the live bar names it").toBe(false);
+    expect(titles.some((t) => t.includes("Muc ISS-7"))).toBe(true);
   });
 
   it("counts Stuck as the Issues list's Stuck group counts it, from the same read", async () => {
