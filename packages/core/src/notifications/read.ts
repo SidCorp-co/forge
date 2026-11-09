@@ -5,6 +5,23 @@ import {
   notificationDeliveryMembers,
   notifications,
 } from '../db/schema.js';
+import { pendingInvitationNamed } from '../projects/index.js';
+
+const INVITATION_NOTICE = 'invitation:';
+
+/** The key an `invitation_received` notice carries: the invitation it announces, by its stored digest. */
+export const invitationNoticeKey = (ref: string): string => `${INVITATION_NOTICE}${ref}`;
+
+/**
+ * ISS-1188 — an invitation's notice is true while the invitation it names is pending, read by the
+ * same rule as the invitee's pending list, which is what the bell shows in its place. Accepting,
+ * declining, revoking, inviting again and expiry all end it, expiry with nothing written; a notice
+ * naming no invitation names none still pending.
+ */
+const invitationStillPending = sql`(
+  ${notifications.type} <> 'invitation_received'
+  OR ${pendingInvitationNamed(sql`substring(${notifications.resolutionKey} from ${sql.raw(String(INVITATION_NOTICE.length + 1))})`)}
+)`;
 
 /**
  * ISS-1063 — what "still true for me" means, in one place.
@@ -15,8 +32,9 @@ import {
  * A `pending` or `inhibited` condition is not here either — nobody was told about it.
  */
 export const stillTrue = sql`(
-  (${notifications.kind} = 'condition' AND ${notifications.state} = 'firing')
-  OR (${notifications.kind} = 'task' AND ${notifications.state} IN ('open', 'acknowledged'))
+  ((${notifications.kind} = 'condition' AND ${notifications.state} = 'firing')
+  OR (${notifications.kind} = 'task' AND ${notifications.state} IN ('open', 'acknowledged')))
+  AND ${invitationStillPending}
 )`;
 
 /**

@@ -4124,6 +4124,13 @@
       "when": 1838764800000,
       "tag": "0646_a_stuck_work_notice_reads_in_plain_words",
       "breakpoints": true
+    },
+    {
+      "idx": 647,
+      "version": "7",
+      "when": 1838851200000,
+      "tag": "0647_an_invitation_notice_names_its_invitation",
+      "breakpoints": true
     }
   ]
 }

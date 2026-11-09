@@ -197,7 +197,7 @@ memberRoutes.post(
     }
 
     refuseUnmailable(env, refuse);
-    const { token, expiresAt } = await issueInvitationToken({
+    const { token, ref, expiresAt } = await issueInvitationToken({
       projectId,
       inviterId,
       email,
@@ -219,12 +219,14 @@ memberRoutes.post(
     // ISS-597: notify registered invitees in-app so they see the invite
     // in the bell without needing the email. Unregistered users (no userId
     // FK) get email only — the pending list surfaces the invite once they sign up.
+    // ISS-1188: the notice names its invitation, so it counts only while that one is pending.
     if (existingUserId) {
       try {
         await projectsPorts().notifyInvitee({
           userId: existingUserId,
           projectId,
           title: `${inviter.email} invited you to ${project.name} as ${role}`,
+          invitationRef: ref,
         });
       } catch (notifyErr) {
         logger.error({ err: notifyErr, projectId, email }, 'failed to emit invitation_received');

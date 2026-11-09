@@ -8,6 +8,7 @@ export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-s
 export {
   listProjectHeads,
   orgSiblingProjects,
+  pendingInvitationNamed,
   projectCreatorOf,
   projectHead,
   projectOrgHead,

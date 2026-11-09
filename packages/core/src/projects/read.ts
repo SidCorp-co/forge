@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, exists, gt, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { memberReading } from '../credentials/agent-account.js';
 import { db } from '../db/client.js';
 import {
@@ -221,6 +221,26 @@ export async function listPendingProjectInvitations(projectId: string) {
 }
 
 /** The live project and org invitations sent to `email`, newest first. */
+/**
+ * What a pending project invitation is, in one place (ISS-1188): neither accepted nor declined, and
+ * not yet expired. The invitee's pending list reads it, and so does the bell's count through
+ * `pendingInvitationNamed`, so the two cannot read different populations.
+ */
+const projectInvitationPending = and(
+  isNull(projectInvitations.acceptedAt),
+  isNull(projectInvitations.dismissedAt),
+  sql`${projectInvitations.expiresAt} > now()`,
+);
+
+/** Whether the project invitation whose stored digest is `ref` is still pending, as SQL. */
+export function pendingInvitationNamed(ref: SQL): SQL {
+  const named = db
+    .select({ one: sql`1` })
+    .from(projectInvitations)
+    .where(and(eq(projectInvitations.tokenHash, ref), projectInvitationPending));
+  return exists(named);
+}
+
 export async function listPendingInvitationsFor(email: string) {
   const now = new Date();
 
@@ -239,9 +259,7 @@ export async function listPendingInvitationsFor(email: string) {
     .where(
       and(
         sql`lower(${projectInvitations.email}) = lower(${email})`,
-        isNull(projectInvitations.acceptedAt),
-        isNull(projectInvitations.dismissedAt),
-        gt(projectInvitations.expiresAt, now),
+        projectInvitationPending,
       ),
     );
 

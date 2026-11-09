@@ -22,6 +22,8 @@ interface IssueInvitationInput {
 
 interface IssueInvitationResult {
   token: string;
+  /** The stored digest naming this invitation: what the invitee's pending list calls its `ref`. */
+  ref: string;
   expiresAt: Date;
 }
 
@@ -51,16 +53,17 @@ export async function issueInvitationToken(
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
       const token = generateInvitationToken();
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+      const ref = digestToken(token);
       try {
         await tx.insert(projectInvitations).values({
-          tokenHash: digestToken(token),
+          tokenHash: ref,
           projectId: input.projectId,
           email: input.email,
           role: input.role,
           inviterId: input.inviterId,
           expiresAt,
         });
-        return { token, expiresAt };
+        return { token, ref, expiresAt };
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;
         lastErr = err;

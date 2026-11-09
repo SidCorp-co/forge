@@ -93,7 +93,7 @@ import {
 } from './middleware/route-refs.js';
 import { serverTiming } from './middleware/server-timing.js';
 import { mockupsForFeedback } from './mockups/index.js';
-import { emitNotification } from './notifications/index.js';
+import { emitNotification, invitationNoticeKey } from './notifications/index.js';
 import {
   declareOutboxQueues,
   emitEvent,
@@ -232,8 +232,12 @@ provideKnowledgeDomainPorts();
 provideMemoryDomainPorts();
 provideProjectsPorts({
   claimIssuePrefix,
-  notifyInvitee: async (notice) => {
-    await emitNotification({ ...notice, type: 'invitation_received' });
+  notifyInvitee: async ({ invitationRef, ...notice }) => {
+    await emitNotification({
+      ...notice,
+      type: 'invitation_received',
+      resolutionKey: invitationNoticeKey(invitationRef),
+    });
   },
   unaddressableSlug: unaddressableProjectSlug,
 });
