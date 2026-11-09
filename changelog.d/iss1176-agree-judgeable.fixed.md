@@ -1,0 +1,1 @@
+**Agreeing a requirement asks that each criterion can be checked.** A criterion phrased as an instruction ("Verify …") is refused by name until it states what holds; a requirement's picture on a phone opens on its lit steps.
