@@ -31,14 +31,14 @@ afterEach(() => {
 const PROJECT = "7f1c1d1e-0000-4000-8000-000000000001";
 const READY_GIVEN = { problem: "Clinics lose the filter.", value: "They find a patient at once.", measured: "Fewer searches.", criteria: "1 criterion: BC-1", checkable: "Each criterion says what holds.", questions: "None open.", traced: "Each criterion traces its steps: BC-1." };
 /** The page in a view: where an answer came from is agent text, drawn in the developer view (REQ-43 BC-7). */
-function requirementPage(reads: ChecklistRead[], revision: number | null, onTab = vi.fn(), view: "person" | "developer" = "developer") {
+function requirementPage(reads: ChecklistRead[], revision: number | null, onTab = vi.fn(), view: "person" | "developer" = "developer", detail = reqDetail) {
   window.history.replaceState(null, "", view === "developer" ? "/?view=developer" : "/");
   fakeCore((c: Call) => {
     if (c.path === `/projects/${PROJECT}/requirements/REQ-1/checklist`) return { body: { requirementId: "r1", key: "REQ-1", revision, checklists: reads } };
     return HANG;
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  client.setQueryData(["requirement", PROJECT, "REQ-1"], reqDetail);
+  client.setQueryData(["requirement", PROJECT, "REQ-1"], detail);
   renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab="overview" onTab={onTab} />, client);
   return onTab;
 }
@@ -128,6 +128,9 @@ describe("a requirement's checklists on its page", () => {
     requirementPage(
       [readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, record(REQUIREMENT_ACCEPTANCE_CHECKLIST, { shipped: "All 10 live issues shipped." }), [waivedBy([...waivedEvaluation(atAccept).answers])])],
       4,
+      vi.fn(),
+      "developer",
+      { ...reqDetail, status: "accepted" },
     );
     const section = await screen.findByTestId("checklist");
     expect(section.dataset.standing).toBe("waived");
@@ -138,6 +141,16 @@ describe("a requirement's checklists on its page", () => {
     expect(row(section, "evidence").dataset.state).toBe("waived");
     // the waived gap's long words are the mark's tooltip, never inlined text (ISS-1179 item 3)
     expect(row(section, "verdicts")).not.toHaveTextContent("It has none for verdicts");
+  });
+
+  // REQ-12 on forge-dev: accepted by decision on 2026-10-23, then back in delivery, its Acceptance read
+  // "Waived" while the banner said it is not delivered
+  it("reads a waiver the requirement has since left as open again: the decision held only where it put it", async () => {
+    const atAccept = evaluateChecklist(REQUIREMENT_ACCEPTANCE_CHECKLIST, { given: {}, record: record(REQUIREMENT_ACCEPTANCE_CHECKLIST, { shipped: "All 18 live issues shipped." }) });
+    requirementPage([readOf(REQUIREMENT_ACCEPTANCE_CHECKLIST, record(REQUIREMENT_ACCEPTANCE_CHECKLIST, { shipped: "All 18 live issues shipped." }), [waivedBy([...waivedEvaluation(atAccept).answers])])], 4);
+    const section = await screen.findByTestId("checklist");
+    expect(section.dataset.standing, "the requirement is not accepted now: the waiver no longer stands").toBe("open");
+    expect(section).toHaveTextContent("2 open");
   });
 
   it('reads "No checklist" where the agree was recorded before the checklist and nothing stands now (BC-9)', async () => {
