@@ -251,7 +251,8 @@ describe('what a hand-deployed served commit carries is kept (forge-dev ISS-780,
     await forgeDevProject();
     const id = await judgedIssue([['runtime', ASIDE]]);
 
-    expect(await readServedAncestry()).toMatchObject({ written: 1 });
+    // and whether ASIDE holds the issue's landing K157, which its coverage reads (ISS-1169)
+    expect(await readServedAncestry()).toMatchObject({ written: 2 });
     restart();
     const read = await criteriaRead(id);
 
@@ -277,9 +278,11 @@ describe('what a hand-deployed served commit carries is kept (forge-dev ISS-780,
 
     const pass = await readServedAncestry();
 
+    // each verdict owes two pairs: what is served against it, and it against its landing (ISS-1169)
     expect(pass.asked).toBe(ANCESTRY_ASKS_PER_PASS);
     expect(pass.written).toBe(ANCESTRY_ASKS_PER_PASS);
-    expect((await readServedAncestry()).written).toBe(5);
+    expect((await readServedAncestry()).written).toBe(ANCESTRY_ASKS_PER_PASS);
+    expect((await readServedAncestry()).written).toBe(10);
   });
 });
 
