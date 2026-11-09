@@ -35,8 +35,8 @@ import {
   makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
-import { declareControls } from '../helpers/project-controls.js';
 import { vouchedByPassingCriterion } from '../helpers/loop-close.js';
+import { declareControls } from '../helpers/project-controls.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
