@@ -3,8 +3,9 @@
  * BC-18): the testing environment serves such a build, and `judged-build.ts` sends the judge to it.
  * `laterHoldersOf` is the one reading of that hold, and `earlierCarriageOf` of a landing's descent
  * from an earlier pass (ISS-845), both answered from the landings Forge recorded
- * (`recorded-holding.ts:recordedHolding`), the former also, at a commit a shipped release recorded
- * shipping, from the ancestry Forge kept (`shipped-holding.ts`, ISS-1079), never from the host, and both a requirement's coverage
+ * (`recorded-holding.ts:recordedHolding`), and where those cannot place a pair from the ancestry
+ * the source host answered and Forge kept (`served-ancestry.ts`, ISS-1079, ISS-1169), never from the
+ * host on the read, and both a requirement's coverage
  * (`landedBuildHolds`, `requirements/standing-coverage.ts`) and the automatic release's landing
  * basis (`criteria-basis.ts:landingCriteriaReports`) read them. A release record keeps its own rule:
  * the recorded commit must hold the verdict's (`landing-coverage.ts`).
@@ -214,8 +215,8 @@ function carriageOfHolding(held: Holding | undefined, by: string): Carriage {
  * Per issue whose build is a landing, what that landing holds of each other commit its verdicts
  * name (ISS-845): it descends from one where a landing Forge recorded at that commit, on the same
  * branch, came no later (`recorded-holding.ts`, a fix round's own earlier landing among them), or
- * where the source host's answer Forge kept says so (`served-ancestry.ts`, ISS-1079: a commit a
- * shipped release recorded shipping that does not hold the landing is asked the other way too), and
+ * where the source host's answer Forge kept says so (`served-ancestry.ts`, ISS-1079, ISS-1169: a
+ * commit a verdict names that does not hold the landing is asked the other way too), and
  * otherwise whether it does was not read. Never from the host on the read, so the files between are
  * not read where no kept answer names them.
  */

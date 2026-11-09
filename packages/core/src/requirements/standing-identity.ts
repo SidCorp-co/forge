@@ -143,8 +143,9 @@ export interface LandedHolds {
   head?: MergedHead | null;
   /**
    * Per later commit a verdict on the issue names (lower case), whether it holds the landing, or the
-   * record that is missing, from the landings Forge recorded (`release-batch/recorded-holding.ts`).
-   * A commit absent was not asked, and is read as another build.
+   * record that is missing, from the landings Forge recorded (`release-batch/recorded-holding.ts`),
+   * else the source host's answer Forge kept (`release-batch/served-ancestry.ts`, ISS-1169). A
+   * commit absent was not asked, and is read as another build.
    */
   holders?: ReadonlyMap<string, boolean | { unread: string }>;
   /**
