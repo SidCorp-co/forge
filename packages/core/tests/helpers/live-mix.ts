@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { createTestProject, createTestUser } from './factories.js';
+import { peopleAsLive } from './live-mix-people.js';
 import {
   askAboutRequirement,
   baseDesigns,
@@ -146,7 +147,6 @@ export async function seedLiveMix(input: {
   autoflow: string;
 }): Promise<string[]> {
   const { ownerId, orgId, ecosystemId } = input;
-  const agentId = (await createTestUser({ verified: true })).id;
   const ids: string[] = [];
   for (const kind of LIVE_MIX) {
     const id = kind.scale
@@ -175,15 +175,9 @@ export async function seedLiveMix(input: {
     if (kind.askedAboutRequirement) await askAboutRequirement(id);
     if (kind.basedDesigns) await baseDesigns(id);
     if (kind.designChanges) await proposeDesignChanges(id);
-    // an agent filed most of it: the person owns one issue in seven and one item in five
-    await db.execute(
-      sql`UPDATE issues SET created_by_id = ${agentId} WHERE project_id = ${id} AND iss_seq % 7 <> 0`,
-    );
-    await db.execute(
-      sql`UPDATE feedback SET reported_by = ${agentId} WHERE project_id = ${id} AND fb_seq % 5 <> 0`,
-    );
     ids.push(id);
   }
+  await peopleAsLive(ids);
   await db.execute(sql`ANALYZE`);
   return ids;
 }
