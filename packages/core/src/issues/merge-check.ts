@@ -127,7 +127,13 @@ export async function recordMergeCheck(args: {
       ],
     });
     // a passing check is a change built: the step a builder that wrote none left moves on (ISS-951)
-    await advanceStepOnEvidence(tx, issue.id, 'merge_checked');
+    await advanceStepOnEvidence(
+      tx,
+      issue.id,
+      'merge_checked',
+      // the check runs it wrote are told by their `issue.updated`, which refreshes the Now (ISS-1181)
+      written.recorded > 0 ? 'issue.updated' : undefined,
+    );
     return recorded;
   });
 }

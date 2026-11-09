@@ -14,7 +14,14 @@ export const OUTBOX_CONSUMERS = {
 		"memory-indexer",
 		"support-results",
 	],
-	"issue.updated": ["ws-broadcast", "activity-feed", "memory-indexer"],
+	// an issue's move or stamp also refreshes what runs on its project now: the step it moved is
+	// derived from it, never told beside it (ISS-1181)
+	"issue.updated": [
+		"ws-broadcast",
+		"org-activity",
+		"activity-feed",
+		"memory-indexer",
+	],
 	"issue.transitioned": [
 		"ws-broadcast",
 		"org-activity",
@@ -41,7 +48,14 @@ export const OUTBOX_CONSUMERS = {
 	"comment.updated": ["activity-feed", "ws-broadcast"],
 	"comment.deleted": ["activity-feed", "ws-broadcast"],
 	"comment.mentioned": ["activity-feed", "notify-mentions"],
-	"question.answered": ["answer-resume", "master-wake", "requirement-reason"],
+	// an answer is told once, by its own event, never also as the question's move (ISS-1181)
+	"question.answered": [
+		"answer-resume",
+		"master-wake",
+		"requirement-reason",
+		"ws-broadcast",
+		"org-activity",
+	],
 	"question.asked": ["ws-broadcast", "org-activity", "question-suggest"],
 	"question.transitioned": ["ws-broadcast", "org-activity"],
 	"notification.created": ["ws-broadcast"],
@@ -62,19 +76,41 @@ export const OUTBOX_CONSUMERS = {
 	"channel.gateAsked": ["notify-ecosystem"],
 	"channel.gateDecided": ["notify-ecosystem"],
 	"channel.threadHeld": ["notify-ecosystem", "master-wake"],
-	"contract.versionApproved": ["notify-ecosystem", "master-wake"],
+	// the approval is the decision: it settles its approver's Needs you row (ISS-1181)
+	"contract.versionApproved": [
+		"notify-ecosystem",
+		"master-wake",
+		"ws-broadcast",
+		"org-activity",
+	],
 	"contract.requested": ["master-wake"],
 	"ecosystem.buildOwed": ["master-wake"],
 	"requirement.created": ["intake-assistant"],
-	"requirement.agreed": ["master-wake", "steward"],
+	// an agree, an accept and a delivery are each their act's one report of the move (ISS-1181)
+	"requirement.agreed": [
+		"master-wake",
+		"steward",
+		"notify-requirements",
+		"support-results",
+		"org-activity",
+		"ws-broadcast",
+	],
 	"requirement.returned": ["master-wake", "org-activity"],
 	"requirement.transitioned": [
 		"notify-requirements",
 		"support-results",
 		"org-activity",
 	],
-	"requirement.delivered": ["notify-requirements"],
-	"requirement.accepted": ["notify-requirements"],
+	"requirement.delivered": [
+		"notify-requirements",
+		"support-results",
+		"org-activity",
+	],
+	"requirement.accepted": [
+		"notify-requirements",
+		"support-results",
+		"org-activity",
+	],
 	"feedback.filed": ["master-wake", "intake-assistant", "steward"],
 	"intake.answered": ["intake-assistant"],
 	"feedback.verifyAsked": ["notify-feedback"],

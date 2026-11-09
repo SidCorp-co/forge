@@ -349,7 +349,8 @@ async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInpu
   const leavingPark = PARK_STATUSES.includes(fromStatus);
   if (enteringPark && !leavingPark) await setLeftStatus(tx, issue.id, fromStatus);
   if (!enteringPark && leavingPark) await setLeftStatus(tx, issue.id, null);
-  await setWorkStep(tx, issue.id, step);
+  // the move's own `issue.transitioned` refreshes the project's Now (ISS-1181)
+  await setWorkStep(tx, issue.id, step, new Date(), { reportedBy: 'issue.transitioned' });
 }
 
 /** A reopen on a project that releases through change requests supersedes the merge stamp the

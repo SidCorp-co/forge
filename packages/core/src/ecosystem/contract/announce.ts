@@ -92,7 +92,8 @@ export async function announceApprovedIn(tx: Tx, a: Approved): Promise<void> {
   });
 }
 
-// either decision settles its approver's Needs you row, which the workspace's Activity hears (ISS-1053)
+// a decision no `contract.versionApproved` reports settles its approver's Needs you row, which the
+// workspace's Activity hears (ISS-1053); an announced approval is told by that event alone (ISS-1181)
 export async function announceDecidedIn(
   tx: Tx,
   d: { projectId: string; contract: string; version: string },

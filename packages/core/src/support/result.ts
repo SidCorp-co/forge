@@ -124,5 +124,9 @@ export function registerSupportResults(): void {
   consume('issue.transitioned', { name, handle });
   consume('release.shipped', { name, handle });
   consume('requirement.transitioned', { name, handle });
+  // an agree, an accept and a delivery are their act's one report of the move (ISS-1181)
+  consume('requirement.agreed', { name, handle });
+  consume('requirement.accepted', { name, handle });
+  consume('requirement.delivered', { name, handle });
   consume('feedback.verifySettled', { name, handle });
 }

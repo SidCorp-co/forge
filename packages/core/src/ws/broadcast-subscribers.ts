@@ -52,10 +52,13 @@ function onOrg<T extends ConsumedBy<'org-activity'>>(
  */
 function registerOrgActivityBroadcast(): void {
   onOrg('issue.transitioned', (p) => tellOrg(p.projectId, 'status'));
+  // an issue's stamp or edit moves what runs on its project now: the step it moved, if any (ISS-1181)
+  onOrg('issue.updated', (p) => tellOrg(p.projectId, 'step'));
   onOrg('issue.created', (p) => tellOrg(p.projectId, 'status'));
   onOrg('question.asked', (p) => tellOrg(p.projectId, 'question'));
   onOrg('question.transitioned', (p) => tellOrg(p.projectId, 'question'));
-  // what runs on a project now moved: its runs, its master, its rooms or an issue's step
+  onOrg('question.answered', (p) => tellOrg(p.projectId, 'question'));
+  // what runs on a project now moved: its runs, its master, its rooms, or a step no issue event says
   onOrg('session.pushed', async (p) => {
     if (p.event !== 'project.now.changed') return;
     await tellOrg(p.projectId, (p.data as unknown as ProjectNowFrame).source);
@@ -67,12 +70,16 @@ function registerOrgActivityBroadcast(): void {
   // a person's decision settled on its record (ISS-1053): each act Needs you offers reports itself
   // by one of these (`activity/settle-events.ts:SETTLED_BY`), so the item leaves "waiting on you"
   onOrg('requirement.transitioned', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('requirement.agreed', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('requirement.accepted', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('requirement.delivered', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('requirement.returned', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('feedback.verifySettled', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('preview.transitioned', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('mockup.transitioned', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('workflow.designDecided', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('decision.settled', (p) => tellOrg(p.projectId, 'decision'));
+  onOrg('contract.versionApproved', (p) => tellOrg(p.projectId, 'decision'));
   onOrg('release.cut', (p) => tellOrg(p.projectId, 'release'));
   onOrg('release.approvalDecided', (p) => tellOrg(p.projectId, 'release'));
   onOrg('release.shipped', (p) => tellOrg(p.projectId, 'release'));
@@ -109,17 +116,45 @@ function assertAudience(event: string, userIds: unknown): void {
  * peek and its grouping among them (ISS-1131, FB-568: a triage the master made left them on "New").
  */
 function registerDecisionBroadcast(): void {
-  on('decision.settled', (p) => {
-    frame(projectRoom(p.projectId), 'decision.settled', {
-      projectId: p.projectId,
-      act: p.act,
-      subject: p.subject,
-    });
+  const settled = (projectId: string, act: string, subject: string) =>
+    frame(projectRoom(projectId), 'decision.settled', { projectId, act, subject });
+  on('decision.settled', (p) => settled(p.projectId, p.act, p.subject));
+  // a decision another event reports is framed from that event, never told twice (ISS-1181)
+  on('requirement.agreed', (p) => {
+    if (p.act === 'revision.accept') settled(p.projectId, p.act, p.key);
   });
+  on('contract.versionApproved', (p) =>
+    settled(p.projectId, 'contract.decide', `${p.contractSlug}@${p.version}`),
+  );
+}
+
+/** What runs on the project now moved with an issue's move or stamp: the step it took (ISS-951). */
+function tellStepOf(projectId: string): void {
+  frame(projectRoom(projectId), 'project.now.changed', { projectId, source: 'step' });
+}
+
+/** A question asked, answered, voided or expired: one `question.changed` frame per event. */
+function registerQuestionBroadcast(): void {
+  const changed = (
+    p: { projectId: string; issueId: string | null },
+    questionId: string,
+    change: WsFramePayloads['question.changed']['change'],
+  ) =>
+    frame(projectRoom(p.projectId), 'question.changed', {
+      questionId,
+      projectId: p.projectId,
+      issueId: p.issueId,
+      change,
+    });
+  on('question.asked', (p) => changed(p, p.questionId, 'asked'));
+  on('question.transitioned', (p) => changed(p, p.id, p.to));
+  // an answer is its own event, never also the question's move (ISS-1181)
+  on('question.answered', (p) => changed(p, p.questionId, 'answered'));
 }
 
 export function registerWsBroadcastSubscribers(): void {
   registerDecisionBroadcast();
+  registerQuestionBroadcast();
   // every open view of either side refetches the edge
   on('issue.dependency.changed', (p) => {
     frame(projectRoom(p.projectId), 'dependencyChanged', {
@@ -137,24 +172,7 @@ export function registerWsBroadcastSubscribers(): void {
       reason: p.reason,
       at: p.at,
     });
-  });
-
-  on('question.asked', (p) => {
-    frame(projectRoom(p.projectId), 'question.changed', {
-      questionId: p.questionId,
-      projectId: p.projectId,
-      issueId: p.issueId,
-      change: 'asked',
-    });
-  });
-
-  on('question.transitioned', (p) => {
-    frame(projectRoom(p.projectId), 'question.changed', {
-      questionId: p.id,
-      projectId: p.projectId,
-      issueId: p.issueId,
-      change: p.to,
-    });
+    tellStepOf(p.projectId);
   });
 
   // the issue and chat showing a preview refetch it; a failure names its reason (REQ-39 BC-10)
@@ -188,6 +206,7 @@ export function registerWsBroadcastSubscribers(): void {
       fields: p.fields,
       actorId: p.actor.id,
     });
+    tellStepOf(p.projectId);
   });
 
   // an open thread refetches its comments and the issue's activity

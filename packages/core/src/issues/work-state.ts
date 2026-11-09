@@ -55,6 +55,13 @@ function nextStepLog(
 }
 
 /**
+ * The issue event an act writes beside a step move, which the project's Now is refreshed from
+ * (`ws/broadcast-subscribers.ts`): the move is then told by that event alone, never beside it (REQ-12
+ * BC-18, ISS-1181). Absent, the act writes no issue event, and the step move tells its own frame.
+ */
+export type StepReportedBy = 'issue.transitioned' | 'issue.updated';
+
+/**
  * Move the run's step. Re-entering the step it is at changes nothing, so its start time is the
  * first entry's; `null` ends the step without opening another (a checkpoint, a release, an exit).
  */
@@ -63,7 +70,7 @@ export async function setWorkStep(
   issueId: string,
   step: WorkStep | null,
   now: Date = new Date(),
-  opts: { restart?: boolean } = {},
+  opts: { restart?: boolean; reportedBy?: StepReportedBy | undefined } = {},
 ): Promise<void> {
   const held = await readWorkStateForUpdate(executor, issueId);
   if ((held?.step ?? null) === step && !opts.restart) return;
@@ -73,7 +80,9 @@ export async function setWorkStep(
     .insert(issueWorkState)
     .values({ issueId, ...values })
     .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
-  // the project's Now and the workspace's Activity read the step: a move tells their rooms (ISS-951)
+  // the project's Now and the workspace's Activity read the step: a move tells their rooms (ISS-951),
+  // by the act's own issue event where it writes one
+  if (opts.reportedBy) return;
   const [issue] = await executor
     .select({ projectId: issues.projectId })
     .from(issues)
@@ -120,6 +129,7 @@ export async function advanceStepOnEvidence(
   executor: Executor,
   issueId: string,
   evidence: StepEvidence,
+  reportedBy?: StepReportedBy | null,
   now: Date = new Date(),
 ): Promise<WorkStep | null> {
   const to = STEP_EVIDENCE[evidence];
@@ -132,7 +142,7 @@ export async function advanceStepOnEvidence(
   const held = await readWorkStateForUpdate(executor, issueId);
   const at = held?.step ? workSteps.indexOf(held.step) : -1;
   if (workSteps.indexOf(to) <= at) return null;
-  await setWorkStep(executor, issueId, to, now);
+  await setWorkStep(executor, issueId, to, now, { reportedBy: reportedBy ?? undefined });
   return to;
 }
 

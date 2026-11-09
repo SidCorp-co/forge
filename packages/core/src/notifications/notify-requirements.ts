@@ -76,8 +76,22 @@ async function tellAuthor(change: StepChange, cause: string): Promise<void> {
 
 export function registerRequirementNotifications(): void {
   const name = 'notify-requirements';
-  consume('requirement.delivered', { name, handle: delivered });
-  consume('requirement.accepted', { name, handle: accepted });
+  // an agree, an accept and a delivery report their own move (REQ-12 BC-18): each tells its step
+  consume('requirement.delivered', {
+    name,
+    handle: async (p) => {
+      await delivered(p);
+      await tellStep(p.requirementId, p.at);
+    },
+  });
+  consume('requirement.accepted', {
+    name,
+    handle: async (p) => {
+      await accepted(p);
+      await tellStep(p.requirementId, p.at);
+    },
+  });
+  consume('requirement.agreed', { name, handle: (p) => tellStep(p.requirementId, p.at) });
   consume('requirement.transitioned', {
     name,
     handle: (p) => tellStep(p.id, p.at),

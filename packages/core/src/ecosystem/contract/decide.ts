@@ -74,7 +74,6 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
       (v) => v.version === version,
     );
     if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
-    await announceDecidedIn(tx, { projectId, contract, version });
     if (decision === 'approve') {
       await supersedeOlderProposed(tx, {
         providerProjectId: projectId,
@@ -84,7 +83,12 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
         decidedAs: actor.agency === 'agent' ? 'agent' : 'person',
       });
     }
-    if (decision !== 'approve' || !iface) return { ok: true, version: decided, filed: [] };
+    if (decision !== 'approve' || !iface) {
+      // a return, or an approval with no interface to announce, reports the decision itself; an
+      // announced approval is its `contract.versionApproved`, never both (ISS-1181)
+      await announceDecidedIn(tx, { projectId, contract, version });
+      return { ok: true, version: decided, filed: [] };
+    }
     // the approval releases every wait it reaches in its own transaction; the event it emits wakes them
     const versioning = iface.document.commitments.versioning;
     await settleContractWaitsIn(tx, {

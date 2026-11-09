@@ -143,7 +143,8 @@ export const TRANSITION_EVENTS = {
 	issue: "every",
 	job: ["done", "failed"],
 	run: "every",
-	question: ["answered", "void", "expired"],
+	// an answer is its `question.answered`, which carries what was said (REQ-12 BC-18, ISS-1181)
+	question: ["void", "expired"],
 	preview: "every",
 	// each stored move is a step change its author is told of (REQ-34 BC-21, notify-requirements.ts)
 	requirement: "every",
@@ -281,9 +282,13 @@ export interface OutboxEventPayloads
 	"preview.transitioned": TransitionEvent<"preview">;
 	/** A mockup was accepted or returned; its `reason` is what the decider said. */
 	"mockup.transitioned": TransitionEvent<"mockup">;
-	/** A requirement's stored status moved (agree, defer, undefer, accept, drop). */
+	/**
+	 * A requirement's stored status moved (defer, undefer, drop, a move into delivery). An agree, an
+	 * accept and a move to delivered are their act's own `requirement.agreed`, `.accepted` and
+	 * `.delivered`, which carry the revision (REQ-12 BC-18, ISS-1181).
+	 */
 	"requirement.transitioned": TransitionEvent<"requirement">;
-	/** A question was written open, by any door; an answer, a void and an expiry are its `question.transitioned`. */
+	/** A question was written open, by any door; a void and an expiry are its `question.transitioned`, an answer its `question.answered`. */
 	"question.asked": {
 		questionId: string;
 		projectId: string;
@@ -482,13 +487,20 @@ export interface OutboxEventPayloads
 		requirementId: string;
 		key: string;
 	};
-	/** A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown. */
+	/**
+	 * A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown. The
+	 * act's one report of its move to agreed, where it made one (REQ-12 BC-18, ISS-1181).
+	 */
 	"requirement.agreed": {
 		projectId: string;
 		requirementId: string;
 		key: string;
 		revision: number;
 		baselineSeq: number;
+		/** The person's decision act: an agree from draft, or the accept of a revision that re-baselines. */
+		act: "requirement.agree" | "revision.accept";
+		/** When the act was written (ISO 8601). */
+		at: string;
 	};
 	/** A signer returned a proposed revision to draft; an agent-written one is its master's to revise. */
 	"requirement.returned": {
@@ -603,14 +615,18 @@ export interface OutboxEventPayloads
 		key: string;
 		title: string;
 		revision: number;
+		/** When the move to delivered was written (ISO 8601); the act's one report of it. */
+		at: string;
 	};
-	/** A holder of requirements.approve accepted the delivered revision. */
+	/** A holder of requirements.approve accepted the delivered revision; the act's one report of its move. */
 	"requirement.accepted": {
 		projectId: string;
 		requirementId: string;
 		key: string;
 		revision: number;
 		acceptedBy: string;
+		/** When the accept was written (ISO 8601). */
+		at: string;
 	};
 	/** A personal access token of `userId` was minted, revoked, had its project list changed, or was used (at most once a minute). */
 	"credential.tokenChanged": {
@@ -698,7 +714,9 @@ export interface OutboxEventPayloads
 	};
 	/**
 	 * A person's decision settled through an act no other event reports (ISS-1053): a revision's
-	 * accept, a re-pin, a suggestion's accept or reject, a design re-pin, a contract version's decision,
+	 * accept that re-baselines nothing (one that does is its `requirement.agreed`), a re-pin, a
+	 * suggestion's accept or reject, a design re-pin, a contract version's return (its approval is
+	 * `contract.versionApproved`),
 	 * and every feedback decision (ISS-1131: a triage, a decline, a retarget, as `feedback.<decision>`).
 	 * `act` is the Needs you decision act (`needs-you-decisions.ts:DECISION_ACTS`), a suggestion's
 	 * withdrawal, which clears one, or a feedback decision, and `subject` the record it settled, by key

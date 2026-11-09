@@ -10,11 +10,7 @@ import { FACT_PAIRS, factsSaidTwice, type GuardedEvent } from './outbox-fact-pai
 
 /** Pairs still said twice by an act, each named with the issue that folds it; never refused. */
 const PENDING: Readonly<Record<string, string>> = {
-  F1: 'ISS-1181',
-  F2: 'ISS-1181',
   F3: 'ISS-1181',
-  F4: 'ISS-1181',
-  F5: 'ISS-1181',
 };
 
 const SCHEMA = 'outbox_fact_guard';

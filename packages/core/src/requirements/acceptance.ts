@@ -209,6 +209,8 @@ export async function acceptDelivery(input: {
       actor: requirementKernelActor(actor),
       afterWrite: voidsItsDecisions('accepted', actor, reason, 'requirements'),
       source: 'requirements',
+      // the accept's own event reports the move, with the revision (REQ-12 BC-18, ISS-1181)
+      reportedBy: 'requirement.accepted',
       returning: ['id'],
       // the acceptance checklist (Requirement lifecycle r15 acceptance_check), judged by the kernel
       checklist: {
@@ -246,6 +248,7 @@ export async function acceptDelivery(input: {
       key: requirementKey(row.reqSeq),
       revision: input.revision,
       acceptedBy: actor.userId,
+      at: now.toISOString(),
     });
     return null;
   });
@@ -294,6 +297,9 @@ export async function moveDelivery(input: {
     );
     if (deferred) return [deferred];
     const now = new Date();
+    // a move to delivered at a revision is its `requirement.delivered`, never also the kernel's
+    // `requirement.transitioned` (REQ-12 BC-18, ISS-1181)
+    const told = input.to === 'delivered' && current.currentRevision !== null;
     const moved = await transition(tx, REQUIREMENT_MACHINE, {
       to: input.to,
       expect: current.status as RequirementStatus,
@@ -303,6 +309,7 @@ export async function moveDelivery(input: {
       actor: requirementKernelActor(actor),
       afterWrite: voidsItsDecisions(input.to, actor, input.reason?.trim() || null, 'requirements'),
       source: 'requirements',
+      ...(told ? { reportedBy: 'requirement.delivered' as const } : {}),
       returning: ['id'],
       guards: {
         [REQUIREMENT_HAS_LIVE_ISSUE_GUARD]: async ({ tx: moveTx }) =>
@@ -319,13 +326,14 @@ export async function moveDelivery(input: {
       },
     });
     movedRow(moved);
-    if (input.to === 'delivered' && current.currentRevision !== null) {
+    if (told && current.currentRevision !== null) {
       await emitEvent(tx, 'requirement.delivered', {
         projectId,
         requirementId: row.id,
         key: requirementKey(row.reqSeq),
         title: row.title,
         revision: current.currentRevision,
+        at: now.toISOString(),
       });
     }
     return null;

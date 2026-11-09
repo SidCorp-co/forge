@@ -201,7 +201,13 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWri
       updates.plan.trim() !== '' &&
       workState?.step === undefined
     ) {
-      await advanceStepOnEvidence(tx, issueId, 'plan_written');
+      await advanceStepOnEvidence(
+        tx,
+        issueId,
+        'plan_written',
+        // the write's own `issue.updated` refreshes the Now (ISS-1181)
+        changes && changes.fields.length > 0 ? 'issue.updated' : undefined,
+      );
     }
     // build waits for a plan written against the requirement it delivers (ISS-778), then, where plan
     // approval is enforced, for approved since the plan's last write (REQ-2 BC-4; issue-lifecycle

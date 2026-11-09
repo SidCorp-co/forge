@@ -262,8 +262,8 @@ export async function recordIssueMerge(
   if (wrote) {
     // the mark ends the defect a failed verdict's reopen started (REQ-67 BC-6)
     await endStalls(executor, { cause: 'defect', issueId }, 'merged');
-    // a landed change is past building, whoever built it: an unwritten step moves on (ISS-951)
-    await advanceStepOnEvidence(executor, issueId, 'merge_marked');
+    // past building, whoever built it (ISS-951); the stamp's `issue.updated` tells it (ISS-1181)
+    await advanceStepOnEvidence(executor, issueId, 'merge_marked', args.actor && 'issue.updated');
     await answerMergeQuestions(executor, {
       issueId,
       mark: {

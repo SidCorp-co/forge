@@ -94,19 +94,22 @@ async function writeBaseline(
   return baseline.seq;
 }
 
-/** The agree, or a re-agree at a new head, is told on the outbox: it wakes the master that owes the breakdown. */
+/**
+ * The agree, or a re-agree at a new head, is told on the outbox: it wakes the master that owes the
+ * breakdown, and it is the act's one report of its move to agreed (REQ-12 BC-18), so the kernel
+ * writes no `requirement.transitioned` beside it.
+ */
 function announceAgreed(
   tx: Tx,
   row: { projectId: string; id: string; reqSeq: number },
-  revision: number,
-  baselineSeq: number,
+  agreed: { revision: number; baselineSeq: number; act: 'requirement.agree' | 'revision.accept' },
 ) {
   return emitEvent(tx, 'requirement.agreed', {
     projectId: row.projectId,
     requirementId: row.id,
     key: requirementKey(row.reqSeq),
-    revision,
-    baselineSeq,
+    ...agreed,
+    at: new Date().toISOString(),
   });
 }
 
@@ -203,6 +206,7 @@ export async function acceptRevision(input: {
         actor: requirementKernelActor(actor),
         afterWrite: voidsItsDecisions('agreed', actor, acceptReason, 'requirements'),
         source: 'requirements',
+        reportedBy: 'requirement.agreed',
         returning: ['id'],
       });
       // The baseline records who re-agreed and in their own words; the revision's reason is its
@@ -216,15 +220,22 @@ export async function acceptRevision(input: {
         acceptReason,
         readiness,
       );
-      await announceAgreed(tx, row, target.revision, seq);
+      await announceAgreed(tx, row, {
+        revision: target.revision,
+        baselineSeq: seq,
+        act: 'revision.accept',
+      });
     }
     await requirementDependents().revised(tx, row.id, target.revision);
-    // an accept that re-baselines no state move reports tells the workspace's Activity itself (ISS-1053)
-    await emitEvent(tx, 'decision.settled', {
-      projectId,
-      act: 'revision.accept',
-      subject: requirementKey(current.reqSeq),
-    });
+    // an accept that re-baselines nothing reports itself (ISS-1053); one that does is its
+    // `requirement.agreed`, never both (REQ-12 BC-18, ISS-1181)
+    if (!rebaseline) {
+      await emitEvent(tx, 'decision.settled', {
+        projectId,
+        act: 'revision.accept',
+        subject: requirementKey(current.reqSeq),
+      });
+    }
     return null;
   });
   if (!refusals) embedRequirementHeadLater(row.id);
@@ -295,6 +306,7 @@ export async function agreeRequirement(input: {
       actor: requirementKernelActor(actor),
       afterWrite: voidsItsDecisions('agreed', actor, input.reason?.trim() || null, 'requirements'),
       source: 'requirements',
+      reportedBy: 'requirement.agreed',
       returning: ['id'],
       // the ready checklist (Requirement lifecycle r15 ready_check), judged by the kernel
       checklist: {
@@ -302,7 +314,11 @@ export async function agreeRequirement(input: {
       },
     });
     movedRow(agreed);
-    await announceAgreed(tx, row, input.revision, seq);
+    await announceAgreed(tx, row, {
+      revision: input.revision,
+      baselineSeq: seq,
+      act: 'requirement.agree',
+    });
     return null;
   });
   const held = undecided as { near: NearDuplicate[]; currentRevision: number | null } | null;

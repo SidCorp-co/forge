@@ -16,6 +16,7 @@ import { edgeGates, type Gate, refusingGate } from '@forge/contracts/move-gates'
 import {
   emitsTransition,
   type OutboxActor,
+  type OutboxEventType,
   type TransitionEventEntity,
   transitionEventType,
 } from '@forge/contracts/outbox-events';
@@ -142,6 +143,9 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
   actor: KernelActor;
   /** The subsystem making the move, as `kernel_transitions.source` records it. */
   source: string;
+  /** The act's own event that reports this move, so the kernel writes no `<entity>.transitioned`
+   *  beside it: one fact, one event (REQ-12 BC-18). The move is recorded in `kernel_transitions`. */
+  reportedBy?: OutboxEventType;
   /** The implementation of each guard the reached edges name, but the checklist's. */
   guards?: Readonly<Record<string, Guard<E>>>;
   /** Required where a reached edge names a checklist; answers sent to one that names none refuse. */
@@ -418,7 +422,7 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);
 
   await args.afterWrite?.(tx, rows, left);
-  await emitTransitionEvents(tx, machine, records, args.actor);
+  if (!args.reportedBy) await emitTransitionEvents(tx, machine, records, args.actor);
   return done({ rows, refusals: [] });
 }
 
