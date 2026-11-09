@@ -65,6 +65,21 @@ provideAssistantMethod(composeLayers(METHOD_LAYERS));
 
 const bodies = listGuides().map(({ slug }) => ({ slug, body: getGuide(slug)?.body ?? '' }));
 
+// ISS-1183: where every role starts, then the Product's, ahead of the rest of the index
+describe('the guide index', () => {
+  it('lists agent-setup first and product-role second, and serves product-role as markdown', async () => {
+    expect(
+      listGuides()
+        .slice(0, 2)
+        .map((g) => g.slug),
+    ).toEqual(['agent-setup', 'product-role']);
+    const res = await guideRoutes.request('/guides/product-role.md');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/markdown');
+    expect(await res.text()).toBe(getGuide('product-role')?.body);
+  });
+});
+
 describe('the routes a guide cites', () => {
   it('reads a cited route out of a body, whatever stands in for its parameters', () => {
     expect(
