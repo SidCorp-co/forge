@@ -9,6 +9,7 @@
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { deriveStanding, type StandingInput, type StandingIssue } from './standing.js';
+import { coverageOf } from './standing-coverage.js';
 import type { LiveBuildHolds } from './standing-identity.js';
 import { codesAct } from './standing-proof.js';
 
@@ -72,8 +73,8 @@ const liveBuild = (held: Record<string, boolean> = {}): LiveBuildHolds => ({
   unanswered: new Map([[JUDGED, ANCESTRY]]),
 });
 
-function standing(over: Partial<StandingInput>) {
-  const input = {
+function inputOf(over: Partial<StandingInput>): StandingInput {
+  return {
     status: 'in_delivery',
     owner: { id: 'u1', name: 'Ba', kind: 'human' },
     viewer: null,
@@ -110,7 +111,10 @@ function standing(over: Partial<StandingInput>) {
     now: at('2026-11-08T01:17:00Z'),
     ...over,
   } as StandingInput;
-  const s = deriveStanding(input);
+}
+
+function standing(over: Partial<StandingInput>) {
+  const s = deriveStanding(inputOf(over));
   expect(saidDisagreements(s)).toEqual([]);
   return s;
 }
@@ -145,6 +149,28 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
     const s = standing({ liveBuild: { ...liveBuild({ [JUDGED]: true }), unanswered: new Map() } });
     expect(s.delivery.criteriaCoverage).toMatchObject({ criteria: 2, passing: 2 });
     expect(s.waitingOn.who).not.toBe('Live build read');
+  });
+
+  // ISS-1182 (FB-592): right after a deploy, before any pair naming the new live build is asked, a
+  // pass the build served before held reads passing, marked as re-checked, never as not judged
+  it("reads delivered on the previous build's answer right after a deploy, each verdict marked as re-checked", () => {
+    const kept = `the build served before, \`${OLD}\`, holds it; whether the live build \`${LIVE}\`, deployed since, descends from it is being re-checked`;
+    const over = {
+      criteria: [bc(1), bc(11)],
+      issueCriteria: [tracedPass(1, 11)],
+      requirementVerdicts: [ownPass(1)],
+      liveBuild: {
+        ...liveBuild({ [JUDGED]: true }),
+        unanswered: new Map(),
+        rechecking: new Map([[JUDGED, kept]]),
+      },
+    };
+    const s = standing(over);
+    expect(s.delivery.criteriaCoverage).toMatchObject({ criteria: 2, passing: 2 });
+    expect(s.waitingOn.who).not.toBe('Live build read');
+    const rows = coverageOf(inputOf(over), 1);
+    expect(rows.find((r) => r.code === 'BC-1')?.verdicts[0]?.rechecking).toBe(kept);
+    expect(rows.find((r) => r.code === 'BC-11')?.issues[0]?.rechecking).toBe(kept);
   });
 
   it('still asks the judge for a BC whose verdict the live build is read not to hold, the unread one named in the rule', () => {

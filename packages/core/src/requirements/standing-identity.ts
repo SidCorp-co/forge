@@ -49,6 +49,12 @@ export interface LiveBuildHolds {
   runtimes: ReadonlyMap<string, string | null>;
   unanswered: ReadonlyMap<string, string>;
   /**
+   * Per commit `holds` reads true on the build served before the live one, while whether the live
+   * build descends from that one is asked (`judged-build.ts:liveBuildHolds`, ISS-1182): why it is
+   * held, marked as re-checked. Absent where none is.
+   */
+  rechecking?: ReadonlyMap<string, string>;
+  /**
    * Where the release weighs an issue's criteria at its landing
    * (`release-batch/criteria-basis.ts:coverageLandingHolds`): a project with no production
    * environment, or one whose production a promotion reaches. Per issue id the landed build its
@@ -211,7 +217,20 @@ export interface Resolved {
    * served-ancestry pass has not read the pair, so its hold is unknown, never refused (ISS-1134).
    */
   awaitsAncestry?: true;
+  /**
+   * Set only where it counts on the build served before the live one, while whether the live build
+   * descends from that one is asked (ISS-1182): the words saying so, marked as re-checked.
+   */
+  rechecking?: string;
 }
+
+/** What a judged verdict's resolution is marked with: its hold awaited (ISS-1134), or re-checked (ISS-1182). */
+export const marksOf = (
+  r: Resolved | null | undefined,
+): Pick<Resolved, 'awaitsAncestry' | 'rechecking'> => ({
+  ...(r?.notCounted && r.awaitsAncestry ? { awaitsAncestry: true as const } : {}),
+  ...(r?.rechecking ? { rechecking: r.rechecking } : {}),
+});
 
 // Kernel input (`VISION: kernel-hard-policy-soft`): every identity a verdict can name is either
 // resolved to something a rule checks or does not count, saying why. A commit and the commit a
@@ -230,7 +249,10 @@ export function atLiveCommit(
   const key = commit.toLowerCase();
   const inLiveBuild = live?.holds.get(key) ?? null;
   const build = `the live build${live?.sha ? ` (${short(live.sha)})` : ''}`;
-  if (inLiveBuild === true) return { commit, inLiveBuild, notCounted: null };
+  if (inLiveBuild === true) {
+    const rechecking = live?.rechecking?.get(key);
+    return { commit, inLiveBuild, notCounted: null, ...(rechecking ? { rechecking } : {}) };
+  }
   if (inLiveBuild === false) {
     return {
       commit,

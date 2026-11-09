@@ -28,6 +28,7 @@ import {
   identityWords,
   type LandedHolds,
   type LiveBuildHolds,
+  marksOf,
   type Resolved,
   resolveIssueVerdict,
   short,
@@ -193,7 +194,7 @@ export function coverageOf(
           commit: r?.commit ?? null,
           inLiveBuild: r?.inLiveBuild ?? null,
           notCounted: judged ? (r?.notCounted ?? unverifiedWhy(ic, input.judge)) : null,
-          ...(judged && r?.notCounted && r.awaitsAncestry ? { awaitsAncestry: true as const } : {}),
+          ...(judged ? marksOf(r) : {}),
           stale: wording.id !== bc.id,
         } satisfies CoverageIssue,
       ];
@@ -296,9 +297,7 @@ function requirementVerdictsOn(
           unverifiedWhy({ ...v, byBuilder: false, recordedAt: v.verdictAt }, input.judge))
         : null,
       // a newer verdict replacing it is a reason of its own, which no ancestry read lifts
-      ...(judged && replaced === null && r?.notCounted && r.awaitsAncestry
-        ? { awaitsAncestry: true as const }
-        : {}),
+      ...(judged && replaced === null ? marksOf(r) : {}),
       stale,
     };
   });

@@ -413,6 +413,10 @@ export interface CoverageIssue {
 	 *  commit is not answered yet (the served-ancestry pass has not read the pair, ISS-1134): its hold
 	 *  is unknown, not refused. Absent everywhere else. */
 	awaitsAncestry?: true;
+	/** Set where it counts on the build served before the live one, while the source host is asked
+	 *  whether the live build descends from that one (ISS-1182): why it counts, marked as re-checked.
+	 *  Absent everywhere else. */
+	rechecking?: string;
 	stale: boolean;
 }
 
@@ -440,6 +444,8 @@ export interface CoverageRequirementVerdict {
 	notCounted: string | null;
 	/** Its hold on the live build is not answered yet (`CoverageIssue.awaitsAncestry`). */
 	awaitsAncestry?: true;
+	/** It counts on the build served before the live one, re-checked (`CoverageIssue.rechecking`). */
+	rechecking?: string;
 	/** It judged an earlier wording of the criterion, so it does not count for this one. */
 	stale: boolean;
 }
