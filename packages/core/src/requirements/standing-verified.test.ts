@@ -96,7 +96,7 @@ describe("under independent QA the builder's own pass is not verified", () => {
     expect(delivery.criteriaCoverage).toEqual({ criteria: 1, passing: 0, judged: 0 });
     expect(proofTurn('independent', live, coverage)?.waitingOn).toMatchObject({
       who: 'Independent judge',
-      act: 'judge BC-1 on ISS-1',
+      act: 'judge “rule 1” on “Issue 1”',
     });
   });
 

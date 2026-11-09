@@ -91,7 +91,7 @@ describe('the re-plan task an impact flag opens', () => {
         displayId: 'ISS-3',
       },
     ]);
-    expect(s.waitingOn.act).toBe('re-plan ISS-1, ISS-3');
+    expect(s.waitingOn.act).toBe('re-plan “Issue 1” and “Issue 3”');
   });
 
   it('opens none for an issue that shipped or was dropped, and none while nothing is flagged', () => {

@@ -55,7 +55,8 @@ import {
 } from './standing-gates.js';
 import { type DeliveryHold, heldByDecision, heldRule } from './standing-held.js';
 import { moveTurn, ruleTurn } from './standing-moves.js';
-import { proofTurn, releaseAsksOf } from './standing-proof.js';
+import { namesOf } from './standing-names.js';
+import { criteriaNamed, proofTurn, releaseAsksOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
 import { breakdownTaskOf, byRule, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
@@ -71,6 +72,8 @@ interface StandingCriterion {
   id: string;
   code: string;
   body: string;
+  /** Its short title (ISS-1131), which a wait names it by (ISS-1184). */
+  title?: string | null;
   sinceRevision: number;
   retiredRevision: number | null;
 }
@@ -349,7 +352,7 @@ function turnOf(
   if (check) {
     const date = check.dueAt.slice(0, 10);
     const act = say('standing.act.check', {
-      codes: coverage.map((c) => c.code).join(', '),
+      ...criteriaNamed(coverage),
       when: say(check.overdue ? 'standing.overdueSince' : 'standing.due', { date }),
     });
     const rule = say('requirements.rule.check', {
@@ -377,7 +380,11 @@ function turnOf(
       waitingOn: wait(
         'agent',
         MASTER,
-        say('standing.act.replan', { keys: replan.map((t) => t.displayId).join(', ') }),
+        say('standing.act.replan', {
+          issues: namesOf(
+            replan.map((t) => live.find((i) => i.id === t.issueId)?.title ?? t.displayId),
+          ),
+        }),
         input.currentRevision === null
           ? say('requirements.rule.replanUnknown')
           : say('requirements.rule.replan', { r: input.currentRevision }),

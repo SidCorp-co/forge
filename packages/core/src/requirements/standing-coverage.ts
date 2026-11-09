@@ -94,13 +94,11 @@ export interface StandingRequirementVerdict {
 
 /** What coverage reads: the requirement's wordings, its issues, their traced criteria and verdicts. */
 interface CoverageInput {
-  criteria: readonly {
+  criteria: readonly (Pick<RequirementCoverage, 'code' | 'body' | 'title'> & {
     id: string;
-    code: string;
-    body: string;
     sinceRevision: number;
     retiredRevision: number | null;
-  }[];
+  })[];
   issues: readonly (Pick<CoverageIssue, 'displayId' | 'title' | 'status' | 'tone'> & {
     id: string;
     /** Its project, where it is not the requirement's own; absent reads as the requirement's. */
@@ -213,6 +211,7 @@ export function coverageOf(
     return {
       code: bc.code,
       body: bc.body,
+      title: bc.title ?? null,
       verdict,
       issues: links,
       verdicts,

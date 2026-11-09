@@ -5,6 +5,7 @@ import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { TurnGroup } from '../lib/attention-group.js';
 import { askedOnRelease, holdsFor, type LiveBuildHolds } from './standing-identity.js';
+import { criterionName, joinNames, namesOf } from './standing-names.js';
 
 export interface Turn {
   group: TurnGroup;
@@ -31,18 +32,33 @@ const openLinks = (c: RequirementCoverage) =>
 const unjudgedKeys = (rows: readonly RequirementCoverage[]) =>
   keysOf(rows.flatMap((c) => openLinks(c).map((l) => l.displayId)));
 /** The issues whose trace sits on an earlier wording, where no verdict can count until it is tied again. */
+const staleLinks = (rows: readonly RequirementCoverage[]) =>
+  rows.flatMap((c) => c.issues.filter((l) => l.stale));
 const staleKeys = (rows: readonly RequirementCoverage[]) =>
-  keysOf(rows.flatMap((c) => c.issues.filter((l) => l.stale).map((l) => l.displayId)));
-/** The issue whose fail is the newest verdict, the one that counts, or the requirement where its own
- *  verdict is (ISS-588). */
-const failingKeys = (rows: readonly RequirementCoverage[]) =>
-  keysOf(
-    rows.flatMap((c) =>
-      c.counts ? [c.counts.source === 'issue' ? c.counts.displayId : 'the requirement'] : [],
-    ),
-  );
+  keysOf(staleLinks(rows).map((l) => l.displayId));
+/** The issue whose fail is the newest verdict, the one that counts, by its title, or the requirement
+ *  where its own verdict is (ISS-588). */
+const failingNames = (rows: readonly RequirementCoverage[]) => {
+  const named = rows.flatMap((c) => {
+    const counts = c.counts;
+    if (!counts) return [];
+    if (counts.source !== 'issue') return ['the requirement'];
+    return [
+      `“${c.issues.find((l) => l.displayId === counts.displayId)?.title ?? counts.displayId}”`,
+    ];
+  });
+  return joinNames([...new Set(named)]);
+};
 
 const codesOf = (rows: readonly RequirementCoverage[]) => rows.map((c) => c.code).join(', ');
+/** The criteria of `rows` by name, as an act says them (ISS-1184); the rule names their codes. */
+const criteriaOf = (rows: readonly RequirementCoverage[]) => namesOf(rows.map(criterionName));
+/** The criteria of `rows` as an act's `criteria`. */
+export const criteriaNamed = (rows: readonly RequirementCoverage[]) => ({
+  criteria: criteriaOf(rows),
+});
+/** Links' issues by title. */
+const issuesOf = (links: readonly { title: string }[]) => namesOf(links.map((l) => l.title));
 
 /** The acts of a requirement's turn that name the criteria they are about. */
 type CodesAct =
@@ -62,7 +78,7 @@ export function codesAct(key: CodesAct, rows: readonly RequirementCoverage[]): S
       `${key} composed over no code: a requirement's turn names an act over its criteria only where one is owed it`,
     );
   }
-  return say(key, { codes: codesOf(rows) });
+  return say(key, { criteria: criteriaOf(rows) });
 }
 
 /**
@@ -125,11 +141,21 @@ export type IssueReleaseAsk = (issueId: string) => ReleaseAsk;
 /** Each open link of `rows` (`unjudgedKeys`) with what its issue's project asks a verdict on. */
 const askedOf = (rows: readonly RequirementCoverage[], askOf: IssueReleaseAsk) =>
   rows.flatMap((c) =>
-    openLinks(c).map((l) => ({ code: c.code, key: l.displayId, ask: askOf(l.issueId) })),
+    openLinks(c).map((l) => ({
+      code: c.code,
+      criterion: criterionName(c),
+      key: l.displayId,
+      title: l.title,
+      ask: askOf(l.issueId),
+    })),
   );
 type Asked = ReturnType<typeof askedOf>[number];
-const codesIn = (links: readonly Asked[]) => keysOf(links.map((l) => l.code));
 const keysIn = (links: readonly Asked[]) => keysOf(links.map((l) => l.key));
+/** The criteria and the issues of `links` by name (ISS-1184). */
+const namedIn = (links: readonly Asked[]) => ({
+  criteria: namesOf(links.map((l) => l.criterion)),
+  issues: issuesOf(links),
+});
 
 /** The release each link is asked on: the one version, or each with the issues judged on it. */
 function versionsIn(links: readonly Asked[]): string {
@@ -164,7 +190,7 @@ export const releaseAsksOf = (live: LiveBuildHolds | null | undefined) =>
 export function releaseTurn(
   judge: VerifiedJudge | null,
   release: Exclude<ReleaseAsk, null>,
-  codes: string,
+  criteria: { criteria: string },
   rule: Said,
 ): Turn {
   if (release === 'none') {
@@ -174,7 +200,7 @@ export function releaseTurn(
     group: 'waiting',
     waitingOn: wait(
       JUDGE_WHO[judge ?? 'self'],
-      say('standing.act.judgeOnRelease', { codes, version: release.version }),
+      say('standing.act.judgeOnRelease', { ...criteria, version: release.version }),
       rule,
     ),
   };
@@ -310,8 +336,7 @@ export function proofTurn(
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
         say('standing.act.judgeOnReleaseOn', {
-          codes: codesIn(onRelease),
-          keys: keysIn(onRelease),
+          ...namedIn(onRelease),
           version: versionsIn(onRelease),
         }),
         rule,
@@ -323,7 +348,7 @@ export function proofTurn(
       group: 'waiting',
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
-        say('standing.act.judgeOn', { codes: codesIn(byCommit), keys: keysIn(byCommit) }),
+        say('standing.act.judgeOn', namedIn(byCommit)),
         rule,
       ),
     };
@@ -338,19 +363,25 @@ export function proofTurn(
       group: 'waiting',
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
-        say('standing.act.uncounted', { codes: codesOf(uncounted), why }),
+        say('standing.act.uncounted', { criteria: criteriaOf(uncounted), why }),
         rule,
       ),
     };
   }
-  if (asked.length > 0) return releaseTurn(judge, 'none', codesIn(asked), rule);
-  if (release && unjudged.length > 0) return releaseTurn(judge, release, codesOf(unjudged), rule);
+  if (asked.length > 0) {
+    return releaseTurn(judge, 'none', { criteria: namedIn(asked).criteria }, rule);
+  }
+  if (release && unjudged.length > 0)
+    return releaseTurn(judge, release, criteriaNamed(unjudged), rule);
   if (retie.length > 0) {
     return {
       group: 'waiting',
       waitingOn: wait(
         JUDGE_WHO[judge ?? 'self'],
-        say('standing.act.retie', { codes: codesOf(retie), keys: staleKeys(retie) }),
+        say('standing.act.retie', {
+          criteria: criteriaOf(retie),
+          issues: issuesOf(staleLinks(retie)),
+        }),
         rule,
       ),
     };
@@ -370,7 +401,10 @@ export function proofTurn(
       group: 'waiting',
       waitingOn: wait(
         MASTER,
-        say('standing.act.fixFailing', { codes: codesOf(failing), keys: failingKeys(failing) }),
+        say('standing.act.fixFailing', {
+          criteria: criteriaOf(failing),
+          issues: failingNames(failing),
+        }),
         rule,
       ),
     };

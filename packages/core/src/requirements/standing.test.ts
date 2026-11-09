@@ -319,7 +319,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Independent judge',
-      act: 'judge BC-3, BC-5 on ISS-1, ISS-2',
+      act: 'judge “rule 3” and “rule 5” on “Issue 1” and “Issue 2”',
     });
     expect(s.waitingOn.rule).toBe(
       'every linked issue has shipped, but BC-3, BC-5 hold no passing verdict yet, so it is not delivered',
@@ -328,12 +328,15 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
 
   it("waits on the master where the project's runs judge their own work", () => {
     const s = shipped([traced(1, 1, 'pass'), traced(1, 3, null), traced(2, 5, null)], 'self');
-    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'judge BC-3, BC-5 on ISS-1, ISS-2' });
+    expect(s.waitingOn).toMatchObject({
+      who: 'Master',
+      act: 'judge “rule 3” and “rule 5” on “Issue 1” and “Issue 2”',
+    });
   });
 
   it('says the master judges where no policy names a judge', () => {
     const s = shipped([traced(1, 1, 'pass'), traced(1, 3, null), traced(2, 5, 'pass')], null);
-    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'judge BC-3 on ISS-1' });
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'judge “rule 3” on “Issue 1”' });
     expect(s.waitingOn.rule).toMatch(/no policy names a judge, so the master judges$/);
   });
 
@@ -342,7 +345,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
       [traced(1, 1, 'pass'), traced(2, 3, 'fail'), traced(2, 5, 'pass')],
       'independent',
     );
-    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix BC-3, failing on ISS-2' });
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix “rule 3”, failing on “Issue 2”' });
   });
 
   it('a gap carries the reason the accepted breakdown gave for leaving it uncovered, and only a gap does (R-6)', () => {
@@ -371,12 +374,12 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
 
   it('asks the master to trace a BC no issue criterion traces to, and the rule names every gap', () => {
     const s = shipped([traced(1, 1, 'pass'), traced(2, 3, 'fail')], 'independent');
-    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix BC-3, failing on ISS-2' });
+    expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix “rule 3”, failing on “Issue 2”' });
     expect(s.waitingOn.rule).toContain('no issue criterion traces to BC-5');
     const gapOnly = shipped([traced(1, 1, 'pass'), traced(2, 3, 'pass')], 'independent');
     expect(gapOnly.waitingOn).toMatchObject({
       who: 'Master',
-      act: 'trace BC-5 to an issue criterion',
+      act: 'trace “rule 5” to an issue criterion',
     });
   });
 
@@ -413,7 +416,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     });
     expect(s.state).toBe('delivered');
     expect(s.waitingOn.act).toMatch(
-      /^check BC-1, BC-3, BC-5 against the traceability matrix now; /,
+      /^check “rule 1” and 2 more against the traceability matrix now; /,
     );
   });
 
@@ -457,7 +460,7 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
 
     it('keeps the BA check where the accept gate asks a person', () => {
       const s = at('delivered', { ...routine, gates: { ...gatesOff, accept: true } });
-      expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
+      expect(s.waitingOn.act).toMatch(/^check “rule 1” and 2 more against the traceability matrix/);
     });
   });
 });

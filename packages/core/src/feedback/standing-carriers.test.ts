@@ -182,6 +182,7 @@ describe('a planned item waits on every carrier still owed, each named', () => {
   it('waits on what its first carrier waits on, naming it, before every carrier is at the gate', () => {
     const carrier: CarrierStanding = {
       key: 'ISS-4',
+      title: 'Exports keep their filters',
       waitingOn: waitingOn('master', {
         who: say('standing.who.master'),
         act: say('issues.standing.act.rerun'),
@@ -205,7 +206,8 @@ describe('a planned item waits on every carrier still owed, each named', () => {
       who: 'Master',
       ref: 'ISS-4',
     });
-    expect(w.act).toContain('on ISS-4');
+    // the carrier by its title, its key the wait's ref (ISS-1184)
+    expect(w.act).toBe('re-run after reopen on “Exports keep their filters”');
     expect(w.rule).toContain('ISS-4 carries it and waits because');
   });
 
@@ -238,6 +240,7 @@ describe('a planned item waits on every carrier still owed, each named', () => {
 describe('a feedback item whose carrier waits on an answer names no role (ISS-687 round 4)', () => {
   const parkedOn = (kind: 'answer' | 'person', who: string): CarrierStanding => ({
     key: 'ISS-582',
+    title: 'Sync the price list',
     waitingOn: waitingOn(kind, {
       who:
         kind === 'answer'

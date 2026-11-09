@@ -68,13 +68,13 @@ export function carriersOf(
   r: Row,
   l: StandingFacts & {
     routeIssues: Map<string, string[]>;
-    issues: Map<string, { key: string; status: string }>;
+    issues: Map<string, { key: string; title: string; status: string }>;
   },
 ): { carrier: CarrierStanding | null; draft: string | null } {
   const owed = (l.routeIssues.get(r.id) ?? []).flatMap((id) => {
     const issue = l.issues.get(id);
     const own = l.carrierStandings.get(id);
-    return issue && own ? [{ key: issue.key, status: issue.status, own }] : [];
+    return issue && own ? [{ key: issue.key, title: issue.title, status: issue.status, own }] : [];
   });
   const draft = owed.find((c) => c.status === 'draft')?.key ?? null;
   const live = owed.filter((c) => c.status !== 'draft');
@@ -87,6 +87,7 @@ export function carriersOf(
     carrier: first
       ? {
           key: first.key,
+          title: first.title,
           waitingOn: first.own.waitingOn,
           since: new Date(first.own.times.since),
           stuck: first.own.times.stuck,

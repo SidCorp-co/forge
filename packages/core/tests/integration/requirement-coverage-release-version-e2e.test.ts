@@ -183,10 +183,12 @@ describe('a project whose production names no commit counts verdicts on the rele
     const [bc1] = read.standing.coverage;
     expect(bc1?.verdicts[0]?.notCounted).toContain('judge it on release 0.76.0');
     // ISS-1 traces every BC and carries a verdict on a release (ISS-900 part 2): the judge judges there
-    expect(read.standing.waitingOn?.says.act).toEqual({
+    expect(read.standing.waitingOn?.says.act).toMatchObject({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1, BC-2, BC-3', keys: 'ISS-1', version: '0.76.0' },
+      vars: { version: '0.76.0' },
     });
+    // named by title, never by key (ISS-1184): the codes and keys stay in the rule
+    expect(JSON.stringify(read.standing.waitingOn?.says.act.vars)).not.toMatch(/ISS-\d|BC-\d/);
     expect(JSON.stringify(read.standing)).not.toContain('standing.act.judgeOn"');
     expect(reads.n).toBe(0);
   });

@@ -128,7 +128,7 @@ describe('a shipped requirement whose criteria hold no verdict', () => {
 
   it('reads a judgement owed as cleanup, never stuck overdue, where the release asks no verdict', () => {
     const s = shipped(false);
-    expect(s.waitingOn.act).toMatch(/judge BC-1/);
+    expect(s.waitingOn.act).toMatch(/^judge “rule” on “Issue 1”/);
     expect(s.times.dueAt).toBeNull();
     expect(s.times.stuck).toBeNull();
     expect(s.attentionGroup).not.toBe('stuck');

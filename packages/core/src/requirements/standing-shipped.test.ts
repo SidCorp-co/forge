@@ -130,7 +130,7 @@ describe('an agreed requirement with no issue', () => {
     expect(s.waitingOn.says.who.key).toBe('standing.who.independentJudge');
     expect(s.waitingOn.says.act).toEqual({
       key: 'standing.act.judgeShipped',
-      vars: { codes: 'BC-2' },
+      vars: { criteria: '“rule 2”' },
     });
     expect(s.waitingOn.rule).toContain('BC-2');
   });
@@ -150,7 +150,7 @@ describe('an agreed requirement with no issue', () => {
     expect(s.waitingOn.says.who.key).toBe('standing.who.master');
     expect(s.waitingOn.says.act).toEqual({
       key: 'standing.act.breakDownFailing',
-      vars: { codes: 'BC-2' },
+      vars: { criteria: '“rule 2”' },
     });
     expect(s.waitingOn.dueAt).toBe(s.tasks[0]?.dueAt);
   });
@@ -160,7 +160,7 @@ describe('an agreed requirement with no issue', () => {
     expect(kinds(s)).toEqual(['breakdown']);
     expect(s.waitingOn.says.act).toEqual({
       key: 'standing.act.judgeShipped',
-      vars: { codes: 'BC-2' },
+      vars: { criteria: '“rule 2”' },
     });
     expect(s.waitingOn.rule).toContain('BC-1 failed');
   });
@@ -216,7 +216,7 @@ describe('a verdict recorded at the requirement', () => {
     expect(two?.verdict).toBe('stale');
     expect(two?.verdicts[0]?.stale).toBe(true);
     expect(kinds(s)).toEqual([]);
-    expect(s.waitingOn.says.act.vars).toEqual({ codes: 'BC-2' });
+    expect(s.waitingOn.says.act.vars).toEqual({ criteria: '“rule 2”' });
   });
 });
 

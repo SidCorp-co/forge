@@ -22,7 +22,7 @@ const P = "p1";
 const NOW = Date.now();
 const iso = (min: number) => new Date(NOW + min * 60_000).toISOString();
 const BUDGET = "The steward's daily budget for this project is spent, so it did not act on feedback.filed here.";
-const master = waitingOn("agent", { who: say("standing.who.projectMaster"), act: say("standing.act.takeNext", { keys: "ISS-9" }), rule: RULE });
+const master = waitingOn("agent", { who: say("standing.who.projectMaster"), act: say("standing.act.takeNext", { issues: "“Title ISS-9”" }), rule: RULE });
 
 const fb = (key: string, over: Record<string, unknown>) => ({
   id: key,

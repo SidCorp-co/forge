@@ -174,7 +174,7 @@ describe('a verdict the live build does not hold, weighed at its issue landing (
       `judged only at builds the live one does not hold, nor counted at their issue's landing: ISS-1 criterion 1: ${why}`,
     );
     expect(s.waitingOn.says.act.key).toBe('standing.act.uncounted');
-    expect(s.waitingOn.act).toBe(`BC-1 count on no build: ${s.coverage[0]?.why}`);
+    expect(s.waitingOn.act).toBe(`“rule 1” count on no build: ${s.coverage[0]?.why}`);
   });
 
   it('still asks the judge where a link holds no judgement yet', () => {

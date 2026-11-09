@@ -97,8 +97,8 @@ describe('what the standing asks where a verdict counts only on a release', () =
 describe('the judgement on a release, on the issues that carry it', () => {
   it("is the judge's act", () => {
     const act = say('standing.act.judgeOnReleaseOn', {
-      codes: 'BC-1',
-      keys: 'ISS-1',
+      criteria: '“Exports keep filters”',
+      issues: '“Export filters”',
       version: '0.76.0',
     });
     const w = waitingOn('agent', { who: say('standing.who.master'), act, rule: act });
@@ -182,21 +182,29 @@ describe("another project's issue is asked on its own project's release", () => 
   it("names the issue's own project's live release, not the requirement's", () => {
     expect(askOn([2], { ...nothing, released: line('0.76.0') })).toEqual({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1', keys: 'ISS-2', version: '0.76.0' },
+      vars: {
+        criteria: '“rule 1”',
+        issues: '“Issue 2”',
+        version: '0.76.0',
+      },
     });
   });
 
   it('names each release beside the issues judged on it, where the issues span two projects', () => {
     expect(askOn([1, 2], { ...nothing, released: line('0.76.0') })).toEqual({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1', keys: 'ISS-1, ISS-2', version: '0.78.0 (ISS-1), 0.76.0 (ISS-2)' },
+      vars: {
+        criteria: '“rule 1”',
+        issues: '“Issue 1” and “Issue 2”',
+        version: '0.78.0 (ISS-1), 0.76.0 (ISS-2)',
+      },
     });
   });
 
   it("asks for a commit where the issue's project reads the commit its production serves", () => {
     expect(askOn([2], null)).toEqual({
       key: 'standing.act.judgeOn',
-      vars: { codes: 'BC-1', keys: 'ISS-2' },
+      vars: { criteria: '“rule 1”', issues: '“Issue 2”' },
     });
   });
 

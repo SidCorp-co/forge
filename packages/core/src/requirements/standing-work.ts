@@ -27,6 +27,7 @@ import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { StuckReading } from '@forge/contracts/steward';
 import type { TurnGroup } from '../lib/attention-group.js';
 import type { Carried } from '../lib/standing-times.js';
+import { namesOf } from './standing-names.js';
 
 /** What a parked issue waits on, as its own standing says it. */
 export type ParkedWait = WaitingOn<IssueWaitingKind>;
@@ -41,6 +42,8 @@ export interface OwnStanding {
 /** A live issue as this rule reads it: its key, its status and, where it is parked, its own wait. */
 export interface WorkIssue {
   displayId: string;
+  /** Its title, which a wait names it by (ISS-1184). */
+  title: string;
   status: string;
   /** Its own standing's wait where it is parked (`PARK_STATUSES`); null otherwise. */
   parkedOn: ParkedWait | null;
@@ -84,11 +87,13 @@ const wait = (
 const groupOf = (kind: RequirementWaitingKind): TurnGroup =>
   kind === 'you' ? 'needs_you' : 'moving';
 
-/** The issue's act said on the requirement; an answer it waits on names no act, only the issue it is for. */
-const onIssueAct = (w: Pick<ParkedWait, 'kind' | 'says'>, key: string): Said =>
-  w.kind === 'answer'
-    ? say('standing.act.forIssue', { key })
-    : say('standing.act.onIssue', { act: w.says.act, key });
+/** The issue's act said on the requirement, naming the issue by its title (ISS-1184); an answer it waits on names no act, only the issue it is for. */
+const onIssueAct = (w: Pick<ParkedWait, 'kind' | 'says'>, issue: WorkIssue): Said => {
+  const named = { issue: namesOf([issue.title]) };
+  return w.kind === 'answer'
+    ? say('standing.act.forIssue', named)
+    : say('standing.act.onIssue', { act: w.says.act, ...named });
+};
 
 /** The requirement's wait on one of its issues, said as that issue's own wait (`standing.act.onIssue`). */
 function onIssue(
@@ -104,7 +109,7 @@ function onIssue(
       kind,
       {
         who: w.says.who,
-        act: onIssueAct(w, first.displayId),
+        act: onIssueAct(w, first),
         rule: say(rule, {
           keys: keys.map((i) => i.displayId).join(', '),
           key: first.displayId,
@@ -230,7 +235,7 @@ export function workTurn(live: readonly WorkIssue[], release: ReleaseLeg | null)
       group: 'moving',
       waitingOn: wait('agent', {
         who: say('standing.who.master'),
-        act: say('standing.act.takeNext', { keys }),
+        act: say('standing.act.takeNext', { issues: namesOf(queued.map((i) => i.title)) }),
         rule: say('requirements.rule.queued', { keys }),
       }),
       since: oldestSince(queued),

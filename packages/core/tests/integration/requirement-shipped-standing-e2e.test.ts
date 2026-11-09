@@ -245,7 +245,7 @@ describe('a shipped requirement that needs attention', () => {
     expect(s.waitingOn.says.who.key).toBe('standing.who.independentJudge');
     expect(s.waitingOn.says.act).toEqual({
       key: 'standing.act.judgeShipped',
-      vars: { codes: 'BC-2' },
+      vars: { criteria: '“A search narrows the list”' },
     });
     expect(JSON.stringify(s.waitingOn.says.rule)).toContain('BC-2');
     expect(JSON.stringify(s.waitingOn.says.rule)).not.toContain('BC-1');
@@ -273,7 +273,7 @@ describe('a shipped requirement that needs attention', () => {
     expect(s.waitingOn.says.who.key).toBe('standing.who.master');
     expect(s.waitingOn.says.act).toEqual({
       key: 'standing.act.breakDownFailing',
-      vars: { codes: 'BC-2' },
+      vars: { criteria: '“A search narrows the list”' },
     });
     expect(JSON.stringify(s.waitingOn.says.rule)).toContain('BC-2');
     expect(s.tasks.map((t) => t.kind)).toEqual(['breakdown']);

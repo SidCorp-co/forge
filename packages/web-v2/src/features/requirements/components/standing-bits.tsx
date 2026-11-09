@@ -104,17 +104,28 @@ const REFERS_HREF = {
   release: releaseHref,
 } as const satisfies Record<NonNullable<RequirementWaitingOn["refers"]>, (slug: string, ref: string) => string>;
 
+/**
+ * What the act shows of the item it is about: the issue's title core named it by ("make a decision on
+ * “Export filters”", ISS-1184), its key behind the link; a release by its version ("cut 0.1.0").
+ */
+export function waitRefText(w: RequirementWaitingOn): string | null {
+  if (!w.ref) return null;
+  const named = w.says?.act.vars?.issue;
+  return typeof named === "string" ? named.replace(/^“(.*)”$/, "$1") : w.ref;
+}
+
 /** The act, with the issue or release it names linked where the wait says what it is about ("cut 0.1.0, then approve it"). */
 function WaitAct({ act, w, slug }: { act: string; w: RequirementWaitingOn; slug: string }) {
-  const at = w.refers && w.ref ? act.indexOf(w.ref) : -1;
-  if (!w.refers || !w.ref || at < 0) return <>{act}</>;
+  const text = waitRefText(w);
+  const at = w.refers && w.ref && text ? act.indexOf(text) : -1;
+  if (!w.refers || !w.ref || !text || at < 0) return <>{act}</>;
   return (
     <>
       {act.slice(0, at)}
-      <Link href={REFERS_HREF[w.refers](slug, w.ref)} className="whitespace-nowrap font-mono text-link hover:underline" data-testid="wait-ref" data-refers={w.refers}>
-        {w.ref}
+      <Link href={REFERS_HREF[w.refers](slug, w.ref)} className={cn("text-link hover:underline", text === w.ref && "whitespace-nowrap font-mono")} data-testid="wait-ref" data-refers={w.refers}>
+        {text}
       </Link>
-      {act.slice(at + w.ref.length)}
+      {act.slice(at + text.length)}
     </>
   );
 }

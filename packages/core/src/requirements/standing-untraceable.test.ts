@@ -100,7 +100,7 @@ function standing(
   return s;
 }
 
-const FILE_OR_REVISE = 'file an issue for BC-5, or revise the requirement';
+const FILE_OR_REVISE = 'file an issue for “rule 5”, or revise the requirement';
 
 describe('a BC no linked issue was built for', () => {
   it('asks the master to file an issue for it or revise the requirement, never to trace it', () => {
@@ -122,19 +122,21 @@ describe('a BC no linked issue was built for', () => {
     ];
     expect(standing(unplanned, criteria, r2then3).waitingOn.act).toBe(FILE_OR_REVISE);
     // with nothing accepted by then, it reads at the current revision, which holds BC-5
-    expect(standing(unplanned, criteria).waitingOn.act).toBe('trace BC-5 to an issue criterion');
+    expect(standing(unplanned, criteria).waitingOn.act).toBe(
+      'trace “rule 5” to an issue criterion',
+    );
   });
 });
 
 describe('a BC a linked issue was built for', () => {
   it('keeps the trace ask where a linked issue was planned at a revision holding it', () => {
     const s = standing([shipped(1, 2), shipped(2, 3)], [bc(1), bc(3), bc(5, 3)]);
-    expect(s.waitingOn.act).toBe('trace BC-5 to an issue criterion');
+    expect(s.waitingOn.act).toBe('trace “rule 5” to an issue criterion');
   });
 
   it('asks the trace first where some gaps can be traced, naming only those', () => {
     const s = standing([shipped(1, 2), shipped(2, 2)], [bc(1), bc(3), bc(4, 2), bc(5, 3)]);
-    expect(s.waitingOn.act).toBe('trace BC-4 to an issue criterion');
+    expect(s.waitingOn.act).toBe('trace “rule 4” to an issue criterion');
     expect(s.waitingOn.rule).toContain('no issue criterion traces to BC-4, BC-5');
   });
 });

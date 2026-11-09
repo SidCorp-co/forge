@@ -253,10 +253,12 @@ describe('a live-only criterion holds no release, and is owed on it once it ship
     const bc2 = standing.coverage.find((c) => c.code === 'BC-2');
     expect(bc2?.issues[0]?.notCounted).toContain('only the running product shows this criterion');
     expect(bc2?.issues[0]?.notCounted).toContain("{ kind: 'release', version: '0.123.0' }");
-    expect(standing.waitingOn?.says.act).toEqual({
+    expect(standing.waitingOn?.says.act).toMatchObject({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1, BC-2', keys: 'ISS-2', version: '0.123.0' },
+      vars: { version: '0.123.0' },
     });
+    // named by title, never by key (ISS-1184): the codes and keys stay in the rule
+    expect(JSON.stringify(standing.waitingOn?.says.act.vars)).not.toMatch(/ISS-\d|BC-\d/);
 
     await stored(later, 1, { release: '0.123.0' });
     const [after] = await landingCriteriaReports(world.projectId, [later]);

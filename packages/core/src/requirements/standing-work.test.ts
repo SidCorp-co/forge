@@ -157,13 +157,13 @@ describe('whom a requirement waits on while its issues are worked', () => {
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
       who: 'Chuong Le',
-      act: 'make a decision on ISS-1',
+      act: 'make a decision on “Issue 1”',
       refers: 'issue',
       ref: 'ISS-1',
     });
     expect(s.waitingOn.rule).toMatch(/^ISS-1, ISS-3 parked/);
     expect(s.waitingOn.says.act).toEqual(
-      say('standing.act.onIssue', { act: decide.says.act, key: 'ISS-1' }),
+      say('standing.act.onIssue', { act: decide.says.act, issue: '“Issue 1”' }),
     );
   });
 
@@ -179,7 +179,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
       who: 'Ana',
-      act: 'answer a question on ISS-1',
+      act: 'answer a question on “Issue 1”',
     });
     expect(s.attentionGroup).not.toBe('needs_you');
   });
@@ -214,7 +214,7 @@ describe('whom a requirement waits on while its issues are worked', () => {
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Master',
-      act: 'take ISS-1, ISS-3 next',
+      act: 'take “Issue 1” and “Issue 3” next',
     });
     expect(s.waitingOn.rule).toBe('no issue is being worked: ISS-1, ISS-3 wait for the master');
     expect(s.attentionGroup).toBe('queued');

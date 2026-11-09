@@ -240,10 +240,12 @@ describe('an issue criterion judged on a release counts where production names n
     expect(standing.coverage[0]?.issues[0]?.notCounted).toContain(
       "{ kind: 'release', version: '0.76.0' }` on the issue",
     );
-    expect(standing.waitingOn?.says.act).toEqual({
+    expect(standing.waitingOn?.says.act).toMatchObject({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1, BC-2, BC-3', keys: 'ISS-1', version: '0.76.0' },
+      vars: { version: '0.76.0' },
     });
+    // named by title, never by key (ISS-1184): the codes and keys stay in the rule
+    expect(JSON.stringify(standing.waitingOn?.says.act.vars)).not.toMatch(/ISS-\d|BC-\d/);
     expect(JSON.stringify(standing)).not.toContain('at the requirement');
     expect(reads.n).toBe(0);
   });
@@ -377,10 +379,12 @@ describe('a promotion project weighs a criterion judged on a release on its rele
     expect(standing.coverage[0]?.issues[0]?.notCounted).toContain(
       "{ kind: 'release', version: '0.76.0' }` on the issue",
     );
-    expect(standing.waitingOn?.says.act).toEqual({
+    expect(standing.waitingOn?.says.act).toMatchObject({
       key: 'standing.act.judgeOnReleaseOn',
-      vars: { codes: 'BC-1, BC-2, BC-3', keys: 'ISS-1', version: '0.76.0' },
+      vars: { version: '0.76.0' },
     });
+    // named by title, never by key (ISS-1184): the codes and keys stay in the rule
+    expect(JSON.stringify(standing.waitingOn?.says.act.vars)).not.toMatch(/ISS-\d|BC-\d/);
     expect(reads.n).toBe(0);
   });
 });

@@ -9,9 +9,11 @@ const when = say("standing.due", { date: "2026-11-13" });
 
 describe("a deadline reads as owed now, the date as the latest day", () => {
 	it("says the acceptance check is owed now", () => {
-		const act = sayEn(say("standing.act.check", { codes: "BC-1, BC-2", when }));
+		const act = sayEn(
+			say("standing.act.check", { criteria: "“Exports” and “Imports”", when }),
+		);
 		expect(act).toBe(
-			"check BC-1, BC-2 against the traceability matrix now; latest 2026-11-13",
+			"check “Exports” and “Imports” against the traceability matrix now; latest 2026-11-13",
 		);
 	});
 
@@ -48,15 +50,15 @@ describe("a deadline reads as owed now, the date as the latest day", () => {
 	it("keeps an overdue check said as overdue", () => {
 		const late = say("standing.overdueSince", { date: "2026-11-13" });
 		expect(
-			sayEn(say("standing.act.check", { codes: "BC-1", when: late })),
+			sayEn(say("standing.act.check", { criteria: "“Exports”", when: late })),
 		).toBe(
-			"check BC-1 against the traceability matrix now; overdue since 2026-11-13",
+			"check “Exports” against the traceability matrix now; overdue since 2026-11-13",
 		);
 	});
 
 	it("never words a deadline as a date to wait for", () => {
 		for (const s of [
-			sayEn(say("standing.act.check", { codes: "BC-1", when })),
+			sayEn(say("standing.act.check", { criteria: "“Exports”", when })),
 			sayEn(say("standing.act.breakDownBy", { when })),
 			sayEn(
 				say("requirements.rule.check", {

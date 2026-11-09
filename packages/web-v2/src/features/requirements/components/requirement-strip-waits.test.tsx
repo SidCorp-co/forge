@@ -20,7 +20,7 @@ describe("whom the strip names once the work has landed or parked", () => {
   const DANA = say("standing.who.named", { name: "Dana Lee" });
   const cut = { ...waitingOn("person", { who: DANA, act: say("standing.act.cutThenApprove", { v: "0.1.0" }), rule: RULE }), ref: "0.1.0", refers: "release" as const };
   const parkedOn = {
-    ...waitingOn("person", { who: say("standing.who.named", { name: "Chuong Le" }), act: say("standing.act.onIssue", { act: say("issues.standing.act.decide"), key: "ISS-458" }), rule: RULE }),
+    ...waitingOn("person", { who: say("standing.who.named", { name: "Chuong Le" }), act: say("standing.act.onIssue", { act: say("issues.standing.act.decide"), issue: "“Bulk export keeps filters”" }), rule: RULE }),
     ref: "ISS-458",
     refers: "issue" as const,
   };
@@ -40,8 +40,10 @@ describe("whom the strip names once the work has landed or parked", () => {
     core();
     page("overview", withWait(parkedOn));
     const strip = screen.getByTestId("requirement-progress");
-    expect(within(strip).getByTestId("wait-banner")).toHaveTextContent("Waiting on Chuong Le: make a decision on ISS-458");
-    expect(within(strip).getByRole("link", { name: "ISS-458" })).toHaveAttribute("href", "/projects/hop/issues/ISS-458");
+    // the issue by its title, its key behind the link (ISS-1184)
+    expect(within(strip).getByTestId("wait-banner")).toHaveTextContent("Waiting on Chuong Le: make a decision on “Bulk export keeps filters”");
+    expect(within(strip).getByRole("link", { name: "Bulk export keeps filters" })).toHaveAttribute("href", "/projects/hop/issues/ISS-458");
+    expect(within(strip).getByTestId("wait-banner").textContent, "a key is no name").not.toContain("ISS-458");
     expect(strayInStrip(strip, withWait(parkedOn).standing)).toBeNull();
   });
 

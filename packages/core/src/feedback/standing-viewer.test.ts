@@ -343,6 +343,7 @@ describe('a resolved item is never Running', () => {
         carrierRunning: true,
         carrier: {
           key: 'ISS-9',
+          title: 'Export filters',
           waitingOn: waitingOn('run', {
             who: say('issues.standing.who.run'),
             act: say('standing.act.none'),

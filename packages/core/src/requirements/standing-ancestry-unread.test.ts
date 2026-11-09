@@ -127,7 +127,7 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
     expect(s.waitingOn).toMatchObject({
       kind: 'release',
       who: 'Live build read',
-      act: 'read whether the live build holds the verdicts on BC-1, BC-2',
+      act: 'read whether the live build holds the verdicts on “rule 1” and “rule 2”',
     });
     expect(s.waitingOn.rule).toContain("BC-1, BC-2 wait on the live build's ancestry read");
     expect(s.attentionGroup).toBe('waiting');
@@ -141,7 +141,7 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
     });
     expect(s.waitingOn).toMatchObject({
       who: 'Live build read',
-      act: 'read whether the live build holds the verdicts on BC-11',
+      act: 'read whether the live build holds the verdicts on “rule 11”',
     });
   });
 
@@ -181,7 +181,7 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Independent judge',
-      act: 'judge BC-2 on the running build',
+      act: 'judge “rule 2” on the running build',
     });
     expect(s.waitingOn.rule).toContain("BC-1 wait on the live build's ancestry read");
     expect(s.waitingOn.rule).toContain('BC-2 hold no passing verdict yet');
@@ -191,7 +191,7 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
     const s = standing({ status: 'agreed', issues: [] });
     expect(s.waitingOn).toMatchObject({
       who: 'Live build read',
-      act: 'read whether the live build holds the verdicts on BC-1, BC-2',
+      act: 'read whether the live build holds the verdicts on “rule 1” and “rule 2”',
     });
   });
 });
@@ -219,8 +219,9 @@ describe('no act is composed over an empty list of codes', () => {
       why: null,
       uncoveredReason: null,
     });
+    // a criterion with no words is named by its code, the one thing it has (ISS-1184)
     expect(codesAct('standing.act.fileOrRevise', [row('BC-3'), row('BC-4')]).vars).toEqual({
-      codes: 'BC-3, BC-4',
+      criteria: '“BC-3” and “BC-4”',
     });
   });
 });

@@ -15,6 +15,7 @@ import {
   ancestryTurn,
   awaitsAncestry,
   codesAct,
+  criteriaNamed,
   JUDGE_WHO,
   releaseAskOf,
   releaseTurn,
@@ -81,7 +82,7 @@ export function shippedTurn(
     undeclared: input.judge === null ? say('requirements.rule.noJudge') : null,
   });
   if (release && unjudged.length > 0) {
-    return releaseTurn(input.judge, release, codesOf(unjudged), rule);
+    return releaseTurn(input.judge, release, criteriaNamed(unjudged), rule);
   }
   if (unjudged.length > 0) {
     return {
@@ -98,7 +99,7 @@ export function shippedTurn(
     group: 'waiting' as const,
     waitingOn: waitingOn(
       'agent',
-      { who: MASTER, act: say('standing.act.breakDownFailing', { codes: codesOf(failing) }), rule },
+      { who: MASTER, act: say('standing.act.breakDownFailing', criteriaNamed(failing)), rule },
       { dueAt: breakdownDue },
     ),
   };

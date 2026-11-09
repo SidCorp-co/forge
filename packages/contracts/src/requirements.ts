@@ -474,6 +474,8 @@ interface CoverageCountCommon {
 export interface RequirementCoverage {
 	code: string;
 	body: string;
+	/** The criterion's short title (ISS-1131), which a wait names it by (ISS-1184); null or absent shows the body's first clause. */
+	title?: string | null;
 	verdict: BcVerdict;
 	issues: CoverageIssue[];
 	/** Its verdicts recorded at the requirement itself (`CoverageRequirementVerdict`), newest first. */

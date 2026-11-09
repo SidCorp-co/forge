@@ -971,12 +971,12 @@ export const SAID = {
 	"standing.act.acceptByRule": { en: "accept it" },
 	"standing.act.acceptShipped": { en: "accept it on the shipped capability" },
 	"standing.act.judgeShipped": {
-		en: "judge {codes} on the running build",
-		vars: { codes: "key" },
+		en: "judge {criteria} on the running build",
+		vars: { criteria: "name" },
 	},
 	"standing.act.breakDownFailing": {
-		en: "break down {codes}, failing on the running build",
-		vars: { codes: "key" },
+		en: "break down {criteria}, failing on the running build",
+		vars: { criteria: "name" },
 	},
 	"standing.act.breakDownBy": {
 		en: "break down now; {when}",
@@ -984,8 +984,8 @@ export const SAID = {
 	},
 	"standing.act.bringIssueToGate": { en: "bring an issue to the release gate" },
 	"standing.act.check": {
-		en: "check {codes} against the traceability matrix now; {when}",
-		vars: { codes: "key", when: "said" },
+		en: "check {criteria} against the traceability matrix now; {when}",
+		vars: { criteria: "name", when: "said" },
 	},
 	"standing.act.checkCouldNotRun": { en: "a check could not run" },
 	"standing.act.confirmAnswer": { en: "Confirm the answer" },
@@ -1017,8 +1017,8 @@ export const SAID = {
 	},
 	"standing.act.finishDraft": { en: "finish draft" },
 	"standing.act.fixFailing": {
-		en: "fix {codes}, failing on {keys}",
-		vars: { codes: "key", keys: "key" },
+		en: "fix {criteria}, failing on {issues}",
+		vars: { criteria: "name", issues: "name" },
 	},
 	"standing.act.fixSchedule": { en: "fix a failing schedule" },
 	"standing.act.judgeAfterRelease": {
@@ -1026,20 +1026,24 @@ export const SAID = {
 	},
 	"standing.act.judgeCriteria": { en: "judge the criteria still owed" },
 	"standing.act.judgeOn": {
-		en: "judge {codes} on {keys}",
-		vars: { codes: "key", keys: "key" },
+		en: "judge {criteria} on {issues}",
+		vars: { criteria: "name", issues: "name" },
 	},
 	"standing.act.uncounted": {
-		en: "{codes} count on no build: {why}",
-		vars: { codes: "key", why: "text" },
+		en: "{criteria} count on no build: {why}",
+		vars: { criteria: "name", why: "text" },
 	},
 	"standing.act.judgeOnRelease": {
-		en: "judge {codes} at the requirement on release {version}",
-		vars: { codes: "key", version: "version" },
+		en: "judge {criteria} at the requirement on release {version}",
+		vars: { criteria: "name", version: "version" },
 	},
 	"standing.act.judgeOnReleaseOn": {
-		en: "judge {codes} on {keys} on release {version}",
-		vars: { codes: "key", keys: "key", version: "version" },
+		en: "judge {criteria} on {issues} on release {version}",
+		vars: {
+			criteria: "name",
+			issues: "name",
+			version: "version",
+		},
 	},
 	"standing.act.labelRunner": { en: "label a runner for releases" },
 	"standing.act.markMerge": { en: "mark the merge{on}", vars: { on: "said?" } },
@@ -1081,10 +1085,13 @@ export const SAID = {
 	},
 	"standing.act.releaseItByHand": { en: "release it by hand and close it" },
 	"standing.act.releaseRunning": { en: "a release is running" },
-	"standing.act.replan": { en: "re-plan {keys}", vars: { keys: "key" } },
+	"standing.act.replan": {
+		en: "re-plan {issues}",
+		vars: { issues: "name" },
+	},
 	"standing.act.retie": {
-		en: "tie {keys} to the current wording of {codes}, then judge it",
-		vars: { codes: "key", keys: "key" },
+		en: "tie {issues} to the current wording of {criteria}, then judge it",
+		vars: { criteria: "name", issues: "name" },
 	},
 	"standing.act.reviewBreakdown": { en: "review the breakdown" },
 	"standing.act.reviseReturned": {
@@ -1112,27 +1119,30 @@ export const SAID = {
 	"standing.act.takeOverSchedule": {
 		en: "take over a schedule whose owner is gone",
 	},
-	"standing.act.takeNext": { en: "take {keys} next", vars: { keys: "key" } },
+	"standing.act.takeNext": {
+		en: "take {issues} next",
+		vars: { issues: "name" },
+	},
 	"standing.act.onIssue": {
-		en: "{act} on {key}",
-		vars: { act: "said", key: "key" },
+		en: "{act} on {issue}",
+		vars: { act: "said", issue: "name" },
 	},
 	"standing.act.forIssue": {
-		en: "for {key}",
-		vars: { key: "key" },
+		en: "for {issue}",
+		vars: { issue: "name" },
 	},
 	"standing.act.trace": {
-		en: "trace {codes} to an issue criterion",
-		vars: { codes: "key" },
+		en: "trace {criteria} to an issue criterion",
+		vars: { criteria: "name" },
 	},
 	"standing.act.readLiveBuild": {
-		en: "read whether the live build holds the verdicts on {codes}",
-		vars: { codes: "key" },
+		en: "read whether the live build holds the verdicts on {criteria}",
+		vars: { criteria: "name" },
 	},
 	"standing.who.liveBuildRead": { en: "Live build read" },
 	"standing.act.fileOrRevise": {
-		en: "file an issue for {codes}, or revise the requirement",
-		vars: { codes: "key" },
+		en: "file an issue for {criteria}, or revise the requirement",
+		vars: { criteria: "name" },
 	},
 	"standing.act.triage": { en: "triage {what}", vars: { what: "name" } },
 	"standing.act.triageAgain": { en: "triage it again" },

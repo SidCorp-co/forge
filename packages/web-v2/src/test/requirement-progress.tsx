@@ -9,6 +9,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { statusReading } from "@/design";
 import { RequirementPage } from "@/features/requirements/components/requirement-detail";
 import { RequirementPeek } from "@/features/requirements/components/requirement-peek";
+import { waitRefText } from "@/features/requirements/components/standing-bits";
 import type { RequirementDetail } from "@/features/requirements/types";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
@@ -180,7 +181,7 @@ function bannerStray(banner: Element, s: RequirementDetail["standing"]): string 
     }
   }
   for (const a of banner.querySelectorAll("a")) {
-    if (!a.matches('[data-testid="wait-ref"]') || a.textContent !== s.waitingOn.ref || a.getAttribute("data-refers") !== s.waitingOn.refers) return `a link of the banner's own: "${a.textContent}"`;
+    if (!a.matches('[data-testid="wait-ref"]') || a.textContent !== waitRefText(s.waitingOn) || a.getAttribute("data-refers") !== s.waitingOn.refers) return `a link of the banner's own: "${a.textContent}"`;
   }
   return null;
 }

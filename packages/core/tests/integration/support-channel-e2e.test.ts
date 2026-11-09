@@ -77,7 +77,7 @@ describe('REQ-75 r6: the channel record and who is in it', () => {
     // the Channels list names the same agent on the channel's row, so a reader sees who answers
     // each room without opening it (ISS-1184)
     const list = await api(w.owner, 'GET', w.base());
-    expect(list.body.channels[0]?.agent).toMatchObject(agent);
+    expect((list.body.channels as { agent: unknown }[])[0]?.agent).toMatchObject(agent);
     // Forge's bot is read off its session, never declared by hand
     const declared = await api(w.owner, 'PUT', `${w.base()}/${w.rid}/agent`, {
       role: 'catalog Babo',

@@ -244,6 +244,9 @@ describe('a revision the plan predates opens one re-plan task per flagged issue'
         dueAt: null,
       }),
     );
-    expect(read.standing.waitingOn).toMatchObject({ who: 'Master', act: 're-plan ISS-1' });
+    expect(read.standing.waitingOn).toMatchObject({
+      who: 'Master',
+      act: 're-plan “Send policyVersion on every run-session open”',
+    });
   });
 });
