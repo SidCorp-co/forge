@@ -31,6 +31,12 @@ export function criterionTitleFault(
 	return `a criterion's title holds at most ${CRITERION_TITLE_MAX_WORDS} words; "${title}" has ${n}. Put the rest in the criterion's sentence, which opens under its title.`;
 }
 
+/**
+ * A bracket holding a code anchor (a path, `file.ts:symbol`): the sentence's reference for a builder,
+ * never a row's face (ISS-1179). A bracket of plain words is the criterion's own and stays.
+ */
+const CODE_ANCHOR = /\s*\((?=[^)]*(?:\/|\.[a-z]{1,4}:|`))[^)]*\)/g;
+
 /** How long a first clause shown in place of a title may run, in words and characters, before it is cut. */
 const CLAUSE_MAX_WORDS = 10;
 const CLAUSE_MAX_CHARS = 72;
@@ -38,7 +44,7 @@ const CLAUSE_MAX_CHARS = 72;
 /**
  * What a criterion's row shows: its title, else its first clause (up to the first comma, colon,
  * semicolon, dash or sentence end), cut at a word boundary with an ellipsis where it runs past ten
- * words or 72 characters, never inside a word. `cut` says whether anything of the sentence was left
+ * words or 72 characters, never inside a word, and any code anchor in brackets left out. `cut` says whether anything of the sentence was left
  * out, so the row offers the whole sentence on demand.
  */
 export function criterionShortTitle(c: {
@@ -47,7 +53,8 @@ export function criterionShortTitle(c: {
 }): { short: string; cut: boolean } {
 	const whole = c.text.trim().replace(/\s+/g, " ");
 	if (c.title) return { short: c.title, cut: c.title !== whole };
-	const clause = whole.split(/(?<=\S)(?:[,;:]\s|\s[–—-]\s|\.\s)/)[0] ?? whole;
+	const face = whole.replace(CODE_ANCHOR, "");
+	const clause = face.split(/(?<=\S)(?:[,;:]\s|\s[–—-]\s|\.\s)/)[0] ?? face;
 	const words = clause.split(" ");
 	let short = "";
 	for (const [i, w] of words.entries()) {
