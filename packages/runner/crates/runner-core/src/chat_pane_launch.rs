@@ -19,8 +19,10 @@ pub struct Launch {
 
 impl Launch {
     /// The launch `cmd` would run: its program, arguments, working directory and the environment
-    /// it sets. A command built with `env_clear` runs with exactly that environment.
-    pub fn of(cmd: &std::process::Command, fallback_cwd: &Path) -> Self {
+    /// it sets. A command built with `env_clear` runs with exactly that environment. Its working
+    /// directory is the one `cmd` sets, else `repo`, the session's own checkout, as a headless
+    /// spawn reads it (`claude_code/mod.rs:spawn_failure`).
+    pub fn of(cmd: &std::process::Command, repo: &Path) -> Self {
         Self {
             program: PathBuf::from(cmd.get_program()),
             args: cmd.get_args().map(OsString::from).collect(),
@@ -30,7 +32,7 @@ impl Launch {
                 .collect(),
             cwd: cmd
                 .get_current_dir()
-                .map_or_else(|| fallback_cwd.to_path_buf(), Path::to_path_buf),
+                .map_or_else(|| repo.to_path_buf(), Path::to_path_buf),
         }
     }
 }
