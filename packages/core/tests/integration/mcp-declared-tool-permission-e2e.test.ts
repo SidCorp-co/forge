@@ -196,7 +196,7 @@ describe('project_feedback (declared on the project the handler resolves)', () =
     action: 'submit',
     kind: 'bug',
     title: 'The receipt total is wrong',
-    screen: '/checkout',
+    target: { kind: 'screen', ref: '/checkout' },
   };
 
   const bySlug = () => ({ 'x-forge-project-slug': projectSlug });

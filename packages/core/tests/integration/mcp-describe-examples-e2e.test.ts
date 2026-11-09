@@ -179,6 +179,12 @@ describe('what a create leaves to the server, and what it refuses', () => {
     });
     expect(loose.isError).toBe(true);
     expect(loose.text).toMatch(/submit names a requirement as its target/);
+    const rest = await call(token, 'forge_call', {
+      action: 'project_feedback.submit',
+      args: { projectId, kind: 'bug', title: 'Reorder leaves the cart empty', screen: 'Cart' },
+    });
+    expect(rest.isError).toBe(true);
+    expect(rest.text).toMatch(/screen is a target, and submit takes its one target as target/);
   });
 
   it('refuses gates written through config.write, naming the action that writes them', async () => {

@@ -354,6 +354,21 @@ async function attach(ctx: McpContext, projectId: string, input: Input) {
   };
 }
 
+const LOOSE_TARGETS = ['issue', 'release', 'workflow', 'endpoint', 'mockup', 'screen'] as const;
+
+/** A submit naming its target the REST body's way, refused by name with the one field it takes. */
+function looseTargetRefusal(args: Record<string, unknown>) {
+  if (args.action !== 'submit') return;
+  const named = LOOSE_TARGETS.filter((k) => args[k] !== undefined);
+  if (named.length === 0) return;
+  throw new ArgumentRefusal(
+    named.map((k) => ({
+      path: `/${k}`,
+      fault: `${k} is a target, and submit takes its one target as target: { kind: ${k}, ref }`,
+    })),
+  );
+}
+
 const HANDLERS = { list, get, progress, similar, submit, clarify, attach } as const;
 
 export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -366,6 +381,7 @@ export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   actionDescribe: DESCRIBE,
   handler: async (args) => {
+    looseTargetRefusal(args);
     const input = inputSchema.parse(args);
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
     return HANDLERS[input.action](ctx, projectId, input);

@@ -272,7 +272,7 @@ describe('project_feedback over /mcp', () => {
         projectId: w.projectId,
         kind: 'bug',
         title: 'The export button does nothing',
-        screen: 'Invoices',
+        target: { kind: 'screen', ref: 'Invoices' },
       }),
     );
     expect(filed.created).toBe(true);

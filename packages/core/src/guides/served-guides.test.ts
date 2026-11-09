@@ -103,11 +103,12 @@ describe('the design-write shape the workflow-design guide gives (ISS-579)', () 
     }
   });
 
-  it('says every write carries writtenBy, what it holds, and that an empty object is accepted', async () => {
+  // ISS-1185: a create over MCP sent no writtenBy and was refused; the server fills it now
+  it('says what writtenBy holds and that the server fills it, and the stamps, when left out', async () => {
     const design = await served('workflow-design');
     expect(design).toContain('`writtenBy: { runId?, sessionId?, sha? }`');
-    expect(design).toContain('every write carries it');
-    expect(design).toContain('`{}` is accepted');
+    expect(design).toContain('left out, the server fills `{}`');
+    expect(design).toContain('a create sent with them drops them');
   });
 
   it('lists every size cap a design is refused over, at the value core enforces', async () => {
