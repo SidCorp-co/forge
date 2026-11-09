@@ -308,7 +308,10 @@ async function cutWait(): Promise<WaitingOn> {
 }
 
 /** A release's wait on a person's approval, as its page says it (`release-view.ts:approvalTurn`). */
-function personWait(act: 'standing.act.approve', name: string): WaitingOn {
+function personWait(
+  act: 'standing.act.approve' | 'standing.act.approveReleaseV',
+  name: string,
+): WaitingOn {
   return {
     kind: 'person',
     who: name,
@@ -318,7 +321,8 @@ function personWait(act: 'standing.act.approve', name: string): WaitingOn {
     dueAt: null,
     says: {
       who: { key: 'standing.who.named', vars: { name } },
-      act: { key: act },
+      act:
+        act === 'standing.act.approveReleaseV' ? { key: act, vars: { v: '0.19.0' } } : { key: act },
       rule: { key: 'releases.rule.asked' },
     } as never,
   };
@@ -378,6 +382,17 @@ describe('a release act the master cannot take goes to whoever holds it, never t
     expect(await releaseTakerOf(projectId, strict, null)).toMatchObject({
       to: 'holders',
       holders: [{ id: ownerId }],
+    });
+  });
+
+  // ISS-1186 (FB-599): a requirement whose landed issues 0.19.0's run claims waits on that run's
+  // approvers to approve 0.19.0, and the steward woke the master to cut 0.20.0 instead
+  it('a wait on approving a claiming run’s version goes to its approvers, never the master', async () => {
+    const { releaseTakerOf } = await import('../../src/steward/release-ask.js');
+    const wait = personWait('standing.act.approveReleaseV', ownerName);
+    expect(await releaseTakerOf(projectId, wait, null)).toMatchObject({
+      to: 'holders',
+      act: { permission: 'releases.approve' },
     });
   });
 });
