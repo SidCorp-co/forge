@@ -19,7 +19,8 @@ import { db } from '../../src/db/client.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
 import { type JudgedBuildDeps, liveBuildHolds } from '../../src/release-batch/judged-build.js';
 import { persistedCarriage, readServedAncestry } from '../../src/release-batch/served-ancestry.js';
-import { servedBefore } from '../../src/release-batch/served-builds.js';
+import { keepLiveBuild, servedBefore } from '../../src/release-batch/served-builds.js';
+import { backgroundSettled } from '../../src/lib/background.js';
 import { shippedReleaseRuns } from '../../src/release-batch/shipped-releases.js';
 import {
   addProjectMember,
@@ -62,6 +63,8 @@ const BEFORE = '0a1b2c3d4e5f60718293a4b5c6d7e8f901234567';
 const AFTER = '4782a3c819ee0011223344556677889900aabbcc';
 /** An earlier build the one before held, judged at too. */
 const EARLIER = '1111aaaa2222bbbb3333cccc4444dddd5555eeee';
+/** 826231cc63's place: served between two deploys a few minutes apart, never read by a pass. */
+const MIDDLE = '826231cc633b3fe3cd8b9d562fe9a53c0dcbdc9e';
 /** A commit judged off the line: the build before did not hold it. */
 const ASIDE = '9a258402c0ffee00c0ffee00c0ffee00c0ffee00';
 
@@ -106,6 +109,7 @@ const read = (commits: readonly string[]) => {
     withdrawn: async () => false,
     heldAncestry: persistedCarriage,
     servedBefore,
+    keepServed: keepLiveBuild,
   };
   return liveBuildHolds(projectId, { commits }, deps);
 };
@@ -193,5 +197,71 @@ describe('a deploy keeps what the build served before held (ISS-1182, FB-592)', 
     expect(after?.holds.get(BEFORE)).toBe(false);
     expect(after?.holds.get(EARLIER)).toBe(true);
     expect(after?.rechecking).toBeUndefined();
+  });
+});
+
+// ISS-1182 round 2, live on forge-dev 2026-11-09: a71284f314 (dev.626) served, then 826231cc63 for
+// about 3.5 minutes, then b2cdb0d53c (dev.627). The pass never read 826231cc63, and REQ-12 read 9/23
+// with nothing re-checked; at 9e7f8c7750 (dev.628), after 3cd21bcdc7 had been bridged from the
+// build before it, 14/23 with nothing re-checked.
+describe('two deploys a few minutes apart keep what the builds before held (ISS-1182 r2)', () => {
+  it('reads what A and B held, B never read by a pass, as held or re-checked on C', async () => {
+    H.state.descends = new Set([
+      `${EARLIER}>${BEFORE}`,
+      `${EARLIER}>${MIDDLE}`,
+      `${EARLIER}>${AFTER}`,
+      `${BEFORE}>${MIDDLE}`,
+      `${BEFORE}>${AFTER}`,
+      `${MIDDLE}>${AFTER}`,
+    ]);
+    await judgedIssue([BEFORE, EARLIER, ASIDE]);
+    await readServedAncestry();
+
+    // B serves, and a pass is judged on it, while no served-ancestry pass runs
+    serving = MIDDLE;
+    await judgedIssue([MIDDLE]);
+    const onB = await read([BEFORE, EARLIER, MIDDLE]);
+    expect(onB?.holds.get(MIDDLE)).toBe(true);
+    expect(onB?.holds.get(EARLIER)).toBe(true);
+    await backgroundSettled();
+
+    // C serves: no pair the pass asked names it
+    serving = AFTER;
+    const onC = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
+    expect(onC?.sha).toBe(AFTER);
+    for (const commit of [BEFORE, EARLIER, MIDDLE]) {
+      expect(onC?.unanswered.get(commit), commit).toBeUndefined();
+      expect(onC?.holds.get(commit)).toBe(true);
+      expect(onC?.rechecking?.get(commit)).toContain('is being re-checked');
+    }
+    expect(onC?.unanswered.has(ASIDE)).toBe(true);
+
+    // one pass: whether C descends from each build kept before it, never one pair a held commit
+    H.state.calls = [];
+    await readServedAncestry();
+    expect(H.state.calls).toContain(`${MIDDLE}>${AFTER}`);
+    expect(H.state.calls).not.toContain(`${EARLIER}>${AFTER}`);
+    const settled = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
+    for (const commit of [BEFORE, EARLIER, MIDDLE]) expect(settled?.holds.get(commit)).toBe(true);
+    expect(settled?.holds.get(ASIDE)).toBe(false);
+    expect(settled?.rechecking).toBeUndefined();
+  });
+
+  it('keeps what B held only by deriving it from A once C serves', async () => {
+    H.state.descends.add(`${BEFORE}>${MIDDLE}`);
+    await judgedIssue([BEFORE, EARLIER]);
+    await readServedAncestry();
+    serving = MIDDLE;
+    H.state.calls = [];
+    await readServedAncestry();
+    // B's holdings are derived from A's through the one bridge, no pair a commit asked
+    expect(H.state.calls).toEqual([`${BEFORE}>${MIDDLE}`]);
+    expect((await read([BEFORE, EARLIER]))?.holds.get(EARLIER)).toBe(true);
+
+    serving = AFTER;
+    const onC = await read([BEFORE, EARLIER]);
+    expect(onC?.unanswered.get(EARLIER)).toBeUndefined();
+    expect(onC?.holds.get(EARLIER)).toBe(true);
+    expect(onC?.rechecking?.get(EARLIER)).toContain('is being re-checked');
   });
 });
