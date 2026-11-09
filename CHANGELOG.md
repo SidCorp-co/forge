@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.612] - 2026-11-09
+
+Watch a channel agent's session live in a terminal pane the owner can attach to
+
+### Added
+
+- **A channel agent's session can run in a pane its owner attaches to.** With `[runner] chat_panes = true`, the box runs it confined in `forge-chat-<slug>`; the session page and the master's guide give the `tmux attach` command.
+
 ## [0.4.0-dev.611] - 2026-11-08
 
 A lesson about an app stays in its own project

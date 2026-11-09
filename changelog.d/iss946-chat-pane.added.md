@@ -1,1 +1,0 @@
-**A channel agent's session can run in a pane its owner attaches to.** With `[runner] chat_panes = true`, the box runs it confined in `forge-chat-<slug>`; the session page and the master's guide give the `tmux attach` command.
