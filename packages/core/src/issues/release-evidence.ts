@@ -6,6 +6,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { idList, uuidArray } from '../db/raw-sql.js';
 import { memoizedPerId } from '../db/read-memo.js';
+import { issueCoresOf } from './display-ids.js';
 
 /**
  * When each issue last entered `reopen`, read from the move history (`kernel_transitions`); an
@@ -254,14 +255,17 @@ export interface IssueRounds {
 /**
  * When each issue's current landing was marked, null where none stands. Every release line and
  * requirement build a person's projects read asks it, each project's before the quiet point in one
- * statement (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12): it was one a project (f9e56c77).
+ * statement (`db/read-memo.ts:memoizedPerId`, ISS-1070 r12): it was one a project (f9e56c77). Read
+ * as the issue's core (`display-ids.ts:issueCoresOf`), which a read has mostly asked of these issues
+ * already, it is no statement of its own (ISS-1070 r21).
  */
-function mergedAtOf(
+async function mergedAtOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
 ): Promise<Map<string, Date | null>> {
   if (executor !== db) return mergedAtRead(executor, issueIds);
-  return memoizedPerId('issueMergedAt', issueIds, (some) => mergedAtRead(db, some));
+  const cores = await issueCoresOf(issueIds);
+  return new Map([...cores].map(([id, c]) => [id, c.mergedAt]));
 }
 
 async function mergedAtRead(
