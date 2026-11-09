@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.621] - 2026-11-09
+
+Agreeing a requirement checks each criterion can be judged on the running product
+
+### Fixed
+
+- **Agreeing a requirement asks that each criterion can be checked.** A criterion phrased as an instruction ("Verify …") is refused by name until it states what holds; a requirement's picture on a phone opens on its lit steps.
+
 ## [0.4.0-dev.620] - 2026-11-09
 
 Refusing a verdict on another project's contract by name
