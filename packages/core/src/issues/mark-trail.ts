@@ -129,6 +129,17 @@ export function markedCommitSql(i: SQL): SQL {
 }
 
 /**
+ * When the issue row aliased `i` last landed: its newest stamped mark, else the observed merge's
+ * `merged_at`. NULL where neither. A verdict written after it judged this landing, so a close's
+ * verdict never displaces it (`criteria/close-verdicts.ts`).
+ */
+export function markedAtSql(i: SQL): SQL {
+  return sql`coalesce((
+    SELECT max(a.created_at) FROM activity_log a
+     WHERE a.issue_id = ${i}.id AND ${IS_STAMPED_MARK}), ${i}.merged_at)`;
+}
+
+/**
  * The commit each issue's current mark claims, by issue id; an issue whose newest trail record is an
  * unmark, or a mark naming no whole commit, is absent. On an exact tie the unmark is read as newer,
  * so a withdrawn claim is never the one that stands.

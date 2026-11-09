@@ -32,6 +32,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CLOSE_VERDICT_REASON } from '../../src/issues/criteria/close-verdicts.js';
 import { api } from '../helpers/api.js';
 import { agreedRequirement, traced } from '../helpers/landed-requirement.js';
 import {
@@ -43,6 +44,7 @@ import {
   refusalsOf,
   seedLandedWorld,
   statusOf,
+  verdict,
   world,
 } from '../helpers/landed-world.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
@@ -163,11 +165,18 @@ const coverageOf = async (req: string) =>
     api(world.token, 'GET', `/api/projects/${world.projectId}/requirements/${req}`),
   )) as unknown as CoverageRead;
 
-/** agenfold's REQ-11 at its first release: ISS-1 traces BC-1..3, landed at F4, shipped in 0.76.0. */
-async function shippedAt076(): Promise<{ req: string; issue: string }> {
+/**
+ * agenfold's REQ-11 at its first release: ISS-1 traces BC-1..3, landed at F4, shipped in 0.76.0. Its
+ * close is its builder's verdict (D2): each criterion holding no verdict since the landing passes at
+ * F4. `judgedAtC1` are judged at C1 after the landing, which no close displaces.
+ */
+async function shippedAt076(
+  judgedAtC1: readonly number[] = [],
+): Promise<{ req: string; issue: string }> {
   const req = await agreedRequirement(BCS);
   const issue = await landedIssue(1, F4);
   await traced(req, issue, 1, { 1: 'BC-1', 2: 'BC-2', 3: 'BC-3' });
+  for (const n of judgedAtC1) await verdict(issue, n, 'pass', C1);
   await recordRelease([issue], 'v0.76.0');
   expect(await statusOf(issue)).toBe('closed');
   return { req, issue };
@@ -295,9 +304,10 @@ describe('a comment fence carries a release, refused by the codes the REST door 
       expect(res.status, JSON.stringify(res.body)).toBe(422);
       expect(JSON.stringify(res.body), sent).toContain(code);
     }
+    // the newest verdict is still the close's, at the landing: neither refusal wrote one
     const criteria = await ok(api(world.token, 'GET', `/api/issues/${issue}/criteria`));
-    const rows = criteria.criteria as Array<{ latest: unknown }>;
-    expect(rows[0]?.latest).toBeNull();
+    const rows = criteria.criteria as Array<{ latest: Record<string, unknown> | null }>;
+    expect(rows[0]?.latest).toMatchObject({ reason: CLOSE_VERDICT_REASON, commitSha: F4 });
   });
 
   it('refuses a release where production reads the commit it serves, by the REST code', async () => {
@@ -315,7 +325,7 @@ describe('a comment fence carries a release, refused by the codes the REST door 
 describe('a promotion project weighs a criterion judged on a release on its release record (ISS-900)', () => {
   it('counts a pass on the live release at the landing, as the release hold weighs it', async () => {
     await agenfold();
-    const { issue } = await shippedAt076();
+    const { issue } = await shippedAt076([3]);
     await agenfold(false, true);
     for (const n of [1, 2]) {
       const res = await judge(issue, n, { kind: 'release', version: '0.76.0' });
@@ -332,7 +342,8 @@ describe('a promotion project weighs a criterion judged on a release on its rele
       });
       expect(w?.reason).toContain('release 0.76.0');
     }
-    // the one left unjudged is asked for at the landing, or on the release the record says is live
+    // the one judged only at C1, which the landing does not hold, is asked for at the landing, or on
+    // the release the record says is live
     const third = rows.find((r) => r.n === 3)?.weighing;
     expect(third?.earned).toBe(false);
     expect(third?.reason).toContain('or one judged on release 0.76.0');

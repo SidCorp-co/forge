@@ -205,6 +205,47 @@ describe("a close is its builder's verdict where the project judges its own work
     expect(await backfillCloseVerdicts()).toBeNull();
   });
 
+  // forge-dev 2026-11-09 (ISS-1148): until the close read its mark's time, a close's pass at the mark
+  // was written over a judge's verdict at a later commit, and read in its place as the newest
+  it("withdraws once each close's verdict written over a judge's reading since the mark, and no other", async () => {
+    const { withdrawDisplacingCloseVerdicts, CLOSE_VERDICTS_WITHDRAW_KEY, CLOSE_VERDICT_REASON } =
+      await import('../../src/issues/criteria/close-verdicts.js');
+    const later = '9a8b'.repeat(10);
+    const judged = await landed([], 'closed');
+    await completeIssueReadyRecord(projectId, ownerId, judged.id, seq);
+    const unjudged = await landed([], 'closed');
+    await completeIssueReadyRecord(projectId, ownerId, unjudged.id, seq);
+    const at = (id: string, verdict: string, reason: string, commit: string, ago: string) =>
+      rows(sql`
+        INSERT INTO criterion_verdicts
+          (criterion_id, issue_id, verdict, reason, identity_kind, commit_sha, author_agency, created_at)
+        SELECT id, issue_id, ${verdict}, ${reason}, 'commit', ${commit}, 'agent', now() - ${ago}::interval
+          FROM issue_criteria WHERE issue_id = ${id} AND n = 1`);
+    for (const { id } of [judged, unjudged]) {
+      await rows(sql`
+        INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+        VALUES (${id}, 'user', ${ownerId}, 'agent', 'issue.mergeMarked',
+                ${JSON.stringify({ commit: SHA, stamped: true })}::jsonb, now() - interval '2 hours')`);
+      await rows(sql`UPDATE issues SET merged_at = now() - interval '2 hours' WHERE id = ${id}`);
+    }
+    // a judge's pass at a later head, after the mark; then the close's at the mark over it
+    await at(judged.id, 'pass', 'pass on the box at the later head', later, '1 hour');
+    await at(judged.id, 'pass', CLOSE_VERDICT_REASON, SHA, '30 minutes');
+    // a fail from before the mark, then the close's: the close answered it, so it stays
+    await at(unjudged.id, 'fail', 'not met', later, '3 hours');
+    await at(unjudged.id, 'pass', CLOSE_VERDICT_REASON, SHA, '30 minutes');
+    await rows(sql`DELETE FROM backfill_markers WHERE key = ${CLOSE_VERDICTS_WITHDRAW_KEY}`);
+
+    const report = await withdrawDisplacingCloseVerdicts();
+    expect(report?.withdrawn.map((w) => [w.issueId, w.commit])).toEqual([[judged.id, SHA]]);
+    expect((await verdictsOf(judged.id)).map((v) => [v.verdict, v.commit_sha])).toEqual([
+      ['pass', later],
+    ]);
+    expect((await verdictsOf(unjudged.id)).map((v) => v.verdict).sort()).toEqual(['fail', 'pass']);
+    // once: the marker holds it
+    expect(await withdrawDisplacingCloseVerdicts()).toBeNull();
+  });
+
   it('records nothing where an independent judge owes the criteria', async () => {
     await declareControls(projectId, ownerId, { gates: { profile: 'strict' } });
     const { id } = await landed([]);

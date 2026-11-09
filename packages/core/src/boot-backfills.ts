@@ -6,6 +6,7 @@ import {
   runCriteriaBackfillOnce,
   runMarkedRequestHeadBackfillOnce,
   runRescueCapRehomeOnce,
+  withdrawDisplacingCloseVerdicts,
 } from './issues/index.js';
 import { logger } from './lib/logger.js';
 import { drainStaleCriteriaFacts } from './requirements/index.js';
@@ -43,6 +44,14 @@ export async function runOnceBackfills(): Promise<void> {
         independent: closed.independent,
       },
       'boot: close verdicts backfilled on projects that judge their own work',
+    );
+  }
+  // ISS-1148: the close's verdicts the earlier rule wrote over a judge's reading, once
+  const withdrawn = await withdrawDisplacingCloseVerdicts();
+  if (withdrawn) {
+    logger.info(
+      { verdicts: withdrawn.verdicts, issues: withdrawn.issues },
+      "boot: close verdicts withdrawn where they displaced a judge's",
     );
   }
   const rehome = await runRescueCapRehomeOnce();

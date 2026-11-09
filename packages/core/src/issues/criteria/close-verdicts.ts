@@ -10,9 +10,9 @@
  * The landing is the commit the issue's mark names (`mark-trail.ts:markedCommitSql`): an observed
  * merge's, else the commit its asserted mark claims. On a project with no source host every mark is
  * asserted and `merged_commit_sha` stays empty, so reading only that column recorded nothing there.
- * A verdict at an earlier landing, or on a runtime, does not hold the close's landing: a fail that
- * sent the issue back is answered by the close that met it again. A verdict written after the close
- * (a judge's reading of it) is never overridden.
+ * A verdict at an earlier landing does not hold the close's landing: a fail that sent the issue back
+ * is answered by the close that met it again. A verdict written since that landing's mark, at any
+ * commit or release, is a judge's reading of it and is never displaced; nor is one after the close.
  *
  * Before this, every such criterion owed "judge BC-x on ISS-y" on its requirement for ever, though no
  * judge was coming (G2). `backfillCloseVerdicts` records the same for issues closed before it.
@@ -25,7 +25,7 @@ import { backfillMarkedIn, markBackfillIn } from '../../db/backfill-markers.js';
 import { db, type Tx } from '../../db/client.js';
 import { rowsOf } from '../../db/raw-sql.js';
 import { keepBuilderFacts } from '../builder-facts.js';
-import { markedCommitSql } from '../mark-trail.js';
+import { markedAtSql, markedCommitSql } from '../mark-trail.js';
 import { readJudge } from '../ports.js';
 
 /** The reason a close's verdict carries: its source, which every reader shows beside it. */
@@ -52,7 +52,7 @@ const insertCloseVerdicts = (where: ReturnType<typeof sql>, by: ReturnType<typeo
   SELECT c.id, c.issue_id, 'pass', ${CLOSE_VERDICT_REASON}, 'commit', m.sha, ${by}
     FROM issue_criteria c
     JOIN issues i ON i.id = c.issue_id
-    CROSS JOIN LATERAL (SELECT ${markedCommitSql(sql`i`)} AS sha) m
+    CROSS JOIN LATERAL (SELECT ${markedCommitSql(sql`i`)} AS sha, ${markedAtSql(sql`i`)} AS at) m
     CROSS JOIN LATERAL (
       SELECT max(t.created_at) AS at FROM kernel_transitions t
        WHERE t.entity = 'issue' AND t.entity_id = i.id AND t.to_status = 'closed') closed
@@ -64,7 +64,7 @@ const insertCloseVerdicts = (where: ReturnType<typeof sql>, by: ReturnType<typeo
      AND NOT EXISTS (
        SELECT 1 FROM criterion_verdicts v
         WHERE v.criterion_id = c.id
-          AND (lower(v.commit_sha) = m.sha OR (closed.at IS NOT NULL AND v.created_at > closed.at)))
+          AND (lower(v.commit_sha) = m.sha OR v.created_at > m.at OR v.created_at > closed.at))
   RETURNING issue_id`;
 
 /**
@@ -148,4 +148,61 @@ export async function backfillCloseVerdicts(): Promise<CloseVerdictsBackfill | n
   }
   await db.transaction((tx) => markBackfillIn(tx, CLOSE_VERDICTS_BACKFILL_KEY, report));
   return report;
+}
+
+/** Once: the close's verdicts the earlier rule wrote over a judge's reading of the landing. */
+export const CLOSE_VERDICTS_WITHDRAW_KEY = 'd2-close-verdicts-since-mark';
+
+export interface CloseVerdictsWithdrawn {
+  verdicts: number;
+  issues: number;
+  /** Each withdrawn row, so the record says what was removed and from where. */
+  withdrawn: Array<{ id: string; issueId: string; criterionId: string; commit: string | null }>;
+}
+
+/**
+ * Removes, once, each close's verdict that displaced a judge's: a verdict other than a close's, on the
+ * same criterion, written after the issue's mark and before the close's. Until the close read the
+ * mark's time (ISS-1148), a close and the `d2-close-verdicts-marked` backfill wrote a pass at the mark
+ * over such a verdict, and as the newest it read in that judge's place. Each row was the close's own
+ * write under that rule, and the marker's report names every one removed.
+ */
+export async function withdrawDisplacingCloseVerdicts(): Promise<CloseVerdictsWithdrawn | null> {
+  return db.transaction(async (tx) => {
+    if (await backfillMarkedIn(tx, CLOSE_VERDICTS_WITHDRAW_KEY)) return null;
+    const rows = rowsOf<{
+      id: string;
+      issue_id: string;
+      criterion_id: string;
+      commit_sha: string | null;
+    }>(
+      await tx.execute(sql`
+        DELETE FROM criterion_verdicts cv
+         USING issues i
+         WHERE i.id = cv.issue_id
+           AND cv.reason = ${CLOSE_VERDICT_REASON}
+           AND EXISTS (
+             SELECT 1 FROM criterion_verdicts v
+              WHERE v.criterion_id = cv.criterion_id
+                AND v.id <> cv.id
+                AND ${notCloseVerdictSql(sql`v.reason`)}
+                AND v.created_at > ${markedAtSql(sql`i`)}
+                AND v.created_at < cv.created_at)
+        RETURNING cv.id, cv.issue_id, cv.criterion_id, cv.commit_sha`),
+    );
+    const issues = [...new Set(rows.map((r) => r.issue_id))];
+    await keepBuilderFacts(tx, issues);
+    const report: CloseVerdictsWithdrawn = {
+      verdicts: rows.length,
+      issues: issues.length,
+      withdrawn: rows.map((r) => ({
+        id: r.id,
+        issueId: r.issue_id,
+        criterionId: r.criterion_id,
+        commit: r.commit_sha,
+      })),
+    };
+    await markBackfillIn(tx, CLOSE_VERDICTS_WITHDRAW_KEY, report);
+    return report;
+  });
 }

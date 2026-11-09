@@ -69,6 +69,7 @@ export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export {
   backfillCloseVerdicts,
   notCloseVerdictSql,
+  withdrawDisplacingCloseVerdicts,
 } from './criteria/close-verdicts.js';
 export { namedCriteriaOf } from './criteria/criterion-names.js';
 export { requirementRecordingSessionOf } from './criteria/recording-session.js';
