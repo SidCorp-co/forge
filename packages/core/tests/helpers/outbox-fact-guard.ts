@@ -8,7 +8,12 @@ import postgres from 'postgres';
 import { afterAll, afterEach } from 'vitest';
 import { FACT_PAIRS, factsSaidTwice, type GuardedEvent } from './outbox-fact-pairs.js';
 
-/** Pairs still said twice by an act, each named with the issue that folds it; never refused. */
+/**
+ * Pairs still said twice by an act, each named with the issue that folds it; never refused. F3: the
+ * release run's move to completed and its `release.shipped` are written by `release-batch/finish.ts`,
+ * `recorded.ts` and `release-repair.ts`, outside ISS-1181's reach (ISS-1182 holds them); it ends when
+ * those callers say which event reports the ship.
+ */
 const PENDING: Readonly<Record<string, string>> = {
   F3: 'ISS-1181',
 };

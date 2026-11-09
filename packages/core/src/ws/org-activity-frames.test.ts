@@ -176,8 +176,9 @@ describe('the org room hears what moved on its projects', () => {
     expect(Object.keys(f?.data as object).sort()).toEqual(['orgId', 'projectId', 'source']);
   });
 
+  // an issue's move and stamp also refresh the project's Now: two project frames, each sent once
   it.each([
-    ['session.pushed', nowPush('p1', 'step')],
+    ['session.pushed', nowPush('p1', 'step'), 1],
     [
       'issue.transitioned',
       {
@@ -189,16 +190,25 @@ describe('the org room hears what moved on its projects', () => {
         reason: null,
         at: '2026-11-04T00:00:00.000Z',
       },
+      2,
     ],
-    ['issue.created', { issueId: 'i2', projectId: 'p1', actor: { id: 'u1' } }],
-    ['question.asked', { questionId: 'q1', projectId: 'p1', issueId: 'i1' }],
-    ['question.transitioned', { id: 'q1', projectId: 'p1', issueId: null, to: 'answered' }],
+    [
+      'issue.updated',
+      { issueId: 'i1', projectId: 'p1', actor: { id: 'u1' }, fields: ['mergedAt'] },
+      2,
+    ],
+    ['issue.created', { issueId: 'i2', projectId: 'p1', actor: { id: 'u1' } }, 1],
+    ['question.asked', { questionId: 'q1', projectId: 'p1', issueId: 'i1' }, 1],
+    ['question.transitioned', { id: 'q1', projectId: 'p1', issueId: null, to: 'void' }, 1],
+    ['question.answered', { questionId: 'q1', projectId: 'p1', issueId: null }, 1],
   ] as const)(
     'an org lookup that throws on %s leaves the project frame sent once and retries the org frame alone',
-    async (type, payload) => {
+    async (type, payload, frames) => {
       lookup.fails = 1;
       const failures = await deliver(type, payload);
-      expect(projectFrames(), 'the project room heard the frame other than once').toHaveLength(1);
+      expect(projectFrames(), 'the project room heard a frame other than once').toHaveLength(
+        frames,
+      );
       expect(failures, 'the failed org lookup was swallowed, or failed another delivery').toEqual([
         'org-activity: connect ECONNREFUSED: the org lookup failed',
       ]);
@@ -218,9 +228,11 @@ describe('the org room hears what moved on its projects', () => {
     for (const type of [
       'session.pushed',
       'issue.transitioned',
+      'issue.updated',
       'issue.created',
       'question.asked',
       'question.transitioned',
+      'question.answered',
       'run.transitioned',
     ] as const) {
       expect(
@@ -232,12 +244,16 @@ describe('the org room hears what moved on its projects', () => {
 
   it.each([
     ['requirement.transitioned', 'decision'],
+    ['requirement.agreed', 'decision'],
+    ['requirement.accepted', 'decision'],
+    ['requirement.delivered', 'decision'],
     ['requirement.returned', 'decision'],
     ['feedback.verifySettled', 'decision'],
     ['preview.transitioned', 'decision'],
     ['mockup.transitioned', 'decision'],
     ['workflow.designDecided', 'decision'],
     ['decision.settled', 'decision'],
+    ['contract.versionApproved', 'decision'],
     ['release.cut', 'release'],
     ['release.approvalDecided', 'release'],
     ['release.shipped', 'release'],
@@ -271,4 +287,38 @@ describe('the org room hears what moved on its projects', () => {
       ['p2', 'run'],
     ]);
   });
+});
+
+describe('a decision another event reports reaches the project room from that event (ISS-1181)', () => {
+  beforeEach(() => {
+    consumers.clear();
+    published.length = 0;
+    registerWsBroadcastSubscribers();
+  });
+
+  it.each([
+    [
+      'requirement.agreed',
+      { projectId: 'p1', key: 'REQ-4', act: 'revision.accept' },
+      [{ act: 'revision.accept', subject: 'REQ-4' }],
+    ],
+    ['requirement.agreed', { projectId: 'p1', key: 'REQ-4', act: 'requirement.agree' }, []],
+    [
+      'contract.versionApproved',
+      { projectId: 'p1', contractSlug: 'orders', version: '2.0.0' },
+      [{ act: 'contract.decide', subject: 'orders@2.0.0' }],
+    ],
+  ] as const)(
+    'a %s tells the project room the decision.settled frame it reports',
+    async (type, payload, said) => {
+      await deliver(type, payload);
+      expect(projectFrames().filter((f) => f.event === 'decision.settled')).toEqual(
+        said.map((d) => ({
+          room: 'project:p1',
+          event: 'decision.settled',
+          data: { projectId: 'p1', ...d },
+        })),
+      );
+    },
+  );
 });

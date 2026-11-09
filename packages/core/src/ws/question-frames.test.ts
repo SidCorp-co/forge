@@ -41,16 +41,27 @@ describe('a question change reaches the open screens of its project', () => {
     expect(published[0]?.data).toMatchObject({ questionId: 'q1', issueId: 'i1', change: 'asked' });
   });
 
-  it.each(['answered', 'void', 'expired'])('a move to %s is told with its state', async (to) => {
+  it.each(['void', 'expired'])('a move to %s is told with its state', async (to) => {
     await handlers.get('question.transitioned')?.({ id: 'q1', projectId: 'p1', issueId: null, to });
     expect(published[0]?.data).toMatchObject({ questionId: 'q1', issueId: null, change: to });
   });
 
-  it('the kernel emits an answer, a void and an expiry, and both events name ws-broadcast', () => {
-    for (const to of ['answered', 'void', 'expired'])
-      expect(emitsTransition('question', to)).toBe(true);
-    expect(emitsTransition('question', 'open')).toBe(false);
+  it('an answer is told once, by its own event, with the state it reached (ISS-1181)', async () => {
+    await handlers.get('question.answered')?.({ questionId: 'q1', projectId: 'p1', issueId: 'i1' });
+    expect(published).toEqual([
+      {
+        room: 'project:p1',
+        event: 'question.changed',
+        data: { questionId: 'q1', projectId: 'p1', issueId: 'i1', change: 'answered' },
+      },
+    ]);
+  });
+
+  it('the kernel emits a void and an expiry, never the answer its own event reports, and each event names ws-broadcast', () => {
+    for (const to of ['void', 'expired']) expect(emitsTransition('question', to)).toBe(true);
+    for (const to of ['open', 'answered']) expect(emitsTransition('question', to)).toBe(false);
     expect(OUTBOX_CONSUMERS['question.asked']).toContain('ws-broadcast');
     expect(OUTBOX_CONSUMERS['question.transitioned']).toContain('ws-broadcast');
+    expect(OUTBOX_CONSUMERS['question.answered']).toContain('ws-broadcast');
   });
 });
