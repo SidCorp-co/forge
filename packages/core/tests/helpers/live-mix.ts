@@ -11,6 +11,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { createTestProject, createTestUser } from './factories.js';
+import {
+  askAboutRequirement,
+  baseDesigns,
+  proposeDesignChanges,
+  stewardFired,
+} from './live-mix-waits.js';
 import { wireLive, wireStorefront } from './live-wiring.js';
 import { seedProductionDeployTrigger, seedProjectDocument } from './release-world.js';
 import { type Scale, seedAtScale } from './scale-world.js';
@@ -59,6 +65,14 @@ interface Kind {
   heldFromOutside?: boolean;
   /** Shipped items whose release sent their reporter its notice, and a person wrote them since. */
   toldShipped?: boolean;
+  /** A cleanup schedule whose newest fire ran a session that left the steward's report. */
+  stewardFires?: boolean;
+  /** Open questions a person owes about a requirement, one asked on no item and one on an issue. */
+  askedAboutRequirement?: boolean;
+  /** Designs that declare a base (`basedOn`), pinned at the base's approved revision. */
+  basedDesigns?: boolean;
+  /** Proposed design changes on workflows, waiting on a person. */
+  designChanges?: boolean;
 }
 
 /** forge-dev's mix, forge first. */
@@ -71,15 +85,48 @@ export const LIVE_MIX: readonly Kind[] = [
     judgedAtRequirement: true,
     heldFromOutside: true,
     toldShipped: true,
+    stewardFires: true,
+    basedDesigns: true,
+    designChanges: true,
   },
-  { scale: SMALL, deploys: 'offline', storefront: true },
-  { scale: SMALL, deploys: 'coolify', storefront: true, onLand: true },
+  {
+    scale: SMALL,
+    deploys: 'offline',
+    storefront: true,
+    stewardFires: true,
+    askedAboutRequirement: true,
+  },
+  {
+    scale: SMALL,
+    deploys: 'coolify',
+    storefront: true,
+    onLand: true,
+    stewardFires: true,
+    basedDesigns: true,
+  },
   { scale: { ...SMALL, batches: 3 }, changeRequests: true },
   { scale: TINY, deploys: 'offline' },
   { scale: null },
   { scale: { ...SMALL, live: false, states: false }, outsideGit: true },
-  { scale: SMALL, deploys: 'coolify', onLand: true, linkedFeedback: true, toldShipped: true },
-  { scale: MID, deploys: 'offline', linkedFeedback: true, judgedAtRequirement: true },
+  {
+    scale: SMALL,
+    deploys: 'coolify',
+    onLand: true,
+    linkedFeedback: true,
+    toldShipped: true,
+    stewardFires: true,
+    askedAboutRequirement: true,
+    designChanges: true,
+  },
+  {
+    scale: MID,
+    deploys: 'offline',
+    linkedFeedback: true,
+    judgedAtRequirement: true,
+    stewardFires: true,
+    askedAboutRequirement: true,
+    basedDesigns: true,
+  },
   { scale: { ...SMALL, batches: 2 } },
   { scale: TINY, deploys: 'coolify', onLand: true },
   { scale: null, deploys: 'offline' },
@@ -124,6 +171,10 @@ export async function seedLiveMix(input: {
     if (kind.judgedAtRequirement) await judgeAtRequirement(id);
     if (kind.heldFromOutside) await holdFromOutside(id, ownerId);
     if (kind.toldShipped) await tellShipped(id);
+    if (kind.stewardFires) await stewardFired(id, ownerId);
+    if (kind.askedAboutRequirement) await askAboutRequirement(id);
+    if (kind.basedDesigns) await baseDesigns(id);
+    if (kind.designChanges) await proposeDesignChanges(id);
     // an agent filed most of it: the person owns one issue in seven and one item in five
     await db.execute(
       sql`UPDATE issues SET created_by_id = ${agentId} WHERE project_id = ${id} AND iss_seq % 7 <> 0`,
