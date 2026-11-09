@@ -56,10 +56,10 @@ interface Entry {
 }
 
 async function worldOf(projectId: string, userId: string | null, now: Date): Promise<World> {
-  // the project's own row is read with the projects its edges name, one read where two were sent
-  // (ISS-1070 r22: an edge to a project outside the reader's set was a second wave of the same shape)
-  const [held, memberships, changes, viewer, dues] = await Promise.all([
-    loadInterface(projectId),
+  // the project's own row and interface are read with the projects its edges name and theirs, one
+  // read each where two were sent (ISS-1070 r22: an edge to a project outside the reader's set was a
+  // second wave of the same two shapes)
+  const [memberships, changes, viewer, dues] = await Promise.all([
     activeEcosystemIdsOf(db, [projectId]),
     changeItems(projectId),
     viewerOf(projectId, userId),
@@ -79,8 +79,9 @@ async function worldOf(projectId: string, userId: string | null, now: Date): Pro
     ...providers,
     ...touching.flatMap((e) => [e.consumerProjectId, e.providerProjectId]),
   ]);
-  const [rows, interfaces, versions] = await Promise.all([
+  const [rows, held, interfaces, versions] = await Promise.all([
     projectsWhere(db, { ids: [...new Set([projectId, ...ids])] }),
+    loadInterface(projectId),
     Promise.all([...providers].map(async (id) => [id, await loadInterface(id)] as const)),
     versionFacts([projectId, ...providers]),
   ]);
