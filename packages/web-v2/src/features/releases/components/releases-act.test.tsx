@@ -48,6 +48,21 @@ describe("the Releases list's face (REQ-11 BC-19, ISS-1001)", () => {
     expect(container.querySelector("[data-testid=release-train]")).toBeNull();
   });
 
+  // the owner's review of forge-dev, 2026-11-09: "In production 564" where the project releases to dev (ISS-1179 item 9)
+  it("names the shipped and going groups by the environment the project releases to", () => {
+    const [list, ...rest] = releaseSeed();
+    const [key, body] = list as [unknown[], Record<string, unknown>];
+    render(
+      <Seeded data={[[key, { ...body, production: { ok: true, name: "dev", url: null, serving: null } }], ...rest] as never}>
+        <ReleasesScreen projectId={P} slug="hop" />
+      </Seeded>,
+    );
+    const label = (id: string) => screen.getAllByTestId("release-group").find((g) => g.dataset.group === id) as HTMLElement;
+    expect(label("production")).toHaveTextContent("On dev");
+    expect(label("going")).toHaveTextContent("Going to dev");
+    expect(screen.getByTestId("release-list")).not.toHaveTextContent("production");
+  });
+
   it("stays within the first view's budget of 300 words (BC-21)", () => {
     const { container } = releases();
     expect(faceWords(container)).toBeLessThanOrEqual(300);
