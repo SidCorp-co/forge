@@ -4,6 +4,8 @@
 export interface WitnessCase {
   name: string;
   width: number;
+  /** The window's height; 900 where a case names none (witness/run.mjs). */
+  height?: number;
 }
 
 export type WitnessEntry = { cases: WitnessCase[]; ready: () => boolean } & (
