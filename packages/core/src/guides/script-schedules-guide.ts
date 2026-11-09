@@ -52,14 +52,27 @@ export const PRODUCTION_WATCH_PARAMS = {
 
 export const PRODUCTION_WATCH_SCRIPT = `const p = ctx.params;
 const seen = {}; // signal key -> what was seen, or null where it reads healthy
+const blind = new Set(); // the signals that say the watch could not read, never that production broke
+const unreached = []; // the calls no box could be reached for: one cause, the box connection
 const key = (name) => p.signalPrefix + ':' + name;
+const blindKey = (name) => {
+  const k = key('watch-blind-' + name);
+  blind.add(k);
+  return k;
+};
 const call = async (name) => {
   try {
     const out = await ctx.ops[name]();
-    seen[key('watch-blind-' + name)] = out.exitCode === 0 ? null : name + ' exited ' + out.exitCode + ': ' + out.stderr.slice(0, 500);
+    seen[blindKey(name)] = out.exitCode === 0 ? null : name + ' exited ' + out.exitCode + ': ' + out.stderr.slice(0, 500);
     return out.exitCode === 0 ? out.stdout : null;
   } catch (e) {
-    seen[key('watch-blind-' + name)] = name + ' did not run: ' + e.message;
+    if (e.code === 'SCRIPT_OPS_BOX_UNREACHABLE') {
+      // the box's connection, not this check: read once below for every call it took down
+      seen[blindKey(name)] = null;
+      unreached.push(name + ': ' + e.message);
+    } else {
+      seen[blindKey(name)] = name + ' did not run: ' + e.message;
+    }
     return null;
   }
 };
@@ -76,7 +89,7 @@ if (disk !== null) {
 const raw = await call('metrics');
 if (raw !== null) {
   let m = null;
-  try { m = JSON.parse(raw); } catch { seen[key('watch-blind-metrics')] = 'the metrics are not JSON'; }
+  try { m = JSON.parse(raw); } catch { seen[blindKey('metrics')] = 'the metrics are not JSON'; }
   if (m) {
     const over = (v, max, what) => (v > max ? what + ' ' + v + ', over ' + max : null);
     seen[key('posting-speed')] = over(m.posting?.p95Seconds, p.postingSecondsP95, 'posting p95 seconds');
@@ -95,7 +108,11 @@ if (raw !== null) {
   }
 }
 
-// a breach files once, on its second firing in a row; a blip files nothing; a recovery resets it
+seen[blindKey('box')] = unreached.length === 0 ? null
+  : 'The watch could not reach the box for ' + unreached.length + ' of its calls; production was not read, not found broken.\\n' + unreached.join('\\n');
+
+// a breach files once, on its second firing in a row; a blip files nothing; a recovery resets it.
+// A blind watch files as blind, below a breach: it says nothing about production.
 const streak = ctx.state.get().streak ?? {};
 const next = {};
 const filed = [];
@@ -103,10 +120,11 @@ for (const [signal, detail] of Object.entries(seen)) {
   if (detail === null) continue;
   next[signal] = (streak[signal] ?? 0) + 1;
   if (next[signal] === 2) {
+    const isBlind = blind.has(signal);
     const item = await ctx.feedback.file({
       kind: 'bug',
-      severity: 'high',
-      title: 'Production breach confirmed twice: ' + signal,
+      severity: isBlind ? 'medium' : 'high',
+      title: (isBlind ? 'Production watch blind twice: ' : 'Production breach confirmed twice: ') + signal,
       body: detail + '\\n\\nSeen on two watch runs in a row.',
       signalKey: signal,
     });
@@ -126,7 +144,7 @@ export const SCRIPT_SCHEDULES_GUIDE: CoreGuide = {
   title: 'Script schedules: watch production and file a confirmed breach',
   summary:
     "A script schedule reads its project's production through read-only calls it declares on the forge-ops target, keeps a small state between firings and files deduplicated feedback on a breach seen twice, with no agent session. The rules, and an example watch a master copies.",
-  version: 2,
+  version: 3,
   body: `## Script schedules: watch production and file a confirmed breach
 
 A \`script\` schedule runs a JavaScript script in Forge's sandbox on its cron, with no agent session:
@@ -136,7 +154,11 @@ summary stays a once-a-day \`prompt\` or \`status_report\` schedule.
 ### What the script holds
 - \`ctx.ops.<name>()\`: a call the schedule declares, run on the project's box through the forge-ops CLI.
   It answers \`{ exitCode, stdout, stderr, truncated, timedOut, durationMs }\` and takes no arguments:
-  they are fixed in the declaration. At most ${SCRIPT_OPS_CALL_CAP} calls a firing.
+  they are fixed in the declaration. At most ${SCRIPT_OPS_CALL_CAP} calls a firing. A box that drops and
+  comes back within the call's \`timeoutMs\` is waited for. A call that did not run throws an error whose
+  \`code\` says why: \`SCRIPT_OPS_BOX_UNREACHABLE\` where no box could be reached (none online, it did not
+  come back in time, or it never answered), a cause every call of the firing shares; \`SCRIPT_OPS_FAILED\`
+  where the call failed for its own reason.
 - \`ctx.feedback.file(${SCRIPT_FILING_SHAPE})\`: files one item on the schedule's own project, as the
   project's own agent, seen on the schedule. An open item with the same \`signalKey\` is joined as an
   occurrence, never filed twice. It answers \`{ key, created }\`. At most ${SCRIPT_FEEDBACK_CAP} a firing.
@@ -175,7 +197,10 @@ summary stays a once-a-day \`prompt\` or \`status_report\` schedule.
 
 ### The example production watch
 It watches service status, disk, posting speed, API p50/p95/p99 and error rate, CDC health and the
-index queue, files once per breach seen twice, and calls every call that cannot run \`watch-blind\`.
+index queue, and files once per breach seen twice, at \`high\`. A call that cannot run is \`watch-blind\`,
+filed at \`medium\` and never titled a breach: a blind watch did not read production. Calls the box
+could not be reached for share one cause, so they file one \`watch-blind-box\` item naming each call,
+never one per call; a call that ran and failed on its own files as its own \`watch-blind-<call>\`.
 Copy it, set your target and the metrics path, and tune the thresholds in \`params\`.
 
 Declaration (\`ops\`):
@@ -206,5 +231,8 @@ ${PRODUCTION_WATCH_SCRIPT}
    as the project's master: the save refuses any call that is not read-only, by name.
 2. \`POST /api/schedules/:id/run\` once and read its fire: every call \`answered\`, no filing.
 3. Plant a breach (a threshold in \`params\` below the live value), run twice: the second firing files
-   one item, a third joins nothing new. Put the threshold back.`,
+   one item, a third joins nothing new. Put the threshold back.
+
+A saved schedule keeps the script it was saved with: a change to this example reaches a watch only
+when its script is saved again from here (\`PUT /api/schedules/:id { script }\`).`,
 };

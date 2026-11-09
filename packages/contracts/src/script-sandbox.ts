@@ -68,8 +68,11 @@ export const FORGE_OPS_LOGS_TAIL_MAX = 2000;
  * Why a script's ops call, filing or state write was refused, as the script sees it thrown (`e.code`)
  * and the fire records it. SCRIPT_OPS_UNDECLARED: a call the schedule does not declare.
  * SCRIPT_OPS_NOT_READ_ONLY: a declared call that is not read-only on the target, refused before the
- * script runs at all. SCRIPT_OPS_FAILED: a declared call that could not be run (no box, the box did
- * not answer). SCRIPT_OPS_OVER_TARGET_LIMIT: a declared call whose fixed arguments the target refuses
+ * script runs at all. SCRIPT_OPS_FAILED: a declared call that could not be run for its own reason
+ * (its secret is not held, the box could not start it). SCRIPT_OPS_BOX_UNREACHABLE: a declared call
+ * that never reached a box: none bound is online, the box dropped and did not come back within the
+ * call's time, or it took the call and never answered; one cause shared by every call of the firing.
+ * SCRIPT_OPS_OVER_TARGET_LIMIT: a declared call whose fixed arguments the target refuses
  * (a `logs` tail past FORGE_OPS_LOGS_TAIL_MAX). SCRIPT_FEEDBACK_REFUSED: a filing that does not fit, or a run with no project to file
  * on. SCRIPT_STATE_REFUSED: a state that is not a JSON object, or is past its cap.
  */
@@ -77,6 +80,7 @@ export const SCRIPT_DOOR_REFUSALS = [
 	"SCRIPT_OPS_UNDECLARED",
 	"SCRIPT_OPS_NOT_READ_ONLY",
 	"SCRIPT_OPS_FAILED",
+	"SCRIPT_OPS_BOX_UNREACHABLE",
 	"SCRIPT_OPS_OVER_TARGET_LIMIT",
 	"SCRIPT_FEEDBACK_REFUSED",
 	"SCRIPT_STATE_REFUSED",

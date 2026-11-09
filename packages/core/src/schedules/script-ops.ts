@@ -105,12 +105,21 @@ export function opsArgv(decl: ScriptOpsDeclaration, call: ScriptOpsCallDeclarati
   return [decl.program, call.tool, JSON.stringify(call.args ?? {})];
 }
 
+/** A call that was asked of the box and did not run: it failed, where every other refusal refused it. */
+const didNotRun = (code: ScriptDoorRefusal): boolean =>
+  code === 'SCRIPT_OPS_FAILED' || code === 'SCRIPT_OPS_BOX_UNREACHABLE';
+
 const refused = (code: ScriptDoorRefusal, message: string): ReadOutcome => ({
   ok: false,
-  name: code === 'SCRIPT_OPS_FAILED' ? 'ScriptOpsFailed' : 'ScriptOpsRefused',
+  name: didNotRun(code) ? 'ScriptOpsFailed' : 'ScriptOpsRefused',
   code,
   message,
 });
+
+/** What the box answered a call, or why it did not run; `boxUnreachable` where no box could be reached. */
+type OpsRan =
+  | Extract<Awaited<ReturnType<typeof runOpsRead>>, { ok: true }>
+  | { ok: false; why: string; transport?: 'disconnected' | 'unanswered'; boxUnreachable?: true };
 
 /**
  * The ctx.ops host of one firing: a declared call runs on the project's box, and anything else is
@@ -122,14 +131,14 @@ export function openOpsCaller(args: {
   /** The schedule's name, which a call's amnesty warning names. */
   scheduleName?: string;
   /** Stand-in for the box in a unit test; the project's box otherwise. */
-  run?: (argv: string[], timeoutMs: number) => ReturnType<typeof runOpsRead>;
+  run?: (argv: string[], timeoutMs: number) => Promise<OpsRan>;
 }): { names: string[]; call: ScriptOpsCaller; calls(): ScriptOpsCall[] } {
   const log: ScriptOpsCall[] = [];
   const declared = new Map((args.decl?.calls ?? []).map((c) => [c.name, c]));
   let box: ReturnType<ReturnType<typeof schedulesPorts>['projectReadBox']> | null = null;
   const run =
     args.run ??
-    (async (argv: string[], timeoutMs: number) => {
+    (async (argv: string[], timeoutMs: number): Promise<OpsRan> => {
       // the credential is the declaration's project secret, handed for this call alone (ISS-707); a
       // stored declaration with none runs on the box's own, under amnesty `script-ops-box-credential`
       const { secretEnvOf, projectReadBox, withoutSecrets } = schedulesPorts();
@@ -138,7 +147,11 @@ export function openOpsCaller(args: {
       box ??= projectReadBox(args.projectId);
       const picked = await box;
       if (!picked.ok)
-        return { ok: false as const, why: picked.refusals.map((r) => r.detail).join('; ') };
+        return {
+          ok: false as const,
+          why: picked.refusals.map((r) => r.detail).join('; '),
+          boxUnreachable: true as const,
+        };
       const ran = await runOpsRead({
         deviceId: picked.value,
         projectId: args.projectId,
@@ -147,7 +160,13 @@ export function openOpsCaller(args: {
         timeoutMs,
         ...(args.decl?.secrets ? { env: env.env } : {}),
       });
-      if (!ran.ok) return { ok: false as const, why: withoutSecrets(ran.why, env.env) };
+      if (!ran.ok) {
+        return {
+          ok: false as const,
+          why: withoutSecrets(ran.why, env.env),
+          ...(ran.transport ? { transport: ran.transport } : {}),
+        };
+      }
       return {
         ok: true as const,
         value: {
@@ -168,7 +187,7 @@ export function openOpsCaller(args: {
   const call: ScriptOpsCaller = async (name, given) => {
     const said = name.slice(0, 64);
     const refuse = (code: ScriptDoorRefusal, message: string) => {
-      log.push({ name: said, outcome: code === 'SCRIPT_OPS_FAILED' ? 'failed' : 'refused', code });
+      log.push({ name: said, outcome: didNotRun(code) ? 'failed' : 'refused', code });
       return refused(code, message);
     };
     const decl = declared.get(name);
@@ -200,10 +219,9 @@ export function openOpsCaller(args: {
       decl.timeoutMs ?? SCRIPT_OPS_TIMEOUT_DEFAULT_MS,
     );
     if (!ran.ok) {
-      return refuse(
-        'SCRIPT_OPS_FAILED',
-        `SCRIPT_OPS_FAILED: ctx.ops.${said} did not run: ${ran.why}`,
-      );
+      // the way to the box failed, not the call: every call of the firing shares that one cause
+      const code = ran.transport || ran.boxUnreachable ? 'SCRIPT_OPS_BOX_UNREACHABLE' : 'SCRIPT_OPS_FAILED';
+      return refuse(code, `${code}: ctx.ops.${said} did not run: ${ran.why}`);
     }
     const v = ran.value;
     log.push({
