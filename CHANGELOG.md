@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.614] - 2026-11-09
+
+Promoted builds hold their landings, and open tabs survive a deploy
+
+### Fixed
+
+- **Attention reads what waits in a few projects once for all of them.** Steward reports come with their fires, question subjects, re-pin designs and design-change workflows are read across projects: 210 statements become 193.
+- **A pass judged across a promotion counts at its landing.** Where merge marks cannot place a landing against a commit on another branch, coverage and the steward read the host's kept answer, which the served-ancestry pass now asks.
+- **A tab left open across a deploy reloads itself once** when a screen it has not loaded yet belongs to the old build, instead of failing to open; a repeat within a minute still shows.
+
 ## [0.4.0-dev.613] - 2026-11-09
 
 Verdicts judged at a merged change request's head count for its landing

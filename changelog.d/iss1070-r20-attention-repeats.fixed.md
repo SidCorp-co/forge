@@ -1,1 +1,0 @@
-**Attention reads what waits in a few projects once for all of them.** Steward reports come with their fires, question subjects, re-pin designs and design-change workflows are read across projects: 210 statements become 193.
