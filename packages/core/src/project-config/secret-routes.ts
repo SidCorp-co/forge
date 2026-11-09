@@ -12,7 +12,11 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { actingDeclarations } from './acting-secret-door.js';
+import { actingSecretRoutes } from './acting-secret-routes.js';
 import {
+  actingSecretDoor,
+  actingSecretElsewhere,
   SECRETS_LIST_SAYS,
   secretValueDoor,
   secretValueDoors,
@@ -27,6 +31,9 @@ import {
 import { deleteSecret, listSecretNames, listTestingProfiles, SECRET_VALUE_MAX } from './service.js';
 
 export const projectSecretRoutes = new Hono<{ Variables: AuthVars }>();
+
+// the one door a secret declared for acting is read at, and the record of its reads (REQ-88)
+projectSecretRoutes.route('/', actingSecretRoutes);
 
 for (const path of ['/:id/secrets', '/:id/secrets/*', '/:id/test-credentials']) {
   projectSecretRoutes.use(path, requireAuth(), assertEmailVerified());
@@ -72,9 +79,18 @@ const reserved = (detail: string) => [
 
 projectSecretRoutes.get('/:id/secrets', paramOf(idParam), READ, noQuery, async (c) => {
   const { id } = c.req.valid('param');
-  const [secrets, profiles] = await Promise.all([listSecretNames(id), listTestingProfiles(id)]);
+  const [secrets, profiles, acting] = await Promise.all([
+    listSecretNames(id),
+    listTestingProfiles(id),
+    actingDeclarations(id),
+  ]);
+  const actingDoors = (ref: string) =>
+    acting.some((a) => a.secret === ref) ? [actingSecretDoor(id, ref)] : [];
   return c.json({
-    secrets: secrets.map((s) => ({ ...secretView(s), valueAt: secretValueDoors(profiles, s.ref) })),
+    secrets: secrets.map((s) => ({
+      ...secretView(s),
+      valueAt: [...secretValueDoors(profiles, s.ref), ...actingDoors(s.ref)],
+    })),
     returned: secrets.length,
     says: SECRETS_LIST_SAYS,
   });
@@ -90,10 +106,11 @@ projectSecretRoutes.get(
     const { id, scope, name } = c.req.valid('param');
     const ref = secretRefOf(scope, name);
     const [door] = secretValueDoors(await listTestingProfiles(id), ref);
-    throw secretValueElsewhere(
-      `GET /api/projects/${id}/secrets/${scope}/${name}`,
-      door ?? secretValueDoor('<profile naming it>', `ref=${ref}`),
-    );
+    const asked = `GET /api/projects/${id}/secrets/${scope}/${name}`;
+    if (!door && (await actingDeclarations(id)).some((a) => a.secret === ref)) {
+      throw actingSecretElsewhere(asked, actingSecretDoor(id, ref));
+    }
+    throw secretValueElsewhere(asked, door ?? secretValueDoor('<profile naming it>', `ref=${ref}`));
   },
 );
 

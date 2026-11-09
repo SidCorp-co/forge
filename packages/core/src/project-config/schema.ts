@@ -22,6 +22,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
+import { actingSecretsSchema } from './acting-secrets-schema.js';
 import { routesFaults } from './environment-routes.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
 import { surfacesSchema } from './surfaces-schema.js';
@@ -342,6 +343,9 @@ export const projectDocumentSchema = z.strictObject({
       .min(1)
       .max(20),
   ).optional(),
+  // the secrets the project's master or its declared runs act with, each naming its readers
+  // (REQ-88, `acting-secrets-schema.ts`); read at `acting-secret-door.ts`. Absent is none.
+  actingSecrets: actingSecretsSchema.optional(),
   execution: z.strictObject({
     plugin: z.strictObject({
       source: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),

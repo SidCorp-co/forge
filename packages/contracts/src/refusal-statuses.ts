@@ -1,4 +1,5 @@
 // Every module's non-422 refusal codes in one table, read by both doors of core.
+import { ACTING_SECRET_REFUSAL_STATUSES } from "./acting-secrets.js";
 import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
 import { AGREEMENT_REFUSAL_STATUSES } from "./agreements.js";
 import { ATTACHMENT_REFUSAL_STATUSES } from "./attachments.js";
@@ -25,10 +26,10 @@ import {
 	ISSUE_TAKE_REFUSAL_STATUSES,
 	ISSUE_UPDATE_REFUSAL_STATUSES,
 } from "./issues.js";
+import { KNOWLEDGE_REFUSAL_STATUSES } from "./knowledge.js";
 import { LESSON_REFUSAL_STATUSES } from "./lessons.js";
 import { MCP_AUTH_REFUSAL_STATUSES } from "./mcp-auth.js";
 import { MCP_DOOR_REFUSAL_STATUSES } from "./mcp-tools.js";
-import { KNOWLEDGE_REFUSAL_STATUSES } from "./knowledge.js";
 import { MEMORY_REFUSAL_STATUSES } from "./memory.js";
 import { ORG_REFUSAL_STATUSES } from "./orgs.js";
 import { PATTERN_REFUSAL_STATUSES } from "./patterns.js";
@@ -66,6 +67,7 @@ const DECLARED: ReadonlyArray<
 	Readonly<Record<string, Exclude<RefusalStatus, 422>>>
 > = [
 	REQUEST_REFUSAL_STATUSES,
+	ACTING_SECRET_REFUSAL_STATUSES,
 	AGENT_SESSION_REFUSAL_STATUSES,
 	AGREEMENT_REFUSAL_STATUSES,
 	ATTACHMENT_REFUSAL_STATUSES,

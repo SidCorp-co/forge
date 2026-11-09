@@ -92,6 +92,8 @@ interface ProjectConfigPorts {
     caller: Pick<PatPrincipal, 'userId'>,
     asked: string,
   ): Promise<{ box: string; keys: string[] } | null>;
+  /** The live resident master session of the project on the caller's box, or null (REQ-88). */
+  liveMasterSessionOf(args: { deviceId: string; projectId: string }): Promise<string | null>;
   /** Audit a declared run's resolve on the issue it judges, committed before any value leaves. */
   recordRunSecretResolve(audit: RunSecretResolveAudit): Promise<void>;
   /** The requirement a judge run was declared at, by key, and the project's issues delivering it. */

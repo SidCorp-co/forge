@@ -35,6 +35,14 @@ async function liveMasterOn(
   return row ?? null;
 }
 
+/** The live resident master session of `projectId` on the box `deviceId`, or null where it holds none. */
+export async function liveMasterSessionOf(args: {
+  deviceId: string;
+  projectId: string;
+}): Promise<string | null> {
+  return (await liveMasterOn(db, args))?.id ?? null;
+}
+
 /** Whether any box holds a live resident master for the project, whichever box that is. */
 export async function projectHasLiveMaster(projectId: string, executor: Tx = db): Promise<boolean> {
   if (executor === db) {

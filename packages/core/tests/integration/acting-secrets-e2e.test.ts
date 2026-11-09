@@ -12,7 +12,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,15 +21,16 @@ vi.hoisted(() => {
 
 import { agentSessionsPorts } from '../../src/agent-sessions/ports.js';
 import { mintPat } from '../../src/credentials/pat.js';
+import { ensureMasterSession } from '../../src/devices/index.js';
 import { logger } from '../../src/lib/logger.js';
 import { api, userToken } from '../helpers/api.js';
 import {
   codeOf,
   declaredRun,
   ok,
+  seedDeclaredRunWorld,
   REF as TESTING_REF,
   secrets as testingSecrets,
-  seedDeclaredRunWorld,
   world,
 } from '../helpers/declared-run-secrets-world.js';
 import { bindTestRunner, createTestDevice, createTestIssue, rows } from '../helpers/factories.js';
@@ -65,14 +65,9 @@ async function declareActing(
   });
 }
 
-/** The live resident master of `projectId` on `box`. */
+/** The live resident master of `projectId` on `box`, opened as the box's registration opens it. */
 async function liveMaster(projectId: string, box = world.box): Promise<string> {
-  const [s] = await rows<{ id: string }>(sql`
-    INSERT INTO agent_sessions (project_id, device_id, kind, status, started_at, created_at)
-    VALUES (${projectId}, ${box}, ${MASTER_SESSION_KIND}, 'running', now(), now())
-    RETURNING id`);
-  if (!s) throw new Error('no master session seeded');
-  return s.id;
+  return (await ensureMasterSession({ deviceId: box, projectId, name: 'master' })).sessionId;
 }
 
 async function seedActing(): Promise<void> {
@@ -346,7 +341,9 @@ describe('BC-4: every read is recorded, and the value leaves only in the read', 
       `/api/projects/${world.projectId}/secrets/test-store/docs-epodsystem-key`,
     );
     expect(guessed.status).toBe(404);
-    expect(JSON.stringify(guessed.body)).toContain('/acting-secrets/test-store/docs-epodsystem-key');
+    expect(JSON.stringify(guessed.body)).toContain(
+      '/acting-secrets/test-store/docs-epodsystem-key',
+    );
     expect(JSON.stringify([list, guessed.body])).not.toContain(ACTING_VALUE);
   });
 });

@@ -11,6 +11,7 @@ import {
   declaredRunElsewhere,
   declaredRunOfCall,
   deviceHolderUserId,
+  liveMasterSessionOf,
   openReviewRun,
   provideDevicesPorts,
   readRunnerPoolRead,
@@ -67,6 +68,7 @@ import { currentOnboardingBrief } from './onboarding/index.js';
 import { landedWorkOwed, wedgedWorkOwed } from './pipeline/index.js';
 import { registerRoomBridge } from './previews/index.js';
 import {
+  actingSecretRefsOfSession,
   dispatchStateOf,
   gateOf,
   parseRepository,
@@ -197,11 +199,14 @@ async function checkoutRemoteOf(projectId: string, repository: string): Promise<
 const secretRefsReadBy = async (sessionId: string) => [
   ...(await runSecretRefsOfSession(sessionId)),
   ...(await requirementSecretRefsOfSession(sessionId)),
+  // and what it read at the acting door, a master's session or a run's (REQ-88)
+  ...(await actingSecretRefsOfSession(sessionId)),
 ];
 
 export const declaredRunSecretPorts = {
   declaredRunOfCall,
   declaredRunElsewhere,
+  liveMasterSessionOf,
   recordRunSecretResolve,
   requirementJudgedBy,
   recordRequirementSecretRead,
