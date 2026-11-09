@@ -3,7 +3,8 @@
 //! The headless chat host runs the resident as a `stream-json` child; here the same confined
 //! command runs interactive in `forge-chat-<slug>` on this box's tmux socket, and every turn still
 //! reaches it through the box and closes through the same write:
-//! - a turn is typed in (`terminal::send_line`), the first as the session's launch prompt;
+//! - a turn is typed in (`terminal::send_line`), a new session's first as its launch prompt, and
+//!   a resumed session's first once the status line it starts with has given the turn's baseline;
 //! - its lines come from the session's transcript, tailed, and go to the turn's sink as the
 //!   stream's did, so `chat.rs:consume` posts them and beats the turn unchanged;
 //! - its end is the `Stop` hook (`pane_turn`), after which the turn's `result` line is made and
@@ -26,6 +27,11 @@ const READ_EVERY: Duration = Duration::from_millis(200);
 
 /// Every how many reads the pane is asked whether it is still there.
 const ALIVE_EVERY: u32 = 10;
+
+/// How long a resumed pane's first turn waits after the launch for the status line its cost is
+/// measured from, before it is typed in without one. Measured on 2.1.319, a launched session's
+/// first status line comes 3.3–3.5 s after the launch, before any prompt.
+const BASELINE_WITHIN: Duration = Duration::from_secs(10);
 
 /// How long a message typed into a running turn may go unreported by `UserPromptSubmit` before the
 /// turn stops waiting for it. Measured on 2.1.319, the hook fires within half a second of the paste.
@@ -168,7 +174,8 @@ impl ClaudeCodeRunner {
             pane.name,
             pane.attach_command()
         );
-        let cost_base = first_turn_base(&session, &events, Duration::ZERO).await;
+        let made = (&*mcp_path, bearer_dir.as_deref(), &*events_dir);
+        let cost_base = first_turn(&id, &pane.name, (&session, &prompt), &events, made).await?;
         let sid = session.id().to_string();
         let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
         let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.clone())).await;
@@ -261,7 +268,7 @@ impl ClaudeCodeRunner {
             model: spec.model.as_deref(),
             mcp_config: &mcp_path,
             session: &session,
-            first_turn: prompt,
+            first_turn: launch_prompt(&session, prompt),
         }
         .argv();
         let repo = spec.repo_path.to_string_lossy().into_owned();
@@ -515,10 +522,64 @@ fn launch_path(name: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("{name}.launch.json")))
 }
 
-/// The running cost the pane's first turn is measured from: a new session has spent nothing; a
-/// resumed one's running cost is read from its first status line between turns.
-async fn first_turn_base(session: &SessionStart, _events: &Path, _within: Duration) -> Option<f64> {
-    matches!(session, SessionStart::New(_)).then_some(0.0)
+/// The pane's first turn, handed in: a new session's ran as its launch prompt; a resumed one's is
+/// typed in once its baseline is read. Answers the running cost the turn is measured from. Where
+/// the turn cannot be typed the pane is ended with what was made for it, and the turn runs
+/// headless.
+async fn first_turn(
+    id: &str,
+    pane: &str,
+    (session, prompt): (&SessionStart, &str),
+    events: &Path,
+    (mcp_path, bearer_dir, events_dir): (&Path, Option<&Path>, &Path),
+) -> Result<Option<f64>> {
+    let base = first_turn_base(session, events, BASELINE_WITHIN).await;
+    if launch_prompt(session, prompt).is_some() {
+        return Ok(base);
+    }
+    let Err(why) = terminal::send_line(pane, prompt).await else {
+        return Ok(base);
+    };
+    if let Err(e) = terminal::kill(pane).await {
+        tracing::error!("[chat {id}] {pane}: {e}");
+    }
+    let _ = std::fs::remove_file(mcp_path);
+    if let Some(dir) = bearer_dir {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    let _ = std::fs::remove_dir_all(events_dir);
+    Err(Error::Other(format!("[CHAT_PANE_NOT_TYPED] {why}")))
+}
+
+/// The first turn as the pane's launch prompt: a new session's. A resumed session's is typed in
+/// once its baseline is read, since a launch prompt would run before any status line stood.
+fn launch_prompt<'a>(session: &SessionStart, prompt: &'a str) -> Option<&'a str> {
+    matches!(session, SessionStart::New(_)).then_some(prompt)
+}
+
+/// The running cost the pane's first turn is measured from. A session the box just named has
+/// spent nothing. A resumed one restores its earlier running cost (2.1.319 reads it back from the
+/// transcript's `cost-state`), so it is read from the first status line the launched session
+/// writes to `events`, waited for at most `within`; with none, there is no baseline.
+async fn first_turn_base(session: &SessionStart, events: &Path, within: Duration) -> Option<f64> {
+    if matches!(session, SessionStart::New(_)) {
+        return Some(0.0);
+    }
+    let until = tokio::time::Instant::now() + within;
+    let mut at = 0u64;
+    loop {
+        if let Ok((lines, next)) = chat_pane_events::read_from(events, at) {
+            at = next;
+            let costs = lines.iter().filter(|l| l.event == STATUS_LINE);
+            if let Some(c) = costs.filter_map(|l| status_cost(&l.payload)).next() {
+                return Some(c);
+            }
+        }
+        if tokio::time::Instant::now() >= until {
+            return None;
+        }
+        tokio::time::sleep(READ_EVERY).await;
+    }
 }
 
 /// The task that reads one pane while it lives, and closes each of its turns.
@@ -948,8 +1009,7 @@ mod tests {
         if let Some(payload) = before {
             chat_pane_events::append(&events, STATUS_LINE, payload, launched).unwrap();
         }
-        let base =
-            first_turn_base(&SessionStart::Resume("s1".into()), &events, within).await;
+        let base = first_turn_base(&SessionStart::Resume("s1".into()), &events, within).await;
         let runner = ClaudeCodeRunner::new("http://127.0.0.1:9", "t", 1);
         let (tx, mut rx) = mpsc::channel(64);
         let paths = (events.clone(), transcript.clone());

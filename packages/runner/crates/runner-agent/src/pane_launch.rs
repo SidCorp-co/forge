@@ -90,15 +90,16 @@ pub fn mcp_servers_in(path: &Path) -> Vec<String> {
 }
 
 /// What the pane's Claude Code is started with: interactive, `dontAsk` with `settings`, the
-/// session's MCP config alone, and the first turn as its launch prompt — a turn typed by paste
-/// reaches the model as pasted content, a launch prompt as the session's own first user turn.
+/// session's MCP config alone, and the first turn as its launch prompt where it has one — a turn
+/// typed by paste reaches the model as pasted content, a launch prompt as the session's own first
+/// user turn. A resumed session has none: its first turn is typed once its baseline cost is read.
 pub struct PaneArgs<'a> {
     pub settings: &'a serde_json::Value,
     pub system_prompt: Option<&'a str>,
     pub model: Option<&'a str>,
     pub mcp_config: &'a Path,
     pub session: &'a SessionStart,
-    pub first_turn: &'a str,
+    pub first_turn: Option<&'a str>,
 }
 
 impl PaneArgs<'_> {
@@ -130,8 +131,10 @@ impl PaneArgs<'_> {
                 args.push(id.clone());
             }
         }
-        args.push("--".into());
-        args.push(self.first_turn.into());
+        if let Some(first) = self.first_turn {
+            args.push("--".into());
+            args.push(first.into());
+        }
         args
     }
 }
@@ -168,7 +171,7 @@ mod tests {
             model: Some("sonnet"),
             mcp_config: Path::new("/m/mcp.json"),
             session: &SessionStart::New("abc".into()),
-            first_turn: "hello",
+            first_turn: Some("hello"),
         }
         .argv();
         assert!(
@@ -204,10 +207,11 @@ mod tests {
             model: None,
             mcp_config: Path::new("/m.json"),
             session: &SessionStart::Resume("r1".into()),
-            first_turn: "next",
+            first_turn: None,
         }
         .argv();
         assert!(args.windows(2).any(|w| w == ["--resume", "r1"]), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--"), "{args:?}");
         assert!(!args.iter().any(|a| a == "--session-id"));
     }
 }
