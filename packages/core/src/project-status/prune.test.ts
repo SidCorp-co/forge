@@ -222,7 +222,9 @@ describe('asked what is live, the status the chat reads', () => {
   });
 
   it('sends the chat to the one-release read it holds, by the name it holds it under', () => {
-    const { description } = forgeProjectStatusTool({} as Parameters<typeof forgeProjectStatusTool>[0]);
+    const { description } = forgeProjectStatusTool(
+      {} as Parameters<typeof forgeProjectStatusTool>[0],
+    );
     expect(description).toContain('`live`');
     expect(description).toContain('forge_release');
   });

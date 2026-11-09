@@ -3,7 +3,8 @@
 // zeros as a finding. The web report keeps every section; this is the tool's shape only.
 //
 // It is also compact: a release names its requirements and its issue count but not its issue list
-// (`releases.get` reads that), and a requirement carries its wait and its dates as the Requirements
+// (the one-release read gives that), save the one production serves, `live`, whose issues answer
+// "what is live and what did it ship" (ISS-1189), and a requirement carries its wait and its dates as the Requirements
 // list reads them, not the forecast's working. The full read was ~110 KB on forge, which an MCP
 // client refuses outright (debt 19747987).
 
@@ -24,7 +25,8 @@ type Section = Exclude<
 const EMPTY: { [K in Section]: (s: NonNullable<ProjectStatus[K]>) => boolean } = {
   stuck: (s) => s.count === 0,
   needsYou: (s) => s.total === 0,
-  shipped: (s) => s.releaseCount === 0 && s.issueCount === 0,
+  // what production serves is something to say even in a window that shipped nothing (ISS-1189)
+  shipped: (s) => s.releaseCount === 0 && s.issueCount === 0 && !s.live,
   inFlight: (s) => s.open === 0 && s.runningCount === 0,
   waits: (s) => s.peopleCount === 0,
   requirements: (s) => s.items.length === 0,

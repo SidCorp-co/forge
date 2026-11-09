@@ -1,7 +1,35 @@
 import type { ReleaseCutView, ReleaseDetail } from '@forge/contracts/releases';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { refusalSays } from './release-cuts.js';
+import { forgeReleasesTool } from './tool.js';
 import { releaseToolView } from './tool-view.js';
+
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: async () => ({ role: 'member', grants: [] }),
+}));
+vi.mock('./release-list-read.js', () => ({
+  listReleases: async () => ({
+    counts: {},
+    production: { ok: true, name: 'dev', url: null, serving: '0.4.0-dev.630' },
+    releases: [
+      {
+        version: '0.4.0-dev.630',
+        state: 'shipped',
+        current: true,
+        releasedAt: '2026-11-09T17:53:48.048Z',
+        name: 'Proven criteria hold through deploys',
+        contents: [
+          {
+            requirement: { key: 'REQ-6', title: 'Verdicts' },
+            issues: [{ key: 'ISS-1182', title: 'Held across a deploy' }],
+          },
+          { requirement: null, issues: [{ key: 'ISS-1186', title: 'Names the cut' }] },
+        ],
+      },
+    ],
+  }),
+}));
 
 // "why was 0.4.0 cancelled" on HOP (journey walk F5): the reason lives on the attempt that wore 0.4.0,
 // and the assistant's release read must carry it — the refusal, its meaning, the abort's account, what
@@ -126,6 +154,30 @@ describe('forge_release on a cancelled version', () => {
     expect(refusalSays('RELEASE_SOMETHING_NEW')).toEqual({
       key: 'releases.refused.other',
       vars: { code: 'RELEASE_SOMETHING_NEW' },
+    });
+  });
+});
+
+// ISS-1189: the list names the version production serves; it carries what that version's record shipped
+describe('forge_releases asked what is live', () => {
+  it('carries the served version with the issues its release record shipped', async () => {
+    const tool = forgeReleasesTool({ principal: { userId: 'u', agency: 'human' } } as Parameters<
+      typeof forgeReleasesTool
+    >[0]);
+    const out = (await tool.handler({ projectId: '6f1c2c1e-0b7a-4c55-9a43-0d3b8a1f2e11' })) as {
+      live: unknown;
+    };
+    expect(out.live).toEqual({
+      version: '0.4.0-dev.630',
+      record: {
+        name: 'Proven criteria hold through deploys',
+        state: 'shipped',
+        releasedAt: '2026-11-09T17:53:48.048Z',
+        issues: [
+          { key: 'ISS-1182', title: 'Held across a deploy', requirement: 'REQ-6' },
+          { key: 'ISS-1186', title: 'Names the cut', requirement: null },
+        ],
+      },
     });
   });
 });

@@ -1,4 +1,4 @@
-import { RELEASE_STATES } from '@forge/contracts/releases';
+import { liveReleaseOf, RELEASE_STATES } from '@forge/contracts/releases';
 import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -42,7 +42,7 @@ export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/projects',
   grant: 'projects:read',
   permission: onArg('project.read'),
-  description: `This project's releases, as the Releases screen lists them, newest first (optionally one \`state\`: ${RELEASE_STATES.join(' | ')}), each with version, state, releasedAt, its name and summary (null until the cut or PUT …/releases/:version/naming writes them), issue count, requirements, what was verified (criteria proven of total, and how the deploy was checked) and whom it waits on. forge_release reads one in full.`,
+  description: `This project's releases, as the Releases screen lists them, newest first (optionally one \`state\`: ${RELEASE_STATES.join(' | ')}), with \`live\`: the version production serves and its release record (name, state, the issues it shipped; \`record: null\` where no release wears that version — say so, naming it). Each with version, state, releasedAt, its name and summary (null until the cut or PUT …/releases/:version/naming writes them), issue count, requirements, what was verified (criteria proven of total, and how the deploy was checked) and whom it waits on. forge_release reads one in full.`,
   inputSchema: zodToMcpSchema(listInput),
   handler: async (args) => {
     const parsed = listInput.parse(args);
@@ -54,6 +54,7 @@ export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
       returned: Math.min(rows.length, parsed.limit ?? 20),
       total: rows.length,
       production: list.production,
+      live: liveReleaseOf(list),
       releases: rows.slice(0, parsed.limit ?? 20).map((r) => ({
         version: r.version,
         state: r.state,

@@ -15,6 +15,7 @@ import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
 import type { NeedsYouDecisionGroup } from "./needs-you-decisions.js";
 import type {
+	LiveRelease,
 	ReleaseContentGroup,
 	ReleaseState,
 	ReleaseVerified,
@@ -55,6 +56,11 @@ export interface StatusShipped extends Stamped {
 	since: string;
 	/** The newest shipped release, inside the window or not; null where nothing has ever shipped. */
 	latest: StatusShippedRelease | null;
+	/**
+	 * What production serves and what its release record shipped (ISS-1189); null where it serves no
+	 * version Forge read. Absent on a report stored before it.
+	 */
+	live?: LiveRelease | null;
 	releases: StatusShippedRelease[];
 	/** Every shipped release in the window; `releases` carries at most PROJECT_STATUS_ROWS. */
 	releaseCount: number;

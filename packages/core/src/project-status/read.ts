@@ -37,6 +37,7 @@ import {
   type StatusWaits,
 } from '@forge/contracts/project-status';
 import type { ReleaseListResponse, ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
+import { liveReleaseOf } from '@forge/contracts/releases';
 import { roadmapHorizonOf, type StageInput } from '@forge/contracts/requirement-roadmap';
 import {
   REQUIREMENT_STATES,
@@ -163,6 +164,7 @@ export function shippedOf(
     requirementsShipped,
     requirementsAwaitingProof,
     latest: shipped[0] ? view(shipped[0]) : null,
+    live: liveReleaseOf(releases),
     releases: inWindow.slice(0, PROJECT_STATUS_ROWS).map(view),
   };
 }

@@ -543,6 +543,46 @@ export interface ReleaseListResponse {
 	endedRunHolds: ReleaseEndedRunHold[];
 }
 
+/**
+ * The version production serves and the release record wearing it, with the issues it shipped
+ * (ISS-1189): what "which release is live, and what did it ship" is answered from. `record` is null
+ * only where the list holds no release of that version.
+ */
+export interface LiveRelease {
+	version: string;
+	record: {
+		name: string | null;
+		state: ReleaseState;
+		releasedAt: string | null;
+		issues: { key: string; title: string; requirement: string | null }[];
+	} | null;
+}
+
+/** What production serves, read off a release list; null where it serves no version Forge read. */
+export function liveReleaseOf(
+	list: Pick<ReleaseListResponse, "production" | "releases">,
+): LiveRelease | null {
+	if (!list.production.ok || list.production.serving === null) return null;
+	const version = list.production.serving;
+	const r = list.releases.find((x) => x.version === version);
+	if (!r) return { version, record: null };
+	return {
+		version,
+		record: {
+			name: r.name,
+			state: r.state,
+			releasedAt: r.releasedAt,
+			issues: r.contents.flatMap((g) =>
+				g.issues.map((i) => ({
+					key: i.key,
+					title: i.title,
+					requirement: g.requirement?.key ?? null,
+				})),
+			),
+		},
+	};
+}
+
 /** How many releases one shipped read may ask for: a page's few newest, never the list (ISS-1070). */
 export const RELEASES_SHIPPED_MAX = 20;
 
@@ -972,7 +1012,10 @@ export const RELEASE_SITE_STATES = [
 ] as const;
 export type ReleaseSiteState = (typeof RELEASE_SITE_STATES)[number];
 
-export const RELEASE_SITE_STATE_TONES: Record<ReleaseSiteState, IssueStatusTone> = {
+export const RELEASE_SITE_STATE_TONES: Record<
+	ReleaseSiteState,
+	IssueStatusTone
+> = {
 	shipped: "ready",
 	deploying: "run",
 	deployed: "run",
