@@ -48,10 +48,14 @@ function deps(
           return [
             c,
             {
-              previous: PREVIOUS,
               liveSince,
-              descends: bridge ? bridge.kind === 'descends' : null,
-              heldByPrevious: kept[carriageKey(c, PREVIOUS)]?.kind === 'descends',
+              before: [
+                {
+                  commit: PREVIOUS,
+                  descends: bridge ? bridge.kind === 'descends' : null,
+                  holds: kept[carriageKey(c, PREVIOUS)]?.kind === 'descends',
+                },
+              ],
             },
           ];
         }),

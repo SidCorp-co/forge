@@ -39,7 +39,7 @@ import { carriageOf } from './carriage.js';
 import { holdingPair, landedBuildsOf } from './landed-build.js';
 import { recordedCarriage } from './recorded-carriage.js';
 import { recordedHolding } from './recorded-holding.js';
-import { bridgesOwed, heldBefore, keepServedBuilds } from './served-builds.js';
+import { bridgesOwed, heldBefore, keepDerived, keepServedBuilds } from './served-builds.js';
 import { readJudgedOnNow, readServingNow } from './serving-reading.js';
 import { type ShippedAsk, shippedAskKey, shippedCommitHolding } from './shipped-holding.js';
 
@@ -57,6 +57,8 @@ export interface ServedAncestryPassResult {
   written: number;
   /** Pairs the host did not answer this pass, each left unread for the next. */
   unread: number;
+  /** Pairs kept as held because a build served before held them and the live one descends from it. */
+  derived: number;
 }
 
 /** The projects holding a live criterion whose newest verdict names a whole commit or runtime. */
@@ -183,32 +185,32 @@ function uniquePairs<P extends { judged: string; served: string }>(pairs: readon
 
 /**
  * The pairs of one project no row and no release record answers, newest verdict first. A pair at a
- * `production` commit is not owed where the build served before it held the judged commit and the
- * host answered the live build descends from that one (`served-builds.ts:heldBefore`, ISS-1182).
+ * `production` commit is not owed where a build served before it held the judged commit and the host
+ * answered the live build descends from that one (`served-builds.ts:heldBefore`, ISS-1182); such a
+ * pair is `derived`, for the pass to keep, so the next deploy reads it from its row.
  */
 async function owedPairs(
   projectId: string,
   served: readonly string[],
   production: readonly string[] = [],
-) {
+): Promise<{ owed: Owed[]; derived: Owed[] }> {
   const judged = await judgedCommitsOf(projectId);
-  const [held, recorded, ...derived] = await Promise.all([
+  const [held, recorded, ...derivedOf] = await Promise.all([
     persistedCarriage(projectId, judged, served),
     recordedCarriage(projectId, judged, served),
     ...production.map((live) => heldBefore(projectId, live, judged, [])),
   ]);
-  const derivedOf = new Map(production.map((live, i) => [live, derived[i]] as const));
-  return judged.flatMap((j) =>
-    served
-      .filter(
-        (s) =>
-          s !== j &&
-          !held.has(carriageKey(j, s)) &&
-          !recorded.has(carriageKey(j, s)) &&
-          derivedOf.get(s)?.get(j) !== true,
-      )
-      .map((s) => ({ judged: j, served: s })),
-  );
+  const heldAt = new Map(production.map((live, i) => [live, derivedOf[i]] as const));
+  const owed: Owed[] = [];
+  const derived: Owed[] = [];
+  for (const j of judged) {
+    for (const s of served) {
+      if (s === j || held.has(carriageKey(j, s)) || recorded.has(carriageKey(j, s))) continue;
+      if (heldAt.get(s)?.get(j) === true) derived.push({ judged: j, served: s });
+      else owed.push({ judged: j, served: s });
+    }
+  }
+  return { owed, derived };
 }
 
 /** A pair the pass asks; `back` asks the other way too where the first answer does not hold. */
@@ -316,7 +318,13 @@ let passes = 0;
 
 /** One pass: read what each project serves, ask for the pairs nothing holds, keep each answer. */
 export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
-  const result: ServedAncestryPassResult = { projects: 0, asked: 0, written: 0, unread: 0 };
+  const result: ServedAncestryPassResult = {
+    projects: 0,
+    asked: 0,
+    written: 0,
+    unread: 0,
+    derived: 0,
+  };
   const projects = rotated(await judgedProjects(), passes).slice(0, ANCESTRY_PROJECTS_PER_PASS);
   passes += 1;
   let spent = 0;
@@ -337,14 +345,14 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
     // whether each live build descends from the one served before is asked first: once it does, what
     // that build held is derived (`served-builds.ts:heldBefore`), one pair a deploy (ISS-1182)
     const bridges = await bridgesOwed(projectId, production);
-    // each landing against the commits its verdicts name, in turn with each served commit against them
-    const owed = async () =>
-      uniquePairs(
-        interleaved(
-          await owedLandingPairs(projectId),
-          served.length > 0 ? await owedPairs(projectId, served, production) : [],
-        ),
-      );
+    // each landing against the commits its verdicts name, in turn with each served commit against
+    // them; what a build served before held, once the host answered the live one descends from it, is
+    // kept as the live build's own (ISS-1182 round 2)
+    const owed = async () => {
+      const pairs = served.length > 0 ? await owedPairs(projectId, served, production) : null;
+      if (pairs) result.derived += await keepDerived(projectId, pairs.derived);
+      return uniquePairs(interleaved(await owedLandingPairs(projectId), pairs?.owed ?? []));
+    };
     const first = bridges.length > 0 ? [] : await owed();
     if (bridges.length === 0 && first.length === 0) continue;
     const host = await hostOf(projectId);
@@ -355,7 +363,7 @@ export async function readServedAncestry(): Promise<ServedAncestryPassResult> {
     await askAndKeep(projectId, host, bridges, result, budget);
     await askAndKeep(projectId, host, bridges.length > 0 ? await owed() : first, result, budget);
   }
-  if (result.asked > 0 || result.unread > 0) {
+  if (result.asked > 0 || result.unread > 0 || result.derived > 0) {
     logger.info({ ...result }, 'served-ancestry: what served commits carry, read and kept');
   }
   return result;

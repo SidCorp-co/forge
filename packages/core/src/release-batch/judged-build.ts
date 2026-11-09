@@ -25,7 +25,7 @@ import { resolveReleaseDeclaration } from './gate.js';
 import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import { persistedCarriage } from './served-ancestry.js';
-import { heldBefore, type KeptBefore, servedBefore } from './served-builds.js';
+import { heldBefore, type KeptBefore, keepLiveBuild, servedBefore } from './served-builds.js';
 import { servedOnJudgedOn } from './serving-reading.js';
 import { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-releases.js';
 import { deploymentConfirms } from './verify.js';
@@ -58,6 +58,9 @@ export interface JudgedBuildDeps {
   /** What production was read serving before the live build, per commit asked (`served-builds.ts`);
    *  absent, nothing was kept. */
   servedBefore?: typeof servedBefore;
+  /** Keep that production was read serving a commit, where a read first reads it (`served-builds.ts:
+   *  keepLiveBuild`); absent, a read keeps nothing. */
+  keepServed?: typeof keepLiveBuild;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -69,6 +72,7 @@ const LIVE_DEPS: JudgedBuildDeps = {
   testing: servedOnJudgedOn,
   heldAncestry: persistedCarriage,
   servedBefore,
+  keepServed: keepLiveBuild,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -306,6 +310,9 @@ export async function liveBuildHolds(
     for (const commit of commits) unanswered.set(commit, live.unread);
     return { sha: null, holds, runtimes, unanswered };
   }
+  // the build is kept where it is first read, not only by the pass, so one served between two passes
+  // is still the build before the next (ISS-1182 round 2); a statement a new build, never a read
+  deps.keepServed?.(projectId, live.sha);
   const releases = await deps.releases(projectId);
   const liveRun = releases.find((r) => r.commit === live.sha) ?? null;
   const unplaced: string[] = [];
