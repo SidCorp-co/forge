@@ -1,6 +1,7 @@
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { reloadOnStaleBuild } from "./lib/stale-build";
 import { routeTree } from "./routeTree.gen";
 import "./styles/globals.css";
 
@@ -22,6 +23,8 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
+
+reloadOnStaleBuild(window);
 
 const root = document.getElementById("app");
 if (!root) throw new Error("index.html carries no #app element to render the web into");
