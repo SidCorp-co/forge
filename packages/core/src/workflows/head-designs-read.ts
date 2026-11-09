@@ -13,7 +13,9 @@ import { designColumns, isHeadDesign, type StoredDesign } from './store.js';
  * point, and every project a read across declared, read in one statement, each project's rows in
  * the order its own read sends them.
  */
-export function headDesignsRead(projectId: string): Promise<StoredDesign[]> {
+export function headDesignsRead(
+  projectId: string,
+): Promise<(StoredDesign & { projectId: string })[]> {
   return rowsPerProject(
     'headDesigns',
     projectId,
