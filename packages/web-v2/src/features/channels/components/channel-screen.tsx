@@ -1,5 +1,6 @@
 // One bound channel's page (REQ-75 r6 BC-30): who answers the room first (ISS-1180), then its record —
-// Members, Rules, Common issues and Routes, each a flat table with hairline dividers. A member's roles
+// Members, Rules, Common issues and Routes, each a flat table with hairline dividers, each with the
+// act that adds to it (a common issue by hand since ISS-1184). A member's roles
 // read inferred or confirmed (BC-31..BC-33), and a person corrects them in place, which confirms them.
 // An empty table reads "Not recorded yet", never "None": the record holds only what was confirmed, so
 // a room with people in it reads empty until someone records them, and the act that fills it stands
@@ -16,7 +17,7 @@ import { useState, type ReactNode } from "react";
 import { Button, Checkbox, DetailHeader, DetailMobileTitle, IconButton, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useAddRule, useChannel, useConfirmMember } from "../hooks";
+import { useAddCommonIssue, useAddRule, useChannel, useConfirmMember } from "../hooks";
 import { ChannelAgent } from "./channel-agent";
 import { channelsListHref } from "./channels-screen";
 
@@ -150,6 +151,35 @@ function AddRule({ projectId, rid }: { projectId: string; rid: string }) {
   );
 }
 
+/** A question asked again and its one answer, added by a person (ISS-1184): the act an empty Common issues offers. */
+function AddCommonIssue({ projectId, rid }: { projectId: string; rid: string }) {
+  const t = useCopy();
+  const [draft, setDraft] = useState<{ question: string; answer: string } | null>(null);
+  const add = useAddCommonIssue(projectId, rid);
+  if (draft === null) {
+    return (
+      <IconButton icon="plus" size="sm" aria-label={t("channels.addCommonIssue")} title={t("channels.addCommonIssue")} onClick={() => setDraft({ question: "", answer: "" })} />
+    );
+  }
+  const question = draft.question.trim();
+  const answer = draft.answer.trim();
+  return (
+    <div className="grid basis-full gap-2">
+      <Input aria-label={t("channels.col.question")} placeholder={t("channels.col.question")} value={draft.question} onChange={(e) => setDraft({ ...draft, question: e.target.value })} />
+      <Input aria-label={t("channels.col.answer")} placeholder={t("channels.col.answer")} value={draft.answer} onChange={(e) => setDraft({ ...draft, answer: e.target.value })} />
+      <div className="flex gap-2">
+        <Button size="sm" disabled={question === "" || answer === "" || add.isPending} onClick={() => add.mutate({ question, answer }, { onSuccess: () => setDraft(null) })}>
+          {t("channels.add")}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+          {t("channels.cancel")}
+        </Button>
+      </div>
+      {add.isError && <p className="fg-body-sm text-danger">{t("channels.saveFailed", { reason: add.error.message })}</p>}
+    </div>
+  );
+}
+
 export function ChannelRecord({ channel, projectId, t }: { channel: ChannelView; projectId: string; t: T }) {
   return (
     <div className="grid gap-6">
@@ -194,6 +224,7 @@ export function ChannelRecord({ channel, projectId, t }: { channel: ChannelView;
       <RecordTable
         title={t("channels.commonIssues")}
         empty={t("channels.notRecorded")}
+        act={<AddCommonIssue projectId={projectId} rid={channel.rid} />}
         rows={channel.commonIssueRows.length}
         head={
           <TR>
@@ -208,7 +239,7 @@ export function ChannelRecord({ channel, projectId, t }: { channel: ChannelView;
           <TR key={i.id}>
             <TD className="fg-body-sm text-fg">{i.question}</TD>
             <TD className="fg-body-sm">{i.answer}</TD>
-            <TD className="fg-body-sm">{i.threads}</TD>
+            <TD className="fg-body-sm">{i.threads || "—"}</TD>
             <TD className="fg-body-sm">{i.feedbackKey ?? "—"}</TD>
           </TR>
         ))}

@@ -1,4 +1,4 @@
-import type { ChannelMemberWrite } from "@forge/contracts/support-channel";
+import type { ChannelCommonIssueWrite, ChannelMemberWrite } from "@forge/contracts/support-channel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { channelsApi } from "./api";
 
@@ -27,6 +27,15 @@ export function useAddRule(projectId: string, rid: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (text: string) => channelsApi.addRule(projectId, rid, text),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, projectId] }),
+  });
+}
+
+/** A common issue a person adds to the channel's record (ISS-1184). */
+export function useAddCommonIssue(projectId: string, rid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (write: ChannelCommonIssueWrite) => channelsApi.addCommonIssue(projectId, rid, write),
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, projectId] }),
   });
 }

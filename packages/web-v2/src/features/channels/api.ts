@@ -1,4 +1,4 @@
-import type { ChannelMemberView, ChannelMemberWrite, ChannelSummaryView, ChannelView } from "@forge/contracts/support-channel";
+import type { ChannelCommonIssueWrite, ChannelMemberView, ChannelMemberWrite, ChannelSummaryView, ChannelView } from "@forge/contracts/support-channel";
 import { apiClient } from "@/lib/api/client";
 
 /** A project's bound channels and one channel's record (REQ-75 r6 BC-30). */
@@ -18,4 +18,10 @@ export const channelsApi = {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
+  /** A common issue a person adds on the channel's page (ISS-1184): a question and its one answer. */
+  addCommonIssue: (projectId: string, rid: string, write: ChannelCommonIssueWrite) =>
+    apiClient<{ commonIssue: { id: string; question: string; answer: string } }>(
+      `/projects/${projectId}/support/channels/${encodeURIComponent(rid)}/common-issues`,
+      { method: "POST", body: JSON.stringify(write) },
+    ),
 };
