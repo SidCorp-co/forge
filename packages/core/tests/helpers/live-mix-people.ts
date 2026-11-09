@@ -42,4 +42,15 @@ export async function peopleAsLive(projectIds: readonly string[]): Promise<void>
     UPDATE feedback f
        SET reported_by = (${uuidArray(reporters)})[1 + (f.fb_seq % ${reporters.length})]
      WHERE f.project_id = ANY(${uuidArray(projectIds)}) AND f.fb_seq % 5 <> 0`);
+  // forge's items came through the Forge door: each holds its filing as its first report, by the
+  // agent that filed it, from that agent's project (`feedback/forge-reads.ts:forgeOriginsOf`)
+  const forge = projectIds[0];
+  if (!forge) return;
+  await db.execute(sql`
+    INSERT INTO feedback_occurrences (feedback_id, reported_by, reporter_agency, source_project_id, created_at)
+    SELECT f.id, f.reported_by, 'agent', m.project_id, f.created_at
+      FROM feedback f
+      LEFT JOIN project_members m ON m.user_id = f.reported_by AND m.role = 'admin'
+     WHERE f.project_id = ${forge} AND f.fb_seq % 5 <> 0
+       AND NOT EXISTS (SELECT 1 FROM feedback_occurrences o WHERE o.feedback_id = f.id)`);
 }
