@@ -1,1 +1,0 @@
-**A master or a declared run reads a secret declared for acting.** The project document's `actingSecrets` names each secret and its readers; `GET /api/projects/:id/acting-secrets/:scope/:name` hands it out, refusing other readers by name, and records every read.

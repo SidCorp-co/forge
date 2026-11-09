@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.618] - 2026-11-09
+
+Masters and declared runs can read a project's acting secrets through Forge
+
+### Added
+
+- **A master or a declared run reads a secret declared for acting.** The project document's `actingSecrets` names each secret and its readers; `GET /api/projects/:id/acting-secrets/:scope/:name` hands it out, refusing other readers by name, and records every read.
+
 ## [0.4.0-dev.617] - 2026-11-09
 
 Older feedback items show their progress; verified items offer only Reopen
