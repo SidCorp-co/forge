@@ -257,10 +257,7 @@ export async function listPendingInvitationsFor(email: string) {
     .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
     .innerJoin(users, eq(users.id, projectInvitations.inviterId))
     .where(
-      and(
-        sql`lower(${projectInvitations.email}) = lower(${email})`,
-        projectInvitationPending,
-      ),
+      and(sql`lower(${projectInvitations.email}) = lower(${email})`, projectInvitationPending),
     );
 
   const orgRows = await db

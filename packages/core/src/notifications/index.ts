@@ -13,8 +13,8 @@ export {
   unreadAlertDeliveries,
 } from './ops-alerts.js';
 export { platformAdminUserIds } from './platform-admins.js';
-export { invitationNoticeKey } from './read.js';
 export { projectAdminUserIds, projectAdminUserIdsFor } from './project-admins.js';
+export { invitationNoticeKey } from './read.js';
 export { type ReevaluateResult, reevaluateConditions } from './reevaluate-conditions.js';
 export { markStatusReportRead } from './service.js';
 export { notificationVolumeRoutes } from './volume-routes.js';
