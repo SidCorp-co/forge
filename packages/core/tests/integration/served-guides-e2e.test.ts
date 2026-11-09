@@ -62,14 +62,15 @@ describe('a design created with the body the guide gives', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(201);
   });
 
-  it('is refused at /writtenBy without it, at /baseRevision with a base, and with another key', async () => {
+  // ISS-1185: writtenBy is the server's to fill where the create leaves it out
+  it('is taken without writtenBy, the server filling it, and refused at /baseRevision with a base and with another key', async () => {
     const { writtenBy: _dropped, ...bare } = document('no-writer');
     const missing = await api(token, 'POST', at('/workflows'), {
       baseRevision: null,
       document: bare,
     });
-    expect(missing.status).toBe(422);
-    expect(refusals(missing.body)).toContain('SCHEMA_VIOLATION /writtenBy');
+    expect(missing.status, JSON.stringify(missing.body)).toBe(201);
+    expect((missing.body.document as Body).writtenBy).toEqual({});
 
     const based = await api(token, 'POST', at('/workflows'), {
       baseRevision: 1,
