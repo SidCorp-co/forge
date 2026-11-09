@@ -11,7 +11,10 @@
 // project (ISS-1070 r20, `tests/helpers/live-mix-waits.ts`): every attention area but releases' and
 // requirements' now sends each shape once. Each project holds its own agent as an admin and feedback
 // filed by agents outside the person's projects (ISS-1070 r21, `tests/helpers/live-mix-people.ts`):
-// home and releases' areas send each shape once.
+// home and releases' areas send each shape once. Which change requests deliver an issue, and its
+// merge, are read once a request, and a contracts read and a run's terminal moves send each shape
+// once over a project outside the person's set and ended run sessions (ISS-1070 r22): every
+// attention area sends each shape once.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/db/read-order.ts
 // @direct-test-of packages/core/src/feedback/list-read.ts
@@ -32,6 +35,11 @@
 // @direct-test-of packages/core/src/permissions/holders-named.ts
 // @direct-test-of packages/core/src/release-batch/release-owes.ts
 // @direct-test-of packages/core/src/issues/release-record-required.ts
+// @direct-test-of packages/core/src/release-batch/change-request-build.ts
+// @direct-test-of packages/core/src/release-batch/change-request-roster.ts
+// @direct-test-of packages/core/src/ecosystem/standing/read.ts
+// @direct-test-of packages/core/src/runs/facts-read.ts
+// @direct-test-of packages/core/src/release-batch/served-builds.ts
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -66,7 +74,6 @@ const NAMED: Record<string, string> = {
   fef8b6eb: 'feedback/list-read.ts:linkedOf (workflows)',
   '2f55baf0': 'feedback/list-read.ts:linkedOf (releases)',
   cb834152: 'lib/people.ts:peopleOf',
-  '682bd544': 'runs/run-tables (design health)',
   a8b54f77: 'forecast/release.ts:readReleaseLags',
   '045861be': 'issues/standing-facts-read.ts:feedbackOf',
   '1fce89cc': 'issues/standing-facts-read.ts (blocking edges)',
@@ -84,6 +91,12 @@ const NAMED: Record<string, string> = {
   '5c493ced': 'suggestions/waiting-read.ts:targetsOf (workflows)',
   // the live mix's base (ISS-1070 r21)
   a271f69a: 'issues/release-record-required.ts:releaseNotesOf',
+  // the live mix's base (ISS-1070 r22)
+  ff6cdec7: 'release-batch/change-request-build.ts:claimedRead',
+  '553f386d': 'release-batch/change-request-roster.ts:openRequestsRead',
+  fae6e9e5: 'ecosystem/store.ts:projectsWhere (the contracts read’s edges)',
+  '682bd544': 'runs/facts-read.ts:latestFlips (a run’s and its session’s, one read since r22)',
+  '2e7f692d': 'release-batch/served-builds.ts:beforeOf',
 };
 
 /**
@@ -97,10 +110,14 @@ const HOME_MOST = 1;
 /**
  * The attention areas that still send a shape twice: a batch two projects' reads reach a step apart
  * (ISS-1070 r11's split batches). Every other area sends each shape once since what waits on a
- * person in some projects alone is read with every project's (r20), and releases' since a release's
- * notes are one read and its facts read a close of the reopened issues alone (r21).
+ * person in some projects alone is read with every project's (r20), releases' since a release's
+ * notes are one read and its facts read a close of the reopened issues alone (r21), and
+ * requirements' since which change requests deliver an issue, and its merge, are read once a request
+ * (r22). The seed holds a project outside the person's set on contract edges and forge's ended run
+ * sessions (`tests/helpers/live-mix-people.ts:consumedFromOutside`, `live-mix-waits.ts:sessionsEnded`),
+ * as forge-dev does: contracts and design health send each shape once too.
  */
-const ATTENTION_TWICE = new Set(['ny-requirements']);
+const ATTENTION_TWICE = new Set<string>([]);
 const attentionMost = (area: string) => (ATTENTION_TWICE.has(area) ? MOST : 1);
 
 const coolify = liveCoolify();
@@ -163,13 +180,15 @@ async function sentBy(path: string): Promise<{
  * to 12, ny-issues 9 to 6; r18: home-forecasts 15 to 11, home-feedback 10 to 8, home-runs 5 to 4,
  * once home's parts start beside its feedback list; r20: ny-releases 10 to 9, as the base sends it,
  * and ny-decisions 3 to 1 at the seed, once a question's requirement is read with every project's; r21:
- * home-forecasts 11 to 10, as the seed holding each project's own people sends it).
+ * home-forecasts 11 to 10, as the seed holding each project's own people sends it; r22:
+ * ny-requirements 12 to 11 and ny-issues 6 to 5, once which change requests deliver an issue, and its
+ * merge, are read once a request).
  */
 const WAVES: Record<string, Record<string, number>> = {
   '/api/me/attention': {
     'ny-releases': 9,
-    'ny-requirements': 12,
-    'ny-issues': 6,
+    'ny-requirements': 11,
+    'ny-issues': 5,
     'ny-design-health': 8,
     'ny-feedback': 7,
     'ny-folded': 4,
@@ -260,7 +279,7 @@ beforeAll(async () => {
 afterAll(closeWorld);
 
 describe("a person's reads of fourteen projects of forge-dev's kinds", () => {
-  it('sends each shape of attention once an area, and at most twice in requirements, on a warm read', async () => {
+  it('sends each shape of attention once an area on a warm read', async () => {
     expect(await overMost('/api/me/attention', attentionMost)).toEqual([]);
   });
 
