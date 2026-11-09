@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.632] - 2026-11-09
+
+The bot names the live release and what its record shipped
+
+### Fixed
+
+- **Asked what is live, the bot names what it shipped.** The project status and release list carry the version production serves with its release record's issues, or say no record wears that version, naming it.
+
 ## [0.4.0-dev.631] - 2026-11-09
 
 The notification bell counts only invitations still pending

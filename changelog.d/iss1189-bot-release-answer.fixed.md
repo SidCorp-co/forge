@@ -1,1 +1,0 @@
-**Asked what is live, the bot names what it shipped.** The project status and release list carry the version production serves with its release record's issues, or say no record wears that version, naming it.
