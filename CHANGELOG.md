@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.613] - 2026-11-09
+
+Verdicts judged at a merged change request's head count for its landing
+
+### Fixed
+
+- **A merge mark on a change-request project records the request's head.** A verdict judged at a merged request's tree-identical head now counts for its landing, and marks already standing are given their head once.
+
 ## [0.4.0-dev.612] - 2026-11-09
 
 Watch a channel agent's session live in a terminal pane the owner can attach to
