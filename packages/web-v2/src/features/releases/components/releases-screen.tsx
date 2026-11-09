@@ -1,8 +1,10 @@
 // The Releases list in the shape the owner approved (ISS-1001, `approval-report-template`): three
 // groups (waiting on you, going to production, in production with the last few shown), one row per
 // release with its one proof bar, the short tags of what needs attention, and its one act; a release
-// a later one carries folds into one line under it (`release-list.ts`). The chat's narrowing still
-// applies (REQ-41 BC-5): whom a release waits on and its state.
+// a later one carries folds into one line under it (`release-list.ts`). The going and shipped groups
+// are named for the environment the project releases to, so a project releasing to dev never reads
+// "In production" (ISS-1179). The chat's narrowing still applies (REQ-41 BC-5): whom a release waits
+// on and its state.
 
 import type { ReleaseLanding } from "@forge/contracts/releases";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
@@ -47,14 +49,11 @@ function Carried({ carries, slug }: { carries: readonly ReleaseSummary[]; slug: 
   if (carries.length === 0) return null;
   const newest = carries[0];
   const oldest = carries[carries.length - 1];
-  // inside the sentence a version keeps its hyphens unbroken, as `ReleaseVersion` keeps it whole
-  const said =
-    carries.length === 1
-      ? t("releases.carries.one", { v: unbroken(newest.version) })
-      : t("releases.carries.many", { n: carries.length, from: unbroken(oldest.version), to: unbroken(newest.version) });
+  // the versions it carries are the line's tooltip and its opened list, never inline (ISS-1179)
+  const range = carries.length === 1 ? unbroken(newest.version) : `${unbroken(oldest.version)} → ${unbroken(newest.version)}`;
   return (
     <div className={cn("border-b border-line-divider py-2.5 pr-5 text-13 text-muted", GROUP_ROW_INDENT)} data-testid="release-carries" data-n={carries.length}>
-      <span>{said}</span>
+      <span title={range}>{t("releases.carries.many", { n: carries.length })}</span>
       <button type="button" className="ml-2 font-medium text-link hover:underline" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="release-carries-toggle">
         {t(open ? "releases.hide" : "releases.show")}
       </button>
@@ -141,13 +140,20 @@ type GroupId = "you" | "going" | "production";
 
 const GROUP_TONE = { you: "you", going: "run", production: "done" } as const;
 
-function Group({ id, count, children, empty }: { id: GroupId; count: number; children: React.ReactNode; empty?: string }) {
+/** A group's name: going and shipped say the environment the project releases to, where core names one. */
+function groupLabel(t: Copy, id: GroupId, env: string | null): string {
+  if (env && id === "going") return t("releases.group.goingTo", { env });
+  if (env && id === "production") return t("releases.group.on", { env });
+  return t(`releases.group.${id}`);
+}
+
+function Group({ id, count, env, children, empty }: { id: GroupId; count: number; env: string | null; children: React.ReactNode; empty?: string }) {
   const t = useCopy();
   const fold = useGroupFold("web-v2:releases-groups");
   const open = fold.isOpen(id);
   return (
     <div data-testid="release-group" data-group={id}>
-      <GroupHeader id={id} label={t(`releases.group.${id}`)} count={count} tone={GROUP_TONE[id]} open={open} onToggle={() => fold.toggle(id)} />
+      <GroupHeader id={id} label={groupLabel(t, id, env)} count={count} tone={GROUP_TONE[id]} open={open} onToggle={() => fold.toggle(id)} />
       {open ? (count === 0 && empty ? <p className={cn("border-b border-line-divider py-2.5 text-13 text-muted", GROUP_ROW_INDENT)}>{empty}</p> : children) : null}
     </div>
   );
@@ -190,17 +196,17 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
             </div>
           ) : (
             <section aria-label={t("releases.title")} data-testid="release-list">
-              <Group id="you" count={you.length}>
+              <Group id="you" count={you.length} env={null}>
                 {you.map((l) => (
                   <ReleaseLineView key={l.release.version} line={l} slug={slug} acts />
                 ))}
               </Group>
-              <Group id="going" count={going.length} empty={t("releases.group.goingEmpty")}>
+              <Group id="going" count={going.length} env={path.ok ? path.name : null} empty={t("releases.group.goingEmpty")}>
                 {going.map((l) => (
                   <ReleaseLineView key={l.release.version} line={l} slug={slug} acts={false} />
                 ))}
               </Group>
-              <Group id="production" count={production.length + older.length}>
+              <Group id="production" count={production.length + older.length} env={path.ok ? path.name : null}>
                 {production.map((l) => (
                   <ReleaseLineView key={l.release.version} line={l} slug={slug} acts={false} />
                 ))}
