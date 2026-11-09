@@ -1,9 +1,9 @@
 // How a requirement's wait names a criterion (REQ-12 BC-6, ISS-1184): by its short title, never its
-// code, which core still says beside it (`codes`).
+// code, which the wait's rule still says (`codes`).
 
 import { criterionShortTitle } from '@forge/contracts/criterion-title';
 
-export { joinNames, namesOf } from '../lib/named-items.js';
+export { issueName, issuesNamed, joinNames, namesOf } from '../lib/named-items.js';
 
 const firstLine = (body: string) =>
   body

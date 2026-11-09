@@ -5,7 +5,7 @@ import { verdictExercised } from '@forge/contracts/verdict-identity';
 import type { VerifiedJudge } from '@forge/contracts/verified-rule';
 import type { TurnGroup } from '../lib/attention-group.js';
 import { askedOnRelease, holdsFor, type LiveBuildHolds } from './standing-identity.js';
-import { criterionName, joinNames, namesOf } from './standing-names.js';
+import { criterionName, issueName, issuesNamed, joinNames, namesOf } from './standing-names.js';
 
 export interface Turn {
   group: TurnGroup;
@@ -44,7 +44,7 @@ const failingNames = (rows: readonly RequirementCoverage[]) => {
     if (!counts) return [];
     if (counts.source !== 'issue') return ['the requirement'];
     return [
-      `“${c.issues.find((l) => l.displayId === counts.displayId)?.title ?? counts.displayId}”`,
+      `“${issueName(c.issues.find((l) => l.displayId === counts.displayId)?.title ?? counts.displayId)}”`,
     ];
   });
   return joinNames([...new Set(named)]);
@@ -57,8 +57,8 @@ const criteriaOf = (rows: readonly RequirementCoverage[]) => namesOf(rows.map(cr
 export const criteriaNamed = (rows: readonly RequirementCoverage[]) => ({
   criteria: criteriaOf(rows),
 });
-/** Links' issues by title. */
-const issuesOf = (links: readonly { title: string }[]) => namesOf(links.map((l) => l.title));
+/** Links' issues by the lead of their titles. */
+const issuesOf = (links: readonly { title: string }[]) => issuesNamed(links.map((l) => l.title));
 
 /** The acts of a requirement's turn that name the criteria they are about. */
 type CodesAct =

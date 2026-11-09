@@ -55,7 +55,7 @@ import {
 } from './standing-gates.js';
 import { type DeliveryHold, heldByDecision, heldRule } from './standing-held.js';
 import { moveTurn, ruleTurn } from './standing-moves.js';
-import { namesOf } from './standing-names.js';
+import { issuesNamed } from './standing-names.js';
 import { criteriaNamed, proofTurn, releaseAsksOf } from './standing-proof.js';
 import { restsOnShipped, shippedTurn } from './standing-shipped.js';
 import { breakdownTaskOf, byRule, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
@@ -381,7 +381,7 @@ function turnOf(
         'agent',
         MASTER,
         say('standing.act.replan', {
-          issues: namesOf(
+          issues: issuesNamed(
             replan.map((t) => live.find((i) => i.id === t.issueId)?.title ?? t.displayId),
           ),
         }),

@@ -27,7 +27,7 @@ import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { StuckReading } from '@forge/contracts/steward';
 import type { TurnGroup } from '../lib/attention-group.js';
 import type { Carried } from '../lib/standing-times.js';
-import { namesOf } from './standing-names.js';
+import { issuesNamed } from './standing-names.js';
 
 /** What a parked issue waits on, as its own standing says it. */
 export type ParkedWait = WaitingOn<IssueWaitingKind>;
@@ -89,7 +89,7 @@ const groupOf = (kind: RequirementWaitingKind): TurnGroup =>
 
 /** The issue's act said on the requirement, naming the issue by its title (ISS-1184); an answer it waits on names no act, only the issue it is for. */
 const onIssueAct = (w: Pick<ParkedWait, 'kind' | 'says'>, issue: WorkIssue): Said => {
-  const named = { issue: namesOf([issue.title]) };
+  const named = { issue: issuesNamed([issue.title]) };
   return w.kind === 'answer'
     ? say('standing.act.forIssue', named)
     : say('standing.act.onIssue', { act: w.says.act, ...named });
@@ -235,7 +235,7 @@ export function workTurn(live: readonly WorkIssue[], release: ReleaseLeg | null)
       group: 'moving',
       waitingOn: wait('agent', {
         who: say('standing.who.master'),
-        act: say('standing.act.takeNext', { issues: namesOf(queued.map((i) => i.title)) }),
+        act: say('standing.act.takeNext', { issues: issuesNamed(queued.map((i) => i.title)) }),
         rule: say('requirements.rule.queued', { keys }),
       }),
       since: oldestSince(queued),

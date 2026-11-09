@@ -10,7 +10,7 @@ import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import { type Said, say } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { StuckReading } from '@forge/contracts/steward';
-import { namesOf } from '../lib/named-items.js';
+import { issuesNamed } from '../lib/named-items.js';
 import type { Owed, PhaseFacts, StandingFacts, StandingViewer } from './standing.js';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
@@ -118,7 +118,7 @@ export function carrierWait(
     wait: wait(
       KIND_OF[w.kind],
       w.says.who,
-      say('standing.act.onIssue', { act: w.says.act, issue: namesOf([c.title]) }),
+      say('standing.act.onIssue', { act: w.says.act, issue: issuesNamed([c.title]) }),
       say('feedback.rule.carrierWaits', { key: c.key, rule: w.says.rule }),
       { ref: c.key, dueAt: w.dueAt },
     ),

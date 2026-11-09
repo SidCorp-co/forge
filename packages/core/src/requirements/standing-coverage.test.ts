@@ -246,6 +246,30 @@ describe('the verdict a business criterion counts', () => {
     expect(s.waitingOn.rule).toContain('BC-13');
   });
 
+  // forge-dev's REQ-90, 2026-11-09: two whole issue titles made the wait eight lines at 390 px (the
+  // ISS-1184 witness); an issue is named by its title's lead, as a criterion's row names its first clause
+  it('names an issue by the lead of its title, never the whole sentence', () => {
+    const titled = (n: number, title: string) => ({ ...issue(n, 'closed', false), title });
+    const s = deriveStanding({
+      ...input([
+        titled(1, 'Working agreements C: agents receive the effective agreements for their task, and each run records which revisions it got'),
+        titled(2, 'Working agreements A: one authoritative agreement record per project, resolved against defaults, grants and locked guarantees'),
+      ]),
+      criteria: [
+        { ...old1, code: 'BC-13' },
+        { ...bc1, code: 'BC-13', title: null, body: 'When the feature ships, the nine owner-agreed Forge defaults are seeded.' },
+      ],
+      issueCriteria: [
+        { ...row(1, 'pass', '2026-10-05T00:00:00Z', A, 'c0') },
+        { ...row(2, 'pass', '2026-10-05T00:00:00Z', B, 'c0') },
+      ],
+      judge: 'independent',
+    });
+    expect(s.waitingOn.act).toBe(
+      'tie “Working agreements C” and “Working agreements A” to the current wording of “When the feature ships”, then judge it',
+    );
+  });
+
   it('a BC judged only on another build waits on the judge to judge the issue on the live one', () => {
     const s = deriveStanding({
       ...input([issue(1, 'closed', false)]),
