@@ -102,31 +102,39 @@ export interface Tables {
   issueMoves: Row[];
 }
 
-async function latestFlips(entity: 'run' | 'session', ids: string[], to: readonly string[]) {
-  if (ids.length === 0) return new Map<string, KernelFlip>();
+/**
+ * The newest terminal move of each run in `ids`, and of each run's own session (the newest of
+ * `RUN_SESSION_KIND`, as `runRows` reads it), in one statement: the session's was read a wave later,
+ * once the sessions were, with the same shape (ISS-1070 r22, 682bd544 ×2 on design health).
+ */
+async function latestFlips(ids: string[]) {
+  const out = { run: new Map<string, KernelFlip>(), session: new Map<string, KernelFlip>() };
+  if (ids.length === 0) return out;
   const rows = await q(sql`
-    SELECT DISTINCT ON (entity_id) entity_id, to_status, reason, actor_type, actor_agency, actor_id, created_at
+    SELECT DISTINCT ON (entity, entity_id) entity, entity_id, to_status, reason, actor_type,
+           actor_agency, actor_id, created_at
       FROM kernel_transitions
-     WHERE entity = ${entity} AND entity_id IN (${uuids(ids)}) AND to_status IN (${texts(to)})
-     ORDER BY entity_id, created_at DESC`);
+     WHERE (entity = 'run' AND entity_id IN (${uuids(ids)})
+            AND to_status IN (${texts(TERMINAL_PIPELINE_RUN_STATUSES)}))
+        OR (entity = 'session' AND to_status IN (${texts(terminalAgentSessionStatuses)})
+            AND entity_id IN (SELECT DISTINCT ON (s.pipeline_run_id) s.id FROM agent_sessions s
+                               WHERE s.pipeline_run_id IN (${uuids(ids)}) AND s.kind = ${RUN_SESSION_KIND}
+                               ORDER BY s.pipeline_run_id, s.created_at DESC))
+     ORDER BY entity, entity_id, created_at DESC`);
   const names = await peopleOf(rows.map((r) => str(r.actor_id)));
-  return new Map(
-    rows.map((r): [string, KernelFlip] => {
-      const user = r.actor_type === 'user' ? str(r.actor_id) : null;
-      return [
-        String(r.entity_id),
-        {
-          toStatus: String(r.to_status),
-          reason: str(r.reason),
-          actorType: r.actor_type as KernelFlip['actorType'],
-          agency: r.actor_agency as KernelFlip['agency'],
-          userId: user,
-          name: user ? (names.get(user)?.name ?? null) : null,
-          at: must(r.created_at),
-        },
-      ];
-    }),
-  );
+  for (const r of rows) {
+    const user = r.actor_type === 'user' ? str(r.actor_id) : null;
+    out[r.entity === 'session' ? 'session' : 'run'].set(String(r.entity_id), {
+      toStatus: String(r.to_status),
+      reason: str(r.reason),
+      actorType: r.actor_type as KernelFlip['actorType'],
+      agency: r.actor_agency as KernelFlip['agency'],
+      userId: user,
+      name: user ? (names.get(user)?.name ?? null) : null,
+      at: must(r.created_at),
+    });
+  }
+  return out;
 }
 
 // an attempt is a run: the nth run over the same issue in this project, its retryOf the run before it
@@ -216,7 +224,7 @@ function runRows(projectIds: string[], ids: string[]) {
     q(sql`
       SELECT DISTINCT ON (run_id) run_id, stage, verdict, started_at FROM release_attempts
        WHERE run_id IN (${uuids(ids)}) ORDER BY run_id, started_at DESC`),
-    latestFlips('run', ids, TERMINAL_PIPELINE_RUN_STATUSES),
+    latestFlips(ids),
     attemptsOf(projectIds, ids),
     q(sql`
       SELECT DISTINCT ON (run_id) run_id, phase FROM phase_journal
@@ -254,7 +262,6 @@ function holderRows(
           FROM device_run_ledger WHERE session_id IN (${uuids(sessionIds)})
          ORDER BY session_id, observed_at DESC`),
     ),
-    latestFlips('session', sessionIds, terminalAgentSessionStatuses),
     when(sessionIds.length + issueIds.length > 0, () =>
       q(sql`
         SELECT project_id, id, agent_session_id, issue_id, created_at, steps FROM agent_questions
@@ -329,7 +336,7 @@ async function tablesAcross(base: readonly BaseRun[]): Promise<Map<string, Table
     ).values(),
   ];
   const [
-    [sessions, jobs, liveness, leases, locks, approvals, releases, runFlips, attempts, phases],
+    [sessions, jobs, liveness, leases, locks, approvals, releases, flips, attempts, phases],
     issues,
     lockRefusals,
   ] = await Promise.all([
@@ -351,15 +358,12 @@ async function tablesAcross(base: readonly BaseRun[]): Promise<Map<string, Table
   // the earliest start of every run read: a later run weighs only the passes and moves after its own
   // start (`facts.ts:masterFacts`, `issueMovesOf`), so one bound serves every project's runs
   const since = new Date(Math.min(...base.map((b) => must(b.started_at).getTime()))).toISOString();
-  const [ledgers, sessionFlips, questions, masters, passes, issueMoves] = await holderRows(
-    projectIds,
-    {
-      sessionIds: sessions.map((s) => String(s.id)),
-      issueIds: issues.map((i) => String(i.id)),
-      masterIds,
-      since,
-    },
-  );
+  const [ledgers, questions, masters, passes, issueMoves] = await holderRows(projectIds, {
+    sessionIds: sessions.map((s) => String(s.id)),
+    issueIds: issues.map((i) => String(i.id)),
+    masterIds,
+    since,
+  });
   const shared = {
     groups,
     sessionByRun: byKey(sessions, 'pipeline_run_id'),
@@ -368,11 +372,11 @@ async function tablesAcross(base: readonly BaseRun[]): Promise<Map<string, Table
     leases,
     approvals,
     releases,
-    runFlips,
+    runFlips: flips.run,
     attempts,
     phases,
     ledgerBySession: byKey(ledgers, 'session_id'),
-    sessionFlips,
+    sessionFlips: flips.session,
     masterById: byKey(masters, 'id'),
     passes,
     issueMoves,
