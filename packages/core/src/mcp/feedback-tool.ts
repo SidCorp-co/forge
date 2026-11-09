@@ -120,6 +120,7 @@ const DESCRIBE = {
       body: 'optional: what happens, where, what was expected and what happened instead',
     },
     example: {
+      projectId: '<project uuid>',
       kind: 'bug',
       title: 'Reorder leaves the cart empty',
       body: 'Tapping Reorder on a past order shows an empty cart.',

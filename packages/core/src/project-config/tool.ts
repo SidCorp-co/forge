@@ -173,6 +173,8 @@ function configDescribe(): Record<string, ActionDescribe> {
         },
       },
     },
+    gates_get: { example: { projectId: '<project uuid>' } },
+    gate_profiles: { example: { projectId: '<project uuid>' } },
     gates_write: {
       fields: {
         baseRevision: 'the project document revision gates_get answered',

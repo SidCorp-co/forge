@@ -121,6 +121,7 @@ const DESCRIBE = {
       writtenLang: 'optional: the language the title and criteria are written in; left out, yours',
     },
     example: {
+      projectId: '<project uuid>',
       title: 'A customer can reorder a past order in one tap',
       reason: 'Repeat customers rebuild the same cart by hand every week.',
       criteria: [
@@ -142,6 +143,7 @@ const DESCRIBE = {
       revision: 'optional: the draft revision to rewrite whole, in place of baseRevision',
     },
     example: {
+      projectId: '<project uuid>',
       requirement: 'REQ-12',
       baseRevision: 1,
       criteria: [
