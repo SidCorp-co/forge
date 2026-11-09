@@ -220,7 +220,8 @@ export function openOpsCaller(args: {
     );
     if (!ran.ok) {
       // the way to the box failed, not the call: every call of the firing shares that one cause
-      const code = ran.transport || ran.boxUnreachable ? 'SCRIPT_OPS_BOX_UNREACHABLE' : 'SCRIPT_OPS_FAILED';
+      const code =
+        ran.transport || ran.boxUnreachable ? 'SCRIPT_OPS_BOX_UNREACHABLE' : 'SCRIPT_OPS_FAILED';
       return refuse(code, `${code}: ctx.ops.${said} did not run: ${ran.why}`);
     }
     const v = ran.value;
