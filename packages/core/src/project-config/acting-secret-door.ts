@@ -165,7 +165,7 @@ async function declarationFor(
 }
 
 /** The decrypted value of `ref`, refused by name where it cannot be handed out. */
-async function valueOf(projectId: string, ref: string): Promise<string> {
+async function storedValueOf(projectId: string, ref: string): Promise<string> {
   if (!isVaultConfigured()) {
     throw refuse(
       'ACTING_SECRET_VAULT_NOT_CONFIGURED',
@@ -210,7 +210,7 @@ export async function readActingSecret(args: {
   const ref = secretRefOf(args.scope, args.name);
   const reader = await readerOf(principal, projectId, args.run);
   await declarationFor(projectId, ref, reader);
-  const value = await valueOf(projectId, ref);
+  const value = await storedValueOf(projectId, ref);
   const view = reader.view;
   await insertEvents(db, [
     {
