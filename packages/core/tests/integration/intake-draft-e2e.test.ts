@@ -427,7 +427,7 @@ describe('a feedback item filed in one sentence is drafted on filing, with no ch
     // ISS-690: the sound value check is kept with no triage, and the master triages the item
     const draft = await draftOf(key);
     expect([draft?.outcome, draft?.code]).toEqual(['drafted', null]);
-    expect([draft?.applied?.as, draft?.applied?.code]).toEqual(['none', 'INTAKE_TRIAGE_REFUSED']);
+    expect(draft?.applied).toMatchObject({ as: 'none', code: 'INTAKE_TRIAGE_REFUSED' });
     const sugg = await rows<{ n: string }>(
       sql`SELECT count(*)::text AS n FROM suggestions s JOIN feedback f ON f.id = s.feedback_id WHERE f.project_id = ${projectId} AND f.fb_seq = ${Number(key.slice(3))}`,
     );
