@@ -5,7 +5,7 @@
 import type { ChangeRequestState, ReleaseChangeRequest } from '@forge/contracts/releases';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { rowsPerId } from '../db/read-memo.js';
+import { memoizedInProject, rowsPerId } from '../db/read-memo.js';
 import {
   type ChangeRequestHost,
   repoPullRequestIssues,
@@ -55,12 +55,34 @@ export async function linksOf(pullRequestIds: string[]): Promise<Map<string, str
   return out;
 }
 
-/** Every open change request on this project that delivers one of `issueIds`, lowest number first. */
+/**
+ * Every open change request on this project that delivers one of `issueIds`, lowest number first.
+ * Which requests deliver an issue is the issue's own, so every ask before the quiet point is one read
+ * (`db/read-memo.ts:memoizedInProject`): the release blockers and a requirement's coverage asked it
+ * apart, at three quiet points (ISS-1070 r22).
+ */
 export async function openChangeRequestsOf(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<RosterChangeRequest[]> {
   if (issueIds.length === 0) return [];
+  const perIssue = await memoizedInProject(
+    'openChangeRequests',
+    projectId,
+    issueIds,
+    openRequestsRead,
+  );
+  const byId = new Map<string, RosterChangeRequest>();
+  for (const id of issueIds)
+    for (const cr of perIssue.get(id) ?? []) byId.set(cr.pullRequestId, cr);
+  return [...byId.values()].sort((a, b) => a.number - b.number);
+}
+
+/** Per issue, the open change requests on the project delivering it. */
+async function openRequestsRead(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, RosterChangeRequest[]>> {
   const rows = await db
     .selectDistinct({
       id: repoPullRequests.id,
@@ -71,6 +93,7 @@ export async function openChangeRequestsOf(
       headSha: repoPullRequests.headSha,
       headRef: repoPullRequests.headRef,
       state: repoPullRequests.state,
+      issueId: repoPullRequestIssues.issueId,
     })
     .from(repoPullRequestIssues)
     .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
@@ -81,9 +104,10 @@ export async function openChangeRequestsOf(
         inArray(repoPullRequestIssues.issueId, [...issueIds]),
       ),
     );
-  const links = await linksOf(rows.map((r) => r.id));
-  return rows
-    .map((r) => ({
+  const links = await linksOf([...new Set(rows.map((r) => r.id))]);
+  const out = new Map<string, RosterChangeRequest[]>();
+  for (const r of rows) {
+    const cr: RosterChangeRequest = {
       pullRequestId: r.id,
       host: r.host,
       number: r.number,
@@ -93,8 +117,10 @@ export async function openChangeRequestsOf(
       headRef: r.headRef,
       state: r.state,
       issueIds: links.get(r.id) ?? [],
-    }))
-    .sort((a, b) => a.number - b.number);
+    };
+    out.set(r.issueId, [...(out.get(r.issueId) ?? []), cr]);
+  }
+  return out;
 }
 
 /** The ids, in order, by the key a screen shows them under, for a refusal's `{named}` (ISS-1346). */

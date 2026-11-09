@@ -18,6 +18,7 @@ import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedPerId } from '../db/read-memo.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { issueDisplayIds, standingCriteriaOf } from '../issues/index.js';
@@ -71,7 +72,13 @@ interface Claimed {
   steps: ReleaseMergeStep[] | null;
 }
 
-async function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> {
+/** Each issue's merge and running release; an issue's own, so every ask before the quiet point is
+ *  one read (`db/read-memo.ts:memoizedPerId`, ISS-1070 r22). */
+function claimedOf(ids: readonly string[]): Promise<Map<string, Claimed>> {
+  return memoizedPerId('changeRequestClaimed', ids, claimedRead);
+}
+
+async function claimedRead(ids: readonly string[]): Promise<Map<string, Claimed>> {
   const [rows, shown] = await Promise.all([
     db
       .select({
