@@ -537,7 +537,10 @@ base branch, or the branch the repository holds the commit on. A mark's `target`
 `release/stg` for merges into `dev` before this). A host merge also records the request's head in
 `merged_head`, with whether Forge read from the host at the merge that the head's tree is the merge
 commit's; a verdict judged at that head counts for the landing only where it did
-(`packages/core/src/release-batch/landed-build.ts:atMergedHead`).
+(`packages/core/src/release-batch/landed-weighing.ts:atMergedHead`). A mark standing on a request's
+host merge records the head the projection holds, its tree read from the host at the mark
+(`packages/core/src/issues/host-mark.ts:withRequestHead`, ISS-1168); it fills a stamp of that commit
+holding no head and never replaces another.
 
 A refusal of the `merged` guard names the mark route (`MARK_ROUTE`): `POST /api/issues/:id/merge`
 naming what the agent has, or nothing. The issue detail answer carries `landingShape`, so the web
