@@ -3,6 +3,9 @@ import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { emitNotification, projectCreatorOf, resolveNotifications } from './ports.js';
+import { type WedgeEntity, type WedgeHop, wedgeBody, wedgeTitle } from './wedge-words.js';
+
+export type { WedgeHop } from './wedge-words.js';
 
 function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -41,14 +44,12 @@ export async function resolvePipelineWedge(entityId: string): Promise<number> {
   return resolveNotifications(wedgeResolutionKey(entityId));
 }
 
-export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result' | 'dispatch';
-
 interface PipelineWedgeEvent {
   projectId: string;
   issueId?: string | null;
   /** WHERE — which loop hop missed. */
   hop: WedgeHop;
-  entity: 'job' | 'session' | 'run' | 'issue' | 'capacity' | 'runner';
+  entity: WedgeEntity;
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;
@@ -83,14 +84,10 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
   const creator = await projectCreatorOf(ev.projectId);
   if (!creator) throw new Error(`wedge: project ${ev.projectId} not found for ${ev.entityId}`);
 
-  const title = ev.title ?? `Pipeline wedge: ${ev.hop} hop miss on ${ev.entity}`;
+  const title = ev.title ?? wedgeTitle(ev.hop, ev.entity);
   const body = ev.summary
     ? [ev.summary, ev.nextStep ? `Next: ${ev.nextStep}` : null].filter(Boolean).join('\n')
-    : [
-        `WHERE: ${ev.hop} hop, ${ev.entity} ${ev.entityId}`,
-        `WHY: ${ev.reason}`,
-        `WHAT: ${ev.action}`,
-      ].join('\n');
+    : [`WHERE: ${ev.hop} hop, ${ev.entity} ${ev.entityId}`, wedgeBody(ev)].join('\n');
 
   await emitNotification({
     userId: creator,
