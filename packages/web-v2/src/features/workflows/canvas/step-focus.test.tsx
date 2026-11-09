@@ -1,12 +1,17 @@
 // The focus both workflow canvases share (simplify census C2-17): a walk visits the design in reading
 // order and ends past its last step, Escape ends a walk before it clears a selection, and a selected
 // line lights its two ends whether named by its id or by the merged key a folded band draws.
+//
+// @direct-test-of packages/web-v2/src/features/workflows/canvas/flow-canvas.tsx
+// @direct-test-of packages/web-v2/src/features/workflows/canvas/use-canvas-layout.ts
 
-import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, renderHook } from "@testing-library/react";
+import { ReactFlowProvider } from "@xyflow/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { type Canvas, readCanvas } from "./model";
 import { focusChrome, litOf, presentTrace, useStepFocus } from "./step-focus";
+import { WorkflowCanvas } from "./workflow-canvas";
 
 const step = (id: string, after: string[] = []) => ({ id, title: `Step ${id}`, after });
 const c: Canvas = readCanvas(
@@ -42,11 +47,15 @@ describe("the shared canvas focus", () => {
       result.current.advance(0);
       result.current.setSelection({ step: "a" });
     });
-    act(() => result.current.dismiss());
+    act(() => {
+      result.current.dismiss();
+    });
     expect(result.current.walk).toBeNull();
     expect(result.current.visited.size).toBe(0);
     act(() => result.current.setSelection({ step: "a" }));
-    act(() => result.current.dismiss());
+    act(() => {
+      result.current.dismiss();
+    });
     expect(result.current.selection).toBeNull();
   });
 
@@ -94,5 +103,34 @@ describe("a workflow's traces read against its current design", () => {
   it("lights nothing where every traced step has left, and keeps a whole trace whole", () => {
     expect(presentTrace({ steps: new Set(["shipping"]), edges: new Set(["shipping>done"]) }, design)).toEqual({ steps: new Set(), edges: new Set(), gone: ["shipping"] });
     expect(presentTrace({ steps: new Set(["cart"]), edges: new Set(["cart>pay"]) }, design)).toEqual({ steps: new Set(["cart"]), edges: new Set(["cart>pay"]), gone: [] });
+  });
+});
+
+// REQ-67 BC-2 (ISS-1176): a requirement's picture lights the steps its criteria touch as a state of
+// their own on the drawn canvas, not only listed: each traced card marked traced, every other one
+// dimmed, as the requirement page draws its linked workflow (`requirement-workflow-picture.tsx`)
+describe("a page's highlight on the drawn canvas", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("marks each traced step lit and dims every other step, with nothing clicked", () => {
+    const { container } = render(
+      <ReactFlowProvider>
+        <WorkflowCanvas doc={c.doc} template={null} highlight={{ steps: new Set(["b"]), edges: new Set() }} compact />
+      </ReactFlowProvider>,
+    );
+    const cards = [...container.querySelectorAll<HTMLElement>("[data-testid=workflow-node]")];
+    const state = (id: string) => cards.find((n) => n.dataset.step === id);
+    expect(cards.map((n) => n.dataset.step).sort()).toEqual(["a", "b", "c"]);
+    expect([state("a"), state("b"), state("c")].map((n) => [n?.dataset.traced, n?.dataset.rel])).toEqual([
+      ["false", "false"],
+      ["true", "true"],
+      ["false", "false"],
+    ]);
+    expect(container.querySelector("[data-dim]")?.getAttribute("data-dim")).toBe("true");
   });
 });

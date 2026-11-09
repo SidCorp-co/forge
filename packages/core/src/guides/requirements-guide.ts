@@ -100,7 +100,9 @@ none: its standing asks for an issue of its own under the requirement, or a revi
 5. Its approver **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
    pins each linked design at its approved revision. The kernel judges the agree by the ready checklist,
    read from the head: the problem, who it is for, the value and how it is measured, the business
-   criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
+   criteria, each one checkable on the running product (\`checkable\`: a statement says what holds and never
+   opens as an instruction such as "Verify" or "Ensure", a scenario reads Given, When, Then), no blocking
+   open question, and a linked workflow design; its kind, out of scope and roadmap
    lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
    lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`, and where no \`Problem:\` line
    states it, the unlabelled lines before the first label do, so adding a label never takes it away; a label's answer

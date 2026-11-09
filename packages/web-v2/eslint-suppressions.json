@@ -117,11 +117,6 @@
       "count": 4
     }
   },
-  "src/features/workflows/canvas/step-focus.test.tsx": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 2
-    }
-  },
   "src/lib/api/error.test.ts": {
     "@typescript-eslint/require-await": {
       "count": 2
