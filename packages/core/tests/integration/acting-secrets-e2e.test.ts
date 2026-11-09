@@ -23,6 +23,7 @@ import { agentSessionsPorts } from '../../src/agent-sessions/ports.js';
 import { mintPat } from '../../src/credentials/pat.js';
 import { ensureMasterSession } from '../../src/devices/index.js';
 import { logger } from '../../src/lib/logger.js';
+import { actingSecretRefsOfSession } from '../../src/project-config/index.js';
 import { api, userToken } from '../helpers/api.js';
 import {
   codeOf,
@@ -327,6 +328,10 @@ describe('BC-4: every read is recorded, and the value leaves only in the read', 
       line: `published with ${ACTING_VALUE}`,
     });
     expect(JSON.stringify(posted)).not.toContain(ACTING_VALUE);
+    // the audit row is what names it after a restart, when nothing is held in memory
+    expect(await actingSecretRefsOfSession(master)).toEqual([
+      { projectId: world.projectId, refs: [ACTING] },
+    ]);
   });
 
   it('points the secrets list and the guessed path at the acting door, and serves no value there', async () => {
