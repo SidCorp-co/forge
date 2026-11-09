@@ -51,6 +51,7 @@ const WRITERS: Record<(typeof BUILDER_INPUT_TABLES)[number]['table'], readonly s
     'issues/draft-release-notes.ts',
     'issues/field-writes.ts',
     'issues/merge-record.ts',
+    'issues/merged-head-backfill.ts',
     'issues/park-repoint.ts',
     'issues/release-claim.ts',
     'issues/requirement-link.ts',
