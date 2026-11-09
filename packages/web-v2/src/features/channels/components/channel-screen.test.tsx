@@ -33,6 +33,75 @@ const webmail: ChannelView = {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// FB-591 on forge-dev 0.4.0-dev.616: #Forge-Communicate read "Members None … Product None" while its
+// binding (an operations agent Forge answers, live on sid-xeon-1-dev since 2026-11-04) was in the same
+// answer and drawn nowhere, and the page had no way back to Channels (ISS-1180).
+const communicate: ChannelView = {
+  rid: "6a95265c70ac333f6394dcfc",
+  name: "Forge-Communicate",
+  members: 0,
+  rules: 0,
+  commonIssues: 0,
+  agent: { kind: "channel", role: "operations", channel: "6a95265c70ac333f6394dcfc", answeredBy: "forge", box: "sid-xeon-1-dev", address: "forge-session:5b0c7a52-1f43-4c55-9d43-0d3c1a7f0e11", terminal: null, since: "2026-11-04T06:12:00Z" },
+  memberRows: [],
+  ruleRows: [],
+  commonIssueRows: [],
+  routes: [
+    { route: "forge", members: [] },
+    { route: "technical", members: [] },
+    { route: "product", members: [] },
+  ],
+};
+
+describe("who answers a channel, and an empty record (ISS-1180)", () => {
+  it("leads with the agent answering the room and whether it is live, its turns one click away, and goes back to Channels", async () => {
+    fakeCore((c) => (c.method === "GET" ? { body: { channel: communicate } } : undefined));
+    renderWithQuery(<ChannelScreen projectId="p1" slug="forge" rid={communicate.rid} />);
+    const who = await screen.findByTestId("channel-agent");
+    expect(who).toHaveTextContent("Operations agent");
+    expect(within(who).getByTestId("channel-agent-live")).toHaveTextContent("Live");
+    expect(within(who).getByRole("link", { name: "Recent turns" }).getAttribute("href")).toBe("/projects/forge/agents/5b0c7a52-1f43-4c55-9d43-0d3c1a7f0e11");
+    expect(who.textContent, "the session's address is a raw id, never text").not.toContain("forge-session:");
+    expect(screen.getByTestId("detail-back").getAttribute("href")).toBe("/projects/forge/channels");
+  });
+
+  it("reads a room nobody answers as not live, never as a blank", async () => {
+    fakeCore((c) => (c.method === "GET" ? { body: { channel: { ...communicate, agent: null } } } : undefined));
+    renderWithQuery(<ChannelScreen projectId="p1" slug="forge" rid={communicate.rid} />);
+    const who = await screen.findByTestId("channel-agent");
+    expect(within(who).getByTestId("channel-agent-live")).toHaveTextContent("Not live");
+    expect(within(who).queryByRole("link", { name: "Recent turns" })).toBeNull();
+  });
+
+  it('reads an empty record as "Not recorded yet", never "None", beside the act that fills it', async () => {
+    const calls = fakeCore((c) => {
+      if (c.method === "GET") return { body: { channel: communicate } };
+      if (c.method === "PUT") return { body: { member: { username: "chuongld", roles: ["technical"], state: "confirmed", askFor: null, confirmedBy: "Owner", updatedAt: "2026-11-09T08:00:00Z" } } };
+      if (c.method === "POST") return { status: 201, body: { rule: { id: "r1", text: "Answer in Vietnamese." } } };
+      return undefined;
+    });
+    renderWithQuery(<ChannelScreen projectId="p1" slug="forge" rid={communicate.rid} />);
+    await screen.findByTestId("channel-agent");
+    expect(document.body.textContent).not.toMatch(/\bNone\b/);
+    expect(screen.getAllByText("Not recorded yet").length).toBeGreaterThanOrEqual(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add member" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Username" }), { target: { value: "@chuongld" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Technical" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    expect(calls.find((c) => c.method === "PUT")?.path).toBe(`/projects/p1/support/channels/${communicate.rid}/members/chuongld`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Rule" }), { target: { value: "Answer in Vietnamese." } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const post = calls.find((c) => c.method === "POST");
+    expect(post?.path).toBe(`/projects/p1/support/channels/${communicate.rid}/rules`);
+    expect(post?.body).toEqual({ text: "Answer in Vietnamese." });
+  });
+});
+
 describe("a bound channel's page (REQ-75 r6)", () => {
   it("lists the project's bound channels by name with their counts", async () => {
     fakeCore((c) => (c.path === "/projects/p1/support/channels" ? { body: { channels: [{ rid: webmail.rid, name: "webmail", members: 2, rules: 1, commonIssues: 1 }] } } : undefined));
@@ -61,7 +130,7 @@ describe("a bound channel's page (REQ-75 r6)", () => {
 
   it("shows Members, Rules, Common issues and Routes as four flat tables", async () => {
     fakeCore((c) => (c.method === "GET" ? { body: { channel: webmail } } : undefined));
-    renderWithQuery(<ChannelScreen projectId="p1" rid={webmail.rid} />);
+    renderWithQuery(<ChannelScreen projectId="p1" slug="mail" rid={webmail.rid} />);
     for (const name of ["Members", "Rules", "Common issues", "Routes"]) {
       expect(await screen.findByRole("table", { name })).toBeTruthy();
     }
@@ -81,7 +150,7 @@ describe("a bound channel's page (REQ-75 r6)", () => {
       if (c.method === "PUT") return { body: { member: { ...webmail.memberRows[1], state: "confirmed" } } };
       return undefined;
     });
-    renderWithQuery(<ChannelScreen projectId="p1" rid={webmail.rid} />);
+    renderWithQuery(<ChannelScreen projectId="p1" slug="mail" rid={webmail.rid} />);
     const members = await screen.findByRole("table", { name: "Members" });
     const [, second] = within(members).getAllByRole("button", { name: "Edit" });
     if (second) fireEvent.click(second);
