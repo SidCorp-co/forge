@@ -1,6 +1,7 @@
 // The project Dashboard (ISS-1067): the one-project view of Activity. One question for one project —
 // what needs me, and is the loop moving — answered as one shared grouped list: Needs you (the decisions
-// core's who-owes table names a person's, not drawn while none waits), Moving, Shipped and Stuck, then
+// core's who-owes table names a person's, one "Nothing" row once read and none waits, so the home
+// always answers whether it needs the reader, ISS-1179), Moving, Shipped and Stuck, then
 // one Audit line where a cleanup window is on. Moving and Stuck are the Issues list's own groups from
 // its own read, so the two counts never disagree. Each row is a title and one badge; the rest opens on
 // its own page. A group holding nothing is not drawn.
@@ -30,11 +31,13 @@ type DashRow =
   | { kind: "decision"; d: NeedsYouDecision }
   /** What a group counts past the rows it names: one row to the page that lists all of them. */
   | { kind: "more"; group: string; n: number; href: string }
+  /** Needs you, read and holding nothing: one quiet row to where decisions are kept. */
+  | { kind: "none"; href: string }
   | { kind: "issue"; r: IssueStandingRow }
   | { kind: "release"; r: ReleaseSummary };
 
 const keyOf = (row: DashRow): string =>
-  row.kind === "decision" ? `d:${row.d.id}` : row.kind === "more" ? `more:${row.group}` : row.kind === "issue" ? row.r.key : `r:${row.r.version}`;
+  row.kind === "decision" ? `d:${row.d.id}` : row.kind === "more" ? `more:${row.group}` : row.kind === "none" ? "none" : row.kind === "issue" ? row.r.key : `r:${row.r.version}`;
 
 function decisionPlace(slug: string, d: NeedsYouDecision): string {
   if (d.entity === "question") return questionDecisionHref(slug, d.key);
@@ -48,6 +51,9 @@ function useRowView(slug: string): (row: DashRow) => ListRowView {
   const age = (at: string | null) => (at ? { text: time.age(at), title: time.dateTime(at) } : null);
   return (row) => {
     if (row.kind === "issue") return { ...issue(row.r), facts: [] };
+    if (row.kind === "none") {
+      return { key: "none", href: row.href, title: <span className="text-muted" data-testid="dashboard-needs-none">{t("dash.needs.none")}</span>, facts: [], state: null, waitingOn: null, owner: null, age: null };
+    }
     if (row.kind === "more") {
       return { key: keyOf(row), href: row.href, title: <span className="text-muted">{t("dash.more", { n: row.n })}</span>, facts: [], state: null, waitingOn: null, owner: null, age: null };
     }
@@ -151,7 +157,10 @@ export function ProjectDashboard({ projectId, slug }: { projectId: string; slug:
   const issues = issuesQ.data?.issues ?? [];
   const shipped = releasesQ.data?.releases ?? [];
   const view = useRowView(slug);
-  const groups = groupsOf(t, slug, { decisions, issues, shipped });
+  // Needs you, read and empty, draws one "Nothing" row; `groupsOf` stays the attention reading, where it holds none
+  const groups = groupsOf(t, slug, { decisions, issues, shipped }).map((g) =>
+    g.id === "needs" && needs && g.rows.length === 0 ? { ...g, rows: [{ kind: "none" as const, href: approvalsHref(slug) }], total: 0 } : g,
+  );
   const hrefs = new Map(groups.flatMap((g) => g.rows.map((r) => [keyOf(r), view(r).href] as const)));
   // The list draws once the issues and the releases answer; Needs you, core's slowest read (5 s on
   // forge-dev), joins it when it answers, so the page never waits on it (ISS-1070). Never "All quiet"

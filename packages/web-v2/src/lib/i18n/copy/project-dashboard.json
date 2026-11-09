@@ -12,6 +12,7 @@
     "dash.title": "Dashboard",
     "dash.empty": "All quiet",
     "dash.group.needs": "Needs you",
+    "dash.needs.none": "Nothing",
     "dash.group.moving": "Moving",
     "dash.group.shipped": "Shipped",
     "dash.group.stuck": "Stuck",
