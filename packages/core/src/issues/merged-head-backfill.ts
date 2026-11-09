@@ -4,9 +4,10 @@
 // once, from the projection's `head_sha`, its tree read against the landing from the host.
 
 import type { MergedHead } from '@forge/contracts/landing-artifacts';
-import { sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { backfillMarkedIn, markBackfillIn } from '../db/backfill-markers.js';
 import { type Db, db } from '../db/client.js';
+import { issues } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { releasesThroughChangeRequestsSql } from './host-landing.js';
 import { requestHeadOf } from './request-head-port.js';
@@ -37,7 +38,7 @@ export interface MarkedHeadReport {
   }>;
 }
 
-type Executor = Pick<Db, 'execute' | 'transaction'>;
+type Executor = Pick<Db, 'execute' | 'transaction' | 'update'>;
 
 /**
  * Every issue on a project releasing through change requests whose stamp is the host's merge of a
@@ -98,11 +99,18 @@ export async function runMarkedRequestHeadBackfillOnce(
       continue;
     }
     const head = await requestHeadOf(row.project_id, one.sha, row.commit);
-    const wrote = (await conn.execute(sql`
-      UPDATE issues SET merged_head = ${JSON.stringify(head)}::jsonb
-       WHERE id = ${row.id} AND merged_head IS NULL AND lower(merged_commit_sha) = ${row.commit}
-      RETURNING id
-    `)) as unknown as unknown[];
+    // only merged_head is set; the stamp's columns stay merge-record.ts's (ISS-1073)
+    const wrote = await conn
+      .update(issues)
+      .set({ mergedHead: head })
+      .where(
+        and(
+          eq(issues.id, row.id),
+          isNull(issues.mergedHead),
+          sql`lower(${issues.mergedCommitSha}) = ${row.commit}`,
+        ),
+      )
+      .returning({ id: issues.id });
     if (wrote.length > 0) project.filled.push({ issueId: row.id, commit: row.commit, head });
   }
   const report: MarkedHeadReport = { projects: [...byProject.values()] };
