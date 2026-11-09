@@ -17,6 +17,7 @@ import type { FeedbackOriginView } from "@forge/contracts/feedback";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import { releaseHref } from "@/lib/routes/releases";
+import { useFeedbackProgress } from "@/features/forecast";
 import { AnswerClarification } from "./answer-clarification";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
@@ -243,13 +244,19 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
   );
 }
 
-/** What carries the feedback onward: its route, the records on it, and the feedback it absorbed as duplicates. */
-function WhatCarriesIt({ f, slug }: { f: FeedbackView; slug: string }) {
+/**
+ * What carries the feedback onward: its route, the records on it, and the feedback it absorbed as
+ * duplicates. Where the progress block above names the carriers (the same read, cached), this says
+ * the route alone under "Route", so "Carried by" stands once on the page (ISS-1179).
+ */
+function WhatCarriesIt({ f, slug, projectId }: { f: FeedbackView; slug: string; projectId?: string | undefined }) {
   const tr = useCopy();
+  const work = useFeedbackProgress(projectId, f.key).data?.work;
+  const carriedAbove = work !== undefined && (work.requirement !== null || work.duplicateOf !== null || work.issues.length > 0);
   const r = f.route;
   const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
   return (
-  <FactsGroup title={tr("feedback.fact.carriedBy")} testId="facts-route">
+  <FactsGroup title={tr(carriedAbove ? "feedback.fact.route" : "feedback.fact.carriedBy")} testId="facts-route">
     {!r ? (
       <FactsEmpty>{tr("feedback.fact.notRouted")}</FactsEmpty>
     ) : (
@@ -257,7 +264,7 @@ function WhatCarriesIt({ f, slug }: { f: FeedbackView; slug: string }) {
         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
           <EnumBadge family="feedbackRoute" value={r.route} />
         </span>
-        {r.carriers.length ? (
+        {r.carriers.length && !carriedAbove ? (
           <ul className="grid gap-1" data-testid="facts-route-carriers">
             {keyedByContent(r.carriers, (c) => c.key ?? c.status ?? "").map(({ key, item: c }) => (
               <li key={key} className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="facts-route-carrier">
@@ -399,7 +406,7 @@ export function LinkedFeedback({
         {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-13 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
       </FactsGroup>
 
-      <WhatCarriesIt f={f} slug={slug} />
+      <WhatCarriesIt f={f} slug={slug} projectId={projectId} />
 
       <FactsGroup title={tr("feedback.fact.reporter")}>
         <Fact label={tr("feedback.fact.sentBy")}>
