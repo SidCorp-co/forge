@@ -18,7 +18,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
 import { type JudgedBuildDeps, liveBuildHolds } from '../../src/release-batch/judged-build.js';
-import { persistedCarriage, readServedAncestry } from '../../src/release-batch/served-ancestry.js';
+import {
+  keepHolding,
+  persistedCarriage,
+  readServedAncestry,
+} from '../../src/release-batch/served-ancestry.js';
 import { keepLiveBuild, servedBefore } from '../../src/release-batch/served-builds.js';
 import { backgroundSettled } from '../../src/lib/background.js';
 import { shippedReleaseRuns } from '../../src/release-batch/shipped-releases.js';
@@ -295,6 +299,15 @@ describe('two deploys a few minutes apart keep what the builds before held (ISS-
       expect(first?.rechecking?.get(commit), commit).toContain('is being re-checked');
     }
     await backgroundSettled();
+    // the bridge answered before anything else (the operator's watch: re-checked cleared in 20-60 s
+    // while passing stayed low): each re-checked hold turns to held, never to not judged
+    await keepHolding(projectId, MIDDLE, AFTER);
+    const bridged = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
+    for (const commit of [BEFORE, EARLIER, MIDDLE]) {
+      expect(bridged?.unanswered.get(commit), commit).toBeUndefined();
+      expect(bridged?.holds.get(commit), commit).toBe(true);
+      expect(bridged?.rechecking?.has(commit) ?? false, commit).toBe(false);
+    }
     await readServedAncestry();
     const settled = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
     for (const commit of [BEFORE, EARLIER, MIDDLE]) {
