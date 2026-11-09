@@ -146,7 +146,8 @@ describe('whom a requirement waits on once its issues exist', () => {
       who: 'A decision',
       refers: 'issue',
       ref: parkedKey,
-      act: `for ${parkedKey}`,
+      // the act names the issue by its title, its key the ref a reader links (ISS-1184)
+      act: expect.stringMatching(/^for “.+”$/),
     });
     expect(wait.who).not.toBe('Issues');
   });
@@ -162,7 +163,8 @@ describe('whom a requirement waits on once its issues exist', () => {
   it('waits on the master to take a queued issue, never on its issues', async () => {
     const wait = await waitOf(w, memberToken, req.queued);
     expect(wait).toMatchObject({ kind: 'agent', who: 'Master' });
-    expect(wait.act).toMatch(/^take [A-Z]+-\d+ next$/);
+    expect(wait.act).toMatch(/^take “.+” next$/);
+    expect(wait.act, 'a key is no name (ISS-1184)').not.toMatch(/[A-Z]+-\d+/);
   });
   // last: the project turns strict, so the cut is the admin's again
   it('names the admin who owes the cut on a strict project, as You to that admin', async () => {

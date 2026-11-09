@@ -1,3 +1,6 @@
+// @direct-test-of packages/web-v2/src/features/channels/api.ts
+// @direct-test-of packages/web-v2/src/features/channels/hooks.ts
+// @direct-test-of packages/web-v2/src/features/channels/components/channel-agent.tsx
 import type { ChannelView } from "@forge/contracts/support-channel";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

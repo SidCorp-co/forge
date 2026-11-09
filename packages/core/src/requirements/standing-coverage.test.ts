@@ -1,5 +1,7 @@
 // The coverage rules of `standing-coverage.ts`, read through the standing that carries them: which
 // verdict a business criterion counts, and what each verdict identity counts for.
+// @direct-test-of packages/core/src/lib/named-items.ts
+// @direct-test-of packages/core/src/requirements/standing-names.ts
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import {

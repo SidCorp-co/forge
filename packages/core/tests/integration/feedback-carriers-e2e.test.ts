@@ -187,11 +187,12 @@ describe('an item delivered by several issues names every one of them', () => {
     expect(req.feedback.map((f: Doc) => [f.key, f.via.type])).toContainEqual([fb, 'route']);
   });
 
+  // the act names the carrier by its title, its key the ref a reader links (ISS-1184)
   it('waits on its first carrier still open, as that issue’s own standing says', async () => {
     const [a] = carriers.map((x) => x.key);
     expect(await waitingOn(fb)).toMatchObject({
       ref: a,
-      act: expect.stringContaining(a as string),
+      act: expect.stringContaining('“Save the cards”'),
     });
   });
 
@@ -202,7 +203,7 @@ describe('an item delivered by several issues names every one of them', () => {
     expect((await read(fb)).phase).toBe('planned');
     expect(await waitingOn(fb)).toMatchObject({
       ref: c?.key,
-      act: expect.stringContaining(c?.key as string),
+      act: expect.stringContaining('“Save the filters”'),
     });
   });
 

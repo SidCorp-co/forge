@@ -1,6 +1,7 @@
 // REQ-65 BC-1..BC-6, REQ-66 BC-2 (ISS-690): a request's one value check on its page. Each fact names
 // where it came from, the outcome is a badge and one line, a blocking question is answered by a chip and
 // held until then, an assumed answer says so, and a refused requirement is kept with a one-line reason.
+// @direct-test-of packages/web-v2/src/features/intake/components/value-questions.tsx
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
