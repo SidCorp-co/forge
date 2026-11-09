@@ -5,6 +5,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { RETIRED_MCP_TOOLS } from '../forge-door/index.js';
+import { ISSUE_FILING_LANE } from '../product-door/issues-tool.js';
 import { env } from '../lib/env.js';
 import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
 import {
@@ -264,23 +265,31 @@ function publicGuidesUrl(): string {
 
 /** Built per call so `env` is read lazily and this module stays side-effect free. */
 export function forgeMcpInstructions(): string {
-  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, so a person can work from an MCP client, and what neither covers.
+  return `You are connected to Forge, the control plane where agents and people run one loop for a project: Product → Delivery → Release → Audit → Product. The Product leads: requirements, workflow designs and feedback say what is worth building, and Delivery builds to them in issues. This server carries the Product side, so a person, or an agent working for one as product owner, BA or project manager, works a project from an MCP client. Delivery (building, landing, deploying) is done by the project's master and its runs from a checkout, over the REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) and the \`forge\` CLI on it.
+
+**Working a project's Product** (the work this server is for):
+- How it stands, what waits on you and what was decided: \`projects.status\` first, then \`projects.needs_you\` and \`projects.decisions\`. Find the project with \`projects.list\`.
+- What is wanted: \`requirements.*\` (draft, revise, propose, answer its questions) and \`design.*\` (workflow designs, mockups, suggestions).
+- What users and owners report: \`project_feedback.*\` (file, find similar, ask the reporter).
+- What shipped and what waits on approval: \`releases.*\`. Questions waiting on a person: \`questions.*\`.
+- Issues are Delivery's: read them for progress (\`issues.list\`, \`issues.get\`); a reported problem or idea is Feedback and new or changed behaviour a Requirement, and their triage and delivery file the issues.
 
 It lists five tools, so you load only what you use: \`forge_find { query }\` finds the actions that do what you want, \`forge_describe { action }\` gives one action's input and its own guide, and \`forge_call { action, args }\` runs it; \`search\` and \`fetch\` read the issues, requirements and knowledge of the projects you can read. An action is \`<door>.<action>\`, for example \`requirements.create\`. The doors:
 
+- \`projects\` — the projects you can read, one in full, a new one, and how one stands: \`status\`, \`needs_you\` and \`decisions\` are the reads the dashboard and the Forge bot answer from.
 - \`requirements\` — list, read, draft and revise requirements (REQ-n), propose a draft revision, and answer a question standing on one with what the person said; agreeing and accepting are not done here: they are the project's master's outside a strict project, and a person's on the requirement page in one.
 - \`project_feedback\` — a project's own feedback (FB-n): list, read and file it, find similar items, and ask a reporter a clarification; triage is not done here, and is the project's master's unless the project is strict.
 - \`feedback\` — feedback about Forge itself (its CLI, routes, tools, guides, web app), from any project: filed as you into Forge's own home project, never into the project you work in; list and read the items you reported and how they are going.
 - \`releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
 - \`design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
 - \`questions\` — questions waiting on a person, one read in full, the person's answer in their own words, and your own question on an issue.
-- \`issues\` — delivery work: each issue's status, whether an agent works on it now and when it is likely done, and \`issues.create\` to file one where you hold project.write. It is born at \`draft\` and the project's master admits it: no door here admits, moves or links an issue. Start from the product: a reported problem or idea is Feedback, new or changed behaviour a Requirement, and their triage and delivery file the issues. File one directly for delivery work an agreed requirement or triaged feedback already covers, or a defect found while building; otherwise ask the person first (\`forge_describe issues.create\` says how).
+- \`issues\` — delivery work: each issue's status, whether an agent works on it now and when it is likely done, and \`issues.create\` to file one where you hold project.write. It is born at \`draft\` and the project's master admits it: no door here admits, moves or links an issue. ${ISSUE_FILING_LANE}
 - \`uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
 - \`bot\` — converse with the Forge bot, the project's chat assistant, in a persistent project thread: open or resume one (optionally about a REQ, ISS, FB or release), send, and read its replies by cursor. A turn that outlasts the call answers \`processing\` with its handle; read it later, never send again. It answers from live reads as you and works within your own permissions.
 
 Every answer about work in motion carries \`progress\`: whether work is running now, what waits on whom, and the forecast date, or plainly why there is none. Tell the person \`progress.says\`; never give a date it does not hold.
 
-Everything else is REST or the CLI:
+**Working from a checkout** (a master or a run building issues; a Product role needs none of this). Everything else is REST or the CLI:
 - Delivery has no tool here, and \`forge_source\`, \`forge_coolify_deploy\`, \`forge_sentry\` and \`forge_storefront_target\` are refused MCP_DELIVERY_IS_REST naming their routes. A connected integration's credential stays in core and the call is made from core: Coolify deploys, logs and an app's env (\`GET\`, \`PUT\` and \`DELETE /api/projects/:id/integrations/coolify/env[/:key]\`, values masked) under \`/api/projects/:id/integrations/coolify/…\`, the source host's change requests under \`/api/projects/:id/integrations/source/…\` (open one with \`POST /api/projects/:id/integrations/source/change-requests\` \`{ head, base, title, body?, draft? }\`; from a runner pane, \`forge-runner api\` on that path), Sentry under \`/api/projects/:id/integrations/sentry/issues\`, and the storefront target at \`GET /api/projects/:id/integrations/storefront/target\`. Never open a change request with a host token of your own: core's door records it, and is the only one attributable to you.
 - Friction with Forge itself, a skill gap or a learning mid-run: \`forge_call { action: "feedback.submit" }\`, or \`POST /api/forge/feedback\` \`{ kind, title, whereSeen, body?, signalKey?, clientVersion? }\`, which reads your live job from the token and files it into Forge's home project as you.
 - A project's ecosystem channel, interface, links and builder runs: \`/api/projects/:id/channel/…\`, \`/api/projects/:id/interface\`, \`/api/projects/:id/links\`, \`/api/projects/:id/builder-runs\`; what the channel owes a reply to is \`GET /api/projects/:id/channel/unanswered\`, and the contracts a set of repository paths calls, recorded on a session, is \`POST /api/projects/:id/contract-context { paths, session? }\`. How a master works the inbox: \`GET <host>/api/guides/ecosystem-inbox.md\`. the \`channel.*\` and \`ecosystem.*\` actions still answer the same here for forge-plugin clients; prefer the routes.
@@ -291,5 +300,5 @@ Everything else is REST or the CLI:
 - The API contract is fetchable with no credential: \`<host>/api/openapi.json\` is OpenAPI 3.1 for every route core mounts, and \`<host>/api/mcp-tools.json\` lists each door's tool and its whole input, which \`forge_call\` runs as actions. Each carries a semver version that moves only when the contract does; pin it, and revalidate with the ETag.
 - Forge capability guides are fetchable, not preloaded: \`<host>/api/guides\` lists them and \`<host>/api/guides/<slug>.md\` reads one. Look one up before guessing how a Forge feature works. The corpus is public and needs no credential; readable pages for a person are at ${publicGuidesUrl()}.
 
-This project's projectId is in the repo's CLAUDE.md.`;
+The project's id: \`projects.list\`, or the repo's CLAUDE.md in a checkout. Which guide to start from, for each role: \`<host>/api/guides/agent-setup.md\`.`;
 }

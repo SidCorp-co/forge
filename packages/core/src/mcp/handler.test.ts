@@ -105,7 +105,7 @@ describe('/mcp at protocol 2026-07-28', () => {
     expect(res.json.error).toBeUndefined();
     expect(res.json.result?.supportedVersions?.slice(0, 4)).toEqual([MODERN, ...LEGACY]);
     expect(res.json.result?.capabilities).toMatchObject({ tools: {}, prompts: {} });
-    expect(res.json.result?.instructions).toMatch(/Forge-managed project/);
+    expect(res.json.result?.instructions).toMatch(/You are connected to Forge/);
   });
 
   it('lists the five tools that find, describe and run an action under the 2026-07-28 header', async () => {
@@ -186,7 +186,7 @@ describe.each(LEGACY)('/mcp at protocol %s, stateless', (version) => {
       serverInfo: { name: '@forge/core' },
       capabilities: { tools: {}, prompts: {} },
     });
-    expect(init.json.result?.instructions).toMatch(/Forge-managed project/);
+    expect(init.json.result?.instructions).toMatch(/You are connected to Forge/);
 
     const list = await post(
       { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },

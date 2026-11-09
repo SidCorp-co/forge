@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest';
 import { isRefusal } from '../lib/refusal.js';
 import type { McpContext, McpTool } from '../lib/tool.js';
 import { assertToolDeclaresAccess, toolGrantFor, toolGrantRefusal } from '../lib/tool-grant.js';
+import { forgeMcpInstructions } from '../mcp/server.js';
+import { ISSUE_FILING_LANE } from './issues-tool.js';
 import { issueProgress, scopeProgress } from './progress.js';
 import {
   forgeDesignTool,
@@ -95,15 +97,20 @@ describe('forge_issues create', () => {
     expect(issues.description).toContain('files an issue as you');
   });
 
-  // owner, 2026-10-16: where an MCP client may file an issue, the tool says how, and when to step in,
-  // because an issue filed straight from a wish skips the product (Feedback, a Requirement)
-  it('points the caller to the product first and names when to file directly and when to ask', () => {
+  // owner, 2026-10-16 and 2026-11-07 (org guide mcp-issue-creation-is-guided): the tool points the
+  // caller to the product first, names when to file directly, and has it choose the lane itself and
+  // say why, never ask before filing; the server's instructions say the same words (ISS-1183)
+  it('points the caller to the product first, and every filing text says one lane rule', () => {
     const d = issues.description;
     expect(d).toContain('start from the product');
     expect(d).toContain('project_feedback.submit');
     expect(d).toContain('requirements.create');
-    expect(d).toContain('File one here directly when');
-    expect(d).toContain('ask them before filing');
+    expect(d).toContain('Choose the lane yourself and say why');
+    const texts = { door: d, instructions: forgeMcpInstructions() };
+    for (const [where, text] of Object.entries(texts)) {
+      expect(text, where).toContain(ISSUE_FILING_LANE);
+      expect(text, where).not.toMatch(/ask (them|the person)( first)? before filing|ask the person first/);
+    }
     // the door model names its actions; the retired per-surface tool name finds nothing in forge_find
     expect(d).not.toContain('forge_requirements');
   });

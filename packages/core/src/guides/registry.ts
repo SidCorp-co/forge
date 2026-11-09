@@ -38,6 +38,7 @@ import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
 import { SCRIPT_SCHEDULES_GUIDE } from './script-schedules-guide.js';
 import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
+import { PRODUCT_ROLE_GUIDE } from './product-role-guide.js';
 import type { CoreGuide, ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
 import { WORKFLOW_TEMPLATES_GUIDE } from './workflow-templates-guide.js';
@@ -171,11 +172,31 @@ Upload the file from disk instead of inlining base64 bytes into a request: a mul
   {
     slug: 'agent-setup',
     audience: 'agent',
-    title: 'Working in a Forge-managed repo',
+    title: 'Start here: the loop, and the guide for your role',
     summary:
-      'Start here: what Forge owns, the recall-first rule, draft vs open, and what is worth watching.',
-    version: 3,
-    body: `## Working in a Forge-managed repo
+      'Start here: the Product → Delivery → Release → Audit loop, which guide each role reads first (product owner, BA or project manager; master; builder; judge; auditor; chat assistant), and, in a Forge-managed repo, the recall-first rule, draft vs open and what is worth watching.',
+    version: 4,
+    body: `## Start here
+
+Forge runs one loop for a project: **Product → Delivery → Release → Audit → Product**. The Product
+(requirements, workflow designs, feedback) says what is worth building; Delivery builds it in issues,
+in batches; Release puts each batch live and one live judge reads its criteria; Audit reads what
+landed and how it ran, and what it finds returns to the Product. Agents decide and record; a person
+is asked only for what is irreversible, real money, credentials or a new product direction.
+
+### Your role, and the guide to read first
+| You are | You work in | Read first |
+|---|---|---|
+| A product owner, BA or project manager, person or agent, on MCP or the web | requirements, designs, feedback, releases, decisions | \`product-role\`, then \`requirement-lifecycle\`, \`feedback-triage\`, \`workflow-design\` |
+| A project's master | triage, admission, dispatch, landing, release | \`runs-and-masters\`, \`dispatch\`, \`fast-delivery\` |
+| A run building one issue in a checkout | one issue, from open to landed | \`issue-flow\`, \`what-is-an-issue\`, \`writing-an-issue\`, then the rest of this page |
+| A judge | an issue's criteria on the running build | \`qa\` |
+| The cleanup run | what landed and how it ran | \`cleanup-audit\` |
+| The assistant in a chat room | a person's request in that room | \`answering-as-the-assistant\` |
+
+Every guide: \`GET /api/guides\`, then \`GET /api/guides/<slug>.md\`.
+
+## Working in a Forge-managed repo
 
 If a repo has a \`.forge/\` directory or an \`mcp.json\` naming a \`forge\` server, its issues, pipeline
 and durable memory live in Forge, not in the repo. Read this before your first write.
@@ -326,13 +347,21 @@ section, which is why this migration is what turns the feature on.`,
   DISPATCH_GUIDE,
   QA_GUIDE,
   LINK_CHAT_GUIDE,
+  PRODUCT_ROLE_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));
 
-/** Body-free index — slug/title/summary/version only, never guide bodies. */
+/** The guides an index lists first, in this order: where every role starts, then the Product's. */
+const LISTED_FIRST: readonly string[] = ['agent-setup', 'product-role'];
+const listedRank = (slug: string) => {
+  const at = LISTED_FIRST.indexOf(slug);
+  return at === -1 ? LISTED_FIRST.length : at;
+};
+
+/** Body-free index — slug/title/summary/version only, never guide bodies; the start guides first. */
 export function listGuides(): Array<Omit<ForgeGuide, 'body'>> {
-  return FORGE_GUIDES.map(({ slug, audience, title, summary, version }) => ({
+  return [...FORGE_GUIDES].sort((a, b) => listedRank(a.slug) - listedRank(b.slug)).map(({ slug, audience, title, summary, version }) => ({
     slug,
     audience,
     title,

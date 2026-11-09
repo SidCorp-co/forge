@@ -1,6 +1,9 @@
 // `forge_projects`: the projects a token reads, one in full, and a new one (ISS-767), each over the
 // service its REST door calls (`projects/routes.ts`), so an MCP client can find the project it works
-// in and set one up. Reached as the `projects.*` actions through forge_call (ISS-773).
+// in and set one up. Reached as the `projects.*` actions through forge_call (ISS-773). How the
+// project stands, what waits on the caller and the decisions recorded are the assistant's own reads
+// (`forge_project_status`, `forge_needs_you`, `forge_decisions`) run as they are, so a product role on
+// MCP reads them at the door and the chat beside it cannot disagree (ISS-1183, REQ-78 BC-8).
 
 import { scrubSecretsDeep } from '@forge/observability';
 import { z } from 'zod';
@@ -18,10 +21,14 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
+import { forgeDecisionsTool } from '../comments/tool.js';
+import { forgeNeedsYouTool } from '../development/needs-you-tool.js';
+import { forgeProjectStatusTool } from '../project-status/tool.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
   byRule,
+  onArg,
   orgResource,
   permissionless,
   requireHeld,
@@ -32,7 +39,7 @@ import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectSchema } from './request-schemas.js';
 import { createProject } from './service.js';
 
-export const PROJECTS_TOOL_READS = ['list', 'get'] as const;
+export const PROJECTS_TOOL_READS = ['list', 'get', 'status', 'needs_you', 'decisions'] as const;
 const ACTIONS = [...PROJECTS_TOOL_READS, 'create'] as const;
 
 const input = z.strictObject({
@@ -42,14 +49,19 @@ const input = z.strictObject({
   slug: createProjectSchema.shape.slug.optional(),
   name: createProjectSchema.shape.name.optional(),
   orgId: z.uuid().optional().describe('create: the org; your personal org when omitted'),
+  days: z.number().int().min(1).max(365).optional().describe('status, decisions: the last n days'),
+  limit: z.number().int().min(1).max(100).optional().describe('needs_you, decisions: at most n rows'),
 });
 type Input = z.infer<typeof input>;
 
-const SHAPE = '{ action, projectId?, archived?, slug?, name?, orgId? }';
+const SHAPE = '{ action, projectId?, archived?, slug?, name?, orgId?, days?, limit? }';
 
 const DESCRIPTION = `The projects you can read, one in full, and a new one, as their REST doors answer them.
 - list { archived? }: every project you can read, each with its id, slug, name and your role. Start here to find the project you work in.
 - get { projectId }: one project with your role, its members, labels and base branch.
+- status { projectId, days? }: how the project stands now, as the dashboard reads it: what is stuck, the decisions waiting on you, what shipped, work in flight, what members owe, requirements proven, the next release, what is late and the roadmap. Read it first for status, progress or what to do next.
+- needs_you { projectId, limit? }: only the decisions waiting on you, each with its question, the recommended answer and why; \`notDecisions\` counts what else your Needs you list holds.
+- decisions { projectId, days?, limit? }: the decisions recorded in the project, newest first, each on its issue, requirement, design or feedback item with the reason, who decided and when.
 - create { slug, name, orgId? }: a new project in your personal org, or in the org named where you hold a role in it, as POST /api/projects creates one; a token fenced to projects is refused, since a new project is in none of them.`;
 
 const parse = (args: unknown): Input => {
@@ -109,16 +121,38 @@ export async function createProjectForTool(ctx: McpContext, i: Input) {
   return createProject({ slug, name, orgId, createdBy: userId });
 }
 
+/** The assistant's read each project read action runs, with the arguments that read takes. */
+async function projectRead(ctx: McpContext, i: Input) {
+  const { projectId } = need(i, i.action, 'projectId');
+  if (i.action === 'status') {
+    return forgeProjectStatusTool(ctx).handler({ projectId, days: i.days });
+  }
+  if (i.action === 'needs_you') return forgeNeedsYouTool(ctx).handler({ projectId, limit: i.limit });
+  return forgeDecisionsTool(ctx).handler({ projectId, days: i.days, limit: i.limit });
+}
+
 export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects',
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
   route: '/api/projects',
-  grant: { byAction: { list: 'projects:read', get: 'projects:read', create: 'projects:write' } },
+  grant: {
+    byAction: {
+      list: 'projects:read',
+      get: 'projects:read',
+      status: 'projects:read',
+      needs_you: 'projects:read',
+      decisions: 'projects:read',
+      create: 'projects:write',
+    },
+  },
   reach: {
     byAction: {
       list: 'project',
       get: 'project',
+      status: 'project',
+      needs_you: 'project',
+      decisions: 'project',
       create: {
         account:
           'a new project is created in an org, inside none of the projects a token is fenced to',
@@ -135,6 +169,9 @@ export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
         'projects/tool.ts:getProjectForTool',
         'project.read on the project projectId names, once its own argument rule has answered',
       ),
+      status: onArg('project.read'),
+      needs_you: onArg('project.read'),
+      decisions: onArg('project.read'),
       create: byRule(
         'projects/tool.ts:createProjectForTool',
         "org.read on the org orgId names, else the caller's personal org, from an unfenced token",
@@ -146,6 +183,9 @@ export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const i = parse(args);
     if (i.action === 'list') return scrubSecretsDeep(await list(ctx, i));
     if (i.action === 'get') return scrubSecretsDeep(await getProjectForTool(ctx, i));
+    if (i.action === 'status' || i.action === 'needs_you' || i.action === 'decisions') {
+      return scrubSecretsDeep(await projectRead(ctx, i));
+    }
     return scrubSecretsDeep(await createProjectForTool(ctx, i));
   },
 });
