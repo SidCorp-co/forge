@@ -6,7 +6,10 @@
 // feedback pointing at workflows, releases and revisions. Every shape is held to two sends an area
 // on a warm read, named with the code that sends it. Forge's requirements hold verdicts of their own
 // naming commits, which batch-cleanup-1108 weighed one requirement at a time: needs-you sent each
-// build read once a requirement (perf-cleanup-1108).
+// build read once a requirement (perf-cleanup-1108). Some of forge-dev's projects hold what waits on a
+// person that the others do not, and a read once such a project sent each of its statements once a
+// project (ISS-1070 r20, `tests/helpers/live-mix-waits.ts`): every attention area but releases' and
+// requirements' now sends each shape once.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/db/read-order.ts
 // @direct-test-of packages/core/src/feedback/list-read.ts
@@ -17,6 +20,12 @@
 // @direct-test-of packages/core/src/release-batch/release-facts.ts
 // @direct-test-of packages/core/src/release-batch/blockers.ts
 // @direct-test-of packages/core/src/requirements/standing-live-build.ts
+// @direct-test-of packages/core/src/automation/facts.ts
+// @direct-test-of packages/core/src/automation/read.ts
+// @direct-test-of packages/core/src/questions/subject.ts
+// @direct-test-of packages/core/src/workflows/head-designs-read.ts
+// @direct-test-of packages/core/src/workflows/design-repin-service.ts
+// @direct-test-of packages/core/src/suggestions/waiting-read.ts
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -60,6 +69,12 @@ const NAMED: Record<string, string> = {
   '585593d8': 'issues/standing-facts-memo.ts:edgesPerIssue',
   '5ba7200c': 'issues/standing-facts-read.ts:modulesOf',
   '8088855b': 'issues/standing-rows.ts:issueRowsById',
+  // forge-dev's header, 2026-11-08 (ISS-1070 r20)
+  b760e44f: 'automation/facts.ts:fireFacts (a fire session’s steward report)',
+  '42d4b1ae': 'questions/subject.ts:namedOf (a question’s requirement)',
+  a7955f0c: 'workflows/store.ts:workflowsOf (re-pin)',
+  '1dbb5d8c': 'workflows/head-designs-read.ts:headDesignsRead',
+  '5c493ced': 'suggestions/waiting-read.ts:targetsOf (workflows)',
 };
 
 /**
@@ -69,6 +84,14 @@ const NAMED: Record<string, string> = {
  */
 const MOST = 2;
 const HOME_MOST = 1;
+
+/**
+ * The attention areas that still send a shape twice: a batch two projects' reads reach a step apart
+ * (ISS-1070 r11's split batches). Every other area sends each shape once since what waits on a
+ * person in some projects alone is read with every project's (r20).
+ */
+const ATTENTION_TWICE = new Set(['ny-releases', 'ny-requirements']);
+const attentionMost = (area: string) => (ATTENTION_TWICE.has(area) ? MOST : 1);
 
 const coolify = liveCoolify();
 const autoflow = liveAutoflow();
@@ -128,11 +151,12 @@ async function sentBy(path: string): Promise<{
  * at forge-dev's ~3 ms a statement the depth, not the count, sets the time (ISS-1070 r16). Set at
  * the seed's count; lowered by a cut, never raised (r17: ny-releases 26 to 10, ny-requirements 17
  * to 12, ny-issues 9 to 6; r18: home-forecasts 15 to 11, home-feedback 10 to 8, home-runs 5 to 4,
- * once home's parts start beside its feedback list).
+ * once home's parts start beside its feedback list; r20: ny-releases 10 to 9, as the base sends it,
+ * and ny-decisions 3 to 1 at the seed, once a question's requirement is read with every project's).
  */
 const WAVES: Record<string, Record<string, number>> = {
   '/api/me/attention': {
-    'ny-releases': 10,
+    'ny-releases': 9,
     'ny-requirements': 12,
     'ny-issues': 6,
     'ny-design-health': 8,
@@ -140,6 +164,7 @@ const WAVES: Record<string, Record<string, number>> = {
     'ny-folded': 4,
     'ny-automation': 4,
     'ny-contracts': 3,
+    'ny-decisions': 1,
   },
   '/api/me/home': {
     'home-forecasts': 11,
@@ -168,13 +193,16 @@ async function overWaves(path: string): Promise<string[]> {
 const LOCKS = /^\s*begin\b|\bfor (no key )?update\b|\bfor share\b/i;
 
 /** Each shape a warm read sent over `most` times in one area, with the code that sends it. */
-async function overMost(path: string, most = MOST): Promise<string[]> {
+async function overMost(
+  path: string,
+  most: number | ((area: string) => number) = MOST,
+): Promise<string[]> {
   // the first read is cold: it pays the platforms and teaches each project's way
   await sentBy(path);
   const out: string[] = [];
   for (const [area, by] of (await sentBy(path)).areas)
     for (const [fp, n] of by)
-      if (n > most)
+      if (n > (typeof most === 'number' ? most : most(area)))
         out.push(
           `${path} ${area} sent ${fp} ${n} times (${NAMED[fp] ?? (shapeTextOf(fp) ?? '').slice(0, 100)})`,
         );
@@ -221,8 +249,8 @@ beforeAll(async () => {
 afterAll(closeWorld);
 
 describe("a person's reads of fourteen projects of forge-dev's kinds", () => {
-  it('sends each shape of attention at most twice an area on a warm read', async () => {
-    expect(await overMost('/api/me/attention')).toEqual([]);
+  it('sends each shape of attention once an area, and at most twice in releases and requirements, on a warm read', async () => {
+    expect(await overMost('/api/me/attention', attentionMost)).toEqual([]);
   });
 
   it('sends each shape of home once an area on a warm read', async () => {

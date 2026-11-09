@@ -12,6 +12,8 @@
 // or one id at a time once for all of them, at the request's quiet point (`db/read-memo.ts:
 // memoizedPerId`, `rowsPerProject`, `perProjectRead`), and simulates a project's forecast once for
 // its feedback lines and its own dates: each project's reads answer there what they answer alone.
+// ISS-1070 r20: so do a fire's steward report read with the fire, a question's subject, the head
+// designs a re-pin reads and a design change's workflow read with the suggestion.
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/issues/standing-read.ts
 // @direct-test-of packages/core/src/issues/standing-rows.ts
@@ -33,8 +35,16 @@
 // @direct-test-of packages/core/src/product-progress/home-moving.ts
 // @direct-test-of packages/core/src/product-progress/home-live.ts
 // @direct-test-of packages/core/src/release-batch/live-releases.ts
+// @direct-test-of packages/core/src/automation/facts.ts
+// @direct-test-of packages/core/src/questions/subject.ts
+// @direct-test-of packages/core/src/workflows/head-designs-read.ts
+// @direct-test-of packages/core/src/workflows/design-repin-service.ts
+// @direct-test-of packages/core/src/suggestions/waiting-read.ts
 
+import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { automationViewerOf, readAutomationStanding } from '../../src/automation/index.js';
+import { db } from '../../src/db/client.js';
 import { newQueryTiming, withQueryTiming } from '../../src/db/query-timing.js';
 import { readAcross, withReadMemo } from '../../src/db/read-memo.js';
 import { readNeedsYouDecisions } from '../../src/development/needs-you-decisions-read.js';
@@ -44,6 +54,7 @@ import { listIssueStanding } from '../../src/issues/index.js';
 import { loadProjectAccess } from '../../src/lib/authz.js';
 import { liveReleasesOf } from '../../src/product-progress/home-live.js';
 import { homeItemsOf, readHomeProject } from '../../src/product-progress/home-moving.js';
+import { readOpenPersonQuestions } from '../../src/questions/index.js';
 import {
   deploymentConfirms,
   latestLive,
@@ -53,9 +64,19 @@ import {
 } from '../../src/release-batch/index.js';
 import { listShippedReleases } from '../../src/release-batch/release-list-read.js';
 import { listRequirementsAs } from '../../src/requirements/index.js';
+import { waitingSuggestionsFor } from '../../src/suggestions/waiting-read.js';
+import { repinGroupsOf } from '../../src/workflows/design-repin-service.js';
+import { headDesignsRead } from '../../src/workflows/head-designs-read.js';
+import { headDesignsOf } from '../../src/workflows/store.js';
 import { closeWorld, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestUser, seedOrg } from '../helpers/factories.js';
 import { holdFromOutside } from '../helpers/live-mix.js';
+import {
+  askAboutRequirement,
+  baseDesigns,
+  proposeDesignChanges,
+  stewardFired,
+} from '../helpers/live-mix-waits.js';
 import { type Scale, seedAtScale } from '../helpers/scale-world.js';
 
 let ownerId: string;
@@ -180,6 +201,13 @@ describe("inside one read across a person's projects, each project's reads answe
     // closed blockers whose design is unapproved hold open issues: the open list follows them
     // outside its page, from rows its own statement read (ISS-1070 r19)
     await holdFromOutside(worlds[0] as string, personId);
+    // what waits on a person in some of forge-dev's projects, each read once a project alone (ISS-1070 r20)
+    for (const id of worlds.slice(0, 2)) {
+      await stewardFired(id, personId);
+      await askAboutRequirement(id);
+      await baseDesigns(id);
+      await proposeDesignChanges(id);
+    }
   }, 180_000);
 
   it("answers each project's Needs you, open issues, requirements, newest releases and home part alike", async () => {
@@ -205,6 +233,15 @@ describe("inside one read across a person's projects, each project's reads answe
             running: [...part.running],
             moving: await homeItemsOf({ id: projectId, slug: 's', name: 'n' }, part, now),
           })),
+          automationViewerOf(projectId, personId).then((v) =>
+            v
+              ? readAutomationStanding(projectId, v, { firesLimit: AUTOMATION_FIRES_DEFAULT }, now)
+              : null,
+          ),
+          readOpenPersonQuestions(projectId),
+          headDesignsRead(projectId),
+          repinGroupsOf(projectId),
+          waitingSuggestionsFor(projectId, () => true),
         ]);
       };
       const alone: unknown[] = [];
@@ -221,6 +258,19 @@ describe("inside one read across a person's projects, each project's reads answe
         expect(requirements.length).toBeGreaterThan(0);
         expect(shipped.releases).toHaveLength(3);
         expect(live.releases.length).toBeGreaterThan(0);
+      }
+      // the two worlds holding what waits on a person read it: a steward report, a question's
+      // requirement, the head designs, a design change's workflow
+      for (const [n, id] of worlds.slice(0, 2).entries()) {
+        const [, , , , , , , , automation, questions, heads, , suggestions] = alone[n] as Awaited<
+          ReturnType<typeof reads>
+        >;
+        expect(automation?.proposals.length).toBeGreaterThan(0);
+        expect(questions.map((q) => q.subject?.kind)).toContain('requirement');
+        expect(heads.length).toBeGreaterThan(0);
+        // the rows a transaction reads, less the project each batched row names
+        expect(heads.map(({ projectId: _p, ...d }) => d)).toEqual(await headDesignsOf(db, id));
+        expect(suggestions.some((s) => s.target.type === 'workflow')).toBe(true);
       }
       const [first] = alone as Awaited<ReturnType<typeof reads>>[];
       expect(

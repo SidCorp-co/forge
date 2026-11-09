@@ -27,7 +27,7 @@ export async function stewardFired(projectId: string, ownerId: string): Promise<
       INSERT INTO agent_sessions (project_id, pipeline_run_id, kind, status, metadata)
       SELECT ${projectId}, run.id, 'pipeline', 'completed',
              jsonb_build_object('stewardReport', jsonb_build_object('actions', jsonb_build_array(
-               jsonb_build_object('skill', 'cleanup', 'kind', 'debt', 'summary', 'recorded one debt'))))
+               jsonb_build_object('skill', 'cleanup', 'kind', 'proposed', 'summary', 'simplify one read'))))
         FROM run RETURNING id
     )
     INSERT INTO schedule_runs (schedule_id, project_id, trigger, status, session_id, started_at, finished_at)
