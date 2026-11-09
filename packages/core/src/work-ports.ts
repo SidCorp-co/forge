@@ -56,7 +56,11 @@ import {
 } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
-import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
+import {
+  readMergedHead,
+  resolveSourceHost,
+  SourceHostUnavailable,
+} from './integrations/source-host/index.js';
 import {
   provideBetaProvenancePort,
   provideCleanupLandingPort,
@@ -64,6 +68,7 @@ import {
   provideFailReturnPort,
   provideIssuePorts,
   provideReleasedLineReads,
+  provideRequestHeadPort,
 } from './issues/index.js';
 import {
   broadcastSessionEvent,
@@ -264,6 +269,14 @@ function provideIssueSidePorts(): void {
     betaKeysOfIssue: async (issueId) => betaKeysOf(issueId, await feedbackIdsRoutingTo(issueId)),
   });
   provideBetaPortPorts({ createFeedback, triageOutcomesOf, feedbackIdOfSeq });
+  provideRequestHeadPort({
+    requestHeadOf: (projectId, head, landing) =>
+      readMergedHead(
+        async (a, b) => (await resolveSourceHost(projectId, 'kernel')).sameTree(a, b),
+        head,
+        landing,
+      ),
+  });
 }
 
 /** What Needs you and the Delivery overview read from later contexts (`development/ports.ts`). */

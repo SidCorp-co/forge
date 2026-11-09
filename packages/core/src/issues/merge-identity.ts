@@ -26,7 +26,7 @@ import { logger } from '../lib/logger.js';
 import { insertActivityRow } from './activity-log.js';
 import { betaKeysOfIssue } from './beta-provenance-port.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { observedMergesForIssue } from './observed-merges.js';
+import { type ObservedMerge, observedMergesForIssue } from './observed-merges.js';
 import { owedFilingOfMark } from './owed-merges.js';
 import {
   declaredIssueSeqs,
@@ -273,7 +273,7 @@ export async function identifiedMergeForIssue(
   issueId: string,
   actor: OutboxActor,
   base?: string,
-): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
+): Promise<ObservedMerge | null> {
   const [row] = await db
     .select({ projectId: issues.projectId })
     .from(issues)
@@ -323,7 +323,7 @@ export async function identifiedMergeForIssue(
 export async function identifiedNamedMerge(
   issueId: string,
   projectId: string,
-  merge: { commitSha: string; mergedAt: Date; target: string },
+  merge: ObservedMerge,
   actor: OutboxActor,
 ): Promise<{ merge: typeof merge } | { refused: Extract<MergeIdentity, { holds: false }> }> {
   const identity = await mergeIdentityOf({

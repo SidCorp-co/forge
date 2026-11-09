@@ -248,6 +248,7 @@ async function stampMark(
           commitSha: observed.commitSha,
           mergedAt: observed.mergedAt,
           target: observed.target,
+          ...('head' in observed ? { requestHead: observed.head } : {}),
           landing,
           artifacts,
         },

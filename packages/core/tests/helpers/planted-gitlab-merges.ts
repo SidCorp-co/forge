@@ -76,6 +76,10 @@ const TIMEOUT = 'The operation was aborted due to timeout';
 export const plantedRepository = () => ({
   provider: 'gitlab',
   fullName: 'acme/canawan-api',
+  sameTree: async () => {
+    if (trees.same instanceof Error) throw trees.same;
+    return trees.same;
+  },
   readCommit: async (sha: string) => {
     const message = messages.get(sha.toLowerCase());
     return message
@@ -181,10 +185,6 @@ export const plantedSourceHost = () => ({
       mergedAt: landed ? new Date(Date.UTC(2026, 9, 23, 9, number)).toISOString() : null,
       mergeCommitSha: landed,
     };
-  },
-  sameTree: async () => {
-    if (trees.same instanceof Error) throw trees.same;
-    return trees.same;
   },
   // the target holds what the planted host merged into it, and nothing else
   branchContains: async (_branch: string, sha: string) => {

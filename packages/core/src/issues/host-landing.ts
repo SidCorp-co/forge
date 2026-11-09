@@ -2,6 +2,7 @@ import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { designOnlyMarkSql } from './design-delivery.js';
+import type { ObservedMerge } from './observed-merges.js';
 
 /**
  * Whether the issue row `i` releases through change requests: its project's document declares
@@ -41,11 +42,15 @@ export async function hostMergeNamed(
   projectId: string,
   commit: string | undefined,
   target: string,
-): Promise<{ commitSha: string; mergedAt: Date; target: string } | null> {
+): Promise<ObservedMerge | null> {
   const sha = commit?.trim().toLowerCase();
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
   const [row] = await db
-    .select({ sha: repoPullRequests.mergeCommitSha, at: repoPullRequests.mergedAt })
+    .select({
+      sha: repoPullRequests.mergeCommitSha,
+      at: repoPullRequests.mergedAt,
+      head: repoPullRequests.headSha,
+    })
     .from(repoPullRequests)
     .where(
       and(
@@ -56,7 +61,9 @@ export async function hostMergeNamed(
       ),
     )
     .limit(1);
-  return row?.sha && row.at ? { commitSha: row.sha, mergedAt: row.at, target } : null;
+  return row?.sha && row.at
+    ? { commitSha: row.sha, mergedAt: row.at, target, headSha: row.head || null }
+    : null;
 }
 
 /**

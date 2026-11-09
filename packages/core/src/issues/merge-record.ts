@@ -35,6 +35,8 @@ type MergeEvidence =
        * lands at the last of them; any other observed stamp stands first.
        */
       hostMerge?: { head: MergedHead | null } | null;
+      /** The head of the request a mark identified as this landing (`host-mark.ts`, ISS-1168). */
+      requestHead?: MergedHead | null;
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
       artifacts?: LandingArtifact[] | null;
@@ -202,6 +204,13 @@ export async function recordIssueMerge(
             ),
           )
         : isNull(issues.mergedCommitSha);
+  // a mark's head fills a stamp holding none or reads that head again, and never replaces another
+  const heldHead = prior?.mergedHead?.sha.toLowerCase() ?? null;
+  const head = hostMerge
+    ? hostMerge.head
+    : evidence.kind === 'observed' && (heldHead === null || heldHead === evidence.requestHead?.sha)
+      ? evidence.requestHead
+      : undefined;
   const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
   const artifacts = evidence.artifacts ?? null;
 
@@ -213,7 +222,7 @@ export async function recordIssueMerge(
         ? {
             mergedCommitSha: evidence.commitSha,
             mergedTarget: target,
-            mergedHead: hostMerge?.head ?? null,
+            mergedHead: head ?? null,
           }
         : {}),
       ...(landing ? { mergedLanding: landing } : {}),
@@ -244,7 +253,7 @@ export async function recordIssueMerge(
         issueId,
         commitSha: evidence.commitSha,
         target,
-        head: hostMerge ? hostMerge.head : undefined,
+        head,
       },
       args.actor,
       args.via,

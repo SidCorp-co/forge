@@ -1,9 +1,11 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
+import type { MergedHead } from '@forge/contracts/landing-artifacts';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { hostMergeNamed } from './host-landing.js';
 import { identifiedMergeForIssue, identifiedNamedMerge } from './merge-identity.js';
+import type { ObservedMerge } from './observed-merges.js';
 import {
   isSourceHostUnavailable,
   readLandingBranches,
@@ -11,9 +13,20 @@ import {
   resolveSourceHost,
 } from './ports.js';
 import type { IssueRow } from './read-service.js';
+import { requestHeadOf } from './request-head-port.js';
 
-/** A landing the host holds: the commit, when it landed there, and the branch it landed on. */
-export type HostMerge = { commitSha: string; mergedAt: Date; target: string };
+/**
+ * A landing the host holds: the commit, when it landed there, and the branch it landed on. A host
+ * merge of a change request also carries the request's `head` and whether its tree is the landing's
+ * (REQ-63 BC-6), null where the projection holds no head; a commit the branch merely contains has no
+ * request, so no `head`.
+ */
+export type HostMerge = {
+  commitSha: string;
+  mergedAt: Date;
+  target: string;
+  head?: MergedHead | null;
+};
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -63,12 +76,24 @@ async function hostBranchLanding(
 }
 
 /**
+ * The host merge of a request with that request's head, as the merge door records it
+ * (`source-host/merge.ts`): the head the projection holds, its tree read against the landing from
+ * the host. The mark is a write path, so asking the host is allowed here (ISS-774 bars reads); a
+ * host that cannot be reached or cannot say leaves the head unread with why, never identical
+ * (ISS-1168).
+ */
+async function withRequestHead(projectId: string, merge: ObservedMerge): Promise<HostMerge> {
+  const { headSha, ...landing } = merge;
+  return { ...landing, head: await requestHeadOf(projectId, headSha, merge.commitSha) };
+}
+
+/**
  * On a project that releases through change requests a mark lands nothing by itself: only what the
  * host holds on the project's target branch (`source.git.defaultBranch`) does (REQ-71, ISS-672). A
  * mark stands there on the host merge into that branch Forge holds for a request linking the issue,
  * on a `commit` that is the merge commit of a request the host reported merged into it, or on a
  * `commit` the branch contains, read through the binding (`hostBranchLanding`); each is stamped as
- * that landing. A mark naming another branch, and any other mark, is refused by name, never stamped
+ * that landing, a request's merge with its head (`withRequestHead`). A mark naming another branch, and any other mark, is refused by name, never stamped
  * as a local claim nothing reads as landed, and a host that cannot be read refuses it too. Null
  * elsewhere. A design approval's stamp is the approval's own write (`design-landing.ts`).
  */
@@ -96,13 +121,13 @@ export async function hostMergeOfMark(
     );
   }
   const observed = await identifiedMergeForIssue(prior.id, actor, target);
-  if (observed) return observed;
+  if (observed) return withRequestHead(prior.projectId, observed);
   const named = await hostMergeNamed(prior.projectId, args.commit, target);
   if (named) {
     // another request's merge commit is not this issue's landing, and the branch holding it does
     // not make it one: refused here rather than read again as a branch landing
     const judged = await identifiedNamedMerge(prior.id, prior.projectId, named, actor);
-    if ('merge' in judged) return judged.merge;
+    if ('merge' in judged) return withRequestHead(prior.projectId, judged.merge);
     throw refuse(
       'MARK_NOT_A_HOST_MERGE',
       `${HOST_ONLY} ${judged.refused.detail}. ${OPEN_A_REQUEST}`,
