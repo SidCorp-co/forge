@@ -5,8 +5,13 @@
  * is linked the workflows question carries the gap alone: no refusal asks for a trace nothing could
  * hold. Run through the app's own routes against real Postgres, with requirement_ready enforced.
  *
+ * REQ-67 BC-1 (ISS-1176): the agree is refused too while a live criterion cannot be checked on the
+ * running product, read off its form, naming each one and why; it is taken once each is rewritten as
+ * what holds, and an accept that re-baselines an agreed requirement is refused by the same question.
+ *
  * @direct-test-of packages/core/src/requirements/checklist-record.ts
  * @direct-test-of packages/core/src/requirements/agree.ts
+ * @direct-test-of packages/contracts/src/criterion-checkable.ts
  */
 
 import { readFileSync } from 'node:fs';
@@ -59,15 +64,21 @@ async function approvedDesign(flow: string): Promise<void> {
   );
 }
 
+const CRITERIA = [{ body: 'A buyer pays by card.' }, { body: 'A paid order is confirmed.' }];
+
 /** A requirement of `kind` at a current r1 with two criteria, linking the designs named. */
-async function requirementAtR1(kind: string, designs: string[]): Promise<string> {
+async function requirementAtR1(
+  kind: string,
+  designs: string[],
+  criteria: { body: string }[] = CRITERIA,
+): Promise<string> {
   const key = (
     await ok(
       api(token, 'POST', at('/requirements'), {
         title: `Checkout as a ${kind}`,
         reason: 'buyers leave at checkout',
         spec: SPEC,
-        criteria: [{ body: 'A buyer pays by card.' }, { body: 'A paid order is confirmed.' }],
+        criteria,
         ...(designs.length ? { designs } : {}),
       }),
       201,
@@ -79,9 +90,9 @@ async function requirementAtR1(kind: string, designs: string[]): Promise<string>
   return key;
 }
 
-const agree = (key: string) =>
+const agree = (key: string, revision = 1) =>
   api(token, 'POST', at(`/requirements/${key}/agree`), {
-    revision: 1,
+    revision,
     reason: 'Agreed for this test.',
   });
 
@@ -140,5 +151,64 @@ describe('the agree of a requirement whose criteria trace no step', () => {
     const res = await agree(key);
     expect(res.status).toBe(422);
     expect(refusalsOf(res.body).map((r) => r.question)).toEqual(['workflows']);
+  });
+});
+
+/** Opens revision `n` on `key` with `criteria`, proposes it and accepts it: the accept's answer. */
+async function acceptRevision(key: string, n: number, criteria: { code: string; body: string }[]) {
+  await ok(
+    api(token, 'POST', at(`/requirements/${key}/revisions`), {
+      baseRevision: n - 1,
+      reason: 'the criteria say what holds',
+      spec: SPEC,
+      criteria,
+    }),
+  );
+  await ok(api(token, 'POST', at(`/requirements/${key}/revisions/${n}/propose`), {}));
+  return api(token, 'POST', at(`/requirements/${key}/revisions/${n}/accept`), { reason: 'ok' });
+}
+
+describe('the agree of a requirement whose criterion cannot be checked on the running product', () => {
+  it('refuses naming each such criterion and why, takes it once each says what holds, and refuses a re-baseline the same way', async () => {
+    const key = await requirementAtR1(
+      'process',
+      ['checkout'],
+      [{ body: 'Verify a buyer can pay by card.' }, { body: 'A paid order is confirmed.' }],
+    );
+    await trace(key, 'BC-1', ['his']);
+    await trace(key, 'BC-2', ['discharged']);
+    const refused = await agree(key);
+    expect(refused.status).toBe(422);
+    const [gap, ...more] = refusalsOf(refused.body);
+    expect(more).toEqual([]);
+    expect(gap).toMatchObject({
+      code: 'CHECKLIST_INCOMPLETE',
+      question: 'checkable',
+      path: '/answers/checkable',
+    });
+    expect(gap?.detail).toContain(
+      'Not checkable on the running product: BC-1 (it says what to check, not what holds).',
+    );
+    expect(gap?.detail).not.toContain('BC-2');
+
+    await ok(
+      acceptRevision(key, 2, [
+        { code: 'BC-1', body: 'A buyer pays by card.' },
+        { code: 'BC-2', body: 'A paid order is confirmed.' },
+      ]),
+    );
+    await ok(agree(key, 2));
+
+    const rebaseline = await acceptRevision(key, 3, [
+      { code: 'BC-1', body: 'A buyer pays by card.' },
+      { code: 'BC-2', body: 'Ensure a paid order is confirmed.' },
+    ]);
+    expect(rebaseline.status).toBe(422);
+    expect(refusalsOf(rebaseline.body).map((r) => [r.question, r.detail])).toEqual([
+      [
+        'checkable',
+        expect.stringContaining('BC-2 (it says what to check, not what holds)'),
+      ],
+    ]);
   });
 });
