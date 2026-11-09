@@ -73,12 +73,12 @@ let ownerId: string;
 let serving = BEFORE;
 let seq = 0;
 
-async function judgedIssue(runtimes: readonly string[]): Promise<void> {
+async function judgedIssue(runtimes: readonly string[], landing = EARLIER): Promise<void> {
   seq += 1;
   const [row] = (await db.execute(sql`
     INSERT INTO issues (project_id, iss_seq, title, status, created_by_id, merged_at,
                         merged_commit_sha, merged_target)
-    VALUES (${projectId}, ${seq}, ${`ISS-${seq}`}, 'in_progress', ${ownerId}, now(), ${EARLIER}, 'dev')
+    VALUES (${projectId}, ${seq}, ${`ISS-${seq}`}, 'in_progress', ${ownerId}, now(), ${landing}, 'dev')
     RETURNING id
   `)) as unknown as Array<{ id: string }>;
   const id = (row as { id: string }).id;
@@ -219,7 +219,7 @@ describe('two deploys a few minutes apart keep what the builds before held (ISS-
 
     // B serves, and a pass is judged on it, while no served-ancestry pass runs
     serving = MIDDLE;
-    await judgedIssue([MIDDLE]);
+    await judgedIssue([MIDDLE], MIDDLE);
     const onB = await read([BEFORE, EARLIER, MIDDLE]);
     expect(onB?.holds.get(MIDDLE)).toBe(true);
     expect(onB?.holds.get(EARLIER)).toBe(true);
@@ -264,4 +264,45 @@ describe('two deploys a few minutes apart keep what the builds before held (ISS-
     expect(onC?.holds.get(EARLIER)).toBe(true);
     expect(onC?.rechecking?.get(EARLIER)).toContain('is being re-checked');
   });
+
+  it('holds what A and B held on C, one commit on top of B, with a pass stepped between each read', async () => {
+    H.state.descends = new Set([
+      `${EARLIER}>${BEFORE}`,
+      `${EARLIER}>${MIDDLE}`,
+      `${EARLIER}>${AFTER}`,
+      `${BEFORE}>${MIDDLE}`,
+      `${BEFORE}>${AFTER}`,
+      `${MIDDLE}>${AFTER}`,
+    ]);
+    await judgedIssue([BEFORE, EARLIER, ASIDE]);
+    await readServedAncestry();
+    // B serves about five minutes: read, judged on, and read by a pass
+    serving = MIDDLE;
+    // an issue that landed as B, judged there
+    await judgedIssue([MIDDLE], MIDDLE);
+    await read([BEFORE, EARLIER, MIDDLE]);
+    await backgroundSettled();
+    await readServedAncestry();
+    const onB = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
+    for (const commit of [BEFORE, EARLIER, MIDDLE])
+      expect(onB?.holds.get(commit), commit).toBe(true);
+
+    // C, B's release commit, serves: read before any pass names it, then after one
+    serving = AFTER;
+    const first = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
+    for (const commit of [BEFORE, EARLIER, MIDDLE]) {
+      expect(first?.unanswered.get(commit), commit).toBeUndefined();
+      expect(first?.rechecking?.get(commit), commit).toContain('is being re-checked');
+    }
+    await backgroundSettled();
+    await readServedAncestry();
+    const settled = await read([BEFORE, EARLIER, MIDDLE, ASIDE]);
+    for (const commit of [BEFORE, EARLIER, MIDDLE]) {
+      expect(settled?.unanswered.get(commit), commit).toBeUndefined();
+      expect(settled?.holds.get(commit), commit).toBe(true);
+    }
+    expect(settled?.holds.get(ASIDE)).toBe(false);
+    expect(settled?.rechecking).toBeUndefined();
+  });
 });
+
