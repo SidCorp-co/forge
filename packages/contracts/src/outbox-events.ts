@@ -260,6 +260,8 @@ export interface OutboxEventPayloads
 		after: Record<string, unknown>;
 		/** Set by the merge stamp alone: the route the merge arrived by. */
 		via?: MergeStampVia;
+		/** The act also moved the issue's work step: the project's Now is refreshed from this event (ISS-1181). */
+		stepMoved?: true;
 	};
 	"issue.transitioned": TransitionEvent<"issue">;
 	/**

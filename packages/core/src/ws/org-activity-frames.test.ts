@@ -194,7 +194,13 @@ describe('the org room hears what moved on its projects', () => {
     ],
     [
       'issue.updated',
-      { issueId: 'i1', projectId: 'p1', actor: { id: 'u1' }, fields: ['mergedAt'] },
+      {
+        issueId: 'i1',
+        projectId: 'p1',
+        actor: { id: 'u1' },
+        fields: ['mergedAt'],
+        stepMoved: true,
+      },
       2,
     ],
     ['issue.created', { issueId: 'i2', projectId: 'p1', actor: { id: 'u1' } }, 1],

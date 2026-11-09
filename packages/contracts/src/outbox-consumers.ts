@@ -14,8 +14,8 @@ export const OUTBOX_CONSUMERS = {
 		"memory-indexer",
 		"support-results",
 	],
-	// an issue's move or stamp also refreshes what runs on its project now: the step it moved is
-	// derived from it, never told beside it (ISS-1181)
+	// a stamp, a plan or a check that moved the issue's step carries it (`stepMoved`): what runs on
+	// its project now is refreshed from it, never told beside it (ISS-1181)
 	"issue.updated": [
 		"ws-broadcast",
 		"org-activity",

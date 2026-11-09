@@ -52,8 +52,10 @@ function onOrg<T extends ConsumedBy<'org-activity'>>(
  */
 function registerOrgActivityBroadcast(): void {
   onOrg('issue.transitioned', (p) => tellOrg(p.projectId, 'status'));
-  // an issue's stamp or edit moves what runs on its project now: the step it moved, if any (ISS-1181)
-  onOrg('issue.updated', (p) => tellOrg(p.projectId, 'step'));
+  // a stamp, a plan or a check that moved the issue's step carries it (ISS-1181)
+  onOrg('issue.updated', async (p) => {
+    if (p.stepMoved) await tellOrg(p.projectId, 'step');
+  });
   onOrg('issue.created', (p) => tellOrg(p.projectId, 'status'));
   onOrg('question.asked', (p) => tellOrg(p.projectId, 'question'));
   onOrg('question.transitioned', (p) => tellOrg(p.projectId, 'question'));
@@ -206,7 +208,7 @@ export function registerWsBroadcastSubscribers(): void {
       fields: p.fields,
       actorId: p.actor.id,
     });
-    tellStepOf(p.projectId);
+    if (p.stepMoved) tellStepOf(p.projectId);
   });
 
   // an open thread refetches its comments and the issue's activity

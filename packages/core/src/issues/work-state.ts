@@ -71,9 +71,9 @@ export async function setWorkStep(
   step: WorkStep | null,
   now: Date = new Date(),
   opts: { restart?: boolean; reportedBy?: StepReportedBy | undefined } = {},
-): Promise<void> {
+): Promise<boolean> {
   const held = await readWorkStateForUpdate(executor, issueId);
-  if ((held?.step ?? null) === step && !opts.restart) return;
+  if ((held?.step ?? null) === step && !opts.restart) return false;
   const steps = nextStepLog(held?.steps ?? [], step, now);
   const values = { step, stepStartedAt: step === null ? null : now, steps, updatedAt: now };
   await executor
@@ -82,17 +82,21 @@ export async function setWorkStep(
     .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
   // the project's Now and the workspace's Activity read the step: a move tells their rooms (ISS-951),
   // by the act's own issue event where it writes one
-  if (opts.reportedBy) return;
+  if (opts.reportedBy) return true;
   const [issue] = await executor
     .select({ projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
   if (issue) await tellStepMoved(executor, issue.projectId);
+  return true;
 }
 
-/** `agent-sessions/push.ts:pushProjectNow`'s frame, which this module (work) sits before. */
-async function tellStepMoved(executor: Executor, projectId: string): Promise<void> {
+/**
+ * `agent-sessions/push.ts:pushProjectNow`'s frame, which this module (work) sits before: told of a
+ * step move no issue event of its act carries (`issue.updated`'s `stepMoved`).
+ */
+export async function tellStepMoved(executor: Executor, projectId: string): Promise<void> {
   const data: ProjectNowFrame = { projectId, source: 'step' };
   await emitEvent(executor, 'session.pushed', {
     projectId,
@@ -144,6 +148,19 @@ export async function advanceStepOnEvidence(
   if (workSteps.indexOf(to) <= at) return null;
   await setWorkStep(executor, issueId, to, now, { reportedBy: reportedBy ?? undefined });
   return to;
+}
+
+/**
+ * A landed change is past building, whoever built it (ISS-951): the merge stamp moves the step, and
+ * the stamp's own `issue.updated`, where it writes one, carries the move (ISS-1181).
+ */
+export async function advanceStepOnStamp(
+  executor: Executor,
+  issueId: string,
+  stampTold: boolean,
+): Promise<boolean> {
+  const told = stampTold ? 'issue.updated' : null;
+  return (await advanceStepOnEvidence(executor, issueId, 'merge_marked', told)) !== null;
 }
 
 /** A change request is open for these issues: each in-progress one moves to build, in its own write. */
@@ -217,17 +234,21 @@ export async function writeWorkStateFields(
   executor: Executor,
   issueId: string,
   write: WorkStateWrite,
-): Promise<void> {
-  if (write.step !== undefined) await setWorkStep(executor, issueId, write.step);
+  reportedBy?: StepReportedBy,
+): Promise<boolean> {
+  const moved =
+    write.step !== undefined &&
+    (await setWorkStep(executor, issueId, write.step, new Date(), { reportedBy }));
   const set: Partial<typeof issueWorkState.$inferInsert> = {};
   if (write.branch !== undefined) set.branch = write.branch;
   if (write.headSha !== undefined) set.headSha = write.headSha?.toLowerCase() ?? null;
-  if (Object.keys(set).length === 0) return;
+  if (Object.keys(set).length === 0) return moved;
   const values = { ...set, updatedAt: new Date() };
   await executor
     .insert(issueWorkState)
     .values({ issueId, ...values })
     .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
+  return moved;
 }
 
 const FULL_SHA = /^[0-9a-f]{40}$/iu;

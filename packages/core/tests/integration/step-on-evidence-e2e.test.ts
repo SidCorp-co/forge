@@ -61,13 +61,18 @@ async function stepOf(id: string): Promise<{ step: string | null; log: string[] 
   return { step: rows[0]?.step ?? null, log: (rows[0]?.steps ?? []).map((s) => s.step) };
 }
 
+/** The events the room's step frame is sent from: the act's own `issue.updated` carrying the move, or
+ *  the frame told alone where the act wrote no issue event (ISS-1181). */
 async function stepFrames(): Promise<number> {
   const rows = (await db.execute(sql`
     SELECT count(*)::int AS n FROM pipeline_outbox
-     WHERE type = 'session.pushed'
-       AND payload->>'event' = 'project.now.changed'
-       AND payload->'data'->>'source' = 'step'
-       AND payload->>'projectId' = ${projectId}`)) as unknown as Array<{ n: number }>;
+     WHERE payload->>'projectId' = ${projectId}
+       AND ((type = 'session.pushed'
+             AND payload->>'event' = 'project.now.changed'
+             AND payload->'data'->>'source' = 'step')
+         OR (type = 'issue.updated' AND (payload->>'stepMoved')::boolean))`)) as unknown as Array<{
+    n: number;
+  }>;
   return rows[0]?.n ?? 0;
 }
 

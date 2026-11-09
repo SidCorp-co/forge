@@ -76,6 +76,8 @@ export async function writeCheckRuns(
     via: CheckRunVia;
     runSessionId: string | null;
     actor: Actor;
+    /** The act also moved the issue's work step, carried on this write's `issue.updated` (ISS-1181). */
+    stepMoved?: boolean;
   },
 ): Promise<Written | Refused> {
   const head = args.head.toLowerCase();
@@ -121,6 +123,7 @@ export async function writeCheckRuns(
       fields: ['checks'],
       before: {},
       after: {},
+      ...(args.stepMoved ? { stepMoved: true as const } : {}),
     });
   }
   return { ok: true, recorded: sorted.fresh.length, alreadyRecorded: sorted.again };

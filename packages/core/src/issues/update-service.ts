@@ -117,6 +117,9 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWri
           actor.type === 'device' ? actor.id : null,
         );
 
+  // a step this write moves is carried on its own `issue.updated`, where it writes one (ISS-1181)
+  const stepTold = changes && changes.fields.length > 0 ? ('issue.updated' as const) : undefined;
+  let stepMoved = false;
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);
     if (!current) throw notFound('issue not found');
@@ -186,7 +189,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWri
           }
         }
       }
-      await writeWorkStateFields(tx, issueId, workState);
+      stepMoved = await writeWorkStateFields(tx, issueId, workState, stepTold);
     }
 
     const [row] = await tx
@@ -201,13 +204,8 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWri
       updates.plan.trim() !== '' &&
       workState?.step === undefined
     ) {
-      await advanceStepOnEvidence(
-        tx,
-        issueId,
-        'plan_written',
-        // the write's own `issue.updated` refreshes the Now (ISS-1181)
-        changes && changes.fields.length > 0 ? 'issue.updated' : undefined,
-      );
+      const advanced = await advanceStepOnEvidence(tx, issueId, 'plan_written', stepTold);
+      stepMoved ||= advanced !== null;
     }
     // build waits for a plan written against the requirement it delivers (ISS-778), then, where plan
     // approval is enforced, for approved since the plan's last write (REQ-2 BC-4; issue-lifecycle
@@ -279,6 +277,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueFieldsWri
         projectId: written.projectId,
         actor,
         ...changes,
+        ...(stepMoved ? { stepMoved: true as const } : {}),
       });
     }
     return { issue: written, warnings: told ? [told] : [] };
