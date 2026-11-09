@@ -1,0 +1,1 @@
+**A short box drop no longer reads as a production breach.** An ops read waits for its box to reconnect within its timeout, and the example production watch files checks the box could not reach as one blind item below a breach.

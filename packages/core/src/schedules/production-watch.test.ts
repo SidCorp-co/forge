@@ -89,6 +89,23 @@ describe('the example production watch on a box it cannot reach (ISS-1190)', () 
     return r.value as { breaches: Record<string, number>; filed: string[] };
   };
 
+  it('throws a call no box could be reached for under its own code, recorded failed', async () => {
+    const ops = openOpsCaller({
+      projectId: 'p',
+      decl: PRODUCTION_WATCH_OPS,
+      run: async () => dropped,
+    });
+    expect(await ops.call('status', null)).toEqual({
+      ok: false,
+      name: 'ScriptOpsFailed',
+      code: 'SCRIPT_OPS_BOX_UNREACHABLE',
+      message: `SCRIPT_OPS_BOX_UNREACHABLE: ctx.ops.status did not run: ${dropped.why}`,
+    });
+    expect(ops.calls()).toEqual([
+      { name: 'status', outcome: 'failed', code: 'SCRIPT_OPS_BOX_UNREACHABLE' },
+    ]);
+  });
+
   it('files one item naming the box connection for every check it could not reach, below high and not a breach', async () => {
     const before = requests.length;
     expect((await fire(() => dropped)).filed).toEqual([]);
