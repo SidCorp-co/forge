@@ -4,11 +4,13 @@
 // the rest dimmed, opened on the lit steps, with the way to the workflow's own page. A traced step the
 // workflow's current design no longer has lights nothing and is named, so a trace left behind by a
 // design change never reads as a lit picture with nothing lit. The pane is as tall as the drawing,
-// fitted to its width at a readable size; a wider drawing scrolls sideways (ISS-903).
+// fitted to its width at a readable size; a wider drawing scrolls sideways (ISS-903). A workflow its
+// criteria trace nothing in lights nothing this requirement owns, so it folds to its name and "Not
+// traced", the drawing opened on demand (ISS-1179: REQ-66's 1,000 px diagram stood above its criteria).
 
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useMemo, useState } from "react";
-import { NativeSelect } from "@/design";
+import { Disclosure, NativeSelect } from "@/design";
 import { templateFor } from "@/features/workflows";
 import { presentTrace } from "@/features/workflows";
 import { WorkflowCanvas } from "@/features/workflows";
@@ -63,7 +65,7 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
   } else {
     canvas = <p className="p-4 text-13 text-muted">{t("requirements.picture.workflow.loading")}</p>;
   }
-  return (
+  const figure = (
     <Figure alt={alt} kind="workflow" by={head}>
       {traced.length > 1 ? (
         <div className="w-full max-w-80">
@@ -85,6 +87,12 @@ export function WorkflowPicture({ projectId, slug, traced }: { projectId: string
         {canvas}
       </div>
     </Figure>
+  );
+  if (traces) return figure;
+  return (
+    <Disclosure title={w.title} summary={legend} testId="picture-workflow-fold">
+      {figure}
+    </Disclosure>
   );
 }
 
