@@ -1,13 +1,13 @@
 // The screens ISS-1184 changes, drawn from forge-dev's own reads of 2026-11-09 (trimmed into
 // screen-copy-rest.fixture.json) at 1440 by 900 and 390 by 844, light then dark:
 // - home: the live bar names ISS-1184's build, and Moving no longer lists it again under the bar;
-// - bell: a stuck-work notice reads in plain words, never "Pipeline wedge: claim hop miss on session";
 // - req90: a requirement waiting to re-tie its issues names them and the criterion by title, never by key;
 // - req12: Mark delivered, held, names the criteria not passing in its tooltip, never their codes;
 // - req66: the value check's questions fold to their name and state;
 // - channels: each room's row names its agent and whether it is live;
 // - channel: #Forge-Communicate's name on the first view at 390, and Common issues offers Add;
 // - workflows: a design linked to no requirement reads "Unlinked", never "None".
+// The bell is screen-copy-bell.witness.tsx, so neither file coordinates more modules than archmap allows.
 // `VITE_WITNESS_BEFORE=1` draws what core said before (keys in the wait, the old notice, no agent on a
 // channel's row), for the before counts on origin/dev's web. Each stage prints `WORDS <screen> <theme>
 // <width> <n> whole <m>` (witness/first-screen.ts) and fails where the screen says what the change removed.
@@ -17,11 +17,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { NotificationsMenu, TopBarSlotProvider } from "@/design";
+import { TopBarSlotProvider } from "@/design";
 import { LiveBar } from "@/features/agents";
 import { ChannelScreen, ChannelsScreen } from "@/features/channels";
-import { toNotificationItem } from "@/features/notifications/map";
-import type { NotificationRow } from "@/features/notifications/types";
 import { RequirementScreen } from "@/features/requirements/components/requirement-screen";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { WorkflowsScreen } from "@/features/workflows/components/workflows-screen";
@@ -65,42 +63,6 @@ const REQ90 = {
     },
   },
 };
-
-// ── the bell: two stuck-work notices queue-hop.ts and the zombie reaper write ──
-const SESSION = "5b0c7a52-1f43-4c55-9d43-0d3c1a7f0e11";
-const notice = (id: string, title: string, body: string): NotificationRow =>
-  ({
-    id,
-    notificationId: `n-${id}`,
-    projectId: P,
-    type: "pipeline_wedge",
-    kind: "condition",
-    tier: "ticket",
-    title,
-    body,
-    readAt: null,
-    groupKey: null,
-    resolvedNotice: false,
-    members: 1,
-    openMembers: 1,
-    severity: "warning",
-    issueId: null,
-    secondaryIssueId: null,
-    agentSessionId: SESSION,
-    createdAt: AT,
-    subject: null,
-    project: { id: P, slug: "forge", name: "Forge" },
-    line: title,
-  }) as unknown as NotificationRow;
-const NOTICES: NotificationRow[] = BEFORE
-  ? [
-      notice("d1", "Pipeline wedge: claim hop miss on session", `WHERE: claim hop, session ${SESSION}\nWHY: no worker claimed the session within the queue timeout\nWHAT: Check that an online runner is bound to this project.`),
-      notice("d2", "Pipeline wedge: heartbeat hop miss on job", "WHERE: heartbeat hop, job 0b3f\nWHY: the job's lease expired with no heartbeat\nWHAT: The job is retried."),
-    ]
-  : [
-      notice("d1", "An agent session was never picked up by a machine", "No worker claimed the session within the queue timeout.\nNext: Check that an online runner is bound to this project."),
-      notice("d2", "A job stopped answering", "The job's lease expired with no heartbeat.\nNext: The job is retried."),
-    ];
 
 // ── core stubbed over fetch: each read the screens send, answered from the fixture ──
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -184,18 +146,6 @@ const SCREENS: Screen[] = [
       const n = (q("[data-witness=page]")?.innerText.match(/Screen copy that core writes/g) ?? []).length;
       return n === 1 ? [] : [`ISS-1184's title shows ${n} times: on the live bar and again in Moving`];
     },
-  },
-  {
-    name: "bell",
-    at: "/projects/forge",
-    pattern: "/projects/$slug",
-    draw: () => (
-      <div className="mx-auto max-w-[420px] p-4" data-testid="bell-witness">
-        <NotificationsMenu items={NOTICES.map((r) => toNotificationItem(r, undefined, "en"))} onMarkAllRead={() => {}} />
-      </div>
-    ),
-    ready: "[data-testid=bell-witness]",
-    never: [keyOf(/Pipeline wedge|hop miss|WHERE:|WHY:|WHAT:/, "a stuck-work notice reads the detector's labels")],
   },
   {
     name: "req90",
