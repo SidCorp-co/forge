@@ -1,1 +1,1 @@
-**Home and releases read a person's projects' names and release notes once.** A run's viewer is named with the holders, reporters as rows arrive, and release notes and closes once: attention 193 to 190, home 82 to 81 statements.
+**Home and releases read a person's projects' names and release notes once.** A run's viewer is named with the holders, reporters as rows arrive, and release notes and closes once: attention 193 to 189, home 82 to 81 statements.
