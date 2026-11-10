@@ -1,7 +1,8 @@
 // The workspace home for a person (ISS-919, FB-483; ISS-1069): what they asked for that is not live
 // yet, across every project they read. It is the one thing Activity does not show. What waits on them,
 // what runs and what shipped are Activity's, the one cross-project screen, so the home draws none of
-// them, and a link kept to its old Figures tab lands on Activity.
+// them, and a link kept to its old Figures tab lands on Activity. It opens on its overview band
+// (REQ-43 r3 BC-14, `home-band.tsx`), counted over the rows the list holds.
 
 import { useEffect } from "react";
 import { PageContainer, PageTitle } from "@/design";
@@ -10,6 +11,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRouter } from "@/lib/navigation/router";
 import { useHome } from "../hooks";
+import { HomeBand } from "./home-band";
 import { MovingWork } from "./moving-work";
 
 /** The tab the home had before (ISS-919): its figures went with Ops, and a kept link reads Activity. */
@@ -32,7 +34,12 @@ export function HomeScreen() {
     <PageContainer className="flex flex-col gap-6">
       <PageTitle>{t("overview.home.title")}</PageTitle>
       <QueryBoundary query={home} loadingLabel={t("overview.home.loading")} height="inline">
-        {(data) => <MovingWork items={data.moving} total={data.movingTotal} truncated={data.movingTruncated} />}
+        {(data) => (
+          <>
+            {data.moving.length > 0 ? <HomeBand items={data.moving} total={data.movingTotal} /> : null}
+            <MovingWork items={data.moving} total={data.movingTotal} truncated={data.movingTruncated} />
+          </>
+        )}
       </QueryBoundary>
     </PageContainer>
   );

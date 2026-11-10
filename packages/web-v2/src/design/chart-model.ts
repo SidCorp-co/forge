@@ -2,7 +2,7 @@
 // home (REQ-43 BC-14..BC-17). A chart draws no bar for a zero value, so a printed value never rides
 // an index into the drawn bars: each row carries its own (`cap_<series>`, null where it prints none).
 
-import { dayKeyIn } from "@forge/contracts/day-keys";
+import { dayKeyIn, daysEnding } from "@forge/contracts/day-keys";
 import type { CoverageSegment } from "./patterns/facts-rail";
 import { LEGEND, type LegendTone, type StatusFamily, statusReading } from "./vocabulary";
 
@@ -78,4 +78,30 @@ export function stateFlowOf(family: StatusFamily, order: readonly string[], valu
     const r = statusReading(family, key, language);
     return { key, label: r.label, count: tally.get(key) ?? 0, tone: r.tone };
   });
+}
+
+/** A day's bar of how many instants fell on it: its day, how a reader names it, its tick, its count. */
+export interface DayCount {
+  day: string;
+  label: string;
+  tick: string;
+  count: number;
+  cap_count: number | null;
+}
+
+/**
+ * How many of `instants` fell on each of the last `n` days on the reader's calendar, today last, the
+ * highest and today's printed on their own rows (`peakCaps`); an instant before the window is not drawn.
+ */
+export function dayCountsOf(instants: readonly (string | Date)[], n: number, now: Date = new Date()): DayCount[] {
+  const { dayOf, today } = readerDays(now);
+  const tally = new Map(daysEnding(today, n).map((d) => [d, 0]));
+  for (const at of instants) {
+    const d = dayOf(at);
+    const v = tally.get(d);
+    if (v !== undefined) tally.set(d, v + 1);
+  }
+  const days = [...tally.entries()];
+  const caps = peakCaps(days.map(([, v]) => v));
+  return days.map(([day, count], i) => ({ day, label: dayLabel(day), tick: dayTick(day), count, cap_count: caps[i] ?? null }));
 }

@@ -3,7 +3,8 @@
 // needs-you rows come from core's one needs-you read model; beside them @-mentions, failed jobs
 // (incl. deploy), skill updates, channel gates and offline runners. Live via WS: cross-project
 // events only arrive on subscribed rooms, so a `useRoom` fans out per project and the
-// `['attention']` invalidations in `lib/ws/event-router.ts` refetch.
+// `['attention']` invalidations in `lib/ws/event-router.ts` refetch. It opens on its overview band
+// (REQ-43 r3 BC-14, `attention-band.tsx`), counted from the counts its sections head.
 
 import { type ReactNode, useState } from "react";
 import { useRouter } from "@/lib/navigation/router";
@@ -26,6 +27,7 @@ import { DecisionList } from "@/features/needs-you";
 import { approvalsHref } from "@/lib/routes/approvals";
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { useAttention } from "../hooks";
+import { AttentionBand } from "./attention-band";
 import type { AttentionItem, AttentionKind, AttentionView } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
@@ -116,12 +118,15 @@ function CountBadge({ children }: { children: ReactNode }) {
 const COLLAPSE_ABOVE = 5;
 
 function Group({
+  id,
   title,
   items,
   onOpen,
   count,
   collapsible: mayCollapse = false,
 }: {
+  /** The bucket's key in core's counts, which the band's part of the same kind reads. */
+  id: keyof AttentionView["counts"];
   title: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
@@ -136,7 +141,7 @@ function Group({
   if (items.length === 0) return null;
   const expanded = collapsible ? (toggled ?? false) : true;
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-testid="attention-group" data-key={id} data-count={matched}>
       <SectionTitle className="fg-label text-fg">
         {collapsible ? (
           <button
@@ -206,17 +211,18 @@ function Inbox({ view }: { view: AttentionView }) {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
+          <AttentionBand view={view} />
           {view.needsYou.map((part) => (
             <section key={part.projectSlug} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: part.projectName })} data-testid="attention-needs-you" data-total={part.total}>
               <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: part.projectName })}</SectionTitle>
               <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: part.owed }} slug={part.projectSlug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(part.projectSlug)} dense />
             </section>
           ))}
-          <Group title={t("attention.group.channelGates")} items={view.channelGates} count={view.counts.channelGates} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.mentions")} items={view.mentions} count={view.counts.mentions} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.failedJobs")} items={view.failedJobs} count={view.counts.failedJobs} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.statusReports")} items={view.statusReports} count={view.counts.statusReports} onOpen={(href) => router.push(href)} />
-          <Group title={t("attention.group.offlineRunners")} items={view.offlineRunners} count={view.counts.offlineRunners} onOpen={(href) => router.push(href)} />
+          <Group id="channelGates" title={t("attention.group.channelGates")} items={view.channelGates} count={view.counts.channelGates} onOpen={(href) => router.push(href)} />
+          <Group id="mentions" title={t("attention.group.mentions")} items={view.mentions} count={view.counts.mentions} onOpen={(href) => router.push(href)} />
+          <Group id="failedJobs" title={t("attention.group.failedJobs")} items={view.failedJobs} count={view.counts.failedJobs} onOpen={(href) => router.push(href)} />
+          <Group id="statusReports" title={t("attention.group.statusReports")} items={view.statusReports} count={view.counts.statusReports} onOpen={(href) => router.push(href)} />
+          <Group id="offlineRunners" title={t("attention.group.offlineRunners")} items={view.offlineRunners} count={view.counts.offlineRunners} onOpen={(href) => router.push(href)} />
         </div>
       )}
     </PageContainer>

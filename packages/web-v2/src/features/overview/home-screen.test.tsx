@@ -6,6 +6,7 @@
 // @direct-test-of packages/web-v2/src/features/overview/components/moving-work.tsx
 // @direct-test-of packages/web-v2/src/features/overview/home-rows.ts
 // @direct-test-of packages/web-v2/src/features/overview/components/cut-note.tsx
+// @direct-test-of packages/web-v2/src/features/overview/components/home-band.tsx
 
 import type { HomeResponse } from "@forge/contracts/owner-home";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
@@ -133,5 +134,20 @@ describe("the workspace home", () => {
     expect(within(row).getByRole("link").textContent).toBe("Export misses the header row");
     expect(within(row).getByTestId("home-moving-age").textContent).toBe("21d ago");
     expect(within(list).queryByText("Nightly import runs again")).toBeNull();
+  });
+
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the home opens on its overview above its list, and each
+  // stage's count there is the list's own rows at that stage (L-57)
+  it("opens on its overview band above the list, each stage counting the list's own rows", () => {
+    render(<HomeScreen />);
+    const band = screen.getByTestId("home-band");
+    const moving = screen.getByTestId("home-moving");
+    expect(band.compareDocumentPosition(moving) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(moving).getByTestId("home-moving-idle"));
+    const listed = new Map<string, number>();
+    for (const r of within(moving).getAllByTestId("home-moving-row")) listed.set(r.dataset.stage ?? "", (listed.get(r.dataset.stage ?? "") ?? 0) + 1);
+    const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    expect(parts).toEqual(listed);
+    expect(within(band).getByTestId("home-band-chart")).toBeInTheDocument();
   });
 });

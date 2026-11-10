@@ -46,9 +46,13 @@ function Figure({ f }: { f: BandFigure }) {
   );
 }
 
-export function OverviewBand({ label, figures, flow, chart, testId = "overview-band" }: { label: string; figures: readonly BandFigure[]; flow: readonly CoverageSegment[]; chart: ReactNode; testId?: string }) {
+/**
+ * A screen with no state that moves over time passes no `chart`, and its figures and flow take the
+ * band's whole width: a band never invents a chart to fill its right half.
+ */
+export function OverviewBand({ label, figures, flow, chart, testId = "overview-band" }: { label: string; figures: readonly BandFigure[]; flow: readonly CoverageSegment[]; chart?: ReactNode; testId?: string }) {
   return (
-    <section aria-label={label} className="grid grid-cols-1 gap-x-8 gap-y-4 border-b border-line-subtle bg-sunken px-5 py-4 max-md:px-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" data-testid={testId}>
+    <section aria-label={label} className={`grid grid-cols-1 gap-x-8 gap-y-4 border-b border-line-subtle bg-sunken px-5 py-4 max-md:px-3 ${chart ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : ""}`} data-testid={testId}>
       <div className="flex min-w-0 flex-col justify-center gap-4">
         <div className="flex flex-wrap gap-x-8 gap-y-3">
           {figures.map((f) => (
@@ -59,7 +63,7 @@ export function OverviewBand({ label, figures, flow, chart, testId = "overview-b
           <CoverageBar segments={flow} />
         </div>
       </div>
-      <div className="min-w-0">{chart}</div>
+      {chart ? <div className="min-w-0">{chart}</div> : null}
     </section>
   );
 }

@@ -1,5 +1,9 @@
 {
   "en": {
+    "attention.band.decisions": "Decisions",
+    "attention.band.label": "Attention overview",
+    "attention.band.owed": "Owed by you",
+    "attention.band.total": "Waiting on you",
     "attention.decision": "Decision",
     "attention.empty": "Inbox zero",
     "attention.group.channelGates": "Channel gates",
