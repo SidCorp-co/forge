@@ -243,4 +243,12 @@ describe("the Channels overview bands", () => {
     expect(parts.get("inferred")).toBe(rows.filter((r) => r.textContent?.includes("Inferred")).length);
     expect(screen.getByTestId("channel-answer")).toHaveClass("line-clamp-1");
   });
+
+  it("draws no band for a channel with no members, its sections saying so", async () => {
+    const channel = { ...webmail, members: 0, memberRows: [] };
+    fakeCore((c) => (c.path === `/projects/p1/support/channels/${webmail.rid}` ? { body: { channel } } : undefined));
+    renderWithQuery(<ChannelScreen projectId="p1" slug="mail" rid={webmail.rid} />);
+    await screen.findByRole("heading", { name: "Members" });
+    expect(screen.queryByTestId("channel-band")).toBeNull();
+  });
 });
