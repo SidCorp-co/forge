@@ -1,1 +1,0 @@
-**One chat's lapsed sign-in no longer cuts every other chat off from Forge.** Each chat on a box keeps its own record of tools needing sign-in, and a chat whose sign-in lapsed between turns reconnects next turn.

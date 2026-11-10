@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.639] - 2026-11-10
+
+Chat rooms keep reaching Forge after another room's sign-in error
+
+### Fixed
+
+- **One chat's lapsed sign-in no longer cuts every other chat off from Forge.** Each chat on a box keeps its own record of tools needing sign-in, and a chat whose sign-in lapsed between turns reconnects next turn.
+
 ## [0.4.0-dev.638] - 2026-11-10
 
 One GitHub App now delivers each repository's events to its own project
