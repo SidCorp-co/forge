@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.649] - 2026-11-10
+
+Feedback overview counts match its list; long record text opens in a side panel
+
+### Fixed
+
+- **The Feedback overview counts what its list shows.** Its figures and groups now match the list beneath, duplicates counted under their original; criteria, files, activity, reproduce and messages on record pages open in a side panel.
+
 ## [0.4.0-dev.648] - 2026-11-10
 
 Designs are filed and checked element by element
