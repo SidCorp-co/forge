@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const refetch = vi.fn();
-const empty = { needsYou: [], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], total: 0 };
+const empty = { needsYou: [], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: 0 };
 const hook = { view: empty, isLoading: false, isError: false, error: null as unknown, refetch };
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
@@ -50,6 +50,15 @@ describe("the attention screen's states", () => {
     const { container } = render(<AttentionScreen />);
     expect(container.querySelector(SHELL)).toBeNull();
     expect(screen.getByText("Attention")).toBeTruthy();
+  });
+
+  // ui-copy-rule (judged at 0.4.0-dev.646): an empty inbox still opens on its band, reading zero, its empty state beneath
+  it("opens an empty inbox on its band reading zero, the empty state beneath it", () => {
+    renderWithQuery(<AttentionScreen />);
+    const band = screen.getByTestId("attention-band");
+    expect(within(band).getByTestId("band-figure-value").textContent).toBe("0");
+    const emptyLine = screen.getByText("Inbox zero");
+    expect(band.compareDocumentPosition(emptyLine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   // ISS-1137: each decision is its question and its buttons; what it changes, its impact and the

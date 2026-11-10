@@ -88,11 +88,13 @@ const home: HomeResponse = {
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push }) }));
 vi.mock("@/features/orgs", () => ({ useActiveOrg: () => ({ activeOrgId: "org-1", activeOrg: null }) }));
-vi.mock("./hooks", () => ({ useHome: () => ({ ...settled, data: home }) }));
+const served = vi.hoisted(() => ({ data: null as HomeResponse | null }));
+vi.mock("./hooks", () => ({ useHome: () => ({ ...settled, data: served.data ?? home }) }));
 
 import { HomeScreen } from "./components/home-screen";
 
 beforeEach(() => {
+  served.data = null;
   push.mockClear();
   window.history.replaceState(null, "", "/");
 });
@@ -149,5 +151,15 @@ describe("the workspace home", () => {
     expect([...parts.values()].reduce((a, b) => a + b, 0)).toBe(home.movingTotal);
     expect(within(band).queryByText("Running now")).toBeNull();
     expect(within(band).getByTestId("home-band-chart")).toBeInTheDocument();
+  });
+  // ui-copy-rule (judged at 0.4.0-dev.646): a person with nothing moving still sees the band, reading zero, the empty line beneath
+  it("opens on its band reading zero when nothing of the person's is moving, the empty line beneath it", () => {
+    served.data = { ...home, moving: [], movingTotal: 0, movingTruncated: false, movingStages: { new: 0, planned: 0, building: 0, landed: 0, releasing: 0 } };
+    render(<HomeScreen />);
+    const band = screen.getByTestId("home-band");
+    expect(within(band).getByTestId("band-figure-value").textContent).toBe("0");
+    const moving = screen.getByTestId("home-moving");
+    expect(band.compareDocumentPosition(moving) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(moving.textContent).toContain("Nothing asked");
   });
 });

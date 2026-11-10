@@ -38,4 +38,15 @@ describe("the Runners overview band", () => {
     expect(parts).toEqual(listed);
     expect(within(band).queryByTestId("chart-table")).toBeNull();
   });
+
+  // ui-copy-rule (judged at 0.4.0-dev.646): the Mine tab with no machines still opens on its band, reading zero
+  it("opens on its band reading zero where the shown scope holds no device, the empty state beneath", async () => {
+    const empty = SCREENS.find((s) => s.name === "Runners · empty");
+    if (!empty) throw new Error("no empty Runners screen in the fixture");
+    render(empty.render());
+    const none = await screen.findByText("No machines");
+    const band = screen.getByTestId("runners-band");
+    expect(within(band).getByTestId("band-figure-value").textContent).toBe("0");
+    expect(band.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

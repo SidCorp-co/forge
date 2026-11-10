@@ -5,6 +5,7 @@
 //
 // @direct-test-of packages/web-v2/src/features/approvals/components/approvals-screen.tsx
 // @direct-test-of packages/web-v2/src/features/approvals/components/approval-row.tsx
+// @direct-test-of packages/web-v2/src/features/approvals/components/approvals-band.tsx
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,7 +13,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette, PageCommandsProvider, usePageCommandList } from "@/design";
 import { APPROVALS_PROJECT as P, APPROVALS_READ as READ } from "@/test/approvals-read";
-import { core, openAt, rowOf } from "@/test/approvals-page";
+import { core, DECISIONS, openAt, openLeftOut, rowOf } from "@/test/approvals-page";
+import { fakeCore } from "@/test/render";
 import { ApprovalsScreen } from "./components/approvals-screen";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
@@ -75,6 +77,40 @@ describe("the Approvals face", () => {
     const held = READ.notDecisions.reduce((n, d) => n + d.count, READ.total - READ.decisions.length);
     expect(fold).toHaveTextContent(`Not counted here${held}`);
     expect(within(fold).queryAllByTestId("approvals-left-out-item")).toHaveLength(0);
+  });
+
+  // ui-copy-rule (judged at 0.4.0-dev.646): detail opens in a drawer, then its page; nothing expands in place
+  it("opens what the count leaves out in a side drawer, adding no row to the page", async () => {
+    core();
+    page();
+    await screen.findByTestId("approvals-screen");
+    const drawer = openLeftOut();
+    expect(within(drawer).getAllByTestId("approvals-left-out-item").length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("approvals-screen")).queryAllByTestId("approvals-left-out-item")).toHaveLength(0);
+  });
+
+  // REQ-43 r3 BC-14, ui-copy-rule (judged at 0.4.0-dev.646): the page opens on its overview band, an
+  // empty one included, reading zero, the empty state beneath it
+  it("opens on its overview band reading what waits on you, zero where nothing does, the empty state beneath", async () => {
+    fakeCore(({ path, method }) => (method === "GET" && path === DECISIONS ? { body: { ...READ, decisions: [], total: 0 } } : undefined));
+    page();
+    await screen.findByTestId("approvals-screen");
+    const band = screen.getByTestId("approvals-band");
+    expect(within(band).getAllByTestId("band-figure-value")[0]?.textContent).toBe("0");
+    const none = within(screen.getByTestId("approvals-layout")).getByText("Nothing waiting");
+    expect(band.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("counts each topic on its band as the groups under it head", async () => {
+    core();
+    page();
+    await screen.findByTestId("approvals-screen");
+    const band = screen.getByTestId("approvals-band");
+    expect(within(band).getAllByTestId("band-figure-value")[0]?.textContent).toBe(String(READ.total));
+    const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const topics = new Map<string, number>();
+    for (const d of READ.decisions) topics.set(d.topic, (topics.get(d.topic) ?? 0) + 1);
+    expect(parts).toEqual(topics);
   });
 
   it("leads with deciding the next one, which opens its peek", async () => {

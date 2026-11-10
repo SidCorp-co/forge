@@ -2,7 +2,7 @@
 // as the title's tooltip, never on the face, ISS-903), the fold of what its count leaves out, and the
 // address a test opens it at.
 
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { APPROVALS_PROJECT as P, APPROVALS_READ as READ } from "./approvals-read";
 import { fakeCore } from "./render";
 
@@ -34,11 +34,10 @@ export const rowOf = (key: string) => {
 /** The subjects' keys of the rows drawn now. */
 export const keysDrawn = () => screen.queryAllByTestId("approval-row").map((r) => r.dataset.key);
 
-/** Opens what the page's count leaves out, shut to its one line. */
+/** Opens what the page's count leaves out, its one line opening a side drawer (never in place); returns the drawer. */
 export const openLeftOut = () => {
-  const fold = screen.getByTestId("approvals-left-out");
-  fireEvent.click(within(fold).getByRole("button", { name: /Not counted here/ }));
-  return fold;
+  fireEvent.click(screen.getByRole("button", { name: /Not counted here/ }));
+  return screen.getByRole("dialog", { name: "Not counted here" });
 };
 
 export const posts = <C extends { method: string }>(calls: C[]): C[] => calls.filter((c) => c.method === "POST");
