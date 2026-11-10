@@ -1,1 +1,0 @@
-**Requirements, Issues, Feedback and Releases open on an overview.** Each list starts with its figures, its states with live counts, and one chart that prints its own numbers; record pages draw their progress first.

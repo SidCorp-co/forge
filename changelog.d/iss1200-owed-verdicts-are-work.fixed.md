@@ -1,1 +1,0 @@
-**A shipped release's live checks always have a master to run them.** An outdated master whose latest release still owes live verdicts is replaced, resuming its conversation, instead of being held draining with nothing placed.

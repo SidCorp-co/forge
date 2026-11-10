@@ -1,1 +1,0 @@
-**Home, Attention, Agents, Channels, Workflows and Runners open on an overview.** Figures and states with live counts lead each page, a runs-per-day chart leads Agents, and a run's or pass's detail opens in a side drawer.

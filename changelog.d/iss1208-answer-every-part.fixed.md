@@ -1,1 +1,0 @@
-**A chat room's replies answer every part of a message.** Before it posts, the room's agent checks it answered each question asked and covered each item requested, or names the part still waiting and why.

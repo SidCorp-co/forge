@@ -1,1 +1,0 @@
-**A master building a screen change writes the asked-for workflows out first.** In direct mode, each workflow a person asked for becomes a criterion before the build, and the live check looks at the screen at phone and desktop widths.

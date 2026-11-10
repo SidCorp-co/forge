@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.645] - 2026-11-10
+
+State screens open on an overview; room agents answer fully and look facts up
+
+### Changed
+
+- **Requirements, Issues, Feedback and Releases open on an overview.** Each list starts with its figures, its states with live counts, and one chart that prints its own numbers; record pages draw their progress first.
+- **Home, Attention, Agents, Channels, Workflows and Runners open on an overview.** Figures and states with live counts lead each page, a runs-per-day chart leads Agents, and a run's or pass's detail opens in a side drawer.
+
+### Fixed
+
+- **A shipped release's live checks always have a master to run them.** An outdated master whose latest release still owes live verdicts is replaced, resuming its conversation, instead of being held draining with nothing placed.
+- **A chat room's replies answer every part of a message.** Before it posts, the room's agent checks it answered each question asked and covered each item requested, or names the part still waiting and why.
+- **A master building a screen change writes the asked-for workflows out first.** In direct mode, each workflow a person asked for becomes a criterion before the build, and the live check looks at the screen at phone and desktop widths.
+- **A chat room's agent looks a fact up before asking for it.** It searches what it can reach and weighs the options first, then asks people only for what only they know.
+
 ## [0.4.0-dev.644] - 2026-11-10
 
 Chat rooms keep one Forge token between turns
