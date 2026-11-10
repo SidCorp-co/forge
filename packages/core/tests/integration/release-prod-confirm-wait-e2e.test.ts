@@ -178,3 +178,41 @@ describe('a release whose production deploy waits on a person’s confirm', () =
     expect(queued).toHaveLength(1);
   });
 });
+
+// ISS-1206: the owner who approved a release in his own words in his room ("duyệt, lên đi") gave
+// its go to production; asked again to press the confirm for the same release, he was asked twice.
+// The go given with his approval (`support/release-decision.ts`) stands for the deploy it plans.
+describe('a production go given with the release approval', () => {
+  const cited = { message: 'm-owner', thread: 'm-owner', rid: 'GRP1' };
+
+  it('confirms the deploy as it would park: it goes out, and nothing waits on a person', async () => {
+    const id = await fx.insertIssue();
+    const cut = await fx.claim([id]);
+    const { giveProdGoWithApproval } = await import('../../src/release-batch/coolify-prod-gate.js');
+    expect(await giveProdGoWithApproval({ runId: cut.runId, userId: ownerId, cited })).toEqual({
+      standsFor: 'production_deploy',
+      confirmed: [],
+    });
+    const answer = await call('POST', '/integrations/coolify/deploy', { pipelineRunId: cut.runId });
+    expect(answer).toMatchObject({ pendingHumanConfirm: false });
+    const [run] = await rows<{ gate: Doc | null }>(sql`
+      SELECT metadata->'__forge_prod_deploy_gate' AS gate FROM pipeline_runs WHERE id = ${cut.runId}`);
+    expect(((run?.gate ?? {}) as Doc)[bindingId]).toMatchObject({ confirmedByUserId: ownerId });
+    const release = await waitingOf(String(cut.version), agentToken);
+    expect(release.waitingOn.says.act).not.toMatchObject({ key: 'standing.act.confirmProdDeploy' });
+  });
+
+  it('confirms a deploy already parked on the run, as his press', async () => {
+    const { runId, version } = await parkedRelease();
+    const { giveProdGoWithApproval } = await import('../../src/release-batch/coolify-prod-gate.js');
+    expect(await giveProdGoWithApproval({ runId, userId: ownerId, cited })).toEqual({
+      standsFor: 'production_deploy',
+      confirmed: [bindingId],
+    });
+    const [run] = await rows<{ step: string | null }>(sql`
+      SELECT current_step AS step FROM pipeline_runs WHERE id = ${runId}`);
+    expect(run?.step).toBe('release.deploy.in_flight');
+    const release = await waitingOf(version, agentToken);
+    expect(release.waitingOn.says.act).not.toMatchObject({ key: 'standing.act.confirmProdDeploy' });
+  });
+});

@@ -442,17 +442,24 @@ export async function recordedThreads(
   return new Set(rows.map((r) => r.thread));
 }
 
-/** A member's message a room received, by its Rocket.Chat id: who wrote it, and in which thread. */
+/** A member's message a room received, by its Rocket.Chat id: who wrote it, in which thread, and its words. */
 export async function memberMessage(
   roomId: string,
   messageId: string,
-): Promise<{ authorKey: string; author: string | null; thread: string; at: Date } | null> {
+): Promise<{
+  authorKey: string;
+  author: string | null;
+  thread: string;
+  at: Date;
+  text: string | null;
+} | null> {
   const [row] = await db
     .select({
       key: supportActions.actorKey,
       label: supportActions.actorLabel,
       thread: supportActions.thread,
       at: supportActions.createdAt,
+      input: supportActions.input,
     })
     .from(supportActions)
     .where(
@@ -464,8 +471,15 @@ export async function memberMessage(
       ),
     )
     .limit(1);
+  const text = (row?.input as { text?: unknown } | null)?.text;
   return row?.key
-    ? { authorKey: row.key, author: row.label, thread: row.thread, at: row.at }
+    ? {
+        authorKey: row.key,
+        author: row.label,
+        thread: row.thread,
+        at: row.at,
+        text: typeof text === 'string' ? text : null,
+      }
     : null;
 }
 

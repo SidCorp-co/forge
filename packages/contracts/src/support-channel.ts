@@ -11,6 +11,7 @@ import {
 	ROOM_IMAGE_CAPS,
 	SUPPORT_PROPOSAL_KINDS,
 	type SupportProposalKind,
+	supportProjectSlugSchema,
 	supportRoomConfigSchema,
 	supportThreadIdSchema,
 } from "./support.js";
@@ -197,6 +198,44 @@ export const supportRuleRequestSchema = z.strictObject({
 	message: supportThreadIdSchema,
 	text: channelRuleTextSchema,
 });
+
+/**
+ * A person's release decision, recorded from his own message in the room (ISS-1206): core checks the
+ * message is that member's in the thread, that he is a Forge person holding releases.approve on the
+ * project, and that the release has an approval pending, then decides it as him, never as the agent.
+ */
+export const supportReleaseDecisionRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	message: supportThreadIdSchema.describe(
+		"the member's own message giving the decision, in that thread (`message` in what you were handed): the decision is his",
+	),
+	project: supportProjectSlugSchema.describe(
+		"the release's project: your own, or one you follow, by its slug",
+	),
+	version: z
+		.string()
+		.trim()
+		.min(1)
+		.max(64)
+		.describe("the release's whole version as its page names it, e.g. 0.19.0"),
+	decision: z
+		.enum(["approve", "return"])
+		.describe(
+			"approve: he let it go to production; return: he sent it back, saying why",
+		),
+	reason: z
+		.string()
+		.trim()
+		.min(1)
+		.max(300)
+		.optional()
+		.describe(
+			"his why in a few words, where he gave one; his message is quoted beside it either way",
+		),
+});
+export type SupportReleaseDecisionRequest = z.infer<
+	typeof supportReleaseDecisionRequestSchema
+>;
 
 /** A question asked again, with its one answer (BC-36). */
 /** A common issue's question and its one answer, as the session notes it and as a person adds it. */

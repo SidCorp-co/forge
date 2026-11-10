@@ -15,6 +15,7 @@ import type {
   ChannelRole,
   ChannelRoute,
   SupportAnswerQuestionRequest,
+  SupportReleaseDecisionRequest,
 } from '@forge/contracts/support-channel';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
@@ -46,6 +47,7 @@ import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
+import { decideReleaseFromMessage } from './release-decision.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
 import { linkMember } from './speaker-link.js';
@@ -141,6 +143,7 @@ export type SupportActInput =
   | ({ action: 'owner_consent' } & SupportOwnerConsentRequest)
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
   | ({ action: 'owner_sign_in' } & SupportOwnerSignInRequest)
+  | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
   | {
       action: 'read';
       name: string;
@@ -392,6 +395,10 @@ async function act(
         args: input.args,
         agreement: input.agreement,
       });
+    case 'release_decision': {
+      const { action: _, ...request } = input;
+      return decideReleaseFromMessage(room, request);
+    }
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

@@ -887,6 +887,7 @@ export const SUPPORT_ACTIONS = [
 	"owner_consent",
 	"owner_act",
 	"owner_sign_in",
+	"release_decision",
 	"silent",
 ] as const;
 
@@ -1581,6 +1582,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_APPROVAL_NEEDED",
 	/** An owner act's agreement cited from a message the owner did not write (ISS-1014). */
 	"SUPPORT_OWNER_APPROVAL_NOT_HIS",
+	/** A release decision cited from a message that is no member's own in the thread named (ISS-1206). */
+	"SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE",
+	/** A release decision whose writer holds no releases.approve on the release's project (ISS-1206). */
+	"SUPPORT_RELEASE_DECISION_NOT_PERMITTED",
+	/** A release decision naming no one whole version (ISS-1206). */
+	"SUPPORT_RELEASE_VERSION_AMBIGUOUS",
 	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
@@ -1712,6 +1719,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CONSENT_NOT_THE_OWNER: 403,
 	SUPPORT_OWNER_APPROVAL_NEEDED: 409,
 	SUPPORT_OWNER_APPROVAL_NOT_HIS: 403,
+	SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE: 403,
+	SUPPORT_RELEASE_DECISION_NOT_PERMITTED: 403,
+	SUPPORT_RELEASE_VERSION_AMBIGUOUS: 400,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,

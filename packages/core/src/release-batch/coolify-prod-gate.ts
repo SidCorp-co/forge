@@ -51,6 +51,16 @@ interface ProdGateState {
 
 const GATE_METADATA_KEY = '__forge_prod_deploy_gate';
 
+/** The production go a person gave with his release approval, in his own words in a room (ISS-1206). */
+const GO_METADATA_KEY = '__forge_prod_deploy_go';
+
+interface ProdGo {
+  userId: string;
+  givenAt: string;
+  /** His message the go was read from: its id, its thread and the group it was written in. */
+  cited: { message: string; thread: string; rid: string };
+}
+
 /** A production deploy parked on its run for a person's confirm, not pressed yet (ISS-1096). */
 export interface PendingProdConfirm {
   bindingId: string;
@@ -185,6 +195,69 @@ interface ConfirmProdResult {
   integrationId: string;
   /** How the release run was carried on once confirmed (`confirm-resume.ts`); absent where none was. */
   resumed?: ResumeOutcome;
+}
+
+/**
+ * A person's go to production, given with his release approval in his own words (ISS-1206, an
+ * owner's "approved, ship it"): the approval stands for the production deploy the release plans, so
+ * the confirm is not asked of him again. A deploy already parked on the run is confirmed now, as his press; one the run
+ * parks later is confirmed as it parks (`confirmByApprovalGo`). The caller has checked he holds
+ * project.admin, the confirm door's own permission.
+ */
+export async function giveProdGoWithApproval(input: {
+  runId: string;
+  userId: string;
+  cited: ProdGo['cited'];
+}): Promise<{ standsFor: 'production_deploy'; confirmed: string[] }> {
+  const [run] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, input.runId))
+    .limit(1);
+  const go: ProdGo = {
+    userId: input.userId,
+    givenAt: new Date().toISOString(),
+    cited: input.cited,
+  };
+  await writeRunMetadata(input.runId, { merge: { [GO_METADATA_KEY]: go }, touch: true });
+  const confirmed: string[] = [];
+  for (const bindingId of pendingConfirmBindingsOf(run?.metadata)) {
+    const done = await confirmPendingProdDeploy(bindingId, input.userId);
+    if (done.confirmed && done.runId === input.runId) confirmed.push(bindingId);
+  }
+  return { standsFor: 'production_deploy', confirmed };
+}
+
+/**
+ * Whether the go a person gave with his release approval (`giveProdGoWithApproval`) confirms this
+ * production deploy as it would park: recorded on the gate as his confirm, so the deploy goes on and
+ * nobody is asked to press it. False where no go stands on the run.
+ */
+export async function confirmByApprovalGo(bindingId: string, runId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  const md = (row?.metadata ?? {}) as Record<string, unknown>;
+  const go = md[GO_METADATA_KEY] as ProdGo | undefined;
+  if (!go?.userId) return false;
+  const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
+  const at = new Date().toISOString();
+  gates[bindingId] = {
+    runId,
+    issueId: gates[bindingId]?.issueId ?? null,
+    bindingId,
+    requestedAt: gates[bindingId]?.requestedAt ?? at,
+    confirmedAt: at,
+    confirmedByUserId: go.userId,
+  };
+  await writeRunMetadata(runId, { merge: { [GATE_METADATA_KEY]: gates }, touch: true });
+  logger.info(
+    { bindingId, runId, by: go.userId, cited: go.cited },
+    'coolify: prod deploy confirmed by the go given with its release approval',
+  );
+  return true;
 }
 
 /**

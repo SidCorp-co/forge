@@ -22,7 +22,11 @@ const FEEDBACK_KIND = { defect: 'bug', feature: 'idea', request: 'change_request
  * Run `fn` as the asker: their permissions decide, the turn's token is the credential it arrived on
  * and it acts for them, fenced to the one project the act names.
  */
-async function asAsker<T>(asker: Asker, projectId: string, fn: () => Promise<T>): Promise<T> {
+export async function asAsker<T>(
+  asker: Asker,
+  projectId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
   const turn = currentPatScope();
   if (!turn) throw new Error('support: an operations act ran with no token to act for its asker');
   return runWithPatScope(
@@ -40,7 +44,7 @@ async function asAsker<T>(asker: Asker, projectId: string, fn: () => Promise<T>)
 }
 
 /** A write's outcome: its value, or the refusals the service or the kernel threw, passed on whole. */
-async function refusalsOf<T>(fn: () => Promise<OpsOutcome<T>>): Promise<OpsOutcome<T>> {
+export async function refusalsOf<T>(fn: () => Promise<OpsOutcome<T>>): Promise<OpsOutcome<T>> {
   try {
     return await fn();
   } catch (err) {

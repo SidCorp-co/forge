@@ -1,5 +1,5 @@
 // A support room acting in its product as the owner (ISS-1013, REQ-85): the session's REST twins of
-// `forge_support` `owner_consent`, `owner_act` and `owner_sign_in`, the door a project admin keeps
+// `forge_support` `owner_consent`, `owner_act`, `owner_sign_in` and `release_decision` (ISS-1206), the door a project admin keeps
 // the owner's credential at, per product, and the page the product returns the owner's browser to
 // once he confirms the sign-in core started (ISS-1047). The credential is written here and read back
 // nowhere: the list says which products hold one, never a value.
@@ -10,6 +10,7 @@ import {
   supportOwnerCredentialRequestSchema,
   supportOwnerSignInRequestSchema,
 } from '@forge/contracts/support';
+import { supportReleaseDecisionRequestSchema } from '@forge/contracts/support-channel';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -66,6 +67,18 @@ export function mountOwnerRoutes(app: Hono<{ Variables: AuthVars }>): void {
     SESSION_ONLY,
     strictBody(supportOwnerSignInRequestSchema, '{ thread, product? }'),
     (c) => act(c, c.req.valid('param').id, { action: 'owner_sign_in', ...c.req.valid('json') }),
+  );
+
+  // a person's release decision, recorded from his own message, as him (ISS-1206)
+  app.post(
+    '/:id/support/session/release-decisions',
+    projectParam,
+    SESSION_ONLY,
+    strictBody(
+      supportReleaseDecisionRequestSchema,
+      '{ thread, message, project, version, decision: approve | return, reason? }',
+    ),
+    (c) => act(c, c.req.valid('param').id, { action: 'release_decision', ...c.req.valid('json') }),
   );
 
   // which products core keeps the owner's credential for: names, never values

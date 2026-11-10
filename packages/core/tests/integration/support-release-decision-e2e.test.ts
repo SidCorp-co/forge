@@ -15,7 +15,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/release-decision.ts
 // @direct-test-of packages/core/src/support/acts.ts
-// @direct-test-of packages/core/src/support/routes.ts
+// @direct-test-of packages/core/src/support/owner-routes.ts
 //
 // ISS-1206 (adminhub-api 0.19.0, 2026-11-10): the owner approved a release in his own room, in his
 // own words, and nothing recorded it: a room had no door for a person's release decision, so the
@@ -83,7 +83,7 @@ async function decideBy(
     async (_t, act, message) => {
       out = await act({
         action: 'release_decision',
-        ...cite({ thread: message().thread, message: message().message }),
+        ...cite({ thread: String(message().thread), message: String(message().message) }),
         project: slug,
         decision: 'approve',
         ...args,
@@ -96,9 +96,10 @@ async function decideBy(
 beforeAll(async () => {
   await w.openAgent();
   chat = w.stand;
-  [{ slug }] = await rows<{ slug: string }>(
+  const [project] = await rows<{ slug: string }>(
     sql`SELECT slug FROM projects WHERE id = ${w.projectId}`,
   );
+  slug = String(project?.slug);
   // alice, the room's owner, is chuong in Forge, who holds releases.approve (admin); bob is a viewer
   chuong = (await createTestUser({ verified: true })).id;
   await addProjectMember(w.projectId, chuong, 'admin');
@@ -122,11 +123,26 @@ afterAll(async () => {
 
 describe("ISS-1206: a room records a person's release decision from his own message", () => {
   it("refuses a message that is not the member's own in the thread named, and decides nothing", async () => {
-    const earlier = await decideBy(chat.alice, 'duyệt 0.19.0 nhé', { version: '0.19.0' }, (h) => ({
-      thread: `${h.thread}-elsewhere`,
-      message: h.message,
+    // his word in one thread is cited for another, and the bot's own post is no member's message
+    const first = await w.hear(() => chat.say(chat.alice, 'duyệt 0.19.0 nhé'));
+    const crossed = await decideBy(
+      chat.alice,
+      'còn bản này thì sao?',
+      { version: '0.19.0' },
+      (h) => ({
+        thread: h.thread,
+        message: first.id,
+      }),
+    );
+    expect(code(crossed.out), JSON.stringify(crossed.out)).toBe(
+      'SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE',
+    );
+    expect(JSON.stringify(crossed.out)).toContain(`not ${crossed.thread}`);
+    const unknown = await decideBy(chat.alice, 'lên đi', { version: '0.19.0' }, (h) => ({
+      thread: h.thread,
+      message: 'no-such-message',
     }));
-    expect(code(earlier.out), JSON.stringify(earlier.out)).toBe(
+    expect(code(unknown.out), JSON.stringify(unknown.out)).toBe(
       'SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE',
     );
     expect(await approval(approvalId)).toMatchObject({ decision: null });
@@ -163,7 +179,14 @@ describe("ISS-1206: a room records a person's release decision from his own mess
       SELECT kind, tool FROM support_actions
        WHERE project_id = ${w.projectId} AND tool = 'release_decision' AND kind = 'operation'`);
     expect(act).toEqual({ kind: 'operation', tool: 'release_decision' });
-    expect(runId).not.toBe('');
+    // he holds project.admin, so his approval stands for the production deploy the release plans
+    expect(his.out).toMatchObject({
+      productionDeploy: { standsFor: 'production_deploy', confirmed: [] },
+    });
+    const [run] = await rows<{ go: { userId: string; cited: { message: string } } | null }>(
+      sql`SELECT metadata -> '__forge_prod_deploy_go' AS go FROM pipeline_runs WHERE id = ${runId}`,
+    );
+    expect(run?.go).toMatchObject({ userId: chuong, cited: { message: his.id } });
   });
 
   it('refuses a release with no approval pending, and keeps the decision that stands', async () => {

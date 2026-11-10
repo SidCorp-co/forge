@@ -20,6 +20,7 @@ import {
 } from '../pipeline/index.js';
 import { readDeployMap } from '../project-config/index.js';
 import {
+  confirmByApprovalGo,
   getProdGateStateForRun,
   markPendingHumanConfirm,
   reportUnwitnessedDeploy,
@@ -204,11 +205,13 @@ async function deployTargets(projectId: string, integrationId: string | null, al
 
 /**
  * Whether a person confirmed this production deploy on this run. Never auto-dispatch prod: the UI
- * banner calls /integrations/:id/confirm-prod-deploy to release the gate.
+ * banner calls /integrations/:id/confirm-prod-deploy to release the gate, or the person gave the go
+ * with his release approval, in his own words, which stands for it (ISS-1206).
  */
 async function prodConfirmed(bindingId: string, runId: string): Promise<boolean> {
   const gateState = await getProdGateStateForRun(bindingId, runId);
-  return gateState !== null && gateState.confirmedAt !== null;
+  if (gateState !== null && gateState.confirmedAt !== null) return true;
+  return confirmByApprovalGo(bindingId, runId);
 }
 
 /**
