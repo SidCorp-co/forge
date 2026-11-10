@@ -19,6 +19,8 @@ import {
 // @direct-test-of packages/core/src/agent-sessions/read.ts
 // @direct-test-of packages/core/src/me/attention-routes.ts
 // @direct-test-of packages/core/src/me/attention-buckets.ts
+// @direct-test-of packages/core/src/development/needs-you-viewer.ts
+// @direct-test-of packages/core/src/activity/read.ts
 
 async function session(projectId: string, status: string, deviceId: string | null = null) {
   const runId = randomUUID();
@@ -129,6 +131,44 @@ describe('the queue and attention read models serve the derived facts', () => {
       parts.reduce((n, p) => n + p.owed.reduce((m, o) => m + o.count, 0), 0),
     );
     expect(Object.values(counts).reduce((n, c) => n + c, 0)).toBe(res.body.total);
+  });
+
+  // ISS-1198 c3 (judge run ad038e31): QA owed one act, its own draft to propose, which is no decision;
+  // Activity's You read "–" and the home nothing. Core serves what waits on the person, decisions and
+  // the rows owed beside them, as one figure per project and one across them, and Activity counts it.
+  it('serves what waits on the person, a draft of their own to propose included, to Attention and Activity', async () => {
+    const made = await api(token, 'POST', `/api/projects/${project.id}/requirements`, {
+      title: 'Export a project releases',
+      criteria: [{ body: 'A person exports the releases' }],
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const res = await api(token, 'GET', `/api/me/attention?orgId=${project.orgId}`);
+    expect(res.status).toBe(200);
+    const part = (
+      res.body.needsYou as {
+        projectSlug: string;
+        total: number;
+        waiting: number;
+        owed: { reason: string; count: number }[];
+      }[]
+    ).find((p) => p.projectSlug === project.slug);
+    const own = part?.owed.find((o) => o.reason === 'own_work')?.count ?? 0;
+    expect(own).toBeGreaterThanOrEqual(1);
+    expect(part?.waiting).toBe((part?.total ?? 0) + (part?.owed ?? []).reduce((n, o) => n + o.count, 0));
+    const counts = res.body.counts as Record<string, number>;
+    expect(res.body.owedToYou).toBe(counts.decisions + counts.owed);
+
+    // Activity's You column counts the same rows for the project, once its read behind the page lands
+    let row: { projectId: string; people: { total: number }; peoplePending: boolean } | undefined;
+    for (let i = 0; i < 40; i++) {
+      const read = await api(token, 'GET', `/api/orgs/${project.orgId}/activity`);
+      expect(read.status, JSON.stringify(read.body)).toBe(200);
+      row = (read.body.projects as (typeof row & {})[]).find((p) => p.projectId === project.id);
+      if (row && !row.peoplePending) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(row?.peoplePending).toBe(false);
+    expect(row?.people.total).toBe(part?.waiting);
   });
 
   it('refuses an orgId that is no uuid, by name', async () => {

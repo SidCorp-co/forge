@@ -90,11 +90,15 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 vi.mock("@/features/orgs", () => ({ useActiveOrg: () => ({ activeOrgId: "org-1", activeOrg: null }) }));
 const served = vi.hoisted(() => ({ data: null as HomeResponse | null }));
 vi.mock("./hooks", () => ({ useHome: () => ({ ...settled, data: served.data ?? home }) }));
+// what waits on the person is core's Needs you count across the workspace, as Attention serves it
+const attention = vi.hoisted(() => ({ owedToYou: 0 }));
+vi.mock("@/features/attention", () => ({ useAttention: () => ({ view: { owedToYou: attention.owedToYou }, known: true }) }));
 
 import { HomeScreen } from "./components/home-screen";
 
 beforeEach(() => {
   served.data = null;
+  attention.owedToYou = 0;
   push.mockClear();
   window.history.replaceState(null, "", "/");
 });
@@ -162,9 +166,23 @@ describe("the workspace home", () => {
     served.data = { ...home, moving: [], movingTotal: 0, movingTruncated: false, movingStages: { new: 0, planned: 0, building: 0, landed: 0, releasing: 0 } };
     render(<HomeScreen />);
     const band = screen.getByTestId("home-band");
-    expect(within(band).getByTestId("band-figure-value").textContent).toBe("0");
+    const figures = new Map(within(band).getAllByTestId("band-figure").map((f) => [f.dataset.key ?? "", within(f).getByTestId("band-figure-value").textContent]));
+    expect(figures.get("moving")).toBe("0");
     const moving = screen.getByTestId("home-moving");
     expect(band.compareDocumentPosition(moving) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(moving.textContent).toContain("Nothing asked");
+  });
+
+  // ISS-1198 c3 (judge run ad038e31): QA owed its own draft and the home read 0 and Nothing asked; the
+  // band says what waits on the person, core's own Needs you count, whatever is moving
+  it("says on its band what waits on the person, core's Needs you count, with nothing moving", () => {
+    served.data = { ...home, moving: [], movingTotal: 0, movingTruncated: false, movingStages: { new: 0, planned: 0, building: 0, landed: 0, releasing: 0 } };
+    attention.owedToYou = 1;
+    render(<HomeScreen />);
+    const band = screen.getByTestId("home-band");
+    const yours = within(band).getAllByTestId("band-figure").find((f) => f.dataset.key === "waiting");
+    expect(yours, "a Waiting on you figure").toBeDefined();
+    expect(within(yours as HTMLElement).getByTestId("band-figure-value").textContent).toBe("1");
+    expect(yours?.textContent).toContain("Waiting on you");
   });
 });

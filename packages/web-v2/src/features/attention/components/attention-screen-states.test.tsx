@@ -77,6 +77,24 @@ describe("the attention screen's states", () => {
     }
   });
 
+  // ISS-1198 c3 (judge run ad038e31): QA owed one act, its own draft to propose; the band read 1 owed
+  // by you while the list under it read "Nothing". The list names each row the band counts as owed.
+  it("lists by name the rows its band counts as owed by you, never reading Nothing above them", () => {
+    const owed = [{ reason: "own_work", count: 1, items: [{ key: "REQ-95", title: "Export a project's releases", next: "propose r1", opens: { kind: "requirement", key: "REQ-95" } }] }];
+    hook.view = { ...empty, needsYou: [{ projectSlug: "forge", projectName: "Forge", total: 0, waiting: 1, decisions: [], owed }], counts: { ...empty.counts, owed: 1 }, owedToYou: 1, total: 1 } as unknown as typeof empty;
+    try {
+      renderWithQuery(<AttentionScreen />);
+      const band = screen.getByTestId("attention-band");
+      const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
+      const list = screen.getByTestId("attention-needs-you");
+      expect(within(list).getAllByTestId("needs-you-owed-item")).toHaveLength(parts.get("owed") ?? 0);
+      expect(within(list).getByRole("link", { name: "Export a project's releases" }).getAttribute("href")).toContain("REQ-95");
+      expect(within(list).queryByText("Nothing")).toBeNull();
+    } finally {
+      hook.view = empty;
+    }
+  });
+
   // REQ-43 r3 BC-14 (owner, 2026-11-10): the inbox opens on its overview above its sections, each
   // kind's count there the count its own section heads (L-57), summing to core's total
   it("opens on its overview band above the sections, each kind counting what its section heads", () => {

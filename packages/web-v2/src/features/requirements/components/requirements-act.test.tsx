@@ -82,6 +82,23 @@ describe("Requirements leads with names, never keys (REQ-11 BC-19)", () => {
     expect(within(band).getByTestId("requirements-band-chart")).toBeInTheDocument();
   });
 
+  // ISS-1198 c3 (judge run ad038e31): the band had no figure for what waits on the person; only the
+  // list's Needs you group and the rail badge said it. The band reads the rail badge's own read.
+  it("says on its band what waits on you, the rail badge's Needs you count, which the list's Needs you group holds", () => {
+    const areas = Object.fromEntries(["requirements", "releases", "feedback", "contracts", "designs", "automation", "questions"].map((a) => [a, { you: a === "requirements" ? 1 : 0, acts: [] }]));
+    render(
+      <Seeded data={[...seed(), [["needs-you", REQ_PROJECT], { generatedAt: "2026-11-11T00:00:00.000Z", areas, items: [], requirementsInDelivery: 0, untriagedFeedback: 0, decisions: 0 }]]}>
+        <RequirementsScreen projectId={REQ_PROJECT} slug="hop" />
+      </Seeded>,
+    );
+    const band = screen.getByTestId("requirements-band");
+    const yours = within(band).getAllByTestId("band-figure").find((f) => f.dataset.key === "waiting");
+    expect(yours, "a Waiting on you figure").toBeDefined();
+    expect(within(yours as HTMLElement).getByTestId("band-figure-value").textContent).toBe("1");
+    const group = within(screen.getByTestId("grouped-list")).getAllByTestId("list-group").find((g) => g.dataset.group === "needs_you");
+    expect(within(group as HTMLElement).getByTestId("group-count").textContent).toBe("1");
+  });
+
   it("stays within the first view's budget of 300 words (BC-21)", () => {
     const { container } = requirements();
     expect(faceWords(container)).toBeLessThanOrEqual(300);
