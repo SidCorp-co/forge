@@ -6,6 +6,7 @@ import { Component, type ReactNode, useState } from "react";
 import { Route as HomeRoute } from "@/routes/_workspace/projects/$slug/index";
 import { APPROVALS_PROJECT as PH, APPROVALS_READ } from "@/test/approvals-read";
 import { STATUS } from "@/test/project-status";
+import { emptyHome } from "@/test/project-home";
 import { FEEDBACK_SEED } from "@/test/vi-chrome-feedback";
 import { detailQueries, STANDING_LIST } from "@/test/vi-chrome-issues";
 import { AUTOFLOW, EPOD_CATALOG } from "./ecosystem-page.fixture";
@@ -103,6 +104,23 @@ HOME_READS.push(
   [new RegExp(`^/projects/${AGREEMENTS_PROJECT}/agreements$`), () => AGREEMENTS_VIEW],
   [/^\/forge\/feedback$/, () => ({ feedback: [mineItem("FB-212", "The board drops a card dragged to Done", "new", "HOP", 1, "Waiting to be triaged by Forge's team."), mineItem("FB-198", "forge claim refuses a lease that has expired", "planned", "Autoflow", 4, "ISS-1433 carries it and a run is working on it now.", true), mineItem("FB-160", "The release page cuts the version at phone width", "verified", "Catalog", 2, "Shipped in 0.4.0-dev.244 and verified.")], returned: 3, home: { id: "p-forge", slug: "forge-dev", name: "Forge" }, asOf: FEEDBACK_AT })],
 );
+// the project home's one read (ISS-1196), at a working project's size: without it the home sits on its loader
+const ship = Array.from({ length: 14 }, (_, i) => ({ day: day(i + 16), releases: wave(i, 1), issues: wave(i, 2) * 3 }));
+const HOME = {
+  ...emptyHome(PH, { decisions: [], total: 0 }),
+  product: {
+    requirements: 24,
+    byState: [{ key: "in_delivery", count: 3 }, { key: "agreed", count: 5 }, { key: "accepted", count: 15 }, { key: "draft", count: 1 }],
+    criteria: { proven: 131, total: 182 },
+    areas: [{ name: "Clinic", requirements: 14, building: 2, proven: 80, total: 104 }, { name: "Billing", requirements: 10, building: 1, proven: 51, total: 78 }],
+    feedbackOpen: 3,
+  },
+  delivery: { open: 9, byStatus: [{ key: "open", count: 4 }, { key: "in_progress", count: 2 }, { key: "on_hold", count: 2 }, { key: "awaiting_release", count: 1 }], running: 1, issues: [], truncated: false },
+  release: { days: ship, shipped: ship.reduce((n, d) => n + d.releases, 0), issues: ship.reduce((n, d) => n + d.issues, 0), byState: [{ key: "shipped", count: 40 }, { key: "failed", count: 1 }, { key: "aborted", count: 2 }], timeline: [], recent: [] },
+  audit: { open: 18, cleared: 9, byKind: [{ key: "debt", count: 14 }, { key: "simplify", count: 3 }, { key: "red", count: 1 }], byRating: [{ key: "low", count: 12 }, { key: "medium", count: 6 }], cells: [] },
+  feedback: { weeks: Array.from({ length: 6 }, (_, i) => ({ week: day(i * 4 + 6), fixed: wave(i, 3) * 2, declined: wave(i, 5), open: i === 5 ? 3 : 0 })) },
+};
+HOME_READS.push([/^\/projects\/[^/]+\/home$/, () => HOME]);
 // the screens ISS-1137 brought under the budget, ahead of the home's reads: their module rollup is a whole one
 HOME_READS.unshift(...REST_READS);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

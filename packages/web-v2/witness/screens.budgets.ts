@@ -26,7 +26,9 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "project-home": { budget: 100 },
   "issues-list": { budget: 90 },
   "issue-detail": { budget: 80 },
-  "requirements-list": { budget: 80 },
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the list opens on its overview band (in play, the share
+  // proven, the states it holds, proven by area), about 14 words above the rows it drew at 77.
+  "requirements-list": { budget: 95 },
   "requirement-detail": { budget: 100 },
   "feedback-list": { budget: 100 },
   "feedback-detail": { budget: 90 },

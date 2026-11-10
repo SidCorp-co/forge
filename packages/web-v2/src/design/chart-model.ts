@@ -73,7 +73,8 @@ export function stateFlowOf(family: StatusFamily, order: readonly string[], valu
   for (const v of values) tally.set(v, (tally.get(v) ?? 0) + 1);
   // a state the order does not name is still drawn, after it: the parts always sum to the rows
   const keys = [...order, ...[...tally.keys()].filter((k) => !order.includes(k))];
-  return keys.map((key) => {
+  // a state no row holds is not drawn: "Refused 0" is a word on the face that says nothing
+  return keys.filter((key) => (tally.get(key) ?? 0) > 0).map((key) => {
     const r = statusReading(family, key, language);
     return { key, label: r.label, count: tally.get(key) ?? 0, tone: r.tone };
   });
