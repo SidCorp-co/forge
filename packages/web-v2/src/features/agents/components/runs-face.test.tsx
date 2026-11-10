@@ -4,6 +4,8 @@
 // the run that needs the viewer. The list opens on its overview band (REQ-43 r3 BC-14).
 //
 // @direct-test-of packages/web-v2/src/features/agents/components/runs-band.tsx
+// @direct-test-of packages/web-v2/src/features/agents/queries.ts
+// @direct-test-of packages/web-v2/src/features/agents/api.ts
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
