@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.636] - 2026-11-10
+
+The runner keeps its Forge credential out of tracked .mcp.json files
+
+### Fixed
+
+- **The runner never writes a credential into a tracked `.mcp.json`.** Provisioning refuses by name; a master pane there gets `forge` from its owner-only session config, and `forge-runner doctor` names a tracked file already holding a credential.
+
 ## [0.4.0-dev.635] - 2026-11-10
 
 The notification bell holds only what needs you

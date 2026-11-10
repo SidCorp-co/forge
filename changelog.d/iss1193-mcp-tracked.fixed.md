@@ -1,1 +1,0 @@
-**The runner never writes a credential into a tracked `.mcp.json`.** Provisioning refuses by name; a master pane there gets `forge` from its owner-only session config, and `forge-runner doctor` names a tracked file already holding a credential.
