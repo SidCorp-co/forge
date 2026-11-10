@@ -73,15 +73,17 @@ interface ExpandRowProps {
   children: ReactNode;
   className?: string;
   testId?: string;
+  /** What a test or the chat reads the row by, beside its id: `{ "data-verdict": "passing" }`. */
+  marks?: Record<`data-${string}`, string>;
 }
 
-export function ExpandRow({ id, head, title, trail, children, className, testId }: ExpandRowProps) {
+export function ExpandRow({ id, head, title, trail, children, className, testId, marks }: ExpandRowProps) {
   const ctx = use(ExpandContext);
   if (!ctx) throw new Error("ExpandRow is drawn outside ExpandRows: a row opens in a list that moves focus between its rows.");
   const detailId = useId();
   const isOpen = ctx.open === id;
   return (
-    <div role="listitem" data-expand-row={id} data-open={isOpen ? "" : undefined} data-testid={testId} className={cn("border-b border-line-divider", className)}>
+    <div {...marks} role="listitem" data-expand-row={id} data-open={isOpen ? "" : undefined} data-testid={testId} className={cn("border-b border-line-divider", className)}>
       <div className="flex min-h-row min-w-0 items-center">
         <button
           type="button"

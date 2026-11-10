@@ -88,6 +88,8 @@ const feedback = (seq: number, kind: WaitingKind, attentionGroup: string, phase:
   owner: null,
   touchedAt: "2026-10-08T10:00:00.000Z",
 });
+/** Core's counts of a list holding no report, by whose turn it is. */
+const NO_COUNTS = { needs_you: 0, running: 0, queued: 0, overdue: 0, waiting: 0, done: 0, dropped: 0 };
 const FEEDBACK = [feedback(52, "you", "needs_you", "new"), feedback(53, "run", "running", "triaged"), feedback(54, "agent", "waiting", "triaged")];
 
 function core() {
@@ -95,7 +97,7 @@ function core() {
     if (c.method !== "GET") return undefined;
     if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
     if (c.path.includes("/requirements")) return { body: { requirements: REQUIREMENTS } };
-    if (c.path.includes("/feedback")) return { body: { feedback: FEEDBACK, untold: 0 } };
+    if (c.path.includes("/feedback")) return { body: { feedback: FEEDBACK, counts: { ...NO_COUNTS, needs_you: 1, running: 1, waiting: 1 }, total: 3, open: 3, untold: 0 } };
     return { body: {} };
   });
 }

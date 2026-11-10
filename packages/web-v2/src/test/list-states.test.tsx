@@ -50,6 +50,8 @@ const fb = (key: string, over: Record<string, unknown>) => ({
   ...over,
 });
 
+/** Core's counts of a list holding no report, by whose turn it is. */
+const NO_COUNTS = { needs_you: 0, running: 0, queued: 0, overdue: 0, waiting: 0, done: 0, dropped: 0 };
 const FEEDBACK = [
   fb("FB-1", { phase: "planned", chip: "running", attentionGroup: "running" }),
   fb("FB-2", { phase: "planned", chip: "planned", attentionGroup: "queued" }),
@@ -97,7 +99,7 @@ function core() {
     if (c.path.startsWith(`/projects/${P}/forecast/feedback`)) return { body: FORECASTS };
     if (c.path.startsWith(`/projects/${P}/forecast`)) return { body: { projectId: P, items: [] } };
     if (c.path.startsWith(`/projects/${P}/standings`)) return { body: { standings: [noted("feedback", "FB-2", BUDGET), noted("requirement", "REQ-78", BUDGET.replace("feedback.filed", "requirement.agreed"))] } };
-    if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: FEEDBACK, counts: {}, sensitive: false } };
+    if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: FEEDBACK, counts: { ...NO_COUNTS, running: 1, queued: 1, dropped: 1 }, total: 3, open: 2, sensitive: false } };
     if (c.path.startsWith(`/projects/${P}/requirements`)) return { body: { requirements: REQUIREMENTS, returned: 1 } };
     if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
     return { body: {} };
@@ -174,7 +176,7 @@ describe("the Requirements list in one vocabulary", () => {
 describe("an empty list opens on its band", () => {
   const none = () =>
     fakeCore((c) => {
-      if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: [], counts: {}, sensitive: false } };
+      if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: [], counts: NO_COUNTS, total: 0, open: 0, sensitive: false } };
       if (c.path.startsWith(`/projects/${P}/requirements`)) return { body: { requirements: [], returned: 0 } };
       if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
       return { body: {} };

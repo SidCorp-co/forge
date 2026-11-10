@@ -23,8 +23,8 @@ export function CriteriaTrace({ projectId, d }: { projectId: string; d: Requirem
   if (d.workflows.length === 0 || criteria.length === 0) return null;
   return (
     <section className="mt-6" data-testid="criteria-trace" aria-label={t("requirements.trace.heading")}>
-      {/* shut to its label and how many criteria it traces: the pickers open on demand (ISS-903) */}
-      <CountSection label={t("requirements.trace.heading")} count={criteria.length} testId="criteria-trace-fold">
+      {/* shut to its label and how many criteria it traces: the pickers open on demand, in a side drawer (ISS-903) */}
+      <CountSection label={t("requirements.trace.heading")} count={criteria.length} testId="criteria-trace-fold" drawer>
       {d.workflows.map((w) => {
         const design = designs.find((x) => x.document.id === w.workflowId);
         const steps = design?.document.steps ?? [];

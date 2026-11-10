@@ -1,0 +1,1 @@
+**The Feedback overview counts what its list shows.** Its figures and groups now match the list beneath, duplicates counted under their original; criteria, files, activity, reproduce and messages on record pages open in a side panel.

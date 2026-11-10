@@ -1,5 +1,6 @@
 // A criterion's evidence reads in a BA's terms first (what was judged, when, which work), with the
-// issue key as a secondary link; the inline issue link leads with the title.
+// issue key as a secondary link; the inline issue link leads with the title. A criterion's detail and
+// its evidence open in a side drawer from its row, never in place (ISS-1197 r2, REQ-43 r3 BC-17).
 // @direct-test-of packages/web-v2/src/features/requirements/components/requirement-own-verdicts.tsx
 
 import { render, screen, within } from "@testing-library/react";
@@ -21,6 +22,14 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+/** Opens the `n`th criterion's row and hands back the drawer it opens. */
+async function openRow(n = 0) {
+  const line = screen.getAllByTestId("criterion-line")[n];
+  if (!line) throw new Error(`no criterion row ${n}`);
+  await userEvent.click(line);
+  return screen.getByRole("dialog");
+}
 
 const d = {
   criteria: [{ code: "BC-1", form: "plain", sinceRevision: 1 }],
@@ -124,10 +133,10 @@ const shipped = {
 describe("a criterion judged at the requirement", () => {
   it("reads as the shipped capability, with the verdict and what it cites in its evidence", async () => {
     render(<CriteriaChecklist d={shipped} slug="epod" developer />);
+    await openRow();
     expect(screen.getByTestId("criterion-shipped")).toHaveTextContent("Shipped capability");
     expect(screen.queryByText("No issues")).toBeNull();
     expect(screen.getByTestId("criterion-counts")).toHaveTextContent("Counts: Pass at the requirement, the newest verdict");
-    await userEvent.click(screen.getByText(/^Evidence$/));
     const row = screen.getByTestId("criterion-own-verdict");
     expect(row).toHaveTextContent("Pass");
     expect(row).toHaveTextContent("commit 111111111111");
@@ -140,10 +149,9 @@ describe("a criterion judged at the requirement", () => {
 describe("a criterion's evidence", () => {
   it("says what passed and when, with the issue key secondary", async () => {
     render(<CriteriaChecklist d={d} slug="epod" />);
-    // the fold names what it holds and counts nothing: counts live in the filter (REQ-43 BC-10)
-    const fold = screen.getByText(/^Evidence$/);
-    expect(fold.textContent).not.toMatch(/\d/);
-    await userEvent.click(fold);
+    await openRow();
+    // the heading names what it holds and counts nothing: counts live in the filter (REQ-43 BC-10)
+    expect(screen.getByText(/^Evidence$/).textContent).not.toMatch(/\d/);
     const row = screen.getByTestId("criterion-evidence-row");
     expect(row).toHaveTextContent("Pass");
     expect(row.querySelector("span[title]")).not.toBeNull();
@@ -159,7 +167,7 @@ describe("a criterion's evidence", () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response("webm", { headers: { "content-type": "video/webm" } })));
     vi.stubGlobal("fetch", fetchMock);
     render(<CriteriaChecklist d={kept} slug="epod" />);
-    await userEvent.click(screen.getByText(/^Evidence$/));
+    await openRow();
     const row = screen.getByTestId("criterion-evidence-row");
     expect(within(row).getByTestId("verdict-note")).toHaveTextContent("Opened 0.4.0 and read its version, date, commit and approver.");
     expect(row).not.toHaveTextContent("A release page a person can read");
@@ -172,10 +180,10 @@ describe("a criterion's evidence", () => {
     expect(init.credentials).toBe("include");
   });
 
-  it("leads the inline link with the issue's title, not its key", () => {
+  it("leads the inline link with the issue's title, not its key", async () => {
     render(<CriteriaChecklist d={d} slug="epod" />);
-    const row = screen.getByTestId("criterion-row");
-    expect(within(row).getByRole("link", { name: "Add tax to checkout" })).toBeInTheDocument();
+    const drawer = await openRow();
+    expect(within(drawer).getByRole("link", { name: "Add tax to checkout" })).toBeInTheDocument();
   });
 
   // coverage-truth: REQ-32 read 1 of 16 passing while 7 held live, and nothing on the page said which
@@ -204,15 +212,16 @@ describe("a criterion's evidence", () => {
     } as unknown as RequirementDetail;
     // the verdict that counts, its identity and build are agent text: the developer view's (REQ-43 BC-7)
     const { unmount } = render(<CriteriaChecklist d={two} slug="epod" />);
+    await openRow();
     expect(screen.queryByTestId("criterion-counts")).toBeNull();
     expect(screen.queryByTestId("criterion-code")).toBeNull();
     unmount();
     render(<CriteriaChecklist d={two} slug="epod" developer />);
+    await openRow();
     expect(screen.getByTestId("criterion-code")).toHaveTextContent("BC-1");
     const counts = screen.getByTestId("criterion-counts");
     expect(counts).toHaveTextContent("Counts: Short on ISS-31 criterion 4, the newest verdict");
     expect(counts).toHaveTextContent("runtime 0fecd0850aa1");
-    await userEvent.click(screen.getByText(/^Evidence$/));
     const [old, fresh] = screen.getAllByTestId("criterion-evidence-row");
     expect(old).toHaveTextContent("commit e523c4b0ff90");
     expect(old).toHaveTextContent("does not count: judged at commit e523c4b0ff90, which the live build does not hold");
@@ -221,21 +230,23 @@ describe("a criterion's evidence", () => {
 
   // ISS-489 r2: "Stale" meant an earlier wording and a build the live one lacks alike, and the reason
   // sat only inside the evidence expander; each now has its own word and its reason on the row
-  it("gives an earlier wording and another build each its own word, with its reason on the row", () => {
+  it("gives an earlier wording and another build each its own word, with its reason in its drawer", async () => {
     render(<CriteriaChecklist d={earlierAndOther} slug="epod" />);
     const [earlier, other] = screen.getAllByTestId("criterion-row");
     expect(within(earlier).getByTestId("verdict-dot")).toHaveAccessibleName("Stale");
-    expect(within(earlier).getByTestId("criterion-why")).toHaveTextContent("the agent ties it to this wording");
     expect(within(other).getByTestId("verdict-dot")).toHaveAccessibleName("Not live");
-    expect(within(other).getByTestId("criterion-why")).toHaveTextContent("judged only at builds the live one does not hold");
+    expect(within(await openRow(0)).getByTestId("criterion-why")).toHaveTextContent("the agent ties it to this wording");
+    await userEvent.keyboard("{Escape}");
+    expect(within(await openRow(1)).getByTestId("criterion-why")).toHaveTextContent("judged only at builds the live one does not hold");
   });
 
-  it("names no counting verdict where none is judged", () => {
+  it("names no counting verdict where none is judged", async () => {
     render(<CriteriaChecklist d={d} slug="epod" />);
+    await openRow();
     expect(screen.queryByTestId("criterion-counts")).toBeNull();
   });
 
-  it("names why the accepted breakdown left a gap without an issue (R-6)", () => {
+  it("names why the accepted breakdown left a gap without an issue (R-6)", async () => {
     const gap = {
       criteria: [{ code: "BC-2", form: "plain", sinceRevision: 1 }],
       standing: {
@@ -247,6 +258,7 @@ describe("a criterion's evidence", () => {
       },
     } as unknown as RequirementDetail;
     render(<CriteriaChecklist d={gap} slug="epod" />);
+    await openRow();
     expect(screen.getByTestId("criterion-uncovered")).toHaveTextContent(
       "Left without an issue by the accepted breakdown: the bank's batch decides this",
     );

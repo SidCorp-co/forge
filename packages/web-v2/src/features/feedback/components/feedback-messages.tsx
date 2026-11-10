@@ -139,15 +139,16 @@ function Composer({ projectId, f }: { projectId: string; f: FeedbackView }) {
 }
 
 /**
- * The item's thread, shut to its label and how many messages it holds (ISS-903); open, the thread
- * and the composer for those who may write to its reporters or leave a note.
+ * The item's thread, shut to its label and how many messages it holds (ISS-903); open, in a side
+ * drawer and never in place (REQ-43 r3 BC-17), the thread and the composer for those who may write
+ * to its reporters or leave a note.
  */
 export function Messages({ projectId, f, defaultOpen = false }: { projectId: string; f: FeedbackView; defaultOpen?: boolean }) {
   const t = useCopy();
   const compose = f.can.message || f.can.note;
   if (f.messages.length === 0 && !compose) return null;
   return (
-    <CountSection label={t("feedback.messages.heading")} count={f.messages.length} holds={f.messages.length + (compose ? 1 : 0)} defaultOpen={defaultOpen} testId="feedback-messages">
+    <CountSection label={t("feedback.messages.heading")} count={f.messages.length} holds={f.messages.length + (compose ? 1 : 0)} defaultOpen={defaultOpen} testId="feedback-messages" drawer>
       <div className="grid gap-3">
         <Thread messages={f.messages} />
         {compose ? <Composer projectId={projectId} f={f} /> : null}

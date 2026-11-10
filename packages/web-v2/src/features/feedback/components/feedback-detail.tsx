@@ -1,7 +1,7 @@
 
 // A feedback item's full page: its screenshots, recordings and the step it hits, then, while it waits
 // on triage, its triage checklist's answers and gaps (REQ-34 r2 BC-5), what the reporter said, and
-// Reproduce and Messages shut to one line each (Overview); the acts open on demand (feedback-acts.tsx),
+// Reproduce and Messages shut to one line each, opening a side drawer (Overview); the acts open on demand (feedback-acts.tsx),
 // never inline (ISS-903); the mockups proposed about it (Mockups), and every decision on it
 // with the triage it passed (Activity: past items, REQ-43 BC-8), as tabs beside the sticky facts rail.
 // The header's badge says the phase and the strip under the banner how far it has come; what the
@@ -17,7 +17,7 @@ import { Written } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
 import {
   DetailDrawer,
-  Disclosure,
+  DrawerFold,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -98,12 +98,12 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
   );
 }
 
-/** Reproduce and the POC room, one fold shut until a reproduce rides the address. */
+/** Reproduce and the POC room, one line opening a side drawer, open on arrival where a reproduce rides the address. */
 function ReproduceFold({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
   const [params] = useUrlParams();
   return (
-    <Disclosure title={t("previews.reproduce.title")} defaultOpen={params.has(REPRODUCE_PARAM)} testId="feedback-reproduce" highlight="reproduce">
+    <DrawerFold title={t("previews.reproduce.title")} defaultOpen={params.has(REPRODUCE_PARAM)} testId="feedback-reproduce" highlight="reproduce" width={640}>
       <div className="grid gap-4">
         <Reproduction
           projectId={projectId}
@@ -113,7 +113,7 @@ function ReproduceFold({ projectId, f }: { projectId: string; f: FeedbackView })
         />
         <FeedbackRoom projectId={projectId} about={f.key} />
       </div>
-    </Disclosure>
+    </DrawerFold>
   );
 }
 

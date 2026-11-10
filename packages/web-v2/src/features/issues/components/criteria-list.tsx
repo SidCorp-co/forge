@@ -13,7 +13,7 @@
 // "Builder's pass" with its reason on hover and on the open row, and Met leaves it out (ISS-683, K91).
 
 import { type ReactNode, useState } from "react";
-import { EmptyPanelLine, HollowCheck, StatusBadge, statusReading, VerdictEvidence, ViewHeading } from "@/design";
+import { EmptyPanelLine, HollowCheck, SlideOver, StatusBadge, statusReading, VerdictEvidence, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -115,14 +115,16 @@ function CriterionItem({
   const reading = statusReading("criterion", line.standing, language).label;
   const row = line.row;
   const statement = developer ? line.statement : withoutCriterionCode(line.statement);
-  // the row's face is the criterion's short title, else its first clause; the whole sentence opens under it (ISS-1131)
+  // the row's face is the criterion's short title, else its first clause (ISS-1131); the whole sentence,
+  // its verdict and its evidence open in a side drawer, never under it (REQ-43 r3 BC-17)
   const face = criterionShortTitle({ title: line.title, text: statement });
   return (
     <li className="border-t border-line-divider first:border-t-0" data-testid="criterion-row">
       <button
         type="button"
+        aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(true)}
         className="flex w-full min-w-0 items-baseline gap-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
       >
         <span className="w-8 flex-none tabular-nums text-subtle">{line.n}</span>
@@ -146,8 +148,9 @@ function CriterionItem({
           {MARK[line.standing]}
         </span>
       </button>
+      <SlideOver open={open} onClose={() => setOpen(false)} title={face.short} width={560}>
       {open ? (
-        <div className="grid gap-2 pb-3 pl-11 text-13 text-muted" data-testid="criterion-full">
+        <div className="grid gap-2 text-13 text-muted" data-testid="criterion-full">
           {face.cut ? <p className="whitespace-pre-wrap">{statement}</p> : null}
           {row ? (
             <>
@@ -169,6 +172,7 @@ function CriterionItem({
           ) : null}
         </div>
       ) : null}
+      </SlideOver>
     </li>
   );
 }

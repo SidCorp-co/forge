@@ -57,8 +57,9 @@ Owner rulings, 2026-11-05:
 | `ContentsList` / `ContentsMenu` | a long page's groups: a list atop the facts rail marking the one in view, or one menu control where there is no rail |
 | `SettingsGroup` / `SettingRow` / `FormActions` | labelled controls, a hint or a refusal under each, one save bar |
 | `Disclosure` | a fold: label, count or summary, chevron |
-| `CountSection` | a section shut by default: its label and count, opened on click; zero is a quiet line with nothing to open |
-| `ExpandRows` / `ExpandRow` | one line per row that opens its detail in place; j/k move, Enter or Space opens, Escape shuts |
+| `CountSection` | a section shut by default: its label and count, opened on click; zero is a quiet line with nothing to open; `drawer` opens it in a side drawer |
+| `DrawerFold` | a record page's fold: the Disclosure's one line, its body in a side drawer, never in place |
+| `ExpandRows` / `ExpandRow` | one line per row that opens its detail in a side drawer; j/k move, Enter or Space opens, Escape shuts |
 | `StatusChip` | a state in its legend tone, its reason on hover or keyboard focus (and to a screen reader) |
 | `NextAction` | the screen's one primary act, in the top bar; a quiet "more" beside it opens the page's ⌘K acts |
 | `EmptyState` / `LoadingState` / `ErrorState` | the three non-content states of any section |

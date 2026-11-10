@@ -5,7 +5,7 @@
 // Flat rows under hairline dividers; the counts and the blocking flag are core's.
 
 import { useState } from "react";
-import { Button, CountSection, Disclosure, Textarea, ToneBadge } from "@/design";
+import { Button, CountSection, DrawerFold, Textarea, ToneBadge } from "@/design";
 import { DecisionTarget } from "@/features/comments";
 import { IntakeSource } from "@/features/intake";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -103,7 +103,7 @@ export function OpenQuestions({
   const note = blocking > 0 ? `· ${t("requirements.unclear.blocksN", { n: blocking })}` : undefined;
   return (
     <section data-testid="requirement-unclear">
-      <CountSection label={t("requirements.unclear.heading")} count={unclear} unit={t("requirements.unclear.open")} holds={questions.length} note={note} testId="unclear-fold">
+      <CountSection label={t("requirements.unclear.heading")} count={unclear} unit={t("requirements.unclear.open")} holds={questions.length} note={note} testId="unclear-fold" drawer>
         <ul className="grid">
           {questions.map((q) => (
             <OpenQuestion key={q.id} q={q} projectId={projectId} reqKey={reqKey} slug={slug} />
@@ -116,13 +116,14 @@ export function OpenQuestions({
 
 /**
  * What the revision takes as true without proof: each with whose it is and how it will be confirmed,
- * folded to its heading and count and opened on demand (ISS-1109, FB-567).
+ * folded to its heading and count and opened on demand in a side drawer, never in place (ISS-1109,
+ * FB-567, REQ-43 r3 BC-17).
  */
 export function Assumptions({ assumptions, revision, slug }: { assumptions: RequirementAssumption[]; revision: number | null; slug?: string }) {
   const t = useCopy();
   return (
     <section data-testid="requirement-assumptions">
-      <Disclosure title={t("requirements.assumptions.heading")} count={assumptions.length} summary={revision !== null ? t("requirements.overview.fromR", { r: revision }) : undefined} testId="assumptions-fold">
+      <DrawerFold title={t("requirements.assumptions.heading")} count={assumptions.length} summary={revision !== null ? t("requirements.overview.fromR", { r: revision }) : undefined} testId="assumptions-fold">
       {assumptions.length === 0 ? (
         <p className="text-13 text-subtle">{t("requirements.assumptions.none")}</p>
       ) : (
@@ -147,7 +148,7 @@ export function Assumptions({ assumptions, revision, slug }: { assumptions: Requ
           ))}
         </ul>
       )}
-      </Disclosure>
+      </DrawerFold>
     </section>
   );
 }

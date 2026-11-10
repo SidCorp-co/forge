@@ -8,7 +8,7 @@ import { BC_VERDICTS, type BcVerdict, type CoverageIssue, type HistorySource, ty
 import type { RequirementKind } from "@forge/contracts/requirement-pictures";
 import { Link } from "@/lib/navigation/router";
 import { type ReactNode, useState } from "react";
-import { ActorChip, FilterChip, Icon, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
+import { ActorChip, ExpandRow, ExpandRows, FilterChip, SegmentedControl, StatusBadge, statusReading, VerdictEvidence, WhoMark } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -219,27 +219,24 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
   return (
     <>
     {proof && cov.length >= FILTER_FROM ? <VerdictFilter coverage={cov} value={filter} onChange={setFilter} /> : null}
-    <ul className="border-t border-line-subtle" data-testid="criteria-checklist">
+    <ExpandRows label={t("requirements.criteria.heading")} className="border-t border-line-subtle" testId="criteria-checklist">
       {cov.filter((c) => filter === "all" || c.verdict === filter).map((c) => {
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
-        // the row's face is the criterion's short title, else its first clause; the sentence opens under it (ISS-1131)
+        // the row's face is the criterion's short title, else its first clause (ISS-1131); the sentence and
+        // its evidence open in a side drawer, never under it (REQ-43 r3 BC-17)
         const face = criterionShortTitle({ title: crit?.title, text: firstLine(c.body) });
+        const line = (
+          <span className="flex min-w-0 flex-1 items-center gap-x-2.5" title={c.code} data-testid="criterion-line">
+            <span className="grid w-4 flex-none place-items-center">
+              {proof ? <VerdictDot verdict={c.verdict} /> : <span aria-hidden className="size-1.5 rounded-full bg-neutral-8" data-testid="criterion-bullet" />}
+            </span>
+            <span className="min-w-0 flex-1 text-14">{face.short}</span>
+          </span>
+        );
         return (
-          <li key={c.code} className="border-b border-line-subtle" data-testid="criterion-row" data-verdict={c.verdict}>
-            <details className="group" data-testid="criterion-detail">
-              <summary
-                className="flex cursor-pointer list-none items-center gap-x-2.5 py-2 hover:bg-hover [&::-webkit-details-marker]:hidden"
-                title={c.code}
-                data-testid="criterion-line"
-              >
-                <span className="grid w-4 flex-none place-items-center">
-                  {proof ? <VerdictDot verdict={c.verdict} /> : <span aria-hidden className="size-1.5 rounded-full bg-neutral-8" data-testid="criterion-bullet" />}
-                </span>
-                <span className="min-w-0 flex-1 text-14">{face.short}</span>
-                <Icon name="chevronRight" size={14} className="flex-none text-subtle transition-transform group-open:rotate-90" />
-              </summary>
-            <div className="min-w-0 pb-3 pl-6.5">
+          <ExpandRow key={c.code} id={c.code} head={line} title={face.short} testId="criterion-row" marks={{ "data-verdict": c.verdict }}>
+            <div className="min-w-0 text-fg" data-testid="criterion-detail">
               {developer ? (
                 <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
                   <span className="font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined} data-testid="criterion-code">
@@ -286,8 +283,8 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                 )}
               </div>
               {c.issues.length > 0 || c.verdicts.length > 0 ? (
-                <details className="mt-1.5 text-13" data-testid="criterion-evidence">
-                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence")}</summary>
+                <section className="mt-3 text-13" data-testid="criterion-evidence">
+                  <h3 className="text-13 font-medium text-muted">{t("requirements.criteria.evidence")}</h3>
                   <ul className="mt-1 grid gap-0.5 pl-3">
                     {issues.flatMap(({ i, links }) =>
                       links.map((l) => (
@@ -310,14 +307,13 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
                     )}
                     <OwnVerdictRows verdicts={c.verdicts} developer={developer} />
                   </ul>
-                </details>
+                </section>
               ) : null}
             </div>
-            </details>
-          </li>
+          </ExpandRow>
         );
       })}
-    </ul>
+    </ExpandRows>
     </>
   );
 }

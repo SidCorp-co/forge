@@ -1,6 +1,8 @@
 // A criterion traced by hand onto the steps of a linked design (lane 3): its held trace reads pressed,
 // a pick writes the whole trace for that criterion and design at once, keeping the lines it already
 // names, and a requirement with nothing linked, or done, offers no trace.
+//
+// @direct-test-of packages/web-v2/src/features/requirements/components/criteria-trace.tsx
 
 import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

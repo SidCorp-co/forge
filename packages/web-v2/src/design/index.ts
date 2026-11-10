@@ -73,6 +73,7 @@ export { PageCommandsProvider, usePageCommands, usePageCommandList, usePageComma
 // the disclosure kit (REQ-11 BC-22): a screen's face is a name, a status and one next action; the rest opens on demand
 export { ExpandRows, ExpandRow } from "./patterns/expand-row";
 export { DetailDrawer } from "./patterns/detail-drawer";
+export { DrawerFold } from "./patterns/drawer-fold";
 export { StatusChip } from "./patterns/status-chip";
 export { CountSection } from "./patterns/count-section";
 export { NextAction } from "./patterns/next-action";

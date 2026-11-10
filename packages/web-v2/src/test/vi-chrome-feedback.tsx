@@ -111,7 +111,8 @@ const SUGGESTIONS = {
 };
 
 export const FEEDBACK_SEED: [QueryKey, unknown][] = [
-  [["feedback", P], { feedback: ROWS, counts: {}, sensitive: false }],
+  // core's counts over ROWS, one per root: Needs you FB-1, FB-2 and FB-7, then one in each other group
+  [["feedback", P], { feedback: ROWS, counts: { needs_you: 3, running: 1, queued: 0, overdue: 0, waiting: 1, done: 1, dropped: 1 }, total: 7, open: 5, sensitive: false }],
   [["feedback-item", P, ITEM.key], { feedback: ITEM }],
   [feedbackForecastKey(P), { projectId: P, items: [] }],
   [["suggestions", P, { feedback: ITEM.id }], SUGGESTIONS],

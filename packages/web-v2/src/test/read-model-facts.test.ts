@@ -50,6 +50,12 @@ export const RULES: Rule[] = [
     servedBy: "GET /me/attention `orgId` (contracts inActiveOrg)",
     pattern: /view\.\w+\.filter\(keep\)|projectSlugs\.has\(n\.projectSlug\)/,
   },
+  {
+    // ISS-1197 r2: the Feedback band counted phases over its rows and disagreed with the list's groups
+    name: "feedback-band-counts",
+    servedBy: "GET /projects/:id/feedback `counts`, `total` and `open`",
+    pattern: /stateFlowOf\(\s*["']feedback(Phase|Attention)["']|feedbackOutcomeOf\(\w+\)\s*===\s*["']open["']\)\s*\.length/,
+  },
 ];
 
 const SRC = join(import.meta.dirname, "..");
@@ -87,6 +93,8 @@ describe("read-model facts are rendered, never derived (REQ-12 BC-19)", () => {
     ["attention-needs-you-refilter", "const n = view.needsYou.filter((x) => ok(x));"],
     ["attention-match-count", 'const off = devices.filter((d) => d.status === "offline");'],
     ["attention-org-scope", "const m = view.mentions.filter(keep);"],
+    ["feedback-band-counts", 'const flow = stateFlowOf("feedbackPhase", FEEDBACK_PHASES, reports.map((r) => r.phase), language);'],
+    ["feedback-band-counts", 'const open = reports.filter((r) => feedbackOutcomeOf(r) === "open").length;'],
   ])("refuses a planted %s derivation by name", (rule, planted) => {
     expect(derivations(planted).map((d) => d.rule)).toEqual([rule]);
   });

@@ -119,7 +119,18 @@ export async function listFeedbackIn(
     beforeNotices: reports.filter((s) => s.reporterNotTold === 'before_notices').length,
     noticesBegan,
   };
-  return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
+  const open = reports.filter((s) => s.attentionGroup !== 'done' && s.attentionGroup !== 'dropped');
+  return {
+    ok: true,
+    list: {
+      feedback: listed,
+      counts,
+      total: reports.length,
+      open: open.length,
+      untold,
+      sensitive: level !== 'off',
+    },
+  };
 }
 
 /**

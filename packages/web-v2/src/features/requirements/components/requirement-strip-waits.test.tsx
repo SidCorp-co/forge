@@ -4,7 +4,7 @@
 // says a second waiting-on or verified count; nothing around the strip collapses or clips it at phone
 // width (layout itself is proven in headless Chrome, where it exists); issue keys keep to one line.
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { WaitingOn } from "@/design";
@@ -193,7 +193,13 @@ describe("the criteria checklist at phone width", () => {
     core();
     const traced = { ...reqDetail, standing: { ...reqDetail.standing, coverage: reqDetail.standing.coverage } };
     page("overview", traced);
-    const keys = within(screen.getByTestId("criteria-checklist")).getAllByTestId("criterion-issue-key");
+    // each row's evidence opens in its side drawer, one row at a time (ISS-1197 r2)
+    const keys = within(screen.getByTestId("criteria-checklist"))
+      .getAllByTestId("criterion-line")
+      .flatMap((line) => {
+        fireEvent.click(line);
+        return within(screen.getByRole("dialog")).queryAllByTestId("criterion-issue-key");
+      });
     expect(keys.length).toBeGreaterThan(0);
     for (const k of keys) {
       expect(k.className.split(/\s+/), k.textContent ?? "").toContain("whitespace-nowrap");

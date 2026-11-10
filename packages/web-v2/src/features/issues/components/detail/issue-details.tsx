@@ -1,13 +1,12 @@
 
 // The Details of an issue page: folded rows, one per kind of long record. A row shows its label and
-// one short summary; the body opens under it. The description, the issue's long text, opens in a side
-// drawer from the heading instead, never in place (REQ-43 r3 BC-17). The developer view opens every row and adds the ones
-// only a developer reads (the plan, runs, mockups, memory: agent text, REQ-43 BC-7), so a person's
-// page is the same page folded. Past items — decided patterns, past decisions, retired criteria —
-// sit in Activity (BC-8).
+// one short summary; in a person's view its body opens in a side drawer, never in place, as the
+// description does from the heading (REQ-43 r3 BC-17). The developer view prints every row open and
+// adds the ones only a developer reads (the plan, runs, mockups, memory: agent text, REQ-43 BC-7).
+// Past items (decided patterns, past decisions, retired criteria) sit in Activity (BC-8).
 
 import { type ReactNode, useState } from "react";
-import { DetailDrawer, Disclosure, Markdown, ViewHeading } from "@/design";
+import { DetailDrawer, Disclosure, DrawerFold, Markdown, ViewHeading } from "@/design";
 import { AttachmentList } from "@/features/attachments";
 import { IssueQuestions } from "@/features/questions";
 import { MockupList } from "@/features/mockups";
@@ -67,10 +66,11 @@ export function IssueDetails({
   const steps = issue.plan ? planSteps(issue.plan) : 0;
   const sessions = issue.agentSessions ?? [];
   const stepOutcomes = standingQ.data?.stepOutcomes ?? [];
+  const Fold = developer ? Disclosure : DrawerFold;
   const row = (key: string, label: string, summary: ReactNode, body: ReactNode, highlight?: string) => (
-    <Disclosure key={key} title={label} summary={summary} open={isOpen(key)} onOpenChange={() => toggle(key)} testId={`details-${key}`} highlight={highlight}>
+    <Fold key={key} title={label} summary={summary} open={isOpen(key)} onOpenChange={() => toggle(key)} testId={`details-${key}`} highlight={highlight}>
       {body}
-    </Disclosure>
+    </Fold>
   );
   return (
     <section aria-label={t("issues.details.title")} data-testid="issue-details">

@@ -8,6 +8,7 @@
 // @direct-test-of packages/web-v2/src/features/feedback/components/feedback-item-screen.tsx
 // @direct-test-of packages/web-v2/src/features/feedback/components/feedback-acts.tsx
 // @direct-test-of packages/web-v2/src/features/feedback/components/feedback-messages.tsx
+// @direct-test-of packages/web-v2/src/design/patterns/drawer-fold.tsx
 
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

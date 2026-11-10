@@ -1138,7 +1138,11 @@ export interface FeedbackAttachResponse extends FeedbackResponse {
 
 export interface FeedbackListResponse {
 	feedback: FeedbackSummary[];
+	/** The reports by whose turn it is, one per root: a duplicate is its original's occurrence (REQ-66 BC-3). */
 	counts: Record<FeedbackAttentionGroup, number>;
+	/** How many reports `counts` holds, and how many of them are neither done nor dropped. */
+	total: number;
+	open: number;
 	/** Shipped items whose reporter nothing told, counted apart: owed a relay, or shipped before release notices existed (since `noticesBegan`). */
 	untold: { owed: number; beforeNotices: number; noticesBegan: string | null };
 	sensitive: boolean;

@@ -1,6 +1,6 @@
 
 // The Feedback list (`forge-prototype.html` #/feedback): the grouping in the top header, a search,
-// the overview band (its figures, phases and feedback by week, REQ-43 r3 BC-14, `feedback-band.tsx`),
+// the overview band (its figures, the list's groups and feedback by week, REQ-43 r3 BC-14, `feedback-band.tsx`),
 // then the shared GroupedList — the same columns as Requirements and Issues — by
 // whose turn it is or by what each item is about. A row leads with its title: the key and the
 // target's key are tooltips (REQ-11). Whose turn comes from core's read model
@@ -11,7 +11,7 @@
 // sentence, which the item's own page shows.
 
 import { Written } from "@/lib/i18n/written";
-import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
+import { countsAsReport, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
@@ -179,7 +179,9 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const rowEtaOf = (k: string) => (forecasts.get(k)?.triage ? null : etaOf(k));
   // the search box reads q; the rest is the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("feedback");
-  const all = q.data?.feedback ?? [];
+  // a duplicate is its original's occurrence, never a row of its own (REQ-66 BC-3): the list groups
+  // the reports core counts, so the band over it and its groups say one number (ISS-1197 r2)
+  const all = (q.data?.feedback ?? []).filter(countsAsReport);
   const list = useListPage({
     rows: all,
     keyOf: (r) => r.key,
@@ -202,7 +204,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
           testId="feedback-screen"
           title={t("feedback.title")}
           titleAfter={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}
-          overview={<FeedbackBand rows={list.rows} />}
+          overview={q.data ? <FeedbackBand read={q.data} reports={all} /> : null}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
               {t("feedback.new")}

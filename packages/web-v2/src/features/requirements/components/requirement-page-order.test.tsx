@@ -61,12 +61,12 @@ describe("a requirement page, top to bottom", () => {
     ]);
     const rows = within(criteria).getAllByTestId("criterion-row");
     expect(rows).toHaveLength(reqDetail.standing.coverage.length);
-    // the owner's face (2026-11-02): one short line a row, its code a tooltip, its detail behind the expand
+    // the owner's face (2026-11-02): one short line a row, its code a tooltip, its detail behind its drawer
     rows.forEach((r, i) => {
       const line = within(r).getByTestId("criterion-line");
       expect(line).toHaveAttribute("title", reqDetail.standing.coverage[i]?.code);
       expect(line.textContent).not.toContain("\n");
-      expect(within(r).getByTestId("criterion-detail")).not.toHaveAttribute("open");
+      expect(within(r).queryByTestId("criterion-detail")).toBeNull();
     });
     expect(within(criteria).queryByTestId("criterion-code")).toBeNull();
     expect(within(screen.getByTestId("requirement-tabs")).queryByRole("tab", { name: /Criteria/ })).toBeNull();

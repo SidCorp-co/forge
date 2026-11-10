@@ -10,6 +10,7 @@
  * @direct-test-of packages/core/src/feedback/rules.ts
  * @direct-test-of packages/core/src/feedback/triage.ts
  * @direct-test-of packages/core/src/feedback/list-read.ts
+ * @direct-test-of packages/core/src/feedback/list-page-read.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
@@ -429,6 +430,8 @@ describe('a duplicate is counted under its original, never beside it', () => {
     expect(list.feedback).toHaveLength(2);
     const counted = Object.values(list.counts as Record<string, number>).reduce((a, b) => a + b);
     expect(counted).toBe(1);
+    // the band's figures are the same count, never the rows' length (ISS-1197 r2)
+    expect([list.total, list.open]).toEqual([1, 1]);
     const standings = ok(await say('owner', 'GET', on('/standings'))).standings;
     expect(
       standings.filter((s: Doc) => s.subject.kind === 'feedback').map((s: Doc) => s.subject.key),

@@ -246,7 +246,9 @@ describe("an issue page in the person's view", () => {
     if (key === "files") expect(within(dialog).getAllByText(/\.(png|txt|log|pdf|json|md)/i).length).toBeGreaterThan(0);
   });
 
+  // at the judge's 1440 width, the rail beside the page; the phone's one Facts row is DetailLayout's
   it("unfolds nothing in place on its face", async () => {
+    railBeside();
     const root = await page();
     expect(unfoldsInPlace(root)).toEqual([]);
   });
