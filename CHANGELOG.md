@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.634] - 2026-11-10
+
+Requirement strips count only live requirements; dropped ones lose their proposed area
+
+### Fixed
+
+- **The strips above the requirements list count only requirements in play.** Dropping or refusing a requirement withdraws the assistant's proposed area and name, and the suggestions line names the BA assistant and its oldest suggestion's age.
+
 ## [0.4.0-dev.633] - 2026-11-09
 
 A brief box disconnect no longer files a production watch breach
