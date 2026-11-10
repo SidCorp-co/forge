@@ -132,9 +132,26 @@ describe("a feedback item opens on its evidence", () => {
     const evidence = await screen.findByTestId("feedback-evidence");
     const shot = within(evidence).getByRole("img", { name: "Screenshot 1 of 1 for FB-52: Save order fails" });
     expect(shot.getAttribute("src")).toBe(SHOT.url);
-    expect(at(evidence, screen.getByTestId("feedback-body")), "the screenshot sits above the reporter's text").toBeTruthy();
+    expect(at(evidence, screen.getByTestId("feedback-body-lead")), "the screenshot sits above the reporter's text").toBeTruthy();
     expect(screen.queryByTestId("feedback-triage"), "the triage form is the act sheet's, never the page's").toBeNull();
     expect(screen.queryByRole("img", { name: "IMG_0042.png" }), "no image is read by its file name").toBeNull();
+  });
+
+  // REQ-43 r3 BC-17 (owner, 2026-11-10): the page draws the stage it has reached first, and what the
+  // reporter said opens whole in a side drawer, its opening lines on the page
+  it("draws its phase as a step track, and opens the whole report in a drawer, not in place", async () => {
+    core();
+    const body = "Save fails.\nSecond line.\nThird line.\nThe last line names the browser: Safari 18.";
+    const f = view({ phase: "triaged", body });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["feedback-item", P, f.key], { feedback: f });
+    renderWithQuery(<FeedbackPage projectId={P} slug="hop" fbKey={f.key} tab="overview" onTab={() => {}} />, client);
+    const track = await screen.findByTestId("feedback-phase-track");
+    expect(within(track).getByTestId("step-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("feedback-body-lead")).toHaveClass("line-clamp-2");
+    expect(screen.queryByTestId("feedback-body")).toBeNull();
+    await userEvent.click(screen.getByTestId("feedback-body-open"));
+    expect(await screen.findByTestId("feedback-body")).toHaveTextContent("Safari 18");
   });
 
   it("reads every screenshot by its place and the item, never its file name", () => {

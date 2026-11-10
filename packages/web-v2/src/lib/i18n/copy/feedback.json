@@ -300,6 +300,7 @@
     "feedback.forge.told.shippedIn": "Shipped in",
     "feedback.band.label": "Feedback overview",
     "feedback.band.reports": "Reports",
-    "feedback.band.open": "Open"
+    "feedback.band.open": "Open",
+    "feedback.body.full": "Full report"
   }
 }

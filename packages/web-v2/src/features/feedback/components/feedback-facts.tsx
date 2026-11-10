@@ -23,7 +23,7 @@ import { AnswerClarification } from "./answer-clarification";
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
 /** New → Triaged → Planned → Resolved → Verified as a bar naming no phase (the badge names it); a declined or reopened item reads off the strip. */
-function PhaseSteps({ f }: { f: FeedbackView }) {
+export function PhaseSteps({ f }: { f: FeedbackView }) {
   const label = useLabel();
   const at = STRIP.indexOf(f.phase);
   if (at < 0) return null;
@@ -348,11 +348,14 @@ export function LinkedFeedback({
   f,
   slug,
   projectId,
+  phases = true,
 }: {
   f: FeedbackView;
   slug: string;
   /** Where the item lives: given, the reporter answers its clarification here. */
   projectId?: string;
+  /** Draw the phase strip; the full page draws it at its head instead, said once. */
+  phases?: boolean;
 }) {
   const tr = useCopy();
   const time = useTimeFormat();
@@ -385,9 +388,11 @@ export function LinkedFeedback({
         <Fact label={tr("feedback.fact.kind")}>
           <EnumBadge family="feedbackKind" value={f.kind} />
         </Fact>
-        <div className="pt-2.5">
-          <PhaseSteps f={f} />
-        </div>
+        {phases ? (
+          <div className="pt-2.5">
+            <PhaseSteps f={f} />
+          </div>
+        ) : null}
       </FactsGroup>
 
       <FactsGroup title={tr("feedback.fact.about")} testId="facts-about">

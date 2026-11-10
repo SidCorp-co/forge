@@ -4,8 +4,10 @@
 // Reproduce and Messages shut to one line each (Overview); the acts open on demand (feedback-acts.tsx),
 // never inline (ISS-903); the mockups proposed about it (Mockups), and every decision on it
 // with the triage it passed (Activity: past items, REQ-43 BC-8), as tabs beside the sticky facts rail.
-// The header's badge says the phase; the page leads with what the badge does not say (when it is
-// expected, the release that shipped it), then whose turn it is, once (BC-5), then its progress: is
+// The header's badge says the phase and the strip under the banner how far it has come; what the
+// reporter said shows its opening lines, the whole in a side drawer. The page leads with what the
+// badge does not say (when it is expected, the release that shipped it), then whose turn it is, once
+// (BC-5), then its progress: is
 // work on it running, what carries it, and its estimate or why it has none. Overview also asks the
 // reporter a clarification and lists the similar items already filed. A person's view leaves
 // the agent text out — the assistant's draft, where an answer came from — and `?view=developer` draws
@@ -48,7 +50,7 @@ import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
 import { FeedbackQuestions } from "./feedback-questions";
 import { ClarifyReporter } from "./feedback-clarify";
-import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
+import { FeedbackBanner, LinkedFeedback, PhaseSteps } from "./feedback-facts";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { Messages } from "./feedback-messages";
 import { FeedbackProgress } from "./feedback-progress";
@@ -64,21 +66,31 @@ function Heading({ children }: { children: ReactNode }) {
   return <h2 className="mb-3 text-14 font-semibold leading-snug text-fg">{children}</h2>;
 }
 
+/**
+ * What the reporter said: its opening lines on the page, the whole of it in a side drawer, never
+ * expanded in place (REQ-43 r3 BC-17).
+ */
 function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
+  const said = f.body?.trim() ?? "";
   return (
     <section data-highlight="evidence">
       <Heading>{t("feedback.body.heading")}</Heading>
       {f.redacted ? (
         <p className="text-13 text-subtle">{t("feedback.body.redacted")}</p>
+      ) : said ? (
+        <div className="flex max-w-2xl items-start gap-3">
+          <p className="line-clamp-2 min-w-0 flex-1 text-14 leading-relaxed" data-testid="feedback-body-lead" lang={f.writtenLang ?? undefined}>
+            {said}
+          </p>
+          <DetailDrawer label={t("feedback.body.full")} title={t("feedback.body.heading")} icon="book" width={560} testId="feedback-body-open">
+            <p className="whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
+              {f.body}
+            </p>
+          </DetailDrawer>
+        </div>
       ) : (
-        <p className="max-w-2xl whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
-          {f.body?.trim() ? (
-            f.body
-          ) : (
-            <span className="text-subtle">{t("feedback.body.none")}</span>
-          )}
-        </p>
+        <p className="text-14 text-subtle">{t("feedback.body.none")}</p>
       )}
       <FeedbackAttachments projectId={projectId} f={f} />
       <FeedbackOccurrences f={f} />
@@ -177,6 +189,10 @@ export function FeedbackPage({
             <DetailMobileTitle title={<span title={f.key}><Written text={f.title} lang={f.writtenLang} /></span>} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
+            {/* the stage it has reached, drawn first: the badge names it, the strip shows how far (REQ-43 r3 BC-17) */}
+            <div className="px-8 pt-1 pb-2 max-md:px-4" data-testid="feedback-phase-track">
+              <PhaseSteps f={f} />
+            </div>
             <StewardNoteLines note={note} slug={slug} className="px-8 max-md:px-4" />
             <FeedbackProgress projectId={projectId} slug={slug} fbKey={f.key} className="px-8 pt-3 pb-1 max-md:px-4" />
             {/* the facts are the Properties drawer's, the person / developer switch the palette's (ISS-903) */}
@@ -187,7 +203,7 @@ export function FeedbackPage({
               <DetailDrawer label={t("common.properties")} testId="feedback-properties">
                 <FactsRail>
                   {/* the forecast is the answer line's, above: the facts do not say when a second time */}
-                  <LinkedFeedback f={f} slug={slug} projectId={projectId} />
+                  <LinkedFeedback f={f} slug={slug} projectId={projectId} phases={false} />
                 </FactsRail>
               </DetailDrawer>
             </div>
