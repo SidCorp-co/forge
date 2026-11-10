@@ -1,7 +1,8 @@
+import type { IssueFlow } from '@forge/contracts/issue-flow';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { api, type Body } from '../helpers/api.js';
+import { api } from '../helpers/api.js';
 import { ago, issue, moved, type World, world } from '../helpers/forecast-world.js';
 
 // The Issues band's one chart (REQ-43 r3 BC-16): issues filed and closed per day in the reader's
@@ -12,7 +13,7 @@ import { ago, issue, moved, type World, world } from '../helpers/forecast-world.
 
 describe('the issue flow read', () => {
   let w: World;
-  let flow: Body;
+  let flow: IssueFlow;
 
   beforeAll(async () => {
     w = await world();
@@ -30,13 +31,12 @@ describe('the issue flow read', () => {
     await issue(w, { status: 'open', createdAt: ago(24 * 20) });
     const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/issues/flow?tz=UTC`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    flow = res.body;
-    expect(flow.days.at(-1).day).toBe(now.toISOString().slice(0, 10));
+    flow = res.body as unknown as IssueFlow;
+    expect(flow.days.at(-1)?.day).toBe(now.toISOString().slice(0, 10));
   });
 
   it('counts the issues the list counts as filed, and each close once per issue per day', () => {
-    const total = (k: 'opened' | 'closed') =>
-      (flow.days as { opened: number; closed: number }[]).reduce((n, d) => n + d[k], 0);
+    const total = (k: 'opened' | 'closed') => flow.days.reduce((n, d) => n + d[k], 0);
     expect(flow.days).toHaveLength(14);
     expect(total('opened')).toBe(3);
     expect(total('closed')).toBe(2);
