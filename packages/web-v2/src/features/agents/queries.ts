@@ -21,6 +21,8 @@ export const runKeys = {
   charter: (projectId: string | undefined) => [...runKeys.project(projectId), "charter"] as const,
   recent: (projectId: string | undefined) => [...runKeys.project(projectId), "recent"] as const,
   roomTurns: (projectId: string | undefined) => [SUPPORT_TURNS_ROOT, projectId] as const,
+  /** Under the runs root, so every write that moves a run reads how the runs move again. */
+  flow: (projectId: string | undefined, tz: string) => [...runKeys.project(projectId), "flow", tz] as const,
 };
 
 /** A runs read, polled: the read model moves without a frame for every change. */
@@ -31,6 +33,7 @@ export const runQueries = {
   run: (projectId: string | undefined, runId: string) => polled(runKeys.run(projectId, runId), () => runsApi.run(projectId as string, runId)),
   master: (projectId: string | undefined) => polled(runKeys.master(projectId), () => runsApi.master(projectId as string)),
   passes: (projectId: string | undefined) => polled(runKeys.passes(projectId), () => runsApi.passes(projectId as string)),
+  flow: (projectId: string | undefined, tz: string) => ({ ...readOf(runKeys.flow(projectId, tz), () => runsApi.flow(projectId as string, tz), 60_000), enabled: !!projectId }),
   charter: (projectId: string | undefined, enabled: boolean) => ({ ...readOf(runKeys.charter(projectId), () => runsApi.charter(projectId as string)), enabled: enabled && !!projectId }),
 };
 

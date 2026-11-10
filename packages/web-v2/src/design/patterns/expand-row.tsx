@@ -1,11 +1,13 @@
-// A list whose rows open in place (REQ-11 BC-22): each row is one line, and its detail opens under
-// it on a click or Enter, so a fact a person does not need now is never on the face. j and k (or the
-// arrows) move between rows, Enter or Space opens and shuts the one in focus, Escape shuts it. One
-// row is open at a time. A row's detail is not drawn while it is shut.
+// A list whose rows open their detail on demand (REQ-11 BC-22): each row is one line, and its detail
+// opens in a side drawer on a click or Enter, so a fact a person does not need now is never on the
+// face, and the list never grows in place under the reader (REQ-43 r3 BC-15, owner 2026-11-10). j and
+// k (or the arrows) move between rows, Enter or Space opens the one in focus, Escape or the drawer's
+// close shuts it. One row is open at a time. A row's detail is not drawn while it is shut.
 
 import { createContext, type KeyboardEvent, type ReactNode, use, useId, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "../icons/icon";
+import { SlideOver } from "./slide-over";
 
 interface ExpandState {
   open: string | null;
@@ -65,13 +67,15 @@ interface ExpandRowProps {
   head: ReactNode;
   /** Acts beside the line (Approve, Decline), outside the toggle so a click on one never opens the row. */
   trail?: ReactNode;
-  /** What opens under the line. */
+  /** The drawer's heading; absent, the row's own line. */
+  title?: ReactNode;
+  /** What opens in the drawer. */
   children: ReactNode;
   className?: string;
   testId?: string;
 }
 
-export function ExpandRow({ id, head, trail, children, className, testId }: ExpandRowProps) {
+export function ExpandRow({ id, head, title, trail, children, className, testId }: ExpandRowProps) {
   const ctx = use(ExpandContext);
   if (!ctx) throw new Error("ExpandRow is drawn outside ExpandRows: a row opens in a list that moves focus between its rows.");
   const detailId = useId();
@@ -82,21 +86,24 @@ export function ExpandRow({ id, head, trail, children, className, testId }: Expa
         <button
           type="button"
           data-expand-head=""
+          aria-haspopup="dialog"
           aria-expanded={isOpen}
           aria-controls={isOpen ? detailId : undefined}
           onClick={() => ctx.toggle(id)}
           onKeyDown={(e) => onHeadKey(e, ctx)}
           className="group/head flex min-h-row min-w-0 flex-1 items-center gap-2 px-5 text-left text-14 text-fg hover:bg-hover focus-visible:outline-none focus-visible:shadow-focus"
         >
-          <Icon name="chevronRight" size={14} className={cn("flex-none text-subtle transition-transform duration-150", isOpen && "rotate-90")} />
+          <Icon name="chevronRight" size={14} className="flex-none text-subtle" />
           <span className="flex min-w-0 flex-1 items-center gap-3">{head}</span>
         </button>
         {trail ? <div className="flex flex-none items-center gap-1.5 pr-5">{trail}</div> : null}
       </div>
       {isOpen ? (
-        <div id={detailId} data-expand-detail="" className="min-w-0 pb-4 pl-11 pr-5 text-13 text-muted">
-          {children}
-        </div>
+        <SlideOver open onClose={ctx.close} title={<span className="flex min-w-0 items-center gap-3">{title ?? head}</span>}>
+          <div id={detailId} data-expand-detail="" className="min-w-0 text-13 text-muted">
+            {children}
+          </div>
+        </SlideOver>
       ) : null}
     </div>
   );

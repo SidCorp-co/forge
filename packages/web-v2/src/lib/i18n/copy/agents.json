@@ -1,5 +1,13 @@
 {
   "en": {
+    "agents.band.chart": "Started and finished",
+    "agents.band.day": "Day",
+    "agents.band.finished": "Finished",
+    "agents.band.finishedIn": "Finished in {n} days",
+    "agents.band.label": "Runs overview",
+    "agents.band.none": "No runs in {n} days",
+    "agents.band.started": "Started",
+    "agents.band.startedIn": "Started in {n} days",
     "agents.cmd.everyRun": "Show every run",
     "agents.cmd.group": "Group by {mode}",
     "agents.cmd.onlyStuck": "Only stuck runs",

@@ -10,6 +10,7 @@ import { MasterDetail } from "@/features/agents/components/master-views";
 import { RunDetail } from "@/features/agents/components/run-views";
 import { IssueQuestions } from "@/features/questions/components/issue-questions";
 import type { AgentQuestion } from "@/features/questions/types";
+import { readerDays, readerZone } from "@/design";
 import { Seeded } from "./vi-chrome-requirements";
 
 // The Agents / Runs screens of the Development space for the vi walking test: the runs list in each
@@ -171,6 +172,7 @@ export const data = (): [QueryKey, unknown][] => [
   [["runs-standing", P, "list", "finished"], list("finished", RUNS.filter((r) => r.attentionGroup === "finished"), MASTERS_IDLE)],
   [["runs-standing", P, "list", "all"], list("all" as never, [...RUNS, ...BUSY])],
   ...RUNS.map((r) => [["runs-standing", P, "run", r.id], detail(r)] as [QueryKey, unknown]),
+  [["runs-standing", P, "flow", readerZone()], { projectId: P, tz: readerZone(), days: [{ day: readerDays().today, started: 3, finished: 2 }] }],
   [["runs-standing", P, "master"], MASTER],
   [["runs-standing", P, "passes"], { generatedAt: AT, projectId: P, items: [MASTER.pass, MASTER.lastPass, { ...(MASTER.lastPass as object), id: "pass-7", refused: { reason: "usage_limit", detail: "r" }, dispatched: [], skipped: [], parked: [], closeReason: "abandoned_quiet" }, { ...(MASTER.lastPass as object), id: "pass-6", recovers: { refusedSince: AT, refusedPasses: 2, reason: "usage_limit" }, closeReason: "session_gone" }], limit: 50, hasMore: true, next: "c" }],
   [["runs-standing", P, "charter"], { declared: true, version: 3, goal: "Muc tieu cua master", rules: ["Quy tac mot", "Quy tac hai"], declaredBy: "Lan", declaredAt: AT }],

@@ -1,4 +1,4 @@
-// The disclosure kit (REQ-11 BC-22): a screen's face is a name, a status and one next action, and
+// The disclosure kit (REQ-11 BC-22, REQ-43 r3 BC-15): a screen's face is a name, a status and one next action, and
 // everything else opens on demand. Each block is pinned on its happy path, its keyboard, its empty
 // state and its shut and open states: a fact that is shut is not in the document at all, so neither
 // the word-budget test nor a reader meets it until it is asked for.
@@ -41,23 +41,28 @@ describe("ExpandRows / ExpandRow", () => {
     for (const h of heads()) expect(h).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("opens a row in place on a click, shuts it on a second, and keeps one open at a time", async () => {
+  // REQ-43 r3 BC-15 (owner, 2026-11-10): a row's detail opens in a side drawer, never in place
+  it("opens a row in a side drawer on a click, never under it, shuts it with Escape, and keeps one open at a time", async () => {
     const user = userEvent.setup();
     const seen = vi.fn<(id: string | null) => void>();
     render(<Runs onOpenChange={seen} />);
     await user.click(screen.getByRole("button", { name: "Build" }));
-    const build = screen.getByRole("button", { name: "Build" });
+    const [build] = screen.getAllByRole("button", { name: "Build", hidden: true });
+    if (!build) throw new Error("no Build row");
     expect(build).toHaveAttribute("aria-expanded", "true");
-    expect(document.getElementById(build.getAttribute("aria-controls") ?? "")).toHaveTextContent("Build detail");
-    await user.click(screen.getByRole("button", { name: "Test" }));
+    const detail = document.getElementById(build.getAttribute("aria-controls") ?? "");
+    expect(detail).toHaveTextContent("Build detail");
+    expect(detail?.closest("[role=dialog]")).not.toBeNull();
+    expect(build.closest("[role=listitem]")).not.toHaveTextContent("Build detail");
+    await user.keyboard("{Escape}");
     expect(screen.queryByText("Build detail")).toBeNull();
-    expect(screen.getByText("Test detail")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Test" }));
-    expect(screen.queryByText("Test detail")).toBeNull();
-    expect(seen.mock.calls.map((c) => c[0])).toEqual(["Build", "Test", null]);
+    expect(screen.getByText("Test detail")).toBeInTheDocument();
+    expect(screen.queryByText("Build detail")).toBeNull();
+    expect(seen.mock.calls.map((c) => c[0])).toEqual(["Build", null, "Test"]);
   });
 
-  it("moves with j and k (and the arrows), opens with Enter, shuts with Escape", async () => {
+  it("moves with j and k (and the arrows), opens with Enter or Space, shuts with Escape", async () => {
     const user = userEvent.setup();
     render(<Runs />);
     screen.getByRole("button", { name: "Build" }).focus();
@@ -71,6 +76,7 @@ describe("ExpandRows / ExpandRow", () => {
     expect(screen.getByText("Test detail")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByText("Test detail")).toBeNull();
+    screen.getByRole("button", { name: "Test" }).focus();
     await user.keyboard(" ");
     expect(screen.getByText("Test detail")).toBeInTheDocument();
   });

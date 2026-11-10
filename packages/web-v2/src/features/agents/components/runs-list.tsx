@@ -1,9 +1,10 @@
 // Agents / Runs (ISS-111, design agent-run-standing rev 1; face ISS-903): the project master and every
 // run grouped by core's attentionGroup (or by lane or box), all read from GET /runs/standing. The face is
 // a group's label and count, then one line per run: its title and its state, whom it waits on that
-// state's hover. A run opens in place (j/k, Enter) on its path, its banner, its acts and its facts, with
-// its full page a link; the grouping and the filters are the palette's (⌘K), and the screen's one next
-// action is the run that needs the viewer, else the first one stuck.
+// state's hover. A run opens in a side drawer (j/k, Enter) on its path, its banner, its acts and its
+// facts, with its full page a link; the grouping and the filters are the palette's (⌘K), and the
+// screen's one next action is the run that needs the viewer, else the first one stuck. The list opens
+// on its overview band (REQ-43 r3 BC-14, `runs-band.tsx`), counted over the runs its groups hold.
 import { RUN_GROUP_LABELS, RUN_MASTER_GROUP, RUN_STANDING_SCOPES, type RunStandingScope } from "@forge/contracts/run-standing";
 import { needsViewer } from "@forge/contracts/standing";
 import {
@@ -30,8 +31,9 @@ import { issueHref } from "@/lib/routes/issues";
 import { useRunStanding } from "../hooks";
 import { AGENTS_LIST, MASTER_KEY, masterHref, runHref } from "@/lib/routes/agents";
 import type { MasterStanding, RunStanding, RunStandingList } from "../types";
-import { attentionGroupText, GROUP_MODES, type GroupMode, runGroups } from "../view";
-import { MasterDetail, MasterLine } from "./master-views";
+import { attentionGroupText, GROUP_MODES, type GroupMode, runGroups, runName } from "../view";
+import { RunsBand } from "./runs-band";
+import { MasterDetail, MasterLine, masterName } from "./master-views";
 import { RunDetail, RunLine } from "./run-views";
 
 export interface AgentsAccess {
@@ -120,6 +122,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
             <NextRun d={d} slug={slug} />
+            <RunsBand projectId={projectId} rows={groups.flatMap((g) => g.rows).filter(isRun)} />
             <ListToolbar testId="runs-toolbar">
               <SegmentedControl options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: t(SCOPE_KEY[s]), count: counts[s] }))} value={scope} onChange={setScope} />
               <ListSearch noun={t("agents.runsNoun")} {...list.search} />
@@ -132,11 +135,11 @@ export function RunsList({ access }: { access: AgentsAccess }) {
                   <ExpandRows label={typeof g.label === "string" ? g.label : g.id} className="-ml-7">
                     {g.rows.map((i) =>
                       isRun(i) ? (
-                        <ExpandRow key={i.id} id={i.id} head={<RunLine r={i} />} testId="run-row">
+                        <ExpandRow key={i.id} id={i.id} head={<RunLine r={i} />} title={runName(i, language)} testId="run-row">
                           <RunDetail r={i} slug={slug} canWrite={canWrite} href={runHref(slug, i.id)} />
                         </ExpandRow>
                       ) : (
-                        <ExpandRow key={MASTER_KEY} id={MASTER_KEY} head={<MasterLine m={i} />} testId="master-row">
+                        <ExpandRow key={MASTER_KEY} id={MASTER_KEY} head={<MasterLine m={i} />} title={masterName(i, language)} testId="master-row">
                           <MasterDetail m={i} href={masterHref(slug)} />
                         </ExpandRow>
                       ),

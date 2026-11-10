@@ -39,15 +39,22 @@ const recovered = pass({
 	recovers: { refusedSince: "2026-10-06T16:02:00Z", refusedPasses: 4, reason: "usage_limit" },
 });
 
-/** A pass's row, opened in place as a tap opens it. */
-const rowOf = (id: string) => {
+/** A pass's one line in the list. */
+const lineOf = (id: string) => {
 	const rows = screen.getAllByTestId("master-pass");
-	const at = [recovered, refused].findIndex((p) => p.id === id);
-	const row = rows[at];
+	const row = rows[[recovered, refused].findIndex((p) => p.id === id)];
 	if (!row) throw new Error(`no row for pass ${id}`);
+	return row;
+};
+
+/** A pass's detail, opened in its side drawer as a tap opens it (REQ-43 r3 BC-15). */
+const rowOf = (id: string) => {
+	const row = lineOf(id);
 	const head = row.querySelector<HTMLElement>("[data-expand-head]");
 	if (head?.getAttribute("aria-expanded") === "false") fireEvent.click(head);
-	return row;
+	const detail = document.getElementById(head?.getAttribute("aria-controls") ?? "");
+	if (!detail) throw new Error(`pass ${id} opened no drawer`);
+	return detail;
 };
 
 describe("the Passes list", () => {
@@ -67,11 +74,11 @@ describe("the Passes list", () => {
 
 	it("marks the first pass that ran after the refusals as the recovery", () => {
 		render(<PassesList items={[recovered, refused]} hasMore={false} slug="forge" />);
+		expect(within(lineOf("recovered")).getByText("recovered")).toBeInTheDocument();
 		const row = rowOf("recovered");
-		expect(within(row).getByText("recovered")).toBeInTheDocument();
 		const why = within(row).getByText(/^The account answered again after 4 refused passes since /);
 		expect(why.closest("[title]")).toBeNull();
-		expect(within(rowOf("refused")).queryByText("recovered")).toBeNull();
+		expect(within(lineOf("refused")).queryByText("recovered")).toBeNull();
 	});
 
 	it("draws each pass as one line, what it moved in a few words, nothing opened", () => {

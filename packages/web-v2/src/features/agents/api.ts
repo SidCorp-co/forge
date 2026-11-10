@@ -1,3 +1,4 @@
+import type { RunFlow } from "@forge/contracts/run-flow";
 import type { SupportTurnsView } from "@forge/contracts/project-now";
 import { RUN_STANDING_LIST_MAX } from "@forge/contracts/run-standing";
 import { apiClient } from "@/lib/api/client";
@@ -16,6 +17,9 @@ export const runsApi = {
   /** `GET /api/projects/:id/runs/standing/:runId` — one run, its attempts and its kernel transitions. */
   run: (projectId: string, runId: string) =>
     apiClient<RunStandingDetail>(`${projectPath(projectId)}/runs/standing/${encodeURIComponent(runId)}`),
+
+  /** `GET /api/projects/:id/runs/flow?tz=` — runs started and finished per day in `tz`: the Agents band's chart. */
+  flow: (projectId: string, tz: string) => apiClient<RunFlow>(`${projectPath(projectId)}/runs/flow?tz=${encodeURIComponent(tz)}`),
 
   /** The newest finished runs, the last of which the project bar reads its last activity from. */
   recent: (projectId: string) => apiClient<RunStandingList>(`${projectPath(projectId)}/runs/standing?scope=finished&limit=${RECENT_RUNS}`),

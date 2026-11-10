@@ -1,5 +1,6 @@
 
 import { useQuery } from "@tanstack/react-query";
+import { readerZone } from "@/design";
 import { type StuckRuns, stuckRunsOf } from "@/features/sessions";
 import { liveIssueKeys, projectNowOf } from "./now";
 import { nowQueries, RUNS_STANDING_ROOT, runKeys, runQueries } from "./queries";
@@ -22,6 +23,11 @@ export function useMasterStanding(projectId: string | undefined) {
 
 export function useMasterPasses(projectId: string | undefined) {
   return useQuery(runQueries.passes(projectId));
+}
+
+/** How the project's runs move, per day in the reader's zone. */
+export function useRunFlow(projectId: string | undefined) {
+  return useQuery(runQueries.flow(projectId, readerZone()));
 }
 
 export function useMasterCharter(projectId: string | undefined, enabled: boolean) {

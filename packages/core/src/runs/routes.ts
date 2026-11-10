@@ -1,3 +1,5 @@
+import { isTimeZone } from '@forge/contracts/project-home';
+import { RUN_FLOW_QUERY_SHAPE } from '@forge/contracts/run-flow';
 import {
   RUN_STANDING_LIST_DEFAULT,
   RUN_STANDING_LIST_MAX,
@@ -10,6 +12,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { readRunFlow } from './flow-read.js';
 import { listRunStanding, readRunStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
@@ -25,12 +28,20 @@ const listQuery = z.strictObject({
   offset: z.coerce.number().int().min(0).default(0),
 });
 const noQuery = z.strictObject({});
+const flowQuery = z.strictObject({
+  tz: z
+    .string()
+    .max(64)
+    .refine(isTimeZone, { error: (i) => `tz ${JSON.stringify(i.input)} is no IANA time zone` })
+    .optional(),
+});
 
 export { projectSnapshotRoutes } from './snapshot-routes.js';
 
 export const runStandingRoutes = new Hono<{ Variables: AuthVars }>();
 runStandingRoutes.use('/:id/runs/standing', requireAuth(), assertEmailVerified());
 runStandingRoutes.use('/:id/runs/standing/*', requireAuth(), assertEmailVerified());
+runStandingRoutes.use('/:id/runs/flow', requireAuth(), assertEmailVerified());
 
 const reads = requiresOnParam('project.read', 'id');
 
@@ -53,6 +64,25 @@ runStandingRoutes.get(
     );
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', listed, 'the run list'),
+    );
+  },
+);
+
+// How the runs move, the Agents band's chart (REQ-43 r3 BC-16): started and finished per day in `tz`.
+runStandingRoutes.get(
+  '/:id/runs/flow',
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project uuid>/runs/flow'),
+  ),
+  reads,
+  zValidator('query', flowQuery, invalid(`invalid query: ${RUN_FLOW_QUERY_SHAPE}`)),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const flow = await readRunFlow(projectId, c.req.valid('query').tz ?? 'UTC');
+    return c.json(
+      await egressForRequest(restActor(c).agency, projectId, 'issue', flow, 'the run flow'),
     );
   },
 );

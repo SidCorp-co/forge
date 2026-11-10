@@ -109,7 +109,7 @@ function PassDetail({ p, slug }: { p: MasterPassView; slug: string }) {
   );
 }
 
-/** The passes, newest first, one line each, opened in place. */
+/** The passes, newest first, one line each, each opened in a side drawer. */
 export function PassesList({ items, hasMore, slug }: { items: readonly MasterPassView[]; hasMore: boolean; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -117,7 +117,7 @@ export function PassesList({ items, hasMore, slug }: { items: readonly MasterPas
     <section>
       <ExpandRows label={t("agents.master.tab.passes")} testId="master-passes">
         {items.map((p) => (
-          <ExpandRow key={p.id} id={p.id} head={<PassLine p={p} />} testId="master-pass">
+          <ExpandRow key={p.id} id={p.id} head={<PassLine p={p} />} title={time.dateTime(p.startedAt)} testId="master-pass">
             <PassDetail p={p} slug={slug} />
           </ExpandRow>
         ))}

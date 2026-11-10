@@ -1,7 +1,9 @@
 // Agents / Runs shows a group's label and count, then one line per run: its title and its state, whom
-// it waits on that state's hover (REQ-11 BC-18, BC-22, ISS-903). A run opens in place with its acts,
-// facts and full page; the grouping and the filters are the palette's, and the one next action is the
-// run that needs the viewer.
+// it waits on that state's hover (REQ-11 BC-18, BC-22, ISS-903). A run opens in a side drawer with its
+// acts, facts and full page; the grouping and the filters are the palette's, and the one next action is
+// the run that needs the viewer. The list opens on its overview band (REQ-43 r3 BC-14).
+//
+// @direct-test-of packages/web-v2/src/features/agents/components/runs-band.tsx
 
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -52,15 +54,36 @@ describe("Agents / Runs face", () => {
     expect(chip?.getAttribute("data-reason")).toMatch(/^You · answer/);
   });
 
-  it("opens a run in place with its facts and its full page, and j moves to the next", async () => {
+  // REQ-43 r3 BC-15 (owner, 2026-11-10): a run's detail opens in a side drawer, never under its row
+  it("opens a run in a side drawer with its facts and its full page, never in place, and j moves to the next", async () => {
     const user = userEvent.setup();
     runs();
     const stuck = within(screen.getByTestId("runs-group-stuck")).getAllByRole("button", { expanded: false });
     await user.click(stuck[0]);
     const detail = screen.getByTestId("run-detail");
     expect(within(detail).getByTestId("run-open")).toHaveTextContent("Open page");
+    expect(detail.closest("[role=dialog]")).not.toBeNull();
+    expect(within(screen.getByTestId("runs-group-stuck")).queryByTestId("run-detail")).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("run-detail")).toBeNull();
+    stuck[0]?.focus();
     await user.keyboard("j");
     expect(document.activeElement).toHaveAccessibleName(/Viec 13/);
+  });
+
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the list opens on its overview above its groups, each
+  // group's count there the count its heading says (L-57)
+  it("opens on its overview band above the groups, each group counting the runs its heading counts", () => {
+    runs();
+    const band = screen.getByTestId("runs-band");
+    const groups = screen.getAllByTestId(/^runs-group-/).filter((g) => g.dataset.testid !== "runs-group-master");
+    const [first] = groups;
+    if (!first) throw new Error("no run group drawn");
+    expect(band.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const heads = new Map(groups.map((g) => [(g.dataset.testid ?? "").replace("runs-group-", ""), Number(g.dataset.count)]));
+    expect(parts).toEqual(heads);
+    expect(within(band).getByTestId("runs-band-chart")).toBeInTheDocument();
   });
 
   it("leads with the act the viewer owes, linked to its issue", () => {

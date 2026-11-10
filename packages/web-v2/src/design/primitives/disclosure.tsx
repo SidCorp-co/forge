@@ -35,6 +35,7 @@ export function Disclosure({ title, count, countUnit, hint, printsOpen = false, 
       onOpenChange={onOpenChange}
       className="group/fold border-t border-line-divider first:border-t-0"
       data-testid={testId}
+      data-count={count}
       data-highlight={highlight}
     >
       {/* the chevron reads its own trigger's state: a fold's open state would turn every fold nested in it */}
