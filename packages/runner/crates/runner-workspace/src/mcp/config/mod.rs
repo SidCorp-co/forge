@@ -355,6 +355,12 @@ pub fn write_persistent(
     project_slug: &str,
     credential: Option<&str>,
 ) -> Result<PersistentMcp> {
+    let path = repo_path.join(".mcp.json");
+    // Checked before any credential is looked up: a tracked file is refused whatever this box
+    // holds, so the way out the refusal names is the one that is in the way.
+    if git_tracks(repo_path, ".mcp.json") {
+        return Err(tracked_refusal(&path));
+    }
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
     let from_server = credential
         .map(str::trim)
@@ -377,8 +383,6 @@ pub fn write_persistent(
             "X-Forge-Project-Slug": project_slug
         }
     });
-
-    let path = repo_path.join(".mcp.json");
 
     // Start from the existing doc when present so other servers survive. A
     // malformed existing file is a refuse-to-clobber situation, not a reset.
@@ -526,6 +530,39 @@ fn borrowed_credential_from(var: Option<std::ffi::OsString>) -> Result<Option<Bo
     let token = field("token")?;
     let url = field("url")?.trim_end_matches('/').to_string();
     Ok(Some(Borrowed { url, token }))
+}
+
+/// Whether the git work tree at `repo` tracks `path` (relative to `repo`), a skip-worktree mark
+/// included: it is in the index all the same. `false` where git cannot be run or `repo` is not
+/// in a work tree, which is where [`write_persistent`] writes as it always has.
+pub fn git_tracks(repo: &Path, path: &str) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["ls-files", "--error-unmatch", "--", path])
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+// ISS-1193: `info/exclude` hides only untracked files, so a tracked `.mcp.json` written with the bearer is a credential the next `git commit -a` publishes; no untracked place Claude Code reads stays out of a confined session's view (`~/.claude.json` is mounted writable), so the runner refuses rather than moving the token there
+/// Why the `forge` server is not written into a checkout that tracks its `.mcp.json`, and what
+/// the operator does about it.
+fn tracked_refusal(path: &Path) -> Error {
+    Error::Other(format!(
+        "{} is tracked by this checkout's git, so the runner does not write the `forge` server's \
+         credential into it: a tracked file is committed and pushed with it, and an `info/exclude` \
+         line hides only untracked files. Nothing was written. To give `claude` run by hand in \
+         this folder the `forge` server, stop tracking the file (`git rm --cached .mcp.json`, \
+         ignore it, commit), then re-provision. Panes the runner starts here still reach Forge \
+         through the `forge` CLI.",
+        path.display()
+    ))
 }
 
 /// Append `entry` to `<repo>/.git/info/exclude` if not already present. Touches

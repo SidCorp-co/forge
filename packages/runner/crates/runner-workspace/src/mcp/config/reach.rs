@@ -84,6 +84,9 @@ pub enum ForgeAbsentBecause {
     AndNoCredentialHere,
     /// An operator PAT IS stored here, so a re-provision has one to write.
     WhileACredentialIsHere,
+    /// The checkout's git tracks its `.mcp.json`, which [`write_persistent`] refuses to put a
+    /// credential in, so no re-provision writes the entry there.
+    WhileTheFileIsTracked,
 }
 
 /// What this box may say about [`FORGE_SERVER`] being within a pane's reach.
@@ -115,6 +118,7 @@ pub struct PaneReach {
     pub(crate) session_path: Option<PathBuf>,
     pub(crate) session: Half,
     pub(crate) has_operator_pat: bool,
+    pub(crate) repo_tracked: bool,
 }
 
 /// The union a pane started in `repo_path` with `session_config` will get.
@@ -136,6 +140,7 @@ pub(crate) fn pane_reach_in(
 ) -> PaneReach {
     let repo_file = repo_path.join(".mcp.json");
     PaneReach {
+        repo_tracked: git_tracks(repo_path, ".mcp.json"),
         repo: Half::read(&repo_file),
         repo_path: repo_file,
         session: session_config.map_or(Half::Missing, Half::read),
@@ -167,7 +172,9 @@ impl PaneReach {
         if self.repo.unreadable() || self.session.unreadable() {
             return ForgeReach::Undetermined;
         }
-        ForgeReach::Absent(if self.has_operator_pat {
+        ForgeReach::Absent(if self.repo_tracked {
+            ForgeAbsentBecause::WhileTheFileIsTracked
+        } else if self.has_operator_pat {
             ForgeAbsentBecause::WhileACredentialIsHere
         } else {
             ForgeAbsentBecause::AndNoCredentialHere
@@ -193,6 +200,12 @@ impl PaneReach {
             ForgeReach::Absent(ForgeAbsentBecause::WhileACredentialIsHere) => format!(
                 "declares {held} and NOT `forge`: no such entry in {}, though an operator PAT is \
                  stored here — re-provision the checkout",
+                self.repo_path.display()
+            ),
+            ForgeReach::Absent(ForgeAbsentBecause::WhileTheFileIsTracked) => format!(
+                "declares {held} and NOT `forge`: {} is tracked by the checkout's git, so the \
+                 runner writes no credential into it and a re-provision is refused — stop tracking \
+                 it (`git rm --cached .mcp.json`, ignore it, commit), then re-provision",
                 self.repo_path.display()
             ),
             ForgeReach::Undetermined => format!(
@@ -290,6 +303,13 @@ tell you: it may never have been written, or it may have been removed since.{TAI
 `{FORGE_SERVER}` entry in `{}`, though this box DOES hold an operator PAT — so a credential is on \
 hand and the entry is still missing. Re-provision this checkout on this box. Why it is missing is \
 not something this pane can tell you.{TAIL}",
+                self.repo_path.display()
+            ),
+            ForgeAbsentBecause::WhileTheFileIsTracked => format!(
+                "\nWhat is observed: there is no `{FORGE_SERVER}` entry in `{}`, and the checkout's \
+git tracks that file. The runner never writes a credential into a tracked file, so re-provisioning \
+does not add the entry; the operator stops tracking the file (`git rm --cached .mcp.json`, ignore \
+it, commit) and then re-provisions. Until then, reach Forge through the `forge` CLI.{TAIL}",
                 self.repo_path.display()
             ),
         }

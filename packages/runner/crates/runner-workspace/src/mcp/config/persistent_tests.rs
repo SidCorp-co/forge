@@ -89,7 +89,7 @@ fn a_tracked_mcp_json_is_never_handed_the_credential() {
 
     let err = got.expect_err("a tracked .mcp.json was reported written").to_string();
     assert!(err.contains(".mcp.json"), "the refusal names no file: {err}");
-    assert!(err.contains("tracks"), "the refusal does not say why: {err}");
+    assert!(err.contains("is tracked"), "the refusal does not say why: {err}");
     assert!(
         err.contains("git rm --cached"),
         "the refusal names no way out: {err}"
@@ -145,5 +145,31 @@ fn a_folder_outside_git_is_written_as_before() {
     assert_eq!(
         doc["mcpServers"]["forge"]["headers"]["Authorization"],
         format!("Bearer {FAKE_TOKEN}")
+    );
+}
+
+#[test]
+fn a_pane_over_a_tracked_mcp_json_is_not_told_to_re_provision() {
+    let repo = repo_tracking_mcp_json("reach");
+    let reach = pane_reach_in(&repo, None, true);
+    assert_eq!(
+        reach.forge(),
+        ForgeReach::Absent(ForgeAbsentBecause::WhileTheFileIsTracked)
+    );
+    let said = format!("{}{}", reach.verdict(), reach.brief());
+    assert!(
+        said.contains("git rm --cached .mcp.json"),
+        "the pane is not told the way out: {said}"
+    );
+    assert!(
+        !said.contains("Re-provision this checkout on this box"),
+        "the pane is sent to a re-provision that is refused: {said}"
+    );
+
+    let untracked = scratch("reach-untracked");
+    git_ok(&untracked, &["init", "-q"]);
+    assert_eq!(
+        pane_reach_in(&untracked, None, true).forge(),
+        ForgeReach::Absent(ForgeAbsentBecause::WhileACredentialIsHere)
     );
 }
