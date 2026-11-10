@@ -1,6 +1,6 @@
 // The Channels overview (REQ-43 r3 BC-14): on the list, how many channels and the people in them, and
-// the flow of whether an agent answers each live; on a channel's page, what its record holds and the
-// flow of its members by whether a person confirmed their roles, an inferred one the person's to
+// the flow of whether an agent answers each live; on a channel's page, how many members it has and the
+// flow of them by whether a person confirmed their roles, an inferred one the person's to
 // confirm. Counted over the very rows each page lists (L-57). Neither holds a state that moves over
 // time in what core serves, so neither draws a chart (BC-16 is for a screen whose state moves).
 
@@ -36,8 +36,6 @@ export function ChannelBand({ channel }: { channel: ChannelView }) {
       testId="channel-band"
       figures={[
         { key: "members", value: channel.memberRows.length, label: t("channels.members") },
-        { key: "rules", value: channel.ruleRows.length, label: t("channels.rules") },
-        { key: "commonIssues", value: channel.commonIssueRows.length, label: t("channels.commonIssues") },
       ]}
       flow={[
         { key: "confirmed", label: t("channels.state.confirmed"), count: confirmed, tone: "ready" },

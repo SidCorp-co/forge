@@ -34,7 +34,9 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "feedback-detail": { budget: 90 },
   "releases-list": { budget: 90 },
   "release-detail": { budget: 80 },
-  "workflows-list": { budget: 60 },
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the designs' states flow above the list, each with its
+  // count, 6 words above the 60 it drew.
+  "workflows-list": { budget: 68 },
   "workflow-design": { budget: 90 },
   "agents-runs": { budget: 110 },
   "agents-master": { budget: 90 },
@@ -49,7 +51,9 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   // REQ-90: the changes' three lanes, the inherited defaults and locked guarantees one click away
   agreements: { budget: 80 },
   integrations: { budget: 80 },
-  runners: { budget: 80 },
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): Runners opens on its band (devices, their flow by health),
+  // 8 words above the 80 it drew.
+  runners: { budget: 90 },
   // ISS-919: three flat tables of three rows each; the Overview it replaced drew 120 in the same frame.
   // Its amnesty (163, names whole) was spent once the home drew 84 (UI-C, 2026-11-07).
   "owner-home": { budget: 110 },
@@ -66,7 +70,9 @@ export const BUDGETS: Record<string, ScreenBudget> = {
   "not-found": { budget: 8 },
   // ISS-1137: the screens no fixture drew before, each at the target of its kind: a list or a record
   // 80-100, a form 60, a page with one act 30-50; the operator's console is a dashboard, at the cap
-  attention: { budget: 100 },
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): Attention opens on its band (waiting on you, the flow of
+  // what waits by kind), 4 words above the 100 it drew.
+  attention: { budget: 106 },
   activity: { budget: 100 },
   projects: { budget: 90 },
   pair: { budget: 50 },
