@@ -1,5 +1,6 @@
 
 import { parseReleaseRoster } from "@/features/releases";
+import type { IssueFlow } from "@forge/contracts/issue-flow";
 import type { IssueStandingDetail, IssueStandingList, IssueStandingScope } from "@forge/contracts/issue-standing";
 import type { RecordedReleaseVerification } from "@forge/contracts/releases";
 import { apiClient, apiClientList } from "@/lib/api/client";
@@ -46,6 +47,9 @@ export const issuesApi = {
   /** Where each issue stands (core `issues/standing.ts`): the read model the grouped views draw. */
   standing: (projectId: string, scope: IssueStandingScope) =>
     apiClient<IssueStandingList>(`/projects/${projectId}/issues/standing?scope=${scope}`),
+
+  /** Issues filed and closed per day in `tz` (core `issues/flow-read.ts`): the Issues band's chart. */
+  flow: (projectId: string, tz: string) => apiClient<IssueFlow>(`/projects/${projectId}/issues/flow?tz=${encodeURIComponent(tz)}`),
 
   standingOf: (projectId: string, key: string) =>
     apiClient<IssueStandingDetail>(`/projects/${projectId}/issues/standing/${encodeURIComponent(key)}`),

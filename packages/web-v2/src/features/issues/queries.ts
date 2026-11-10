@@ -15,6 +15,8 @@ export const issueKeys = {
   standingAll: ["issues", "standing"] as const,
   standing: (projectId: string | undefined, scope: IssueStandingScope) => ["issues", "standing", projectId ?? "", scope] as const,
   standingOf: (projectId: string | undefined, key: string | undefined) => ["issues", "standing", projectId ?? "", "one", key ?? ""] as const,
+  /** Under `['issues']`, so every event that refreshes the list refreshes how it moves. */
+  flow: (projectId: string | undefined, tz: string) => ["issues", "flow", projectId ?? "", tz] as const,
   one: (id: string | undefined, projectId?: string) => ["issue", issueKeySegment(id, projectId)] as const,
   cost: (id: string | undefined, projectId?: string) => [...issueKeys.one(id, projectId), "cost"] as const,
   deps: (id: string | undefined, projectId?: string) => [...issueKeys.one(id, projectId), "dependencies"] as const,
@@ -35,6 +37,8 @@ export const issueQueries = {
     queryOptions({ ...readOf(issueKeys.search(projectId, opts), () => issuesApi.search(projectId as string, opts), 0), placeholderData: (prev) => prev }),
   standing: (projectId: string | undefined, scope: IssueStandingScope) =>
     ({ ...readOf(issueKeys.standing(projectId, scope), () => issuesApi.standing(projectId as string, scope), 10_000), enabled: !!projectId }),
+  flow: (projectId: string | undefined, tz: string) =>
+    ({ ...readOf(issueKeys.flow(projectId, tz), () => issuesApi.flow(projectId as string, tz), 60_000), enabled: !!projectId }),
   standingOf: (projectId: string | undefined, key: string | undefined) =>
     ({ ...readOf(issueKeys.standingOf(projectId, key), () => issuesApi.standingOf(projectId as string, key as string), 10_000), enabled: !!projectId && !!key }),
   cost: (id: string | undefined, enabled: boolean, projectId?: string) =>

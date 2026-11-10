@@ -590,6 +590,14 @@
     "issues.thread.waitChanged": "Wait changed",
     "issues.thread.nowWaitsOn": "Now waiting on: {what}",
     "issues.waitingKind.unknown": "Waiting",
-    "issues.waits.blocker": "Blocker"
+    "issues.waits.blocker": "Blocker",
+    "issues.band.label": "Issues overview",
+    "issues.band.running": "Running now",
+    "issues.band.closedIn": "Closed in {n} days",
+    "issues.band.chart": "Filed and closed",
+    "issues.band.opened": "Filed",
+    "issues.band.closed": "Closed",
+    "issues.band.none": "Nothing filed or closed",
+    "issues.band.day": "Day"
   }
 }

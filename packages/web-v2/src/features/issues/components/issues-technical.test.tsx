@@ -77,13 +77,20 @@ const ROWS = [
   issue(8, "bug", true, "Orders", "open"),
 ];
 
+/** Two days of the flow: three filed and one closed the day before, two closed today. */
+const FLOW = [
+  { day: "2026-11-04", opened: 3, closed: 1 },
+  { day: "2026-11-05", opened: 0, closed: 2 },
+];
+
 function board(mode: "attention" | "waves" = "attention", issues: IssueStandingRow[] = ROWS) {
   window.history.replaceState(null, "", "/projects/demo/issues");
-  fakeCore((c) =>
-    c.path.startsWith("/projects/p1/issues/standing")
+  fakeCore((c) => {
+    if (c.path.startsWith("/projects/p1/issues/flow")) return { body: { projectId: "p1", tz: "UTC", days: FLOW } };
+    return c.path.startsWith("/projects/p1/issues/standing")
       ? { body: { issues, counts: { open: issues.length, closed: 0, all: issues.length, blocked: 0, blocking: 0 }, returned: issues.length, limit: 500, releaseApproval: false } }
-      : { body: {} },
-  );
+      : { body: {} };
+  });
   return renderWithQuery(<IssuesBoard scope={{ projectId: "p1", slug: "demo" }} mode={mode} />);
 }
 
@@ -114,6 +121,24 @@ describe("the Issues list's Technical chip (ISS-1001)", () => {
     expect(paygate).toHaveTextContent("Bug 2");
     expect(paygate).toHaveTextContent("Security 1");
     expect(screen.getAllByTestId("list-group")[2]).toHaveTextContent("Debt 1");
+  });
+});
+
+// REQ-43 r3 BC-14 (owner, 2026-11-10): the list opens on its overview, its status counts the rows the
+// list holds (L-57), and its chart is how the issues moved, read from the flow beside the list
+describe("the Issues list's overview band", () => {
+  it("sits above the list, its status counts summing to the list's groups, its chart the flow's", async () => {
+    board();
+    await waitFor(() => expect(rows()).toHaveLength(8));
+    const band = screen.getByTestId("issues-band");
+    const list = screen.getByTestId("grouped-list");
+    expect(band.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const flow = within(band).getAllByTestId("coverage-part-count").map((c) => Number(c.textContent));
+    const groups = within(list).getAllByTestId("group-count").map((c) => Number(c.textContent));
+    expect(flow.reduce((a, b) => a + b, 0)).toBe(groups.reduce((a, b) => a + b, 0));
+    await waitFor(() => expect(within(band).getByTestId("issues-band-chart")).toBeInTheDocument());
+    const closed = within(band).getAllByTestId("band-figure").find((f) => f.dataset.key === "closed");
+    expect(within(closed as HTMLElement).getByTestId("band-figure-value")).toHaveTextContent("3");
   });
 });
 

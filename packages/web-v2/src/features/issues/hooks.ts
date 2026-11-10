@@ -7,6 +7,7 @@ import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useToastWrite } from "@/providers/toast-write";
+import { readerZone } from "@/design";
 import { issueKeys, issueQueries } from "./queries";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
@@ -47,6 +48,11 @@ export function useIssueStanding(projectId: string | undefined, scope: IssueStan
 
 /** The Issues list's read as query options, for a screen that reads it for several projects at once. */
 export const issueStandingQuery = (projectId: string, scope: IssueStandingScope) => issueQueries.standing(projectId, scope);
+
+/** How the project's issues move, per day in the reader's zone. */
+export function useIssueFlow(projectId: string | undefined) {
+  return useQuery(issueQueries.flow(projectId, readerZone()));
+}
 
 export function useIssueStandingOf(projectId: string | undefined, key: string | undefined) {
   return useQuery(issueQueries.standingOf(projectId, key));

@@ -43,6 +43,7 @@ import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";
 import { statusesFromParam } from "../derive";
 import { issueBadge, issueEta, issueRowView, useRowWords } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";
+import { IssuesBand } from "./issues-band";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useEtaSort, useProjectForecast } from "@/features/forecast";
 import { etaSortValue } from "@/features/forecast";
@@ -410,6 +411,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="issues-board" data-mode={mode}>
+      {q.data && q.data.issues.length > 0 ? <IssuesBand projectId={project.projectId} rows={rows} /> : null}
       <ListLayout
         peek={
           openRow ? (
