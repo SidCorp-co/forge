@@ -43,6 +43,8 @@ describe('the support brief states goals, and the consent a change waits on', ()
       expect(text).toContain(
         'answer each question the message asked and cover each item it asked for',
       );
+      // ISS-1211 (FB-613, agenfold L-46): look a fact up before asking a person for it.
+      expect(text).toContain('Before you ask a person for a fact or recommend a change');
     }
   });
 });
