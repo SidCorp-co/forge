@@ -1,0 +1,1 @@
+**One command installs the forge plugin with only a Forge token.** `install-plugin.sh` fetches the commit the instance designates through its GitHub App, installs it in Claude Code, saves the account, and updates it when run again.
