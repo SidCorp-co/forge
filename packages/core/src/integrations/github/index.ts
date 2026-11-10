@@ -1,5 +1,9 @@
 export { githubIntegration } from './adapter.js';
-export { type AppDeliveryOutcome, routeAppDelivery } from './app-deliveries.js';
+export {
+  type AppDeliveryOutcome,
+  repositoryRoutedBindings,
+  routeAppDelivery,
+} from './app-deliveries.js';
 export {
   type AppVisibility,
   appAdvancedSettingsUrl,

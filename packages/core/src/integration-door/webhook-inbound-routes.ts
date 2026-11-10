@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import {
   type AppDeliveryOutcome,
   findInstanceGithubApp,
+  repositoryRoutedBindings,
   routeAppDelivery,
 } from '../integrations/github/index.js';
 import {
@@ -133,6 +134,24 @@ async function answerAppDelivery(
 const GITHUB_SIGNATURE = 'x-hub-signature-256';
 
 /**
+ * Whether a delivery verified at a project's door is routed across its connection's bindings.
+ *
+ * The instance's App is, as it always was. Any other App connection is only where it serves several
+ * bindings AND the delivery verifies against the secret the connection itself holds, current or
+ * replaced: the door may have verified it against its own binding's copy, and a copy that has
+ * drifted from the App's must never carry a delivery into another project (ISS-1194).
+ */
+async function routedByRepository(
+  connection: IntegrationConnectionRow,
+  verifies: (secret: string | null) => boolean,
+): Promise<boolean> {
+  if (connection.ownerType === 'instance') return true;
+  if (!verifies(heldInboundSecret(connection)) && !verifies(previousHeldInboundSecret(connection)))
+    return false;
+  return (await repositoryRoutedBindings(connection)) !== null;
+}
+
+/**
  * The instance App's own door: every installation's deliveries arrive here, signed with the App's
  * one webhook secret. A delivery that does not verify against it is refused before anything routes,
  * and leaves its record on the App's live bindings, as a project's door does.
@@ -249,9 +268,9 @@ webhookInboundRoutes.post(
     } catch {
       throw badRequest({ body: 'invalid json' });
     }
-    // the instance's App serves every project, so what its delivery names picks the bindings, not
-    // the slug its hook happens to point at
-    if (pair.connection.ownerType === 'instance' && map.provider === 'github') {
+    // an App serving several projects calls one door for all of them, so what its delivery names
+    // picks the bindings, not the slug its hook happens to point at
+    if (map.provider === 'github' && (await routedByRepository(pair.connection, verifies))) {
       return answerAppDelivery(c, pair.connection, raw, parsed);
     }
     const ctx = buildContextFromBinding(pair);

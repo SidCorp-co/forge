@@ -10,14 +10,17 @@ import {
   grantHolds,
   healthWithInboundDoor,
   type InboundDoorState,
+  type IntegrationConnectionRow,
   inboundDoorState,
   inboundWebhookUrl,
   listBindingsForProject,
   readInboundDoorTraffic,
   resolveApiBaseUrl,
+  sameEndpoint,
   withBindingHealth,
 } from '../index.js';
 import { SourceHostCallError } from '../source-host/index.js';
+import { repositoryRoutedBindings } from './app-deliveries.js';
 import { installationStandings } from './binding-installation.js';
 import { buildRepoClient } from './client.js';
 import { appWebhookUrl } from './connect.js';
@@ -120,6 +123,29 @@ function instanceDoorFor(apiBase: string | null, observedUrl: string | null): st
 }
 
 /**
+ * Where an org's own App must deliver for a binding of it to receive, where it routes by repository
+ * (`repositoryRoutedBindings`): the slug door of any project it serves, since each routes the
+ * delivery to the binding of the repository it names. forge-dev's App calls forge's door for gwork's
+ * repository too, and that is gwork's door (ISS-1194). Null where it does not route, or GitHub holds
+ * an address that is none of those doors: the binding needs its own project's.
+ */
+async function servedDoorFor(
+  connection: IntegrationConnectionRow,
+  apiBase: string | null,
+  observedUrl: string | null,
+): Promise<string | null> {
+  if (!apiBase || !observedUrl) return null;
+  const served = await repositoryRoutedBindings(connection);
+  if (!served) return null;
+  const projects = [...new Set(served.map((p) => p.binding.projectId))];
+  const slugs = await Promise.all(projects.map((id) => forgeReads().projectSlug(id)));
+  const hit = slugs.some(
+    (slug) => slug !== null && sameEndpoint(inboundWebhookUrl(apiBase, slug), observedUrl),
+  );
+  return hit ? observedUrl : null;
+}
+
+/**
  * Contacts GitHub NOT AT ALL, which is what makes this the place to find out why another action
  * was refused. The probe stored where GitHub says it is addressed; the comparison happens per
  * binding, because that URL carries a project slug and a connection may serve several.
@@ -143,7 +169,7 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
       const expectedUrl =
         pair.connection.ownerType === 'instance'
           ? instanceDoorFor(apiBase, observed?.url ?? null)
-          : projectDoor;
+          : ((await servedDoorFor(pair.connection, apiBase, observed?.url ?? null)) ?? projectDoor);
       const state = inboundDoorState({ inboundUnprompted, expectedUrl, observed, traffic });
       const standing = standings.get(pair.binding.id) ?? null;
       const health = bindingHealth(pair);

@@ -1,8 +1,9 @@
 /**
- * A verified delivery from the instance's GitHub App, routed by what it is about rather than by the
- * URL it reached: one App serves every project, so the installation and repository a delivery names
- * pick the bindings it is for. Both doors route through here, the App-wide one and a project's slug
- * door an older App's hook still points at, once the App is the instance's.
+ * A verified delivery from a GitHub App, routed by what it is about rather than by the URL it
+ * reached: one App serves several projects, so the installation and repository a delivery names
+ * pick the bindings it is for. The instance's App routes here at both its doors, the App-wide one
+ * and a project's slug door an older App's hook still points at; an org's own App does at the slug
+ * doors of the projects it serves, once it serves more than one (ISS-1194).
  *
  * The signature is verified by the door before this is called; nothing here trusts an unverified
  * byte.
@@ -11,9 +12,11 @@
 import { logger } from '../../lib/logger.js';
 import { isRefusal } from '../../lib/refusal.js';
 import {
+  type BindingWithConnection,
   buildContextFromBinding,
   effectiveConfig,
   getAdapter,
+  heldInboundSecret,
   type InboundDispatchInput,
   type IntegrationConnectionRow,
   listBindingsForConnection,
@@ -56,6 +59,26 @@ function dropped(reason: string, context: Record<string, unknown>): AppDeliveryO
   return { kind: 'dropped', reason };
 }
 
+/**
+ * The live GitHub bindings a delivery under this connection is routed across by its repository, or
+ * null where it stays with the binding whose door it reached.
+ *
+ * The instance's App always routes. Any other connection routes only where it is an App — GitHub
+ * signs every delivery with the one webhook secret the connection holds — and serves more than one
+ * binding: forge-dev's org-owned App calls forge's door for gwork's, forge-plugin's and orbit's
+ * repositories too (ISS-1194). A per-repository hook, whose secret Forge minted per binding, and an
+ * App bound once keep the door's own binding, and its refusal of a repository not its own.
+ */
+export async function repositoryRoutedBindings(
+  connection: IntegrationConnectionRow,
+): Promise<BindingWithConnection[] | null> {
+  const served = (await listBindingsForConnection(connection.id)).filter(
+    (pair) => pair.binding.provider === 'github' && pair.binding.active,
+  );
+  if (connection.ownerType === 'instance') return served;
+  return heldInboundSecret(connection) !== null && served.length > 1 ? served : null;
+}
+
 export async function routeAppDelivery(args: {
   connection: IntegrationConnectionRow;
   input: InboundDispatchInput;
@@ -76,6 +99,18 @@ export async function routeAppDelivery(args: {
   if (event === 'ping') return { kind: 'ping' };
   if (typeof installationId !== 'number') {
     return dropped('the delivery names no installation', context);
+  }
+
+  // the installation ledger is the instance App's: an org's own App installs where the org put it,
+  // and nothing here records that against any owner
+  if (
+    connection.ownerType !== 'instance' &&
+    (event === 'installation' || event === 'installation_repositories')
+  ) {
+    return dropped(
+      `only the instance's GitHub App records installation state, and this App is ${connection.ownerType}-owned`,
+      context,
+    );
   }
 
   if (event === 'installation') {
