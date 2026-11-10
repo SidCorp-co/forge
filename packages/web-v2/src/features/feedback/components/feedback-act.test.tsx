@@ -49,6 +49,19 @@ describe("Feedback leads with titles, never keys (REQ-11 BC-19)", () => {
     expect(container.textContent).not.toContain("REQ-1");
   });
 
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the page opens on its overview, above the list, and each
+  // phase's count there is the list's own (L-57)
+  it("opens on its overview band above the list, its phase counts summing to the list's groups", () => {
+    feedback();
+    const band = screen.getByTestId("feedback-band");
+    const list = screen.getByTestId("grouped-list");
+    expect(band.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const flow = within(band).getAllByTestId("coverage-part-count").map((c) => Number(c.textContent));
+    const groups = within(list).getAllByTestId("group-count").map((c) => Number(c.textContent));
+    expect(flow.reduce((a, b) => a + b, 0)).toBe(groups.reduce((a, b) => a + b, 0));
+    expect(within(band).getByTestId("feedback-band-chart")).toBeInTheDocument();
+  });
+
   it("never names the reporter on a row: who acts next is its Waiting on", () => {
     feedback();
     for (const row of screen.getAllByTestId("list-row")) {

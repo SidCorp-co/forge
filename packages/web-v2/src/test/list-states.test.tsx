@@ -87,6 +87,7 @@ const REQUIREMENTS = [
       stateSince: iso(-480),
       acceptedByDecision: null,
     },
+    delivery: { criteriaCoverage: { criteria: 7, passing: 0 } },
   },
 ];
 

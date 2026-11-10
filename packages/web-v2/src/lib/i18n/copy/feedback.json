@@ -104,8 +104,6 @@
     "feedback.form.send": "Send feedback",
     "feedback.form.severity": "Severity",
     "feedback.form.title": "Title",
-    "feedback.funnel.off": "Off the funnel: {declined} {nDeclined} · {reopened} {nReopened}",
-    "feedback.funnel.title": "Triage funnel",
     "feedback.funnel.untoldBefore": "{n} shipped before release notices existed ({date}), reporter not told",
     "feedback.funnel.untoldOwed": "{n} shipped and not told: a relay is owed",
     "feedback.group.attention": "Attention",
@@ -299,6 +297,9 @@
     "feedback.forge.told.answer": "Answer",
     "feedback.forge.told.declined": "Declined",
     "feedback.forge.told.asked": "Asked",
-    "feedback.forge.told.shippedIn": "Shipped in"
+    "feedback.forge.told.shippedIn": "Shipped in",
+    "feedback.band.label": "Feedback overview",
+    "feedback.band.reports": "Reports",
+    "feedback.band.open": "Open"
   }
 }

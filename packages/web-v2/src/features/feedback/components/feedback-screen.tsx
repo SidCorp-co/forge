@@ -1,17 +1,17 @@
 
 // The Feedback list (`forge-prototype.html` #/feedback): the grouping in the top header, a search,
-// the triage funnel, then the shared GroupedList — the same columns as Requirements and Issues — by
+// the overview band (its figures, phases and feedback by week, REQ-43 r3 BC-14, `feedback-band.tsx`),
+// then the shared GroupedList — the same columns as Requirements and Issues — by
 // whose turn it is or by what each item is about. A row leads with its title: the key and the
 // target's key are tooltips (REQ-11). Whose turn comes from core's read model
-// (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`). ISS-903: the funnel is one
-// line shut to its name, and a row's kind, subject and severity are its chip's hover. FB-583: the
-// groups are the vocabulary requirements share (Needs you, Running, Queued, Overdue, Waiting on
+// (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`). ISS-903: a row's kind,
+// subject and severity are its chip's hover. FB-583: the groups are the vocabulary requirements share (Needs you, Running, Queued, Overdue, Waiting on
 // others, Done, Dropped); the chip is core's one word (`FeedbackSummary.chip`); the ETA reads one
 // format; who acts next is Waiting on, and no column names the reporter; a row carries no steward
 // sentence, which the item's own page shows.
 
 import { Written } from "@/lib/i18n/written";
-import { countsAsReport, FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
+import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
@@ -21,11 +21,9 @@ import {
   Button,
   EmptyState,
   enumLabel,
-  Disclosure,
   GroupedList,
   ListPage,
   ListSearch,
-  LEGEND,
   type ListGroup,
   type ListRowView,
   useListPage,
@@ -51,59 +49,23 @@ import { useFeedbackList, useStewardBudget } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
+import { FeedbackBand } from "./feedback-band";
 import { FeedbackPeek } from "./feedback-peek";
 
-const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
-
-function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackListResponse["untold"] | undefined }) {
+/** The reporters not yet told of an outcome they are owed, said once above the rows. */
+function Untold({ untold }: { untold: FeedbackListResponse["untold"] | undefined }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const language = useInterfaceLanguage();
-  // a duplicate is counted under its original, never beside it: one report per root
-  const n = (p: string) => rows.filter((r) => r.phase === p && countsAsReport(r)).length;
-  const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
+  if (!untold || (untold.owed === 0 && untold.beforeNotices === 0)) return null;
   return (
-    <div className="border-b border-line-subtle bg-app px-5 max-md:px-3" data-testid="feedback-funnel">
-      <Disclosure title={t("feedback.funnel.title")} testId="feedback-funnel-fold">
-      <div className="grid gap-2">
-      <div className="grid grid-cols-5 gap-3">
-        {FUNNEL.map((p) => {
-          const r = statusReading("feedbackPhase", p, language);
-          return (
-            <div key={p} className="grid gap-1">
-              <span
-                className="h-2 rounded-xs"
-                style={{ background: LEGEND[FEEDBACK_PHASE_TONES[p]].dot, opacity: n(p) ? 1 : 0.35, width: `${Math.max(12, (n(p) / total) * 100)}%` }}
-              />
-              <span className="text-12 text-muted">{r.label}</span>
-              <span className="text-13 font-semibold tabular-nums">{n(p)}</span>
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-12 text-muted">
-        {t("feedback.funnel.off", {
-          declined: statusReading("feedbackPhase", "declined", language).label,
-          nDeclined: n("declined"),
-          reopened: statusReading("feedbackPhase", "reopened", language).label,
-          nReopened: n("reopened"),
-        })}
-      </p>
-      {untold && (untold.owed > 0 || untold.beforeNotices > 0) ? (
-        <p className="text-12 text-muted" data-testid="feedback-untold">
-          {[
-            untold.owed > 0 ? t("feedback.funnel.untoldOwed", { n: untold.owed }) : "",
-            untold.beforeNotices > 0
-              ? t("feedback.funnel.untoldBefore", { n: untold.beforeNotices, date: untold.noticesBegan ? time.date(untold.noticesBegan) : "" })
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      ) : null}
-      </div>
-      </Disclosure>
-    </div>
+    <p className="px-5 py-2 text-12 text-muted max-md:px-3" data-testid="feedback-untold">
+      {[
+        untold.owed > 0 ? t("feedback.funnel.untoldOwed", { n: untold.owed }) : "",
+        untold.beforeNotices > 0 ? t("feedback.funnel.untoldBefore", { n: untold.beforeNotices, date: untold.noticesBegan ? time.date(untold.noticesBegan) : "" }) : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+    </p>
   );
 }
 
@@ -240,6 +202,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
           testId="feedback-screen"
           title={t("feedback.title")}
           titleAfter={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}
+          overview={all.length > 0 ? <FeedbackBand rows={list.rows} /> : null}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
               {t("feedback.new")}
@@ -272,7 +235,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
             </div>
           ) : (
             <>
-              <Funnel rows={all} untold={q.data?.untold} />
+              <Untold untold={q.data?.untold} />
               {/* a project-wide wait said once above the rows, never on each (ISS-1137 6a, ISS-1148) */}
               {budget?.judgingPaused ? (
                 <p className="px-5 py-2 text-12 text-muted max-md:px-3" data-testid="feedback-judging-paused">
