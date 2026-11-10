@@ -9,7 +9,7 @@
 // @direct-test-of packages/web-v2/src/features/requirements/components/requirement-criteria.tsx
 // @direct-test-of packages/web-v2/src/features/requirements/components/requirement-picture.tsx
 
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BOARD, CHART, CHECKOUT_LINK, core, detail, page, TABLE } from "@/test/requirement-pictures";
 import { reqDetail } from "@/test/vi-chrome-requirements";
@@ -74,6 +74,19 @@ describe("a requirement page, top to bottom", () => {
   });
 
   // ISS-1109 (FB-567): the labels it leaves out are named once, on one "Not stated" line, never a row each
+  // REQ-43 r3 BC-17 (owner, 2026-11-10): the page opens on its progress drawn, and its long text sits
+  // behind one side drawer, never expanded in place on the page
+  it("draws its criteria proven as a ring, and keeps its whole goal behind the Full text drawer", async () => {
+    core("viewer");
+    page(detail({ kind: "process", spec, writtenLang: "en" }, { workflows: [CHECKOUT_LINK], traces: [PAY] }));
+    const overview = await screen.findByTestId("view-overview");
+    expect(within(screen.getByTestId("progress-verified")).getByTestId("ring")).toBeInTheDocument();
+    expect(overview.textContent).not.toContain("Roadmap: Now");
+    expect(screen.queryByTestId("goal-full")).toBeNull();
+    fireEvent.click(within(overview).getByTestId("requirement-text"));
+    expect(await screen.findByTestId("goal-full")).toHaveTextContent("Roadmap: Now");
+  });
+
   it("names the labels the goal leaves out once, as not stated, and reads an unlabelled goal as its problem", async () => {
     core("viewer");
     page(detail({ kind: "rule", spec: { ...spec, goal: "Buyers leave at a slow checkout." }, writtenLang: "en" }));

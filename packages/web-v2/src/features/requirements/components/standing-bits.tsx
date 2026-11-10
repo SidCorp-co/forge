@@ -17,7 +17,7 @@ import {
   type RequirementWaitingKind,
   type RequirementWaitingOn,
 } from "@forge/contracts/requirements";
-import { type BannerTone, LEGEND, StepBar, statusReading, WaitBanner } from "@/design";
+import { type BannerTone, LEGEND, Ring, StepBar, statusReading, WaitBanner } from "@/design";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -173,7 +173,9 @@ export function RequirementProgress({ standing, slug, inset }: { standing: Requi
             </div>
           ) : null}
           {n > 0 ? (
-            <div data-testid="progress-verified">
+            <div className="flex items-center gap-2" data-testid="progress-verified">
+              {/* criteria proven, drawn: the ring is the share, the words its count (REQ-43 r3 BC-17) */}
+              <Ring share={k / n} size={28} />
               <span className="text-13 font-semibold text-fg">{t("requirements.verified", { a: k, b: n })}</span>
             </div>
           ) : null}
