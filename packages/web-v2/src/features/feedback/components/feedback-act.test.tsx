@@ -1,6 +1,8 @@
 // Feedback shows on its face what a person acts on (REQ-11 BC-18, BC-19): a row leads with the item's
 // title, what it is about reads as the target's title, and the keys sit in tooltips. A row names who
 // acts next, never the reporter (FB-583).
+//
+// @direct-test-of packages/web-v2/src/features/feedback/components/feedback-band.tsx
 
 import type { QueryKey } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";

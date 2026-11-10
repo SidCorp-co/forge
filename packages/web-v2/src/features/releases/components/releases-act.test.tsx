@@ -2,6 +2,8 @@
 // row leads with its version and name, carries one proof bar and the short tags of what needs
 // attention, and only a release waiting on the reader offers its one act. No key, sha or second
 // table repeating the draft (the retired coming-next) is drawn.
+//
+// @direct-test-of packages/web-v2/src/features/releases/components/releases-band.tsx
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

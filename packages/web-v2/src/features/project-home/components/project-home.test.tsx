@@ -3,6 +3,8 @@
 // picture and Esc closes it; Needs you stands on the home itself, above the charts; each chart reads
 // as a table to a screen reader and offers no table toggle. Every figure comes from one request.
 //
+// @direct-test-of packages/web-v2/src/design/chart-model.ts
+// @direct-test-of packages/web-v2/src/design/patterns/bar-chart.tsx
 // @direct-test-of packages/web-v2/src/routes/_workspace/projects/$slug/index.tsx
 // @direct-test-of packages/web-v2/src/features/project-home/
 

@@ -1,6 +1,10 @@
 // Requirements shows on its face what a person acts on (REQ-11 BC-18, BC-19): a row leads with the
 // requirement's name, its key the name's tooltip; the suggestions strip says how many wait, and why
 // none applies on its own is its tooltip, never a clause on the face.
+//
+// @direct-test-of packages/web-v2/src/features/requirements/components/requirements-band.tsx
+// @direct-test-of packages/web-v2/src/design/patterns/overview-band.tsx
+// @direct-test-of packages/web-v2/src/design/templates/page-templates.tsx
 
 import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";

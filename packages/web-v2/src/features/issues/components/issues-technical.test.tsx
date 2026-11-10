@@ -1,6 +1,9 @@
 // The technical backlog is a filter on the Issues list, never a screen of its own (ISS-1001, owner
 // ruling 2026-11-05): its chip keeps the drafts an agent filed under a technical kind, groups them by
 // module with "No module" as its own group, and counts each module's items by kind.
+//
+// @direct-test-of packages/web-v2/src/features/issues/components/issues-band.tsx
+// @direct-test-of packages/web-v2/src/features/issues/api.ts
 
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
