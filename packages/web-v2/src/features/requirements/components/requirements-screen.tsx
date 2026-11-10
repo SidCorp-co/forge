@@ -11,6 +11,7 @@ import { Button, EmptyState, Field, Input, ListPage, ListSearch, PageTitle, Stat
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
+import { formatAge } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
@@ -18,7 +19,7 @@ import { acceptConsequence, PendingBadge, requirementAffected, SuggestionDecider
 import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCreateRequirement, useRequirementAreas, useRequirements } from "../hooks";
-import { AreasEditor, PlacementBanner } from "./requirement-placement";
+import { AreasEditor, inPlay, PlacementBanner } from "./requirement-placement";
 import { nameOf } from "./requirement-line";
 import { listGroupsOf, RequirementsList, useAttentionLabel } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
@@ -87,11 +88,15 @@ function AssistantStrip({
   onPeek: (key: string) => void;
 }) {
   const t = useCopy();
+  const lang = useInterfaceLanguage();
   const q = useProjectWaitingSuggestions(projectId);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const open = (q.data?.suggestions ?? []).filter((s) => s.target.type === "requirement" && byId.has(s.target.id));
   const [shown, setShown] = useState(false);
   if (open.length === 0) return null;
+  // who proposed, how many wait on the viewer, and how long the oldest has waited (ISS-1191)
+  const oldest = open.reduce((a, s) => (s.createdAt < a ? s.createdAt : a), open[0]?.createdAt ?? "");
+  const waited = t("requirements.assistant.oldest", { age: formatAge(oldest, lang) });
   if (!shown) {
     return (
       <button
@@ -102,8 +107,10 @@ function AssistantStrip({
         data-testid="assistant-strip-collapsed"
       >
         <span className="size-1.5 rounded-pill bg-accent" />
+        <span className="font-medium text-ai">{t("requirements.assistant.name")}</span>
         {t("requirements.assistant.count", { n: open.length })}
-        <span className="font-medium text-accent-text">{t("requirements.assistant.show")}</span>
+        <span className="text-subtle">{waited}</span>
+        <span className="font-medium text-accent-text">{t("requirements.assistant.review")}</span>
       </button>
     );
   }
@@ -118,7 +125,7 @@ function AssistantStrip({
           {t("requirements.assistant.name")}
         </span>
         <span className="text-subtle" title={t("requirements.assistant.never")}>
-          {t("requirements.assistant.count", { n: open.length })}
+          {t("requirements.assistant.count", { n: open.length })} · {waited}
         </span>
       </div>
       {open.map((s) => {
@@ -167,7 +174,9 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const clock = useEtaClock();
   // whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("requirements");
-  const all = q.data?.requirements ?? [];
+  const all = useMemo(() => q.data?.requirements ?? [], [q.data]);
+  // the strips above the list count only requirements still in play (ISS-1191)
+  const playing = useMemo(() => all.filter(inPlay), [all]);
   const list = useListPage({
     rows: all,
     keyOf: (r) => r.key,
@@ -224,8 +233,8 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           }
           peek={peek.open ? <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} full={list.fullOf(peek.open)} /> : null}
         >
-          <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
-          <PlacementBanner projectId={projectId} rows={all} hasAreas={areas.length > 0} />
+          <AssistantStrip projectId={projectId} rows={playing} onPeek={(k) => peek.set(k)} />
+          <PlacementBanner projectId={projectId} rows={playing} hasAreas={areas.length > 0} />
           {all.length === 0 ? (
             <div className="px-5 py-10">
               <EmptyState

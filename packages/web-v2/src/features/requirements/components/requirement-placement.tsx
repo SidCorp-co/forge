@@ -2,12 +2,15 @@
 // Where requirements are placed (REQ-29): the project's list of areas, edited where the list is read,
 // and the assistant's proposed area and short name, taken by a person. Nothing here fills a field alone.
 
-import type { RequirementAreaRef, RequirementSummary } from "@forge/contracts/requirements";
+import { OUT_OF_PLAY_STATUSES, type RequirementAreaRef, type RequirementStatus, type RequirementSummary } from "@forge/contracts/requirements";
 import { useState } from "react";
 import { Button, Disclosure, Fact, IconButton, Select, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAcceptAllPlacements, usePlacement, useProposePlacements, useRequirementAreas, useSetAreas } from "../hooks";
+
+/** A requirement still in play: neither dropped nor refused, so the strips above the list count it (ISS-1191). */
+export const inPlay = (r: RequirementSummary) => !(OUT_OF_PLAY_STATUSES as readonly RequirementStatus[]).includes(r.status);
 
 /**
  * The requirements waiting to be placed, as one folded line saying how many (ISS-1179: at 390 px its
@@ -24,7 +27,7 @@ export function PlacementBanner({ projectId, rows, hasAreas }: { projectId: stri
   if (waiting.length === 0 && !asked) return null;
   return (
     <div className="border-b border-line-subtle px-5 max-md:px-3" data-testid="placement-banner">
-      <Disclosure title={t("requirements.placement.title")} summary={t("requirements.placement.toPlace", { n: waiting.length + (asked ? unplaced : 0) })}>
+      <Disclosure title={t("requirements.placement.title")} summary={waiting.length > 0 ? t("requirements.placement.toReview", { n: waiting.length }) : t("requirements.placement.missing", { n: unplaced })}>
         <div className="flex flex-wrap items-center gap-2.5 text-13 text-muted">
           {waiting.length > 0 ? (
             <>

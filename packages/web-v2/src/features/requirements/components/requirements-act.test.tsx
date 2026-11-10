@@ -42,8 +42,19 @@ describe("Requirements leads with names, never keys (REQ-11 BC-19)", () => {
   it("says how many suggestions wait, the rule that none applies on its own in the tooltip (BC-18)", () => {
     requirements();
     const strip = screen.getByTestId("assistant-strip-collapsed");
-    expect(strip.textContent).toBe("Suggestions 2Show");
+    // who proposed, how many wait on the viewer and how long the oldest has waited (ISS-1191)
+    expect(strip.textContent).toMatch(/^BA assistant2 to reviewoldest \S+Review$/);
     expect(strip.getAttribute("title")).toBe("Never applied on its own");
+  });
+
+  it("counts no suggestion on a dropped requirement (ISS-1191)", () => {
+    const dropped = seed().map(([key, value]): [QueryKey, unknown] => {
+      if (key[0] !== "requirements" || key.length !== 2) return [key, value];
+      const list = value as { requirements: RequirementSummary[] };
+      return [key, { ...list, requirements: list.requirements.map((r) => (r.key === "REQ-1" ? { ...r, status: "dropped" } : r)) }];
+    });
+    render(<Seeded data={dropped}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded>);
+    expect(screen.queryByTestId("assistant-strip-collapsed")).toBeNull();
   });
 
   it("leads an opened suggestion with the requirement's name, not its key", () => {

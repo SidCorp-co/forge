@@ -7,7 +7,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { RequirementSummary } from "../types";
-import { PlacementBanner } from "./requirement-placement";
+import { inPlay, PlacementBanner } from "./requirement-placement";
 
 const row = (key: string, over: Partial<RequirementSummary>) => ({ key, area: null, shortName: null, placementProposal: null, ...over }) as unknown as RequirementSummary;
 const ROWS = [
@@ -21,10 +21,26 @@ describe("the placement banner", () => {
     fakeCore(() => undefined);
     renderWithQuery(<PlacementBanner projectId="p1" rows={ROWS} hasAreas />);
     const banner = screen.getByTestId("placement-banner");
-    expect(banner).toHaveTextContent("3 to place");
+    // the line names what waits on the viewer, the assistant's proposals, not a count of everything unplaced (ISS-1191)
+    expect(banner).toHaveTextContent("Areas and names");
+    expect(banner).toHaveTextContent("2 proposed, to review");
     expect(screen.queryByRole("button", { name: "Accept all" }), "the acts stand behind the fold").toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Placement/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Areas and names/ }));
+    expect(screen.getByText("The assistant proposed an area or short name for 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Accept all" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask the assistant" })).toBeInTheDocument();
+  });
+
+  it("says how many are missing when nothing is proposed yet (ISS-1191)", () => {
+    fakeCore(() => undefined);
+    renderWithQuery(<PlacementBanner projectId="p1" rows={[row("REQ-3", {})]} hasAreas />);
+    expect(screen.getByTestId("placement-banner")).toHaveTextContent("1 missing");
+  });
+});
+
+describe("a requirement in play (ISS-1191)", () => {
+  it("is neither dropped nor refused", () => {
+    const statuses = ["draft", "agreed", "in_delivery", "delivered", "accepted", "deferred", "dropped", "refused"] as const;
+    expect(statuses.filter((status) => inPlay(row("REQ-9", { status })))).toEqual(["draft", "agreed", "in_delivery", "delivered", "accepted", "deferred"]);
   });
 });
