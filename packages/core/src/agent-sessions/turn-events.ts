@@ -1,6 +1,6 @@
 // The raw lines one box-session turn printed, in order (ISS-1029): what a room's session read and
-// said in a turn, for a reader who holds the project. The window is the turn's own span, as its token
-// says it (`chat-door.ts:boxTurnOfToken`).
+// said in a turn, for a reader who holds the project. The window is the turn's own span, as its row
+// says it (`support/session-turns.ts:sessionTurnSpan`, ISS-1202).
 
 import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';

@@ -54,6 +54,7 @@ import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
 import { TOP_LEVEL } from './thread.js';
 import { noteSessionAct } from './turn-acts.js';
+import { turnOfRequest } from './turn-of-act.js';
 
 export interface SupportCaller {
   userId: string;
@@ -164,17 +165,19 @@ export async function supportAct(
   const room = await sessionCaller(caller, hintOf(input, where.rid));
   // any act, a read or a refused one included, shows the turn did something (ISS-1007)
   if (room.sessionId) noteSessionAct(room.sessionId);
+  // the turn the act is in: its own row, since the session holds one token across turns (ISS-1202)
+  const { turnId } = await turnOfRequest();
   const out = isOperation(input)
     ? await operationsAct(room, input)
     : room.kind === 'support' || room.kind === 'agent' || SHARED.has(input.action)
-      ? await act(room, input, caller.tokenId)
+      ? await act(room, input, turnId)
       : no(
           'SUPPORT_NOT_A_SUPPORT_ROOM',
           '/action',
           `${input.action} is a support group's and a channel agent's act, and this room is an operations room: its acts are ${OPERATION_ACTIONS.join(', ')}, reply and thread`,
         );
   // a release read is what a claim of what is live is held to, in this turn alone (ISS-1123)
-  if (out.ok) await noteReleaseRead(room, caller.tokenId, input);
+  if (out.ok) await noteReleaseRead(room, turnId, input);
   // a refusal, an ungranted ability's included, is the session's to read and say in its own words:
   // core posts nothing in the room (ISS-845), and records the ungranted one (BC-28); a read records
   // every refusal of its own (`ops-read.ts`)

@@ -8,13 +8,14 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import { boxTurnOfToken, turnStdoutLines } from '../agent-sessions/index.js';
+import { turnStdoutLines } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requireDeclaredOn, requiresOnParam } from '../permissions/index.js';
+import { sessionTurnSpan } from './session-turns.js';
 import { type ActionRow, type RoomRow, roomById } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -162,21 +163,21 @@ interface TurnTrigger {
   at: string;
 }
 
-/** How long before its token a turn's messages can have been claimed (`dispatch.ts:handOn`). */
-const CLAIM_BEFORE_TOKEN_MS = 60_000;
+/** How long before its turn was opened a turn's messages can have been claimed (`dispatch.ts:handOn`). */
+const CLAIM_BEFORE_TURN_MS = 60_000;
 
 const textIn = (v: unknown) =>
   v && typeof v === 'object' && 'text' in v ? String((v as { text: unknown }).text) : '';
 
 /**
  * The messages a turn was handed: the claim that started it (`start` or `send`, the room's last
- * before its token was minted) and each one written into it while it ran (`inject`). A turn whose
+ * before the turn was opened) and each one written into it while it ran (`inject`). A turn whose
  * claim was another room's (a channel agent's session answers several) holds none of this room's.
  */
 async function triggerOf(room: RoomRow, span: { startedAt: Date; endedAt: Date | null }) {
   const a = supportActions;
   const path = sql<string>`${a.output}->>'path'`;
-  const from = new Date(span.startedAt.getTime() - CLAIM_BEFORE_TOKEN_MS);
+  const from = new Date(span.startedAt.getTime() - CLAIM_BEFORE_TURN_MS);
   const until = span.endedAt ?? new Date();
   const handed = await db
     .select()
@@ -245,7 +246,7 @@ export async function turnRecordOf(
     .from(supportActions)
     .where(and(eq(supportActions.roomId, room.id), eq(supportActions.turnId, turnId)))
     .limit(1);
-  const span = named?.sessionId ? await boxTurnOfToken(turnId) : null;
+  const span = named?.sessionId ? await sessionTurnSpan(turnId) : null;
   if (!span || span.sessionId !== named?.sessionId) return null;
   const { lines, cut: more } = await turnStdoutLines(
     span.sessionId,

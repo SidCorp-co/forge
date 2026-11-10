@@ -3,8 +3,8 @@
 // of its room's grants and told the owner so in prose. It now runs as its room's turn: the room's
 // token, tools and grants, briefed like any turn. Its identity is the sender's: an act that runs as
 // the person asking names the direct message, and runs as the sender under their own permissions,
-// only in the turn whose token the direct message was handed with. Only a holder of project.admin
-// sends one; anyone else is refused by name before anything runs.
+// only in the turn the direct message was handed in. Only a holder of project.admin sends one;
+// anyone else is refused by name before anything runs.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -55,8 +55,8 @@ export async function sendDirectTurn(turn: RoomDirectTurn): Promise<void> {
     session,
     { ...client, deviceId: client.deviceId },
     { direct: directTurnText({ id, label, role: facts.role ?? 'admin', message: turn.message }) },
-    async (tokenId) => {
-      const record: DirectTurnRecord = { id, userId: senderId, label, tokenId };
+    async (turnId) => {
+      const record: DirectTurnRecord = { id, userId: senderId, label, turnId };
       await mergeSessionMetadata(session.id, { [DIRECT_TURN_KEY]: record });
     },
   );

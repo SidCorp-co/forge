@@ -181,11 +181,11 @@ export interface DispatchChatTurnArgs {
   model?: ModelTier | null | undefined;
   /**
    * The token this turn acts under in place of the box's own, minted for the person it answers
-   * (`session-credential.ts`). A follow-up carries one too: the previous turn's was revoked when
-   * that turn stopped, so the runner respawns the session under this one. Given as the mint
-   * itself, it is minted only once this turn holds the session (ISS-977): a mint revokes the
-   * session's live token, so a second turn refused beside a running one never revokes the token
-   * that turn runs under.
+   * (`session-credential.ts`). A follow-up carries one too: a person's previous turn's was revoked
+   * when that turn stopped, so the runner respawns the session under this one; a room's session is
+   * handed the one token it holds across turns (ISS-1202). Given as the mint itself, it is minted
+   * only once this turn holds the session (ISS-977): a mint revokes the session's live token, so a
+   * second turn refused beside a running one never revokes the token that turn runs under.
    */
   credential?: string | (() => Promise<string>) | undefined;
   /** Who sent the turn, as the kernel records the session's move to `running`; absent, core. */

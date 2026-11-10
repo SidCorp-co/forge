@@ -17,7 +17,7 @@ import {
   type CheckoutView,
   checkoutMovedFrom,
   dispatchChatTurn,
-  mintFencedSessionCredential,
+  fencedSessionCredential,
   pushProjectNow,
   sessionRowById,
   turnCredentialChatDevice,
@@ -50,6 +50,7 @@ import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
+import { openSessionTurn } from './session-turns.js';
 import { insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
 import { lastSessionAct } from './turn-acts.js';
 import {
@@ -265,16 +266,16 @@ export async function startsCold(
 }
 
 /**
- * Hand `body` to the session as one turn, under a token fenced to the project and revoked when the
- * turn ends. A cold turn is briefed first and re-reads its threads. Throws when the turn does not
- * reach its box.
+ * Hand `body` to the session as one turn, under the token fenced to the project the session holds
+ * across its turns (ISS-1202). A cold turn is briefed first and re-reads its threads. `onTurn` is
+ * told the turn's id before the turn is handed anywhere. Throws when the turn does not reach its box.
  */
 export async function handTurn(
   room: RoomRow,
   session: SessionRow,
   client: TurnClient & { deviceId: string },
   body: { messages: string } | { warmUp: string } | { direct: string },
-  onMinted?: (tokenId: string) => Promise<void>,
+  onTurn?: (turnId: string) => Promise<void>,
 ): Promise<void> {
   const [project] = await forgeReads().projectsByIds([room.projectId]);
   if (!project) throw new Error(`support: room ${room.id}'s project ${room.projectId} is gone`);
@@ -295,17 +296,19 @@ export async function handTurn(
     if (news) parts.push(news, ...('messages' in body ? ['New messages:'] : []));
   }
   parts.push('messages' in body ? body.messages : 'direct' in body ? body.direct : body.warmUp);
-  // minted once the turn holds the session: a hand-over refused beside a running turn revokes
-  // nothing that turn runs under (ISS-977)
-  const credential = () =>
-    mintFencedSessionCredential({
+  // the turn is opened, and the token read or minted, once the turn holds the session: a hand-over
+  // refused beside a running turn opens no turn and re-mints nothing that turn runs under (ISS-977)
+  const credential = async () => {
+    const turnId = await openSessionTurn(session.id);
+    await onTurn?.(turnId);
+    return fencedSessionCredential({
       sessionId: session.id,
       deviceId: client.deviceId,
       userId: room.principalUserId,
       projectId: room.projectId,
       permissions: SUPPORT_SESSION_GRANT,
-      ...(onMinted ? { onMinted } : {}),
     });
+  };
   const checkout = await checkoutViewOf(room, followed);
   await dispatchChatTurn({
     session,

@@ -293,12 +293,7 @@ describe('REQ-75: a fix, and what the session may not do', () => {
     await expect
       .poll(async () => (await w.rooms())[0]?.sessionStatus, { timeout: 15_000 })
       .toBe('completed');
-    const turn = w.box.turns.at(-1) as Turn;
-    // the room's token outlives its turn (ISS-1202): the session acts under its own fenced account
-    // every turn, so a pane that reconnects between two turns still reaches Forge
-    const between = await w.box.tool(turn.token, { action: 'tools' });
-    expect(JSON.stringify(between)).not.toMatch(/401|revoked|UNAUTH/i);
-    expect(between.isError).toBe(false);
+    // the room's token outlives its turn (ISS-1202): support-room-token-e2e
     // a project owner is not the room's session
     const owner = await api(
       w.owner,
@@ -313,29 +308,17 @@ describe('REQ-75: a fix, and what the session may not do', () => {
     expect(JSON.stringify(owner.body)).toContain('SUPPORT_NOT_THE_ROOM_SESSION');
     // a live turn's token reads no issue: the room's account is a member of nothing
     let issues = 0;
-    let during: Record<string, unknown> = {};
-    let next = '';
     w.box.model = async (t, act) => {
-      next = t.token;
       const res = await fetch(`${w.core.base}/api/projects/${w.projectId}/issues`, {
         headers: { authorization: `Bearer ${t.token}` },
       });
       issues = res.status;
-      // the token the turn before was handed still acts in this one: it is the same token
-      during = await w.box.tool(turn.token, { action: 'tools' });
       for (const m of t.messages)
         if (m.from !== 'forge') await act({ action: 'reply', thread: m.thread, text: 'ok' });
     };
     const id = await w.chat.say(w.chat.alice, 'one more thing');
     await w.untilLines((ls) => ls.some((l) => l.tmid === id && l.text === 'ok'));
     expect(issues).toBeGreaterThanOrEqual(400);
-    expect(next).toBe(turn.token);
-    expect(during.isError).toBe(false);
-    // one live token for the session, never one per turn
-    const live = await rows(sql`
-      SELECT id FROM personal_access_tokens
-       WHERE name = ${`turn:${sessionId}`} AND revoked_at IS NULL`);
-    expect(live).toHaveLength(1);
   });
 });
 
@@ -480,6 +463,8 @@ describe('REQ-75: what needs code, a restart, and the record', () => {
       ls.some((l) => l.tmid === again || (l.tmid === first && l.text === 'Back.')),
     );
     expect(cold[0]?.event).toBe('agent:start');
+    // a token is tied to its box: the new box is handed a fresh one (ISS-1202)
+    expect(cold[0]?.token).not.toBe(seen[2]?.token);
     expect(cold[0]?.text).toContain('The threads so far');
     expect(cold[0]?.text).toContain('Is the shop down?');
     expect(cold[0]?.text).toContain('payment_pending');

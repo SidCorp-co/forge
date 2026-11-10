@@ -4138,6 +4138,13 @@
       "when": 1838937600000,
       "tag": "0648_a_requirement_out_of_play_holds_no_placement_proposal",
       "breakpoints": true
+    },
+    {
+      "idx": 649,
+      "version": "7",
+      "when": 1839024000000,
+      "tag": "0649_a_room_session_holds_one_token_across_its_turns",
+      "breakpoints": true
     }
   ]
 }

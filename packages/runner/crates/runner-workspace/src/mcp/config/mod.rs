@@ -131,10 +131,11 @@ pub struct Refreshable {
     pub bearer_dir: PathBuf,
 }
 
-/// [`write`] for a session that stays resident across turns that each carry their own token
-/// (REQ-75 BC-11): the `forge` server's `Authorization` comes from `headersHelper`, which reads
-/// the file [`refresh_bearer`] rewrites before each turn is written in. A turn's token is revoked
-/// when that turn ends, so the next turn's first call is answered 401, and Claude Code runs the
+/// [`write`] for a session that stays resident across turns that each carry a token (REQ-75
+/// BC-11): the `forge` server's `Authorization` comes from `headersHelper`, which reads the file
+/// [`refresh_bearer`] rewrites before each turn is written in. Core hands a room's session the one
+/// token it holds across turns (ISS-1202), and a fresh one only near its expiry or on another box;
+/// where the token changed, the next turn's first call is answered 401, and Claude Code runs the
 /// helper again and retries with the token the file now holds (measured on Claude Code 2.1.310).
 pub fn write_refreshable(
     core_url: &str,
@@ -192,9 +193,9 @@ fn write_refreshable_in(
 /// confined session has bound, so it sees the new file.
 ///
 /// The session's own needs-auth cache beside it loses its [`FORGE_SERVER`] entry too (ISS-1201):
-/// the token of the turn before is revoked when that turn ends, so a reconnect between turns is
-/// answered 401 and Claude Code skips `forge` for fifteen minutes after; the new token is the one
-/// that answers, so the skip is stale the moment it is written.
+/// a reconnect that presented a token no longer live (one core re-minted, or one that expired) was
+/// answered 401 and Claude Code skips `forge` for fifteen minutes after; the token written here is
+/// the one that answers, so the skip is stale the moment it is written.
 pub fn refresh_bearer(bearer_dir: &Path, credential: &str) -> Result<()> {
     let body = serde_json::json!({ "Authorization": format!("Bearer {credential}") }).to_string();
     let path = bearer_dir.join(BEARER_FILE);

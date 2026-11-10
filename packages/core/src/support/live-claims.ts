@@ -1,10 +1,10 @@
 // What a channel agent may say about what is live (ISS-1123): a post that says something is or is
 // not live, deployed or released is held to a release read of the same turn, never to memory. The
-// turn is the token core minted for it (`dispatch.ts:handTurn`): a `releases` or `deployment` read
-// is recorded on the room under that token, and a claim posted under it finds the read. A note core
-// handed the session in this turn that reads an environment itself (a result told live, a promise
-// answered, a release reaching production) is the same read, made by core. Anything else is refused
-// by name, pointing at the read to make; nothing is posted.
+// turn is the one core opened at its hand-over (`session-turns.ts`, ISS-1202): a `releases` or
+// `deployment` read is recorded on the room under that turn, and a claim posted in it finds the
+// read. A note core handed the session in this turn that reads an environment itself (a result told
+// live, a promise answered, a release reaching production) is the same read, made by core. Anything
+// else is refused by name, pointing at the read to make; nothing is posted.
 
 import { and, eq, gte, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -32,7 +32,7 @@ export function liveClaimIn(text: string): string | null {
   return m ? m[0].trim() : null;
 }
 
-/** Record a release read the session made, under the token of the turn it made it in. */
+/** Record a release read the session made, under the turn it made it in. */
 export async function noteReleaseRead(
   room: RoomRow,
   turn: string | null | undefined,

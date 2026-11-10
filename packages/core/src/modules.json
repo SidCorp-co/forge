@@ -1290,6 +1290,7 @@
       "owns": [
         "supportRooms",
         "supportActions",
+        "supportSessionTurns",
         "supportProposals",
         "supportFeedbackLinks",
         "supportPromises",

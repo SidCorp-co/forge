@@ -2,11 +2,15 @@
  * The token a session on a paired box answers a person's message under (ISS-17): minted FOR that
  * person, fenced to the project, tied to the box, cut to what the box's holder may do there, and
  * revoked when the session goes terminal. The runner puts it where the box's own would have gone.
+ * A room's session acts under its own fenced account every turn, so it holds one token across its
+ * turns instead (ISS-1202, `fencedSessionCredential`).
  */
 
 import { readSessionAsker, type SessionAsker } from '@forge/contracts/agent-sessions';
+import { and, eq, gt } from 'drizzle-orm';
 import { mintPat, revokeLiveTokens } from '../credentials/pat.js';
 import { turnTokenNameFor } from '../credentials/pat-format.js';
+import { patIsLive } from '../credentials/pat-live.js';
 import type { PatPermission } from '../credentials/pat-permissions.js';
 import {
   AGENT_TURN_MENU,
@@ -14,6 +18,8 @@ import {
   type TurnAuthority,
   type TurnAuthorityRefusal,
 } from '../credentials/turn-credential.js';
+import { db } from '../db/client.js';
+import { personalAccessTokens } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
@@ -31,6 +37,15 @@ const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
 
 /** Bounds a session whose terminal write never arrives; a runner-hosted turn is minutes. */
 const SESSION_CREDENTIAL_TTL_MS = 2 * 60 * 60 * 1000;
+
+/** How long a room session's one token lives: held across its turns, never unbounded (ISS-1202). */
+const ROOM_CREDENTIAL_TTL_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * A turn finding the room's token this close to its expiry is handed a fresh one: as long as a
+ * per-turn token lives, so no turn handed the held token outlives it.
+ */
+const ROOM_CREDENTIAL_RENEW_MS = SESSION_CREDENTIAL_TTL_MS;
 
 export { readSessionAsker, type SessionAsker };
 
@@ -122,23 +137,50 @@ export async function mintSessionCredential(args: {
   return minted.token;
 }
 
+/** The token a room's session holds, as core handed it: its plaintext lives in this process alone. */
+interface HeldCredential {
+  tokenId: string;
+  plaintext: string;
+  deviceId: string;
+  userId: string;
+  projectId: string;
+  permissions: string;
+  expiresAt: Date;
+}
+
+/**
+ * Each room session's token, kept for its next turn. The database keeps only its hash, so a core
+ * that restarted holds none, and the next turn mints a fresh one, revoking the old by name.
+ */
+const heldCredentials = new Map<string, HeldCredential>();
+
 /**
  * The token a session that answers nobody in Forge acts under: minted for its own agent account,
- * fenced to its project, cut to the stated grant and tied to the box, superseding any it holds. A
- * Rocket.Chat support group's session is the one (REQ-75): its account is a member of nothing, so
- * the grant reaches only the routes that check for that session themselves.
+ * fenced to its project, cut to the stated grant and tied to the box. A Rocket.Chat support group's
+ * session is the one (REQ-75): its account is a member of nothing, so the grant reaches only the
+ * routes that check for that session themselves. Every turn acts with that same authority, so the
+ * session holds one token across its turns (ISS-1202): a turn is handed the one it holds while that
+ * is live, for the same box, account, project and grant, and not within `ROOM_CREDENTIAL_RENEW_MS`
+ * of its expiry; otherwise the old one is revoked by name and a fresh one minted. It is revoked when
+ * the session truly ends: its rooms let go of it, it is archived or deleted (migration 0649).
  */
-export async function mintFencedSessionCredential(args: {
+export async function fencedSessionCredential(args: {
   sessionId: string;
   deviceId: string;
   userId: string;
   projectId: string;
   permissions: readonly [PatPermission, ...PatPermission[]];
-  ttlMs?: number;
-  /** Told the minted token's id before the token is handed anywhere: what one turn's acts arrive on. */
-  onMinted?: (tokenId: string) => Promise<void>;
 }): Promise<string> {
+  const now = Date.now();
+  for (const [id, h] of heldCredentials)
+    if (h.expiresAt.getTime() <= now) heldCredentials.delete(id);
+  const held = heldCredentials.get(args.sessionId);
+  if (held && sameHolder(held, args) && (await stillHeld(held, args.sessionId, now))) {
+    return held.plaintext;
+  }
+  heldCredentials.delete(args.sessionId);
   await revokeSessionCredential(args.sessionId);
+  const expiresAt = new Date(now + ROOM_CREDENTIAL_TTL_MS);
   const minted = await mintPat({
     userId: args.userId,
     name: turnTokenNameFor(args.sessionId),
@@ -146,10 +188,49 @@ export async function mintFencedSessionCredential(args: {
     projectIds: [args.projectId],
     scopes: ['read', 'write'],
     deviceId: args.deviceId,
-    expiresAt: new Date(Date.now() + (args.ttlMs ?? SESSION_CREDENTIAL_TTL_MS)),
+    expiresAt,
   });
-  await args.onMinted?.(minted.row.id);
+  heldCredentials.set(args.sessionId, {
+    tokenId: minted.row.id,
+    plaintext: minted.plaintext,
+    deviceId: args.deviceId,
+    userId: args.userId,
+    projectId: args.projectId,
+    permissions: grantKey(args.permissions),
+    expiresAt,
+  });
   return minted.plaintext;
+}
+
+const grantKey = (permissions: readonly string[]) => [...permissions].sort().join(' ');
+
+function sameHolder(
+  held: HeldCredential,
+  args: { deviceId: string; userId: string; projectId: string; permissions: readonly string[] },
+): boolean {
+  return (
+    held.deviceId === args.deviceId &&
+    held.userId === args.userId &&
+    held.projectId === args.projectId &&
+    held.permissions === grantKey(args.permissions)
+  );
+}
+
+/** Whether the held token is still the session's live one, and not near its expiry. */
+async function stillHeld(held: HeldCredential, sessionId: string, now: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: personalAccessTokens.id })
+    .from(personalAccessTokens)
+    .where(
+      and(
+        eq(personalAccessTokens.id, held.tokenId),
+        eq(personalAccessTokens.name, turnTokenNameFor(sessionId)),
+        gt(personalAccessTokens.expiresAt, new Date(now + ROOM_CREDENTIAL_RENEW_MS)),
+        patIsLive(),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 /** The box a session's next turn runs on, among those that carry the token they are handed. */
