@@ -121,18 +121,22 @@ describe("the workspace home", () => {
     expect(within(screen.getByTestId("home-moving")).getByTestId("home-cut").textContent).toBe("4 of 132");
   });
 
-  it("folds what nothing moved for a week under one Idle row, which opens to each with its age in words", () => {
+  // ui-copy-rule (judged at 0.4.0-dev.646): detail opens in a drawer, then its page; nothing expands in place
+  it("folds what nothing moved for a week under one Idle line, which opens a side drawer of each with its age in words, adding no row in place", () => {
     render(<HomeScreen />);
     const moving = screen.getByTestId("home-moving");
-    const titles = () => screen.getAllByTestId("home-moving-row").map((r) => within(r).getByRole("link").textContent);
+    const titles = () => within(moving).getAllByTestId("home-moving-row").map((r) => within(r).getByRole("link").textContent);
     expect(titles()).not.toContain("Export misses the header row");
     // a running item is never folded, however long ago it moved
     expect(titles()).toContain("Nightly import runs again");
+    const shown = titles().length;
     const idle = within(moving).getByTestId("home-moving-idle");
-    expect(idle.textContent).toBe("Idle (1)");
+    expect(idle.textContent).toBe("Idle1");
     expect(idle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(idle);
-    const list = within(moving).getByTestId("home-moving-idle-list");
+    expect(titles()).toHaveLength(shown);
+    expect(within(moving).queryByTestId("home-moving-idle-list")).toBeNull();
+    const list = within(screen.getByRole("dialog", { name: "Idle" })).getByTestId("home-moving-idle-list");
     const row = within(list).getByTestId("home-moving-row");
     expect(within(row).getByRole("link").textContent).toBe("Export misses the header row");
     expect(within(row).getByTestId("home-moving-age").textContent).toBe("21d ago");

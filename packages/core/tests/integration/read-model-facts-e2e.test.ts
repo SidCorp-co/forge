@@ -119,6 +119,14 @@ describe('the queue and attention read models serve the derived facts', () => {
     ).find((p) => p.projectSlug === other.slug);
     expect([part?.total, part?.decisions.length]).toEqual([5, NEEDS_YOU_PERSON_CAP]);
     expect(res.body.needsYouNotSent).toBe(5 - NEEDS_YOU_PERSON_CAP);
+    // the Attention band reads each kind's count from core (ISS-1198): the decisions are every
+    // project's Needs you total in scope, past the cap too, and the parts sum to core's `total`
+    const counts = res.body.counts as Record<string, number>;
+    const parts = res.body.needsYou as { total: number; owed: { count: number }[] }[];
+    expect(counts.decisions).toBe(parts.reduce((n, p) => n + p.total, 0));
+    expect(counts.decisions).toBeGreaterThanOrEqual(5);
+    expect(counts.owed).toBe(parts.reduce((n, p) => n + p.owed.reduce((m, o) => m + o.count, 0), 0));
+    expect(Object.values(counts).reduce((n, c) => n + c, 0)).toBe(res.body.total);
   });
 
   it('refuses an orgId that is no uuid, by name', async () => {
