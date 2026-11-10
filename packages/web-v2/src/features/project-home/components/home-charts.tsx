@@ -6,13 +6,18 @@
 import type { HomeFeedbackWeek, HomeShipDay } from "@forge/contracts/project-home";
 import type { ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
-import { type ChartConfig, ChartContainer, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { type ChartConfig, ChartContainer, Table, TBody, TD, TH, THead, TR, useLaidOutWidth } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { averageText, dayLabel, SERIES, shipChartOf } from "../model";
+import { averageText, FEEDBACK_OUTCOMES as OUTCOMES, feedbackBarsOf, SERIES, shipChartOf } from "../model";
 
 const TICK = { fill: "var(--fg-muted)", fontSize: 11 } as const;
 const AXIS = { stroke: "var(--border-strong)" } as const;
 const MARGIN = { top: 18, right: 8, bottom: 0, left: -12 };
+/** The shipped chart keeps room on its right for the average's label, so it never sits over a bar. */
+const SHIP_MARGIN = { ...MARGIN, right: 64 };
+const CHART_HEIGHT = 208;
+/** A bar's printed value: its number, or nothing on a bar that carries none. */
+const markText = (v: unknown) => (typeof v === "number" ? String(v) : "");
 const VALUE = { fill: "var(--fg-default)", fontSize: 11, fontWeight: 600 } as const;
 
 /** What a chart says, as a table only a screen reader reads. */
@@ -51,6 +56,23 @@ function TipBox({ lines }: { lines: string[] }) {
   );
 }
 
+/**
+ * The chart is drawn once its frame has a laid-out width, at that width: drawn before the page around it
+ * had one, it measured nothing and stayed blank until the window next resized.
+ */
+function MeasuredChart({ config, children }: { config: ChartConfig; children: ReactNode }) {
+  const [frame, width] = useLaidOutWidth<HTMLDivElement>();
+  return (
+    <div ref={frame} aria-hidden className="h-52 w-full min-w-0">
+      {width ? (
+        <ChartContainer config={config} className="aspect-auto h-52 w-full" initialDimension={{ width, height: CHART_HEIGHT }}>
+          {children}
+        </ChartContainer>
+      ) : null}
+    </div>
+  );
+}
+
 function ChartPart({ title, legend, children, testId }: { title: string; legend?: ReactNode; children: ReactNode; testId: string }) {
   return (
     <section aria-label={title} className="flex min-w-0 flex-col gap-1" data-testid={testId}>
@@ -66,24 +88,13 @@ export function ShippedChart({ days }: { days: readonly HomeShipDay[] }) {
   const chart = shipChartOf(days);
   const config: ChartConfig = { issues: { label: t("home.chart.issues"), color: SERIES[0] } };
   const empty = chart.points.every((p) => p.issues === 0);
-  const peakLabel = (props: { x?: number | string; y?: number | string; width?: number | string; value?: unknown; index?: number }) => {
-    const value = Number(props.value);
-    if (props.index === undefined || !chart.labelled.has(props.index) || !value) return null;
-    const x = Number(props.x) + Number(props.width) / 2;
-    return (
-      <text x={x} y={Number(props.y) - 5} textAnchor="middle" {...VALUE}>
-        {value}
-      </text>
-    );
-  };
   return (
     <ChartPart title={t("home.chart.shipped")} testId="home-chart-shipped">
       {empty ? (
         <p className="py-8 text-13 text-subtle">{t("home.chart.shippedNone")}</p>
       ) : (
-        <div aria-hidden>
-          <ChartContainer config={config} className="aspect-auto h-52 w-full" initialDimension={{ width: 480, height: 208 }}>
-            <BarChart data={chart.points} margin={MARGIN} accessibilityLayer={false}>
+        <MeasuredChart config={config}>
+            <BarChart data={chart.points} margin={SHIP_MARGIN} accessibilityLayer={false}>
               <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
               <XAxis dataKey="tick" tickLine={false} axisLine={AXIS} tick={TICK} interval="preserveStartEnd" />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={TICK} width={40} />
@@ -98,14 +109,13 @@ export function ShippedChart({ days }: { days: readonly HomeShipDay[] }) {
                 y={chart.average}
                 stroke="var(--fg-muted)"
                 strokeDasharray="4 4"
-                label={{ value: t("home.chart.average", { n: averageText(chart.average) }), position: "insideTopRight", fill: "var(--fg-muted)", fontSize: 11 }}
+                label={{ value: t("home.chart.average", { n: averageText(chart.average) }), position: "right", fill: "var(--fg-muted)", fontSize: 11 }}
               />
               <Bar dataKey="issues" fill="var(--color-issues)" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-                <LabelList dataKey="issues" content={peakLabel} />
+                <LabelList dataKey="mark" position="top" offset={5} {...VALUE} formatter={markText} />
               </Bar>
             </BarChart>
-          </ChartContainer>
-        </div>
+        </MeasuredChart>
       )}
       <ReaderTable
         caption={t("home.chart.shipped")}
@@ -116,11 +126,9 @@ export function ShippedChart({ days }: { days: readonly HomeShipDay[] }) {
   );
 }
 
-const OUTCOMES = ["fixed", "declined", "open"] as const;
-
 export function FeedbackChart({ weeks }: { weeks: readonly HomeFeedbackWeek[] }) {
   const t = useCopy();
-  const data = weeks.map((w) => ({ ...w, label: dayLabel(w.week), total: w.fixed + w.declined + w.open }));
+  const data = feedbackBarsOf(weeks);
   const config: ChartConfig = Object.fromEntries(OUTCOMES.map((o, i) => [o, { label: t(`home.outcome.${o}`), color: SERIES[i] }]));
   const empty = data.every((w) => w.total === 0);
   const legend = (
@@ -138,8 +146,7 @@ export function FeedbackChart({ weeks }: { weeks: readonly HomeFeedbackWeek[] })
       {empty ? (
         <p className="py-8 text-13 text-subtle">{t("home.chart.feedbackNone")}</p>
       ) : (
-        <div aria-hidden>
-          <ChartContainer config={config} className="aspect-auto h-52 w-full" initialDimension={{ width: 480, height: 208 }}>
+        <MeasuredChart config={config}>
             <BarChart data={data} margin={MARGIN} accessibilityLayer={false}>
               <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
               <XAxis dataKey="label" tickLine={false} axisLine={AXIS} tick={TICK} />
@@ -153,12 +160,11 @@ export function FeedbackChart({ weeks }: { weeks: readonly HomeFeedbackWeek[] })
               />
               {OUTCOMES.map((o) => (
                 <Bar key={o} dataKey={o} stackId="fb" fill={`var(--color-${o})`} isAnimationActive={false}>
-                  {o === "open" ? <LabelList dataKey="total" position="top" {...VALUE} formatter={(v: unknown) => (Number(v) > 0 ? String(v) : "")} /> : null}
+                  <LabelList dataKey={`cap_${o}`} position="top" offset={5} {...VALUE} formatter={markText} />
                 </Bar>
               ))}
             </BarChart>
-          </ChartContainer>
-        </div>
+        </MeasuredChart>
       )}
       <ReaderTable
         caption={t("home.chart.feedback")}

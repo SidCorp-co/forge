@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore } from "@/test/render";
 import { componentOf, renderRoute } from "@/test/route-tree";
+import { feedbackBarsOf, shipChartOf } from "../model";
 
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 
@@ -188,5 +189,33 @@ describe("the project home (REQ-43 BC-14..BC-18)", () => {
     await open(quiet);
     expect(screen.getByTestId("dashboard-needs-none")).toHaveTextContent("Nothing");
     expect(screen.getByTestId("home-chart-shipped")).toHaveTextContent("Nothing shipped");
+  });
+});
+
+// A chart draws no bar for a zero day or a zero segment, so a printed value hung on a drawn bar's index
+// or on one fixed segment lands on the wrong bar or vanishes (agenfold on forge-dev, dev.639: its peak
+// unlabelled and "13" printed over the day after; four of six feedback weeks with no total). The value
+// each bar prints travels with the bar's own row instead.
+describe("the values the home's charts print", () => {
+  const day = (d: number, issues: number) => ({ day: `2026-11-${String(d).padStart(2, "0")}`, releases: issues ? 1 : 0, issues });
+
+  it("marks the highest day and today on their own rows, whatever zero days come first", () => {
+    const { points } = shipChartOf([day(1, 0), day(2, 0), day(3, 29), day(4, 52), day(5, 13), day(6, 8)]);
+    expect(points.map((p) => p.mark)).toEqual([null, null, null, 52, null, 8]);
+  });
+
+  it("puts each week's total on its topmost drawn segment, open or not", () => {
+    const bars = feedbackBarsOf([
+      { week: "2026-10-26", fixed: 64, declined: 110, open: 0 },
+      { week: "2026-11-02", fixed: 107, declined: 0, open: 0 },
+      { week: "2026-11-09", fixed: 15, declined: 2, open: 4 },
+      { week: "2026-10-12", fixed: 0, declined: 0, open: 0 },
+    ]);
+    expect(bars.map((b) => [b.cap_fixed, b.cap_declined, b.cap_open])).toEqual([
+      [null, 174, null],
+      [107, null, null],
+      [null, null, 21],
+      [null, null, null],
+    ]);
   });
 });

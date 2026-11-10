@@ -57,10 +57,13 @@ function Arrow() {
 /** Audit's findings return to Product: a dashed line under the row, from the last stage to the first. */
 function ReturnLine({ label }: { label: string }) {
   return (
-    <div className="hidden h-6 px-24 text-subtle md:block" title={label} data-testid="home-loop-return">
+    <div className="relative hidden h-6 px-24 text-subtle md:block" title={label} data-testid="home-loop-return">
       <svg aria-hidden viewBox="0 0 100 24" preserveAspectRatio="none" className="block h-6 w-full">
         <path d="M100 0 V14 Q100 20 94 20 H6 Q0 20 0 14 V4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
-        <path d="M-3 7 L0 2 L3 7" fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {/* the head is drawn at its own scale: inside the stretched line's box it would be stretched with it */}
+      <svg aria-hidden viewBox="0 0 10 8" width="10" height="8" className="absolute top-0 left-24 -translate-x-1/2">
+        <path d="M1 7 L5 1 L9 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );

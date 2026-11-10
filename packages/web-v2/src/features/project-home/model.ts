@@ -2,7 +2,7 @@
 // Delivery board's columns and the charts' marks. Every number is the read's; this only groups and
 // places them, so a part's count always sums back to the figure its stage shows.
 
-import type { HomeCount, HomeIssue, HomeShipDay, ProjectHome } from "@forge/contracts/project-home";
+import type { HomeCount, HomeFeedbackWeek, HomeIssue, HomeShipDay, ProjectHome } from "@forge/contracts/project-home";
 import type { IssueStatus } from "@forge/contracts/issue-machine";
 import type { ReleaseState } from "@forge/contracts/releases";
 import type { RequirementState } from "@forge/contracts/requirements";
@@ -87,17 +87,42 @@ const DAY_LABEL = new Intl.DateTimeFormat("en", { month: "short", day: "numeric"
 export const dayLabel = (key: string) => DAY_LABEL.format(new Date(`${key}T12:00:00Z`));
 
 export interface ShipChart {
-  points: (HomeShipDay & { label: string; tick: string })[];
-  /** The bars that carry their value: the highest day and today. */
-  labelled: ReadonlySet<number>;
+  /**
+   * One per day. `mark` is the value printed over the bar, set on the highest day and today only and
+   * null elsewhere: the label reads it off its own bar, because a chart draws no bar for a zero day and
+   * an index into the drawn bars is not an index into the days.
+   */
+  points: (HomeShipDay & { label: string; tick: string; mark: number | null })[];
   average: number;
 }
 
 export function shipChartOf(days: readonly HomeShipDay[]): ShipChart {
-  const points = days.map((d) => ({ ...d, label: dayLabel(d.day), tick: String(Number(d.day.slice(8))) }));
-  const peak = points.reduce((best, p, i) => (p.issues > (points[best]?.issues ?? -1) ? i : best), 0);
-  const total = points.reduce((n, p) => n + p.issues, 0);
-  return { points, labelled: new Set([peak, points.length - 1]), average: points.length ? total / points.length : 0 };
+  const peak = days.reduce((best, d, i) => (d.issues > (days[best]?.issues ?? -1) ? i : best), 0);
+  const labelled = new Set([peak, days.length - 1]);
+  const points = days.map((d, i) => ({
+    ...d,
+    label: dayLabel(d.day),
+    tick: String(Number(d.day.slice(8))),
+    mark: labelled.has(i) && d.issues > 0 ? d.issues : null,
+  }));
+  const total = days.reduce((n, d) => n + d.issues, 0);
+  return { points, average: days.length ? total / days.length : 0 };
+}
+
+export const FEEDBACK_OUTCOMES = ["fixed", "declined", "open"] as const;
+export type FeedbackOutcome = (typeof FEEDBACK_OUTCOMES)[number];
+
+/**
+ * A week's bar with its total carried by the topmost segment drawn (`cap_<outcome>`, null on the
+ * others): a zero segment is not drawn, so a total hung on a fixed segment vanishes with it.
+ */
+export function feedbackBarsOf(weeks: readonly HomeFeedbackWeek[]) {
+  return weeks.map((w) => {
+    const total = w.fixed + w.declined + w.open;
+    const top = [...FEEDBACK_OUTCOMES].reverse().find((o) => w[o] > 0) ?? null;
+    const caps = Object.fromEntries(FEEDBACK_OUTCOMES.map((o) => [`cap_${o}`, o === top ? total : null])) as Record<`cap_${FeedbackOutcome}`, number | null>;
+    return { ...w, label: dayLabel(w.week), total, ...caps };
+  });
 }
 
 /** An average as the chart says it: whole above ten, one decimal below. */
