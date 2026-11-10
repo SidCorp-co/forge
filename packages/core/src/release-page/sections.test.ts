@@ -184,7 +184,7 @@ describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
   };
 
   it('derives settings, migrations and permissions from what the release ships, naming each artifact', () => {
-    expect(actionsOf(changes, UNREAD, NO_NOTES)).toEqual([
+    expect(actionsOf(changes, UNREAD, NO_NOTES, 'draft')).toEqual([
       {
         kind: 'migration',
         ref: 'packages/core/drizzle/migrations/0478_highlights.sql',
@@ -270,7 +270,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
   };
 
   it('asks an admin once for the migrations, naming no file, and for each new required setting though no issue filled a field', () => {
-    const items = actionsOf(none, shipped, NO_NOTES);
+    const items = actionsOf(none, shipped, NO_NOTES, 'draft');
     expect(items.map((i) => `${i.kind}:${i.ref}`)).toEqual([
       'migration:packages/core/drizzle/migrations/0477_preview.sql, packages/core/drizzle/migrations/0478_page.sql',
       'setting:FORGE_VAULT_KEY',
@@ -302,7 +302,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
         },
       ],
     };
-    const items = actionsOf(named, shipped, NO_NOTES);
+    const items = actionsOf(named, shipped, NO_NOTES, 'draft');
     const mig = items.filter((i) => i.kind === 'migration');
     expect(mig).toHaveLength(1);
     expect(mig[0]?.issues).toEqual(['ISS-491']);
@@ -318,7 +318,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
   });
 
   it('claims nothing from a range it did not read', () => {
-    expect(actionsOf(none, UNREAD, NO_NOTES)).toEqual([]);
+    expect(actionsOf(none, UNREAD, NO_NOTES, 'draft')).toEqual([]);
     expect(technicalOf(detail({ changes: none }), kept(UNREAD), null).migrations).toEqual([]);
   });
 });
@@ -373,21 +373,21 @@ describe('a read range is what the release ships, whatever its issues landed bef
   });
 
   it('asks an admin for nothing the range does not ship', () => {
-    expect(actionsOf(earlier, quiet, NO_NOTES)).toEqual([]);
+    expect(actionsOf(earlier, quiet, NO_NOTES, 'draft')).toEqual([]);
   });
 
   it('keeps an issue on an item the range ships and its landing names', () => {
     const ships = { ...quiet, migrations: [MIG] };
     expect(technicalOf(detail({ changes: earlier }), kept(ships), null).migrations).toEqual([MIG]);
-    expect(actionsOf(earlier, ships, NO_NOTES)).toEqual([
+    expect(actionsOf(earlier, ships, NO_NOTES, 'draft')).toEqual([
       expect.objectContaining({ kind: 'migration', ref: MIG, issues: ['ISS-488'] }),
     ]);
   });
 
   it('never reads the journal or a snapshot as a migration, where the range is unread too', () => {
     expect(technicalOf(detail({ changes: earlier }), kept(UNREAD), null).migrations).toEqual([MIG]);
-    expect(actionsOf(earlier, UNREAD, NO_NOTES).filter((a) => a.kind === 'migration')).toEqual([
-      expect.objectContaining({ ref: MIG }),
-    ]);
+    expect(
+      actionsOf(earlier, UNREAD, NO_NOTES, 'draft').filter((a) => a.kind === 'migration'),
+    ).toEqual([expect.objectContaining({ ref: MIG })]);
   });
 });

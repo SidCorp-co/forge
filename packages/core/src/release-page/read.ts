@@ -216,7 +216,7 @@ export async function readReleasePage(args: {
     fixes: changes.fixes,
     internal: changes.internal,
     withoutNotes: changes.withoutNotes,
-    actionRequired: actionsOf(detail.changes, shipped, detail.notes),
+    actionRequired: actionsOf(detail.changes, shipped, detail.notes, detail.state),
     shipped,
     knownIssues: userKnownIssues(knownIssuesOf(page.claims), view),
     technical: view === 'developer' ? technicalOf(detail, range, map) : null,

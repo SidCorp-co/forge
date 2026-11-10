@@ -130,17 +130,21 @@ describe("the developer view's What it changes is the range's own (BC-9, J9 on 0
 
   it('asks an admin only for the migration the range adds, on dev.224, dev.225 and dev.226 (BC-7)', () => {
     expect(
-      actionsOf(landings, dev224, detail(landings).notes).map(
+      actionsOf(landings, dev224, detail(landings).notes, 'draft').map(
         (a) => `${a.kind}:${a.ref}:${a.issues}`,
       ),
     ).toEqual([`migration:${M494}:ISS-452`]);
     const dev225 = { ...dev224, migrations: [M495] };
     expect(
-      actionsOf(landings, dev225, detail(landings).notes).map(
+      actionsOf(landings, dev225, detail(landings).notes, 'draft').map(
         (a) => `${a.kind}:${a.ref}:${a.issues}`,
       ),
     ).toEqual([`migration:${M495}:ISS-455`]);
     const dev226 = { ...dev224, migrations: [] };
-    expect(actionsOf(landings, dev226, detail(landings).notes)).toEqual([]);
+    expect(actionsOf(landings, dev226, detail(landings).notes, 'draft')).toEqual([]);
+  });
+
+  it('asks no backup of a release that has shipped: its deploy has passed', () => {
+    expect(actionsOf(landings, dev224, detail(landings).notes, 'shipped')).toEqual([]);
   });
 });

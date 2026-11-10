@@ -235,7 +235,7 @@ describe("the steps a release's notes name for an admin (BC-7)", () => {
       ],
       skipped: [step('ISS-9', ['Duyệt contract API admin-rest-v1 3.2.0.'], '-')], // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
     };
-    const items = actionsOf(NO_CHANGES, UNREAD, notes);
+    const items = actionsOf(NO_CHANGES, UNREAD, notes, 'draft');
     expect(items.map((i) => [i.kind, i.sentence, i.ref, i.issues])).toEqual([
       ['step', 'Chạy migration cho nguồn site epod.', null, ['ISS-1']], // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
       ['step', worker, null, ['ISS-1', 'ISS-2']],

@@ -21,7 +21,7 @@ import {
   releaseBuildOf,
   releaseEnded,
 } from '@forge/contracts/release-page';
-import type { ReleaseDetail, ReleaseNoteSection } from '@forge/contracts/releases';
+import type { ReleaseDetail, ReleaseNoteSection, ReleaseState } from '@forge/contracts/releases';
 import {
   WHATS_NEW_KIND_OF_SECTION,
   WHATS_NEW_SECTIONS,
@@ -268,15 +268,21 @@ function writtenSteps(notes: ReleaseDetail['notes']): ReleaseActionItem[] {
 
 const byKey = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
 
+/** A step whose moment is the deploy itself: once the release has shipped it is past, never owed. */
+const beforeDeploy = (kind: ReleaseActionKind, change: ArtifactChange) =>
+  kind === 'migration' && change !== 'removed';
+
 /**
  * What an admin must do before or as the release lands (BC-7): the steps its issues' notes name,
  * then what its commit range ships (`shipped`) and what its issues' landings add
- * (`landedArtifacts`), each derived item naming the artifact that owes it and said once.
+ * (`landedArtifacts`), each derived item naming the artifact that owes it and said once. A shipped
+ * release no longer asks for a backup before it deploys: that moment has passed.
  */
 export function actionsOf(
   changes: ReleaseDetail['changes'],
   shipped: ReleaseShipped,
   notes: ReleaseDetail['notes'],
+  state: ReleaseState,
 ): ReleaseActionItem[] {
   const out = new Map<string, ReleaseActionItem>();
   for (const a of [...derivedArtifacts(shipped), ...landedArtifacts(changes, shipped)]) {
@@ -289,6 +295,7 @@ export function actionsOf(
           ? 'setting'
           : null;
     if (!kind) continue;
+    if (state === 'shipped' && beforeDeploy(kind, a.change)) continue;
     const ref = permission ?? a.ref;
     const sentence = SENTENCES[kind][a.change](ref);
     // migrations are said once per sentence, every file they name kept in `ref`
