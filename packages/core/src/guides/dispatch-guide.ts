@@ -198,7 +198,9 @@ approval, design record, review or judge before the landing. It works in batches
    many commits and builders as its files need, and released once with the batch it lands in.
 2. Build in this session, or hand each file-disjoint part to a general-purpose subagent: its issues,
    its tree, the base branch and the standing rules. A gap a loose issue leaves is filled by
-   judgement, the assumption written as one line on the issue or in the commit body. No issue gets
+   judgement, the assumption written as one line on the issue or in the commit body. A screen change a
+   person asked for is not filled by judgement: before the build, each workflow they asked for (what
+   they do and see, the keys and widths they named) is written as the issue's criteria. No issue gets
    its own plan, its own full suite or its own release. When an issue's build starts, move its step
    to build (\`PATCH /api/issues/:id\` \`{ workState: { step: 'build' } }\`): a builder here writes
    none, and core moves it on itself only at a plan, the merge check and the mark.
@@ -220,7 +222,8 @@ approval, design record, review or judge before the landing. It works in batches
    Comment what landed, then hand the lease back.
 5. Release the batch once, on the minimum bar: it builds and the app answers its health check. Then
    one live judge pass over the batch: a criterion's or a requirement BC's verdict is recorded only
-   once it was checked on the running build. A criterion found red there reopens its issue, which
+   once it was checked on the running build, and a screen is checked at the widths the qa guide
+   (${guideRef('qa')}) names. A criterion found red there reopens its issue, which
    goes into the next batch, never a release of its own.
 
 The kernel holds in this mode as in every other: a legal edge with its reason, \`awaiting_release\`
