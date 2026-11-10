@@ -55,6 +55,7 @@ const requirement = (seq: number, title: string, kind: WaitingKind, attentionGro
     facts: { criteria: 2, passing: 0, judged: 0, issuesTotal: 0, proposedRevision: null, draftRevision: null },
     coverage: [],
   },
+  delivery: { liveIssues: 0, startedIssues: 0, closedIssues: 0, criteriaCoverage: { criteria: 2, passing: 0, judged: 0 } },
 });
 const REQUIREMENTS = [
   requirement(34, "Chat is the way in", "you", "needs_you"),
