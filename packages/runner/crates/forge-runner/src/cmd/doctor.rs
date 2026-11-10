@@ -129,6 +129,15 @@ fn config_rows(ctx: &Ctx, cfg: &Config) -> bool {
                 "• repo mcp     {slug}: no .mcp.json in {} — `claude` run there reaches no Forge tools",
                 b.repo_path.display()
             ),
+            RepoMcp::TrackedNoForge => println!(
+                "• repo mcp     {slug}: .mcp.json is tracked by git, so the runner writes no `forge` server into it — `git rm --cached .mcp.json`, ignore it and commit, then re-provision"
+            ),
+            RepoMcp::TrackedCredential => {
+                println!(
+                    "✖ repo mcp     {slug}: .mcp.json is tracked by git and its `forge` server holds a credential, which the next commit of it publishes — delete that entry, `git rm --cached .mcp.json`, ignore it and commit, then re-provision; revoke the token if a commit holding it was ever pushed"
+                );
+                failed = true;
+            }
             RepoMcp::Unreadable(why) => {
                 println!("✖ repo mcp     {slug}: {why}");
                 failed = true;
@@ -220,9 +229,15 @@ fn pool_record_rows(cfg: &Config) -> bool {
 }
 
 /// What a human opening `claude` in a bound checkout would find.
+#[derive(Debug, PartialEq, Eq)]
 enum RepoMcp {
     HasForge,
     NoForgeEntry,
+    /// Git tracks the file and it holds no `forge` server: the runner refuses to write one there.
+    TrackedNoForge,
+    /// Git tracks the file and its `forge` server carries an `Authorization` header: a credential
+    /// in a file that is committed, as an older runner wrote it (ISS-1193).
+    TrackedCredential,
     Missing,
     Unreadable(String),
 }
@@ -233,10 +248,23 @@ fn repo_mcp_state(repo_path: &std::path::Path) -> RepoMcp {
         Ok(raw) => raw,
         Err(_) => return RepoMcp::Missing,
     };
-    match serde_json::from_str::<serde_json::Value>(&raw) {
-        Ok(doc) if doc.pointer("/mcpServers/forge").is_some() => RepoMcp::HasForge,
-        Ok(_) => RepoMcp::NoForgeEntry,
-        Err(e) => RepoMcp::Unreadable(format!("{} is not valid JSON ({e})", path.display())),
+    let doc = match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return RepoMcp::Unreadable(format!("{} is not valid JSON ({e})", path.display()))
+        }
+    };
+    let tracked = runner_workspace::mcp::config::git_tracks(repo_path, ".mcp.json");
+    let forge = doc.pointer("/mcpServers/forge");
+    let bearer = forge
+        .and_then(|f| f.pointer("/headers/Authorization"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|v| !v.trim().is_empty());
+    match (tracked, forge.is_some()) {
+        (true, true) if bearer => RepoMcp::TrackedCredential,
+        (true, false) => RepoMcp::TrackedNoForge,
+        (_, true) => RepoMcp::HasForge,
+        (false, false) => RepoMcp::NoForgeEntry,
     }
 }
 
@@ -770,5 +798,49 @@ fn check_bin(bin: &str, label: &str) -> bool {
             println!("✖ {label:<12} `{bin}` not found on PATH");
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod repo_mcp_tests {
+    use super::*;
+    use std::path::Path;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["-c", "user.email=t@example.invalid", "-c", "user.name=t"])
+            .args(["-c", "commit.gpgsign=false"])
+            .args(args)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {out:?}");
+    }
+
+    const LEAKED: &str = r#"{"mcpServers":{"forge":{"type":"http","url":"https://core.example/mcp","headers":{"Authorization":"Bearer fake-iss1193-token"}}}}"#;
+
+    #[test]
+    fn a_committed_forge_credential_is_named_and_an_ignored_one_is_not() {
+        let repo = std::env::temp_dir().join(format!("doctor-mcp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        std::fs::write(repo.join(".mcp.json"), LEAKED).unwrap();
+        assert_eq!(
+            repo_mcp_state(&repo),
+            RepoMcp::HasForge,
+            "an untracked file holding the credential is what the runner writes on purpose"
+        );
+        git(&repo, &["add", "--", ".mcp.json"]);
+        git(&repo, &["commit", "-q", "-m", "leak"]);
+        git(&repo, &["update-index", "--skip-worktree", "--", ".mcp.json"]);
+        assert_eq!(repo_mcp_state(&repo), RepoMcp::TrackedCredential);
+        std::fs::write(repo.join(".mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+        assert_eq!(repo_mcp_state(&repo), RepoMcp::TrackedNoForge);
+        std::fs::remove_dir_all(&repo).unwrap();
     }
 }
