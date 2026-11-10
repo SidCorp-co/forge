@@ -415,6 +415,14 @@
     "requirements.links.pinsAt": "Version an agree pins",
     "requirements.links.noVersion": "No version",
     "requirements.trace.heading": "Steps per criterion",
-    "requirements.trace.stepsFor": "Steps of {design}"
+    "requirements.trace.stepsFor": "Steps of {design}",
+    "requirements.band.label": "Requirements overview",
+    "requirements.band.inPlay": "In play",
+    "requirements.band.proven": "Criteria proven",
+    "requirements.band.byArea": "Proven by area",
+    "requirements.band.none": "No criteria yet",
+    "requirements.band.area": "Area",
+    "requirements.band.provenCol": "Proven",
+    "requirements.band.criteria": "criteria"
   }
 }

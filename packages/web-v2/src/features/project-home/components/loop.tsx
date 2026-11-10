@@ -4,11 +4,10 @@
 // tone, each stage a lighter tone on it, no frame and no shadow.
 
 import type { ProjectHome } from "@forge/contracts/project-home";
-import { CoverageBar } from "@/design";
+import { CoverageBar, Ring, shareOf } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { type Part, type StageId, shareOf, stageParts } from "../model";
-import { Ring } from "./ring";
+import { type Part, type StageId, stageParts } from "../model";
 
 export interface StageView {
   id: StageId;

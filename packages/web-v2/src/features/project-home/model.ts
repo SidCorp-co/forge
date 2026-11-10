@@ -8,7 +8,7 @@ import type { IssueStatus } from "@forge/contracts/issue-machine";
 import { ISSUE_STATUS_TONES } from "@forge/contracts/issue-vocabulary";
 import { RELEASE_STATE_TONES, type ReleaseState } from "@forge/contracts/releases";
 import { REQUIREMENT_STATE_TONES, type RequirementState } from "@forge/contracts/requirements";
-import { LEGEND, type LegendTone } from "@/design";
+import { dayLabel, dayTick, type LegendTone, peakCaps, stackCaps } from "@/design";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
 export const STAGE_IDS = ["product", "delivery", "release", "audit"] as const;
@@ -78,9 +78,6 @@ export const stageParts = (home: ProjectHome): Record<StageId, Part[]> => ({
   audit: partsOf(home.audit.byKind, AUDIT_PARTS),
 });
 
-/** A share of a whole, 0 where there is no whole. */
-export const shareOf = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
-
 /** Each board column's issues, in the read's order (newest write first). */
 export function boardOf(issues: readonly HomeIssue[]): Map<string, HomeIssue[]> {
   const columnOf = new Map(DELIVERY_COLUMNS.flatMap((c) => c.of.map((s) => [s, c.key] as const)));
@@ -98,30 +95,15 @@ export function trackOf(i: Pick<HomeIssue, "status" | "step">): number {
 
 export const isHighPriority = (priority: string) => priority === "high" || priority === "urgent" || priority === "critical";
 
-const DAY_LABEL = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" });
-
-/** A `YYYY-MM-DD` key as a reader names the day: `Nov 8`. */
-export const dayLabel = (key: string) => DAY_LABEL.format(new Date(`${key}T12:00:00Z`));
-
 export interface ShipChart {
-  /**
-   * One per day. `mark` is the value printed over the bar, set on the highest day and today only and
-   * null elsewhere: the label reads it off its own bar, because a chart draws no bar for a zero day and
-   * an index into the drawn bars is not an index into the days.
-   */
-  points: (HomeShipDay & { label: string; tick: string; mark: number | null })[];
+  /** One per day; `mark` (and `cap_issues`, the same) is printed over the bar on the highest day and today only. */
+  points: (HomeShipDay & { label: string; tick: string; mark: number | null; cap_issues: number | null })[];
   average: number;
 }
 
 export function shipChartOf(days: readonly HomeShipDay[]): ShipChart {
-  const peak = days.reduce((best, d, i) => (d.issues > (days[best]?.issues ?? -1) ? i : best), 0);
-  const labelled = new Set([peak, days.length - 1]);
-  const points = days.map((d, i) => ({
-    ...d,
-    label: dayLabel(d.day),
-    tick: String(Number(d.day.slice(8))),
-    mark: labelled.has(i) && d.issues > 0 ? d.issues : null,
-  }));
+  const marks = peakCaps(days.map((d) => d.issues));
+  const points = days.map((d, i) => ({ ...d, label: dayLabel(d.day), tick: dayTick(d.day), mark: marks[i] ?? null, cap_issues: marks[i] ?? null }));
   const total = days.reduce((n, d) => n + d.issues, 0);
   return { points, average: days.length ? total / days.length : 0 };
 }
@@ -132,21 +114,6 @@ export type FeedbackOutcome = (typeof FEEDBACK_OUTCOMES)[number];
 /** What each outcome means, as its colour: fixed is done well, declined is closed without a change, open still waits. */
 export const FEEDBACK_OUTCOME_TONES: Record<FeedbackOutcome, LegendTone> = { fixed: "ready", declined: "neutral", open: "you" };
 
-/** A tone as a fill, the dot colour its badge draws. */
-export const toneFill = (tone: LegendTone) => LEGEND[tone].dot;
-
-/**
- * A week's bar with its total carried by the topmost segment drawn (`cap_<outcome>`, null on the
- * others): a zero segment is not drawn, so a total hung on a fixed segment vanishes with it.
- */
-export function feedbackBarsOf(weeks: readonly HomeFeedbackWeek[]) {
-  return weeks.map((w) => {
-    const total = w.fixed + w.declined + w.open;
-    const top = [...FEEDBACK_OUTCOMES].reverse().find((o) => w[o] > 0) ?? null;
-    const caps = Object.fromEntries(FEEDBACK_OUTCOMES.map((o) => [`cap_${o}`, o === top ? total : null])) as Record<`cap_${FeedbackOutcome}`, number | null>;
-    return { ...w, label: dayLabel(w.week), total, ...caps };
-  });
-}
-
-/** An average as the chart says it: whole above ten, one decimal below. */
-export const averageText = (n: number) => (n >= 10 ? String(Math.round(n)) : String(Math.round(n * 10) / 10));
+/** A week's bar with its total carried by the topmost segment drawn (`cap_<outcome>`). */
+export const feedbackBarsOf = (weeks: readonly HomeFeedbackWeek[]) =>
+  stackCaps(weeks, FEEDBACK_OUTCOMES).map((w) => ({ ...w, label: dayLabel(w.week), tick: dayLabel(w.week) }));

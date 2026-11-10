@@ -3,7 +3,7 @@
 // expands in place.
 
 import type { ProjectHome } from "@forge/contracts/project-home";
-import { SlideOver } from "@/design";
+import { Ring, SlideOver } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { issuesHref } from "@/lib/routes/issues";
@@ -15,7 +15,6 @@ import { DeliveryBoard } from "./delivery-board";
 import { type StageView, StageBar } from "./loop";
 import { ProductAreas } from "./product-areas";
 import { ReleaseDrawerBody } from "./release-drawer";
-import { Ring } from "./ring";
 
 /** The page that lists all a stage counts. Debt lives on Activity, under the project's own peek. */
 function fullPageOf(id: StageId, slug: string): string {

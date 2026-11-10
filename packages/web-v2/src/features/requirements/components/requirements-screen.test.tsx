@@ -14,7 +14,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 // the grouped list is not what is judged here, and it reads standing facts this fixture leaves out
 vi.mock("@/design", async (orig) => ({ ...(await orig<typeof import("@/design")>()), GroupedList: () => null }));
 vi.mock("@/lib/i18n/eta-clock", () => ({
-  useEtaClock: () => ({ lang: "en", now: Date.now() }),
+  useEtaClock: () => ({ lang: "en", now: Date.parse("2026-10-07T00:00:00.000Z") }),
 }));
 vi.mock("@/features/forecast/hooks", () => ({
   useEtaSort: () => [false, () => {}],
@@ -31,6 +31,8 @@ const req = {
   title: "Tours",
   currentRevision: 2,
   standing: { state: "agreed", attentionGroup: "you", facts: {}, waitingOn: { kind: "you" }, owner: null, touchedAt: "2026-10-06T17:00:00.000Z" },
+  area: null,
+  delivery: { criteriaCoverage: { criteria: 4, passing: 1 } },
 };
 const sug = {
   id: "s1",

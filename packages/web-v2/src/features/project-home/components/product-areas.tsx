@@ -2,10 +2,8 @@
 // how many requirements it holds; the counts behind the share open on hover.
 
 import type { HomeArea } from "@forge/contracts/project-home";
-import { Tooltip } from "@/design";
+import { Ring, shareOf, Tooltip } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { shareOf } from "../model";
-import { Ring } from "./ring";
 
 export function ProductAreas({ areas }: { areas: readonly HomeArea[] }) {
   const t = useCopy();

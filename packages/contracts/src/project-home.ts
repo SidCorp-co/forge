@@ -5,11 +5,18 @@
 // zone a day is counted in.
 
 import type { DebtKind, ImpactRating, ImpactType } from "./cleanup.js";
+import { daysEnding, weekOf, weeksEnding } from "./day-keys.js";
+import { countsAsReport, type FeedbackSummary } from "./feedback.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { WorkStep } from "./issue-vocabulary.js";
 import type { NeedsYouDecision } from "./needs-you-decisions.js";
-import type { ReleaseState } from "./releases.js";
-import type { RequirementState } from "./requirements.js";
+import type { ReleaseState, ReleaseSummary } from "./releases.js";
+import {
+	OUT_OF_PLAY_STATUSES,
+	type RequirementState,
+	type RequirementStatus,
+	type RequirementSummary,
+} from "./requirements.js";
 import type { WrittenLang } from "./written-lang.js";
 
 /** The days the Release stage and the shipped chart read, today included. */
@@ -165,4 +172,125 @@ export interface ProjectHome {
 	/** The last `PROJECT_HOME_WEEKS` weeks, oldest first. */
 	feedback: { weeks: HomeFeedbackWeek[] };
 	needsYou: HomeNeedsYou;
+}
+
+/** How a report has ended so far, by its row's own chip: done is fixed, declined is declined, the rest open. */
+export const feedbackOutcomeOf = (
+	f: Pick<FeedbackSummary, "chip">,
+): "fixed" | "declined" | "open" =>
+	f.chip === "done" ? "fixed" : f.chip === "declined" ? "declined" : "open";
+
+/**
+ * Feedback reported in each of the `n` weeks ending with the week of `today`, oldest first, by how each
+ * report stands now; a duplicate counts under its original, never beside it. The home's chart and the
+ * Feedback page's band read this one rule over the same list.
+ */
+export function feedbackWeeksOf(
+	feedback: readonly Pick<FeedbackSummary, "chip" | "route" | "createdAt">[],
+	dayOf: (at: string) => string,
+	today: string,
+	n: number = PROJECT_HOME_WEEKS,
+): HomeFeedbackWeek[] {
+	const weeks = new Map<string, HomeFeedbackWeek>(
+		weeksEnding(today, n).map((week) => [
+			week,
+			{ week, fixed: 0, declined: 0, open: 0 },
+		]),
+	);
+	for (const f of feedback) {
+		if (!countsAsReport(f)) continue;
+		const w = weeks.get(weekOf(dayOf(f.createdAt)));
+		if (w) w[feedbackOutcomeOf(f)] += 1;
+	}
+	return [...weeks.values()];
+}
+
+/**
+ * Releases shipped on each of the `n` days ending `today`, oldest first, and the issues they carried.
+ * The home's chart and the Releases page's band read this one rule over the same list.
+ */
+export function shipDaysOf(
+	releases: readonly Pick<
+		ReleaseSummary,
+		"state" | "releasedAt" | "issueCount"
+	>[],
+	dayOf: (at: string) => string,
+	today: string,
+	n: number = PROJECT_HOME_DAYS,
+): HomeShipDay[] {
+	const perDay = new Map(
+		daysEnding(today, n).map((day) => [day, { day, releases: 0, issues: 0 }]),
+	);
+	for (const r of releases) {
+		if (r.state !== "shipped" || r.releasedAt === null) continue;
+		const d = perDay.get(dayOf(r.releasedAt));
+		if (!d) continue;
+		d.releases += 1;
+		d.issues += r.issueCount;
+	}
+	return [...perDay.values()];
+}
+
+/** Requirements on the delivery line: agreed and not yet accepted, or accepted. */
+export const LINE_STATES: readonly RequirementState[] = [
+	"agreed",
+	"in_delivery",
+	"delivered",
+	"accepted",
+];
+
+/** A requirement still in play: neither dropped nor refused. */
+export const requirementInPlay = (r: Pick<RequirementSummary, "status">) =>
+	!(OUT_OF_PLAY_STATUSES as readonly RequirementStatus[]).includes(r.status);
+
+type CriteriaRow = Pick<
+	RequirementSummary,
+	"status" | "area" | "standing" | "delivery"
+>;
+
+/**
+ * Criteria proven of all, over the requirements in play on the delivery line, and the same by area
+ * (each area's requirements in play, and how many are being built), largest first. The home's Product
+ * stage and the Requirements page's band read this one rule over the same list.
+ */
+export function criteriaByAreaOf(
+	requirements: readonly CriteriaRow[],
+): Pick<HomeProduct, "criteria" | "areas"> {
+	const playing = requirements.filter(requirementInPlay);
+	const line = playing.filter((r) => LINE_STATES.includes(r.standing.state));
+	const areas = new Map<string | null, HomeArea>();
+	const areaOf = (r: CriteriaRow): HomeArea => {
+		const name = r.area?.name ?? null;
+		const a = areas.get(name) ?? {
+			name,
+			requirements: 0,
+			building: 0,
+			proven: 0,
+			total: 0,
+		};
+		areas.set(name, a);
+		return a;
+	};
+	for (const r of playing) {
+		const a = areaOf(r);
+		a.requirements += 1;
+		if (r.standing.state === "in_delivery") a.building += 1;
+	}
+	for (const r of line) {
+		const a = areaOf(r);
+		a.proven += r.delivery.criteriaCoverage.passing;
+		a.total += r.delivery.criteriaCoverage.criteria;
+	}
+	return {
+		criteria: {
+			proven: line.reduce((n, r) => n + r.delivery.criteriaCoverage.passing, 0),
+			total: line.reduce((n, r) => n + r.delivery.criteriaCoverage.criteria, 0),
+		},
+		areas: [...areas.values()].sort(
+			(a, b) =>
+				b.total - a.total ||
+				b.requirements - a.requirements ||
+				(a.name ?? "\uffff").localeCompare(b.name ?? "\uffff"),
+		),
+	};
 }

@@ -19,6 +19,7 @@ import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import { rowSpaceOf } from '@forge/contracts/needs-you-decisions';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { LINE_STATES as LINE_STATE_LIST } from '@forge/contracts/project-home';
 import {
   PROJECT_STATUS_ROWS,
   type ProjectStatus,
@@ -66,13 +67,8 @@ const DAY_MS = 86_400_000;
 /** The kinds whose turn is a person's: the viewer, a named person, or a role a person holds. */
 const PERSON_KINDS: ReadonlySet<WaitingKind> = new Set(['you', 'person', 'admins', 'writers']);
 
-/** Requirements on the delivery line: agreed and not yet accepted, or accepted. */
-export const LINE_STATES: ReadonlySet<RequirementState> = new Set([
-  'agreed',
-  'in_delivery',
-  'delivered',
-  'accepted',
-]);
+/** Requirements on the delivery line (`project-home.ts:LINE_STATES`, the home's rule too). */
+const LINE_STATES: ReadonlySet<RequirementState> = new Set(LINE_STATE_LIST);
 
 const byKey = (a: { key: string }, b: { key: string }) =>
   a.key.localeCompare(b.key, 'en', { numeric: true });

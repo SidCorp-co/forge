@@ -65,6 +65,19 @@ describe("Requirements leads with names, never keys (REQ-11 BC-19)", () => {
     expect(within(row).getByTitle("REQ-1").textContent).toBe("Sign-in");
   });
 
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the page opens on its overview, above the list, and each
+  // state's count there is the list's own (L-57)
+  it("opens on its overview band above the list, its state counts summing to the list's groups", () => {
+    requirements();
+    const band = screen.getByTestId("requirements-band");
+    const list = screen.getByTestId("grouped-list");
+    expect(band.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const flow = within(band).getAllByTestId("coverage-part-count").map((c) => Number(c.textContent));
+    const groups = within(list).getAllByTestId("group-count").map((c) => Number(c.textContent));
+    expect(flow.reduce((a, b) => a + b, 0)).toBe(groups.reduce((a, b) => a + b, 0));
+    expect(within(band).getByTestId("requirements-band-chart")).toBeInTheDocument();
+  });
+
   it("stays within the first view's budget of 300 words (BC-21)", () => {
     const { container } = requirements();
     expect(faceWords(container)).toBeLessThanOrEqual(300);

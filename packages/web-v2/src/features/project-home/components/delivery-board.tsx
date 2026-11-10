@@ -3,11 +3,11 @@
 // release it is, and its age. A column counts every issue it holds, though it names at most a few.
 
 import type { HomeDelivery, HomeIssue } from "@forge/contracts/project-home";
-import { Badge, Tooltip } from "@/design";
+import { Badge, toneFill, Tooltip } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { issueHref, issuesHref } from "@/lib/routes/issues";
-import { boardOf, DELIVERY_COLUMNS, isHighPriority, toneFill, trackOf } from "../model";
+import { boardOf, DELIVERY_COLUMNS, isHighPriority, trackOf } from "../model";
 
 /** The cards one column names; the rest are counted in its header and open on the Issues page. */
 const COLUMN_CARDS = 6;

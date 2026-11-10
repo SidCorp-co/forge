@@ -8,7 +8,7 @@ Every piece on this page is rendered at `/dev/design`.
 
 | Template | Use it for | Slots | Blocks that fill them |
 |---|---|---|---|
-| `ListPage` + `useListPage` | records to scan and open | `title` `titleAfter` `actions` `lead` `toolbar` `peek` `children` | `ListSearch` `ToolbarSelect` `FilterChip` · `GroupedList` or `RowList` · `PeekPanel` + `PeekHead` + `PeekExcerpt`; `useListPage` holds the search, filters, groups, fold and peek in the URL |
+| `ListPage` + `useListPage` | records to scan and open | `title` `titleAfter` `actions` `overview` `lead` `toolbar` `peek` `children` | `OverviewBand` (figures, `CoverageBar` flow, one `BarChartFigure` or `ShareBars`) · `ListSearch` `ToolbarSelect` `FilterChip` · `GroupedList` or `RowList` · `PeekPanel` + `PeekHead` + `PeekExcerpt`; `useListPage` holds the search, filters, groups, fold and peek in the URL |
 | `DetailPage` | one record | `header` `rail` `lead` `tabs` `label` `children` | `DetailHeader` · `FactsRail` `FactsGroup` `Fact` · `DetailTabs` + `useUrlTab` · `Section` `PropertyList` `RowList` |
 | `SettingsPage` | configuration | `title` `actions` `nav` `children` | `SettingsGroup` `SettingRow` `FormActions` · `Field` + `placeRefusals` |
 | `BoardPage` | work by stage | `title` `actions` `toolbar` `children` | `KanbanColumn` `KanbanCard` |
@@ -52,6 +52,8 @@ Owner rulings, 2026-11-05:
 | `PropertyList` / `Property` | label and value rows in a main column |
 | `FactsRail` / `FactsGroup` / `Fact` | label and value rows in a detail rail |
 | `StatRow` / `StatCell` | headline numbers in one flush row; given `cells`, it wraps into even lines |
+| `OverviewBand` | what a state screen opens on: its figures (`Ring` for a share), its states' flow with counts, toned by meaning, and one chart |
+| `BarChartFigure` / `ShareBars` | a chart carrying its own numbers: each bar prints its row's `cap_<series>` (`peakCaps`, `stackCaps`), a table for screen readers; `ShareBars` prints `part/whole` per row |
 | `ContentsList` / `ContentsMenu` | a long page's groups: a list atop the facts rail marking the one in view, or one menu control where there is no rail |
 | `SettingsGroup` / `SettingRow` / `FormActions` | labelled controls, a hint or a refusal under each, one save bar |
 | `Disclosure` | a fold: label, count or summary, chevron |

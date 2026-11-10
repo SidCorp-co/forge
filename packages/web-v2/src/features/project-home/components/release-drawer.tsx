@@ -6,7 +6,7 @@ import type { HomeRelease, HomeReleaseStage } from "@forge/contracts/project-hom
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { releaseHref } from "@/lib/routes/releases";
-import { dayLabel } from "../model";
+import { dayLabel } from "@/design";
 
 const W = 560;
 const H = 132;

@@ -1,5 +1,6 @@
 
-// The Requirements list (REQ-29): the view in the top header, a search, the BA assistant's open
+// The Requirements list (REQ-29): the view in the top header, the overview band (REQ-43 r3 BC-14,
+// `requirements-band.tsx`), a search, the BA assistant's open
 // suggestions, then one line per requirement by whose turn it is or by business area, or the Map of
 // stages and Now, Next and Later (`requirement-roadmap.ts:roadmapHorizonOf`, the rule the status
 // report's roadmap reads). Each row reads core's standing (`requirements/standing.ts`); nothing here
@@ -31,6 +32,7 @@ import { REQUIREMENT_TITLE_MAX } from "@forge/contracts/title-text";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
 import { RequirementPeek } from "./requirement-peek";
+import { RequirementsBand } from "./requirements-band";
 
 // a title alone creates it: the assistant drafts the rest and its author is asked why (REQ-34 BC-4, BC-17);
 // the title owns the path core refuses a create on, so a refusal is read where it is fixed (BC-18)
@@ -201,6 +203,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           testId="requirements-screen"
           title={t("requirements.title")}
           titleAfter={switcher("header")}
+          overview={all.length > 0 ? <RequirementsBand rows={list.rows} /> : null}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
               {t("requirements.new")}

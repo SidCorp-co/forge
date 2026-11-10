@@ -25,6 +25,8 @@ export interface ListPageProps {
   titleAfter?: ReactNode;
   /** The one primary act: in the top bar. */
   actions?: ReactNode;
+  /** The OverviewBand the page opens on: its figures, its states' flow and one chart, above the list. */
+  overview?: ReactNode;
   /** What opens above the filter bar on an act: a create form. */
   lead?: ReactNode;
   /** ListSearch, ToolbarSelect and FilterChip children of the filter bar. */
@@ -37,10 +39,11 @@ export interface ListPageProps {
 }
 
 /** Records to scan and open: filter bar, list, peek beside it. */
-export function ListPage({ title, titleAfter, actions, lead, toolbar, peek, children, testId }: ListPageProps) {
+export function ListPage({ title, titleAfter, actions, overview, lead, toolbar, peek, children, testId }: ListPageProps) {
   return (
     <div className="min-h-full bg-app" data-testid={testId}>
       <Head title={title} after={titleAfter} actions={actions} />
+      {overview}
       {lead}
       {toolbar ? <ListToolbar>{toolbar}</ListToolbar> : null}
       <ListLayout peek={peek}>{children}</ListLayout>

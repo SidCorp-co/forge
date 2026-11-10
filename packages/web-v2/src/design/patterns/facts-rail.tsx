@@ -106,9 +106,9 @@ export function CoverageBar({ segments, legend = true }: { segments: readonly Co
       {legend ? (
         <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-12">
           {present.map((s) => (
-            <li key={s.key} className="inline-flex items-center gap-1.5 text-muted" title={s.hint}>
+            <li key={s.key} className="inline-flex items-center gap-1.5 text-muted" title={s.hint} data-testid="coverage-part" data-key={s.key}>
               <span aria-hidden className="size-2 rounded-[2px]" style={{ background: fillOf(s) }} />
-              {s.label} <b className="font-semibold text-fg">{s.count}</b>
+              {s.label} <b className="font-semibold text-fg" data-testid="coverage-part-count">{s.count}</b>
             </li>
           ))}
         </ul>
