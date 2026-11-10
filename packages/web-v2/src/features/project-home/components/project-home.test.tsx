@@ -141,6 +141,11 @@ describe("the project home (REQ-43 BC-14..BC-18)", () => {
   it("opens a stage's drawer with its picture on a press, and Esc closes it; nothing expands in place", async () => {
     await open();
     expect(screen.queryByTestId("home-board")).toBeNull();
+    // the stretched button (owner's gate, ISS-1196): the stage's control holds its name alone, never a list or a block
+    for (const id of ["product", "delivery", "release", "audit"]) {
+      expect(screen.getByTestId(`home-stage-${id}`).querySelector("div, ul, ol, li, p, section, svg")).toBeNull();
+    }
+    expect(screen.getByTestId("home-stage-delivery")).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(screen.getByTestId("home-stage-delivery"));
     const drawer = await screen.findByTestId("home-drawer-delivery");
     expect(within(drawer).getAllByTestId("home-issue-card")).toHaveLength(3);

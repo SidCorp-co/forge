@@ -66,22 +66,28 @@ function ReturnLine({ label }: { label: string }) {
   );
 }
 
-export function Loop({ stages, onOpen }: { stages: readonly StageView[]; onOpen: (id: StageId) => void }) {
+export function Loop({ stages, open, onOpen }: { stages: readonly StageView[]; open: StageId | null; onOpen: (id: StageId) => void }) {
   const t = useCopy();
   return (
     <section aria-label={t("home.loop")} className="bg-sunken p-2 md:p-3" data-testid="home-loop">
       <ol className="m-0 flex list-none flex-col p-0 md:flex-row md:items-stretch">
         {stages.map((s, i) => (
           <li key={s.id} className="flex min-w-0 flex-1 flex-col md:flex-row">
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              onClick={() => onOpen(s.id)}
-              data-testid={`home-stage-${s.id}`}
-              className="flex min-w-0 flex-1 flex-col gap-2 rounded-md bg-surface px-4 py-3 text-left transition-colors hover:bg-hover focus-visible:shadow-focus focus-visible:outline-none"
-            >
-              <span className="text-12 font-semibold uppercase tracking-wide text-subtle">{t(`home.stage.${s.id}`)}</span>
-              <span className="flex items-center gap-3">
+            {/* the stretched button: the stage's name is the one control, its ::after covering the whole
+                stage, so the figures, bar and legend stay plain content beside it */}
+            <section aria-labelledby={`home-stage-${s.id}-name`} className="relative flex min-w-0 flex-1 flex-col gap-2 rounded-md bg-surface px-4 py-3 transition-colors hover:bg-hover" data-testid={`home-stage-${s.id}-card`}>
+              <button
+                type="button"
+                id={`home-stage-${s.id}-name`}
+                aria-haspopup="dialog"
+                aria-expanded={open === s.id}
+                onClick={() => onOpen(s.id)}
+                data-testid={`home-stage-${s.id}`}
+                className="self-start text-left text-12 font-semibold uppercase tracking-wide text-subtle after:absolute after:inset-0 after:rounded-md focus-visible:outline-none focus-visible:after:shadow-focus"
+              >
+                {t(`home.stage.${s.id}`)}
+              </button>
+              <p className="m-0 flex items-center gap-3">
                 {s.ring !== null ? <Ring share={s.ring} /> : null}
                 <span className="flex min-w-0 flex-col">
                   <span className="text-24 font-semibold tabular-nums text-fg" data-testid={`home-stage-${s.id}-figure`}>
@@ -89,10 +95,10 @@ export function Loop({ stages, onOpen }: { stages: readonly StageView[]; onOpen:
                   </span>
                   <span className="text-13 text-muted">{s.unit}</span>
                 </span>
-              </span>
+              </p>
               <StageBar parts={s.parts} />
-              <span className="text-12 text-subtle">{s.sub}</span>
-            </button>
+              <p className="m-0 text-12 text-subtle">{s.sub}</p>
+            </section>
             {i < stages.length - 1 ? <Arrow /> : null}
           </li>
         ))}

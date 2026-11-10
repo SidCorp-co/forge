@@ -31,7 +31,7 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
   const stages = stageViews(home, t);
   return (
     <div className="flex flex-col gap-4" data-testid="project-home">
-      <Loop stages={stages} onOpen={setOpen} />
+      <Loop stages={stages} open={open} onOpen={setOpen} />
       <NeedsYouRows slug={slug} needsYou={home.needsYou} />
       <div className="grid grid-cols-1 gap-6 border-t border-line-divider pt-4 md:grid-cols-2">
         <ShippedChart days={home.release.days} />
