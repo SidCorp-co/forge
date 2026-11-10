@@ -610,16 +610,14 @@ fn session_file(
     let Ok(text) = std::str::from_utf8(&bytes) else {
         return SessionFile::Unreadable(String::from("it is not valid UTF-8"));
     };
-    // A file that exists at all over a project declaring nothing is a mismatch, whatever it holds:
-    // `write_session` deletes the file for an empty declaration rather than writing an empty one.
-    if servers.is_empty() {
-        return SessionFile::Differs;
-    }
+    // Over a project declaring nothing, a file matches only where it holds the `forge` server
+    // alone that this box adds over a tracked `.mcp.json`: `write_session` writes no empty one.
     match runner_workspace::mcp::config::session_servers(text) {
-        None => SessionFile::Unparseable,
-        Some(on_disk) if runner_workspace::mcp::config::same_servers(&on_disk, servers) => {
+        Some(on_disk) if runner_workspace::mcp::config::carries_declared(&on_disk, servers) => {
             SessionFile::Matches
         }
+        _ if servers.is_empty() => SessionFile::Differs,
+        None => SessionFile::Unparseable,
         Some(_) => SessionFile::Differs,
     }
 }
@@ -671,6 +669,10 @@ fn mcp_verdict(
             SessionFile::Absent => (
                 Mark::Ok,
                 format!("no MCP servers declared, and nothing is written at {file}"),
+            ),
+            SessionFile::Matches => (
+                Mark::Ok,
+                format!("no MCP servers declared; {file} holds only `forge`, as the checkout's git tracks its .mcp.json"),
             ),
             _ => (
                 Mark::Fail,

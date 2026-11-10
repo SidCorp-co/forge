@@ -270,14 +270,12 @@ pub(crate) fn read_session_config_in(
             return SessionConfigRead::Unreadable(format!("{}: {e}", path.display()));
         }
     };
-    let matches = match (on_disk, servers.is_empty()) {
+    let matches = match on_disk {
         // No file and nothing to declare: a pane started with no `--mcp-config`
         // is exactly what this project asks for.
-        (None, true) => true,
-        (None, false) => false,
-        (Some(_), true) => false,
-        (Some(text), false) => {
-            session_servers(&text).is_some_and(|on_disk| same_servers(&on_disk, servers))
+        None => servers.is_empty(),
+        Some(text) => {
+            session_servers(&text).is_some_and(|on_disk| carries_declared(&on_disk, servers))
         }
     };
     if matches {
@@ -285,6 +283,22 @@ pub(crate) fn read_session_config_in(
     } else {
         SessionConfigRead::Differs
     }
+}
+
+/// Whether a master's session file declares what core declares, a relay ticket's rotation and the
+/// `forge` server [`write_master_session`] adds over a tracked `.mcp.json` aside. Over a project
+/// declaring nothing, only a file holding that `forge` server alone matches: `write_session`
+/// writes none otherwise.
+pub fn carries_declared(
+    on_disk: &serde_json::Map<String, Value>,
+    declared: &serde_json::Map<String, Value>,
+) -> bool {
+    let mut rest = on_disk.clone();
+    let added = !declared.contains_key(FORGE_SERVER) && rest.remove(FORGE_SERVER).is_some();
+    if declared.is_empty() {
+        return added && rest.is_empty();
+    }
+    same_servers(&rest, declared)
 }
 
 /// The `mcpServers` map a session config document holds, or `None` where the

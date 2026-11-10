@@ -361,7 +361,6 @@ pub fn write_persistent(
     if git_tracks(repo_path, ".mcp.json") {
         return Err(tracked_refusal(&path));
     }
-    let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
     let from_server = credential
         .map(str::trim)
         .filter(|c| !c.is_empty())
@@ -375,14 +374,7 @@ pub fn write_persistent(
         );
         return Ok(PersistentMcp::SkippedNoPat);
     };
-    let forge_server = serde_json::json!({
-        "type": "http",
-        "url": mcp_url,
-        "headers": {
-            "Authorization": format!("Bearer {pat}"),
-            "X-Forge-Project-Slug": project_slug
-        }
-    });
+    let forge_server = forge_server(core_url, &pat, project_slug);
 
     // Start from the existing doc when present so other servers survive. A
     // malformed existing file is a refuse-to-clobber situation, not a reset.
@@ -416,6 +408,21 @@ pub fn write_persistent(
     std::fs::write(&path, body)?;
     ensure_git_excluded(repo_path, ".mcp.json");
     Ok(PersistentMcp::Written)
+}
+
+/// The `forge` server a checkout's own `claude` reaches Forge through: `core_url`'s MCP endpoint,
+/// carrying `credential` and the project's slug. One shape wherever the runner leaves it for a
+/// session that is not a job's: the checkout's `.mcp.json`, or a master pane's session config
+/// where git tracks that file.
+pub(crate) fn forge_server(core_url: &str, credential: &str, project_slug: &str) -> Value {
+    serde_json::json!({
+        "type": "http",
+        "url": format!("{}/mcp", core_url.trim_end_matches('/')),
+        "headers": {
+            "Authorization": format!("Bearer {credential}"),
+            "X-Forge-Project-Slug": project_slug
+        }
+    })
 }
 
 /// The variable the `forge` CLI reads a borrowed account from: a path to a
@@ -505,31 +512,33 @@ fn borrowed_credential_from(var: Option<std::ffi::OsString>) -> Result<Option<Bo
     let Some(path) = var.filter(|v| !v.is_empty()).map(PathBuf::from) else {
         return Ok(None);
     };
-    let refused = |why: String| {
+    let borrowed = read_borrow(&path).map_err(|why| {
         Error::Config(format!(
             "${CLI_BORROW_VAR} names {}, which {why}; this pane's project credential is that \
              file's `token`, written when the checkout was provisioned — re-provision the checkout",
             path.display()
         ))
-    };
-    let body =
-        std::fs::read_to_string(&path).map_err(|e| refused(format!("cannot be read ({e})")))?;
-    let doc: Value = serde_json::from_str(&body).map_err(|e| {
-        refused(format!(
-            "is not the {{url, token}} JSON it should hold ({e})"
-        ))
     })?;
+    Ok(Some(borrowed))
+}
+
+/// The `{url, token}` [`write_cli_borrow`] left at `path`, or why the file holds none, in words
+/// that follow the file's name.
+pub(crate) fn read_borrow(path: &Path) -> std::result::Result<Borrowed, String> {
+    let body = std::fs::read_to_string(path).map_err(|e| format!("cannot be read ({e})"))?;
+    let doc: Value = serde_json::from_str(&body)
+        .map_err(|e| format!("is not the {{url, token}} JSON it should hold ({e})"))?;
     let field = |name: &str| {
         doc.get(name)
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .map(str::to_string)
-            .ok_or_else(|| refused(format!("holds no `{name}`")))
+            .ok_or_else(|| format!("holds no `{name}`"))
     };
     let token = field("token")?;
     let url = field("url")?.trim_end_matches('/').to_string();
-    Ok(Some(Borrowed { url, token }))
+    Ok(Borrowed { url, token })
 }
 
 /// Whether the git work tree at `repo` tracks `path` (relative to `repo`), a skip-worktree mark
@@ -550,7 +559,7 @@ pub fn git_tracks(repo: &Path, path: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
-// ISS-1193: `info/exclude` hides only untracked files, so a tracked `.mcp.json` written with the bearer is a credential the next `git commit -a` publishes; no untracked place Claude Code reads stays out of a confined session's view (`~/.claude.json` is mounted writable), so the runner refuses rather than moving the token there
+// ISS-1193: `info/exclude` hides only untracked files, so a tracked `.mcp.json` written with the bearer is a credential the next `git commit -a` publishes; no untracked place Claude Code reads stays out of a confined session's view (`~/.claude.json` is mounted writable), so the runner refuses rather than moving the token there, and a master pane gets `forge` from its owner-only session config (`master_session.rs`)
 /// Why the `forge` server is not written into a checkout that tracks its `.mcp.json`, and what
 /// the operator does about it.
 fn tracked_refusal(path: &Path) -> Error {
@@ -559,8 +568,8 @@ fn tracked_refusal(path: &Path) -> Error {
          credential into it: a tracked file is committed and pushed with it, and an `info/exclude` \
          line hides only untracked files. Nothing was written. To give `claude` run by hand in \
          this folder the `forge` server, stop tracking the file (`git rm --cached .mcp.json`, \
-         ignore it, commit), then re-provision. Panes the runner starts here still reach Forge \
-         through the `forge` CLI.",
+         ignore it, commit), then re-provision. A master pane started here is handed the \
+         `forge` server in its own session config instead.",
         path.display()
     ))
 }

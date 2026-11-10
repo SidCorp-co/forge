@@ -85,7 +85,8 @@ pub enum ForgeAbsentBecause {
     /// An operator PAT IS stored here, so a re-provision has one to write.
     WhileACredentialIsHere,
     /// The checkout's git tracks its `.mcp.json`, which [`write_persistent`] refuses to put a
-    /// credential in, so no re-provision writes the entry there.
+    /// credential in, and the session config holds no `forge` either: [`write_master_session`]
+    /// adds it there only from the checkout credential a provision leaves for the project's panes.
     WhileTheFileIsTracked,
 }
 
@@ -204,8 +205,10 @@ impl PaneReach {
             ),
             ForgeReach::Absent(ForgeAbsentBecause::WhileTheFileIsTracked) => format!(
                 "declares {held} and NOT `forge`: {} is tracked by the checkout's git, so the \
-                 runner writes no credential into it and a re-provision is refused — stop tracking \
-                 it (`git rm --cached .mcp.json`, ignore it, commit), then re-provision",
+                 runner writes no credential into it, and the session config got no `forge` either \
+                 because no checkout credential was left for this project's panes — re-provision \
+                 the checkout so the next pane gets one; a human's `claude` there gets `forge` only \
+                 once the file is untracked (`git rm --cached .mcp.json`, ignore it, commit)",
                 self.repo_path.display()
             ),
             ForgeReach::Undetermined => format!(
@@ -307,9 +310,12 @@ not something this pane can tell you.{TAIL}",
             ),
             ForgeAbsentBecause::WhileTheFileIsTracked => format!(
                 "\nWhat is observed: there is no `{FORGE_SERVER}` entry in `{}`, and the checkout's \
-git tracks that file. The runner never writes a credential into a tracked file, so re-provisioning \
-does not add the entry; the operator stops tracking the file (`git rm --cached .mcp.json`, ignore \
-it, commit) and then re-provisions. Until then, reach Forge through the `forge` CLI.{TAIL}",
+git tracks that file, so the runner writes no credential into it. A master pane over such a \
+checkout is handed `forge` in its session config instead, from the checkout credential the \
+provision leaves for the project's panes, and this box held none when this pane started: the \
+operator re-provisions the checkout. A human's `claude` there reaches `forge` only once the file is \
+untracked (`git rm --cached .mcp.json`, ignore it, commit). Until then, reach Forge through the \
+`forge` CLI.{TAIL}",
                 self.repo_path.display()
             ),
         }
