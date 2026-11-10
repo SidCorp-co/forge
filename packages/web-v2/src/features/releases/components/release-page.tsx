@@ -1,13 +1,15 @@
-// A release page in the approved report shape (ISS-1001): its one proof number, what users see by
-// screen, what needs the decider's attention, and everything technical — change requests, the
-// promotion branch, commits, the roster and the release's own record — behind one collapsed
-// "Technical" section. The one act it waits on sits once, in the header (`release-item-screen.tsx`).
+// A release page in the approved report shape (ISS-1001): where it stands on its own lifecycle drawn
+// as a step track, its one proof number, what users see by screen, what needs the decider's
+// attention, and everything technical — change requests, the promotion branch, commits, the roster and
+// the release's own record — behind one "Technical" line that opens a side drawer, never in place
+// (REQ-43 r3 BC-17). The one act it waits on sits once, in the header (`release-item-screen.tsx`).
 
 import { RELEASE_CHANGE_GROUPS, releaseGlanceOf } from "@forge/contracts/release-digest";
+import type { ReleaseState } from "@forge/contracts/releases";
 import { useState } from "react";
-import { Property, PropertyList } from "@/design";
+import { Property, PropertyList, SlideOver, StepBar, statusReading } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRelease, useReleasePage } from "../hooks";
 import { releaseProofOf } from "../proof";
 import { releaseStandingOf } from "../release-standing";
@@ -103,6 +105,30 @@ function NextStep({ r }: { r: ReleaseDetail }) {
   );
 }
 
+/**
+ * Draft → (awaiting approval) → going out → shipped, or landed where the release ends at merge, as a
+ * bar naming no state (the header's badge names it); a returned, failed or aborted release reads off
+ * the track and draws none.
+ */
+export function ReleaseSteps({ r }: { r: ReleaseDetail }) {
+  const language = useInterfaceLanguage();
+  const track: ReleaseState[] = ["draft", ...(r.approvalRequired ? (["awaiting_approval"] as const) : []), "in_progress", r.state === "landed" ? "landed" : "shipped"];
+  const at = track.indexOf(r.state);
+  if (at < 0) return null;
+  const last = track.length - 1;
+  return (
+    <div data-testid="release-steps">
+      <StepBar
+        named={false}
+        steps={track.map((s, i) => {
+          const reading = statusReading("releaseState", s, language);
+          return { key: s, label: reading.label, tone: reading.tone, state: i < at || (i === at && i === last) ? "done" : i === at ? "now" : "next" };
+        })}
+      />
+    </div>
+  );
+}
+
 function TechnicalFold({ projectId, r, slug }: { projectId: string; r: ReleaseDetail; slug: string }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
@@ -116,24 +142,35 @@ function TechnicalFold({ projectId, r, slug }: { projectId: string; r: ReleaseDe
     ...(r.promotion ? [t("releases.technical.promotion")] : []),
   ];
   return (
-    <details className="border-t border-line-subtle" data-testid="release-technical-fold" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="cursor-pointer py-3 text-13 text-muted hover:text-fg" data-testid="release-technical-summary" data-tour="rel-technical">
+    <div className="border-t border-line-subtle" data-testid="release-technical-fold">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        className="py-3 text-left text-13 text-muted hover:text-fg"
+        data-testid="release-technical-summary"
+        data-tour="rel-technical"
+      >
         {said.join(" · ")}
-      </summary>
-      {open ? (
-        <div className="grid gap-6 pb-6" data-testid="release-technical-body">
-          <WhereItStands r={r} approvers={approvers} />
-          {r.head ? <p className="font-mono text-12 text-muted">{t("releases.technical.build", { sha: shortSha(r.head) })}</p> : null}
-          <ReleaseTagLine r={r} />
-          <ShippedFailingBanner r={r} />
-          <EndedAttempt r={r} slug={slug} />
-          <ReleasePromotionBlock promotion={r.promotion} slug={slug} />
-          <ReleaseMerges issues={r.issues} slug={slug} />
-          <ReleaseRecord r={r} slug={slug} />
-          <DeveloperNotes projectId={projectId} version={r.version} slug={slug} />
-        </div>
-      ) : null}
-    </details>
+      </button>
+      <SlideOver open={open} onClose={() => setOpen(false)} title={t("releases.technical.title")} width={760}>
+        {/* the developer view is read only once the drawer is opened */}
+        {open ? (
+          <div className="grid gap-6 pb-6" data-testid="release-technical-body">
+            <WhereItStands r={r} approvers={approvers} />
+            {r.head ? <p className="font-mono text-12 text-muted">{t("releases.technical.build", { sha: shortSha(r.head) })}</p> : null}
+            <ReleaseTagLine r={r} />
+            <ShippedFailingBanner r={r} />
+            <EndedAttempt r={r} slug={slug} />
+            <ReleasePromotionBlock promotion={r.promotion} slug={slug} />
+            <ReleaseMerges issues={r.issues} slug={slug} />
+            <ReleaseRecord r={r} slug={slug} />
+            <DeveloperNotes projectId={projectId} version={r.version} slug={slug} />
+          </div>
+        ) : null}
+      </SlideOver>
+    </div>
   );
 }
 
@@ -148,6 +185,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
         return (
           <div className="grid max-w-4xl gap-6 px-8 py-5 max-md:px-4" data-testid="release-detail" data-key={r.key}>
             <div className="grid gap-2">
+              <ReleaseSteps r={r} />
               <ReleaseProofBar proof={releaseProofOf(r.verified)} />
               <NextStep r={r} />
               <ReleaseSites r={r} />

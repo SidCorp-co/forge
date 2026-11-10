@@ -137,20 +137,24 @@ describe("the release page in the report shape (ISS-1001)", () => {
     expect(document.body).not.toHaveTextContent("Needs attention");
   });
 
-  it("keeps change requests, the commit and the developer notes behind one collapsed Technical section", async () => {
+  // REQ-43 r3 BC-17: the technical detail opens in a side drawer, never in place
+  it("keeps change requests, the commit and the developer notes behind one Technical drawer", async () => {
     const calls = serve();
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    const fold = await screen.findByTestId("release-technical-fold");
-    expect(fold).not.toHaveAttribute("open");
+    await screen.findByTestId("release-technical-fold");
+    // its progress drawn first: where it stands on its own lifecycle, then its proof
+    const steps = within(screen.getByTestId("release-steps")).getByTestId("step-bar");
+    expect(steps.compareDocumentPosition(screen.getByTestId("release-proof")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("release-technical-summary")).toHaveAttribute("aria-expanded", "false");
     // the issue count sits on the fold that lists them, never as "Issues 2" with no list (ISS-1179 item 6)
     expect(screen.getByTestId("release-technical-summary")).toHaveTextContent("Technical · Issues 2 · Change requests 1");
     expect(screen.getByTestId("release-proof")).not.toHaveTextContent("Issues");
     expect(screen.queryByTestId("release-technical-body")).toBeNull();
     // the developer view is not read until the section is opened
     expect(calls.some((c) => c.path.endsWith("view=developer"))).toBe(false);
-    (fold as HTMLDetailsElement).open = true;
-    fireEvent(fold, new Event("toggle"));
+    fireEvent.click(screen.getByTestId("release-technical-summary"));
     const body = await screen.findByTestId("release-technical-body");
+    expect(screen.getByRole("dialog")).toContainElement(body);
     expect(body).toHaveTextContent(SHA.slice(0, 7));
     expect(await within(body).findByTestId("page-technical")).toBeTruthy();
     expect(calls.some((c) => c.path.endsWith("view=developer"))).toBe(true);
@@ -164,10 +168,9 @@ describe("the release page in the report shape (ISS-1001)", () => {
     ];
     serve(userPage({ header: { ...userPage().header, approvers: people } }));
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    const fold = await screen.findByTestId("release-technical-fold");
+    await screen.findByTestId("release-technical-fold");
     await screen.findByTestId("release-report");
-    (fold as HTMLDetailsElement).open = true;
-    fireEvent(fold, new Event("toggle"));
+    fireEvent.click(screen.getByTestId("release-technical-summary"));
     const approvers = await screen.findByTestId("standing-approvers");
     expect(approvers).toHaveTextContent("May approve");
     expect(approvers).toHaveTextContent("Linh, Ada");
@@ -224,11 +227,10 @@ describe("the proof number and the Technical section's roster say one count (BC-
   it("reads the same proven and total in the proof bar and the roster's rows", async () => {
     serve(page, { ...DETAIL, verified, criteria: { proven: 4, failing: 1, open: 1, unproven: 0, total: 6 } });
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    const fold = await screen.findByTestId("release-technical-fold");
+    await screen.findByTestId("release-technical-fold");
     expect(screen.getByTestId("release-proof")).toHaveAttribute("data-proven", "4");
     expect(screen.getByTestId("release-proof")).toHaveAttribute("data-total", "6");
-    (fold as HTMLDetailsElement).open = true;
-    fireEvent(fold, new Event("toggle"));
+    fireEvent.click(screen.getByTestId("release-technical-summary"));
     await screen.findByTestId("page-requirements");
     // the requirement's 3 proven rows, the untraced one, and the 2 still open sum to the bar's 6
     expect(screen.getByTestId("page-requirement")).toHaveTextContent("3 checks trace to REQ-1");
