@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.647] - 2026-11-10
+
+Every state screen opens on its overview, even over an empty list
+
+### Fixed
+
+- **Every state screen opens on its overview, even when empty.** Home, Attention, Runners, Channels, Approvals, Issues, Requirements, Feedback and Releases show their band reading zero above the empty state; Home's Idle and Approvals' Not counted here open side drawers.
+
 ## [0.4.0-dev.646] - 2026-11-10
 
 Chat account links hold in every project; home rows read in one line
