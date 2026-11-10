@@ -77,7 +77,7 @@ import {
 } from './forge-door/index.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/index.js';
-import { instanceSettingsRoutes } from './instance-settings/index.js';
+import { instanceSettingsRoutes, pluginArchiveRoutes } from './instance-settings/index.js';
 import { intakeRoutes } from './intake/routes.js';
 import {
   deviceGitCredentialRoutes,
@@ -270,11 +270,19 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   // the install routes reach nothing outside themselves (.arch.json install-is-pure), so the
   // validator closing their query is held where they are mounted
   for (const at of ['', '/api']) {
-    for (const path of ['/install.sh', '/install/latest.json', '/install/bin/:target']) {
+    for (const path of [
+      '/install.sh',
+      '/install-plugin.sh',
+      '/install/latest.json',
+      '/install/bin/:target',
+    ]) {
       app.use(`${at}${path}`, INSTALL_IS_PUBLIC, noQuery);
     }
   }
   for (const at of ['/', '/api']) app.route(at, installRoutes);
+  // the plugin's archive is behind a token, so it is mounted apart from the public install routes,
+  // and under /api alone: the script it is fetched by reaches core there wherever it was served
+  app.route('/api', pluginArchiveRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
   for (const path of ['/api/openapi.json', '/api/mcp-tools.json'])
     app.use(path, CONTRACT_IS_PUBLIC);

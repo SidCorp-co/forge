@@ -35,6 +35,7 @@ import { ORG_REFUSAL_STATUSES } from "./orgs.js";
 import { PATTERN_REFUSAL_STATUSES } from "./patterns.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
 import { PLUGIN_VERSION_REFUSAL_STATUSES } from "./plugin-version.js";
+import { PLUGIN_ARCHIVE_REFUSAL_STATUSES } from "./plugins.js";
 import { ROOM_REFUSAL_STATUSES } from "./poc-room.js";
 import { PREVIEW_REFUSAL_STATUSES } from "./preview.js";
 import { PRODUCT_STATE_REFUSAL_STATUSES } from "./product-state.js";
@@ -100,6 +101,7 @@ const DECLARED: ReadonlyArray<
 	PATTERN_REFUSAL_STATUSES,
 	PIPELINE_REFUSAL_STATUSES,
 	PLUGIN_VERSION_REFUSAL_STATUSES,
+	PLUGIN_ARCHIVE_REFUSAL_STATUSES,
 	PREVIEW_REFUSAL_STATUSES,
 	RECORDING_REFUSAL_STATUSES,
 	RECORD_EVENT_REFUSAL_STATUSES,

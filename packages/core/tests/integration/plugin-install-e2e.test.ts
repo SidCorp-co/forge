@@ -5,8 +5,9 @@
  * plugin repository, cut down to the marketplace (`.claude-plugin/`) and the plugin (`plugin/`), and
  * served only to a token holder (ISS-1199).
  *
- * GitHub is stubbed at the global fetch the App client calls, as the other GitHub App files stub it;
- * the archives it answers are made by the system `tar`, and the served one is read back by it.
+ * GitHub is stubbed at the global fetch the App client calls, as the other GitHub App files stub it.
+ * Its tarballs are written and the served archive read with core's own tar (`lib/tar.ts`); that the
+ * system tar reads what core writes is `install-plugin.test.ts`'s, where the served script unpacks it.
  *
  * @direct-test-of packages/core/src/devices/install-routes.ts
  * @direct-test-of packages/core/src/devices/plugin-archive-routes.ts
@@ -14,13 +15,12 @@
  * @direct-test-of packages/core/src/integrations/github/repository-archive.ts
  */
 
-import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../../src/index.js';
+import { readTar, writeTar } from '../../src/lib/tar.js';
 import { api, patToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -34,46 +34,39 @@ import { orgOwnedApp, seedGithubWorld, stubGitHub } from '../helpers/github-inst
 
 const INSTALLATION = 171606736;
 const MARKETPLACE = 'SidCorp-co/forge-plugin';
-const PINNED = 'a1'.repeat(20);
-const MOVED = 'b2'.repeat(20);
-const HEAD = 'c3'.repeat(20);
+/** A commit of its own per case: the archive cache outlives a case, as it outlives a request. */
+const commit = () => randomBytes(20).toString('hex');
+let PINNED = '';
 
-let scratch = '';
 /** The tarball GitHub answers per commit, or the HTTP status it fails with. */
 const github = new Map<string, Buffer | number>();
 /** Every GitHub URL the App client asked, in order. */
 let asked: string[] = [];
 
 /** A repository tree as GitHub's tarball holds it: one top directory named for the commit. */
-async function tarball(commit: string, files: Record<string, string>): Promise<Buffer> {
-  const root = await mkdtemp(join(scratch, 'repo-'));
-  const top = `SidCorp-co-forge-plugin-${commit.slice(0, 7)}`;
-  for (const [path, text] of Object.entries(files)) {
-    await mkdir(dirname(join(root, top, path)), { recursive: true });
-    await writeFile(join(root, top, path), text);
-  }
-  const out = join(root, 'repo.tar.gz');
-  const made = spawnSync('tar', ['-czf', out, '-C', root, top]);
-  expect(made.status, made.stderr.toString()).toBe(0);
-  return readFile(out);
+function tarball(sha: string, files: Record<string, string>): Buffer {
+  const top = `SidCorp-co-forge-plugin-${sha.slice(0, 7)}`;
+  const at = (path: string, kind: 'file' | 'dir', data = '') => ({
+    path: `${top}/${path}`.replace(/\/$/, ''),
+    kind,
+    mode: kind === 'dir' ? 0o755 : 0o644,
+    mtime: 1_700_000_000,
+    data: Buffer.from(data),
+  });
+  return gzipSync(
+    writeTar([
+      at('', 'dir'),
+      ...Object.entries(files).map(([path, text]) => at(path, 'file', text)),
+    ]),
+  );
 }
 
-/** The paths and file texts a served archive holds, read by the system tar. */
-async function served(bytes: ArrayBuffer): Promise<{ paths: string[]; text(p: string): string }> {
-  const dir = await mkdtemp(join(scratch, 'served-'));
-  await writeFile(join(dir, 'a.tar.gz'), Buffer.from(bytes));
-  const list = spawnSync('tar', ['-tzf', join(dir, 'a.tar.gz')], { encoding: 'utf8' });
-  expect(list.status, list.stderr).toBe(0);
-  const out = join(dir, 'out');
-  await mkdir(out);
-  expect(spawnSync('tar', ['-xzf', join(dir, 'a.tar.gz'), '-C', out]).status).toBe(0);
-  const paths = list.stdout
-    .split('\n')
-    .filter((p) => p !== '' && !p.endsWith('/'))
-    .sort();
-  const texts = new Map<string, string>();
-  for (const p of paths) texts.set(p, await readFile(join(out, p), 'utf8'));
-  return { paths, text: (p) => texts.get(p) ?? '' };
+/** The files a served archive holds, by path, read back from its gzipped tar. */
+function served(bytes: ArrayBuffer): Map<string, string> {
+  const entries = readTar(gunzipSync(Buffer.from(bytes)));
+  return new Map(
+    entries.filter((e) => e.kind === 'file').map((e) => [e.path, e.data.toString('utf8')]),
+  );
 }
 
 const REPO = {
@@ -84,14 +77,16 @@ const REPO = {
   'plugin/.claude-plugin/plugin.json': JSON.stringify({ name: 'forge', version: '9.9.9' }),
   'plugin/hooks/link-cli.mjs': 'export {};\n',
   'plugin/bin/forge': '#!/bin/sh\n',
+  // past the 100 bytes a ustar name holds once GitHub's top directory is in front of it
+  'plugin/skills/issue-flow/references/a-reference-whose-path-runs-past-one-hundred-bytes.md':
+    'long\n',
   'docs/internal.md': 'not for the archive\n',
   'packages/code-quality/index.mjs': 'not for the archive\n',
   'CLAUDE.md': 'not for the archive\n',
 };
 
-beforeAll(async () => {
+beforeAll(() => {
   testEnv();
-  scratch = await mkdtemp(join(tmpdir(), 'plugin-install-e2e-'));
   // the App client keeps the fetch it was built with, so GitHub is stubbed once for the file and
   // each case changes what it answers
   stubGitHub();
@@ -110,19 +105,20 @@ beforeAll(async () => {
     }
     if (path === '/repos/SidCorp-co/forge-plugin/commits/HEAD') {
       asked.push('head');
-      return Response.json({ sha: HEAD });
+      return Response.json({ sha: head });
     }
     return inner(input, init);
   });
 });
 
-afterAll(async () => {
+afterAll(() => {
   vi.unstubAllGlobals();
-  await rm(scratch, { recursive: true, force: true });
 });
 
 let home = { id: '', slug: '', orgId: '' };
 let token = '';
+/** Where the plugin repository's default branch stands. */
+let head = '';
 
 /** forge-dev's shape: an org-owned App bound to the plugin's own repository on the plugin's project. */
 async function bindThePluginRepository(): Promise<void> {
@@ -170,6 +166,8 @@ beforeEach(async () => {
   await truncateAll();
   github.clear();
   asked = [];
+  PINNED = commit();
+  head = commit();
   await bindThePluginRepository();
   // a person who reaches neither the home project nor the plugin's: their token alone opens it
   const person = (await createTestUser({ verified: true })).id;
@@ -193,7 +191,7 @@ describe('REQ-25 BC-4: the plugin install command Forge serves (ISS-1199)', () =
 
   it('PLANT: the archive refuses a request with no token, by name, and asks GitHub nothing', async () => {
     await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: PINNED }]);
-    github.set(PINNED, await tarball(PINNED, REPO));
+    github.set(PINNED, tarball(PINNED, REPO));
 
     const res = await archive(null);
 
@@ -204,27 +202,25 @@ describe('REQ-25 BC-4: the plugin install command Forge serves (ISS-1199)', () =
 
   it('PLANT: with a token, the archive is the designated commit cut to .claude-plugin/ and plugin/', async () => {
     await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: PINNED }]);
-    github.set(PINNED, await tarball(PINNED, REPO));
+    github.set(PINNED, tarball(PINNED, REPO));
 
     const res = await archive(token);
 
     expect(res.status, await res.clone().text()).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/gzip');
     expect(res.headers.get('x-forge-plugin-commit')).toBe(PINNED);
-    const got = await served(await res.arrayBuffer());
-    expect(got.paths).toEqual([
-      '.claude-plugin/marketplace.json',
-      'plugin/.claude-plugin/plugin.json',
-      'plugin/bin/forge',
-      'plugin/hooks/link-cli.mjs',
-    ]);
-    expect(got.text('.claude-plugin/marketplace.json')).toBe(REPO['.claude-plugin/marketplace.json']);
-    expect(got.text('plugin/bin/forge')).toBe('#!/bin/sh\n');
+    const files = served(await res.arrayBuffer());
+    expect([...files.keys()].sort()).toEqual(
+      Object.keys(REPO)
+        .filter((p) => p.startsWith('.claude-plugin/') || p.startsWith('plugin/'))
+        .sort(),
+    );
+    for (const [path, text] of files) expect(text, path).toBe(REPO[path as keyof typeof REPO]);
   });
 
   it('a commit already fetched is served from the cache, without asking GitHub again', async () => {
     await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: PINNED }]);
-    github.set(PINNED, await tarball(PINNED, REPO));
+    github.set(PINNED, tarball(PINNED, REPO));
 
     expect((await archive(token)).status).toBe(200);
     github.set(PINNED, 500);
@@ -237,13 +233,13 @@ describe('REQ-25 BC-4: the plugin install command Forge serves (ISS-1199)', () =
 
   it('an unpinned designation serves the commit the default branch stands at now', async () => {
     await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: null }]);
-    github.set(HEAD, await tarball(HEAD, REPO));
+    github.set(head, tarball(head, REPO));
 
     const res = await archive(token);
 
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(res.headers.get('x-forge-plugin-commit')).toBe(HEAD);
-    expect(asked).toEqual(['head', `tarball ${HEAD}`]);
+    expect(res.headers.get('x-forge-plugin-commit')).toBe(head);
+    expect(asked).toEqual(['head', `tarball ${head}`]);
   });
 
   describe('refused by name, never a stale fallback', () => {
@@ -270,17 +266,18 @@ describe('REQ-25 BC-4: the plugin install command Forge serves (ISS-1199)', () =
 
     it('PLUGIN_ARCHIVE_UNREACHABLE when the App fetch fails, even with another commit cached', async () => {
       await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: PINNED }]);
-      github.set(PINNED, await tarball(PINNED, REPO));
+      github.set(PINNED, tarball(PINNED, REPO));
       expect((await archive(token)).status).toBe(200);
 
-      await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: MOVED }]);
-      github.set(MOVED, 500);
+      const moved = commit();
+      await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: moved }]);
+      github.set(moved, 500);
       const res = await archive(token);
 
       expect(res.status).toBe(424);
       const body = (await res.json()) as { code: string; detail: string };
       expect(body.code).toBe('PLUGIN_ARCHIVE_UNREACHABLE');
-      expect(body.detail).toContain(`${MARKETPLACE} at ${MOVED}`);
+      expect(body.detail).toContain(`${MARKETPLACE} at ${moved}`);
     });
 
     it('PLUGIN_ARCHIVE_UNREACHABLE when no GitHub binding reaches the marketplace repository', async () => {
@@ -297,7 +294,7 @@ describe('REQ-25 BC-4: the plugin install command Forge serves (ISS-1199)', () =
 
     it('PLUGIN_ARCHIVE_UNREACHABLE when the commit holds no marketplace to install from', async () => {
       await designate([{ marketplace: MARKETPLACE, name: 'forge', pinnedRef: PINNED }]);
-      github.set(PINNED, await tarball(PINNED, { 'plugin/hooks/link-cli.mjs': 'export {};\n' }));
+      github.set(PINNED, tarball(PINNED, { 'plugin/hooks/link-cli.mjs': 'export {};\n' }));
 
       const res = await archive(token);
 

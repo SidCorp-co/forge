@@ -51,6 +51,11 @@ export { mainRunnerHead, refreshMainRunnerHead } from './published-releases/main
 export { downloadReleaseAsset, releaseDownloadUrl } from './published-releases/public-releases.js';
 export { listInstallationRepositories } from './repositories.js';
 export {
+  RepositoryUnreachable,
+  repositoryHead,
+  repositoryTarball,
+} from './repository-archive.js';
+export {
   type RepositoryTarget,
   type SuggestableProject,
   suggestTargets,

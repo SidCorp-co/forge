@@ -140,9 +140,14 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/version': PUBLIC,
   '/api/health': PUBLIC,
   '/api/version': PUBLIC,
+  // ahead of /api/install, which it sits inside: the first entry a path matches is its answer
+  '/api/install/plugin.tar.gz':
+    "the forge plugin's archive, admitted by its own token door: it is the instance's one designated commit, the same for every caller, so no grant or project fence decides it",
   '/install.sh': PUBLIC,
+  '/install-plugin.sh': PUBLIC,
   '/install': PUBLIC,
   '/api/install.sh': PUBLIC,
+  '/api/install-plugin.sh': PUBLIC,
   '/api/install': PUBLIC,
   '/guides': PUBLIC,
   '/llms.txt': PUBLIC,
