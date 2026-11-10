@@ -154,7 +154,9 @@ export async function requestSessionSend(
     if (req.actor) await auditSend(req, req.actor);
   }
 
-  if (!isSendEpisodeLive(row)) {
+  // an episode the box refused (`gone`: no turn in flight there) is over: asking again is a new
+  // episode, or the box's answer to the frame sent now is refused against the old one (ISS-1202)
+  if (!isSendEpisodeLive(row) || row.sendOutcome === 'gone') {
     const [refreshed] = await db
       .update(sessionInbox)
       .set({ sendRequestedAt: new Date(), sendConfirmedAt: null, sendOutcome: null })

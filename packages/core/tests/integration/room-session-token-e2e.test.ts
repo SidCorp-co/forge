@@ -19,6 +19,7 @@ import {
 } from '../helpers/factories.js';
 
 // @direct-test-of packages/core/src/support/session-turns.ts
+// @direct-test-of packages/core/src/db/schema-support-turns.ts
 // @direct-test-of packages/core/src/support/turn-of-act.ts
 // @direct-test-of packages/core/src/support/direct-asker.ts
 //
