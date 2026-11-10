@@ -86,12 +86,12 @@ describe("Feedback leads with titles, never keys (REQ-11 BC-19)", () => {
       </Seeded>,
     );
     const band = screen.getByTestId("feedback-band");
-    const flow = Object.fromEntries(within(band).getAllByTestId("coverage-part").map((p) => [p.getAttribute("data-key"), Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const flow = Object.fromEntries(within(band).getAllByTestId("coverage-part").map((p): [string, number] => [p.getAttribute("data-key") ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
     const list = Object.fromEntries(
       within(screen.getByTestId("grouped-list"))
         .getAllByTestId("list-group")
-        .map((g) => [g.getAttribute("data-group"), Number(within(g).getByTestId("group-count").textContent)])
-        .filter(([, n]) => Number(n) > 0),
+        .map((g): [string, number] => [g.getAttribute("data-group") ?? "", Number(within(g).getByTestId("group-count").textContent)])
+        .filter(([, n]) => n > 0),
     );
     expect(flow).toEqual({ needs_you: 1, done: 1, dropped: 1 });
     expect(list).toEqual(flow);
