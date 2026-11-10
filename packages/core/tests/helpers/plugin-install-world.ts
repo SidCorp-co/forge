@@ -31,7 +31,14 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 const bin = join(homedir(), '.local', 'bin');
 mkdirSync(bin, { recursive: true });
-writeFileSync(join(bin, 'forge'), '#!/bin/sh\\necho "$*" >>"$FORGE_STUB_LOG"\\nexit "$FORGE_DOCTOR_EXIT"\\n');
+// as the real doctor does, a forge that is not on the PATH it runs with is a miss
+writeFileSync(join(bin, 'forge'), [
+  '#!/bin/sh',
+  'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "no forge on PATH" >>"$FORGE_STUB_LOG"; exit 1;; esac',
+  'echo "$*" >>"$FORGE_STUB_LOG"',
+  'exit "$FORGE_DOCTOR_EXIT"',
+  '',
+].join('\\n'));
 chmodSync(join(bin, 'forge'), 0o755);
 writeFileSync(process.env.LINK_STUB_LOG, process.argv[2] + '\\n', { flag: 'a' });
 `;

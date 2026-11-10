@@ -321,8 +321,9 @@ if [ "$linked" != 0 ] || [ ! -x "$forge" ]; then
   echo "INSTALL_PLUGIN_LINK_FAILED: the plugin is installed, but its link-cli (exit $linked) placed no forge command at $forge. Start a Claude Code session, which places it, then run: forge doctor --url $BASE --token <token>" >&2
   exit 1
 fi
-# Saves this machine's account, the endpoint and the token, in the plugin's own config, then checks it.
-doctored=0; "$forge" doctor --url "$BASE" --token "$TOKEN" </dev/null || doctored=$?
+# Saves this machine's account, the endpoint and the token, in the plugin's own config, then checks it,
+# with the forge just placed on the PATH, as the line printed below tells the person to set it.
+doctored=0; PATH="$HOME/.local/bin:$PATH" "$forge" doctor --url "$BASE" --token "$TOKEN" </dev/null || doctored=$?
 if [ "$doctored" != 0 ]; then
   echo "INSTALL_PLUGIN_DOCTOR_FAILED: forge $version is installed, and forge doctor (exit $doctored) names above what this machine still lacks; run forge doctor again once that is done." >&2
   exit 1
