@@ -15,6 +15,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { railBeside } from "@/test/rail-beside";
+import { unfoldsInPlace } from "@/test/unfolds-in-place";
 import { fakeCore, renderWithQuery, type Call } from "@/test/render";
 import { IssueDetailScreen } from "./issue-detail-screen";
 
@@ -243,6 +244,11 @@ describe("an issue page in the person's view", () => {
     expect(details.textContent).toBe(before);
     expect(details.contains(dialog)).toBe(false);
     if (key === "files") expect(within(dialog).getAllByText(/\.(png|txt|log|pdf|json|md)/i).length).toBeGreaterThan(0);
+  });
+
+  it("unfolds nothing in place on its face", async () => {
+    const root = await page();
+    expect(unfoldsInPlace(root)).toEqual([]);
   });
 
   it("counts the criteria in the filter pills and marks each row, one line apiece", async () => {

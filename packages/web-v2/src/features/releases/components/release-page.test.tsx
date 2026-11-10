@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { rawKeysOnFace } from "@/test/screen-face";
+import { unfoldsInPlace } from "@/test/unfolds-in-place";
 import { ReleaseItemScreen } from "./release-item-screen";
 import { ReleasePage } from "./release-page";
 
@@ -158,6 +159,14 @@ describe("the release page in the report shape (ISS-1001)", () => {
     expect(body).toHaveTextContent(SHA.slice(0, 7));
     expect(await within(body).findByTestId("page-technical")).toBeTruthy();
     expect(calls.some((c) => c.path.endsWith("view=developer"))).toBe(true);
+  });
+
+  // ISS-1197 r2 (REQ-43 r3 BC-17): nothing on a release's face unfolds in place
+  it("unfolds nothing in place on its face", async () => {
+    serve();
+    renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
+    await screen.findByTestId("release-technical-fold");
+    expect(unfoldsInPlace(document.body)).toEqual([]);
   });
 
   // ISS-1164 (REQ-70 BC-1): who may approve, by name, beside who decided

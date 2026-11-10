@@ -12,6 +12,7 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BOARD, CHART, CHECKOUT_LINK, core, detail, page, TABLE } from "@/test/requirement-pictures";
+import { unfoldsInPlace } from "@/test/unfolds-in-place";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/projects/hop/requirements/REQ-1", useParams: () => ({ slug: "hop" }) }));
@@ -85,6 +86,24 @@ describe("a requirement page, top to bottom", () => {
     expect(screen.queryByTestId("goal-full")).toBeNull();
     fireEvent.click(within(overview).getByTestId("requirement-text"));
     expect(await screen.findByTestId("goal-full")).toHaveTextContent("Roadmap: Now");
+  });
+
+  // ISS-1197 r2 (live judge, cf16fab7a0): a criterion row unfolded in place on REQ-43, its Evidence a
+  // further fold under it. The row opens a side drawer holding its wording and evidence, nothing in place.
+  it("opens a criterion in a side drawer with its evidence, and unfolds nothing in place", async () => {
+    core("viewer");
+    page(detail({ kind: "process", spec, writtenLang: "en" }, { workflows: [CHECKOUT_LINK], traces: [PAY] }));
+    const overview = await screen.findByTestId("view-overview");
+    expect(unfoldsInPlace(overview)).toEqual([]);
+    const [row] = within(within(overview).getByTestId("view-criteria")).getAllByTestId("criterion-row");
+    if (!row) throw new Error("no criterion row");
+    const before = row.textContent;
+    fireEvent.click(within(row).getByTestId("criterion-line"));
+    const drawer = await screen.findByRole("dialog");
+    expect(row.textContent).toBe(before);
+    expect(row.contains(drawer)).toBe(false);
+    expect(unfoldsInPlace(drawer.parentElement as HTMLElement)).toEqual([]);
+    expect(drawer.querySelector("details")).toBeNull();
   });
 
   it("names the labels the goal leaves out once, as not stated, and reads an unlabelled goal as its problem", async () => {

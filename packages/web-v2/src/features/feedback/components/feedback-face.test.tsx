@@ -13,6 +13,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PageCommandsProvider, usePageCommandList } from "@/design";
+import { unfoldsInPlace } from "@/test/unfolds-in-place";
 import { feedbackDetail, ITEM } from "@/test/vi-chrome-feedback";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -149,8 +150,25 @@ describe("the feedback page's face", () => {
     expect(within(screen.getByTestId("feedback-reproduce")).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: /Reproduce FB/ })).toBeNull();
     expect(screen.queryByTestId("feedback-thread")).toBeNull();
+    // ISS-1197 r2 (REQ-43 r3 BC-17): each opens in a side drawer, never in place
+    const before = messages.textContent;
     await user.click(line);
-    expect(within(messages).getByTestId("feedback-thread")).toBeInTheDocument();
-    expect(within(messages).getByRole("radio", { name: "Internal note" })).toBeInTheDocument();
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByTestId("feedback-thread")).toBeInTheDocument();
+    expect(within(drawer).getByRole("radio", { name: "Internal note" })).toBeInTheDocument();
+    expect(messages.textContent).toBe(before);
+  });
+
+  // ISS-1197 r2 (live judge, cf16fab7a0): Reproduce was a fold that unfolded in place
+  it("unfolds nothing in place: Reproduce opens in a side drawer", async () => {
+    const user = userEvent.setup();
+    render(feedbackDetail());
+    const page = await screen.findByTestId("feedback-detail");
+    expect(unfoldsInPlace(page)).toEqual([]);
+    const reproduce = screen.getByTestId("feedback-reproduce");
+    const before = reproduce.textContent;
+    await user.click(within(reproduce).getAllByRole("button")[0]);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(reproduce.textContent).toBe(before);
   });
 });
