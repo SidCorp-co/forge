@@ -68,7 +68,14 @@ describe('feedback-triage verify-ask: the ask reaches the reporter', () => {
 describe('what a reporter is told', () => {
   const tell = (kind: string, eventId: string) =>
     consumerOf('feedback.reporterTold', 'notify-feedback')?.handle(
-      { projectId: 'p1', feedbackId: 'f2', kind, recipients: ['u-rep'], title: 'FB-5 · x', body: '' },
+      {
+        projectId: 'p1',
+        feedbackId: 'f2',
+        kind,
+        recipients: ['u-rep'],
+        title: 'FB-5 · x',
+        body: '',
+      },
       { eventId } as never,
     );
 

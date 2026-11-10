@@ -165,7 +165,9 @@ describe('the bell holds only what a person owns (ISS-1192)', () => {
       resolutionKey: `feedback-verify:${feedbackId}`,
     });
     const [first] = await rowsAbout(w.ownerId, 'FB-902');
-    await rows(sql`UPDATE notification_deliveries SET read_at = now() WHERE id = ${first?.delivery}`);
+    await rows(
+      sql`UPDATE notification_deliveries SET read_at = now() WHERE id = ${first?.delivery}`,
+    );
     await emitNotification({
       recipients: [w.ownerId],
       projectId: w.projectId,

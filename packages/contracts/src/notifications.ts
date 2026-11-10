@@ -51,7 +51,11 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
-const NOTIFICATION_SUBJECT_KINDS = ["issue", "project", "status_report"] as const;
+const NOTIFICATION_SUBJECT_KINDS = [
+	"issue",
+	"project",
+	"status_report",
+] as const;
 export type NotificationSubjectKind =
 	(typeof NOTIFICATION_SUBJECT_KINDS)[number];
 

@@ -68,7 +68,8 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
     .from(feedbackRouteIssues)
     .where(inArray(feedbackRouteIssues.issueId, p.issueIds));
   if (carried.length === 0) return;
-  const shipVerifies = whoOwes('feedback.verify', await readOwedPolicy(p.projectId)).by === 'master';
+  const shipVerifies =
+    whoOwes('feedback.verify', await readOwedPolicy(p.projectId)).by === 'master';
   const items = await db
     .select({
       id: feedback.id,
