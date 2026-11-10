@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.635] - 2026-11-10
+
+The notification bell holds only what needs you
+
+### Fixed
+
+- **The bell holds only what a person owns.** Step changes are activity and ring nobody; notices about one requirement or feedback item are one row; a check the Steward makes by rule opens no task.
+
 ## [0.4.0-dev.634] - 2026-11-10
 
 Requirement strips count only live requirements; dropped ones lose their proposed area
