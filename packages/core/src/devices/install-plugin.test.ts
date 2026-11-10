@@ -1,5 +1,7 @@
 // @gate-input whole-tree — it runs the served install script under sh, which the guard cannot see
 // into; the script reads only this file's scratch directory and the routes on loopback.
+// @direct-test-of packages/core/src/devices/install-routes.ts
+// @direct-test-of packages/core/src/lib/tar.ts
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 

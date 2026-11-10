@@ -10,9 +10,10 @@
  * system tar reads what core writes is `install-plugin.test.ts`'s, where the served script unpacks it.
  *
  * @direct-test-of packages/core/src/devices/install-routes.ts
- * @direct-test-of packages/core/src/devices/plugin-archive-routes.ts
- * @direct-test-of packages/core/src/devices/plugin-archive.ts
+ * @direct-test-of packages/core/src/instance-settings/routes.ts
+ * @direct-test-of packages/core/src/instance-settings/plugin-archive.ts
  * @direct-test-of packages/core/src/integrations/github/repository-archive.ts
+ * @direct-test-of packages/core/src/lib/tar.ts
  */
 
 import { randomBytes } from 'node:crypto';
