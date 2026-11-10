@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.638] - 2026-11-10
+
+One GitHub App now delivers each repository's events to its own project
+
+### Fixed
+
+- **An org's GitHub App serving several projects reaches each one.** A delivery signed with the App's secret is routed to the binding of the repository it names, at any served project's door, and that binding reads healthy.
+
 ## [0.4.0-dev.637] - 2026-11-10
 
 MCP clients load Forge a layer at a time, guides fetched on demand

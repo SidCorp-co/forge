@@ -1,1 +1,0 @@
-**An org's GitHub App serving several projects reaches each one.** A delivery signed with the App's secret is routed to the binding of the repository it names, at any served project's door, and that binding reads healthy.
