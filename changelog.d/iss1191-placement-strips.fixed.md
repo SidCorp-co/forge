@@ -1,1 +1,1 @@
-**The strips above the requirements list count only requirements still in play, and say what waits on you.** Dropping or refusing a requirement withdraws the assistant's proposed area and short name. The suggestions line names the BA assistant and shows how long the oldest suggestion has waited.
+**The strips above the requirements list count only requirements in play.** Dropping or refusing a requirement withdraws the assistant's proposed area and name, and the suggestions line names the BA assistant and its oldest suggestion's age.
