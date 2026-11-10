@@ -21,7 +21,7 @@ function alive(over: Partial<MasterJudged> = {}): MasterJudged {
     pane: 'alive',
     capability: 'current',
     serversReadable: true,
-    work: { admissible: 1, owed: 0, poolWaits: false, jobPanes: 0 },
+    work: { admissible: 1, owed: 0, liveChecks: 0, poolWaits: false, jobPanes: 0 },
     conversation: { id: 'conv-1', transcript: 'present', elsewhere: 'none' },
     placement: null,
     holding: { kind: 'nothing' },

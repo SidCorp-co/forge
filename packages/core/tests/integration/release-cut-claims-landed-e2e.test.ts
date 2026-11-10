@@ -311,5 +311,6 @@ const NONE: Parameters<typeof owedLine>[0] = {
   carriers: [],
   intakeFailures: [],
   reviews: [],
+  liveChecks: [],
   contentLanguage: 'en',
 };

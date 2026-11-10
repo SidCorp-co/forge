@@ -239,6 +239,8 @@ export type MasterVerdictAct = MasterVerdict["act"];
 export interface MasterWork {
 	admissible: number;
 	owed: number;
+	/** Of `owed`, the issues the latest shipped release closed that owe their live verdict (ISS-1200). */
+	liveChecks: number;
 	/** A digest of the admissible and owed work; the box echoes it as `facts.nudge.last.digest` once it nudged on it. */
 	digest: string;
 	/** The line the box types into a kept pane it is told to nudge. */

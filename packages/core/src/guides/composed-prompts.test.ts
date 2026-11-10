@@ -88,6 +88,7 @@ const none = {
   carriers: [] as Parameters<typeof owedLine>[0]['carriers'],
   intakeFailures: [] as Parameters<typeof owedLine>[0]['intakeFailures'],
   reviews: [] as Parameters<typeof owedLine>[0]['reviews'],
+  liveChecks: [] as Parameters<typeof owedLine>[0]['liveChecks'],
   contentLanguage: 'vi',
 };
 

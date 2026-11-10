@@ -168,6 +168,18 @@ export async function listShippedReleases(
 }
 
 /**
+ * The newest release that shipped to production, weighed as the list weighs it, or null where none
+ * has: what its master owes a live verdict on (ISS-1200, `masters/owed-live-checks.ts`).
+ */
+export async function latestShippedRelease(projectId: string): Promise<ReleaseSummary | null> {
+  const { releases } = await summariseWentOut(projectId, null, (out) => {
+    const shipped = out.find((p) => p.state === 'shipped');
+    return shipped ? [shipped] : [];
+  });
+  return releases[0] ?? null;
+}
+
+/**
  * The newest release on production and the newest on testing, with what production is: what a
  * person's home names as live, read without the whole list (ISS-1070).
  */

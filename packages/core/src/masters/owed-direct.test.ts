@@ -34,6 +34,7 @@ const none = {
   carriers: [],
   intakeFailures: [],
   reviews: [],
+  liveChecks: [],
   contentLanguage: 'en',
 };
 

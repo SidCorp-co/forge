@@ -27,7 +27,7 @@ function alive(over: Partial<MasterJudged> = {}): MasterJudged {
     pane: 'alive',
     capability: 'current',
     serversReadable: true,
-    work: { admissible: 1, owed: 0, poolWaits: false, jobPanes: 0 },
+    work: { admissible: 1, owed: 0, liveChecks: 0, poolWaits: false, jobPanes: 0 },
     conversation: { id: 'conv-1', transcript: 'present', elsewhere: 'none' },
     placement: null,
     holding: { kind: 'nothing' },
@@ -48,7 +48,7 @@ const holds = (live: string[]): MasterJudged['holding'] => ({
   kind: 'these',
   runs: live.map((name) => ({ name, subagent: { kind: 'resumed' as const, silentMs: 0 } })),
 });
-const noWork = { admissible: 0, owed: 0, poolWaits: false, jobPanes: 0 };
+const noWork = { admissible: 0, owed: 0, liveChecks: 0, poolWaits: false, jobPanes: 0 };
 
 // forge-dev 2026-10-07: the dev runner was rebuilt six times in three hours (dev.62..71), and every
 // rebuild read every master "placed under runner X, this box runs Y", so a busy master drained and

@@ -41,7 +41,7 @@ async function externalProduction(): Promise<void> {
 }
 
 /** An alive master pane placed with a plugin the box would no longer hand it, idle and holding nothing. */
-function outdatedFacts(): Doc {
+function outdatedFacts(over: Doc = {}): Doc {
   return {
     restarting: null,
     terminal: true,
@@ -65,6 +65,7 @@ function outdatedFacts(): Doc {
     },
     limit: { refusal: null, hooks: 'unheard', turnStartedAgoMs: null },
     nudge: { last: null, since: 'unreported' },
+    ...over,
   };
 }
 
@@ -90,12 +91,12 @@ async function box(): Promise<{ token: string; runnerId: string }> {
   return { token, runnerId };
 }
 
-const verdictOf = async (b: { token: string; runnerId: string }) =>
+const verdictOf = async (b: { token: string; runnerId: string }, over: Doc = {}) =>
   (await ok(
     api(b.token, 'POST', '/api/devices/me/master-session/verdict', {
       projectId: world.projectId,
       runnerId: b.runnerId,
-      facts: outdatedFacts(),
+      facts: outdatedFacts(over),
     }),
   )) as { verdict: Doc & { because: string }; work: Doc & { nudge: string } };
 
@@ -138,12 +139,25 @@ describe('ISS-1200: a live verdict owed on the latest shipped release is master 
     expect(owing.work.nudge).toContain('1.48.0');
     expect(owing.work.nudge).toContain(`ISS-1 ${shipped}`);
 
+    // a pane still holding a working run drains and is not yet replaced: the wait is named
+    const holding = await verdictOf(b, {
+      holding: {
+        kind: 'these',
+        runs: [{ name: 'run-a', subagent: { kind: 'resumed', silentMs: 0 } }],
+      },
+    });
+    expect(holding.verdict).toMatchObject({ act: 'keep', drain: true });
+    expect(holding.verdict.because).toContain(
+      '1 owed live verdict(s) wait on a pane to judge them',
+    );
+
     // recorded: the count reaches zero, so nothing holds the pane from draining
     await judgedOn(shipped, '1.48.0');
     const done = await verdictOf(b);
     expect(done.work).toMatchObject({ admissible: 0, owed: 0 });
     expect(done.verdict).toMatchObject({ act: 'keep', drain: true });
-    expect(done.verdict.because).toContain('no work');
+    expect(done.verdict.because).toContain('no admissible work: a successor would have nothing');
+    expect(done.verdict.because).not.toContain('live verdict');
   });
 
   it('owes nothing for an older release once a newer one shipped', async () => {

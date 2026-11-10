@@ -39,6 +39,7 @@ const none: Parameters<typeof owedLine>[0] = {
   carriers: [],
   intakeFailures: [],
   reviews: [],
+  liveChecks: [],
   contentLanguage: 'en',
 };
 

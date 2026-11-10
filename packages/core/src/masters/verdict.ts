@@ -10,21 +10,27 @@ import { subagentOver } from '../devices/index.js';
 
 /**
  * The box's facts with the work core read beside them: the admissible and owed counts in `work`,
- * and the digest of that work in `nudge`, so every rule below reads one document.
+ * the live verdicts of those owed (ISS-1200), and the digest of that work in `nudge`, so every rule
+ * below reads one document.
  */
 export type MasterJudged = Omit<MasterFacts, 'work' | 'nudge'> & {
-  work: MasterFacts['work'] & { admissible: number; owed: number };
+  work: MasterFacts['work'] & { admissible: number; owed: number; liveChecks: number };
   nudge: MasterFacts['nudge'] & { digest: string };
 };
 
 /** The box's facts joined to the work core read for the project. */
 export function judged(
   facts: MasterFacts,
-  work: { admissible: number; owed: number; digest: string },
+  work: { admissible: number; owed: number; liveChecks: number; digest: string },
 ): MasterJudged {
   return {
     ...facts,
-    work: { ...facts.work, admissible: work.admissible, owed: work.owed },
+    work: {
+      ...facts.work,
+      admissible: work.admissible,
+      owed: work.owed,
+      liveChecks: work.liveChecks,
+    },
     nudge: { ...facts.nudge, digest: work.digest },
   };
 }
@@ -447,12 +453,32 @@ function deadOnArrival(facts: MasterJudged): MasterVerdict | null {
 }
 
 /**
+ * A verdict that leaves no pane able to declare a run, said with the live verdicts that wait on one
+ * (ISS-1200): a withheld placement, or a pane kept draining, which the box admits no declaration
+ * from. Counted as work, they replace an idle outdated pane; where something else holds it, the wait
+ * is named, never dropped.
+ */
+function liveChecksWait(facts: MasterJudged, verdict: MasterVerdict): MasterVerdict {
+  const n = facts.work.liveChecks;
+  const stranded = verdict.act === 'withhold' || (verdict.act === 'keep' && verdict.drain);
+  if (n === 0 || !stranded) return verdict;
+  return {
+    ...verdict,
+    ...because(say('masters.verdict.liveChecksWait', { verdict: verdict.says.because, n })),
+  };
+}
+
+/**
  * The whole of the placement and retirement decision for one project's master on one box. An
  * outdated pane that may be replaced is; a deaf one is judged next, since a pane nobody can hear
  * holds nothing an outdated pane is kept for; any other pane is kept and driven, an outdated one
  * draining toward its replacement.
  */
 export function masterVerdict(facts: MasterJudged, record: MasterRecord): MasterVerdict {
+  return liveChecksWait(facts, judgeMaster(facts, record));
+}
+
+function judgeMaster(facts: MasterJudged, record: MasterRecord): MasterVerdict {
   const held = withheld(facts, record);
   if (held) return held;
   if (facts.pane === 'absent') return placeVerdict(facts);

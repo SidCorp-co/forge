@@ -21,6 +21,7 @@ import {
   requestsLine,
   unhandledRoomLine,
 } from './owed-drafts.js';
+import { liveChecksLine } from './owed-live-checks.js';
 import {
   endedRunHoldsWork,
   recordingsLine,
@@ -35,6 +36,7 @@ import {
   type DesignApprovalOwed,
   type FilingOwed,
   type FilingRecordOwed,
+  type LiveCheckOwed,
   type MarkOwed,
   mastersPorts,
   type ReleaseActOwed,
@@ -110,6 +112,8 @@ interface Owed {
   /** Member messages a room could not take in the last day, per room and cause (ISS-1046). */
   unhandledRoomMessages?: UnhandledRoomMessages[];
   reviews: ReviewOwed[];
+  /** Issues the latest shipped release closed, each owing its live verdict (ISS-1200). */
+  liveChecks: LiveCheckOwed[];
   /** Release holds on waiting issues whose act is the master's, each named with its command (ISS-888). */
   releaseHolds: ReleaseHoldOwed[];
   /** Ended release runs still claiming gate issues no roster carries, each with its act (ISS-961). */
@@ -249,7 +253,8 @@ export function owedLine(owed: Owed): string {
     carriersLine(owed.carriers) +
     intakeFailuresLine(owed.intakeFailures) +
     unhandledRoomLine(owed.unhandledRoomMessages) +
-    reviewsLine(owed.reviews);
+    reviewsLine(owed.reviews) +
+    liveChecksLine(owed.liveChecks);
   const {
     breakdowns,
     triages,
@@ -331,6 +336,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.intakeFailures.map((f) => `intake-failed:${f.key}|${f.code}`),
     ...(owed.unhandledRoomMessages ?? []).map((u) => `room-unhandled:${u.rid}|${u.code}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
+    ...owed.liveChecks.map((c) => `live-check:${c.version}|${c.issueId}`),
     ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
     ...endedRunHoldsWork(owed.endedRunHolds),
     ...owed.documents.map((d) => `document:${d.id}`),
@@ -376,6 +382,7 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
   return {
     admissible: admissible.length,
     owed: owedCount,
+    liveChecks: owed.liveChecks.length,
     digest: workDigest(admissible, owed),
     nudge: `${direct ? DIRECT_NUDGE : NUDGE}${line}${contentLanguageLine(owed.contentLanguage)}`,
     owedLine: direct ? `${DIRECT_ORDER}${line}` : line,
@@ -386,8 +393,8 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
 /**
  * Everything a project's master on `deviceId` is owed this sweep: the issues it could open a wave
  * over, and the channel, threads, requirements, feedback (a triage, or an agent reporter's confirm), returned
- * designs, release notes, the release holds whose act is its own, and the reviews an independent
- * judge owes that owe it a turn.
+ * designs, release notes, the release holds whose act is its own, the reviews an independent
+ * judge owes that owe it a turn, and the live verdicts its latest shipped release owes.
  * A read that fails fails the verdict, which the box says and acts on nothing: none is skipped.
  */
 export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterWork> {
@@ -440,6 +447,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const intakeFailures = await ports.intakeFailuresOwed(projectId);
   const unhandledRoomMessages = (await ports.unhandledRoomMessagesOwed?.(projectId)) ?? [];
   const reviews = await ports.reviewsOwed(projectId);
+  const liveChecks = await ports.liveChecksOwed(projectId);
   const releaseHolds = await ports.releaseHoldsOwed(projectId);
   const endedRunHolds = await ports.endedRunHolds(projectId);
   const carried = new Set(carriers.map((c) => c.key));
@@ -484,6 +492,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       intakeFailures,
       unhandledRoomMessages,
       reviews,
+      liveChecks,
       releaseHolds,
       endedRunHolds,
       contentLanguage,

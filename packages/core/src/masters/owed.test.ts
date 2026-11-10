@@ -11,7 +11,6 @@ import type {
 } from './ports.js';
 
 // The owed-work read is core's: owed.ts counts and digests what a master owes; the box carries its line.
-
 /** The work as a project that dispatches is told it; direct mode is owed-direct.test.ts's. */
 const dispatched = (
   admissible: Parameters<typeof masterWork>[0],
@@ -54,6 +53,7 @@ const none = {
   carriers: [] as { key: string }[],
   intakeFailures: [] as { key: string; code: string }[],
   reviews: [],
+  liveChecks: [],
   contentLanguage: 'en',
 };
 

@@ -61,7 +61,7 @@ import {
   scrubSessionSecrets,
 } from './jobs/index.js';
 import { formatIssueRef } from './lib/issue-ref.js';
-import { provideMastersPorts } from './masters/index.js';
+import { liveChecksOf, provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
 import { currentOnboardingBrief } from './onboarding/index.js';
@@ -105,6 +105,7 @@ import {
   agentOwedHolds,
   createReleaseBatch,
   heldFromUnattendedCut,
+  latestShippedRelease,
   loadReleaseRoster,
   owedReleaseNotes,
   provideReleaseBatchPorts,
@@ -420,6 +421,7 @@ export function provideExecutionPorts(): void {
     unhandledRoomMessagesOwed: (projectId) =>
       unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000)),
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
+    liveChecksOwed: async (projectId) => liveChecksOf(await latestShippedRelease(projectId)),
     releaseHoldsOwed: agentOwedHolds,
     endedRunHolds: (projectId) => readEndedRunHolds(projectId),
     requestsWaiting: async (projectId) => [

@@ -39,6 +39,13 @@ export interface AgentConfirmOwed {
   waitMet: FeedbackConfirmWaitMetView | null;
 }
 
+/** An issue the project's latest shipped release closed, owing its live verdict (`owed-live-checks.ts`, ISS-1200). */
+export interface LiveCheckOwed {
+  version: string;
+  issueId: string;
+  key: string;
+}
+
 /** A release act its release's standing names the master for (`release-batch/master-owed-acts.ts`). */
 export interface ReleaseActOwed {
   version: string;
@@ -240,6 +247,11 @@ interface MastersPorts {
    * where its gate profile declares no independent judge.
    */
   reviewsOwed(projectId: string): Promise<ReviewOwed[]>;
+  /**
+   * The issues the project's latest shipped release closed whose live verdict nothing has recorded
+   * (`owed-live-checks.ts:liveChecksOf`, ISS-1200): none where no release has shipped.
+   */
+  liveChecksOwed(projectId: string): Promise<LiveCheckOwed[]>;
   /** The release holds on waiting issues that name an act the master owes (ISS-888). */
   releaseHoldsOwed(projectId: string): Promise<ReleaseHoldOwed[]>;
   /**
