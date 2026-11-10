@@ -132,6 +132,8 @@ The six blocks, in this order. The last two appear only when they earn it.
 
 A criteria list only in the description is no criterion: a verdict has nothing to attach to, and once the issue reaches \`awaiting_release\` its criteria are locked. Where you know them when you file, send them as \`acceptanceCriteria\`, numbered lines (\`1. …\`), on the create, or \`PUT /api/issues/:id/criteria\` after it; where you do not, the run that takes the issue writes them before it lands. A filing or a lease-take whose description holds a list under an *Acceptance criteria*, *Criteria*, *Outcome*, *Done when* or *What to do* heading while the issue has no criteria answers a \`criteria-list-in-description\` warning naming that door.
 
+An issue drawn from a design a person gave names each element they asked for as its own criterion, as they see it on that design; "the rest of the design" stands for none of them, since what a list leaves out is never built or judged.
+
 ### Technical detail is placed, not deleted
 
 \`file:line\`, column names, SQL, commit hashes, schema fields: these belong in **Evidence**, or in a comment. Never in the first four blocks.

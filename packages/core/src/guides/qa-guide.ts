@@ -121,6 +121,10 @@ and folded. A layout that breaks at any of them (a column squeezed to nothing, a
 past the window's edge, a toolbar wrapping over what it serves) fails the verdict with a capture at
 that width, whatever width the criterion was written for.
 
+A criterion drawn from a design a person gave is judged element by element against the deployed
+build (a mockup page, a kit, a list of fields): each element is named in the verdict's reason, and one
+that is missing fails it, whatever else the screen holds.
+
 ### Writing each verdict
 \`POST /api/issues/:id/verdicts\` per criterion, as ${guideRef('issue-flow')} (section 5) gives the
 body: the identity the build serves, written whole, the evidence uploaded first and cited by its name,
