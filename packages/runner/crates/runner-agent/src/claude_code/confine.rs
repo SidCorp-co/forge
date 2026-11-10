@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 use runner_platform::confine::egress::{Egress, Host, Upstream};
 use runner_platform::confine::{Mount, Sandbox};
 use runner_platform::error::{Error, Result};
+use runner_workspace::mcp::config::NEEDS_AUTH_CACHE;
 
 /// The facts of this box a session's sandbox is cut from: read from this process in
 /// production, planted in a test.
@@ -122,6 +123,9 @@ pub(crate) struct Handed<'a> {
     pub egress_socket: PathBuf,
     /// An owner-mode agent's `gh` shim directory, put first on its `PATH` (ISS-765).
     pub gh_shim_dir: Option<&'a Path>,
+    /// The session's own needs-auth cache, bound over Claude Code's (ISS-1201): see
+    /// [`needs_auth_cache_for`].
+    pub needs_auth_cache: PathBuf,
 }
 
 /// Variables a session inherits by name: locale, terminal, proxies and trust roots, and Claude
@@ -236,15 +240,19 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
             mounts.push(Mount::Read(file.to_path_buf()));
         }
     }
-    let claude_dir = view
-        .var("CLAUDE_CONFIG_DIR")
-        .map_or_else(|| view.home.join(".claude"), PathBuf::from);
-    let mut writable = vec![claude_dir];
+    let claude_dir = claude_dir(view);
+    let mut writable = vec![claude_dir.clone()];
     if view.var("CLAUDE_CONFIG_DIR").is_none() {
         writable.push(view.home.join(".claude.json"));
     }
     for path in writable.into_iter().filter(|p| p.exists()) {
         mounts.push(Mount::Write(path));
+    }
+    if claude_dir.is_dir() {
+        mounts.push(Mount::Bind {
+            source: handed.needs_auth_cache.clone(),
+            target: claude_dir.join(NEEDS_AUTH_CACHE),
+        });
     }
     if let Some(shim) = handed.gh_shim_dir.filter(|d| d.is_dir()) {
         mounts.push(Mount::Read(shim.to_path_buf()));
@@ -261,6 +269,70 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
             bridge,
         }),
     })
+}
+
+/// Claude Code's config directory as the session sees it: `$CLAUDE_CONFIG_DIR`, else `~/.claude`.
+fn claude_dir(view: &BoxView) -> PathBuf {
+    view.var("CLAUDE_CONFIG_DIR")
+        .map_or_else(|| view.home.join(".claude"), PathBuf::from)
+}
+
+/// Where a session's own needs-auth cache is kept: its bearer directory, where
+/// [`runner_workspace::mcp::config::refresh_bearer`] clears its `forge` entry before each turn,
+/// else the directory of its egress socket, which is its alone and goes when the session ends.
+pub(crate) fn needs_auth_cache_for(bearer_dir: Option<&Path>, egress_socket: &Path) -> PathBuf {
+    bearer_dir
+        .or_else(|| egress_socket.parent())
+        .unwrap_or(egress_socket)
+        .join(NEEDS_AUTH_CACHE)
+}
+
+/// Claude Code skips, at connect, every MCP server its needs-auth cache lists, keyed by name
+/// alone, and every chat session's server is `forge` (ISS-1201): with the one cache in the shared
+/// config directory, one pane's 401 is every later pane's skip. So the session's own cache starts
+/// empty at each spawn, owner-only, and is bound over the shared one ([`chat_sandbox`]). Written in
+/// once its directory exists: an egress directory is made by its proxy.
+///
+/// The bind needs a target. Where the box has no cache yet, bubblewrap would make an empty
+/// read-only file there, which this box's own Claude Code then could not write; so it is made
+/// here instead, as Claude Code reads an absent one (`{}`) and owner-only. Nothing else is made
+/// in the config directory, and an existing cache is never touched.
+pub(crate) fn own_needs_auth_cache(view: &BoxView, handed: &Handed<'_>) -> Result<()> {
+    let refuse = |path: &Path, e: std::io::Error| {
+        Error::Other(format!(
+            "[CHAT_CONFINEMENT_UNAVAILABLE] a confined session's needs-auth cache {} cannot be \
+             made: {e}",
+            path.display()
+        ))
+    };
+    let own = &handed.needs_auth_cache;
+    owner_only_file(own, true).map_err(|e| refuse(own, e))?;
+    let claude_dir = claude_dir(view);
+    if claude_dir.is_dir() {
+        let target = claude_dir.join(NEEDS_AUTH_CACHE);
+        match owner_only_file(&target, false) {
+            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+                return Err(refuse(&target, e))
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// `{}` at `path`, owner-only: replacing what is there, or only where nothing is.
+fn owner_only_file(path: &Path, replace: bool) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut open = std::fs::OpenOptions::new();
+    open.write(true);
+    if replace {
+        open.create(true).truncate(true);
+    } else {
+        open.create_new(true);
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut open, 0o600);
+    open.open(path)?.write_all(b"{}")
 }
 
 /// The checkout as the turn's view shows it. Written or read, its git directories are read-only

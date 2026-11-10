@@ -1033,6 +1033,7 @@ impl SessionCommand<'_> {
         } else {
             None
         };
+        let egress_socket = view.egress_dir.join(egress_dir_name()).join("s");
         let handed = confine::Handed {
             repo,
             credential: env_credential,
@@ -1046,7 +1047,8 @@ impl SessionCommand<'_> {
             git_dirs,
             git_identity,
             core_url,
-            egress_socket: view.egress_dir.join(egress_dir_name()).join("s"),
+            needs_auth_cache: confine::needs_auth_cache_for(bearer_dir, &egress_socket),
+            egress_socket,
             gh_shim_dir: gh_shim.as_deref(),
         };
         let allow = confine::egress_allow(&view, &handed)?;
@@ -1054,6 +1056,7 @@ impl SessionCommand<'_> {
         let mut cmd = confine::chat_sandbox(&view, &handed)?.command(program, args)?;
         own_session(&mut cmd);
         let egress = start_egress(&handed.egress_socket, allow, upstream)?;
+        confine::own_needs_auth_cache(&view, &handed)?;
         Ok((cmd, Some(egress)))
     }
 }

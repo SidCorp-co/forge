@@ -190,6 +190,11 @@ fn write_refreshable_in(
 /// Put `credential` in the file a refreshable session's `headersHelper` reads. Written beside and
 /// renamed in, so the helper never reads half a token; the directory, not the file, is what a
 /// confined session has bound, so it sees the new file.
+///
+/// The session's own needs-auth cache beside it loses its [`FORGE_SERVER`] entry too (ISS-1201):
+/// the token of the turn before is revoked when that turn ends, so a reconnect between turns is
+/// answered 401 and Claude Code skips `forge` for fifteen minutes after; the new token is the one
+/// that answers, so the skip is stale the moment it is written.
 pub fn refresh_bearer(bearer_dir: &Path, credential: &str) -> Result<()> {
     let body = serde_json::json!({ "Authorization": format!("Bearer {credential}") }).to_string();
     let path = bearer_dir.join(BEARER_FILE);
@@ -197,12 +202,44 @@ pub fn refresh_bearer(bearer_dir: &Path, credential: &str) -> Result<()> {
     let _ = std::fs::remove_file(&tmp);
     write_owner_only(&tmp, &body)?;
     std::fs::rename(&tmp, &path)?;
-    Ok(())
+    forget_forge_needs_auth(&bearer_dir.join(NEEDS_AUTH_CACHE))
+}
+
+/// Drop [`FORGE_SERVER`] from the needs-auth cache at `path`, written in place: the file is
+/// bound over the session's own view of the cache, so a file renamed in would never reach it. A
+/// cache that is absent or holds no `forge` entry is left as it is, and so is one that is not a
+/// JSON object, which Claude Code reads as empty.
+fn forget_forge_needs_auth(path: &Path) -> Result<()> {
+    let body = match std::fs::read_to_string(path) {
+        Ok(body) => body,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(needs_auth_unclearable(path, &e.to_string())),
+    };
+    let Ok(Value::Object(mut cache)) = serde_json::from_str::<Value>(&body) else {
+        return Ok(());
+    };
+    if cache.remove(FORGE_SERVER).is_none() {
+        return Ok(());
+    }
+    std::fs::write(path, Value::Object(cache).to_string())
+        .map_err(|e| needs_auth_unclearable(path, &e.to_string()))
+}
+
+fn needs_auth_unclearable(path: &Path, why: &str) -> Error {
+    Error::Other(format!(
+        "[NEEDS_AUTH_CACHE_UNCLEARED] the session's own needs-auth cache {} cannot be cleared of \
+         `{FORGE_SERVER}`, so Claude Code would skip it this turn: {why}",
+        path.display()
+    ))
 }
 
 const BEARER_DIR_PREFIX: &str = "forge-bearer-";
 /// The file in a resident session's bearer directory that holds its turn token as a header.
 pub const BEARER_FILE: &str = "headers.json";
+/// Claude Code's needs-auth cache, by its own file name: the MCP servers it skips at connect as
+/// needing sign-in, keyed by server name alone. A confined session's own copy sits in its bearer
+/// directory, or its egress directory where it has none, and is bound over the shared one.
+pub const NEEDS_AUTH_CACHE: &str = "mcp-needs-auth-cache.json";
 
 /// Where the `forge` server's bearer comes from.
 enum ForgeBearer<'a> {

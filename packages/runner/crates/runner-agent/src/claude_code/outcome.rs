@@ -127,10 +127,34 @@ pub(crate) fn turn_verdict(o: &Outcome) -> RunnerEvent {
     RunnerEvent::Failed {
         error: o
             .result_error
-            .clone()
-            .map(|e| format!("[RESULT_ERROR] {e}"))
+            .as_ref()
+            .map(|e| with_needs_auth(format!("[RESULT_ERROR] {e}"), &o.mcp_failed))
             .unwrap_or_else(|| "[NO_RESULT] the turn ended without a result event".into()),
     }
+}
+
+/// `detail` with what a `needs-auth` server it names means (ISS-1201): Claude Code found that
+/// server in its needs-auth cache — a 401 it cached earlier — and skipped it without sending a
+/// request, which "not connected" alone hides. A server is named as the init lists it
+/// (`forge(needs-auth)`) or as Claude Code's own error quotes it (`"forge"`).
+pub(crate) fn with_needs_auth(detail: String, mcp_failed: &[String]) -> String {
+    let skipped: Vec<&str> = mcp_failed
+        .iter()
+        .filter_map(|s| {
+            let (name, status) = s.strip_suffix(')')?.rsplit_once('(')?;
+            let named =
+                detail.contains(&format!("{name}(")) || detail.contains(&format!("\"{name}\""));
+            (status.eq_ignore_ascii_case("needs-auth") && named).then_some(name)
+        })
+        .collect();
+    if skipped.is_empty() {
+        return detail;
+    }
+    format!(
+        "{detail} — needs-auth: a 401 cached in Claude Code's needs-auth cache skipped {}, and no \
+         request was sent",
+        skipped.join(", ")
+    )
 }
 
 /// Split an [`ExitStatus`] into `(exit_code, terminating_signal)`.
@@ -225,7 +249,7 @@ pub(crate) fn classify_failure_reason(
     // 1. A result event that reported is_error — most precise.
     if let Some(msg) = result_error {
         let msg: String = msg.chars().take(400).collect();
-        return format!("[RESULT_ERROR] {msg}");
+        return with_needs_auth(format!("[RESULT_ERROR] {msg}"), mcp_failed);
     }
     // 2. MCP server(s) failed to connect at startup — environment/infra.
     if !mcp_failed.is_empty() {
@@ -235,7 +259,8 @@ pub(crate) fn classify_failure_reason(
         } else {
             format!(" — {}", tail())
         };
-        return format!("[MCP_INIT_FAILED] {servers} did not connect at startup{extra}");
+        let head = format!("[MCP_INIT_FAILED] {servers} did not connect at startup");
+        return format!("{}{extra}", with_needs_auth(head, mcp_failed));
     }
     // 3. Killed by a signal (SIGKILL/OOM, SIGTERM, …).
     if let Some(sig) = signal {
@@ -291,4 +316,56 @@ pub(crate) fn detect_usage_limit(json: &Value) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `forge` Claude Code skipped on a cached 401 is named as that (ISS-1201), at init and in
+    /// the turn's own "not connected" error; a server that failed otherwise is not.
+    #[test]
+    fn a_server_skipped_as_needs_auth_is_named_as_a_cached_401_not_as_not_connected() {
+        let init = serde_json::json!({
+            "type": "system",
+            "mcp_servers": [
+                { "name": "forge", "status": "needs-auth" },
+                { "name": "ops", "status": "failed" },
+            ],
+        });
+        let failed = mcp_failed_servers(&init).unwrap();
+        let at_init = classify_failure_reason(Some(1), None, false, None, &failed, "");
+        assert!(
+            at_init.starts_with("[MCP_INIT_FAILED] forge(needs-auth), ops(failed)")
+                && at_init.contains(
+                    "needs-auth: a 401 cached in Claude Code's needs-auth cache skipped forge,"
+                ),
+            "an init failure does not say forge was skipped on a cached 401: {at_init}"
+        );
+        assert!(
+            !at_init.contains("skipped forge, ops"),
+            "a failed server was named needs-auth: {at_init}"
+        );
+        let o = Outcome {
+            result_error: Some(
+                "error_during_execution: MCP server \"forge\" is not connected".into(),
+            ),
+            mcp_failed: failed.clone(),
+            ..Outcome::default()
+        };
+        let RunnerEvent::Failed { error } = turn_verdict(&o) else {
+            panic!("a turn that ended in an error is not a failure");
+        };
+        assert!(
+            error.starts_with("[RESULT_ERROR] ")
+                && error.contains("needs-auth: a 401 cached in Claude Code's needs-auth cache skipped forge"),
+            "the turn's not-connected error does not say forge was skipped on a cached 401: {error}"
+        );
+        let unrelated =
+            classify_failure_reason(None, None, true, Some("rate limited"), &failed, "");
+        assert_eq!(
+            unrelated, "[RESULT_ERROR] rate limited",
+            "an error not naming forge was told it was skipped"
+        );
+    }
 }

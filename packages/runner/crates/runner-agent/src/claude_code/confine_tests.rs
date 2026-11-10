@@ -473,6 +473,7 @@ fn each_checkout_view_mounts_the_checkout_as_its_room_was_granted() {
             core_url: "https://core.example",
             egress_socket: p.root.join("s"),
             gh_shim_dir: None,
+            needs_auth_cache: p.root.join("mcp-needs-auth-cache.json"),
         })
     };
     let repo = p.repo.clone();

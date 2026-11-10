@@ -41,6 +41,10 @@ pub enum Mount {
     Write(PathBuf),
     /// An existing file replaced by an empty one, so a reader finds nothing in it.
     Hide(PathBuf),
+    /// `source`, a path of this box's, writable at `target` in place of what is there. Like
+    /// bubblewrap, `target` is made where it does not exist, so a caller that must not have
+    /// bubblewrap make it makes it first.
+    Bind { source: PathBuf, target: PathBuf },
 }
 
 /// The ceilings every process in a sandbox runs under (REQ-30 BC-11, ADR 0012), inherited across
@@ -223,6 +227,7 @@ impl Sandbox {
                 Mount::Read(p) => ("--ro-bind", Some(p.as_os_str()), p),
                 Mount::Write(p) => ("--bind", Some(p.as_os_str()), p),
                 Mount::Hide(p) => ("--ro-bind", Some(std::ffi::OsStr::new("/dev/null")), p),
+                Mount::Bind { source, target } => ("--bind", Some(source.as_os_str()), target),
             };
             args.push(flag.into());
             if let Some(source) = source {
