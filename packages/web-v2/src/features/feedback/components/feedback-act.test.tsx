@@ -3,6 +3,7 @@
 // acts next, never the reporter (FB-583).
 //
 // @direct-test-of packages/web-v2/src/features/feedback/components/feedback-band.tsx
+// @direct-test-of packages/web-v2/src/features/feedback/components/feedback-screen.tsx
 
 import type { QueryKey } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
@@ -62,6 +63,42 @@ describe("Feedback leads with titles, never keys (REQ-11 BC-19)", () => {
     const groups = within(list).getAllByTestId("group-count").map((c) => Number(c.textContent));
     expect(flow.reduce((a, b) => a + b, 0)).toBe(groups.reduce((a, b) => a + b, 0));
     expect(within(band).getByTestId("feedback-band-chart")).toBeInTheDocument();
+  });
+
+  // ISS-1197 r2 (live judge, cf16fab7a0): the band read Verified 277 and Declined 195 by phase over
+  // the rows less their duplicates, while the list under it grouped Done 301 and Dropped 196 by whose
+  // turn it is, its 25 duplicates included. The band counts what the list counts, by the list's own
+  // groups, from core's read: a duplicate is an occurrence of its original, never a row of its own
+  // (REQ-66 BC-3).
+  it("counts by the list's own groups, from core's counts, the duplicates in neither", () => {
+    const [rows] = FEEDBACK_SEED.filter(([key]) => key[0] === "feedback" && key.length === 2).map(([, v]) => (v as { feedback: FeedbackSummary[] }).feedback);
+    const pick = (key: string) => rows?.find((r) => r.key === key) as FeedbackSummary;
+    const planted = [
+      { ...pick("FB-1"), title: "Login loops" },
+      { ...pick("FB-5"), title: "Export is empty" },
+      { ...pick("FB-5"), key: "FB-8", id: "f8", title: "Totals drift", route: { route: "duplicate" } },
+      { ...pick("FB-6"), title: "Slow board" },
+    ] as FeedbackSummary[];
+    const counts = { needs_you: 1, running: 0, queued: 0, overdue: 0, waiting: 0, done: 1, dropped: 1 };
+    render(
+      <Seeded data={seed().map(([key, value]) => (key[0] === "feedback" && key.length === 2 ? [key, { ...(value as object), feedback: planted, counts, total: 3, open: 1 }] : [key, value]))}>
+        <FeedbackScreen projectId={P} slug="hop" />
+      </Seeded>,
+    );
+    const band = screen.getByTestId("feedback-band");
+    const flow = Object.fromEntries(within(band).getAllByTestId("coverage-part").map((p) => [p.getAttribute("data-key"), Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const list = Object.fromEntries(
+      within(screen.getByTestId("grouped-list"))
+        .getAllByTestId("list-group")
+        .map((g) => [g.getAttribute("data-group"), Number(within(g).getByTestId("group-count").textContent)])
+        .filter(([, n]) => Number(n) > 0),
+    );
+    expect(flow).toEqual({ needs_you: 1, done: 1, dropped: 1 });
+    expect(list).toEqual(flow);
+    const figure = (key: string) => within(band).getAllByTestId("band-figure").find((f) => f.getAttribute("data-key") === key);
+    expect(figure("reports")).toHaveTextContent("3");
+    expect(figure("open")).toHaveTextContent("1");
+    expect(screen.queryByText("Totals drift")).toBeNull();
   });
 
   it("never names the reporter on a row: who acts next is its Waiting on", () => {

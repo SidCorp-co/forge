@@ -231,6 +231,20 @@ describe("an issue page in the person's view", () => {
     expect(await screen.findByTestId("issue-description")).toHaveTextContent("There is no checklist concept");
   });
 
+  // ISS-1197 r2 (live judge, cf16fab7a0): Details > Activity grew the page from about 1.2k to 15.8k
+  // characters in place, and Files unfolded in place too. Each opens in a side drawer: a click adds
+  // nothing to the page and opens a dialog holding the record.
+  it.each(["files", "activity"])("opens %s in a side drawer, never in place", async (key) => {
+    const root = await page();
+    const details = within(root).getByTestId("issue-details");
+    const before = details.textContent ?? "";
+    await userEvent.click(within(within(root).getByTestId(`details-${key}`)).getAllByRole("button")[0]);
+    const dialog = await screen.findByRole("dialog");
+    expect(details.textContent).toBe(before);
+    expect(details.contains(dialog)).toBe(false);
+    if (key === "files") expect(within(dialog).getAllByText(/\.(png|txt|log|pdf|json|md)/i).length).toBeGreaterThan(0);
+  });
+
   it("counts the criteria in the filter pills and marks each row, one line apiece", async () => {
     const root = await page();
     expect(within(root).getByRole("button", { name: "All 18" })).toBeInTheDocument();
