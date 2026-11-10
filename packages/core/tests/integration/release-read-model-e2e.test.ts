@@ -483,7 +483,7 @@ describe('an issue reopened between two releases reads as the rework of the one 
     return id;
   }
 
-  it('lists the rework under dev.225 Fixes and names the issue on its migration ask, and keeps dev.224 reworked', async () => {
+  it('lists the rework under dev.225 Fixes, asks no backup of it once shipped, and keeps dev.224 reworked', async () => {
     const id = await iss455();
     await moved(id, 'awaiting_release', 'closed', '03:12:04.690');
     const dev225 = await page('0.4.0-dev.225');
@@ -500,8 +500,8 @@ describe('an issue reopened between two releases reads as the rework of the one 
         screen: null,
       },
     ]);
-    const ask = expect.objectContaining({ kind: 'migration', ref: MIGRATION, issues: [key] });
-    expect(dev225.actionRequired).toEqual([ask]);
+    // shipped, its backup is past (ISS-1198); an unshipped one names the issue (sections-range.test.ts)
+    expect(dev225.actionRequired).toEqual([]);
 
     const dev224 = await page('0.4.0-dev.224');
     expect(dev224.fixes).toEqual([]);
