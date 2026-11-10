@@ -29,6 +29,7 @@ import { type Act, carol, code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/question-task.ts
+// @direct-test-of packages/core/src/support/kept-answers.ts
 // @direct-test-of packages/core/src/support/owner-owed.ts
 // @direct-test-of packages/core/src/support/prompt.ts
 // @direct-test-of packages/core/src/support/owner-ask.ts
@@ -402,5 +403,72 @@ describe('ISS-916: an owner’s answer reaches a question he owes, wherever he w
     );
     expect(code(outs[0])).toBe('SUPPORT_OWNER_QUESTION_UNKNOWN');
     expect(code(outs[1])).toBe('SUPPORT_ANSWER_SOURCE');
+  });
+
+  // FB-606 (agenfold, 2026-11-10): the owner's "change" on a choice whose option is answered in words
+  it('records an option that takes words with the words, from his message or the call', async () => {
+    const { askQuestion } = await import('../../src/questions/index.js');
+    const choice = async (prompt: string) => {
+      const issue = await createTestIssue(w.projectId, w.ownerId, ++seq, {
+        status: 'in_progress',
+        createdAt: new Date(),
+      });
+      const id = randomUUID();
+      const opt = (oid: string, label: string, takesText?: boolean) => ({
+        id: oid,
+        label,
+        authority: 'writer',
+        bindsTo: 'project',
+        executedBy: 'human',
+        ...(takesText ? { takesText } : {}),
+      });
+      await askQuestion({
+        id,
+        projectId: w.projectId,
+        issueId: issue.id,
+        askedBy: w.ownerId,
+        prompt,
+        blockerKind: 'human',
+        answer: {
+          shape: 'choice',
+          options: [opt('approve', 'Approve them all'), opt('change', 'Change some', true)],
+          recommendedOptionId: 'approve',
+        },
+      } as Parameters<typeof askQuestion>[0]);
+      return id;
+    };
+    const fromMessage = await choice('Are the six screen groups right?');
+    const fromCall = await choice('Are the four report groups right?');
+    const outs: Record<string, unknown>[] = [];
+    await w.hear(
+      () => chat.say(chat.alice, 'Gộp nhóm 2 và 3, bỏ nhóm 6'),
+      async (_turn, act, message) => {
+        const m = message();
+        for (const [id, answer] of [
+          [fromMessage, undefined],
+          [fromCall, 'Merge groups 2 and 3, drop group 6'],
+        ] as const) {
+          outs.push(
+            await act({
+              action: 'answer_question',
+              thread: m.thread,
+              forgeQuestion: id,
+              message: m.message ?? '',
+              option: 'change',
+              ...(answer ? { answer } : {}),
+            }),
+          );
+        }
+      },
+    );
+    expect(outs.map((o) => o.isError), JSON.stringify(outs)).toEqual([false, false]);
+    expect((await question(fromMessage))?.steps.at(-1)).toMatchObject({
+      chosenOptionId: 'change',
+      chosenText: 'Gộp nhóm 2 và 3, bỏ nhóm 6',
+    });
+    expect((await question(fromCall))?.steps.at(-1)).toMatchObject({
+      chosenOptionId: 'change',
+      chosenText: 'Merge groups 2 and 3, drop group 6',
+    });
   });
 });
