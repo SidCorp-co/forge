@@ -4,6 +4,7 @@
 
 import type { Hono } from 'hono';
 import type { RequestIdVars } from './middleware/request-id.js';
+import { noQuery } from './middleware/zod-validator.js';
 import {
   requiresByRule,
   requiresInstanceAdmin,
@@ -12,9 +13,22 @@ import {
   requiresSelf,
 } from './permissions/index.js';
 
-export const INSTALL_IS_PUBLIC = requiresPublic(
-  'a box with no credential yet fetches the installer and the published runner build; nothing a project owns',
+const INSTALL_IS_PUBLIC = requiresPublic(
+  'a machine with no credential yet fetches an installer and the published runner build; nothing a project owns',
 );
+
+/**
+ * The public install routes at both mounts, ahead of `installRoutes`, with the validator closing their
+ * query. The plugin's archive is not among them: it is behind a token (`pluginArchiveRoutes`).
+ */
+export function declareInstallRoutes(
+  app: Hono<{ Variables: RequestIdVars }>,
+  paths: readonly string[],
+): void {
+  for (const at of ['', '/api']) {
+    for (const path of paths) app.use(`${at}${path}`, INSTALL_IS_PUBLIC, noQuery);
+  }
+}
 
 export const DISCOVERY_IS_PUBLIC = requiresPublic(
   'an MCP client with no token reads where to sign in; the documents name endpoints, never a row',

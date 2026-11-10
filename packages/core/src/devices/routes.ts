@@ -340,7 +340,7 @@ deviceAuthRoutes.post(
   },
 );
 
-export { installRoutes } from './install-routes.js';
+export { installRoutes, PUBLIC_INSTALL_PATHS } from './install-routes.js';
 export { deviceLoginRoutes } from './login-routes.js';
 export { deviceMcpServerRoutes } from './mcp-servers-routes.js';
 export { deviceOrgRoutes } from './org-routes.js';

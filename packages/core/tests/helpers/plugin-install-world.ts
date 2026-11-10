@@ -129,9 +129,7 @@ export interface PluginInstallWorld {
   close(): Promise<void>;
 }
 
-export async function pluginInstallWorld(
-  routes: () => Promise<Hono>,
-): Promise<PluginInstallWorld> {
+export async function pluginInstallWorld(routes: () => Promise<Hono>): Promise<PluginInstallWorld> {
   const root = await mkdtemp(join(tmpdir(), 'install-plugin-'));
   const installRoutes = await routes();
   const archive = pluginArchive();
@@ -176,15 +174,23 @@ export async function pluginInstallWorld(
     if (marketplaces) {
       await writeFile(
         join(state, 'marketplaces.json'),
-        JSON.stringify(marketplaces.map((m) => ({ ...m, source: 'directory', path: m.installLocation }))),
+        JSON.stringify(
+          marketplaces.map((m) => ({ ...m, source: 'directory', path: m.installLocation })),
+        ),
       );
     }
     for (const f of ['marketplaces.json', 'plugins.json']) {
       await writeFile(join(state, f), '[]', { flag: 'wx' }).catch(() => undefined);
     }
-    const before = (await readFile(join(state, 'claude.log'), 'utf8')).split('\n').filter(Boolean).length;
-    const forgeBefore = (await readFile(join(box, 'forge.log'), 'utf8')).split('\n').filter(Boolean).length;
-    const linkBefore = (await readFile(join(box, 'link.log'), 'utf8')).split('\n').filter(Boolean).length;
+    const before = (await readFile(join(state, 'claude.log'), 'utf8'))
+      .split('\n')
+      .filter(Boolean).length;
+    const forgeBefore = (await readFile(join(box, 'forge.log'), 'utf8'))
+      .split('\n')
+      .filter(Boolean).length;
+    const linkBefore = (await readFile(join(box, 'link.log'), 'utf8'))
+      .split('\n')
+      .filter(Boolean).length;
 
     const script = await (await fetch(`${base}/api/install-plugin.sh`)).text();
     await writeFile(join(box, 'install-plugin.sh'), script);
@@ -228,7 +234,9 @@ export async function pluginInstallWorld(
     return {
       ...run,
       home,
-      claude: (await lines(join(state, 'claude.log'), before)).map((l) => JSON.parse(l) as string[]),
+      claude: (await lines(join(state, 'claude.log'), before)).map(
+        (l) => JSON.parse(l) as string[],
+      ),
       forge: await lines(join(box, 'forge.log'), forgeBefore),
       linked: await lines(join(box, 'link.log'), linkBefore),
     };

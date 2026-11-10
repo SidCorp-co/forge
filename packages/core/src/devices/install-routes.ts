@@ -7,6 +7,14 @@ import { getPublishedRunnerBuild, RELEASE_DIR } from './published-build.js';
 
 export const installRoutes = new Hono();
 
+/** What a box with no credential yet fetches, at either mount: every route here but none behind it. */
+export const PUBLIC_INSTALL_PATHS = [
+  '/install.sh',
+  '/install-plugin.sh',
+  '/install/latest.json',
+  '/install/bin/:target',
+] as const;
+
 const ASSET_PREFIX = 'forge-runner-';
 
 function origin(reqUrl: string): string {

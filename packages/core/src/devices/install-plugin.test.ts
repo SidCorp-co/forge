@@ -54,7 +54,9 @@ describe('REQ-25 BC-4: the served plugin install, run on a machine', () => {
     expect(run.stderr).toBe('');
     expect(run.code).toBe(0);
     expect(w.bearer).toBe(`Bearer ${TOKEN}`);
-    expect(run.stdout).toContain(`Downloading the forge plugin from ${w.base}/api/install/plugin.tar.gz...`);
+    expect(run.stdout).toContain(
+      `Downloading the forge plugin from ${w.base}/api/install/plugin.tar.gz...`,
+    );
     expect(run.stdout).toContain(`Installed forge ${VERSION} from ${MARKETPLACE}`);
     // tar read core's tar, the long path's pax header included
     expect(await readFile(join(dest(run), LONG), 'utf8')).toBe('long\n');
@@ -144,7 +146,9 @@ describe('REQ-25 BC-4: the served plugin install, run on a machine', () => {
       const run = await w.install('placeholder', { args: ['--token', '<pat>'] });
 
       expect(run.code).toBe(1);
-      expect(run.stderr).toMatch(/^INSTALL_PLUGIN_TOKEN_MALFORMED: what was given is not a Forge token/);
+      expect(run.stderr).toMatch(
+        /^INSTALL_PLUGIN_TOKEN_MALFORMED: what was given is not a Forge token/,
+      );
       expect(run.claude).toEqual([]);
     });
 
@@ -159,7 +163,9 @@ describe('REQ-25 BC-4: the served plugin install, run on a machine', () => {
       const run = await w.install('no-claude', { args: ['--token', TOKEN], noClaude: true });
 
       expect(run.code).toBe(1);
-      expect(run.stderr).toMatch(/^INSTALL_PLUGIN_TOOL_MISSING: this machine has no claude on its PATH\./);
+      expect(run.stderr).toMatch(
+        /^INSTALL_PLUGIN_TOOL_MISSING: this machine has no claude on its PATH\./,
+      );
     });
 
     it('a claude call that fails: INSTALL_PLUGIN_CLAUDE_FAILED naming the call and what claude said', async () => {

@@ -53,7 +53,8 @@ function paxRecords(body: Buffer): Map<string, string> {
     const space = body.indexOf(0x20, at);
     if (space === -1) break;
     const length = Number.parseInt(body.subarray(at, space).toString('ascii'), 10);
-    if (!Number.isFinite(length) || length <= 0) throw new TarUnreadable('a pax record has no length');
+    if (!Number.isFinite(length) || length <= 0)
+      throw new TarUnreadable('a pax record has no length');
     const record = body.subarray(space + 1, at + length - 1).toString('utf8');
     const eq = record.indexOf('=');
     if (eq > 0) out.set(record.slice(0, eq), record.slice(eq + 1));
@@ -153,7 +154,9 @@ export function writeTar(entries: readonly TarEntry[]): Buffer {
   const out: Buffer[] = [];
   for (const e of entries) {
     if (e.kind !== 'file' && e.kind !== 'dir') {
-      throw new TarUnreadable(`${e.path} is a ${e.kind}, and only files and directories are written`);
+      throw new TarUnreadable(
+        `${e.path} is a ${e.kind}, and only files and directories are written`,
+      );
     }
     const name = e.kind === 'dir' ? `${e.path}/` : e.path;
     if (Buffer.byteLength(name) > 100) {

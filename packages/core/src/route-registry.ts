@@ -48,6 +48,7 @@ import {
   deviceOwnerRoutes,
   devicePoolRoutes,
   installRoutes,
+  PUBLIC_INSTALL_PATHS,
   projectPluginConflictRoutes,
 } from './devices/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
@@ -130,14 +131,13 @@ import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memor
 import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
-import { noQuery } from './middleware/zod-validator.js';
 import { mockupRoutes } from './mockups/routes.js';
 import {
   BODY_PREVIEW_NEEDS_NO_PERMISSION,
   CONTRACT_IS_PUBLIC,
   DISCOVERY_IS_PUBLIC,
   declareCredentialRoutes,
-  INSTALL_IS_PUBLIC,
+  declareInstallRoutes,
   OUTBOX_IS_INSTANCE_ADMIN,
 } from './mounted-declarations.js';
 import { notificationVolumeRoutes } from './notifications/index.js';
@@ -269,19 +269,8 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
 
   // the install routes reach nothing outside themselves (.arch.json install-is-pure), so the
   // validator closing their query is held where they are mounted
-  for (const at of ['', '/api']) {
-    for (const path of [
-      '/install.sh',
-      '/install-plugin.sh',
-      '/install/latest.json',
-      '/install/bin/:target',
-    ]) {
-      app.use(`${at}${path}`, INSTALL_IS_PUBLIC, noQuery);
-    }
-  }
+  declareInstallRoutes(app, PUBLIC_INSTALL_PATHS);
   for (const at of ['/', '/api']) app.route(at, installRoutes);
-  // the plugin's archive is behind a token, so it is mounted apart from the public install routes,
-  // and under /api alone: the script it is fetched by reaches core there wherever it was served
   app.route('/api', pluginArchiveRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
   for (const path of ['/api/openapi.json', '/api/mcp-tools.json'])

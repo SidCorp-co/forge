@@ -74,7 +74,8 @@ function said(err: unknown, what: string): RepositoryUnreachable {
   if (err instanceof RepositoryUnreachable) return err;
   if (isTimeout(err)) return new RepositoryUnreachable(`GitHub did not answer ${what} in time`);
   const answered = responseOf(err);
-  if (answered) return new RepositoryUnreachable(`GitHub answered ${what} with HTTP ${answered.status}`);
+  if (answered)
+    return new RepositoryUnreachable(`GitHub answered ${what} with HTTP ${answered.status}`);
   const why = err instanceof Error ? err.message : String(err);
   return new RepositoryUnreachable(`GitHub could not be asked ${what}: ${why}`);
 }
