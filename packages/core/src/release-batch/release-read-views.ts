@@ -31,6 +31,7 @@ import {
   type ChangeRequestLinkRow,
   changeRequestViews,
   type ReleaseMergeStep,
+  unmergedSteps,
 } from './change-request-roster.js';
 import type { RecordedVerification } from './channel.js';
 import { type CriterionReading, criterionReadingsAt } from './criterion-reading.js';
@@ -159,14 +160,21 @@ function turnFor(p: Part, s: Shared, criteria: { proven: number; total: number }
     version: p.version,
     projectId: s.projectId,
     runId: p.runId,
-    merges: p.mergeSteps ? p.mergeSteps.length : null,
+    // only a request not merged yet is a merge owed (ISS-1207); at none the settle's own wait reads
+    merges: p.mergeSteps ? unmergedSteps(p.mergeSteps, s.changeRequestLinks).length : null,
+    promotion: Boolean((p.runMetadata as { promotion?: unknown } | null | undefined)?.promotion),
     landedOn: p.landedOn,
     required: s.required,
     production: s.production === true,
     approval: approvalFacts(p),
     approvers: s.approvers,
     admins: s.admins,
-    owes: releaseOwesOf(s.policy, irreversibleIn(p, s), p.draftApproval?.decision === 'approved'),
+    // a required approval that stands, on the draft or on the cut run, frees what waited on it
+    owes: releaseOwesOf(
+      s.policy,
+      irreversibleIn(p, s),
+      p.draftApproval?.decision === 'approved' || approvalFacts(p)?.decision === 'approved',
+    ),
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),

@@ -56,8 +56,10 @@ interface TurnFacts {
   /** The project and run, which the route a master asks approval with names (ISS-591). */
   projectId: string;
   runId: string | null;
-  /** The requests a change-request release merges, in order; null on a release that deploys (REQ-71). */
+  /** The requests a change-request release has still to merge, in order; null on a release that deploys (REQ-71, ISS-1207). */
   merges: number | null;
+  /** A promotion release: once its request merged, the record of its production deploy closes it (REQ-63 BC-12). */
+  promotion?: boolean;
   /** The branch a recorded landing put it on, off production's branch; null on any other release. */
   landedOn: string | null;
   /** `release.approval.required` of the project document. */
@@ -379,6 +381,25 @@ function personMergesTurn(f: TurnFacts, n: number): Turn {
   return turn('waiting', 'person', { who: holdersWho(f.approvers.map((a) => a.name)), ...says });
 }
 
+/**
+ * A promotion release whose request merged (ISS-1207, `change-request-settle.ts` pending `record`):
+ * production is deployed outside Forge, and the record of that deploy closes it. The approval that
+ * accepted it was the go to production, so where it stands the record is the master's by the one
+ * rule, and no person is asked again for the same release (ISS-1206).
+ */
+function recordTurn(f: TurnFacts): Turn {
+  const act = say('standing.act.recordRelease');
+  const rule = say('releases.rule.mergedAwaitsRecord', { v: f.version });
+  if (f.owes('release.record').by === 'master') {
+    return turn('waiting', 'agent', { who: MASTER, act, rule });
+  }
+  const approvers = f.approvers.map((a) => a.name);
+  if (f.viewer?.agency === 'human' && f.viewer.mayApprove) {
+    return turn('waiting', 'you', { who: YOU, act, rule });
+  }
+  return turn('waiting', 'person', { who: holdersWho(approvers), act, rule });
+}
+
 export function turnOf(f: TurnFacts): Turn {
   switch (f.state) {
     case 'draft':
@@ -396,10 +417,10 @@ export function turnOf(f: TurnFacts): Turn {
     case 'in_progress':
       // a change-request release runs no job: once accepted, the master merges its requests in order,
       // unless the project says a person merges them on the host (ISS-1090)
-      if (f.merges !== null && f.owes('release.merge').by === 'person') {
+      if (f.merges !== null && f.merges > 0 && f.owes('release.merge').by === 'person') {
         return personMergesTurn(f, f.merges);
       }
-      if (f.merges !== null) {
+      if (f.merges !== null && f.merges > 0) {
         return turn('waiting', 'agent', {
           who: MASTER,
           act: say('standing.act.mergeInOrder'),
@@ -410,6 +431,8 @@ export function turnOf(f: TurnFacts): Turn {
         });
       }
       if (f.prodConfirm) return confirmTurn(f, f.prodConfirm.bindingId);
+      // every request merged: a promotion waits on the record of its deploy (ISS-1207)
+      if (f.merges === 0 && f.promotion) return recordTurn(f);
       return turn('moving', 'agent', {
         who: RELEASE_RUN,
         act: f.inFlight ? IN_FLIGHT_ACT[f.inFlight] : say('standing.act.starting'),

@@ -228,6 +228,19 @@ export function mergeStepsOf(metadata: unknown): ReleaseMergeStep[] | null {
 }
 
 /**
+ * The steps of a declared merge order whose request is not merged yet, as the links a release page
+ * reads hold each request's state (ISS-1207): a step whose request no link reads merged is still
+ * owed, and the steps the host merged are not (`change-request-settle.ts` reads the same).
+ */
+export function unmergedSteps(
+  steps: readonly ReleaseMergeStep[],
+  links: readonly Pick<ChangeRequestLinkRow, 'pullRequestId' | 'state'>[],
+): ReleaseMergeStep[] {
+  const merged = new Set(links.filter((l) => l.state === 'merged').map((l) => l.pullRequestId));
+  return steps.filter((s) => !merged.has(s.pullRequestId));
+}
+
+/**
  * `mergeStepsOf` in SQL: the run is a change-request release. It runs no job and holds no session
  * while it waits on the owner's accept and the master's merges, so only its settle or its abort
  * ends it, never a sweep reading it as orphaned (dev 2026-10-23: two cuts cancelled at four minutes).

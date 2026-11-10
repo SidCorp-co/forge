@@ -1748,6 +1748,10 @@ export const SAID = {
 		en: "Not judged on {environment}: {proven} of {total} criteria pass there",
 		vars: { environment: "name", proven: "count", total: "count" },
 	},
+	"releases.rule.mergedAwaitsRecord": {
+		en: "every request of {v} merged; its approval was the go to production, and the record of that deploy closes it",
+		vars: { v: "version" },
+	},
 	"releases.rule.personMerges": {
 		en: "accepted: a person merges its {n} {requests} on the host, in order",
 		vars: { n: "count", requests: "agreement" },
