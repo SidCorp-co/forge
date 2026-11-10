@@ -10,3 +10,4 @@ export { parseReleaseRoster } from "./roster";
 export { type ReleaseSummary } from "./types";
 export { verifiedSentence } from "./verified";
 export type { ReleaseRoster, ReleaseRosterEntry } from "./roster";
+export { ShippedChart, shipChartOf } from "./components/shipped-chart";

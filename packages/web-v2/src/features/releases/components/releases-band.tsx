@@ -7,7 +7,7 @@
 import { PROJECT_HOME_DAYS, shipDaysOf } from "@forge/contracts/project-home";
 import { RELEASE_STATES } from "@forge/contracts/releases";
 import { OverviewBand, readerDays, stateFlowOf } from "@/design";
-import { ShippedChart } from "@/features/project-home";
+import { ShippedChart } from "./shipped-chart";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { ReleaseSummary } from "../types";
 

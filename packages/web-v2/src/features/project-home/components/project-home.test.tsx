@@ -13,7 +13,9 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore } from "@/test/render";
 import { componentOf, renderRoute } from "@/test/route-tree";
-import { feedbackBarsOf, shipChartOf, stageParts } from "../model";
+import { feedbackBarsOf } from "@/features/feedback";
+import { shipChartOf } from "@/features/releases";
+import { stageParts } from "../model";
 
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 

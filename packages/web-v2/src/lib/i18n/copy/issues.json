@@ -597,7 +597,7 @@
     "issues.band.chart": "Filed and closed",
     "issues.band.opened": "Filed",
     "issues.band.closed": "Closed",
-    "issues.band.none": "Nothing filed or closed",
+    "issues.band.none": "Nothing yet",
     "issues.band.day": "Day"
   }
 }

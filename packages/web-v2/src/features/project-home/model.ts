@@ -1,21 +1,18 @@
 // What the home draws from its one read (`GET /api/projects/:id/home`): each stage's parts, the
-// Delivery board's columns and the charts' marks. Every number is the read's; this only groups and
+// Delivery board's columns. Every number is the read's; this only groups and
 // places them, so a part's count always sums back to the figure its stage shows.
 
-import type { HomeCount, HomeFeedbackWeek, HomeIssue, HomeShipDay, ProjectHome } from "@forge/contracts/project-home";
+import type { HomeCount, HomeIssue, ProjectHome } from "@forge/contracts/project-home";
 import { DEBT_KIND_TONES, type DebtKind } from "@forge/contracts/cleanup";
 import type { IssueStatus } from "@forge/contracts/issue-machine";
 import { ISSUE_STATUS_TONES } from "@forge/contracts/issue-vocabulary";
 import { RELEASE_STATE_TONES, type ReleaseState } from "@forge/contracts/releases";
 import { REQUIREMENT_STATE_TONES, type RequirementState } from "@forge/contracts/requirements";
-import { dayLabel, dayTick, type LegendTone, peakCaps, stackCaps } from "@/design";
+import type { LegendTone } from "@/design";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
 export const STAGE_IDS = ["product", "delivery", "release", "audit"] as const;
 export type StageId = (typeof STAGE_IDS)[number];
-
-/** The categorical series colours, the theme's chart tokens in a fixed order (both themes). */
-export const SERIES = ["var(--chart-2)", "var(--chart-1)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"] as const;
 
 /**
  * One part of a stage's bar. Its tone is what the part means, read from the contract tone map of the
@@ -95,25 +92,3 @@ export function trackOf(i: Pick<HomeIssue, "status" | "step">): number {
 
 export const isHighPriority = (priority: string) => priority === "high" || priority === "urgent" || priority === "critical";
 
-export interface ShipChart {
-  /** One per day; `mark` (and `cap_issues`, the same) is printed over the bar on the highest day and today only. */
-  points: (HomeShipDay & { label: string; tick: string; mark: number | null; cap_issues: number | null })[];
-  average: number;
-}
-
-export function shipChartOf(days: readonly HomeShipDay[]): ShipChart {
-  const marks = peakCaps(days.map((d) => d.issues));
-  const points = days.map((d, i) => ({ ...d, label: dayLabel(d.day), tick: dayTick(d.day), mark: marks[i] ?? null, cap_issues: marks[i] ?? null }));
-  const total = days.reduce((n, d) => n + d.issues, 0);
-  return { points, average: days.length ? total / days.length : 0 };
-}
-
-export const FEEDBACK_OUTCOMES = ["fixed", "declined", "open"] as const;
-export type FeedbackOutcome = (typeof FEEDBACK_OUTCOMES)[number];
-
-/** What each outcome means, as its colour: fixed is done well, declined is closed without a change, open still waits. */
-export const FEEDBACK_OUTCOME_TONES: Record<FeedbackOutcome, LegendTone> = { fixed: "ready", declined: "neutral", open: "you" };
-
-/** A week's bar with its total carried by the topmost segment drawn (`cap_<outcome>`). */
-export const feedbackBarsOf = (weeks: readonly HomeFeedbackWeek[]) =>
-  stackCaps(weeks, FEEDBACK_OUTCOMES).map((w) => ({ ...w, label: dayLabel(w.week), tick: dayLabel(w.week) }));

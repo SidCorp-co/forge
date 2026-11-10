@@ -6,7 +6,7 @@
 import { countsAsReport, FEEDBACK_PHASES } from "@forge/contracts/feedback";
 import { feedbackOutcomeOf, feedbackWeeksOf } from "@forge/contracts/project-home";
 import { OverviewBand, readerDays, stateFlowOf } from "@/design";
-import { FeedbackChart } from "@/features/project-home";
+import { FeedbackChart } from "./feedback-chart";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { FeedbackSummary } from "../types";
 

@@ -8,3 +8,4 @@ export { ForgeFeedbackButton } from "./components/forge-feedback-dialog";
 export { FeedbackButton } from "./components/report-dialog";
 export { MyForgeFeedback } from "./components/my-forge-feedback";
 export { useFeedbackList } from "./hooks";
+export { FeedbackChart, feedbackBarsOf } from "./components/feedback-chart";
