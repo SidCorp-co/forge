@@ -3,12 +3,13 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { ListFilterBar, useListFilter } from "@/features/chat-dock";
-import { Button, EmptyState, PageTitle, RowItem, SegmentedControl, rememberListOrigin, useUrlChoice } from "@/design";
+import { DESIGN_STATUSES } from "@forge/contracts/design-status";
+import { Button, CoverageBar, EmptyState, PageTitle, RowItem, SegmentedControl, rememberListOrigin, stateFlowOf, useUrlChoice } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding";
 import { useOnboardingState } from "@/features/onboarding";
 import { useProjectDocument } from "@/features/project-config";
-import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useQueryParam } from "@/lib/utils/use-query-param";
@@ -102,6 +103,24 @@ function NeedsYou({ rows }: { rows: readonly WorkflowRecord[] }) {
   );
 }
 
+/**
+ * The flow of the listed designs by state, each with its count, in the tone its badge wears (REQ-43 r3
+ * BC-14): counted over the very rows the list under it holds (L-57). A design with no state shown yet
+ * is not a state of the flow, so it is not drawn in it; where every design shares one state, the shared
+ * line already says it once and the heading counts them, so no flow repeats it. Its overview's figures are the region beside
+ * it (the system map, its facts on hover); designs hold no state history in what core serves, so no chart.
+ */
+function DesignFlow({ rows, pad }: { rows: readonly WorkflowRecord[]; pad: string }) {
+  const language = useInterfaceLanguage();
+  const shown = rows.flatMap((r) => (r.design.shown ? [r.design.shown] : []));
+  if (new Set(shown).size < 2) return null;
+  return (
+    <div className={cn("border-t border-line-subtle bg-sunken py-2.5", pad)} data-testid="designs-flow">
+      <CoverageBar segments={stateFlowOf("design", DESIGN_STATUSES, shown, language)} />
+    </div>
+  );
+}
+
 function Designs({
   all,
   projectId,
@@ -171,6 +190,7 @@ function Designs({
           <NewDesign projectId={projectId} slug={slug} templates={templates} canWrite={canWrite} />
         </span>
       </header>
+      <DesignFlow rows={rows} pad={pad} />
       {first && (shared.status || shared.waits) ? (
         <div className={cn("flex min-h-8.5 flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle bg-sunken py-1.25 text-13", pad)} data-testid="workflows-shared">
           {shared.status && first.design.shown ? <DesignPill status={first.design.shown} reason={first.design.returnReason ?? null} /> : null}

@@ -186,6 +186,19 @@ describe("a state every design shares, said once (C4)", () => {
     expect(within(screen.getByTestId("workflow-list")).getAllByTestId("waiting-on")).toHaveLength(2);
   });
 
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the list's states flow above it, each count the rows'
+  // own badges at that state (L-57)
+  it("draws the flow of the listed designs by state above the list, each counting the rows at it", async () => {
+    screenWith([design("a", "Alpha", { status: "proposed", wait: youWait }), design("b", "Bravo"), design("c", "Charlie", { status: "approved" }), design("d", "Delta")]);
+    await screen.findAllByTestId("workflow-row");
+    const flow = screen.getByTestId("designs-flow");
+    const list = screen.getByTestId("workflow-list");
+    expect(flow.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const parts = new Map(within(flow).getAllByTestId("coverage-part").map((p) => [p.dataset.key, Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const pills = within(list).getAllByTestId("design-pill").map((p) => p.dataset.status);
+    expect(parts).toEqual(new Map(["draft", "proposed", "approved"].map((k) => [k, pills.filter((p) => p === k).length])));
+  });
+
   it("names the waiting filter's every-design choice All", async () => {
     screenWith(AGENFOLD);
     await screen.findAllByTestId("workflow-row");
