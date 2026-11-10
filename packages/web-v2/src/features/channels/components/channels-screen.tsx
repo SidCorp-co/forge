@@ -1,7 +1,8 @@
 // Product → Channels (REQ-75 r6 BC-30): the project's bound channels on the shared grouped list (ISS-1072),
 // each row led by the channel's name, then who answers it and whether that agent is live (ISS-1184),
 // its facts only the counts that hold something. A row opens the channel's own page, where its
-// members, rules, common issues and routes are read in full.
+// members, rules, common issues and routes are read in full. The list opens on its overview band
+// (REQ-43 r3 BC-14, `channels-band.tsx`), counted over the channels it lists.
 
 import type { ChannelSummaryView } from "@forge/contracts/support-channel";
 import { GroupedList, type ListRowView, PageTitle, useGroupFold } from "@/design";
@@ -11,6 +12,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useRouter } from "@/lib/navigation/router";
 import { useChannels } from "../hooks";
 import { AgentLive, useAgentName } from "./channel-agent";
+import { ChannelsBand } from "./channels-band";
 
 export const channelsListHref = (slug: string) => `/projects/${slug}/channels`;
 export const channelHref = (slug: string, rid: string) => `${channelsListHref(slug)}/${encodeURIComponent(rid)}`;
@@ -47,6 +49,8 @@ export function ChannelsScreen({ projectId, slug }: { projectId: string; slug: s
           data.channels.length === 0 ? (
             <p className="fg-body-sm text-muted">{t("channels.none")}</p>
           ) : (
+            <>
+            <ChannelsBand channels={data.channels} />
             <GroupedList
               ariaLabel={t("channels.title")}
               groups={[{ id: "bound", label: t("channels.group.bound"), rows: data.channels }]}
@@ -57,6 +61,7 @@ export function ChannelsScreen({ projectId, slug }: { projectId: string; slug: s
               columns={{ title: t("channels.col.channel"), state: t("channels.col.agent"), waitingOn: "", meta: "" }}
               keyColumn={false}
             />
+            </>
           )
         }
       </QueryBoundary>

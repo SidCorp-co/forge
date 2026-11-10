@@ -4,7 +4,8 @@
 // read inferred or confirmed (BC-31..BC-33), and a person corrects them in place, which confirms them.
 // An empty table reads "Not recorded yet", never "None": the record holds only what was confirmed, so
 // a room with people in it reads empty until someone records them, and the act that fills it stands
-// beside it. The page's back control goes to Channels.
+// beside it. The page's back control goes to Channels. Under who answers, its overview band (REQ-43 r3
+// BC-14, `channels-band.tsx`): what the record holds and its members by confirmed or inferred.
 
 import {
   CHANNEL_ROLE_LABEL,
@@ -14,11 +15,12 @@ import {
   type ChannelView,
 } from "@forge/contracts/support-channel";
 import { useState, type ReactNode } from "react";
-import { Button, Checkbox, DetailHeader, DetailMobileTitle, IconButton, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { Button, Checkbox, DetailHeader, DetailMobileTitle, HoverCard, IconButton, Input, PageSectionTitle, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useAddCommonIssue, useAddRule, useChannel, useConfirmMember } from "../hooks";
 import { ChannelAgent } from "./channel-agent";
+import { ChannelBand } from "./channels-band";
 import { channelsListHref } from "./channels-screen";
 
 type T = ReturnType<typeof useCopy>;
@@ -238,7 +240,12 @@ export function ChannelRecord({ channel, projectId, t }: { channel: ChannelView;
         {channel.commonIssueRows.map((i) => (
           <TR key={i.id}>
             <TD className="fg-body-sm text-fg">{i.question}</TD>
-            <TD className="fg-body-sm">{i.answer}</TD>
+            <TD className="fg-body-sm">
+              {/* the answer reads in one line; the whole of it opens on hover or focus, never in place (REQ-43 r3 BC-15) */}
+              <HoverCard label={t("channels.col.answer")} content={<p className="whitespace-pre-wrap">{i.answer}</p>} className="line-clamp-1 max-w-md" data-testid="channel-answer">
+                {i.answer}
+              </HoverCard>
+            </TD>
             <TD className="fg-body-sm">{i.threads || "—"}</TD>
             <TD className="fg-body-sm">{i.feedbackKey ?? "—"}</TD>
           </TR>
@@ -283,6 +290,7 @@ export function ChannelScreen({ projectId, slug, rid }: { projectId: string; slu
           {(data) => (
             <>
               <ChannelAgent agent={data.channel.agent} slug={slug} />
+              <ChannelBand channel={data.channel} />
               <ChannelRecord channel={data.channel} projectId={projectId} t={t} />
             </>
           )}

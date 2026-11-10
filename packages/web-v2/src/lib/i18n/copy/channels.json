@@ -1,6 +1,8 @@
 {
   "en": {
     "channels.title": "Channels",
+    "channels.band.channel": "Channel overview",
+    "channels.band.label": "Channels overview",
     "channels.loading": "Loading channels",
     "channels.none": "No channels",
     "channels.col.channel": "Channel",

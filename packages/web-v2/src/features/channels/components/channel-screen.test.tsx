@@ -1,6 +1,7 @@
 // @direct-test-of packages/web-v2/src/features/channels/api.ts
 // @direct-test-of packages/web-v2/src/features/channels/hooks.ts
 // @direct-test-of packages/web-v2/src/features/channels/components/channel-agent.tsx
+// @direct-test-of packages/web-v2/src/features/channels/components/channels-band.tsx
 import type { ChannelView } from "@forge/contracts/support-channel";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -205,5 +206,41 @@ describe("a bound channel's page (REQ-75 r6)", () => {
     const put = calls.find((c) => c.method === "PUT");
     expect(put?.path).toBe(`/projects/p1/support/channels/${webmail.rid}/members/tramnnh`);
     expect(put?.body).toEqual({ roles: ["user", "product"], askFor: "what she sees in webmail" });
+  });
+});
+
+// REQ-43 r3 BC-14, BC-15 (owner, 2026-11-10): each Channels page opens on its overview above what it
+// lists, its counts the rows it lists (L-57), and a long answer reads behind a hover, never in place
+describe("the Channels overview bands", () => {
+  it("opens the list on its band above the list, live and not live summing to the list's rows", async () => {
+    const { memberRows: _m, ruleRows: _r, commonIssueRows: _c, routes: _routes, ...summary } = communicate;
+    fakeCore((c) =>
+      c.path === "/projects/p1/support/channels"
+        ? { body: { channels: [summary, { rid: webmail.rid, name: "webmail", members: 2, rules: 0, commonIssues: 1, agent: null }] } }
+        : undefined,
+    );
+    renderWithQuery(<ChannelsScreen projectId="p1" slug="forge" />);
+    const list = await screen.findByTestId("grouped-list");
+    const band = screen.getByTestId("channels-band");
+    expect(band.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key, Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const marks = within(list).getAllByTestId("channel-agent-live").map((m) => m.textContent);
+    expect([parts.get("live"), parts.get("notLive")]).toEqual([marks.filter((m) => m === "Live").length, marks.filter((m) => m === "Not live").length]);
+    expect(within(band).queryByTestId("chart-table")).toBeNull();
+  });
+
+  it("opens a channel on its band above its record, its members by state counting the member rows, an answer whole only on hover", async () => {
+    const third = { username: "lanpt", roles: ["user" as const], state: "inferred" as const, askFor: null, confirmedBy: null, updatedAt: "2026-10-29T08:00:00Z" };
+    const channel = { ...webmail, members: 3, memberRows: [...webmail.memberRows, third] };
+    fakeCore((c) => (c.path === `/projects/p1/support/channels/${webmail.rid}` ? { body: { channel } } : undefined));
+    renderWithQuery(<ChannelScreen projectId="p1" slug="mail" rid={webmail.rid} />);
+    const band = await screen.findByTestId("channel-band");
+    const members = screen.getByRole("table", { name: "Members" });
+    expect(band.compareDocumentPosition(members) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key, Number(within(p).getByTestId("coverage-part-count").textContent)]));
+    const rows = within(members).getAllByRole("row").slice(1);
+    expect(parts.get("confirmed")).toBe(rows.filter((r) => r.textContent?.includes("Confirmed")).length);
+    expect(parts.get("inferred")).toBe(rows.filter((r) => r.textContent?.includes("Inferred")).length);
+    expect(screen.getByTestId("channel-answer")).toHaveClass("line-clamp-1");
   });
 });
