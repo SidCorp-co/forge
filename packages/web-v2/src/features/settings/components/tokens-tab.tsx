@@ -9,6 +9,7 @@ import { useRevokeToken, useTokens } from "../hooks";
 import type { PatToken, PatTokenCreated } from "../types";
 import { TokenCreateForm } from "./token-create-form";
 import { TokenList } from "./token-list";
+import { PluginInstall } from "./plugin-install";
 import { fenceOf, TokenProjects } from "./token-projects";
 
 export function TokensTab() {
@@ -43,6 +44,7 @@ export function TokensTab() {
           pending={revoke.isPending}
         />
       </div>
+      <PluginInstall />
       <SlideOver open={!!edited} onClose={() => setEditing(null)} title={t("settings.tokens.projectsTitle")}>
         {edited && <TokenProjects key={edited.id} token={edited} projects={projectsQ.data ?? []} />}
       </SlideOver>

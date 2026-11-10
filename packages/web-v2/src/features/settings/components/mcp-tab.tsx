@@ -27,6 +27,7 @@ import {
   testConnection,
   type TestConnectionResult,
 } from "../mcp";
+import { PluginInstall } from "./plugin-install";
 
 const TOKENS_TAB_HREF = "/settings?tab=tokens";
 
@@ -83,6 +84,8 @@ export function McpTab() {
           </div>
         </PageSectionBody>
       </PageSection>
+
+      <PluginInstall />
 
       {selectedProject ? (
         <>

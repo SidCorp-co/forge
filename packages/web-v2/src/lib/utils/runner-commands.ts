@@ -1,5 +1,5 @@
-// The runner's own commands, shown and copied verbatim on the screens that tell a person what to run.
-// They are the CLI's words, never translated, so they live here rather than in a copy file.
+// The install commands Forge serves, shown and copied verbatim on the screens that tell a person what
+// to run. They are the CLI's words, never translated, so they live here rather than in a copy file.
 
 import { CORE_URL } from "./core-url";
 
@@ -13,4 +13,9 @@ function coreOrigin(): string {
 /** One pasted command: installs forge-runner from this core and goes straight on to `forge-runner setup`. */
 export function runnerInstallCommand(origin: string = coreOrigin()): string {
   return `curl -fsSL ${origin}/api/install.sh | sh -s -- --setup`;
+}
+
+/** One pasted command: installs the forge plugin from this core, with a token put in place of `<token>`. */
+export function pluginInstallCommand(origin: string = coreOrigin()): string {
+  return `curl -fsSL ${origin}/api/install-plugin.sh | sh -s -- --token <token>`;
 }

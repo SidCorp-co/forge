@@ -30,6 +30,7 @@
     "settings.mcp.withToken": "with your token.",
     "settings.notifications.markedRead": "Marked {n} read",
     "settings.notifications.markReadFailed": "Couldn't mark them read",
+    "settings.plugin.title": "Forge plugin",
     "settings.preferences.saved": "Preferences saved",
     "settings.preferences.saveFailed": "Couldn't save preferences",
     "settings.requestFailed": "Request failed",
