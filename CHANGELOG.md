@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.646] - 2026-11-10
+
+Chat account links hold in every project; home rows read in one line
+
+### Fixed
+
+- **A chat account with no email is linked once for every project.** An instance admin names the Forge account it is, and the person's answers then record as theirs in any project where they hold a role.
+
 ## [0.4.0-dev.645] - 2026-11-10
 
 State screens open on an overview; room agents answer fully and look facts up

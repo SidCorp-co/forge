@@ -1,1 +1,0 @@
-**A chat account with no email is linked once for every project.** An instance admin names the Forge account it is, and the person's answers then record as theirs in any project where they hold a role.
