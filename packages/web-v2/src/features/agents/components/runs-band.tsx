@@ -45,7 +45,7 @@ export function RunsBand({ projectId, rows }: { projectId: string; rows: readonl
             rows={bars}
             series={SERIES.map((s) => ({ key: s, label: t(`agents.band.${s}`), fill: toneFill(TONES[s]) }))}
             tipOf={(d) => [d.label, `${t("agents.band.started")} ${d.started}`, `${t("agents.band.finished")} ${d.finished}`]}
-            emptyText={t("agents.band.none", { n: RUN_FLOW_DAYS })}
+            emptyText={t("agents.band.none")}
             reader={{ head: [t("agents.band.day"), t("agents.band.started"), t("agents.band.finished")], rows: bars.map((d) => [d.label, d.started, d.finished]) }}
           />
         ) : null

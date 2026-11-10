@@ -29,7 +29,7 @@ export function HomeBand({ items, total }: { items: readonly HomeMovingItem[]; t
           rows={days}
           series={[{ key: "count", label: t("overview.home.band.moved"), fill: "var(--chart-2)" }]}
           tipOf={(d) => [d.label, t("overview.home.band.tip", { n: d.count })]}
-          emptyText={t("overview.home.band.none", { n: PROJECT_HOME_DAYS })}
+          emptyText={t("overview.home.band.none")}
           reader={{ head: [t("overview.home.band.day"), t("overview.home.band.moved")], rows: days.map((d) => [d.label, d.count]) }}
         />
       }

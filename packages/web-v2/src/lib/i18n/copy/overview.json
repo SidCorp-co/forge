@@ -61,7 +61,7 @@
     "overview.home.band.label": "Requests overview",
     "overview.home.band.moved": "Moved",
     "overview.home.band.moving": "Requests moving",
-    "overview.home.band.none": "Nothing moved in {n} days",
+    "overview.home.band.none": "Nothing yet",
     "overview.home.band.tip": "{n} last moved",
     "overview.home.by": "by {date}",
     "overview.home.col.item": "Item",
