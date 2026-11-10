@@ -44,6 +44,7 @@ import { postWaivedDecisionIn, waivedOf } from './acceptance-waived.js';
 import { acceptanceAnswersOf, uncitedVerdictsIn } from './checklist-record.js';
 import { deliveryCheckIn, deliveryCheckRefusals, stewardOn } from './delivery-check.js';
 import { issueNamingOf, namedIssue } from './issue-projects.js';
+import { PLACEMENT_WITHDRAWN } from './placement.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import { openRevisionOf, withdrawRevisionIn } from './revision-write.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
@@ -365,7 +366,7 @@ export async function dropIn(
   const dropped = await transition(tx, REQUIREMENT_MACHINE, {
     to: 'dropped',
     expect: status,
-    set: { updatedAt: new Date() },
+    set: { updatedAt: new Date(), ...PLACEMENT_WITHDRAWN },
     where: eq(requirements.id, rowId),
     reason: reason.trim(),
     actor: requirementKernelActor(actor),

@@ -4131,6 +4131,13 @@
       "when": 1838851200000,
       "tag": "0647_an_invitation_notice_names_its_invitation",
       "breakpoints": true
+    },
+    {
+      "idx": 648,
+      "version": "7",
+      "when": 1838937600000,
+      "tag": "0648_a_requirement_out_of_play_holds_no_placement_proposal",
+      "breakpoints": true
     }
   ]
 }

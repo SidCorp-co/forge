@@ -6,8 +6,13 @@
  */
 
 import { SHORT_NAME_MAX_WORDS, shortNameWords } from '@forge/contracts/requirement-roadmap';
-import { type RequirementAreaRef, requirementKey } from '@forge/contracts/requirements';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import {
+  OUT_OF_PLAY_STATUSES,
+  type RequirementAreaRef,
+  type RequirementStatus,
+  requirementKey,
+} from '@forge/contracts/requirements';
+import { and, asc, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   requirementAreas,
@@ -228,6 +233,12 @@ export async function acceptPlacement(input: {
   return answer(projectId, row.id, actor, null);
 }
 
+/** What a move out of play writes beside its status: the assistant's proposal goes with the requirement (ISS-1191). */
+export const PLACEMENT_WITHDRAWN = { proposedAreaId: null, proposedShortName: null } as const;
+
+const outOfPlay = (status: string) =>
+  (OUT_OF_PLAY_STATUSES as readonly RequirementStatus[]).includes(status as RequirementStatus);
+
 const PROMPT =
   'You file one requirement of a software product. Reply with one JSON object and nothing else: ' +
   '{"area": <exactly one of the listed area names>, "shortName": <at most six plain words naming the requirement>}. ' +
@@ -237,7 +248,7 @@ const PROMPT =
 export async function proposePlacement(projectId: string, requirementId: string): Promise<boolean> {
   const areas = await areasOf(projectId);
   const [row] = await db.select().from(requirements).where(eq(requirements.id, requirementId));
-  if (!row) return false;
+  if (!row || outOfPlay(row.status)) return false;
   const wantArea = !row.areaId && !row.proposedAreaId && areas.length > 0;
   const wantName = !row.shortName && !row.proposedShortName;
   if (!wantArea && !wantName) return false;
@@ -340,6 +351,7 @@ export async function proposeMissingPlacements(
     .where(
       and(
         eq(requirements.projectId, projectId),
+        notInArray(requirements.status, [...OUT_OF_PLAY_STATUSES]),
         or(
           and(isNull(requirements.areaId), isNull(requirements.proposedAreaId)),
           and(isNull(requirements.shortName), isNull(requirements.proposedShortName)),

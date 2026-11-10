@@ -55,6 +55,15 @@ export const REQUIREMENT_STATUSES = [
 ] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
+/**
+ * The statuses a requirement leaves play at: nothing is proposed for it, a placement proposal standing on
+ * it is withdrawn with the move, and the requirements list's strips count none of it (ISS-1191).
+ */
+export const OUT_OF_PLAY_STATUSES = [
+	"dropped",
+	"refused",
+] as const satisfies readonly RequirementStatus[];
+
 /** Agreed at a revision and not yet accepted: what its issues are delivering. */
 export const DELIVERING_STATUSES = [
 	"agreed",

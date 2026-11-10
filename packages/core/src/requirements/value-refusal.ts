@@ -12,6 +12,7 @@ import type { Tx } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { requireDeclaredOn } from '../permissions/index.js';
+import { PLACEMENT_WITHDRAWN } from './placement.js';
 import { type RequirementActor, rowIn } from './read.js';
 import { lockRequirements, requirementKernelActor } from './write-tx.js';
 
@@ -29,7 +30,7 @@ export async function refuseOnValueIn(
   const moved = await transition(tx, REQUIREMENT_MACHINE, {
     to: 'refused',
     expect: 'draft',
-    set: { updatedAt: new Date() },
+    set: { updatedAt: new Date(), ...PLACEMENT_WITHDRAWN },
     where: eq(requirements.id, row.id),
     reason: input.reason,
     actor: { type: 'system' },

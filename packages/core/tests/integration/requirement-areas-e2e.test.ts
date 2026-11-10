@@ -9,6 +9,7 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { withKernelMarker } from '../../src/db/kernel-marker.js';
+import { proposePlacement } from '../../src/requirements/placement.js';
 import { type ApiResponse, api, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -136,5 +137,63 @@ describe('a requirement placement (REQ-29)', () => {
     expect(refusalCodes(unknown)).toEqual(['REQUIREMENT_AREA_UNKNOWN']);
     expect(refusalCodes(long)).toEqual(['REQUIREMENT_SHORT_NAME_TOO_LONG']);
     expect(await areaOfRequirement(key)).toBeNull();
+  });
+});
+
+describe('a placement proposal leaves play with its requirement (ISS-1191)', () => {
+  async function proposed(key: string, areaId: string) {
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`
+        UPDATE requirements SET proposed_area_id = ${areaId}, proposed_short_name = 'Short name'
+         WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}
+      `),
+    );
+  }
+  async function proposalOf(key: string) {
+    const [row] = await rows<{
+      id: string;
+      proposed_area_id: string | null;
+      proposed_short_name: string | null;
+    }>(sql`
+      SELECT id, proposed_area_id, proposed_short_name FROM requirements
+       WHERE project_id = ${projectId} AND req_seq = ${Number(key.slice(4))}
+    `);
+    return row;
+  }
+
+  it('withdraws the proposal in the drop itself, and the list sends none for it', async () => {
+    const billing = areasOf(await setAreas(['Billing'])).find((a) => a.name === 'Billing');
+    const key = await requirement();
+    await proposed(key, billing?.id as string);
+
+    const res = await api(token, 'POST', `/api/projects/${projectId}/requirements/${key}/drop`, {
+      reason: 'billing left the product',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await proposalOf(key)).toMatchObject({
+      proposed_area_id: null,
+      proposed_short_name: null,
+    });
+    const list = await api(token, 'GET', `/api/projects/${projectId}/requirements`);
+    const listed = list.body.requirements as { key: string; placementProposal: unknown }[];
+    expect(listed.find((r) => r.key === key)?.placementProposal).toBeNull();
+  });
+
+  it('proposes nothing for a dropped or refused requirement, before asking any model', async () => {
+    await setAreas(['Billing']);
+    for (const status of ['dropped', 'refused']) {
+      const key = await requirement();
+      const row = await proposalOf(key);
+      await withKernelMarker(db, (tx) =>
+        tx.execute(sql`UPDATE requirements SET status = ${status} WHERE id = ${row?.id}`),
+      );
+
+      expect(await proposePlacement(projectId, row?.id as string), status).toBe(false);
+      expect(await proposalOf(key), status).toMatchObject({
+        proposed_area_id: null,
+        proposed_short_name: null,
+      });
+    }
   });
 });
