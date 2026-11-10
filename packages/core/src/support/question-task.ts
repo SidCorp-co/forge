@@ -165,7 +165,8 @@ async function answerAsOwner(
     .limit(1);
   const step = q?.steps.at(-1);
   const words = ((said.input as { text?: unknown } | null)?.text as string | undefined) ?? '';
-  const chosen = step && isChoiceStep(step) ? step.options.find((o) => o.id === input.option) : null;
+  const chosen =
+    step && isChoiceStep(step) ? step.options.find((o) => o.id === input.option) : null;
   // an option answered in words carries them: the agent's `answer`, else the owner's own message (FB-606)
   const optionWords = chosen?.takesText ? input.answer?.trim() || words.trim() : '';
   const answer: KeptAnswer | null =

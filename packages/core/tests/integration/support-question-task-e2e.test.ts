@@ -461,7 +461,10 @@ describe('ISS-916: an owner’s answer reaches a question he owes, wherever he w
         }
       },
     );
-    expect(outs.map((o) => o.isError), JSON.stringify(outs)).toEqual([false, false]);
+    expect(
+      outs.map((o) => o.isError),
+      JSON.stringify(outs),
+    ).toEqual([false, false]);
     expect((await question(fromMessage))?.steps.at(-1)).toMatchObject({
       chosenOptionId: 'change',
       chosenText: 'Gộp nhóm 2 và 3, bỏ nhóm 6',
