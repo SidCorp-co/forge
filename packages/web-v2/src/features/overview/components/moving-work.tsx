@@ -1,9 +1,10 @@
 // Moving (ISS-919): each item the person gave or owns that is not live yet and that someone else owes,
 // at its stage, with who owes the next move and the forecast's held date, or the words saying none is
-// held. Core ranks it by last move; what nothing has moved for a week folds under one Idle row, each
-// with its age. A list core cut says how many it holds of how many, so it never reads as complete.
+// held. Core ranks it by last move; what nothing has moved for a week folds under one Idle line that
+// opens a side drawer of each with its age, never in place. A list core cut says how many it holds of
+// how many, so it never reads as complete.
 
-import { Button, LiveDot, SectionTitle, StatusChip, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { DetailDrawer, LiveDot, SectionTitle, StatusChip, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { useState } from "react";
@@ -22,7 +23,6 @@ export interface MovingWorkProps {
 export function MovingWork({ items, total, truncated }: MovingWorkProps) {
   const t = useCopy();
   const [all, setAll] = useState(false);
-  const [idleOpen, setIdleOpen] = useState(false);
   const { active, idle } = movingSplit(items);
   const shown = all ? active : active.slice(0, HOME_ROWS);
   return (
@@ -35,19 +35,11 @@ export function MovingWork({ items, total, truncated }: MovingWorkProps) {
         {shown.length > 0 ? <MovingTable items={shown} /> : null}
         <ShowMore hidden={active.length - shown.length} onShow={() => setAll(true)} />
         {idle.length > 0 ? (
-          <>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            aria-expanded={idleOpen}
-            data-testid="home-moving-idle"
-            onClick={() => setIdleOpen((o) => !o)}
-          >
-            {t("overview.home.idle", { n: idle.length })}
-          </Button>
-          {idleOpen ? <MovingTable items={idle} idle /> : null}
-          </>
+          <span className="self-start">
+            <DetailDrawer label={t("overview.home.idle")} count={idle.length} icon="list" testId="home-moving-idle">
+              <MovingTable items={idle} idle />
+            </DetailDrawer>
+          </span>
         ) : null}
         {truncated ? <CutNote shown={items.length} total={total} /> : null}
         </>

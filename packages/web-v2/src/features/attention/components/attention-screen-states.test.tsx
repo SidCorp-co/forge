@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const refetch = vi.fn();
-const empty = { needsYou: [], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: 0 };
+const empty = { needsYou: [], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], counts: { decisions: 0, owed: 0, mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: 0 };
 const hook = { view: empty, isLoading: false, isError: false, error: null as unknown, refetch };
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
@@ -64,7 +64,7 @@ describe("the attention screen's states", () => {
   // ISS-1137: each decision is its question and its buttons; what it changes, its impact and the
   // recommendation open on its own page, never inline under every row (ui-copy-rule)
   it("draws each project's decisions as their question and buttons, their consequences on demand", () => {
-    hook.view = { ...empty, needsYou: [{ projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3), owed: APPROVALS_READ.notDecisions }], counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 }, total: APPROVALS_READ.total } as unknown as typeof empty;
+    hook.view = { ...empty, needsYou: [{ projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3), owed: APPROVALS_READ.notDecisions }], counts: { ...empty.counts, decisions: APPROVALS_READ.total, owed: APPROVALS_READ.notDecisions.reduce((n, o) => n + o.count, 0) }, total: APPROVALS_READ.total } as unknown as typeof empty;
     try {
       const { container } = renderWithQuery(<AttentionScreen />);
       expect(screen.getAllByTestId("needs-you-decision").length).toBeGreaterThan(0);
@@ -87,7 +87,7 @@ describe("the attention screen's states", () => {
       needsYou: [{ projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3), owed: APPROVALS_READ.notDecisions }],
       mentions: [item("mention", 1), item("mention", 2)],
       failedJobs: [item("failed_job", 1)],
-      counts: { mentions: 2, failedJobs: 1, channelGates: 0, statusReports: 0, offlineRunners: 0 },
+      counts: { decisions: APPROVALS_READ.total, owed, mentions: 2, failedJobs: 1, channelGates: 0, statusReports: 0, offlineRunners: 0 },
       total: APPROVALS_READ.total + owed + 3,
     } as unknown as typeof empty;
     try {

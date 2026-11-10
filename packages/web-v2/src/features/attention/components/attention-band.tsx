@@ -10,7 +10,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { AttentionView } from "../types";
 
-type Part = "decisions" | "owed" | keyof AttentionView["counts"];
+type Part = keyof AttentionView["counts"];
 
 const PARTS: readonly { key: Part; label: ProductCopyKey; tone: LegendTone }[] = [
   { key: "decisions", label: "attention.band.decisions", tone: "you" },
@@ -22,18 +22,8 @@ const PARTS: readonly { key: Part; label: ProductCopyKey; tone: LegendTone }[] =
   { key: "offlineRunners", label: "attention.group.offlineRunners", tone: "blocked" },
 ];
 
-/** Each kind's count: a project's Needs you splits into its decisions and the rest it lists as the reader's. */
-export function attentionCountsOf(view: AttentionView): Record<Part, number> {
-  return {
-    ...view.counts,
-    decisions: view.needsYou.reduce((n, p) => n + p.total, 0),
-    owed: view.needsYou.reduce((n, p) => n + p.owed.reduce((m, o) => m + o.count, 0), 0),
-  };
-}
-
 export function AttentionBand({ view }: { view: AttentionView }) {
   const t = useCopy();
-  const counts = attentionCountsOf(view);
-  const flow: CoverageSegment[] = PARTS.map((p) => ({ key: p.key, label: t(p.label), count: counts[p.key], tone: p.tone }));
+  const flow: CoverageSegment[] = PARTS.map((p) => ({ key: p.key, label: t(p.label), count: view.counts[p.key], tone: p.tone }));
   return <OverviewBand label={t("attention.band.label")} testId="attention-band" figures={[{ key: "total", value: view.total, label: t("attention.band.total") }]} flow={flow} />;
 }

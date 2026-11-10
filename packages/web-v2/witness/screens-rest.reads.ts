@@ -251,6 +251,9 @@ const SHARE = {
   },
 };
 
+/** The rows Needs you lists as the person's that are no decision, as core counts them in `/me/attention`. */
+const OWED = APPROVALS_READ.notDecisions.reduce((n, o) => n + o.count, 0);
+
 export const REST_READS: [RegExp, () => unknown][] = [
   [/^\/auth\/me$/, () => SIGNED_IN],
   [/^\/auth\/me\/preferences$/, () => PREFS],
@@ -263,10 +266,10 @@ export const REST_READS: [RegExp, () => unknown][] = [
     channelGates: [],
     statusReports: [],
     offlineRunners: [{ kind: "runner_offline", title: "build-box is offline", link: "/runners", since: EARLIER, deviceName: "build-box" }],
-    counts: { mentions: 1, failedJobs: 1, channelGates: 0, statusReports: 0, offlineRunners: 1 },
+    counts: { decisions: APPROVALS_READ.total, owed: OWED, mentions: 1, failedJobs: 1, channelGates: 0, statusReports: 0, offlineRunners: 1 },
     waitingOnYou: APPROVALS_READ.total,
     needsYouNotSent: 0,
-    total: APPROVALS_READ.total + 3,
+    total: APPROVALS_READ.total + OWED + 3,
   })],
   [/^\/orgs\/[^/]+\/activity$/, () => activityRead([FORGE, ADMINHUB, AHAPI, CATALOG, SILENT, QUIET])],
   [/^\/orgs\/[^/]+\/activity\/[^/]+\/recent$/, () => RECENT],

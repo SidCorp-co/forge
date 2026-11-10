@@ -125,7 +125,9 @@ describe('the queue and attention read models serve the derived facts', () => {
     const parts = res.body.needsYou as { total: number; owed: { count: number }[] }[];
     expect(counts.decisions).toBe(parts.reduce((n, p) => n + p.total, 0));
     expect(counts.decisions).toBeGreaterThanOrEqual(5);
-    expect(counts.owed).toBe(parts.reduce((n, p) => n + p.owed.reduce((m, o) => m + o.count, 0), 0));
+    expect(counts.owed).toBe(
+      parts.reduce((n, p) => n + p.owed.reduce((m, o) => m + o.count, 0), 0),
+    );
     expect(Object.values(counts).reduce((n, c) => n + c, 0)).toBe(res.body.total);
   });
 

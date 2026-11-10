@@ -50,8 +50,14 @@ interface AttentionResponse {
   statusReports: AttentionItem[];
   /** The caller's devices that are offline, never narrowed by an org: a device-level alert must not vanish. */
   offlineRunners: AttentionItem[];
-  /** The rows each bucket holds, as core counts them, so a screen shows no count of its own. */
+  /**
+   * The rows each bucket holds, as core counts them, so a screen shows no count of its own: the
+   * Needs you decisions in scope (each project's `total`, past its cap too) and its other rows owed
+   * by the caller beside the item buckets. They sum to `total`.
+   */
   counts: {
+    decisions: number;
+    owed: number;
     mentions: number;
     failedJobs: number;
     channelGates: number;
@@ -192,6 +198,15 @@ meAttentionRoutes.get(
 
     // every project the caller sees, whatever the active org: the Attention tab and the rail badge read it
     const waitingOnYou = allNeedsYou.reduce((n, p) => n + p.total, 0);
+    const counts: AttentionResponse['counts'] = {
+      decisions: needsYou.reduce((n, p) => n + p.total, 0),
+      owed: needsYou.reduce((n, p) => n + owedCount(p), 0),
+      mentions: mentions.length,
+      failedJobs: failedJobs.length,
+      channelGates: channelGates.length,
+      statusReports: statusReports.length,
+      offlineRunners: offlineRunners.length,
+    };
     const response: AttentionResponse = {
       needsYou,
       waitingOnYou,
@@ -201,20 +216,8 @@ meAttentionRoutes.get(
       channelGates,
       statusReports,
       offlineRunners,
-      counts: {
-        mentions: mentions.length,
-        failedJobs: failedJobs.length,
-        channelGates: channelGates.length,
-        statusReports: statusReports.length,
-        offlineRunners: offlineRunners.length,
-      },
-      total:
-        needsYou.reduce((n, p) => n + p.total + owedCount(p), 0) +
-        mentions.length +
-        failedJobs.length +
-        channelGates.length +
-        statusReports.length +
-        offlineRunners.length,
+      counts,
+      total: Object.values(counts).reduce((n, c) => n + c, 0),
     };
 
     return c.json(response);

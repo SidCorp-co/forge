@@ -57,7 +57,7 @@ export const ATTENTION = {
   channelGates: [],
   statusReports: [],
   offlineRunners: [],
-  counts: { mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 },
+  counts: { decisions: 5, owed: 1, mentions: 0, failedJobs: 0, channelGates: 0, statusReports: 0, offlineRunners: 0 },
   waitingOnYou: 5,
   total: 6,
 };

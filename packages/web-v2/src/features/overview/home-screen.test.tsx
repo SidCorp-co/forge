@@ -129,12 +129,13 @@ describe("the workspace home", () => {
     expect(titles()).not.toContain("Export misses the header row");
     // a running item is never folded, however long ago it moved
     expect(titles()).toContain("Nightly import runs again");
-    const shown = titles().length;
+    const rowsInPlace = () => within(moving).getAllByTestId("home-moving-row").length;
+    const shown = rowsInPlace();
     const idle = within(moving).getByTestId("home-moving-idle");
     expect(idle.textContent).toBe("Idle1");
     expect(idle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(idle);
-    expect(titles()).toHaveLength(shown);
+    expect(rowsInPlace()).toBe(shown);
     expect(within(moving).queryByTestId("home-moving-idle-list")).toBeNull();
     const list = within(screen.getByRole("dialog", { name: "Idle" })).getByTestId("home-moving-idle-list");
     const row = within(list).getByTestId("home-moving-row");

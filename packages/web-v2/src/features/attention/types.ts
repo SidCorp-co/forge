@@ -30,8 +30,10 @@ export interface AttentionResponse {
   statusReports: AttentionItem[];
   /** The caller's offline devices, never narrowed by an org. */
   offlineRunners: AttentionItem[];
-  /** The rows each bucket holds, as core counts them. */
+  /** The rows each bucket holds, as core counts them: Needs you's decisions and owed rows in scope, then each item bucket. */
   counts: {
+    decisions: number;
+    owed: number;
     mentions: number;
     failedJobs: number;
     channelGates: number;

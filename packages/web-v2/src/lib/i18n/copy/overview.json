@@ -69,7 +69,7 @@
     "overview.home.col.project": "Project",
     "overview.home.col.status": "Status",
     "overview.home.cut": "{shown} of {total}",
-    "overview.home.idle": "Idle ({n})",
+    "overview.home.idle": "Idle",
     "overview.home.loading": "Reading your home",
     "overview.home.more": "{n} more",
     "overview.home.moving.empty": "Nothing asked",
