@@ -120,7 +120,7 @@ const masterReads = (n: number, links: ChangeRequestLinkRow[]): Shared => ({
   required: true,
   production: true,
   viewer: { userId: 'm1', agency: 'agent', isAdmin: true, mayApprove: true },
-  approvers: [{ id: 'u1', name: 'chuongld' }],
+  approvers: [{ id: 'u1', name: 'chuongld', kind: 'human' }],
   admins: ['chuongld'],
   policy: {
     strict: false,
