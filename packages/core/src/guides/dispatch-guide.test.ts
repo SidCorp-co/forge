@@ -61,6 +61,10 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(prose).toContain('Release the batch once, on the minimum bar');
     expect(prose).toContain('one live judge pass over the batch');
     expect(prose).toContain('a red there is fixed forward in the next batch');
+    // ISS-1209 (FB-610, epod L-8): a person's screen request is written out, never guessed, and
+    // the judge pass checks the screen at the widths people use
+    expect(prose).toContain('A screen change a person asked for is not filled by judgement');
+    expect(prose).toContain('a screen is checked at the widths the qa guide');
     expect(prose).not.toContain('For each issue it takes');
     expect(prose).not.toContain('gate profile yolo');
     expect(DISPATCH_GUIDE.summary).not.toContain('yolo');
