@@ -1,12 +1,13 @@
 
 // The Details of an issue page: folded rows, one per kind of long record. A row shows its label and
-// one short summary; the body opens under it. The developer view opens every row and adds the ones
+// one short summary; the body opens under it. The description, the issue's long text, opens in a side
+// drawer from the heading instead, never in place (REQ-43 r3 BC-17). The developer view opens every row and adds the ones
 // only a developer reads (the plan, runs, mockups, memory: agent text, REQ-43 BC-7), so a person's
 // page is the same page folded. Past items — decided patterns, past decisions, retired criteria —
 // sit in Activity (BC-8).
 
 import { type ReactNode, useState } from "react";
-import { Disclosure, Markdown, ViewHeading } from "@/design";
+import { DetailDrawer, Disclosure, Markdown, ViewHeading } from "@/design";
 import { AttachmentList } from "@/features/attachments";
 import { IssueQuestions } from "@/features/questions";
 import { MockupList } from "@/features/mockups";
@@ -73,7 +74,15 @@ export function IssueDetails({
   );
   return (
     <section aria-label={t("issues.details.title")} data-testid="issue-details">
-      <ViewHeading>{t("issues.details.title")}</ViewHeading>
+      <ViewHeading
+        right={
+          <DetailDrawer label={t("issues.description.title")} icon="book" width={640} testId="details-description">
+            <IssueDescription issue={issue} attachments={files} canWrite={canWrite} />
+          </DetailDrawer>
+        }
+      >
+        {t("issues.details.title")}
+      </ViewHeading>
       <div>
         {developer
           ? row(
@@ -84,7 +93,6 @@ export function IssueDetails({
               "plan",
             )
           : null}
-        {row("description", t("issues.description.title"), null, <IssueDescription issue={issue} attachments={files} canWrite={canWrite} />)}
         {row(
           "files",
           t("issues.files.title"),

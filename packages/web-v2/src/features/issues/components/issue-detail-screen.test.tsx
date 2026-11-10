@@ -220,6 +220,17 @@ describe("an issue page in the person's view", () => {
     expect(within(root).queryByText(/Which door should the refusal name first/)).toBeNull();
   });
 
+  // REQ-43 r3 BC-17 (owner, 2026-11-10): the page opens on its progress drawn, the stage it has reached
+  // as a step track, and its long text opens in a side drawer, never in place
+  it("draws its stage as a step track above the criteria, and keeps its description behind a drawer", async () => {
+    const root = await page();
+    const track = within(within(root).getByTestId("issue-state-head")).getByTestId("step-bar");
+    expect(track.compareDocumentPosition(within(root).getByTestId("view-criteria")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(root.textContent).not.toContain("There is no checklist concept");
+    await userEvent.click(within(root).getByTestId("details-description"));
+    expect(await screen.findByTestId("issue-description")).toHaveTextContent("There is no checklist concept");
+  });
+
   it("counts the criteria in the filter pills and marks each row, one line apiece", async () => {
     const root = await page();
     expect(within(root).getByRole("button", { name: "All 18" })).toBeInTheDocument();
