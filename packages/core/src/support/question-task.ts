@@ -17,7 +17,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
-import { keepOwnerAnswer, ownerSetupStep } from './kept-answers.js';
+import { type KeptAnswer, keepOwnerAnswer, ownerSetupStep } from './kept-answers.js';
 import { no, type Outcome } from './outcome.js';
 import { ownerOwedQuestion } from './owner-owed.js';
 import type { Refusal } from './refusals.js';
@@ -165,12 +165,15 @@ async function answerAsOwner(
     .limit(1);
   const step = q?.steps.at(-1);
   const words = ((said.input as { text?: unknown } | null)?.text as string | undefined) ?? '';
-  const answer =
+  const chosen = step && isChoiceStep(step) ? step.options.find((o) => o.id === input.option) : null;
+  // an option answered in words carries them: the agent's `answer`, else the owner's own message (FB-606)
+  const optionWords = chosen?.takesText ? input.answer?.trim() || words.trim() : '';
+  const answer: KeptAnswer | null =
     step && isChoiceStep(step)
-      ? step.options.some((o) => o.id === input.option)
-        ? { kind: 'option' as const, optionId: input.option as string }
+      ? chosen
+        ? { kind: 'option', optionId: chosen.id, ...(optionWords ? { text: optionWords } : {}) }
         : null
-      : { kind: 'text' as const, text: words.trim() };
+      : { kind: 'text', text: words.trim() };
   if (!answer || (answer.kind === 'text' && !answer.text)) {
     return no(
       'SUPPORT_ANSWER_SOURCE',

@@ -212,7 +212,7 @@ function argsOf(argsJson: string): Record<string, unknown> | null {
 function answerNamed(
   step: QuestionStep,
   args: Record<string, unknown>,
-): { kind: 'option'; optionId: string } | { kind: 'text'; text: string } | string {
+): { kind: 'option'; optionId: string; text?: string } | { kind: 'text'; text: string } | string {
   if (!isChoiceStep(step)) {
     const text = typeof args.answer === 'string' ? args.answer.trim() : '';
     if (args.option !== undefined || !text) {
@@ -224,7 +224,9 @@ function answerNamed(
   if (!option) {
     return `this round is a choice: pass \`option\`, one of ${step.options.map((o) => o.id).join(', ')}`;
   }
-  return { kind: 'option', optionId: option.id };
+  // an option answered in words carries the record's words beside it (FB-606); without them `answerAs` refuses it by name
+  const text = option.takesText && typeof args.answer === 'string' ? args.answer.trim() : '';
+  return { kind: 'option', optionId: option.id, ...(text ? { text } : {}) };
 }
 
 type Refusal = { code: string; path: string; detail: string };

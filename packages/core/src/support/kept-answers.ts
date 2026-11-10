@@ -19,7 +19,9 @@ const KEPT = 'answer_kept';
 const ANSWER = 'answer_question';
 
 /** The round's answer the owner's words make: a choice's option, or his words. */
-export type KeptAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
+export type KeptAnswer =
+  | { kind: 'option'; optionId: string; text?: string }
+  | { kind: 'text'; text: string };
 
 /** What a kept row holds: the cited message, the question it answers, and his answer to it. */
 interface Kept {
