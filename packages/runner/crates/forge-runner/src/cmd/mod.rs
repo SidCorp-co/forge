@@ -5,6 +5,7 @@ pub mod chat_pane_exec;
 pub mod config;
 pub mod doctor;
 mod doctor_plugins;
+mod doctor_repo_mcp;
 pub mod egress_bridge;
 pub mod gate;
 pub mod git_credential;
