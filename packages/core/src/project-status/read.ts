@@ -67,7 +67,7 @@ const DAY_MS = 86_400_000;
 const PERSON_KINDS: ReadonlySet<WaitingKind> = new Set(['you', 'person', 'admins', 'writers']);
 
 /** Requirements on the delivery line: agreed and not yet accepted, or accepted. */
-const LINE_STATES: ReadonlySet<RequirementState> = new Set([
+export const LINE_STATES: ReadonlySet<RequirementState> = new Set([
   'agreed',
   'in_delivery',
   'delivered',
