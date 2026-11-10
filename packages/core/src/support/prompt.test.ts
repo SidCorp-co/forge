@@ -35,7 +35,7 @@ describe('the support brief states goals, and the consent a change waits on', ()
         projectName: 'P',
         product: null,
         tools: [],
-        config: { readers } as Parameters<typeof supportBrief>[0]['config'],
+        config: { readers } as NonNullable<Parameters<typeof supportBrief>[0]['config']>,
       });
       expect(text).toContain('Work you can do now, do now, in this turn');
       expect(text).toContain('say in the task what it waits for');
