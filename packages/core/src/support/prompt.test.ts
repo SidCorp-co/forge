@@ -40,7 +40,9 @@ describe('the support brief states goals, and the consent a change waits on', ()
       expect(text).toContain('Work you can do now, do now, in this turn');
       expect(text).toContain('say in the task what it waits for');
       // ISS-1208 (FB-609): a reply answers every part of the message, or names the part it cannot yet.
-      expect(text).toContain('answer each question the message asked and cover each item it asked for');
+      expect(text).toContain(
+        'answer each question the message asked and cover each item it asked for',
+      );
     }
   });
 });
