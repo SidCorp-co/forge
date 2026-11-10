@@ -1,1 +1,0 @@
-**Work drawn from a design is filed and checked element by element.** An issue built from a mockup names each requested element as its own criterion, and the live check fails a screen missing any of them.

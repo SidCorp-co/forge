@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.648] - 2026-11-10
+
+Designs are filed and checked element by element
+
+### Fixed
+
+- **Work drawn from a design is filed and checked element by element.** An issue built from a mockup names each requested element as its own criterion, and the live check fails a screen missing any of them.
+
 ## [0.4.0-dev.647] - 2026-11-10
 
 Every state screen opens on its overview, even over an empty list
