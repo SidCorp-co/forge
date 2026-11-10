@@ -4,11 +4,19 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => {
   // the bot's token is sealed in the integration vault
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
+  // env is read once, on first use: the instance's operator is set before anything imports it
+  process.env.ADMIN_EMAILS = 'operator@owner-named-link.test';
 });
 
 import { randomUUID } from 'node:crypto';
 import { api, userToken } from '../helpers/api.js';
-import { addProjectMember, createTestIssue, createTestUser, rows } from '../helpers/factories.js';
+import {
+  addProjectMember,
+  createTestIssue,
+  createTestProject,
+  createTestUser,
+  rows,
+} from '../helpers/factories.js';
 import { AgentWorld, OWNER_ID } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
@@ -27,6 +35,10 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // account, the chat server reports no address for it, and the refusal told the agent to ask him to
 // link it, which the persona may not raise with him. A project admin now names the Forge account a
 // chat account is; until then the owner's cited answer is kept, and it is recorded as his once.
+//
+// ISS-1210 (FB-612): that naming held in its own project alone, so the owner was refused again in
+// every project nobody had named him in yet. An instance admin's naming holds in every project, and
+// what the person may do in each stays decided by their own role there.
 
 const w = new AgentWorld();
 let chat: StandInRocketChat;
@@ -298,5 +310,139 @@ describe('ISS-976: a project admin names the Forge account a chat account is', (
     const { out } = await ownerAnswers(id, 'Giữ lại');
     expect(code(out)).toBe('SUPPORT_ANSWER_NOT_THE_OWNER');
     expect(await keptFor(id)).toHaveLength(1);
+  });
+});
+
+describe('ISS-1210: an instance admin names a chat account once, and it holds in every project', () => {
+  const OPERATOR = 'operator@owner-named-link.test';
+  const EVERYWHERE = '/api/speaker-links/named';
+  let operator = '';
+  let operatorId = '';
+  let elsewhere = '';
+  let ref = { source: 'rocketchat', namespace: '', externalId: OWNER_ID };
+
+  beforeAll(async () => {
+    const o = await createTestUser({ verified: true, email: OPERATOR });
+    operatorId = o.id;
+    operator = await userToken(o.id);
+    const { namespaceFromServerUrl } = await import(
+      '../../src/integrations/rocketchat/namespace.js'
+    );
+    ref = { ...ref, namespace: namespaceFromServerUrl(chat.serverUrl) ?? '' };
+    // planted: an admin of another project named the owner there, and only there
+    elsewhere = (await createTestProject(w.ownerId)).id;
+    await rows(sql`
+      INSERT INTO speaker_link_namings
+        (project_id, source, external_namespace, external_id, user_id, named_by, reason)
+      VALUES (${elsewhere}::uuid, 'rocketchat', ${ref.namespace}, ${OWNER_ID}, ${w.ownerId}::uuid,
+              ${w.ownerId}::uuid, 'FB-612: named on sid-desk by hand')`);
+  });
+
+  it('refuses the owner named in another project only, as it does today', async () => {
+    const { resolveSpeaker } = await import('../../src/assistant/index.js');
+    expect(await resolveSpeaker(ref, elsewhere)).toMatchObject({ linked: true });
+    expect(await resolveSpeaker(ref, w.projectId)).toMatchObject({ linked: false });
+    const id = await parked('Judge it on staging first?');
+    const { out } = await ownerAnswers(id, '1 nhé');
+    expect(code(out), JSON.stringify(out)).toBe('SUPPORT_ANSWER_NOT_THE_OWNER');
+    expect(await keptFor(id)).toHaveLength(1);
+  });
+
+  it('is named by an instance admin alone, by id and with a reason, recorded with who and why', async () => {
+    const body = {
+      projectId: w.projectId,
+      source: 'rocketchat',
+      externalId: OWNER_ID,
+      userId: w.ownerId,
+      reason: 'FB-612: the chat server reports no address for the owner',
+    };
+    // a project admin's authority reaches no further than their project
+    const byProjectAdmin = await api(admin, 'POST', EVERYWHERE, body);
+    expect(byProjectAdmin.status, JSON.stringify(byProjectAdmin.body)).toBe(403);
+    const unknown = await api(operator, 'POST', EVERYWHERE, { ...body, userId: randomUUID() });
+    expect(refusalOf(unknown.body)?.code, JSON.stringify(unknown.body)).toBe(
+      'SPEAKER_NAMED_NOT_A_MEMBER',
+    );
+    const notOnChannel = await api(operator, 'POST', EVERYWHERE, { ...body, externalId: 'u-x' });
+    expect(refusalOf(notOnChannel.body)?.code).toBe('SPEAKER_NOT_ON_CHANNEL');
+    const { reason: _, ...unreasoned } = body;
+    expect((await api(operator, 'POST', EVERYWHERE, unreasoned)).status).toBe(400);
+
+    const named = await api(operator, 'POST', EVERYWHERE, body);
+    expect(named.status, JSON.stringify(named.body)).toBe(201);
+    const [row] = await rows<Record<string, unknown>>(sql`
+      SELECT project_id, user_id, named_by, reason, undone_at FROM speaker_link_namings
+       WHERE external_id = ${OWNER_ID} AND project_id IS NULL`);
+    expect(row).toMatchObject({
+      project_id: null,
+      user_id: w.ownerId,
+      named_by: operatorId,
+      reason: body.reason,
+      undone_at: null,
+    });
+    const twice = await api(operator, 'POST', EVERYWHERE, { ...body, reason: 'again' });
+    expect(refusalOf(twice.body)?.code, JSON.stringify(twice.body)).toBe('SPEAKER_ALREADY_LINKED');
+    const listed = await api(operator, 'GET', EVERYWHERE);
+    expect(listed.status).toBe(200);
+    expect((listed.body as { namings: { userId: string }[] }).namings).toEqual([
+      expect.objectContaining({ userId: w.ownerId, namedBy: operatorId }),
+    ]);
+  });
+
+  it('records the owner’s kept answer here, and his next answer in a project never named, as him', async () => {
+    const [kept] = await rows<{ id: string }>(sql`
+      SELECT input ->> 'questionId' AS id FROM support_actions
+       WHERE kind = 'answer_kept' AND output IS NULL LIMIT 1`);
+    await expect
+      .poll(async () => (await question(String(kept?.id)))?.status, { timeout: 10_000 })
+      .toBe('answered');
+    const id = await parked('Ship it to the test group first?');
+    const { out } = await ownerAnswers(id, 'Ừ, nhóm test trước');
+    expect(out.isError, JSON.stringify(out)).toBe(false);
+    expect((await question(id))?.steps.at(-1)).toMatchObject({ answeredBy: w.ownerId });
+    const { resolveSpeaker } = await import('../../src/assistant/index.js');
+    expect(await resolveSpeaker(ref, w.home)).toMatchObject({ linked: true, userId: w.ownerId });
+    expect(await resolveSpeaker(ref)).toMatchObject({ linked: true, userId: w.ownerId });
+  });
+
+  it('leaves a project naming resolving in its own project alone', async () => {
+    const { resolveSpeaker } = await import('../../src/assistant/index.js');
+    const carol = { ...ref, externalId: 'u-carol' };
+    const other = await createTestUser({ verified: true });
+    await rows(sql`
+      INSERT INTO speaker_link_namings
+        (project_id, source, external_namespace, external_id, user_id, named_by, reason)
+      VALUES (${elsewhere}::uuid, 'rocketchat', ${ref.namespace}, 'u-carol', ${other.id}::uuid,
+              ${w.ownerId}::uuid, 'named in one project')`);
+    expect(await resolveSpeaker(carol, elsewhere)).toMatchObject({ linked: true, userId: other.id });
+    expect(await resolveSpeaker(carol, w.projectId)).toMatchObject({ linked: false });
+    expect(await resolveSpeaker(carol)).toMatchObject({ linked: false });
+  });
+
+  it('is undone by an instance admin, and a person with no role here is still refused by name', async () => {
+    const listed = await api(operator, 'GET', EVERYWHERE);
+    const [naming] = (listed.body as { namings: { id: string }[] }).namings;
+    const byProjectAdmin = await api(admin, 'DELETE', `${EVERYWHERE}/${naming?.id}`, {
+      reason: 'x',
+    });
+    expect(byProjectAdmin.status).toBe(403);
+    const undone = await api(operator, 'DELETE', `${EVERYWHERE}/${naming?.id}`, {
+      reason: 'named the wrong account',
+    });
+    expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+    // the owner's chat account named as someone who holds no role in this project
+    const renamed = await api(operator, 'POST', EVERYWHERE, {
+      projectId: w.projectId,
+      source: 'rocketchat',
+      externalId: OWNER_ID,
+      userId: outsiderId,
+      reason: 'the account the chat id really is',
+    });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(201);
+    const id = await parked('Rename the price table?');
+    const { out } = await ownerAnswers(id, 'Đổi tên đi');
+    expect(code(out), JSON.stringify(out)).toBe('SUPPORT_ANSWER_NOT_THE_OWNER');
+    expect(JSON.stringify(out)).toContain('no role');
+    expect((await question(id))?.status).toBe('open');
   });
 });
