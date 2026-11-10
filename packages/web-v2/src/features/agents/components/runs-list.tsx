@@ -120,7 +120,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
         const groups = list.groups.filter((g) => g.rows.length > 0);
         const empty = list.search.value || on.size ? t("agents.empty.filters") : scope === "finished" ? t("agents.empty.finished") : t("agents.empty.live");
         return (
-          <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
+          <div className="grid min-h-full grid-cols-1 content-start bg-app" data-testid="runs-list">
             <NextRun d={d} slug={slug} />
             <RunsBand projectId={projectId} rows={groups.flatMap((g) => g.rows).filter(isRun)} />
             <ListToolbar testId="runs-toolbar">

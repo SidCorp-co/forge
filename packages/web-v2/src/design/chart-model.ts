@@ -51,6 +51,22 @@ export function peakCaps(values: readonly number[]): (number | null)[] {
 }
 
 /**
+ * Two series drawn side by side, each labelling its peak and today (`peakCaps`): a day both would
+ * label prints the larger alone, the two bars too close for two labels (21 and 19 read "2119"); the
+ * other's value is the bar's hover.
+ */
+export function pairCaps<A extends string, B extends string>(rows: readonly Record<A | B, number>[], a: A, b: B): (Caps<A> & Caps<B>)[] {
+  const capsA = peakCaps(rows.map((r) => r[a]));
+  const capsB = peakCaps(rows.map((r) => r[b]));
+  return rows.map((r, i) => {
+    const ca = capsA[i] ?? null;
+    const cb = capsB[i] ?? null;
+    const both = ca !== null && cb !== null;
+    return { [`cap_${a}`]: both && r[b] >= r[a] ? null : ca, [`cap_${b}`]: both && r[a] > r[b] ? null : cb } as Caps<A> & Caps<B>;
+  });
+}
+
+/**
  * A stacked bar's total, carried by its topmost drawn segment (`cap_<key>`, null on the others): a
  * zero segment is not drawn, so a total hung on one fixed segment vanishes with it.
  */

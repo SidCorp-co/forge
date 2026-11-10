@@ -6,7 +6,7 @@
 
 import { RUN_FLOW_DAYS, type RunFlowDay } from "@forge/contracts/run-flow";
 import { RUN_GROUP_LABELS, RUN_GROUPS } from "@forge/contracts/run-standing";
-import { BarChartFigure, dayLabel, dayTick, OverviewBand, peakCaps, toneFill } from "@/design";
+import { BarChartFigure, dayLabel, dayTick, OverviewBand, pairCaps, toneFill } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useRunFlow } from "../hooks";
 import type { RunStanding } from "../types";
@@ -16,10 +16,10 @@ const SERIES = ["started", "finished"] as const;
 /** A run starting reads as running, a run ending as done. */
 const TONES = { started: "run", finished: "done" } as const;
 
-/** Each day's bars, the highest and today's value of each series printed on its own row. */
+/** Each day's bars, the highest and today's value of each series printed on its own row, one per day. */
 export function runBarsOf(days: readonly RunFlowDay[]) {
-  const caps = Object.fromEntries(SERIES.map((s) => [s, peakCaps(days.map((d) => d[s]))])) as Record<(typeof SERIES)[number], (number | null)[]>;
-  return days.map((d, i) => ({ ...d, label: dayLabel(d.day), tick: dayTick(d.day), cap_started: caps.started[i] ?? null, cap_finished: caps.finished[i] ?? null }));
+  const caps = pairCaps(days, "started", "finished");
+  return days.map((d, i) => ({ ...d, label: dayLabel(d.day), tick: dayTick(d.day), ...caps[i] }));
 }
 
 export function RunsBand({ projectId, rows }: { projectId: string; rows: readonly RunStanding[] }) {
