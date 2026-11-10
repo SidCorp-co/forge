@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPES = [
 	"feedback_verify_asked",
 	"feedback_shipped",
 	"feedback_message",
+	"feedback_step",
 	"status_report",
 	"steward_ask",
 	"decision_reminder",
@@ -43,6 +44,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	feedback_verify_asked: "Verify the fix",
 	feedback_shipped: "Shipped",
 	feedback_message: "Feedback update",
+	feedback_step: "Step change",
 	status_report: "Status report",
 	steward_ask: "Steward asks",
 	decision_reminder: "Decision waiting",
@@ -73,13 +75,14 @@ export interface NotificationTypeContract {
 	/** Default severity; an emitter MAY override per-event (e.g.
 	 *  `issue_status_changed` derives severity from the `to` status). */
 	severity: NotificationSeverity;
-	/** Surfaces this type targets. `bell` is implied for every persisted type. */
+	/** Surfaces this type targets. A `log`-tier type targets none: its records are activity. */
 	channels: NotificationChannel[];
 	/** ISS-1063 — the record kind, declared ONCE. A type that is sometimes an event and
 	 *  sometimes a condition is the defect this field closes: 1771 `issue_status_changed`
 	 *  rows carried a condition's resolution key while the type is an event. */
 	kind: NotificationKind;
-	/** ISS-1063 — urgency, not routing. `channels` still decides which surfaces it reaches. */
+	/** ISS-1063 — urgency. A `log` record is activity, delivered to nobody (ISS-1192); `page` and
+	 *  `ticket` reach the surfaces `channels` names. */
 	tier: NotificationTier;
 	/** Prometheus's `for`, counted in evaluations of a PERIODIC detector. */
 	pendingEvaluations?: number;
@@ -87,17 +90,20 @@ export interface NotificationTypeContract {
 
 /**
  * The channel matrix (ISS-510). Browser is reserved for high-signal types so
- * the OS surface stays quiet; everything is still recorded in the bell.
+ * the OS surface stays quiet. ISS-1192 (`notify-only-to-act`): a type that
+ * asks nothing of its reader is `log` and names no surface; it is recorded for
+ * the item's history and the project's activity, and rings nobody.
  */
 const NOTIFICATION_CONTRACT: Record<
 	NotificationType,
 	NotificationTypeContract
 > = {
+	// ISS-863 left one move that rings: `needs_info`, the issue stopped on its reader
 	issue_status_changed: {
 		severity: "info",
 		channels: ["bell", "toast"],
 		kind: "signal",
-		tier: "log",
+		tier: "ticket",
 	},
 	mention: {
 		severity: "info",
@@ -123,11 +129,12 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "task",
 		tier: "ticket",
 	},
+	// what the owner's own script asked to tell them, or the failed run only they can re-run
 	schedule_report: {
 		severity: "info",
 		channels: ["bell", "toast"],
 		kind: "signal",
-		tier: "log",
+		tier: "ticket",
 	},
 	issue_stranded: {
 		severity: "warning",
@@ -167,11 +174,12 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "task",
 		tier: "ticket",
 	},
+	// a version that is not breaking, told to a consumer that adopts it in one act
 	contract_version_published: {
 		severity: "info",
 		channels: ["bell"],
 		kind: "signal",
-		tier: "log",
+		tier: "ticket",
 	},
 	requirement_delivered: {
 		severity: "info",
@@ -181,7 +189,7 @@ const NOTIFICATION_CONTRACT: Record<
 	},
 	requirement_step: {
 		severity: "info",
-		channels: ["bell"],
+		channels: [],
 		kind: "signal",
 		tier: "log",
 	},
@@ -199,9 +207,18 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "task",
 		tier: "ticket",
 	},
+	// a person's word to the reporter (a message, a decline, a merge), and, where no person verifies,
+	// that the item's work shipped: told, never asked
 	feedback_message: {
 		severity: "info",
 		channels: ["bell", "toast"],
+		kind: "signal",
+		tier: "ticket",
+	},
+	// a move somebody else made on the reporter's item (triaged, verified, reopened): activity
+	feedback_step: {
+		severity: "info",
+		channels: [],
 		kind: "signal",
 		tier: "log",
 	},

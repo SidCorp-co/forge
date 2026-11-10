@@ -42,6 +42,8 @@ export const notificationTypes = [
   'feedback_verify_asked',
   'feedback_shipped',
   'feedback_message',
+  // ISS-1192: a move somebody else made on a reporter's item, kept as activity and rung on no bell
+  'feedback_step',
   'status_report',
   // ISS-607: the steward asks the holders of an act the project's master may not take
   'steward_ask',

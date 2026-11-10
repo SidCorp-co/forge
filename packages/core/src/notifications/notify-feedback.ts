@@ -5,10 +5,15 @@
 // say changed for them, the violated criterion's verdict and clip — the kernel fact and words people
 // wrote, no ask composed by core (ISS-857) — cleared like any verify ask once they verify or reopen.
 // Once per item: a second release or a redelivery carrying the same item tells nobody twice.
+// Where the verify is the master's (`who-owes` `feedback.verify`), the ship itself verifies the item
+// (`feedback/loop-check.ts`), so the release tells the reporter it shipped and asks them nothing: no
+// task is opened only to be resolved by the next sweep (ISS-1192). A step somebody else made on the
+// item is activity (`feedback_step`, log tier); every notice about one item is one bell row.
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import { feedbackShippedKey, feedbackShippedPrefix } from '@forge/contracts/notifications';
 import type { OutboxEventPayload as Payload } from '@forge/contracts/outbox-events';
+import { whoOwes } from '@forge/contracts/who-owes';
 import { and, eq, inArray, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications } from '../db/schema.js';
@@ -16,6 +21,7 @@ import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { shipEvidenceOf, shippedNotice, verifyAskNotice } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
+import { readOwedPolicy } from '../project-config/index.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 
@@ -29,6 +35,7 @@ async function asked(p: Payload<'feedback.verifyAsked'>, eventId: string): Promi
     recipients: [p.reporter],
     projectId: p.projectId,
     type: 'feedback_verify_asked',
+    feedbackId: p.feedbackId,
     ...bellOf(verifyAskNotice(p.key, p.title)),
     resolutionKey: verifyKey(p.feedbackId),
     dedupeKey: `feedback-verify-ask:${eventId}`,
@@ -39,11 +46,16 @@ async function settled(p: Payload<'feedback.verifySettled'>): Promise<void> {
   await resolveNotifications(verifyKey(p.feedbackId), `${p.key} ${p.decision}`);
 }
 
+/** A move somebody else made on the item is activity; a person's word to the reporter is told. */
+const toldType = (kind: Payload<'feedback.reporterTold'>['kind']) =>
+  kind === 'step' || kind === 'verified' ? 'feedback_step' : 'feedback_message';
+
 async function told(p: Payload<'feedback.reporterTold'>, eventId: string): Promise<void> {
   await emitNotification({
     recipients: p.recipients,
     projectId: p.projectId,
-    type: 'feedback_message',
+    type: toldType(p.kind),
+    feedbackId: p.feedbackId,
     ...bellOf(p),
     dedupeKey: `feedback-told:${eventId}`,
   });
@@ -56,6 +68,7 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
     .from(feedbackRouteIssues)
     .where(inArray(feedbackRouteIssues.issueId, p.issueIds));
   if (carried.length === 0) return;
+  const shipVerifies = whoOwes('feedback.verify', await readOwedPolicy(p.projectId)).by === 'master';
   const items = await db
     .select({
       id: feedback.id,
@@ -113,10 +126,13 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
     await emitNotification({
       recipients: [item.reporter],
       projectId: p.projectId,
-      type: 'feedback_shipped',
+      feedbackId: item.id,
       ...bellOf(shippedNotice(key, item.title, p.version, said, evidence)),
-      // the item waits on its reporter's verify or reopen, which clears it as an asked verify is
-      resolutionKey: verifyKey(item.id),
+      // under strict the item waits on its reporter's verify or reopen, which clears it as an asked
+      // verify is; otherwise its ship verifies it, and the reporter is told, never asked
+      ...(shipVerifies
+        ? { type: 'feedback_message' as const }
+        : { type: 'feedback_shipped' as const, resolutionKey: verifyKey(item.id) }),
       dedupeKey: feedbackShippedKey(item.id, p.runId),
     });
   }

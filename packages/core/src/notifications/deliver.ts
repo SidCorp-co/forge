@@ -93,6 +93,9 @@ async function activeRecord(input: DeliverInput) {
  * emitter named one. Returns how many people were told for the first time.
  */
 async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
+  // ISS-1192: a log-tier record is activity, kept for the item's history and rung on nobody's bell,
+  // whatever its contract's channels say (`contracts/notifications.test.ts` holds them empty)
+  if (tierOf(input.type) === 'log') return 0;
   let told = 0;
   for (const userId of input.recipients) {
     if (!(await wantsDelivery(userId, input.type))) continue;
@@ -129,12 +132,14 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
           )
           .limit(1);
         deliveryId = existing?.id;
-        if (existing?.readAt) {
+        if (existing) {
+          // one item is one row at its latest state (ISS-1192): the row takes the newest record's
+          // title, and reads as new again, since only a record that asks its reader is delivered
           await tx
             .update(notificationDeliveries)
-            .set({ readAt: null })
+            .set({ title: input.groupTitle ?? input.title, readAt: null })
             .where(eq(notificationDeliveries.id, existing.id));
-          reopened = true;
+          reopened = existing.readAt !== null;
         }
       }
       let founded = false;

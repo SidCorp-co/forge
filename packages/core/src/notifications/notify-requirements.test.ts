@@ -1,6 +1,9 @@
+import { PERSON_GATES } from '@forge/contracts/person-gates';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
+  /** Whether a person gate asks the accept; off, the Steward accepts by rule. */
+  acceptGate: true,
   holders: ['ba-1', 'agent-1'] as string[],
   notices: [] as Record<string, unknown>[],
   resolved: [] as [string, string | undefined][],
@@ -13,6 +16,13 @@ vi.mock('../permissions/index.js', () => ({
     if (permission !== 'requirements.approve') throw new Error(`asked for ${permission}`);
     return new Map(ids.map((id) => [id, state.holders]));
   },
+}));
+vi.mock('../project-config/index.js', () => ({
+  readOwedPolicy: async () => ({
+    strict: false,
+    gates: Object.fromEntries(PERSON_GATES.map((g) => [g, g === 'accept' && state.acceptGate])),
+    releaseApproval: false,
+  }),
 }));
 vi.mock('./emit.js', () => ({
   emitNotification: async (n: Record<string, unknown>) => {
@@ -52,6 +62,8 @@ describe('the BA notice of a delivered requirement', () => {
     expect(state.notices[0]).toMatchObject({
       recipients: ['ba-1', 'agent-1'],
       type: 'requirement_delivered',
+      // every notice about the requirement is one bell row (ISS-1192)
+      requirementId: 'r1',
       title: 'REQ-3 r2 is delivered: Export',
       resolutionKey: 'requirement-check:r1@r2',
       dedupeKey: 'requirement-delivered:r1@r2',
@@ -72,6 +84,18 @@ describe('the BA notice of a delivered requirement', () => {
       {} as never,
     );
     expect(state.resolved).toEqual([['requirement-check:r1@r2', 'REQ-3 r2 accepted by Bea']]);
+  });
+
+  // ISS-1192: where no person gate asks the accept, the Steward accepts by rule, so nobody is asked
+  it('asks nobody where the accept is the master’s', async () => {
+    state.acceptGate = false;
+    const before = state.notices.length;
+    await consumerOf('requirement.delivered', 'notify-requirements')?.handle(
+      { projectId: 'p1', requirementId: 'r2', key: 'REQ-4', title: 'Import', revision: 1 },
+      {} as never,
+    );
+    state.acceptGate = true;
+    expect(state.notices).toHaveLength(before);
   });
 });
 

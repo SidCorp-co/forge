@@ -236,6 +236,7 @@
     "label.notificationType.contract_version_published": "Contract version",
     "label.notificationType.feedback_message": "Feedback update",
     "label.notificationType.feedback_shipped": "Shipped",
+    "label.notificationType.feedback_step": "Step change",
     "label.notificationType.feedback_verify_asked": "Verify the fix",
     "label.notificationType.intake_pending": "Intake",
     "label.notificationType.invitation_received": "Invitation",

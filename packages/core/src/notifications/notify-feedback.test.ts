@@ -31,6 +31,7 @@ describe('feedback-triage verify-ask: the ask reaches the reporter', () => {
   beforeAll(() => registerFeedbackNotifications());
 
   it('is declared on the outbox', () => {
+    expect(OUTBOX_CONSUMERS['feedback.reporterTold']).toContain('notify-feedback');
     expect(OUTBOX_CONSUMERS['feedback.verifyAsked']).toContain('notify-feedback');
     expect(OUTBOX_CONSUMERS['feedback.verifySettled']).toContain('notify-feedback');
     expect(OUTBOX_CONSUMERS['release.shipped']).toContain('notify-feedback');
@@ -60,5 +61,29 @@ describe('feedback-triage verify-ask: the ask reaches the reporter', () => {
       {} as never,
     );
     expect(state.resolved).toEqual([['feedback-verify:f1', 'FB-4 reopened']]);
+  });
+});
+
+// ISS-1192: a move somebody else made on the item is activity; a person's word to the reporter rings
+describe('what a reporter is told', () => {
+  const tell = (kind: string, eventId: string) =>
+    consumerOf('feedback.reporterTold', 'notify-feedback')?.handle(
+      { projectId: 'p1', feedbackId: 'f2', kind, recipients: ['u-rep'], title: 'FB-5 · x', body: '' },
+      { eventId } as never,
+    );
+
+  it("keeps a step on the item's history as activity, and a person's message on the bell", async () => {
+    state.notices.length = 0;
+    await tell('step', 'e-step');
+    await tell('verified', 'e-verified');
+    await tell('message', 'e-message');
+    await tell('declined', 'e-declined');
+    expect(state.notices.map((n) => n.type)).toEqual([
+      'feedback_step',
+      'feedback_step',
+      'feedback_message',
+      'feedback_message',
+    ]);
+    expect(new Set(state.notices.map((n) => n.feedbackId))).toEqual(new Set(['f2']));
   });
 });

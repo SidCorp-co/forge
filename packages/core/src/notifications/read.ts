@@ -1,4 +1,4 @@
-import { and, count, desc, eq, exists, inArray, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, inArray, isNull, ne, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   notificationDeliveries,
@@ -52,6 +52,8 @@ export function openDelivery(projectId?: string): SQL {
       and(
         eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
         isNull(notifications.resolvedAt),
+        // a log-tier record is activity, never waiting on the reader (ISS-1192)
+        ne(notifications.tier, 'log'),
         stillTrue,
         ...(projectId ? [eq(notifications.projectId, projectId)] : []),
       ),

@@ -10,6 +10,10 @@ interface EmitNotificationInput {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  /** The requirement the notice is about: its notices reach a reader as one row (ISS-1192). */
+  requirementId?: string | null;
+  /** The feedback item the notice is about: its notices reach a reader as one row (ISS-1192). */
+  feedbackId?: string | null;
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   scheduleRunId?: string | null;
@@ -29,11 +33,15 @@ interface EmitNotificationInput {
 
 /**
  * Where an emitter names no group, the item it is about does (ISS-863: repeats per item collapse
- * into one): every record of one type on one issue reaches a reader as one delivery, read again as
- * new when a repeat lands after it was read. A record about no issue stands alone.
+ * into one), read again as new when a repeat lands after it was read. A requirement or a feedback
+ * item is one row whatever the type (ISS-1192: an acceptance wrote four rows in one minute); on an
+ * issue, every record of one type is one. A record about no item stands alone.
  */
-const itemGroupOf = (input: EmitNotificationInput): string | null =>
-  input.issueId ? `item:${input.type}:${input.issueId}` : null;
+function itemGroupOf(input: EmitNotificationInput): string | null {
+  if (input.requirementId) return `item:requirement:${input.requirementId}`;
+  if (input.feedbackId) return `item:feedback:${input.feedbackId}`;
+  return input.issueId ? `item:${input.type}:${input.issueId}` : null;
+}
 
 /** The one write entry: a record of `type` at its contract severity unless overridden, delivered. */
 export async function emitNotification(
