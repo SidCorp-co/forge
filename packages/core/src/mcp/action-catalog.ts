@@ -457,7 +457,10 @@ const wordsOf = (text: string) =>
 
 /**
  * The entries a query matches, best first: each query word scores where it appears in the id,
- * the summary or the guide. No query lists every action.
+ * the summary or the guide. An action whose summary and guide are its door's shared text scores on
+ * its id alone: that text matches every action of the door alike, so a query naming none of them
+ * answered the whole door (ISS-1195: 16 `ecosystem.*` lines for "read a Forge guide by its slug").
+ * No query lists every action.
  */
 export function findActions(
   catalog: ReadonlyMap<string, ActionEntry>,
@@ -470,8 +473,9 @@ export function findActions(
   const scored = all
     .map((entry) => {
       const id = wordsOf(entry.id);
-      const summary = wordsOf(entry.summary);
-      const guide = new Set(wordsOf(entry.guide));
+      const shared = entry.guideOf === 'door';
+      const summary = shared ? [] : wordsOf(entry.summary);
+      const guide = new Set(shared ? [] : wordsOf(entry.guide));
       let score = 0;
       for (const w of words) {
         if (id.some((x) => x === w || x.startsWith(w))) score += 4;

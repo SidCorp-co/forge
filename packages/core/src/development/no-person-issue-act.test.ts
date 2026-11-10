@@ -286,10 +286,10 @@ describe('no product MCP door moves an issue', () => {
     await expect(sent).rejects.toMatchObject({ name: 'RefusalError', fallbackCode: 'BAD_REQUEST' });
   });
 
-  it('says in the server instructions that the issues door admits, moves and links no issue', () => {
-    const text = forgeMcpInstructions();
-    expect(text).toContain('no door here admits, moves or links an issue');
-    expect(text).not.toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
+  it("says in the issues door's guide that no door admits, moves or links an issue", () => {
+    if (!door) throw new Error('the product MCP server lists no forge_issues door');
+    expect(door.description).toContain('No door here admits, moves or links an issue');
+    expect(forgeMcpInstructions()).not.toContain('MCP_FILES_FEEDBACK_NOT_ISSUES');
   });
 });
 

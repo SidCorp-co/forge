@@ -175,7 +175,7 @@ Upload the file from disk instead of inlining base64 bytes into a request: a mul
     title: 'Start here: the loop, and the guide for your role',
     summary:
       'Start here: the Product → Delivery → Release → Audit loop, which guide each role reads first (product owner, BA or project manager; master; builder; judge; auditor; chat assistant), and, in a Forge-managed repo, the recall-first rule, draft vs open and what is worth watching.',
-    version: 4,
+    version: 5,
     body: `## Start here
 
 Forge runs one loop for a project: **Product → Delivery → Release → Audit → Product**. The Product
@@ -218,6 +218,15 @@ against live code or git before you rely on it.
 | A decision, learning or convention worth keeping | \`POST /api/memory\` |
 | Deeper per-package detail | \`GET /api/projects/:id/knowledge/<slug>\`, \`POST /api/projects/:id/knowledge/search\` |
 | How a Forge feature actually works | \`/api/guides\`, then \`/api/guides/<slug>.md\` |
+
+### From a checkout: what is REST, not MCP
+The MCP door carries the Product side; a master or a run works from a checkout over REST (\`forge-runner api <path>\` on a box) and the \`forge\` CLI.
+- **Integrations.** A connected integration's credential stays in core and core makes the call: Coolify deploys, logs and an app's env under \`/api/projects/:id/integrations/coolify/…\` (values masked), the source host's change requests under \`/api/projects/:id/integrations/source/…\` (open one with \`POST …/source/change-requests { head, base, title, body?, draft? }\`; never with a host token of your own), Sentry under \`…/sentry/issues\`, the storefront target at \`GET …/storefront/target\`. Their MCP tools are refused MCP_DELIVERY_IS_REST, naming these routes.
+- **Friction with Forge itself**, a skill gap or a learning mid-run: \`POST /api/forge/feedback { kind, title, whereSeen, body?, signalKey?, clientVersion? }\`, filed as you into Forge's home project.
+- **The ecosystem channel**, interface, links and builder runs: \`/api/projects/:id/channel/…\`, \`…/interface\`, \`…/links\`, \`…/builder-runs\`; what the channel owes a reply to is \`GET …/channel/unanswered\`. How a master works the inbox: the \`ecosystem-inbox\` guide.
+- **A question comment.** A comment a person marks \`intent: question\` is owed a reply until an agent replies in its thread; an agent's question comment is a Question waiting on a person, answered at \`GET /api/questions/<comment id>\`.
+- **Pipeline skills.** Before writing or tuning this project's pipeline skills, read the \`forge-skills\` MCP prompt.
+- **The contract.** \`/api/openapi.json\` (every route) and \`/api/mcp-tools.json\` (each door's whole input) need no credential and carry a semver version that moves only when the contract does.
 
 ### draft vs open — the costly one
 \`open\` admits the issue to the backlog: the project's master is woken and builds it in its next

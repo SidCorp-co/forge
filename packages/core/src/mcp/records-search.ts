@@ -15,6 +15,7 @@ import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
+import { getGuide, listGuides } from '../guides/index.js';
 import { recallKnowledgeAcross } from '../knowledge/index.js';
 import { type EgressSurface, egressShown } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -155,7 +156,7 @@ function parseId(id: string): { kind: Kind; uuid: string } {
   if (!KINDS.includes(kind as Kind) || !uuid || !UUID.test(uuid)) {
     return refused(
       'MCP_FETCH_ID_INVALID',
-      `\`${id.slice(0, 80)}\` is not an id search returns; an id is issue:<uuid>, requirement:<uuid>, knowledge:<uuid> or org:<uuid>`,
+      `\`${id.slice(0, 80)}\` is not an id fetch reads; an id is issue:<uuid>, requirement:<uuid>, knowledge:<uuid> or org:<uuid> as search returns it, or guide:<slug> (guide:index lists the guides)`,
     );
   }
   return { kind: kind as Kind, uuid };
@@ -164,8 +165,44 @@ function parseId(id: string): { kind: Kind; uuid: string } {
 const notFound = (id: string): never =>
   refused('MCP_FETCH_NOT_FOUND', `${id} names no item in a project this token reads`);
 
-/** One item `searchRecords` returned, read whole, where the caller reads its project. */
+const GUIDE = 'guide:';
+
+/**
+ * A Forge guide read over MCP (REQ-78 BC-11), so a client with no web access follows the pointer a
+ * describe or a refusal gives it: `guide:index` lists the corpus, `guide:<slug>` reads one whole.
+ * The corpus is public, so no project fence applies.
+ */
+function fetchGuide(id: string): FetchedRecord {
+  const slug = id.slice(GUIDE.length);
+  if (slug === 'index') {
+    const guides = listGuides();
+    return {
+      id,
+      title: 'Forge guides',
+      text: guides.map((g) => `- guide:${g.slug} — ${g.title}: ${g.summary}`).join('\n'),
+      url: link('/guides'),
+      metadata: { count: guides.length },
+    };
+  }
+  const guide = getGuide(slug);
+  if (!guide) {
+    return refused(
+      'MCP_FETCH_GUIDE_UNKNOWN',
+      `\`${slug.slice(0, 80)}\` names no Forge guide; fetch { id: "guide:index" } lists them`,
+    );
+  }
+  return {
+    id,
+    title: guide.title,
+    text: guide.body,
+    url: link(`/guides/${guide.slug}`),
+    metadata: { slug: guide.slug, version: guide.version, audience: guide.audience },
+  };
+}
+
+/** One item `searchRecords` returned, or a guide, read whole, where the caller reads its project. */
 export async function fetchRecord(principal: McpPrincipal, id: string): Promise<FetchedRecord> {
+  if (id.startsWith(GUIDE)) return fetchGuide(id);
   const { kind, uuid } = parseId(id);
   const visible = new Set(await loadVisibleProjectIdsForPrincipal(principal));
   let projectId: string;

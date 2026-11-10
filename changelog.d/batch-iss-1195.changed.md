@@ -1,0 +1,1 @@
+**An MCP client loads Forge a layer at a time.** The connect instructions are a short map (about 1.7 KB, was 9.3 KB); `fetch { id: "guide:<slug>" }` reads any Forge guide, and each `forge_describe` names the guide to read for more.

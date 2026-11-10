@@ -91,6 +91,15 @@ describe('the catalog of every served action', () => {
 
   // a client sees five tools and calls a door's action by forge_call, so a guide naming a door by
   // its internal tool name (project_feedback's `find it with forge_requirements`) is a dead end too
+  // REQ-78 BC-10: what a client loads on connecting is a map, and the rest loads on demand
+  it('keeps the connect instructions a map of 2.5 KB or less that names how to load more', () => {
+    const text = forgeMcpInstructions();
+    expect(text.length).toBeLessThanOrEqual(2560);
+    for (const step of ['forge_find', 'forge_describe', 'forge_call', 'guide:agent-setup']) {
+      expect(text).toContain(step);
+    }
+  });
+
   it('names no door by its internal tool name in a door guide, only the tools a client lists', () => {
     const listedTools = new Set(['forge_find', 'forge_describe', 'forge_call']);
     const dead = tools.flatMap((t) =>
@@ -145,6 +154,12 @@ describe('the catalog of every served action', () => {
       'questions.answer',
     );
     expect(findActions(catalog, '', 500)).toHaveLength(catalog.size);
+    // ISS-1195: a door's shared description matched every action of the door alike, so this
+    // query answered 16 `ecosystem.*` lines; such an action now scores on its own id
+    const shared = findActions(catalog, 'read a Forge guide by its slug', 20).filter((e) =>
+      /^(ecosystem|channel)\./.test(e.id),
+    );
+    expect(shared.length).toBeLessThanOrEqual(3);
     expect(findActions(catalog, 'qqqzzz', 5)).toEqual([]);
   });
 });

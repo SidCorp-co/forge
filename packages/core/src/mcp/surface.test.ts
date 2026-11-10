@@ -176,6 +176,20 @@ describe('forge_call', () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/MCP_FETCH_ID_INVALID/);
   });
+
+  // REQ-78 BC-11: a client on MCP alone follows a pointer to a guide; describe names the one to read
+  it('reads a Forge guide and the guide index through fetch, and describe names the guide', async () => {
+    const index = await call('fetch', { id: 'guide:index' });
+    expect(index.text).toContain('guide:agent-setup');
+    const guide = await call('fetch', { id: 'guide:product-role' });
+    expect(guide.isError).toBeFalsy();
+    expect(guide.text).toContain("Working a project's Product");
+    const none = await call('fetch', { id: 'guide:no-such-guide' });
+    expect(none.isError).toBe(true);
+    expect(none.text).toMatch(/MCP_FETCH_GUIDE_UNKNOWN/);
+    const described = await call('forge_describe', { action: 'requirements.create' });
+    expect(described.text).toContain('guide:requirement-lifecycle');
+  });
 });
 
 describe('the class of a forge_call is the class of the action it runs', () => {

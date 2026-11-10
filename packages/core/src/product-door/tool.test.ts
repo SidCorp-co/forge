@@ -99,16 +99,17 @@ describe('forge_issues create', () => {
 
   // owner, 2026-10-16 and 2026-11-07 (org guide mcp-issue-creation-is-guided): the tool points the
   // caller to the product first, names when to file directly, and has it choose the lane itself and
-  // say why, never ask before filing; the server's instructions say the same words (ISS-1183)
+  // say why, never ask before filing (ISS-1183); the server's instructions, a map since ISS-1195,
+  // send the caller to that guide and say nothing of their own on filing
   it('points the caller to the product first, and every filing text says one lane rule', () => {
     const d = issues.description;
     expect(d).toContain('start from the product');
     expect(d).toContain('project_feedback.submit');
     expect(d).toContain('requirements.create');
     expect(d).toContain('Choose the lane yourself and say why');
-    const texts = { door: d, instructions: forgeMcpInstructions() };
-    for (const [where, text] of Object.entries(texts)) {
-      expect(text, where).toContain(ISSUE_FILING_LANE);
+    expect(d).toContain(ISSUE_FILING_LANE);
+    expect(forgeMcpInstructions()).toContain("`issues.create`'s guide says when to file one");
+    for (const [where, text] of Object.entries({ door: d, instructions: forgeMcpInstructions() })) {
       expect(text, where).not.toMatch(
         /ask (them|the person)( first)? before filing|ask the person first/,
       );

@@ -10,7 +10,7 @@ export const PRODUCT_ROLE_GUIDE: CoreGuide = {
   title: "Working a project's Product: owner, BA, project manager",
   summary:
     'For a product owner, BA or project manager, person or agent, on MCP or the web: what the Product side works in, the reads that say how a project stands and what waits on you, and why issues are Delivery’s to file and build.',
-  version: 1,
+  version: 2,
   body: `## Working a project's Product
 
 Forge runs one loop: **Product → Delivery → Release → Audit → Product**. The Product leads:
@@ -28,10 +28,18 @@ You work the Product. The project's master and its runs work Delivery, from a ch
 | What a user or owner reported | \`project_feedback.*\` | \`feedback-triage\` |
 | What shipped, and a release waiting on approval | \`releases.*\` | |
 | A question waiting on a person | \`questions.*\` | |
+| A report, or a job of several steps no action does (decide what waits on you, draft from a thread) | \`bot.*\`: ask the Forge bot | |
 
 On the web the same reads are the project home, Needs you, Requirements, Feedback and Releases.
 Read \`project.status\` first: it is the read the dashboard draws, so what you say and what the page
 shows cannot disagree. Say a figure with the read it came from, and a forecast as the range it is.
+
+### When to ask the Forge bot
+\`bot.open\` opens a thread with the project's chat assistant, and \`bot.send\` asks it something. It
+reads as you, within your own permissions, and it has tools the actions here do not: a report drawn
+from the live reads, acting on the decisions waiting on you, a job of several steps. Ask it when the
+work is one of those; for a single read or write, call the action yourself, which is cheaper. A turn
+that outlasts the call answers \`processing\`: read it later with \`bot.read\`, never send again.
 
 ### Where what you hear goes
 - **A problem a user or owner reports** → Feedback, kind \`bug\`, naming the requirement it touches.

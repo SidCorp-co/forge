@@ -10,9 +10,10 @@
  * path; it is listed to no client, so an MCP client's model reaches it only through `forge_call`.
  */
 
-import type { McpListedTool } from '@forge/contracts/mcp-tools';
+import type { McpListedTool, McpToolName } from '@forge/contracts/mcp-tools';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import type { GuideSlug } from '../guides/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { EXAMPLE_PLACEHOLDERS, type McpContext, refusedAnswer } from '../lib/tool.js';
 import { renderedPermission } from '../middleware/declared-permission.js';
@@ -22,6 +23,30 @@ import { listedSchema } from './listed-schema.js';
 import { fetchRecord, searchRecords } from './records-search.js';
 
 const FIND_LIMIT = 20;
+
+/**
+ * The Forge guide that says more about each door (REQ-78 BC-11): describe names it, and a client
+ * reads it with `fetch { id: "guide:<slug>" }` only when its step needs more than the action's own
+ * guide. A new door names its guide here, or null where none says more.
+ */
+const DOOR_GUIDES: Record<McpToolName, GuideSlug | null> = {
+  forge_project: 'product-role',
+  forge_projects: 'product-role',
+  forge_requirements: 'requirement-lifecycle',
+  forge_design: 'workflow-design',
+  project_feedback: 'feedback-triage',
+  forge_releases: 'product-role',
+  forge_questions: 'product-role',
+  forge_bot: 'product-role',
+  forge_issues: 'what-is-an-issue',
+  forge_uploads: 'attachments-and-uploads',
+  forge_config: 'project-settings-and-test-credentials',
+  forge_bindings: 'project-settings-and-test-credentials',
+  forge_channel: 'ecosystem-inbox',
+  forge_ecosystem: 'ecosystem-inbox',
+  forge_feedback: null,
+  forge_support: null,
+};
 
 const INPUTS = {
   forge_find: z.strictObject({
@@ -43,7 +68,9 @@ const INPUTS = {
       .describe("The action's arguments, as forge_describe gives them"),
   }),
   search: z.strictObject({ query: z.string().min(1).max(200) }),
-  fetch: z.strictObject({ id: z.string().min(1).max(120).describe('An id search returned') }),
+  fetch: z.strictObject({
+    id: z.string().min(1).max(120).describe('An id search returned, or guide:<slug>'),
+  }),
 } as const satisfies Record<McpListedTool, z.ZodType>;
 
 export type SurfaceTool = McpListedTool;
@@ -56,7 +83,8 @@ const DESCRIPTIONS: Record<SurfaceTool, string> = {
     "Run one action: { action: 'requirements.create', args: {...} }. The action's full input judges args; a wrong call is refused by name, saying what to fix.",
   search:
     'Search the issues, requirements and knowledge of the projects you can read. Returns { results: [{ id, title, url }] }.',
-  fetch: 'Read one item search returned, by its id: { id, title, text, url, metadata }.',
+  fetch:
+    'Read one item search returned, by its id, or a Forge guide as guide:<slug> (guide:index lists them): { id, title, text, url, metadata }.',
 };
 
 /** The five tools `tools/list` answers, in the plain JSON Schema every importer reads. */
@@ -99,6 +127,12 @@ function entryOr(deps: SurfaceDeps, action: string): ActionEntry | CallToolResul
 }
 
 const isEntry = (v: ActionEntry | CallToolResult): v is ActionEntry => 'id' in v;
+
+/** Where to read more than the action's own guide, when its door names one: an id `fetch` reads. */
+function moreOf(entry: ActionEntry): { more?: string } {
+  const slug = DOOR_GUIDES[entry.tool as McpToolName];
+  return slug ? { more: `guide:${slug}` } : {};
+}
 
 /** An action's example as describe answers it, saying what each placeholder in it stands for. */
 function exampleOf(entry: ActionEntry): Record<string, unknown> {
@@ -159,6 +193,7 @@ export async function callSurface(
       ...(entry.documentSchema ? { documentSchema: entry.documentSchema } : {}),
       ...(entry.example ? exampleOf(entry) : {}),
       call: `forge_call { action: "${entry.id}", args }`,
+      ...moreOf(entry),
     });
   }
 
