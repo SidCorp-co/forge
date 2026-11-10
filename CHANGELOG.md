@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.640] - 2026-11-10
+
+The project home opens on the delivery loop's state and two charts
+
+### Changed
+
+- **A project's home opens on its delivery loop.** Product, Delivery, Release and Audit each show one live figure from a single read; a stage opens its drawer, and shipped and feedback charts follow Needs you.
+
 ## [0.4.0-dev.639] - 2026-11-10
 
 Chat rooms keep reaching Forge after another room's sign-in error
