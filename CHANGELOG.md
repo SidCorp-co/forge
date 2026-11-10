@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.637] - 2026-11-10
+
+MCP clients load Forge a layer at a time, guides fetched on demand
+
+### Changed
+
+- **An MCP client loads Forge a layer at a time.** The connect instructions are a 1.7 KB map (was 9.3 KB); `fetch { id: "guide:<slug>" }` reads any guide, and each describe names the guide for more.
+
 ## [0.4.0-dev.636] - 2026-11-10
 
 The runner keeps its Forge credential out of tracked .mcp.json files
