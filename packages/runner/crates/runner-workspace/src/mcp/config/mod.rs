@@ -6,6 +6,8 @@ mod session;
 pub use session::*;
 mod reach;
 pub use reach::*;
+#[cfg(test)]
+mod persistent_tests;
 
 use std::path::{Path, PathBuf};
 
