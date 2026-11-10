@@ -7,7 +7,7 @@ import { Badge, Tooltip } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { issueHref, issuesHref } from "@/lib/routes/issues";
-import { boardOf, DELIVERY_COLUMNS, isHighPriority, SERIES, trackOf } from "../model";
+import { boardOf, DELIVERY_COLUMNS, isHighPriority, toneFill, trackOf } from "../model";
 
 /** The cards one column names; the rest are counted in its header and open on the Issues page. */
 const COLUMN_CARDS = 6;
@@ -48,7 +48,7 @@ export function DeliveryBoard({ delivery, slug }: { delivery: HomeDelivery; slug
   const t = useCopy();
   const board = boardOf(delivery.issues);
   const counts = new Map(delivery.byStatus.map((c) => [c.key, c.count]));
-  const columns = DELIVERY_COLUMNS.map((c, at) => ({ ...c, fill: SERIES[at % SERIES.length], count: c.of.reduce((n, s) => n + (counts.get(s) ?? 0), 0), cards: board.get(c.key) ?? [] }))
+  const columns = DELIVERY_COLUMNS.map((c) => ({ ...c, fill: toneFill(c.tone), count: c.of.reduce((n, s) => n + (counts.get(s) ?? 0), 0), cards: board.get(c.key) ?? [] }))
     // the queue shows only while it holds work: an empty one says nothing the three columns do not
     .filter((c) => c.key !== "queued" || c.count > 0);
   return (

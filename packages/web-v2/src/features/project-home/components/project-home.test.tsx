@@ -11,7 +11,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore } from "@/test/render";
 import { componentOf, renderRoute } from "@/test/route-tree";
-import { feedbackBarsOf, shipChartOf } from "../model";
+import { feedbackBarsOf, shipChartOf, stageParts } from "../model";
 
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 
@@ -217,5 +217,17 @@ describe("the values the home's charts print", () => {
       [null, null, 21],
       [null, null, null],
     ]);
+  });
+});
+
+// QA on forge-dev dev.640: the bars took their colours from their place, so a failed release and a
+// red finding were drawn green, reading as healthy. A part wears what it means, the tone its badge
+// wears everywhere else.
+describe("the colour each stage's parts wear", () => {
+  it("draws a failure as a failure and a success as a success, whatever its place in the bar", () => {
+    const tones = Object.fromEntries(Object.entries(stageParts(home())).map(([stage, parts]) => [stage, Object.fromEntries(parts.map((p) => [p.key, p.tone]))]));
+    expect(tones.release).toMatchObject({ shipped: "ready", failed: "err" });
+    expect(tones.audit).toMatchObject({ red: "err", debt: "you" });
+    expect(tones.delivery).toMatchObject({ building: "run", landed: "you" });
   });
 });

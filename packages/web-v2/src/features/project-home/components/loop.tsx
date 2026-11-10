@@ -7,7 +7,7 @@ import type { ProjectHome } from "@forge/contracts/project-home";
 import { CoverageBar } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { type Part, SERIES, type StageId, shareOf, stageParts } from "../model";
+import { type Part, type StageId, shareOf, stageParts } from "../model";
 import { Ring } from "./ring";
 
 export interface StageView {
@@ -41,7 +41,7 @@ export function stageViews(home: ProjectHome, t: Copy): StageView[] {
 
 export function StageBar({ parts }: { parts: readonly Part[] }) {
   const t = useCopy();
-  return <CoverageBar segments={parts.map((p, i) => ({ key: p.key, label: t(p.label), count: p.count, fill: SERIES[i % SERIES.length] }))} />;
+  return <CoverageBar segments={parts.map((p) => ({ key: p.key, label: t(p.label), count: p.count, tone: p.tone }))} />;
 }
 
 function Arrow() {

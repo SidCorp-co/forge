@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, ReferenceLine, Tooltip, XAxis, YAxis } from "recharts";
 import { type ChartConfig, ChartContainer, Table, TBody, TD, TH, THead, TR, useLaidOutWidth } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { averageText, FEEDBACK_OUTCOMES as OUTCOMES, feedbackBarsOf, SERIES, shipChartOf } from "../model";
+import { averageText, FEEDBACK_OUTCOME_TONES, FEEDBACK_OUTCOMES as OUTCOMES, feedbackBarsOf, SERIES, shipChartOf, toneFill } from "../model";
 
 const TICK = { fill: "var(--fg-muted)", fontSize: 11 } as const;
 const AXIS = { stroke: "var(--border-strong)" } as const;
@@ -129,13 +129,13 @@ export function ShippedChart({ days }: { days: readonly HomeShipDay[] }) {
 export function FeedbackChart({ weeks }: { weeks: readonly HomeFeedbackWeek[] }) {
   const t = useCopy();
   const data = feedbackBarsOf(weeks);
-  const config: ChartConfig = Object.fromEntries(OUTCOMES.map((o, i) => [o, { label: t(`home.outcome.${o}`), color: SERIES[i] }]));
+  const config: ChartConfig = Object.fromEntries(OUTCOMES.map((o) => [o, { label: t(`home.outcome.${o}`), color: toneFill(FEEDBACK_OUTCOME_TONES[o]) }]));
   const empty = data.every((w) => w.total === 0);
   const legend = (
     <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-12 text-muted" data-testid="home-chart-legend">
-      {OUTCOMES.map((o, i) => (
+      {OUTCOMES.map((o) => (
         <li key={o} className="flex items-center gap-1.5">
-          <span aria-hidden className="size-2 rounded-sm" style={{ background: SERIES[i] }} />
+          <span aria-hidden className="size-2 rounded-sm" style={{ background: toneFill(FEEDBACK_OUTCOME_TONES[o]) }} />
           {t(`home.outcome.${o}`)}
         </li>
       ))}

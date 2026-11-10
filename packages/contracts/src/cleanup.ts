@@ -8,6 +8,7 @@
 // lands and ships on its build like any other, and the audit owes it a cleanup report (BC-5); a red
 // rated high is no debt at all, it holds its issue (BC-3).
 
+import type { IssueStatusTone } from "./issue-vocabulary";
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
 import {
@@ -84,6 +85,16 @@ export type RecordImpactRequest = z.infer<typeof recordImpactRequestSchema>;
 /** `red`: a check that ended red; `debt`: code left worse than it should be; `simplify`: room to cut. */
 export const DEBT_KINDS = ["red", "debt", "simplify"] as const;
 export type DebtKind = (typeof DEBT_KINDS)[number];
+
+/**
+ * The tone each kind of finding wears wherever it is drawn: a red is a failure, debt asks for
+ * attention, a simplification is neither.
+ */
+export const DEBT_KIND_TONES: Record<DebtKind, IssueStatusTone> = {
+	red: "err",
+	debt: "you",
+	simplify: "neutral",
+};
 
 export const debtItemSchema = z
 	.strictObject({
