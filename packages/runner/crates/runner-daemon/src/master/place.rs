@@ -259,7 +259,7 @@ fn prepare_pane(
         servers: Some(&declared.mcp_servers),
         lapsing: &[],
     });
-    let mcp_config = write_pane_mcp(&resolved.slug, declared)?;
+    let mcp_config = write_pane_mcp(&resolved.repo_path, &resolved.slug, declared)?;
     if let Some(path) = mcp_config.as_deref() {
         tracing::info!(
             "[master] {}: pane declares {} from {}",
@@ -278,10 +278,13 @@ fn prepare_pane(
 /// The MCP config a pane is started with, or why none may be: a project that
 /// declares servers is never handed a pane carrying none of them.
 fn write_pane_mcp(
+    repo: &std::path::Path,
     slug: &str,
     declared: &mcp_servers::ProjectMcpServers,
 ) -> std::result::Result<Option<std::path::PathBuf>, Unplaced> {
-    let e = match runner_workspace::mcp::config::write_session(slug, &declared.mcp_servers) {
+    let written =
+        runner_workspace::mcp::config::write_master_session(repo, slug, &declared.mcp_servers);
+    let e = match written {
         Ok(path) => return Ok(path),
         Err(e) => e,
     };

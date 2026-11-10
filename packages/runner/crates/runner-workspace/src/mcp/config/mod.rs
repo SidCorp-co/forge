@@ -6,8 +6,8 @@ mod session;
 pub use session::*;
 mod reach;
 pub use reach::*;
-#[cfg(test)]
-mod persistent_tests;
+mod master_session;
+pub use master_session::*;
 
 use std::path::{Path, PathBuf};
 
@@ -720,3 +720,8 @@ mod refreshable_bearer_tests {
         std::fs::remove_dir_all(d).unwrap();
     }
 }
+
+#[cfg(test)]
+mod master_session_tests;
+#[cfg(test)]
+mod persistent_tests;
