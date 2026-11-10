@@ -31,13 +31,15 @@ vi.mock('../integrations/index.js', () => ({
       },
     },
   ],
+  heldInboundSecret: () => null,
   previousHeldInboundSecret: () => null,
   recordTurnedAwayInboundCall: async () => {},
 }));
-// the slug door hands an instance App's delivery to the App router; this binding's connection is
-// no instance App, so neither is reached
+// the slug door hands an App's delivery to the App router where it routes by repository; this
+// binding's connection is neither the instance's App nor holds an App's secret, so neither is reached
 vi.mock('../integrations/github/index.js', () => ({
   findInstanceGithubApp: async () => null,
+  repositoryRoutedBindings: async () => null,
   routeAppDelivery: async () => {
     throw new Error('a delivery of no instance App was routed as one');
   },
