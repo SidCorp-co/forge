@@ -46,6 +46,26 @@ export interface LiveCheckOwed {
   key: string;
 }
 
+/**
+ * Why no judge can get in to take a live check (FB-611): the environment judged on names no testing
+ * profile (`environment` null where the project names none to judge on), or a person owes an open
+ * question on the issue.
+ */
+export type LiveCheckWait =
+  | { kind: 'no_testing_profile'; environment: string | null }
+  | { kind: 'question' };
+
+/** A live check that waits on a person, never on the master: no master work, said as a wait. */
+export interface LiveCheckWaiting extends LiveCheckOwed {
+  waits: LiveCheckWait;
+}
+
+/** The environment released work is judged on and the testing profile it names (`project-config/judged-environment.ts`). */
+export interface JudgingEnvironmentRead {
+  name: string;
+  testing: string | null;
+}
+
 /** A release act its release's standing names the master for (`release-batch/master-owed-acts.ts`). */
 export interface ReleaseActOwed {
   version: string;
@@ -249,9 +269,17 @@ interface MastersPorts {
   reviewsOwed(projectId: string): Promise<ReviewOwed[]>;
   /**
    * The issues the project's latest shipped release closed whose live verdict nothing has recorded
-   * (`owed-live-checks.ts:liveChecksOf`, ISS-1200): none where no release has shipped.
+   * (`owed-live-checks.ts:liveChecksOf`, ISS-1200): none where no release has shipped. Beside them,
+   * what decides whether a judge can get in (FB-611): the environment released work is judged on,
+   * `delivery.judgedOn` else production, with its testing profile
+   * (`project-config/judged-environment.ts:judgingEnvironmentOf`), null where none is named; and of
+   * their issues, those a person owes an open question on (`questions/issue-coupling.ts:issuesAPersonOwes`).
    */
-  liveChecksOwed(projectId: string): Promise<LiveCheckOwed[]>;
+  liveChecksOwed(projectId: string): Promise<{
+    checks: LiveCheckOwed[];
+    judging: JudgingEnvironmentRead | null;
+    questioned: string[];
+  }>;
   /** The release holds on waiting issues that name an act the master owes (ISS-888). */
   releaseHoldsOwed(projectId: string): Promise<ReleaseHoldOwed[]>;
   /**

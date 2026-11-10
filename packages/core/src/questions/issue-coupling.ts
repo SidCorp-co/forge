@@ -40,6 +40,22 @@ export async function personOwesAnAnswer(executor: Executor, issueId: string): P
   return (rows[0] as { held?: boolean } | undefined)?.held === true;
 }
 
+/** Of `issueIds`, those a person owes an answer on, read with the marker above. */
+export async function issuesAPersonOwes(
+  executor: Executor,
+  issueIds: readonly string[],
+): Promise<string[]> {
+  if (issueIds.length === 0) return [];
+  const ids = sql.join(
+    issueIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const rows = (await executor.execute(
+    sql`select i.id::text as id from unnest(array[${ids}]) as i(id) where ${holdsOpenHumanQuestion(sql`i.id`)}`,
+  )) as unknown as Array<{ id: string }>;
+  return rows.map((r) => r.id);
+}
+
 async function openQuestionIdsOn(executor: Executor, issueId: string): Promise<string[]> {
   const rows = await executor
     .select({ id: agentQuestions.id })

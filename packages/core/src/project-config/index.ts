@@ -34,6 +34,7 @@ export {
 } from './gates.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
+export { type JudgingEnvironment, judgingEnvironmentOf } from './judged-environment.js';
 export { readMasterMode } from './master-mode.js';
 export { readOwedPolicy } from './owed-policy.js';
 export type { TestingProfile } from './policy-schema.js';

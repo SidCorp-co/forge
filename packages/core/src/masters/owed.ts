@@ -21,7 +21,7 @@ import {
   requestsLine,
   unhandledRoomLine,
 } from './owed-drafts.js';
-import { liveChecksLine } from './owed-live-checks.js';
+import { liveChecksLine, readLiveChecks } from './owed-live-checks.js';
 import {
   endedRunHoldsWork,
   recordingsLine,
@@ -37,6 +37,7 @@ import {
   type FilingOwed,
   type FilingRecordOwed,
   type LiveCheckOwed,
+  type LiveCheckWaiting,
   type MarkOwed,
   mastersPorts,
   type ReleaseActOwed,
@@ -114,6 +115,8 @@ interface Owed {
   reviews: ReviewOwed[];
   /** Issues the latest shipped release closed, each owing its live verdict (ISS-1200). */
   liveChecks: LiveCheckOwed[];
+  /** Live checks no judge can get in to take, each waiting on a person: said, never counted (FB-611). */
+  liveChecksWaiting?: LiveCheckWaiting[];
   /** Release holds on waiting issues whose act is the master's, each named with its command (ISS-888). */
   releaseHolds: ReleaseHoldOwed[];
   /** Ended release runs still claiming gate issues no roster carries, each with its act (ISS-961). */
@@ -254,7 +257,7 @@ export function owedLine(owed: Owed): string {
     intakeFailuresLine(owed.intakeFailures) +
     unhandledRoomLine(owed.unhandledRoomMessages) +
     reviewsLine(owed.reviews) +
-    liveChecksLine(owed.liveChecks);
+    liveChecksLine(owed.liveChecks, owed.liveChecksWaiting);
   const {
     breakdowns,
     triages,
@@ -302,7 +305,7 @@ export function owedLine(owed: Owed): string {
 }
 
 function count(owed: Owed): number {
-  const { contentLanguage: _language, ...lists } = owed;
+  const { contentLanguage: _language, liveChecksWaiting: _waiting, ...lists } = owed;
   return Object.values(lists).reduce((n, items) => n + items.length, 0);
 }
 
@@ -447,7 +450,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
   const intakeFailures = await ports.intakeFailuresOwed(projectId);
   const unhandledRoomMessages = (await ports.unhandledRoomMessagesOwed?.(projectId)) ?? [];
   const reviews = await ports.reviewsOwed(projectId);
-  const liveChecks = await ports.liveChecksOwed(projectId);
+  const liveChecks = await readLiveChecks(projectId);
   const releaseHolds = await ports.releaseHoldsOwed(projectId);
   const endedRunHolds = await ports.endedRunHolds(projectId);
   const carried = new Set(carriers.map((c) => c.key));
@@ -492,7 +495,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       intakeFailures,
       unhandledRoomMessages,
       reviews,
-      liveChecks,
+      ...liveChecks,
       releaseHolds,
       endedRunHolds,
       contentLanguage,

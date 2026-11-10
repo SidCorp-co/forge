@@ -1,11 +1,31 @@
 // The environment a judge reads its testing secrets for, named off the landing of the issue it judges.
 
+import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { environmentsOf } from './release-path.js';
+import { environmentsOf, productionOf } from './release-path.js';
 import type { ProjectDocument } from './schema.js';
 import { type Refused, refuse } from './testing-secret-values.js';
+
+/**
+ * The environment a project judges its released work on, with no issue's landing to name one: the
+ * one `delivery.judgedOn` names, else production, with the testing profile it names (null where it
+ * names none). Null where the project names neither.
+ */
+export interface JudgingEnvironment {
+  name: string;
+  basis: 'judgedOn' | 'production';
+  testing: string | null;
+}
+
+export function judgingEnvironmentOf(document: ProjectDocument): JudgingEnvironment | null {
+  const judgedOn = judgedOnOf(document.delivery);
+  const name = judgedOn ?? productionOf(document)?.name ?? null;
+  if (!name) return null;
+  const testing = environmentsOf(document).find((e) => e.name === name)?.declaration.testing;
+  return { name, basis: judgedOn ? 'judgedOn' : 'production', testing: testing ?? null };
+}
 
 // the environment a job judges is the one deploying the branch its issue's work landed on —
 // the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.

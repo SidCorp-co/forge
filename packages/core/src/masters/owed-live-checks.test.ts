@@ -1,7 +1,7 @@
 import type { ReleaseContentIssue, ReleaseSummary } from '@forge/contracts/releases';
 import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { liveChecksLine, liveChecksOf } from './owed-live-checks.js';
+import { liveChecksLine, liveChecksOf, liveChecksReach } from './owed-live-checks.js';
 import { type MasterJudged, masterVerdict } from './verdict.js';
 
 // ISS-1200: the live verdicts the latest shipped release owes are master work, bounded to the issues
@@ -52,6 +52,35 @@ describe('the live verdicts a shipped release owes', () => {
       '1 issue the shipped release 1.48.0 carried owes its live verdict (ISS-1 i-1)',
     );
     expect(line).toContain('`--role qa`');
+  });
+});
+
+describe('a live check counts only where a judge can get in (FB-611)', () => {
+  const checks = [
+    { version: '0.21.0', issueId: 'i-1', key: 'ISS-1' },
+    { version: '0.21.0', issueId: 'i-2', key: 'ISS-2' },
+  ];
+
+  it('counts each where the environment judged on names a testing profile and nobody owes a question', () => {
+    const reach = liveChecksReach(checks, { name: 'staging', testing: 'qa' }, new Set(['i-2']));
+    expect(reach.liveChecks.map((c) => c.key)).toEqual(['ISS-1']);
+    expect(reach.liveChecksWaiting).toEqual([{ ...checks[1], waits: { kind: 'question' } }]);
+  });
+
+  it('counts none where that environment names no profile, or none is named, and says why', () => {
+    for (const judging of [{ name: 'staging', testing: null }, null]) {
+      const reach = liveChecksReach(checks, judging, new Set());
+      expect(reach.liveChecks).toEqual([]);
+      expect(reach.liveChecksWaiting).toHaveLength(2);
+      const line = liveChecksLine(reach.liveChecks, reach.liveChecksWaiting);
+      expect(line).toContain('2 live verdicts a shipped release owes wait on a person, not on you');
+      expect(line).toContain(
+        judging
+          ? '`staging` names no testing profile'
+          : 'the project names no environment to judge on',
+      );
+      expect(line).not.toContain('--role qa');
+    }
   });
 });
 

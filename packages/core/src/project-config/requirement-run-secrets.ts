@@ -3,11 +3,9 @@
 // issue walk that names a run's environment found nothing, and every requirement judge was refused
 // TESTING_SECRETS_NOT_LANDED claiming it named no issue (REQ-35 BC-3 and BC-7, run b2bd9ecb).
 
-import { judgedOnOf } from '@forge/contracts/delivery-policy';
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { judgedEnvironment } from './judged-environment.js';
+import { judgedEnvironment, judgingEnvironmentOf } from './judged-environment.js';
 import { projectConfigPorts, type RequirementSecretReadAudit } from './ports.js';
-import { environmentsOf, productionOf } from './release-path.js';
 import type { ProjectDocument } from './schema.js';
 import { readProjectConfig } from './service.js';
 import {
@@ -61,11 +59,8 @@ async function requirementEnvironment(args: {
       `environment \`${landed.environment}\`, which ${judge} judges ${requirement} on (where its delivering issues landed), names testing profile \`${landed.testing}\`, not \`${profileId}\`.`,
     );
   }
-  const judgedOn = judgedOnOf(document.delivery);
-  const production = productionOf(document)?.name ?? null;
-  const name = judgedOn ?? production;
-  const basis = judgedOn ? 'judgedOn' : 'production';
-  if (!name) {
+  const judging = judgingEnvironmentOf(document);
+  if (!judging) {
     const issues =
       args.issueIds.length === 0
         ? `no issue of this project delivers ${requirement}`
@@ -76,8 +71,8 @@ async function requirementEnvironment(args: {
       `${judge} judges ${requirement} at the requirement, and no environment it judges can be named: ${issues}, the project names no \`delivery.judgedOn\`, and it declares no production environment. Declare the judge over an issue delivering ${requirement} once its work has landed (\`forge-runner run declare <ISS-n> --role qa\`), or name the environment this project's releases are judged on in \`delivery.judgedOn\`. Nothing was read.`,
     );
   }
+  const { name, basis, testing } = judging;
   const said = basis === 'judgedOn' ? 'delivery.judgedOn' : 'its production environment';
-  const testing = environmentsOf(document).find((e) => e.name === name)?.declaration.testing;
   if (!testing) {
     return refuse(
       404,

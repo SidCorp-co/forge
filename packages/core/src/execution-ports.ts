@@ -71,6 +71,7 @@ import {
   actingSecretRefsOfSession,
   dispatchStateOf,
   gateOf,
+  judgingEnvironmentOf,
   parseRepository,
   policyGapOf,
   policyRefusal,
@@ -80,6 +81,7 @@ import {
   readEffectivePolicy,
   readGateModes,
   readMasterMode,
+  readProjectDocument,
   readVerifiedJudge,
   remoteOf,
   requirePolicy,
@@ -96,6 +98,7 @@ import {
   answeredOnIssuesSince,
   answerOf,
   askQuestion,
+  issuesAPersonOwes,
   questionsOwedToAgents,
   registerWaiter,
   voidCancelledRunQuestions,
@@ -257,6 +260,24 @@ async function fileScriptFeedback({
   return filed.ok
     ? { ok: true as const, key: filed.key, created: filed.created }
     : { ok: false as const, why: filed.refusals.map((r) => `${r.code}: ${r.detail}`).join('; ') };
+}
+
+/**
+ * The live checks the latest shipped release owes (ISS-1200), with what decides whether a judge can
+ * get in to take them (FB-611): the environment the project judges on and its testing profile, and
+ * which of their issues a person owes an open question on. Nothing more is read where none is owed.
+ */
+async function liveChecksOwed(projectId: string) {
+  const checks = liveChecksOf(await latestShippedRelease(projectId));
+  if (checks.length === 0) return { checks, judging: null, questioned: [] };
+  const [project, questioned] = await Promise.all([
+    readProjectDocument(projectId),
+    issuesAPersonOwes(
+      db,
+      checks.map((c) => c.issueId),
+    ),
+  ]);
+  return { checks, judging: project ? judgingEnvironmentOf(project.document) : null, questioned };
 }
 
 export function provideExecutionPorts(): void {
@@ -421,7 +442,7 @@ export function provideExecutionPorts(): void {
     unhandledRoomMessagesOwed: (projectId) =>
       unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000)),
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
-    liveChecksOwed: async (projectId) => liveChecksOf(await latestShippedRelease(projectId)),
+    liveChecksOwed,
     releaseHoldsOwed: agentOwedHolds,
     endedRunHolds: (projectId) => readEndedRunHolds(projectId),
     requestsWaiting: async (projectId) => [
