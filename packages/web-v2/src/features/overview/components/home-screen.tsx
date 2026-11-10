@@ -36,7 +36,7 @@ export function HomeScreen() {
       <QueryBoundary query={home} loadingLabel={t("overview.home.loading")} height="inline">
         {(data) => (
           <>
-            {data.moving.length > 0 ? <HomeBand items={data.moving} total={data.movingTotal} /> : null}
+            {data.moving.length > 0 ? <HomeBand items={data.moving} total={data.movingTotal} stages={data.movingStages} /> : null}
             <MovingWork items={data.moving} total={data.movingTotal} truncated={data.movingTruncated} />
           </>
         )}

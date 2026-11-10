@@ -95,6 +95,7 @@ export const HOME: HomeResponse = {
   ],
   movingTotal: MOVING_COUNTED,
   movingTruncated: true,
+  movingStages: { new: 18, planned: 44, building: 6, landed: 3, releasing: 2 },
   live: [
     { projectSlug: "forge", projectName: "Forge", environment: "production", environmentName: "dev", version: "0.4.0-dev.457", name: "Live Build Checklist Clarity", at: AT, mine: 3 },
     { projectSlug: "adminhub-api", projectName: "Adminhub API", environment: "production", environmentName: "production", version: "2.14.0", name: "Ledger exports", at: "2026-11-02T09:00:00.000Z", mine: 1 },

@@ -1,16 +1,17 @@
 // The workspace home's overview (REQ-43 r3 BC-14..BC-17): how many of the person's requests are
-// moving and how many a run works on now, the flow of the listed requests by stage each with its count
-// in the tone its row's chip wears, and on which of the last days each last moved, in the reader's days.
-// All of it is counted over the very rows the list under it holds (L-57): the home's one read.
+// moving, the flow of all of them by stage each with its count in the tone its row's chip wears, and on
+// which of the last days the listed ones last moved, in the reader's days. The figure and the flow are
+// core's counts over every moving request (`movingStages`), so the flow sums to the figure though the
+// list under it holds the newest 50; no "running now" figure, which counts runs a direct build never starts.
 
-import { HOME_STAGES } from "@forge/contracts/owner-home";
+import { HOME_STAGES, type HomeStage } from "@forge/contracts/owner-home";
 import { PROJECT_HOME_DAYS } from "@forge/contracts/project-home";
 import { BarChartFigure, dayCountsOf, OverviewBand } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { STAGE_TONE } from "../home-rows";
 import type { HomeMovingItem } from "../types";
 
-export function HomeBand({ items, total }: { items: readonly HomeMovingItem[]; total: number }) {
+export function HomeBand({ items, total, stages }: { items: readonly HomeMovingItem[]; total: number; stages: Record<HomeStage, number> }) {
   const t = useCopy();
   const days = dayCountsOf(items.map((m) => m.lastMovedAt), PROJECT_HOME_DAYS);
   return (
@@ -19,9 +20,8 @@ export function HomeBand({ items, total }: { items: readonly HomeMovingItem[]; t
       testId="home-band"
       figures={[
         { key: "moving", value: total, label: t("overview.home.band.moving") },
-        { key: "running", value: items.filter((m) => m.running).length, label: t("overview.home.runningNow") },
       ]}
-      flow={HOME_STAGES.map((s) => ({ key: s, label: t(`overview.home.stage.${s}`), count: items.filter((m) => m.stage === s).length, tone: STAGE_TONE[s] }))}
+      flow={HOME_STAGES.map((s) => ({ key: s, label: t(`overview.home.stage.${s}`), count: stages[s], tone: STAGE_TONE[s] }))}
       chart={
         <BarChartFigure
           title={t("overview.home.band.chart")}

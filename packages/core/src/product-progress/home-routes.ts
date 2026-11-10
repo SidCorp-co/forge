@@ -8,9 +8,12 @@ import { inActiveOrg } from '@forge/contracts/org-scope';
 import {
   HOME_FIND_LIMIT,
   HOME_MOVING_LIMIT,
+  HOME_STAGES,
   type HomeFindResponse,
   type HomeLiveRelease,
+  type HomeMovingItem,
   type HomeResponse,
+  type HomeStage,
 } from '@forge/contracts/owner-home';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -60,6 +63,12 @@ function viewerOf(c: {
   return { userId: c.get('userId'), agency };
 }
 
+/** Every moving item's stage counted before the list is cut, so the home's flow sums to its total. */
+export const stagesOf = (moving: readonly HomeMovingItem[]): Record<HomeStage, number> =>
+  Object.fromEntries(
+    HOME_STAGES.map((s) => [s, moving.filter((m) => m.stage === s).length]),
+  ) as Record<HomeStage, number>;
+
 const ENV_ORDER = { production: 0, testing: 1 } as const;
 const byEnvThenNewest = (one: HomeLiveRelease, other: HomeLiveRelease) =>
   ENV_ORDER[one.environment] - ENV_ORDER[other.environment] || other.at.localeCompare(one.at);
@@ -108,6 +117,7 @@ meHomeRoutes.get(
       moving: moving.slice(0, HOME_MOVING_LIMIT),
       movingTotal: moving.length,
       movingTruncated: moving.length > HOME_MOVING_LIMIT,
+      movingStages: stagesOf(moving),
       // at most two a project (its latest on production and on testing), so it is never cut
       live: parts.flatMap((p) => p.live).sort(byEnvThenNewest),
     };

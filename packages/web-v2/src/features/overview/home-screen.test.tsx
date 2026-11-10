@@ -23,6 +23,7 @@ const home: HomeResponse = {
   generatedAt: "2026-11-03T04:00:00.000Z",
   movingTotal: 132,
   movingTruncated: true,
+  movingStages: { new: 40, planned: 60, building: 20, landed: 8, releasing: 4 },
   moving: [
     {
       kind: "feedback",
@@ -136,18 +137,17 @@ describe("the workspace home", () => {
     expect(within(list).queryByText("Nightly import runs again")).toBeNull();
   });
 
-  // REQ-43 r3 BC-14 (owner, 2026-11-10): the home opens on its overview above its list, and each
-  // stage's count there is the list's own rows at that stage (L-57)
-  it("opens on its overview band above the list, each stage counting the list's own rows", () => {
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the home opens on its overview above its list, and its stages
+  // count every moving request core counted, so the flow sums to the figure though the list is cut at 50
+  it("opens on its overview band above the list, its stages summing to every moving request, not the newest the list holds", () => {
     render(<HomeScreen />);
     const band = screen.getByTestId("home-band");
     const moving = screen.getByTestId("home-moving");
     expect(band.compareDocumentPosition(moving) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(within(moving).getByTestId("home-moving-idle"));
-    const listed = new Map<string, number>();
-    for (const r of within(moving).getAllByTestId("home-moving-row")) listed.set(r.dataset.stage ?? "", (listed.get(r.dataset.stage ?? "") ?? 0) + 1);
     const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
-    expect(parts).toEqual(listed);
+    expect(Object.fromEntries(parts)).toEqual(home.movingStages);
+    expect([...parts.values()].reduce((a, b) => a + b, 0)).toBe(home.movingTotal);
+    expect(within(band).queryByText("Running now")).toBeNull();
     expect(within(band).getByTestId("home-band-chart")).toBeInTheDocument();
   });
 });

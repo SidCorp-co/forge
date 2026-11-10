@@ -67,6 +67,8 @@ export interface HomeResponse {
 	movingTotal: number;
 	/** `moving` holds fewer than `movingTotal`. */
 	movingTruncated: boolean;
+	/** How many of all `movingTotal` stand at each stage, counted before the cut, so a flow over them sums to it. */
+	movingStages: Record<HomeStage, number>;
 	/** Production first, then testing; newest first inside each. */
 	live: HomeLiveRelease[];
 }

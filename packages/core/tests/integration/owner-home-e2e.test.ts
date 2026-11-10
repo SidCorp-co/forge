@@ -158,6 +158,9 @@ describe("a person's home", () => {
     const full = ok(await say('busy', 'GET', '/api/me/home'));
     expect(full.moving as Doc[]).toHaveLength(HOME_MOVING_LIMIT);
     expect(full).toMatchObject({ movingTotal: HOME_MOVING_LIMIT + 2, movingTruncated: true });
+    // the home's flow counts every moving item, the ones past the cut too (ISS-1198)
+    const stages = Object.values(full.movingStages as Record<string, number>);
+    expect(stages.reduce((a, b) => a + b, 0)).toBe(HOME_MOVING_LIMIT + 2);
   });
 
   it('lists an item the viewer owes on their Needs you, never under moving, and the home has no waiting of its own', async () => {
