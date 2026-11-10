@@ -1,1 +1,0 @@
-**An owner's answer that picks an option answered in words is recorded with his words.** A chat room assistant could not record "change some groups" with what to change: every such answer was refused.

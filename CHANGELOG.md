@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.641] - 2026-11-10
+
+One-command Forge plugin install, and owner answers in words recorded
+
+### Added
+
+- **One command installs the forge plugin with only a Forge token.** `install-plugin.sh` fetches the commit the instance designates through its GitHub App, installs it in Claude Code, saves the account, and updates it when run again.
+
+### Fixed
+
+- **An owner's answer that picks an option answered in words is recorded with his words.** A chat room assistant could not record "change some groups" with what to change: every such answer was refused.
+
 ## [0.4.0-dev.640] - 2026-11-10
 
 The project home opens on the delivery loop's state and two charts
