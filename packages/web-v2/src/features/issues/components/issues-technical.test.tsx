@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { notifyLocationChange } from "@/lib/utils/use-location-search";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
+import { flowBarsOf } from "./issues-band";
 import { IssuesBoard } from "./issues-board";
 
 const go = (href: string) => {
@@ -142,6 +143,15 @@ describe("the Issues list's overview band", () => {
     await waitFor(() => expect(within(band).getByTestId("issues-band-chart")).toBeInTheDocument());
     const closed = within(band).getAllByTestId("band-figure").find((f) => f.dataset.key === "closed");
     expect(within(closed as HTMLElement).getByTestId("band-figure-value")).toHaveTextContent("3");
+    // "Moving" counts the rows the list draws as Moving, never a job or run in flight it does not show
+    const moving = within(band).getAllByTestId("band-figure").find((f) => f.dataset.key === "moving");
+    expect(within(moving as HTMLElement).getByTestId("band-figure-value")).toHaveTextContent(String(ROWS.filter((r) => r.standing.attentionGroup === "moving").length));
+  });
+
+  it("labels one bar of a day both series would label, the larger, so two labels never print as one", () => {
+    const day = (d: string, opened: number, closed: number) => ({ day: d, opened, closed });
+    const bars = flowBarsOf([day("2026-11-08", 5, 113), day("2026-11-09", 72, 40), day("2026-11-10", 21, 19)]);
+    expect(bars.map((b) => [b.cap_opened, b.cap_closed])).toEqual([[null, 113], [72, null], [21, null]]);
   });
 });
 
