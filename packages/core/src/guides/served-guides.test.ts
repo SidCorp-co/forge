@@ -58,6 +58,17 @@ describe('the judging guide a REST-only judge reads (ISS-612)', () => {
     expect(exercising).toContain('fails the verdict with a capture at that width');
   });
 
+  // ISS-1212 (FB-614, epod L-16): a design a person gave is judged element by element, and filed so.
+  it('judges a criterion drawn from a design element by element, and an issue names each element', async () => {
+    const qa = await served('qa');
+    expect(between(qa, '### Exercising a criterion', '###')).toContain(
+      'A criterion drawn from a design a person gave is judged element by element',
+    );
+    expect(await served('writing-an-issue')).toContain(
+      'An issue drawn from a design a person gave names each element they asked for as its own criterion',
+    );
+  });
+
   it('judges a design issue on its newest approved revision, never on content only proposed', async () => {
     const qa = await served('qa');
     const design = between(qa, '### A design issue', '###');
