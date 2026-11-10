@@ -105,7 +105,11 @@ function MovingItem({ item }: { item: HomeMovingItem }) {
         </span>
       </TD>
       <TD className="sm:w-px sm:whitespace-nowrap">
-        <span className="block">{owes}</span>
+        {/* a next step can run a paragraph (a hold and its reason): beside the name it reads in one
+            line, whole on hover, so it never takes the row; a phone wraps it under the name */}
+        <span className="block sm:max-w-80 sm:truncate" title={owes}>
+          {owes}
+        </span>
         {item.idle ? (
           <span className="block text-12 text-muted" data-testid="home-moving-age" title={time.dateTime(item.lastMovedAt)}>
             {time.relative(item.lastMovedAt)}

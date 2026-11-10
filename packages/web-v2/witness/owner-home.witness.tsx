@@ -1,12 +1,11 @@
-// The workspace home a person opens (ISS-919, FB-483): what waits on them, what is moving for what
-// they gave, and what is live, three flat tables in that order, with the org figures under a tab.
-// Mounted in the workspace's own column and `main` at 1440 and 390, light and dark, each with the
-// longest words it meets in the field. Each stage reads `main.scrollWidth` against its
-// `main.clientWidth` (ISS-691), checks the three sections stand in order with no card mosaic, and
-// prints the first screen's words (`WORDS owner-home <theme> <n>`); the Figures stage prints what
-// today's Overview drew (`WORDS overview-figures …`), the count before this page. Moving is cut as
-// core cuts it, so the stage reads its "N of M"; the idle stage opens the Idle row and reads each idle
-// item's age in words.
+// The workspace home a person opens (ISS-919, FB-483; since ISS-1069 what is moving for what they
+// gave, the waiting and the live having gone to Attention and Activity): its overview band, then
+// Moving, one flat table. Mounted in the workspace's own column and `main` at 1440 and 390, light and
+// dark, each with the longest words it meets in the field. Each stage reads `main.scrollWidth`
+// against its `main.clientWidth` (ISS-691), checks every Moving row fits its table with a name still
+// readable (dev.645: a long next step took the row), and prints the first screen's words
+// (`WORDS owner-home <theme> <n>`). Moving is cut as core cuts it, so the stage reads its "N of M";
+// the idle stage opens the Idle row and reads each idle item's age in words.
 //
 //   pnpm --filter web-v2 witness witness/owner-home.witness.tsx --out <dir>
 
@@ -57,6 +56,8 @@ function sideways(): string[] {
 
 /** The most free width a row may leave beside a name it cuts: past it, the name was cut for no reason. */
 const SLACK_MAX = 150;
+/** The narrowest a name may draw and still say which request a row is. */
+const NAME_MIN = 120;
 
 /** The width a cell's content draws, inside its padding. */
 function contentWidth(cell: HTMLElement): number {
@@ -75,7 +76,7 @@ function slack(cell: HTMLElement): number {
 /** A name cut (ellipsis or clamp) while its row leaves more than SLACK_MAX px unused (ISS-919 fix round). */
 function namesCutWithRoom(): string[] {
   const wrong: string[] = [];
-  for (const row of document.querySelectorAll<HTMLElement>("[data-testid=home-waiting-row], [data-testid=home-moving-row], [data-testid=home-live-row]")) {
+  for (const row of document.querySelectorAll<HTMLElement>("[data-testid=home-moving-row]")) {
     const name = row.querySelector<HTMLElement>("td a");
     if (!name) continue;
     const cut = name.scrollWidth > name.clientWidth + 1 || name.scrollHeight > name.clientHeight + 1;
@@ -86,13 +87,24 @@ function namesCutWithRoom(): string[] {
   return wrong;
 }
 
-function sections(): string[] {
-  const order = ["home-waiting", "home-moving", "home-live"].map((id) => q(`[data-testid=${id}]`));
-  if (order.some((s) => !s)) return ["the home does not draw all three sections: waiting on you, moving, live"];
-  const [a, b, c] = order as HTMLElement[];
+/** A row whose name is squeezed below a readable width, or whose cells run past their table (dev.645: a long next step took the row). */
+function rowsFit(): string[] {
   const wrong: string[] = [];
-  if (!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) || !(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING))
-    wrong.push("the sections are not in the order waiting on you, moving, live");
+  for (const row of document.querySelectorAll<HTMLElement>("[data-testid=home-moving-row]")) {
+    const table = row.closest("table")?.parentElement;
+    const name = row.querySelector<HTMLElement>("td a");
+    if (!table || !name) continue;
+    const edge = table.getBoundingClientRect().right;
+    const past = [...row.querySelectorAll<HTMLElement>(":scope > td")].some((td) => td.getBoundingClientRect().right > edge + 1);
+    if (past) wrong.push(`a Moving row runs past its table: "${name.textContent?.slice(0, 40)}"`);
+    if (name.getBoundingClientRect().width < NAME_MIN) wrong.push(`a Moving row's name is ${Math.round(name.getBoundingClientRect().width)} px wide, under ${NAME_MIN}`);
+  }
+  return wrong;
+}
+
+function moving(): string[] {
+  if (!q("[data-testid=home-moving]")) return ["the home draws no Moving section"];
+  const wrong: string[] = [];
   // flat tables: no row is a boxed, shadowed card
   const carded = [...document.querySelectorAll<HTMLElement>("[data-testid^=home-] tr, [data-testid^=home-] li")].filter((el) => getComputedStyle(el).boxShadow !== "none");
   if (carded.length > 0) wrong.push(`${carded.length} rows draw a shadow, as a card would`);
@@ -139,7 +151,7 @@ const homeStage = (t: "light" | "dark") => ({
     theme(t);
     await pause(700);
     words("owner-home", t);
-    return [...sideways(), ...sections(), ...namesCutWithRoom()];
+    return [...sideways(), ...moving(), ...namesCutWithRoom(), ...rowsFit()];
   },
 });
 
@@ -148,7 +160,7 @@ window.__witness = {
     { name: "wide-1440", width: 1440 },
     { name: "phone-390", width: 390 },
   ],
-  ready: () => Boolean(q("[data-testid=home-moving-row]") && q("[data-testid=home-waiting-row]") && q("[data-testid=home-live-row]")),
+  ready: () => Boolean(q("[data-testid=home-moving-row]")),
   stages: [
     homeStage("light"),
     homeStage("dark"),
@@ -161,18 +173,6 @@ window.__witness = {
         q("[data-testid=home-moving-idle-list]")?.scrollIntoView({ block: "center" });
         await pause(200);
         return [...opened, ...idleAges(), ...sideways()];
-      },
-    },
-    {
-      name: "figures-light",
-      run: async () => {
-        theme("light");
-        const figures = tab("Figures");
-        if (!figures) return ["the home has no Figures tab"];
-        figures.click();
-        await pause(900);
-        words("overview-figures", "light");
-        return sideways();
       },
     },
   ],

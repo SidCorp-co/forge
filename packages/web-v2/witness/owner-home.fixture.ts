@@ -12,6 +12,9 @@ const DAY = 86_400_000;
 /** An instant `n` days before the witness draws, so the idle rows read their age as the field would. */
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 export const ORG = "0b0e0f00-0000-4000-8000-000000000919";
+/** A next step as the field writes one (dev.645's epod row): a hold, its reason and the issue it rides, one long line. */
+const LONG_STEP =
+  "resume once: Tạm giữ đến 2026-11-16: cần 7 ngày log production (từ lần tạo lại go-backend lúc deploy) on \"Bỏ productForStore và updateProductForStore\"";
 const LONG = "A member's reply to the bot in a bound room thread is read for a correction, and the agent's lessons learn from it";
 
 const decision = (n: number, group: string, entity: string, title: string) => ({
@@ -85,7 +88,7 @@ export const HOME: HomeResponse = {
   moving: [
     moving(919, { kind: "feedback", key: "FB-483", title: "The UI answers nothing I ask, so every status check is a question in chat", stage: "building", running: true, owes: { who: "Agent", act: "build" } }),
     moving(856, { title: LONG, stage: "landed", owes: { who: "Release", act: "ship it" }, likelyBy: "2026-11-04T10:00:00.000Z", noDate: null }),
-    moving(862, { title: "A master post naming an undeclared room is refused by name", stage: "releasing", projectName: "Adminhub API", projectSlug: "adminhub-api" }),
+    moving(862, { title: "A master post naming an undeclared room is refused by name", stage: "releasing", projectName: "Adminhub API", projectSlug: "adminhub-api", owes: { who: "Master", act: LONG_STEP } }),
     moving(870, { title: "Lessons carry their area", owes: null }),
     moving(871, { kind: "feedback", key: "FB-490", title: "The phone menu hides the release page", stage: "new", owes: { who: "Steward", act: "triage it" } }),
     ...Array.from({ length: MOVING_SENT - 5 - IDLE_SENT }, (_, i) => moving(700 + i, { title: `Planned work ${i + 1}`, lastMovedAt: daysAgo(2 + i / 10) })),
