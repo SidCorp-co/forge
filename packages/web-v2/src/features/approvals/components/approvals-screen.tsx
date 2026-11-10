@@ -4,12 +4,13 @@
 // one is decided. One chip narrows it to what the agent recommends; the topics are the palette's (⌘K),
 // a narrowed topic standing as a chip that clears it (ISS-903). A selection replaces the chips with a
 // bar that states what approving makes before it acts; a row opens its peek, decides in place with
-// ✓ / ✕, and every decision is held five seconds for Undo. What the count leaves out is one shut line.
+// ✓ / ✕, and every decision is held five seconds for Undo. It opens on its overview band, an empty
+// page's reading zero; what the count leaves out is one line opening a side drawer, never in place.
 
 import type { DecisionAnswer, NeedsYouDecision, NeedsYouDecisions } from "@forge/contracts/needs-you-decisions";
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { type ReactNode, useMemo, useState } from "react";
-import { Checkbox, type Command, CountSection, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, NextAction, PageTitle, usePageCommands, usePeek, usePeekKeys, useUrlChoice, useUrlParams } from "@/design";
+import { Checkbox, type Command, DetailDrawer, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, NextAction, PageTitle, usePageCommands, usePeek, usePeekKeys, useUrlChoice, useUrlParams } from "@/design";
 import { decisionHref, useNeedsYouDecisions, wordsAsItStands } from "@/features/needs-you";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -20,6 +21,7 @@ import { type Decided, useDecide } from "../use-decide";
 import { useDecisionKeys } from "../use-decision-keys";
 import { DecisionPeek } from "./approval-peek";
 import { PendingDecision } from "./approval-row";
+import { ApprovalsBand } from "./approvals-band";
 import { BulkBar } from "./bulk-bar";
 import { DecidedBar } from "./decided-bar";
 
@@ -262,8 +264,9 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
 /**
  * What the read carries beyond these rows (REQ-48 r3 BC-17): the decisions past its page, and the rows
  * waiting on you that are not decisions, each named by its title with the step it waits on and opening
- * its own page. Neither is in the page's count, and the fold's headings say so; shut, it is one line
- * with how many it holds (ISS-903).
+ * its own page. Neither is in the page's count, and the drawer's headings say so. On the page it is one
+ * line with how many it holds (ISS-903), opening a side drawer whose rows open their pages: detail in
+ * two steps, nothing unfolding in place (ui-copy-rule).
  */
 function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   const t = useCopy();
@@ -272,7 +275,7 @@ function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   const count = read.notDecisions.reduce((n, d) => n + d.count, more ? read.total - read.decisions.length : 0);
   return (
     <div className="px-5 py-2">
-    <CountSection label={t("approvals.leftOut.fold")} count={count} testId="approvals-left-out">
+    <DetailDrawer label={t("approvals.leftOut.fold")} count={count} icon="list" testId="approvals-left-out">
     <div className="flex flex-col gap-3 text-13">
       {more ? <p className="text-subtle" data-testid="approvals-more">{t("approvals.more", { shown: read.decisions.length, total: read.total })}</p> : null}
       {read.notDecisions.map((n) => (
@@ -301,7 +304,7 @@ function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
         </section>
       ))}
     </div>
-    </CountSection>
+    </DetailDrawer>
     </div>
   );
 }
@@ -316,6 +319,7 @@ export function ApprovalsScreen({ projectId, slug, across = null }: { projectId:
       {(read) => (
         <div className="min-h-full min-w-0 bg-app" data-testid="approvals-screen">
           {title}
+          <ApprovalsBand read={read} />
           <Decisions read={read} slug={slug} />
         </div>
       )}

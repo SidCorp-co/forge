@@ -411,7 +411,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="issues-board" data-mode={mode}>
-      {q.data && q.data.issues.length > 0 ? <IssuesBand projectId={project.projectId} rows={rows} /> : null}
+      {q.data ? <IssuesBand projectId={project.projectId} rows={rows} /> : null}
       <ListLayout
         peek={
           openRow ? (

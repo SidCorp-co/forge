@@ -29,7 +29,7 @@ import { HomeScreen } from "@/features/overview";
 import { showSpend } from "@/features/projects";
 import { Route as OpsRoute } from "@/routes/_workspace/ops/index";
 
-const HOME: HomeResponse = { moving: [], movingTotal: 0, movingTruncated: false, live: [] } as unknown as HomeResponse;
+const HOME: HomeResponse = { moving: [], movingTotal: 0, movingTruncated: false, movingStages: { new: 0, planned: 0, building: 0, landed: 0, releasing: 0 }, live: [] } as unknown as HomeResponse;
 const HEALTH = [{ id: "p-forge", liveRuns: 3, spend24hUsd: 0 }];
 
 beforeEach(() => window.history.replaceState(null, "", "/"));

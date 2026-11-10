@@ -60,7 +60,8 @@ export function OverviewBand({ label, figures, flow, chart, testId = "overview-b
           ))}
         </div>
         <div data-testid="band-flow">
-          <CoverageBar segments={flow} />
+          {/* an empty list's flow is its bare track, so the band keeps its shape and reads zero (ui-copy-rule) */}
+          {flow.some((s) => s.count > 0) ? <CoverageBar segments={flow} /> : <div aria-hidden className="h-2 rounded-pill bg-neutral-5" data-testid="band-flow-empty" />}
         </div>
       </div>
       {chart ? <div className="min-w-0">{chart}</div> : null}

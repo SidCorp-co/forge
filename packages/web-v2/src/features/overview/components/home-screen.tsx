@@ -2,7 +2,7 @@
 // yet, across every project they read. It is the one thing Activity does not show. What waits on them,
 // what runs and what shipped are Activity's, the one cross-project screen, so the home draws none of
 // them, and a link kept to its old Figures tab lands on Activity. It opens on its overview band
-// (REQ-43 r3 BC-14, `home-band.tsx`), counted over the rows the list holds.
+// (REQ-43 r3 BC-14, `home-band.tsx`), counted over the rows the list holds, an empty list's reading zero.
 
 import { useEffect } from "react";
 import { PageContainer, PageTitle } from "@/design";
@@ -36,7 +36,7 @@ export function HomeScreen() {
       <QueryBoundary query={home} loadingLabel={t("overview.home.loading")} height="inline">
         {(data) => (
           <>
-            {data.moving.length > 0 ? <HomeBand items={data.moving} total={data.movingTotal} stages={data.movingStages} /> : null}
+            <HomeBand items={data.moving} total={data.movingTotal} stages={data.movingStages} />
             <MovingWork items={data.moving} total={data.movingTotal} truncated={data.movingTruncated} />
           </>
         )}

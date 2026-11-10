@@ -202,7 +202,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
           testId="feedback-screen"
           title={t("feedback.title")}
           titleAfter={<ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="header" />}
-          overview={all.length > 0 ? <FeedbackBand rows={list.rows} /> : null}
+          overview={<FeedbackBand rows={list.rows} />}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
               {t("feedback.new")}

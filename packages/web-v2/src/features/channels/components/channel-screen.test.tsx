@@ -245,6 +245,15 @@ describe("the Channels overview bands", () => {
   });
 
   // ui-copy-rule (judged at 0.4.0-dev.646): a screen opens on its band whatever its list holds
+  it("opens a project with no channels on its band reading zero, the empty line beneath", async () => {
+    fakeCore((c) => (c.path === "/projects/p1/support/channels" ? { body: { channels: [] } } : undefined));
+    renderWithQuery(<ChannelsScreen projectId="p1" slug="forge" />);
+    const none = await screen.findByText("No channels");
+    const band = screen.getByTestId("channels-band");
+    expect(within(band).getAllByTestId("band-figure-value")[0]?.textContent).toBe("0");
+    expect(band.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("opens a channel with no members on its band reading zero, its sections beneath saying so", async () => {
     const channel = { ...webmail, members: 0, memberRows: [] };
     fakeCore((c) => (c.path === `/projects/p1/support/channels/${webmail.rid}` ? { body: { channel } } : undefined));

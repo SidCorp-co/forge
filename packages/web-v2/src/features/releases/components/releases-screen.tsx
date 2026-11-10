@@ -180,7 +180,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
         <ListPage
           testId="releases-screen"
           title={t("releases.title")}
-          overview={all.length > 0 ? <ReleasesBand releases={all} rows={[...you, ...going, ...production, ...older].map((l) => l.release)} /> : null}
+          overview={<ReleasesBand releases={all} rows={[...you, ...going, ...production, ...older].map((l) => l.release)} />}
           toolbar={
             <>
               <ListFilterBar list="releases" />

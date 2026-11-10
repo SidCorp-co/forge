@@ -1,0 +1,1 @@
+**Every state screen opens on its overview, even when empty.** Home, Attention, Runners, Channels, Approvals, Issues, Requirements, Feedback and Releases show their band reading zero above the empty state, and Approvals' "Not counted here" opens in a side drawer.

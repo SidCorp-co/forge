@@ -290,8 +290,7 @@ export function ChannelScreen({ projectId, slug, rid }: { projectId: string; slu
           {(data) => (
             <>
               <ChannelAgent agent={data.channel.agent} slug={slug} />
-              {/* a channel with no members has nothing to count: its sections say so, the band would only say 0 */}
-              {data.channel.memberRows.length > 0 ? <ChannelBand channel={data.channel} /> : null}
+              <ChannelBand channel={data.channel} />
               <ChannelRecord channel={data.channel} projectId={projectId} t={t} />
             </>
           )}

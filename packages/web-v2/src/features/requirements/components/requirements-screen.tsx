@@ -203,7 +203,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           testId="requirements-screen"
           title={t("requirements.title")}
           titleAfter={switcher("header")}
-          overview={all.length > 0 ? <RequirementsBand rows={list.rows} /> : null}
+          overview={<RequirementsBand rows={list.rows} />}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
               {t("requirements.new")}

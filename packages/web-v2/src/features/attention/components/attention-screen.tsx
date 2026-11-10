@@ -4,7 +4,8 @@
 // (incl. deploy), skill updates, channel gates and offline runners. Live via WS: cross-project
 // events only arrive on subscribed rooms, so a `useRoom` fans out per project and the
 // `['attention']` invalidations in `lib/ws/event-router.ts` refetch. It opens on its overview band
-// (REQ-43 r3 BC-14, `attention-band.tsx`), counted from the counts its sections head.
+// (REQ-43 r3 BC-14, `attention-band.tsx`), counted from the counts its sections head, an empty inbox's
+// reading zero above its empty state.
 
 import { type ReactNode, useState } from "react";
 import { useRouter } from "@/lib/navigation/router";
@@ -205,26 +206,25 @@ function Inbox({ view }: { view: AttentionView }) {
 
       <PageTitle>{t("attention.title")}</PageTitle>
 
-      {view.total === 0 ? (
-        <div className="grid min-h-72 place-items-center">
-          <EmptyState message={t("attention.empty")} />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-6">
-          <AttentionBand view={view} />
-          {view.needsYou.map((part) => (
-            <section key={part.projectSlug} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: part.projectName })} data-testid="attention-needs-you" data-total={part.total}>
-              <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: part.projectName })}</SectionTitle>
-              <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: part.owed }} slug={part.projectSlug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(part.projectSlug)} dense />
-            </section>
-          ))}
-          <Group id="channelGates" title={t("attention.group.channelGates")} items={view.channelGates} count={view.counts.channelGates} onOpen={(href) => router.push(href)} />
-          <Group id="mentions" title={t("attention.group.mentions")} items={view.mentions} count={view.counts.mentions} onOpen={(href) => router.push(href)} />
-          <Group id="failedJobs" title={t("attention.group.failedJobs")} items={view.failedJobs} count={view.counts.failedJobs} onOpen={(href) => router.push(href)} />
-          <Group id="statusReports" title={t("attention.group.statusReports")} items={view.statusReports} count={view.counts.statusReports} onOpen={(href) => router.push(href)} />
-          <Group id="offlineRunners" title={t("attention.group.offlineRunners")} items={view.offlineRunners} count={view.counts.offlineRunners} onOpen={(href) => router.push(href)} />
-        </div>
-      )}
+      <div className="flex flex-col gap-6">
+        <AttentionBand view={view} />
+        {view.total === 0 ? (
+          <div className="grid min-h-72 place-items-center">
+            <EmptyState message={t("attention.empty")} />
+          </div>
+        ) : null}
+        {view.needsYou.map((part) => (
+          <section key={part.projectSlug} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: part.projectName })} data-testid="attention-needs-you" data-total={part.total}>
+            <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: part.projectName })}</SectionTitle>
+            <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: part.owed }} slug={part.projectSlug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(part.projectSlug)} dense />
+          </section>
+        ))}
+        <Group id="channelGates" title={t("attention.group.channelGates")} items={view.channelGates} count={view.counts.channelGates} onOpen={(href) => router.push(href)} />
+        <Group id="mentions" title={t("attention.group.mentions")} items={view.mentions} count={view.counts.mentions} onOpen={(href) => router.push(href)} />
+        <Group id="failedJobs" title={t("attention.group.failedJobs")} items={view.failedJobs} count={view.counts.failedJobs} onOpen={(href) => router.push(href)} />
+        <Group id="statusReports" title={t("attention.group.statusReports")} items={view.statusReports} count={view.counts.statusReports} onOpen={(href) => router.push(href)} />
+        <Group id="offlineRunners" title={t("attention.group.offlineRunners")} items={view.offlineRunners} count={view.counts.offlineRunners} onOpen={(href) => router.push(href)} />
+      </div>
     </PageContainer>
   );
 }

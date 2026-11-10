@@ -45,12 +45,12 @@ export function ChannelsScreen({ projectId, slug }: { projectId: string; slug: s
     <div className="grid gap-4 px-5 py-4 max-md:px-3">
       <PageTitle>{t("channels.title")}</PageTitle>
       <QueryBoundary query={q} loadingLabel={t("channels.loading")}>
-        {(data) =>
-          data.channels.length === 0 ? (
-            <p className="fg-body-sm text-muted">{t("channels.none")}</p>
-          ) : (
-            <>
+        {(data) => (
+          <>
             <ChannelsBand channels={data.channels} />
+            {data.channels.length === 0 ? (
+              <p className="fg-body-sm text-muted">{t("channels.none")}</p>
+            ) : (
             <GroupedList
               ariaLabel={t("channels.title")}
               groups={[{ id: "bound", label: t("channels.group.bound"), rows: data.channels }]}
@@ -61,9 +61,9 @@ export function ChannelsScreen({ projectId, slug }: { projectId: string; slug: s
               columns={{ title: t("channels.col.channel"), state: t("channels.col.agent"), waitingOn: "", meta: "" }}
               keyColumn={false}
             />
-            </>
-          )
-        }
+            )}
+          </>
+        )}
       </QueryBoundary>
     </div>
   );

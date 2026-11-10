@@ -6,6 +6,7 @@
 //
 // @direct-test-of packages/web-v2/src/features/feedback/components/feedback-screen.tsx
 // @direct-test-of packages/web-v2/src/features/requirements/components/requirements-list.tsx
+// @direct-test-of packages/web-v2/src/features/requirements/components/requirements-screen.tsx
 
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -166,5 +167,26 @@ describe("the Requirements list in one vocabulary", () => {
     expect(r).not.toHaveTextContent("daily budget");
     expect(r).not.toHaveTextContent("Your check");
     expect(screen.getByText("Waiting on others")).toBeInTheDocument();
+  });
+});
+
+// ui-copy-rule (judged at 0.4.0-dev.646): a list with nothing in it still opens on its overview band, reading zero
+describe("an empty list opens on its band", () => {
+  const none = () =>
+    fakeCore((c) => {
+      if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: [], counts: {}, sensitive: false } };
+      if (c.path.startsWith(`/projects/${P}/requirements`)) return { body: { requirements: [], returned: 0 } };
+      if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
+      return { body: {} };
+    });
+
+  it.each([
+    ["Feedback", "feedback-band", () => <FeedbackScreen projectId={P} slug="hop" />],
+    ["Requirements", "requirements-band", () => <RequirementsScreen projectId={P} slug="hop" />],
+  ])("draws %s's band over no rows, its first figure zero", async (_, band, draw) => {
+    none();
+    renderWithQuery(draw());
+    const drawn = await screen.findByTestId(band);
+    expect(within(drawn).getAllByTestId("band-figure-value")[0]?.textContent).toBe("0");
   });
 });

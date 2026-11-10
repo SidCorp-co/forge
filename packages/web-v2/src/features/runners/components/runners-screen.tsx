@@ -145,7 +145,7 @@ export function RunnersScreen() {
   return (
     <PageContainer className="flex flex-col gap-5">
       <PageTitle>{t("runners.screen.title")}</PageTitle>
-      {active.isSuccess && rows.length > 0 ? <RunnersBand rows={rows} /> : null}
+      {active.isSuccess ? <RunnersBand rows={rows} /> : null}
 
       <Section title={t("runners.pair.title")}>
         <span className="fg-label">{t("runners.pair.runOn")}</span>

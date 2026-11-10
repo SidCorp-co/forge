@@ -101,16 +101,16 @@ describe("the Approvals face", () => {
     expect(band.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("counts each topic on its band as the groups under it head", async () => {
+  it("splits what waits by whose call it is, the agent's recommended part the chip's own count", async () => {
     core();
     page();
     await screen.findByTestId("approvals-screen");
     const band = screen.getByTestId("approvals-band");
     expect(within(band).getAllByTestId("band-figure-value")[0]?.textContent).toBe(String(READ.total));
     const parts = new Map(within(band).getAllByTestId("coverage-part").map((p) => [p.dataset.key ?? "", Number(within(p).getByTestId("coverage-part-count").textContent)]));
-    const topics = new Map<string, number>();
-    for (const d of READ.decisions) topics.set(d.topic, (topics.get(d.topic) ?? 0) + 1);
-    expect(parts).toEqual(topics);
+    const chip = screen.getByTestId("approval-chip-recommends").textContent ?? "";
+    expect(chip).toContain(String(parts.get("recommends")));
+    expect((parts.get("recommends") ?? 0) + (parts.get("yours") ?? 0)).toBe(READ.decisions.length);
   });
 
   it("leads with deciding the next one, which opens its peek", async () => {
