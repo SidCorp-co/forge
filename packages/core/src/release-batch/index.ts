@@ -42,7 +42,6 @@ export { type CriterionReading, criterionReadingsAt } from './criterion-reading.
 export { cutReleaseAs } from './cut-as.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { nextDraftVersion } from './draft-version.js';
-export { parseReleaseVersion } from './version.js';
 export { readEndedRunHolds } from './ended-claims.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { runningBuildObserved } from './gate.js';
@@ -115,4 +114,5 @@ export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { type CommitPlacement, commitPlacedOnLanding } from './verdict-commit-placement.js';
 export { deploymentConfirms } from './verify.js';
+export { parseReleaseVersion } from './version.js';
 export { issueIdsOf } from './versions.js';
