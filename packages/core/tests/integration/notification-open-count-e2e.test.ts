@@ -2,6 +2,8 @@
  * The bell's badge and its list read one population: the badge counts the rows the bell lists as
  * still open, so a grouped delivery folding fifteen firing strands is one open row and one on the
  * badge (FB-76: the badge read 136, 99+, against 21 open rows once dev.54 folded the strands).
+ *
+ * @direct-test-of packages/core/src/notifications/read.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -173,5 +175,35 @@ describe('a read delivery that is still open', () => {
     const ids = (list.body.items as Record<string, unknown>[]).map((i) => i.id);
     expect(ids.sort()).toEqual([seen, unseen].sort());
     expect(count.body.count).toBe(2);
+  });
+});
+
+/**
+ * ISS-1192 (FB-603): a log-tier record is activity, never something waiting on the reader, whatever
+ * its kind reads. Delivery gives it no row today, and the badge and the open list leave out a row a
+ * log-tier record alone holds open, so a kind that ever contradicts its tier cannot raise the badge.
+ */
+describe('a log-tier record on the bell', () => {
+  let quiet = '';
+  let quietToken = '';
+
+  beforeAll(async () => {
+    quiet = (await createTestUser({ verified: true })).id;
+    quietToken = await userToken(quiet);
+    const id = randomUUID();
+    await db.execute(sql`
+      INSERT INTO notifications (id, project_id, type, kind, tier, state, title, severity)
+      VALUES (${id}, ${atlas}, 'requirement_step', 'task', 'log', 'open', 'REQ-1 is Agreed', 'info')
+    `);
+    await delivery(quiet, [id]);
+    await delivery(quiet, [await record(atlas, firing)]);
+  });
+
+  it('is neither counted on the badge nor listed open', async () => {
+    const count = await api(quietToken, 'GET', '/api/notifications/open-count');
+    const list = await api(quietToken, 'GET', '/api/notifications?openOnly=true&pageSize=100');
+    expect(count.status).toBe(200);
+    expect(count.body.count, 'only the firing condition waits on the reader').toBe(1);
+    expect(list.body.total).toBe(1);
   });
 });
