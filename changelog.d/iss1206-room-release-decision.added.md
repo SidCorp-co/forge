@@ -1,1 +1,0 @@
-**A room records the owner's release decision from his own words.** His plain approval or return in the room is decided as him, cited to his message, and stands for that release's production deploy, so nobody asks him again.

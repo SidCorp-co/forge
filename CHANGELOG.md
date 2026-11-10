@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.643] - 2026-11-10
+
+Room assistants act now, owners approve releases in their room, merged releases stop nagging
+
+### Added
+
+- **A room records the owner's release decision from his own words.** His plain approval or return in the room is decided as him, cited to his message, and stands for that release's production deploy, so nobody asks him again.
+
+### Changed
+
+- **A room assistant does work it can do now, now.** It books a later time only when the work must wait for something it names, and says what it waits for.
+
+### Fixed
+
+- **A change-request release stops asking for a merge already made.** It counts only its requests not yet merged, and once all are, a promotion waits on the record of its production deploy.
+
 ## [0.4.0-dev.642] - 2026-11-10
 
 The project home's stages and charts show the right colours and every value
