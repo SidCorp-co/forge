@@ -1,7 +1,7 @@
 // A release page in the approved report shape (ISS-1001), witnessed at phone and desktop width in
 // both themes over adminhub-fe's draft 0.56.0: its one act at the top, its one proof bar, what users
 // see by screen with no key or sha on the face, Needs attention naming the release it ships with and
-// what it removes, and everything technical folded. Opened, the Technical section's roster still
+// what it removes, and everything technical behind one drawer. Opened, the Technical drawer's roster still
 // draws seven criteria of one issue as seven lines a reader tells apart (REQ-40 BC-5, ISS-492). Its
 // last stage reads a forge-dev version, which wrapped at 420 on dev.515: the page names its release at
 // every width, the version on one line.
@@ -81,7 +81,7 @@ function reads(): string[] {
   wrong.push(...named("0.56.0"));
   const kinds = [...page.querySelectorAll("[data-testid=page-attention-item]")].map((i) => i.getAttribute("data-kind"));
   if (kinds.join() !== "step,removed") wrong.push(`Needs attention reads ${kinds.join() || "nothing"}, not the release it ships with and what it removes`);
-  if (page.querySelector("[data-testid=release-technical-fold]")?.hasAttribute("open")) wrong.push("Technical opens unasked");
+  if (document.querySelector("[data-testid=release-technical-body]")) wrong.push("Technical opens unasked");
   return [...wrong, ...sideways()];
 }
 
@@ -94,12 +94,15 @@ function stillOpenAgrees(): string[] {
 }
 
 async function technical(): Promise<string[]> {
-  const fold = document.querySelector<HTMLDetailsElement>("[data-testid=release-technical-fold]");
-  if (!fold) return ["no Technical section is drawn"];
+  const opener = document.querySelector<HTMLButtonElement>("[data-testid=release-technical-summary]");
+  if (!opener) return ["no Technical section is drawn"];
   // shot at 1440 light and at 420 dark, the two the round-2 reading asks for
   theme(window.innerWidth < 800 ? "dark" : "light");
-  fold.open = true;
+  // Technical opens in a side drawer (REQ-43 r3 BC-17), not in place
+  opener.click();
   await settle(300);
+  const fold = document.querySelector("[data-testid=release-technical-body]");
+  if (!fold) return ["Technical opens no drawer"];
   document.querySelector<HTMLButtonElement>("[data-testid=page-change][data-row-key=ISS-201] button")?.click();
   await settle();
   const row = document.querySelector("[data-testid=page-change][data-row-key=ISS-201]");
