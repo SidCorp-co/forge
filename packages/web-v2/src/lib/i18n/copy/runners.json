@@ -45,6 +45,7 @@
     "runners.detail.save": "Save",
     "runners.device.cannotResolve": "Panes cannot resolve {names}",
     "runners.device.manage": "Manage",
+    "runners.band.label": "Devices overview",
     "runners.device.off": "Off",
     "runners.device.offTitle": "Turned off — ignored by every project until turned back on",
     "runners.device.pairedByOther": "paired by another member",

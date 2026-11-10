@@ -47,6 +47,7 @@ import {
 } from "../scope";
 import { runnerInstallCommand } from "@/lib/utils/runner-commands";
 import { BuildChip, DeviceDetail } from "./device-detail";
+import { RunnersBand } from "./runners-band";
 
 /** The one command a box runs to install and pair, with a copy button: setup prints the code approved at /pair. */
 export function SetupCommand() {
@@ -144,6 +145,7 @@ export function RunnersScreen() {
   return (
     <PageContainer className="flex flex-col gap-5">
       <PageTitle>{t("runners.screen.title")}</PageTitle>
+      {active.isSuccess && rows.length > 0 ? <RunnersBand rows={rows} /> : null}
 
       <Section title={t("runners.pair.title")}>
         <span className="fg-label">{t("runners.pair.runOn")}</span>
@@ -179,7 +181,7 @@ export function RunnersScreen() {
                   const disabled = !!d.disabledAt;
                   const actionNote = rowActionNote(scope, d.ownedByMe, t);
                   return (
-                    <TR key={d.id}>
+                    <TR key={d.id} data-testid="device-row">
                       <TD>
                         <DeviceNameCell device={d} />
                       </TD>
