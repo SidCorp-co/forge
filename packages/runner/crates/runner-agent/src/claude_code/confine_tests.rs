@@ -655,3 +655,6 @@ async fn a_followed_projects_checkout_is_read_and_never_written_inside_the_sandb
         "the session wrote a followed project's checkout"
     );
 }
+
+#[path = "confine_needs_auth_tests.rs"]
+mod needs_auth;
