@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.642] - 2026-11-10
+
+The project home's stages and charts show the right colours and every value
+
+### Fixed
+
+- **The project home draws each stage in the colour of what it means, and its charts show every value.** A failed release or red finding no longer reads green; each bar prints its value.
+
 ## [0.4.0-dev.641] - 2026-11-10
 
 One-command Forge plugin install, and owner answers in words recorded
