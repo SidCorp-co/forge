@@ -302,6 +302,9 @@
     "releases.sites.state.deployed": "Deployed",
     "releases.sites.state.awaiting_confirm": "Needs confirm",
     "releases.sites.state.failed": "Failed",
-    "releases.sites.state.not_reached": "Not shipped"
+    "releases.sites.state.not_reached": "Not shipped",
+    "releases.band.label": "Releases overview",
+    "releases.band.shipped": "Shipped in {n} days",
+    "releases.band.issues": "Issues shipped"
   }
 }

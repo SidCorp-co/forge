@@ -4,7 +4,7 @@
 // a later one carries folds into one line under it (`release-list.ts`). The going and shipped groups
 // are named for the environment the project releases to, so a project releasing to dev never reads
 // "In production" (ISS-1179). The chat's narrowing still applies (REQ-41 BC-5): whom a release waits
-// on and its state.
+// on and its state. The page opens on its overview band (REQ-43 r3 BC-14, `releases-band.tsx`).
 
 import type { ReleaseLanding } from "@forge/contracts/releases";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
@@ -24,6 +24,7 @@ import { type ReleaseLine, releaseListOf, versionsOf } from "../release-list";
 import type { ReleaseSummary } from "../types";
 import { ReleaseVersion } from "./release-bits";
 import { ReleaseProofBar, type ReleaseTag, ReleaseTags } from "./release-proof";
+import { ReleasesBand } from "./releases-band";
 
 /** What needs the decider's attention on a row, in two words each. */
 export function listTagsOf(r: ReleaseSummary, t: Copy): ReleaseTag[] {
@@ -179,6 +180,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
         <ListPage
           testId="releases-screen"
           title={t("releases.title")}
+          overview={all.length > 0 ? <ReleasesBand releases={all} rows={[...you, ...going, ...production, ...older].map((l) => l.release)} /> : null}
           toolbar={
             <>
               <ListFilterBar list="releases" />

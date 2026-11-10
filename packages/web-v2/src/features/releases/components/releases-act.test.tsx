@@ -42,6 +42,19 @@ describe("the Releases list's face (REQ-11 BC-19, ISS-1001)", () => {
     expect(within(shipped).queryByTestId("release-row-act")).toBeNull();
   });
 
+  // REQ-43 r3 BC-14 (owner, 2026-11-10): the page opens on its overview, above the list, and each
+  // state's count there is the list's own (L-57)
+  it("opens on its overview band above the list, its state counts summing to the list's groups", () => {
+    releases();
+    const band = screen.getByTestId("releases-band");
+    const list = screen.getByTestId("release-list");
+    expect(band.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const flow = within(band).getAllByTestId("coverage-part-count").map((c) => Number(c.textContent));
+    const groups = within(list).getAllByTestId("group-count").map((c) => Number(c.textContent));
+    expect(flow.reduce((a, b) => a + b, 0)).toBe(groups.reduce((a, b) => a + b, 0));
+    expect(within(band).getByTestId("releases-band-chart")).toBeInTheDocument();
+  });
+
   it("draws no second table repeating the draft: coming next is retired", () => {
     const { container } = releases();
     expect(container.querySelector("[data-testid^=coming-next]")).toBeNull();
