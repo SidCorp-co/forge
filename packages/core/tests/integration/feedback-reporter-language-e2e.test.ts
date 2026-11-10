@@ -5,6 +5,7 @@
  * One notice kind per test: a decline, a merge into an original, a triager's message (each reporter of
  * a merged item), a triager's verify on their behalf past the window, and the ask to verify. The
  * project here writes Vietnamese; bo chose nothing, ann chose English, and both read the same fact.
+ * A verify on their behalf is a step, activity on the item that rings no bell (ISS-1192).
  *
  * @direct-test-of packages/core/src/feedback/reporter-notices.ts
  */
@@ -170,7 +171,7 @@ describe('a reporter reads each notice about their item as the kernel fact, in a
     ]);
   });
 
-  it('verified for them: the sweep tells nothing, and the triager who verifies from the record is told the fact', async () => {
+  it('verified for them: the sweep tells nothing, and the triager who verifies from the record writes the fact as activity', async () => {
     const fb = await answered('bo', 'Vì sao bảng chỉ đọc?');
     const [row] = (await db.execute(sql`
       SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${seq(fb)}
@@ -195,7 +196,14 @@ describe('a reporter reads each notice about their item as the kernel fact, in a
       'Feedback triage r16: nothing verifies an item by itself',
     ).toEqual([]);
     ok(await say('owner', 'POST', item(fb, 'verify'), {}));
-    const [n] = (await bell('bo', fb)).filter((x) => x.title.includes(' · verified · '));
+    expect(
+      (await bell('bo', fb)).filter((x) => x.title.includes(' · verified · ')),
+      'a step is activity, on no bell (ISS-1192)',
+    ).toEqual([]);
+    const [n] = (await db.execute(sql`
+      SELECT title, body FROM notifications
+       WHERE project_id = ${projectId} AND type = 'feedback_step' AND title LIKE ${`%${fb} · verified · %`}
+    `)) as unknown as { title: string; body: string | null }[];
     expect(n?.title).toBe(`${fb} · verified · Vì sao bảng chỉ đọc?`);
     expect(n?.body ?? null).toBeNull();
   });

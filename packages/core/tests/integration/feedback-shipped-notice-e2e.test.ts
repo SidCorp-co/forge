@@ -5,7 +5,9 @@
  * An item still owed another carrier is not told; a reporter with no bell is named, not skipped.
  * Outside strict a resolved item whose carrier shipped is done (owner 2026-11-08, D5): nothing waits on
  * its reporter, an agent's confirm or a person's relay, and anyone may still tell the reporter, who may
- * reopen it. Whether the reporter was told is read and counted all the same.
+ * reopen it. Whether the reporter was told is read and counted all the same. There the release tells
+ * the reporter it shipped and asks nothing (ISS-1192): a task the next sweep resolves by itself is
+ * never opened for a person, so only a strict project's reporter is asked to verify.
  *
  * @direct-test-of packages/core/src/feedback/standing-carrier.ts
  * @direct-test-of packages/core/src/feedback/standing.ts
@@ -20,6 +22,7 @@ import { db } from '../../src/db/client.js';
 import { api, type Body } from '../helpers/api.js';
 import { createTestUser } from '../helpers/factories.js';
 import { ago, feedback, issue, type World, world } from '../helpers/forecast-world.js';
+import { underStrict } from '../helpers/project-controls.js';
 
 let w: World;
 
@@ -61,6 +64,23 @@ const notices = async (type: string) =>
            (SELECT count(*)::int FROM notification_delivery_members m WHERE m.notification_id = n.id) AS delivered
       FROM notifications n WHERE n.project_id = ${w.projectId} AND n.type = ${type} ORDER BY n.created_at
   `)) as unknown as { title: string; body: string; dedupe_key: string; delivered: number }[];
+
+/** Every notice a release wrote telling an item's reporter it shipped, whatever it asked of them. */
+const shipNotices = async () =>
+  (await db.execute(sql`
+    SELECT n.type, n.title, n.body, n.dedupe_key, n.resolution_key,
+           (SELECT count(*)::int FROM notification_delivery_members m WHERE m.notification_id = n.id) AS delivered
+      FROM notifications n
+     WHERE n.project_id = ${w.projectId} AND n.dedupe_key LIKE 'feedback-shipped:%'
+     ORDER BY n.created_at
+  `)) as unknown as {
+    type: string;
+    title: string;
+    body: string;
+    dedupe_key: string;
+    resolution_key: string | null;
+    delivered: number;
+  }[];
 
 async function ship(runId: string, version: string, issueIds: string[]) {
   const { stampReleaseShipped } = await import('../../src/pipeline/index.js');
@@ -108,8 +128,10 @@ describe('the release that ships an item tells its reporter', () => {
     expect(outbox, 'a retried stamp must not tell the outbox twice').toHaveLength(1);
     expect(outbox[0]?.payload).toMatchObject({ version: '0.1.0', issueIds: [carrier.id] });
 
-    const sent = await notices('feedback_shipped');
+    const sent = await shipNotices();
     expect(sent).toHaveLength(1);
+    // outside strict the ship verifies the item: the reporter is told, and asked nothing (ISS-1192)
+    expect(sent[0]).toMatchObject({ type: 'feedback_message', resolution_key: null });
     expect(sent[0]?.title).toContain(fb);
     expect(sent[0]?.title).toContain('0.1.0');
     expect(sent[0]?.title).toBe(`${fb} · shipped · 0.1.0 · feedback ${Number(fb.slice(3))}`);
@@ -128,8 +150,19 @@ describe('the release that ships an item tells its reporter', () => {
     const fb = await feedback(w, [done.id, open.id]);
     const runId = await releaseRun('0.1.1', [done.id]);
     await ship(runId, '0.1.1', [done.id]);
-    expect((await notices('feedback_shipped')).filter((n) => n.title.includes(fb))).toEqual([]);
+    expect((await shipNotices()).filter((n) => n.title.includes(fb))).toEqual([]);
     expect((await detail(fb)).shipNotice).toBeNull();
+  });
+
+  // ISS-1192: only where a person owns the verify does the release ask the reporter to verify
+  it("asks a strict project's reporter to verify, as a task their verify or reopen resolves", async () => {
+    const carrier = await closed();
+    const fb = await feedback(w, [carrier.id]);
+    const runId = await releaseRun('0.1.3', [carrier.id]);
+    await underStrict(w.projectId, w.userId, () => ship(runId, '0.1.3', [carrier.id]));
+    const [sent] = (await shipNotices()).filter((n) => n.title.includes(fb));
+    expect(sent).toMatchObject({ type: 'feedback_shipped', delivered: 1 });
+    expect(sent?.resolution_key).toMatch(/^feedback-verify:/);
   });
 
   // REQ-66 BC-8: an agent has no bell; its own read of the item tells it, and nobody owes it a relay.
@@ -142,7 +175,7 @@ describe('the release that ships an item tells its reporter', () => {
     `);
     const runId = await releaseRun('0.1.2', [carrier.id]);
     await ship(runId, '0.1.2', [carrier.id]);
-    expect((await notices('feedback_shipped')).filter((n) => n.title.includes(fb))).toEqual([]);
+    expect((await shipNotices()).filter((n) => n.title.includes(fb))).toEqual([]);
     const d = await detail(fb);
     expect(d.shipNotice).toMatchObject({ state: 'told', how: 'asked' });
     expect(d.reporterNotTold).toBeNull();
@@ -335,7 +368,7 @@ describe("the notice is the reporter's, in their words, once", () => {
       const fb = await feedback(w, [carrier.id]);
       const runId = await releaseRun('0.3.0', [carrier.id]);
       await ship(runId, '0.3.0', [carrier.id]);
-      const [sent] = (await notices('feedback_shipped')).filter((n) => n.title.includes(fb));
+      const [sent] = (await shipNotices()).filter((n) => n.title.includes(fb));
       // ISS-857: the kernel fact and the release note as written; core translates and composes nothing
       expect(sent?.title).toBe(`${fb} · shipped · 0.3.0 · feedback ${Number(fb.slice(3))}`);
       expect(sent?.body).toBe('Lưu bảng giữ nguyên mọi thẻ.');
@@ -349,7 +382,7 @@ describe("the notice is the reporter's, in their words, once", () => {
     const fb = await feedback(w, [carrier.id]);
     const runId = await releaseRun('0.3.1', [carrier.id]);
     await ship(runId, '0.3.1', [carrier.id]);
-    const [sent] = (await notices('feedback_shipped')).filter((n) => n.title.includes(fb));
+    const [sent] = (await shipNotices()).filter((n) => n.title.includes(fb));
     expect(sent?.title).toBe(`${fb} · shipped · 0.3.1 · feedback ${Number(fb.slice(3))}`);
     expect(
       sent?.body ?? null,
@@ -366,7 +399,7 @@ describe("the notice is the reporter's, in their words, once", () => {
     await ship(first, '0.3.2', [carrier.id]);
     const again = await releaseRun('0.3.3', [carrier.id]);
     await ship(again, '0.3.3', [carrier.id]);
-    const sent = (await notices('feedback_shipped')).filter((n) => n.title.includes(fb));
+    const sent = (await shipNotices()).filter((n) => n.title.includes(fb));
     expect(sent, 'a re-run or a second release tells nobody twice').toHaveLength(1);
     expect((await detail(fb)).shipNotice).toMatchObject({
       state: 'told',

@@ -1,7 +1,8 @@
 // REQ-34 r2 on Requirement lifecycle r15, ISS-456: a title alone creates a requirement and its reason
 // is asked, not required (BC-17); its author is told at every step change, the moves into delivery
-// included (BC-21); and Needs you lists a gated step only for the member who must take it, proven with
-// two members of whom only one holds the act (BC-22).
+// included (BC-21), as activity on the requirement that rings no bell (ISS-1192, `notify-only-to-act`);
+// and Needs you lists a gated step only for the member who must take it, proven with two members of
+// whom only one holds the act (BC-22).
 
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -74,13 +75,22 @@ async function deliver(type: string, consumer: string, requirementId?: string): 
   return events.length;
 }
 
-const notices = (userId: string) =>
+/** The step records of requirement `key`, its activity: what its author was told, in order. */
+const notices = (key: string) =>
   rows<{ title: string; body: string | null }>(sql`
     SELECT n.title, n.body FROM notifications n
-      JOIN notification_delivery_members m ON m.notification_id = n.id
-      JOIN notification_deliveries d ON d.id = m.delivery_id
-     WHERE n.project_id = ${projectId} AND n.type = 'requirement_step' AND d.user_id = ${userId}
+     WHERE n.project_id = ${projectId} AND n.type = 'requirement_step'
+       AND n.title LIKE ${`${key} is %`}
      ORDER BY n.created_at`);
+
+/** How many bell rows the step records of this project reached: none, they are activity. */
+const rung = async () =>
+  (
+    await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM notification_delivery_members m
+        JOIN notifications n ON n.id = m.notification_id
+       WHERE n.project_id = ${projectId} AND n.type = 'requirement_step'`)
+  )[0]?.n;
 
 async function detail(token: string, key: string): Promise<Body> {
   const r = await on(token, 'GET', `/requirements/${key}`);
@@ -201,16 +211,16 @@ describe('the author is told at every step change (BC-21)', () => {
     const moved = await on(admin, 'POST', `/requirements/${key}/start-delivery`, {});
     expect(moved.status, JSON.stringify(moved.body)).toBe(200);
     await deliver('requirement.transitioned', 'notify-requirements', id);
-    expect(await notices(memberId)).toEqual([
+    expect(await notices(key)).toEqual([
       { title: `${key} is Agreed: Cards show their owner`, body: 'Next: In delivery.' },
       { title: `${key} is Deferred: Cards show their owner`, body: 'Next: Agreed.' },
       { title: `${key} is Agreed: Cards show their owner`, body: 'Next: In delivery.' },
       { title: `${key} is In delivery: Cards show their owner`, body: 'Next: Delivered.' },
     ]);
-    // nobody else is told, and a second read of the same step tells nobody again
-    expect(await notices(adminId)).toEqual([]);
+    // a step rings no bell, and a second read of the same step writes nothing again
+    expect(await rung(), 'a step is activity, delivered to nobody (ISS-1192)').toBe(0);
     await deliver('requirement.transitioned', 'notify-requirements', id);
-    expect(await notices(memberId)).toHaveLength(4);
+    expect(await notices(key)).toHaveLength(4);
   });
 
   it('tells the author a drop, with nothing after it', async () => {
@@ -221,9 +231,10 @@ describe('the author is told at every step change (BC-21)', () => {
     });
     expect(dropped.status, JSON.stringify(dropped.body)).toBe(200);
     await deliver('requirement.transitioned', 'notify-requirements', id);
-    expect(await notices(memberId)).toEqual([
+    expect(await notices(String(made.body.key))).toEqual([
       { title: `${String(made.body.key)} is Dropped: Cards glow`, body: null },
     ]);
+    expect(await rung()).toBe(0);
   });
 });
 
