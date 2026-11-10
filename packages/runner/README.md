@@ -116,7 +116,11 @@ Both halves of the pane read it. Its MCP `forge` server takes it from the
 checkout's `.mcp.json`, unless the checkout's git tracks that file: the runner
 writes no credential into a tracked file, refuses by name instead
 (`crates/runner-workspace/src/mcp/config/mod.rs:write_persistent`), and
-`forge-runner doctor` names a tracked one that already holds a credential. Its `forge` CLI and `forge-runner api` borrow it through
+`forge-runner doctor` names a tracked one that already holds a credential. A
+master pane over such a checkout gets the `forge` server in its owner-only
+session config instead
+(`crates/runner-workspace/src/mcp/config/master_session.rs:write_master_session`);
+a person's `claude` there does not. Its `forge` CLI and `forge-runner api` borrow it through
 `FORGE_BORROW_FROM`, which the daemon sets for every pane of the project
 (`crates/runner-workspace/src/terminal/pane_env.rs:pane_env_in`) to
 `<config>/forge-runner/master/<slug>/forge-cli.json` (`{url, token}`, `0600`,

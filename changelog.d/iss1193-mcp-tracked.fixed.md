@@ -1,1 +1,1 @@
-**The runner never writes a credential into a tracked `.mcp.json`.** Provisioning a checkout whose git tracks that file refuses by name and says how to untrack it; `forge-runner doctor` names a tracked file already holding one.
+**The runner never writes a credential into a tracked `.mcp.json`.** Provisioning refuses by name; a master pane there gets `forge` from its owner-only session config, and `forge-runner doctor` names a tracked file already holding a credential.
