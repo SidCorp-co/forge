@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { EmptyState, ErrorState, PageContainer, ProjectLoader } from "@/design";
-import { ProjectDashboard } from "@/features/activity";
-import { ProjectHomeHeader } from "@/features/project-home";
+import { ProjectHome, ProjectHomeHeader } from "@/features/project-home";
 import { useProjectRef } from "@/features/projects/project-ref";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -9,9 +8,9 @@ import { useParams, useRouter } from "@/lib/navigation/router";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 
-// The project Dashboard (ISS-1067): the one-project view of Activity, what needs the person and whether
-// the loop moves. Its reads are the project list it is found by and the Dashboard's own four, which
-// leave by the URL's slug at once rather than waiting on the list (`useProjectRef`).
+// The project home (REQ-43 BC-14..BC-18): the loop, Needs you and the charts, from one core read. Its
+// reads are the project list it is found by and that one read, which leaves by the URL's slug at once
+// rather than waiting on the list (`useProjectRef`).
 function ProjectOverviewPage() {
   const t = useCopy();
   const slug = useParams<{ slug: string }>()?.slug;
@@ -46,7 +45,7 @@ function ProjectOverviewPage() {
   return (
     <PageContainer className="min-h-dvh">
       {project ? <ProjectHomeHeader project={project} onSettings={() => router.push(`/projects/${project.slug}/settings`)} /> : null}
-      <ProjectDashboard projectId={projectId} slug={slug} />
+      <ProjectHome projectId={projectId} slug={slug} />
     </PageContainer>
   );
 }

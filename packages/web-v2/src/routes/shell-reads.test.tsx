@@ -1,6 +1,7 @@
 // What the shell reads on every route (ISS-1070): the attention count once, whatever the active org
 // resolves to, never the project's whole release list outside Releases, and one Needs you read for
-// the rail's badges, the decisions read being the Dashboard's own. Each route is mounted
+// the rail's badges, and no route reading the decisions read: the project home's Needs you is part of
+// its one home read (REQ-43 BC-14). Each route is mounted
 // under the workspace layout over a fake core that answers the org and the stored preference, so the
 // active org resolves the way it does in the browser: after the first paint, not before it.
 // @direct-test-of packages/web-v2/src/routes/_workspace/route.tsx
@@ -11,6 +12,7 @@
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "@/providers/query-provider";
+import { emptyHome } from "@/test/project-home";
 import { componentOf, renderRoute } from "@/test/route-tree";
 import { type Sent, slowCore } from "@/test/waterfall";
 
@@ -18,7 +20,7 @@ vi.mock("@/lib/utils/use-location-search", () => ({ useLocationSearch: () => "" 
 
 import { Route as WorkspaceRoute } from "./_workspace/route";
 import { Route as HomeRoute } from "./_workspace/index";
-import { Route as DashboardRoute } from "./_workspace/projects/$slug/index";
+import { Route as ProjectHomeRoute } from "./_workspace/projects/$slug/index";
 import { Route as IssueRoute } from "./_workspace/projects/$slug/issues/$id/index";
 import { Route as IssuesRoute } from "./_workspace/projects/$slug/issues/index";
 import { Route as ActivityRoute } from "./_workspace/activity/index";
@@ -48,6 +50,7 @@ function reply(method: string, path: string): unknown {
   if (path.endsWith("/members") || path.endsWith("/labels")) return [];
   if (/\/releases(\?|$)/.test(path)) return { releases: [], counts: {} };
   if (path.endsWith("/needs-you")) return { generatedAt: "", areas: {}, items: [], requirementsInDelivery: 0, untriagedFeedback: 0, decisions: 0 };
+  if (/^\/projects\/[^/]+\/home\?/.test(path)) return emptyHome("p");
   if (path.endsWith("/needs-you/decisions")) return { generatedAt: "", decisions: [], total: 0, notDecisions: [] };
   return undefined;
 }
@@ -72,7 +75,7 @@ afterEach(() => {
 
 const ROUTES = [
   ["Home", HomeRoute, "/", "/"],
-  ["the project Dashboard", DashboardRoute, "/projects/forge", "/projects/$slug"],
+  ["the project home", ProjectHomeRoute, "/projects/forge", "/projects/$slug"],
   ["an issue", IssueRoute, "/projects/forge/issues/ISS-7", "/projects/$slug/issues/$id"],
   ["Issues", IssuesRoute, "/projects/forge/issues", "/projects/$slug/issues"],
   ["Activity", ActivityRoute, "/activity", "/activity"],
@@ -89,10 +92,10 @@ describe("the shell's reads on each route", () => {
     expect(wholeReleaseList(sent)).toEqual([]);
   });
 
-  it.each(ROUTES)("%s reads Needs you once for the rail, and the decisions read only where the page lists them", async (name, route, at, pattern) => {
+  it.each(ROUTES)("%s reads Needs you once for the rail, and never the decisions read", async (_name, route, at, pattern) => {
     const sent = await load(route, at, pattern);
     const paths = sent.map((s) => s.path);
     expect(paths.filter((p) => /\/needs-you$/.test(p))).toHaveLength(1);
-    expect(paths.filter((p) => p.endsWith("/needs-you/decisions"))).toHaveLength(name === "the project Dashboard" ? 1 : 0);
+    expect(paths.filter((p) => p.endsWith("/needs-you/decisions"))).toHaveLength(0);
   });
 });

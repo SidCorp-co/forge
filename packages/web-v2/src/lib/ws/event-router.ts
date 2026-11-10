@@ -147,6 +147,8 @@ function routeRunFrame(env: WsFrame, qc: QueryClient): boolean {
 		// list, peek and grouping with it (ISS-1131, FB-568: a triage the master made left them on "New")
 		case "decision.settled": {
 			scheduleInvalidation(qc, ["needs-you"]);
+			// the project home's Needs you is part of its one read, under the status root
+			scheduleInvalidation(qc, ["project-status"]);
 			scheduleInvalidation(qc, ["attention"]);
 			if (data.act.startsWith("feedback.")) {
 				scheduleInvalidation(qc, [FEEDBACK_LIST_ROOT, data.projectId]);

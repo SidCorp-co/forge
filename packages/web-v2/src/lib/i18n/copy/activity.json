@@ -123,8 +123,6 @@
     "activity.cleanup.lastRun": "Last run",
     "activity.cleanup.unreported": "No report",
     "activity.cleanup.endedAt": "Ended {at}",
-    "activity.liveRuns": "{n} live",
-    "activity.audit.title": "Audit",
-    "activity.audit.debt": "{n} open debt"
+    "activity.liveRuns": "{n} live"
   }
 }

@@ -17,8 +17,8 @@ export function isAttention(item: Pick<ProjectConsoleItem, 'health'>): boolean {
 
 /**
  * Whether a project has work: idle or healthy. Attention is never read here from parked statuses or a
- * runner count: a project needs attention where its Dashboard says so, its Needs you or Stuck group
- * holding anything (`features/activity/dashboard/project-dashboard.tsx:needsAttention`), which the
+ * runner count: a project needs attention where a decision waits on the reader or an issue reads stuck
+ * (`features/activity/project-attention.ts:needsAttention`), which the
  * Projects page lays over this as {@link withAttention} (ISS-1072).
  */
 export function deriveHealth(h: Pick<ProjectHealthRow, 'totalActive' | 'liveRuns'>): HealthKey {

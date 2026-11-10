@@ -2,9 +2,10 @@
 // 2026-11-07, Projects read agenfold "Attention" while its Dashboard showed nothing needing it: the
 // Projects page counted any issue parked at needs_info or on_hold (`projects/derive.ts:deriveHealth`
 // over the health rollup's `blockers`), the Dashboard draws Needs you and Stuck from the issue
-// standing and the decisions waiting on the reader. Projects now reads its Attention through the
-// Dashboard's own reading (`project-dashboard.tsx:needsAttention`).
+// standing and the decisions waiting on the reader. Projects now reads its Attention through that one
+// reading (`features/activity/project-attention.ts:needsAttention`).
 // @direct-test-of packages/web-v2/src/features/projects/derive.ts
+// @direct-test-of packages/web-v2/src/features/activity/project-attention.ts
 // @direct-test-of packages/web-v2/src/routes/_workspace/projects/index.tsx
 
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";

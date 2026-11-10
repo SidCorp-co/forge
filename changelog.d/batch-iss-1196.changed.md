@@ -1,0 +1,1 @@
+**A project's home opens on its delivery loop.** Product, Delivery, Release and Audit each show one live figure from a single read; a stage opens its drawer, and shipped and feedback charts follow Needs you.

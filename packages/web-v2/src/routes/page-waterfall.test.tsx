@@ -10,6 +10,7 @@
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "@/providers/query-provider";
+import { emptyHome } from "@/test/project-home";
 import { componentOf, renderRoute } from "@/test/route-tree";
 import { depthOf, samePlace, type Sent, slowCore } from "@/test/waterfall";
 
@@ -49,6 +50,7 @@ function reply(method: string, path: string): unknown {
   if (path.endsWith("/workflow-templates")) return { templates: [] };
   if (path.includes("/mockups?")) return { mockups: [], returned: 0 };
   if (path.includes("/suggestions?")) return { suggestions: [] };
+  if (/^\/projects\/[^/]+\/home\?/.test(path)) return emptyHome(PROJECT);
   if (path.endsWith("/needs-you")) return { generatedAt: "", areas: {}, items: [], requirementsInDelivery: 0, untriagedFeedback: 0, decisions: 0 };
   return undefined;
 }
@@ -92,11 +94,11 @@ afterEach(() => {
 });
 
 describe("a project page's first reads", () => {
-  it("leave with the page on the project dashboard, and none goes twice", async () => {
-    const { waterfall } = await load(OverviewRoute, "/projects/forge", "/projects/$slug");
-    // the Dashboard's own reads (ISS-1067): its decisions, the Issues list's standing and the releases
-    // leave by slug before the list answers; the Audit line reads its ledger once they have drawn
-    expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(3);
+  it("leave with the page on the project home, and none goes twice", async () => {
+    const { reads, waterfall } = await load(OverviewRoute, "/projects/forge", "/projects/$slug");
+    // the home's one read (REQ-43 BC-14) leaves by slug before the list answers
+    expect(reads.map((s) => s.path.split("?")[0])).toContain("/projects/forge/home");
+    expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(1);
     expect(waterfall.serialDepth).toBe(1);
     expect(waterfall.sentTwice).toEqual([]);
   });
