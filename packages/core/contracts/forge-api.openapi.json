@@ -11328,6 +11328,30 @@
         ]
       }
     },
+    "/api/install-plugin.sh": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
     "/api/install.sh": {
       "get": {
         "responses": {
@@ -11402,6 +11426,32 @@
         "x-forge-input": "none",
         "x-forge-permission": {
           "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
+    "/api/install/plugin.tar.gz": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requirePat"
+        ],
+        "x-forge-input": "none",
+        "x-forge-permission": {
+          "none": "the instance's designated forge plugin commit, the same for every token holder; a token is asked for because the plugin's source is private"
         },
         "x-forge-query-closed": true,
         "x-forge-validated": [
@@ -64259,6 +64309,30 @@
         "x-forge-auth": [],
         "x-forge-permission": {
           "public": "a deploy probe reads liveness with no credential; it answers flags and a count, never a row"
+        },
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
+    "/install-plugin.sh": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-input": "none",
+        "x-forge-permission": {
+          "public": "a box with no credential yet fetches the installer and the published runner build; nothing a project owns"
         },
         "x-forge-query-closed": true,
         "x-forge-validated": [

@@ -485,7 +485,7 @@
       "kind": "domain",
       "context": "project-config",
       "owns": ["instanceSettings"],
-      "serves": ["REQ-47"]
+      "serves": ["REQ-47", "REQ-25"]
     },
     "intake": {
       "kind": "domain",
