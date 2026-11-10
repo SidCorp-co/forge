@@ -18,7 +18,7 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { granters, grantsOf, readersOf, supportConfigOf } from './grants.js';
-import { keepOwnerAnswer, ownerSetupStep } from './kept-answers.js';
+import { keepOwnerAnswer, ownerRoleGap, ownerSetupStep } from './kept-answers.js';
 import { projectsInScope } from './ops-scope.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { issueInReach, questionRefusal } from './owner-ask-targets.js';
@@ -390,6 +390,8 @@ async function answerForgeQuestion(
       });
       return ownerSetupStep(questionProject);
     }
+    const gap = await ownerRoleGap(owner.userId, questionProject);
+    if (gap) return gap;
     try {
       await answerAs({
         questionId,

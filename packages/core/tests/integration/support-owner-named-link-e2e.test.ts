@@ -319,6 +319,7 @@ describe('ISS-1210: an instance admin names a chat account once, and it holds in
   let operator = '';
   let operatorId = '';
   let elsewhere = '';
+  let refusedHere = '';
   let ref = { source: 'rocketchat', namespace: '', externalId: OWNER_ID };
 
   beforeAll(async () => {
@@ -342,15 +343,15 @@ describe('ISS-1210: an instance admin names a chat account once, and it holds in
     const { resolveSpeaker } = await import('../../src/assistant/index.js');
     expect(await resolveSpeaker(ref, elsewhere)).toMatchObject({ linked: true });
     expect(await resolveSpeaker(ref, w.projectId)).toMatchObject({ linked: false });
-    const id = await parked('Judge it on staging first?');
-    const { out } = await ownerAnswers(id, '1 nhé');
+    refusedHere = await parked('Judge it on staging first?');
+    const { out } = await ownerAnswers(refusedHere, '1 nhé');
     expect(code(out), JSON.stringify(out)).toBe('SUPPORT_ANSWER_NOT_THE_OWNER');
-    expect(await keptFor(id)).toHaveLength(1);
+    expect(await keptFor(refusedHere)).toHaveLength(1);
   });
 
   it('is named by an instance admin alone, by id and with a reason, recorded with who and why', async () => {
     const body = {
-      projectId: w.projectId,
+      readThrough: w.projectId,
       source: 'rocketchat',
       externalId: OWNER_ID,
       userId: w.ownerId,
@@ -390,12 +391,15 @@ describe('ISS-1210: an instance admin names a chat account once, and it holds in
   });
 
   it('records the owner’s kept answer here, and his next answer in a project never named, as him', async () => {
-    const [kept] = await rows<{ id: string }>(sql`
-      SELECT input ->> 'questionId' AS id FROM support_actions
-       WHERE kind = 'answer_kept' AND output IS NULL LIMIT 1`);
+    // the answer refused here before the naming is recorded as his, once
     await expect
-      .poll(async () => (await question(String(kept?.id)))?.status, { timeout: 10_000 })
+      .poll(async () => (await question(refusedHere))?.status, { timeout: 10_000 })
       .toBe('answered');
+    expect((await question(refusedHere))?.steps.at(-1)).toMatchObject({
+      answerText: '1 nhé',
+      answeredBy: w.ownerId,
+    });
+    expect(await answeredEvents(refusedHere)).toBe(1);
     const id = await parked('Ship it to the test group first?');
     const { out } = await ownerAnswers(id, 'Ừ, nhóm test trước');
     expect(out.isError, JSON.stringify(out)).toBe(false);
@@ -414,7 +418,10 @@ describe('ISS-1210: an instance admin names a chat account once, and it holds in
         (project_id, source, external_namespace, external_id, user_id, named_by, reason)
       VALUES (${elsewhere}::uuid, 'rocketchat', ${ref.namespace}, 'u-carol', ${other.id}::uuid,
               ${w.ownerId}::uuid, 'named in one project')`);
-    expect(await resolveSpeaker(carol, elsewhere)).toMatchObject({ linked: true, userId: other.id });
+    expect(await resolveSpeaker(carol, elsewhere)).toMatchObject({
+      linked: true,
+      userId: other.id,
+    });
     expect(await resolveSpeaker(carol, w.projectId)).toMatchObject({ linked: false });
     expect(await resolveSpeaker(carol)).toMatchObject({ linked: false });
   });
@@ -432,7 +439,7 @@ describe('ISS-1210: an instance admin names a chat account once, and it holds in
     expect(undone.status, JSON.stringify(undone.body)).toBe(200);
     // the owner's chat account named as someone who holds no role in this project
     const renamed = await api(operator, 'POST', EVERYWHERE, {
-      projectId: w.projectId,
+      readThrough: w.projectId,
       source: 'rocketchat',
       externalId: OWNER_ID,
       userId: outsiderId,

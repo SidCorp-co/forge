@@ -6,7 +6,7 @@ export const LINK_CHAT_GUIDE: CoreGuide = {
   title: 'Linking a chat account to a Forge account',
   summary:
     'Who can link a Rocket.Chat account to a Forge user, the steps, what the person sees, how to check it worked, and what to tell them when it fails.',
-  version: 2,
+  version: 3,
   body: `## Linking a chat account to a Forge account
 
 A link says "this chat account is this Forge user". Until it exists, what a person answers in the
@@ -22,6 +22,11 @@ answer to a Forge question is kept meanwhile, and recorded as his once the link 
   names the Forge account by its id and says why; the naming holds in that project only, and is
   undone with \`DELETE /api/projects/:id/speaker-links/named/:namingId { reason }\`. Nothing is ever
   matched from a name.
+- **An instance admin, once for every project**:
+  \`POST /api/speaker-links/named { readThrough, source, externalId, userId, reason }\`, where
+  \`readThrough\` is a project bound to that chat server. A project's own naming comes first in that
+  project. The person still acts only where their own role allows. Undone with
+  \`DELETE /api/speaker-links/named/:namingId { reason }\`.
 
 ### The owner the binding names
 Never hand him the page, and never ask him to link anything or to change his chat profile. Where
@@ -58,7 +63,10 @@ page is \`POST /api/projects/:id/speaker-links/proposals\` (who the candidates a
   account instead.
 - \`SPEAKER_ALREADY_LINKED\`: that chat account already belongs to a Forge user, possibly another,
   or a naming already stands. A naming is undone by an admin; a person's own link has no unlink door.
-- \`SPEAKER_NAMED_NOT_A_MEMBER\`: the named Forge account holds no write on the project.
+- \`SPEAKER_NAMED_NOT_A_MEMBER\`: the named Forge account holds no write on the project, or is no
+  person.
+- \`SUPPORT_ANSWER_NOT_THE_OWNER\` naming no role: the owner's account is named, but holds no role
+  in that question's project. Route it to the project's admins; never ask him.
 - No address was handed (the person never wrote in the thread): ask them to write there first.
 - Known gap: a person cannot start a link themself. The page address comes only from you (the
   \`link\` act) or from a refusal that names it. If you cannot give it, say that plainly and route it

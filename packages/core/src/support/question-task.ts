@@ -17,7 +17,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { answerAs } from '../questions/index.js';
 import { deliverWaiting } from './dispatch.js';
 import { grantsOf, supportConfigOf } from './grants.js';
-import { type KeptAnswer, keepOwnerAnswer, ownerSetupStep } from './kept-answers.js';
+import { type KeptAnswer, keepOwnerAnswer, ownerRoleGap, ownerSetupStep } from './kept-answers.js';
 import { no, type Outcome } from './outcome.js';
 import { ownerOwedQuestion } from './owner-owed.js';
 import type { Refusal } from './refusals.js';
@@ -204,6 +204,9 @@ async function answerAsOwner(
     }
     return no('SUPPORT_ANSWER_NOT_THE_OWNER', '/message', await ownerSetupStep(questionProject));
   }
+  // a naming that holds everywhere lends his own grants: a project he holds no role in refuses
+  const gap = await ownerRoleGap(speaker.userId, questionProject);
+  if (gap) return no('SUPPORT_ANSWER_NOT_THE_OWNER', '/message', gap);
   try {
     await answerAs({
       questionId: handed.questionId,

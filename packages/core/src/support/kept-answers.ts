@@ -10,7 +10,7 @@ import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { holderNames } from '../permissions/index.js';
+import { holderNames, permissionFactsOf } from '../permissions/index.js';
 import { answerAs } from '../questions/index.js';
 import { insertAction, type RoomRow, roomById } from './store.js';
 import { roomAuth } from './thread.js';
@@ -41,7 +41,17 @@ interface Kept {
 export async function ownerSetupStep(projectId: string): Promise<string> {
   const names = await holderNames('project.admin', projectId);
   const admins = names.length > 0 ? `a project admin (${names.join(', ')})` : 'a project admin';
-  return `the owner's chat account is no Forge account yet, so his answer cannot be recorded as anyone. It is kept, and it is recorded as his, once and with nothing asked again, when ${admins} names his Forge account (POST /api/projects/${projectId}/speaker-links/named), or he links it himself from Forge. That step is his admins', never his: do not ask him to link anything or to change his chat profile. You may tell the room his answer is noted and waits on a setup step its admins own. Nothing was recorded yet.`;
+  return `the owner's chat account is no Forge account yet, so his answer cannot be recorded as anyone. It is kept, and it is recorded as his, once and with nothing asked again, when ${admins} names his Forge account (POST /api/projects/${projectId}/speaker-links/named), or an instance admin once for every project (POST /api/speaker-links/named), or he links it himself from Forge. That step is his admins', never his: do not ask him to link anything or to change his chat profile. You may tell the room his answer is noted and waits on a setup step its admins own. Nothing was recorded yet.`;
+}
+
+/**
+ * Why the Forge account the owner's chat account resolves to cannot answer in `projectId`: it holds
+ * no role there, since a naming lends that account's own grants and no more (ISS-1210); null where
+ * it holds one.
+ */
+export async function ownerRoleGap(userId: string, projectId: string): Promise<string | null> {
+  if ((await permissionFactsOf(userId, projectId)).role) return null;
+  return `the owner's chat account is Forge account ${userId}, which holds no role in this question's project, so his answer cannot be recorded as him there. A project admin adds that account to the project, or an admin corrects the naming; never ask him. Nothing was recorded.`;
 }
 
 /** Keep the owner's cited answer to a question, once per room, message and question. */

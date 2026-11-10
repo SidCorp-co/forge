@@ -36,19 +36,20 @@ export const assistantSpeakerLinks = pgTable(
 );
 
 /**
- * A project admin's word that a chat account is a Forge account (ISS-976), for a speaker the chat
- * server cannot match by address. It resolves only in `projectId`, the project whose admin named
- * it, since the authority it lends is the named account's and the admin's reaches no further. It is
- * never a guess: the admin names the account by id and says why. Undoing it keeps the row, with who
- * undid it and why; one naming per speaker and project stands at a time.
+ * An admin's word that a chat account is a Forge account (ISS-976), for a speaker the chat server
+ * cannot match by address. A project admin's resolves only in `projectId`, the project whose admin
+ * named it, since the admin's authority reaches no further; an instance admin's has no project and
+ * resolves in every project, after that project's own (ISS-1210). Either lends the named account's
+ * own grants, never the namer's. It is never a guess: the admin names the account by id and says
+ * why. Undoing it keeps the row, with who undid it and why; one naming per speaker and project, and
+ * one with none, stands at a time.
  */
 export const speakerLinkNamings = pgTable(
   'speaker_link_namings',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** Null for an instance admin's naming, which holds in every project. */
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     source: text('source', { enum: conversationAdapters }).notNull(),
     externalNamespace: text('external_namespace').notNull(),
     externalId: text('external_id').notNull(),
@@ -69,6 +70,9 @@ export const speakerLinkNamings = pgTable(
     standingUq: uniqueIndex('speaker_link_namings_standing_uq')
       .on(t.projectId, t.source, t.externalNamespace, t.externalId)
       .where(sql`undone_at IS NULL`),
+    instanceStandingUq: uniqueIndex('speaker_link_namings_instance_standing_uq')
+      .on(t.source, t.externalNamespace, t.externalId)
+      .where(sql`project_id IS NULL AND undone_at IS NULL`),
     userIdx: index('speaker_link_namings_user_idx').on(t.userId),
     undoneChk: check(
       'speaker_link_namings_undone_chk',

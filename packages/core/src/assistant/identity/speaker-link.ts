@@ -39,7 +39,7 @@ function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
     url
       ? `Confirm it here: ${url}`
       : 'No screen for it yet: POST /api/projects/<id>/speaker-links.',
-    'Where the chat account reports no email, a project admin names your Forge account for it (POST /api/projects/<id>/speaker-links/named).',
+    'Where the chat account reports no email, a project admin names your Forge account for it (POST /api/projects/<id>/speaker-links/named), or an instance admin once for every project (POST /api/speaker-links/named).',
   ].join(' ');
 }
 
@@ -56,8 +56,10 @@ export function sourceUnknownRefusal(source: string): SpeakerRefusal {
 
 /**
  * The ONE resolution. A speaker is the Forge user a confirmed row names, or, in
- * `projectId`, the one that project's admin named for it (ISS-976), or a named
- * refusal — never a guess, never a fallback, never a service identity.
+ * `projectId`, the one that project's admin named for it (ISS-976), or the one an
+ * instance admin named for every project (ISS-1210), or a named refusal — never a
+ * guess, never a fallback, never a service identity. What the user may do is
+ * decided by their own grants where they act, never by the naming.
  */
 export async function resolveSpeaker(
   ref: SpeakerRef,
@@ -77,7 +79,7 @@ export async function resolveSpeaker(
       ),
     )
     .limit(1);
-  const named = !row && projectId ? await namedUserOf(ref, projectId) : null;
+  const named = row ? null : await namedUserOf(ref, projectId);
   if (named) return { linked: true, userId: named };
   if (!row) {
     return {
@@ -90,7 +92,7 @@ export async function resolveSpeaker(
 
 /**
  * A chat account a person just linked to their Forge user, on the link page; or one a project admin
- * named, which holds only in `projectId` (ISS-976).
+ * named, which holds only in `projectId` (ISS-976); or one an instance admin named, everywhere.
  */
 export interface SpeakerLinked {
   source: string;
@@ -98,7 +100,7 @@ export interface SpeakerLinked {
   externalId: string;
   label: string | null;
   userId: string;
-  /** The project whose admin named the account; absent for a link its owner confirmed. */
+  /** The project whose admin named the account; absent for a link or an instance naming. */
   projectId?: string;
 }
 

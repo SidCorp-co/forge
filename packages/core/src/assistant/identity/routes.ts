@@ -7,6 +7,10 @@
  *
  * ISS-976 — a project admin names the Forge account a chat account is, where no
  * address matches it; the naming holds only in that project, and is undone there.
+ *
+ * ISS-1210 — an instance admin names it once, and that naming holds in every
+ * project, after a project's own; what the person may do in each is still their
+ * own role there. Undone by an instance admin.
  */
 
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
@@ -17,7 +21,7 @@ import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { invalid, noQuery, zValidator } from '../../middleware/zod-validator.js';
-import { requiresOnParam } from '../../permissions/index.js';
+import { requiresInstanceAdmin, requiresOnParam } from '../../permissions/index.js';
 import { confirmSpeakerLink } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
@@ -122,6 +126,7 @@ speakerLinkProjectRoutes.use(
   requireAuth(),
   assertEmailVerified(),
 );
+speakerLinkProjectRoutes.use('/speaker-links/*', requireAuth(), assertEmailVerified());
 
 speakerLinkProjectRoutes.post(
   '/projects/:projectId/speaker-links/proposals',
@@ -293,6 +298,88 @@ speakerLinkProjectRoutes.delete(
     const undone = await undoNaming({
       projectId,
       namingId,
+      by: c.get('userId'),
+      reason: c.req.valid('json').reason,
+    });
+    if (!undone.ok) throw refused(undone.refusal, '/namingId');
+    return c.json({ naming: namingView(undone.naming) });
+  },
+);
+
+const instanceAdminOnly = requiresInstanceAdmin(
+  'a naming that holds in every project needs authority over every project',
+);
+
+const everywhereBody = zValidator(
+  'json',
+  z.object({
+    /** A project bound to the chat server, whose binding the chat id is read through. */
+    readThrough: z.uuid(),
+    source: z.string(),
+    externalId: z.string(),
+    userId: z.uuid(),
+    reason: z.string().trim().min(1).max(REASON_LINE_MAX),
+  }),
+  invalid(
+    'invalid body: { readThrough, source, externalId, userId, reason }. "readThrough" is a project bound to that chat server, "externalId" the chat server\'s own user id, "userId" the Forge account\'s id, and "reason" why you name it.',
+  ),
+);
+
+const everywhereParam = zValidator(
+  'param',
+  z.object({ namingId: z.uuid() }),
+  invalid('invalid path: /api/speaker-links/named/<naming uuid>'),
+);
+
+speakerLinkProjectRoutes.get('/speaker-links/named', instanceAdminOnly, noQuery, async (c) => {
+  const namings = await namingsOf(null);
+  return c.json({ namings: namings.map(namingView) });
+});
+
+speakerLinkProjectRoutes.post(
+  '/speaker-links/named',
+  instanceAdminOnly,
+  everywhereBody,
+  async (c) => {
+    const raw = c.req.valid('json');
+    const body = readBody(raw);
+    if (isRefusal(body)) throw refused(body, '/source');
+    // the chat server says the id is an account it holds; its address is not read
+    const lookup = await lookupSpeakerProfile({ projectId: raw.readThrough, ...body });
+    if (!lookup.found) throw refused(lookup.refusal, '/externalId');
+    const named = await nameSpeaker({
+      projectId: null,
+      profile: lookup.profile,
+      userId: raw.userId,
+      namedBy: c.get('userId'),
+      reason: raw.reason,
+    });
+    if (!named.ok) {
+      throw refused(
+        named.refusal,
+        named.refusal.code === 'SPEAKER_NAMED_NOT_A_MEMBER' ? '/userId' : '/externalId',
+      );
+    }
+    await tellSpeakerLinked({
+      source: lookup.profile.source,
+      namespace: lookup.profile.namespace,
+      externalId: lookup.profile.externalId,
+      label: lookup.profile.username,
+      userId: raw.userId,
+    });
+    return c.json({ naming: namingView(named.naming) }, 201);
+  },
+);
+
+speakerLinkProjectRoutes.delete(
+  '/speaker-links/named/:namingId',
+  everywhereParam,
+  instanceAdminOnly,
+  undoBody,
+  async (c) => {
+    const undone = await undoNaming({
+      projectId: null,
+      namingId: c.req.valid('param').namingId,
       by: c.get('userId'),
       reason: c.req.valid('json').reason,
     });

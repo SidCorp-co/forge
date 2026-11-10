@@ -4145,6 +4145,13 @@
       "when": 1839024000000,
       "tag": "0649_a_room_session_holds_one_token_across_its_turns",
       "breakpoints": true
+    },
+    {
+      "idx": 650,
+      "version": "7",
+      "when": 1839110400000,
+      "tag": "0650_an_instance_admin_names_a_chat_account_everywhere",
+      "breakpoints": true
     }
   ]
 }

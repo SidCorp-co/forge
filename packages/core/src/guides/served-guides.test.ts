@@ -186,6 +186,9 @@ describe('the chat-link guide a channel agent reads (ISS-878)', () => {
       'never ask him to link anything',
       'noted and waits on a setup step its admins own',
       '`SPEAKER_NAMED_NOT_A_MEMBER`',
+      // ISS-1210: an instance admin's naming holds in every project
+      '`POST /api/speaker-links/named { readThrough, source, externalId, userId, reason }`',
+      '`DELETE /api/speaker-links/named/:namingId { reason }`',
     ]) {
       expect(guide, `the link guide no longer says ${part}`).toContain(part);
     }
