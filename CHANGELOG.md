@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.644] - 2026-11-10
+
+Chat rooms keep one Forge token between turns
+
+### Fixed
+
+- **A chat room assistant keeps reaching Forge between its turns.** Its session now holds one access token for its life, so a reconnect between two answers no longer fails and silences the room.
+
 ## [0.4.0-dev.643] - 2026-11-10
 
 Room assistants act now, owners approve releases in their room, merged releases stop nagging
