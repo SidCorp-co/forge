@@ -837,7 +837,10 @@ mod repo_mcp_tests {
         );
         git(&repo, &["add", "--", ".mcp.json"]);
         git(&repo, &["commit", "-q", "-m", "leak"]);
-        git(&repo, &["update-index", "--skip-worktree", "--", ".mcp.json"]);
+        git(
+            &repo,
+            &["update-index", "--skip-worktree", "--", ".mcp.json"],
+        );
         assert_eq!(repo_mcp_state(&repo), RepoMcp::TrackedCredential);
         std::fs::write(repo.join(".mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
         assert_eq!(repo_mcp_state(&repo), RepoMcp::TrackedNoForge);

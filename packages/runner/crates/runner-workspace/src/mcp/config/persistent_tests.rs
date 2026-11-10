@@ -87,20 +87,34 @@ fn a_tracked_mcp_json_is_never_handed_the_credential() {
         "the checkout is left dirty"
     );
 
-    let err = got.expect_err("a tracked .mcp.json was reported written").to_string();
-    assert!(err.contains(".mcp.json"), "the refusal names no file: {err}");
-    assert!(err.contains("is tracked"), "the refusal does not say why: {err}");
+    let err = got
+        .expect_err("a tracked .mcp.json was reported written")
+        .to_string();
+    assert!(
+        err.contains(".mcp.json"),
+        "the refusal names no file: {err}"
+    );
+    assert!(
+        err.contains("is tracked"),
+        "the refusal does not say why: {err}"
+    );
     assert!(
         err.contains("git rm --cached"),
         "the refusal names no way out: {err}"
     );
-    assert!(!err.contains(FAKE_TOKEN), "the refusal carries the credential: {err}");
+    assert!(
+        !err.contains(FAKE_TOKEN),
+        "the refusal carries the credential: {err}"
+    );
 }
 
 #[test]
 fn a_tracked_mcp_json_under_skip_worktree_is_still_tracked() {
     let repo = repo_tracking_mcp_json("skip-worktree");
-    git_ok(&repo, &["update-index", "--skip-worktree", "--", ".mcp.json"]);
+    git_ok(
+        &repo,
+        &["update-index", "--skip-worktree", "--", ".mcp.json"],
+    );
     let got = write_persistent(&repo, CORE, "proj", Some(FAKE_TOKEN));
     let held = std::fs::read_to_string(repo.join(".mcp.json")).unwrap();
     assert!(
