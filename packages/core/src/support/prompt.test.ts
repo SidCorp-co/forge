@@ -27,6 +27,20 @@ describe('the support brief states goals, and the consent a change waits on', ()
       'a diagnose posts nothing in the room and each check is recorded on its action',
     );
   });
+
+  // ISS-1205 (FB-607, L-47): work that can be done now is done now; a later time names what it waits on.
+  it('does work now, and books a later time only naming what it waits on', () => {
+    for (const readers of ['team', 'users'] as const) {
+      const text = supportBrief({
+        projectName: 'P',
+        product: null,
+        tools: [],
+        config: { readers } as Parameters<typeof supportBrief>[0]['config'],
+      });
+      expect(text).toContain('Work you can do now, do now, in this turn');
+      expect(text).toContain('say in the task what it waits for');
+    }
+  });
 });
 
 // ISS-1032 (owner, 2026-11-06): where the agent has no permission it goes to the master and waits
