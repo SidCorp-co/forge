@@ -10,12 +10,19 @@
  * the check. Once the verdict is recorded on the release, nothing is owed and the pane drains again:
  * the count reaches zero. An older release's unjudged criterion is not owed once a newer one shipped.
  *
+ * A check counts only where a judge can get in (FB-611, sid-desk): the environment the project
+ * judges on names a testing profile, and no person owes an open question on the issue. Otherwise it
+ * is no master work, so it neither keeps nor replaces a pane, and the nudge names it as a wait on a
+ * person, with no judging run asked for.
+ *
  * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/masters/verdict.ts
  */
 
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
+import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
 import { F4, landedIssue, ok, seedLandedWorld, world } from '../helpers/landed-world.js';
@@ -25,8 +32,17 @@ type Doc = Record<string, unknown>;
 
 const ACCOUNT = 'epod-deploy shipped this tag to production; /healthz reports it.';
 
-/** epod's shape: production deployed outside Forge, criteria judged after the release ships. */
-async function externalProduction(): Promise<void> {
+/**
+ * epod's shape: production deployed outside Forge, criteria judged after the release ships, and a
+ * testing profile on production a judge signs in with; sid-desk's (FB-611) where `testing` is false.
+ */
+async function externalProduction(testing = true): Promise<void> {
+  if (testing) {
+    await db.execute(sql`
+      INSERT INTO project_testing_profiles (project_id, profile_id, revision, document, updated_by)
+      VALUES (${world.projectId}, 'prod-qa', 1, ${JSON.stringify({ actors: {}, services: {} })}::jsonb,
+              ${world.ownerId})`);
+  }
   await seedProjectDocument(world.projectId, world.ownerId, {
     defaultBranch: 'release/stg',
     environments: {
@@ -34,6 +50,7 @@ async function externalProduction(): Promise<void> {
         tier: 'production',
         deploysFrom: 'release/stg',
         deployment: { mode: 'external', target: 'epod-deploy' },
+        ...(testing ? { testing: 'prod-qa' } : {}),
       },
     } as never,
     extra: { delivery: { verdictsRequired: false } } as never,
@@ -172,5 +189,38 @@ describe('ISS-1200: a live verdict owed on the latest shipped release is master 
     const answer = await verdictOf(b);
     expect(answer.work).toMatchObject({ admissible: 0, owed: 0 });
     expect(answer.verdict).toMatchObject({ act: 'keep', drain: true });
+  });
+
+  it('owes no master work where the environment judged on has no testing profile, and says the wait', async () => {
+    await seedLandedWorld();
+    await externalProduction(false);
+    const b = await box();
+    const shipped = await landedIssue(1, F4, ['A signed-in agent sees the inbox']);
+    await recordRelease([shipped], '0.21.0');
+
+    const answer = await verdictOf(b);
+    expect(answer.work).toMatchObject({ admissible: 0, owed: 0 });
+    expect(answer.verdict).toMatchObject({ act: 'keep', drain: true });
+    expect(answer.work.nudge).toContain(`ISS-1 ${shipped}`);
+    expect(answer.work.nudge).toContain('`production` names no testing profile');
+    expect(answer.work.nudge).not.toContain('--role qa');
+  });
+
+  it('owes no master work while a person owes an open question on the issue, and says the wait', async () => {
+    await seedLandedWorld();
+    await externalProduction();
+    const b = await box();
+    const shipped = await landedIssue(1, F4, ['A signed-in agent sees the inbox']);
+    await recordRelease([shipped], '0.21.0');
+    await db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+      VALUES (gen_random_uuid(), ${world.projectId}, ${shipped}, 'open', 'human', '[]'::jsonb)`);
+
+    const answer = await verdictOf(b);
+    expect(answer.work).toMatchObject({ admissible: 0, owed: 0 });
+    expect(answer.verdict).toMatchObject({ act: 'keep', drain: true });
+    expect(answer.work.nudge).toContain(`ISS-1 ${shipped}`);
+    expect(answer.work.nudge).toContain('a person owes an open question on it');
+    expect(answer.work.nudge).not.toContain('--role qa');
   });
 });
