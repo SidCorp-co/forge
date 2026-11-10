@@ -11,10 +11,13 @@
 import type { SupportReleaseDecisionRequest } from '@forge/contracts/support-channel';
 import { isRefusal } from '../lib/refusal.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import { decideApprovalOfVersion, parseDecision } from '../release-batch/approvals.js';
-import { giveProdGoWithApproval } from '../release-batch/coolify-prod-gate.js';
-import { runCutAs } from '../release-batch/naming.js';
-import { parseReleaseVersion } from '../release-batch/version.js';
+import {
+  decideApprovalOfVersion,
+  giveProdGoWithApproval,
+  parseDecision,
+  parseReleaseVersion,
+  runCutAs,
+} from '../release-batch/index.js';
 import { memberMessage } from './channel-store.js';
 import { type Asker, forgeUserOfWriter } from './ops-asker.js';
 import { projectInScope } from './ops-scope.js';

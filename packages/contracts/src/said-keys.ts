@@ -1749,7 +1749,7 @@ export const SAID = {
 		vars: { environment: "name", proven: "count", total: "count" },
 	},
 	"releases.rule.mergedAwaitsRecord": {
-		en: "every request of {v} merged; its approval was the go to production, and the record of that deploy closes it",
+		en: "{v} is merged and approved; its production deploy record closes it",
 		vars: { v: "version" },
 	},
 	"releases.rule.personMerges": {
