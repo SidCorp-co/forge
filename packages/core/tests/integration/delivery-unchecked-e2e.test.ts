@@ -29,7 +29,7 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
-import { enforceGates } from '../helpers/project-controls.js';
+import { declareControls, enforceGates } from '../helpers/project-controls.js';
 import { readyForDelivery } from '../helpers/steward-checked.js';
 
 const JUDGED = 'a'.repeat(40);
@@ -57,6 +57,9 @@ beforeAll(async () => {
   projectId = (await createTestProject(owner)).id;
   // REQ-79 r6: standard advises these; this file reads what they refuse where a project asks for them
   await enforceGates(projectId, owner, ['requirement_acceptance']);
+  // the accept is a person's here, so a delivery asks its checker (ISS-1192: with no person gate the
+  // Steward accepts by rule and nobody is told)
+  await declareControls(projectId, owner, { approvals: { accept: true } });
   const as = requester(app, { owner: await signUserToken(owner) });
   say = (method, path, body) => as('owner', method, at(path), body);
 

@@ -8,7 +8,7 @@ import { seedProjectDocument } from './release-world.js';
 
 /**
  * Controls a project declares in its document (REQ-79 r6: off unless declared): `gates` replaces
- * the gates block (profile standard unless named), `delivery` is merged in. Seeds a bare document where the project has none, and
+ * the gates block (profile standard unless named), `delivery` and `approvals` are merged in. Seeds a bare document where the project has none, and
  * a later `seedProjectDocument` keeps both.
  */
 export async function declareControls(
@@ -17,6 +17,7 @@ export async function declareControls(
   controls: {
     gates?: Partial<NonNullable<ProjectDocument['gates']>>;
     delivery?: ProjectDocument['delivery'];
+    approvals?: ProjectDocument['approvals'];
   },
 ): Promise<void> {
   const [held] = await rows<{ document: ProjectDocument }>(
@@ -36,6 +37,9 @@ export async function declareControls(
     ...(controls.gates ? { gates: { profile: 'standard', ...controls.gates } } : {}),
     ...(controls.delivery
       ? { delivery: { ...current.document.delivery, ...controls.delivery } }
+      : {}),
+    ...(controls.approvals
+      ? { approvals: { ...current.document.approvals, ...controls.approvals } }
       : {}),
   };
   await db.execute(sql`

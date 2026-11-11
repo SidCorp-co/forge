@@ -117,6 +117,8 @@ export class SessionBox {
   /** What a turn failed on while the box was open; `SupportWorld.stop` throws them. */
   readonly errors: unknown[] = [];
   private closed = false;
+  /** The inbox sends this box acked, by `session:seq`: a frame core redelivers is not acked again. */
+  private readonly acked = new Set<string>();
   control: WebSocket | null = null;
   /**
    * Whether a turn the model took no act in still acts once (a tools read), so core reads it as a
@@ -322,6 +324,10 @@ export class SessionBox {
   private async inject(d: Record<string, unknown>): Promise<void> {
     const sessionId = String(d.sessionId);
     const seq = Number(d.seq);
+    // core redelivers a send it has not seen settled (under load, after its ack); a box that already
+    // took it answers nothing new, where acking again with another outcome is refused SEND_ALREADY_SETTLED
+    if (this.acked.has(`${sessionId}:${seq}`)) return;
+    this.acked.add(`${sessionId}:${seq}`);
     const running = this.running.get(sessionId);
     if (!running) {
       await this.post(`/api/agent-sessions/${sessionId}/inbox/${seq}/ack`, { outcome: 'gone' });

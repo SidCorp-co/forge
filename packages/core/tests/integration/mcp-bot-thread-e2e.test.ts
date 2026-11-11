@@ -181,16 +181,26 @@ describe('a project thread with the Forge bot over MCP (REQ-91)', () => {
 
     gate = null;
     release();
-    const late = await call(token, 'bot.read', {
-      projectId,
-      thread,
-      turn,
-      after: sent.body.cursor,
-      waitSeconds: 10,
-    });
-    expect(late.isError, late.text).toBe(false);
+    // a read answers as soon as a message lands after the cursor, and the reply can land before its
+    // turn reads settled, so the caller follows the cursor until it does, as bot.read's next says
+    let cursor = sent.body.cursor;
+    const messages: Body[] = [];
+    let late: Called;
+    for (let reads = 0; ; reads++) {
+      late = await call(token, 'bot.read', {
+        projectId,
+        thread,
+        turn,
+        after: cursor,
+        waitSeconds: 10,
+      });
+      expect(late.isError, late.text).toBe(false);
+      messages.push(...(late.body.messages as Body[]));
+      cursor = late.body.cursor;
+      if (!late.body.processing || reads === 5) break;
+    }
     expect((late.body.turn as Body).state).toBe('completed');
-    expect((late.body.messages as Body[]).at(-1)?.role).toBe('assistant');
+    expect(messages.at(-1)?.role).toBe('assistant');
     expect(seen.length).toBe(before + 1);
   });
 

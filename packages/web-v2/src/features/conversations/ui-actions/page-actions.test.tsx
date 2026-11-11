@@ -13,6 +13,7 @@ import { highlightStore } from "@/design/hooks/use-highlight";
 import { assistantFilters } from "@/features/chat-dock";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
+import { needsYouRead } from "@/test/needs-you-read";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
 import type { ConversationProgressEntry } from "../types";
@@ -96,6 +97,7 @@ function core() {
   return fakeCore((c) => {
     if (c.method !== "GET") return undefined;
     if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
+    if (c.path.endsWith("/needs-you")) return { body: needsYouRead() };
     if (c.path.includes("/requirements")) return { body: { requirements: REQUIREMENTS } };
     if (c.path.includes("/feedback")) return { body: { feedback: FEEDBACK, counts: { ...NO_COUNTS, needs_you: 1, running: 1, waiting: 1 }, total: 3, open: 3, untold: 0 } };
     return { body: {} };
