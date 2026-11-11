@@ -1,3 +1,4 @@
+import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
 import type { RequirementDetail } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
@@ -7,7 +8,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
-import { voidStewardDecisionsOnMove } from '../questions/index.js';
+import { voidQuestionsOnLeave, voidStewardDecisionsOnMove } from '../questions/index.js';
 import { detailOf, type RequirementActor, type RevisionRow, type Row, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 
@@ -40,7 +41,8 @@ export function requirementKernelActor(actor: RequirementActor): KernelActor {
 
 /**
  * A requirement move's `afterWrite`: the steward's open decisions on the requirement it moved are
- * void in the same transaction, the merge, drop and withdraw it asked about gone (REQ-68 BC-7).
+ * void in the same transaction, the merge, drop and withdraw it asked about gone (REQ-68 BC-7). A
+ * move into a terminal status (a drop) voids every open question on it, its author's too (ISS-1213).
  */
 export function voidsItsDecisions(
   toStatus: string,
@@ -48,9 +50,11 @@ export function voidsItsDecisions(
   reason: string | null | undefined,
   source = 'requirements',
 ): (tx: Tx, rows: readonly { id: string }[], from: ReadonlyMap<string, string>) => Promise<void> {
+  const leaves = (REQUIREMENT_MACHINE.terminal as readonly string[]).includes(toStatus);
+  const voidOnMove = leaves ? voidQuestionsOnLeave : voidStewardDecisionsOnMove;
   return async (tx, rows, from) => {
     for (const row of rows) {
-      await voidStewardDecisionsOnMove(tx, {
+      await voidOnMove(tx, {
         item: { kind: 'requirement', id: row.id },
         fromStatus: from.get(row.id) ?? null,
         toStatus,

@@ -31,6 +31,7 @@ import { masterFactsOf, requireDeclaredOn } from '../permissions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { keepDeclineAsCorrection } from './correction.js';
 import { embedFeedbackLater } from './embeddings.js';
+import { voidQuestionsOnDecline } from './leave-questions.js';
 import { linkedOf, phaseIn, phaseOfRow, shippedFailingIn } from './list-read.js';
 import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
@@ -342,7 +343,7 @@ export async function declineIn(
   movedRow(moved);
   await decide(tx, row, actor, { decision: 'declined', reason: reason ?? null });
   await keepDeclineAsCorrection(tx, row, actor, reason);
-  await closeClarification(tx, row.id, 'declined');
+  await voidQuestionsOnDecline(tx, row, actor, reason ?? null);
   // one notice naming the reason, to every reporter with a bell: the item's own and each merged into it
   const told = withBell(await reportersOf(tx, row)).map((r) => r.id);
   await tellReporters(

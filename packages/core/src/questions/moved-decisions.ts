@@ -1,8 +1,10 @@
 // A steward decision asks what to do with an item as it stood. Once the item moves, the answer has
 // nothing left to act on, so the decision is void (REQ-68 BC-7, REQ-41 BC-26).
 //
-// Three paths enforce this:
+// Four paths enforce this:
 // - An issue move or a requirement move voids the decision inside its own transaction.
+// - A move that ends an item for good (a requirement dropped, a feedback item declined) voids every
+//   open question on it, a person's too, since nothing is left to answer it for (ISS-1213).
 // - Every other move (a feedback item's, or one made before this existed) is caught at read time,
 //   so the decision leaves Needs you at once.
 // - The upkeep sweep then voids those rows, so an open row never claims an answer is still owed.
@@ -10,7 +12,7 @@
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { isStewardDecisionQuestion } from '@forge/contracts/steward';
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
@@ -114,6 +116,25 @@ export async function voidStewardDecisionsOnMove(tx: Executor, move: Move): Prom
     .where(and(namesItem(move.item), eq(agentQuestions.status, 'open')));
   const ids = open.filter((q) => isStewardDecisionRound(q.steps.at(-1))).map((q) => q.id);
   return voidAsMoved(tx, ids, move);
+}
+
+/**
+ * Void every open question on an item that leaves for good, inside the transaction that ends it, with
+ * the move's reason: the Steward's decisions and a question asked of its author or reporter alike. A
+ * question an issue holds is the issue's to end, and stays open.
+ */
+export async function voidQuestionsOnLeave(tx: Executor, move: Move): Promise<string[]> {
+  const open = await tx
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .where(
+      and(namesItem(move.item), eq(agentQuestions.status, 'open'), isNull(agentQuestions.issueId)),
+    );
+  return voidAsMoved(
+    tx,
+    open.map((q) => q.id),
+    move,
+  );
 }
 
 /** The newest status change of an item: what the void sentence names. */

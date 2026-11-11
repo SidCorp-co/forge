@@ -35,6 +35,7 @@ export {
 export { type AwaitedMerge, answerMergeQuestions } from './merge-wait.js';
 export {
   sweepMovedDecisions,
+  voidQuestionsOnLeave,
   voidStewardDecisionsOnMove,
 } from './moved-decisions.js';
 export {
