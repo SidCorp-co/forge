@@ -1,1 +1,0 @@
-**A dropped requirement or declined feedback item no longer leaves its question on anyone's bell.** Every open question on it, including the one asked of its author or reporter, is withdrawn with the drop or decline reason.

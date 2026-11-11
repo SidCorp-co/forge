@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.652] - 2026-11-11
+
+Dropped requirements and declined feedback withdraw their open questions and bell rows
+
+### Fixed
+
+- **A dropped requirement or declined feedback item no longer leaves its question on anyone's bell.** Every open question on it, including the one asked of its author or reporter, is withdrawn with the drop or decline reason.
+
 ## [0.4.0-dev.651] - 2026-11-11
 
 Questions about your requirement reach you, checked again
