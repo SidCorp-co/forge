@@ -45,6 +45,9 @@ describe('the support brief states goals, and the consent a change waits on', ()
       );
       // ISS-1211 (FB-613, agenfold L-46): look a fact up before asking a person for it.
       expect(text).toContain('Before you ask a person for a fact or recommend a change');
+      // ISS-1214 (FB-618, agenfold L-74): a person's choice goes in, in their words, replacing what it corrects.
+      expect(text).toContain("A person's choice or correction");
+      expect(text).toContain('replaces the line it corrects');
     }
   });
 });
