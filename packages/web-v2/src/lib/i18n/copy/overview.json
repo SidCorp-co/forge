@@ -63,6 +63,7 @@
     "overview.home.band.moving": "Requests moving",
     "overview.home.band.none": "Nothing yet",
     "overview.home.band.tip": "{n} last moved",
+    "overview.home.band.waiting": "Waiting on you",
     "overview.home.by": "by {date}",
     "overview.home.col.item": "Item",
     "overview.home.col.next": "Next",

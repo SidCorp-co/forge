@@ -19,7 +19,7 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
-import type { NeedsYouDecision } from '@forge/contracts/needs-you-decisions';
+import type { NeedsYouDecision, NotDecisionItem } from '@forge/contracts/needs-you-decisions';
 import {
   ORG_ACTIVITY_GROUPS,
   ORG_ACTIVITY_LANE_MINUTES,
@@ -179,6 +179,18 @@ function personOf(
   return { ...shared, key: UUID.test(d.key) ? null : d.key, title };
 }
 
+/** A row owed beside the decisions (a draft of the reader's own), named as its Needs you names it. */
+function workOf(w: NotDecisionItem, prefixes: readonly string[]): OrgActivityPerson {
+  return {
+    decisionId: `owed:${w.key}`,
+    group: 'work',
+    key: UUID.test(w.key) ? null : w.key,
+    title: oneLine(withoutRecordKeys(w.title, prefixes)),
+    since: null,
+    opens: w.opens,
+  };
+}
+
 interface PeopleGlance {
   total: number;
   items: OrgActivityPerson[];
@@ -215,8 +227,10 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
   const prefixes = prefixesOf(projects);
   const shown = owed.map((o) => ({
     projectId: idOf.get(o.projectSlug),
-    total: o.total,
+    // every row its Needs you lists as the reader's, a draft of their own included (ISS-1198 c3)
+    total: o.waiting,
     decisions: o.decisions.slice(0, ORG_ACTIVITY_WAIT_LIMIT),
+    work: o.owed.flatMap((n) => n.items),
   }));
   const issueOfQuestion = await questionIssueKeys(
     shown.flatMap((s) =>
@@ -227,7 +241,10 @@ async function readPeople(key: string): Promise<Map<string, PeopleGlance>> {
     if (!s.projectId) continue;
     out.set(s.projectId, {
       total: s.total,
-      items: s.decisions.map((d) => personOf(d, issueOfQuestion, prefixes)),
+      items: [
+        ...s.decisions.map((d) => personOf(d, issueOfQuestion, prefixes)),
+        ...s.work.map((w) => workOf(w, prefixes)),
+      ].slice(0, ORG_ACTIVITY_WAIT_LIMIT),
     });
   }
   return out;

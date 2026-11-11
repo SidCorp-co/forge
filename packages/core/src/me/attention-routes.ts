@@ -71,6 +71,11 @@ interface AttentionResponse {
    */
   waitingOnYou: number;
   /**
+   * Every row the active org's projects' Needs you lists as the caller's, decisions and the rows owed
+   * beside them (each project's `waiting`): what the home's overview reads as waiting on you (ISS-1198).
+   */
+  owedToYou: number;
+  /**
    * The rows `needsYou` counted but did not send: each project's decisions past its cap and its other
    * rows past theirs, so a cut list says "N of M" from core's count and never sums one itself.
    */
@@ -210,6 +215,7 @@ meAttentionRoutes.get(
     const response: AttentionResponse = {
       needsYou,
       waitingOnYou,
+      owedToYou: needsYou.reduce((n, p) => n + p.waiting, 0),
       needsYouNotSent: needsYou.reduce((n, p) => n + notSentOf(p), 0),
       mentions,
       failedJobs,

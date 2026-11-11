@@ -10,6 +10,7 @@ import { Icon, Popover, statusReading } from "@/design";
 import { useCopy, useCopyLocale, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { Link } from "@/lib/navigation/router";
+import { decisionHref } from "@/features/needs-you";
 import { approvalsHref } from "@/lib/routes/approvals";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
@@ -60,7 +61,9 @@ export function useMarkWords() {
 }
 
 /** The decision's answer: the project's Approvals page with it open. */
-export const answerHref = (slug: string, p: OrgActivityPerson) => `${approvalsHref(slug)}?peek=${encodeURIComponent(p.decisionId)}`;
+/** Where a row waiting on the reader is taken: a decision on Approvals, a row of their own work on its own page. */
+export const answerHref = (slug: string, p: OrgActivityPerson) =>
+  p.group === "work" ? (decisionHref(slug, p.opens) ?? approvalsHref(slug)) : `${approvalsHref(slug)}?peek=${encodeURIComponent(p.decisionId)}`;
 
 function Item({ href, title, tip, after, testId }: { href: string; title: string; tip: string; after?: ReactNode; testId: string }) {
   return (

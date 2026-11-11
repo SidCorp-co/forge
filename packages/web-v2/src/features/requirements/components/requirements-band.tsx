@@ -9,7 +9,11 @@ import { OverviewBand, ShareBars, shareOf, stateFlowOf } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { RequirementSummary } from "../types";
 
-export function RequirementsBand({ rows }: { rows: readonly RequirementSummary[] }) {
+/**
+ * `waiting` is what waits on the person here, the Requirements count of the Needs you read the rail
+ * badge reads (ISS-1198 c3), the rows the list's Needs you group holds; null while it is read.
+ */
+export function RequirementsBand({ rows, waiting }: { rows: readonly RequirementSummary[]; waiting: number | null }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const { criteria, areas } = criteriaByAreaOf(rows);
@@ -21,6 +25,7 @@ export function RequirementsBand({ rows }: { rows: readonly RequirementSummary[]
       figures={[
         { key: "inPlay", value: rows.filter(requirementInPlay).length, label: t("requirements.band.inPlay") },
         { key: "proven", value: `${Math.round(share * 100)}%`, label: t("requirements.band.proven"), ring: share },
+        { key: "waiting", value: waiting ?? "…", label: t("requirements.band.waiting") },
       ]}
       flow={stateFlowOf("requirement", REQUIREMENT_STATES, rows.map((r) => r.standing.state), language)}
       chart={

@@ -216,7 +216,7 @@ function Inbox({ view }: { view: AttentionView }) {
         {view.needsYou.map((part) => (
           <section key={part.projectSlug} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: part.projectName })} data-testid="attention-needs-you" data-total={part.total}>
             <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: part.projectName })}</SectionTitle>
-            <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: part.owed }} slug={part.projectSlug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(part.projectSlug)} dense />
+            <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: part.owed }} slug={part.projectSlug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(part.projectSlug)} dense listOwed />
           </section>
         ))}
         <Group id="channelGates" title={t("attention.group.channelGates")} items={view.channelGates} count={view.counts.channelGates} onOpen={(href) => router.push(href)} />

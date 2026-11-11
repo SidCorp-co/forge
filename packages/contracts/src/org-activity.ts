@@ -81,9 +81,13 @@ export interface OrgActivityNext {
 
 /** A decision the project waits on the caller for, as Needs you lists it. */
 export interface OrgActivityPerson {
-	/** The decision's own id, which the project's Approvals page opens it by to answer it. */
+	/**
+	 * The decision's own id, which the project's Approvals page opens it by to answer it; for a row owed
+	 * beside the decisions (`work`), `owed:` and its item's key.
+	 */
 	decisionId: string;
-	group: NeedsYouDecisionGroup;
+	/** The decision's group, or `work`: a row of the reader's own to do, a draft to propose (ISS-1198). */
+	group: NeedsYouDecisionGroup | "work";
 	/** The issue, requirement or feedback key it is asked on, for a tooltip; null for a question asked on nothing. */
 	key: string | null;
 	/** A question's own words, or the item's title, on one line, with no record key in it. */
@@ -183,7 +187,10 @@ export interface OrgActivityProject {
 		items: OrgActivityNext[];
 		skip: OrgActivitySkipReason | null;
 	};
-	/** `total` decisions waiting on the caller; `items` the first of them. */
+	/**
+	 * `total` rows waiting on the caller, as their Needs you counts them (`waiting`): the decisions and
+	 * the rows owed beside them; `items` the first of the decisions, the rest opened on Approvals.
+	 */
 	people: { total: number; items: OrgActivityPerson[] };
 	/** True while the decisions it owes the reader are still being read, off the page's path. */
 	peoplePending: boolean;

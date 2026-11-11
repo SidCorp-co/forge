@@ -70,6 +70,7 @@ export async function readNeedsYouAcross(
           projectSlug: p.slug,
           projectName: p.name,
           total: read.total,
+          waiting: read.total + owed.reduce((n, o) => n + o.count, 0),
           decisions: read.decisions.slice(0, cap),
           owed,
           ids,

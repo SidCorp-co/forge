@@ -6,6 +6,7 @@
 
 import { useEffect } from "react";
 import { PageContainer, PageTitle } from "@/design";
+import { useAttention } from "@/features/attention";
 import { useActiveOrg } from "@/features/orgs";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -29,6 +30,8 @@ export function HomeScreen() {
   const { activeOrgId } = useActiveOrg();
   const moved = useFiguresMoved();
   const home = useHome(moved ? null : activeOrgId);
+  // the shell reads it for the rail already, so the home adds no read of its own
+  const attention = useAttention();
   if (moved) return null;
   return (
     <PageContainer className="flex flex-col gap-6">
@@ -36,7 +39,7 @@ export function HomeScreen() {
       <QueryBoundary query={home} loadingLabel={t("overview.home.loading")} height="inline">
         {(data) => (
           <>
-            <HomeBand items={data.moving} total={data.movingTotal} stages={data.movingStages} />
+            <HomeBand items={data.moving} total={data.movingTotal} stages={data.movingStages} waiting={attention.known ? (attention.view?.owedToYou ?? 0) : null} />
             <MovingWork items={data.moving} total={data.movingTotal} truncated={data.movingTruncated} />
           </>
         )}

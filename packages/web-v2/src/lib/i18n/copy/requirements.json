@@ -419,6 +419,7 @@
     "requirements.band.label": "Requirements overview",
     "requirements.band.inPlay": "In play",
     "requirements.band.proven": "Criteria proven",
+    "requirements.band.waiting": "Waiting on you",
     "requirements.band.byArea": "Proven by area",
     "requirements.band.none": "No criteria",
     "requirements.band.area": "Area",

@@ -154,9 +154,11 @@ describe('the queue and attention read models serve the derived facts', () => {
     ).find((p) => p.projectSlug === project.slug);
     const own = part?.owed.find((o) => o.reason === 'own_work')?.count ?? 0;
     expect(own).toBeGreaterThanOrEqual(1);
-    expect(part?.waiting).toBe((part?.total ?? 0) + (part?.owed ?? []).reduce((n, o) => n + o.count, 0));
+    expect(part?.waiting).toBe(
+      (part?.total ?? 0) + (part?.owed ?? []).reduce((n, o) => n + o.count, 0),
+    );
     const counts = res.body.counts as Record<string, number>;
-    expect(res.body.owedToYou).toBe(counts.decisions + counts.owed);
+    expect(res.body.owedToYou).toBe((counts.decisions ?? 0) + (counts.owed ?? 0));
 
     // Activity's You column counts the same rows for the project, once its read behind the page lands
     let row: { projectId: string; people: { total: number }; peoplePending: boolean } | undefined;

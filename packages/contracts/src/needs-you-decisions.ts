@@ -513,6 +513,12 @@ export interface NeedsYouProjectDecisions {
 	projectSlug: string;
 	projectName: string;
 	total: number;
+	/**
+	 * Every row this project's Needs you lists as the viewer's: its decisions (`total`) and the rows owed
+	 * beside them (`owed`), counted by core so no screen sums them (ISS-1198 c3). What an overview reads
+	 * as waiting on the person.
+	 */
+	waiting: number;
 	decisions: NeedsYouDecision[];
 	/**
 	 * The project's `notDecisions` but what the agent takes (`agent_takes` is the master's, REQ-68

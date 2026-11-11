@@ -15,6 +15,7 @@ import {
   NEEDS_YOU_DECISION_GROUPS,
   type NeedsYouDecision,
   type NeedsYouDecisions,
+  type NotDecisionItem,
 } from "@forge/contracts/needs-you-decisions";
 import { decisionLineOf } from "@forge/contracts/plain-decision";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -273,6 +274,23 @@ function OwedDecision({
   );
 }
 
+/** A row owed beside the decisions: its title opening its page, the step it waits on beside it. */
+function OwedWork({ item, slug }: { item: NotDecisionItem; slug?: string | undefined }) {
+  const href = slug ? decisionHref(slug, item.opens) : null;
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-2 py-2" data-testid="needs-you-owed-item">
+      {href ? (
+        <Link href={href} className="fg-body-sm font-medium text-fg hover:underline">
+          {item.title}
+        </Link>
+      ) : (
+        <span className="fg-body-sm font-medium text-fg">{item.title}</span>
+      )}
+      {item.next ? <span className="fg-caption text-muted">{item.next}</span> : null}
+    </li>
+  );
+}
+
 /**
  * The decisions, one heading per group in the contract's order, and one line naming what was left out.
  * `cap` shows the first decisions in core's order (a stuck item's first, then the soonest due) and counts
@@ -284,6 +302,7 @@ export function DecisionList({
   cap,
   moreHref,
   dense = false,
+  listOwed = false,
   onSettled,
 }: {
   read: Pick<NeedsYouDecisions, "decisions" | "total" | "notDecisions">;
@@ -292,6 +311,11 @@ export function DecisionList({
   moreHref?: string;
   /** Each decision as its question and its buttons, the rest behind a hover. */
   dense?: boolean;
+  /**
+   * Lists the rows owed beside the decisions by name, each opening its page, where a screen's overview
+   * counts them as waiting on you (ISS-1198 c3); otherwise they are one "left out" line.
+   */
+  listOwed?: boolean;
   /** Told when a press settles, either way. */
   onSettled?: ((s: DecisionSettled) => void) | undefined;
 }) {
@@ -301,13 +325,16 @@ export function DecisionList({
   const more = cap === undefined ? 0 : Math.max(0, read.total - shown.length);
   const groups = NEEDS_YOU_DECISION_GROUPS.map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
     .filter((x) => x.rows.length > 0);
-  const leftOut = read.notDecisions.map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
+  const owed = listOwed ? read.notDecisions.filter((n) => n.items.length > 0) : [];
+  const leftOut = read.notDecisions
+    .filter((n) => !owed.includes(n))
+    .map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
   const leftOutSaid = leftOut.length > 0 ? t("needsYou.decisions.leftOut", { list: leftOut.join(", ") }) : undefined;
   // a dense list says what it left out on its "more" line's hover, where it has one (ISS-903)
   const leftOutOnMore = dense && more > 0;
   return (
     <section aria-label={t("needsYou.decisions.aria")} className="flex flex-col gap-3" data-testid="needs-you-decisions">
-      {groups.length === 0 && <p className="fg-body-sm text-muted">{t("needsYou.decisions.none")}</p>}
+      {groups.length === 0 && owed.length === 0 && <p className="fg-body-sm text-muted">{t("needsYou.decisions.none")}</p>}
       {groups.map(({ g, rows }) => (
         <div key={g}>
           <h3 className="fg-caption border-b border-line pb-1 font-semibold text-fg">
@@ -316,6 +343,16 @@ export function DecisionList({
           <ul className="flex flex-col divide-y divide-line-subtle">
             {rows.map((d) => (
               <OwedDecision key={d.id} d={d} slug={slug} dense={dense} onSettled={onSettled} />
+            ))}
+          </ul>
+        </div>
+      ))}
+      {owed.map((n) => (
+        <div key={n.reason}>
+          <h3 className="fg-caption border-b border-line pb-1 font-semibold text-fg">{t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}</h3>
+          <ul className="flex flex-col divide-y divide-line-subtle">
+            {n.items.map((item) => (
+              <OwedWork key={item.key} item={item} slug={slug} />
             ))}
           </ul>
         </div>
