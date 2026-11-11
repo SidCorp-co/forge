@@ -1,1 +1,0 @@
-**Questions about your requirement reach you, checked again.** No new code: this ships the 0.4.0-dev.650 bell change once more, judged against the requirement as revised to how requirements now move on by rule.

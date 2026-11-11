@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.651] - 2026-11-11
+
+Questions about your requirement reach you, checked again
+
+### Fixed
+
+- **Questions about your requirement reach you, checked again.** No new code: this ships the 0.4.0-dev.650 bell change once more, judged against the requirement as revised to how requirements now move on by rule.
+
 ## [0.4.0-dev.650] - 2026-11-11
 
 Overviews show what waits on you; requirement questions reach their author
