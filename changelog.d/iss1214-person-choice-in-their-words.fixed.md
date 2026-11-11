@@ -1,1 +1,0 @@
-**A chat room's agent writes a person's choice as they said it.** A name, scope or strictness a person picks goes into the brief in their words, replacing the line it corrects, no stricter than asked.

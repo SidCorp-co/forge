@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.653] - 2026-11-11
+
+Chat agents write a person's choices into briefs in their own words
+
+### Fixed
+
+- **A chat room's agent writes a person's choice as they said it.** A name, scope or strictness a person picks goes into the brief in their words, replacing the line it corrects, no stricter than asked.
+
 ## [0.4.0-dev.652] - 2026-11-11
 
 Dropped requirements and declined feedback withdraw their open questions and bell rows
