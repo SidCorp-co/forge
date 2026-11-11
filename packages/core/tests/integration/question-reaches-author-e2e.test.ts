@@ -3,6 +3,14 @@
 // per requirement, and never the bell of whoever asked it; answering it resolves the row. Judge run
 // ad038e31 on dev.649: REQ-95's create asked its author "Why is REQ-95 needed?" and their bell stayed
 // empty, since `question.asked` had no notification consumer.
+//
+// ISS-1213: an item that leaves for good (a requirement dropped, a feedback item declined) voids its
+// open questions in the move's own transaction with the move's reason, so the asked person's row
+// resolves. Judge run b328d2a4 on dev.651: REQ-96 was dropped and its author's bell still held "Why is
+// REQ-96 needed?" 40 minutes later, since the drop voided only the Steward's decisions.
+//
+// @direct-test-of packages/core/src/questions/moved-decisions.ts
+// @direct-test-of packages/core/src/requirements/write-tx.ts
 
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -47,7 +55,9 @@ beforeEach(async () => {
 
 /** Hands every `type` event not yet handed over to the `notify-questions` consumer, once each. */
 const handed = new Set<string>();
-async function drain(type: 'question.asked' | 'question.answered'): Promise<void> {
+async function drain(
+  type: 'question.asked' | 'question.answered' | 'question.transitioned',
+): Promise<void> {
   const { consumerOf } = await import('../../src/outbox/consumers.js');
   const consumer = consumerOf(type, 'notify-questions');
   expect(consumer, `notify-questions consumes ${type}`).toBeDefined();
@@ -184,5 +194,110 @@ describe('a question asked of a requirement reaches its author (REQ-34 BC-21)', 
     await drain('question.asked');
     expect((await bell(member)).count).toBe(0);
     expect((await bell(admin)).count).toBe(0);
+  });
+});
+
+/** The question rows of this project's bell that are not yet resolved. */
+async function openAsks(): Promise<{ title: string }[]> {
+  return rows(sql`
+    SELECT title FROM notifications
+     WHERE project_id = ${projectId} AND type = 'question_asked' AND resolved_at IS NULL`);
+}
+
+/** The open and void questions, with their void reasons, in this project, by item column. */
+async function questionRows(): Promise<{ status: string; void_reason: string | null }[]> {
+  return rows(sql`
+    SELECT status, void_reason FROM agent_questions WHERE project_id = ${projectId} ORDER BY created_at`);
+}
+
+describe('an item that leaves for good takes its open questions with it (ISS-1213)', () => {
+  it('a dropped requirement voids its author question with the drop reason, and the author bell resolves', async () => {
+    const made = await on(member, 'POST', '/requirements', {
+      title: 'Cards export to PDF',
+      criteria: [{ body: 'A nurse exports the cards as PDF' }],
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const key = String(made.body.key);
+    await drain('question.asked');
+    expect((await bell(member)).count).toBe(1);
+    expect((await questionsOf(key)).filter((q) => q.status === 'open')).toHaveLength(1);
+
+    const dropped = await on(admin, 'POST', `/requirements/${key}/drop`, {
+      reason: 'The clinic prints the cards, so no export is needed.',
+    });
+    expect(dropped.status, JSON.stringify(dropped.body)).toBe(200);
+
+    const after = await questionRows();
+    expect(after.map((q) => q.status)).toEqual(['void']);
+    expect(after[0]?.void_reason).toContain('The clinic prints the cards, so no export is needed.');
+    await drain('question.transitioned');
+    expect(await openAsks()).toEqual([]);
+    expect((await bell(member)).count).toBe(0);
+  });
+
+  it('a declined feedback item voids its open clarification with the decline reason, and the reporter bell resolves', async () => {
+    const filed = await api(member, 'POST', `/api/projects/${projectId}/feedback`, {
+      kind: 'bug',
+      severity: 'low',
+      title: 'The board drops a column on resize',
+      screen: 'the board',
+    });
+    expect(filed.status, JSON.stringify(filed.body)).toBe(201);
+    const [fb] = await rows<{ fb_seq: number }>(
+      sql`SELECT fb_seq FROM feedback WHERE project_id = ${projectId}`,
+    );
+    const key = `FB-${fb?.fb_seq}`;
+    const asked = await on(admin, 'POST', `/feedback/${key}/clarification`, {
+      prompt: 'Which browser shows it?',
+      needed: 'The browser and its version',
+      recommended: 'Chrome 130 on macOS',
+    });
+    expect(asked.status, JSON.stringify(asked.body)).toBe(200);
+    await drain('question.asked');
+    expect((await bell(member)).count).toBe(1);
+    expect((await questionRows()).map((q) => q.status)).toEqual(['open']);
+
+    const declined = await on(admin, 'POST', `/feedback/${key}/triage`, {
+      route: 'decline',
+      note: 'The board resizes by design; the column folds into the menu.',
+    });
+    expect(declined.status, JSON.stringify(declined.body)).toBe(200);
+
+    const after = await questionRows();
+    expect(after.map((q) => q.status)).toEqual(['void']);
+    expect(after[0]?.void_reason).toContain(
+      'The board resizes by design; the column folds into the menu.',
+    );
+    await drain('question.transitioned');
+    // the decline rings its own notice to the reporter; the question's own row is resolved
+    expect(await openAsks()).toEqual([]);
+  });
+
+  it('an agreed requirement keeps its author question open', async () => {
+    const made = await on(member, 'POST', '/requirements', {
+      title: 'Cards export to XLSX',
+      criteria: [{ body: 'A nurse exports the cards as XLSX' }],
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const key = String(made.body.key);
+    await drain('question.asked');
+    await makeAgreeReady(projectId, Number(key.slice(4)), memberId);
+    for (const [path, body] of [
+      [`/requirements/${key}/revisions/1/propose`, {}],
+      [`/requirements/${key}/revisions/1/accept`, { reason: 'Accepted for this test.' }],
+    ] as const) {
+      const r = await on(member, 'POST', path, body);
+      expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
+    }
+    const agreed = await on(member, 'POST', `/requirements/${key}/agree`, {
+      revision: 1,
+      reason: 'Agreed with the owner for this test.',
+    });
+    expect(agreed.status, JSON.stringify(agreed.body)).toBe(200);
+    expect(agreed.body.status).toBe('agreed');
+    expect((await questionRows()).map((q) => q.status)).toEqual(['open']);
+    await drain('question.transitioned');
+    expect(await openAsks()).toHaveLength(1);
+    expect((await bell(member)).count).toBe(1);
   });
 });
