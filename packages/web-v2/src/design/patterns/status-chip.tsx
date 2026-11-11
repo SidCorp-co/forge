@@ -34,7 +34,7 @@ export function StatusChip({ reason, testId, ...badge }: StatusChipProps) {
         {drawn}
         <span className="sr-only">{reason}</span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="w-max max-w-[280px] whitespace-normal rounded-md bg-neutral-12 px-2 py-1 text-12 text-on-accent shadow-overlay">
+      <TooltipContent side="top" className="w-max max-w-[280px] whitespace-normal rounded-md bg-neutral-12 px-2 py-1 text-12 text-neutral-1 shadow-overlay">
         {reason}
       </TooltipContent>
     </TooltipRoot>

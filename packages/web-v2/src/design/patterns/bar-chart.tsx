@@ -48,7 +48,7 @@ export function ReaderTable({ caption, head, rows, testId = "chart-table" }: { c
 
 export function TipBox({ lines }: { lines: string[] }) {
   return (
-    <div className="rounded-md bg-neutral-12 px-2 py-1 text-12 text-on-accent">
+    <div className="rounded-md bg-neutral-12 px-2 py-1 text-12 text-neutral-1">
       {lines.map((l) => (
         <div key={l}>{l}</div>
       ))}

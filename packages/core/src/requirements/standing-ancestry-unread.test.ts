@@ -123,7 +123,7 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
   it('reads its own passing verdicts as unchecked, never "file an issue for ,"', () => {
     const s = standing({});
     expect(s.waitingOn.act).not.toContain('file an issue');
-    expect(s.waitingOn.rule).not.toContain('hold no passing verdict yet');
+    expect(s.waitingOn.rule).not.toContain('no passing verdict yet');
     expect(s.waitingOn).toMatchObject({
       kind: 'release',
       who: 'Live build read',
@@ -183,8 +183,8 @@ describe('a BC whose verdicts are unanswered on the live build waits on the ance
       who: 'Independent judge',
       act: 'judge “rule 2” on the running build',
     });
-    expect(s.waitingOn.rule).toContain("BC-1 wait on the live build's ancestry read");
-    expect(s.waitingOn.rule).toContain('BC-2 hold no passing verdict yet');
+    expect(s.waitingOn.rule).toContain("BC-1 waits on the live build's ancestry read");
+    expect(s.waitingOn.rule).toContain('BC-2 holds no passing verdict yet');
   });
 
   it('waits on the read for a shipped requirement too, never asking its judge to judge again', () => {

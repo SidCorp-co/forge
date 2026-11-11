@@ -357,6 +357,15 @@ describe('describe is enough to call each action as written', () => {
     expect(dangling).toEqual([]);
   });
 
+  it("ends no guide in the next section's heading", () => {
+    // a door's last action of a section ran into the heading of the one after it (design_withdraw:
+    // "…\nSuggestions (on a requirement, issue, feedback item or workflow):", forge-dev dev.627)
+    const headed = [...catalog.values()]
+      .filter((e) => /\n\s*[^-*\s][^\n]*:\s*$/.test(e.guide))
+      .map((e) => e.id);
+    expect(headed).toEqual([]);
+  });
+
   it("gives each create action its own field texts, none of them a revise's", () => {
     expect(creates.length).toBeGreaterThan(3);
     const said = creates.flatMap((e) =>

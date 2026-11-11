@@ -412,13 +412,14 @@ function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
       summary = summaryOf(prose ?? signature);
     } else {
       const end = starts.find((s) => s > f.start) ?? text.length;
-      // an entry ends where the next one starts, after the next one's own bullet: that bullet is the
-      // next entry's, never this one's last word
+      // an entry ends where the next one starts, after the next one's own bullet and any section
+      // heading above it: both are the next entry's, never this one's last words
       guide = text
         .slice(f.start, end)
         .trim()
         .replace(/^-\s*/, '')
         .replace(/\s*(?:^|\n)\s*[-*]$/, '')
+        .replace(/\n\s*[^-*\s][^\n]*:$/, '')
         .trim();
       summary = summaryOf(text.slice(f.body, end));
     }

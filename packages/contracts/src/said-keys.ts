@@ -1848,8 +1848,16 @@ export const SAID = {
 		en: "{codes} hold no passing verdict yet",
 		vars: { codes: "key" },
 	},
+	"requirements.rule.unjudgedOne": {
+		en: "{codes} holds no passing verdict yet",
+		vars: { codes: "key" },
+	},
 	"requirements.rule.ancestryUnread": {
 		en: "{codes} wait on the live build's ancestry read",
+		vars: { codes: "key" },
+	},
+	"requirements.rule.ancestryUnreadOne": {
+		en: "{codes} waits on the live build's ancestry read",
 		vars: { codes: "key" },
 	},
 	"requirements.rule.failed": { en: "{codes} failed", vars: { codes: "key" } },

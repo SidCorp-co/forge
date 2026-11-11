@@ -17,6 +17,8 @@ const shellRoute = read("../routes/_workspace/route.tsx");
 const workspaceFrame = read("../design/templates/workspace-frame.ts");
 const navRail = read("../design/patterns/nav-rail.tsx");
 const drawer = read("../features/shell/components/mobile-nav-drawer.tsx");
+// the dark chips a tooltip or a chart's hover opens on: the far end of the neutral scale
+const chips = ["../design/primitives/tooltip.tsx", "../design/patterns/status-chip.tsx", "../design/patterns/bar-chart.tsx"];
 
 type Oklch = [number, number, number];
 const LAYER = '[data-layer="shell"]';
@@ -99,6 +101,19 @@ describe.each(Object.entries(THEMES))("the %s theme's background layers", (_, th
     for (let step = 1; step <= 12; step++) {
       const name = `--neutral-${step}`;
       expect(grey(name, value(shell, name))).toEqual({ name, warm: false, faint: true });
+    }
+  });
+
+  // ISS-1184's witness (wide-1440-req12-dark.png): the chip read near-white on a light box in dark,
+  // its text a fixed white over a step that flips with the theme
+  it("reads a tooltip's or chart chip's text at AA on its chip, on the content and the base", () => {
+    for (const file of chips) {
+      const chip = /bg-(neutral-\d+)[^"]*?\btext-((?!\d)[\w-]+)/.exec(read(file));
+      expect(chip?.[2], `${file}: its chip's text is a step of the neutral scale`).toMatch(/^neutral-\d+$/);
+      for (const scope of [theme, shell]) {
+        const ratio = contrast(value(scope, `--${chip?.[2]}`), value(scope, `--${chip?.[1]}`));
+        expect({ file, aa: ratio >= 4.5 }).toEqual({ file, aa: true });
+      }
     }
   });
 

@@ -186,6 +186,15 @@ describe("a state every design shares, said once (C4)", () => {
     expect(within(screen.getByTestId("workflow-list")).getAllByTestId("waiting-on")).toHaveLength(2);
   });
 
+  // the screen witness's workflows-list at 1440 (ISS-1198): three designs waiting on nothing drew an
+  // empty grey strip under the flow, a wait no row draws being read as one they share
+  it("draws no shared strip for a wait that is none, where the states differ", async () => {
+    const none = waitingOn("none", { who: say("standing.who.you"), act: say("designs.act.finish"), rule: RULE });
+    screenWith([design("a", "Alpha", { wait: none }), design("b", "Bravo", { status: "approved", wait: none })]);
+    await screen.findAllByTestId("workflow-row");
+    expect(screen.queryByTestId("workflows-shared")).toBeNull();
+  });
+
   // REQ-43 r3 BC-14 (owner, 2026-11-10): the list's states flow above it, each count the rows'
   // own badges at that state (L-57)
   it("draws the flow of the listed designs by state above the list, each counting the rows at it", async () => {

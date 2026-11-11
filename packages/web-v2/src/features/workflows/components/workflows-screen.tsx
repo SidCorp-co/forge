@@ -55,7 +55,8 @@ const waitKey = (r: WorkflowRecord) => JSON.stringify([r.design.waitingOn.kind, 
 
 function sharedState(rows: readonly WorkflowRecord[]): SharedState {
   const one = (key: (r: WorkflowRecord) => string) => rows.length > 1 && new Set(rows.map(key)).size === 1;
-  return { status: one(statusKey), waits: one(waitKey) };
+  // a wait no row would draw (`none`) is no state they share: the strip would hold nothing
+  return { status: one(statusKey), waits: one(waitKey) && rows[0]?.design.waitingOn.kind !== "none" };
 }
 
 /** A design in the list: its whole title, wrapped and never cut (REQ-17 BC-29), its requirement and age, then its state and health; what it is drawn in and its size are the title's hover. */
