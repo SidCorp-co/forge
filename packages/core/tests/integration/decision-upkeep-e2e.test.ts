@@ -3,7 +3,8 @@
 //
 // BC-7: a steward decision whose item moved leaves Needs you at once.
 // - An issue move or a requirement move voids it inside the move's own transaction.
-// - A feedback move hides it from the read at once, and the upkeep sweep voids it.
+// - A feedback decline voids it in the decline's own transaction, with its reason (ISS-1213).
+// - Any other feedback move hides it from the read at once, and the upkeep sweep voids it.
 // - A person's question on the same item stays open.
 //
 // BC-8: an unanswered round reminds the people who owe it on day 3, once per round. On day 14 the
@@ -191,7 +192,7 @@ describe('a decision whose item moved leaves at once (REQ-68 BC-7)', () => {
     expect((await readOpen(projectId)).map((q) => q.id)).not.toContain(decision);
   });
 
-  it('a feedback move hides its steward decision at once, and the sweep voids it', async () => {
+  it('a feedback decline voids its steward decision in the move, with its reason (ISS-1213)', async () => {
     const fbId = await feedbackIdOf(await createTestFeedback(projectId, ownerId, 703));
     const decision = await stewardDecision({ about: { kind: 'feedback', feedbackId: fbId } });
     const person = await personQuestion({ askedBy: askerId }, 'Which export?');
@@ -202,11 +203,34 @@ describe('a decision whose item moved leaves at once (REQ-68 BC-7)', () => {
         note: 'Not planned.',
       }),
     );
-    // gone from the read before anything voids it
-    expect((await questionRow(decision))?.status).toBe('open');
+    expect(await questionRow(decision)).toMatchObject({
+      status: 'void',
+      ended_reason: 'item_moved',
+      void_reason: expect.stringContaining('the feedback item moved from new to declined'),
+    });
+    expect((await questionRow(decision))?.void_reason).toContain('Not planned.');
     const open = (await readOpen(projectId)).map((q) => q.id);
     expect(open).not.toContain(decision);
     expect(open).toContain(person);
+    expect(await sweepMoved()).not.toContain(decision);
+  });
+
+  it('a feedback move no door voids at the time hides its steward decision at once, and the sweep voids it', async () => {
+    const fbId = await feedbackIdOf(await createTestFeedback(projectId, ownerId, 706));
+    const decision = await stewardDecision({ about: { kind: 'feedback', feedbackId: fbId } });
+    expect((await readOpen(projectId)).map((q) => q.id)).toContain(decision);
+    // a move recorded before any door voided on it: the item stands triaged, and nothing voided
+    const { db } = await import('../../src/db/client.js');
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    await withKernelMarker(db, async (tx) => {
+      await tx.execute(sql`UPDATE feedback SET status = 'triaged' WHERE id = ${fbId}`);
+      await tx.execute(sql`
+        INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source, reason)
+        VALUES ('feedback', ${fbId}, 'new', 'triaged', 'user', 'human', ${ownerId}, 'feedback', 'Routed to an issue.')`);
+    });
+    // gone from the read before anything voids it
+    expect((await questionRow(decision))?.status).toBe('open');
+    expect((await readOpen(projectId)).map((q) => q.id)).not.toContain(decision);
     expect(await sweepMoved()).toContain(decision);
     expect(await questionRow(decision)).toMatchObject({
       status: 'void',
