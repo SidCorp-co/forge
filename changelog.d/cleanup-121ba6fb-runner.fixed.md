@@ -1,1 +1,1 @@
-**A checkout's `.mcp.json` holding its Forge credential is ignored in a linked worktree too.** The runner adds the ignore line before writing the file, and no longer makes a stray `.git/` in a folder outside git.
+**A checkout's `.mcp.json` holding its Forge credential is ignored in a linked worktree too.** The runner adds the ignore line before writing the file, and no longer makes a stray git folder in a folder outside git.
