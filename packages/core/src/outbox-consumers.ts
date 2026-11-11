@@ -17,6 +17,7 @@ import {
   registerEcosystemNotifications,
   registerFeedbackNotifications,
   registerNotifyMentionsSubscriber,
+  registerQuestionNotifications,
   registerRequirementNotifications,
   registerTransitionNotifications,
 } from './notifications/index.js';
@@ -69,6 +70,7 @@ export function registerOutboxConsumers(): void {
   registerSourcePushReactions();
   registerLandingDeploy();
   registerRequirementNotifications();
+  registerQuestionNotifications();
   registerFirstRequirementsCase();
   registerReasonAnswers();
   registerQuestionSuggest();

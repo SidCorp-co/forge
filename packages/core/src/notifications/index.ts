@@ -4,6 +4,7 @@ export { emitNotification } from './emit.js';
 export { registerEcosystemNotifications } from './notify-ecosystem.js';
 export { registerFeedbackNotifications } from './notify-feedback.js';
 export { registerNotifyMentionsSubscriber } from './notify-mentions.js';
+export { registerQuestionNotifications } from './notify-questions.js';
 export { registerRequirementNotifications } from './notify-requirements.js';
 export { registerTransitionNotifications } from './notify-transitions.js';
 export {

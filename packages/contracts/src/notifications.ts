@@ -21,6 +21,7 @@ export const NOTIFICATION_TYPES = [
 	"status_report",
 	"steward_ask",
 	"decision_reminder",
+	"question_asked",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -48,6 +49,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	status_report: "Status report",
 	steward_ask: "Steward asks",
 	decision_reminder: "Decision waiting",
+	question_asked: "Question for you",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -246,6 +248,16 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "signal",
 		tier: "ticket",
 	},
+	/**
+	 * A question a step asks one person: a requirement's author, a feedback item's reporter (REQ-34
+	 * BC-21, ISS-456). It stands until the question is answered or voided, which resolves it.
+	 */
+	question_asked: {
+		severity: "info",
+		channels: ["bell", "toast"],
+		kind: "task",
+		tier: "ticket",
+	},
 };
 
 /** A type's kind, tier, default severity and channels: the one declaration core and web both read. */
@@ -275,6 +287,11 @@ export function strandedResolutionKey(issueId: string): string {
 /** The resolution key of an issue's owed-close condition, resolved once the issue reaches a terminal status. */
 export function owedCloseResolutionKey(issueId: string): string {
 	return `issue:${issueId}:owed-close`;
+}
+
+/** The resolution key of the notice a question asked its person: its answer or its void resolves it. */
+export function questionAskedResolutionKey(questionId: string): string {
+	return `question:${questionId}:asked`;
 }
 
 /** The dedupe key of the notice that a shipped release told one feedback item's reporter, once per item and release. */

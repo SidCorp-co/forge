@@ -53,6 +53,9 @@ export interface AgedRound {
   /** The item it stands on or names, by key, for the notice; null where it names none. */
   itemKey: string | null;
   issueId: string | null;
+  /** The requirement or feedback item it is asked of, whose one bell row its reminder joins (ISS-456). */
+  requirementId: string | null;
+  feedbackId: string | null;
   /** The requirement it holds up, with the status deciding which proposals apply; null where none. */
   requirement: { key: string; status: string } | null;
   /** Its round offers its item's own drop or withdraw: what day 14 proposes where no requirement applies. */
@@ -71,6 +74,8 @@ export async function agedRounds(stamp: DecisionAgeStamp, cutoff: Date): Promise
       projectId: agentQuestions.projectId,
       askedBy: agentQuestions.askedBy,
       issueId: agentQuestions.issueId,
+      requirementId: agentQuestions.requirementId,
+      feedbackId: agentQuestions.feedbackId,
       prompt: sql<string>`${agentQuestions.steps} -> -1 ->> 'prompt'`,
       round: sql<number>`(${agentQuestions.steps} -> -1 ->> 'round')::int`,
       askedAt: sql<string>`${roundAskedAt}`,

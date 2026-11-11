@@ -29,7 +29,13 @@ import type { RequirementRefusal } from './rules.js';
  */
 export async function withAskedQuestions(
   tx: Tx,
-  input: { projectId: string; requirementId: string; spec: RequirementSpec },
+  input: {
+    projectId: string;
+    requirementId: string;
+    spec: RequirementSpec;
+    /** Who writes the revision asking them: never told their own question (ISS-456). */
+    askedBy?: string | undefined;
+  },
 ): Promise<{ spec: RequirementSpec } | { refusals: RequirementRefusal[] }> {
   const entries = input.spec.openQuestions;
   if (!entries?.length) return { spec: input.spec };
@@ -52,6 +58,7 @@ export async function withAskedQuestions(
       id: randomUUID(),
       projectId: input.projectId,
       requirementId: input.requirementId,
+      ...(input.askedBy ? { askedBy: input.askedBy } : {}),
       prompt: entry.question,
       // a business question the revision must settle is product direction: a person's on a strict
       // project, the master's on any other (REQ-79 BC-13, `questions/owed.ts`)

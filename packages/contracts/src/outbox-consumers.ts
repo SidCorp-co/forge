@@ -55,9 +55,16 @@ export const OUTBOX_CONSUMERS = {
 		"requirement-reason",
 		"ws-broadcast",
 		"org-activity",
+		"notify-questions",
 	],
-	"question.asked": ["ws-broadcast", "org-activity", "question-suggest"],
-	"question.transitioned": ["ws-broadcast", "org-activity"],
+	// a question asked of one person reaches their bell, and its answer or void resolves it (ISS-456)
+	"question.asked": [
+		"ws-broadcast",
+		"org-activity",
+		"question-suggest",
+		"notify-questions",
+	],
+	"question.transitioned": ["ws-broadcast", "org-activity", "notify-questions"],
 	"notification.created": ["ws-broadcast"],
 	"notification.read": ["ws-broadcast"],
 	"user.preferencesChanged": ["ws-broadcast"],

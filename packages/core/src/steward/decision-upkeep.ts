@@ -53,6 +53,9 @@ async function tell(
           title,
           body,
           issueId: r.issueId,
+          // a question asked of an item reminds on the item's one row, the row its ask rang (ISS-456)
+          requirementId: r.requirementId,
+          feedbackId: r.feedbackId,
           dedupeKey: `decision-${stamp}:${r.id}:${r.round}`,
         });
       }

@@ -49,6 +49,8 @@ export const notificationTypes = [
   'steward_ask',
   // REQ-68 BC-8: an owed decision is reminded on day 3, and on day 14 the agent proposes defer or drop
   'decision_reminder',
+  // REQ-34 BC-21, ISS-456: a question a step asks one person reaches their bell when it is asked
+  'question_asked',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

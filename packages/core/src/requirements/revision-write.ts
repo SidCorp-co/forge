@@ -143,6 +143,7 @@ export async function createRequirementIn(
     projectId,
     requirementId: row.id,
     spec: specOf(write.spec),
+    askedBy: actor.userId,
   });
   if ('refusals' in asked) return { id: row.id, refusals: asked.refusals };
   // no reason given: its author is asked why, never refused (REQ-34 BC-17)
@@ -303,6 +304,7 @@ export async function newRevisionIn(
     projectId: owner.projectId,
     requirementId,
     spec: specOf(write.spec, carried?.spec as RequirementSpec | null | undefined),
+    askedBy: input.actor.userId,
   });
   if ('refusals' in asked) return asked.refusals;
   const [{ next } = { next: 1 }] = await tx
@@ -390,6 +392,7 @@ export async function rewriteRevisionIn(
     projectId,
     requirementId,
     spec: specOf(stored.spec, drafted?.spec as RequirementSpec | null | undefined),
+    askedBy: actor.userId,
   });
   if ('refusals' in asked) return asked.refusals;
   const { landing } = input;

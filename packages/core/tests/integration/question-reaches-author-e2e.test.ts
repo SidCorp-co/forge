@@ -15,6 +15,7 @@ import {
   makeAgreeReady,
   truncateAll,
 } from '../helpers/factories.js';
+import { underStrict } from '../helpers/project-controls.js';
 
 let projectId: string;
 let adminId: string;
@@ -109,26 +110,50 @@ describe('a question asked of a requirement reaches its author (REQ-34 BC-21)', 
       const r = await on(member, 'POST', path, body);
       expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
     }
-    const asked = await on(admin, 'POST', `/requirements/${key}/revisions`, {
-      baseRevision: 1,
-      reason: 'Which export format the clinic reads.',
-      spec: {
-        openQuestions: [
-          { question: 'Do the cards export as CSV or XLSX?', whoAnswers: 'its author', blocking: false },
-        ],
-      },
-      criteria: [{ code: 'BC-1', body: 'A nurse exports the cards' }],
-    });
+    // a business question a revision leaves open is a person's on a strict project (REQ-79 BC-13)
+    const asked = await underStrict(projectId, adminId, () =>
+      on(admin, 'POST', `/requirements/${key}/revisions`, {
+        baseRevision: 1,
+        reason: 'Which export format the clinic reads.',
+        spec: {
+          openQuestions: [
+            {
+              question: 'Do the cards export as CSV or XLSX?',
+              whoAnswers: 'its author',
+              blocking: false,
+            },
+          ],
+        },
+        criteria: [{ code: 'BC-1', body: 'A nurse exports the cards' }],
+      }),
+    );
     expect(asked.status, JSON.stringify(asked.body)).toBeLessThan(300);
     await drain('question.asked');
+    const second = (await questionsOf(key)).find(
+      (q) => q.prompt === 'Do the cards export as CSV or XLSX?',
+    );
+    expect(second?.status).toBe('open');
+    const [kind] = await rows<{ blocker_kind: string; asked_by: string | null }>(
+      sql`SELECT blocker_kind, asked_by FROM agent_questions WHERE id = ${String(second?.id)}`,
+    );
+    expect(kind).toEqual({ blocker_kind: 'human', asked_by: adminId });
 
     // one row for the item, new again; the asker's bell stays empty
-    const second = await bell(member);
-    expect(second.count).toBe(1);
-    expect(second.items).toHaveLength(1);
-    expect(second.items[0]?.id).toBe(first.items[0]?.id);
-    expect(second.items[0]?.readAt ?? null).toBeNull();
+    const again = await bell(member);
+    expect(again.count).toBe(1);
+    expect(again.items).toHaveLength(1);
+    expect(again.items[0]?.id).toBe(first.items[0]?.id);
+    expect(again.items[0]?.readAt ?? null).toBeNull();
     expect((await bell(admin)).count).toBe(0);
+
+    // the three-day reminder joins the item's row rather than ringing a second one
+    const { sweepDecisionUpkeep } = await import('../../src/steward/decision-upkeep.js');
+    const reminded = await sweepDecisionUpkeep(new Date(Date.now() + 4 * 86_400_000));
+    expect(reminded.reminded).toBeGreaterThanOrEqual(1);
+    const rowsOfMember = await rows<{ id: string }>(sql`
+      SELECT d.id FROM notification_deliveries d
+       WHERE d.user_id = ${memberId} AND d.resolved_notice = false`);
+    expect(rowsOfMember.map((r) => r.id)).toEqual([first.items[0]?.id]);
 
     // answering both questions resolves the row
     for (const q of (await questionsOf(key)).filter((x) => x.status === 'open')) {
@@ -143,14 +168,18 @@ describe('a question asked of a requirement reaches its author (REQ-34 BC-21)', 
   });
 
   it('never rings the asker when the asker is the author', async () => {
-    const made = await on(member, 'POST', '/requirements', {
-      title: 'Cards print on A5',
-      reason: 'Clinics print on A5 paper.',
-      spec: {
-        openQuestions: [{ question: 'Which printers?', whoAnswers: 'its author', blocking: false }],
-      },
-      criteria: [{ body: 'A nurse prints a card on A5' }],
-    });
+    const made = await underStrict(projectId, adminId, () =>
+      on(member, 'POST', '/requirements', {
+        title: 'Cards print on A5',
+        reason: 'Clinics print on A5 paper.',
+        spec: {
+          openQuestions: [
+            { question: 'Which printers?', whoAnswers: 'its author', blocking: false },
+          ],
+        },
+        criteria: [{ body: 'A nurse prints a card on A5' }],
+      }),
+    );
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     await drain('question.asked');
     expect((await bell(member)).count).toBe(0);
