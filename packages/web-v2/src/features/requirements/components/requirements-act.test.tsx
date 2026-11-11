@@ -9,6 +9,7 @@
 import type { QueryKey } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { needsYouRead } from "@/test/needs-you-read";
 import { faceWords, rawKeysOnFace } from "@/test/screen-face";
 import { REQ_PROJECT, reqQueries, Seeded } from "@/test/vi-chrome-requirements";
 import type { RequirementSummary } from "../types";
@@ -85,9 +86,8 @@ describe("Requirements leads with names, never keys (REQ-11 BC-19)", () => {
   // ISS-1198 c3 (judge run ad038e31): the band had no figure for what waits on the person; only the
   // list's Needs you group and the rail badge said it. The band reads the rail badge's own read.
   it("says on its band what waits on you, the rail badge's Needs you count, which the list's Needs you group holds", () => {
-    const areas = Object.fromEntries(["requirements", "releases", "feedback", "contracts", "designs", "automation", "questions"].map((a) => [a, { you: a === "requirements" ? 1 : 0, acts: [] }]));
     render(
-      <Seeded data={[...seed(), [["needs-you", REQ_PROJECT], { generatedAt: "2026-11-11T00:00:00.000Z", areas, items: [], requirementsInDelivery: 0, untriagedFeedback: 0, decisions: 0 }]]}>
+      <Seeded data={[...seed(), [["needs-you", REQ_PROJECT], needsYouRead({ requirements: 1 })]]}>
         <RequirementsScreen projectId={REQ_PROJECT} slug="hop" />
       </Seeded>,
     );

@@ -12,6 +12,7 @@ import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { RequirementsScreen } from "@/features/requirements/components/requirements-screen";
+import { needsYouRead } from "@/test/needs-you-read";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { RULE, say, waitingOn } from "@/test/said";
 
@@ -100,6 +101,7 @@ function core() {
     if (c.path.startsWith(`/projects/${P}/forecast`)) return { body: { projectId: P, items: [] } };
     if (c.path.startsWith(`/projects/${P}/standings`)) return { body: { standings: [noted("feedback", "FB-2", BUDGET), noted("requirement", "REQ-78", BUDGET.replace("feedback.filed", "requirement.agreed"))] } };
     if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: FEEDBACK, counts: { ...NO_COUNTS, running: 1, queued: 1, dropped: 1 }, total: 3, open: 2, sensitive: false } };
+    if (c.path.startsWith(`/projects/${P}/needs-you`)) return { body: needsYouRead() };
     if (c.path.startsWith(`/projects/${P}/requirements`)) return { body: { requirements: REQUIREMENTS, returned: 1 } };
     if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
     return { body: {} };
@@ -177,6 +179,7 @@ describe("an empty list opens on its band", () => {
   const none = () =>
     fakeCore((c) => {
       if (c.path.startsWith(`/projects/${P}/feedback`)) return { body: { feedback: [], counts: NO_COUNTS, total: 0, open: 0, sensitive: false } };
+      if (c.path.startsWith(`/projects/${P}/needs-you`)) return { body: needsYouRead() };
       if (c.path.startsWith(`/projects/${P}/requirements`)) return { body: { requirements: [], returned: 0 } };
       if (c.path.includes("/suggestions")) return { body: { suggestions: [], open: 0 } };
       return { body: {} };

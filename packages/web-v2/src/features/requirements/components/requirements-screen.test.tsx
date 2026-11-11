@@ -4,6 +4,7 @@
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { needsYouRead } from "@/test/needs-you-read";
 import { fakeCore, renderWithQuery } from "@/test/render";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({
@@ -50,6 +51,7 @@ function world() {
   return fakeCore((c) => {
     if (c.method === "POST") return { body: { suggestion: { ...sug, status: "accepted" } } };
     if (c.path.includes("/suggestions")) return { body: { suggestions: [sug], open: 1 } };
+    if (c.path.endsWith("/needs-you")) return { body: needsYouRead() };
     if (c.path.includes("/requirements")) return { body: { requirements: [req] } };
     return { body: {} };
   });
@@ -112,7 +114,9 @@ describe("the assistant strip's Reject", () => {
         return { body: { suggestion: { ...sug, status: "rejected" } } };
       }
       if (c.path.includes("/suggestions")) return { body: { suggestions: pending ? [sug] : [], open: pending ? 1 : 0 } };
-      if (c.path.includes("/requirements")) return { body: { requirements: [req] } };
+      if (c.path.endsWith("/needs-you")) return { body: needsYouRead() };
+      if (c.path.endsWith("/needs-you")) return { body: needsYouRead() };
+    if (c.path.includes("/requirements")) return { body: { requirements: [req] } };
       return { body: {} };
     });
     renderWithQuery(<RequirementsScreen projectId="p1" slug="epod" />);

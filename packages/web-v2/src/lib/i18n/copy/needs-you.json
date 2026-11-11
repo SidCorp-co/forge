@@ -11,6 +11,7 @@
     "needsYou.decisions.cancel": "Cancel",
     "needsYou.decisions.sent": "Sent: {label}",
     "needsYou.decisions.none": "Nothing",
+    "needsYou.decisions.owed": "Owed by you",
     "needsYou.decisions.more": "{shown} of {total} decisions shown.",
     "needsYou.decisions.capMore": "+{n} more",
     "needsYou.decisions.leftOut": "Left out, not decisions: {list}.",

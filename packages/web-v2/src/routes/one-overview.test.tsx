@@ -53,6 +53,8 @@ describe("one overview (ISS-1069)", () => {
     expect(replace).toHaveBeenCalledWith("/activity");
   });
 
+  // ISS-1198 c3: the band's one Waiting on you figure is the shell's own Attention read (the rail's
+  // badge), never a list of what waits and never Activity's read
   it("keeps on Home only what the person asked for, and reads nothing Activity reads", async () => {
     const calls = fakeCore((c) => (c.path.startsWith("/me/home") ? { body: HOME } : { body: {} }));
     renderWithQuery(<HomeScreen />);
@@ -60,7 +62,7 @@ describe("one overview (ISS-1069)", () => {
     expect(screen.queryByTestId("home-waiting")).toBeNull();
     expect(screen.queryByTestId("home-live")).toBeNull();
     expect(screen.queryByRole("tab", { name: /figures/i })).toBeNull();
-    expect(calls.map((c) => c.path.split("?")[0])).toEqual(["/me/home"]);
+    expect(calls.map((c) => c.path.split("?")[0]).sort()).toEqual(["/me/attention", "/me/home"]);
   });
 
   it("counts a project's live runs on Activity from the health rollup the rail and Projects read", async () => {

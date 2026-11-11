@@ -274,19 +274,25 @@ function OwedDecision({
   );
 }
 
-/** A row owed beside the decisions: its title opening its page, the step it waits on beside it. */
-function OwedWork({ item, slug }: { item: NotDecisionItem; slug?: string | undefined }) {
+/**
+ * A row owed beside the decisions: its title opening its page, the step it waits on beside it, or in
+ * a dense list behind the title's hover with why it is no decision.
+ */
+function OwedWork({ item, why, slug, dense }: { item: NotDecisionItem; why: string; slug?: string | undefined; dense: boolean }) {
   const href = slug ? decisionHref(slug, item.opens) : null;
+  const tip = dense ? [why, item.next].filter(Boolean).join(" · ") : why;
   return (
     <li className="flex flex-wrap items-baseline gap-x-2 py-2" data-testid="needs-you-owed-item">
       {href ? (
-        <Link href={href} className="fg-body-sm font-medium text-fg hover:underline">
+        <Link href={href} title={tip} className="fg-body-sm font-medium text-fg hover:underline">
           {item.title}
         </Link>
       ) : (
-        <span className="fg-body-sm font-medium text-fg">{item.title}</span>
+        <span title={tip} className="fg-body-sm font-medium text-fg">
+          {item.title}
+        </span>
       )}
-      {item.next ? <span className="fg-caption text-muted">{item.next}</span> : null}
+      {item.next && !dense ? <span className="fg-caption text-muted">{item.next}</span> : null}
     </li>
   );
 }
@@ -347,16 +353,19 @@ export function DecisionList({
           </ul>
         </div>
       ))}
-      {owed.map((n) => (
-        <div key={n.reason}>
-          <h3 className="fg-caption border-b border-line pb-1 font-semibold text-fg">{t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}</h3>
+      {owed.length > 0 && (
+        <div>
+          <h3 className="fg-caption border-b border-line pb-1 font-semibold text-fg">{t("needsYou.decisions.owed")}</h3>
           <ul className="flex flex-col divide-y divide-line-subtle">
-            {n.items.map((item) => (
-              <OwedWork key={item.key} item={item} slug={slug} />
-            ))}
+            {owed.flatMap((n) => {
+              const why = t(`needsYou.decisions.reason.${n.reason}`, { n: n.count });
+              const rows = n.items.map((item) => <OwedWork key={item.key} item={item} why={why} slug={slug} dense={dense} />);
+              const past = n.count - n.items.length;
+              return past > 0 ? [...rows, <li key={`${n.reason}-more`} className="fg-caption py-2 text-subtle" title={why}>{t("needsYou.decisions.capMore", { n: past })}</li>] : rows;
+            })}
           </ul>
         </div>
-      ))}
+      )}
       {more > 0 &&
         (moreHref ? (
           <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" title={leftOutOnMore ? leftOutSaid : undefined} data-testid="needs-you-more">
