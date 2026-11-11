@@ -25,7 +25,6 @@ import { nameOf } from "./requirement-line";
 import { listGroupsOf, RequirementsList, useAttentionLabel } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
 import { useChatDock } from "@/features/chat-dock";
-import { useNeedsYou } from "@/features/needs-you";
 import { useWorkflows } from "@/features/workflows";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
@@ -174,8 +173,6 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const dock = useChatDock();
   const approvedDesigns = (useWorkflows(projectId).data?.workflows ?? []).filter((w) => w.design.status === "approved").length;
   const areas = useRequirementAreas(projectId).data ?? [];
-  // what waits on the person here is the rail badge's own read (ISS-1198 c3)
-  const needsYou = useNeedsYou(projectId).data;
   const clock = useEtaClock();
   // whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
   const filter = useListNarrowing("requirements");
@@ -206,7 +203,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           testId="requirements-screen"
           title={t("requirements.title")}
           titleAfter={switcher("header")}
-          overview={<RequirementsBand rows={list.rows} waiting={needsYou?.areas.requirements.you ?? null} />}
+          overview={<RequirementsBand projectId={projectId} rows={list.rows} />}
           actions={
             <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
               {t("requirements.new")}

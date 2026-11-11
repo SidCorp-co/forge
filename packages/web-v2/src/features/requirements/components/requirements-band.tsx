@@ -6,14 +6,17 @@
 import { criteriaByAreaOf, requirementInPlay } from "@forge/contracts/project-home";
 import { REQUIREMENT_STATES } from "@forge/contracts/requirements";
 import { OverviewBand, ShareBars, shareOf, stateFlowOf } from "@/design";
+import { useNeedsYou } from "@/features/needs-you";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { RequirementSummary } from "../types";
 
 /**
- * `waiting` is what waits on the person here, the Requirements count of the Needs you read the rail
- * badge reads (ISS-1198 c3), the rows the list's Needs you group holds; null while it is read.
+ * What waits on the person here is the Requirements count of the Needs you read the rail badge reads
+ * (ISS-1198 c3), the rows the list's Needs you group holds; the band reads it itself, so the screen
+ * coordinates no more modules.
  */
-export function RequirementsBand({ rows, waiting }: { rows: readonly RequirementSummary[]; waiting: number | null }) {
+export function RequirementsBand({ projectId, rows }: { projectId: string; rows: readonly RequirementSummary[] }) {
+  const waiting = useNeedsYou(projectId).data?.areas.requirements.you ?? null;
   const t = useCopy();
   const language = useInterfaceLanguage();
   const { criteria, areas } = criteriaByAreaOf(rows);
