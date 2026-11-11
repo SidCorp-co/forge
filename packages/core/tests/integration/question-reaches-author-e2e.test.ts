@@ -11,6 +11,7 @@
 //
 // @direct-test-of packages/core/src/questions/moved-decisions.ts
 // @direct-test-of packages/core/src/requirements/write-tx.ts
+// @direct-test-of packages/core/src/feedback/leave-questions.ts
 
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
