@@ -149,11 +149,43 @@ fn an_untracked_mcp_json_is_written_and_excluded_as_before() {
     );
 }
 
+// A linked worktree's `.git` is a file, so `<repo>/.git/info/exclude` could not be written there and
+// the credential's file sat untracked; outside git, the same write made a `.git/` that read as a repo
+#[test]
+fn an_untracked_mcp_json_in_a_linked_worktree_is_excluded() {
+    let main = scratch("linked-main");
+    git_ok(&main, &["init", "-q"]);
+    git_ok(&main, &["commit", "-q", "--allow-empty", "-m", "root"]);
+    let linked = main.join("wt");
+    git_ok(
+        &main,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            linked.to_str().unwrap(),
+        ],
+    );
+
+    let got = write_persistent(&linked, CORE, "proj", Some(FAKE_TOKEN)).unwrap();
+    assert_eq!(got, PersistentMcp::Written);
+    assert_eq!(
+        git_ok(&linked, &["status", "--porcelain"]),
+        "",
+        "the credential's .mcp.json is untracked work in the linked worktree"
+    );
+}
+
 #[test]
 fn a_folder_outside_git_is_written_as_before() {
     let dir = scratch("no-git");
     let got = write_persistent(&dir, CORE, "proj", Some(FAKE_TOKEN)).unwrap();
     assert_eq!(got, PersistentMcp::Written);
+    assert!(
+        !dir.join(".git").exists(),
+        "a folder outside git was given a .git/ that reads as a repository"
+    );
     let doc: Value =
         serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
     assert_eq!(

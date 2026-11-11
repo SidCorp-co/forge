@@ -443,8 +443,16 @@ pub fn write_persistent(
         .insert("forge".to_string(), forge_server);
 
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
+    // ignored before the credential lands, through the checkout's common git dir, so a linked
+    // worktree (whose `.git` is a file) is covered and a folder outside git gets no `.git/`
+    crate::git_exclude::ensure_ignored_by(repo_path, ".mcp.json", ".mcp.json", "/.mcp.json")
+        .map_err(|e| {
+            Error::Other(format!(
+                "{} is not ignored by its checkout's git and cannot be made so: {e}; the credential was not written there",
+                path.display()
+            ))
+        })?;
     std::fs::write(&path, body)?;
-    ensure_git_excluded(repo_path, ".mcp.json");
     Ok(PersistentMcp::Written)
 }
 
@@ -610,26 +618,6 @@ fn tracked_refusal(path: &Path) -> Error {
          `forge` server in its own session config instead.",
         path.display()
     ))
-}
-
-/// Append `entry` to `<repo>/.git/info/exclude` if not already present. Touches
-/// only the local-untracked excludes, never the repo's committed `.gitignore`.
-fn ensure_git_excluded(repo_path: &Path, entry: &str) {
-    let info = repo_path.join(".git").join("info");
-    if std::fs::create_dir_all(&info).is_err() {
-        return; // not a git repo (or no perms) — best-effort
-    }
-    let exclude = info.join("exclude");
-    let current = std::fs::read_to_string(&exclude).unwrap_or_default();
-    if current.lines().any(|l| l.trim() == entry) {
-        return;
-    }
-    let sep = if current.is_empty() || current.ends_with('\n') {
-        ""
-    } else {
-        "\n"
-    };
-    let _ = std::fs::write(&exclude, format!("{current}{sep}{entry}\n"));
 }
 
 #[cfg(test)]

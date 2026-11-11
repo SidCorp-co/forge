@@ -317,18 +317,29 @@ mod tests {
     }
 
     /// A checkout holding `scripts/ops/hello`, which prints its argument and the variable it is handed.
+    ///
+    /// The script is written by a child that has exited before anything runs it: written from this
+    /// process, a child another test thread forks in that moment inherits the write handle until it
+    /// execs, and running the script then fails `Text file busy` (os error 26).
     #[cfg(unix)]
     fn checkout_with_a_read(tag: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let root = std::env::temp_dir().join(format!("ops-read-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(root.join("scripts/ops")).unwrap();
         let script = root.join("scripts/ops/hello");
-        std::fs::write(
-            &script,
-            "#!/bin/sh\necho \"hello $1 ${FORGE_OPS_TOKEN:-none}\"\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let wrote = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"",
+                "sh",
+            ])
+            .arg("#!/bin/sh\necho \"hello $1 ${FORGE_OPS_TOKEN:-none}\"\n")
+            .arg(&script)
+            .status()
+            .unwrap();
+        assert!(
+            wrote.success(),
+            "the read's script was not written: {wrote}"
+        );
         root
     }
 
