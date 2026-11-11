@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.650] - 2026-11-11
+
+Overviews show what waits on you; requirement questions reach their author
+
+### Fixed
+
+- **Every overview now shows what waits on you.** Home, Requirements and Activity count your own drafts to finish, and Attention lists them by name instead of saying Nothing.
+- **A question asked of you now rings your bell.** When a requirement or feedback item you wrote asks you something, your bell shows it as that item's one row; answering it clears the row.
+
 ## [0.4.0-dev.649] - 2026-11-10
 
 Feedback overview counts match its list; long record text opens in a side panel
