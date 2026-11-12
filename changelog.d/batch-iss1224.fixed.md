@@ -1,1 +1,0 @@
-**A bot's report no longer posts at a work room's top level.** A master's post naming no thread and the room-down notice go in the room's report thread, named by a person or opened once by Forge (ISS-1224)

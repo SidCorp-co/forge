@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.666] - 2026-11-12
+
+Bot reports and room-down notices go into the room's report thread
+
+### Changed
+
+- **A direct pass names the issues it wakes for.** A master that builds direct is told each admissible issue by key and id, in the order to take it, so an open issue no longer wakes it unnamed (ISS-1224).
+
+### Fixed
+
+- **A bot's report no longer posts at a work room's top level.** A master's post naming no thread and the room-down notice go in the room's report thread, named by a person or opened once by Forge (ISS-1224)
+
 ## [0.4.0-dev.665] - 2026-11-12
 
 Production monitoring arrives as a Prometheus integration whose alerts become feedback
