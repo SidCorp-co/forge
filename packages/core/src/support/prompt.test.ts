@@ -48,6 +48,9 @@ describe('the support brief states goals, and the consent a change waits on', ()
       // ISS-1214 (FB-618, agenfold L-74): a person's choice goes in, in their words, replacing what it corrects.
       expect(text).toContain("A person's choice or correction");
       expect(text).toContain('replaces the line it corrects');
+      // ISS-1217 (FB-621, agenfold L-17): an organization is not its workspaces; act on the one named.
+      expect(text).toContain('which organization holds which workspaces');
+      expect(text).toContain('a workspace rename renames the workspace, never its organization');
     }
   });
 });
