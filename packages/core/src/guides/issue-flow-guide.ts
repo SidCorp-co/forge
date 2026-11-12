@@ -420,7 +420,9 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    issue's when its subject declares the key or it merged a change request linking the issue, and is
    then stamped observed, whoever marks. Otherwise the mark records it as your claim, which the
    release places by that commit, and what the repository found — not found, not on the target, not
-   this issue's, unread — is the mark's reading, never a refusal. To correct a mark,
+   this issue's, unread — is the mark's reading, never a refusal. Marking after the fact, send
+   \`landedAt\` (ISO), when the commit landed, which a release's containment reads; refused in the
+   future or before the issue was created. To correct a mark,
    \`DELETE /api/issues/:id/merge\` clears it first. A merge mark moves no status.
    A merge the master's pass lists as owed a filing names no issue, so
    the issue filed for it is marked at that merge's commit, one issue answering each. It stays at

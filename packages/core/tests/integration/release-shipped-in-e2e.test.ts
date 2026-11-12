@@ -9,16 +9,24 @@
  *
  * @direct-test-of packages/core/src/release-batch/shipped-in.ts
  * @direct-test-of packages/core/src/release-batch/roster-blockers.ts
+ * @direct-test-of packages/core/src/issues/landed-at.ts
  */
 
 import { randomUUID } from 'node:crypto';
+import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
-import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
+import {
+  createTestProject,
+  createTestUser,
+  rows,
+  seedIssueStatus,
+  truncateAll,
+} from '../helpers/factories.js';
 import { A, C1, C2, markTrailWorld } from '../helpers/mark-trail-world.js';
 import { releaseWorld, seedProductionDeployTrigger, stubProbe } from '../helpers/release-world.js';
 
@@ -343,6 +351,35 @@ describe('a mark that says when its commit landed (ISS-1226)', () => {
       expect(JSON.stringify(res.body), String(landedAt)).toContain('/landedAt');
     }
     expect(await written(id)).toEqual({ merged_at: null, comments: 0, trail: 0 });
+  });
+
+  // ISS-9 itself is closed, where a mark stands and an unmark is refused: its landing is dated by the
+  // correction door, which takes the commit and the time it landed
+  it('dates a closed issue at its landing through the correction, and the release then takes it', async () => {
+    const run = await shipped('0.6.0', C1, 60);
+    const id = await unmarked(240);
+    await db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${id}`);
+    await seedIssueStatus(id, 'closed');
+    await db.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, machine_version,
+                                      actor_type, actor_agency, actor_id, source)
+      VALUES ('issue', ${id}, 'awaiting_release', 'closed', ${ISSUE_MACHINE.shapes.length},
+              'user', 'agent', ${ownerId}, 'test')
+    `);
+    const evidence = `git tag --contains ${A} answered v0.6.0`;
+    const before = await record({ issueId: id, version: '0.6.0', evidence });
+    expect(codeOf(before.body)).toBe('RELEASE_SHIPPED_IN_BEFORE_LANDING');
+
+    const corrected = await api(token, 'POST', `/api/issues/${id}/merge/correction`, {
+      commit: A,
+      reason: 'the mark was recorded on 2026-11-12; the commit landed on 2026-10-29',
+      mergedAt: minutesAgo(120),
+    });
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+
+    const sent = await record({ issueId: id, version: '0.6.0', evidence });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(201);
+    expect(sent.body).toMatchObject({ version: '0.6.0', runId: run, closed: true });
   });
 
   it('dates a mark naming no landing at the time it is recorded, as before', async () => {

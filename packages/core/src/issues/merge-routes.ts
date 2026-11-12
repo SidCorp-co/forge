@@ -38,6 +38,7 @@ import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnResolved } from '../permissions/index.js';
 import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from './issue-route-ref.js';
+import { landingOfMark } from './landed-at.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
@@ -59,6 +60,9 @@ const mergeMarkerBodySchema = z
     artifacts: landingArtifactsSchema.optional(),
     changedPaths: changedPathsSchema.optional(),
     liveReading: liveReadingSchema.optional(),
+    /** When the commit landed, as the marker says (ISS-1226); absent, the mark's own time. */
+    landedAt: z.iso.datetime().optional(),
+    /** The older spelling of `landedAt`, which the plugin's `mark_merged` sends. */
     mergedAt: z.iso.datetime().optional(),
     contracts: z
       .array(
@@ -87,6 +91,8 @@ async function runMergeMarker(
   const scope = await heldIssue(issueId, userId, 'project.write');
   const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
 
+  // refused before anything is written: a landing not yet come, or before the issue existed
+  const landedAt = op === 'mark' ? await landingOfMark(issueId, body) : null;
   const actor = restActor(c);
   const { action, mark, markDetail, artifacts, said, by, commitReading } = await applyMergeMarker({
     issue,
@@ -98,7 +104,7 @@ async function runMergeMarker(
     ...(body.artifacts ? { artifacts: body.artifacts } : {}),
     ...(body.changedPaths ? { changedPaths: body.changedPaths } : {}),
     ...(body.liveReading ? { liveReading: body.liveReading } : {}),
-    ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
+    ...(landedAt ? { mergedAt: landedAt } : {}),
     ...(body.contracts ? { contracts: body.contracts } : {}),
     ...(body.adoptions ? { adoptions: body.adoptions } : {}),
     actor: {

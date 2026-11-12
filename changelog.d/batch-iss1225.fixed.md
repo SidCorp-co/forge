@@ -1,0 +1,1 @@
+**A merge mark says when its commit landed.** `landedAt` dates the landing, so a release cut after it takes a shipped-in record though the mark came later; a future or pre-issue time is refused by name (ISS-1226).
