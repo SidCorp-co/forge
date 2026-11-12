@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.665] - 2026-11-12
+
+Production monitoring arrives as a Prometheus integration whose alerts become feedback
+
+### Added
+
+- **Production monitoring is a Prometheus integration.** Connect your Prometheus, follow its setup list until Forge reads it ready, then bind a project with role `monitoring` naming its targets, host agent and rules; each firing alert becomes one feedback item (ISS-1225).
+
 ## [0.4.0-dev.664] - 2026-11-12
 
 Late merge marks keep their real landing time for shipped-in
