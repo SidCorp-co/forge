@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.667] - 2026-11-12
+
+A scheduled check's finding goes into the room's report thread
+
+### Fixed
+
+- **A scheduled check's finding no longer posts at a room's top level.** It goes in the room's report thread; where none can be opened it is refused by name and recorded on the check (ISS-1227)
+
 ## [0.4.0-dev.666] - 2026-11-12
 
 Bot reports and room-down notices go into the room's report thread
