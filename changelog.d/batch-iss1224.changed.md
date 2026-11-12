@@ -1,0 +1,1 @@
+**A direct pass names the issues it wakes for.** A master that builds direct is told each admissible issue by key and id, in the order to take it, so an open issue no longer wakes it unnamed (ISS-1224).
