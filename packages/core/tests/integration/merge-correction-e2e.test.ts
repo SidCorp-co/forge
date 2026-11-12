@@ -44,13 +44,9 @@ const codeOf = (body: unknown) => {
 const correct = (issueId: string, body: Record<string, unknown>) =>
   api(world.token, 'POST', `/api/issues/${issueId}/merge/correction`, body);
 
-/** When the issues these tests file were created: before every landing a correction names. */
-const FILED_AT = '2026-09-01T00:00:00.000Z';
-
 /** ISS-2 as adminhub-api holds it: closed, its mark the commit of a merge that misread it. */
 async function misreadClosed(): Promise<string> {
   const id = await issue(2, 'awaiting_release');
-  await rows(sql`UPDATE issues SET created_at = ${FILED_AT}::timestamptz WHERE id = ${id}`);
   await stampObserved(id, WRONG, MISREAD_AT);
   await seedIssueStatus(id, 'closed');
   return id;
@@ -147,21 +143,6 @@ describe('a closed issue’s misread landing is corrected in place (ISS-1027)', 
     },
   );
 
-  it.each(['landedAt', 'mergedAt'])(
-    'refuses a %s before the issue existed, and changes nothing',
-    async (field) => {
-      const two = await misreadClosed();
-      const res = await correct(two, {
-        commit: REAL,
-        reason: REASON,
-        [field]: '2026-08-01T00:00:00.000Z',
-      });
-      expect(res.status, JSON.stringify(res.body)).toBe(422);
-      expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_BEFORE_ISSUE');
-      expect(JSON.stringify(res.body)).toContain(`/${field}`);
-      await unchanged(two);
-    },
-  );
 
   it('refuses both spellings at once, and changes nothing', async () => {
     const two = await misreadClosed();

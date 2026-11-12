@@ -91,8 +91,8 @@ async function runMergeMarker(
   const scope = await heldIssue(issueId, userId, 'project.write');
   const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
 
-  // refused before anything is written: a landing not yet come, or before the issue existed
-  const landedAt = op === 'mark' ? await landingOfMark(issueId, body) : null;
+  // refused before anything is written: a landing not yet come
+  const landedAt = op === 'mark' ? landingOfMark(body) : null;
   const actor = restActor(c);
   const { action, mark, markDetail, artifacts, said, by, commitReading } = await applyMergeMarker({
     issue,
@@ -167,7 +167,7 @@ issueMergeRoutes.post(
     const body = c.req.valid('json');
     const scope = await heldIssue(id, c.get('userId'), 'project.write');
     // refused before anything is written, as the mark's landing is (`landed-at.ts`)
-    const landedAt = await landingOfMark(scope.id, body);
+    const landedAt = landingOfMark(body);
     const actor = restActor(c);
     return c.json(
       await correctClosedMerge({

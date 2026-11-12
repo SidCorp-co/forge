@@ -152,8 +152,6 @@ export const MERGE_REFUSAL_CODES = [
 	"ADOPTION_MARK_HELD",
 	/** A mark's `landedAt` after now: a commit that has not landed is not marked (ISS-1226). */
 	"MERGE_LANDED_AT_FUTURE",
-	/** A mark's `landedAt` before the issue was created (ISS-1226). */
-	"MERGE_LANDED_AT_BEFORE_ISSUE",
 	/** A mark naming its landing as both `landedAt` and `mergedAt`, its older spelling (ISS-1226). */
 	"MERGE_LANDED_AT_TWICE",
 	...COMMIT_LANDING_REFUSAL_CODES,

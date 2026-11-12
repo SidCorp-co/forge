@@ -318,17 +318,17 @@ describe('a mark that says when its commit landed (ISS-1226)', () => {
     },
   );
 
+  // an issue filed for a merge that named none, or a hand fix recorded later, predates its own issue
   it.each(['landedAt', 'mergedAt'])(
-    'refuses by name a %s before the issue existed, and writes nothing',
+    'takes a %s before the issue existed, as an issue filed after its merge names it',
     async (field) => {
       const id = await unmarked(60);
+      const landedAt = minutesAgo(120);
 
-      const res = await mark(id, { [field]: minutesAgo(120) });
+      const res = await mark(id, { [field]: landedAt });
 
-      expect(res.status, JSON.stringify(res.body)).toBe(422);
-      expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_BEFORE_ISSUE');
-      expect(JSON.stringify(res.body)).toContain(`/${field}`);
-      expect(await written(id)).toEqual({ merged_at: null, comments: 0, trail: 0 });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(new Date(String((await written(id))?.merged_at)).toISOString()).toBe(landedAt);
     },
   );
 
