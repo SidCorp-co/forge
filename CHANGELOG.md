@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.654] - 2026-11-12
+
+A room's actions read reaches its newest actions
+
+### Fixed
+
+- **A checkout's `.mcp.json` holding its Forge credential is ignored in a linked worktree too.** The runner adds the ignore line before writing the file, and no longer makes a stray git folder in a folder outside git.
+- **Tooltips read clearly in dark mode.** Their text was near-white on a light box; it now takes the opposite end of the grey scale from its box in both themes.
+- **A room's actions read reaches its newest actions.** Past 500 it served the oldest 500 only; it now serves the newest, takes a `since`/`until` window and says `truncated` when cut, so the daily review reads its own day.
+
 ## [0.4.0-dev.653] - 2026-11-11
 
 Chat agents write a person's choices into briefs in their own words
