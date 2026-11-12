@@ -1,1 +1,0 @@
-**A chat agent answers a question asked while it was replying.** A message handed to it while it posted the answer to the one before now gets its own answer, where it was refused as already answered (ISS-1221).

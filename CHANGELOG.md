@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.660] - 2026-11-12
+
+Chat agent answers a question asked while it is still replying
+
+### Fixed
+
+- **A project can answer only mentions in a group another project answers.** Its binding is no longer refused as the group's second answerer, so one project answers every message and the other speaks when named (ISS-1220).
+- **A chat agent answers a question asked while it was replying.** A message handed to it while it posted the answer to the one before now gets its own answer, where it was refused as already answered (ISS-1221).
+
 ## [0.4.0-dev.659] - 2026-11-12
 
 Two projects can share one chat group, each answering by its own name
