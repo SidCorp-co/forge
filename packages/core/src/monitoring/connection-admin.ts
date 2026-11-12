@@ -1,7 +1,7 @@
 /**
  * A monitoring connection as the person who holds it works it (ISS-1225, owner 2026-11-12): the
  * readiness of its server, read now or as last recorded, the two tokens Forge mints for it, and the
- * setup list its server takes. The door deciding who may (`integration-door/monitoring-routes.ts`)
+ * setup list its server takes. The door deciding who may (`integration-door/connection-routes.ts`)
  * hands each a connection it already loaded.
  */
 

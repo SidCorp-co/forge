@@ -18,13 +18,13 @@ import { insertAction, type RoomRow } from './store.js';
 import { postForTopLevel } from './thread.js';
 
 /** The one line that opens Forge's standing report thread, in the room's language. */
-export const REPORT_THREAD_ANCHORS: Readonly<Record<'vi' | 'en', string>> = {
+const REPORT_THREAD_ANCHORS: Readonly<Record<'vi' | 'en', string>> = {
   vi: 'Báo cáo của trợ lý', // i18n-allow: core's report-thread anchor, in the room's language (ISS-1224)
   en: 'Assistant reports',
 };
 
 /** The tool the anchor's record names. */
-export const REPORT_THREAD_TOOL = 'report_thread';
+const REPORT_THREAD_TOOL = 'report_thread';
 
 /**
  * The room's language for a line core writes: the project's content language where its document
@@ -40,7 +40,7 @@ export async function roomLanguage(room: RoomRow, texts: readonly string[]): Pro
 }
 
 /** The room's report thread as its row holds it now, and who set it; null with none. */
-export async function reportThreadOf(
+async function reportThreadOf(
   roomId: string,
 ): Promise<{ thread: string; by: 'person' | 'forge' } | null> {
   const [row] = await db
@@ -85,8 +85,9 @@ export async function reportThreadFor(
 ): Promise<Outcome<string>> {
   const standing = await reportThreadOf(room.id);
   if (standing) return { ok: true, value: standing.thread };
+  let got: { thread: string; opened: { conversationId: string; anchor: string } | null };
   try {
-    const got = await db.transaction(async (tx) => {
+    got = await db.transaction(async (tx) => {
       await lockXact(tx, 'supportRoom', `report-thread:${room.id}`);
       const [row] = await tx
         .select({ thread: supportRooms.reportThread })
@@ -109,12 +110,14 @@ export async function reportThreadFor(
         .where(eq(supportRooms.id, room.id));
       return { thread, opened: { conversationId: out.value.conversationId, anchor } };
     });
-    if (got.opened) await recordOpened(room, { thread: got.thread, ...got.opened });
-    return { ok: true, value: got.thread };
   } catch (err) {
     logger.error({ err, roomId: room.id }, "support: the room's report thread could not be opened");
     return needsThread(room, err instanceof Error ? err.message : String(err), opts.named);
   }
+  // after the commit the thread stands, so a failure to record the anchor is its own error, never
+  // a thread that could not be opened
+  if (got.opened) await recordOpened(room, { thread: got.thread, ...got.opened });
+  return { ok: true, value: got.thread };
 }
 
 /** Forge's anchor, recorded as core's act in the room it opened the thread in. */

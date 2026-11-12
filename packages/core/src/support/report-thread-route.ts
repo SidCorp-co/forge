@@ -24,7 +24,7 @@ const roomParam = zValidator(
 type Named = { roomId: string; rid: string; reportThread: string; reportThreadBy: 'person' };
 
 /** Name `thread` the room's report thread, where it is one of that room's the room admits. */
-export async function setReportThread(
+async function setReportThread(
   actor: { userId: string; projectId: string },
   roomId: string,
   thread: string,
