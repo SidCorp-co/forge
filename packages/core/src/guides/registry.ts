@@ -31,6 +31,7 @@ import {
 } from './issue-guides.js';
 import { LINK_CHAT_GUIDE } from './link-chat-guide.js';
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
+import { MONITORING_GUIDE } from './monitoring-guide.js';
 import { PRODUCT_ROLE_GUIDE } from './product-role-guide.js';
 import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
@@ -347,6 +348,7 @@ section, which is why this migration is what turns the feature on.`,
   MOCKUPS_GUIDE,
   RELEASE_TAGS_GUIDE,
   SCRIPT_SCHEDULES_GUIDE,
+  MONITORING_GUIDE,
   FAST_DELIVERY_GUIDE,
   CLEANUP_AUDIT_GUIDE,
   SUGGESTIONS_GUIDE,

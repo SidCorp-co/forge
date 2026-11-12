@@ -7,11 +7,6 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
-import {
-  PRODUCTION_WATCH_OPS,
-  PRODUCTION_WATCH_PARAMS,
-  PRODUCTION_WATCH_SCRIPT,
-} from '../../src/guides/script-schedules-guide.js';
 import { closeOrphanedScriptFires } from '../../src/schedules/fires.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import {
@@ -48,16 +43,26 @@ let core: Served;
 let box: SessionBox;
 let projectId = '';
 let owner = '';
-/** What the stand-in metrics read answers; a test plants a breach here. */
-let metrics: Record<string, unknown> = {};
+/** What the stand-in status read answers; a test plants a breach here. */
+let status = '';
 
-const healthy = {
-  posting: { p95Seconds: 4 },
-  api: { p50Ms: 80, p95Ms: 400, p99Ms: 900, errorRate: 0.001 },
-  cdc: { slotActive: true, taskState: 'RUNNING', lagRows: 3 },
-  index: { pending: 10, stuck: 0, failed: 0 },
+const healthy = 'orders flowing';
+const stuck = 'orders stuck';
+
+/** A one-call declaration on the project's forge-ops target, its credential a project secret. */
+const OPS = {
+  program: '/home/dev/.local/bin/forge-ops',
+  secrets: [{ env: 'FORGE_OPS_TOKEN', secret: 'secret://ops/forge-ops-token' }],
+  calls: [{ name: 'status', tool: 'status', args: { target: 'app-production' } }],
 };
-const cdcDown = { ...healthy, cdc: { slotActive: false, taskState: 'FAILED', lagRows: 90_000 } };
+
+/** A check that files one item for a breach seen on two firings in a row, and resets on recovery. */
+const CONFIRM_TWICE = `const out = await ctx.ops.status();
+const signal = 'app:orders';
+const streak = ctx.state.get().streak ?? {};
+const next = /stuck/.test(out.stdout) ? { [signal]: (streak[signal] ?? 0) + 1 } : {};
+if (next[signal] === 2) await ctx.feedback.file({ kind: 'bug', title: 'Orders stuck', body: out.stdout, signalKey: signal });
+ctx.state.set({ streak: next });`;
 
 const opsReads = () => box.acts.filter((a) => a.event === 'ops.read');
 
@@ -73,24 +78,21 @@ beforeAll(async () => {
   await db.execute(
     sql`UPDATE devices SET capabilities = ${SUPPORT_BOX_CAPS}::jsonb WHERE id = ${deviceId}`,
   );
-  // the forge-ops credential the example declares, set as the project secret it names (ISS-707)
+  // the forge-ops credential the declaration names, set as that project secret (ISS-707)
   const cred = await api(owner, 'PUT', `/api/projects/${projectId}/secrets/ops/forge-ops-token`, {
     value: 'fo_watch_token',
   });
   expect(cred.status, JSON.stringify(cred.body)).toBeLessThan(300);
   box = new SessionBox(core.base, await boxToken(o.id, deviceId), deviceId);
-  // the forge-ops CLI on the box, as it would print: the service status, df, and the metrics document
-  box.readAnswer = (d) => {
-    const argv = d.argv as string[];
-    const args = JSON.parse(argv[2] ?? '{}') as { command?: string };
-    const stdout =
-      argv[1] === 'status'
-        ? 'epod-api running'
-        : args.command === 'disk' || args.command?.startsWith('df')
-          ? 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 40 60 40% /'
-          : JSON.stringify(metrics);
-    return { exitCode: 0, stdout, stderr: '', truncated: false, timedOut: false, durationMs: 5 };
-  };
+  // the forge-ops CLI on the box, as it would print the status read
+  box.readAnswer = () => ({
+    exitCode: 0,
+    stdout: status,
+    stderr: '',
+    truncated: false,
+    timedOut: false,
+    durationMs: 5,
+  });
   await box.connect();
 }, 120_000);
 
@@ -120,7 +122,7 @@ describe('a declaration that is not read-only is refused by name when it is save
   it.each([
     [
       'deploy',
-      { name: 'ship', tool: 'deploy', args: { target: 'epod-production' } },
+      { name: 'ship', tool: 'deploy', args: { target: 'app-production' } },
       'forge-ops deploy',
     ],
     [
@@ -128,7 +130,7 @@ describe('a declaration that is not read-only is refused by name when it is save
       {
         name: 'wipe',
         tool: 'exec_command',
-        args: { target: 'epod-production', command: 'rm -rf /var/lib/x' },
+        args: { target: 'app-production', command: 'rm -rf /var/lib/x' },
       },
       '`rm -rf /var/lib/x`, which is not read-only',
     ],
@@ -136,7 +138,7 @@ describe('a declaration that is not read-only is refused by name when it is save
     const res = await create({
       name: `refused ${call.name}`,
       script: 'return 1;',
-      ops: { ...PRODUCTION_WATCH_OPS, calls: [call] },
+      ops: { ...OPS, calls: [call] },
     });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     const refusals = (
@@ -156,7 +158,7 @@ describe('a declaration that is not read-only is refused by name when it is save
       name: 'prompt with ops',
       cron: '0 9 * * *',
       prompt: 'say hi',
-      ops: PRODUCTION_WATCH_OPS,
+      ops: OPS,
     });
     expect(res.status).toBe(400);
     expect(String(res.body.detail)).toContain('ops must be omitted when kind is "prompt"');
@@ -169,7 +171,7 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
       name: 'undeclared',
       script: `try { await ctx.ops.deploy(); } catch (e) { ctx.log(e.code, e.message); }
                const s = await ctx.ops.status(); ctx.log(s.stdout);`,
-      ops: { ...PRODUCTION_WATCH_OPS, calls: [PRODUCTION_WATCH_OPS.calls[0]] },
+      ops: OPS,
     });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     const before = opsReads().length;
@@ -190,20 +192,20 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
       opsReads()
         .slice(before)
         .map((a) => a.data.argv),
-    ).toEqual([[PRODUCTION_WATCH_OPS.program, 'status', '{"target":"epod-production"}']]);
+    ).toEqual([[OPS.program, 'status', '{"target":"app-production"}']]);
   });
 
   it('fails a firing whose stored declaration stopped reading, before the script runs', async () => {
     const made = await create({
       name: 'stopped reading',
       script: `ctx.log('the script ran'); await ctx.ops.status();`,
-      ops: { ...PRODUCTION_WATCH_OPS, calls: [PRODUCTION_WATCH_OPS.calls[0]] },
+      ops: OPS,
     });
     const id = String(made.body.id);
     await db.execute(sql`
       UPDATE schedules SET ops = ${JSON.stringify({
-        ...PRODUCTION_WATCH_OPS,
-        calls: [{ name: 'status', tool: 'deploy', args: { target: 'epod-production' } }],
+        ...OPS,
+        calls: [{ name: 'status', tool: 'deploy', args: { target: 'app-production' } }],
       })}::jsonb WHERE id = ${id}`);
     const before = opsReads().length;
     const ran = await api(owner, 'POST', `/api/schedules/${id}/run`);
@@ -219,11 +221,11 @@ describe('a script calls only what its schedule declares (BC-1)', () => {
   });
 });
 
-describe('the example production watch, every 15 minutes with no agent session (BC-2..BC-5)', () => {
+describe('a check confirmed twice, every 15 minutes with no agent session (BC-2..BC-5)', () => {
   let id = '';
   let agentId = '';
-  const fire = async (planted: Record<string, unknown>) => {
-    metrics = planted;
+  const fire = async (planted: string) => {
+    status = planted;
     const ran = await api(owner, 'POST', `/api/schedules/${id}/run`);
     expect(ran.status, JSON.stringify(ran.body)).toBe(202);
     return fireOf(id);
@@ -236,10 +238,9 @@ describe('the example production watch, every 15 minutes with no agent session (
 
   beforeAll(async () => {
     const made = await create({
-      name: 'epod watch',
-      script: PRODUCTION_WATCH_SCRIPT,
-      params: PRODUCTION_WATCH_PARAMS,
-      ops: PRODUCTION_WATCH_OPS,
+      name: 'orders check',
+      script: CONFIRM_TWICE,
+      ops: OPS,
     });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     id = String(made.body.id);
@@ -251,33 +252,29 @@ describe('the example production watch, every 15 minutes with no agent session (
     expect(f.session_id).toBeNull();
     expect(
       (f.ops_calls as { name: string; outcome: string }[]).map((c) => [c.name, c.outcome]),
-    ).toEqual([
-      ['status', 'answered'],
-      ['disk', 'answered'],
-      ['metrics', 'answered'],
-    ]);
+    ).toEqual([['status', 'answered']]);
     expect(f.filings).toEqual([]);
     expect(f.state_after).toEqual({ streak: {} });
     expect(await items()).toEqual([]);
   });
 
   it('files nothing for a single-run blip', async () => {
-    expect((await fire(cdcDown)).state_after).toEqual({ streak: { 'epod:cdc': 1 } });
+    expect((await fire(stuck)).state_after).toEqual({ streak: { 'app:orders': 1 } });
     expect((await fire(healthy)).state_after).toEqual({ streak: {} });
     expect(await items()).toEqual([]);
   });
 
   it('files one item for a breach seen twice, as the project agent, seen on the schedule', async () => {
-    expect((await fire(cdcDown)).filings).toEqual([]);
-    const second = await fire(cdcDown);
-    expect(second.filings).toEqual([{ signalKey: 'epod:cdc', key: 'FB-1', created: true }]);
+    expect((await fire(stuck)).filings).toEqual([]);
+    const second = await fire(stuck);
+    expect(second.filings).toEqual([{ signalKey: 'app:orders', key: 'FB-1', created: true }]);
     const [item, ...more] = await items();
     expect(more).toEqual([]);
     expect(item).toMatchObject({
       fb_seq: 1,
-      signal_key: 'epod:cdc',
+      signal_key: 'app:orders',
       reporter_agency: 'agent',
-      where_seen: 'schedule epod watch',
+      where_seen: 'schedule orders check',
       kind: 'bug',
       occurrences: 1,
     });
@@ -287,7 +284,7 @@ describe('the example production watch, every 15 minutes with no agent session (
   });
 
   it('files nothing more while the breach lasts, nor once it recovers', async () => {
-    expect((await fire(cdcDown)).filings).toEqual([]);
+    expect((await fire(stuck)).filings).toEqual([]);
     const recovered = await fire(healthy);
     expect(recovered.filings).toEqual([]);
     expect(recovered.state_after).toEqual({ streak: {} });
@@ -295,9 +292,9 @@ describe('the example production watch, every 15 minutes with no agent session (
   });
 
   it('joins the open item when the same breach is confirmed again, never filing a twin (BC-2)', async () => {
-    await fire(cdcDown);
-    const again = await fire(cdcDown);
-    expect(again.filings).toEqual([{ signalKey: 'epod:cdc', key: 'FB-1', created: false }]);
+    await fire(stuck);
+    const again = await fire(stuck);
+    expect(again.filings).toEqual([{ signalKey: 'app:orders', key: 'FB-1', created: false }]);
     const all = await items();
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ occurrences: 2, reported_by: agentId });
@@ -313,8 +310,8 @@ describe('the example production watch, every 15 minutes with no agent session (
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const shown = res.body.fire as Body;
     expect(shown.opsCalls).toEqual(f.ops_calls);
-    expect(shown.filings).toEqual([{ signalKey: 'epod:cdc', key: 'FB-1', created: false }]);
-    expect(shown.stateAfter).toEqual({ streak: { 'epod:cdc': 2 } });
+    expect(shown.filings).toEqual([{ signalKey: 'app:orders', key: 'FB-1', created: false }]);
+    expect(shown.stateAfter).toEqual({ streak: { 'app:orders': 2 } });
     expect(shown.sessionId).toBeNull();
   });
 });
@@ -356,13 +353,13 @@ describe('a script fire a core restart orphaned is closed by name, never left ru
 describe("ISS-707: a script's ops call takes its credential from a project secret, never the box", () => {
   const CRED = { env: 'FORGE_OPS_TOKEN', secret: 'secret://ops/script-ops-token' };
   const TOKEN = 'fo_sched_9d2c41';
-  const status = PRODUCTION_WATCH_OPS.calls[0];
+  const call = OPS.calls[0];
 
   it('refuses at save a declaration that names no credential secret', async () => {
     const res = await create({
       name: 'no credential',
       script: 'return 1;',
-      ops: { program: PRODUCTION_WATCH_OPS.program, calls: [status] },
+      ops: { program: OPS.program, calls: [call] },
     });
     // [SCRIPT_OPS_BOX_CREDENTIAL] before the fix: saved, and run on the box's own credential
     expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(400);
@@ -374,12 +371,12 @@ describe("ISS-707: a script's ops call takes its credential from a project secre
     const made = await create({
       name: 'legacy watch',
       script: `const s = await ctx.ops.status(); ctx.log(s.stdout);`,
-      ops: { ...PRODUCTION_WATCH_OPS, calls: [status] },
+      ops: { ...OPS, calls: [call] },
     });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     const id = String(made.body.id);
     await db.execute(sql`
-      UPDATE schedules SET ops = ${JSON.stringify({ program: PRODUCTION_WATCH_OPS.program, calls: [status] })}::jsonb
+      UPDATE schedules SET ops = ${JSON.stringify({ program: OPS.program, calls: [call] })}::jsonb
        WHERE id = ${id}`);
     const before = opsReads().length;
     expect((await api(owner, 'POST', `/api/schedules/${id}/run`)).status).toBe(202);
@@ -401,7 +398,7 @@ describe("ISS-707: a script's ops call takes its credential from a project secre
     const made = await create({
       name: 'credential',
       script: `try { const s = await ctx.ops.status(); ctx.log(s.stdout); } catch (e) { ctx.log(e.code, e.message); }`,
-      ops: { ...PRODUCTION_WATCH_OPS, calls: [status], secrets: [CRED] },
+      ops: { ...OPS, calls: [call], secrets: [CRED] },
     });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     const id = String(made.body.id);

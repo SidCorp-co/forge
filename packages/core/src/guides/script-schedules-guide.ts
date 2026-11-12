@@ -6,150 +6,26 @@ import {
   SCRIPT_FILING_SHAPE,
   SCRIPT_OPS_CALL_CAP,
   SCRIPT_STATE_CAP_BYTES,
-  type ScriptOpsDeclaration,
 } from '@forge/contracts/script-sandbox';
 import type { CoreGuide } from './types.js';
 
-/**
- * The example watch a project master copies (REQ-87 BC-5), shipped as code so the tests run exactly
- * what the guide teaches: the declaration of its calls on the project's forge-ops target, and the
- * script that files one feedback item for a breach seen on two firings in a row.
- */
-export const PRODUCTION_WATCH_OPS: ScriptOpsDeclaration = {
-  program: '/home/dev/.local/bin/forge-ops',
-  secrets: [{ env: 'FORGE_OPS_TOKEN', secret: 'secret://ops/forge-ops-token' }],
-  calls: [
-    { name: 'status', tool: 'status', args: { target: 'epod-production' } },
-    {
-      name: 'disk',
-      tool: FORGE_OPS_EXEC_TOOL,
-      args: { target: 'epod-production', service: 'go-backend', command: 'disk' },
-      readOnlyBecause: 'the dashboard vetted disk to print df -P / and nothing else',
-    },
-    {
-      name: 'metrics',
-      tool: FORGE_OPS_EXEC_TOOL,
-      args: { target: 'epod-production', service: 'go-backend', command: 'metrics' },
-      readOnlyBecause: 'the dashboard vetted metrics to print the service metrics JSON',
-    },
-  ],
-};
-
-/** The thresholds the example reads from the schedule's params, so a master tunes them without editing code. */
-export const PRODUCTION_WATCH_PARAMS = {
-  signalPrefix: 'epod',
-  diskPercent: 85,
-  postingSecondsP95: 30,
-  apiP50Ms: 300,
-  apiP95Ms: 1500,
-  apiP99Ms: 4000,
-  apiErrorRate: 0.02,
-  cdcLagRows: 1000,
-  indexPending: 5000,
-  indexStuck: 0,
-  indexFailed: 0,
-};
-
-export const PRODUCTION_WATCH_SCRIPT = `const p = ctx.params;
-const seen = {}; // signal key -> what was seen, or null where it reads healthy
-const blind = new Set(); // the signals that say the watch could not read, never that production broke
-const unreached = []; // the calls no box could be reached for: one cause, the box connection
-const key = (name) => p.signalPrefix + ':' + name;
-const blindKey = (name) => {
-  const k = key('watch-blind-' + name);
-  blind.add(k);
-  return k;
-};
-const call = async (name) => {
-  try {
-    const out = await ctx.ops[name]();
-    seen[blindKey(name)] = out.exitCode === 0 ? null : name + ' exited ' + out.exitCode + ': ' + out.stderr.slice(0, 500);
-    return out.exitCode === 0 ? out.stdout : null;
-  } catch (e) {
-    if (e.code === 'SCRIPT_OPS_BOX_UNREACHABLE') {
-      // the box's connection, not this check: read once below for every call it took down
-      seen[blindKey(name)] = null;
-      unreached.push(name + ': ' + e.message);
-    } else {
-      seen[blindKey(name)] = name + ' did not run: ' + e.message;
-    }
-    return null;
-  }
-};
-
-const status = await call('status');
-if (status !== null) seen[key('service-down')] = /down|unhealthy|crash|error/i.test(status) ? status.slice(0, 1000) : null;
-
-const disk = await call('disk');
-if (disk !== null) {
-  const used = Number((disk.trim().split('\\n').pop() || '').split(/\\s+/)[4]?.replace('%', ''));
-  seen[key('disk')] = used > p.diskPercent ? 'disk ' + used + '% used, over ' + p.diskPercent + '%' : null;
-}
-
-const raw = await call('metrics');
-if (raw !== null) {
-  let m = null;
-  try { m = JSON.parse(raw); } catch { seen[blindKey('metrics')] = 'the metrics are not JSON'; }
-  if (m) {
-    const over = (v, max, what) => (v > max ? what + ' ' + v + ', over ' + max : null);
-    seen[key('posting-speed')] = over(m.posting?.p95Seconds, p.postingSecondsP95, 'posting p95 seconds');
-    seen[key('api-latency')] =
-      [over(m.api?.p50Ms, p.apiP50Ms, 'API p50 ms'), over(m.api?.p95Ms, p.apiP95Ms, 'API p95 ms'), over(m.api?.p99Ms, p.apiP99Ms, 'API p99 ms')]
-        .filter(Boolean).join('; ') || null;
-    seen[key('api-errors')] = over(m.api?.errorRate, p.apiErrorRate, 'API error rate');
-    seen[key('cdc')] =
-      !m.cdc ? 'the metrics carry no cdc block'
-      : m.cdc.slotActive === false ? 'the Debezium slot is not active'
-      : m.cdc?.taskState !== 'RUNNING' ? 'the Debezium task is ' + m.cdc?.taskState
-      : over(m.cdc?.lagRows, p.cdcLagRows, 'Postgres to Elasticsearch gap rows');
-    seen[key('index-queue')] =
-      [over(m.index?.pending, p.indexPending, 'pending'), over(m.index?.stuck, p.indexStuck, 'stuck'), over(m.index?.failed, p.indexFailed, 'failed')]
-        .filter(Boolean).join('; ') || null;
-  }
-}
-
-seen[blindKey('box')] = unreached.length === 0 ? null
-  : 'The watch could not reach the box for ' + unreached.length + ' of its calls; production was not read, not found broken.\\n' + unreached.join('\\n');
-
-// a breach files once, on its second firing in a row; a blip files nothing; a recovery resets it.
-// A blind watch files as blind, below a breach: it says nothing about production.
-const streak = ctx.state.get().streak ?? {};
-const next = {};
-const filed = [];
-for (const [signal, detail] of Object.entries(seen)) {
-  if (detail === null) continue;
-  next[signal] = (streak[signal] ?? 0) + 1;
-  if (next[signal] === 2) {
-    const isBlind = blind.has(signal);
-    const item = await ctx.feedback.file({
-      kind: 'bug',
-      severity: isBlind ? 'medium' : 'high',
-      title: (isBlind ? 'Production watch blind twice: ' : 'Production breach confirmed twice: ') + signal,
-      body: detail + '\\n\\nSeen on two watch runs in a row.',
-      signalKey: signal,
-    });
-    filed.push(item.key);
-  }
-}
-ctx.state.set({ streak: next });
-ctx.log('breaches', JSON.stringify(next), 'filed', filed.join(', ') || 'none');
-return { breaches: next, filed };`;
-
 const readTools = FORGE_OPS_READ_TOOLS.map((t) => `\`${t}\``).join(', ');
 
-/** REQ-87: a script schedule watching its project's production with no agent session. */
+/** REQ-87: a script schedule reading its project's business state with no agent session. */
 export const SCRIPT_SCHEDULES_GUIDE: CoreGuide = {
   slug: 'script-schedules',
   audience: 'agent',
-  title: 'Script schedules: watch production and file a confirmed breach',
+  title: 'Script schedules: business reads that file a confirmed breach',
   summary:
-    "A script schedule reads its project's production through read-only calls it declares on the forge-ops target, keeps a small state between firings and files deduplicated feedback on a breach seen twice, with no agent session. The rules, and an example watch a master copies.",
-  version: 3,
-  body: `## Script schedules: watch production and file a confirmed breach
+    "A script schedule runs a check no standard tool does (a business read) through read-only calls it declares on the forge-ops target, keeps a small state between firings and files deduplicated feedback on a breach seen twice, with no agent session. Production monitoring is the monitoring guide's.",
+  version: 4,
+  body: `## Script schedules: business reads that file a confirmed breach
 
 A \`script\` schedule runs a JavaScript script in Forge's sandbox on its cron, with no agent session:
-a 15-minute watch is 96 firings a day and spends no tokens. Use it for a production watch; a daily
-summary stays a once-a-day \`prompt\` or \`status_report\` schedule.
+a 15-minute check is 96 firings a day and spends no tokens. Use it for a check no standard tool does,
+a business read (orders stuck past their window, an import that did not land). Production
+monitoring (up, latency, errors, disk) is never a script: it is Forge's Prometheus capability,
+\`GET /api/guides/monitoring.md\`. A daily summary stays a \`prompt\` or \`status_report\` schedule.
 
 ### What the script holds
 - \`ctx.ops.<name>()\`: a call the schedule declares, run on the project's box through the forge-ops CLI.
@@ -195,44 +71,10 @@ summary stays a once-a-day \`prompt\` or \`status_report\` schedule.
    outcome, every filing (the item filed or joined, or why it was refused) and the state it left:
    \`GET /api/projects/:id/automation/fires/:fireId\`, the newest under \`/automation/standing\`.
 
-### The example production watch
-It watches service status, disk, posting speed, API p50/p95/p99 and error rate, CDC health and the
-index queue, and files once per breach seen twice, at \`high\`. A call that cannot run is \`watch-blind\`,
-filed at \`medium\` and never titled a breach: a blind watch did not read production. Calls the box
-could not be reached for share one cause, so they file one \`watch-blind-box\` item naming each call,
-never one per call; a call that ran and failed on its own files as its own \`watch-blind-<call>\`.
-Copy it, set your target and the metrics path, and tune the thresholds in \`params\`.
-
-Declaration (\`ops\`):
-
-\`\`\`json
-${JSON.stringify(PRODUCTION_WATCH_OPS, null, 2)}
-\`\`\`
-
-Params (\`params\`):
-
-\`\`\`json
-${JSON.stringify(PRODUCTION_WATCH_PARAMS, null, 2)}
-\`\`\`
-
-The example's \`disk\` and \`metrics\` are named commands the target's ops dashboard has to vet first;
-until it does, forge-ops refuses them and the watch files \`watch-blind\` for each.
-The metrics document the \`metrics\` call reads: \`{ posting: { p95Seconds }, api: { p50Ms, p95Ms, p99Ms,
-errorRate }, cdc: { slotActive, taskState, lagRows }, index: { pending, stuck, failed } }\`.
-
-Script (\`script\`), with \`kind: "script"\` and \`cron: "*/15 * * * *"\`:
-
-\`\`\`js
-${PRODUCTION_WATCH_SCRIPT}
-\`\`\`
-
-### Turning it on
-1. \`POST /api/schedules { projectId, name, kind: "script", cron: "*/15 * * * *", script, params, ops }\`,
-   as the project's master: the save refuses any call that is not read-only, by name.
+### Turning one on
+1. \`POST /api/schedules { projectId, name, kind: "script", cron, script, params, ops }\`, as the
+   project's master: the save refuses any call that is not read-only, by name.
 2. \`POST /api/schedules/:id/run\` once and read its fire: every call \`answered\`, no filing.
 3. Plant a breach (a threshold in \`params\` below the live value), run twice: the second firing files
-   one item, a third joins nothing new. Put the threshold back.
-
-A saved schedule keeps the script it was saved with: a change to this example reaches a watch only
-when its script is saved again from here (\`PUT /api/schedules/:id { script }\`).`,
+   one item, a third joins nothing new. Put the threshold back.`,
 };

@@ -30,6 +30,7 @@ const GUIDE_SLUGS = [
   'cleanup-audit',
   'link-chat-account',
   'script-schedules',
+  'monitoring',
   'product-role',
 ] as const;
 

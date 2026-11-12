@@ -1,12 +1,6 @@
 import type { ScriptOpsDeclaration } from '@forge/contracts/script-sandbox';
 import { scriptOpsSchema } from '@forge/contracts/script-sandbox';
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  PRODUCTION_WATCH_OPS,
-  PRODUCTION_WATCH_PARAMS,
-  PRODUCTION_WATCH_SCRIPT,
-} from '../guides/script-schedules-guide.js';
-import { runScript } from '../sandbox/run.js';
 import { classifyCommand } from '../support/command-class.js';
 import { provideSchedulesPorts } from './ports.js';
 import { openFiler } from './script-feedback.js';
@@ -15,13 +9,10 @@ import { openOpsCaller, opsArgv, opsRefusals } from './script-ops.js';
 /**
  * @direct-test-of packages/core/src/schedules/script-ops.ts
  * @direct-test-of packages/core/src/schedules/script-feedback.ts
- * @direct-test-of packages/core/src/guides/script-schedules-guide.ts
  */
 
 // REQ-87 BC-1..3 without a database: a declared call is read-only on the forge-ops target or refused
-// by name; an undeclared call never reaches the box; a filing that does not fit is refused by name;
-// and the example watch the guide ships files one item for a breach seen on two firings in a row,
-// nothing for a blip, and stops once the signal recovers.
+// by name; an undeclared call never reaches the box; and a filing that does not fit is refused by name.
 
 const filed: { key: string; signalKey: string; created: boolean }[] = [];
 const openKeys = new Map<string, string>();
@@ -146,14 +137,6 @@ describe('a declared call is read-only on the forge-ops target, or refused by na
       ['SCRIPT_OPS_OVER_TARGET_LIMIT', '/ops/calls/0/args'],
     ]);
     expect(at(3000)[0]?.detail).toContain("past forge-ops' limit of 2000 lines");
-  });
-
-  it('ships an example watch whose every call passes the judge in the named-command form', () => {
-    expect(opsRefusals(PRODUCTION_WATCH_OPS)).toEqual([]);
-    for (const call of PRODUCTION_WATCH_OPS.calls.filter((c) => c.tool === 'exec_command')) {
-      expect(call.args?.service).toEqual(expect.any(String));
-      expect(String(call.args?.command)).not.toMatch(/\s/);
-    }
   });
 
   // ISS-707: a call runs on the credential the declaration names as a project secret, never the box's
@@ -285,6 +268,26 @@ describe('the ops host of one firing', () => {
     );
     expect(ops.calls()).toEqual([{ name: 'status', outcome: 'failed', code: 'SCRIPT_OPS_FAILED' }]);
   });
+
+  // ISS-1190: a dropped box is one cause every call of the firing shares, thrown under its own code
+  it('throws a call no box could be reached for under its own code, recorded failed', async () => {
+    const why =
+      'the box disconnected before it could be asked (ops.read) and did not reconnect within 75s';
+    const ops = openOpsCaller({
+      projectId: 'p',
+      decl: decl([{ name: 'status', tool: 'status' }]),
+      run: async () => ({ ok: false, why, transport: 'disconnected' }),
+    });
+    expect(await ops.call('status', null)).toEqual({
+      ok: false,
+      name: 'ScriptOpsFailed',
+      code: 'SCRIPT_OPS_BOX_UNREACHABLE',
+      message: `SCRIPT_OPS_BOX_UNREACHABLE: ctx.ops.status did not run: ${why}`,
+    });
+    expect(ops.calls()).toEqual([
+      { name: 'status', outcome: 'failed', code: 'SCRIPT_OPS_BOX_UNREACHABLE' },
+    ]);
+  });
 });
 
 describe('the feedback host of one firing', () => {
@@ -306,95 +309,5 @@ describe('the feedback host of one firing', () => {
       created: false,
       refused: 'SCRIPT_FEEDBACK_REFUSED',
     });
-  });
-});
-
-describe('the example production watch (REQ-87 BC-3, BC-5)', () => {
-  const healthy = {
-    posting: { p95Seconds: 4 },
-    api: { p50Ms: 80, p95Ms: 400, p99Ms: 900, errorRate: 0.001 },
-    cdc: { slotActive: true, taskState: 'RUNNING', lagRows: 3 },
-    index: { pending: 10, stuck: 0, failed: 0 },
-  };
-  const cdcDown = { ...healthy, cdc: { slotActive: false, taskState: 'FAILED', lagRows: 90_000 } };
-  let state: Record<string, unknown> = {};
-
-  const fire = async (metrics: unknown) => {
-    const ops = openOpsCaller({
-      projectId: 'p',
-      decl: PRODUCTION_WATCH_OPS,
-      run: async (argv) => {
-        const args = JSON.parse(argv[2] ?? '{}') as { command?: string };
-        const stdout =
-          argv[1] === 'status'
-            ? 'epod-api running'
-            : args.command?.startsWith('df')
-              ? 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100 40 60 40% /'
-              : JSON.stringify(metrics);
-        return {
-          ok: true as const,
-          value: {
-            name: 'x',
-            exitCode: 0,
-            stdout,
-            stderr: '',
-            truncated: false,
-            timedOut: false,
-            durationMs: 3,
-          },
-        };
-      },
-    });
-    const filer = openFiler({
-      projectId: 'p',
-      schedule: { id: 's', name: 'epod watch' },
-      fireId: 'f',
-    });
-    const r = await runScript({
-      script: PRODUCTION_WATCH_SCRIPT,
-      projectId: 'p',
-      params: PRODUCTION_WATCH_PARAMS,
-      limits: { wallMs: 5_000, memoryMb: 32, logChars: 16_000 },
-      read: async () => ({ ok: false, name: 'x', message: 'no read' }),
-      ops: { names: ops.names, call: ops.call },
-      file: filer.file,
-      state,
-    });
-    expect(r.status, JSON.stringify(r.error)).toBe('success');
-    if (r.state) state = r.state;
-    return {
-      value: r.value as { breaches: Record<string, number>; filed: string[] },
-      calls: ops.calls(),
-    };
-  };
-
-  it('reads healthy, files nothing, and calls only what it declares', async () => {
-    const before = filed.length;
-    const r = await fire(healthy);
-    expect(r.value).toEqual({ breaches: {}, filed: [] });
-    expect(r.calls.map((c) => [c.name, c.outcome])).toEqual([
-      ['status', 'answered'],
-      ['disk', 'answered'],
-      ['metrics', 'answered'],
-    ]);
-    expect(filed.length).toBe(before);
-  });
-
-  it('files nothing for a single-run blip', async () => {
-    const before = filed.length;
-    expect((await fire(cdcDown)).value.filed).toEqual([]);
-    expect((await fire(healthy)).value.breaches).toEqual({});
-    expect(filed.length).toBe(before);
-  });
-
-  it('files exactly one item for a breach seen twice, and none while it lasts or once it recovers', async () => {
-    const before = filed.length;
-    expect((await fire(cdcDown)).value.filed).toEqual([]);
-    const second = await fire(cdcDown);
-    expect(second.value.filed).toEqual(['FB-1']);
-    expect(second.value.breaches).toEqual({ 'epod:cdc': 2 });
-    expect((await fire(cdcDown)).value.filed).toEqual([]);
-    expect((await fire(healthy)).value).toEqual({ breaches: {}, filed: [] });
-    expect(filed.slice(before)).toEqual([{ key: 'FB-1', signalKey: 'epod:cdc', created: true }]);
   });
 });
