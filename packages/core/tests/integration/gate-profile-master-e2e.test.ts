@@ -13,6 +13,7 @@
  * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/requirements/requests-waiting.ts
  * @direct-test-of packages/core/src/issues/create-service.ts
+ * @direct-test-of packages/core/src/masters/admissible-line.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -317,5 +318,49 @@ describe('a draft a feedback triage routed an item to', () => {
     const nudge = String((await verdict()).work.nudge);
     expect(nudge).toContain(`waits to be taken on (${carrierKey})`);
     expect(nudge.split(carrierKey)).toHaveLength(2);
+  });
+});
+
+// ISS-1224 (extra fix, orchestrator 2026-11-12): ISS-1224 was created through the REST API at `open`
+// by the orchestrator's account, admissible from 07:09Z, and every direct pass until 12:07Z woke its
+// master without naming it: the admissible issues moved only the digest that decides whether to wake,
+// never the words a direct pass is typed with, so the master answered "nothing new" for five hours.
+describe('an open issue created through the API is named on the direct pass that wakes for it', () => {
+  let key = '';
+  let id = '';
+
+  beforeAll(async () => {
+    // the fixtures above wrote issues by number, past the counter a filed issue takes its from
+    await db.execute(sql`
+      INSERT INTO project_iss_counters (project_id, next_seq) VALUES (${projectId}, 200)
+      ON CONFLICT (project_id) DO UPDATE SET next_seq = 200`);
+    await profile(projectId, 'standard');
+    await db.execute(sql`
+      UPDATE project_config_documents
+         SET document = jsonb_set(document, '{delivery}', ${JSON.stringify({ fast: true })}::jsonb)
+       WHERE project_id = ${projectId}`);
+    const made = ok(
+      await say('owner', 'POST', `/api/projects/${projectId}/issues`, {
+        title: 'Bot reports post top-level in work rooms',
+        description: 'Filed at open through the REST API, as the orchestrator filed ISS-1224.',
+        status: 'open',
+        priority: 'high',
+        category: 'bug',
+      }),
+      201,
+    );
+    key = `ISS-${String(made.issSeq)}`;
+    id = String(made.id);
+    // born where ISS-1224 was: at `open`, admitted, not held at draft for an issue-ready record
+    expect(made.status, JSON.stringify(made)).toBe('open');
+  });
+
+  it('counts it admissible, and the direct nudge names it by key and id in the order to take it', async () => {
+    const answer = await verdict();
+    expect(answer.work.admissible).toBeGreaterThanOrEqual(1);
+    const nudge = String(answer.work.nudge);
+    expect(nudge).toContain("This project's master works direct");
+    expect(nudge).toContain(`${key} ${id} (high)`);
+    expect(nudge).toMatch(/admissible issues? (is|are) open for you to build/);
   });
 });
