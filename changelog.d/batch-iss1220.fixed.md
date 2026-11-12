@@ -1,1 +1,0 @@
-**Two projects can share one chat group.** Each keeps its own record of a thread, so neither is refused for the other's, and a project answering only mentions answers when named, never a bare mention of the shared bot (ISS-1220).

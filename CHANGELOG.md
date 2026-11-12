@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.659] - 2026-11-12
+
+Two projects can share one chat group, each answering by its own name
+
+### Fixed
+
+- **Two projects can share one chat group.** Each keeps its own record of a thread, so neither is refused for the other's, and a project answering only mentions answers when named, never a bare mention of the shared bot (ISS-1220).
+
 ## [0.4.0-dev.658] - 2026-11-12
 
 PMs link designs to requirements and trace criteria over MCP
