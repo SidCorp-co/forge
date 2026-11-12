@@ -174,3 +174,33 @@ describe('a /mcp write from a token without the write scope', () => {
     expect((await call(tool('forge_feedback', { action: 'submit' }))).status).toBe(200);
   });
 });
+
+// debt 47d6e4cf: a value starting `forge_pat_` was told it is no Forge token, plus runner advice
+describe('a bearer that starts like a personal access token but is not a whole one', () => {
+  it.each(['forge_pat_xxxx', 'forge_pat_<your token>'])(
+    'says %s is cut, padded or a placeholder, and gives no runner advice',
+    async (token) => {
+      const res = await app().request('/mcp', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(tool('forge_feedback', { action: 'submit' })),
+      });
+      expect(res.status).toBe(401);
+      const { message } = (await res.json()) as { message: string };
+      expect(message).toContain('not a whole personal access token');
+      expect(message).not.toContain('runner');
+    },
+  );
+
+  it('still tells a value of another shape that it is no Forge token', async () => {
+    const res = await app().request('/mcp', {
+      method: 'POST',
+      headers: { authorization: 'Bearer job:abc', 'content-type': 'application/json' },
+      body: JSON.stringify(tool('forge_feedback', { action: 'submit' })),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { message: string }).message).toContain(
+      'this is not a Forge personal access token',
+    );
+  });
+});

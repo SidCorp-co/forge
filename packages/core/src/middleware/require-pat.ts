@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { writeMcpAudit } from '../credentials/mcp-audit.js';
 import { resourceMetadataUrl } from '../credentials/mcp-oauth-metadata.js';
 import { touchPatUsage, verifyPat } from '../credentials/pat.js';
-import { isPatLike } from '../credentials/pat-format.js';
+import { isPatLike, isPatValid } from '../credentials/pat-format.js';
 import type { StatedPatGrant } from '../credentials/pat-permissions.js';
 import { patPrincipalOf } from '../credentials/pat-principal.js';
 import { tokenChanged } from '../credentials/ports.js';
@@ -190,6 +190,15 @@ const NOT_A_PAT_REFUSAL =
   'forge-runner. A runner box seeing this needs a newer forge-runner binary; the device ' +
   'token still authenticates /ws and the device REST routes.';
 
+/**
+ * A value that starts like a personal access token but is not a whole one: telling its holder it
+ * is no Forge token contradicts what they see, and the runner advice does not apply to it.
+ */
+const CUT_PAT_REFUSAL =
+  'this starts with `forge_pat_` but is not a whole personal access token, which reads ' +
+  '`forge_pat_<dev|stg|prd>_` followed by 64 hex characters: it was cut, padded, or is a ' +
+  'placeholder. Paste the whole token created under Settings → API Tokens after `Bearer `.';
+
 /** A token wrapped in angle brackets is a snippet's placeholder nobody replaced (ISS-1175). */
 const PLACEHOLDER_TOKEN = /^<[^<>]*>$/;
 
@@ -208,11 +217,17 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
 
     if (PLACEHOLDER_TOKEN.test(token))
       throw unauth(c, placeholderRefusal(token), { invalidToken: true });
-    if (!isPatLike(token)) throw unauth(c, NOT_A_PAT_REFUSAL, { invalidToken: true });
+    if (!isPatLike(token)) {
+      const refusal = token.startsWith('forge_pat_') ? CUT_PAT_REFUSAL : NOT_A_PAT_REFUSAL;
+      throw unauth(c, refusal, { invalidToken: true });
+    }
 
     const requestClass = c.get('patRequestClass') ?? 'write';
     const principal = await authenticatePat(c, token, requestClass);
-    if (!principal) throw unauth(c, 'invalid personal access token', { invalidToken: true });
+    if (!principal) {
+      const refusal = isPatValid(token) ? 'invalid personal access token' : CUT_PAT_REFUSAL;
+      throw unauth(c, refusal, { invalidToken: true });
+    }
     if (requestClass === 'write' && !principal.scopes.includes('write')) {
       const calls = c.get('patRequestWrites') ?? [];
       // an OAuth client's way out is its own sign-in, not a personal token (the ISS-538 judge, 2026-11-02)
