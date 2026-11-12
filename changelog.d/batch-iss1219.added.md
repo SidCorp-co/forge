@@ -1,1 +1,0 @@
-**A PM links a design to a requirement through MCP.** forge_requirements now links and unlinks an existing design and traces a criterion onto its steps, refused by name as the REST routes refuse (ISS-1219).

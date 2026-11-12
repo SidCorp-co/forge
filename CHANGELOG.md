@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.658] - 2026-11-12
+
+PMs link designs to requirements and trace criteria over MCP
+
+### Added
+
+- **A PM links a design to a requirement through MCP.** forge_requirements now links and unlinks an existing design and traces a criterion onto its steps, refused by name as the REST routes refuse (ISS-1219).
+
 ## [0.4.0-dev.657] - 2026-11-12
 
 Skipped live checks stop asking for another judging run
