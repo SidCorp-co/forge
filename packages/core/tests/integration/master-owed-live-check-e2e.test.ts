@@ -223,4 +223,29 @@ describe('ISS-1200: a live verdict owed on the latest shipped release is master 
     expect(answer.work.nudge).toContain('a person owes an open question on it');
     expect(answer.work.nudge).not.toContain('--role qa');
   });
+
+  // ISS-1218: ISS-1216's criteria were skipped for want of a route, and the nudge kept asking for a
+  // judging run: a question, its one way out, is refused on the closed issue it counts.
+  it('owes no master work once every criterion still open is skipped at the release, and names what is missing', async () => {
+    await seedLandedWorld();
+    await externalProduction();
+    const b = await box();
+    const shipped = await landedIssue(1, F4, ['The owner sees no archived project waiting']);
+    await recordRelease([shipped], '0.22.0');
+    await ok(
+      api(world.token, 'POST', `/api/issues/${shipped}/verdicts`, {
+        criterion: 1,
+        verdict: 'skipped',
+        reason: 'no credential reads the owner attention page',
+        identity: { kind: 'release', version: '0.22.0' },
+      }),
+    );
+
+    const answer = await verdictOf(b);
+    expect(answer.work).toMatchObject({ admissible: 0, owed: 0 });
+    expect(answer.verdict).toMatchObject({ act: 'keep', drain: true });
+    expect(answer.work.nudge).toContain(`ISS-1 ${shipped}`);
+    expect(answer.work.nudge).toContain('no credential reads the owner attention page');
+    expect(answer.work.nudge).not.toContain('--role qa');
+  });
 });

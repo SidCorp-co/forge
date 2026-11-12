@@ -3,9 +3,10 @@
 // and the codes still owed, so no page could draw passed out of the total. These read the counts
 // off the same coverage the requirement page reads, and watch one verdict move them.
 
+import type { CriterionStanding } from '@forge/contracts/issue-vocabulary';
 import type { BcVerdict } from '@forge/contracts/requirements';
 import { describe, expect, it } from 'vitest';
-import { type CompletionFacts, completionOf } from './release-view.js';
+import { type CompletionFacts, completionOf, unreachedOf } from './release-view.js';
 
 const IN_RELEASE = new Set(['i1']);
 
@@ -55,5 +56,26 @@ describe('a release requirement is counted out of its own criteria', () => {
       IN_RELEASE,
     );
     expect(view.coverage.criteria - view.coverage.passing).toBe(view.remaining.criteria.length);
+  });
+});
+
+// ISS-1218: an issue whose every criterion still open was skipped at the build names what is missing
+describe('what a release could not reach of an issue', () => {
+  const c = (standing: CriterionStanding, reason: string | null = null, proven = false) => ({
+    standing,
+    reason,
+    proven,
+  });
+
+  it('is each skip’s reason where every open criterion stands skipped', () => {
+    expect(
+      unreachedOf([c('pass', null, true), c('skipped', 'no credential'), c('skipped', null)]),
+    ).toEqual(['no credential', 'no reason recorded']);
+  });
+
+  it('is null where any open criterion has no verdict, or none is open', () => {
+    expect(unreachedOf([c('skipped', 'no credential'), c('unjudged')])).toBeNull();
+    expect(unreachedOf([c('pass', null, true)])).toBeNull();
+    expect(unreachedOf([c('fail'), c('skipped', 'x')])).toBeNull();
   });
 });

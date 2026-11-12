@@ -15,6 +15,7 @@ const issue = (over: Partial<ReleaseContentIssue>): ReleaseContentIssue => ({
   status: 'closed',
   proof: 'open',
   changeRequest: null,
+  unreached: null,
   ...over,
 });
 
@@ -52,6 +53,37 @@ describe('the live verdicts a shipped release owes', () => {
       '1 issue the shipped release 1.48.0 carried owes its live verdict (ISS-1 i-1)',
     );
     expect(line).toContain('`--role qa`');
+  });
+});
+
+// ISS-1218: ISS-1216's three criteria were recorded skipped at dev.655's build for want of a route
+// (the owner's own page), and the nudge asked for a judging run on every pass after: its one way out,
+// a person's question, is refused on a closed issue.
+describe('a closed issue skipped for want of a route waits on what is missing (ISS-1218)', () => {
+  const missing = ['a credential that can read the owner’s /me/attention'];
+  const shipped = release('shipped', [
+    issue({ unreached: missing }),
+    issue({ id: 'i-2', key: 'ISS-2' }),
+  ]);
+
+  it('owes no judging run on it, and says what each skip names missing', () => {
+    const reach = liveChecksReach(liveChecksOf(shipped), { name: 'dev', testing: 'qa' }, new Set());
+    expect(reach.liveChecks.map((c) => c.key)).toEqual(['ISS-2']);
+    expect(reach.liveChecksWaiting).toEqual([
+      expect.objectContaining({ key: 'ISS-1', waits: { kind: 'skipped', missing } }),
+    ]);
+    const line = liveChecksLine(reach.liveChecks, reach.liveChecksWaiting);
+    expect(line).toContain('ISS-1 i-1 on 1.48.0: every criterion still open is recorded skipped');
+    expect(line).toContain(missing[0]);
+    expect(line).toContain(
+      '1 issue the shipped release 1.48.0 carried owes its live verdict (ISS-2 i-2)',
+    );
+  });
+
+  it('still owes an issue with any criterion carrying no verdict at the build', () => {
+    expect(liveChecksOf(release('shipped', [issue({ unreached: null })]))).toEqual([
+      { version: '1.48.0', issueId: 'i-1', key: 'ISS-1' },
+    ]);
   });
 });
 
