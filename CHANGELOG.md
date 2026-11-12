@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.664] - 2026-11-12
+
+Late merge marks keep their real landing time for shipped-in
+
+### Fixed
+
+- **A merge mark says when its commit landed.** `landedAt` on a mark or a closed issue's correction dates the landing, so shipped-in takes the release cut after it; a future or pre-issue time is refused (ISS-1226).
+
 ## [0.4.0-dev.663] - 2026-11-12
 
 Owner-accepted proof stops the owed live-verdict ask on releases

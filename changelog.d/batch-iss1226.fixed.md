@@ -1,1 +1,0 @@
-**A merge mark says when its commit landed.** `landedAt` on a mark or a closed issue's correction dates the landing, so shipped-in takes the release cut after it; a future or pre-issue time is refused (ISS-1226).
