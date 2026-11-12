@@ -80,6 +80,19 @@ describe('a monitoring connection on the server the owner runs', () => {
     expect((after.body.items as unknown[]).length).toBe((before.body.items as unknown[]).length);
   });
 
+  // the PATCH checks keys alone, so a mimir ruler with no rulerUrl was stored and the connection read as none
+  it('refuses a change to a mimir ruler that names no rulerUrl, nothing stored', async () => {
+    const res = await api(w.ownerJwt, 'PATCH', `/api/integration-connections/${connectionId}`, {
+      config: { ruler: 'mimir' },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(codeOf(res.body)).toBe('MONITORING_RULER_URL_MISSING');
+    const [row] = await rows<{ ruler: string }>(
+      sql`SELECT config->>'ruler' AS ruler FROM integration_connections WHERE id = ${connectionId}`,
+    );
+    expect(row?.ruler).toBe('file');
+  });
+
   it('is read on save and on demand, as the server answers today', async () => {
     const today = {
       unreadable: null,

@@ -117,12 +117,28 @@ async function verifyMonitoringTarget(
   return refused ? [refused] : [];
 }
 
-/** A connection holding no credentials is refused: Forge calls no monitoring server anonymously. */
+/**
+ * A connection holding no credentials is refused: Forge calls no monitoring server anonymously. A
+ * `mimir` ruler naming no `rulerUrl` is refused too, since its config would then read as no
+ * connection at all (`monitoringConnectionOf`).
+ */
 function verifyMonitoringConnection(args: {
   config: Record<string, unknown>;
   secrets: Record<string, unknown>;
 }): BindingTargetRefusal[] {
-  const user = (args.config as Partial<MonitoringConnectionConfig>).prometheusUser;
+  const config = args.config as Partial<MonitoringConnectionConfig>;
+  // a PATCH is checked key by key, so the whole merged config is held to the create's rule here
+  if (config.ruler === 'mimir' && config.rulerUrl === undefined) {
+    return [
+      {
+        code: 'MONITORING_RULER_URL_MISSING',
+        path: '/config/rulerUrl',
+        detail:
+          'ruler mimir pushes each project\'s rule group to a ruler API: name it in rulerUrl, or keep the ruler this connection had',
+      },
+    ];
+  }
+  const user = config.prometheusUser;
   const password = (args.secrets as Partial<Secrets>).prometheusPassword;
   if (user && password) return [];
   return [

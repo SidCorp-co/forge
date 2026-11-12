@@ -288,6 +288,8 @@ export const MONITORING_CONFIG_REFUSAL_CODES = [
 	 * sends no project's data to an open endpoint.
 	 */
 	"MONITORING_SERVER_UNAUTHENTICATED",
+	/** A connection whose `ruler` is `mimir` names no `rulerUrl`, so it could push no rule group. */
+	"MONITORING_RULER_URL_MISSING",
 	/** The binding scrapes or probes, and the server's config holds no Forge http_sd job for it. */
 	"MONITORING_DISCOVERY_NOT_WIRED",
 	/** The binding asks for the host agent, and the server runs no remote-write receiver. */

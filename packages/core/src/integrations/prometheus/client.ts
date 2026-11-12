@@ -106,7 +106,8 @@ export async function loadedRuleGroups(
     headers: headersOf(conn),
   });
   if (!ok(r.status)) return { ok: false, why: said('Prometheus', r) };
-  const body = JSON.parse(r.text) as { data?: { groups?: { name?: string }[] } };
+  const body = jsonOf<{ data?: { groups?: { name?: string }[] } }>(r.text);
+  if (!body) return { ok: false, why: 'Prometheus /api/v1/rules answered no JSON' };
   return { ok: true, names: (body.data?.groups ?? []).map((g) => g.name ?? '') };
 }
 
@@ -116,7 +117,17 @@ export async function heldAlerts(conn: MonitoringConnection): Promise<PromAlert[
     headers: headersOf(conn),
   });
   if (!ok(r.status)) return null;
-  return (JSON.parse(r.text) as { data?: { alerts?: PromAlert[] } }).data?.alerts ?? [];
+  const body = jsonOf<{ data?: { alerts?: PromAlert[] } }>(r.text);
+  return body ? (body.data?.alerts ?? []) : null;
+}
+
+/** A body read as JSON, or null where an ok status carried none (a proxy's page, say). */
+function jsonOf<T>(text: string): T | null {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
 }
 
 /** Forward a host agent's remote write as it was sent, to the server's remote-write receiver. */
