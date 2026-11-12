@@ -9,7 +9,9 @@
 // recorded before `BUILDER_PASS_CUTOVER`, an amnesty with its end condition, and save a project whose
 // gate profile turns gate `builder_verdict` off (REQ-76 BC-7, yolo), whose judge reads `builder`
 // (`verifiedJudgeOf`) and counts the builder's own pass. A short is met
-// short of its wording, not verified, so it never does. Where the project declares an independent
+// short of its wording, not verified, so it never does, nor a pass accepted on an owner's decision
+// where its reader carries the decision (a release's, REQ-36 BC-22): it stands accepted and owes no
+// live verdict. Where the project declares an independent
 // judge, a pass that names no author is not that judge's either, since nothing shows it came from
 // anyone else. A fail counts whoever records it: it is evidence the criterion does not hold, and
 // verification is only owed for a claim that it does. Pure: each reader hands it the verdicts it read.
@@ -42,7 +44,16 @@ export interface JudgedVerdict {
 	authored: boolean;
 	/** When it was recorded; null where there is no verdict. Read against `BUILDER_PASS_CUTOVER`. */
 	recordedAt: string | Date | null;
+	/**
+	 * The owner's decision a commit pass names as accepting its proof (REQ-36 BC-22), where the reader
+	 * carries it: such a pass is accepted, and never proven. Absent or null on every other verdict.
+	 */
+	acceptedOn?: string | null;
 }
+
+/** Why a pass accepted on an owner's decision is not proven (REQ-36 BC-22). */
+export const acceptedWhy = (decision: string): string =>
+	`accepted on the owner's decision ${decision}: proven by the test run at the commit it names, which owes no live verdict and never counts as proven on the environment`;
 
 /**
  * AMNESTY (ISS-683, REQ-74 BC-2): when the rule that a builder's own pass never counts took effect,
@@ -86,6 +97,7 @@ export function unverifiedWhy(
 		return "judged short: met short of its wording, and only a pass counts as verified";
 	}
 	if (v.verdict !== "pass") return null;
+	if (v.acceptedOn) return acceptedWhy(v.acceptedOn);
 	if (barred(v, judge)) {
 		return "passed by the run that built it, and a builder's own pass never counts where gate builder_verdict is enforced (gates.overrides.builder_verdict relaxes it)";
 	}

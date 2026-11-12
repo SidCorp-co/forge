@@ -155,7 +155,8 @@ export interface ReleasePerson {
 /**
  * What a release, or one issue it carries, proves of its criteria, by the verified rule (core
  * contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): `unproven` is judged and not proven — a short,
- * or a pass the rule does not count — never "not judged yet".
+ * a pass the rule does not count, or one an owner's decision accepts (REQ-36 BC-22) — never "not judged yet",
+ * so a shipped release owes no live verdict on it.
  */
 export const RELEASE_PROOFS = [
 	"proven",
@@ -188,7 +189,7 @@ export interface ReleaseCriteriaTotals {
 	failing: number;
 	/** Not judged on the build: no verdict, skipped, or unresolved. */
 	open: number;
-	/** Judged and not proven: a short, or a pass the verified rule does not count. */
+	/** Judged and not proven: a short, a pass the verified rule does not count, or one accepted on an owner's decision (REQ-36 BC-22). */
 	unproven: number;
 	total: number;
 }
@@ -722,6 +723,8 @@ export interface ReleaseCriterionView {
 	proven: boolean;
 	/** Where its pass or short does not count as proven, why; null otherwise. */
 	unverified: string | null;
+	/** Where it stands `accepted`, the owner's decision its commit pass names (REQ-36 BC-22); absent otherwise. */
+	acceptedOn?: string;
 }
 
 export interface ReleaseIssueCriteria {

@@ -56,11 +56,14 @@ export interface ClaimReading {
 
 /**
  * Whether the page may claim a criterion, off its reading: a pass on the build the record counts
- * proven is claimed; a short, a fail or a skip there is a known issue as itself; an uncounted pass
- * there, or no verdict on it, is `not_judged`, naming its newest verdict elsewhere.
+ * proven is claimed; a short, a fail or a skip there is a known issue as itself, and so is a pass an
+ * owner's decision accepts on another proof (`accepted`, REQ-36 BC-22); an uncounted pass there, or
+ * no verdict on it, is `not_judged`, naming its newest verdict elsewhere.
  */
 function claimOf({ view, onBuild, newest }: CriterionReading): ReleaseClaim {
   if (onBuild?.verdict === 'pass' && view.proven) return { claimed: true, at: onBuild.at };
+  if (view.standing === 'accepted')
+    return { claimed: false, standing: 'accepted', elsewhere: null };
   if (onBuild && onBuild.verdict !== 'pass')
     return { claimed: false, standing: onBuild.verdict, elsewhere: null };
   const elsewhere =
@@ -107,7 +110,11 @@ export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssu
             bc: criterion.bc,
             statement: criterion.statement,
             standing: claim.standing,
-            reason: claim.standing === 'not_judged' ? unverified : (onBuild?.reason ?? null),
+            // not judged there, or accepted on a decision: why the record does not count it, naming the decision
+            reason:
+              claim.standing === 'not_judged' || claim.standing === 'accepted'
+                ? unverified
+                : (onBuild?.reason ?? null),
             elsewhere: claim.elsewhere,
           },
         ],

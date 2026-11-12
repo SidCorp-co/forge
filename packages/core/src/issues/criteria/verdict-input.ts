@@ -84,6 +84,11 @@ export interface VerdictDraft {
    * not show, or why none could be recorded. Absent, an observable verdict cites one in `evidence`.
    */
   readonly withoutClip?: string | null | undefined;
+  /**
+   * The owner's `decision` record on this issue that accepts this commit pass's proof (REQ-36 BC-22):
+   * a release reads it accepted, never proven (`verdict-acceptance.ts`). Only the REST door sends one.
+   */
+  readonly acceptedOn?: string | null | undefined;
 }
 
 export interface VerdictRefusal {

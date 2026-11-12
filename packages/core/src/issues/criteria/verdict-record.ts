@@ -35,6 +35,7 @@ import {
   readSourceDrafts,
 } from './storefront-draft.js';
 import { unobservedRuntimeFault } from './unobserved-runtime.js';
+import { acceptanceShapeFault, acceptedOnOf } from './verdict-acceptance.js';
 import { keepFailAsCorrection } from './verdict-correction.js';
 import { countingOfOne } from './verdict-counting.js';
 import {
@@ -66,6 +67,7 @@ const IDENTITY_FIELDS: ReadonlyArray<readonly [keyof VerdictColumns, string]> = 
   ['contractRef', 'contract'],
   ['contractVersion', 'contract-version'],
   ['releaseVersion', 'release'],
+  ['acceptedOn', 'accepted-on'],
   ['storefrontEnvironment', 'environment'],
   ['corroboration', 'corroboration'],
 ];
@@ -313,7 +315,7 @@ export async function recordVerdict(
   countedUnderCutover: boolean;
 }> {
   const { issue, draft, author } = args;
-  const fault = verdictDraftFault(draft);
+  const fault = verdictDraftFault(draft) ?? acceptanceShapeFault(draft);
   if (fault) throw verdictRefused(fault);
   const [criterion] = await tx
     .select({ id: issueCriteria.id })
@@ -357,7 +359,10 @@ export async function recordVerdict(
   if (route !== null && route.judge !== judge) {
     throw verdictRefused(misrouted(draft.criterion, route.judge));
   }
-  const identity = await identityColumns(tx, issue, draft, args.readDraft ?? readSourceDrafts);
+  const identity = {
+    ...(await identityColumns(tx, issue, draft, args.readDraft ?? readSourceDrafts)),
+    ...(await acceptedOnOf(tx, issue.id, draft)),
+  };
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);
   if (!recording.ok) throw verdictRefused(recording.refusal);

@@ -146,12 +146,14 @@ export type ReleaseMediaRef = z.infer<typeof ReleaseMediaRefSchema>;
 
 // ---- the truth rule (BC-13, BC-8) ----
 
-/** Why a criterion the release carries is not claimed: its verdict on this build, or none on it. */
+/** Why a criterion the release carries is not claimed: its verdict on this build, or none on it, or
+ *  an owner's decision accepting another proof of it (`accepted`, REQ-36 BC-22). */
 export const RELEASE_KNOWN_ISSUE_STANDINGS = [
 	"fail",
 	"short",
 	"skipped",
 	"not_judged",
+	"accepted",
 ] as const;
 export type ReleaseKnownIssueStanding =
 	(typeof RELEASE_KNOWN_ISSUE_STANDINGS)[number];
@@ -164,6 +166,8 @@ export interface ReleaseVerdictReading {
 	runtimeRef: string | null;
 	/** The release a `release` verdict was judged on (ISS-900); absent or null on every other identity. */
 	releaseVersion?: string | null;
+	/** The owner's decision a commit pass names as accepting its proof (REQ-36 BC-22); absent or null otherwise. */
+	acceptedOn?: string | null;
 	at: string;
 }
 
@@ -201,17 +205,20 @@ export function judgedOnReleaseBuild(
 /**
  * The verdicts a release reads a criterion by: those judged on it (`judgedOnReleaseBuild`), or, on a
  * release with no build (a draft, or a release recorded by version alone), every one but a verdict on
- * another release.
+ * another release. A commit pass naming an owner's decision that accepts its proof counts on every
+ * release carrying its issue, whatever build it names and wherever the project is judged (REQ-36
+ * BC-22): it stands accepted there, and the verified rule never proves it (`verified-rule.ts:acceptedWhy`).
  */
 export function countedOnRelease(
 	v: Pick<
 		ReleaseVerdictReading,
-		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion"
+		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion" | "acceptedOn"
 	>,
 	build: string | null,
 	judgedOn: string | null,
 	versions: ReadonlySet<string> = NO_VERSIONS,
 ): boolean {
+	if (v.acceptedOn && v.identityKind === "commit") return true;
 	if (build === null && v.identityKind !== "release") return true;
 	return judgedOnReleaseBuild(v, build, judgedOn, versions);
 }
@@ -230,7 +237,7 @@ export function countedOnRelease(
 export function countedForClass(
 	v: Pick<
 		ReleaseVerdictReading,
-		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion" | "at"
+		"identityKind" | "commitSha" | "runtimeRef" | "releaseVersion" | "acceptedOn" | "at"
 	>,
 	criterionClass: CriterionClass | null,
 	build: string | null,

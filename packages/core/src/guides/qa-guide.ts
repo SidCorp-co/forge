@@ -143,6 +143,10 @@ the issue and for its requirement while that release, or a later one at no lower
 newest the record holds. Refused by name: \`VERDICT_RELEASE_SHAPE\` (no release version),
 \`VERDICT_RELEASE_UNUSED\` (production reads its commit, or there is none) and
 \`VERDICT_RELEASE_UNKNOWN\` (no release recorded as shipped under it).
+A criterion the owner's \`decision\` record accepts as proven by a test run at a named commit is
+recorded as that commit pass with \`acceptedOn: <the decision's event id>\`: the release reads it
+accepted, never proven, and no judging run is owed on it. Refused by name, nothing written:
+\`VERDICT_ACCEPTANCE_NOT_DECISION\`, \`VERDICT_ACCEPTANCE_NOT_PASS\`, \`VERDICT_ACCEPTANCE_NOT_COMMIT\`.
 
 ### A design issue
 A criterion judged against a design is written with

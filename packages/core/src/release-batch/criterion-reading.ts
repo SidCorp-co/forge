@@ -23,6 +23,8 @@ import type { CarriedVerdict, IssueFact, ReleaseProof } from './release-facts.js
  * judged on a release counts on release `version` and on every release its record says carries
  * that one (`versionsCountedOn`, ISS-900). A code-property criterion, which only the review judges,
  * also counts its commit verdicts since the last reopen, at any build (`countedForClass`, ISS-914).
+ * A commit pass naming an owner's decision that accepts its proof counts at any build and reads
+ * `accepted` on that decision, never proven (REQ-36 BC-22), unless its landing earned it (FB-515).
  */
 export function criteriaAt(
   issue: IssueFact,
@@ -92,6 +94,7 @@ export function criterionReadingsAt(
     if (build === null && onBuild === null)
       return { ...reading, view: { ...c, proven, unverified } };
     const at = build ?? '';
+    const acceptedOn = !proven && onBuild?.acceptedOn ? onBuild.acceptedOn : null;
     return {
       ...reading,
       view: {
@@ -100,7 +103,9 @@ export function criterionReadingsAt(
           ? 'unjudged'
           : onBuild.identityKind === 'commit_unresolved'
             ? 'unresolved'
-            : onBuild.verdict,
+            : acceptedOn
+              ? 'accepted'
+              : onBuild.verdict,
         identity: onBuild
           ? onBuild.identityKind === 'release'
             ? `release ${onBuild.releaseVersion}`
@@ -115,6 +120,7 @@ export function criterionReadingsAt(
         judgedBy: onBuild?.agency ?? null,
         proven,
         unverified,
+        ...(acceptedOn ? { acceptedOn } : {}),
       },
     };
   });

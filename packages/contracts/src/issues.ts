@@ -68,6 +68,12 @@ export const VERDICT_REFUSAL_CODES = [
 	"VERDICT_SECRET",
 	"VERDICT_RUN_UNKNOWN",
 	"VERDICT_SESSION_NOT_ADMITTED",
+	/** An `acceptedOn` naming no standing decision record on this issue (REQ-36 BC-22, ISS-1223). */
+	"VERDICT_ACCEPTANCE_NOT_DECISION",
+	/** An `acceptedOn` on a verdict that is not a pass: only a pass is accepted on a decision. */
+	"VERDICT_ACCEPTANCE_NOT_PASS",
+	/** An `acceptedOn` on a verdict whose identity is not a commit: the proof accepted is a test run at one. */
+	"VERDICT_ACCEPTANCE_NOT_COMMIT",
 	...VERDICT_JUDGE_REFUSAL_CODES,
 	...STOREFRONT_DRAFT_REFUSAL_CODES,
 	...PROBE_REFUSAL_CODES,

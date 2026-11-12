@@ -8,7 +8,8 @@
 // profile and no person owes an open question on the issue. Otherwise it waits on a person, said in
 // the nudge as that wait, and keeps or replaces no pane. So is an issue whose every criterion still
 // open was recorded `skipped` at the release build, for want of a route (ISS-1218): the skips name
-// what is missing, and a judging run would only find the same.
+// what is missing, and a judging run would only find the same. A criterion an owner's decision
+// accepts on a test run at a named commit is not open (ISS-1223, REQ-36 BC-22): it owes no live verdict.
 
 import type { ReleaseSummary } from '@forge/contracts/releases';
 import { guideCall } from '../guides/index.js';

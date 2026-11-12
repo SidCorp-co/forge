@@ -138,5 +138,10 @@ export const verdictPostSchema = z
     withoutClip: z.string().trim().min(1).max(REASON_TEXT_MAX).optional(),
     /** The run recording it, on a box whose runs share one credential: the box's run id, or core's session or run id (ISS-475). */
     run: z.string().trim().min(1).max(200).optional(),
+    /**
+     * The owner's `decision` record on this issue accepting this commit pass's proof (REQ-36 BC-22):
+     * the release reads it accepted, never proven, and owes no live verdict on it.
+     */
+    acceptedOn: z.uuid().optional(),
   })
   .strict();

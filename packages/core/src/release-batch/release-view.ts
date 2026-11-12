@@ -451,17 +451,20 @@ export function turnOf(f: TurnFacts): Turn {
 /** One criterion as the release counts it (`release-facts.ts:criteriaAt`). */
 export type CountedCriterion = Pick<ReleaseCriterionView, 'standing' | 'proven'>;
 
+/** Standings judged and not proven: a short, a pass the verified rule does not count, or one an
+ *  owner's decision accepts on another proof (REQ-36 BC-22), which owes no live verdict. */
+const judgedUnproven = (c: CountedCriterion) =>
+  !c.proven && (c.standing === 'pass' || c.standing === 'short' || c.standing === 'accepted');
+
 /**
  * A release's, or one issue's, criteria counted by the verified rule (contracts `verified-rule.ts:verifiedOf`):
- * proven only where `criteriaAt` read it proven; a fail failing; a pass or short it did not count
- * judged and unproven; anything else (no verdict, skipped, unresolved) open.
+ * proven only where `criteriaAt` read it proven; a fail failing; a pass or short it did not count, or
+ * one accepted on a decision, judged and unproven; anything else (no verdict, skipped, unresolved) open.
  */
 export function totalsOf(criteria: readonly CountedCriterion[]): ReleaseCriteriaTotals {
   const proven = criteria.filter((c) => c.proven).length;
   const failing = criteria.filter((c) => !c.proven && c.standing === 'fail').length;
-  const unproven = criteria.filter(
-    (c) => !c.proven && (c.standing === 'pass' || c.standing === 'short'),
-  ).length;
+  const unproven = criteria.filter(judgedUnproven).length;
   return {
     proven,
     failing,
@@ -487,11 +490,12 @@ export function sumTotals(list: readonly ReleaseCriteriaTotals[]): ReleaseCriter
 /**
  * ISS-1218: where every criterion still open stands `skipped` (no route to judge it), what each skip
  * names missing; null where any open one has no verdict at the build, a fail stands, or none is open.
+ * One accepted on a decision is not open (ISS-1223), so the skips beside it still say the wait.
  */
 export function unreachedOf(
   criteria: readonly (CountedCriterion & Pick<ReleaseCriterionView, 'reason'>)[],
 ): string[] | null {
-  const open = criteria.filter((c) => !c.proven && c.standing !== 'pass' && c.standing !== 'short');
+  const open = criteria.filter((c) => !c.proven && !judgedUnproven(c));
   if (open.length === 0 || open.some((c) => c.standing !== 'skipped')) return null;
   return open.map((c) => c.reason ?? 'no reason recorded');
 }

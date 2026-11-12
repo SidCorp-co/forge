@@ -359,6 +359,8 @@ says what was out of reach. A token, key or connection string in the reason or e
 recorded, a commit verdict names the landing, a later commit holding it, or an earlier commit it
 descends from: any other is refused \`VERDICT_COMMIT_OFF_LANDING\` naming the landing, and one whose
 place neither Forge's landings nor the project's ancestry reader can say \`VERDICT_COMMIT_UNPLACED\`.
+A commit pass the owner's \`decision\` record on the issue accepts as proven by that test run carries
+\`acceptedOn: <its event id>\`: the release reads it accepted, never proven, and owes no live verdict.
 
 A verdict on a criterion the design classes \`observable\` sends the probe it ran, \`probe\` on the same
 body: \`{ kind: 'request', request: { method, path, headers?, body?, as, service? }, expect: { status, bodyIncludes? } }\`

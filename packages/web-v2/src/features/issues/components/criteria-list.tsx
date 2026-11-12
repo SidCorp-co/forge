@@ -48,7 +48,7 @@ function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: 
 
 type Filter = "all" | "fail" | "unjudged" | "met" | "skipped";
 
-const MARK: Record<CriterionStanding, ReactNode> = { pass: "✓", short: <HollowCheck />, fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–" };
+const MARK: Record<CriterionStanding, ReactNode> = { pass: "✓", short: <HollowCheck />, fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–", accepted: "≡" };
 const MARK_TONE: Record<CriterionStanding, string> = {
   pass: "text-ok-11",
   short: "text-warn-11",
@@ -56,6 +56,7 @@ const MARK_TONE: Record<CriterionStanding, string> = {
   skipped: "text-subtle",
   unresolved: "text-subtle",
   unjudged: "text-subtle",
+  accepted: "text-subtle",
 };
 
 /** The pill a standing is counted under: a pass and a short are both met (a short is never proven, so the
@@ -67,6 +68,7 @@ const FILTER_OF: Record<CriterionStanding, Exclude<Filter, "all">> = {
   skipped: "skipped",
   unresolved: "unjudged",
   unjudged: "unjudged",
+  accepted: "met",
 };
 
 /** One criterion a reader sees, from a criterion row or from a line of the acceptance-criteria text. */

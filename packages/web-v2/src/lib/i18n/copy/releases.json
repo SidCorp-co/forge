@@ -122,6 +122,7 @@
     "releases.page.stalls.cause.unclear_item": "Unclear item {n}",
     "releases.page.stalls.cause.defect": "Defect {n}",
     "releases.page.stalls.cause.waiting_on_person": "Waiting on person {n}",
+    "releases.page.known.accepted": "Accepted",
     "releases.page.known.elsewhere": "Judged {verdict} on build {build} instead",
     "releases.page.known.fail": "Failing",
     "releases.page.known.none": "None known",

@@ -176,7 +176,9 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 
 /** What one issue criterion reads as on every screen: its latest verdict, with an abbreviated
  *  backfilled commit read as unresolved. `short` is drawn as itself, never as a pass, and proves
- *  nothing: no count of proof counts it (`verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca). */
+ *  nothing: no count of proof counts it (`verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca).
+ *  `accepted` is read on a release only: a commit pass naming an owner's decision that accepts that
+ *  proof (REQ-36 BC-22), which owes no live verdict and is never proven either. */
 export const CRITERION_STANDINGS = [
 	"pass",
 	"short",
@@ -184,6 +186,7 @@ export const CRITERION_STANDINGS = [
 	"skipped",
 	"unresolved",
 	"unjudged",
+	"accepted",
 ] as const;
 export type CriterionStanding = (typeof CRITERION_STANDINGS)[number];
 
@@ -194,6 +197,7 @@ export const CRITERION_STANDING_LABELS: Record<CriterionStanding, string> = {
 	skipped: "Skipped",
 	unresolved: "Unresolved",
 	unjudged: "Not judged",
+	accepted: "Accepted",
 };
 
 export const CRITERION_STANDING_TONES: Record<
@@ -206,6 +210,7 @@ export const CRITERION_STANDING_TONES: Record<
 	skipped: "neutral",
 	unresolved: "you",
 	unjudged: "neutral",
+	accepted: "neutral",
 };
 
 export const CRITERION_STANDING_GLYPHS: Record<CriterionStanding, string> = {
@@ -215,6 +220,7 @@ export const CRITERION_STANDING_GLYPHS: Record<CriterionStanding, string> = {
 	skipped: "–",
 	unresolved: "!",
 	unjudged: "○",
+	accepted: "≡",
 };
 
 export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
@@ -225,4 +231,6 @@ export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
 	unresolved:
 		"unresolved: a backfilled verdict named an abbreviated commit that never resolved",
 	unjudged: "unjudged: no verdict yet",
+	accepted:
+		"accepted: an owner's decision accepts a named proof; never counts as proven",
 };

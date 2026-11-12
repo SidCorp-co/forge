@@ -29,6 +29,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { activityLog } from './schema-activity.js';
 import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { comments } from './schema-comments.js';
@@ -177,6 +178,9 @@ export const criterionVerdicts = pgTable(
     runSessionId: uuid('run_session_id').references(() => agentSessions.id, {
       onDelete: 'set null',
     }),
+    /** The owner's `decision` record on this issue a commit pass names as accepting its proof (0651,
+     *  REQ-36 BC-22): a release reads it accepted, never proven. Null on every other verdict. */
+    acceptedOn: uuid('accepted_on').references(() => activityLog.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -217,6 +221,11 @@ export const criterionVerdicts = pgTable(
       'criterion_verdicts_storefront_chk',
       sql`(${t.identityKind} = 'storefront_draft' AND forge_storefront_drafts_well_formed(${t.storefrontDrafts}) AND coalesce(${t.storefrontEnvironment}, '') ~ '^[a-z][a-z0-9-]{0,62}$' AND coalesce(${t.corroboration}, '') IN ('corroborated', 'uncorroborated') AND (${t.corroboration} = 'corroborated' OR coalesce(${t.corroborationNote}, '') ~ '[^[:space:]]'))
         OR (${t.identityKind} IS DISTINCT FROM 'storefront_draft' AND ${t.storefrontDrafts} IS NULL AND ${t.storefrontEnvironment} IS NULL AND ${t.corroboration} IS NULL AND ${t.corroborationNote} IS NULL)`,
+    ),
+    // only a commit pass is accepted on a decision (`verdict-acceptance.ts`), so no other row names one
+    acceptedChk: check(
+      'criterion_verdicts_accepted_chk',
+      sql`${t.acceptedOn} IS NULL OR (${t.verdict} = 'pass' AND ${t.identityKind} = 'commit')`,
     ),
     coversChk: check(
       'criterion_verdicts_covers_chk',
