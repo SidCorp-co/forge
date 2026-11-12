@@ -9,7 +9,8 @@
  * where its own rows contradict it: a time not yet come, or one before the issue existed.
  *
  * `mergedAt` is the spelling the plugin's `mark_merged` already sends for the same time, so it is held
- * to the same refusals; one mark names at most one of the two.
+ * to the same refusals; one call names at most one of the two. A closed issue's correction
+ * (`merge-correction.ts`) names its landing the same way and is held to the same rule.
  */
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
@@ -39,7 +40,7 @@ export async function landingOfMark(
   if (body.landedAt && body.mergedAt) {
     throw refuse(
       'MERGE_LANDED_AT_TWICE',
-      'a mark names when its commit landed once: send `landedAt` alone (`mergedAt` is the older spelling of the same time)',
+      'when the commit landed is named once: send `landedAt` alone (`mergedAt` is the older spelling of the same time)',
       '/mergedAt',
     );
   }

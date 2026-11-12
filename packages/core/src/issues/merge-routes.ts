@@ -151,6 +151,8 @@ const mergeCorrectionBodySchema = z
     commit: z.string().optional(),
     reason: z.string().max(REASON_PARAGRAPH_MAX).optional(),
     misread: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
+    /** When the commit named landed (ISS-1226), held to the mark's refusals; `mergedAt` is its older spelling. */
+    landedAt: z.iso.datetime().optional(),
     mergedAt: z.iso.datetime().optional(),
   })
   .strict();
@@ -164,6 +166,8 @@ issueMergeRoutes.post(
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     const scope = await heldIssue(id, c.get('userId'), 'project.write');
+    // refused before anything is written, as the mark's landing is (`landed-at.ts`)
+    const landedAt = await landingOfMark(scope.id, body);
     const actor = restActor(c);
     return c.json(
       await correctClosedMerge({
@@ -172,7 +176,7 @@ issueMergeRoutes.post(
           commit: body.commit,
           reason: body.reason,
           misread: body.misread,
-          mergedAt: body.mergedAt ? new Date(body.mergedAt) : undefined,
+          mergedAt: landedAt ?? undefined,
         },
         actor: { type: actor.type, id: actor.id, agency: actor.agency },
       }),

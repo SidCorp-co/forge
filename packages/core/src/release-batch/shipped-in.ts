@@ -326,7 +326,7 @@ export function refuseCutBeforeLanding(
   if (release.cutAt >= landedAt) return;
   throw refuseRelease(
     'RELEASE_SHIPPED_IN_BEFORE_LANDING',
-    `Release ${release.version} was cut at ${release.cutAt.toISOString()}, before ISS-${issSeq} landed at ${landedAt.toISOString()}, so it cannot hold that landing. Name the release cut after it, or \`version: null\`. Where that is the time the mark was recorded and the commit landed earlier, date the mark at the landing: unmark and mark again with \`landedAt\`, or on a closed issue POST /api/issues/:id/merge/correction with \`mergedAt\` (ISS-1226).`,
+    `Release ${release.version} was cut at ${release.cutAt.toISOString()}, before ISS-${issSeq} landed at ${landedAt.toISOString()}, so it cannot hold that landing. Name the release cut after it, or \`version: null\`. Where that is the time the mark was recorded and the commit landed earlier, date the mark at the landing: unmark and mark again with \`landedAt\`, or on a closed issue POST /api/issues/:id/merge/correction with \`landedAt\` (ISS-1226).`,
     '/version',
   );
 }

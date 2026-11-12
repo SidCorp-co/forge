@@ -4,6 +4,8 @@
  * UNMARK_REQUIRES_NOT_CLOSED and a re-mark keeps the wrong commit. `POST /api/issues/:id/merge/correction`
  * replaces a closed issue's landing commit in place, never moves its status, and writes the
  * correction on its history with the commit it replaced.
+ *
+ * @direct-test-of packages/core/src/issues/landed-at.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -42,9 +44,13 @@ const codeOf = (body: unknown) => {
 const correct = (issueId: string, body: Record<string, unknown>) =>
   api(world.token, 'POST', `/api/issues/${issueId}/merge/correction`, body);
 
+/** When the issues these tests file were created: before every landing a correction names. */
+const FILED_AT = '2026-09-01T00:00:00.000Z';
+
 /** ISS-2 as adminhub-api holds it: closed, its mark the commit of a merge that misread it. */
 async function misreadClosed(): Promise<string> {
   const id = await issue(2, 'awaiting_release');
+  await rows(sql`UPDATE issues SET created_at = ${FILED_AT}::timestamptz WHERE id = ${id}`);
   await stampObserved(id, WRONG, MISREAD_AT);
   await seedIssueStatus(id, 'closed');
   return id;
@@ -104,6 +110,76 @@ describe('a closed issue’s misread landing is corrected in place (ISS-1027)', 
     expect(new Date(String((await issueRow(two))?.merged_at)).toISOString()).toBe(
       '2026-10-01T10:00:00.000Z',
     );
+  });
+
+  // ISS-1226 (FB-628): the time a correction names is the landing a release's containment reads, so it
+  // is held to the mark's refusals, under the mark's name `landedAt` and its older spelling `mergedAt`
+  it('takes the landing time named as `landedAt`', async () => {
+    const two = await misreadClosed();
+    const res = await correct(two, {
+      commit: REAL,
+      reason: REASON,
+      landedAt: '2026-10-29T10:00:00.000Z',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(new Date(String((await issueRow(two))?.merged_at)).toISOString()).toBe(
+      '2026-10-29T10:00:00.000Z',
+    );
+  });
+
+  const unchanged = async (id: string) => {
+    const row = await issueRow(id);
+    expect(row?.merged_commit_sha).toBe(WRONG);
+    expect(new Date(String(row?.merged_at)).toISOString()).toBe(MISREAD_AT);
+    expect(await corrections(id)).toEqual([]);
+  };
+
+  it.each(['landedAt', 'mergedAt'])(
+    'refuses a %s in the future, and changes nothing',
+    async (field) => {
+      const two = await misreadClosed();
+      const future = new Date(Date.now() + 60 * 60_000).toISOString();
+      const res = await correct(two, { commit: REAL, reason: REASON, [field]: future });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_FUTURE');
+      expect(JSON.stringify(res.body)).toContain(`/${field}`);
+      await unchanged(two);
+    },
+  );
+
+  it.each(['landedAt', 'mergedAt'])(
+    'refuses a %s before the issue existed, and changes nothing',
+    async (field) => {
+      const two = await misreadClosed();
+      const res = await correct(two, {
+        commit: REAL,
+        reason: REASON,
+        [field]: '2026-08-01T00:00:00.000Z',
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_BEFORE_ISSUE');
+      expect(JSON.stringify(res.body)).toContain(`/${field}`);
+      await unchanged(two);
+    },
+  );
+
+  it('refuses both spellings at once, and changes nothing', async () => {
+    const two = await misreadClosed();
+    const at = '2026-10-29T10:00:00.000Z';
+    const res = await correct(two, { commit: REAL, reason: REASON, landedAt: at, mergedAt: at });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_TWICE');
+    await unchanged(two);
+  });
+
+  it('refuses a landing that is not a timestamp, naming the field, and changes nothing', async () => {
+    const two = await misreadClosed();
+    for (const landedAt of ['yesterday', '2026-10-29', 1761696000000]) {
+      const res = await correct(two, { commit: REAL, reason: REASON, landedAt });
+      expect(res.status, String(landedAt)).toBe(400);
+      expect(JSON.stringify(res.body), String(landedAt)).toContain('/landedAt');
+    }
+    await unchanged(two);
   });
 
   it('refuses an issue that is not closed, and changes nothing', async () => {
