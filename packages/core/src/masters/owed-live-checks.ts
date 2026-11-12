@@ -6,7 +6,9 @@
 // leaves the count once its criteria are judged or moved out, so the count reaches zero.
 // A check counts only where a judge can get in (FB-611): the environment judged on names a testing
 // profile and no person owes an open question on the issue. Otherwise it waits on a person, said in
-// the nudge as that wait, and keeps or replaces no pane.
+// the nudge as that wait, and keeps or replaces no pane. So is an issue whose every criterion still
+// open was recorded `skipped` at the release build, for want of a route (ISS-1218): the skips name
+// what is missing, and a judging run would only find the same.
 
 import type { ReleaseSummary } from '@forge/contracts/releases';
 import { guideCall } from '../guides/index.js';
@@ -25,7 +27,12 @@ export function liveChecksOf(release: ReleaseSummary | null): LiveCheckOwed[] {
   return release.contents.flatMap((group) =>
     group.issues
       .filter((i) => i.status === 'closed' && i.proof === 'open')
-      .map((i) => ({ version: release.version, issueId: i.id, key: i.key })),
+      .map((i) => ({
+        version: release.version,
+        issueId: i.id,
+        key: i.key,
+        ...(i.unreached ? { unreached: i.unreached } : {}),
+      })),
   );
 }
 
@@ -59,11 +66,15 @@ export function liveChecksReach(
   const liveChecks: LiveCheckOwed[] = [];
   const liveChecksWaiting: LiveCheckWaiting[] = [];
   for (const check of checks) {
-    const waits: LiveCheckWait | null = !judging?.testing
-      ? { kind: 'no_testing_profile', environment: judging?.name ?? null }
-      : questioned.has(check.issueId)
-        ? { kind: 'question' }
-        : null;
+    // a criterion no judge has a route to is skipped naming what is missing (`guides/qa.md`): a
+    // judging run would find the same, so it waits on whoever adds the route (ISS-1218)
+    const waits: LiveCheckWait | null = check.unreached
+      ? { kind: 'skipped', missing: check.unreached }
+      : !judging?.testing
+        ? { kind: 'no_testing_profile', environment: judging?.name ?? null }
+        : questioned.has(check.issueId)
+          ? { kind: 'question' }
+          : null;
     if (waits) liveChecksWaiting.push({ ...check, waits });
     else liveChecks.push(check);
   }
@@ -78,16 +89,21 @@ export async function readLiveChecks(
   return liveChecksReach(checks, judging, new Set(questioned));
 }
 
+/** A skip's reason, cut to a line: the issue holds it whole. */
+const shortReason = (r: string) => (r.length > 160 ? `${r.slice(0, 157)}...` : r);
+
 const waitWhy = (w: LiveCheckWait): string =>
   w.kind === 'question'
     ? 'a person owes an open question on it'
-    : w.environment
-      ? `\`${w.environment}\` names no testing profile, so no judge can sign in there`
-      : 'the project names no environment to judge on';
+    : w.kind === 'skipped'
+      ? `every criterion still open is recorded skipped at the release build, for want of: ${[...new Set(w.missing.map(shortReason))].join('; ')}`
+      : w.environment
+        ? `\`${w.environment}\` names no testing profile, so no judge can sign in there`
+        : 'the project names no environment to judge on';
 
 /** FB-611: a live check no judge can get in to take is a wait on a person, said, never asked of the master. */
 function liveChecksWaitingLine(waiting: readonly LiveCheckWaiting[]): string {
   if (waiting.length === 0) return '';
   const items = waiting.map((c) => `${c.key} ${c.issueId} on ${c.version}: ${waitWhy(c.waits)}`);
-  return ` ${waiting.length} live verdict${agrees(waiting.length, '', 's')} a shipped release owes ${agrees(waiting.length, 'waits', 'wait')} on a person, not on you (${items.join('; ')}). Nothing here is yours to run until a person adds that testing profile or answers the question.`;
+  return ` ${waiting.length} live verdict${agrees(waiting.length, '', 's')} a shipped release owes ${agrees(waiting.length, 'waits', 'wait')} on a person, not on you (${items.join('; ')}). Nothing here is yours to run until a person adds what each names or answers the question.`;
 }

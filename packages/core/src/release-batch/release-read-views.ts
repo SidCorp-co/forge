@@ -48,6 +48,7 @@ import {
   sumTotals,
   totalsOf,
   turnOf,
+  unreachedOf,
   type ViewerFacts,
   viewerDecides,
 } from './release-view.js';
@@ -274,13 +275,15 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
       requirement: req ? { key: req.key, title: req.title } : null,
       issues: [],
     };
+    const criteria = criteriaOf(p, s, issue);
     group.issues.push({
       id,
       key: issue.key,
       title: issue.title,
       status: issue.status,
-      proof: proofOf(totalsOf(criteriaOf(p, s, issue))),
+      proof: proofOf(totalsOf(criteria)),
       changeRequest: requests.get(id) ?? null,
+      unreached: unreachedOf(criteria),
     });
     groups.set(at, group);
   }

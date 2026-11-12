@@ -202,6 +202,8 @@ export interface ReleaseContentIssue {
 	proof: ReleaseProof;
 	/** The change request that delivers it, where one is linked (REQ-63 BC-5). */
 	changeRequest: ReleaseChangeRequest | null;
+	/** Where every criterion still open stands `skipped` at this release's build, what each skip names missing; null otherwise (ISS-1218). */
+	unreached: string[] | null;
 }
 
 export interface ReleaseContentGroup {

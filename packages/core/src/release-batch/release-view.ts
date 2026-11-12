@@ -484,6 +484,18 @@ export function sumTotals(list: readonly ReleaseCriteriaTotals[]): ReleaseCriter
   );
 }
 
+/**
+ * ISS-1218: where every criterion still open stands `skipped` (no route to judge it), what each skip
+ * names missing; null where any open one has no verdict at the build, a fail stands, or none is open.
+ */
+export function unreachedOf(
+  criteria: readonly (CountedCriterion & Pick<ReleaseCriterionView, 'reason'>)[],
+): string[] | null {
+  const open = criteria.filter((c) => !c.proven && c.standing !== 'pass' && c.standing !== 'short');
+  if (open.length === 0 || open.some((c) => c.standing !== 'skipped')) return null;
+  return open.map((c) => c.reason ?? 'no reason recorded');
+}
+
 export function proofOf(t: ReleaseCriteriaTotals): ReleaseProof {
   if (t.total === 0) return 'unrecorded';
   if (t.failing > 0) return 'failing';

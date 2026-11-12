@@ -44,6 +44,8 @@ export interface LiveCheckOwed {
   version: string;
   issueId: string;
   key: string;
+  /** What its skips name missing, where every criterion still open was skipped at the build (ISS-1218). */
+  unreached?: string[];
 }
 
 /**
@@ -53,7 +55,9 @@ export interface LiveCheckOwed {
  */
 export type LiveCheckWait =
   | { kind: 'no_testing_profile'; environment: string | null }
-  | { kind: 'question' };
+  | { kind: 'question' }
+  /** ISS-1218: every criterion still open was recorded skipped at the build, each naming what is missing. */
+  | { kind: 'skipped'; missing: string[] };
 
 /** A live check that waits on a person, never on the master: no master work, said as a wait. */
 export interface LiveCheckWaiting extends LiveCheckOwed {
