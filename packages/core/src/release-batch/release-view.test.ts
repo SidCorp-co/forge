@@ -6,7 +6,13 @@
 import type { CriterionStanding } from '@forge/contracts/issue-vocabulary';
 import type { BcVerdict } from '@forge/contracts/requirements';
 import { describe, expect, it } from 'vitest';
-import { type CompletionFacts, completionOf, unreachedOf } from './release-view.js';
+import {
+  type CompletionFacts,
+  completionOf,
+  proofOf,
+  totalsOf,
+  unreachedOf,
+} from './release-view.js';
 
 const IN_RELEASE = new Set(['i1']);
 
@@ -77,5 +83,11 @@ describe('what a release could not reach of an issue', () => {
     expect(unreachedOf([c('skipped', 'no credential'), c('unjudged')])).toBeNull();
     expect(unreachedOf([c('pass', null, true)])).toBeNull();
     expect(unreachedOf([c('fail'), c('skipped', 'x')])).toBeNull();
+  });
+
+  // ISS-1223: a criterion an owner's decision accepts on a named proof is not open (REQ-36 BC-22)
+  it('leaves out a criterion accepted on a decision: the skips beside it still name theirs, and alone it is judged, not open', () => {
+    expect(unreachedOf([c('accepted'), c('skipped', 'no credential')])).toEqual(['no credential']);
+    expect(proofOf(totalsOf([c('accepted'), c('pass', null, true)]))).toBe('unproven');
   });
 });

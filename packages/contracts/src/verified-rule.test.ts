@@ -93,4 +93,15 @@ describe("the verified rule every count of proof reads (REQ-35 decision 7b261fca
 			false,
 		);
 	});
+
+	// ISS-1223 (catalog-api 0.6.0): the owner accepted criteria as proven by the suite at a named
+	// commit, which is never proof on the environment (REQ-36 BC-22)
+	it("never proves a pass accepted on an owner's decision, under any judge, and names the decision", () => {
+		const decision = "7f0c2a64-1d2e-4b7a-9c1f-3e5d6a7b8c9d";
+		for (const judge of [null, "self", "independent", "builder"] as const) {
+			const read = verifiedOf([{ ...v("pass"), acceptedOn: decision }], judge);
+			expect(read.proven).toBe(false);
+			expect(read.why).toContain(decision);
+		}
+	});
 });

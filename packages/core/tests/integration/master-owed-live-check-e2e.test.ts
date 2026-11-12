@@ -15,8 +15,16 @@
  * is no master work, so it neither keeps nor replaces a pane, and the nudge names it as a wait on a
  * person, with no judging run asked for.
  *
+ * ISS-1223 (catalog-api 0.6.0): a project judged on a testing environment counts only runtime
+ * verdicts at the release build, so criteria the owner accepted as proven by the suite at a named
+ * commit were asked of the master every pass. A commit pass naming that decision stands accepted on
+ * the release (REQ-36 BC-22): it owes no live verdict and is never proven. One naming a decision,
+ * criterion or sha that cannot be placed is refused by name, and nothing is written.
+ *
  * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/masters/verdict.ts
+ * @direct-test-of packages/core/src/issues/criteria/verdict-acceptance.ts
+ * @direct-test-of packages/core/src/release-batch/criterion-reading.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -25,7 +33,16 @@ import { mintPat } from '../../src/credentials/pat.js';
 import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import { bindTestRunner, createTestDevice } from '../helpers/factories.js';
-import { F4, landedIssue, ok, seedLandedWorld, world } from '../helpers/landed-world.js';
+import {
+  ASIDE,
+  F4,
+  LATER,
+  landedIssue,
+  laterLanding,
+  ok,
+  seedLandedWorld,
+  world,
+} from '../helpers/landed-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 type Doc = Record<string, unknown>;
@@ -36,7 +53,7 @@ const ACCOUNT = 'epod-deploy shipped this tag to production; /healthz reports it
  * epod's shape: production deployed outside Forge, criteria judged after the release ships, and a
  * testing profile on production a judge signs in with; sid-desk's (FB-611) where `testing` is false.
  */
-async function externalProduction(testing = true): Promise<void> {
+async function externalProduction(testing = true, judgedOn?: string): Promise<void> {
   if (testing) {
     await db.execute(sql`
       INSERT INTO project_testing_profiles (project_id, profile_id, revision, document, updated_by)
@@ -53,7 +70,7 @@ async function externalProduction(testing = true): Promise<void> {
         ...(testing ? { testing: 'prod-qa' } : {}),
       },
     } as never,
-    extra: { delivery: { verdictsRequired: false } } as never,
+    extra: { delivery: { verdictsRequired: false, ...(judgedOn ? { judgedOn } : {}) } } as never,
   });
 }
 
@@ -247,5 +264,142 @@ describe('ISS-1200: a live verdict owed on the latest shipped release is master 
     expect(answer.work.nudge).toContain(`ISS-1 ${shipped}`);
     expect(answer.work.nudge).toContain('no credential reads the owner attention page');
     expect(answer.work.nudge).not.toContain('--role qa');
+  });
+});
+
+describe("ISS-1223: a criterion an owner's decision accepts on a named proof owes no live verdict", () => {
+  const DECIDED = [
+    { key: 'decision', value: 'Criteria with no runtime verdict count as proven by the suite' },
+    {
+      key: 'why',
+      value: `The suite passed at ${LATER.slice(0, 8)}, which equals the production build`,
+    },
+  ];
+
+  const decide = async (issueId: string) =>
+    String(
+      (
+        await ok(
+          api(world.token, 'POST', `/api/issues/${issueId}/events`, {
+            kind: 'decision',
+            contract: 1,
+            fields: DECIDED,
+          }),
+        )
+      ).id,
+    );
+
+  const accept = (issueId: string, acceptedOn: string, over: Doc = {}) =>
+    api(world.token, 'POST', `/api/issues/${issueId}/verdicts`, {
+      criterion: 1,
+      verdict: 'pass',
+      reason: `The suite passed at ${LATER.slice(0, 8)}.`,
+      identity: { kind: 'commit', sha: LATER },
+      acceptedOn,
+      ...over,
+    });
+
+  const verdictRows = async (issueId: string) =>
+    Number(
+      (
+        (await db.execute(
+          sql`SELECT count(*)::int AS n FROM criterion_verdicts WHERE issue_id = ${issueId}`,
+        )) as unknown as Array<{ n: number }>
+      )[0]?.n,
+    );
+
+  const refusedAs = (res: { status: number; body: Record<string, unknown> }) => {
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    return (res.body as { error?: { refusals?: Array<{ code: string }> } }).error?.refusals?.map(
+      (r) => r.code,
+    );
+  };
+
+  /** catalog-api's shape: judged on production's running build, shipped 0.6.0 at F4, LATER holding it. */
+  async function shippedOnTesting(): Promise<{
+    b: Awaited<ReturnType<typeof box>>;
+    shipped: string;
+  }> {
+    await seedLandedWorld();
+    await externalProduction(true, 'production');
+    const b = await box();
+    const shipped = await landedIssue(1, F4, ['A buyer sees the catalog price']);
+    await ok(
+      api(world.token, 'POST', `/api/projects/${world.projectId}/release-records`, {
+        issueIds: [shipped],
+        version: '0.6.0',
+        commit: F4,
+        account: ACCOUNT,
+      }),
+    );
+    await laterLanding(LATER);
+    return { b, shipped };
+  }
+
+  it('reads the release accepted on the decision, never proven, and the master owes nothing', async () => {
+    const { b, shipped } = await shippedOnTesting();
+    expect((await verdictOf(b)).work).toMatchObject({ owed: 1 });
+
+    const decision = await decide(shipped);
+    const res = await accept(shipped, decision);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const release = (await ok(
+      api(world.token, 'GET', `/api/projects/${world.projectId}/releases/0.6.0`),
+    )) as Doc;
+    const read = (release.release ?? release) as {
+      verified: { proven: number; total: number };
+      issueCriteria: Array<{ criteria: Array<Doc & { unverified: string | null }> }>;
+    };
+    expect(read.verified).toMatchObject({ proven: 0, total: 1 });
+    const [criterion] = read.issueCriteria.flatMap((i) => i.criteria);
+    expect(criterion).toMatchObject({ standing: 'accepted', proven: false, acceptedOn: decision });
+    expect(criterion?.unverified).toContain(decision);
+
+    const answer = await verdictOf(b);
+    expect(answer.work).toMatchObject({ admissible: 0, owed: 0 });
+    expect(answer.work.nudge).not.toContain(`ISS-1 ${shipped}`);
+    expect(answer.work.nudge).not.toContain('--role qa');
+  });
+
+  it('refuses by name an acceptance naming what cannot be placed, and writes nothing', async () => {
+    const { shipped } = await shippedOnTesting();
+    const decision = await decide(shipped);
+    const other = await landedIssue(2, F4, ['Another issue']);
+    const elsewhere = await decide(other);
+    const withdrawn = await decide(shipped);
+    await ok(
+      api(world.token, 'POST', `/api/issues/${shipped}/events/${withdrawn}/withdraw`, {
+        reason: 'Recorded on the wrong criterion',
+      }),
+    );
+    const events = (await ok(api(world.token, 'GET', `/api/issues/${shipped}/events`))) as {
+      items: Array<{ id: string; kind: string }>;
+    };
+    const notDecision = events.items.find((e) => e.kind !== 'decision')?.id ?? '';
+    expect(notDecision).not.toBe('');
+
+    expect(refusedAs(await accept(shipped, elsewhere))).toEqual([
+      'VERDICT_ACCEPTANCE_NOT_DECISION',
+    ]);
+    expect(refusedAs(await accept(shipped, notDecision))).toEqual([
+      'VERDICT_ACCEPTANCE_NOT_DECISION',
+    ]);
+    expect(refusedAs(await accept(shipped, withdrawn))).toEqual([
+      'VERDICT_ACCEPTANCE_NOT_DECISION',
+    ]);
+    expect(refusedAs(await accept(shipped, decision, { verdict: 'fail' }))).toEqual([
+      'VERDICT_ACCEPTANCE_NOT_PASS',
+    ]);
+    expect(
+      refusedAs(await accept(shipped, decision, { identity: { kind: 'runtime', ref: F4 } })),
+    ).toEqual(['VERDICT_ACCEPTANCE_NOT_COMMIT']);
+    expect(
+      refusedAs(await accept(shipped, decision, { identity: { kind: 'commit', sha: ASIDE } })),
+    ).toEqual([expect.stringMatching(/^VERDICT_COMMIT_(OFF_LANDING|UNPLACED)$/)]);
+    expect(refusedAs(await accept(shipped, decision, { criterion: 9 }))).toEqual([
+      'VERDICT_CRITERION_UNKNOWN',
+    ]);
+    expect(await verdictRows(shipped)).toBe(0);
   });
 });

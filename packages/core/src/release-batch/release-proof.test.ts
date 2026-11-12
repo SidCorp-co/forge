@@ -273,3 +273,27 @@ describe('a release of a project that names its testing environment', () => {
     });
   });
 });
+
+// ISS-1223 (catalog-api 0.6.0, REQ-36 BC-22): the owner ruled that criteria no runtime verdict judged
+// count as proven by the suite at a named commit. A commit pass naming that decision stands accepted on
+// every release carrying the issue, whatever build it names, and is never proven on the environment.
+describe("a criterion an owner's decision accepts on a named proof", () => {
+  const DECISION = '7f0c2a64-1d2e-4b7a-9c1f-3e5d6a7b8c9d';
+  const accepted = () => verdict('pass', '10:00', { commitSha: EARLIER, acceptedOn: DECISION });
+
+  it('reads accepted on the decision, at another build, judged on dev or on none, and is never proven', () => {
+    for (const judgedOn of ['dev', null]) {
+      const [c] = criteriaAt(issue([[accepted()]]), BUILD, { judge: 'independent', judgedOn });
+      expect(c).toMatchObject({
+        standing: 'accepted',
+        proven: false,
+        acceptedOn: DECISION,
+        identity: `commit ${EARLIER.slice(0, 12)}`,
+      });
+      expect(c?.unverified).toContain(DECISION);
+      const totals = totalsOf(c ? [c] : []);
+      expect(totals).toMatchObject({ proven: 0, open: 0, unproven: 1, total: 1 });
+      expect(proofOf(totals)).toBe('unproven');
+    }
+  });
+});
