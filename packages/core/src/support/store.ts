@@ -343,13 +343,29 @@ export async function recentThreads(roomId: string, limit: number): Promise<stri
   return rows.map((r) => r.thread);
 }
 
-export async function actionsOfRoom(roomId: string, limit: number): Promise<ActionRow[]> {
-  return db
+/**
+ * A room's newest `limit` actions inside the window (`since` inclusive, `until` exclusive), served
+ * oldest first, and whether older ones in the window were left out (ISS-1215: an ascending read
+ * stopped at its oldest 500, so nothing newer was ever reachable).
+ */
+export async function actionsOfRoom(
+  roomId: string,
+  limit: number,
+  window: { since?: Date | undefined; until?: Date | undefined } = {},
+): Promise<{ rows: ActionRow[]; cut: boolean }> {
+  const newest = await db
     .select()
     .from(supportActions)
-    .where(eq(supportActions.roomId, roomId))
-    .orderBy(asc(supportActions.createdAt))
-    .limit(limit);
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        window.since ? gte(supportActions.createdAt, window.since) : undefined,
+        window.until ? lt(supportActions.createdAt, window.until) : undefined,
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt), desc(supportActions.id))
+    .limit(limit + 1);
+  return { rows: newest.slice(0, limit).reverse(), cut: newest.length > limit };
 }
 
 export async function insertFix(

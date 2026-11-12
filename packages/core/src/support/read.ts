@@ -1,5 +1,5 @@
 // What Forge shows of a support group or an operations room (REQ-75 BC-18): its rooms with their
-// session, and every action taken in one, oldest first. Inputs and outputs were stored scrubbed.
+// session, and the newest actions taken in one, oldest first. Inputs and outputs were stored scrubbed.
 
 import {
   SUPPORT_DELIVERY_PATHS,
@@ -129,18 +129,22 @@ function viewOf(row: ActionRow, keys: Map<string, string>): SupportActionView {
   };
 }
 
-/** A room's actions, or null when the project holds no such room. */
+/**
+ * A room's newest actions inside the window, oldest first, and `truncated` when older ones in it
+ * were left out (ISS-1215); null when the project holds no such room.
+ */
 export async function supportActionsOf(
   viewer: string,
   projectId: string,
   roomId: string,
-): Promise<SupportActionView[] | null> {
+  window: { since?: Date | undefined; until?: Date | undefined } = {},
+): Promise<{ actions: SupportActionView[]; truncated: boolean } | null> {
   await requireDeclaredOn(projectId, viewer, 'project.read');
   const room = await roomById(roomId);
   if (!room || room.projectId !== projectId) return null;
-  const rows = await actionsOfRoom(room.id, ACTIONS_SHOWN);
+  const { rows, cut } = await actionsOfRoom(room.id, ACTIONS_SHOWN, window);
   const ids = [...new Set(rows.flatMap((r) => (r.feedbackId ? [r.feedbackId] : [])))];
   const items = await externalItemPhases(projectId, ids);
   const keys = new Map([...items].map(([id, item]) => [id, item.key]));
-  return rows.map((r) => viewOf(r, keys));
+  return { actions: rows.map((r) => viewOf(r, keys)), truncated: cut };
 }

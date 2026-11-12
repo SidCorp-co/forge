@@ -84,7 +84,7 @@ export function dailyReviewBrief(args: {
     ...sentryLinks(at, args.sentryTargets),
     at('/support/rooms'),
     at('/support/turns'),
-    `${at('/support/rooms/<roomId>/actions')} (<roomId> the room's id from /support/rooms, never a Rocket.Chat rid)`,
+    `${at(`/support/rooms/<roomId>/actions?since=${args.since.toISOString()}&until=${args.until.toISOString()}`)} (<roomId> the room's id from /support/rooms, never a Rocket.Chat rid)`,
   ];
   return [
     `Daily review for ${args.slug}, ${args.since.toISOString()} to ${args.until.toISOString()} (ISS-862).`,

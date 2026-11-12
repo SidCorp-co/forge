@@ -44,6 +44,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresNoPermission, requiresOnParam } from '../permissions/index.js';
+import { mountActionsRoute } from './actions-route.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
@@ -55,7 +56,7 @@ import { mountTurnRecordRoutes } from './turn-record.js';
 export { ownerSignInCallbackRoutes } from './owner-routes.js';
 
 import { mountPromiseRoutes } from './promise-routes.js';
-import { supportActionsOf, supportRoomsOf } from './read.js';
+import { supportRoomsOf } from './read.js';
 import { act, SESSION_ONLY } from './session-door.js';
 import { supportTurnsOf } from './turns.js';
 
@@ -78,12 +79,6 @@ const projectParam = zValidator(
   z.object({ id: z.uuid() }),
   invalid('invalid path: the project id is a uuid'),
 );
-const roomParam = zValidator(
-  'param',
-  z.object({ id: z.uuid(), roomId: z.uuid() }),
-  invalid('invalid path: a project uuid and a support room uuid'),
-);
-
 /**
  * A channel agent answering several groups names the group of an act that names no thread of it
  * (the channel record, an announcement) with `?rid=` (REQ-77).
@@ -462,6 +457,7 @@ supportRoutes.post(
 
 mountChannelRoutes(supportRoutes);
 mountTurnRecordRoutes(supportRoutes);
+mountActionsRoute(supportRoutes);
 mountRoomBriefRoutes(supportRoutes);
 mountRunReadRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
@@ -477,29 +473,4 @@ supportRoutes.get('/:id/support/rooms', projectParam, SUPPORT_READ, noQuery, asy
 // each room's turn, for the bar that says what runs on the project now (REQ-15 BC-10)
 supportRoutes.get('/:id/support/turns', projectParam, SUPPORT_READ, noQuery, async (c) =>
   c.json(await supportTurnsOf(c.get('userId'), c.req.valid('param').id)),
-);
-
-supportRoutes.get(
-  '/:id/support/rooms/:roomId/actions',
-  roomParam,
-  SUPPORT_READ,
-  noQuery,
-  async (c) => {
-    const { id, roomId } = c.req.valid('param');
-    const actions = await supportActionsOf(c.get('userId'), id, roomId);
-    if (!actions) {
-      return refused(
-        c,
-        [
-          {
-            code: 'SUPPORT_ROOM_UNKNOWN',
-            path: '/roomId',
-            detail: `this project holds no support room ${roomId}`,
-          },
-        ],
-        'SUPPORT_REFUSED',
-      );
-    }
-    return c.json({ actions });
-  },
 );
