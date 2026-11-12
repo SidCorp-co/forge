@@ -79,10 +79,12 @@
     "pg-boss": "^12.37.0",
     "pino": "^10.4.0",
     "postgres": "^3.4.9",
+    "protobufjs": "7.6.6",
     "quickjs-emscripten-core": "0.32.0",
     "rate-limiter-flexible": "^11.2.1",
     "re2js": "2.8.8",
     "rrweb": "2.1.7",
+    "snappyjs": "^0.7.0",
     "unpdf": "^1.8.1",
     "ws": "^8.22.0",
     "zod": "^4.6.7"

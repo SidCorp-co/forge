@@ -1,6 +1,7 @@
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
+import { MONITORING_CONNECTION_TOKEN_KINDS } from '@forge/contracts/monitoring';
 import { say } from '@forge/contracts/said';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { listInstallationRepositories } from '../integrations/github/index.js';
@@ -18,6 +19,7 @@ import {
   defaultConnectionDisplayName,
   effectiveConfig,
   findConnectionById,
+  getAdapter,
   healthOf,
   type IntegrationConnectionRow,
   listBindingsByConnectionIds,
@@ -44,7 +46,13 @@ import { servedSchemaUrl } from '../lib/served-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
-import { noQuery, zValidator } from '../middleware/zod-validator.js';
+import { invalid, noQuery, strictBody, zValidator } from '../middleware/zod-validator.js';
+import {
+  mintMonitoringToken,
+  monitoringSetupOf,
+  readMonitoringConnection,
+  rereadReadiness,
+} from '../monitoring/index.js';
 import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
 import { listProjectHeads } from '../projects/index.js';
@@ -183,6 +191,11 @@ integrationConnectionsRoutes.post(
     assertVaultConfigured();
     const body = c.req.valid('json');
     await assertMayOwnConnection(userId, body.orgId);
+    const unfit = getAdapter(body.provider)?.verifyConnection?.({
+      config: body.config,
+      secrets: body.secrets,
+    });
+    if (unfit?.length) return refused(c, unfit, 'CONFIG_REFUSED');
     const connection = pendingConnectionRow({
       ownerType: body.orgId ? 'org' : 'user',
       ownerId: body.orgId ?? userId,
@@ -374,6 +387,12 @@ integrationConnectionsRoutes.patch(
       if (merged !== undefined) connPatch.secrets = merged;
     }
 
+    const verifyConnection = getAdapter(existing.provider)?.verifyConnection;
+    const unfit = verifyConnection?.({
+      config: (connPatch.config ?? existing.config ?? {}) as Record<string, unknown>,
+      secrets: connPatch.secrets ?? decryptConnectionSecrets(existing),
+    });
+    if (unfit?.length) return refused(c, unfit, 'CONFIG_REFUSED');
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
     notifyConnectionChanged(existing.provider, id);
@@ -391,4 +410,62 @@ integrationConnectionsRoutes.delete('/:id', CONNECTION_MANAGE, async (c) => {
   await softDeleteConnection(id);
   notifyConnectionChanged(existing.provider, id);
   return c.json({ ok: true });
+});
+
+/**
+ * A monitoring connection under the connection (ISS-1225, owner 2026-11-12): what its server was last
+ * read to do and the tokens minted for it, a fresh read of the server, a token for its Prometheus
+ * (`sd`) or Alertmanager (`alerts`) shown once, and the setup list its server takes.
+ */
+const notMonitoring = (c: Context, provider: string) =>
+  refused(
+    c,
+    [
+      {
+        code: 'MONITORING_NOT_CONNECTED',
+        path: '',
+        detail: `this is a ${provider} connection, not a monitoring one (provider prometheus)`,
+      },
+    ],
+    'MONITORING_NOT_CONNECTED',
+  );
+
+integrationConnectionsRoutes.get('/:id/monitoring', CONNECTION_READ, noQuery, async (c) => {
+  const row = await loadConnection(c.req.param('id'), c.get('userId'), 'read');
+  const read = await readMonitoringConnection(row);
+  return read ? c.json(read) : notMonitoring(c, row.provider);
+});
+
+integrationConnectionsRoutes.post(
+  '/:id/monitoring/readiness',
+  CONNECTION_MANAGE,
+  strictBody(z.strictObject({}), '{} (no fields)'),
+  async (c) => {
+    const row = await loadConnection(c.req.param('id'), c.get('userId'), 'manage');
+    const readiness = await rereadReadiness(row);
+    return readiness ? c.json({ readiness }) : notMonitoring(c, row.provider);
+  },
+);
+
+integrationConnectionsRoutes.post(
+  '/:id/monitoring/tokens/:kind',
+  CONNECTION_MANAGE,
+  zValidator(
+    'param',
+    z.object({ id: z.string(), kind: z.enum(MONITORING_CONNECTION_TOKEN_KINDS) }),
+    invalid('invalid path: the token kind is sd (its Prometheus) or alerts (its Alertmanager)'),
+  ),
+  strictBody(z.strictObject({}), '{} (no fields)'),
+  async (c) => {
+    const { id, kind } = c.req.valid('param');
+    const row = await loadConnection(id, c.get('userId'), 'manage');
+    const minted = await mintMonitoringToken(row, kind);
+    return minted ? c.json(minted, 201) : notMonitoring(c, row.provider);
+  },
+);
+
+integrationConnectionsRoutes.get('/:id/monitoring/setup', CONNECTION_READ, noQuery, async (c) => {
+  const row = await loadConnection(c.req.param('id'), c.get('userId'), 'read');
+  const steps = await monitoringSetupOf(row);
+  return steps ? c.json({ connectionId: row.id, steps }) : notMonitoring(c, row.provider);
 });

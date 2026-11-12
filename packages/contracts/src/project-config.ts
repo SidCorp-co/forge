@@ -3,6 +3,7 @@
 import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
 import { JUDGED_ON_REFUSAL_CODES } from "./delivery-policy.js";
 import { GATE_PROFILE_REFUSAL_CODES } from "./gate-profiles.js";
+import { MONITORING_CONFIG_REFUSAL_CODES } from "./monitoring.js";
 import type { RefusalStatuses } from "./refusal.js";
 import { RELEASE_CUTOFF_REFUSAL_CODES } from "./release-cutoff.js";
 import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
@@ -119,6 +120,10 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SUPPORT_ROOM_OVERRIDE_UNKNOWN",
 	/** A support-api binding grants a tool name another active support-api binding of the project grants (ISS-1011). */
 	"SUPPORT_TOOL_NAME_TAKEN",
+	/** A monitoring binding's target: its rules, names, `for`, or its connection's ruler (ISS-1225). */
+	...MONITORING_CONFIG_REFUSAL_CODES,
+	/** A provider bound under a role it does not serve, or a role no bound provider serves (ISS-1225). */
+	"BINDING_ROLE_UNSUPPORTED",
 ] as const;
 
 /** Every code a project-config document write answers with. */
@@ -180,6 +185,7 @@ export const PROJECT_CONFIG_REFUSAL_STATUSES = {
 	GATE_PROFILE_RAISED: 403,
 	GATES_NO_PROJECT_DOCUMENT: 409,
 	REVIEW_RUN_NOT_A_PERSON: 403,
+	MONITORING_RULES_REFUSED: 503,
 } as const satisfies RefusalStatuses<ProjectConfigRefusalCode>;
 
 /** Reading an environment's deployed state through its binding. */

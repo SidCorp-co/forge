@@ -25,6 +25,7 @@ interface BindEffects {
     userId: string;
     projectId: string;
     provider: string;
+    role: BindingRole;
     label: string;
     agentAccess: AgentAccess;
   }): Promise<ApiRefusal[]>;
@@ -66,8 +67,18 @@ interface BindEffects {
 }
 
 export const bindEffects: BindEffects = {
-  async refusals({ userId, projectId, provider, label, agentAccess }) {
+  async refusals({ userId, projectId, provider, role, label, agentAccess }) {
     const out: ApiRefusal[] = [];
+    const onlyRole = getIntegration(provider)?.capabilities.onlyRole;
+    if (onlyRole ? role !== onlyRole : role === 'monitoring') {
+      out.push({
+        code: 'BINDING_ROLE_UNSUPPORTED',
+        path: '/role',
+        detail: onlyRole
+          ? `\`${provider}\` is bound with role "${onlyRole}" only, and this binding names "${role}".`
+          : `role "monitoring" binds a monitoring connection, and \`${provider}\` is not one.`,
+      });
+    }
     if (label !== '' && !getIntegration(provider)?.capabilities.multiBinding) {
       out.push({
         code: 'BINDING_LABEL_UNSUPPORTED',

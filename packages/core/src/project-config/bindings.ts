@@ -202,6 +202,7 @@ async function documentRefusals(args: {
       userId,
       projectId,
       provider: encoded.provider,
+      role: doc.role,
       label: encoded.label,
       agentAccess,
     })),

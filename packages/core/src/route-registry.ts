@@ -132,6 +132,7 @@ import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
 import { mockupRoutes } from './mockups/routes.js';
+import { monitoringDoorRoutes, projectMonitoringRoutes } from './monitoring/index.js';
 import {
   BODY_PREVIEW_NEEDS_NO_PERMISSION,
   CONTRACT_IS_PUBLIC,
@@ -232,7 +233,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
-/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget and the root. */
+/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget, the monitoring doors (each by its own bearer) and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   // a product server's feedback key, answered first; since ISS-925 no router under /api/projects gates
   // past its own routes (`middleware/gated-routes.ts`), so its place no longer decides that it is reached
@@ -279,6 +280,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', codeTraceRoutes);
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
   app.route('/api/widget', widgetRoutes);
+  app.route('/api/monitoring', monitoringDoorRoutes);
 
   app.route('/', rootRoutes);
 }
@@ -336,6 +338,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', contentLanguageRoutes);
   app.route('/api/projects', entityCommentRoutes);
   app.route('/api/projects', automationRoutes);
+  app.route('/api/projects', projectMonitoringRoutes);
 }
 
 /** Ecosystems, their channels, contracts and memberships. */

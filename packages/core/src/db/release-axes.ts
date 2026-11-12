@@ -3,10 +3,11 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { check, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { releaseVersionText } from './column-checks.js';
 
-export const bindingRoles = ['deploy', 'service', 'source'] as const;
+// `monitoring` names a project's binding of a monitoring connection (ISS-1225)
+export const bindingRoles = ['deploy', 'service', 'source', 'monitoring'] as const;
 export type BindingRole = (typeof bindingRoles)[number];
 
-const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service', 'source')`;
+const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service', 'source', 'monitoring')`;
 
 export const SERVICE_ROLE_PRED = sql`role = 'service'`;
 

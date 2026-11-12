@@ -1,3 +1,4 @@
+import { monitoringRefusalCode } from '@forge/contracts/monitoring';
 import type { ProjectConfigRefusalCode } from '@forge/contracts/project-config';
 import { releaseCutoffRefusalCode } from '@forge/contracts/release-cutoff';
 import type { z } from 'zod';
@@ -71,7 +72,15 @@ function issueRefusals(
   }
   // REQ-71 BC-13: a release trigger is refused by its own name, an unknown one apart
   const cutoff = releaseCutoffRefusalCode(issue);
-  return [{ code: cutoff ?? 'SCHEMA_VIOLATION', path: pointer(issue.path), detail: issue.message }];
+  // ISS-1225: a monitoring binding's rule of a kind outside the closed set
+  const kind = monitoringRefusalCode(issue);
+  return [
+    {
+      code: cutoff ?? kind ?? 'SCHEMA_VIOLATION',
+      path: pointer(issue.path),
+      detail: issue.message,
+    },
+  ];
 }
 
 export function parseVersionedDocument<T>(

@@ -1,0 +1,1 @@
+**Production monitoring is a Prometheus integration.** Connect your Prometheus, follow its setup list until Forge reads it ready, then bind a project with role `monitoring` naming its targets, host agent and rules; each firing alert becomes one feedback item (ISS-1225).

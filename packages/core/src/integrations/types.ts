@@ -20,7 +20,8 @@ export type IntegrationProvider =
   | 'agent'
   | 'autoflow'
   | 'widget'
-  | 'support-api';
+  | 'support-api'
+  | 'prometheus';
 
 export const INTEGRATION_PROVIDERS = [
   'coolify',
@@ -33,6 +34,7 @@ export const INTEGRATION_PROVIDERS = [
   'autoflow',
   'widget',
   'support-api',
+  'prometheus',
 ] as const satisfies readonly IntegrationProvider[];
 
 const _providersExhaustive: IntegrationProvider =
@@ -219,6 +221,11 @@ const CORE_MEDIATED_BY_DEFAULT: AgentPath = { kind: 'core-mediated', routes: [] 
  * interface did not fit them.
  */
 export interface IntegrationCapabilities {
+  /**
+   * The one role this provider is bound under, where it serves only one: a monitoring connection is
+   * bound as `monitoring` and nothing else, and no other provider is bound as `monitoring` (ISS-1225).
+   */
+  onlyRole?: BindingRole;
   /** Core makes outbound API calls (e.g. trigger a deploy). */
   canDispatch: boolean;
   /** Core handles an inbound webhook callback from the provider. */
@@ -538,6 +545,15 @@ export interface IntegrationAdapterMethods<
    * target off the project's host binds a repository the project does not build.
    */
   verifyBindingTarget?(args: VerifyBindingTargetArgs): Promise<BindingTargetRefusal[]>;
+  /**
+   * Refusals for the CONNECTION's own config and secrets as they would be stored, on create and on
+   * every PATCH, before anything is written. Monitoring is the only one: a connection holding no
+   * credentials for its server is refused by name, not stored to fail at its first bind (ISS-1225).
+   */
+  verifyConnection?(args: {
+    config: Record<string, unknown>;
+    secrets: Record<string, unknown>;
+  }): BindingTargetRefusal[];
   /**
    * The binding-tier config as it is stored, from the config a document encodes to and what the
    * row already holds: where a provider mints a value on bind and keeps it on every later write.

@@ -7,6 +7,7 @@ import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { fastLaneSettingsSchema } from '@forge/contracts/fast-lane';
 import { FEEDBACK_VERIFY_WINDOW } from '@forge/contracts/feedback';
 import { gatesConfigSchema } from '@forge/contracts/gate-profiles';
+import { monitoringConfigSchema } from '@forge/contracts/monitoring';
 import { approvalsSchema } from '@forge/contracts/person-gates';
 import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
@@ -359,7 +360,7 @@ export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 export type EnvironmentDeclaration = ProjectDocument['environments'][string];
 export type SiteDeclaration = NonNullable<EnvironmentDeclaration['sites']>[number];
 
-export const BINDING_ROLES = ['deploy', 'source', 'service'] as const;
+export const BINDING_ROLES = ['deploy', 'source', 'service', 'monitoring'] as const;
 export type BindingRole = (typeof BINDING_ROLES)[number];
 
 const releaseRunnerLabel = () => z.string().min(1).max(60).optional();
@@ -420,6 +421,9 @@ const BINDING_TARGETS = [
   targetOf('rocketchat', rocketchatBindingTargetShape),
   targetOf('support-api', { ...supportApiBindingConfigSchema.shape }),
   targetOf('agent', {}),
+  // what a project's monitoring binding watches (ISS-1225); its rules are checked against its
+  // connection's ruler by `integrations/prometheus`
+  targetOf('prometheus', monitoringConfigSchema.shape),
   // the site key is minted on bind (widget/site-key.ts): a document omits it or sends back its own
   targetOf('widget', {
     ...widgetBindingConfigSchema.shape,

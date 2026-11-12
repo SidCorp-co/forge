@@ -43,6 +43,7 @@ protocol and nothing else:
 | error tracking | `sentry/` | Sentry | project |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project |
+| monitoring | `prometheus/` (the connection, its binding target checked against the server's readiness and the connection's ruler, the rule groups and SD targets core renders, the HTTP client, the readiness and tokens it holds per connection); Forge's doors are the `monitoring` domain's (`../monitoring/`) | Prometheus, a Mimir or Cortex ruler | project |
 | support tools | `support-api/` (the tools a project grants its support session, and the one door that calls them: host grant, no redirect, credential scrubbed) | a product's own API | project |
 | embedded feedback chat | `widget/` (the binding's config, its site key minted or settled on bind, its signing secret); the public door, sessions and drafts are the `widget` domain's (`../widget/`) | a client site embedding Forge's frame | project |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`) behind `ChatProvider` | the model gateway: an OpenAI-compatible endpoint (LiteLLM); no provider is reached directly | deployment |

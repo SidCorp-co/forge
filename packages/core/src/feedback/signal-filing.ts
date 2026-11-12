@@ -59,6 +59,8 @@ export async function fileBySignal(input: {
   actor: FeedbackActor;
   signalKey: string;
   source: OccurrenceSource;
+  /** What this report says on its occurrence, written by core and holding no reporter's text. */
+  said?: string;
 }): Promise<SignalFiling> {
   const { projectId } = input.values;
   let id = '';
@@ -79,7 +81,7 @@ export async function fileBySignal(input: {
       seq = row?.seq ?? 0;
       created = true;
     }
-    await addOccurrenceIn(tx, id, input.actor, input.source);
+    await addOccurrenceIn(tx, id, input.actor, input.source, { said: input.said ?? null });
     return null;
   });
   if (refusals) return { ok: false, refusals };
@@ -99,6 +101,7 @@ export async function fileSignalFeedback(input: {
   request: Pick<CreateFeedbackRequest, 'kind' | 'title' | 'body' | 'severity' | 'screen'>;
   signalKey: string;
   source: OccurrenceSource;
+  said?: string;
 }): Promise<SignalFiling> {
   const prepared = await preparedFeedback(input.projectId, input.actor, {
     kind: input.request.kind,
@@ -113,5 +116,30 @@ export async function fileSignalFeedback(input: {
     actor: input.actor,
     signalKey: input.signalKey,
     source: input.source,
+    ...(input.said ? { said: input.said } : {}),
   });
+}
+
+/**
+ * A note joined to the open item `signalKey` names, as an occurrence saying `said` (ISS-1225: an
+ * alert's resolution is recorded on the item its firing filed); null where no item is open, and
+ * nothing is filed then.
+ */
+export async function joinSignalFeedback(input: {
+  projectId: string;
+  actor: FeedbackActor;
+  signalKey: string;
+  said: string;
+  source: OccurrenceSource;
+}): Promise<{ id: string; key: string } | null> {
+  let joined: { id: string; key: string } | null = null;
+  await inTx(async (tx) => {
+    await lockFeedback(tx, input.projectId);
+    const open = await openItemOf(tx, input.projectId, input.signalKey);
+    if (!open) return null;
+    await addOccurrenceIn(tx, open.id, input.actor, input.source, { said: input.said });
+    joined = { id: open.id, key: `FB-${open.fbSeq}` };
+    return null;
+  });
+  return joined;
 }

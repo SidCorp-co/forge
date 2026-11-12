@@ -575,6 +575,12 @@
       "context": "adapters",
       "serves": ["via:beta-port"]
     },
+    "integrations/prometheus": {
+      "kind": "adapter",
+      "context": "adapters",
+      "owns": ["monitoringConnections"],
+      "serves": ["via:monitoring"]
+    },
     "integrations/rocketchat": {
       "kind": "adapter",
       "context": "adapters",
@@ -885,6 +891,12 @@
       "context": "design",
       "owns": ["mockupComments", "mockups"],
       "serves": ["REQ-12", "personal-data-flow#pr-api"]
+    },
+    "monitoring": {
+      "kind": "domain",
+      "context": "operations",
+      "owns": ["monitoringAgentTokens"],
+      "serves": ["feedback-triage#intake"]
     },
     "notifications": {
       "kind": "domain",

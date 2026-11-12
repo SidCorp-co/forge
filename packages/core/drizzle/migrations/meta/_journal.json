@@ -4159,6 +4159,13 @@
       "when": 1839196800000,
       "tag": "0651_a_pass_accepted_on_a_decision_names_it",
       "breakpoints": true
+    },
+    {
+      "idx": 652,
+      "version": "7",
+      "when": 1839283200000,
+      "tag": "0652_a_project_binds_a_monitoring_connection",
+      "breakpoints": true
     }
   ]
 }

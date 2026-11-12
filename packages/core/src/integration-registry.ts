@@ -9,6 +9,7 @@ import {
   isRegistered,
   registerIntegration,
 } from './integrations/index.js';
+import { prometheusIntegration } from './integrations/prometheus/index.js';
 import { rocketchatIntegration } from './integrations/rocketchat/index.js';
 import { sentryIntegration } from './integrations/sentry/index.js';
 import { supportApiIntegration } from './integrations/support-api/index.js';
@@ -25,6 +26,7 @@ const ALL: readonly IntegrationDeclaration[] = [
   autoflowIntegration as IntegrationDeclaration,
   widgetIntegration as IntegrationDeclaration,
   supportApiIntegration as IntegrationDeclaration,
+  prometheusIntegration as IntegrationDeclaration,
 ];
 
 /**

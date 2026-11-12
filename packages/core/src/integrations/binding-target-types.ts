@@ -1,5 +1,7 @@
 // What a provider's `verifyBindingTarget` is handed and answers (`types.ts:IntegrationAdapterMethods`).
 
+import type { MonitoringFault } from '@forge/contracts/monitoring';
+
 /** A binding target the provider refused, at a path inside `target`. */
 export interface BindingTargetRefusal {
   code:
@@ -24,7 +26,9 @@ export interface BindingTargetRefusal {
     | 'SUPPORT_ROOM_ANSWERED_TWICE'
     | 'SUPPORT_ROOM_OVERRIDE_UNKNOWN'
     | 'SUPPORT_TOOL_NAME_TAKEN'
-    | 'SUPPORT_BRIEF_CONTRADICTS_GRANT';
+    | 'SUPPORT_BRIEF_CONTRADICTS_GRANT'
+    // a monitoring binding's target (ISS-1225)
+    | MonitoringFault['code'];
   path: string;
   detail: string;
 }

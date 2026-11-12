@@ -6,7 +6,11 @@
 import type { ScheduleState } from "./automation-standing.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { JobStatus } from "./job-machine.js";
-import type { MasterPassCloseReason, MasterState, MasterVerb } from "./master-standing.js";
+import type {
+	MasterPassCloseReason,
+	MasterState,
+	MasterVerb,
+} from "./master-standing.js";
 import type {
 	RunActorType,
 	RunEventEntity,
@@ -407,7 +411,11 @@ export const ENUM_LABELS = {
 	/** Who opens a share link (contracts `shares.ts:SHARE_AUDIENCES`). */
 	shareAudience: { members: "Project members", link: "Anyone with the link" },
 	/** What a share link froze (contracts `shares.ts:SHARE_SUBJECT_KINDS`). */
-	shareSubject: { message: "Chat answer", "template-output": "Report output", "status-report": "Status report" },
+	shareSubject: {
+		message: "Chat answer",
+		"template-output": "Report output",
+		"status-report": "Status report",
+	},
 	/** What an environment reading stands on (web `project-config/types.ts`). */
 	environmentEvidence: {
 		"runtime-confirmed": "Confirmed at runtime",
@@ -430,7 +438,12 @@ export const ENUM_LABELS = {
 		bundle: "Bundle",
 	},
 	/** A connection binding's role (core `project-config/schema.ts:BINDING_ROLES`). */
-	bindingRole: { deploy: "Deploy", source: "Source", service: "Service" },
+	bindingRole: {
+		deploy: "Deploy",
+		source: "Source",
+		service: "Service",
+		monitoring: "Monitoring",
+	},
 	/** The model tier a run used (core `db/schema.ts:modelTiers`). */
 	modelTier: { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" },
 	runStuckRule: {

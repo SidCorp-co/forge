@@ -178,6 +178,9 @@ importers:
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      protobufjs:
+        specifier: 7.6.6
+        version: 7.6.6
       quickjs-emscripten-core:
         specifier: 0.32.0
         version: 0.32.0
@@ -190,6 +193,9 @@ importers:
       rrweb:
         specifier: 2.1.7
         version: 2.1.7
+      snappyjs:
+        specifier: ^0.7.0
+        version: 0.7.0
       unpdf:
         specifier: ^1.8.1
         version: 1.8.1
@@ -6606,6 +6612,9 @@ packages:
   smart-buffer@4.2.0:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
+
+  snappyjs@0.7.0:
+    resolution: {integrity: sha512-u5iEEXkMe2EInQio6Wv9LWHOQYRDbD2O9hzS27GpT/lwfIQhTCnHCTqedqHIHe9ZcvQo+9au6vngQayipz1NYw==}
 
   socks@2.8.10:
     resolution: {integrity: sha512-e0VyvkVTwVYViNovRkZ9aodhxVlyoMn7eJhVUPxZ+eK9P/7CBkxvvsBOHqFPEH416726W8tLXXXjKwqgTErrCQ==}
@@ -14093,6 +14102,8 @@ snapshots:
   sliced@1.0.1: {}
 
   smart-buffer@4.2.0: {}
+
+  snappyjs@0.7.0: {}
 
   socks@2.8.10:
     dependencies:

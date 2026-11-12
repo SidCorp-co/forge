@@ -23,6 +23,7 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   rocketchat: ['rids', 'support', 'operations', 'agent', 'outsideRids'],
   'support-api': ['tools', 'ownerSignIn'],
   agent: [],
+  prometheus: ['scrape', 'probe', 'agent', 'rules'],
   widget: ['siteKey', 'allowedOrigins', 'identity', 'title', 'greeting', 'accent', 'limits'],
 };
 

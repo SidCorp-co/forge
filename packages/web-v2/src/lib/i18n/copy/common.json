@@ -19,6 +19,7 @@
     "common.bindingRole.deploy": "Deploy",
     "common.bindingRole.service": "Service",
     "common.bindingRole.source": "Source",
+    "common.bindingRole.monitoring": "Monitoring",
     "common.blockerKind.human": "Person",
     "common.blockerKind.machine": "Machine",
     "common.blockerKind.master_or_peer": "Master or peer",

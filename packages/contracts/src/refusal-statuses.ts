@@ -31,6 +31,7 @@ import { LESSON_REFUSAL_STATUSES } from "./lessons.js";
 import { MCP_AUTH_REFUSAL_STATUSES } from "./mcp-auth.js";
 import { MCP_DOOR_REFUSAL_STATUSES } from "./mcp-tools.js";
 import { MEMORY_REFUSAL_STATUSES } from "./memory.js";
+import { MONITORING_REFUSAL_STATUSES } from "./monitoring.js";
 import { ORG_REFUSAL_STATUSES } from "./orgs.js";
 import { PATTERN_REFUSAL_STATUSES } from "./patterns.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
@@ -98,6 +99,7 @@ const DECLARED: ReadonlyArray<
 	LESSON_REFUSAL_STATUSES,
 	KNOWLEDGE_REFUSAL_STATUSES,
 	MEMORY_REFUSAL_STATUSES,
+	MONITORING_REFUSAL_STATUSES,
 	PATTERN_REFUSAL_STATUSES,
 	PIPELINE_REFUSAL_STATUSES,
 	PLUGIN_VERSION_REFUSAL_STATUSES,
