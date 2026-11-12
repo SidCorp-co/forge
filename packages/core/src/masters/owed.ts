@@ -8,11 +8,11 @@ import {
   RELEASE_NOTE_TITLE_WORDS_MAX,
 } from '@forge/contracts/release-notes';
 import type { ReleaseEndedRunHold } from '@forge/contracts/releases';
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
 import { agrees } from '../lib/plural.js';
+import { admissibleLine } from './admissible-line.js';
+import { lastFinishedPassStart } from './last-pass.js';
 import { confirmsLine } from './owed-confirms.js';
 import { approvalsLine, returnedLine } from './owed-designs.js';
 import {
@@ -387,8 +387,8 @@ export function masterWork(admissible: Admissible[], owed: Owed, mode: MasterMod
     owed: owedCount,
     liveChecks: owed.liveChecks.length,
     digest: workDigest(admissible, owed),
-    nudge: `${direct ? DIRECT_NUDGE : NUDGE}${line}${contentLanguageLine(owed.contentLanguage)}`,
-    owedLine: direct ? `${DIRECT_ORDER}${line}` : line,
+    nudge: `${direct ? `${DIRECT_NUDGE}${admissibleLine(admissible)}` : NUDGE}${line}${contentLanguageLine(owed.contentLanguage)}`,
+    owedLine: direct ? `${DIRECT_ORDER}${admissibleLine(admissible)}${line}` : line,
     issueKey: only?.issueKey ?? null,
   };
 }
@@ -514,18 +514,4 @@ async function releasesTheMasterNames(projectId: string): Promise<{ version: str
   const unnamed = await ports.releasesUnnamed(projectId);
   if (unnamed.length === 0) return unnamed;
   return (await ports.releaseNamer(projectId)).to === 'master' ? unnamed : [];
-}
-
-/**
- * When the project's last finished master pass began: an answer after it was not in front of that
- * pass, and is named until a pass that began after it has ended. A project whose master never
- * finished a pass has nothing to measure "since" against, so its first pass reads the board whole.
- */
-async function lastFinishedPassStart(projectId: string): Promise<Date | null> {
-  const rows = (await db.execute(sql`
-    SELECT max(started_at) AS started_at FROM master_passes
-     WHERE project_id = ${projectId} AND ended_at IS NOT NULL
-  `)) as unknown as Array<{ started_at: string | Date | null }>;
-  const at = rows[0]?.started_at;
-  return at ? new Date(at) : null;
 }
