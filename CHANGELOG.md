@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.657] - 2026-11-12
+
+Skipped live checks stop asking for another judging run
+
+### Fixed
+
+- **A skipped live check stops asking for a judge.** An issue whose open criteria were all skipped at its release, for want of a way to judge them, now reads as waiting on what each skip names missing.
+
 ## [0.4.0-dev.656] - 2026-11-12
 
 The chat agent tells an organization apart from its workspaces
