@@ -6,13 +6,14 @@
 // and says the message stays queued (`turn-retry.ts:retryOrTell`). A thread no member wrote in (a scheduled check, a release note, a parked question, the top level)
 // is never told: the line goes only inside the person's own thread.
 //
-// A broken session is the one case told to the room rather than a thread (ISS-1105): one line at
-// the room's top level, once per wait, claimed under the room's top-level venue and given back when
-// a turn of the session completes (`endRoomLastResortWait`).
+// A broken session is the one case told to the room rather than a thread (ISS-1105): one line in
+// the room's report thread (ISS-1224, `report-thread.ts`), never at its top level, once per wait,
+// claimed under the room's own venue and given back when a turn of the session completes
+// (`endRoomLastResortWait`). Where no report thread can be had, it is not said, and the caller
+// records why (`turn-retry.ts:tellUnanswered`).
 
 import {
   claimLastResort,
-  confidentLanguageOf,
   type LastResortKind,
   type LastResortPlace,
   ROOM_STILL_QUEUED_LINES,
@@ -21,15 +22,15 @@ import {
 } from '../conversations/index.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from '../integrations/rocketchat/index.js';
 import { logger } from '../lib/logger.js';
-import { readContentLanguage } from '../project-config/index.js';
+import { reportThreadFor, roomLanguage } from './report-thread.js';
 import { isCoreThread, supportVenueId } from './rules.js';
 import type { RoomRow } from './store.js';
-import { postForTopLevel, postInThread, roomAuth, TOP_LEVEL } from './thread.js';
+import { postInThread, roomAuth, TOP_LEVEL, topLevelThreadOf } from './thread.js';
 
 /** What telling a thread came to: the message posted, or why nothing was. */
 export type Told =
   | { posted: true; messageId: string | null; conversationId: string }
-  | { posted: false; why: 'not-a-member-thread' | 'already-told' | 'post-failed' };
+  | { posted: false; why: 'not-a-member-thread' | 'already-told' | 'post-failed' | 'no-thread' };
 
 /**
  * Tell `thread` the one line of `kind`, unless it is no member's thread or was told one already.
@@ -91,34 +92,28 @@ export async function endLastResortWait(room: RoomRow, thread: string): Promise<
 }
 
 /**
- * Tell the room's people once that its session cannot answer (ISS-1105): one line at its top level,
- * in the room's content language (`roomLanguage`), unless the room was told already while it waits.
- * `texts` are the waiting messages the line is told for.
+ * Tell the room's people once that its session cannot answer (ISS-1105): one line in the room's
+ * report thread (ISS-1224), or its project's own thread of an operations room recording one, never
+ * at its top level; in the room's content language (`roomLanguage`), unless the room was told
+ * already while it waits. `texts` are the waiting messages the line is told for. Where no thread
+ * can be had, nothing is said (`no-thread`) and the claim is given back.
  */
 export async function tellRoomLastResort(room: RoomRow, texts: readonly string[]): Promise<Told> {
   const place = await placeOf(room, TOP_LEVEL);
-  const line = await claimLastResort(
-    place,
-    'turn_failed',
-    ROOM_STILL_QUEUED_LINES[await roomLanguage(room, texts)],
-  );
+  const language = await roomLanguage(room, texts);
+  const line = await claimLastResort(place, 'turn_failed', ROOM_STILL_QUEUED_LINES[language]);
   if (!line) return { posted: false, why: 'already-told' };
+  const thread = await roomLineThread(room, texts);
+  if (!thread) {
+    await releaseLastResort(place);
+    return { posted: false, why: 'no-thread' };
+  }
   try {
-    const posted = await postForTopLevel({ room, text: line, proof: FIXED_REPLY_CONSTANT });
-    if (posted.ok) {
-      return {
-        posted: true,
-        messageId: posted.value.messageId,
-        conversationId: posted.value.conversationId,
-      };
-    }
-    logger.error(
-      { roomId: room.id, refusals: posted.refusals },
-      "support: the room's last-resort line has no place to go",
-    );
+    const posted = await postInThread({ room, thread, text: line });
+    return { posted: true, messageId: posted.messageId, conversationId: posted.conversationId };
   } catch (err) {
     logger.error(
-      { err, roomId: room.id },
+      { err, roomId: room.id, thread },
       "support: the room's last-resort line could not be posted",
     );
   }
@@ -126,17 +121,17 @@ export async function tellRoomLastResort(room: RoomRow, texts: readonly string[]
   return { posted: false, why: 'post-failed' };
 }
 
-/**
- * The room's language for its one line: the project's content language where its document declares
- * one, else Vietnamese where a waiting message reads Vietnamese, else English. The project decides
- * first; the messages decide only for a project that never said.
- */
-async function roomLanguage(room: RoomRow, texts: readonly string[]): Promise<'vi' | 'en'> {
-  const setting = await readContentLanguage(room.projectId);
-  if (setting.source === 'document') {
-    return setting.contentLanguage.toLowerCase().startsWith('vi') ? 'vi' : 'en';
-  }
-  return texts.some((t) => confidentLanguageOf(t) === 'vi') ? 'vi' : 'en';
+/** The thread the room's line goes in: the project's own of an operations room, else the report thread. */
+async function roomLineThread(room: RoomRow, texts: readonly string[]): Promise<string | null> {
+  const own = await topLevelThreadOf(room);
+  if (own.ok && own.value) return own.value;
+  const report = own.ok ? await reportThreadFor(room, texts) : own;
+  if (report.ok) return report.value;
+  logger.error(
+    { roomId: room.id, refusals: report.refusals },
+    "support: the room's last-resort line has no thread to go in, and is not said",
+  );
+  return null;
 }
 
 /** A turn of the room's session completed: the room's wait is over, and a later break is told again. */

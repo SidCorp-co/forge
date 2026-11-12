@@ -49,6 +49,7 @@ import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
 import { ownerGitCredential } from './owner-git.js';
 import { mountOwnerRoutes } from './owner-routes.js';
+import { mountReportThreadRoutes } from './report-thread-route.js';
 import { mountRoomBriefRoutes } from './room-brief.js';
 import { mountRunReadRoutes } from './run-reads.js';
 import { mountTurnRecordRoutes } from './turn-record.js';
@@ -438,8 +439,8 @@ supportRoutes.post(
 );
 
 // the project's master posts its own words in any room its project binds, as that room's bot: its
-// daily review at the top level (ISS-862), a result in the asker's own thread (ISS-871), in a support,
-// channel agent or operations room alike (ISS-943)
+// daily review in the room's report thread (ISS-862, ISS-1224), a result in the asker's own thread
+// (ISS-871), in a support, channel agent or operations room alike (ISS-943)
 supportRoutes.post(
   '/:id/support/master-posts',
   projectParam,
@@ -459,6 +460,7 @@ mountChannelRoutes(supportRoutes);
 mountTurnRecordRoutes(supportRoutes);
 mountActionsRoute(supportRoutes);
 mountRoomBriefRoutes(supportRoutes);
+mountReportThreadRoutes(supportRoutes);
 mountRunReadRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);

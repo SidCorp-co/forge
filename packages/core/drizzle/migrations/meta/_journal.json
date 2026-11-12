@@ -4166,6 +4166,13 @@
       "when": 1839283200000,
       "tag": "0652_a_project_binds_a_monitoring_connection",
       "breakpoints": true
+    },
+    {
+      "idx": 653,
+      "version": "7",
+      "when": 1839369600000,
+      "tag": "0653_a_room_keeps_its_report_thread",
+      "breakpoints": true
     }
   ]
 }

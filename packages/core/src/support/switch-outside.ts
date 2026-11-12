@@ -6,7 +6,7 @@
 import type { ChannelSwitchView } from '@forge/contracts/support-channel';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { supportChannelSwitches } from '../db/schema-support.js';
+import { supportChannelSwitches } from '../db/schema-support-switches.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import { resolveRoomPostAuth } from '../integrations/rocketchat/index.js';
 import { requireDeclaredOn } from '../permissions/index.js';

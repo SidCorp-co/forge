@@ -158,10 +158,11 @@ screens the words for the room's readers and records the post as the master's.
 - **Watching a channel agent.** \`tmux -S <runner socket> attach -t forge-chat-<slug>\`
 - **Where in it.** \`thread\` is the id of the thread's first message, the asker's message for a
   result. Take it from the rooms read: each room's \`recentThreads\` names its newest threads, who
-  asked in each, when it last moved and the FB-n filed from it. With none the post goes at the top
-  level of a room the team reads, or, in an operations room every project shares, in the project's
-  own thread its binding records. \`forge-runner api -i\` prints the HTTP status, to tell a 201 from
-  a 200.
+  asked in each, when it last moved and the FB-n filed from it. With none the post goes in the
+  report thread of a room the team reads (Forge opens one, never the top level), or, in an operations
+  room every project shares, in the project's own thread its binding records. A person's own report
+  thread is named with \`PUT /api/projects/:id/support/rooms/:roomId/report-thread { thread }\`.
+  \`forge-runner api -i\` prints the HTTP status, to tell a 201 from a 200.
 - **Once per result.** A users' thread already told an item's result takes a post only as a
   follow-up naming the message that told it, \`followsUp\`, as the refusal
   \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it: say there only what it did not.

@@ -5,7 +5,7 @@
 import type { ChannelSwitchOpen, ChannelSwitchView } from '@forge/contracts/support-channel';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { supportChannelSwitches } from '../db/schema-support.js';
+import { supportChannelSwitches } from '../db/schema-support-switches.js';
 import { no, type Outcome } from './outcome.js';
 
 export type SwitchRow = typeof supportChannelSwitches.$inferSelect;

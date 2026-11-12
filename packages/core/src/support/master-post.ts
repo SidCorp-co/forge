@@ -1,6 +1,6 @@
 // The project's master posts in any room its project binds (ISS-862, ISS-871, ISS-943): a support
-// room, a channel agent's group or an operations room, in a named thread, or at the top level of a
-// room the team reads, as that room's bot. Core writes none of the words (agent-is-the-voice): it
+// room, a channel agent's group or an operations room, in a named thread, or in the report thread of
+// a room the team reads (ISS-1224, `report-thread.ts`), as that room's bot. Core writes none of the words (agent-is-the-voice): it
 // picks the room, screens the text for the room's readers, posts it and records who posted.
 //
 // The door is core's, not a chat plugin's on the master's box: one post, made with the bot credential
@@ -12,7 +12,9 @@
 // in it), never at its top level (ISS-872, the owner's trial of 2026-11-02), naming nobody but the
 // thread's asker or a member of the room (ISS-1097, `mention-reach.ts`), in plain words with no
 // internal code (`screen.ts`). An operations room every project of the organization shares takes a
-// top-level post only in the project's own thread its binding records (ISS-934). Images the post
+// post naming no thread only in the project's own thread its binding records (ISS-934). No post of
+// a master lands at a room's top level (ISS-1224, owner 2026-11-12): one naming no thread goes in the
+// room's report thread, and where none can be opened it is refused by name. Images the post
 // names follow its text into the same room and thread, each checked before anything is posted
 // (ISS-1024, `master-post-images.ts`).
 
@@ -30,6 +32,7 @@ import {
   stagePostImages,
 } from './master-post-images.js';
 import { no, type Outcome } from './outcome.js';
+import { reportThreadFor } from './report-thread.js';
 import { toldResultOfThread } from './room-reads.js';
 import { boundButUndeclared, declareSupportRooms, heldElsewhere, roomIsBound } from './rooms.js';
 import { type SessionDoor, screenForThread } from './screen.js';
@@ -41,7 +44,6 @@ import {
   threadMembers,
 } from './store.js';
 import {
-  postForTopLevel,
   postInThread,
   projectThreadOfRoom,
   roomAuth,
@@ -52,7 +54,7 @@ import {
 
 const TOOL = 'master_post';
 
-interface Postable {
+export interface Postable {
   room: RoomRow;
   team: boolean;
 }
@@ -76,7 +78,7 @@ const answeredImages = (posted: readonly PostedImage[]) =>
     : {};
 
 /** Every room the project's bindings answer now, of any kind, with who reads each. */
-async function postableRoomsOf(projectId: string): Promise<Postable[]> {
+export async function postableRoomsOf(projectId: string): Promise<Postable[]> {
   const rooms = await roomsOfProject(projectId);
   const bound = await Promise.all(
     rooms.map(async (room) =>
@@ -147,7 +149,7 @@ async function roomRefusal(
 /** Why a room the users read takes no top-level post, and where one goes instead (ISS-872). */
 function usersRoomRefusal(users: readonly Postable[], team: readonly Postable[]): Outcome<never> {
   const where = team.length
-    ? `post the top level in a room the team reads (${ridsOf(team)})`
+    ? `post naming no thread in a room the team reads (${ridsOf(team)}), which takes it in its report thread`
     : "this project binds no room the team reads: a project admin names the owner's room as the binding's `agent.ownerRoom`, or binds a room with `readers: team`";
   return no(
     'SUPPORT_MASTER_POST_USERS_ROOM',
@@ -178,7 +180,7 @@ function topLevelRoomOf(rooms: readonly Postable[], rid: string | undefined): Ou
 }
 
 /** Where a thread was found: its room, and the conversation its record is on where it has one. */
-interface Placed {
+export interface Placed {
   at: Postable;
   conversationId: string | null;
 }
@@ -221,7 +223,7 @@ async function rootOf(rooms: readonly Postable[], thread: string): Promise<Root>
 }
 
 /** The room of the named ones a thread is in, by the project's record and then by the chat server. */
-async function roomOfThread(
+export async function roomOfThread(
   rooms: readonly Postable[],
   rid: string | undefined,
   thread: string,
@@ -353,15 +355,17 @@ async function postInNamedThread(
 
 /**
  * The master's post where a room's top level would take it (`thread.ts:topLevelThreadOf`, `to`):
- * its project's own thread of an operations room recording one, else the top level of a room the
- * team reads; screened as a top-level post is, since everyone in the room reads it, and recorded as
- * the master's.
+ * its project's own thread of an operations room recording one, else (`thread` null) the report
+ * thread of a room the team reads, opened once the post is screened and its images taken, so a
+ * refused post opens nothing (ISS-1224); never
+ * its top level. Screened as a top-level post is, since everyone in the room reads it, and recorded
+ * as the master's.
  */
 async function postAtTop(
   actor: Actor,
   at: Postable,
   given: string,
-  to: string | null,
+  thread: string | null,
   images: readonly PostImage[],
 ): Promise<Posted> {
   const room = at.room;
@@ -370,20 +374,24 @@ async function postAtTop(
   if (!admitted.ok) return admitted;
   const staged = await stagePostImages(room, images);
   if (!staged.ok) return staged;
-  const out = await postForTopLevel({
+  let to = thread;
+  if (!to) {
+    const report = await reportThreadFor(room, [text]);
+    if (!report.ok) return report;
+    to = report.value;
+  }
+  const posted = await postInThread({
     room,
+    thread: to,
     text: admitted.value.text,
     proof: admitted.value.proof,
-    to,
   });
-  if (!out.ok) return out;
-  const posted = out.value;
-  const shown = await postImagesAfter(room, staged.value, posted.thread, posted.messageId);
+  const shown = await postImagesAfter(room, staged.value, to, posted.messageId);
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,
     conversationId: posted.conversationId,
-    thread: posted.thread ?? posted.messageId ?? TOP_LEVEL,
+    thread: to,
     kind: 'announced',
     actorKind: 'session',
     tool: TOOL,
@@ -396,7 +404,7 @@ async function postAtTop(
     value: {
       rid: room.rid,
       messageId: posted.messageId,
-      ...(posted.thread ? { thread: posted.thread } : {}),
+      thread: to,
       ...answeredImages(shown.posted),
     },
   };
@@ -417,8 +425,8 @@ async function roomRecording(
 
 /**
  * Posts the master's text in a room its project binds, as that room's bot: in the thread it names,
- * its project's own thread of an operations room recording one, or at the top level of the team room
- * it names or the project's one team room; recorded as the master's.
+ * its project's own thread of an operations room recording one, or in the report thread of the team
+ * room it names or the project's one team room, never at a top level; recorded as the master's.
  */
 export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest): Promise<Posted> {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
@@ -435,6 +443,7 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
   }
   const chosen = topLevelRoomOf(rooms, input.rid);
   if (!chosen.ok) return chosen;
+  // a shared operations room takes it in the project's own thread; any other in its report thread
   const to = await topLevelThreadOf(chosen.value.room);
   if (!to.ok) return to;
   return postAtTop(actor, chosen.value, input.text, to.value, images.value);

@@ -1371,6 +1371,10 @@ export interface SupportRoomThreadView {
 	feedback: string[];
 }
 
+/** Who set a room's report thread (ISS-1224): a person naming theirs, or Forge opening its own. */
+export const SUPPORT_REPORT_THREAD_BY = ["person", "forge"] as const;
+export type SupportReportThreadBy = (typeof SUPPORT_REPORT_THREAD_BY)[number];
+
 export interface SupportRoomView {
 	id: string;
 	/** The project whose binding attaches the room; an operations room's home, whose box serves it. */
@@ -1410,6 +1414,13 @@ export interface SupportRoomView {
 	 * Null in any other room, or where none is recorded.
 	 */
 	projectThread: string | null;
+	/**
+	 * The room's report thread (ISS-1224): where a master's post naming no thread and core's room-down
+	 * line land, never the room's top level. Null until a person names one or Forge opens it.
+	 */
+	reportThread: string | null;
+	/** Who set it: a person naming a thread they wrote in, or Forge opening its own; null with none. */
+	reportThreadBy: SupportReportThreadBy | null;
 	latency: SupportLatencyView;
 	createdAt: string;
 }
@@ -1528,6 +1539,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_THREAD_OF_ANOTHER_ROOM",
 	/** A master's post into an operations room shared by projects, with no thread recorded for its project (ISS-934). */
 	"SUPPORT_PROJECT_THREAD_UNRECORDED",
+	/** A master's post naming no thread, where the room's report thread could not be opened (ISS-1224). */
+	"SUPPORT_POST_NEEDS_THREAD",
 	/** A question for the owner outside the room the binding names as `ownerRoom` (ISS-872). */
 	"SUPPORT_NOT_THE_OWNER_ROOM",
 	/** A thread that names no parked question handed to this group (ISS-873). */
@@ -1692,6 +1705,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_ROOM_SWITCHED_OFF: 409,
 	SUPPORT_THREAD_OF_ANOTHER_ROOM: 409,
 	SUPPORT_PROJECT_THREAD_UNRECORDED: 409,
+	SUPPORT_POST_NEEDS_THREAD: 503,
 	SUPPORT_NOT_THE_OWNER_ROOM: 409,
 	SUPPORT_QUESTION_UNKNOWN: 404,
 	SUPPORT_ANSWER_SOURCE: 400,

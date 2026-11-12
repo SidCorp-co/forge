@@ -103,6 +103,8 @@ const room = (over: Partial<SupportRoomView>): SupportRoomView => ({
   health: { healthy: true, causes: [], checkedAt: "2026-10-28T10:00:00.000Z" },
   threads: 0,
   projectThread: null,
+  reportThread: null,
+  reportThreadBy: null,
   recentThreads: [],
   latency: {
     measured: 0,

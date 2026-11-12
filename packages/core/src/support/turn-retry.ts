@@ -161,8 +161,9 @@ export async function retryOrTell(
 
 /**
  * Record each thread of `taken` as left without an answer, with `reason`, and tell the room once
- * (ISS-1105): one line at its top level through core's last-resort path, where a message within the
- * bound still waits on an answer, never a post in each thread. A message held past the bound is not
+ * (ISS-1105): one line in its report thread (ISS-1224) through core's last-resort path, where a
+ * message within the bound still waits on an answer, never a post in each thread nor at the top
+ * level; where it was not said, the record says why. A message held past the bound is not
  * reported here (`dropHeldTooLong` records it), one some failure was already reported for is not
  * reported again, and a room told while it still waits is not told twice.
  */
@@ -205,6 +206,8 @@ export async function tellUnanswered(
         // the room's one line, where this call posted it; the thread itself is told nothing
         posted: Boolean(posted),
         roomLine: posted?.messageId ?? null,
+        // why the line was not said, where it was not: told already, no thread to go in (ISS-1224)
+        roomLineWhy: said && !said.posted ? said.why : null,
       },
     });
   }

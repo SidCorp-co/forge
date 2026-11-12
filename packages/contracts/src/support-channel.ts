@@ -331,8 +331,8 @@ export const supportMasterPostRequestSchema = z.strictObject({
 	/**
 	 * The thread the post goes in (ISS-871, ISS-943), by its first message's id: one of the named
 	 * room, or of whichever bound room holds it; in a room the product's users read, only one a member
-	 * wrote in. Absent, the post is at the top level of a room the team reads; a room the product's
-	 * users read takes none (ISS-872).
+	 * wrote in. Absent, the post goes in the report thread of a room the team reads, never at its top
+	 * level (ISS-1224); a room the product's users read takes none (ISS-872).
 	 */
 	thread: supportThreadIdSchema.optional(),
 	/**
@@ -344,6 +344,18 @@ export const supportMasterPostRequestSchema = z.strictObject({
 });
 export type SupportMasterPostRequest = z.infer<
 	typeof supportMasterPostRequestSchema
+>;
+
+/**
+ * `PUT /api/projects/:id/support/rooms/:roomId/report-thread` (ISS-1224): names the room's report
+ * thread, where a master's post naming no thread and core's room-down line go. `thread` is the
+ * first message's id of a thread of that room people already wrote in; any other is refused.
+ */
+export const supportReportThreadRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+});
+export type SupportReportThreadRequest = z.infer<
+	typeof supportReportThreadRequestSchema
 >;
 
 /**

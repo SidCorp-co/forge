@@ -16,7 +16,8 @@ import type { ChannelSwitchPlan, ChannelSwitchView } from '@forge/contracts/supp
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { supportChannelSwitches, supportChannels } from '../db/schema-support.js';
+import { supportChannels } from '../db/schema-support.js';
+import { supportChannelSwitches } from '../db/schema-support-switches.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import {
   type AgentSwitchGate,

@@ -10,15 +10,14 @@ import {
   SUPPORT_OWNER_CONSENT_ROUTES,
   SUPPORT_PROMISE_STATES,
   SUPPORT_PROPOSAL_KINDS,
+  SUPPORT_REPORT_THREAD_BY,
 } from '@forge/contracts/support';
 import { CHANNEL_MEMBER_STATES, CHANNEL_ROLES } from '@forge/contracts/support-channel';
 import { OPERATIONS_SCOPES, SUPPORT_ROOM_KINDS } from '@forge/contracts/support-operations';
 import { sql } from 'drizzle-orm';
 import {
-  boolean,
   check,
   customType,
-  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -63,6 +62,13 @@ export const supportRooms = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     sessionId: uuid('session_id').references(() => agentSessions.id, { onDelete: 'set null' }),
+    /**
+     * The room's report thread (ISS-1224, migration 0653): where a master's post naming no thread and
+     * core's room-down line land, never the top level. Named by a person (`person`), or opened once
+     * by Forge (`forge`) with one anchor line at the top level.
+     */
+    reportThread: text('report_thread'),
+    reportThreadBy: text('report_thread_by', { enum: SUPPORT_REPORT_THREAD_BY }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -75,6 +81,10 @@ export const supportRooms = pgTable(
       .where(sql`${t.kind} <> 'agent'`),
     projectIdx: index('support_rooms_project_idx').on(t.projectId),
     kindChk: check('support_rooms_kind_chk', sql`${t.kind} IN (${inList(SUPPORT_ROOM_KINDS)})`),
+    reportThreadChk: check(
+      'support_rooms_report_thread_chk',
+      sql`(${t.reportThread} IS NULL) = (${t.reportThreadBy} IS NULL) AND (${t.reportThreadBy} IS NULL OR ${t.reportThreadBy} IN (${inList(SUPPORT_REPORT_THREAD_BY)}))`,
+    ),
     scopeChk: check(
       'support_rooms_scope_chk',
       sql`(${t.kind} = 'operations') = (${t.scope} IS NOT NULL) AND (${t.scope} IS NULL OR ${t.scope} IN (${inList(OPERATIONS_SCOPES)}))`,
@@ -492,62 +502,6 @@ export const supportChannelCommonIssues = pgTable(
     threadsChk: check(
       'support_channel_common_issues_threads_chk',
       sql`cardinality(${t.threads}) >= 2 OR cardinality(${t.threads}) = 0`,
-    ),
-  }),
-);
-
-/**
- * A group's switch from the bot outside Forge that answers it to the project's channel agent (REQ-77
- * BC-16..BC-19): the outside bot's chat account the switch removes from the group, the duties the
- * agent passes first (each by a person, with what they saw), the earlier switch it waits on until
- * that one is proven, and the owner's word where it is needed. `applying_at` is set while the switch
- * runs, the one moment the binding door lets the group join the agent.
- */
-export const supportChannelSwitches = pgTable(
-  'support_channel_switches',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    rid: text('rid').notNull(),
-    outsideBotUserId: text('outside_bot_user_id').notNull(),
-    outsideBotUsername: text('outside_bot_username'),
-    /** The outside bot answers as the binding's own chat account: the switch removes nobody. */
-    outsideIsSelf: boolean('outside_is_self').notNull().default(false),
-    /** An operator's record that the outside bot's process is stopped, which a self switch waits on. */
-    outsideStoppedAt: timestamp('outside_stopped_at', { withTimezone: true }),
-    outsideStoppedBy: uuid('outside_stopped_by').references(() => users.id, {
-      onDelete: 'set null',
-    }),
-    outsideStoppedNote: text('outside_stopped_note'),
-    /** `[{ key, text, passedBy, passedAt, evidence }]`, in the order the plan named them. */
-    duties: jsonb('duties').notNull(),
-    afterSwitchId: uuid('after_switch_id'),
-    ownerWordNeeded: boolean('owner_word_needed').notNull().default(false),
-    ownerWord: text('owner_word'),
-    ownerWordBy: uuid('owner_word_by').references(() => users.id, { onDelete: 'set null' }),
-    ownerWordAt: timestamp('owner_word_at', { withTimezone: true }),
-    applyingAt: timestamp('applying_at', { withTimezone: true }),
-    switchedAt: timestamp('switched_at', { withTimezone: true }),
-    switchedBy: uuid('switched_by').references(() => users.id, { onDelete: 'set null' }),
-    provenAt: timestamp('proven_at', { withTimezone: true }),
-    provenBy: uuid('proven_by').references(() => users.id, { onDelete: 'set null' }),
-    provenNote: text('proven_note'),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectRidUq: uniqueIndex('support_channel_switches_project_rid_uq').on(t.projectId, t.rid),
-    afterFk: foreignKey({
-      columns: [t.afterSwitchId],
-      foreignColumns: [t.id],
-      name: 'support_channel_switches_after_fk',
-    }).onDelete('restrict'),
-    notSelfChk: check(
-      'support_channel_switches_not_self_chk',
-      sql`${t.afterSwitchId} IS NULL OR ${t.afterSwitchId} <> ${t.id}`,
     ),
   }),
 );

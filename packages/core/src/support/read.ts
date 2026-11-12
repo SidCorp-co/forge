@@ -67,6 +67,8 @@ export async function supportRoomsOf(
           lastAt: t.lastAt.toISOString(),
         })),
         projectThread: await projectThreadOfRoom(r),
+        reportThread: r.reportThread,
+        reportThreadBy: r.reportThreadBy,
         latency: latencyOf(await latencySamples(r.id, SUPPORT_LATENCY_WINDOW)),
         createdAt: r.createdAt.toISOString(),
       };

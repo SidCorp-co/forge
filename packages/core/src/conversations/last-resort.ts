@@ -31,8 +31,9 @@ export const STILL_QUEUED_LINE =
 
 /**
  * A support room's one line when its session is broken (ISS-1105): said once to the room's people
- * at its top level, never in each waiting thread, and like the thread's line it never asks anyone
- * to resend. Vietnamese where the room's content language is; English otherwise.
+ * in the room's report thread (ISS-1224), never at its top level nor in each waiting thread, and
+ * like the thread's line it never asks anyone to resend. Vietnamese where the room's content
+ * language is; English otherwise.
  */
 export const ROOM_STILL_QUEUED_LINES: Readonly<Record<'vi' | 'en', string>> = {
   vi: 'Trợ lý đang gặp sự cố nên chưa trả lời được. Các tin nhắn gửi trợ lý vẫn được giữ lại, trợ lý sẽ trả lời ngay khi có thể.', // i18n-allow: core's last-resort room line, Vietnamese by owner ruling (ISS-875, ISS-1105)
