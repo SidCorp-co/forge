@@ -165,10 +165,13 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
   // record says why, and the room can be told once one can
   it('says nothing where the room has no report thread and none can be opened, and records why', async () => {
     const room = await roomById(roomId);
-    const [parcel] = await db
-      .select()
-      .from(supportActions)
-      .where(and(eq(supportActions.roomId, roomId), eq(supportActions.kind, 'message_in')));
+    // the message answered above, told now as if its tries had run out
+    const parcel = (
+      await db
+        .select()
+        .from(supportActions)
+        .where(and(eq(supportActions.roomId, roomId), eq(supportActions.kind, 'message_in')))
+    ).find((m) => (m.input as { text?: string } | null)?.text === 'Where is my parcel?');
     if (!room || !parcel) throw new Error('no room or message');
     const before = (await w.chat.botLines()).length;
     const stand = w.chat as StandInRocketChat;
@@ -179,13 +182,13 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
       stand.topLevelRefused = false;
     }
     expect(await w.chat.botLines()).toHaveLength(before);
-    expect(await reportThread()).toEqual({ thread: null, by: null });
     const told = await recorded('turn_failed', parcel.thread);
     expect(told.at(-1)?.output).toMatchObject({
       posted: false,
       roomLine: null,
       roomLineWhy: 'no-thread',
     });
+    expect(await reportThread()).toEqual({ thread: null, by: null });
   });
 
   it('tells the room once its tries ran out, never asking to resend, and keeps the message queued', async () => {
@@ -196,6 +199,7 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
     expect(handed(seen, 'Refund please')).toBe(3);
     // one line in the room's report thread, opened by one anchor line at the top level, in the
     // room's language, and none in the thread nor at the top level (ISS-1105, ISS-1224)
+    expect((await topLines()).filter(failedLine)).toEqual([]);
     const report = await reportThread();
     expect(report?.by).toBe('forge');
     expect((await topLines()).map((l) => [l.id, l.text])).toEqual([
