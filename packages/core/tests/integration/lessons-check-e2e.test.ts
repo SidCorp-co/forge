@@ -86,13 +86,19 @@ describe('a repeat, or three corrections, becomes a check in code (BC-6)', () =>
     const view = await lesson(n);
     expect(view.check_issue_id, 'no "Add a check" draft in the project').toBeNull();
     expect(await checkOf(view.id as string)).toHaveLength(0);
-    const [routed] = await rows<{ project_id: string; title: string }>(sql`
-      SELECT f.project_id, f.title FROM feedback f JOIN lessons l ON l.routed_feedback_id = f.id
+    const [routed] = await rows<{ project_id: string; title: string; body: string }>(sql`
+      SELECT f.project_id, f.title, f.body FROM feedback f JOIN lessons l ON l.routed_feedback_id = f.id
        WHERE l.id = ${view.id as string}`);
     expect(routed).toMatchObject({
       project_id: home,
       title: 'A Forge step keeps being corrected: Judge a contract upgrade against its call sites.',
     });
+    // ISS-1222: named with its project, since a bare L-n reads as Forge's own lesson there
+    const [own] = await rows<{ slug: string }>(
+      sql`SELECT slug FROM projects WHERE id = ${w.projectId}::uuid`,
+    );
+    expect(routed?.body).toMatch(new RegExp(`^${String(own?.slug)} L-${n} is about `));
+    expect(routed?.body).toContain(`/api/projects/${w.projectId}/knowledge/lesson-${n}`);
     expect((await pass({})).checks, 'routed once').toBe(0);
   });
 
