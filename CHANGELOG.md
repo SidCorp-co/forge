@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.656] - 2026-11-12
+
+The chat agent tells an organization apart from its workspaces
+
+### Fixed
+
+- **A chat room's agent tells an organization from its workspaces.** It reads which organization holds which workspaces before naming or changing either, and a workspace rename renames the workspace.
+
 ## [0.4.0-dev.655] - 2026-11-12
 
 An archived project no longer waits on you in Needs you
