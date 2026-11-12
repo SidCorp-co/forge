@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.663] - 2026-11-12
+
+Owner-accepted proof stops the owed live-verdict ask on releases
+
+### Fixed
+
+- **An owner's accepted proof clears the live verdict.** A commit pass naming the owner's decision reads Accepted on the release, never proven, and the master is no longer asked to judge it (ISS-1223).
+
 ## [0.4.0-dev.662] - 2026-11-12
 
 Routed process lessons name their project and where to read them
