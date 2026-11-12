@@ -332,6 +332,23 @@ describe('a mark that says when its commit landed (ISS-1226)', () => {
     },
   );
 
+  // an unmark clears the landing it dated, so a time sent with it is refused rather than dropped
+  it.each(['landedAt', 'mergedAt'])(
+    'refuses by name an unmark naming %s, and leaves the mark standing',
+    async (field) => {
+      const id = await unmarked(240);
+      const landedAt = minutesAgo(120);
+      expect((await mark(id, { landedAt })).status).toBe(200);
+
+      const res = await api(token, 'DELETE', `/api/issues/${id}/merge`, { [field]: landedAt });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(codeOf(res.body)).toBe('UNMARK_TAKES_NO_LANDING');
+      expect(JSON.stringify(res.body)).toContain(`/${field}`);
+      expect(new Date(String((await written(id))?.merged_at)).toISOString()).toBe(landedAt);
+    },
+  );
+
   it('refuses both spellings of the landing in one mark, and writes nothing', async () => {
     const id = await unmarked(240);
     const at = minutesAgo(120);

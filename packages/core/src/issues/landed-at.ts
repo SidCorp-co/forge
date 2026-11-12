@@ -52,3 +52,17 @@ export function landingOfMark(body: SentLanding, now: Date = new Date()): Date |
   }
   return at;
 }
+
+/**
+ * An unmark clears the mark and the landing it dated, so a landing time sent with it would be dropped
+ * unread; it is refused by name instead, before anything is written.
+ */
+export function refuseLandingOnUnmark(body: SentLanding): void {
+  const field = body.landedAt ? 'landedAt' : body.mergedAt ? 'mergedAt' : null;
+  if (!field) return;
+  throw refuse(
+    'UNMARK_TAKES_NO_LANDING',
+    `an unmark clears the mark and its landing, so \`${field}\` is not used: send it on the mark that follows (\`POST /api/issues/:id/merge\`), or omit it here`,
+    `/${field}`,
+  );
+}

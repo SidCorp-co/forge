@@ -38,7 +38,7 @@ import { idParamSchema } from '../middleware/route-errors.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnResolved } from '../permissions/index.js';
 import { heldIssue, ISSUE_PROJECT, projectScopeQuery } from './issue-route-ref.js';
-import { landingOfMark } from './landed-at.js';
+import { landingOfMark, refuseLandingOnUnmark } from './landed-at.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
@@ -91,7 +91,8 @@ async function runMergeMarker(
   const scope = await heldIssue(issueId, userId, 'project.write');
   const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
 
-  // refused before anything is written: a landing not yet come
+  // refused before anything is written: a landing not yet come, or one an unmark would drop
+  if (op === 'unmark') refuseLandingOnUnmark(body);
   const landedAt = op === 'mark' ? landingOfMark(body) : null;
   const actor = restActor(c);
   const { action, mark, markDetail, artifacts, said, by, commitReading } = await applyMergeMarker({

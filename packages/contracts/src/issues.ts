@@ -154,6 +154,8 @@ export const MERGE_REFUSAL_CODES = [
 	"MERGE_LANDED_AT_FUTURE",
 	/** A mark naming its landing as both `landedAt` and `mergedAt`, its older spelling (ISS-1226). */
 	"MERGE_LANDED_AT_TWICE",
+	/** An unmark naming a landing time, which it does not use: it clears the mark, landing and all. */
+	"UNMARK_TAKES_NO_LANDING",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];
