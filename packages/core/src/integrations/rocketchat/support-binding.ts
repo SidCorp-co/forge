@@ -245,9 +245,11 @@ function checkRefusals(
 
 /**
  * One session answers a group (ISS-874): a group this binding names in `rids` that another active
- * binding on the same chat server already names is refused, whichever project holds that binding.
- * Two bindings of one group would be two answerers; a channel agent that answers for several
- * projects follows them through `agent.projects` instead.
+ * binding on the same chat server already answers is refused, whichever project holds that binding.
+ * Two bindings answering every message of one group would be two answerers; a channel agent that
+ * answers for several projects follows them through `agent.projects` instead. A binding answering
+ * only mentions in the group is no answerer of it: it speaks when named, beside the one that answers
+ * every message (ISS-1220, owner 2026-11-12: #sid-email is sidcorp-mail's, sid-desk is named there).
  */
 async function answeredTwiceRefusals(
   args: VerifyBindingTargetArgs,
@@ -256,9 +258,11 @@ async function answeredTwiceRefusals(
   const server = serverOf(args.connection.config);
   const out: BindingTargetRefusal[] = [];
   for (const [i, rid] of rids.entries()) {
+    if (answersIn(args.config, rid) === 'mentions') continue;
     const other = (await listActiveBindingsNamingRid('rocketchat', rid)).find(
       (pair) =>
         pair.binding.id !== args.bindingId &&
+        answersIn(pair.binding.config, rid) !== 'mentions' &&
         (pair.connection.id === args.connection.id ||
           (server !== null && serverOf(pair.connection.config) === server)),
     );
@@ -266,10 +270,25 @@ async function answeredTwiceRefusals(
     out.push({
       code: 'SUPPORT_ROOM_ANSWERED_TWICE',
       path: `/rids/${i}`,
-      detail: `group ${rid} is already answered by binding ${other.binding.id} of project ${other.binding.projectId}, so binding it here gives the group two answerers; to answer for several projects in one group, name the others in that binding's agent.projects, or drop the group from it first`,
+      detail: `group ${rid} is already answered by binding ${other.binding.id} of project ${other.binding.projectId}, so binding it here gives the group two answerers; to answer for several projects in one group, name the others in that binding's agent.projects; to speak there only when named, answer only mentions in it (answers: 'mentions', or rooms.<group>.answers on an agent block); or drop the group from it first`,
     });
   }
   return out;
+}
+
+/**
+ * Which messages of group `rid` a binding answers, as the support domain reads it
+ * (`support/grants.ts:answersOfConfig`): its block's own word for the group, else the block's, else
+ * every message. An operations room has no such word and answers every message.
+ */
+function answersIn(config: unknown, rid: string): 'mentions' | 'every-message' {
+  const c = (config ?? {}) as { agent?: unknown; support?: unknown };
+  const block = (c.agent ?? c.support ?? null) as {
+    answers?: string;
+    rooms?: Record<string, { answers?: string } | undefined>;
+  } | null;
+  const said = block?.rooms?.[rid]?.answers ?? block?.answers;
+  return said === 'mentions' ? 'mentions' : 'every-message';
 }
 
 const serverOf = (config: unknown): string | null => {

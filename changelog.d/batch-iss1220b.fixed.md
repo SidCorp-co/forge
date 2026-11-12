@@ -1,0 +1,1 @@
+**A project can answer only mentions in a group another project answers.** Its binding is no longer refused as the group's second answerer, so one project answers every message and the other speaks when named (ISS-1220).
