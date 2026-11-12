@@ -212,6 +212,14 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'serverKeyOf looks a feedback server key up by its SHA-256; mintServerKey stores only the digest of what it mints',
   'feedback/server-key-rules.ts':
     'mints a feedback server key and digests it for its lookup; a PAT never matches its shape',
+  'monitoring/routes.ts':
+    'the monitoring doors (ISS-1225): the sd or alerts token Forge minted for the connection the path names, and a project’s agent token, each looked up by its SHA-256; each sets no session, and a PAT is none of them',
+  'monitoring/connections.ts':
+    'connectionAdmitting admits a presented token only where it is the named connection’s token of the door’s kind, by its SHA-256; a PAT never matches',
+  'integrations/prometheus/store.ts':
+    'connectionAdmits looks a monitoring connection’s sd or alerts token up by its SHA-256; mintConnectionToken stores only the digest of what it mints',
+  'monitoring/agent-tokens.ts':
+    'projectOfAgentToken looks a project’s monitoring agent token up by its SHA-256; mintAgentToken stores only the digest of what it mints',
   'credentials/mcp-oauth-shape.ts':
     'pkceAnswers checks a PKCE verifier against the challenge its code was issued with, in constant time; mintSecret digests what it mints',
 };
@@ -230,6 +238,12 @@ const ADMITS_NOTHING: Readonly<Record<string, string>> = {
     'puts the web host and the demo credential in front of the router; checks none',
   'feedback/server-key-routes.ts':
     'mints, lists and revokes feedback server keys behind requireAuth and project.admin; it checks none',
+  'monitoring/project-routes.ts':
+    'mints a project’s monitoring agent token behind requireAuth and project.admin; it checks none',
+  'monitoring/connection-admin.ts':
+    'mints a monitoring connection’s sd or alerts token for a connection its door loaded; it checks none',
+  'integration-door/connection-routes.ts':
+    'mints a monitoring connection’s tokens behind requireAuth and the connection’s manage rule; it checks none',
   'route-registry.ts': 'mounts the web host ahead of every route; checks none',
   'index.ts': 'serves app.fetch, which a demo core wraps in the demo credential; checks none',
 };

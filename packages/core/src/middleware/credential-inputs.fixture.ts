@@ -123,6 +123,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:x-forge-unresolved-ref`,
   'a widget visitor, the page they are on and the origin that framed it, as the frame says, stored as data; the site key is public': words`
     field:json:context field:json:embeddedAt field:json:visitor field:json:visitorId field:param:siteKey`,
+  'what a monitoring connection’s Prometheus and Alertmanager send once its sd or alerts token matched: the job discovered, the alerts fired (ISS-1225)': words`
+    field:json:alerts field:query:job`,
   [ROW_KEYS]: words`
     param:bindingId param:file param:id param:projectId param:provider param:questionId param:slug param:target
     param:templateId param:version query:projectId
@@ -351,6 +353,9 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     credentials/cookie.ts Context handed to hono:setCookie in writeSessionCookie`,
   'frames on a socket core opened to Rocket.Chat': lines`
     integrations/rocketchat/ddp-client.ts WebSocket.on cast to WsLike in RocketChatDdpClient`,
+  'a project host agent’s remote write, its labels read and its bytes forwarded to its monitoring connection once its agent token matched; a scrape URL a binding names, split into its target (ISS-1225)': lines`
+    monitoring/routes.ts HonoRequest.arrayBuffer in module code
+    integrations/prometheus/render.ts URLSearchParams iterated in scrapeGroups`,
   'a file’s bytes, stored as an attachment or upload': lines`
     agent-sessions/attachment-routes.ts HonoRequest.parseBody in module code
     comments/attachment-routes.ts HonoRequest.parseBody in module code
