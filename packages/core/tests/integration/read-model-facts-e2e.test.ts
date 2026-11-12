@@ -35,6 +35,19 @@ async function session(projectId: string, status: string, deviceId: string | nul
   `);
 }
 
+/** A job the person started in the project that failed, under a run of its own. */
+async function failedJob(projectId: string, userId: string): Promise<void> {
+  const runId = randomUUID();
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${runId}, ${projectId}, 'system', 'failed')`);
+    await tx.execute(sql`
+      INSERT INTO jobs (project_id, pipeline_run_id, created_by, type, status, payload)
+      VALUES (${projectId}, ${runId}, ${userId}, 'code', 'failed', '{}'::jsonb)`);
+  });
+}
+
 describe('the queue and attention read models serve the derived facts', () => {
   let token = '';
   let owner = '';
@@ -199,15 +212,7 @@ describe('the queue and attention read models serve the derived facts', () => {
     const mine = (a: Attention) => a.needsYou.find((p) => p.projectSlug === other.slug);
     const failedIn = (a: Attention) => a.failedJobs.filter((j) => j.projectSlug === other.slug);
     // a job of theirs that failed in the project: a row of its own beside the decisions
-    const runId = randomUUID();
-    await withKernelMarker(db, async (tx) => {
-      await tx.execute(sql`
-        INSERT INTO pipeline_runs (id, project_id, kind, status)
-        VALUES (${runId}, ${other.id}, 'system', 'failed')`);
-      await tx.execute(sql`
-        INSERT INTO jobs (project_id, pipeline_run_id, created_by, type, status, payload)
-        VALUES (${other.id}, ${runId}, ${owner}, 'code', 'failed', '{}'::jsonb)`);
-    });
+    await failedJob(other.id, owner);
     const before = await read();
     expect(failedIn(before)).toHaveLength(1);
     const part = mine(before);
