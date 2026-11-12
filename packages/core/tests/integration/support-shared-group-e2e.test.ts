@@ -157,4 +157,26 @@ describe('a group two projects share on one bot (ISS-1220)', () => {
       expect(posted.status, JSON.stringify(posted.body)).toBeLessThan(300);
     }
   });
+
+  it('takes a save of the binding answering every message beside one answering only mentions, and refuses a second answerer', async () => {
+    const save = async (projectId: string, patch: Record<string, unknown>) => {
+      const [b] = await rows<{ id: string }>(sql`
+        SELECT id FROM integration_bindings WHERE project_id = ${projectId}::uuid`);
+      const path = `/api/projects/${projectId}/bindings/${String(b?.id)}`;
+      const got = await api(w.owner, 'GET', path);
+      expect(got.status, JSON.stringify(got.body)).toBe(200);
+      const document = got.body.document as { target: Record<string, unknown> };
+      return api(w.owner, 'PUT', path, {
+        baseRevision: got.body.revision,
+        document: { ...document, target: { ...document.target, ...patch } },
+      });
+    };
+    // the ruling as configured on dev: sidcorp-mail's binding saved beside sid-desk's mentions-only one
+    const mailSaved = await save(mail, { support: { product: 'Mail, every message' } });
+    expect(mailSaved.status, JSON.stringify(mailSaved.body)).toBe(200);
+    // the mention-only project made a second answerer of every message is refused by name
+    const deskEvery = await save(w.projectId, { support: { product: 'Desk' } });
+    expect(deskEvery.status).toBe(422);
+    expect(JSON.stringify(deskEvery.body)).toContain('SUPPORT_ROOM_ANSWERED_TWICE');
+  });
 });
