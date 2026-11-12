@@ -3,6 +3,7 @@ import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { api, userToken } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -178,5 +179,56 @@ describe('the queue and attention read models serve the derived facts', () => {
     expect(res.status).toBe(400);
     const none = await api(token, 'GET', `/api/me/attention?org=${randomUUID()}`);
     expect(none.status).toBe(400);
+  });
+
+  // ISS-1216: the owner archived hop and eco-a, and their 72 decisions still waited on him.
+  it("counts nothing of an archived project in a person's attention, and all of it once restored", async () => {
+    type Attention = {
+      needsYou: { projectSlug: string; total: number; waiting: number }[];
+      failedJobs: { projectSlug?: string }[];
+      waitingOnYou: number;
+      owedToYou: number;
+      counts: Record<string, number>;
+      total: number;
+    };
+    const read = async (): Promise<Attention> => {
+      const res = await api(token, 'GET', '/api/me/attention');
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body as Attention;
+    };
+    const mine = (a: Attention) => a.needsYou.find((p) => p.projectSlug === other.slug);
+    const failedIn = (a: Attention) => a.failedJobs.filter((j) => j.projectSlug === other.slug);
+    // a job of theirs that failed in the project: a row of its own beside the decisions
+    const runId = randomUUID();
+    await withKernelMarker(db, async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO pipeline_runs (id, project_id, kind, status)
+        VALUES (${runId}, ${other.id}, 'system', 'failed')`);
+      await tx.execute(sql`
+        INSERT INTO jobs (project_id, pipeline_run_id, created_by, type, status, payload)
+        VALUES (${other.id}, ${runId}, ${owner}, 'code', 'failed', '{}'::jsonb)`);
+    });
+    const before = await read();
+    expect(failedIn(before)).toHaveLength(1);
+    const part = mine(before);
+    expect(part?.waiting ?? 0).toBeGreaterThan(0);
+    expect(part?.total ?? 0).toBeGreaterThan(0);
+
+    const archived = await api(token, 'POST', `/api/projects/${other.id}/archive`);
+    expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+    const gone = await read();
+    expect(mine(gone)).toBeUndefined();
+    expect(gone.waitingOnYou).toBe(before.waitingOnYou - (part?.total ?? 0));
+    expect(gone.owedToYou).toBe(before.owedToYou - (part?.waiting ?? 0));
+    expect(gone.counts.decisions).toBe((before.counts.decisions ?? 0) - (part?.total ?? 0));
+    expect(failedIn(gone)).toHaveLength(0);
+    expect(gone.total).toBe(before.total - (part?.total ?? 0) - 1);
+
+    const restored = await api(token, 'POST', `/api/projects/${other.id}/unarchive`);
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    const back = await read();
+    expect(mine(back)?.waiting).toBe(part?.waiting);
+    expect(back.owedToYou).toBe(before.owedToYou);
+    expect(failedIn(back)).toHaveLength(1);
   });
 });
