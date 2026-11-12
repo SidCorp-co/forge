@@ -230,3 +230,133 @@ describe('the commit an agent states on its mark', () => {
     });
   });
 });
+
+// FB-628 (sidcorp-mail ISS-9): its commit merged on 2026-10-29 and is in tag v0.6.0, but its mark
+// was recorded on 2026-11-12, so the landing read as the mark's own time and the record naming
+// v0.6.0 was refused RELEASE_SHIPPED_IN_BEFORE_LANDING. The marker says when its commit landed.
+describe('a mark that says when its commit landed (ISS-1226)', () => {
+  /** An issue at the gate, filed `filedAgo` minutes ago, carrying no mark yet. */
+  async function unmarked(filedAgo: number): Promise<string> {
+    const id = await fx.insertIssue('awaiting_release', undefined, false);
+    await db.execute(
+      sql`UPDATE issues SET created_at = ${minutesAgo(filedAgo)}::timestamptz WHERE id = ${id}`,
+    );
+    return id;
+  }
+
+  const mark = (id: string, body: Record<string, unknown>) =>
+    api(token, 'POST', `/api/issues/${id}/merge`, { target: 'main', commit: A, ...body });
+
+  const codeOf = (body: unknown) => {
+    const b = body as { error?: { code?: string; refusals?: Array<{ code: string }> } };
+    return b.error?.refusals?.[0]?.code ?? b.error?.code ?? null;
+  };
+
+  /** What a mark leaves on the row and its history: the stamp, its comment and its trail. */
+  async function written(id: string) {
+    const [row] = await rows<{ merged_at: Date | null; comments: number; trail: number }>(sql`
+      SELECT merged_at,
+             (SELECT count(*)::int FROM comments WHERE issue_id = ${id}) AS comments,
+             (SELECT count(*)::int FROM activity_log WHERE issue_id = ${id}) AS trail
+        FROM issues WHERE id = ${id}`);
+    return row;
+  }
+
+  it('takes a release cut after that landing, though the mark was recorded after the cut', async () => {
+    const run = await shipped('0.6.0', C1, 60);
+    const id = await unmarked(240);
+    const landedAt = minutesAgo(120);
+
+    const marked = await mark(id, { landedAt });
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    expect(new Date(String((await written(id))?.merged_at)).toISOString()).toBe(landedAt);
+
+    const sent = await record({
+      issueId: id,
+      version: '0.6.0',
+      evidence: `git tag --contains ${A} answered v0.6.0`,
+    });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(201);
+    expect(sent.body).toMatchObject({ version: '0.6.0', runId: run, closed: true });
+    expect(await statusOf(id)).toBe('closed');
+  });
+
+  it('still refuses a release cut before that landing', async () => {
+    await shipped('0.6.0', C1, 60);
+    const id = await unmarked(240);
+
+    const marked = await mark(id, { landedAt: minutesAgo(30) });
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+
+    const early = await record({ issueId: id, version: '0.6.0', evidence: 'git log says so' });
+    expect(early.status, JSON.stringify(early.body)).toBe(422);
+    expect(codeOf(early.body)).toBe('RELEASE_SHIPPED_IN_BEFORE_LANDING');
+    expect(await statusOf(id)).toBe('awaiting_release');
+  });
+
+  // `mergedAt` is the spelling the plugin's `mark_merged` already sends for the same time
+  it.each(['landedAt', 'mergedAt'])(
+    'refuses by name a %s in the future, and writes nothing',
+    async (field) => {
+      const id = await unmarked(240);
+      const future = new Date(Date.now() + 60 * 60_000).toISOString();
+
+      const res = await mark(id, { [field]: future });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_FUTURE');
+      expect(JSON.stringify(res.body)).toContain(`/${field}`);
+      expect(await written(id)).toEqual({ merged_at: null, comments: 0, trail: 0 });
+    },
+  );
+
+  it.each(['landedAt', 'mergedAt'])(
+    'refuses by name a %s before the issue existed, and writes nothing',
+    async (field) => {
+      const id = await unmarked(60);
+
+      const res = await mark(id, { [field]: minutesAgo(120) });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_BEFORE_ISSUE');
+      expect(JSON.stringify(res.body)).toContain(`/${field}`);
+      expect(await written(id)).toEqual({ merged_at: null, comments: 0, trail: 0 });
+    },
+  );
+
+  it('refuses both spellings of the landing in one mark, and writes nothing', async () => {
+    const id = await unmarked(240);
+    const at = minutesAgo(120);
+
+    const res = await mark(id, { landedAt: at, mergedAt: at });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(codeOf(res.body)).toBe('MERGE_LANDED_AT_TWICE');
+    expect(await written(id)).toEqual({ merged_at: null, comments: 0, trail: 0 });
+  });
+
+  it('refuses a landing that is not a timestamp, naming the field, and writes nothing', async () => {
+    const id = await unmarked(240);
+    for (const landedAt of ['yesterday', '2026-10-29', 1761696000000]) {
+      const res = await mark(id, { landedAt });
+      expect(res.status, String(landedAt)).toBe(400);
+      expect(JSON.stringify(res.body), String(landedAt)).toContain('/landedAt');
+    }
+    expect(await written(id)).toEqual({ merged_at: null, comments: 0, trail: 0 });
+  });
+
+  it('dates a mark naming no landing at the time it is recorded, as before', async () => {
+    await shipped('0.6.0', C1, 60);
+    const id = await unmarked(240);
+    const before = Date.now();
+
+    const marked = await mark(id, {});
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    const at = new Date(String((await written(id))?.merged_at)).getTime();
+    expect(at).toBeGreaterThanOrEqual(before - 1_000);
+
+    const early = await record({ issueId: id, version: '0.6.0', evidence: 'git log says so' });
+    expect(codeOf(early.body)).toBe('RELEASE_SHIPPED_IN_BEFORE_LANDING');
+    expect(await statusOf(id)).toBe('awaiting_release');
+  });
+});
