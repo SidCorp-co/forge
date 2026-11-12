@@ -201,7 +201,8 @@
         "google",
         "autoflow",
         "widget",
-        "support-api"
+        "support-api",
+        "prometheus"
       ],
       "unscannable": [
         {
@@ -221,6 +222,14 @@
         {
           "glob": "packages/core/src/integrations/autoflow/**",
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT autoflow and no generic path reads it."
+        },
+        {
+          "glob": "packages/core/src/integrations/prometheus/**",
+          "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT prometheus and no generic path reads it."
+        },
+        {
+          "glob": "packages/core/src/monitoring/**",
+          "why": "The monitoring module exists only for the Prometheus integration (ISS-1225): its connections, readiness read, discovery, rules and alert doors are all ABOUT that one provider's server, so naming it is describing the provider, and no generic integration path reads this module."
         },
         {
           "glob": "packages/core/src/project-config/binding-target-codec.ts",

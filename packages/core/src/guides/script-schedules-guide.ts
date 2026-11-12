@@ -24,7 +24,7 @@ export const SCRIPT_SCHEDULES_GUIDE: CoreGuide = {
 A \`script\` schedule runs a JavaScript script in Forge's sandbox on its cron, with no agent session:
 a 15-minute check is 96 firings a day and spends no tokens. Use it for a check no standard tool does,
 a business read (orders stuck past their window, an import that did not land). Production
-monitoring (up, latency, errors, disk) is never a script: it is Forge's Prometheus capability,
+monitoring (up, latency, errors, disk) is never a script: it is the Prometheus integration,
 \`GET /api/guides/monitoring.md\`. A daily summary stays a \`prompt\` or \`status_report\` schedule.
 
 ### What the script holds
