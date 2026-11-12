@@ -35,6 +35,10 @@ describe('the daily review brief', () => {
   it('names where the conversations are read', () => {
     expect(brief).toContain('/api/projects/p-1/support/turns');
     expect(brief).toContain('/api/projects/p-1/support/rooms/<roomId>/actions');
+    // the day's actions, not a room's oldest 500 (ISS-1215, FB-620)
+    expect(brief).toContain(
+      '/support/rooms/<roomId>/actions?since=2026-11-01T01:00:00.000Z&until=2026-11-02T01:00:00.000Z',
+    );
     // the actions route takes the support room's uuid; a Rocket.Chat rid answers 400 (ISS-973)
     expect(brief).toContain("<roomId> the room's id from /support/rooms, never a Rocket.Chat rid");
   });
