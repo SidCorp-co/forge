@@ -20,8 +20,9 @@ import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import type { Refusal } from './refusals.js';
 import { limitsOf } from './rules.js';
 import { type SessionDoor, screenForThread } from './screen.js';
-import { insertAction, type RoomRow, unansweredInThread } from './store.js';
+import { insertAction, type RoomRow } from './store.js';
 import { noteInThread, postInThread, scrubbedForRoom } from './thread.js';
+import { unansweredInThread } from './thread-requests.js';
 
 export type { Outcome } from './outcome.js';
 

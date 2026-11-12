@@ -13,7 +13,7 @@ import { AgentWorld } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
-// @direct-test-of packages/core/src/support/store.ts
+// @direct-test-of packages/core/src/support/thread-requests.ts
 // @direct-test-of packages/core/src/support/service.ts
 //
 // ISS-1221 (FB-623): a request handed into the running turn while the session wrote the result of
