@@ -1,9 +1,9 @@
 // Scheduled checks a channel agent runs (REQ-77 BC-13): the AdminHub morning check, and any other the
 // binding's `agent.checks` names. Each check fires once a day at its time (UTC) as a message core
 // writes into its group's record, thread `check:<name>:<date>`, and goes to the agent like any
-// message. The agent answers it with `check_result`: a finding core posts as one message at the
-// group's top level, or none, and nothing is posted. One result per firing, whoever sends it; a
-// check turn that fails posts nothing in the group.
+// message. The agent answers it with `check_result`: a finding core posts as one message in the
+// group's report thread (ISS-1227, `report-thread.ts`), never its top level, or none, and nothing is
+// posted. One result per firing, whoever sends it; a check turn that fails posts nothing in the group.
 
 import type { SupportCheck, SupportGrants } from '@forge/contracts/support';
 import { and, eq, isNotNull } from 'drizzle-orm';
@@ -14,10 +14,11 @@ import { deliverWaiting } from './dispatch.js';
 import { grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { projectsInScope } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
+import { reportThreadFor } from './report-thread.js';
 import { checkThreadOf } from './rules.js';
 import { screenForThread } from './screen.js';
 import { insertAction, type RoomRow } from './store.js';
-import { postForTopLevel, scrubbedForRoom, topLevelThreadOf } from './thread.js';
+import { postInThread, scrubbedForRoom, topLevelThreadOf } from './thread.js';
 
 /** `YYYY-MM-DD` and `HH:MM` of `now` in UTC. */
 function utcParts(now: Date): { day: string; time: string } {
@@ -117,9 +118,40 @@ export async function firingOf(room: RoomRow, thread: string): Promise<boolean> 
 }
 
 /**
- * The agent's one result for one firing of a check: a finding is posted as one message at the
- * group's top level, screened for its readers; none posts nothing. A second result for the same
- * firing is refused, the first already holding the firing's one result.
+ * The thread a finding goes in: the project's own of a shared operations room (ISS-933), else the
+ * room's report thread, opened now where none stands (ISS-1227); never the top level. A room with
+ * neither refuses by name.
+ */
+async function findingThreadOf(room: RoomRow, finding: string): Promise<Outcome<string>> {
+  const own = await topLevelThreadOf(room);
+  if (!own.ok) return own;
+  if (own.value) return { ok: true, value: own.value };
+  return reportThreadFor(room, [finding], { named: false });
+}
+
+/** A finding refused for want of a thread, recorded on the check's firing; nothing was posted. */
+async function recordUnposted(
+  room: RoomRow,
+  check: string,
+  out: { ok: false; refusals: { code: string; detail: string }[] },
+): Promise<void> {
+  const [refusal] = out.refusals;
+  await insertAction({
+    roomId: room.id,
+    projectId: room.projectId,
+    conversationId: null,
+    thread: check,
+    kind: 'refused',
+    actorKind: 'core',
+    tool: 'check_result',
+    output: { code: refusal?.code, detail: refusal?.detail, posted: false },
+  });
+}
+
+/**
+ * The agent's one result for one firing of a check: a finding is posted as one message in the
+ * room's report thread (`findingThreadOf`), screened for its readers; none posts nothing. A second
+ * result for the same firing is refused, the first already holding the firing's one result.
  */
 export async function checkResult(
   room: RoomRow,
@@ -141,10 +173,13 @@ export async function checkResult(
       ? null
       : await screenForThread(room, null, input.check, finding, door, 'check_result');
   if (admitted && !admitted.ok) return admitted;
-  // where the finding lands, read before the firing's one result is claimed: a shared operations
-  // room recording no project thread refuses, and the check can still be answered (ISS-933)
-  const to = admitted ? await topLevelThreadOf(room) : null;
-  if (to && !to.ok) return to;
+  // where the finding lands, read before the firing's one result is claimed: a room with no thread
+  // to take it refuses, recorded on the check, and the check can still be answered (ISS-933, ISS-1227)
+  const to = admitted ? await findingThreadOf(room, admitted.value.text) : null;
+  if (to && !to.ok) {
+    await recordUnposted(room, input.check, to);
+    return to;
+  }
   const claimed = await insertAction({
     roomId: room.id,
     projectId: room.projectId,
@@ -161,15 +196,13 @@ export async function checkResult(
       `${input.check} already has its one result; a check posts at most one finding, and nothing was posted`,
     );
   }
-  if (!admitted) return { ok: true, value: { posted: null } };
-  const out = await postForTopLevel({
+  if (!admitted || !to) return { ok: true, value: { posted: null } };
+  const posted = await postInThread({
     room,
+    thread: to.value,
     text: admitted.value.text,
     proof: admitted.value.proof,
-    to: to?.ok ? to.value : null,
   });
-  if (!out.ok) return out;
-  const posted = out.value;
   await insertAction({
     roomId: room.id,
     projectId: room.projectId,

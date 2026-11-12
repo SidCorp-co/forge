@@ -1,9 +1,9 @@
 // A room's report thread (ISS-1224, owner 2026-11-12, repeating the rulings of 2026-10-31 and
 // 2026-11-01): a bot never posts a report at a work room's top level. A master's post naming no
-// thread (`master-post.ts`) and core's room-down line (`last-resort.ts`) go in the room's report
-// thread instead: the one a person named for the room's reports (`report-thread-route.ts`), else the
-// one standing thread Forge opens once per room, with one short anchor line at the top level, and
-// keeps. Where no thread can be had, nothing is posted: the caller refuses or records it by name.
+// thread (`master-post.ts`), core's room-down line (`last-resort.ts`) and a scheduled check's finding
+// (`checks.ts`, ISS-1227) go in the room's report thread instead: the one a person named for the
+// room's reports (`report-thread-route.ts`), else the one standing thread Forge opens once per room,
+// with one short anchor line at the top level, and keeps. Where no thread can be had, nothing is posted: the caller refuses or records it by name.
 
 import { eq } from 'drizzle-orm';
 import { confidentLanguageOf } from '../conversations/index.js';
@@ -59,12 +59,16 @@ export async function nameReportThread(roomId: string, thread: string): Promise<
     .where(eq(supportRooms.id, roomId));
 }
 
-/** The refusal where a room has no report thread and Forge could not open one. */
-export function needsThread(room: RoomRow, why: string): Outcome<never> {
+/**
+ * The refusal where a room has no report thread and Forge could not open one. `named` says the
+ * caller can pass a thread of its own; a scheduled check's finding cannot (ISS-1227).
+ */
+export function needsThread(room: RoomRow, why: string, named = true): Outcome<never> {
+  const instead = named ? 'Pass `thread` to post in a thread of the room, or name' : 'Name';
   return no(
     'SUPPORT_POST_NEEDS_THREAD',
     '/thread',
-    `${room.rid} has no report thread, and the line opening one could not be posted (${why}), so the post would land at its top level. Pass \`thread\` to post in a thread of the room, or name the room's report thread, one people wrote in: PUT /api/projects/${room.projectId}/support/rooms/${room.id}/report-thread with { thread }. Nothing was posted.`,
+    `${room.rid} has no report thread, and the line opening one could not be posted (${why}), so the post would land at its top level. ${instead} the room's report thread, one people wrote in: PUT /api/projects/${room.projectId}/support/rooms/${room.id}/report-thread with { thread }. Nothing was posted.`,
   );
 }
 
@@ -77,6 +81,7 @@ export function needsThread(room: RoomRow, why: string): Outcome<never> {
 export async function reportThreadFor(
   room: RoomRow,
   texts: readonly string[],
+  opts: { named?: boolean } = {},
 ): Promise<Outcome<string>> {
   const standing = await reportThreadOf(room.id);
   if (standing) return { ok: true, value: standing.thread };
@@ -108,7 +113,7 @@ export async function reportThreadFor(
     return { ok: true, value: got.thread };
   } catch (err) {
     logger.error({ err, roomId: room.id }, "support: the room's report thread could not be opened");
-    return needsThread(room, err instanceof Error ? err.message : String(err));
+    return needsThread(room, err instanceof Error ? err.message : String(err), opts.named);
   }
 }
 
