@@ -15,6 +15,7 @@ export {
   sweepCriteriaFacts,
 } from './criteria-facts.js';
 export type { CriterionClip } from './criterion-clip.js';
+export { designIdNamed, putCriterionSteps } from './criterion-steps.js';
 export { tracedCodesOf, traceWordingsOf } from './criterion-trace.js';
 export { deferRequirement, undeferRequirement } from './deferral.js';
 export { deferralOf } from './deferral-read.js';
@@ -32,7 +33,13 @@ export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { requirementFailReturn } from './fail-return.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { nodesOfDesign } from './follow-reads.js';
-export { linkRefusalOn, plannedRevisionFor, requirementOfIssue } from './issue-links.js';
+export {
+  linkRefusalOn,
+  linkWorkflow,
+  plannedRevisionFor,
+  requirementOfIssue,
+  unlinkWorkflow,
+} from './issue-links.js';
 export { issueNamingOf, namedIssue } from './issue-projects.js';
 export { issueRequirementOf } from './issue-requirement-read.js';
 export {

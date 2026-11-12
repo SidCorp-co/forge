@@ -159,6 +159,8 @@ export function requirementDetail(d: RequirementDetail, progress: Progress) {
       shippedIn: i.shippedIn,
       landedIn: i.landedIn,
     })),
+    designs: d.workflows.map((w) => ({ flow: w.flow, title: w.title, status: w.designStatus })),
+    traces: d.traces.map((t) => ({ code: t.code, flow: t.flow, steps: t.steps, edges: t.edges })),
     releases: d.releases,
     feedback: d.feedback.map((f) => ({ key: f.key, title: f.title, phase: f.phase, open: f.open })),
     deferral: d.deferral,

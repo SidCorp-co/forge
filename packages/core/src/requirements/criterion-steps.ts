@@ -6,6 +6,7 @@
 
 import type { PutCriterionStepsRequest } from '@forge/contracts/workflow-health';
 import { and, eq, isNull } from 'drizzle-orm';
+import { db } from '../db/client.js';
 import {
   requirementCriteria,
   requirementCriterionSteps,
@@ -17,6 +18,13 @@ import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { type RequirementActor, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
+
+/** The id of the design `name` names in the project, by flow name or id; NOT_FOUND where it holds none. */
+export async function designIdNamed(projectId: string, name: string): Promise<string> {
+  const nodes = await designNodesIn(db, projectId, name);
+  if (!nodes) throw notFound(`project ${projectId} holds no workflow ${name}`);
+  return nodes.workflowId;
+}
 
 export async function putCriterionSteps(input: {
   projectId: string;

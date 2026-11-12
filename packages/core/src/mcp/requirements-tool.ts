@@ -6,6 +6,7 @@
 
 import { REQUIREMENT_STATES } from '@forge/contracts/requirements';
 import { REQUIREMENT_TITLE_MAX, titleText } from '@forge/contracts/title-text';
+import { putCriterionStepsRequestSchema } from '@forge/contracts/workflow-health';
 import { z } from 'zod';
 import {
   forecastViewerOf,
@@ -25,12 +26,16 @@ import { byRule, onResolved, requireDeclaredOn } from '../permissions/index.js';
 import { issuesOfRequirements, liveRunsByIssue, runsOn } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import {
+  designIdNamed,
   draftRequirement,
+  linkWorkflow,
   listRequirementsAs,
   proposeRevision,
+  putCriterionSteps,
   readRequirementAs,
   revisionFields,
   similarRequirements,
+  unlinkWorkflow,
   withdrawRevision,
   writeRevision,
 } from '../requirements/index.js';
@@ -46,6 +51,9 @@ const ACTIONS = [
   'revise',
   'propose',
   'withdraw',
+  'link_design',
+  'unlink_design',
+  'trace_criterion',
   'answer',
 ] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
@@ -91,6 +99,20 @@ const inputSchema = z.strictObject({
     .describe(
       'revise: the draft revision to rewrite whole; propose: the draft revision to propose; withdraw: the draft revision to withdraw',
     ),
+  workflow: putCriterionStepsRequestSchema.shape.workflow
+    .optional()
+    .describe('link_design, unlink_design, trace_criterion: the design, by flow name or id'),
+  code: z
+    .string()
+    .regex(/^BC-[1-9][0-9]*$/, 'a criterion is named by its code, BC-n')
+    .optional()
+    .describe('trace_criterion: the criterion’s code, e.g. BC-2'),
+  steps: putCriterionStepsRequestSchema.shape.steps.describe(
+    'trace_criterion: the step ids of the design it is traced onto; an empty list clears them',
+  ),
+  edges: putCriterionStepsRequestSchema.shape.edges.describe(
+    'trace_criterion: the edges, each { from, to, label? }; an empty list clears them',
+  ),
   questionId: z.uuid().optional().describe('answer: a question standing on the requirement'),
   round: z.number().int().optional().describe('answer: the round being answered'),
   optionId: z.string().optional().describe('answer: the option the person chose'),
@@ -162,13 +184,16 @@ const DESCRIPTION = [
   '`progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold.',
   'Actions.',
   'list {state?}: every requirement with its state, whom it waits on, criteria proven of total, and progress.',
-  'get {requirement}: one in full — its latest revision (spec, criteria with codes), revisions, questions standing on it, issues, releases, linked feedback, progress. NOT_FOUND when the project holds no such key.',
+  'get {requirement}: one in full — its latest revision (spec, criteria with codes), revisions, questions standing on it, its linked designs and each criterion’s trace onto them, issues, releases, linked feedback, progress. NOT_FOUND when the project holds no such key.',
   'progress {requirement}: the progress block alone.',
   'similar {text}: the requirements nearest a wish; call it before create, and revise the one that covers it instead. provider_not_configured or withheld_by_policy does not mean none is similar.',
   'create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks.',
   'revise {requirement, criteria, baseRevision | revision, title?, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement, its title included (title, applied when a person accepts it; there is no other rename). Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a revision is open. A draft is rewritten by passing revision: n; a proposed one is frozen until a holder of requirements.approve returns or accepts it, which this tool does not, so tell the person. REQUIREMENT_REVISION_STALE: the head moved, get it again.',
   'propose {requirement, revision}: put a draft revision before the people who agree it.',
   'withdraw {requirement, revision, reason}: withdraw an open draft revision for good, saying why, as POST …/revisions/:n/withdraw does: its author may, anyone else needs requirements.approve. It frees the one open revision (REQUIREMENT_REVISION_OPEN) and is the one act left on a dropped requirement (REQUIREMENT_DROPPED).',
+  'link_design {requirement, workflow}: link an existing design, by flow name or id, to the requirement, as POST …/requirements/:req/workflows does; its next agree pins the design’s approved revision. NOT_FOUND: the project holds no such design; WORKFLOW_DESIGN_WITHDRAWN: it was withdrawn.',
+  'unlink_design {requirement, workflow}: remove that link, and every criterion’s trace onto that design with it, as DELETE …/requirements/:req/workflows/:workflowId does; NOT_FOUND where the requirement links no such design.',
+  'trace_criterion {requirement, code, workflow, steps?, edges?}: write criterion code’s WHOLE trace onto a linked design — its step ids and edges { from, to, label? } — as PUT …/requirements/:req/criteria/:code/steps does; empty lists clear it. REQUIREMENT_DESIGN_UNLINKED: link the design first (link_design); WORKFLOW_NODE_UNKNOWN or WORKFLOW_NODE_AMBIGUOUS names a step or edge the design’s latest revision does not hold.',
   ANSWER_LINE,
   'Agreeing, accepting, returning, deferring and dropping are a sign-off this tool does none of: the project’s master’s outside a strict project (it holds requirements.approve there), a person’s on the requirement page in one.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
@@ -184,6 +209,9 @@ const GRANT = {
     revise: 'projects:write',
     propose: 'projects:write',
     withdraw: 'projects:write',
+    link_design: 'projects:write',
+    unlink_design: 'projects:write',
+    trace_criterion: 'projects:write',
     answer: 'questions:write',
   },
 } as const;
@@ -206,6 +234,9 @@ const PERMISSION = {
     revise: onResolved('project.write', THE_PROJECT),
     propose: onResolved('project.write', THE_PROJECT),
     withdraw: onResolved('project.write', THE_PROJECT),
+    link_design: onResolved('project.write', THE_PROJECT),
+    unlink_design: onResolved('project.write', THE_PROJECT),
+    trace_criterion: onResolved('project.write', THE_PROJECT),
     answer: byRule(
       'requirements/read.ts:readRequirementAs',
       'the requirement is read as the caller and the question found on it, each not found otherwise, before project.write',
@@ -380,6 +411,44 @@ async function withdraw(ctx: McpContext, projectId: string, input: Input) {
   );
 }
 
+async function linkDesign(ctx: McpContext, projectId: string, input: Input) {
+  const { requirement: ref, workflow } = need(input, input.action, 'requirement', 'workflow');
+  const workflowId = await designIdNamed(projectId, workflow);
+  return written(
+    ctx,
+    projectId,
+    await linkWorkflow({ projectId, ref, actor: actorOf(ctx), workflowId }),
+  );
+}
+
+async function unlinkDesign(ctx: McpContext, projectId: string, input: Input) {
+  const { requirement: ref, workflow } = need(input, input.action, 'requirement', 'workflow');
+  const workflowId = await designIdNamed(projectId, workflow);
+  return written(
+    ctx,
+    projectId,
+    await unlinkWorkflow({ projectId, ref, actor: actorOf(ctx), workflowId }),
+  );
+}
+
+async function traceCriterion(ctx: McpContext, projectId: string, input: Input) {
+  const {
+    requirement: ref,
+    code,
+    workflow,
+  } = need(input, input.action, 'requirement', 'code', 'workflow');
+  const request = {
+    workflow,
+    ...(input.steps ? { steps: input.steps } : {}),
+    ...(input.edges ? { edges: input.edges } : {}),
+  };
+  return written(
+    ctx,
+    projectId,
+    await putCriterionSteps({ projectId, ref, code, actor: actorOf(ctx), request }),
+  );
+}
+
 /** A question standing on the requirement, answered through the question door (requirement-answer.ts). */
 async function answer(ctx: McpContext, projectId: string, input: Input) {
   return answerOnRequirement(ctx, actorOf(ctx), projectId, input);
@@ -394,6 +463,9 @@ const HANDLERS = {
   revise,
   propose,
   withdraw,
+  link_design: linkDesign,
+  unlink_design: unlinkDesign,
+  trace_criterion: traceCriterion,
   answer,
 } as const;
 
