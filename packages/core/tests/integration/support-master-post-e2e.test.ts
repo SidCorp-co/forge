@@ -15,6 +15,8 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/routes.ts
 // @direct-test-of packages/core/src/support/rooms.ts
 // @direct-test-of packages/core/src/support/warm.ts
+// @direct-test-of packages/core/src/support/report-thread.ts
+// @direct-test-of packages/core/src/support/report-thread-route.ts
 //
 // ISS-862: the project's master posts its daily review, in its own words, at the top level of the
 // project's team room. Core writes none of the words: it picks the room, screens, posts and records
@@ -38,6 +40,18 @@ beforeAll(async () => {
 afterAll(() => w.stop());
 
 const REVIEW = 'Hôm nay: 3 issue lên dev, 1 lỗi deploy đã sửa; mai làm tiếp phần thông báo.';
+/** The line Forge opens a room's report thread with, in the room's language (ISS-1224). */
+const ANCHOR = 'Báo cáo của trợ lý';
+/** The bot's lines at a room's top level, outside any thread. */
+const topOf = (rid: string) => chat.linesIn(rid).filter((l) => !l.tmid);
+type RoomView = { id: string; rid: string; reportThread: string | null; reportThreadBy: string };
+const roomOf = async (rid: string) => {
+  const got = await api(owner, 'GET', `/api/projects/${w.projectId}/support/rooms`);
+  expect(got.status, JSON.stringify(got.body)).toBe(200);
+  return (got.body as { rooms: RoomView[] }).rooms.find((r) => r.rid === rid);
+};
+const nameThread = (token: string, roomId: string, body: unknown) =>
+  api(token, 'PUT', `/api/projects/${w.projectId}/support/rooms/${roomId}/report-thread`, body);
 
 describe("the master's post in its project's room (ISS-862)", () => {
   it('asks which room where the project binds two, and posts nothing', async () => {
@@ -77,12 +91,10 @@ describe("the master's post in its project's room (ISS-862)", () => {
       const res = await post(owner, { text: REVIEW, rid: UNDECLARED });
       expect(res.status, JSON.stringify(res.body)).toBe(201);
       expect((res.body as { rid: string }).rid).toBe(UNDECLARED);
-      expect(
-        chat
-          .linesIn(UNDECLARED)
-          .filter((l) => !l.tmid)
-          .map((l) => l.text),
-      ).toEqual([REVIEW]);
+      // in the room's report thread, opened by its one anchor line (ISS-1224)
+      const [anchor] = topOf(UNDECLARED);
+      expect(topOf(UNDECLARED).map((l) => l.text)).toEqual([ANCHOR]);
+      expect(w.threadLines(UNDECLARED, String(anchor?.id)).map((l) => l.text)).toEqual([REVIEW]);
       expect(await listed()).toContain(UNDECLARED);
       // a room no binding names stays unknown, and nothing is declared for it
       const unknown = await post(owner, { text: REVIEW, rid: 'not-a-room' });
@@ -130,18 +142,106 @@ describe("the master's post in its project's room (ISS-862)", () => {
     const res = await post(stranger, { text: REVIEW, rid: chat.rid });
     expect(res.status).toBe(403);
   });
+});
 
-  it('posts the words as given at the top level of the named room, recorded as the caller’s', async () => {
-    const res = await post(owner, { text: REVIEW, rid: chat.rid });
+// ISS-1224 (owner 2026-11-12): a master's post naming no thread landed at the top level of support
+// and team rooms. It goes in the room's report thread: the one a person named, or one standing
+// thread Forge opens once per room with one anchor line. Where none can be opened it is refused by
+// name, and a thread unknown in the room is refused as the report thread, with nothing saved.
+describe("the master's post naming no thread goes in the room's report thread (ISS-1224)", () => {
+  const NEXT = 'Ngày mai: kiểm tra lại phần thông báo trên dev.';
+  const MINE = 'Báo cáo tuần này: phần thông báo đã lên dev.';
+
+  it('opens one standing thread with one anchor line, posts inside it, and reuses it', async () => {
+    expect((await roomOf(chat.rid))?.reportThread).toBeNull();
+    // two posts at once open one thread
+    const [first, second] = await Promise.all([
+      post(owner, { text: REVIEW, rid: chat.rid }),
+      post(owner, { text: NEXT, rid: chat.rid }),
+    ]);
+    expect([first.status, second.status], JSON.stringify([first.body, second.body])).toEqual([
+      201, 201,
+    ]);
+    expect(topOf(chat.rid).map((l) => l.text)).toEqual([ANCHOR]);
+    const anchor = String(topOf(chat.rid)[0]?.id);
+    expect(first.body).toMatchObject({ rid: chat.rid, thread: anchor });
+    expect(second.body).toMatchObject({ rid: chat.rid, thread: anchor });
+    expect(
+      w
+        .threadLines(chat.rid, anchor)
+        .map((l) => l.text)
+        .sort(),
+    ).toEqual([REVIEW, NEXT].sort());
+    expect(await roomOf(chat.rid)).toMatchObject({ reportThread: anchor, reportThreadBy: 'forge' });
+    // a later post reuses it, with no new anchor
+    const again = await post(owner, { text: REVIEW, rid: chat.rid });
+    expect(again.body).toMatchObject({ thread: anchor });
+    expect(topOf(chat.rid).map((l) => l.text)).toEqual([ANCHOR]);
+    expect(w.threadLines(chat.rid, anchor)).toHaveLength(3);
+    const acts = await rows<{ kind: string; tool: string; thread: string; by: string | null }>(sql`
+      SELECT a.kind, a.tool, a.thread, a.input->>'by' AS by
+        FROM support_actions a JOIN support_rooms r ON r.id = a.room_id
+       WHERE a.project_id = ${w.projectId}::uuid AND r.rid = ${chat.rid}
+         AND a.tool IN ('master_post', 'report_thread')
+       ORDER BY a.created_at`);
+    expect(acts.filter((a) => a.tool === 'report_thread')).toEqual([
+      { kind: 'operation', tool: 'report_thread', thread: anchor, by: null },
+    ]);
+    expect(acts.filter((a) => a.tool === 'master_post')).toHaveLength(3);
+    expect(acts.filter((a) => a.tool === 'master_post')[0]).toEqual({
+      kind: 'announced',
+      tool: 'master_post',
+      thread: anchor,
+      by: w.ownerId,
+    });
+  });
+
+  it("posts in the thread a person named for the room's reports", async () => {
+    const mine = chat.wroteWhileAway(chat.rid, chat.alice, MINE, new Date());
+    const room = await roomOf(chat.rid);
+    const named = await nameThread(owner, String(room?.id), { thread: mine });
+    expect(named.status, JSON.stringify(named.body)).toBe(200);
+    expect(named.body).toMatchObject({ reportThread: mine, reportThreadBy: 'person' });
+    expect(await roomOf(chat.rid)).toMatchObject({ reportThread: mine, reportThreadBy: 'person' });
+    const tops = topOf(chat.rid).length;
+    const res = await post(owner, { text: NEXT, rid: chat.rid });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect((res.body as { rid: string }).rid).toBe(chat.rid);
-    const top = chat.linesIn(chat.rid).filter((l) => !l.tmid);
-    expect(top.map((l) => l.text)).toEqual([REVIEW]);
-    expect(chat.linesIn(chat.rid2).filter((l) => !l.tmid)).toEqual([]);
-    const [act] = await rows<{ kind: string; tool: string; by: string }>(sql`
-      SELECT kind, tool, input->>'by' AS by FROM support_actions
-       WHERE project_id = ${w.projectId}::uuid AND tool = 'master_post'`);
-    expect(act).toEqual({ kind: 'announced', tool: 'master_post', by: w.ownerId });
+    expect(res.body).toMatchObject({ rid: chat.rid, thread: mine });
+    expect(w.threadLines(chat.rid, mine).map((l) => l.text)).toEqual([NEXT]);
+    expect(topOf(chat.rid)).toHaveLength(tops);
+  });
+
+  it('refuses a thread unknown in the room as its report thread, and saves nothing', async () => {
+    const room = await roomOf(chat.rid);
+    const was = room?.reportThread;
+    const unknown = await nameThread(owner, String(room?.id), { thread: 'no-such-thread' });
+    expect([unknown.status, codeOf(unknown)]).toEqual([404, 'SUPPORT_THREAD_UNKNOWN']);
+    expect(JSON.stringify(unknown.body)).toContain('Nothing was saved');
+    const elsewhere = chat.wroteWhileAway(chat.rid2, chat.bob, MINE, new Date());
+    const other = await nameThread(owner, String(room?.id), { thread: elsewhere });
+    expect([other.status, codeOf(other)]).toEqual([409, 'SUPPORT_THREAD_OF_ANOTHER_ROOM']);
+    const noRoom = await nameThread(owner, '00000000-0000-4000-8000-000000000000', {
+      thread: elsewhere,
+    });
+    expect([noRoom.status, codeOf(noRoom)]).toEqual([404, 'SUPPORT_ROOM_UNKNOWN']);
+    const stranger = await userToken((await createTestUser({ verified: true })).id);
+    expect((await nameThread(stranger, String(room?.id), { thread: elsewhere })).status).toBe(403);
+    expect((await nameThread(owner, String(room?.id), { thread: 'a/b' })).status).toBe(400);
+    expect((await roomOf(chat.rid))?.reportThread).toBe(was);
+  });
+
+  it('refuses by name where the report thread cannot be opened, and posts nothing', async () => {
+    const before = chat.linesIn(chat.rid2).length;
+    chat.topLevelRefused = true;
+    try {
+      const res = await post(owner, { text: REVIEW, rid: chat.rid2 });
+      expect([res.status, codeOf(res)]).toEqual([503, 'SUPPORT_POST_NEEDS_THREAD']);
+      expect(JSON.stringify(res.body)).toContain('/report-thread');
+    } finally {
+      chat.topLevelRefused = false;
+    }
+    expect(chat.linesIn(chat.rid2)).toHaveLength(before);
+    expect((await roomOf(chat.rid2))?.reportThread).toBeNull();
   });
 });
 

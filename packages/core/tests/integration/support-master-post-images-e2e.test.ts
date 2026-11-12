@@ -131,12 +131,16 @@ describe("ISS-1024: a master's post carries images into the text's own thread", 
     });
   });
 
-  it('posts an image after a top-level text of the team room, at its top level too', async () => {
+  it("posts an image after a text naming no thread, both in the team room's report thread", async () => {
     const shot = await attach(issueId, 'daily.png', 'image/png', PNG);
     const res = await post({ text: RESULT, rid: chat.rid2, attachments: [issueImage(shot)] });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+    // the top level holds only the thread's one anchor line (ISS-1224)
     const top = chat.linesIn(chat.rid2).filter((l) => !l.tmid);
-    expect(top.slice(-2).map((l) => [l.text, l.file?.mime ?? null])).toEqual([
+    expect(top.map((l) => l.text)).toEqual(['Báo cáo của trợ lý']);
+    expect(res.body).toMatchObject({ thread: top[0]?.id });
+    const inThread = chat.linesIn(chat.rid2).filter((l) => l.tmid === top[0]?.id);
+    expect(inThread.map((l) => [l.text, l.file?.mime ?? null])).toEqual([
       [RESULT, null],
       ['', 'image/png'],
     ]);

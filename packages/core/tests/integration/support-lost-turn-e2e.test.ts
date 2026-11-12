@@ -101,9 +101,15 @@ async function toldInThread(thread: string): Promise<number> {
   return (await w.chat.botLines()).filter((l) => l.tmid === thread && failedLine(l)).length;
 }
 
-/** Core's failed-turn lines at the room's top level (ISS-1105). */
+/**
+ * Core's failed-turn lines told the room (ISS-1105): inside the thread a top-level line of the bot
+ * opened, its report thread (ISS-1224), and never at the top level itself.
+ */
 async function toldTheRoom(): Promise<number> {
-  return (await w.chat.botLines()).filter((l) => !l.tmid && failedLine(l)).length;
+  const lines = await w.chat.botLines();
+  if (lines.some((l) => !l.tmid && failedLine(l))) return -1;
+  const anchors = lines.filter((l) => !l.tmid).map((l) => l.id);
+  return lines.filter((l) => l.tmid && anchors.includes(l.tmid) && failedLine(l)).length;
 }
 
 describe('ISS-850: a turn core lost to its restart', () => {
@@ -155,7 +161,7 @@ describe('ISS-850: a turn core lost to its restart', () => {
     answers = true;
     w.box.finishTurns = true;
     await boxReconnects();
-    // the room is told once, at its top level, and the thread itself nothing (ISS-1105)
+    // the room is told once, in its report thread, and the thread itself nothing (ISS-1105, ISS-1224)
     await expect.poll(() => toldTheRoom(), { timeout: 15_000 }).toBe(1);
     const [spent] = await rows<{ tries: number }>(sql`
       SELECT (output->>'tries')::int AS tries FROM support_actions

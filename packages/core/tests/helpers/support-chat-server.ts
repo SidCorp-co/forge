@@ -103,6 +103,8 @@ export class StandInRocketChat implements ChatServer {
   readonly media = new Map<string, { rid: string; name: string; mime: string; bytes: Buffer }>();
   /** Whether `rooms.media` refuses the bot's upload, as a server whose upload limit it passes does. */
   mediaRefused = false;
+  /** Whether `chat.postMessage` refuses a line outside any thread, as a read-only group does (ISS-1224). */
+  topLevelRefused = false;
 
   /** How many times a group's history was read. */
   historyReads = 0;
@@ -237,6 +239,7 @@ export class StandInRocketChat implements ChatServer {
         this.reactions.push({ messageId: body.messageId, emoji: body.emoji });
         return json(200, { success: true });
       case '/api/v1/chat.postMessage': {
+        if (this.topLevelRefused && !body.tmid) return json(400, { success: false });
         const id = this.nextId();
         this.lines.push({
           id,
@@ -446,31 +449,27 @@ export class StandInRocketChat implements ChatServer {
   ): Promise<string> {
     await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
     const id = this.nextId();
-    this.push(
-      {
-        _id: id,
-        rid,
-        msg: text,
-        ...(tmid ? { tmid } : {}),
-        mentions: this.mentionsIn(text),
-        u: { _id: who.userId, username: who.username },
-      },
-      ts,
-    );
+    this.push(this.messageOf(id, rid, who, text, tmid), ts);
     return id;
   }
 
   /** The stream carrying message `id` again, as a reconnect replays a frame core already took. */
   async resend(id: string, who: Member, text: string, tmid?: string): Promise<void> {
     await expect.poll(() => this.subs.size, { timeout: 15_000 }).toBeGreaterThan(0);
-    this.push({
+    this.push(this.messageOf(id, this.rid, who, text, tmid));
+  }
+
+  /** A member's message as the stream carries it. */
+  private messageOf(id: string, rid: string, who: Member, text: string, tmid?: string) {
+    const u = { _id: who.userId, username: who.username };
+    return {
       _id: id,
-      rid: this.rid,
+      rid,
       msg: text,
       ...(tmid ? { tmid } : {}),
       mentions: this.mentionsIn(text),
-      u: { _id: who.userId, username: who.username },
-    });
+      u,
+    };
   }
 
   /** The users a message names with `@`, as Rocket.Chat parses them onto the message. */

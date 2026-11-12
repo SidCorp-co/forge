@@ -169,8 +169,8 @@ describe('ISS-1101: a turn that failed because its checkout is not on the box', 
     const told = (await w.actions(roomId)).filter(
       (a) => a.kind === 'refused' && a.tool === 'turn_failed' && a.thread === asked,
     );
-    // each message is recorded unanswered; the room is told once, at its top level, while it
-    // waits, and the thread itself nothing (ISS-1105)
+    // each message is recorded unanswered; the room is told once, in its report thread and never at
+    // its top level, while it waits, and the thread itself nothing (ISS-1105, ISS-1224)
     expect(told.length).toBeGreaterThan(0);
     const lines = await w.chat.botLines();
     const failed = (l: { text: string }) =>
@@ -178,7 +178,9 @@ describe('ISS-1101: a turn that failed because its checkout is not on the box', 
       l.text === LAST_RESORT_LINES.turn_failed ||
       l.text === ROOM_STILL_QUEUED_LINES.en;
     expect(lines.filter((l) => l.tmid === asked && failed(l))).toEqual([]);
-    expect(lines.filter((l) => !l.tmid && failed(l)).map((l) => l.text)).toEqual([
+    expect(lines.filter((l) => !l.tmid && failed(l))).toEqual([]);
+    const anchor = lines.find((l) => !l.tmid && l.text === 'Assistant reports')?.id;
+    expect(lines.filter((l) => l.tmid === anchor && failed(l)).map((l) => l.text)).toEqual([
       ROOM_STILL_QUEUED_LINES.en,
     ]);
   }, 60_000);

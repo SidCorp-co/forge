@@ -99,12 +99,15 @@ describe("ISS-872: a master's post reaches a users' room only in an asker's thre
     expect(allLines()).toBe(before);
   });
 
-  it('posts a top-level post naming no room in the owner room, the one the team reads', async () => {
+  it("posts a post naming no room or thread in the owner room's report thread, the room the team reads", async () => {
     const REVIEW = 'Hôm nay: hai thay đổi đã lên, một việc chờ anh quyết định.';
     const res = await post({ text: REVIEW });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect((res.body as { rid: string }).rid).toBe(chat.rid2);
-    expect(topLines(chat.rid2).map((l) => l.text)).toEqual([REVIEW]);
+    // never at its top level: there, only the report thread's one anchor line (ISS-1224)
+    const [anchor] = topLines(chat.rid2);
+    expect(topLines(chat.rid2).map((l) => l.text)).toEqual(['Báo cáo của trợ lý']);
+    expect(w.threadLines(chat.rid2, String(anchor?.id)).map((l) => l.text)).toEqual([REVIEW]);
     expect(topLines(chat.rid)).toEqual([]);
   });
 

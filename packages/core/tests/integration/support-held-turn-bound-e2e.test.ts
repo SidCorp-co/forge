@@ -117,21 +117,22 @@ describe('ISS-1105: a held message has an age bound, and a broken session is tol
     expect(texts.map(handed)).toEqual(before);
   }, 150_000);
 
-  it('tells a fresh failure once, in one line at the room’s top level, never in each thread', async () => {
+  it('tells a fresh failure once, in one line in the room’s report thread, never in each thread', async () => {
     await breakTheSession();
     const asks = [
       await w.chat.say(w.chat.alice, '@supportbot is the shop down?'),
       await w.chat.say(w.chat.bob, 'my order page is blank'),
       await w.chat.say(w.chat.bob, '@alice did you get my mail'),
     ];
-    await expect
-      .poll(async () => (await w.chat.botLines()).filter((l) => !l.tmid).length, {
-        timeout: 60_000,
-      })
-      .toBe(1);
+    const roomLines = async () =>
+      (await w.chat.botLines()).filter((l) => l.text === ROOM_STILL_QUEUED_LINES.en);
+    await expect.poll(async () => (await roomLines()).length, { timeout: 60_000 }).toBe(1);
     await new Promise((r) => setTimeout(r, 5_000));
     const lines = await w.chat.botLines();
-    expect(lines.filter((l) => !l.tmid).map((l) => l.text)).toEqual([ROOM_STILL_QUEUED_LINES.en]);
+    // the top level holds only the report thread's one anchor line, and the line is inside it (ISS-1224)
+    const top = lines.filter((l) => !l.tmid);
+    expect(top.map((l) => l.text)).toEqual(['Assistant reports']);
+    expect((await roomLines()).map((l) => l.tmid)).toEqual([top[0]?.id]);
     expect(lines.filter((l) => l.tmid && asks.includes(l.tmid))).toEqual([]);
     // every thread's failure is on the record as its tries run out; the room was told once for all
     await expect
@@ -140,7 +141,7 @@ describe('ISS-1105: a held message has an age bound, and a broken session is tol
       })
       .toBe(asks.length);
     const told = await recorded('turn_failed');
-    expect((await w.chat.botLines()).filter((l) => !l.tmid)).toHaveLength(1);
+    expect(await roomLines()).toHaveLength(1);
     // the message to someone else was never what the room was told for
     const forOthers = told.find((a) => a.thread === asks[2]);
     expect(forOthers?.output).toMatchObject({ waitsOnAnswer: false });

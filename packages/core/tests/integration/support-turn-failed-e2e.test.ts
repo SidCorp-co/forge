@@ -1,11 +1,12 @@
 // @direct-test-of packages/core/src/support/last-resort.ts
+// @direct-test-of packages/core/src/support/report-thread.ts
 // @direct-test-of packages/core/src/support/turn-retry.ts
 // @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/support/delivery.ts
 // @direct-test-of packages/core/src/agent-sessions/chat-turn.ts
 // @direct-test-of packages/core/src/agent-sessions/events-routes.ts
 
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -19,14 +20,19 @@ import {
   ROOM_STILL_QUEUED_LINES,
   STILL_QUEUED_LINE,
 } from '../../src/conversations/last-resort.js';
-import { RETRY_DELAYS_MS } from '../../src/support/turn-retry.js';
+import { db } from '../../src/db/client.js';
+import { supportActions } from '../../src/db/schema-support.js';
+import { roomById } from '../../src/support/store.js';
+import { RETRY_DELAYS_MS, tellUnanswered } from '../../src/support/turn-retry.js';
 import { rows } from '../helpers/factories.js';
+import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld, type Turn } from '../helpers/support-world.js';
 
 // REQ-75 r2, BC-11 and BC-18, as ISS-977 revised them: a support session's turn that fails on
 // Forge's side is tried again by Forge with a short back-off, each try on the room's history, and
-// only once the tries ran out is the room told, once, in one line at its top level in its own
-// language (ISS-1105), that says the assistant answers when it can; the message stays queued. A thread answered since is told again on a later
+// only once the tries ran out is the room told, once, in one line in its report thread in its own
+// language (ISS-1105, ISS-1224: never at its top level), that says the assistant answers when it
+// can; the message stays queued. A thread answered since is told again on a later
 // failure. One session runs one turn at a time, and a transcript batch numbered from a stale base
 // is told core's next seq. The world is support-room-e2e's: the real Rocket.Chat connection
 // manager against a chat server and a box playing the session's Claude Code.
@@ -88,8 +94,22 @@ const failedLine = (l: { text: string }) =>
 const failedLines = async (thread: string) =>
   (await w.chat.botLines()).filter((l) => l.tmid === thread && failedLine(l));
 
-/** Core's one failed-turn line at the room's top level, each time the room was told (ISS-1105). */
-const roomLines = async () => (await w.chat.botLines()).filter((l) => !l.tmid && failedLine(l));
+/** The room's report thread as its row holds it, and who set it (ISS-1224). */
+const reportThread = async () =>
+  (
+    await rows<{ thread: string | null; by: string | null }>(sql`
+      SELECT report_thread AS thread, report_thread_by AS by FROM support_rooms
+       WHERE id = ${roomId}::uuid`)
+  )[0];
+
+/** Core's one failed-turn line in the room's report thread, each time the room was told (ISS-1224). */
+const roomLines = async () => {
+  const thread = (await reportThread())?.thread;
+  return (await w.chat.botLines()).filter((l) => thread && l.tmid === thread && failedLine(l));
+};
+
+/** The bot's lines at the room's top level, outside any thread. */
+const topLines = async () => (await w.chat.botLines()).filter((l) => !l.tmid);
 
 /** The room's core records of `tool` in `thread`. */
 const recorded = async (tool: string, thread: string) =>
@@ -141,22 +161,56 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
     expect(await recorded('turn_failed', parcel)).toEqual([]);
   }, 60_000);
 
+  // ISS-1224: the room's line goes only in a thread; where none can be had it is said nowhere, the
+  // record says why, and the room can be told once one can
+  it('says nothing where the room has no report thread and none can be opened, and records why', async () => {
+    const room = await roomById(roomId);
+    const [parcel] = await db
+      .select()
+      .from(supportActions)
+      .where(and(eq(supportActions.roomId, roomId), eq(supportActions.kind, 'message_in')));
+    if (!room || !parcel) throw new Error('no room or message');
+    const before = (await w.chat.botLines()).length;
+    const stand = w.chat as StandInRocketChat;
+    stand.topLevelRefused = true;
+    try {
+      await tellUnanswered(room, [parcel], 'a planted failure');
+    } finally {
+      stand.topLevelRefused = false;
+    }
+    expect(await w.chat.botLines()).toHaveLength(before);
+    expect(await reportThread()).toEqual({ thread: null, by: null });
+    const told = await recorded('turn_failed', parcel.thread);
+    expect(told.at(-1)?.output).toMatchObject({
+      posted: false,
+      roomLine: null,
+      roomLineWhy: 'no-thread',
+    });
+  });
+
   it('tells the room once its tries ran out, never asking to resend, and keeps the message queued', async () => {
     const seen: Turn[] = [];
     play(seen, new Map([['Refund please', 99]]));
     const refund = await w.chat.say(w.chat.bob, 'Refund please');
-    await w.untilLines(
-      (ls) => ls.some((l) => !l.tmid && l.text === ROOM_STILL_QUEUED_LINES.en),
-      60_000,
-    );
+    await w.untilLines((ls) => ls.some((l) => l.text === ROOM_STILL_QUEUED_LINES.en), 60_000);
     expect(handed(seen, 'Refund please')).toBe(3);
-    // one line at the room's top level, in the room's language, and none in the thread (ISS-1105)
+    // one line in the room's report thread, opened by one anchor line at the top level, in the
+    // room's language, and none in the thread nor at the top level (ISS-1105, ISS-1224)
+    const report = await reportThread();
+    expect(report?.by).toBe('forge');
+    expect((await topLines()).map((l) => [l.id, l.text])).toEqual([
+      [report?.thread, 'Assistant reports'],
+    ]);
     expect((await roomLines()).map((l) => l.text)).toEqual([ROOM_STILL_QUEUED_LINES.en]);
     expect(await failedLines(refund)).toEqual([]);
     expect((await recorded('turn_retry', refund)).map((a) => a.output.try)).toEqual([1, 2, 3]);
     const told = await recorded('turn_failed', refund);
     expect(told).toHaveLength(1);
-    expect(told[0]?.output).toMatchObject({ posted: true, waitsOnAnswer: true });
+    expect(told[0]?.output).toMatchObject({
+      posted: true,
+      waitsOnAnswer: true,
+      roomLineWhy: null,
+    });
     // still queued: waiting for a turn, on the slow back-off, its three tries counted
     const [held] = await rows<{ delivered: boolean; tries: number; wait_s: number }>(sql`
       SELECT delivered_at IS NOT NULL AS delivered, (output->>'tries')::int AS tries,
@@ -192,6 +246,8 @@ describe("ISS-977: a turn that fails on Forge's side", () => {
     // a turn completed, so the room's wait is over: its next failure is told again, once
     await w.chat.say(w.chat.bob, 'Still there?', refund);
     await expect.poll(() => roomLines(), { timeout: 60_000, interval: 250 }).toHaveLength(2);
+    // told again in the same report thread: its anchor is not opened twice
+    expect((await topLines()).map((l) => l.text)).toEqual(['Assistant reports']);
     expect(handed(seen, 'Still there?')).toBe(3);
     expect(await failedLines(refund)).toEqual([]);
     expect(await recorded('turn_failed', refund)).toHaveLength(2);
