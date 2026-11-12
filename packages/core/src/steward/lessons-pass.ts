@@ -43,6 +43,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
+import { findProjectSlugs } from '../projects/index.js';
 import { stewardAccountOf } from './account.js';
 import { ABOUT_WORDS, type Classifier, modelClassifier } from './lessons-classify.js';
 import {
@@ -285,6 +286,10 @@ async function routeToForge(
   stewardId: string,
   owed: OwedCheck,
 ): Promise<boolean> {
+  // Forge's feedback is read beside every project's lessons, so the lesson is named with its own
+  // project: a bare L-n there reads as Forge's L-n, another lesson (ISS-1222, FB-624)
+  const slug = (await findProjectSlugs([projectId])).get(projectId) ?? projectId;
+  const named = `${slug} ${lessonKey(owed.number)}`;
   const filed = await fileForgeFeedback({
     actor: { userId: stewardId, agency: 'agent' },
     request: {
@@ -292,7 +297,7 @@ async function routeToForge(
       title: cutAtWord(`A Forge step keeps being corrected: ${owed.sentence}`, CHECK_TITLE_CHARS),
       whereSeen: stepOf(owed),
       body: [
-        `${lessonKey(owed.number)} is about ${stepOf(owed)}, which no check in the project's code can catch: the Forge step that makes this judgement should make it right.`,
+        `${named} is about ${stepOf(owed)}, which no check in the project's code can catch: the Forge step that makes this judgement should make it right. Read it at GET /api/projects/${projectId}/knowledge/lesson-${owed.number}.`,
         'The corrections it learned from:',
         ...owed.reasons.map((r) => `- ${r}`),
       ].join('\n\n'),
