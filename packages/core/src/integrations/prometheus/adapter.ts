@@ -134,7 +134,7 @@ function verifyMonitoringConnection(args: {
         code: 'MONITORING_RULER_URL_MISSING',
         path: '/config/rulerUrl',
         detail:
-          'ruler mimir pushes each project\'s rule group to a ruler API: name it in rulerUrl, or keep the ruler this connection had',
+          "ruler mimir pushes each project's rule group to a ruler API: name it in rulerUrl, or keep the ruler this connection had",
       },
     ];
   }

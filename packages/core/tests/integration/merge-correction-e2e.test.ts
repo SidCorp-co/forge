@@ -143,7 +143,6 @@ describe('a closed issue’s misread landing is corrected in place (ISS-1027)', 
     },
   );
 
-
   it('refuses both spellings at once, and changes nothing', async () => {
     const two = await misreadClosed();
     const at = '2026-10-29T10:00:00.000Z';
