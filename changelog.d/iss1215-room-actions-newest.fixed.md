@@ -1,1 +1,1 @@
-**A room's actions read reaches its newest actions.** Past 500 actions it served the room's oldest 500 and nothing newer; it now serves the newest, takes a `since`/`until` window, and says `truncated` when the limit cut it. The daily review reads its own day.
+**A room's actions read reaches its newest actions.** Past 500 it served the oldest 500 only; it now serves the newest, takes a `since`/`until` window and says `truncated` when cut, so the daily review reads its own day.
