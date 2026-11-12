@@ -9,7 +9,7 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
-## [0.4.0-dev.660] - 2026-11-12
+## [0.4.0-dev.661] - 2026-11-12
 
 Chat agent answers a question asked while it is still replying
 
