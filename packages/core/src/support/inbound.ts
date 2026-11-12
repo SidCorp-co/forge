@@ -28,6 +28,7 @@ import { settleOwnerAnswer } from './owner-ask.js';
 import { noteRoomMessage } from './room-replies.js';
 import { ensureSupportRoom } from './rooms.js';
 import { clipMessage, limitsOf, threadOf } from './rules.js';
+import { addressedInGroup, groupSharers } from './shared-group.js';
 import {
   insertAction,
   memberMessagesSince,
@@ -189,12 +190,20 @@ async function takeIntoRoom(
 
   // a room that answers only mentions keeps every other message as the thread's context (REQ-75 r5);
   // a channel agent's group may say so for itself (ISS-874)
-  const addressed = addressedOf(m.mentions, input.ac.botUserId);
-  if (
-    answersOfConfig(m, config) === 'mentions' &&
-    !ownerAnswer &&
-    !(await heardInMentionsRoom(room, m, addressed))
-  ) {
+  const mentionsOnly = answersOfConfig(m, config) === 'mentions';
+  const { addressed, forAnother } = addressedInGroup(
+    m.text,
+    addressedOf(m.mentions, input.ac.botUserId),
+    await groupSharers(room),
+    mentionsOnly,
+  );
+  // in a group shared with another project, a message naming that project is its, kept here as
+  // context only (ISS-1220)
+  if (forAnother && !ownerAnswer) {
+    await recordAndFlag(m, author, { deliver: false });
+    return;
+  }
+  if (mentionsOnly && !ownerAnswer && !(await heardInMentionsRoom(room, m, addressed))) {
     await recordAndFlag(m, author, { deliver: false });
     return;
   }

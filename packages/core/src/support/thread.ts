@@ -4,7 +4,13 @@
 
 import { scrubLogText } from '@forge/observability';
 import { noteAppliedLessons } from '../assistant/index.js';
-import { appendMessages, type ConversationRow, openConversation } from '../conversations/index.js';
+import {
+  appendMessages,
+  type ConversationRow,
+  derivedScope,
+  findConversation,
+  openConversation,
+} from '../conversations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
   namespaceFromServerUrl,
@@ -39,14 +45,24 @@ export async function roomAuth(
   return { auth, namespace };
 }
 
+/**
+ * A thread's conversation for the room's project. A group two projects' bindings share (ISS-933) is
+ * one thread on the chat server, and each project keeps its own record of it: the thread's venue
+ * where no conversation stands there or the one standing is this project's, and that venue qualified
+ * by the project where another's stands, so neither project's message is refused
+ * CONVERSATION_PROJECT_CONFLICT for the other's (ISS-1220).
+ */
 export async function threadConversationOf(
   room: RoomRow,
   namespace: string,
   thread: string,
 ): Promise<ConversationRow> {
+  const venue = supportVenueId(namespace, room.rid, thread);
+  const standing = await findConversation('rocketchat', venue);
+  const another = standing && !(await derivedScope(standing.id)).includes(room.projectId);
   return openConversation({
     adapter: 'rocketchat',
-    externalId: supportVenueId(namespace, room.rid, thread),
+    externalId: another ? `${venue} ${room.projectId}` : venue,
     shape: 'group',
     projectId: room.projectId,
     title: 'Support thread',
