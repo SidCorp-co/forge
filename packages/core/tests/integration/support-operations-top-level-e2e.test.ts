@@ -135,11 +135,12 @@ describe('nothing reaches the top level of a forge-scope operations room (ISS-93
     const found = await checkResult(room, { check, finding: FINDING });
     expect(codeOf(found)).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
     expect(chat.linesIn(chat.rid).length, 'nothing was posted').toBe(before);
-    // the firing's one result was not taken by the refusal: it can still be answered
-    const [claimed] = await rows<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM support_actions
-       WHERE room_id = ${room.id}::uuid AND kind = 'check_result' AND thread = ${check}`);
-    expect(claimed?.n).toBe(0);
+    // the firing's one result was not taken by the refusal: it can still be answered; the refusal
+    // is recorded on the check, by name (ISS-1227)
+    const recorded = await rows<{ kind: string; code: string | null }>(sql`
+      SELECT kind, output->>'code' AS code FROM support_actions
+       WHERE room_id = ${room.id}::uuid AND thread = ${check} AND kind <> 'message_in'`);
+    expect(recorded).toEqual([{ kind: 'refused', code: 'SUPPORT_PROJECT_THREAD_UNRECORDED' }]);
   });
 
   it('posts each into the project’s recorded thread once the binding records it', async () => {

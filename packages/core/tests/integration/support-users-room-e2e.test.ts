@@ -242,35 +242,46 @@ describe("ISS-872: a post into a users' room holding an internal code is refused
     expect(topLines(chat.rid).map((l) => l.text)).toEqual(['Hệ thống bảo trì lúc 22:00.']);
   });
 
-  it('refuses a check finding holding a code, and posts the plain one', async () => {
+  // ISS-1227: a finding goes in the room's report thread, never its top level; where none can be
+  // opened it is refused by name and recorded on the check, and the check can still be answered
+  it('refuses a check finding holding a code, or with no report thread, and posts the plain one in the report thread', async () => {
     const { fireDueChecks } = await import('../../src/support/index.js');
     await w.settleWarm();
+    const PLAIN = 'Kết nối nhà cung cấp sắp hết hạn.';
+    const tops = topLines(chat.rid).length;
     let done = false;
+    let check = '';
     const outs: Record<string, unknown>[] = [];
     w.box.model = async (turn, act) => {
-      const check = turn.messages.find((m) => m.thread.startsWith('check:'))?.thread;
+      check = turn.messages.find((m) => m.thread.startsWith('check:'))?.thread ?? '';
       if (!check || done) return;
-      outs.push(
-        await (act as Act)({
-          action: 'check_result',
-          check,
-          finding: 'SUPPLIER_API_KEY sắp hết hạn.',
-        }),
-      );
-      outs.push(
-        await (act as Act)({
-          action: 'check_result',
-          check,
-          finding: 'Kết nối nhà cung cấp sắp hết hạn.',
-        }),
-      );
+      const result = (finding: string) => (act as Act)({ action: 'check_result', check, finding });
+      outs.push(await result('SUPPLIER_API_KEY sắp hết hạn.'));
+      chat.topLevelRefused = true;
+      outs.push(await result(PLAIN).finally(() => (chat.topLevelRefused = false)));
+      outs.push(await result(PLAIN));
       done = true;
     };
     expect(await fireDueChecks(new Date('2026-11-02T01:30:00Z'))).toBe(1);
     await expect.poll(() => done, { timeout: 20_000 }).toBe(true);
     expect(code(outs[0]), JSON.stringify(outs[0])).toBe('SUPPORT_INTERNAL_CODE');
-    expect(outs[1]?.isError, JSON.stringify(outs[1])).toBe(false);
-    expect(topLines(chat.rid).map((l) => l.text)).toContain('Kết nối nhà cung cấp sắp hết hạn.');
+    expect(code(outs[1]), JSON.stringify(outs[1])).toBe('SUPPORT_POST_NEEDS_THREAD');
+    // a check names no thread of its own, so the refusal never tells it to pass one
+    expect(JSON.stringify(outs[1])).not.toContain('Pass `thread`');
+    expect(outs[2]?.isError, JSON.stringify(outs[2])).toBe(false);
+    const refused = await rows<{ code: string; posted: boolean }>(sql`
+      SELECT a.output->>'code' AS code, (a.output->>'posted')::boolean AS posted
+        FROM support_actions a JOIN support_rooms r ON r.id = a.room_id
+       WHERE r.rid = ${chat.rid} AND a.kind = 'refused' AND a.tool = 'check_result'
+         AND a.thread = ${check} ORDER BY a.created_at`);
+    expect(refused.map((r) => r.code)).toEqual([
+      'SUPPORT_INTERNAL_CODE',
+      'SUPPORT_POST_NEEDS_THREAD',
+    ]);
+    expect(refused[1]?.posted).toBe(false);
+    const [anchor, ...more] = topLines(chat.rid).slice(tops);
+    expect([anchor?.text, more]).toEqual(['Báo cáo của trợ lý', []]);
+    expect(w.threadLines(chat.rid, String(anchor?.id)).map((l) => l.text)).toEqual([PLAIN]);
   });
 });
 

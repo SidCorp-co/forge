@@ -24,7 +24,7 @@ import { SUPPORT_BOX_CAPS, SupportWorld, type Turn } from '../helpers/support-wo
 
 // REQ-77 r1 part 3 (ISS-765): scheduled checks and the switch-over, and forge-core-61's switch gate.
 // - BC-13: a check the binding names fires once a day as a message to the agent, which answers it
-//   with one finding core posts in the group, or none, and nothing is posted.
+//   with one finding core posts in the group's report thread (ISS-1227), or none, and nothing is posted.
 // - BC-16: a group answered by a bot outside Forge joins the agent only through its switch: every
 //   duty passed, then the outside bot's account removed from the group, then the binding moved.
 // - BC-18: a switch that waits on another runs only once that one is proven.
@@ -162,29 +162,26 @@ describe('REQ-77 BC-13: a scheduled check posts one finding, and nothing when th
     expect(topLevelLines().length).toBe(before);
   });
 
-  it('posts a finding once at the group’s top level, and refuses a second result', async () => {
+  it('posts a finding once in the group’s report thread, never its top level, and refuses a second result', async () => {
     const { fireDueChecks } = await import('../../src/support/index.js');
     const before = topLevelLines().length;
+    const FINDING = 'The supplier access for Acme expires in 3 days.';
     const results: Record<string, unknown>[] = [];
     await onNextTurn(
       checkTurn,
       () => fireDueChecks(new Date('2026-11-03T01:31:00Z')),
       async (t, act) => {
         const check = t.messages.find((x) => x.thread.startsWith('check:'))?.thread;
-        results.push(
-          await act({
-            action: 'check_result',
-            check,
-            finding: 'The supplier access for Acme expires in 3 days.',
-          }),
-        );
-        results.push(await act({ action: 'check_result', check, finding: 'Another finding.' }));
+        const result = (finding: string) => act({ action: 'check_result', check, finding });
+        results.push(await result(FINDING), await result('Another finding.'));
       },
     );
     expect(results[0], JSON.stringify(results[0])).toMatchObject({ posted: expect.any(String) });
     expect(JSON.stringify(results[1])).toContain('SUPPORT_CHECK_ANSWERED');
-    const lines = topLevelLines().slice(before);
-    expect(lines.map((l) => l.text)).toEqual(['The supplier access for Acme expires in 3 days.']);
+    const [anchor, ...more] = topLevelLines().slice(before);
+    expect([anchor?.text, more]).toEqual(['Assistant reports', []]);
+    const inThread = chat.linesIn(chat.rid).filter((l) => l.tmid === anchor?.id);
+    expect(inThread.map((l) => l.text)).toEqual([FINDING]);
   });
 
   it('refuses a result for a check that never fired', async () => {
