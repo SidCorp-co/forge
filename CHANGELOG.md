@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.655] - 2026-11-12
+
+An archived project no longer waits on you in Needs you
+
+### Fixed
+
+- **An archived project stops waiting on you.** Its decisions, failed jobs, mentions and gates leave your attention page, its counts and the home; restoring it brings them back.
+
 ## [0.4.0-dev.654] - 2026-11-12
 
 A room's actions read reaches its newest actions
