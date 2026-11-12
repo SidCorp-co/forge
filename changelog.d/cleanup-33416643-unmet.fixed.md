@@ -1,0 +1,1 @@
+**A close that moves no criterion refuses `unmet` by name.** Closing an issue a release claimed, or an adoption-only or approved design-only one, answers `UNMET_NOT_APPLICABLE` instead of dropping `unmet` behind a 200.

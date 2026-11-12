@@ -138,7 +138,6 @@ export type GuardCode = Exclude<
   | 'DEFECT_CAUSE_REQUIRED'
   | 'DEFECT_EVIDENCE_SHAPE'
   | 'DEFECT_EVIDENCE_NOT_FOUND'
-  | 'UNMET_NOT_APPLICABLE'
 >;
 
 export interface GuardFault {

@@ -346,13 +346,13 @@ export async function inScopeGuard(
   const rows = (await ctx.executor.execute(
     sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
-  if (rows[0]?.release_batch_run_id) return null;
+  if (rows[0]?.release_batch_run_id) return unmetUnread(ctx, 'a release claimed it');
   // an adoption-only issue ships nothing either: the record it adopted is what landed (REQ-5 BC-17)
   const adoption = await readAdoptionDelivery(ctx.executor, ctx.issue.id);
-  if (adoption.refs && !adoption.shortfall) return null;
+  if (adoption.refs && !adoption.shortfall) return unmetUnread(ctx, 'it is adoption-only');
   const design = await readDesignDelivery(ctx);
   if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
-    return null;
+    return unmetUnread(ctx, 'it is design-only, its revisions approved');
   if (held) {
     const why = design.designOnly ? ` It is design-only, and ${designShortfall(design)}.` : '';
     const shortfall = adoption.shortfall
@@ -383,4 +383,18 @@ export async function inScopeGuard(
   }
   if (moved) moved.moves = scope.moves;
   return null;
+}
+
+/**
+ * A close that needs no scope read moves no criterion out, so an `unmet` sent with it would leave
+ * every criterion live behind a 200; it is refused by name instead, and the close goes on without it.
+ */
+function unmetUnread(ctx: GuardContext, because: string): GuardFault | null {
+  const sent = ctx.facts.closeScope?.unmet.length ?? 0;
+  if (sent === 0) return null;
+  return {
+    code: 'UNMET_NOT_APPLICABLE',
+    detail: `\`unmet\` moves criteria out on a close the run met in scope, and this close is not one: ${because}, so no criterion moves on it. Send the close without \`unmet\`.`,
+    details: { from: ctx.from, to: ctx.to, unmet: sent },
+  };
 }

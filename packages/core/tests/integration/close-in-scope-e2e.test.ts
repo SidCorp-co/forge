@@ -304,6 +304,21 @@ describe('an issue closes when met in scope (ISS-1062)', () => {
     expect(refusalsOf(r)[0]?.code).toBe('UNMET_NOT_APPLICABLE');
   });
 
+  // debt 38ca3f41: such a close needs no scope read, so `unmet` was dropped and the criteria stayed live
+  it('refuses `unmet` on the close of an issue a release claimed, which moves no criterion', async () => {
+    const { id } = await landed(['the field is listed', 'the field sorts']);
+    const runId = randomUUID();
+    await rows(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, metadata)
+      VALUES (${runId}, ${projectId}, 'system', 'running', now(), '3.0.9',
+              ${JSON.stringify({ source: 'release-batch', issueIds: [id] })}::jsonb)`);
+    await rows(sql`UPDATE issues SET release_batch_run_id = ${runId} WHERE id = ${id}`);
+    const r = await close(id, { unmet: [{ criterion: 2, to: 'requirement' }] }, 'owner');
+    expect(refusalsOf(r)[0]?.code).toBe('UNMET_NOT_APPLICABLE');
+    expect(refusalsOf(r)[0]?.detail).toContain('a release claimed it');
+    expect(await statusOf(id)).toBe('awaiting_release');
+  });
+
   it('still closes an issue a release claims, nobody holding it, and only the release makes it live', async () => {
     const { id } = await landed(['the catalog lists the new field']);
     ok(
