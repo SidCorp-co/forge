@@ -52,13 +52,17 @@ export async function judgedEnvironment(
     );
   }
   if (!issue.target) {
+    // a mark already standing is refused MARK_ALREADY_STANDS, so the way out names the clear first
     const why = issue.mergedAt
       ? 'its merge mark names no target branch'
       : 'its work has not landed (no merge mark)';
+    const wayOut = issue.mergedAt
+      ? `Clear the standing mark (DELETE /api/issues/${issueId}/merge), then mark it again naming its target.`
+      : 'Mark it merged with its target first.';
     return refuse(
       422,
       'TESTING_SECRETS_NOT_LANDED',
-      `issue ${issueId}: ${why}, so no environment deploying it can be named. Mark it merged with its target first.`,
+      `issue ${issueId}: ${why}, so no environment deploying it can be named. ${wayOut}`,
     );
   }
   const target = issue.target;

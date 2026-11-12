@@ -191,6 +191,20 @@ describe('everything else stays refused by name', () => {
     expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_LANDED');
   });
 
+  // debt 752242e6: a second mark is refused MARK_ALREADY_STANDS, so the way out names the clear first
+  it('names the clear-then-mark route where a mark stands without its target', async () => {
+    await createTestIssue(world.projectId, world.ownerId, 71, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+      mergedAt: new Date(),
+    });
+    const run = await declaredRun(world.projectId, 71);
+    const res = await secrets(world.boxToken, run.boxRunId);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(codeOf(res.body)).toBe('TESTING_SECRETS_NOT_LANDED');
+    expect(JSON.stringify(res.body)).toContain('Clear the standing mark (DELETE /api/issues/');
+  });
+
   it("refuses a person's credential, which is no run", async () => {
     await landedIssue(world.projectId, 68);
     const run = await declaredRun(world.projectId, 68);
