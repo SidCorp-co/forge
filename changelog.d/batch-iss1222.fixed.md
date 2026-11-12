@@ -1,1 +1,0 @@
-**A lesson routed to Forge names its project.** A process lesson a project's steward routes to Forge's feedback reads as that project's lesson, with where to read it, never as Forge's own lesson of the same number (ISS-1222).

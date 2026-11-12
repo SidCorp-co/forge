@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.662] - 2026-11-12
+
+Routed process lessons name their project and where to read them
+
+### Fixed
+
+- **A lesson routed to Forge names its project.** A process lesson a project's steward routes to Forge's feedback reads as that project's lesson, with where to read it, never as Forge's own lesson of the same number (ISS-1222).
+
 ## [0.4.0-dev.661] - 2026-11-12
 
 Chat agent answers a question asked while it is still replying
