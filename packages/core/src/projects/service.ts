@@ -166,6 +166,10 @@ export type VisibleProjectWithRole = {
   grants: string[] | null;
 };
 
+/**
+ * The caller's live visible projects, with their roles: an archived one waits on nobody, so the attention
+ * and home reads that start here count nothing of it (ISS-1216).
+ */
 export async function listVisibleProjectsWithRole(
   userId: string | null | undefined,
 ): Promise<VisibleProjectWithRole[]> {
@@ -186,7 +190,7 @@ export async function listVisibleProjectsWithRole(
       organizationMembers,
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
-    .where(and(...visibleProjectsWhere(projects.id)));
+    .where(and(...visibleProjectsWhere(projects.id), isNull(projects.archivedAt)));
 }
 
 /** The ids of every project `userId` can see, under the request's PAT fence. */

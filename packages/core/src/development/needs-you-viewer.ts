@@ -3,7 +3,7 @@
 import type { NeedsYouProjectDecisions } from '@forge/contracts/needs-you-decisions';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
-import { inArray } from 'drizzle-orm';
+import { and, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { withQueryLeg } from '../db/query-timing.js';
 import { readAcross } from '../db/read-memo.js';
@@ -31,7 +31,7 @@ export const needsYouViewerOf = (
  * The viewer's decisions across every project they can see, each project's the one Needs you read
  * (`needs-you-decisions-read.ts:readNeedsYouDecisions`), so /attention counts what each project's own
  * Needs you page and Dashboard count (REQ-48 BC-11), with every other row it lists as the viewer's
- * (ISS-924). A project nothing waits in is left out.
+ * (ISS-924). A project nothing waits in is left out, and so is an archived one (ISS-1216).
  */
 export async function readNeedsYouAcross(
   userId: string,
@@ -48,7 +48,8 @@ export async function readNeedsYouAcross(
   const names = await db
     .select({ id: projects.id, slug: projects.slug, name: projects.name })
     .from(projects)
-    .where(inArray(projects.id, ids));
+    // an archived project waits on nobody (ISS-1216)
+    .where(and(inArray(projects.id, ids), isNull(projects.archivedAt)));
   // every project read side by side, each fact they ask read once for all of them
   // (`db/read-memo.ts:readAcross`), so twelve projects send the statements of one
   const perProject = await readAcross(
