@@ -16,12 +16,14 @@
 // a master lands at a room's top level (ISS-1224, owner 2026-11-12): one naming no thread goes in the
 // room's report thread, and where none can be opened it is refused by name. Images the post
 // names follow its text into the same room and thread, each checked before anything is posted
-// (ISS-1024, `master-post-images.ts`).
+// (ISS-1024, `master-post-images.ts`). A project a channel agent's binding names in `agent.projects`
+// posts into that agent's rooms as well, since the group cannot be bound to it a second time (ISS-1230).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import { fetchMessage } from '../integrations/rocketchat/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { orgSiblingProjects } from '../projects/index.js';
 import { askerOf, mentionRefusal } from './channel.js';
 import { readersOf } from './grants.js';
 import {
@@ -31,6 +33,7 @@ import {
   postImagesAfter,
   stagePostImages,
 } from './master-post-images.js';
+import { agentProjectSlugs } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
 import { reportThreadFor } from './report-thread.js';
 import { toldResultOfThread } from './room-reads.js';
@@ -66,6 +69,10 @@ type Posted = Outcome<{
   thread?: string;
   attachments?: { attachmentId: string; messageId: string | null }[];
 }>;
+
+/** The project a post was made for, recorded where the room is another project's (ISS-1230). */
+const forOf = (actor: Actor, room: RoomRow) =>
+  room.projectId === actor.projectId ? {} : { for: actor.projectId };
 
 /** What a post's record and answer say of its images: the record names each, never its bytes. */
 const recordedImages = (posted: readonly PostedImage[]) =>
@@ -106,6 +113,27 @@ async function postableRoomsNaming(
   return postableRoomsOf(projectId);
 }
 
+/**
+ * The rooms of a channel agent whose binding names this project in `agent.projects` (ISS-1230). A
+ * group answered by one binding is never bound by a second (`SUPPORT_ROOM_ANSWERED_TWICE`), whose
+ * remedy is to name the other projects there; each one so named posts its master's results into
+ * that room too, on the room's record. Naming it took an admin of the named project (ISS-874).
+ */
+async function followedRoomsOf(projectId: string): Promise<Postable[]> {
+  const siblings = await orgSiblingProjects(projectId);
+  const self = siblings.find((p) => p.id === projectId);
+  if (!self) return [];
+  const out: Postable[] = [];
+  for (const home of siblings) {
+    if (home.id === projectId) continue;
+    for (const room of await roomsOfProject(home.id)) {
+      if (!(await agentProjectSlugs(room)).includes(self.slug)) continue;
+      if (await roomIsBound(room)) out.push({ room, team: (await readersOf(room)) === 'team' });
+    }
+  }
+  return out;
+}
+
 const doorOf = (p: Postable): SessionDoor => (p.team ? 'operations-reply' : 'support-reply');
 const ridsOf = (ps: readonly Postable[]) => ps.map((p) => p.room.rid).join(', ');
 const WHERE_BOUND = 'Project settings → Integrations → Rocket.Chat';
@@ -142,7 +170,7 @@ async function roomRefusal(
   return no(
     'SUPPORT_ROOM_UNKNOWN',
     '/rid',
-    `${rid} is no room a binding of this project names${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
+    `${rid} is no room a binding of this project names, nor one whose binding names this project in agent.projects${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
   );
 }
 
@@ -338,7 +366,7 @@ async function postInNamedThread(
     kind: 'routed',
     actorKind: 'session',
     tool: TOOL,
-    input: { text, by: actor.userId, ...recordedImages(shown.posted) },
+    input: { text, by: actor.userId, ...forOf(actor, room), ...recordedImages(shown.posted) },
     externalId: posted.messageId,
   });
   if (shown.failure) return shown.failure;
@@ -395,7 +423,7 @@ async function postAtTop(
     kind: 'announced',
     actorKind: 'session',
     tool: TOOL,
-    input: { text, by: actor.userId, ...recordedImages(shown.posted) },
+    input: { text, by: actor.userId, ...forOf(actor, room), ...recordedImages(shown.posted) },
     externalId: posted.messageId,
   });
   if (shown.failure) return shown.failure;
@@ -432,7 +460,12 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(actor.projectId));
   const images = await checkPostImages(actor.userId, actor.projectId, input.attachments);
   if (!images.ok) return images;
-  const rooms = await postableRoomsNaming(actor.projectId, input.rid);
+  const own = await postableRoomsNaming(actor.projectId, input.rid);
+  // a room whose binding names this project in agent.projects takes its master's posts too (ISS-1230)
+  const followed = (await followedRoomsOf(actor.projectId)).filter(
+    (f) => !own.some((o) => o.room.rid === f.room.rid),
+  );
+  const rooms = [...own, ...followed];
   if (input.rid && !rooms.some((r) => r.room.rid === input.rid)) {
     return roomRefusal(actor.projectId, input.rid, rooms);
   }
@@ -441,7 +474,8 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
     if (own) return postAtTop(actor, own, input.text, input.thread, images.value);
     return postInNamedThread(actor, rooms, { ...input, thread: input.thread }, images.value);
   }
-  const chosen = topLevelRoomOf(rooms, input.rid);
+  // naming no room, a post goes to the project's own; a followed room takes one it names
+  const chosen = topLevelRoomOf(input.rid ? rooms : own, input.rid);
   if (!chosen.ok) return chosen;
   // a shared operations room takes it in the project's own thread; any other in its report thread
   const to = await topLevelThreadOf(chosen.value.room);

@@ -33,6 +33,7 @@ import { refusalCodes, SupportWorld, type Turn } from '../helpers/support-world.
  * @direct-test-of packages/core/src/support/result.ts
  * @direct-test-of packages/core/src/support/owner-ask-targets.ts
  * @direct-test-of packages/core/src/agent-sessions/chat-checkout.ts
+ * @direct-test-of packages/core/src/support/master-post.ts
  */
 
 // ISS-874, for every channel agent rather than one bot. The trial (test group 6ae81413, 2026-11-02):
@@ -480,5 +481,35 @@ describe('ISS-874: who may set the project set and the per-group settings', () =
     });
     expect(follows.status, JSON.stringify(follows.body)).toBe(200);
     expect((await projectsInScope(room)).map((p) => p.slug)).toEqual([expect.any(String), webSlug]);
+  });
+});
+
+// ISS-1230: SUPPORT_ROOM_ANSWERED_TWICE's remedy names a project in agent.projects; it then posts there.
+describe('ISS-1230: a project the binding follows posts into the agent’s room', () => {
+  const RESULT = 'Nút đánh dấu hợp lệ nằm ở đầu trang chi tiết đơn, cạnh trạng thái.';
+  const postIn = async (id: string, ask: string) => {
+    const { thread } = await onNextAsk(
+      () => chat.say(chat.bob, ask),
+      async () => {},
+    );
+    const body = { text: RESULT, rid: chat.rid, thread };
+    const res = await api(w.owner, 'POST', `/api/projects/${id}/support/master-posts`, body);
+    return { res, lines: chat.linesIn(chat.rid).filter((l) => l.tmid === thread), thread };
+  };
+
+  it('posts a followed project’s result in an asker’s thread, recorded for it; not a sibling’s', async () => {
+    const { res, lines, thread } = await postIn(feId, 'Where do I mark an order valid?');
+    expect([res.status, lines.map((l) => l.text)], JSON.stringify(res.body)).toEqual([
+      201,
+      [RESULT],
+    ]);
+    const [act] = await rows<{ project_id: string; for: string }>(sql`
+      SELECT project_id, input->>'for' AS for FROM support_actions WHERE thread = ${thread}
+       AND tool = 'master_post'`);
+    expect(act).toEqual({ project_id: w.projectId, for: feId });
+    const [docs] = await rows<{ id: string }>(sql`SELECT id FROM projects WHERE slug = ${DOCS}`);
+    const other = await postIn(String(docs?.id), 'And the docs?');
+    const said = [other.res.status, codesOf(other.res.body), other.lines];
+    expect(said).toEqual([404, ['SUPPORT_ROOM_UNKNOWN'], []]);
   });
 });
