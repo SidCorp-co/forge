@@ -461,6 +461,17 @@ export const supportRoomConfigSchema = z.strictObject({
 export type SupportRoomConfig = z.infer<typeof supportRoomConfigSchema>;
 
 /**
+ * Which messages of group `rid` a `support` or `agent` block answers: its own word for the group,
+ * else the block's, else every message. Core's room reads and its binding check both read this one.
+ */
+export function answersOfBlock(
+	block: Pick<SupportRoomConfig, "answers" | "rooms"> | null | undefined,
+	rid: string,
+): SupportAnswers {
+	return block?.rooms?.[rid]?.answers ?? block?.answers ?? "every-message";
+}
+
+/**
  * A tool's kind: `diagnose` reads (GET or HEAD only) and runs at once; `fix` waits on the asker;
  * `owner` acts in the product as its owner (REQ-85, ISS-1013), only in the owner's room while his
  * consent stands, and core calls it with the owner's credential it keeps for the binding, never the

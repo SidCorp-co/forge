@@ -1,4 +1,8 @@
-import type { SupportRoomConfig } from '@forge/contracts/support';
+import {
+  answersOfBlock,
+  type SupportAnswers,
+  type SupportRoomConfig,
+} from '@forge/contracts/support';
 import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../index.js';
 import { listActiveBindingsNamingRid, listActiveDeployBindingsForProvider } from '../index.js';
 import { agentProjectsGate, agentSwitchGate, briefGrantGate } from './room-handlers.js';
@@ -281,14 +285,9 @@ async function answeredTwiceRefusals(
  * (`support/grants.ts:answersOfConfig`): its block's own word for the group, else the block's, else
  * every message. An operations room has no such word and answers every message.
  */
-function answersIn(config: unknown, rid: string): 'mentions' | 'every-message' {
-  const c = (config ?? {}) as { agent?: unknown; support?: unknown };
-  const block = (c.agent ?? c.support ?? null) as {
-    answers?: string;
-    rooms?: Record<string, { answers?: string } | undefined>;
-  } | null;
-  const said = block?.rooms?.[rid]?.answers ?? block?.answers;
-  return said === 'mentions' ? 'mentions' : 'every-message';
+function answersIn(config: unknown, rid: string): SupportAnswers {
+  const c = (config ?? {}) as { agent?: SupportRoomConfig; support?: SupportRoomConfig };
+  return answersOfBlock(c.agent ?? c.support ?? null, rid);
 }
 
 const serverOf = (config: unknown): string | null => {

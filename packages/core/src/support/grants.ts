@@ -4,6 +4,7 @@
 // anything runs, and the refusal says who can grant it: the project's admins, in project settings.
 
 import {
+  answersOfBlock,
   SUPPORT_ABILITY_MEANING,
   type SupportAbility,
   type SupportAnswers,
@@ -50,7 +51,7 @@ export function answersOfConfig(
   room: Pick<RoomRow, 'rid'>,
   config: SupportRoomConfig | null,
 ): SupportAnswers {
-  return config?.rooms?.[room.rid]?.answers ?? config?.answers ?? 'every-message';
+  return answersOfBlock(config, room.rid);
 }
 
 /** Who reads a room, by its binding as it holds it now. */
