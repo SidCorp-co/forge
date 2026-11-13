@@ -1,1 +1,0 @@
-**A project a channel agent follows can post into its room.** A project named in the binding's followed projects posts its master's results into that agent's group and threads, with nobody relaying (ISS-1230).

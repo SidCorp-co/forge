@@ -1,6 +1,6 @@
 {
   "name": "@forge/core",
-  "version": "0.4.0-dev.668",
+  "version": "0.4.0-dev.669",
   "private": true,
   "license": "Apache-2.0",
   "description": "Forge core API — Hono + Drizzle (RFC 0002 Strapi replacement).",

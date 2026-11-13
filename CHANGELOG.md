@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.669] - 2026-11-13
+
+Followed projects post their master's results into a channel agent's rooms
+
+### Fixed
+
+- **A project a channel agent follows can post into its room.** A project named in the binding's followed projects posts its master's results into that agent's group and threads, with nobody relaying (ISS-1230).
+
 ## [0.4.0-dev.668] - 2026-11-13
 
 Revision-routed feedback resolves once its requirement is accepted by decision
