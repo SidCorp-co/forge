@@ -406,8 +406,9 @@ const READS_ACROSS = (p: string): Ceiling[] => [
     path: '/api/me/attention',
     statements: ATTENTION_ACROSS_STATEMENTS,
     // ISS-1070 r11: 165,453 and 165,892 on the code before r11 (97d264900), the seed's spread; priced alike
-    // ISS-1159: +4,000 for the shipped carriers' failing criteria, priced as {@link READS} says
-    buffers: 171000,
+    // ISS-1159: +4,000 for the shipped carriers' failing criteria, priced as {@link READS} says;
+    // beside the other read-cost guards it read 172,060 and 173,425 with the read unchanged
+    buffers: 175000,
     cpuMs: ATTENTION_ACROSS_CPU_MS,
     beyondAlone: ATTENTION_BEYOND_ALONE,
   },
