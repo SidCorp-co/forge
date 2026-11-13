@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.670] - 2026-11-13
+
+Room messages wait for the core process their runner box is connected to
+
+### Fixed
+
+- **A room's message waits for the core process its box is connected to.** A process holding the chat connection but no socket of the box no longer refuses the turn and spends its tries (ISS-1231).
+
 ## [0.4.0-dev.669] - 2026-11-13
 
 Followed projects post their master's results into a channel agent's rooms
