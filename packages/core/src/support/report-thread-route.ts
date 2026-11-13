@@ -39,16 +39,8 @@ async function setReportThread(
       `this project's bindings answer no room ${roomId} now (GET /api/projects/${actor.projectId}/support/rooms lists them). Nothing was saved.`,
     );
   }
-  const found = await roomOfThread([at], at.room.rid, thread);
-  if (!found.ok) {
-    return {
-      ok: false,
-      refusals: found.refusals.map((r) => ({
-        ...r,
-        detail: r.detail.replace('Nothing was posted.', 'Nothing was saved.'),
-      })),
-    };
-  }
+  const found = await roomOfThread([at], at.room.rid, thread, 'Nothing was saved.');
+  if (!found.ok) return found;
   await nameReportThread(at.room.id, thread);
   return {
     ok: true,

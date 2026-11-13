@@ -250,11 +250,15 @@ async function rootOf(rooms: readonly Postable[], thread: string): Promise<Root>
   return { kind: 'unknown' };
 }
 
-/** The room of the named ones a thread is in, by the project's record and then by the chat server. */
+/**
+ * The room of the named ones a thread is in, by the project's record and then by the chat server.
+ * `nothing` ends each refusal: what the caller did not do (a post, or a route's save).
+ */
 export async function roomOfThread(
   rooms: readonly Postable[],
   rid: string | undefined,
   thread: string,
+  nothing = 'Nothing was posted.',
 ): Promise<Outcome<Placed>> {
   const named = rid ? rooms.filter((r) => r.room.rid === rid) : rooms;
   for (const at of named) {
@@ -267,7 +271,7 @@ export async function roomOfThread(
     return no(
       'SUPPORT_THREAD_UNKNOWN',
       '/thread',
-      `${thread} is a reply in thread ${root.tmid}, not a thread's first message: name ${root.tmid} as \`thread\`. Nothing was posted.`,
+      `${thread} is a reply in thread ${root.tmid}, not a thread's first message: name ${root.tmid} as \`thread\`. ${nothing}`,
     );
   }
   if (root.kind === 'root') {
@@ -276,7 +280,7 @@ export async function roomOfThread(
     return no(
       'SUPPORT_THREAD_OF_ANOTHER_ROOM',
       '/thread',
-      `thread ${thread} is in room ${root.rid}, not in ${where}${rid ? '' : ', the rooms this project binds'}. Nothing was posted.`,
+      `thread ${thread} is in room ${root.rid}, not in ${where}${rid ? '' : ', the rooms this project binds'}. ${nothing}`,
     );
   }
   for (const other of rooms) {
@@ -285,14 +289,14 @@ export async function roomOfThread(
       return no(
         'SUPPORT_THREAD_OF_ANOTHER_ROOM',
         '/thread',
-        `thread ${thread} is in room ${other.room.rid}, not in ${where}. Nothing was posted.`,
+        `thread ${thread} is in room ${other.room.rid}, not in ${where}. ${nothing}`,
       );
     }
   }
   return no(
     'SUPPORT_THREAD_UNKNOWN',
     '/thread',
-    `neither this project's record nor the chat server holds a thread ${thread} in ${where}. Nothing was posted.`,
+    `neither this project's record nor the chat server holds a thread ${thread} in ${where}. ${nothing}`,
   );
 }
 
