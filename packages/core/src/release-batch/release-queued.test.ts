@@ -82,7 +82,8 @@ describe('a draft no gate holds', () => {
       kind: 'agent',
       who: 'Master',
       act: 'cut 0.3.0',
-      rule: 'merged issues wait at the release gate; the master cuts the version',
+      // the door named: the master guessed a cut route of the release's own (ISS-1232)
+      rule: 'merged issues wait at the release gate; the master cuts the version with POST /api/projects/p1/release-batches',
     });
   });
 

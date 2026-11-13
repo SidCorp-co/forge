@@ -208,7 +208,13 @@ function draftTurn(f: TurnFacts): Turn {
   if (f.gates.length > 0) return gatedTurn(f);
   const act = say('standing.act.cut', { v: f.version, more: null });
   if (f.owes('release.cut').by === 'master') {
-    return turn('waiting', 'agent', { who: MASTER, act, rule: say('releases.rule.masterCuts') });
+    // the door named, since a release has no cut route of its own (ISS-1232)
+    const route = `POST /api/projects/${f.projectId}/release-batches`;
+    return turn('waiting', 'agent', {
+      who: MASTER,
+      act,
+      rule: say('releases.rule.masterCuts', { route }),
+    });
   }
   const rule = say('releases.rule.adminCuts');
   if (f.viewer?.isAdmin) return turn('needs_you', 'you', { who: YOU, act, rule });

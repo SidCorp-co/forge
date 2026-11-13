@@ -7,13 +7,14 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
-import { holds, requiresByRule, requiresOnParam } from '../permissions/index.js';
+import { requiresByRule, requiresOnParam } from '../permissions/index.js';
 import {
   approvalRequestSchema,
   decideApproval,
   parseDecision,
   requestApproval,
 } from './approvals.js';
+import { releaseViewerOf } from './cut-as.js';
 import { decideDraftApproval } from './draft-approval.js';
 import { nameReleaseAs } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
@@ -64,16 +65,13 @@ async function assertRunOfProject(runId: string, projectId: string): Promise<voi
 function viewerOf(
   c: { get: (k: 'userId' | 'agency') => unknown },
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
-): ViewerFacts | null {
+  projectId: string,
+): Promise<ViewerFacts | null> {
   const userId = c.get('userId');
   const agency = c.get('agency');
-  if (typeof userId !== 'string' || (agency !== 'human' && agency !== 'agent')) return null;
-  return {
-    userId,
-    agency,
-    isAdmin: holds(access, 'project.admin'),
-    mayApprove: holds(access, 'releases.approve'),
-  };
+  if (typeof userId !== 'string' || (agency !== 'human' && agency !== 'agent'))
+    return Promise.resolve(null);
+  return releaseViewerOf(access, projectId, userId, agency);
 }
 
 releaseVersionRoutes.get(
@@ -84,7 +82,7 @@ releaseVersionRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    return c.json(await listReleases(projectId, viewerOf(c, access)));
+    return c.json(await listReleases(projectId, await viewerOf(c, access, projectId)));
   },
 );
 
@@ -106,7 +104,9 @@ releaseVersionRoutes.get(
     const { projectId } = c.req.valid('param');
     const { limit } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    return c.json(await listShippedReleases(projectId, viewerOf(c, access), limit));
+    return c.json(
+      await listShippedReleases(projectId, await viewerOf(c, access, projectId), limit),
+    );
   },
 );
 
@@ -118,7 +118,9 @@ releaseVersionRoutes.get(
   async (c) => {
     const { projectId, version } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    return c.json({ release: await readRelease(projectId, version, viewerOf(c, access)) });
+    return c.json({
+      release: await readRelease(projectId, version, await viewerOf(c, access, projectId)),
+    });
   },
 );
 

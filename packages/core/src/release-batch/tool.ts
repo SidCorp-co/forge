@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { holds, onArg } from '../permissions/index.js';
+import { onArg } from '../permissions/index.js';
+import { releaseViewerOf } from './cut-as.js';
 import { listReleases } from './release-list-read.js';
 import { readRelease } from './release-read.js';
 import { releaseToolView } from './tool-view.js';
@@ -28,12 +29,7 @@ const getInput = z.strictObject({
 async function viewerOf(ctx: Parameters<ContextScopedMcpToolFactory>[0], projectId: string) {
   const userId = ctx.principal.userId;
   const access = await loadProjectAccess(projectId, userId);
-  return {
-    userId,
-    agency: principalAgency(ctx.principal),
-    isAdmin: holds(access, 'project.admin'),
-    mayApprove: holds(access, 'releases.approve'),
-  };
+  return releaseViewerOf(access, projectId, userId, principalAgency(ctx.principal));
 }
 
 export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
