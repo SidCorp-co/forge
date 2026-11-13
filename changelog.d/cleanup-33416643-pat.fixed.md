@@ -1,1 +1,0 @@
-**A cut or placeholder personal access token is told so.** A bearer starting `forge_pat_` that is not a whole token is refused as cut, padded or a placeholder, not as "no Forge token" with runner advice.

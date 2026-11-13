@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.668] - 2026-11-13
+
+Revision-routed feedback resolves once its requirement is accepted by decision
+
+### Fixed
+
+- **Revision-routed feedback resolves once its requirement is accepted.** Accepted by a decision counts too, as for a new-requirement route, so its reporter can verify it (ISS-1228, FB-629).
+- **A judge refused for a mark with no target is told the way out.** `TESTING_SECRETS_NOT_LANDED` now says to clear the standing mark, then mark it again naming its target.
+- **A monitoring connection cannot be changed to a ruler it cannot reach.** Switching it to `mimir` without a `rulerUrl` is refused `MONITORING_RULER_URL_MISSING`, instead of saving a connection that reads as none.
+- **A cut or placeholder personal access token is told so.** A bearer starting `forge_pat_` that is not a whole token is refused as cut, padded or a placeholder, not as "no Forge token" with runner advice.
+- **A release naming no commit and no version no longer ships its one site on nothing.** That site is refused `RELEASE_SITE_NOT_SHIPPED` instead of being recorded serving an empty value.
+- **An unmark that names a landing time is refused by name.** `DELETE /api/issues/:id/merge` answers `UNMARK_TAKES_NO_LANDING` for `landedAt` or `mergedAt` instead of dropping it unread.
+- **A close that moves no criterion refuses `unmet` by name.** Closing an issue a release claimed, or an adoption-only or approved design-only one, answers `UNMET_NOT_APPLICABLE` instead of dropping `unmet` behind a 200.
+- **A merge mark takes a landing that predates its issue.** An issue filed for a merge that named none, a beta twin, or a hand fix recorded later is marked at its real landing time again.
+
 ## [0.4.0-dev.667] - 2026-11-12
 
 A scheduled check's finding goes into the room's report thread

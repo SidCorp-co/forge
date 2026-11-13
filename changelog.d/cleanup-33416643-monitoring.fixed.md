@@ -1,1 +1,0 @@
-**A monitoring connection cannot be changed to a ruler it cannot reach.** Switching it to `mimir` without a `rulerUrl` is refused `MONITORING_RULER_URL_MISSING`, instead of saving a connection that reads as none.
