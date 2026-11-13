@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.671] - 2026-11-13
+
+The project's master sees a release it may cut
+
+### Fixed
+
+- **A release the master owes the cut of offers it the cut.** It read `can.cut: false` to a master the cut route accepts, and its wait now names that route (ISS-1232).
+
 ## [0.4.0-dev.670] - 2026-11-13
 
 Room messages wait for the core process their runner box is connected to
