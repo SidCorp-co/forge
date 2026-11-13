@@ -3,21 +3,20 @@
  * admits a filing, and the expiry a mint may set. `server-keys.ts` holds the reads and writes.
  */
 
-import { randomBytes } from 'node:crypto';
 import {
   FEEDBACK_SERVER_KEY_PATTERN,
   FEEDBACK_SERVER_KEY_PREFIX,
   FEEDBACK_SERVER_KEY_SHOWN_CHARS,
 } from '@forge/contracts/feedback-server-keys';
 import type { Refusal } from '../lib/refusal.js';
-import { digestToken } from '../lib/token-digest.js';
+import { digestToken, mintPrefixedToken } from '../lib/token-digest.js';
 
 /** A fresh secret and the SHA-256 it is kept as. */
 export function mintServerKeySecret(): { secret: string; hash: string; prefix: string } {
-  const secret = `${FEEDBACK_SERVER_KEY_PREFIX}${randomBytes(32).toString('base64url')}`;
+  const { token: secret, hash } = mintPrefixedToken(FEEDBACK_SERVER_KEY_PREFIX);
   return {
     secret,
-    hash: digestToken(secret),
+    hash,
     prefix: secret.slice(0, FEEDBACK_SERVER_KEY_SHOWN_CHARS),
   };
 }

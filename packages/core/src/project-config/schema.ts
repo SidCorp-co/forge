@@ -22,7 +22,7 @@ import {
   TEMPLATE_LIMITS,
 } from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
-import { agentAccessValues } from '../db/release-axes.js';
+import { agentAccessValues, bindingRoles } from '../db/release-axes.js';
 import { servedSchemaUrl } from '../lib/served-schema.js';
 import { actingSecretsSchema } from './acting-secrets-schema.js';
 import { routesFaults } from './environment-routes.js';
@@ -360,7 +360,8 @@ export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 export type EnvironmentDeclaration = ProjectDocument['environments'][string];
 export type SiteDeclaration = NonNullable<EnvironmentDeclaration['sites']>[number];
 
-export const BINDING_ROLES = ['deploy', 'source', 'service', 'monitoring'] as const;
+/** The roles a binding takes: the stored column's list (`db/release-axes.ts:bindingRoles`). */
+export const BINDING_ROLES = bindingRoles;
 export type BindingRole = (typeof BINDING_ROLES)[number];
 
 const releaseRunnerLabel = () => z.string().min(1).max(60).optional();

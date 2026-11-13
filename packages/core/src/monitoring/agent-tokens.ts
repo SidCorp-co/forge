@@ -4,7 +4,6 @@
  * new one replaces the old, which admits nothing from then on.
  */
 
-import { randomBytes } from 'node:crypto';
 import {
   MONITORING_AGENT_TOKEN_PATTERN,
   MONITORING_AGENT_TOKEN_PREFIX,
@@ -13,19 +12,17 @@ import {
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { monitoringAgentTokens } from '../db/schema-monitoring.js';
-import { digestToken } from '../lib/token-digest.js';
+import { digestToken, mintPrefixedToken, SHOWN_TOKEN_CHARS } from '../lib/token-digest.js';
 import { listProjectHeads } from '../projects/index.js';
-
-const SHOWN_CHARS = 12;
 
 export async function mintAgentToken(input: {
   projectId: string;
   mintedBy: string;
 }): Promise<MonitoringAgentTokenResponse> {
-  const token = `${MONITORING_AGENT_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
+  const { token, hash } = mintPrefixedToken(MONITORING_AGENT_TOKEN_PREFIX);
   const values = {
-    tokenHash: digestToken(token),
-    prefix: token.slice(0, SHOWN_CHARS),
+    tokenHash: hash,
+    prefix: token.slice(0, SHOWN_TOKEN_CHARS),
     createdBy: input.mintedBy,
     createdAt: new Date(),
   };

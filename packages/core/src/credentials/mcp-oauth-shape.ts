@@ -1,11 +1,11 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   MCP_OAUTH_CODE_PREFIX,
   MCP_OAUTH_REFRESH_PREFIX,
   MCP_OAUTH_SCOPES,
   type McpOAuthScope,
 } from '@forge/contracts/mcp-auth';
-import { digestToken } from '../lib/token-digest.js';
+import { mintPrefixedToken } from '../lib/token-digest.js';
 
 /**
  * The pure rules of the MCP OAuth flow: which redirect URIs a client may register and use, how a
@@ -83,8 +83,8 @@ export function parseScope(
 /** A fresh secret of one kind: the prefix the scrubber knows, then 256 random bits. */
 export function mintSecret(kind: 'code' | 'refresh'): { plaintext: string; hash: string } {
   const prefix = kind === 'code' ? MCP_OAUTH_CODE_PREFIX : MCP_OAUTH_REFRESH_PREFIX;
-  const plaintext = `${prefix}${randomBytes(32).toString('base64url')}`;
-  return { plaintext, hash: digestToken(plaintext) };
+  const { token, hash } = mintPrefixedToken(prefix);
+  return { plaintext: token, hash };
 }
 
 /** The redirect URI with these parameters added, its own query kept. */

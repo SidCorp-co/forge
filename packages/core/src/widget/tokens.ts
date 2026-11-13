@@ -4,7 +4,6 @@
 // draft also keeps it sealed in the integration vault, so their frame can show the link after a
 // reload (`schema-widget.ts:widgetDrafts`).
 
-import { randomBytes } from 'node:crypto';
 import {
   WIDGET_SESSION_TOKEN_PATTERN,
   WIDGET_SESSION_TOKEN_PREFIX,
@@ -13,16 +12,11 @@ import {
   widgetStatusPath,
 } from '@forge/contracts/widget';
 import { decryptSecret, encryptSecret } from '../integrations/index.js';
-import { digestToken } from '../lib/token-digest.js';
+import { digestToken, mintPrefixedToken } from '../lib/token-digest.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
 
-const mint = (prefix: string) => {
-  const token = `${prefix}${randomBytes(32).toString('base64url')}`;
-  return { token, hash: digestToken(token) };
-};
-
-export const mintSessionToken = () => mint(WIDGET_SESSION_TOKEN_PREFIX);
-export const mintStatusToken = () => mint(WIDGET_STATUS_TOKEN_PREFIX);
+export const mintSessionToken = () => mintPrefixedToken(WIDGET_SESSION_TOKEN_PREFIX);
+export const mintStatusToken = () => mintPrefixedToken(WIDGET_STATUS_TOKEN_PREFIX);
 
 /** The SHA-256 a session token is looked up by, or null for text that is not one. */
 export function sessionTokenHash(token: string): string | null {

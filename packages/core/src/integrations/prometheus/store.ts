@@ -5,7 +5,6 @@
  * token is; minting a new one replaces the old, which admits nothing from then on.
  */
 
-import { randomBytes } from 'node:crypto';
 import {
   MONITORING_CONNECTION_TOKEN_KINDS,
   MONITORING_CONNECTION_TOKEN_PATTERN,
@@ -18,9 +17,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema-integrations.js';
 import { monitoringConnections } from '../../db/schema-monitoring.js';
-import { digestToken } from '../../lib/token-digest.js';
-
-const SHOWN_CHARS = 12;
+import { digestToken, mintPrefixedToken, SHOWN_TOKEN_CHARS } from '../../lib/token-digest.js';
 
 const columns = {
   sd: {
@@ -58,19 +55,19 @@ export async function mintConnectionToken(
   connectionId: string,
   kind: MonitoringConnectionTokenKind,
 ): Promise<MonitoringTokenResponse> {
-  const token = `${MONITORING_CONNECTION_TOKEN_PREFIXES[kind]}${randomBytes(32).toString('base64url')}`;
+  const { token, hash } = mintPrefixedToken(MONITORING_CONNECTION_TOKEN_PREFIXES[kind]);
   const createdAt = new Date();
   const c = columns[kind];
   const set = {
-    [c.hashKey]: digestToken(token),
-    [c.prefix]: token.slice(0, SHOWN_CHARS),
+    [c.hashKey]: hash,
+    [c.prefix]: token.slice(0, SHOWN_TOKEN_CHARS),
     [c.at]: createdAt,
   };
   await db
     .insert(monitoringConnections)
     .values({ connectionId, ...set })
     .onConflictDoUpdate({ target: monitoringConnections.connectionId, set });
-  return { token, prefix: token.slice(0, SHOWN_CHARS), createdAt: createdAt.toISOString() };
+  return { token, prefix: token.slice(0, SHOWN_TOKEN_CHARS), createdAt: createdAt.toISOString() };
 }
 
 /** Whether `token` is the connection's token of this kind. */
