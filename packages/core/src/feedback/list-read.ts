@@ -90,6 +90,7 @@ export interface Linked extends StandingFacts {
       revisionLive: boolean;
       revisionState: string | null;
       delivered: boolean;
+      requirementAccepted: boolean;
       requirement: string | null;
       revision: number | null;
     }
@@ -268,6 +269,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           revisionLive: s.revisionState === 'current' || s.revisionState === 'superseded',
           revisionState: s.revisionState,
           delivered: s.requirementId !== null && delivered.has(s.requirementId),
+          requirementAccepted: s.requirementStatus === 'accepted',
           requirement: s.requirementSeq === null ? null : requirementKey(s.requirementSeq),
           revision: s.revision,
         },
@@ -328,6 +330,7 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
           status: s.status as SuggestionStatus,
           revisionLive: s.revisionLive,
           delivered: s.delivered,
+          requirementAccepted: s.requirementAccepted,
         }
       : null,
     routedRequirementStatus: r.routedRequirementId

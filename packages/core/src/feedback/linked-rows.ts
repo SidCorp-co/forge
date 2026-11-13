@@ -69,6 +69,7 @@ export const suggestionRowsOf = (suggestionIds: readonly string[]) =>
           revision: requirementRevisions.revision,
           requirementId: requirementRevisions.requirementId,
           requirementSeq: requirements.reqSeq,
+          requirementStatus: requirements.status,
         })
         .from(suggestions)
         .leftJoin(requirementRevisions, eq(requirementRevisions.fromSuggestionId, suggestions.id))

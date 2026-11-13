@@ -45,7 +45,13 @@ export interface PhaseFacts {
    * empty on any other route; `failing`, its live criteria whose latest verdict is `fail` (ISS-1159).
    */
   routedIssues: readonly RoutedIssueFacts[];
-  suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
+  /** `requirementAccepted`: its requirement stands accepted, by a decision too (FB-629). */
+  suggestion: {
+    status: SuggestionStatus;
+    revisionLive: boolean;
+    delivered: boolean;
+    requirementAccepted: boolean;
+  } | null;
   routedRequirementStatus: string | null;
   /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
   routedRequirementDelivered: boolean;
@@ -67,8 +73,10 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
       return issuePhaseOf(f.routedIssues);
     case 'revision':
       if (!f.suggestion) return 'triaged';
+      // an accept by decision is done for the reporter, as on a requirement route (FB-629)
       if (f.suggestion.status === 'accepted') {
-        return f.suggestion.revisionLive && f.suggestion.delivered ? 'resolved' : 'planned';
+        const done = f.suggestion.delivered || f.suggestion.requirementAccepted;
+        return f.suggestion.revisionLive && done ? 'resolved' : 'planned';
       }
       return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
     // workflow feedback-lifecycle edge planned → resolved: the linked requirement reads

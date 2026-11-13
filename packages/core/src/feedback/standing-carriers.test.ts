@@ -62,6 +62,34 @@ describe('a requirement route resolves once its requirement is accepted, by deci
   });
 });
 
+// FB-629: agenfold's revision-routed items read planned for ever once their requirement was marked
+// delivered and then accepted by decision, which `deliveredAmong` leaves out
+describe('a revision route resolves once its requirement is accepted, by decision too', () => {
+  const routedToRevision = (
+    status: 'accepted' | 'proposed' | 'rejected',
+    revisionLive: boolean,
+    delivered: boolean,
+    requirementAccepted: boolean,
+  ): PhaseFacts => ({
+    ...routedTo(),
+    route: 'revision',
+    routedIssues: [],
+    suggestion: { status, revisionLive, delivered, requirementAccepted },
+  });
+
+  it('resolves on a live revision of an accepted requirement whether or not its accept waived proof', () => {
+    expect(phaseOf(routedToRevision('accepted', true, false, true))).toBe('resolved');
+    expect(phaseOf(routedToRevision('accepted', true, true, false))).toBe('resolved');
+  });
+
+  it('stays planned until the requirement is delivered or accepted, or while the revision is not live', () => {
+    expect(phaseOf(routedToRevision('accepted', true, false, false))).toBe('planned');
+    expect(phaseOf(routedToRevision('accepted', false, false, true))).toBe('planned');
+    expect(phaseOf(routedToRevision('proposed', false, false, false))).toBe('planned');
+    expect(phaseOf(routedToRevision('rejected', false, false, false))).toBe('triaged');
+  });
+});
+
 describe('an issue route carried by several issues reads every one of them (ISS-265)', () => {
   it('is planned while any carrier that is not dropped is still open', () => {
     expect(phaseOf(routedTo('closed', 'in_progress', 'closed'))).toBe('planned');
