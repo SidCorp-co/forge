@@ -8,6 +8,11 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: async () => ({ role: 'member', grants: [] }),
 }));
+// the reader's cut is the door's rule (ISS-1232), which reads the project's gate profile
+vi.mock('../project-config/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../project-config/index.js')>()),
+  readGateProfile: async () => 'standard',
+}));
 vi.mock('./release-list-read.js', () => ({
   listReleases: async () => ({
     counts: {},
