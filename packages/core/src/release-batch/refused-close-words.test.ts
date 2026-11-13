@@ -150,12 +150,47 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       destination: 'awaiting_release',
       delivery: 'reported',
       marked: true,
-      noRepository: true,
+      commit: 'claim',
     });
     expect(said).toContain(
       "What clears it: use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty.",
     );
     expect(said).not.toContain('under Commit');
+  });
+
+  // ISS-1421 r43 (judge-171 on 407): a commit named on a repository Forge cannot read is refused,
+  // so the comment says what Mark merged's panel there says.
+  it('says to leave Commit empty for a claim where Forge cannot read the named repository', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
+      projectId: PROJECT,
+      version: '2.0.0',
+      destination: 'awaiting_release',
+      delivery: 'reported',
+      marked: false,
+      commit: 'refused',
+    });
+    expect(said).toContain(
+      "What clears it: use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed. Leave Commit empty to record a claim naming no commit. Forge cannot read this project's repository, so it refuses a named commit.",
+    );
+    expect(said).not.toContain('name the commit that landed');
+  });
+
+  // ISS-1421 r43 (brief item 4): Forge writes the finish's comment and names who reported it, in a
+  // sentence of its own after the opening, so a lower-case name never opens the comment.
+  it('names who reported the finish after the opening sentence', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new TransitionError('OPEN_QUESTIONS', 'x', {})),
+      projectId: PROJECT,
+      version: '0.2.0',
+      destination: 'awaiting_release',
+      delivery: 'unreported',
+      marked: true,
+      finishedBy: 'lan nguyen',
+    });
+    expect(said).toMatch(
+      /^The release finished as version 0\.2\.0, but this issue could not be closed\. The finish was reported by lan nguyen\. The close was refused/,
+    );
   });
 
   it('names where the work is, not a commit, for a lane outside git', () => {
@@ -168,7 +203,7 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
       destination: 'awaiting_release',
       delivery: 'reported',
       marked: true,
-      noRepository: true,
+      commit: 'claim',
     });
     expect(said).toContain(
       'name the live URL, CMS entry or storefront resource in Where it landed',
@@ -199,21 +234,6 @@ describe('what a finish says it did, and what clears a missing mark (ISS-1421 r4
     expect(done).toContain(
       'The issue is back at Awaiting release, and its code went out with that release.',
     );
-  });
-
-  it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {
-    const said = refusedCloseComment({
-      refusal: closeRefusalOf(new TransitionError('CLOSE_REQUIRES_SHIPPED', 'mark it merged')),
-      projectId: PROJECT,
-      version: '2.0.0',
-      destination: 'releasing',
-      delivery: 'reported',
-      marked: true,
-      held: 'This batch recorded a promotion; abort it to settle.',
-    });
-    expect(said).toContain('This batch recorded a promotion; abort it to settle.');
-    expect(said).toContain('Clear the reason above first');
-    expect(said).not.toContain('The issue is at');
   });
 });
 

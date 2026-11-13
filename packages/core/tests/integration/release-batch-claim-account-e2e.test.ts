@@ -238,7 +238,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     ]);
   }, 30_000);
 
-  it('names a closed issue a shipped batch still claims by its status, and offers no abort', async () => {
+  it('names a closed issue a promoted batch closed by its status, and offers no abort', async () => {
     const { runId, ids } = await batchOf(2);
     await promoted(runId);
     serving = PUSHED;
@@ -246,8 +246,9 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     await accept(runId);
     await job.runReleaseBatchFinish(runId);
     const [shipped] = ids as [string];
-    // The minutely sweep has not run: a promoted roster keeps its claims past a green finish.
-    expect(await fx.stored(shipped)).toMatchObject({ status: 'closed', claim: runId });
+    // ISS-1421 r43: a finish settles its own roster, promoted or not, so the claim goes with it and
+    // the closed issue is refused by its status alone.
+    expect(await fx.stored(shipped)).toMatchObject({ status: 'closed', claim: null });
     expect(await fx.runStatus(runId)).toBe('completed');
     const answer = await recordRefused([shipped]);
     expect(answer.code).toBe('CLAIM_CONFLICT');

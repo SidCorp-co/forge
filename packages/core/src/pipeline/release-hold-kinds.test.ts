@@ -297,7 +297,12 @@ describe('no hold sentence runs past the cap, for any shortfalls a project can r
     Array.from({ length: 2 ** items.length }, (_, mask) =>
       items.filter((_item, i) => (mask >> i) & 1),
     );
-  const landings = [[], [landingShortfallWords(false)], [landingShortfallWords(true)]];
+  // Each commit check Mark merged's step reads (r43 review F1: the refused step ran to 29 words).
+  const landings = [
+    [],
+    ...([null, 'claim', 'refused'] as const).map((check) => [landingShortfallWords(false, check)]),
+    [landingShortfallWords(true)],
+  ];
   const questions = [[], [openQuestionsShortfallWords(1)], [openQuestionsShortfallWords(2)]];
   const records = [
     [],
@@ -327,7 +332,7 @@ describe('no hold sentence runs past the cap, for any shortfalls a project can r
 
   it('enumerates every set of required records, with and without a session, beside every other shortfall', () => {
     expect(ENTRY_CRITERION_KEYS.length).toBe(5);
-    expect(combinations.length).toBe(3 * 3 * (1 + 31 * 2));
+    expect(combinations.length).toBe(5 * 3 * (1 + 31 * 2));
     for (const shortfalls of combinations.filter((c) => c.length > 0)) {
       expectEachFits(closeRefusedHold(shortfalls));
     }

@@ -1,6 +1,6 @@
 // Each close shortfall's words, apart from its reads, so a test can word every combination (ISS-1421 r11).
 
-import { markMergedSteps } from '@forge/contracts/mark-merged-words';
+import { type MarkCommitCheck, markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { entryRecordsInWords } from '../issues/entry-criteria-keys.js';
 
 type CloseShortfallCode = 'CLOSE_REQUIRES_SHIPPED' | 'OPEN_QUESTIONS' | 'ENTRY_CRITERIA_UNMET';
@@ -26,14 +26,44 @@ const ENTRY_RECORDS_REOPEN =
 const ENTRY_RECORDS_REOPEN_HERE =
   'This issue has no session, so use Reopen in the actions menu above to start an agent that writes them.';
 
-export function landingShortfallWords(outsideGit: boolean, noRepository = false): ShortfallWords {
+export function landingShortfallWords(
+  outsideGit: boolean,
+  commit: MarkCommitCheck | null = 'checked',
+): ShortfallWords {
   return {
     code: 'CLOSE_REQUIRES_SHIPPED',
     reason: outsideGit ? 'no mark naming where its work landed' : 'not marked merged',
     // The control's own words, so the sentence names the field as the page labels it.
-    clears: markMergedSteps(outsideGit, noRepository),
-    clearsHere: markMergedSteps(outsideGit, noRepository),
+    clears: markMergedSteps(outsideGit, commit),
+    clearsHere: markMergedSteps(outsideGit, commit),
   };
+}
+
+/** The commit check as a refusal's details carry it; `noRepository` is round 41's key, kept. */
+export function commitCheckDetails(commit: MarkCommitCheck | null): Record<string, true> {
+  if (commit === 'claim') return { noRepository: true };
+  if (commit === 'refused') return { repositoryUnreadable: true };
+  return {};
+}
+
+export function commitCheckOf(
+  details: Record<string, unknown> | null | undefined,
+): MarkCommitCheck {
+  if (details?.noRepository === true) return 'claim';
+  if (details?.repositoryUnreadable === true) return 'refused';
+  return 'checked';
+}
+
+const MARK_COMMIT_NOTE: Record<MarkCommitCheck, string> = {
+  checked: '',
+  claim: ' This project names no repository, so the mark may name no commit.',
+  refused:
+    " Forge cannot read this project's repository, so a mark naming a commit is refused; mark it naming none.",
+};
+
+/** What the unmerged refusal's caller sentence adds about the mark's commit. */
+export function markCommitNote(details: Record<string, unknown> | null | undefined): string {
+  return MARK_COMMIT_NOTE[commitCheckOf(details)];
 }
 
 export function openQuestionsShortfallWords(n: number): ShortfallWords {

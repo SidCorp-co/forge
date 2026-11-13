@@ -77,7 +77,10 @@ describe('rosterCloseShortfalls', () => {
     });
     // Repair 1 — the field is named as the page labels it, read from the page's own words.
     expect(found?.clears).toBe(markMergedSteps(true));
-    expect(unshipped).toHaveBeenCalledWith({}, { issueId: 'a', toStatus: 'closed' });
+    expect(unshipped).toHaveBeenCalledWith(
+      {},
+      { issueId: 'a', toStatus: 'closed', commitCheck: expect.any(Function) },
+    );
   });
 
   it('names a missing merge on the git shape, which the refusal does not label', async () => {
@@ -92,7 +95,7 @@ describe('rosterCloseShortfalls', () => {
     unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
     commitCheck.mockResolvedValue('claim');
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a', 'b'])).get('a') ?? [];
-    expect(found?.clears).toBe(markMergedSteps(false, true));
+    expect(found?.clears).toBe(markMergedSteps(false, 'claim'));
     expect(found?.clears).not.toContain('name the commit');
     // ISS-1421 r41: carried in its details, which the release refusal's sentences are written from.
     expect(found?.details).toMatchObject({ shape: 'git', noRepository: true });
@@ -102,12 +105,26 @@ describe('rosterCloseShortfalls', () => {
 
   it('asks for the commit where the repository is read, or the check could not be made', async () => {
     unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
-    for (const check of ['checked', 'refused', null]) {
+    for (const check of ['checked', null]) {
       commitCheck.mockResolvedValue(check);
       const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
       expect(found?.clears).toBe(markMergedSteps(false));
       expect(found?.details).not.toHaveProperty('noRepository');
+      expect(found?.details).not.toHaveProperty('repositoryUnreadable');
     }
+  });
+
+  // ISS-1421 r43 (judge-171 on 407): a repository named that Forge cannot read refuses a commit, so
+  // the row says to leave Commit empty, and its details carry that for the refusal's sentences.
+  it('says to leave Commit empty where Forge cannot read the named repository', async () => {
+    unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
+    commitCheck.mockResolvedValue('refused');
+    const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
+    expect(found?.clears).toBe(markMergedSteps(false, 'refused'));
+    expect(found?.clears).toContain('Leave Commit empty to record a claim naming no commit');
+    expect(found?.clears).not.toContain('name the commit that landed');
+    expect(found?.details).toMatchObject({ shape: 'git', repositoryUnreadable: true });
+    expect(found?.details).not.toHaveProperty('noRepository');
   });
 
   it('reads no commit check where every issue is marked merged', async () => {

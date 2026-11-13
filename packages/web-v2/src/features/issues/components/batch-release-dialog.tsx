@@ -7,7 +7,7 @@ import { CloseFailureTechnical } from "@/features/releases/components/close-fail
 import { type CloseFailure, failedCloseLead } from "@/features/releases/roster";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
-import { unbrokenKeys } from "@/lib/unbroken-keys";
+import { UNBROKEN_KEY_CLASS, unbrokenKeys } from "@/lib/unbroken-keys";
 import type { CarriedDecisionBody } from "../api";
 import { STATUS_LABELS } from "../derive";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
@@ -256,7 +256,7 @@ export function BatchReleaseDialog({
           {listed.map((issue) => (
             <li key={issue.id} className="fg-body-sm flex min-w-0 flex-col gap-0.5 py-1.5">
               <span className="flex min-w-0 items-baseline gap-2">
-                <span className="font-mono text-xs font-semibold text-fg shrink-0">{issue.displayId}</span>
+                <span className={`font-mono text-xs font-semibold text-fg shrink-0 ${UNBROKEN_KEY_CLASS}`}>{issue.displayId}</span>
                 <span className="min-w-0 truncate text-muted">{issue.title}</span>
               </span>
               {issue.closeFailure ? (

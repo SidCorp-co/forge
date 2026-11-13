@@ -4,6 +4,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Markdown } from "@/design/patterns/markdown";
+import { MonoTag } from "@/design/primitives/mono-tag";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { unbrokenKeys } from "./unbroken-keys";
 
@@ -47,5 +48,17 @@ describe("an issue key in a sentence is one unbroken token", () => {
     const { container } = render(<Markdown>{"```\nISS-3 in a block\n```"}</Markdown>);
     expect(held(container)).toEqual([]);
     expect(container.querySelector("pre")).toHaveTextContent("ISS-3 in a block");
+  });
+
+  // ISS-1421 r43: the release run's Roster broke "ISS-" / "2" at 390, a key in a bare MonoTag.
+  it("holds the key a MonoTag carries and leaves its other tokens as they are", () => {
+    const { container } = render(
+      <p>
+        <MonoTag>ISS-2</MonoTag> <MonoTag>main</MonoTag> <MonoTag>ISS-1421-r43-a-branch</MonoTag>
+      </p>,
+    );
+    expect(held(container)).toEqual(["ISS-2", "ISS-1421"]);
+    expect(container.querySelectorAll("span span")).toHaveLength(1);
+    expect(container).toHaveTextContent("ISS-2 main ISS-1421-r43-a-branch");
   });
 });

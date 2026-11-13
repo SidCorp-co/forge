@@ -42,6 +42,7 @@ import { criteriaHold } from './criteria-hold.js';
 import { inFlightDetails } from './decision-state.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
+import { commitCheckDetails, commitCheckOf } from './shortfall-words.js';
 import { invalidProbeUrls } from './verify.js';
 import { oldestMergeFirst } from './waiting-order.js';
 
@@ -264,7 +265,7 @@ async function rosterBlockers(
   const landing = ordered.flatMap((id) =>
     (shortfalls.get(id) ?? [])
       .filter((s) => s.code === 'CLOSE_REQUIRES_SHIPPED')
-      .map((s) => ({ id, shape: String(s.details.shape), claim: s.details.noRepository === true })),
+      .map((s) => ({ id, shape: String(s.details.shape), commit: commitCheckOf(s.details) })),
   );
   // An issue may declare its own lane, so one roster can hold both shapes, and each is owed the
   // sentence naming its own route: one blocker per shape, in roster order.
@@ -272,8 +273,9 @@ async function rosterBlockers(
     const rows = landing.filter((r) => r.shape === shape);
     const ids = rows.map((r) => r.id);
     const displayIds = await namedAs(ids);
-    const claim = rows.some((r) => r.claim) ? { noRepository: true } : {};
-    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds, ...claim }));
+    // One project, so one check; its rows agree, and the first one says it.
+    const check = commitCheckDetails(rows[0]?.commit ?? 'checked');
+    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds, ...check }));
   }
   const rest = ordered.filter((id) =>
     (shortfalls.get(id) ?? []).some((s) => s.code !== 'CLOSE_REQUIRES_SHIPPED'),

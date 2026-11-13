@@ -27,6 +27,24 @@ describe('an issue not marked merged on a project that names no repository', () 
     expect(said).not.toContain('may stay empty');
   });
 
+  // ISS-1421 r43 (judge-171 on 407): a repository named that Forge cannot read refuses a commit.
+  it('says to leave Commit empty for a claim where Forge cannot read the named repository', () => {
+    const details = {
+      issueIds: ['u-1'],
+      displayIds: ['ISS-6'],
+      shape: 'git',
+      repositoryUnreadable: true,
+    };
+    const said = releaseBlockerReaderSentence('RELEASE_WORK_UNMERGED', details);
+    expect(said).toContain(
+      'fill in Where it landed. Leave Commit empty to record a claim naming no commit.',
+    );
+    expect(said).not.toContain('name the commit that landed');
+    expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', details)).toContain(
+      "Forge cannot read this project's repository, so a mark naming a commit is refused; mark it naming none.",
+    );
+  });
+
   it('tells an API caller a mark may name no commit there', () => {
     const said = releaseBlockerSentence('RELEASE_WORK_UNMERGED', {
       issueIds: ['u-1'],

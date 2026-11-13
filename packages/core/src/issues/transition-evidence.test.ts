@@ -46,7 +46,7 @@ vi.mock('./landing-evidence.js', () => ({
 
 const commitCheckMock = vi.fn(async (..._a: unknown[]) => 'checked' as string | null);
 vi.mock('../projects/live-source.js', () => ({
-  namesNoRepository: async (...a: unknown[]) => (await commitCheckMock(...a)) === 'claim',
+  markCommitCheck: (...a: unknown[]) => commitCheckMock(...a),
 }));
 
 const { checkTransitionEvidence, isBlankPlan } = await import('./transition-evidence.js');
@@ -462,22 +462,20 @@ describe('a missing merge mark on a project naming no repository', () => {
     )?.detail;
   };
 
-  it('says Commit may stay empty', async () => {
+  // ISS-1421 r42 (judge-169) asked for the commit where a repository is named; r43 (judge-171 on 407)
+  // says to leave it empty where Forge cannot read that repository, as Mark merged's panel does.
+  it.each([
+    ['claim', 'fill in Where it landed; with no repository named, Commit may stay empty.'],
+    ['checked', 'fill in Where it landed and name the commit that landed under Commit.'],
+    ['refused', 'fill in Where it landed. Leave Commit empty to record a claim naming no commit.'],
+  ])("gives Mark merged's steps for a %s commit check", async (check, steps) => {
     laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'git', declared: false } });
-    commitCheckMock.mockResolvedValue('claim');
-    expect(await missingMark()).toContain(
-      "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed; with no repository named, Commit may stay empty.",
+    commitCheckMock.mockResolvedValue(check);
+    const said = await missingMark();
+    expect(said).toContain(
+      `Use Mark merged in the issue's properties. In the panel it opens, ${steps}`,
     );
-  });
-
-  // ISS-1421 r42 (judge-169): on a project naming a repository the record never asked for the commit
-  // the other places ask for.
-  it('asks for the commit under Commit where the project names a repository', async () => {
-    laneMock.mockResolvedValue({ columns: {}, lane: { shape: 'git', declared: false } });
-    commitCheckMock.mockResolvedValue('checked');
-    expect(await missingMark()).toContain(
-      "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed and name the commit that landed under Commit.",
-    );
+    if (check !== 'checked') expect(said).not.toContain('name the commit that landed');
   });
 
   it('asks for where the work now is, and no commit, for work that lands outside git', async () => {

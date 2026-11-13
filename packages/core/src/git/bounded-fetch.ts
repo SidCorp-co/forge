@@ -1,15 +1,19 @@
 import { spawn } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { KEY_ACCESS, WHY_KEY_ACCESS } from '@forge/contracts/deploy-key-words';
+import { GIT_ACCESS, KEY_ACCESS, WHY_KEY_ACCESS } from '@forge/contracts/deploy-key-words';
 import { type Refused, saying } from '../projects/repository-reader.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
-/** Where a project's deploy key is attached, and its SSH clone URL set, for an operator's fix. */
-export const GIT_ACCESS = "the project's Settings → Runners → Git access";
+/** Where a project's SSH clone URL is set, for an operator's fix. */
 export const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 
-export { KEY_ACCESS, READ_ACCESS_IS, WHY_KEY_ACCESS } from '@forge/contracts/deploy-key-words';
+export {
+  GIT_ACCESS,
+  KEY_ACCESS,
+  READ_ACCESS_IS,
+  WHY_KEY_ACCESS,
+} from '@forge/contracts/deploy-key-words';
 
 /** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
 export function hostOf(repoUrl: string): string {

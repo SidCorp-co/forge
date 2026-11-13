@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseBlockerCode } from "@forge/contracts";
 import type { ReleaseReadiness } from "../types";
+import { ISSUE_KEY_IN_TEXT, UNBROKEN_KEY_CLASS } from "@/lib/unbroken-keys";
 
 expect.extend(matchers);
 
@@ -422,5 +423,52 @@ describe("a notice after the release answer", () => {
 			reader: "x" }), blockers: [], hasReleaseGate: false });
 		const holder = screen.getByTestId("stranded-notice").parentElement as HTMLElement;
 		expect(holder.className.split(" ")).toContain("mt-3");
+	});
+});
+
+/** Each issue key drawn under `root` that no nowrap element holds: one a browser may break at its
+ *  hyphen. jsdom lays nothing out, so this reads the rule; a width sweep reads the page. */
+function keysNotHeld(root: HTMLElement): string[] {
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const loose: string[] = [];
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		for (const match of (node.textContent ?? "").matchAll(ISSUE_KEY_IN_TEXT)) {
+			let el = node.parentElement;
+			while (el && el !== root && !el.classList.contains(UNBROKEN_KEY_CLASS)) el = el.parentElement;
+			if (!el || el === root) loose.push(match[0]);
+		}
+	}
+	return loose;
+}
+
+// ISS-1421 r43 (judge-171 on 414): Shape & release broke "ISS-" / "1" in its Open links at 390, 430
+// and 768 once eight issues were named; each key there was a bare link nothing held together.
+describe("an issue key Shape & release links is one unbroken token", () => {
+	for (const [code, planted] of Object.entries(EVERY_CODE)) {
+		const keys = planted.links.filter((l) => /\/issues\/[A-Z]/.test(l.href)).map((l) => l.text);
+		if (keys.length === 0) continue;
+		it(`${code}: holds ${keys.join(", ")} on one line`, () => {
+			const { container } = drawWith({
+				code,
+				evaluated: true,
+				message: CALLER_SENTENCE,
+				reader: `The sentence core sends for ${code}, naming ${keys.join(" and ")}.`,
+				...(planted.details ? { details: planted.details } : {}),
+			});
+			expect(keysNotHeld(container)).toEqual([]);
+		});
+	}
+
+	it("holds every key of eight named issues, the shape judge-171 broke", () => {
+		const displayIds = ["ISS-1", "ISS-3", "ISS-4", "ISS-5", "ISS-6", "ISS-7", "ISS-8", "ISS-9"];
+		const { container } = drawWith({
+			code: "RELEASE_ISSUES_UNCLOSABLE",
+			evaluated: true,
+			message: CALLER_SENTENCE,
+			reader: "Eight issues would be refused their close when this release finishes.",
+			details: { issueIds: displayIds.map((d) => `u-${d}`), displayIds },
+		});
+		expect(linksOf(container).map((l) => l.text)).toEqual(displayIds);
+		expect(keysNotHeld(container)).toEqual([]);
 	});
 });
