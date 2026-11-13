@@ -1,6 +1,7 @@
 // @direct-test-of packages/core/src/support/lost-turns.ts
 // @direct-test-of packages/core/src/support/turn-retry.ts
 // @direct-test-of packages/core/src/support/room-session.ts
+// @direct-test-of packages/core/src/support/hand-off.ts
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -12,6 +13,8 @@ vi.hoisted(() => {
 
 import { ROOM_STILL_QUEUED_LINES, STILL_QUEUED_LINE } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
+import { HAND_OFF_WAIT_MS } from '../../src/support/hand-off.js';
+import { recoverSupportRooms } from '../../src/support/index.js';
 import { warmSupportRoom } from '../../src/support/warm.js';
 import { coreTimers } from '../../src/timer-registry.js';
 import { rows } from '../helpers/factories.js';
@@ -201,5 +204,58 @@ describe('ISS-850: a turn core lost to its restart', () => {
     expect(await toldInThread(thread)).toBe(0);
     const lines = (await w.chat.botLines()).filter((l) => l.tmid === thread);
     expect(lines.map((l) => l.text)).toEqual([`Answered: ${text}`]);
+  }, 90_000);
+});
+
+// ISS-1231: a core process holding the chat connection but no socket of the box (one of a scaled-out
+// core, or a container a deploy left running) refused every hand-over NO_CLAUDE_CLIENT and spent its
+// tries while the box sat connected to the next process. Now it leaves the messages to the drain of
+// the process the box reads, and only one that waited past the bound is tried and refused here.
+describe('ISS-1231: a box connected to another core process', () => {
+  const waiting = (text: string) =>
+    rows<{ tries: number | null; delivered: boolean }>(sql`
+      SELECT (output->>'tries')::int AS tries, delivered_at IS NOT NULL AS delivered
+        FROM support_actions
+       WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${text}`);
+
+  it('leaves the message for that process, spending no try, and refuses one past the bound by name', async () => {
+    answers = true;
+    w.box.finishTurns = true;
+    w.box.close();
+    await new Promise((r) => setTimeout(r, 300));
+    const text = 'Can you check order 4417?';
+    await w.chat.say(w.chat.alice, text);
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(await waiting(text)).toEqual([{ tries: null, delivered: false }]);
+    // the process the box reads drains the room on its next tick
+    await w.box.connect();
+    await recoverSupportRooms();
+    await expect.poll(() => handed(text), { timeout: 15_000 }).toBe(1);
+    await w.untilLines((ls) => ls.some((l) => l.text === `Answered: ${text}`));
+    await expect.poll(() => w.box.idle(), { timeout: 15_000 }).toBe(true);
+    await expect
+      .poll(async () => (await w.rooms())[0]?.sessionStatus, { timeout: 15_000 })
+      .not.toBe('running');
+
+    // nobody reads the box past the bound: tried here, and refused naming the socket
+    w.box.close();
+    await new Promise((r) => setTimeout(r, 300));
+    const late = 'And order 4418?';
+    await w.chat.say(w.chat.alice, late);
+    await new Promise((r) => setTimeout(r, 1_000));
+    await db.execute(sql`UPDATE support_actions
+      SET created_at = now() - make_interval(secs => ${HAND_OFF_WAIT_MS / 1000 + 5})
+      WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND input->>'text' = ${late}`);
+    await recoverSupportRooms();
+    expect(await waiting(late)).toEqual([{ tries: 1, delivered: false }]);
+    const retry = (await w.actions(roomId)).filter((a) => a.tool === 'turn_retry').at(-1);
+    expect(String((retry?.output as { cause?: string } | null)?.cause)).toContain(
+      'no socket of it reads this Forge process',
+    );
+    // the one turn that did not reach the box is this refusal, claimed here so `stop` reads no other
+    expect(w.undelivered.splice(0).map((u) => u.why)).toEqual([
+      expect.stringContaining('no socket of it reads this Forge process'),
+    ]);
+    await w.box.connect();
   }, 90_000);
 });

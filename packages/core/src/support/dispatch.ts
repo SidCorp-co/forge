@@ -41,6 +41,7 @@ import {
   waitingMessages,
 } from './delivery.js';
 import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
+import { leftToBoxProcess } from './hand-off.js';
 import { injectWaiting, settleInjects } from './inject.js';
 import { endRoomLastResortWait, tellLastResort } from './last-resort.js';
 import { operationsBrief } from './ops-prompt.js';
@@ -328,6 +329,7 @@ export type DeliverOutcome =
   | 'injected'
   | 'backing-off'
   | 'no-box'
+  | 'elsewhere'
   | 'dispatched'
   | 'dispatch-failed'
   | 'held';
@@ -377,6 +379,8 @@ async function handOn(found: RoomRow): Promise<DeliverOutcome> {
     await tellOffline(room);
     return 'no-box';
   }
+  // the box reads another core process: that one's drain takes the messages (ISS-1231)
+  if (await leftToBoxProcess(room.id, client.deviceId)) return 'elsewhere';
 
   const at = new Date();
   const box = { ...client, deviceId: client.deviceId };

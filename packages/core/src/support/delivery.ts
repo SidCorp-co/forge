@@ -264,6 +264,22 @@ export async function hasReady(roomId: string): Promise<boolean> {
   return Boolean(row);
 }
 
+/** When the room's oldest message that may go now was recorded; null when none waits. */
+export async function oldestReadyAt(roomId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: sql<Date | null>`min(${supportActions.createdAt})` })
+    .from(supportActions)
+    .where(
+      and(
+        eq(supportActions.roomId, roomId),
+        eq(supportActions.kind, 'message_in'),
+        isNull(supportActions.deliveredAt),
+        READY,
+      ),
+    );
+  return row?.at ? new Date(row.at) : null;
+}
+
 /** A message the box did not take into a turn waits again for the next one. */
 export async function giveBackInjected(ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;

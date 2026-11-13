@@ -15,14 +15,16 @@ type AgentSessionRow = typeof agentSessions.$inferSelect;
  * `scope` only changes the user-facing wording (a brand-new turn references the
  * project; a follow-up references the session) — same code `NO_CLAUDE_CLIENT`.
  */
-export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
+export const noClaudeClient = (scope: 'project' | 'session' | 'picked' | 'socket') =>
   refuseSession(
     'NO_CLAUDE_CLIENT',
     scope === 'project'
       ? 'No online Claude client for this project. Bring a chat-capable runner online, then try again.'
       : scope === 'picked'
         ? 'The selected runner is offline or not chat-capable for this project. Pick another runner, choose Auto, or bring it online, then try again.'
-        : 'No online Claude client for this session. Bring its runner online, then try again.',
+        : scope === 'socket'
+          ? "The session's runner box is online, and no socket of it reads this Forge process, so nothing was dispatched: the box is connected to another core process or to none. A core whose processes outnumber its proxied one (a container a deploy left running) is stopped there."
+          : 'No online Claude client for this session. Bring its runner online, then try again.',
   );
 
 /**
@@ -91,9 +93,17 @@ export async function requireCheckoutScoping(
   );
 }
 
+/**
+ * Whether a socket of the box reads its room in this process. Presence is this process's memory, so
+ * in a core of several processes a box online elsewhere reads false here (ISS-1231).
+ */
+export function boxListensHere(deviceId: string): boolean {
+  return agentSessionsPorts().boxIsListening(deviceId);
+}
+
 /** A turn is refused by name when no socket reads its box's room: nobody would take the frame. */
 export function requireListeningBox(deviceId: string): void {
-  if (!agentSessionsPorts().boxIsListening(deviceId)) throw noClaudeClient('session');
+  if (!boxListensHere(deviceId)) throw noClaudeClient('socket');
 }
 
 export interface ChatClient {
