@@ -1,1 +1,0 @@
-**A support reply may say its agreed filing was recorded.** A Feedback item support.agree filed in a thread grounds a reply there saying it is recorded; elsewhere the claim is still refused (ISS-1235).

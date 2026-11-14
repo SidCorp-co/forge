@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.675] - 2026-11-14
+
+Support replies confirm a just-filed report; pin-only design changes wait on the master
+
+### Fixed
+
+- **A support reply may say its agreed filing was recorded.** A Feedback item support.agree filed in a thread grounds a reply there saying it is recorded; elsewhere the claim is still refused (ISS-1235).
+- **A design's pin-only changes wait on whoever takes them.** Where the project's master decides designs, the page says the master owes the re-pin, as Needs you does, not you (ISS-805).
+- **A bot's unread live claim is caught in its common phrasings.** "It's live", "went live" and "pushed to production" are refused without a release read, an order's state is not, and an adoption-only close reads finished in feedback progress.
+
+### Security
+
+- **hono and its node server move to their patched releases.** hono 4.13.18 and @hono/node-server 2.1.8 clear seven moderate advisories the lockfile carried, inside the ranges core already declared.
+
 ## [0.4.0-dev.674] - 2026-11-14
 
 Feedback waits on owed live checks; design status lines read in plain words

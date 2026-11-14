@@ -1,1 +1,0 @@
-**A bot's unread live claim is caught in its common phrasings.** "It's live", "went live" and "pushed to production" are refused without a release read, an order's state is not, and an adoption-only close reads finished in feedback progress.
