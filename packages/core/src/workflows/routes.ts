@@ -37,7 +37,7 @@ import {
   updateWorkflow,
   type WorkflowOutcome,
   type WorkflowWriter,
-  workflowView,
+  writtenWorkflowView,
 } from './service.js';
 import { readSystemGraphAs } from './system-graph-read.js';
 import { projectTemplateRoutes } from './template-routes.js';
@@ -107,12 +107,12 @@ function writerOf(c: Context<{ Variables: AuthVars }>): WorkflowWriter {
   return { userId: c.get('userId'), agency };
 }
 
-function answer(c: Context, outcome: WorkflowOutcome, readBack?: readonly IgnoredField[]) {
+async function answer(c: Context, outcome: WorkflowOutcome, readBack?: readonly IgnoredField[]) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
   const ignored = readBack ? ignoredByWrite(readBack, outcome.issueUnused) : undefined;
   return c.json(
     {
-      ...workflowView(outcome.row, outcome.document),
+      ...(await writtenWorkflowView(outcome.row, outcome.document)),
       created: outcome.created,
       ...(ignored ? { ignored } : {}),
     },

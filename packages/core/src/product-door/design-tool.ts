@@ -58,7 +58,7 @@ import {
   updateWorkflow,
   withdrawDesignAs,
   workflowSummaryOf,
-  workflowView,
+  writtenWorkflowView,
 } from '../workflows/index.js';
 import { parseArgs } from './args.js';
 import { actorOf, readAccess, readerOf } from './context.js';
@@ -213,23 +213,23 @@ async function design_get(ctx: McpContext, i: Input) {
   };
 }
 
-function writtenWorkflow(outcome: Awaited<ReturnType<typeof createWorkflow>>) {
+async function writtenWorkflow(outcome: Awaited<ReturnType<typeof createWorkflow>>) {
   const done = settled(outcome, 'WORKFLOW_REFUSED');
-  return { ...workflowView(done.row, done.document), created: done.created };
+  return { ...(await writtenWorkflowView(done.row, done.document)), created: done.created };
 }
 
 async function design_create(ctx: McpContext, i: Input) {
   const { body } = need(i, 'design_create', 'body');
   const { baseRevision, document, ignored } = createBodyOf(body);
   return {
-    ...writtenWorkflow(
+    ...(await writtenWorkflow(
       await createWorkflow({
         projectId: i.projectId,
         writer: actorOf(ctx),
         baseRevision,
         raw: document,
       }),
-    ),
+    )),
     ...(ignored.length > 0 ? { ignored } : {}),
   };
 }
@@ -247,7 +247,7 @@ async function design_revise(ctx: McpContext, i: Input) {
     issue: read.issue,
   });
   return {
-    ...writtenWorkflow(outcome),
+    ...(await writtenWorkflow(outcome)),
     ignored: ignoredByWrite(read.ignored, outcome.ok ? outcome.issueUnused : undefined),
   };
 }

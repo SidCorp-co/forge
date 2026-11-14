@@ -256,5 +256,20 @@ describe('ISS-565: a workflow write that proposes nothing lists the issue it did
     const answer = JSON.parse(result.content[0]?.text ?? '{}') as Doc;
     expect(answer.created).toBe(false);
     expect(ignoredIssue({ status: 200, json: answer })?.detail).toContain('unchanged');
+    // debt 87b0f758: a write's answer named its writer by the raw user id
+    expect(answer.writerName).not.toBe(answer.writer);
+  });
+
+  it("names a write's writer as the read names them, never by the raw user id", async () => {
+    const made = ok(
+      await say('master', 'POST', at('/workflows'), {
+        baseRevision: null,
+        document: design('writer-named'),
+      }),
+      201,
+    );
+    const read = ok(await say('master', 'GET', at(`/workflows/${made.document.id}`)));
+    expect(made.writerName).not.toBe(made.writer);
+    expect(made.writerName).toBe(read.writerName);
   });
 });

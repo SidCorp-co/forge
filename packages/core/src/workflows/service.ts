@@ -381,6 +381,12 @@ export function workflowView(
   };
 }
 
+/** A write's answer: its view with the writer named as the list and the single read name it (debt 87b0f758). */
+export async function writtenWorkflowView(row: StoredWorkflow, document: WorkflowWrite) {
+  const names = await userNames([row.writtenByUser]);
+  return workflowView(row, document, names.get(row.writtenByUser));
+}
+
 async function mayDecideDesigns(userId: string, projectId: string): Promise<boolean> {
   return (
     designApproverRefusal(
