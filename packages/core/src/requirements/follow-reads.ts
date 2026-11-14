@@ -62,13 +62,13 @@ export function tracedStepChanges(
 ): TracedStepChange[] {
   // a step is named as a person saw it on the design: its title where it was pinned, else where it
   // was approved, and its id only where neither revision names it (debt 8e64b2a5)
-  const named = (step: string) =>
-    pinned?.steps.get(step) ?? approved.steps.get(step) ?? step;
+  const named = (step: string) => pinned?.steps.get(step) ?? approved.steps.get(step) ?? step;
   const out: TracedStepChange[] = [];
   for (const t of traces) {
     for (const step of t.steps) {
       const label = named(step);
-      if (!approved.steps.has(step)) out.push({ code: t.code, node: step, label, change: 'removed' });
+      if (!approved.steps.has(step))
+        out.push({ code: t.code, node: step, label, change: 'removed' });
       else if (pinned?.steps.has(step) && pinned.steps.get(step) !== approved.steps.get(step)) {
         out.push({ code: t.code, node: step, label, change: 'renamed' });
       }

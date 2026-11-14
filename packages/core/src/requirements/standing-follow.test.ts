@@ -71,7 +71,10 @@ describe('a design approved past the pin', () => {
   it('waits on the master, not a person, to revise the criteria a removed or renamed step held', () => {
     const s = turn(
       base({
-        tracedChanges: [removed, { ...removed, code: 'BC-2', node: 'ship', label: 'Ship', change: 'renamed' }],
+        tracedChanges: [
+          removed,
+          { ...removed, code: 'BC-2', node: 'ship', label: 'Ship', change: 'renamed' },
+        ],
       }),
     );
     expect(s.attentionGroup).toBe('waiting');

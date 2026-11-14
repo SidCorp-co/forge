@@ -1,1 +1,1 @@
-**Waits and refusals say why in words people read.** A wait's sentence never prints a refusal code, a design write names its writer rather than a user id, a requirement asks to revise a design's steps by their titles, a design page counts its markers "To settle" as the list does, a master post refused in a shared thread names that thread, and an archived project counts in no pulse.
+**Waits say why in plain words.** No wait prints a refusal code, a design write names its writer, a requirement names design steps by title, and an archived project counts in no pulse.

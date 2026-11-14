@@ -1377,7 +1377,7 @@ export const SAID = {
 		vars: { rule: "said", ref: "said" },
 	},
 	"runs.rule.lockNoHolder": {
-		en: "the deploy was refused at {at}: {environment} is locked, and who holds it cannot be read",
+		en: "deploy refused at {at}: {environment} is locked, its holder unreadable",
 		vars: { environment: "name", at: "instant" },
 	},
 	"runs.rule.lockUnnamedSubject": { en: "an unnamed subject" },
@@ -1516,7 +1516,7 @@ export const SAID = {
 		en: "close the run once its agent reports",
 	},
 	"runs.rule.lockHeld": {
-		en: "the deploy was refused at {at}: run {run} holds {environment}, deploying {subject}{since}; refused {until}",
+		en: "deploy refused at {at}: run {run} holds {environment}, deploying {subject}{since}; refused {until}",
 		vars: {
 			at: "instant",
 			run: "key",

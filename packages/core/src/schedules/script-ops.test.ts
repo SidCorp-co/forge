@@ -299,7 +299,7 @@ describe('the ops host of one firing', () => {
 
 // debt ed9cd2cd: past the liveness window the project's box pick itself refuses, with no reconnect
 // wait; that refusal is the same shared cause as a dropped box, never the call's own failure
-it("names a call whose project has no box to pick unreachable, through the real box path", async () => {
+it('names a call whose project has no box to pick unreachable, through the real box path', async () => {
   const ops = openOpsCaller({ projectId: 'p', decl: decl([{ name: 'status', tool: 'status' }]) });
   expect(await ops.call('status', null)).toEqual({
     ok: false,

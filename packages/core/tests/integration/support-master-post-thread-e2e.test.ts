@@ -147,7 +147,9 @@ describe("a master's post in the shared operations room (ISS-934)", () => {
     const before = chat.linesIn(chat.rid).length;
     const keyed = await post({ text: `${REVIEW} ISS-123 xong rồi.`, thread: THREAD });
     expect(refusalOf(keyed)?.code, JSON.stringify(keyed.body)).toBe('SUPPORT_INTERNAL_CODE');
-    expect(refusalOf(keyed)?.detail).toContain(`thread ${THREAD} of ${chat.rid} is read by everyone`);
+    expect(refusalOf(keyed)?.detail).toContain(
+      `thread ${THREAD} of ${chat.rid} is read by everyone`,
+    );
     expect(refusalOf(keyed)?.detail).not.toContain('top level of');
     expect(chat.linesIn(chat.rid).length).toBe(before);
   });
