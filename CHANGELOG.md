@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.678] - 2026-11-14
+
+Refused support posts name support.promise to reach a waiting person
+
+### Fixed
+
+- **A refused support post names how to tell a waiting thread** — when one post per request blocks a result, the channel assistant is told to promise the person in that thread, so work recorded elsewhere still reaches them (ISS-1237).
+
 ## [0.4.0-dev.677] - 2026-11-14
 
 A support message handed again now tells the agent which try it is and why

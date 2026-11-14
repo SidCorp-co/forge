@@ -1,1 +1,0 @@
-**A refused support post names how to tell a waiting thread** — when one post per request blocks a result, the channel assistant is told to promise the person in that thread, so work recorded elsewhere still reaches them (ISS-1237).
