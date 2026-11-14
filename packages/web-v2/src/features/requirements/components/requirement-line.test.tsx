@@ -47,7 +47,7 @@ describe("a requirement's row on the list", () => {
   });
 
   it("draws Waits on as the shared one-line cell, the long act whole only in its tooltip", () => {
-    const long = "Update to the approved design: Issue to release (revision 25); judge BC-4, BC-5 and BC-6 on ISS-643";
+    const long = "Update to the approved design: Issue to release; judge BC-4, BC-5 and BC-6 on ISS-643";
     line(row({ waitingOn: { who: "orchestrator", act: long, kind: "agent", rule: "", ref: null, dueAt: null } as never, attentionGroup: "moving" } as never));
     expect(screen.queryByTestId("req-waits")).toBeNull();
     const waits = screen.getByTestId("waiting-on");

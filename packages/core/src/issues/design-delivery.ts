@@ -156,7 +156,7 @@ export function designOnlyMarkSql(i: SQL): SQL {
 
 /** The design revision drawn under this issue that its approver returned and nobody has redrawn yet. */
 export const designReturnedUnderSql = (issueId: SQL) => sql`(
-  SELECT jsonb_build_object('flow', w.flow, 'revision', d.revision)
+  SELECT jsonb_build_object('flow', w.flow, 'title', coalesce(w.document->>'title', w.flow), 'revision', d.revision)
     FROM project_workflow_designs d JOIN project_workflows w ON w.id = d.workflow_id
    WHERE d.design_issue_id = ${issueId} AND d.decision = 'return'
      AND w.design_status = 'returned' AND d.revision = w.revision

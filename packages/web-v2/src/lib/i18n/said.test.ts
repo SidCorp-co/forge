@@ -67,9 +67,9 @@ describe("what core says, read in en", () => {
   });
 
   it("reads a nested sentence and a list through their own keys", () => {
-    const s = say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: "Checkout", r: 3 }), say("standing.effect.contractAt", { contract: "orders", v: "1.2.0" })] });
+    const s = say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: "Checkout" }), say("standing.effect.contractAt", { contract: "orders", v: "1.2.0" })] });
     expect(said(s, "en")).toBe(sayEn(s));
-    expect(said(s, "en")).toContain("Checkout revision 3, orders 1.2.0");
+    expect(said(s, "en")).toContain("the approved Checkout, orders 1.2.0");
   });
 });
 

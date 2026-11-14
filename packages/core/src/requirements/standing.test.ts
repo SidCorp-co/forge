@@ -192,7 +192,10 @@ describe('a draft requirement whose linked designs are not all approved', () => 
       who: 'Design approver',
       act: 'approve design Checkout',
     });
-    expect(s.waitingOn.rule).toContain('REQUIREMENT_DESIGN_UNAPPROVED');
+    // the agree is refused REQUIREMENT_DESIGN_UNAPPROVED; the wait says why in words, naming no code (ISS-1233)
+    expect(s.waitingOn.rule).toBe(
+      'linked designs are approved first, then a signer agrees this revision',
+    );
     expect(s.facts.unapprovedDesigns).toEqual([
       { flow: 'checkout', title: 'Checkout', designStatus: 'proposed' },
     ]);

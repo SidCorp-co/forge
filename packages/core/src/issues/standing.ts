@@ -93,7 +93,7 @@ export interface IssueStandingInput {
   /** The move that parked it at `on_hold`: its reason, and whether a run (not a person) made it. */
   park?: { reason: string | null; byAgent: boolean } | null;
   /** A design revision drawn under it that its approver returned and nobody has redrawn. */
-  designReturned?: { flow: string; revision: number } | null;
+  designReturned?: { flow: string; title: string; revision: number } | null;
   /** Live `blocks` edges into this issue (expired edges are left out by the reader). */
   blockedBy: readonly StandingEdge[];
   /** Live `blocks` edges out of it. */
@@ -438,8 +438,8 @@ function turnOf(input: IssueStandingInput, edgeGroups: EdgeGroups): Turn {
       waitingOn: wait(
         'run',
         say('issues.standing.who.nextRun'),
-        say('issues.standing.act.reviseDesign', { flow: returned.flow, r: returned.revision }),
-        say('issues.rule.designReturned', { flow: returned.flow, r: returned.revision }),
+        say('issues.standing.act.reviseDesign', { design: returned.title }),
+        say('issues.rule.designReturned', { design: returned.title }),
         returned.flow,
       ),
     };

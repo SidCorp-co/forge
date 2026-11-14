@@ -11,10 +11,10 @@ describe("what a requirement's act changes", () => {
       state: "agreed",
       attentionGroup: "needs_you",
       coverage: [],
-      waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Order handling", r: 4 }), rule: RULE, effect: say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: "Order handling", r: 4 })] }) }),
+      waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Order handling" }), rule: RULE, effect: say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: "Order handling" })] }) }),
     };
     render(<RequirementProgress standing={standing as never} slug="hop" inset="px-4" />);
-    expect(within(screen.getByTestId("wait-banner")).getByTestId("wait-effect")).toHaveTextContent("Follows Order handling revision 4 from now on; wording and criteria stay.");
+    expect(within(screen.getByTestId("wait-banner")).getByTestId("wait-effect")).toHaveTextContent("Follows the approved Order handling from now on; wording and criteria stay.");
   });
 
   it("draws no effect line where core gave none", () => {

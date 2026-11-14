@@ -91,9 +91,7 @@ export function designTurn(
 ) {
   if (unapproved.length === 0) return null;
   const rule =
-    head === null
-      ? say('requirements.rule.designsFirst')
-      : say('requirements.rule.designsFirstR', { r: head });
+    head === null ? say('requirements.rule.designsFirst') : say('requirements.rule.designsFirstR');
   const flows = (list: typeof unapproved) => list.map((d) => d.title).join(', ');
   const unproposed = unapproved.filter((d) => d.designStatus !== 'proposed');
   if (unproposed.length > 0) {

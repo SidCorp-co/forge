@@ -193,7 +193,7 @@ describe('nothing moves by itself through every consumer and every cluster timer
     ).toEqual(['agree']);
     const standing = ok(await as('GET', `/requirements/${requirement}`)).standing as Doc;
     expect((standing.waitingOn as Doc).act).toBe(
-      'Update to the approved design: Post-discharge follow-up (revision 2)',
+      'Update to the approved design: Post-discharge follow-up',
     );
   });
 

@@ -74,7 +74,7 @@ export interface IssueRowRaw {
   holds_dependents: boolean;
   park_entry: { reason: string | null; agency: string; actorType: string } | null;
   answered_park: { hold: AnswerHold | null; resume: AnswerResume | null } | null;
-  design_returned: { flow: string; revision: number } | null;
+  design_returned: { flow: string; title: string; revision: number } | null;
   design_unapproved: boolean;
   contract_unsettled: boolean;
   pattern_pending: boolean;

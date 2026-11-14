@@ -45,6 +45,30 @@ describe("the registry", () => {
 		}
 		expect(wrong).toEqual([]);
 	});
+
+	// ISS-1233 (L-97): ISS-805 failed its judge three times on a design's Person view printing a flow
+	// slug or a revision ("→ r27", "design intake r4 was returned"), one key fixed at a time. A wait's
+	// who, act, rule, effect or title is what every Person view prints at a glance, so no such key
+	// carries a flow slug, and none that names a design carries a revision: the design is named by
+	// its title, and its revisions stay on the Developer view and in history.
+	it("never gives a wait a flow slug, nor a design's wait a revision", () => {
+		const WAIT = /\.(act|acts|rule|effect|title|who)\./;
+		const wrong: string[] = [];
+		for (const [key, entry] of Object.entries(SAID_ENTRIES)) {
+			if (!WAIT.test(`.${key}.`) && !key.startsWith("standing.")) continue;
+			const vars = Object.keys(entry.vars ?? {});
+			if (vars.some((v) => ["flow", "workflow", "slug"].includes(v)))
+				wrong.push(`${key}: names a flow slug`);
+			const design =
+				vars.includes("design") ||
+				/\bdesigns?\b/i.test(entry.en) ||
+				key.startsWith("designs.") ||
+				key.endsWith(".designAt");
+			if (design && /\br\{|\{r\}|revision \{/.test(entry.en))
+				wrong.push(`${key}: names a design's revision`);
+		}
+		expect(wrong).toEqual([]);
+	});
 });
 
 describe("saying a sentence", () => {

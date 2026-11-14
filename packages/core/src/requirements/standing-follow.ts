@@ -11,14 +11,14 @@ import type { TurnGroup } from '../lib/attention-group.js';
 import type { StandingInput } from './standing.js';
 import type { RequirementViewer } from './standing-draft.js';
 
-/** What a signer does about a pin that fell behind, in the words a BA reads: the design's own name and revision. */
+/** What a signer does about a pin that fell behind, in the words a BA reads: the design's own name, never its revision or flow (ISS-1233). */
 export function updateToApprovedAct(
   designs: readonly { title: string; approved: number }[],
   contracts: readonly { contract: string; current: string }[],
 ): Said {
   return say('standing.acts', {
     acts: [
-      ...designs.map((p) => say('standing.act.updateToDesign', { design: p.title, r: p.approved })),
+      ...designs.map((p) => say('standing.act.updateToDesign', { design: p.title })),
       ...contracts.map((p) =>
         say('standing.act.updateToContract', { contract: p.contract, v: p.current }),
       ),
@@ -33,7 +33,7 @@ export function updateToApprovedEffect(
 ): Said {
   return say('standing.effect.follow', {
     names: [
-      ...designs.map((p) => say('standing.effect.designAt', { title: p.title, r: p.approved })),
+      ...designs.map((p) => say('standing.effect.designAt', { title: p.title })),
       ...contracts.map((p) =>
         say('standing.effect.contractAt', { contract: p.contract, v: p.current }),
       ),
@@ -63,7 +63,6 @@ export function reviseForDesignAct(changes: readonly TracedChange[]): Said {
   return say('standing.act.reviseForDesign', {
     codes: unique(same.map((c) => c.code)).join(', '),
     design: first.title,
-    r: first.approved,
     steps: unique(same.map((c) => `${c.node} ${c.change}`)).join(', '),
   });
 }

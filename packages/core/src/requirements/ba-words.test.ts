@@ -81,7 +81,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
       ...base,
       stalePins: [{ flow: 'order-flow', title: 'Order handling', pinned: 2, approved: 4 }],
     });
-    expect(s.waitingOn.act).toBe('Update to the approved design: Order handling (revision 4)');
+    expect(s.waitingOn.act).toBe('Update to the approved design: Order handling');
     expect(s.waitingOn.act).not.toContain('order-flow');
     expect(s.waitingOn.rule).toMatch(/newer design revision/);
     expect(s.waitingOn.act).not.toMatch(KERNEL);
@@ -93,7 +93,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
       stalePins: [{ flow: 'order-flow', title: 'Order handling', pinned: 2, approved: 4 }],
     });
     expect(s.waitingOn.effect).toBe(
-      'Follows Order handling revision 4 from now on; wording and criteria stay.',
+      'Follows the approved Order handling from now on; wording and criteria stay.',
     );
     expect(s.waitingOn.effect).not.toMatch(KERNEL);
     expect(s.waitingOn.rule).not.toMatch(/re-checks/);
@@ -106,7 +106,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
       stalePins: [{ flow: 'order-flow', title: 'Order handling', pinned: null, approved: 1 }],
     });
     expect(s.attentionGroup).toBe('waiting');
-    expect(s.waitingOn.act).toBe('Update to the approved design: Order handling (revision 1)');
+    expect(s.waitingOn.act).toBe('Update to the approved design: Order handling');
   });
 
   it('names every design that moved, and a contract, without a kernel term', () => {
@@ -119,7 +119,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
       staleContractPins: [{ contract: 'billing/invoices', pinned: '1.0.0', current: '1.1.0' }],
     });
     expect(s.waitingOn.act).toBe(
-      'Update to the approved design: Alpha (revision 2); Update to the approved design: Delta (revision 3); Update to the current version of billing/invoices (1.1.0)',
+      'Update to the approved design: Alpha; Update to the approved design: Delta; Update to the current version of billing/invoices (1.1.0)',
     );
     expect(s.waitingOn.act).not.toMatch(KERNEL);
   });

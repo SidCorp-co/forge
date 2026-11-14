@@ -412,8 +412,8 @@ export const SAID = {
 		vars: { n: "count", total: "count" },
 	},
 	"issues.rule.designReturned": {
-		en: "design {flow} r{r} was returned: a run revises and proposes it",
-		vars: { flow: "name", r: "count" },
+		en: "the design {design} was returned: a run revises and proposes it",
+		vars: { design: "name" },
 	},
 	"issues.rule.draft": {
 		en: "a draft is not work until the master takes it on",
@@ -745,8 +745,8 @@ export const SAID = {
 		vars: { why: "said" },
 	},
 	"issues.standing.act.reviseDesign": {
-		en: "revise design {flow} · revision {r} returned",
-		vars: { flow: "name", r: "count" },
+		en: "revise the returned design {design}",
+		vars: { design: "name" },
 	},
 	"issues.standing.act.running": { en: "running" },
 	"issues.standing.act.shipped": { en: "shipped" },
@@ -1156,12 +1156,12 @@ export const SAID = {
 		vars: { contract: "name", v: "version" },
 	},
 	"standing.act.updateToDesign": {
-		en: "Update to the approved design: {design} (revision {r})",
-		vars: { design: "name", r: "count" },
+		en: "Update to the approved design: {design}",
+		vars: { design: "name" },
 	},
 	"standing.act.reviseForDesign": {
-		en: "revise {codes} for {design} (revision {r}): {steps}",
-		vars: { codes: "key", design: "name", r: "count", steps: "name" },
+		en: "revise {codes} for {design}: {steps}",
+		vars: { codes: "key", design: "name", steps: "name" },
 	},
 	"standing.act.reviewSuggestedRevision": {
 		en: "review the suggested revision",
@@ -1827,8 +1827,8 @@ export const SAID = {
 	"standing.empty": { en: "" },
 	"standing.acts": { en: "{acts}", vars: { acts: "saidList" } },
 	"standing.effect.designAt": {
-		en: "{title} revision {r}",
-		vars: { title: "name", r: "count" },
+		en: "the approved {title}",
+		vars: { title: "name" },
 	},
 	"standing.effect.contractAt": {
 		en: "{contract} {v}",
@@ -1847,7 +1847,7 @@ export const SAID = {
 		en: "agent draft: the master running that agent proposes or drops it",
 	},
 	"requirements.rule.designsFirst": {
-		en: "linked designs are approved first (REQUIREMENT_DESIGN_UNAPPROVED), then a signer agrees it",
+		en: "linked designs are approved first, then a signer agrees it",
 	},
 	"requirements.rule.unjudged": {
 		en: "{codes} hold no passing verdict yet",
@@ -1881,8 +1881,7 @@ export const SAID = {
 		en: "no release is recorded yet, so no verdict counts",
 	},
 	"requirements.rule.designsFirstR": {
-		en: "linked designs are approved first (REQUIREMENT_DESIGN_UNAPPROVED), then a signer agrees r{r}",
-		vars: { r: "count" },
+		en: "linked designs are approved first, then a signer agrees this revision",
 	},
 	"standing.who.dash": { en: "—" },
 	"requirements.rule.feedbackWaits": {

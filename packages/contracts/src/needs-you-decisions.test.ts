@@ -408,7 +408,7 @@ describe("the act a wait names is taken by a decision act (ISS-758)", () => {
 		key: "standing.acts",
 		vars: {
 			acts: [
-				{ key: "standing.act.updateToDesign", vars: { design: "d", r: 2 } },
+				{ key: "standing.act.updateToDesign", vars: { design: "d" } },
 				{ key: "standing.act.updateToContract", vars: { contract: "c", v: 3 } },
 			],
 		},

@@ -133,3 +133,18 @@ describe('an issue behind a live blocker', () => {
     );
   });
 });
+
+// ISS-1233 (L-97): an issue whose design came back reads on its page, the Person view included, by
+// the design's title: no flow slug and no revision, as "design intake r4 was returned" read before.
+describe('an issue whose design was returned', () => {
+  it('names the design by its title, never its flow or revision', () => {
+    const s = deriveIssueStanding(
+      input('open', { designReturned: { flow: 'intake', title: 'Patient intake', revision: 4 } }),
+    );
+    expect(s.waitingOn.act).toBe('revise the returned design Patient intake');
+    expect(s.waitingOn.rule).toBe(
+      'the design Patient intake was returned: a run revises and proposes it',
+    );
+    expect(`${s.waitingOn.act} ${s.waitingOn.rule}`).not.toMatch(/design intake|\br4\b|revision/);
+  });
+});

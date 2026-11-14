@@ -154,7 +154,7 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
     expect((waiting.facts as Doc).stalePins).toHaveLength(1);
     expect(waiting.attentionGroup).toBe('needs_you');
     expect((waiting.waitingOn as Doc).act).toBe(
-      'Update to the approved design: Post-discharge follow-up (revision 2)',
+      'Update to the approved design: Post-discharge follow-up',
     );
     expect(await needsYouKeys()).toContain(key);
 
@@ -191,7 +191,7 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
     ok(await as('POST', `/requirements/${key}/undefer`, { reason: 'back in this release' }));
     expect((await baselines(key)).map((b) => b.act)).toEqual(['agree']);
     expect(((await standingOf(key)).waitingOn as Doc).act).toBe(
-      'Update to the approved design: Post-discharge follow-up (revision 2)',
+      'Update to the approved design: Post-discharge follow-up',
     );
     ok(await as('POST', `/requirements/${key}/repin`, { revision: 1, reason: 'same steps' }));
     expect((await baselines(key)).map((b) => b.act)).toEqual(['agree', 'repin']);
@@ -218,7 +218,7 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Master',
-      act: 'revise BC-1 for Post-discharge follow-up (revision 2): context removed',
+      act: 'revise BC-1 for Post-discharge follow-up: context removed',
     });
     expect(await needsYouKeys()).not.toContain(key);
   });

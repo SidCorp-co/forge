@@ -64,7 +64,7 @@ describe('a design approved past the pin', () => {
   it('waits on a signer to update it while no traced step changed, until the kernel follows it', () => {
     const s = turn(base());
     expect(s.attentionGroup).toBe('needs_you');
-    expect(s.waitingOn.act).toBe('Update to the approved design: Checkout (revision 2)');
+    expect(s.waitingOn.act).toBe('Update to the approved design: Checkout');
   });
 
   it('waits on the master, not a person, to revise the criteria a removed or renamed step held', () => {
@@ -77,7 +77,7 @@ describe('a design approved past the pin', () => {
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Master',
-      act: 'revise BC-1, BC-2 for Checkout (revision 2): pay removed, ship renamed',
+      act: 'revise BC-1, BC-2 for Checkout: pay removed, ship renamed',
     });
   });
 

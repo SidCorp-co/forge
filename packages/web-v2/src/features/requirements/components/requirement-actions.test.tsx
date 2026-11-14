@@ -195,7 +195,7 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
       status,
       standing: {
         state: status,
-        waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Checkout", r: 3 }), rule: RULE }),
+        waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Checkout" }), rule: RULE }),
         facts: { stalePins: [{ flow: "checkout", title: "Checkout", approved: 3, pinned: 2 }], staleContractPins: [], unapprovedDesigns: [] },
       },
     } as unknown as RequirementDetail;
