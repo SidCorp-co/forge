@@ -7,6 +7,7 @@
  *
  * @direct-test-of packages/core/src/pipeline/live-reach.ts
  * @direct-test-of packages/core/src/me/pulse-live.ts
+ * @direct-test-of packages/core/src/me/pulse-routes.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -203,6 +204,19 @@ describe('live reach is read from the releases Forge recorded, and asks no host'
       vars: { n: 2, live: 'master' },
     });
     expect(hostResolved).toEqual([]);
+  });
+
+  // debt eff67b80: the pulse read every visible project, an archived one included, where Home and
+  // Needs you leave it out since ISS-1216
+  it('counts no closed work of an archived project in the pulse', async () => {
+    const p = await project('promote');
+    await issue({ projectId: p.id, seq: 15, daysAgo: 2 });
+    expect((await pulse()).work.liveUnmeasured.total).toBe(1);
+
+    await db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${p.id}`);
+    const read = await pulse();
+    expect(read.work.liveUnmeasured.total).toBe(0);
+    expect(read.work.perProject).toEqual([]);
   });
 
   it('holds an issue a release still at work carries off production until that release ships', async () => {

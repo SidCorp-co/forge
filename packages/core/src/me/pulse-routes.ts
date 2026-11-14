@@ -23,7 +23,7 @@ import { readPulseLiveness } from './pulse-liveness.js';
 import { readPulseQuality } from './pulse-quality.js';
 import { PULSE_THRESHOLDS, type PulseResponse, type PulseWork } from './pulse-types.js';
 import { readPulseWork } from './pulse-work.js';
-import { projectIdsInOrg } from './read.js';
+import { projectIdsInOrg, unarchivedProjectIds } from './read.js';
 
 const pulseQuerySchema = z.strictObject({ orgId: z.uuid().optional() });
 
@@ -87,13 +87,16 @@ mePulseRoutes.get(
     const visibleIds = await loadVisibleProjectIds(c.get('userId'));
     if (visibleIds.length === 0) return c.json(emptyPulse(now));
 
-    const projectIds = orgId ? await projectIdsInOrg(visibleIds, orgId) : visibleIds;
-    if (orgId && projectIds.length === 0) {
+    const inScope = orgId ? await projectIdsInOrg(visibleIds, orgId) : visibleIds;
+    if (orgId && inScope.length === 0) {
       throw new HTTPException(404, {
         message: `organization ${orgId} holds no project you can read`,
         cause: { code: 'ORG_NOT_VISIBLE' },
       });
     }
+    // an archived project still reads, but counts in no pulse, as on Home and Needs you (ISS-1216)
+    const projectIds = await unarchivedProjectIds(inScope);
+    if (projectIds.length === 0) return c.json(emptyPulse(now));
 
     const [liveness, work, flow, quality] = await Promise.all([
       readPulseLiveness(projectIds, PULSE_THRESHOLDS, now),
