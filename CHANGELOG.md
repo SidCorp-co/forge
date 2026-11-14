@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.676] - 2026-11-14
+
+Workflows badge counts only pin-only changes that wait on you
+
+### Fixed
+
+- **Workflows badge counts only what waits on you** — pin-only changes the master approves, or another approver owns, no longer add to your Needs you count (ISS-805).
+
 ## [0.4.0-dev.675] - 2026-11-14
 
 Support replies confirm a just-filed report; pin-only design changes wait on the master
