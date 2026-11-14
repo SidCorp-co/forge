@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.674] - 2026-11-14
+
+Feedback waits on owed live checks; design status lines read in plain words
+
+### Fixed
+
+- **Feedback waits on a criterion owed its live check.** An item whose shipped carrier holds a criterion recorded skipped reads resolved, names that criterion, and is verified by ship only once it passes (ISS-1234).
+- **A design's status lines name no revision or base slug.** Its Waits on hover, build gate and base waits read in plain words, so the Person view shows no revision number (ISS-805).
+
 ## [0.4.0-dev.673] - 2026-11-14
 
 A design's pin-only wait reads without revision numbers
