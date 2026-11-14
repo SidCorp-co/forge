@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.680] - 2026-11-14
+
+Channel assistants offer a picture guide of the screen they explain
+
+### Fixed
+
+- **A channel assistant shows the screen it explains** — it offers a guide with pictures; on the person's yes the project's master makes it on test data and posts it in the thread, several steps as one PDF (ISS-1239).
+
 ## [0.4.0-dev.679] - 2026-11-14
 
 Masters post PDF guides to rooms and edit or delete their own posts
