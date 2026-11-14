@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.673] - 2026-11-14
+
+A design's pin-only wait reads without revision numbers
+
+### Fixed
+
+- **A design's pin-only wait reads without revision numbers.** The Waiting on you banner and the Needs you row say how many pin-only changes to approve, with no flow slug or revision (ISS-805).
+
 ## [0.4.0-dev.672] - 2026-11-14
 
 Design pages name other designs by title in the person's view
