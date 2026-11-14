@@ -2186,19 +2186,15 @@ export const SAID = {
 		en: "an undecided Wrong node below threshold waits on the orchestrator",
 	},
 	"designs.act.approveOrReturn": { en: "approve or return the design" },
-	"designs.rule.youDecide": {
-		en: "revision {r} is proposed and you may decide it",
-		vars: { r: "count" },
-	},
+	"designs.rule.youDecide": { en: "a proposed revision is yours to decide" },
 	"designs.rule.approverDecides": {
 		en: "a holder of workflow-designs.approve decides the design, person or agent",
 	},
 	"designs.rule.masterDecides": {
-		en: "revision {r} is proposed; the project's master approves or returns it",
-		vars: { r: "count" },
+		en: "a revision is proposed; the project's master approves or returns it",
 	},
 	"designs.act.repin": { en: "re-pin basedOn" },
-	"designs.act.approveBase": { en: "approve {bases}", vars: { bases: "text" } },
+	"designs.act.approveBase": { en: "approve the designs it builds on" },
 	"designs.title.repinBatch": {
 		en: "{n} {designs} only {need} {its} pin moved",
 		vars: {
@@ -2216,7 +2212,7 @@ export const SAID = {
 		en: "their base was approved again; they differ only in their pins",
 	},
 	"designs.act.revise": { en: "revise it" },
-	"designs.act.reviseR": { en: "revise revision {r}", vars: { r: "count" } },
+	"designs.act.reviseR": { en: "revise the returned revision" },
 	"designs.rule.returned": {
 		en: "a returned design is owed by the project's master",
 	},
@@ -2225,8 +2221,7 @@ export const SAID = {
 		en: "a draft design is proposed once its master finishes drawing it",
 	},
 	"designs.rule.approved": {
-		en: "revision {r} is approved; work that builds it may start",
-		vars: { r: "count" },
+		en: "the design is approved; work that builds it may start",
 	},
 	"designs.rule.notUnderApproval": {
 		en: "this workflow is not under design approval",
@@ -2755,8 +2750,7 @@ export const SAID = {
 		vars: { title: "text", why: "text" },
 	},
 	"designs.gate.open": {
-		en: "issues that build it may be dispatched: revision {r} is approved",
-		vars: { r: "text" },
+		en: "issues that build it may be dispatched: the design is approved",
 	},
 	"designs.gate.held": {
 		en: "issues building it are held until a revision is approved; {why}",
@@ -2764,8 +2758,7 @@ export const SAID = {
 	},
 	"designs.gate.noApproval": { en: "the design has no approval yet" },
 	"designs.gate.waitsApprover": {
-		en: "revision {r} waits on its approver",
-		vars: { r: "text" },
+		en: "the proposed revision waits on its approver",
 	},
 	"designs.gate.status": {
 		en: "the design is {status}",
@@ -3419,28 +3412,10 @@ export const SAID = {
 		vars: { n: "count", names: "text" },
 	},
 	"designs.rule.baseUnapprovedAt": {
-		en: "r{r} builds on {bases}: its writer re-pins basedOn before approval",
-		vars: { r: "count", bases: "saidList" },
-	},
-	"designs.base.stale": {
-		en: "{flow} r{r}, which is approved at r{approved} now",
-		vars: { flow: "name", r: "count", approved: "count" },
-	},
-	"designs.base.proposed": {
-		en: "{flow} r{r}, which waits on its approver",
-		vars: { flow: "name", r: "count" },
+		en: "a design it builds on is not approved at its pin",
 	},
 	"designs.rule.baseAwaitsApproval": {
-		en: "r{r} builds on {bases}: the base is approved first",
-		vars: { r: "count", bases: "saidList" },
-	},
-	"designs.base.unapproved": {
-		en: "{flow} r{r}, which is not approved",
-		vars: { flow: "name", r: "count" },
-	},
-	"designs.base.missing": {
-		en: "{flow}, which is no workflow of this project",
-		vars: { flow: "name" },
+		en: "the designs it builds on are approved first",
 	},
 	"pulse.gap.noRelease": {
 		en: "{n} closed issues: no release shipped through Forge places them on {live}",

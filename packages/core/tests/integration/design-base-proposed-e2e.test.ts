@@ -124,10 +124,8 @@ describe('a design pinned to the revision its base has put to the approver', () 
       bases: [fault],
     });
     expect(page.approvalBlocked.detail).not.toContain('stale');
-    expect(page.waitingOn.says.act).toEqual({
-      key: 'designs.act.approveBase',
-      vars: { bases: 'pending-base r2' },
-    });
+    // ISS-805: the act names no base by slug and revision; the approval panel names it by title
+    expect(page.waitingOn.says.act).toEqual({ key: 'designs.act.approveBase' });
     // ISS-1158: outside strict, with no designs gate on, approving the base is the master's
     expect(page.waitingOn.kind, 'the master approves the base, whoever reads it').toBe('agent');
     expect(page.waitingOn.says.who.key).toBe('standing.who.projectMaster');

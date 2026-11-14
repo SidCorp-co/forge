@@ -11,7 +11,7 @@ import { WorkflowDesignProperties } from "./workflow-design-facts";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
-const OPEN = say("designs.gate.open", { r: "2" });
+const OPEN = say("designs.gate.open");
 const design = {
   gate: { open: true, rule: sentence(OPEN), says: { rule: OPEN } },
   approvedRevision: 7,

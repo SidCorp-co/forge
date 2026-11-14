@@ -227,7 +227,7 @@ describe('a returned design no issue carries is owed to the project master', () 
     expect(read.waitingOn).toMatchObject({
       kind: 'agent',
       who: "The project's master",
-      act: 'revise revision 1',
+      act: 'revise the returned revision',
     });
     expect(await wakes('workflow_design')).toEqual([
       expect.objectContaining({ room: `device:${deviceId}`, workflowId: id, decision: 'return' }),

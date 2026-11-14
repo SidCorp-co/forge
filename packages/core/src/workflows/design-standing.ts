@@ -46,21 +46,6 @@ interface DesignStandingInput extends DesignHeadFacts {
   baseUnapproved?: { revision: number; bases: readonly DesignBaseFault[] } | null;
 }
 
-/** A base the proposed revision rests on, said from the refusal's facts rather than its English detail. */
-function baseSaid(b: DesignBaseFault): Said {
-  if (b.state === 'missing') return say('designs.base.missing', { flow: b.workflow });
-  if (b.state === 'proposed')
-    return say('designs.base.proposed', { flow: b.workflow, r: b.revision });
-  if (b.state === 'stale' && b.approvedRevision !== null) {
-    return say('designs.base.stale', {
-      flow: b.workflow,
-      r: b.revision,
-      approved: b.approvedRevision,
-    });
-  }
-  return say('designs.base.unapproved', { flow: b.workflow, r: b.revision });
-}
-
 const wait = (kind: DesignWaitingKind, who: Said, act: Said, rule: Said): DesignWaitingOn =>
   waitingOn(kind, { who, act, rule });
 
@@ -78,11 +63,11 @@ const approverWait = (input: DesignStandingInput, act: Said, rule: Said): Design
     : wait('person', say('standing.who.holderOf', { perm: 'workflow-designs.approve' }), act, rule);
 };
 
-function proposedWait(input: DesignStandingInput, revision: number): DesignWaitingOn {
+function proposedWait(input: DesignStandingInput): DesignWaitingOn {
   const rule = input.masterDecides
-    ? say('designs.rule.masterDecides', { r: revision })
+    ? say('designs.rule.masterDecides')
     : input.canDecide
-      ? say('designs.rule.youDecide', { r: revision })
+      ? say('designs.rule.youDecide')
       : say('designs.rule.approverDecides');
   return approverWait(input, say('designs.act.approveOrReturn'), rule);
 }
@@ -96,13 +81,8 @@ function baseApprovalWait(
   if (!blocked.bases.every((b) => b.state === 'proposed')) return null;
   return approverWait(
     input,
-    say('designs.act.approveBase', {
-      bases: blocked.bases.map((b) => `${b.workflow} r${b.revision}`).join(', '),
-    }),
-    say('designs.rule.baseAwaitsApproval', {
-      r: blocked.revision,
-      bases: blocked.bases.map(baseSaid),
-    }),
+    say('designs.act.approveBase'),
+    say('designs.rule.baseAwaitsApproval'),
   );
 }
 
@@ -132,29 +112,21 @@ function stepWaitingOn(input: DesignStandingInput): DesignWaitingOn {
           'agent',
           writer,
           say('designs.act.repin'),
-          say('designs.rule.baseUnapprovedAt', {
-            r: input.baseUnapproved.revision,
-            bases: input.baseUnapproved.bases.map(baseSaid),
-          }),
+          say('designs.rule.baseUnapprovedAt'),
         );
       }
-      return proposedWait(input, input.proposedRevision ?? latest ?? 1);
+      return proposedWait(input);
     case 'returned':
       return wait(
         'agent',
         say('standing.who.projectMaster'),
-        latest === null ? say('designs.act.revise') : say('designs.act.reviseR', { r: latest }),
+        latest === null ? say('designs.act.revise') : say('designs.act.reviseR'),
         say('designs.rule.returned'),
       );
     case 'draft':
       return wait('agent', writer, say('designs.act.finish'), say('designs.rule.draft'));
     case 'approved':
-      return wait(
-        'none',
-        NOBODY,
-        NO_ACT,
-        say('designs.rule.approved', { r: input.approvedRevision ?? latest ?? 1 }),
-      );
+      return wait('none', NOBODY, NO_ACT, say('designs.rule.approved'));
     case 'withdrawn':
       return wait('none', NOBODY, NO_ACT, say('designs.rule.withdrawn'));
     default:
@@ -186,13 +158,13 @@ export function buildGateOf(head: DesignHeadFacts): DesignBuildGate {
     says: { rule },
   });
   if (head.status === 'approved') {
-    return gate(true, say('designs.gate.open', { r: String(head.approvedRevision ?? '?') }));
+    return gate(true, say('designs.gate.open'));
   }
   const why =
     head.status === null
       ? say('designs.gate.noApproval')
       : head.status === 'proposed'
-        ? say('designs.gate.waitsApprover', { r: String(head.proposedRevision ?? '?') })
+        ? say('designs.gate.waitsApprover')
         : say('designs.gate.status', { status: head.status });
   return gate(false, say('designs.gate.held', { why }));
 }

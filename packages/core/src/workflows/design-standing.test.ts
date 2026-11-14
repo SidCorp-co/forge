@@ -5,7 +5,7 @@ import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
 import { designRowOf, repinRowOf } from '../development/needs-you-design.js';
 import { masterActRefusal } from '../permissions/master-acts.js';
-import { designWaitingOn, masterDecidesDesigns } from './design-standing.js';
+import { buildGateOf, designWaitingOn, masterDecidesDesigns } from './design-standing.js';
 
 // A proposed design resting on a base not approved at the revision it names waits on its writer, and
 // says why from the refusal's facts (revision, each base and its fault), never from its English detail.
@@ -47,10 +47,9 @@ describe('a proposed design on an unapproved base', () => {
       },
     });
     expect(w.kind).toBe('agent');
-    expect(w.says.rule).toMatchObject({ key: 'designs.rule.baseUnapprovedAt', vars: { r: 4 } });
-    expect(w.rule).toBe(
-      'r4 builds on hop-auth r2, which is approved at r3 now; hop-cart r1, which is not approved; hop-gone, which is no workflow of this project: its writer re-pins basedOn before approval',
-    );
+    expect(w.says.rule).toMatchObject({ key: 'designs.rule.baseUnapprovedAt' });
+    // ISS-805 c2: the status line names no base by slug and no revision; the approval panel names them
+    expect(w.rule).toBe('a design it builds on is not approved at its pin');
     expect(saidDisagreements(w)).toEqual([]);
   });
 });
@@ -81,10 +80,8 @@ describe('a proposed design on a base proposed at the revision it pins', () => {
   it('names approving the base as the act, yours where you may approve it', () => {
     const w = designWaitingOn(input(true));
     expect(w.kind).toBe('you');
-    expect(w.says.act).toEqual({ key: 'designs.act.approveBase', vars: { bases: 'hop-auth r4' } });
-    expect(w.rule).toBe(
-      'r1 builds on hop-auth r4, which waits on its approver: the base is approved first',
-    );
+    expect(w.says.act).toEqual({ key: 'designs.act.approveBase' });
+    expect(w.rule).toBe('the designs it builds on are approved first');
     expect(saidDisagreements(w)).toEqual([]);
   });
 
@@ -217,7 +214,7 @@ describe('a proposed design where the master decides designs', () => {
       const w = proposed(canDecide, true);
       expect(w).toMatchObject({ kind: 'agent', who: "The project's master" });
       expect(w.act).toBe('approve or return the design');
-      expect(w.says.rule).toEqual({ key: 'designs.rule.masterDecides', vars: { r: 4 } });
+      expect(w.says.rule).toEqual({ key: 'designs.rule.masterDecides' });
       expect(saidDisagreements(w)).toEqual([]);
     }
   });
@@ -245,5 +242,52 @@ describe('whom a proposal names agrees with the approval door', () => {
     expect(masterDecidesDesigns(policy)).toBe(!strict && !gate);
     if (masterDecidesDesigns(policy)) expect(door).toBeNull();
     if (strict) expect(door?.code).toBeDefined();
+  });
+});
+
+// ISS-805 c2 failed three times on what a design page's Person view prints from core: the repin
+// banner ("→ r27"), then the Waits on hover ("revision 13 is approved"). Every line a design's
+// standing or build gate says names no revision number and no flow slug; the Developer view keeps
+// them where the page shows them itself. Planted red by the keys before ISS-805 (`revision {r} is ...`).
+describe("a design's standing and build gate name no revision and no flow", () => {
+  const base = { workflow: 'hop-auth', revision: 4, approvedRevision: 3, designStatus: null };
+  const at = (
+    status: 'proposed' | 'returned' | 'draft' | 'approved' | 'withdrawn',
+    extra = {},
+  ) => ({
+    status,
+    proposedRevision: 27,
+    approvedRevision: 26,
+    latest: { revision: 27, author: 'Lan' },
+    canDecide: true,
+    masterDecides: false,
+    ...extra,
+  });
+  const waits = [
+    designWaitingOn(at('proposed')),
+    designWaitingOn(at('proposed', { masterDecides: true })),
+    designWaitingOn(at('proposed', { canDecide: false })),
+    designWaitingOn(
+      at('proposed', {
+        baseUnapproved: { revision: 27, bases: [{ ...base, state: 'proposed' as const }] },
+      }),
+    ),
+    designWaitingOn(
+      at('proposed', {
+        baseUnapproved: { revision: 27, bases: [{ ...base, state: 'stale' as const }] },
+      }),
+    ),
+    designWaitingOn(at('returned')),
+    designWaitingOn(at('draft')),
+    designWaitingOn(at('approved')),
+    designWaitingOn(at('withdrawn')),
+  ];
+  it.each(waits.map((w, i) => [i, w] as const))('wait %i', (_, w) => {
+    for (const said of [w.who, w.act, w.rule])
+      expect(said).not.toMatch(/\br\d+\b|revision \d|\b(26|27|4)\b|hop-auth/);
+  });
+  it('the build gate, open and held', () => {
+    for (const head of [at('approved'), at('proposed')])
+      expect(buildGateOf(head).rule).not.toMatch(/\br\d+\b|revision \d|\b(26|27)\b/);
   });
 });

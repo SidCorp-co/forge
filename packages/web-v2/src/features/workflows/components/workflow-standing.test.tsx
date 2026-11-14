@@ -93,9 +93,9 @@ describe("the workflow page says where its design stands (REQ-68 BC-5)", () => {
   });
 
   it("names the author's revise as what is next for a returned design", () => {
-    open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR", { r: 2 }), rule: RULE })));
+    open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR"), rule: RULE })));
     expect(screen.getByTestId("workflow-design-screen")).toHaveTextContent("Returned");
-    expect(screen.getByTestId("design-banner-line")).toHaveTextContent("Waiting on Ana: revise revision 2");
+    expect(screen.getByTestId("design-banner-line")).toHaveTextContent("Waiting on Ana: revise the returned revision");
   });
 
   it("names no one for an approved design, which owes nobody a step", () => {
@@ -131,8 +131,8 @@ describe("the workflow page says who the design waits on and what is next, once 
   });
 
   it("names the writer and the revise on a returned design, in a few words", () => {
-    open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR", { r: 2 }), rule: RULE })));
-    expect(line()).toHaveTextContent("Waiting on Ana: revise revision 2");
+    open(designAt("returned", waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("designs.act.reviseR"), rule: RULE })));
+    expect(line()).toHaveTextContent("Waiting on Ana: revise the returned revision");
     saidOnce();
     expect((line().textContent ?? "").split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(10);
   });
