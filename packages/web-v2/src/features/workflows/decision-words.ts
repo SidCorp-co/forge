@@ -1,5 +1,5 @@
 import type { DesignApprovalBlock, DesignBaseFault, DesignLeftStale } from "@forge/contracts/workflows";
-import { statusReading } from "@/design";
+import { type RecordView, statusReading } from "@/design";
 import type { Refusal } from "@/lib/api/refusals";
 import { type Copy, copyLocale } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
@@ -11,6 +11,14 @@ import type { DesignRevision } from "./types";
 
 const list = (items: string[], language: string) => new Intl.ListFormat(copyLocale(language), { type: "conjunction" }).format(items);
 
+/** How a design is named to the viewer: a person reads its title and no revision (REQ-43 BC-7), a developer its flow and revisions. */
+export interface DesignWords {
+  view: RecordView;
+  nameOf: (flow: string) => string;
+}
+
+export const DEVELOPER_WORDS: DesignWords = { view: "developer", nameOf: (flow) => flow };
+
 const BASE_STATES = {
   stale: "workflows.refusal.base.stale",
   proposed: "workflows.refusal.base.proposed",
@@ -18,16 +26,28 @@ const BASE_STATES = {
   missing: "workflows.refusal.base.missing",
 } as const;
 
-const baseWords = (b: DesignBaseFault, t: Copy) => t(BASE_STATES[b.state], { flow: b.workflow, r: b.revision, approved: b.approvedRevision ?? "" });
+const PLAIN_BASE_STATES = {
+  stale: "workflows.refusal.basePlain.stale",
+  proposed: "workflows.refusal.basePlain.proposed",
+  unapproved: "workflows.refusal.basePlain.unapproved",
+  missing: "workflows.refusal.base.missing",
+} as const;
+
+const baseWords = (b: DesignBaseFault, t: Copy, words: DesignWords) =>
+  words.view === "person"
+    ? t(PLAIN_BASE_STATES[b.state], { flow: words.nameOf(b.workflow) })
+    : t(BASE_STATES[b.state], { flow: b.workflow, r: b.revision, approved: b.approvedRevision ?? "" });
 
 /** Why Approve is off while the proposed revision rests on a base not approved at the revision it names. */
-export function blockedWords(block: Pick<DesignApprovalBlock, "revision" | "bases">, t: Copy, language: string): string {
-  return t("workflows.refusal.baseUnapproved", { r: block.revision, bases: list(block.bases.map((b) => baseWords(b, t)), language) });
+export function blockedWords(block: Pick<DesignApprovalBlock, "revision" | "bases">, t: Copy, language: string, words: DesignWords = DEVELOPER_WORDS): string {
+  const bases = list(block.bases.map((b) => baseWords(b, t, words)), language);
+  return words.view === "person" ? t("workflows.refusal.baseUnapprovedPlain", { bases }) : t("workflows.refusal.baseUnapproved", { r: block.revision, bases });
 }
 
 /** The designs approving `revision` strands on a stale base, named before the click; null when there are none. */
-export function leavesStaleWords(revision: number, stale: readonly DesignLeftStale[], t: Copy, language: string): string | null {
+export function leavesStaleWords(revision: number, stale: readonly DesignLeftStale[], t: Copy, language: string, words: DesignWords = DEVELOPER_WORDS): string | null {
   if (stale.length === 0) return null;
+  if (words.view === "person") return t("workflows.leavesStalePlain", { designs: list(stale.map((s) => words.nameOf(s.flow)), language) });
   return t("workflows.leavesStale", { r: revision, designs: list(stale.map((s) => `${s.flow} r${s.revision}`), language) });
 }
 

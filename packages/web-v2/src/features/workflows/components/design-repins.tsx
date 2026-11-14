@@ -6,6 +6,7 @@ import type { Refusal } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { workflowHref } from "@/lib/routes/workflows";
+import { DEVELOPER_WORDS as DEVELOPER, type DesignWords } from "../decision-words";
 import { useRepinAct, useRepinPlan } from "../hooks";
 import type { PinOnlyChange, RepinItem, RepinRefused } from "../types";
 
@@ -15,9 +16,16 @@ const proofWords = (change: Pick<PinOnlyChange, "changed" | "fingerprint">, appr
   t("workflows.pinOnly.proof", { r: approved, paths: change.changed.join(", "), fp: change.fingerprint.slice(0, 12) });
 
 /** A proposal that only moves the revisions its bases are pinned at, named as such with the pins and the proof nothing else moved. */
-export function PinOnlyReading({ change, approvedRevision }: { change: PinOnlyChange | null; approvedRevision: number | null }) {
+export function PinOnlyReading({ change, approvedRevision, words = DEVELOPER }: { change: PinOnlyChange | null; approvedRevision: number | null; words?: DesignWords }) {
   const t = useCopy();
   if (!change || approvedRevision === null) return null;
+  if (words.view === "person")
+    return (
+      <span className="basis-full text-13" data-testid="design-pin-only">
+        <span className="font-semibold text-fg">{t("workflows.pinOnly.head")}</span>
+        <span className="text-muted"> · {t("workflows.pinOnly.follows", { names: change.pins.map((p) => words.nameOf(p.workflow)).join(", ") })}</span>
+      </span>
+    );
   return (
     <span className="grid basis-full gap-0.5 text-13" data-testid="design-pin-only">
       <span>
@@ -40,18 +48,29 @@ const REFUSAL_WORDS = {
 const isRefusalCode = (code: string): code is keyof typeof REFUSAL_WORDS => code in REFUSAL_WORDS;
 
 /** An act refusal in the viewer's words, from its code and the design it names; null leaves core's detail. */
-const actRefusalWords = (t: Copy) => (r: Refusal) => {
+const actRefusalWords = (t: Copy, words: DesignWords) => (r: Refusal) => {
   const flow = (r as Refusal & { flow?: unknown }).flow;
-  return typeof flow === "string" && isRefusalCode(r.code) ? t(REFUSAL_WORDS[r.code], { flow }) : null;
+  return typeof flow === "string" && isRefusalCode(r.code) ? t(REFUSAL_WORDS[r.code], { flow: words.nameOf(flow) }) : null;
 };
 
-const refusedWords = (r: RepinRefused, t: Copy) => {
+const refusedWords = (r: RepinRefused, t: Copy, words: DesignWords) => {
   const code = r.refusal.code;
-  return isRefusalCode(code) ? t(REFUSAL_WORDS[code], { flow: r.flow }) : t("workflows.repins.refusal.other", { flow: r.flow, code });
+  const flow = words.nameOf(r.flow);
+  if (isRefusalCode(code)) return t(REFUSAL_WORDS[code], { flow });
+  return words.view === "person" ? t("workflows.repins.refusal.otherPlain", { flow }) : t("workflows.repins.refusal.other", { flow, code });
 };
 
-function ReadyRepin({ item, slug }: { item: RepinItem; slug: string }) {
+function ReadyRepin({ item, slug, words }: { item: RepinItem; slug: string; words: DesignWords }) {
   const t = useCopy();
+  if (words.view === "person")
+    return (
+      <li className="flex min-w-0 flex-wrap items-baseline gap-x-2 border-t border-line-subtle py-1.5 first:border-t-0" data-testid="repin-ready" data-flow={item.flow}>
+        <Link href={workflowHref(slug, item.flow)} className="font-semibold text-link hover:underline">
+          {words.nameOf(item.flow)}
+        </Link>
+        {item.source === "proposal" && item.proposedByName ? <span className="text-muted">{t("workflows.repins.filedBy", { who: item.proposedByName })}</span> : null}
+      </li>
+    );
   return (
     <li className="grid min-w-0 gap-0.5 border-t border-line-subtle py-1.5 first:border-t-0" data-testid="repin-ready" data-flow={item.flow}>
       <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
@@ -72,7 +91,7 @@ function ReadyRepin({ item, slug }: { item: RepinItem; slug: string }) {
  * The base's pin-only dependents, cleared by one act: what it takes, in the order core approves them,
  * each with its pins and the proof nothing else changed, and what it will not take, each named.
  */
-export function DesignRepins({ projectId, workflowId, slug }: { projectId: string; workflowId: string; slug: string }) {
+export function DesignRepins({ projectId, workflowId, slug, words = DEVELOPER }: { projectId: string; workflowId: string; slug: string; words?: DesignWords }) {
   const t = useCopy();
   const plan = useRepinPlan(projectId, workflowId).data;
   const act = useRepinAct(projectId, workflowId);
@@ -84,10 +103,12 @@ export function DesignRepins({ projectId, workflowId, slug }: { projectId: strin
     <section className="grid gap-2 border-b border-line-subtle px-6 py-2.5 text-13 max-md:px-4" data-testid="design-repins">
       {n > 0 ? (
         <>
-          <span className="text-13 font-semibold text-fg">{t(n === 1 ? "workflows.repins.headOne" : "workflows.repins.headMany", { n, r })}</span>
+          <span className="text-13 font-semibold text-fg">{words.view === "person"
+              ? t(n === 1 ? "workflows.repins.followHeadOne" : "workflows.repins.followHeadMany", { n })
+              : t(n === 1 ? "workflows.repins.headOne" : "workflows.repins.headMany", { n, r })}</span>
           <ul className="grid max-w-180">
             {plan.ready.map((item) => (
-              <ReadyRepin key={item.workflowId} item={item} slug={slug} />
+              <ReadyRepin key={item.workflowId} item={item} slug={slug} words={words} />
             ))}
           </ul>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -103,14 +124,14 @@ export function DesignRepins({ projectId, workflowId, slug }: { projectId: strin
           {t("workflows.repins.done", { n: act.data.approved.length })}
         </span>
       ) : null}
-      <RefusalLine error={act.isError ? act.error : null} testid="repin-error" words={actRefusalWords(t)} />
+      <RefusalLine error={act.isError ? act.error : null} testid="repin-error" words={actRefusalWords(t, words)} />
       {plan.refused.length > 0 ? (
         <span className="grid gap-0.5">
           <span className="font-semibold text-fg">{t("workflows.repins.notTaken")}</span>
           <ul className="grid max-w-180">
             {plan.refused.map((x) => (
               <li key={x.workflowId} className="border-t border-line-subtle py-1 text-muted first:border-t-0" data-testid="repin-refused" data-code={x.refusal.code}>
-                {refusedWords(x, t)}
+                {refusedWords(x, t, words)}
               </li>
             ))}
           </ul>

@@ -7,6 +7,7 @@ import { templateFor } from "../canvas/model";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowsHref } from "@/lib/routes/workflows";
 import { ApprovalReading, ApproveAction, DecisionError, DecisionNoteControl, decidableRevision } from "./design-decision";
+import type { DesignWords } from "../decision-words";
 import { PinOnlyReading, DesignRepins } from "./design-repins";
 import { shownDesign, useDesignTab, WorkflowDesignPage } from "./workflow-design-page";
 import { DesignPill } from "./workflow-parts";
@@ -29,6 +30,10 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   const shown = d && record ? shownDesign(d, record).shown : (record?.document ?? null);
   const revision = d ? decidableRevision(d) : null;
   const failed = list.error ?? templates.error ?? design.error;
+  const words: DesignWords = {
+    view,
+    nameOf: (f) => (view === "person" ? (list.data?.workflows.find((r) => r.document.flow === f)?.document.title ?? f) : f),
+  };
 
   let body: React.ReactNode;
   if (list.isLoading || templates.isLoading || (record && design.isLoading)) body = centred(<ProjectLoader label={t("workflows.loadingOne")} />);
@@ -45,8 +50,8 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
             acts: <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />,
             detail: (
               <>
-                <PinOnlyReading change={d.pinOnly} approvedRevision={d.approvedRevision} />
-                <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
+                <PinOnlyReading change={d.pinOnly} approvedRevision={d.approvedRevision} words={words} />
+                <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} words={words} />
               </>
             ),
             alert: <DecisionError decide={decide} />,
@@ -54,8 +59,8 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         : null;
     const walkDecision = revision !== null ? (
       <span className="grid gap-2">
-        <ApproveAction revision={revision} decide={decide} block={d.approvalBlocked} />
-        <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
+        <ApproveAction revision={revision} decide={decide} block={d.approvalBlocked} words={words} />
+        <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} words={words} />
         <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />
       </span>
     ) : null;
@@ -71,7 +76,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         onTab={setTab}
         decision={decision}
         walkDecision={walkDecision}
-        repins={<DesignRepins projectId={projectId} workflowId={record.document.id} slug={slug} />}
+        repins={<DesignRepins projectId={projectId} workflowId={record.document.id} slug={slug} words={words} />}
       />
     );
   }
@@ -85,7 +90,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         title={shown?.title ?? flow}
         badge={d?.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : null}
         views={record ? <RecordViewSwitch view={view} onView={setView} /> : null}
-        action={<ApproveAction revision={revision} decide={decide} block={d?.approvalBlocked} />}
+        action={<ApproveAction revision={revision} decide={decide} block={d?.approvalBlocked} words={words} />}
       />
       {body}
     </div>

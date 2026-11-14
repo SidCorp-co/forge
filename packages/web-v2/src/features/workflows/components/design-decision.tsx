@@ -7,7 +7,7 @@ import { Button, LEGEND, Textarea, Tooltip, useRecordView } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { blockedWords, decisionRefusalWords, leavesStaleWords } from "../decision-words";
+import { blockedWords, DEVELOPER_WORDS, type DesignWords, decisionRefusalWords, leavesStaleWords } from "../decision-words";
 import type { useDesignDecision } from "../hooks";
 import type { DesignDecisionBody, WorkflowDesign } from "../types";
 
@@ -19,15 +19,15 @@ export function decidableRevision(d: WorkflowDesign): number | null {
 }
 
 /** Why Approve is off, in the viewer's language, when core already knows the approval would be refused. */
-function useBlockedReason(block: DesignApprovalBlock | null | undefined): string | null {
+function useBlockedReason(block: DesignApprovalBlock | null | undefined, words: DesignWords): string | null {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  return block ? blockedWords(block, t, language) : null;
+  return block ? blockedWords(block, t, language, words) : null;
 }
 
-export function ApproveAction({ revision, decide, block }: { revision: number | null; decide: Decide; block?: DesignApprovalBlock | null }) {
+export function ApproveAction({ revision, decide, block, words = DEVELOPER_WORDS }: { revision: number | null; decide: Decide; block?: DesignApprovalBlock | null; words?: DesignWords }) {
   const t = useCopy();
-  const blocked = useBlockedReason(block);
+  const blocked = useBlockedReason(block, words);
   const [view] = useRecordView();
   if (revision === null) return null;
   const button = (
@@ -48,11 +48,21 @@ export function ApproveAction({ revision, decide, block }: { revision: number | 
  * What the approver reads before the click: why Approve is off where core already knows the base
  * refuses it, and the designs approving this revision leaves on a stale base.
  */
-export function ApprovalReading({ revision, block, leavesStale }: { revision: number | null; block?: DesignApprovalBlock | null; leavesStale?: readonly DesignLeftStale[] }) {
+export function ApprovalReading({
+  revision,
+  block,
+  leavesStale,
+  words = DEVELOPER_WORDS,
+}: {
+  revision: number | null;
+  block?: DesignApprovalBlock | null;
+  leavesStale?: readonly DesignLeftStale[];
+  words?: DesignWords;
+}) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const blocked = useBlockedReason(block);
-  const stale = revision !== null && leavesStale ? leavesStaleWords(revision, leavesStale, t, language) : null;
+  const blocked = useBlockedReason(block, words);
+  const stale = revision !== null && leavesStale ? leavesStaleWords(revision, leavesStale, t, language, words) : null;
   if (revision === null || (!blocked && !stale)) return null;
   return (
     <span className="grid basis-full gap-1 text-13">

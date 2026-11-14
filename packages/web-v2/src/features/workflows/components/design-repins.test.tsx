@@ -5,7 +5,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RepinPlan } from "../types";
+import type { DesignWords } from "../decision-words";
+import { blockedWords, leavesStaleWords } from "../decision-words";
 import { PinOnlyReading, DesignRepins } from "./design-repins";
+import { productCopy } from "@/lib/i18n/product-copy";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -87,5 +90,47 @@ describe("the act that clears a base's pin-only dependents", () => {
     state.plan = { ...planOf(true), ready: [], refused: [] };
     const { container } = render(<DesignRepins projectId="p" workflowId="w-access" slug="hop" />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+// ISS-805 c2 (judged fail on 0.4.0-dev.671): Issue lifecycle's Person view read "issue-lifecycle r20 →
+// r27" and "re-pinned by this act as r22". A person reads each design by its title, and no flow slug,
+// revision number or fingerprint.
+describe("the person's view of the re-pin act and its approval warnings", () => {
+  const TITLES: Record<string, string> = { access: "Access", "complaint-intake": "Complaint intake", "billing-ux": "Billing screens" };
+  const person: DesignWords = { view: "person", nameOf: (f) => TITLES[f] ?? `${f[0].toUpperCase()}${f.slice(1)}` };
+  const leaks = (text: string | null) => {
+    expect(text).not.toMatch(/\br\d+\b/);
+    for (const flow of [...FLOWS, "access", "billing-ux"]) expect(text).not.toContain(flow);
+    expect(text).not.toContain("aaaaaaaaaaaa");
+  };
+
+  it("names each design by its title, with no revision, pin move or proof", () => {
+    state.plan = planOf(true);
+    render(<DesignRepins projectId="p" workflowId="w-access" slug="hop" words={person} />);
+    const panel = screen.getByTestId("design-repins");
+    expect(panel).toHaveTextContent("6 designs only need to follow this approval");
+    expect(within(screen.getAllByTestId("repin-ready")[1]).getByText("Complaint intake")).toBeTruthy();
+    expect(within(screen.getAllByTestId("repin-ready")[1]).getByText("filed by hop master")).toBeTruthy();
+    expect(screen.getByTestId("repin-refused")).toHaveTextContent("Billing screens has a pending change beyond its pins");
+    leaks(panel.textContent);
+  });
+
+  it("reads a pin-only proposal by its bases' titles, with no proof line", () => {
+    render(<PinOnlyReading change={{ pins: [{ workflow: "access", from: 12, to: 13 }], ...proof }} approvedRevision={4} words={person} />);
+    expect(screen.getByTestId("design-pin-only")).toHaveTextContent("Pin-only change · follows the new approval of Access, nothing else");
+    expect(screen.queryByTestId("design-pin-only-proof")).toBeNull();
+    leaks(screen.getByTestId("design-pin-only").textContent);
+  });
+
+  it("words a blocked approval and the designs it leaves behind by title", () => {
+    const t = productCopy("en");
+    const blocked = blockedWords({ revision: 27, bases: [{ workflow: "access", revision: 12, state: "stale", approvedRevision: 13, designStatus: "approved" }] }, t, "en", person);
+    expect(blocked).toBe("This builds on unapproved Access, approved again since: approve the base first.");
+    leaks(blocked);
+    const stale = leavesStaleWords(27, [{ workflowId: "w", flow: "billing-ux", revision: 3, basedOnRevision: 12 }], t, "en", person);
+    expect(stale).toBe("Approving this leaves Billing screens on an old base.");
+    leaks(stale);
+    expect(leavesStaleWords(27, [{ workflowId: "w", flow: "billing-ux", revision: 3, basedOnRevision: 12 }], t, "en")).toContain("billing-ux r3");
   });
 });
