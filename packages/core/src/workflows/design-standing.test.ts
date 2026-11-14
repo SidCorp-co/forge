@@ -176,7 +176,11 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
     };
     const line = designWaitingOn({ ...approved, owed });
     expect(line).toEqual(repinRowOf(group, true).standing.waitingOn);
-    expect(line.act).toBe('approve 4 pin-only changes → r20');
+    expect(line.act).toBe('approve 4 pin-only changes');
+    // ISS-805 c2 (failed at b13a6b4f): the page's Person view printed this wait as "→ r27"; it names no
+    // revision and no flow, which the Developer view's re-pin panel keeps.
+    for (const said of [line.who, line.act, line.rule])
+      expect(said).not.toMatch(/\br\d+\b|issue-lifecycle/);
   });
 
   it('reads Nobody · nothing only where nothing is owed, and a step that owes somebody keeps its own wait', () => {

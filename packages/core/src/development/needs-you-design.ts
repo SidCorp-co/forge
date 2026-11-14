@@ -32,7 +32,6 @@ export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignR
     designs: n === 1 ? 'design' : 'designs',
     need: n === 1 ? 'needs' : 'need',
     its: n === 1 ? 'its' : 'their',
-    r: group.revision,
   });
   return {
     entity: 'workflow',

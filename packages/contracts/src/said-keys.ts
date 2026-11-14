@@ -2196,22 +2196,20 @@ export const SAID = {
 	"designs.act.repin": { en: "re-pin basedOn" },
 	"designs.act.approveBase": { en: "approve {bases}", vars: { bases: "text" } },
 	"designs.title.repinBatch": {
-		en: "{n} {designs} only {need} {its} pin moved → r{r}",
+		en: "{n} {designs} only {need} {its} pin moved",
 		vars: {
 			n: "count",
 			designs: "agreement",
 			need: "agreement",
 			its: "agreement",
-			r: "count",
 		},
 	},
 	"designs.act.repinBatch": {
-		en: "approve {n} pin-only {changes} → r{r}",
-		vars: { n: "count", changes: "agreement", r: "count" },
+		en: "approve {n} pin-only {changes}",
+		vars: { n: "count", changes: "agreement" },
 	},
 	"designs.rule.repinBatch": {
-		en: "{flow} is approved at r{r}; these differ only in pinned base revision",
-		vars: { flow: "name", r: "count" },
+		en: "their base was approved again; they differ only in their pins",
 	},
 	"designs.act.revise": { en: "revise it" },
 	"designs.act.reviseR": { en: "revise revision {r}", vars: { r: "count" } },

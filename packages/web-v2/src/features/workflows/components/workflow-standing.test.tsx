@@ -154,7 +154,7 @@ describe("the workflow page's line agrees with what Needs you counts on the desi
 
   it("says the pin-only changes to approve on an approved design they follow", () => {
     open(designAt("approved", repinOwedWait({ flow: "intake", revision: 2, n: 4 }, true)));
-    expect(line()).toHaveTextContent("Waiting on you: approve 4 pin-only changes → r2");
+    expect(line()).toHaveTextContent("Waiting on you: approve 4 pin-only changes");
     expect(screen.queryByTestId("stands-waits-on")).toBeNull();
   });
 });

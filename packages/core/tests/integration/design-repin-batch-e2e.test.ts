@@ -214,14 +214,14 @@ describe('a base approved at a new revision, with designs that only need their p
     const designs = needs.items.filter((i: Doc) => i.area === 'designs');
     expect(designs.map((i: Doc) => i.key).sort()).toEqual(['access', 'billing-ux']);
     expect(designs.find((i: Doc) => i.key === 'access')).toMatchObject({
-      title: '6 designs only need their pin moved → r2',
+      title: '6 designs only need their pin moved',
       waitingOn: { kind: 'you' },
     });
     // the base's own page says the same wait Needs you lists on it, never "Nobody" (ISS-687 round 4:
     // Issue lifecycle read "Nobody · nothing next" beside "Approve 4 pin-only changes" on dev.489)
     const base = await read('access');
     expect(base.status).toBe('approved');
-    expect(base.waitingOn).toMatchObject({ kind: 'you', act: 'approve 6 pin-only changes → r2' });
+    expect(base.waitingOn).toMatchObject({ kind: 'you', act: 'approve 6 pin-only changes' });
     expect(base.waitingOn).toEqual(designs.find((i: Doc) => i.key === 'access').waitingOn);
 
     const named = (flows: readonly string[]) =>

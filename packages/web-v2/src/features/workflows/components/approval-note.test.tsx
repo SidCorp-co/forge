@@ -109,7 +109,7 @@ describe("an approval's note where the design is read", () => {
   it("reads a re-pin act's reason from its facts, and a decider's note as they wrote it", () => {
     const said = say("designs.reason.repinOnly", {
       act: "a1b2",
-      actWords: say("designs.act.repinBatch", { n: 2, changes: "changes", r: 2 }),
+      actWords: say("designs.act.repinBatch", { n: 2, changes: "changes" }),
       flow: "access",
       pins: "access r1 → r2",
       fp: "0123456789ab",

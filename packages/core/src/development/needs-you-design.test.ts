@@ -110,11 +110,11 @@ describe('the re-pin row on Needs you', () => {
     expect(row).toMatchObject({
       entity: 'workflow',
       key: 'access',
-      title: '3 designs only need their pin moved → r13',
-      says: { title: { key: 'designs.title.repinBatch', vars: { n: 3, r: 13 } } },
+      title: '3 designs only need their pin moved',
+      says: { title: { key: 'designs.title.repinBatch', vars: { n: 3 } } },
       standing: {
         attentionGroup: 'needs_you',
-        waitingOn: { kind: 'you', act: 'approve 3 pin-only changes → r13' },
+        waitingOn: { kind: 'you', act: 'approve 3 pin-only changes' },
       },
     });
     expect(checked(repinRowOf(group, false)).standing.waitingOn.kind).toBe('person');
@@ -122,7 +122,7 @@ describe('the re-pin row on Needs you', () => {
 
   it('agrees in number for a single design', () => {
     expect(checked(repinRowOf({ ...group, ready: group.ready.slice(0, 1) }, true)).title).toBe(
-      '1 design only needs its pin moved → r13',
+      '1 design only needs its pin moved',
     );
   });
 });

@@ -39,12 +39,8 @@ export function repinOwedWait(
 	const act = say("designs.act.repinBatch", {
 		n: repin.n,
 		changes: repin.n === 1 ? "change" : "changes",
-		r: repin.revision,
 	});
-	const rule = say("designs.rule.repinBatch", {
-		flow: repin.flow,
-		r: repin.revision,
-	});
+	const rule = say("designs.rule.repinBatch");
 	return canDecide
 		? waitingOn("you", { who: say("standing.who.you"), act, rule })
 		: waitingOn("person", {

@@ -65,12 +65,12 @@ describe("the needs-you inbox", () => {
   });
 
   it("words a row core says itself: one row for a base's pin-only dependents", () => {
-    const title = say("designs.title.repinBatch", { n: 6, designs: "designs", need: "need", its: "their", r: 13 });
-    const w = waitingOn("you", { who: say("standing.who.you"), act: say("designs.act.repinBatch", { n: 6, changes: "changes", r: 13 }), rule: RULE });
-    render(<NeedsYouList slug="hop" foldKey="t2c" empty="" items={[item({ area: "designs", entity: "workflow", key: "access", title: "6 designs only need their pin moved → r13", says: { title }, waitingOn: w })]} />);
+    const title = say("designs.title.repinBatch", { n: 6, designs: "designs", need: "need", its: "their" });
+    const w = waitingOn("you", { who: say("standing.who.you"), act: say("designs.act.repinBatch", { n: 6, changes: "changes" }), rule: RULE });
+    render(<NeedsYouList slug="hop" foldKey="t2c" empty="" items={[item({ area: "designs", entity: "workflow", key: "access", title: "6 designs only need their pin moved", says: { title }, waitingOn: w })]} />);
     const row = screen.getByTestId("list-row");
-    expect(row).toHaveTextContent("6 designs only need their pin moved → r13");
-    expect(within(row).getByTestId("waiting-on")).toHaveTextContent("approve 6 pin-only changes → r13");
+    expect(row).toHaveTextContent("6 designs only need their pin moved");
+    expect(within(row).getByTestId("waiting-on")).toHaveTextContent("approve 6 pin-only changes");
   });
 
   it("says so when nothing waits on the viewer", () => {

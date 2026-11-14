@@ -359,7 +359,6 @@ export async function repinAs(input: {
       const actWords = say('designs.act.repinBatch', {
         n: plan.ready.length,
         changes: plan.ready.length === 1 ? 'change' : 'changes',
-        r: base.approvedRevision ?? 0,
       });
       const approved: RepinActResult['approved'] = [];
       for (const unit of unitsOf(plan.ready)) {
