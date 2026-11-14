@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.677] - 2026-11-14
+
+A support message handed again now tells the agent which try it is and why
+
+### Fixed
+
+- **A repeated support message says it is a retry** — a channel assistant handed a message again sees which try it is and why, so it settles it instead of reading it as new (ISS-1236).
+
 ## [0.4.0-dev.676] - 2026-11-14
 
 Workflows badge counts only pin-only changes that wait on you
