@@ -8,6 +8,7 @@
  * @direct-test-of packages/core/src/pipeline/live-reach.ts
  * @direct-test-of packages/core/src/me/pulse-live.ts
  * @direct-test-of packages/core/src/me/pulse-routes.ts
+ * @direct-test-of packages/core/src/me/read.ts
  */
 
 import { randomUUID } from 'node:crypto';
