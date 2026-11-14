@@ -21,10 +21,12 @@ const RELEASE_NOTE_IDS = ['result:%', 'promise:%', 'release-told:%'] as const;
 
 /**
  * A claim that something is or is not live, deployed or released, in English or Vietnamese: the
- * words of a state of an environment, never an order's or a ticket's.
+ * words of a state of an environment, never an order's or a ticket's (`is live` right after an
+ * order or ticket, named or by its code, is that record's state). Contractions (`it's live`),
+ * `went live`, and `shipped to` or `pushed to` production count as the plain forms do.
  */
 const LIVE_CLAIM_RE =
-  /\b(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|not|now|already|yet|been|still|be)\s+(?:not\s+)?(?:yet\s+)?(?:live|deployed|released|in\s+production|on\s+production|on\s+prod)\b|\b(?:reached|hit|went\s+to|deployed\s+to|released\s+to|live\s+on|live\s+in)\s+(?:production|prod|staging)\b|\bgo(?:es|ne)?\s+live\b|(?:^|[^\p{L}])lên\s+(?:production|prod|staging|live|môi\s+trường)|(?:^|[^\p{L}])(?:đã|chưa|đang|sẽ)\s+(?:được\s+)?(?:triển\s+khai|phát\s+hành|deploy|release)|(?:^|[^\p{L}])trên\s+(?:production|prod)(?![\p{L}])/iu; // i18n-allow: the Vietnamese phrasing of a live or not-live claim being policed
+  /(?<!\b(?:orders?|tickets?|đơn(?:\s+hàng)?)\s+(?:\S+\s+)?)\b(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|'s|’s|not|now|already|yet|been|still|be)\s+(?:not\s+)?(?:yet\s+)?(?:live|deployed|released|in\s+production|on\s+production|on\s+prod)\b|\b(?:reached|hit)\s+(?:production|prod|staging)\b|\b(?:went|deployed|released|shipped|pushed|live)\s+(?:\S+\s+)?(?:to|on|in)\s+(?:production|prod|staging)\b|\bgo(?:es|ne|ing)?\s+live\b|\bwent\s+live\b|(?:^|[^\p{L}])lên\s+(?:production|prod|staging|live|môi\s+trường)|(?:^|[^\p{L}])(?:đã|chưa|đang|sẽ)\s+(?:được\s+)?(?:triển\s+khai|phát\s+hành|deploy|release)|(?:^|[^\p{L}])trên\s+(?:production|prod)(?![\p{L}])/iu; // i18n-allow: the Vietnamese phrasing of a live or not-live claim being policed
 
 /** The words of a live or not-live claim in `text`, or null where it makes none. */
 export function liveClaimIn(text: string): string | null {
