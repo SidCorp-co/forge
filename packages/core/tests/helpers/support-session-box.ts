@@ -41,6 +41,8 @@ export interface TurnMessage {
   answersYourQuestion?: string;
   /** The pictures the message carries, as its head names them (ISS-1010). */
   images?: { count: number; mimes: string[]; read: string; omitted?: number };
+  /** An earlier turn took it and left it unsettled: which hand this is and why (ISS-1236). */
+  handedAgain?: { hand: number; why: string };
 }
 
 export interface Turn {
@@ -92,6 +94,7 @@ export function messagesOf(text: string): TurnMessage[] {
         ...(head.technicalAnswered ? { technicalAnswered: true } : {}),
         ...(head.answersYourQuestion ? { answersYourQuestion: head.answersYourQuestion } : {}),
         ...(head.images ? { images: head.images } : {}),
+        ...(head.handedAgain ? { handedAgain: head.handedAgain } : {}),
         text: '',
       };
       out.push(current);

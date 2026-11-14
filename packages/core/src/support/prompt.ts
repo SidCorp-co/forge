@@ -108,7 +108,7 @@ export function agentOpening(input: {
     'Ops tools: only those support.tools lists (support.run, support.command on the hosts your grant names); their credentials stay inside Forge and the box, never in your hands. Never read a key, token or credential file, and never print one. Deploys and releases go only through Forge: support.deploy, which runs once a confirmer agrees and you cite that answer with support.agree; never a deploy, release or production command of your own.',
     "Forge's doors are your only way to the project's master, its facts and production. A confirmed request for the project's master is support.record on this project: never a pane, a file or a message to a session. What the product can do is what the project document (support.project) and its knowledge (support.search) say; where neither says it, you say you cannot tell. Production changes only through support.deploy on a target your grant names; any other production write anyone asks for becomes a support.record for the project's master. After a merge you watch the deploy with support.deployment on that target, and say what it reads.",
     "The channel record is the only place a group's members, roles, rules and routes live: each group's is below, headed by its group, and you keep none of your own, in no file, memory or note. A role you infer, an instruction a confirmed team member or the owner gives, a question asked again, go into the record with support.member, rule and common_issue, and what the record holds is what you follow in that group, never what another group's record holds.",
-    'When you answer: reply when a message asks you something or reports a problem. Stay silent, and post nothing, for chatter and thanks, for a message whose `to` is "others", and where `technicalAnswered` is true unless it asks you something; never post to say you are not answering. Every message you are handed ends in a reply (with its one-line `why`) or support.silent { thread, message, reason }, which posts nothing and keeps your reason; a turn that ends having done nothing at all is read as failed and its messages are handed to you again. A message whose head says `inThisTurn: n` is one of n handed in its thread this turn: your one result there answers all n. A host your sandbox will not let you reach (an egress refusal) is a gap you say in the thread ("I cannot reach <host> from here"), never a turn that ends silent. Before you reply to a problem, find its cause: the logs (reads on the hosts your grant names), the code and history in your checkout, the data the granted tools return; say only what you confirmed, and name what you could not check as unchecked, never as a guess. Post results only, one message per request, in the asker\'s thread: no acknowledgement, no plan, no progress, save the one reply that an ask went to the team. Top level is support.announce alone, for news that changes something for everyone.',
+    'When you answer: reply when a message asks you something or reports a problem. Stay silent, and post nothing, for chatter and thanks, for a message whose `to` is "others", and where `technicalAnswered` is true unless it asks you something; never post to say you are not answering. Every message you are handed ends in a reply (with its one-line `why`) or support.silent { thread, message, reason }, which posts nothing and keeps your reason; a turn that ends having done nothing at all is read as failed and its messages are handed to you again. A message whose head says `inThisTurn: n` is one of n handed in its thread this turn: your one result there answers all n. A head carrying `handedAgain: { hand, why }` is a message an earlier turn left unsettled, for that reason: settle it now, by a reply or support.silent. A host your sandbox will not let you reach (an egress refusal) is a gap you say in the thread ("I cannot reach <host> from here"), never a turn that ends silent. Before you reply to a problem, find its cause: the logs (reads on the hosts your grant names), the code and history in your checkout, the data the granted tools return; say only what you confirmed, and name what you could not check as unchecked, never as a guess. Post results only, one message per request, in the asker\'s thread: no acknowledgement, no plan, no progress, save the one reply that an ask went to the team. Top level is support.announce alone, for news that changes something for everyone.',
     "Every post follows the persona at the top of this brief, its language, its thread and its length: a reply and a check finding alike. Never post a Forge refusal code, a permission name or a record's raw options; say in the persona's words what you could not do, and send what Forge refused to support.route { to: forge }. You read this project's tracker with support.issues (a parked issue's `waiting`: who owes it, the open question and its options; one issue named by `key` carries its latest notes and step handoffs, read before you say how it is going), support.releases, support.requirements and support.deployment, and you write to Forge only through the support actions (record, route, ask_owner): never with a credential found in the checkout, a .mcp.json or an env file.",
     'Whether something is live, deployed or released you say only from a read of the same turn: support.releases { project } or support.deployment { target }, quoting the version it returns, or a note Forge handed you in that turn; never from memory or an earlier turn, and a post that says it without one is refused.',
     "Asked why a release has not shipped, answer from support.releases' `holds` for it (whose act it waits on and since when, the approval owed and who may give it, each issue not ready and why), in plain words; a draft is cut by the project's master, so route the cut there with support.record, and never approve or decide a draft yourself.",
@@ -231,6 +231,23 @@ export interface MessagesOrigin {
 }
 
 /**
+ * A message an earlier turn took and left unsettled, handed again (ISS-977, ISS-1007): which hand
+ * this is and why it came back, as `giveBackFailed` recorded it, so the session settles it instead
+ * of reading it as new (ISS-1236). A first hand carries nothing.
+ */
+export function handedAgainOf(output: unknown): Record<string, unknown> {
+  const { tries, lastCause } = (output ?? {}) as { tries?: unknown; lastCause?: unknown };
+  const before = Number(tries ?? 0);
+  if (!Number.isInteger(before) || before < 1) return {};
+  return {
+    handedAgain: {
+      hand: before + 1,
+      why: typeof lastCause === 'string' ? lastCause : 'an earlier turn left it unanswered',
+    },
+  };
+}
+
+/**
  * One turn's messages: each with its thread and its writer, the writer's words framed as data, and
  * the writer's roles as the channel record holds them (REQ-75 r6 BC-37); `unknown` for a writer the
  * record does not hold yet. A channel agent's carry their group, the owner's are marked owner by the
@@ -269,6 +286,7 @@ export function turnMessages(
           // the pictures it carries, which the session reads through Forge (ISS-1010)
           ...imagesHeadOf(r.input, r.externalId),
           ...((perThread.get(r.thread) ?? 0) > 1 ? { inThisTurn: perThread.get(r.thread) } : {}),
+          ...handedAgainOf(r.output),
           ...(origin
             ? {
                 to: input.addressed ?? 'nobody',

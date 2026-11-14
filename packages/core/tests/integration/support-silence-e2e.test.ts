@@ -8,6 +8,7 @@ vi.hoisted(() => {
 
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
+import type { TurnMessage } from '../helpers/support-session-box.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/service.ts
@@ -100,10 +101,15 @@ describe('ISS-1007: a completed turn that said nothing for a message is not read
   it('hands the message again, then records it unanswered by name once its tries run out', async () => {
     await w.settleWarm();
     const handed: string[] = [];
+    const hands: (TurnMessage['handedAgain'] | null)[] = [];
     // the 1-3 s exits of 2026-11-01: the turn completes and nothing is said for the message
     w.box.idleTurnsAct = false;
     w.box.model = async (turn) => {
-      for (const m of turn.messages) if (m.from !== 'forge') handed.push(m.message ?? '');
+      for (const m of turn.messages) {
+        if (m.from === 'forge') continue;
+        handed.push(m.message ?? '');
+        hands.push(m.handedAgain ?? null);
+      }
     };
     const id = await w.chat.say(w.chat.alice, 'Can you research the channel feature?');
     await expect.poll(() => handed.length, { timeout: 60_000, interval: 200 }).toBe(3);
@@ -121,6 +127,12 @@ describe('ISS-1007: a completed turn that said nothing for a message is not read
     expect(await w.linesIn(id)).toEqual([]);
     await w.settleWarm();
     expect(handed).toEqual([id, id, id]);
+    // ISS-1236: a hand after the first says which it is and why, naming the ways to settle it
+    expect(hands[0]).toBeNull();
+    expect(hands.slice(1).map((h) => h?.hand)).toEqual([2, 3]);
+    for (const h of hands.slice(1)) {
+      expect(h?.why).toContain('no reply, refusal or stated silence (support.silent)');
+    }
     w.box.idleTurnsAct = true;
   });
 
