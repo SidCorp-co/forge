@@ -146,7 +146,8 @@ export function WhereItStands({ d, health, slug, projectId, title }: { d: Workfl
           {t(code.key)}
         </StandingMark>
         {health && health.needsYou > 0 ? (
-          <StandingMark label={t("workflows.needsYou")} stand="differs" testId="stands-needs-you">
+          // the markers' count wears the list's row badge label, so no two counts share "Needs you" (ISS-805 c6)
+          <StandingMark label={t("workflows.stands.toSettle")} stand="differs" testId="stands-needs-you">
             {String(health.needsYou)}
           </StandingMark>
         ) : null}

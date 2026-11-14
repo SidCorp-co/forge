@@ -366,6 +366,7 @@
     "workflows.stands.nothingNext": "nothing next",
     "workflows.stands.notConfirmed": "Not confirmed",
     "workflows.stands.waitsOn": "Waits on",
+    "workflows.stands.toSettle": "To settle",
     "workflows.stands.yes": "Yes"
   }
 }

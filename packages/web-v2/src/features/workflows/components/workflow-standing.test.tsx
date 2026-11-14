@@ -150,6 +150,8 @@ describe("the workflow page's line agrees with what Needs you counts on the desi
     expect(screen.queryByTestId("stands-waits-on")).toBeNull();
     expect(line()).not.toHaveTextContent("Nobody");
     expect(screen.getByTestId("stands-needs-you")).toHaveTextContent("2");
+    // debt 14579816: the list's row badge says To settle for this count; the page says it the same
+    expect(screen.getByTestId("stands-needs-you")).toHaveTextContent(/^To settle/);
   });
 
   it("says the pin-only changes to approve on an approved design they follow", () => {
