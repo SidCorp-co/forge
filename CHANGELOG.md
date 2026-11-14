@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.679] - 2026-11-14
+
+Masters post PDF guides to rooms and edit or delete their own posts
+
+### Added
+
+- **A master's room post takes a PDF, and can be taken back.** A multi-step guide goes as one PDF in one message, and a master edits or deletes its own post within thirty minutes, recorded on the room.
+
 ## [0.4.0-dev.678] - 2026-11-14
 
 Refused support posts name support.promise to reach a waiting person
