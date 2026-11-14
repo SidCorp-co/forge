@@ -177,6 +177,13 @@ screens the words for the room's readers and records the post as the master's.
   webp of at most ${ROOM_IMAGE_CAPS.bytes} bytes, or a PDF of at most ${ROOM_DOCUMENT_CAPS.bytes} bytes
   (a guide of many steps goes as one PDF, not a tall picture), uploaded to this project, and follows
   the text into the same room and thread under a neutral name. Any other type is refused.
+- **A screen guide a room asked for.** A channel assistant asks for one with a request record (a
+  feedback filed from the asker's thread) when a person needs to see a screen it can only describe.
+  It is answered by a post in that thread, not by a landing: make the pictures with a browser on a
+  non-production environment with test data, as the person sees the screen (the same labels, buttons
+  and places), never with a customer's data; a guide of more than one step goes as one PDF with one
+  picture per step, in one message, never one message per step. Attach it to the issue the request's
+  triage files, post it with \`attachments\` in the asker's thread, then close that issue.
 - **Editing or deleting your own post.** Within ${SUPPORT_MASTER_POST_EDIT_WINDOW_MS / 60_000} minutes of posting,
   \`PATCH /api/projects/:id/support/master-posts/:messageId { text }\` replaces its words, screened as
   the post was, and \`DELETE\` on the same path removes it with its images or PDF; \`messageId\` is

@@ -1,0 +1,1 @@
+**A channel assistant shows the screen it explains** — it offers a guide with pictures; on the person's yes the project's master makes it on test data and posts it in the thread, several steps as one PDF (ISS-1239).
