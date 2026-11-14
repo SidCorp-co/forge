@@ -27,7 +27,7 @@ import {
   rowsPerId,
   rowsPerProject,
 } from '../db/read-memo.js';
-import { activeIssuePrefix, designOnlyMarkSql } from '../issues/index.js';
+import { activeIssuePrefix, adoptionOnlyMarkSql, designOnlyMarkSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
@@ -401,6 +401,8 @@ export interface IssueRow {
   requirement_id: string | null;
   /** Its mark is a design approval's alone: no release carries it, so none says it is live. */
   design_only?: boolean;
+  /** Closed on an adoption record alone (REQ-5 BC-17): nothing a release carries, so finished on its close. */
+  adoption_only?: boolean;
 }
 
 /** An issue outside the open set: landed by its status, or ended without landing whatever mark it carries. */
@@ -416,7 +418,8 @@ async function issueRowsWhere(projectId: string, where: SQL): Promise<IssueRow[]
   return rowsOf<IssueRow>(
     await db.execute(sql`
       SELECT i.id, i.iss_seq, i.status, i.merged_at, i.requirement_id,
-             ${designOnlyMarkSql(sql`i`)} AS design_only
+             ${designOnlyMarkSql(sql`i`)} AS design_only,
+             ${adoptionOnlyMarkSql(sql`i`)} AS adoption_only
         FROM issues i
        WHERE i.project_id = ${projectId} AND i.archived_at IS NULL AND ${where}
        ORDER BY i.iss_seq`),
@@ -471,7 +474,8 @@ async function issueRowsIn(where: SQL): Promise<(IssueRow & { project_id: string
   return rowsOf<IssueRow & { project_id: string }>(
     await db.execute(sql`
       SELECT i.id, i.project_id, i.iss_seq, i.status, i.merged_at, i.requirement_id,
-             ${designOnlyMarkSql(sql`i`)} AS design_only
+             ${designOnlyMarkSql(sql`i`)} AS design_only,
+             ${adoptionOnlyMarkSql(sql`i`)} AS adoption_only
         FROM issues i
        WHERE i.archived_at IS NULL AND ${where}
        ORDER BY i.iss_seq`),

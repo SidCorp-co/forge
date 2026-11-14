@@ -124,9 +124,11 @@ export function scopeOf(
         : stuck
           ? pausedOf(f.run.asOf, stuck)
           : scopeForecast(f.run, openKeys, f.now);
-  // unshipped until a release record holds it; a design-only close has no release to wait on
+  // unshipped until a release record holds it; a design-only or adoption-only close has no release
+  // to wait on (`waiting-for-release.ts:closedUnreleasedSql` leaves both off every roster)
   const released = (m: IssueRow) =>
-    Boolean(r.shipped.get(m.id)?.at) || (m.status === 'closed' && m.design_only === true);
+    Boolean(r.shipped.get(m.id)?.at) ||
+    (m.status === 'closed' && (m.design_only === true || m.adoption_only === true));
   const unshipped = members.filter((m) => !released(m));
   const lastLanding = latestLanding(
     f.run.asOf,

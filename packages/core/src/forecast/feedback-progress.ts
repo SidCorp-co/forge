@@ -25,7 +25,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { rowIn } from '../feedback/index.js';
-import { activeIssuePrefix, designOnlyMarkSql, releasedSql } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  adoptionOnlyMarkSql,
+  designOnlyMarkSql,
+  releasedSql,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type LinkRow, readFeedbackLines } from './feedback.js';
 import { stamp } from './read.js';
@@ -153,6 +158,7 @@ interface WorkIssueRow {
  */
 const closedUnshippedSql = sql`(i.status = 'closed'
   AND NOT ${designOnlyMarkSql(sql`i`)}
+  AND NOT ${adoptionOnlyMarkSql(sql`i`)}
   AND NOT ${releasedSql(sql`i.id`, sql`i.project_id`)})`;
 
 /** The issues an issue route names, or every issue of the requirement a new-requirement route opened. */
