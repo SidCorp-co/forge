@@ -20,6 +20,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { mergeSessionMetadata, pushProjectNow } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
+import { withReadMemo } from '../db/read-memo.js';
 import {
   agentSessions,
   devices,
@@ -336,7 +337,9 @@ export async function judgeMaster(args: {
     )
     .limit(1);
   const passOpen = master ? (await readOpenPass(db, master.id)) !== null : false;
-  const work = await readMasterWork(args.deviceId, args.projectId);
+  // one reading of the project for the whole verdict: the releases the acts and the live checks are
+  // read from, and every other fact two owed reads share, are each one statement under the memo
+  const work = await withReadMemo(() => readMasterWork(args.deviceId, args.projectId));
   const facts = judged(args.facts, work);
   const verdict = masterVerdict(facts, {
     runnerStatus: runner.status,
