@@ -37,14 +37,16 @@ export function repinRowOf(
     need: n === 1 ? 'needs' : 'need',
     its: n === 1 ? 'its' : 'their',
   });
+  // the one wait the design's own page says too (`@forge/contracts/design-owed`)
+  const waitingOn = repinOwedWait({ flow: group.flow, revision: group.revision, n }, canDecide, by);
   return {
     entity: 'workflow',
     key: group.flow,
     ...composedTitle(title),
     standing: {
-      attentionGroup: 'needs_you',
-      // the one wait the design's own page says too (`@forge/contracts/design-owed`)
-      waitingOn: repinOwedWait({ flow: group.flow, revision: group.revision, n }, canDecide, by),
+      // counted as the viewer's only where the wait is theirs: the master's or another approver's is not
+      attentionGroup: waitingOn.kind === 'you' ? 'needs_you' : 'waiting',
+      waitingOn,
     },
     touchedAt: group.approvedAt,
   };

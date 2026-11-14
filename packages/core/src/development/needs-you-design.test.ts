@@ -117,7 +117,17 @@ describe('the re-pin row on Needs you', () => {
         waitingOn: { kind: 'you', act: 'approve 3 pin-only changes' },
       },
     });
-    expect(checked(repinRowOf(group, false)).standing.waitingOn.kind).toBe('person');
+    expect(checked(repinRowOf(group, false)).standing).toMatchObject({
+      attentionGroup: 'waiting',
+      waitingOn: { kind: 'person' },
+    });
+  });
+
+  it('counts nothing on Needs you where the master decides designs', () => {
+    expect(checked(repinRowOf(group, true, 'master')).standing).toMatchObject({
+      attentionGroup: 'waiting',
+      waitingOn: { kind: 'agent', who: 'Master' },
+    });
   });
 
   it('agrees in number for a single design', () => {
