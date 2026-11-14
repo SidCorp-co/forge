@@ -22,7 +22,7 @@ import {
 import { askedValues } from './figure-exemptions.js';
 import { figureFactsOf, runIdsIn } from './figures-rule.js';
 import { extractIssueClaims } from './issue-tokens.js';
-import { messageReads } from './reads.js';
+import { type AgreedRecord, messageReads } from './reads.js';
 
 interface GatherInput {
   readonly projectId: string;
@@ -53,6 +53,11 @@ interface GatherInput {
   readonly heldBlocks?: readonly string[];
   /** The conversation the reply is posted in: the records agreed in it ground a claim (`facts.ts:MessageFacts`). */
   readonly conversationId?: string;
+  /**
+   * Records agreed outside an assistant conversation, read by the caller: a support thread's filings
+   * its asker agreed to through `support.agree` (ISS-1235). They ground a claim as the conversation's do.
+   */
+  readonly agreedRecords?: readonly AgreedRecord[];
   /**
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
@@ -150,10 +155,14 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     question: input.question ?? null,
     figures: await figureFactsFor(input, needs, tx),
     heldBlocks: input.heldBlocks ?? null,
-    agreedRecords:
-      needs.has('agreed-records') && input.conversationId
-        ? await messageReads().agreedRecords(input.conversationId, tx)
-        : [],
+    agreedRecords: needs.has('agreed-records')
+      ? [
+          ...(input.agreedRecords ?? []),
+          ...(input.conversationId
+            ? await messageReads().agreedRecords(input.conversationId, tx)
+            : []),
+        ]
+      : [],
   };
   if (needs.size === 0) return base;
   if (needs.size === 1 && needs.has('issue-rows')) return base;

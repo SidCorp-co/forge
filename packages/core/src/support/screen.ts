@@ -22,7 +22,7 @@ import { readProjectDocument } from '../project-config/index.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
 import { isCoreThread } from './rules.js';
-import { insertAction, type RoomRow, threadMembers } from './store.js';
+import { agreedFilingsIn, insertAction, type RoomRow, threadMembers } from './store.js';
 import { TOP_LEVEL } from './thread.js';
 
 export type SessionDoor = 'support-reply' | 'operations-reply';
@@ -88,11 +88,14 @@ export async function screenForThread(
       `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.${ownCodes}`,
     );
   }
+  const filed = await agreedFilingsIn(room.id, thread);
   const verdict = await screenReplyAtDoor(door, {
     projectId: room.projectId,
     segments: [text],
     toolCalls: [],
     progress: null,
+    // a filing support.agree made in this thread grounds a reply naming its key (ISS-1235)
+    agreedRecords: filed.map((ref) => ({ kind: 'feedback', ref })),
   });
   const admitted = screened(text, door, verdict);
   if (admitted?.proof) return { ok: true, value: { text, proof: admitted.proof } };

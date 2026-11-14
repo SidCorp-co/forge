@@ -6,6 +6,7 @@ import { groundingReads } from './figure-sources.js';
 import { gatherFacts } from './gather.js';
 import { withGrounding } from './grounding-rule.js';
 import { countsRead } from './progress-rule.js';
+import type { AgreedRecord } from './reads.js';
 import { screenMessage } from './screen.js';
 import { memoryDatesRead } from './status-claims-rule.js';
 
@@ -26,6 +27,8 @@ interface ReplyScreenInput {
   readonly progress: ProgressFacts | null;
   /** A caller inside a transaction MUST pass its own handle. */
   readonly executor?: Tx;
+  /** Records agreed outside a conversation that ground a claim: a support thread's agreed filings (ISS-1235). */
+  readonly agreedRecords?: readonly AgreedRecord[];
   /**
    * What the writer's own turn read, where the caller has it: a date or status the reply states
    * about the tracker is then held to these (`grounding-rule.ts`), and the run ids they name are the
@@ -99,6 +102,7 @@ export async function screenReplyAtDoor(
     ...(figures ? { figures } : {}),
     ...(held ? { heldBlocks: held } : {}),
     ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+    ...(input.agreedRecords ? { agreedRecords: input.agreedRecords } : {}),
     ...(input.executor ? { executor: input.executor } : {}),
   });
   const verdict = screenMessage({ audience, intent, segments: input.segments, facts });

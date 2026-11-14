@@ -405,6 +405,26 @@ export async function settleFixResult(
   await db.update(supportProposals).set({ state, result }).where(eq(supportProposals.id, fixId));
 }
 
+/**
+ * The Feedback keys its asker agreed to file in a room's thread through `support.agree`: each filing
+ * proposal that ran, by the key it was filed under (`fixes.ts:recordAgreed`). They ground a reply's
+ * claim to have recorded that key (ISS-1235); another thread's or room's ground nothing.
+ */
+export async function agreedFilingsIn(roomId: string, thread: string): Promise<string[]> {
+  const found = await db
+    .select({ key: sql<string | null>`${supportProposals.result}->>'feedbackKey'` })
+    .from(supportProposals)
+    .where(
+      and(
+        eq(supportProposals.roomId, roomId),
+        eq(supportProposals.thread, thread),
+        eq(supportProposals.kind, 'filing'),
+        eq(supportProposals.state, 'ran'),
+      ),
+    );
+  return found.flatMap((r) => (r.key ? [r.key] : []));
+}
+
 /** Pending fixes past their expiry. */
 export async function expiredPendingFixes(now: Date): Promise<ProposalRow[]> {
   return db

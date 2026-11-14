@@ -142,4 +142,44 @@ describe('REQ-75: a filing waits for its asker (BC-14, REQ-30 BC-4)', () => {
     // the agent tells the person in its own words: core posted nothing in the thread
     expect(await w.linesIn(id)).toEqual([]);
   });
+
+  // ISS-1235 (FB-634, sidcorp-mail #sid-email): agree filed FB-13 on thanhnh's own request, and the
+  // reply saying it was recorded, in the same turn, was refused by creation-claims-grounded: the
+  // support reply screen read no agreed record at all. A filing agree made in a thread grounds a reply
+  // there saying it was recorded; the same claim in a thread where nothing was agreed is still refused.
+  // This group is read by the product's users, so a reply names no key here (SUPPORT_INTERNAL_CODE);
+  // the claim is the keyless one, which the rule grounds on the same filings (`feedbackWritten`).
+  // Planted red by screening the reply with no agreed filings (the code before ISS-1235).
+  it('lets the reply in the thread where agree filed it say it was recorded, and refuses that claim in another thread', async () => {
+    const { id, proposal } = await offered('Invoices show the wrong VAT line');
+    const elsewhere = (await offered('The export button is grey')).id;
+    await w.settleWarm();
+    let replies: Record<string, unknown>[] | null = null;
+    let armed = true;
+    const claim = 'I recorded this as feedback for the team.';
+    w.box.model = async (turn, act) => {
+      for (const m of turn.messages) {
+        if (!armed || m.from === 'forge' || !m.message || !m.text.includes('ghi giúp')) continue;
+        armed = false;
+        const agreed = await act({
+          action: 'agree',
+          thread: m.thread,
+          proposal,
+          message: m.message,
+        });
+        replies = [
+          agreed,
+          await act({ action: 'reply', thread: m.thread, text: claim }),
+          await act({ action: 'reply', thread: elsewhere, text: claim }),
+        ];
+      }
+    };
+    await w.chat.say(w.chat.alice, 'ok ghi giúp mình nhé', id);
+    await expect.poll(() => replies, { timeout: 15_000 }).not.toBeNull();
+    const [agreed, here, there] = replies as unknown as Record<string, unknown>[];
+    expect(agreed, JSON.stringify(agreed)).toMatchObject({ recorded: true });
+    expect(refusalCodes(here), JSON.stringify(here)).toEqual([]);
+    expect(refusalCodes(there)).toContain('SUPPORT_REPLY_REFUSED');
+    expect(JSON.stringify(there)).toContain('creation-claims-grounded');
+  });
 });
