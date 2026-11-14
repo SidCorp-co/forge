@@ -31,16 +31,24 @@ export interface DesignOwed {
 	settleBy: "person" | "master";
 }
 
-/** The re-pin a design's approver owes: "You" where the reader may take it, else its permission's holder. */
+/**
+ * The re-pin a design's approver owes: the project's master where it decides designs (`design.repin`
+ * follows `design.decide`'s rule, and Needs you leaves an act the master takes off a person's list,
+ * REQ-68 BC-3: ISS-805 c6, the page said "Waiting on you" to a member whose Needs you read none);
+ * else "You" where the reader may take it, else its permission's holder.
+ */
 export function repinOwedWait(
 	repin: RepinOwed,
 	canDecide: boolean,
-): WaitingOn<"you" | "person"> {
+	by: "person" | "master" = "person",
+): WaitingOn<"you" | "person" | "agent"> {
 	const act = say("designs.act.repinBatch", {
 		n: repin.n,
 		changes: repin.n === 1 ? "change" : "changes",
 	});
 	const rule = say("designs.rule.repinBatch");
+	if (by === "master")
+		return waitingOn("agent", { who: say("standing.who.master"), act, rule });
 	return canDecide
 		? waitingOn("you", { who: say("standing.who.you"), act, rule })
 		: waitingOn("person", {
@@ -90,7 +98,7 @@ export function owedWait(
 	canDecide: boolean,
 ): WaitingOn<"you" | "person" | "agent"> | null {
 	if (owed.repin && owed.repin.n > 0)
-		return repinOwedWait(owed.repin, canDecide);
+		return repinOwedWait(owed.repin, canDecide, owed.settleBy);
 	if (owed.settle > 0)
 		return settleOwedWait(owed.settle, owed.flow, owed.settleBy);
 	return null;

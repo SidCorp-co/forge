@@ -64,7 +64,7 @@ function designRowsOf(
 ): AttentionRow[] {
   const grouped = new Set(repins.groups.flatMap((g) => g.ready.map((r) => r.flow)));
   return [
-    ...repins.groups.map((g) => repinRowOf(g, repins.canDecide)),
+    ...repins.groups.map((g) => repinRowOf(g, repins.canDecide, settleBy)),
     ...[...health.values()]
       .filter((h) => !grouped.has(h.flow))
       .flatMap((h) => designRowOf(h, settleBy) ?? []),

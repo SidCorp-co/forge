@@ -164,6 +164,22 @@ describe("an approved design's line agrees with what Needs you counts on it", ()
     expect(saidDisagreements(line)).toEqual([]);
   });
 
+  // ISS-805 c6 (failed at 1eb3d6c5): six design pages told the QA member "Waiting on you: approve N
+  // pin-only changes" while their Needs you counted none, which leaves an act the master takes off a
+  // person's list (REQ-68 BC-3). Where the master decides designs, the re-pin waits on the master.
+  it('names the master for the pin-only changes where the master decides designs, as Needs you does', () => {
+    const owed = {
+      flow: 'issue-lifecycle',
+      repin: { flow: 'issue-lifecycle', revision: 20, n: 4 },
+      settle: 2,
+      settleBy: 'master' as const,
+    };
+    const line = designWaitingOn({ ...approved, owed });
+    expect(line.kind).toBe('agent');
+    expect(line.act).toBe('approve 4 pin-only changes');
+    expect(line).toEqual(repinRowOf(group, true, 'master').standing.waitingOn);
+  });
+
   it('names the pin-only changes first, as the re-pin row on Needs you does', () => {
     const owed = {
       flow: 'issue-lifecycle',

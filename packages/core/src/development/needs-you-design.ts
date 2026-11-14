@@ -25,7 +25,11 @@ interface DesignRow extends RowTitle {
  * One row for a moved base's pin-only dependents, in place of a row per design: the act that clears
  * them is one, so the row is one (the HOP shape, where access r13 asked for six approvals).
  */
-export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignRow {
+export function repinRowOf(
+  group: DesignRepinGroup,
+  canDecide: boolean,
+  by: 'person' | 'master' = 'person',
+): DesignRow {
   const n = group.ready.length;
   const title = say('designs.title.repinBatch', {
     n,
@@ -40,7 +44,7 @@ export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignR
     standing: {
       attentionGroup: 'needs_you',
       // the one wait the design's own page says too (`@forge/contracts/design-owed`)
-      waitingOn: repinOwedWait({ flow: group.flow, revision: group.revision, n }, canDecide),
+      waitingOn: repinOwedWait({ flow: group.flow, revision: group.revision, n }, canDecide, by),
     },
     touchedAt: group.approvedAt,
   };
