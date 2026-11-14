@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.672] - 2026-11-14
+
+Design pages name other designs by title in the person's view
+
+### Fixed
+
+- **A design's Person view names other designs by title.** Its re-pin panel and approval warnings show no flow slug, revision number or fingerprint; the Developer view keeps them (ISS-805).
+- **The shell reads at forge-dev size are no longer judged by wall time under CI load.** Their statement, buffer and CPU ceilings hold the read, and the newest-shipped read takes the spread of its seed.
+
 ## [0.4.0-dev.671] - 2026-11-13
 
 The project's master sees a release it may cut

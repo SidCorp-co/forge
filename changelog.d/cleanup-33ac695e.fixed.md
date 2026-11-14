@@ -1,1 +1,0 @@
-**The shell reads at forge-dev size are no longer judged by wall time under CI load.** Their statement, buffer and CPU ceilings hold the read, and the newest-shipped read takes the spread of its seed.
