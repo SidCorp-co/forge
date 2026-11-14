@@ -1,4 +1,5 @@
-// The images a master's post carries (ISS-1024): uploads Forge already stores on an issue, a comment
+// The images a master's post carries (ISS-1024), or a PDF (ISS-1238, FB-643: a multi-step guide as
+// one file in one message, where pictures alone made it a tall PNG): uploads Forge already stores on an issue, a comment
 // or an agent session, read through the uploads module's own lookup, so the caller names an upload by
 // the id every attachment list shows and never hands over bytes. Every image is checked and read
 // before anything is posted, and staged on the chat server before the text goes out, so a refusal
@@ -6,7 +7,12 @@
 // thread (or the text's top level), with the bot credential core holds and under a neutral name: an
 // upload's own name is the uploader's words and is never screened for the room's readers.
 
-import { ROOM_IMAGE_CAPS, ROOM_IMAGE_MIMES } from '@forge/contracts/support';
+import {
+  ROOM_DOCUMENT_CAPS,
+  ROOM_DOCUMENT_MIMES,
+  ROOM_IMAGE_CAPS,
+  ROOM_IMAGE_MIMES,
+} from '@forge/contracts/support';
 import type { SupportMasterPostAttachment } from '@forge/contracts/support-channel';
 import { postStagedMedia, stageRoomMedia } from '../integrations/rocketchat/index.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -37,14 +43,22 @@ export interface PostedImage {
   messageId: string | null;
 }
 
-const IMAGE_MIMES: ReadonlySet<string> = new Set(ROOM_IMAGE_MIMES);
-const MIME_EXT: Record<(typeof ROOM_IMAGE_MIMES)[number], string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
+type PostMime = (typeof ROOM_IMAGE_MIMES)[number] | (typeof ROOM_DOCUMENT_MIMES)[number];
+
+/**
+ * Each type a post's file may be, with its cap, what a room calls it and the neutral name it posts
+ * under. A PDF goes into a master's post alone: a member's picture the agent reads is never one.
+ */
+const POST_FILES: Record<PostMime, { cap: number; kind: string; stem: string; ext: string }> = {
+  'image/png': { cap: ROOM_IMAGE_CAPS.bytes, kind: 'picture', stem: 'image', ext: 'png' },
+  'image/jpeg': { cap: ROOM_IMAGE_CAPS.bytes, kind: 'picture', stem: 'image', ext: 'jpg' },
+  'image/gif': { cap: ROOM_IMAGE_CAPS.bytes, kind: 'picture', stem: 'image', ext: 'gif' },
+  'image/webp': { cap: ROOM_IMAGE_CAPS.bytes, kind: 'picture', stem: 'image', ext: 'webp' },
+  'application/pdf': { cap: ROOM_DOCUMENT_CAPS.bytes, kind: 'PDF', stem: 'document', ext: 'pdf' },
 };
-const VALID = `an issue, comment or session upload of this project, a ${ROOM_IMAGE_MIMES.join(', ')} of at most ${ROOM_IMAGE_CAPS.bytes} bytes`;
+const fileOf = (mime: string) =>
+  Object.hasOwn(POST_FILES, mime) ? POST_FILES[mime as PostMime] : null;
+const VALID = `an issue, comment or session upload of this project: a picture (${ROOM_IMAGE_MIMES.join(', ')}) of at most ${ROOM_IMAGE_CAPS.bytes} bytes, or a PDF (${ROOM_DOCUMENT_MIMES.join(', ')}) of at most ${ROOM_DOCUMENT_CAPS.bytes} bytes`;
 
 /** One item checked: the image, or why it cannot go into a room. */
 async function checkOne(
@@ -74,18 +88,19 @@ async function checkOne(
       `${named} belongs to a project you cannot read; name ${VALID}`,
     );
   }
-  if (!IMAGE_MIMES.has(att.mime)) {
+  const file = fileOf(att.mime);
+  if (!file) {
     return refusalOf(
       'SUPPORT_POST_IMAGE_NOT_AN_IMAGE',
       at,
-      `${named} is ${att.mime}, not an image a room shows; name ${VALID}`,
+      `${named} is ${att.mime}, neither a picture nor a PDF a room takes; name ${VALID}`,
     );
   }
-  if (att.size > ROOM_IMAGE_CAPS.bytes) {
+  if (att.size > file.cap) {
     return refusalOf(
       'SUPPORT_POST_IMAGE_TOO_LARGE',
       at,
-      `${named} is ${att.size} bytes, over the ${ROOM_IMAGE_CAPS.bytes} a room's picture holds; name ${VALID}`,
+      `${named} is ${att.size} bytes, over the ${file.cap} a room's ${file.kind} holds; name ${VALID}`,
     );
   }
   try {
@@ -138,8 +153,13 @@ export async function stagePostImages(
   if (images.length === 0) return { ok: true, value: { images, fileIds: [] } };
   const { auth } = await roomAuth(room);
   const fileIds: string[] = [];
+  // numbered per kind: image-1.png, image-2.jpg, document-1.pdf
+  const counted = new Map<string, number>();
   for (const [i, image] of images.entries()) {
-    const name = `image-${i + 1}.${MIME_EXT[image.mime as keyof typeof MIME_EXT]}`;
+    const file = POST_FILES[image.mime as PostMime];
+    const n = (counted.get(file.stem) ?? 0) + 1;
+    counted.set(file.stem, n);
+    const name = `${file.stem}-${n}.${file.ext}`;
     const staged = await stageRoomMedia(auth, room.rid, {
       bytes: image.bytes,
       mime: image.mime,

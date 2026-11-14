@@ -27,6 +27,7 @@ export { type LiveConnection, liveConnectionFor } from './live-connections.js';
 export { fetchRoomMessagesSince } from './missed-messages.js';
 export { namespaceFromServerUrl } from './namespace.js';
 export {
+  editProvenReply,
   FIXED_REPLY_CONSTANT,
   type ReplySendProof,
   type ReplyTransport,
@@ -65,7 +66,13 @@ export {
   provideRoomHandlers,
   provideSupportRoomHandler,
 } from './room-handlers.js';
-export { postStagedMedia, type StagedMedia, stageRoomMedia } from './room-media.js';
+export {
+  deleteRoomMessage,
+  type MessageChange,
+  postStagedMedia,
+  type StagedMedia,
+  stageRoomMedia,
+} from './room-media.js';
 export { buildRoutes, type Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
 export {

@@ -1,6 +1,7 @@
-// Posting an image into a room as the bot (ISS-1024): uploaded unposted first, then posted as its
-// own message, so a caller can have every image on the server before its first line goes out. The
-// bot's credential goes only to the connection's own server, as every REST call's does.
+// Posting an image or a PDF into a room as the bot (ISS-1024, ISS-1238): uploaded unposted first,
+// then posted as its own message, so a caller can have every file on the server before its first line
+// goes out; and changing or removing a message the bot posted (`chat.update`, `chat.delete`,
+// ISS-1238). The bot's credential goes only to the connection's own server, as every REST call's does.
 
 import type { RocketChatRestAuth } from './rest-client.js';
 
@@ -102,4 +103,38 @@ export async function postStagedMedia(
   }
   const id = (res.body?.message as { _id?: unknown } | undefined)?._id;
   return { ok: true, messageId: typeof id === 'string' ? id : null };
+}
+
+/** What the chat server said to changing or removing one of the bot's messages. */
+export type MessageChange = { ok: true } | { ok: false; why: string };
+
+/** The answer of a JSON call that changes a message: done only on a 2xx the server did not deny. */
+function changed(res: Awaited<ReturnType<typeof rcSend>>): MessageChange {
+  if ('failed' in res) return { ok: false, why: res.failed };
+  if (res.status < 200 || res.status >= 300 || res.body?.success !== true) {
+    return { ok: false, why: mediaFailure(res.status, res.body) };
+  }
+  return { ok: true };
+}
+
+/**
+ * Replace the text of the bot's message `msgId` in room `rid` (`chat.update`, ISS-1238). Called only
+ * through the outbound door's `editProvenReply`, which holds the screen's proof for `text`.
+ */
+export async function updateRoomMessage(
+  auth: RocketChatRestAuth,
+  rid: string,
+  msgId: string,
+  text: string,
+): Promise<MessageChange> {
+  return changed(await rcSend(auth, 'chat.update', { roomId: rid, msgId, text }));
+}
+
+/** Remove the bot's message `msgId` from room `rid` (`chat.delete`, ISS-1238). */
+export async function deleteRoomMessage(
+  auth: RocketChatRestAuth,
+  rid: string,
+  msgId: string,
+): Promise<MessageChange> {
+  return changed(await rcSend(auth, 'chat.delete', { roomId: rid, msgId }));
 }

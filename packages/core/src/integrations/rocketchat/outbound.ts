@@ -3,6 +3,7 @@ import { scrubLogText } from '@forge/observability';
 import type { RocketChatDdpClient } from './ddp-client.js';
 import { postRoomMessage, type RocketChatButtonAttachment } from './rest-client.js';
 import type { RoomPostAuth } from './room-auth.js';
+import { type MessageChange, updateRoomMessage } from './room-media.js';
 
 export type ReplyTransport =
   | {
@@ -52,11 +53,8 @@ export const FIXED_REPLY_CONSTANT: unique symbol = Symbol('rocketchat.outbound.f
  */
 export type ReplySendProof = typeof FIXED_REPLY_CONSTANT | ProvenMessage;
 
-export async function sendFixedReply(
-  transport: ReplyTransport,
-  text: string,
-  proof: ReplySendProof,
-): Promise<{ messageId: string | null }> {
+/** Throws unless `proof` is the constant or a screen's proof minted for exactly `text`. */
+function assertProven(text: string, proof: ReplySendProof): void {
   if (proof !== FIXED_REPLY_CONSTANT) {
     if (typeof proof.text !== 'string') {
       throw new Error(
@@ -69,7 +67,31 @@ export async function sendFixedReply(
       );
     }
   }
+}
+
+export async function sendFixedReply(
+  transport: ReplyTransport,
+  text: string,
+  proof: ReplySendProof,
+): Promise<{ messageId: string | null }> {
+  assertProven(text, proof);
   return { messageId: await deliver(transport, text) };
+}
+
+/**
+ * Replace the text of a message the bot posted (ISS-1238), held to the proof a new line is: an edit
+ * never carries words the screen did not admit, nor the bot's own token.
+ */
+export async function editProvenReply(
+  auth: RoomPostAuth,
+  rid: string,
+  messageId: string,
+  text: string,
+  proof: ProvenMessage,
+): Promise<MessageChange> {
+  assertProven(text, proof);
+  const safe = scrubLogText(clipReply(text), [auth.authToken]);
+  return updateRoomMessage(auth, rid, messageId, safe);
 }
 
 const quoted = (s: string): string => (s.length > 120 ? `${s.slice(0, 120)}…` : s);

@@ -9,6 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { expect } from 'vitest';
 import type WebSocket from 'ws';
 import { WebSocketServer } from 'ws';
+import { changeLine, serveUpload } from './support-chat-lines.js';
 import { RealRocketChat } from './support-real-chat-server.js';
 
 export interface Member {
@@ -105,6 +106,10 @@ export class StandInRocketChat implements ChatServer {
   mediaRefused = false;
   /** Whether `chat.postMessage` refuses a line outside any thread, as a read-only group does (ISS-1224). */
   topLevelRefused = false;
+  /** Every line the bot removed with `chat.delete` (ISS-1238), as it stood when removed. */
+  readonly deletedLines: BotLine[] = [];
+  /** Whether `chat.update` and `chat.delete` refuse, as a server barring edits after a while does. */
+  changesRefused = false;
 
   /** How many times a group's history was read. */
   historyReads = 0;
@@ -138,7 +143,9 @@ export class StandInRocketChat implements ChatServer {
       res.end(JSON.stringify(payload));
     };
     if (req.headers['x-auth-token'] !== this.bot.authToken) return json(401, { success: false });
-    if (url.pathname.startsWith('/file-upload/')) return this.serveUpload(url.pathname, res);
+    if (url.pathname.startsWith('/file-upload/')) {
+      return serveUpload(this.uploads, this.uploadReads, url.pathname, res);
+    }
     if (url.pathname.startsWith('/api/v1/rooms.media/')) {
       const rid = decodeURIComponent(url.pathname.split('/')[4] ?? '');
       return json(...(await this.stageMedia(rid, raw, String(req.headers['content-type']))));
@@ -238,6 +245,10 @@ export class StandInRocketChat implements ChatServer {
       case '/api/v1/chat.react':
         this.reactions.push({ messageId: body.messageId, emoji: body.emoji });
         return json(200, { success: true });
+      case '/api/v1/chat.update':
+      case '/api/v1/chat.delete':
+        if (this.changesRefused) return json(400, { success: false, error: 'error-not-allowed' });
+        return json(...changeLine(this.lines, this.deletedLines, url.pathname, body));
       case '/api/v1/chat.postMessage': {
         if (this.topLevelRefused && !body.tmid) return json(400, { success: false });
         const id = this.nextId();
@@ -297,27 +308,6 @@ export class StandInRocketChat implements ChatServer {
       at: Date.now(),
     });
     return [200, { success: true, message: { _id: id } }];
-  }
-
-  private serveUpload(path: string, res: ServerResponse): void {
-    const id = path.split('/')[2] ?? '';
-    this.uploadReads.push(id);
-    const file = this.uploads.get(id);
-    if (!file) {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-    if (file.status) {
-      res.writeHead(file.status);
-      res.end();
-      return;
-    }
-    res.writeHead(200, {
-      'content-type': file.mime,
-      'content-length': String(file.bytes.byteLength),
-    });
-    res.end(file.bytes);
   }
 
   /**

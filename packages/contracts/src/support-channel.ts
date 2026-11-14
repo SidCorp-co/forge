@@ -318,9 +318,10 @@ export type SupportMasterPostAttachment = z.infer<
 export const supportMasterPostRequestSchema = z.strictObject({
 	text: z.string().trim().min(3).max(4000),
 	/**
-	 * Images posted after the text, in the same room and thread (ISS-1024): at most a room message's
-	 * picture count, each a png, jpeg, gif or webp of at most the room's picture size
-	 * (`ROOM_IMAGE_CAPS`). Every one is checked before anything is posted.
+	 * Images, or a PDF, posted after the text, in the same room and thread (ISS-1024, ISS-1238): at
+	 * most a room message's picture count, each a png, jpeg, gif or webp of at most the room's picture
+	 * size (`ROOM_IMAGE_CAPS`) or a PDF of at most `ROOM_DOCUMENT_CAPS`. Every one is checked before
+	 * anything is posted.
 	 */
 	attachments: z
 		.array(supportMasterPostAttachmentSchema)
@@ -344,6 +345,17 @@ export const supportMasterPostRequestSchema = z.strictObject({
 });
 export type SupportMasterPostRequest = z.infer<
 	typeof supportMasterPostRequestSchema
+>;
+
+/**
+ * `PATCH /api/projects/:id/support/master-posts/:messageId` (ISS-1238): the master's new words for
+ * its own post, screened as the post was. Its images or PDF stay as they went.
+ */
+export const supportMasterPostEditRequestSchema = z.strictObject({
+	text: supportMasterPostRequestSchema.shape.text,
+});
+export type SupportMasterPostEditRequest = z.infer<
+	typeof supportMasterPostEditRequestSchema
 >;
 
 /**

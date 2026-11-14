@@ -6,6 +6,11 @@
 // forge-master skill the box installs; what a dispatched run does is the `issue-flow` guide.
 
 import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
+import {
+  ROOM_DOCUMENT_CAPS,
+  ROOM_IMAGE_CAPS,
+  SUPPORT_MASTER_POST_EDIT_WINDOW_MS,
+} from '@forge/contracts/support';
 import { guideRef } from './guide-ref.js';
 import { OWED_NOW_RULE } from './owed-now.js';
 import type { CoreGuide } from './types.js';
@@ -166,11 +171,20 @@ screens the words for the room's readers and records the post as the master's.
 - **Once per result.** A users' thread already told an item's result takes a post only as a
   follow-up naming the message that told it, \`followsUp\`, as the refusal
   \`SUPPORT_MASTER_POST_ALREADY_TOLD\` names it: say there only what it did not.
-- **Images.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment | session,
-  attachmentId }\`: attach a screenshot to the issue first
-  (\`POST /api/issues/:id/attachments\`), then name the id it answers. Each
-  is a png, jpeg, gif or webp of at most 4000000 bytes, uploaded to this project, and follows the text
-  into the same room and thread under a neutral name.
+- **Images or a PDF.** \`attachments\` names up to four Forge uploads as \`{ target: issue | comment |
+  session, attachmentId }\`: attach the file to the issue first
+  (\`POST /api/issues/:id/attachments\`), then name the id it answers. Each is a png, jpeg, gif or
+  webp of at most ${ROOM_IMAGE_CAPS.bytes} bytes, or a PDF of at most ${ROOM_DOCUMENT_CAPS.bytes} bytes
+  (a guide of many steps goes as one PDF, not a tall picture), uploaded to this project, and follows
+  the text into the same room and thread under a neutral name. Any other type is refused.
+- **Editing or deleting your own post.** Within ${SUPPORT_MASTER_POST_EDIT_WINDOW_MS / 60_000} minutes of posting,
+  \`PATCH /api/projects/:id/support/master-posts/:messageId { text }\` replaces its words, screened as
+  the post was, and \`DELETE\` on the same path removes it with its images or PDF; \`messageId\` is
+  the one the post answered. Each is recorded on the room with who and when. Past the window, post a
+  correction instead. Refused by name, nothing changed: \`SUPPORT_POST_UNKNOWN\`,
+  \`SUPPORT_POST_NOT_YOURS\` (another account's or project's post, or no master post),
+  \`SUPPORT_POST_EDIT_WINDOW_PASSED\`, \`SUPPORT_POST_DELETED\` and \`SUPPORT_POST_UNCHANGED\` (the
+  chat server would not).
 - **A room its users read** takes a master's words only in an asker's thread (one a member wrote
   in), never at its top level, mentioning at most one person: the thread's asker or a member of
   the room. Plain words, things named as the user sees them on screen: no Forge issue key, MR or PR

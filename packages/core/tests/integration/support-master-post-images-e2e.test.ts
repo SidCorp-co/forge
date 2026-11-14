@@ -25,6 +25,10 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // after the text in the same room and thread, through the same admission the text takes. An item that
 // is no image, too large, unreadable to the caller or unknown is refused by name, nothing posted.
 //
+// ISS-1238 (FB-643): the owner asked for a multi-step guide as one PDF in one message, and the door
+// took pictures only, so a master posted a tall PNG. A post now takes a PDF beside pictures, posted
+// the same way under a neutral name, at most `ROOM_DOCUMENT_CAPS.bytes`; any other type is refused.
+//
 // The world binds the agent over two groups: rid, read by users, and rid2, the owner's room.
 
 const w = new AgentWorld();
@@ -34,6 +38,7 @@ let issueId = '';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 const JPEG = Buffer.from('ffd8ffe000104a464946', 'hex');
+const PDF = Buffer.from('%PDF-1.7\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n', 'latin1');
 const RESULT = 'Đã kiểm tra bản phát hành, ảnh chụp màn hình bên dưới.';
 
 const post = (body: unknown) =>
@@ -147,6 +152,46 @@ describe("ISS-1024: a master's post carries images into the text's own thread", 
   });
 });
 
+describe("ISS-1238: a master's post carries a PDF in one message", () => {
+  it("posts the text then the PDF in the asker's thread, under a neutral name, and records it", async () => {
+    const asked = (await w.hear(() => chat.say(chat.bob, 'Cho tôi xin hướng dẫn sử dụng?'))).id;
+    const guide = await attach(issueId, 'Huong dan 12 buoc.pdf', 'application/pdf', PDF);
+    const res = await post({ text: RESULT, thread: asked, attachments: [issueImage(guide)] });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const lines = w.threadLines(chat.rid, asked);
+    expect(lines.map((l) => [l.text, l.file?.name ?? null, l.file?.mime ?? null])).toEqual([
+      [RESULT, null, null],
+      ['', 'document-1.pdf', 'application/pdf'],
+    ]);
+    expect(lines[1]?.file?.bytes.equals(PDF)).toBe(true);
+    expect(res.body).toMatchObject({
+      attachments: [{ attachmentId: guide, messageId: lines[1]?.id }],
+    });
+    const [act] = await rows<{ mime: string }>(sql`
+      SELECT input->'attachments'->0->>'mime' AS mime FROM support_actions
+       WHERE project_id = ${w.projectId}::uuid AND tool = 'master_post' AND thread = ${asked}`);
+    expect(act?.mime).toBe('application/pdf');
+  });
+
+  it('numbers pictures and PDFs apart when one post carries both', async () => {
+    const shot = await attach(issueId, 'step.png', 'image/png', PNG);
+    const guide = await attach(issueId, 'guide.pdf', 'application/pdf', PDF);
+    const res = await post({
+      text: RESULT,
+      rid: chat.rid2,
+      attachments: [issueImage(shot), issueImage(guide)],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const thread = (res.body as { thread: string }).thread;
+    expect(
+      w
+        .threadLines(chat.rid2, thread)
+        .slice(-2)
+        .map((l) => l.file?.name),
+    ).toEqual(['image-1.png', 'document-1.pdf']);
+  });
+});
+
 describe('ISS-1024: an image the room cannot take is refused by name, nothing posted', () => {
   const nothingPosted = async (body: Record<string, unknown>, at: string, codes: string[]) => {
     const lines = allLines();
@@ -172,7 +217,32 @@ describe('ISS-1024: an image the room cannot take is refused by name, nothing po
     const [refusal] = refusalsOf(res);
     expect(refusal?.detail).toContain(notes);
     expect(refusal?.detail).toContain('image/png, image/jpeg, image/gif, image/webp');
+    expect(refusal?.detail).toContain('or a PDF (application/pdf) of at most 10000000 bytes');
     expect(refusal?.detail).toContain('Nothing was posted');
+  });
+
+  it('refuses a PDF over the cap a room holds for one, naming its size and the cap', async () => {
+    const big = await attach(issueId, 'huge.pdf', 'application/pdf', PDF, 10_000_001);
+    const res = await nothingPosted(
+      { text: RESULT, rid: chat.rid2, attachments: [issueImage(big)] },
+      '/attachments/',
+      ['SUPPORT_POST_IMAGE_TOO_LARGE'],
+    );
+    expect(refusalsOf(res)[0]?.detail).toContain("10000001 bytes, over the 10000000 a room's PDF");
+  });
+
+  it('still refuses a document that is no PDF, such as a Word file', async () => {
+    const word = await attach(
+      issueId,
+      'guide.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      Buffer.from('PK'),
+    );
+    await nothingPosted(
+      { text: RESULT, rid: chat.rid2, attachments: [issueImage(word)] },
+      '/attachments/',
+      ['SUPPORT_POST_IMAGE_NOT_AN_IMAGE'],
+    );
   });
 
   it('refuses an image over the room picture size, naming its size and the cap', async () => {

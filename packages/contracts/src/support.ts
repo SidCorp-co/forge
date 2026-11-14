@@ -857,6 +857,19 @@ export const ROOM_IMAGE_MIMES = [
 	"image/webp",
 ] as const;
 
+/**
+ * The document a master's post may carry besides pictures (ISS-1238, FB-643): a PDF, such as a
+ * multi-step user guide in one file. A master's post alone takes it; a member's picture the channel
+ * agent reads is still one of `ROOM_IMAGE_MIMES`.
+ */
+export const ROOM_DOCUMENT_MIMES = ["application/pdf"] as const;
+
+/** How large a master's post's PDF is at most (ISS-1238). */
+export const ROOM_DOCUMENT_CAPS = { bytes: 10_000_000 } as const;
+
+/** How long after posting a master may edit or delete its own room post (ISS-1238). */
+export const SUPPORT_MASTER_POST_EDIT_WINDOW_MS = 30 * 60_000;
+
 export const supportThreadIdSchema = z
 	.string()
 	.min(1)
@@ -1580,14 +1593,24 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_POST_IMAGE_UNKNOWN",
 	/** A master's post names an upload of a project its caller cannot read (ISS-1024). */
 	"SUPPORT_POST_IMAGE_UNREADABLE",
-	/** A master's post names an upload that is no png, jpeg, gif or webp (ISS-1024). */
+	/** A master's post names an upload that is no png, jpeg, gif, webp or PDF (ISS-1024, ISS-1238). */
 	"SUPPORT_POST_IMAGE_NOT_AN_IMAGE",
-	/** A master's post names an image larger than a room's picture (ISS-1024). */
+	/** A master's post names an image or a PDF larger than a room's cap for it (ISS-1024, ISS-1238). */
 	"SUPPORT_POST_IMAGE_TOO_LARGE",
 	/** A master's post names an upload whose file is gone from storage (ISS-1024). */
 	"SUPPORT_POST_IMAGE_FILE_MISSING",
 	/** The chat server took no image of a master's post (ISS-1024). */
 	"SUPPORT_POST_IMAGE_UNPOSTED",
+	/** An edit or delete naming no room message a master posted through master-posts (ISS-1238). */
+	"SUPPORT_POST_UNKNOWN",
+	/** An edit or delete of a room message that is not this master's own master-post (ISS-1238). */
+	"SUPPORT_POST_NOT_YOURS",
+	/** An edit or delete of a master's post after its edit window (ISS-1238). */
+	"SUPPORT_POST_EDIT_WINDOW_PASSED",
+	/** An edit or delete of a master's post already deleted (ISS-1238). */
+	"SUPPORT_POST_DELETED",
+	/** The chat server would not edit or delete a master's post (ISS-1238). */
+	"SUPPORT_POST_UNCHANGED",
 	/** A promise naming an issue of a project the room does not follow (ISS-1012). */
 	"SUPPORT_PROMISE_NOT_FOLLOWED",
 	/** A promise naming no issue of the project its key or `project` names (ISS-1012). */
@@ -1735,6 +1758,11 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_POST_IMAGE_TOO_LARGE: 400,
 	SUPPORT_POST_IMAGE_FILE_MISSING: 404,
 	SUPPORT_POST_IMAGE_UNPOSTED: 503,
+	SUPPORT_POST_UNKNOWN: 404,
+	SUPPORT_POST_NOT_YOURS: 403,
+	SUPPORT_POST_EDIT_WINDOW_PASSED: 409,
+	SUPPORT_POST_DELETED: 409,
+	SUPPORT_POST_UNCHANGED: 503,
 	SUPPORT_PROMISE_NOT_FOLLOWED: 403,
 	SUPPORT_PROMISE_ISSUE_UNKNOWN: 404,
 	SUPPORT_PROMISE_ISSUE_DROPPED: 409,

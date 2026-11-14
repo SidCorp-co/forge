@@ -18,6 +18,7 @@
 // names follow its text into the same room and thread, each checked before anything is posted
 // (ISS-1024, `master-post-images.ts`). A project a channel agent's binding names in `agent.projects`
 // posts into that agent's rooms as well, since the group cannot be bound to it a second time (ISS-1230).
+// A master edits or deletes its own post within a window (ISS-1238, `master-post-edit.ts`).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
 import { findBindingWithConnectionById } from '../integrations/index.js';
@@ -55,7 +56,8 @@ import {
   topLevelThreadOf,
 } from './thread.js';
 
-const TOOL = 'master_post';
+/** The tool a master's post is recorded under; its edit and delete read it back (ISS-1238). */
+export const TOOL = 'master_post';
 
 export interface Postable {
   room: RoomRow;

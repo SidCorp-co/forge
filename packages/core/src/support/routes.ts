@@ -47,6 +47,7 @@ import { requiresNoPermission, requiresOnParam } from '../permissions/index.js';
 import { mountActionsRoute } from './actions-route.js';
 import { mountChannelRoutes } from './channel-routes.js';
 import { postAsMaster } from './master-post.js';
+import { mountMasterPostEditRoutes } from './master-post-edit.js';
 import { ownerGitCredential } from './owner-git.js';
 import { mountOwnerRoutes } from './owner-routes.js';
 import { mountReportThreadRoutes } from './report-thread-route.js';
@@ -456,6 +457,8 @@ supportRoutes.post(
   },
 );
 
+// the master edits or deletes its own post within the window (ISS-1238)
+mountMasterPostEditRoutes(supportRoutes);
 mountChannelRoutes(supportRoutes);
 mountTurnRecordRoutes(supportRoutes);
 mountActionsRoute(supportRoutes);
