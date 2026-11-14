@@ -296,3 +296,54 @@ describe('ISS-1123: what is live is said from a release read of the same turn', 
     );
   });
 });
+
+describe('ISS-1237: a thread waiting on work recorded elsewhere is told through a promise', () => {
+  it('names support.promise in the one-result refusal, and a promise note opens one post', async () => {
+    const outs: Record<string, unknown>[] = [];
+    // FB-640: the room answered bob here, then the work he waits on, recorded from another thread,
+    // went live, and its result post here was refused with no way through named
+    const asked = await w.hear(
+      () => chat.say(chat.bob, 'the orders still will not push, tell me when it is fixed'),
+      async (_t, act, m) => {
+        outs.push(
+          await act({ action: 'reply', thread: m().thread, text: 'Send me the error screen.' }),
+        );
+        outs.push(await act({ action: 'reply', thread: m().thread, text: 'The fix is live now.' }));
+      },
+    );
+    const thread = asked.id;
+    expect(outs[0]?.isError, JSON.stringify(outs[0])).toBe(false);
+    expect(code(outs[1])).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
+    expect(JSON.stringify(outs[1])).toContain('support.promise { thread, issue, environment }');
+    await w.settleWarm();
+    w.box.model = async (turn, act) => {
+      if (!turn.messages.some((m) => m.from === 'forge' && m.thread === thread)) return;
+      outs.push(
+        await act({ action: 'reply', thread, text: 'The fix is live: push the orders again.' }),
+      );
+      outs.push(await act({ action: 'reply', thread, text: 'Tell me if anything else fails.' }));
+    };
+    // the note promise-watch.ts hands a promising thread once the work reaches the environment
+    await insertAction({
+      roomId,
+      projectId: w.projectId,
+      conversationId: await threadConversation(roomId, thread),
+      thread,
+      kind: 'message_in',
+      actorKind: 'core',
+      input: {
+        note: 'You promised bob to tell them here when "Orders push again" reached dev. It has: dev serves it now.',
+      },
+      externalId: 'promise:iss-1237',
+    });
+    await deliverWaiting(roomId);
+    await expect.poll(() => outs.length, { timeout: 20_000 }).toBe(4);
+    await w.settleWarm();
+    expect(outs[2]?.isError, JSON.stringify(outs[2])).toBe(false);
+    expect(code(outs[3])).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
+    expect(w.threadLines(chat.rid, thread).map((l) => l.text)).toEqual([
+      'Send me the error screen.',
+      'The fix is live: push the orders again.',
+    ]);
+  });
+});

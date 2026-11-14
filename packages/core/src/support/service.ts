@@ -165,7 +165,7 @@ export async function reply(
     return no(
       'SUPPORT_ONE_RESULT_PER_REQUEST',
       '/thread',
-      'your last post in this thread is its result, and no message has arrived there since: one result per request, never an acknowledgement or progress. Nothing was posted. Keep what you have until the next message in this thread, and answer all of it in that one post.',
+      'your last post in this thread is its result, and no message has arrived there since: one result per request, never an acknowledgement or progress. Nothing was posted. Keep what you have until the next message in this thread, and answer all of it in that one post. Where the person here waits on work recorded or carried from another thread, promise them here with support.promise { thread, issue, environment }: Forge hands you a note in this thread once it is there, and that note opens your one post.',
     );
   }
   const text = await scrubbedForRoom(room, input.text);

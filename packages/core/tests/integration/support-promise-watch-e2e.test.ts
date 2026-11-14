@@ -287,4 +287,43 @@ describe('ISS-1012: a support room promises to tell a person when an issue reach
     expect((await promises()).map((p) => p.state)).toEqual(['reached', 'dropped', 'untracked']);
     expect((await told()).map((t) => t.output.state)).toEqual(['reached', 'dropped', 'untracked']);
   });
+
+  // ISS-1237, from FB-640 (adminhub-api, 2026-11-14): a person waits in one thread on work recorded
+  // from another and already live. A promise made then, on work its environment already serves, is
+  // answered at the next watch pass with one note in the promising thread, which the room posts once.
+  it('answers at the next pass a promise made on work its environment already serves (ISS-1237)', async () => {
+    await seedProjectDocument(w.projectId, w.ownerId, { environments: environments(true) });
+    const live = (
+      await createTestIssue(w.projectId, w.ownerId, 10, {
+        status: 'in_progress',
+        createdAt: new Date(),
+      })
+    ).id;
+    await rows(sql`
+      UPDATE issues SET merged_at = now(), merged_commit_sha = ${LANDING}
+       WHERE id = ${live}::uuid`);
+    served = LANDING;
+    const made: Record<string, unknown>[] = [];
+    const thread = await onNextAsk(
+      () => w.chat.say(w.chat.alice, 'Đơn vẫn chưa đẩy được, khi nào sửa xong báo mình nhé'),
+      async (turn, act) => {
+        const asked = turn.messages.find((m) => m.from !== 'forge');
+        made.push(
+          await act({
+            action: 'promise',
+            thread: asked?.thread,
+            issue: 'ISS-10',
+            environment: 'staging',
+          }),
+        );
+      },
+    );
+    expect(made[0]).toMatchObject({ promised: true, created: true });
+    const notes = answersPromises();
+    expect(await tellProjectPromises(w.projectId)).toBe(1);
+    await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
+    expect(notes[0]?.thread).toBe(thread);
+    expect(notes[0]?.text).toContain('it is on staging now');
+    expect(await tellProjectPromises(w.projectId)).toBe(0);
+  });
 });
