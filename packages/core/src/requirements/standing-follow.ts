@@ -50,6 +50,8 @@ export interface TracedChange {
   approved: number;
   /** The step id, or `from>to` for an edge. */
   node: string;
+  /** The step's title as a person saw it on the design, or `from → to` for an edge (debt 8e64b2a5). */
+  label: string;
   change: 'removed' | 'renamed';
 }
 
@@ -63,7 +65,7 @@ export function reviseForDesignAct(changes: readonly TracedChange[]): Said {
   return say('standing.act.reviseForDesign', {
     codes: unique(same.map((c) => c.code)).join(', '),
     design: first.title,
-    steps: unique(same.map((c) => `${c.node} ${c.change}`)).join(', '),
+    steps: unique(same.map((c) => `${c.label} ${c.change}`)).join(', '),
   });
 }
 

@@ -59,23 +59,43 @@ export function tracedStepChanges(
   traces: readonly CriterionTrace[],
   pinned: DesignNodes | null,
   approved: DesignNodes,
-): { code: string; node: string; change: 'removed' | 'renamed' }[] {
-  const out: { code: string; node: string; change: 'removed' | 'renamed' }[] = [];
+): TracedStepChange[] {
+  // a step is named as a person saw it on the design: its title where it was pinned, else where it
+  // was approved, and its id only where neither revision names it (debt 8e64b2a5)
+  const named = (step: string) =>
+    pinned?.steps.get(step) ?? approved.steps.get(step) ?? step;
+  const out: TracedStepChange[] = [];
   for (const t of traces) {
     for (const step of t.steps) {
-      if (!approved.steps.has(step)) out.push({ code: t.code, node: step, change: 'removed' });
+      const label = named(step);
+      if (!approved.steps.has(step)) out.push({ code: t.code, node: step, label, change: 'removed' });
       else if (pinned?.steps.has(step) && pinned.steps.get(step) !== approved.steps.get(step)) {
-        out.push({ code: t.code, node: step, change: 'renamed' });
+        out.push({ code: t.code, node: step, label, change: 'renamed' });
       }
     }
     for (const e of t.edges) {
       const held = approved.edges.some(
         (x) => x.from === e.from && x.to === e.to && (e.label === null || x.label === e.label),
       );
-      if (!held) out.push({ code: t.code, node: `${e.from}>${e.to}`, change: 'removed' });
+      if (!held) {
+        out.push({
+          code: t.code,
+          node: `${e.from}>${e.to}`,
+          label: `${named(e.from)} → ${named(e.to)}`,
+          change: 'removed',
+        });
+      }
     }
   }
   return out;
+}
+
+/** One traced node an approval removed or renamed: its id (`from>to` for an edge) and the name a person saw it by. */
+export interface TracedStepChange {
+  code: string;
+  node: string;
+  label: string;
+  change: 'removed' | 'renamed';
 }
 
 interface StaleDesignPin {

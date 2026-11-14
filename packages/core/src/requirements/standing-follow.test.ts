@@ -51,6 +51,7 @@ const removed: TracedChange = {
   title: 'Checkout',
   approved: 2,
   node: 'pay',
+  label: 'Pay',
   change: 'removed',
 };
 
@@ -70,14 +71,15 @@ describe('a design approved past the pin', () => {
   it('waits on the master, not a person, to revise the criteria a removed or renamed step held', () => {
     const s = turn(
       base({
-        tracedChanges: [removed, { ...removed, code: 'BC-2', node: 'ship', change: 'renamed' }],
+        tracedChanges: [removed, { ...removed, code: 'BC-2', node: 'ship', label: 'Ship', change: 'renamed' }],
       }),
     );
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Master',
-      act: 'revise BC-1, BC-2 for Checkout: pay removed, ship renamed',
+      // named by the titles a person sees on the design, never the step ids (debt 8e64b2a5)
+      act: 'revise BC-1, BC-2 for Checkout: Pay removed, Ship renamed',
     });
   });
 

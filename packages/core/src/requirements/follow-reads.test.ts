@@ -55,8 +55,8 @@ describe('tracedStepChanges', () => {
       [['pay', 'ship', 'paid']],
     );
     expect(tracedStepChanges(traces, pinned, approved)).toEqual([
-      { code: 'BC-1', node: 'pay', change: 'removed' },
-      { code: 'BC-2', node: 'ship', change: 'renamed' },
+      { code: 'BC-1', node: 'pay', label: 'Pay', change: 'removed' },
+      { code: 'BC-2', node: 'ship', label: 'Ship', change: 'renamed' },
     ]);
   });
 
@@ -67,15 +67,17 @@ describe('tracedStepChanges', () => {
       ['ship', 'Ship'],
     ]);
     expect(tracedStepChanges(traces, pinned, approved)).toEqual([
-      { code: 'BC-2', node: 'pay>ship', change: 'removed' },
+      { code: 'BC-2', node: 'pay>ship', label: 'Pay → Ship', change: 'removed' },
     ]);
   });
 
   it('reads only removals where no pinned revision is there to compare a name against', () => {
     const approved = design([['ship', 'Dispatch']]);
+    // no pinned revision: a step the approval still holds is named by its approved title, one it
+    // dropped by its id, since no revision left names it
     expect(tracedStepChanges(traces, null, approved)).toEqual([
-      { code: 'BC-1', node: 'pay', change: 'removed' },
-      { code: 'BC-2', node: 'pay>ship', change: 'removed' },
+      { code: 'BC-1', node: 'pay', label: 'pay', change: 'removed' },
+      { code: 'BC-2', node: 'pay>ship', label: 'pay → Dispatch', change: 'removed' },
     ]);
   });
 });

@@ -218,7 +218,7 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Master',
-      act: 'revise BC-1 for Post-discharge follow-up: context removed',
+      act: 'revise BC-1 for Post-discharge follow-up: Know the patient removed',
     });
     expect(await needsYouKeys()).not.toContain(key);
   });
