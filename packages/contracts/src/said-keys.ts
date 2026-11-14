@@ -1610,6 +1610,10 @@ export const SAID = {
 		en: "planned: {failing} failed when shipped; a release passing it resolves it",
 		vars: { failing: "text" },
 	},
+	"feedback.rule.shippedOwed": {
+		en: "resolved: {owed} shipped owed its live verdict; verified once it passes",
+		vars: { owed: "text" },
+	},
 	"feedback.rule.shippedSettles": {
 		en: "resolved: shipped or answered, so the next sweep records it verified",
 	},

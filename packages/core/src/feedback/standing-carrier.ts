@@ -32,6 +32,8 @@ export interface RoutedIssueFacts {
   unreleased: boolean;
   /** Its live criteria whose latest verdict is `fail`, by number (ISS-1159). */
   failing?: readonly number[];
+  /** Its live criteria whose latest verdict is `skipped`, owed live, by number (ISS-1234). */
+  owed?: readonly number[];
 }
 
 /** An owed carrier issue's own standing (`issues/standing.ts`), as the item rolls it up. */
@@ -242,6 +244,32 @@ export function issueWait(
  */
 export function shippedFailingOf(f: PhaseFacts): string[] {
   return f.status === 'triaged' && f.route === 'issue' ? failingOf(f.routedIssues) : [];
+}
+
+/**
+ * The criteria an issue route's carriers shipped owed a live verdict, as `ISS-382 c3`: each carrier
+ * closed and released whose latest verdict on a live criterion is `skipped` (ISS-1234). The item reads
+ * resolved, and the ship sweep does not verify it until that verdict passes.
+ */
+export function shippedOwedOf(f: PhaseFacts): string[] {
+  if (f.status !== 'triaged' || f.route !== 'issue') return [];
+  return f.routedIssues.flatMap((i) =>
+    i.status === 'closed' && !i.unreleased
+      ? (i.owed ?? []).map((n) => `${i.key ?? 'its carrier'} c${n}`)
+      : [],
+  );
+}
+
+/** A resolved item whose carrier shipped a criterion owed live waits on that verdict, not on the sweep. */
+export function shippedOwedWait(shippedOwed: readonly string[]): FeedbackWaitingOn {
+  const owed = shippedOwed.join(', ');
+  return wait(
+    'issue',
+    named(owed),
+    say('standing.act.judgeShipped', { criteria: owed }),
+    say('feedback.rule.shippedOwed', { owed }),
+    { ref: shippedOwed[0]?.split(' ')[0] ?? null },
+  );
 }
 
 const failingOf = (routed: readonly RoutedIssueFacts[]): string[] =>

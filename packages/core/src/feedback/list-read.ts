@@ -32,7 +32,7 @@ import {
 } from './linked-rows.js';
 import {
   carrierIssueRows,
-  failingCriteriaOf,
+  heldCriteriaOf,
   owedCarriers,
   shippedCarriersOfTriaged,
   unreleasedCarrierKeys,
@@ -50,7 +50,7 @@ import {
   revisionStageOf,
   type StandingViewer,
 } from './standing.js';
-import { shippedFailingOf } from './standing-carrier.js';
+import { shippedFailingOf, shippedOwedOf } from './standing-carrier.js';
 import { targetView } from './target-view.js';
 import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
 import type { ViewerCan } from './viewer-can.js';
@@ -69,6 +69,8 @@ export interface Linked extends StandingFacts {
       unreleased: boolean;
       /** Its live criteria whose latest verdict is `fail`, by number (`list-carriers.ts`, ISS-1159). */
       failing: readonly number[];
+      /** Its live criteria whose latest verdict is `skipped`, owed live, by number (ISS-1234). */
+      owed: readonly number[];
     }
   >;
   /** The issues each issue-routed item names as its carriers, by item id, oldest issue first. */
@@ -206,7 +208,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
   );
   const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
-  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound, failing] =
+  const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound, held] =
     await Promise.all([
       releaseGateOf(projectId, atGate),
       allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
@@ -218,7 +220,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ),
       readOwedPolicy(projectId),
       owesTriage ? runnerBoundIn(projectId) : true,
-      failingCriteriaOf(shippedCarriersOfTriaged(allRows, routeIssues, issueRows)),
+      heldCriteriaOf(shippedCarriersOfTriaged(allRows, routeIssues, issueRows)),
     ]);
   const { release, releaseHolders } = gate;
   const linked: Linked = {
@@ -243,7 +245,8 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
           status: i.status,
           releaseVersion: i.releaseVersion ?? shippedReleases.get(i.id)?.version ?? null,
           unreleased: i.unreleased,
-          failing: failing.get(i.id) ?? [],
+          failing: held.get(i.id)?.failing ?? [],
+          owed: held.get(i.id)?.owed ?? [],
         },
       ]),
     ),
@@ -321,6 +324,7 @@ function phaseFacts(r: Row, l: Linked, rootPhase: FeedbackPhase | null): PhaseFa
               status: issue.status,
               unreleased: issue.unreleased,
               failing: issue.failing,
+              owed: issue.owed,
             },
           ]
         : [];
@@ -347,16 +351,10 @@ export function phaseIn(r: Row, l: Linked): FeedbackPhase {
   return phaseOf(factsIn(r, l));
 }
 
-function factsIn(r: Row, l: Linked): PhaseFacts {
+export function factsIn(r: Row, l: Linked): PhaseFacts {
   const root = r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
   const rootPhase = root ? phaseOf(phaseFacts(root, l, null)) : null;
   return phaseFacts(r, l, rootPhase);
-}
-
-/** The criteria its carriers shipped failing (`ISS-18 c2`, ISS-1159); a duplicate reads its original's. */
-export function shippedFailingIn(r: Row, l: Linked): string[] {
-  const root = r.route === 'duplicate' && r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
-  return shippedFailingOf(factsIn(root ?? r, l));
 }
 
 const one = (carrier: FeedbackCarrierView): FeedbackCarrierView[] => [carrier];
@@ -456,6 +454,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       carrier: carried.carrier,
       carrierRunning: r.route === 'issue' && owed.some((c) => c.status === 'in_progress'),
       shippedFailing: phase === 'planned' ? shippedFailingOf(factsIn(r, l)) : [],
+      shippedOwed: phase === 'resolved' ? shippedOwedOf(factsIn(r, l)) : [],
     },
     {
       since: l.decidedAt.get(r.id) ?? r.createdAt,

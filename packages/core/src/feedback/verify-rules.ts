@@ -1,7 +1,7 @@
 /**
  * The verify door's guards (workflow `feedback-lifecycle` `verify`, `feedback-triage` `verify-ask`),
  * pure over the phase the read model reads (`standing.ts:phaseOf`) and the criteria the item's
- * carriers shipped failing (`list-read.ts:shippedFailingIn`, ISS-1159).
+ * carriers shipped failing (`shipped-held.ts:shippedFailingIn`, ISS-1159).
  */
 
 import type { FeedbackPhase, FeedbackRefusal } from '@forge/contracts/feedback';

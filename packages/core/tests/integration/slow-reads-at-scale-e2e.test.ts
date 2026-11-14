@@ -339,7 +339,7 @@ const HOME_ACROSS_CPU_MS = 800;
  * 113, 111 and 105; what grows with projects or rows is {@link ALONE}'s to refuse.
  */
 // ISS-1070 r11: each linked issue read once for every reader (`issues/display-ids.ts:issueCoresOf`), 149 to 147
-// ISS-1159: the feedback list reads its shipped carriers' failing criteria (`list-carriers.ts:failingCriteriaOf`), 147 to 148
+// ISS-1159: the feedback list reads its shipped carriers' failing criteria (`list-carriers.ts:heldCriteriaOf`), 147 to 148
 const ATTENTION_STATEMENTS = 148;
 // ISS-1070 r10 122 to 70; r18 (Moving's waits, the routed issues, live runs once) 74 to 66; ISS-1159 66 to 67
 const HOME_STATEMENTS = 67;

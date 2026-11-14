@@ -1,0 +1,1 @@
+**Feedback waits on a criterion owed its live check.** An item whose shipped carrier holds a criterion recorded skipped reads resolved, names that criterion, and is verified by ship only once it passes (ISS-1234).

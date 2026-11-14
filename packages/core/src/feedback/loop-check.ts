@@ -35,12 +35,13 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { fixConfirmationsOf } from '../previews/index.js';
 import { agencyOf, issueOfPreview, shippedPatchOf } from './confirm-reads.js';
-import { type Linked, linkedOf, phaseIn, routeView, shippedFailingIn } from './list-read.js';
+import { type Linked, linkedOf, phaseIn, routeView } from './list-read.js';
 import { goneByRecord, loopCloseFactsOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
 import { tellStepToReporters } from './reporters.js';
 import { personalActRefusal, reopenRefusal } from './rules.js';
 import { decide, feedbackKernelActor, inTx, lockFeedback, roleFacts } from './service.js';
+import { shippedFailingIn, shippedOwedIn } from './shipped-held.js';
 import { verifyRefusal } from './verify-rules.js';
 import { recordCheckAt, verifyWindowDays } from './verify-window.js';
 
@@ -83,6 +84,8 @@ async function verifyByShip(row: Row, projectId: string, linked: Linked): Promis
     if (now.status !== 'triaged') return null;
     const held = await linkedOf(projectId, [now]);
     if (verifyRefusal(phaseIn(now, held), shippedFailingIn(now, held))) return null;
+    // a carrier criterion owed its live verdict: the ship is no proof yet, so it waits (ISS-1234)
+    if (shippedOwedIn(now, held).length > 0) return null;
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {
         to: 'verified',

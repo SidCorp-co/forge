@@ -32,7 +32,7 @@ import { designNodesIn, nodeRefRefusal } from '../workflows/index.js';
 import { keepDeclineAsCorrection } from './correction.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { voidQuestionsOnDecline } from './leave-questions.js';
-import { linkedOf, phaseIn, phaseOfRow, shippedFailingIn } from './list-read.js';
+import { linkedOf, phaseIn, phaseOfRow } from './list-read.js';
 import { detailAs, type FeedbackActor, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import { declinedNotice, tellReporters } from './reporter-notices.js';
@@ -45,6 +45,7 @@ import {
   reopenRefusal,
   targetCountRefusal,
 } from './rules.js';
+import { shippedFailingIn } from './shipped-held.js';
 import { agentEvidenceRefusal } from './verb-rules.js';
 import { verifyAskRefusal, verifyRefusal } from './verify-rules.js';
 

@@ -64,29 +64,43 @@ export function owedCarriers(
   );
 }
 
+/** A carrier's live criteria by their latest verdict: `fail` (ISS-1159) and `skipped`, owed live (ISS-1234). */
+export interface CarrierHeld {
+  failing: number[];
+  owed: number[];
+}
+
 /**
  * The numbers of each issue's live criteria whose latest verdict is `fail` (ISS-1159): a carrier that
- * shipped with one does not resolve the item it carries. Asked only for the carriers that would
- * otherwise resolve an item (`list-read.ts:linkedOf`), and every project's asks are one statement
- * (`db/read-memo.ts:memoizedPerId`), so the shell's reads stay within their buffer ceilings.
+ * shipped with one does not resolve the item it carries; and `skipped` (ISS-1234: agenfold FB-283 was
+ * verified by ship while its carrier's c3 was owed a live verdict): one held so is not verified by
+ * ship. Asked only for the carriers that would otherwise resolve an item (`list-read.ts:linkedOf`),
+ * and every project's asks are one statement (`db/read-memo.ts:memoizedPerId`), so the shell's reads
+ * stay within their buffer ceilings.
  */
-export function failingCriteriaOf(issueIds: readonly string[]) {
-  return memoizedPerId('feedbackCarrierFailing', issueIds, async (some) => {
+export function heldCriteriaOf(issueIds: readonly string[]) {
+  return memoizedPerId('feedbackCarrierHeld', issueIds, async (some) => {
+    // the column named with its table: drizzle prints a select field's column bare, which inside the
+    // subquery would read criterion_verdicts' own id
+    const latest = sql<string>`(SELECT v.verdict FROM criterion_verdicts v WHERE v.criterion_id = "issue_criteria"."id"
+                ORDER BY v.created_at DESC LIMIT 1)`;
     const rows = await db
-      .select({ issueId: issueCriteria.issueId, n: issueCriteria.n })
+      .select({ issueId: issueCriteria.issueId, n: issueCriteria.n, verdict: latest })
       .from(issueCriteria)
       .where(
         and(
           inArray(issueCriteria.issueId, [...some]),
           isNull(issueCriteria.retiredAt),
-          sql`(SELECT v.verdict FROM criterion_verdicts v WHERE v.criterion_id = ${issueCriteria.id}
-                ORDER BY v.created_at DESC LIMIT 1) = 'fail'`,
+          sql`${latest} IN ('fail', 'skipped')`,
         ),
       )
       .orderBy(issueCriteria.n);
-    const failing = new Map<string, number[]>(some.map((id) => [id, []]));
-    for (const r of rows) failing.get(r.issueId)?.push(r.n);
-    return failing;
+    const held = new Map<string, CarrierHeld>(some.map((id) => [id, { failing: [], owed: [] }]));
+    for (const r of rows) {
+      const h = held.get(r.issueId);
+      if (h) (r.verdict === 'fail' ? h.failing : h.owed).push(r.n);
+    }
+    return held;
   });
 }
 

@@ -28,6 +28,7 @@ import {
   issueWait,
   type RoutedIssueFacts,
   relayWait,
+  shippedOwedWait,
 } from './standing-carrier.js';
 import { MASTER, masterTakesTriage, triageWait } from './standing-triage.js';
 
@@ -201,6 +202,8 @@ export interface StandingFacts {
   carrier?: CarrierStanding | null;
   /** The criteria its carriers shipped failing (`ISS-18 c2`): it stays planned on them (ISS-1159). */
   shippedFailing?: readonly string[];
+  /** The criteria its carriers shipped owed live (`ISS-382 c3`): resolved, verified once they pass (ISS-1234). */
+  shippedOwed?: readonly string[];
 }
 
 /** What the times read beyond the turn (`lib/standing-times.ts:withTimes`). */
@@ -254,6 +257,9 @@ function waitingOf(
       }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
+      // a carrier shipped with a criterion owed its live verdict: the ship proves nothing yet (ISS-1234)
+      if (facts.shippedOwed && facts.shippedOwed.length > 0)
+        return theirs(shippedOwedWait(facts.shippedOwed));
       // owner 2026-11-08 (D5): outside strict, the shipped carrier or the answer is the verify, and the
       // sweep records it (`loop-check.ts:verifyByShip`); nothing waits on the reporter or the master
       if (facts.masterVerifies) {

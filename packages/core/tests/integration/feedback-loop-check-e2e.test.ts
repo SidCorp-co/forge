@@ -329,7 +329,12 @@ describe('outside strict the ship is the verify, and nothing waits on the report
 // sweep verifies nothing, and the verify door refuses it by name, until c2's latest verdict passes.
 // Planted red by reading every closed, released carrier as resolving whatever its verdicts say.
 describe('a carrier shipped with a failing criterion verifies nothing (ISS-1159)', () => {
-  const verdict = (issueId: string, n: number, word: 'pass' | 'fail', minutesAgo: number) =>
+  const verdict = (
+    issueId: string,
+    n: number,
+    word: 'pass' | 'fail' | 'skipped',
+    minutesAgo: number,
+  ) =>
     db.execute(sql`
       INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, reason, identity_kind,
                                       commit_sha, author_agency, judge, created_at)
@@ -373,6 +378,45 @@ describe('a carrier shipped with a failing criterion verifies nothing (ISS-1159)
     // a later verdict passes c2: the carrier ships clean, and the ship verifies it as before
     await verdict(carrier.id, 2, 'pass', 10);
     expect((await get()).phase).toBe('resolved');
+    await sweepResolvedFeedback();
+    const after = await get();
+    expect(after.status).toBe('verified');
+    expect((after.decisions as Doc[]).at(-1)).toMatchObject({
+      decision: 'verified',
+      reason: expect.stringContaining('Verified by ship'),
+    });
+  });
+  // ISS-1234: agenfold FB-283 was verified by ship on 0.293.0 while its carrier ISS-382's c3 (an act on
+  // production waiting on the owner's approval) was recorded `skipped`, owed live; its reporter was told
+  // it was done. A criterion owed live holds the ship sweep: the item reads resolved, waits on that
+  // criterion by name, and is verified by ship once its latest verdict passes.
+  // Planted red by reading only `fail` as holding the sweep (the code before ISS-1234).
+  it('holds FB-283 unverified while its carrier ISS-382 c3 is skipped, and verifies it once c3 passes', async () => {
+    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
+    const w = await world();
+    const carrier = await issue(w, { status: 'closed', createdAt: ago(30), mergedAt: ago(2) });
+    await db.execute(sql`
+      INSERT INTO issue_criteria (issue_id, n, statement, position)
+      VALUES (${carrier.id}, 1, 'The agent holds serp-api in General', 1),
+             (${carrier.id}, 3, 'The tool is added on production once the owner approves', 3)
+    `);
+    await verdict(carrier.id, 1, 'pass', 50);
+    await verdict(carrier.id, 3, 'skipped', 30);
+    const fb = await feedback(w, [carrier.id]);
+    const path = `/api/projects/${w.projectId}/feedback/${fb}`;
+    const get = async () => (await api(w.token, 'GET', path)).body.feedback as Doc;
+
+    const shipped = await get();
+    expect(shipped.phase, 'it shipped, so it reads resolved').toBe('resolved');
+    expect(shipped.waitingOn).toMatchObject({ kind: 'issue', ref: carrier.key });
+    expect(String((shipped.waitingOn as Doc).rule)).toContain(`${carrier.key} c3 shipped owed`);
+
+    await sweepResolvedFeedback();
+    const held = await get();
+    expect(held.status, 'the sweep does not verify it by ship').toBe('triaged');
+    expect((held.decisions as Doc[]).some((d) => d.decision === 'verified')).toBe(false);
+
+    await verdict(carrier.id, 3, 'pass', 10);
     await sweepResolvedFeedback();
     const after = await get();
     expect(after.status).toBe('verified');
