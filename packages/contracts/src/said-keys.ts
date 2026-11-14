@@ -445,7 +445,7 @@ export const SAID = {
 	},
 	"issues.rule.noHolder": { en: "in_progress with no live lease, job or run" },
 	"issues.rule.noNote": {
-		en: "no release note (RELEASE_RECORD_MISSING): the master writes it next pass",
+		en: "no release note yet: the master writes it next pass",
 	},
 	"issues.rule.parked": {
 		en: "a run parked it on_hold: {why}",
@@ -1377,7 +1377,7 @@ export const SAID = {
 		vars: { rule: "said", ref: "said" },
 	},
 	"runs.rule.lockNoHolder": {
-		en: "DEPLOY_ENVIRONMENT_LOCKED: deploy refused {environment} at {at}; no holder readable",
+		en: "the deploy was refused at {at}: {environment} is locked, and who holds it cannot be read",
 		vars: { environment: "name", at: "instant" },
 	},
 	"runs.rule.lockUnnamedSubject": { en: "an unnamed subject" },
@@ -1441,7 +1441,7 @@ export const SAID = {
 		vars: { id: "key" },
 	},
 	"runs.rule.masterDialog": {
-		en: "MASTER_PANE_DIALOG: the master pane waits on a dialog a person answers",
+		en: "the master pane waits on a dialog a person answers",
 	},
 	"runs.act.answerRun": { en: "answer the run" },
 	"runs.ref.ledgerBlocked": {
@@ -1516,7 +1516,7 @@ export const SAID = {
 		en: "close the run once its agent reports",
 	},
 	"runs.rule.lockHeld": {
-		en: "DEPLOY_ENVIRONMENT_LOCKED: refused at {at}: run {run} holds {environment}, deploying {subject}{since}; refused {until}",
+		en: "the deploy was refused at {at}: run {run} holds {environment}, deploying {subject}{since}; refused {until}",
 		vars: {
 			at: "instant",
 			run: "key",
@@ -1923,11 +1923,11 @@ export const SAID = {
 		en: "a breakdown suggestion waits on a person",
 	},
 	"requirements.rule.replan": {
-		en: "planned against an earlier revision than r{r} (REQUIREMENT_CHANGED_SINCE_PLAN)",
+		en: "planned against an earlier revision than r{r}",
 		vars: { r: "count" },
 	},
 	"requirements.rule.replanUnknown": {
-		en: "planned against an earlier revision (REQUIREMENT_CHANGED_SINCE_PLAN)",
+		en: "planned against an earlier revision",
 	},
 	"requirements.rule.breakdownDue": {
 		en: "agreed, no issue; break it down now, latest {date} ({days} working days)",

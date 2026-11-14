@@ -121,7 +121,7 @@ describe('a merged issue at the gate with no release note', () => {
         input('awaiting_release', { merged: true, releaseApproval, releaseNoted: false }),
       );
       expect(s.waitingOn).toMatchObject({ kind: 'master', act: 'write the release note' });
-      expect(s.waitingOn.rule).toContain('RELEASE_RECORD_MISSING');
+      expect(s.waitingOn.rule).toBe('no release note yet: the master writes it next pass');
     }
   });
 });

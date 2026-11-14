@@ -69,6 +69,19 @@ describe("the registry", () => {
 		}
 		expect(wrong).toEqual([]);
 	});
+
+	// ui-copy-rule: a wait's sentence is read at a glance on every Person view, so it says why in
+	// words; a refusal code (RELEASE_RECORD_MISSING, DEPLOY_ENVIRONMENT_LOCKED) stays in the
+	// Developer view and the refusal itself (debt e199101c, six rules printed one).
+	it("never prints a refusal code in a wait's sentence", () => {
+		const WAIT = /\.(act|acts|rule|effect|title|who)\./;
+		const CODE = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b/;
+		const wrong = Object.entries(SAID_ENTRIES)
+			.filter(([key]) => WAIT.test(`.${key}.`) || key.startsWith("standing."))
+			.filter(([, entry]) => CODE.test(entry.en))
+			.map(([key, entry]) => `${key}: ${entry.en.match(CODE)?.[0]}`);
+		expect(wrong).toEqual([]);
+	});
 });
 
 describe("saying a sentence", () => {
