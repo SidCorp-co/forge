@@ -20,6 +20,13 @@ const openKeys = new Map<string, string>();
 beforeAll(() => {
   provideSchedulesPorts({
     commandReads: classifyCommand,
+    // the declared-read path with no box online: the pick refuses, as `support/declared-read.ts` does
+    secretEnvOf: async () => ({ ok: true, env: { FORGE_OPS_TOKEN: 'tok' } }),
+    projectReadBox: async () => ({
+      ok: false,
+      refusals: [{ detail: 'no box bound to project p has answered a heartbeat within 90s' }],
+    }),
+    withoutSecrets: (text: string) => text,
     // the project's filer as the door behaves: an open item with the same key is joined
     fileScriptFeedback: async ({ request }: { request: { signalKey: string } }) => {
       const open = openKeys.get(request.signalKey);
@@ -288,6 +295,22 @@ describe('the ops host of one firing', () => {
       { name: 'status', outcome: 'failed', code: 'SCRIPT_OPS_BOX_UNREACHABLE' },
     ]);
   });
+});
+
+// debt ed9cd2cd: past the liveness window the project's box pick itself refuses, with no reconnect
+// wait; that refusal is the same shared cause as a dropped box, never the call's own failure
+it("names a call whose project has no box to pick unreachable, through the real box path", async () => {
+  const ops = openOpsCaller({ projectId: 'p', decl: decl([{ name: 'status', tool: 'status' }]) });
+  expect(await ops.call('status', null)).toEqual({
+    ok: false,
+    name: 'ScriptOpsFailed',
+    code: 'SCRIPT_OPS_BOX_UNREACHABLE',
+    message:
+      'SCRIPT_OPS_BOX_UNREACHABLE: ctx.ops.status did not run: no box bound to project p has answered a heartbeat within 90s',
+  });
+  expect(ops.calls()).toEqual([
+    { name: 'status', outcome: 'failed', code: 'SCRIPT_OPS_BOX_UNREACHABLE' },
+  ]);
 });
 
 describe('the feedback host of one firing', () => {
