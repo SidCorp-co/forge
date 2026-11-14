@@ -309,7 +309,15 @@ function buildScope(root, paths) {
   if (results.length === 0) die(failures.join('; ') || 'no provider produced a graph');
 
   const graph = normalize(manifest, results);
-  if (graph.files.size === 0) die(`scope matched no files (${roots.join(', ')})`);
+  // cm:guard an empty graph with a provider that FAILED is that failure, not a scope question: under
+  //   file-handle exhaustion (forge ISS-1202's chain, 2026-11-10) the TypeScript provider dies, the
+  //   Go provider answers empty-but-ok, and "scope matched no files" hid the reason for 25 minutes
+  if (graph.files.size === 0) {
+    const why = [...failures, ...notes];
+    die(
+      `scope matched no files (${roots.join(', ')})${why.length ? `; a provider said: ${why.join('; ')}` : ''}`,
+    );
+  }
 
   // cm:guard every CONFIGURED provider, not only the ones that returned a graph — the whole point
   //   is to name the language that is missing, and a provider that died is by definition absent
