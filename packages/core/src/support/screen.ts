@@ -32,14 +32,19 @@ const MEMBER_REPLY_TOOLS: ReadonlySet<string> = new Set(['reply', 'route', 'mast
 
 /**
  * Why this post may carry no internal code, or null where it may (ISS-873): only a reply inside a
- * thread a member wrote in, in a room the team reads, where that member asked for the detail.
+ * thread a member wrote in, in a room the team reads, where that member asked for the detail. A post
+ * screened as the top level is while it goes into a thread the whole room reads (a project's own
+ * thread, a report thread) names that thread as `sharedThread`, so the reason says where it was going.
  */
 export async function codesBarredBecause(
   room: RoomRow,
   thread: string,
   tool: string,
+  sharedThread: string | null = null,
 ): Promise<string | null> {
   if ((await readersOf(room)) === 'users') return `${room.rid} is read by the product's users`;
+  if (thread === TOP_LEVEL && sharedThread)
+    return `thread ${sharedThread} of ${room.rid} is read by everyone in the room, as its top level is`;
   if (thread === TOP_LEVEL)
     return `a post at the top level of ${room.rid} is read by everyone there`;
   if (isCoreThread(thread)) return `a post for ${thread} is no member's thread`;
@@ -65,9 +70,11 @@ export async function screenForThread(
   text: string,
   door: SessionDoor,
   tool: string,
+  sharedThread: string | null = null,
 ): Promise<Outcome<{ text: string; proof: ProvenMessage }>> {
   const found = internalCodesIn(text, await keyPrefixesFor(room.projectId));
-  const barred = found.length > 0 ? await codesBarredBecause(room, thread, tool) : null;
+  const barred =
+    found.length > 0 ? await codesBarredBecause(room, thread, tool, sharedThread) : null;
   const codes = barred ? found : [];
   if (codes.length > 0) {
     await insertAction({

@@ -200,6 +200,7 @@ export async function editMasterPost(
     text,
     team ? 'operations-reply' : 'support-reply',
     TOOL,
+    top ? post.thread : null,
   );
   if (!admitted.ok) return admitted;
   const { auth } = await roomAuth(room);

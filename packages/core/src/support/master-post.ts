@@ -404,7 +404,7 @@ async function postAtTop(
 ): Promise<Posted> {
   const room = at.room;
   const text = await scrubbedForRoom(room, given);
-  const admitted = await screenForThread(room, null, TOP_LEVEL, text, doorOf(at), TOOL);
+  const admitted = await screenForThread(room, null, TOP_LEVEL, text, doorOf(at), TOOL, thread);
   if (!admitted.ok) return admitted;
   const staged = await stagePostImages(room, images);
   if (!staged.ok) return staged;

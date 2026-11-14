@@ -139,4 +139,16 @@ describe("a master's post in the shared operations room (ISS-934)", () => {
     const other = await post({ text: REVIEW, thread: 'someOtherThread1' });
     expect(refusalOf(other)?.code).toBe('SUPPORT_THREAD_UNKNOWN');
   });
+
+  // debts 416b6177 and 7fac533a (2026-11-13): a post into the project's own thread is screened as the
+  // top level is, since the whole room reads it, but its refusal said "a post at the top level", so the
+  // caller read the thread it named as ignored. The reason names the thread it was going to.
+  it('refuses an issue key in the recorded thread, naming that thread, never the top level', async () => {
+    const before = chat.linesIn(chat.rid).length;
+    const keyed = await post({ text: `${REVIEW} ISS-123 xong rồi.`, thread: THREAD });
+    expect(refusalOf(keyed)?.code, JSON.stringify(keyed.body)).toBe('SUPPORT_INTERNAL_CODE');
+    expect(refusalOf(keyed)?.detail).toContain(`thread ${THREAD} of ${chat.rid} is read by everyone`);
+    expect(refusalOf(keyed)?.detail).not.toContain('top level of');
+    expect(chat.linesIn(chat.rid).length).toBe(before);
+  });
 });
