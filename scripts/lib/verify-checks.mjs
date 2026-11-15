@@ -178,6 +178,12 @@ export const CHECKS = [
     scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
   },
   {
+    axis: 'relations',
+    label: 'run-slots',
+    cmd: ['node', 'scripts/check-run-slots.mjs', '--all'],
+    scanned: /^run-slots: (\d+) file\(s\) scanned/m,
+  },
+  {
     axis: 'form',
     label: 'lazy-module-init',
     cmd: ['node', 'scripts/check-lazy-module-init.mjs', '--all'],

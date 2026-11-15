@@ -1,0 +1,1 @@
+**Each project with work is guaranteed a subagent slot on its box.** A box declares how many subagents it runs; core shares them, one floor per project, and `run declare` is refused `RUN_SLOT_UNAVAILABLE` when its project has none free.

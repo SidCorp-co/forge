@@ -1,6 +1,6 @@
 /**
  * How many subagents each project on one box may run at once (ISS-1245). The ONE place a slot
- * count is computed: `scripts/check-run-slots-fence.mjs` refuses one anywhere else.
+ * count is computed: `scripts/check-run-slots.mjs` refuses one anywhere else.
  *
  * A slot is not a row. A live slot IS an open run session, so a claim is `run declare` and a
  * release is the run's close; this file only answers how many a project may hold.
