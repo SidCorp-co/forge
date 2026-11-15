@@ -6,11 +6,6 @@ import { z } from "zod";
 
 const CONTENT_LANGUAGE_DEFAULT = "en";
 
-export const CONTENT_LANGUAGE_CHOICES = [
-	{ tag: "en", label: "English" },
-	{ tag: "vi", label: "Tiếng Việt" },
-] as const;
-
 /** artifact: prose stored in Forge. chat: a reply, plus what the turn stores. code: code and its posts. */
 const CONTENT_LANGUAGE_CONTEXTS = ["artifact", "chat", "code"] as const;
 export type ContentLanguageContext = (typeof CONTENT_LANGUAGE_CONTEXTS)[number];
