@@ -5,6 +5,7 @@
 // BC-7) is judged on what the turn read, not on the reply alone. The binding's owner project lists a
 // room's turns by thread, and reads with each what started it and what it posted (REQ-92 BC-1, ISS-1118).
 
+import { SUPPORT_ROUTING_DECISIONS, type SupportRoutingDecision } from '@forge/contracts/support';
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
@@ -99,9 +100,22 @@ export interface RoomTurnLine {
   tools: string[];
   replied: boolean;
   refused: boolean;
+  /**
+   * The last routing decision the turn recorded (ISS-1243); null where it recorded none, which is
+   * "no decision recorded", never a silence.
+   */
+  decision: SupportRoutingDecision | null;
   firstAt: string;
   lastAt: string;
 }
+
+/**
+ * A room's routing decisions counted (ISS-1243): each decision its turns recorded, by kind, and the
+ * turns that recorded none, so misrouting and silence are measured, not inferred.
+ */
+export type RoomDecisionCounts = Record<SupportRoutingDecision, number> & {
+  undecidedTurns: number;
+};
 
 /**
  * The turns of a room, newest first, each as the actions it took name it (`turn-of-act.ts`); with
@@ -117,15 +131,7 @@ export async function roomTurnsOf(
   const room = await roomById(roomId);
   if (!room || room.projectId !== projectId) return null;
   const a = supportActions;
-  const inThread = thread
-    ? inArray(
-        a.turnId,
-        db
-          .select({ id: a.turnId })
-          .from(a)
-          .where(and(eq(a.roomId, room.id), eq(a.thread, thread), isNotNull(a.turnId))),
-      )
-    : undefined;
+  const inThread = turnsInThread(room.id, thread);
   const rows = await db
     .select({
       id: a.turnId,
@@ -134,6 +140,7 @@ export async function roomTurnsOf(
       tools: sql<string[]>`array_remove(array_agg(DISTINCT ${a.tool}), NULL)`,
       replied: sql<boolean>`bool_or(${a.kind} = 'reply')`,
       refused: sql<boolean>`bool_or(${a.kind} = 'refused')`,
+      decision: sql<SupportRoutingDecision | null>`(array_agg(${a.input}->>'decision' ORDER BY ${a.createdAt} DESC) FILTER (WHERE ${a.kind} = 'routing_decided'))[1]`,
       firstAt: sql<Date>`min(${a.createdAt})`.mapWith((v) => new Date(v)),
       lastAt: sql<Date>`max(${a.createdAt})`.mapWith((v) => new Date(v)),
     })
@@ -149,9 +156,76 @@ export async function roomTurnsOf(
     tools: r.tools,
     replied: r.replied,
     refused: r.refused,
+    decision: r.decision ?? null,
     firstAt: r.firstAt.toISOString(),
     lastAt: r.lastAt.toISOString(),
   }));
+}
+
+/** The turns that acted in a thread of the room, as a filter on its actions; none without a thread. */
+function turnsInThread(roomId: string, thread: string | undefined) {
+  const a = supportActions;
+  return thread
+    ? inArray(
+        a.turnId,
+        db
+          .select({ id: a.turnId })
+          .from(a)
+          .where(and(eq(a.roomId, roomId), eq(a.thread, thread), isNotNull(a.turnId))),
+      )
+    : undefined;
+}
+
+/**
+ * Every routing decision a room's turns recorded, counted by decision, and the turns that recorded
+ * none (ISS-1243); with `thread`, over the turns that acted in it.
+ */
+export async function roomDecisionCounts(
+  roomId: string,
+  thread?: string,
+): Promise<RoomDecisionCounts> {
+  const a = supportActions;
+  const turns = db
+    .select({
+      decided: sql<number>`count(*) FILTER (WHERE ${a.kind} = 'routing_decided')`.as('decided'),
+    })
+    .from(a)
+    .where(
+      and(
+        eq(a.roomId, roomId),
+        isNotNull(a.turnId),
+        isNotNull(a.sessionId),
+        turnsInThread(roomId, thread),
+      ),
+    )
+    .groupBy(a.turnId, a.sessionId)
+    .as('turns');
+  const [undecided] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(turns)
+    .where(sql`${turns.decided} = 0`);
+  const decided = await db
+    .select({ decision: sql<string>`${a.input}->>'decision'`, n: sql<number>`count(*)::int` })
+    .from(a)
+    .where(
+      and(
+        eq(a.roomId, roomId),
+        eq(a.kind, 'routing_decided'),
+        isNotNull(a.turnId),
+        turnsInThread(roomId, thread),
+      ),
+    )
+    .groupBy(sql`${a.input}->>'decision'`);
+  const counts = Object.fromEntries(SUPPORT_ROUTING_DECISIONS.map((d) => [d, 0])) as Record<
+    SupportRoutingDecision,
+    number
+  >;
+  for (const row of decided) {
+    if ((SUPPORT_ROUTING_DECISIONS as readonly string[]).includes(row.decision)) {
+      counts[row.decision as SupportRoutingDecision] = row.n;
+    }
+  }
+  return { ...counts, undecidedTurns: undecided?.n ?? 0 };
 }
 
 /** A message that started a turn, or was written into it while it ran. */
@@ -231,6 +305,20 @@ async function actsOf(room: RoomRow, turnId: string) {
   }));
 }
 
+/**
+ * What a turn decided for the messages it was handed (ISS-1243): each routing decision it recorded,
+ * in order; a turn that recorded none reads "no decision recorded", whatever else it did, never a
+ * silence.
+ */
+function routingOf(acts: Awaited<ReturnType<typeof actsOf>>) {
+  const decisions = acts
+    .filter((a) => a.kind === 'routing_decided')
+    .map((a) => ({ thread: a.thread, ...(a.input as Record<string, unknown>), at: a.at }));
+  return decisions.length > 0
+    ? { recorded: true as const, decisions }
+    : { recorded: false as const, decisions, reads: 'no decision recorded' as const };
+}
+
 /** The turn a room's action names, read for a project reader; null when no action of the room names it. */
 export async function turnRecordOf(
   viewer: string,
@@ -260,6 +348,7 @@ export async function turnRecordOf(
   );
   const [trigger, acts] = await Promise.all([triggerOf(room, span), actsOf(room, turnId)]);
   return {
+    routing: routingOf(acts),
     sessionId: span.sessionId,
     turnId,
     startedAt: span.startedAt.toISOString(),
@@ -294,7 +383,9 @@ export function mountTurnRecordRoutes(routes: Hono<{ Variables: AuthVars }>): vo
           'SUPPORT_REFUSED',
         );
       }
-      return c.json({ turns, limit: TURNS_LISTED });
+      const thread = c.req.valid('query').thread;
+      const decisions = await roomDecisionCounts(roomId, thread);
+      return c.json({ turns, limit: TURNS_LISTED, decisions });
     },
   );
   routes.get(

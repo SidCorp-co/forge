@@ -4173,6 +4173,13 @@
       "when": 1839369600000,
       "tag": "0653_a_room_keeps_its_report_thread",
       "breakpoints": true
+    },
+    {
+      "idx": 654,
+      "version": "7",
+      "when": 1839456000000,
+      "tag": "0654_a_room_agent_records_its_routing_decision",
+      "breakpoints": true
     }
   ]
 }

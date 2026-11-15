@@ -2,6 +2,7 @@ import {
   supportAgreeRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
+  supportDecideRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
   supportImageRequestSchema,
@@ -106,6 +107,7 @@ const SHAPES = {
   thread: '{ thread }',
   reply: '{ thread, text, why? }',
   silent: '{ thread, message?, reason }',
+  decide: '{ thread, message?, decision, project?, signals, confidence, why }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
   record:
@@ -168,6 +170,13 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(supportSilentRequestSchema, SHAPES.silent),
   (c) => act(c, c.req.valid('param').id, { action: 'silent', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/decisions',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(supportDecideRequestSchema, SHAPES.decide),
+  (c) => act(c, c.req.valid('param').id, { action: 'decide', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/checks',

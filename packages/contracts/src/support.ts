@@ -798,6 +798,11 @@ export const SUPPORT_ACTION_KINDS = [
 	"answer_kept",
 	/** The session chose to post nothing for a message it was handed, with its reason (ISS-942). */
 	"silent",
+	/**
+	 * The session's routing decision for a message it was handed (ISS-1243): the project chosen, the
+	 * signals used, its confidence, and answer, gather, ask or silent with why.
+	 */
+	"routing_decided",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -913,6 +918,7 @@ export const SUPPORT_ACTIONS = [
 	"owner_sign_in",
 	"release_decision",
 	"silent",
+	"decide",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -977,6 +983,74 @@ export const supportSilentRequestSchema = z.strictObject({
 		),
 	reason: supportWhySchema.describe("one line: why nothing is posted for it"),
 });
+/**
+ * What a room agent decided for a message it was handed (ISS-1243): to answer it, to gather more on
+ * its own first, to ask the person one short question, or to stay silent.
+ */
+export const SUPPORT_ROUTING_DECISIONS = [
+	"answer",
+	"gather",
+	"ask",
+	"silent",
+] as const;
+export type SupportRoutingDecision = (typeof SUPPORT_ROUTING_DECISIONS)[number];
+
+/**
+ * What a routing decision rested on (ISS-1243): the message's own words, who sent it, what that
+ * sender worked on before, the thread's history and the project its records went to, the room's
+ * projects, and a tracker or knowledge search.
+ */
+export const SUPPORT_ROUTING_SIGNALS = [
+	"message",
+	"sender",
+	"sender_history",
+	"thread_history",
+	"room_projects",
+	"search",
+] as const;
+export type SupportRoutingSignal = (typeof SUPPORT_ROUTING_SIGNALS)[number];
+
+export const SUPPORT_ROUTING_CONFIDENCES = ["high", "medium", "low"] as const;
+export type SupportRoutingConfidence =
+	(typeof SUPPORT_ROUTING_CONFIDENCES)[number];
+
+/**
+ * The session's routing decision for one message (ISS-1243), kept on the turn that made it: which
+ * project the message concerns, what that rested on, how sure, and whether it answers, gathers,
+ * asks or stays silent, and why. A silence decided here is the message's stated silence.
+ */
+export const supportDecideRequestSchema = z.strictObject({
+	thread: threadId,
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.optional()
+		.describe(
+			"the message you decide on, as it carries `message` in what you were handed",
+		),
+	decision: z
+		.enum(SUPPORT_ROUTING_DECISIONS)
+		.describe(
+			"answer it, gather more on your own first, ask the person one short question, or stay silent",
+		),
+	project: supportProjectSlugSchema
+		.optional()
+		.describe(
+			"the project the message concerns, one you follow by slug; omitted where it concerns none (chatter)",
+		),
+	signals: z
+		.array(z.enum(SUPPORT_ROUTING_SIGNALS))
+		.min(1)
+		.max(SUPPORT_ROUTING_SIGNALS.length)
+		.describe("what the decision rested on"),
+	confidence: z
+		.enum(SUPPORT_ROUTING_CONFIDENCES)
+		.describe("how sure you are of the project and the decision"),
+	why: supportWhySchema.describe("one line: why this decision"),
+});
+export type SupportDecideRequest = z.infer<typeof supportDecideRequestSchema>;
 export const supportRunRequestSchema = z.strictObject({
 	thread: threadId,
 	tool: z.string().min(1).max(48),

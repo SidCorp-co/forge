@@ -6,9 +6,13 @@ import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import {
   SUPPORT_ACTIONS,
   SUPPORT_RECORD_KINDS,
+  SUPPORT_ROUTING_CONFIDENCES,
+  SUPPORT_ROUTING_DECISIONS,
+  SUPPORT_ROUTING_SIGNALS,
   supportAgreeRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
+  supportDecideRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
   supportImageRequestSchema,
@@ -96,6 +100,7 @@ const REQUESTS = {
   tools: z.strictObject({}),
   reply: supportReplyRequestSchema,
   silent: supportSilentRequestSchema,
+  decide: supportDecideRequestSchema,
   run: supportRunRequestSchema,
   propose_fix: supportProposeFixRequestSchema,
   record: supportRecordRequestSchema,
@@ -163,6 +168,8 @@ const inputSchema = z.strictObject({
   ...supportSearchRequestSchema.partial().shape,
   ...supportReplyRequestSchema.partial().shape,
   ...supportSilentRequestSchema.partial().shape,
+  signals: supportDecideRequestSchema.shape.signals.optional(),
+  confidence: supportDecideRequestSchema.shape.confidence.optional(),
   ...supportProposeFixRequestSchema.partial().shape,
   ...supportRecordRequestSchema.partial().shape,
   ...operationsIssuesRequestSchema.partial().shape,
@@ -173,7 +180,18 @@ const inputSchema = z.strictObject({
   ...supportCommandRequestSchema.partial().shape,
   // the owner's consent or its withdrawal, for a product by its binding name (ISS-1013)
   // and a person's release decision, read from his own message (ISS-1206)
-  decision: z.enum(['agree', 'decline', 'give', 'withdraw', 'approve', 'return']).optional(),
+  // and a routing decision for a message (ISS-1243)
+  decision: z
+    .enum([
+      'agree',
+      'decline',
+      'give',
+      'withdraw',
+      'approve',
+      'return',
+      ...SUPPORT_ROUTING_DECISIONS,
+    ])
+    .optional(),
   version: supportReleaseDecisionRequestSchema.shape.version.optional(),
   product: supportOwnerConsentRequestSchema.shape.product,
   // the owner's cited agreement to an act its product gates on approval (ISS-1014)
@@ -195,6 +213,7 @@ const SHAPE = [
   'tools {}',
   'reply { thread, text, why? }',
   'silent { thread, message?, reason }',
+  `decide { thread, message?, decision: ${SUPPORT_ROUTING_DECISIONS.join(' | ')}, project?, signals: (${SUPPORT_ROUTING_SIGNALS.join(' | ')})[], confidence: ${SUPPORT_ROUTING_CONFIDENCES.join(' | ')}, why }`,
   'run { thread, tool, args? }',
   'propose_fix { thread, tool, args?, asker }',
   `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker?, project? }`,
@@ -240,6 +259,7 @@ const DESCRIPTION = [
   'thread {thread}: the thread so far, oldest first, each message with its id, which agree cites. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
   "reply {thread, text, why?}: post your answer in that thread; `why`, one line, says why the message asked for one. It is screened before it is posted; a refusal names what to rewrite. In a group the product's users read, any post holding a Forge issue key (a store's own order number such as RIV-68493 may stay), an MR or PR number, an environment variable name, a commit sha or a credential word is refused SUPPORT_INTERNAL_CODE.",
   'silent {thread, message?, reason}: post nothing for a message you were handed, saying why in one line (chatter, for someone else, already answered by a Technical member, working on it in the background): recorded on the room, never posted. Every message you are handed gets a reply, a refusal or this.',
+  "decide {thread, message?, decision, project?, signals, confidence, why}: for each message you were handed, record what you decided from its meaning before you act on it: answer it, gather more on your own first (the thread, the routing signals you were handed, a search of the projects you follow), ask the person one short question (only once gathering is exhausted), or stay silent; the project it concerns, by slug (one you follow; omitted where it concerns none); the signals it rested on (message, sender, sender_history, thread_history, room_projects, search); how sure you are; and why, one line. It is kept on your turn and counted; nothing is posted. decision silent is the message's stated silence too, so no support.silent is needed after it. A project you do not follow is refused OPS_OUT_OF_SCOPE and nothing is recorded.",
   'run {thread, tool, args}: run a granted diagnose check; you get what came back, and the thread is shown nothing.',
   'propose_fix {thread, tool, args, asker}: propose a granted fix for the person who asked (`from.id`). Nothing is posted: you are handed `proposal`, whom it waits on and when it expires. Ask that person in your own words; nothing runs until you cite their answer with agree.',
   `record {thread, kind, title, summary, whereSeen?, asker?, project?}: propose recording what needs code or a decision as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}), on the project that owns it: name a project you follow as project, so its master gets it; your home when omitted. Nothing is posted and nothing is filed yet: you are handed \`proposal\`. Ask the asker (the thread's first writer unless named) in your own words whether to record it; when they agree in plain words, call agree. You are handed the key and the project it was filed in then, which you tell them even where you cannot read that project's feedback; where it cannot be filed, agree refuses SUPPORT_RECORD_NOT_FILED naming why, and the proposal still stands: once that is put right, cite the same answer again. You are told again once it is answered, shipped or declined, with what the team said or shipped: then post that result in its thread. Never post progress, and never promise a date.`,
