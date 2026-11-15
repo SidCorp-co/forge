@@ -65,7 +65,7 @@ async function askBy(
     () => chat.say(who, text),
     async (_t, act, message) => {
       out = await act({
-        action: 'forge_act',
+        action: 'owner_forge_act',
         ...cite({ thread: String(message().thread), message: String(message().message) }),
         project: slug,
         ...args,
@@ -184,7 +184,7 @@ describe("ISS-1243 item 24: the owner's Forge act is made as him from his own me
     // the act and each refusal are on the room's record beside his message
     const acts = await rows<{ kind: string }>(sql`
       SELECT kind FROM support_actions
-       WHERE project_id = ${w.projectId} AND tool = 'forge_act' ORDER BY created_at`);
+       WHERE project_id = ${w.projectId} AND tool = 'owner_forge_act' ORDER BY created_at`);
     expect(acts.map((a) => a.kind)).toEqual([
       'refused',
       'refused',

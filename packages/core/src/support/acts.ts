@@ -147,7 +147,7 @@ export type SupportActInput =
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
   | ({ action: 'owner_sign_in' } & SupportOwnerSignInRequest)
   | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
-  | ({ action: 'forge_act' } & SupportForgeActRequest)
+  | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | {
       action: 'read';
       name: string;
@@ -405,7 +405,7 @@ async function act(
       const { action: _, ...request } = input;
       return decideReleaseFromMessage(room, request);
     }
-    case 'forge_act': {
+    case 'owner_forge_act': {
       const { action: _, ...request } = input;
       return ownerForgeAct(room, request);
     }

@@ -912,7 +912,7 @@ export const SUPPORT_ACTIONS = [
 	"owner_act",
 	"owner_sign_in",
 	"release_decision",
-	"forge_act",
+	"owner_forge_act",
 	"silent",
 ] as const;
 

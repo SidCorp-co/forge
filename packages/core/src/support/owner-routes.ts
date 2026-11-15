@@ -90,7 +90,7 @@ export function mountOwnerRoutes(app: Hono<{ Variables: AuthVars }>): void {
     projectParam,
     SESSION_ONLY,
     strictBody(supportForgeActRequestSchema, '{ thread, message, project, act, item, reason? }'),
-    (c) => act(c, c.req.valid('param').id, { action: 'forge_act', ...c.req.valid('json') }),
+    (c) => act(c, c.req.valid('param').id, { action: 'owner_forge_act', ...c.req.valid('json') }),
   );
 
   // which products core keeps the owner's credential for: names, never values

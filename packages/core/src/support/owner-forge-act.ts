@@ -293,7 +293,7 @@ export async function ownerForgeAct(
     thread: input.thread,
     kind: out.ok ? 'operation' : 'refused',
     actorKind: 'session',
-    tool: 'forge_act',
+    tool: 'owner_forge_act',
     input: { ...input, citedBy: 'session' },
     output: out.ok ? out.value : { refusals: out.refusals },
   });
