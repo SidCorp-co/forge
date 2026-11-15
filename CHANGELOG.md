@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.688] - 2026-11-15
+
+Needs you names the project's master for its own release cuts
+
+### Fixed
+
+- **Needs you no longer tells admins to cut a release the project's master cuts.** The feedback item names the master, and falls to an admin only past the cut's due or when the release carries an irreversible change.
+
 ## [0.4.0-dev.687] - 2026-11-15
 
 Room agents route by sender and history, ask masters, and act for the owner
