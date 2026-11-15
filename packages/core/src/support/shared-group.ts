@@ -4,11 +4,14 @@
 // when it is named): `@sid-desk` is sid-desk's, kept as context by every other project of the group,
 // and a project answering only mentions answers only its name, never the bot the group shares.
 
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { supportActions } from '../db/schema-support.js';
 import { forgeReads } from '../integrations/index.js';
 import { mentionsIn } from './channel.js';
 import type { Addressed } from './inbound.js';
 import { roomIsBound } from './rooms.js';
-import { lastPosterInThread, type RoomRow, roomsOnRid } from './store.js';
+import { type RoomRow, roomsOnRid } from './store.js';
 
 /** The projects holding the group beside a room's own, by slug, lower case. */
 export interface GroupSharers {
@@ -78,4 +81,25 @@ export async function threadHeldByAnother(room: RoomRow, thread: string): Promis
   if (others.length === 0) return false;
   const holder = await lastPosterInThread([room.id, ...others.map((r) => r.id)], thread);
   return holder !== null && holder !== room.id;
+}
+
+/** Which of these rooms' sessions replied last in `thread`, by room id; null where none did. */
+async function lastPosterInThread(
+  roomIds: readonly string[],
+  thread: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ roomId: supportActions.roomId })
+    .from(supportActions)
+    .where(
+      and(
+        inArray(supportActions.roomId, [...roomIds]),
+        eq(supportActions.thread, thread),
+        eq(supportActions.kind, 'reply'),
+        eq(supportActions.actorKind, 'session'),
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt))
+    .limit(1);
+  return row?.roomId ?? null;
 }

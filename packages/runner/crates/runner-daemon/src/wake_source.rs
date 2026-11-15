@@ -107,8 +107,9 @@ mod tests {
 
     #[test]
     fn an_agent_ask_wake_is_read_by_its_name() {
-        let source = WakeSource::of_frame(&serde_json::json!({ "source": "agent_ask", "askId": "a" }))
-            .expect("the runner refused a room agent's ask");
+        let source =
+            WakeSource::of_frame(&serde_json::json!({ "source": "agent_ask", "askId": "a" }))
+                .expect("the runner refused a room agent's ask");
         assert_eq!(source, WakeSource::AgentAsk);
         assert_eq!(source.label(), "agent_ask");
     }

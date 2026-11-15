@@ -1,9 +1,7 @@
 import {
   supportAgreeRequestSchema,
-  supportApproveRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
-  supportDecideRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
   supportImageRequestSchema,
@@ -34,14 +32,12 @@ import {
 import {
   operationsDraftFeedbackRequestSchema,
   operationsDraftRequirementRequestSchema,
-  operationsFeedbackRequestSchema,
   operationsIssuesRequestSchema,
   operationsMoveRequestSchema,
   operationsReleasesRequestSchema,
   operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
-import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
@@ -64,6 +60,7 @@ export { ownerSignInCallbackRoutes } from './owner-routes.js';
 import { mountMasterAskRoutes } from './master-ask-routes.js';
 import { mountPromiseRoutes } from './promise-routes.js';
 import { supportRoomsOf } from './read.js';
+import { mountRoutingRoutes } from './routing-routes.js';
 import { act, SESSION_ONLY } from './session-door.js';
 import { supportTurnsOf } from './turns.js';
 
@@ -111,8 +108,6 @@ const SHAPES = {
   thread: '{ thread }',
   reply: '{ thread, text, why? }',
   silent: '{ thread, message?, reason }',
-  decide: '{ thread, message?, decision, project?, signals, confidence, why }',
-  approve: '{ thread, message, feedback, project? }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
   record:
@@ -122,7 +117,6 @@ const SHAPES = {
   issues: '{ project, status?, key? }',
   releases: '{ project }',
   requirements: '{ project }',
-  feedback: '{ project, key? }',
   move: '{ thread, message, issue, to, reason?, project? }',
   requirementDraft: '{ thread, message, project, title, summary }',
   feedbackDraft:
@@ -144,7 +138,6 @@ const SHAPES = {
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',
   image: '{ message, n? }',
-  technical: '{ thread, need: permission | approval | finding | ask, text }',
 } as const;
 
 supportRoutes.post(
@@ -177,20 +170,6 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(supportSilentRequestSchema, SHAPES.silent),
   (c) => act(c, c.req.valid('param').id, { action: 'silent', ...c.req.valid('json') }),
-);
-supportRoutes.post(
-  '/:id/support/session/decisions',
-  projectParam,
-  SESSION_ONLY,
-  strictBody(supportDecideRequestSchema, SHAPES.decide),
-  (c) => act(c, c.req.valid('param').id, { action: 'decide', ...c.req.valid('json') }),
-);
-supportRoutes.post(
-  '/:id/support/session/approvals',
-  projectParam,
-  SESSION_ONLY,
-  strictBody(supportApproveRequestSchema, SHAPES.approve),
-  (c) => act(c, c.req.valid('param').id, { action: 'approve', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/checks',
@@ -340,14 +319,6 @@ supportRoutes.post(
   (c) => act(c, c.req.valid('param').id, { action: 'requirements', ...c.req.valid('json') }),
 );
 
-// a reached project's feedback, as every room reads it (ISS-1243)
-supportRoutes.post(
-  '/:id/support/session/feedback',
-  projectParam,
-  SESSION_ONLY,
-  strictBody(operationsFeedbackRequestSchema, SHAPES.feedback),
-  (c) => act(c, c.req.valid('param').id, { action: 'feedback', ...c.req.valid('json') }),
-);
 supportRoutes.post(
   '/:id/support/session/moves',
   projectParam,
@@ -435,15 +406,6 @@ supportRoutes.post(
   (c) => act(c, c.req.valid('param').id, { action: 'ask_owner', ...c.req.valid('json') }),
 );
 
-// a need raised in the project's one technical channel, never in the asker's thread (ISS-1243)
-supportRoutes.post(
-  '/:id/support/session/technical-needs',
-  projectParam,
-  SESSION_ONLY,
-  strictBody(supportTechnicalRequestSchema, SHAPES.technical),
-  (c) => act(c, c.req.valid('param').id, { action: 'technical', ...c.req.valid('json') }),
-);
-
 // a parked question handed to the channel agent, answered from the record or the owner's message (ISS-873)
 supportRoutes.post(
   '/:id/support/session/question-answers',
@@ -508,6 +470,7 @@ mountReportThreadRoutes(supportRoutes);
 mountRunReadRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
 mountMasterAskRoutes(supportRoutes);
+mountRoutingRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
 
 const SUPPORT_READ = requiresOnParam('project.read', 'id');
