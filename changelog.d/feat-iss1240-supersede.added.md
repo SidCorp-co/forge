@@ -1,1 +1,0 @@
-**A criterion a later issue changed on purpose is retired, not re-judged.** On a landed issue it is superseded by the later issue's criterion, with why; a verdict on it is refused naming that issue, so nothing reopens it.

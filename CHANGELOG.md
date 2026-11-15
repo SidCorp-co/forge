@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.682] - 2026-11-15
+
+Retire a closed issue's criterion a later issue changed on purpose
+
+### Added
+
+- **A criterion a later issue changed on purpose is retired, not re-judged.** On a landed issue it is superseded by the later issue's criterion, with why; a verdict on it is refused naming that issue, so nothing reopens it.
+
+### Fixed
+
+- **Waits say why in plain words.** No wait prints a refusal code, a design write names its writer, a requirement names design steps by title, and an archived project counts in no pulse.
+
 ## [0.4.0-dev.681] - 2026-11-14
 
 Waits name a design by its title, never its flow or revision
