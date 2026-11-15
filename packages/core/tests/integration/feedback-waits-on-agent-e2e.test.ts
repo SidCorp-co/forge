@@ -486,6 +486,7 @@ describe("a manual release the project's master cuts is on no person's Needs you
   });
 
   it('names the master cutting the release that carries each, and the owner owes none', async () => {
+    expect(await ownersCuts()).toBe(0);
     const list = ok(await say('owner', 'GET', on('/feedback')));
     for (const [n, fb] of keys.entries()) {
       const row = list.feedback.find((f: Doc) => f.key === fb);
@@ -498,7 +499,6 @@ describe("a manual release the project's master cuts is on no person's Needs you
       expect(row.waitingOn.rule).toMatch(/the project's master cuts it by \d{4}-\d{2}-\d{2}$/);
       expect(row.attentionGroup).not.toBe('needs_you');
     }
-    expect(await ownersCuts()).toBe(0);
   });
 
   it('is the admins’ where the release carries what cannot be undone, and says so', async () => {
