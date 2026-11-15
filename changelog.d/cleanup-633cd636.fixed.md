@@ -1,1 +1,0 @@
-**The steward stops re-raising a dropped requirement.** A note run skipped because its item's life ended now holds that item's basis, so the five-minute sweep no longer queues the same skipped run on every pass.

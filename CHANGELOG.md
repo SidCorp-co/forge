@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.687] - 2026-11-15
+
+Room agents route by sender and history, ask masters, and act for the owner
+
+### Added
+
+- **Room agents reach every project of their organization and raise needs in one technical channel.** Permission talk stays out of work threads, a filing needs no ok, serious acts are denied, and a master's post replaces the bot's answer.
+- **A room agent asks its master in its turn, and the answer comes back to it.** The master is woken at once and answers first; each wait is measured, a sender without an account gets a temporary one.
+- **The owner's Forge acts are made from his chat message.** Accepting a requirement, approving a design or release (with carry), cutting, marking merged and changing config run as him through each act's door; anyone else's message is refused.
+- **Room agents route by evidence.** Each message carries its sender's account and history and its thread's records; every turn records a counted routing decision, a shared group's thread stays with its holder, and an owner's approval attaches to its item.
+
+### Fixed
+
+- **The steward stops re-raising a dropped requirement.** A note run skipped because its item's life ended now holds that item's basis, so the five-minute sweep no longer queues the same skipped run on every pass.
+
 ## [0.4.0-dev.686] - 2026-11-15
 
 Every project's master can post in the shared Forge-Communicate operations room

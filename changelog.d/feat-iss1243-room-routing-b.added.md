@@ -1,1 +1,0 @@
-**Room agents reach every project of their organization and raise needs in one technical channel.** Permission talk stays out of work threads, a filing needs no ok, serious acts are denied, and a master's post replaces the bot's answer.
