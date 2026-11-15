@@ -18,6 +18,9 @@ import { refusalCodes, SupportWorld } from '../helpers/support-world.js';
  * @direct-test-of packages/core/src/support/record.ts
  * @direct-test-of packages/core/src/support/store.ts
  * @direct-test-of packages/core/src/feedback/attachments.ts
+ * @direct-test-of packages/core/src/feedback/external.ts
+ * @direct-test-of packages/core/src/support/read.ts
+ * @direct-test-of packages/core/src/support/result.ts
  */
 
 // ISS-1088, from FB-554: in adminhub-api's channel a record made for adminhub-fe was agreed to and
@@ -33,6 +36,8 @@ const API = `adminhub-api-${tag}`;
 const FE = `adminhub-fe-${tag}`;
 const DOCS = `adminhub-docs-${tag}`;
 let feId = '';
+/** The followed project's record the first case files, read again by the third (ISS-1243). */
+let feRecord = { key: '', thread: '' };
 
 // a 1x1 PNG: a feedback attachment's bytes are sniffed, so it must be one
 const PNG_BYTES = Buffer.from(
@@ -144,6 +149,36 @@ describe('ISS-1088: agree resolves a record in the project it was made for', () 
     );
     expect(filed).toEqual([{ project_id: feId, attachments: 1 }]);
     expect(await proposalState(proposal)).toBe('ran');
+    feRecord = { key: String(out.feedbackKey), thread };
+  });
+
+  it("names a followed project's record by its key and project on the room's action and its result (ISS-1243)", async () => {
+    expect(feRecord.key).toMatch(/^FB-\d+$/);
+    const roomId = String((await w.rooms())[0]?.id);
+    const recorded = (await w.actions(roomId)).filter((a) => a.kind === 'feedback_recorded');
+    // read within the room's project alone, every cross-project record came back keyless
+    expect(recorded.map((a) => [a.feedbackKey, a.feedbackProject])).toEqual([[feRecord.key, FE]]);
+    const triage = `/api/projects/${feId}/feedback/${feRecord.key}/triage`;
+    const declined = await api(w.owner, 'POST', triage, {
+      route: 'decline',
+      note: 'CSV export is not planned.',
+    });
+    expect(declined.status, JSON.stringify(declined.body)).toBeLessThan(300);
+    const { tellAllResults } = await import('../../src/support/index.js');
+    await tellAllResults();
+    const [told] = await rows<{ output: Record<string, unknown> }>(sql`
+      SELECT a.output FROM support_actions a JOIN feedback f ON f.id = a.feedback_id
+       WHERE f.project_id = ${feId}::uuid AND a.kind = 'result_told'`);
+    expect(told?.output).toMatchObject({
+      phase: 'declined',
+      feedbackKey: feRecord.key,
+      project: FE,
+    });
+    const [note] = await rows<{ input: { note?: string } }>(sql`
+      SELECT a.input FROM support_actions a JOIN feedback f ON f.id = a.feedback_id
+       WHERE f.project_id = ${feId}::uuid AND a.kind = 'message_in'`);
+    expect(String(note?.input.note)).toContain(`${feRecord.key} of ${FE}, recorded from this thread`);
+    await w.settleWarm();
   });
 
   it('leaves a proposal standing when agree cannot file it, refuses by name, and files it on the next agree', async () => {

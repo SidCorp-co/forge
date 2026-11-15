@@ -21,6 +21,7 @@ import { db, type Tx } from '../db/client.js';
 import { users } from '../db/schema-auth.js';
 import { feedback } from '../db/schema-feedback.js';
 import { feedbackExternalReporters } from '../db/schema-feedback-external.js';
+import { projects } from '../db/schema-projects.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { feedbackEgress } from './egress.js';
@@ -176,6 +177,24 @@ export async function externalItemPhases(
     .where(and(eq(feedback.projectId, projectId), inArray(feedback.id, [...feedbackIds])));
   const linked = await linkedOf(projectId, rows);
   return new Map(rows.map((r) => [r.id, { key: feedbackKey(r.fbSeq), phase: phaseIn(r, linked) }]));
+}
+
+/**
+ * Each item's key and the slug of the project it was filed in, whichever project that is: a channel
+ * records into a project it follows (ISS-874), so an item a room's action names may live outside the
+ * room's own project, and a key read only within it came back empty for every such record
+ * (ISS-1243: 35 of 35 cross-project `feedback_recorded` actions).
+ */
+export async function feedbackKeysOf(
+  feedbackIds: readonly string[],
+): Promise<Map<string, { key: string; project: string }>> {
+  if (feedbackIds.length === 0) return new Map();
+  const found = await db
+    .select({ id: feedback.id, seq: feedback.fbSeq, project: projects.slug })
+    .from(feedback)
+    .innerJoin(projects, eq(projects.id, feedback.projectId))
+    .where(inArray(feedback.id, [...feedbackIds]));
+  return new Map(found.map((r) => [r.id, { key: feedbackKey(r.seq), project: r.project }]));
 }
 
 /** Where an item a channel followed stands, and what it told its reporter there (ISS-1032). */

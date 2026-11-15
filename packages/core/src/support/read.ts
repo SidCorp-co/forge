@@ -11,7 +11,7 @@ import {
   type SupportRoomView,
 } from '@forge/contracts/support';
 import { sessionStatusesByIds } from '../agent-sessions/index.js';
-import { externalItemPhases } from '../feedback/index.js';
+import { feedbackKeysOf } from '../feedback/index.js';
 import { readSupportApis } from '../integrations/support-api/index.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
@@ -115,7 +115,11 @@ export function latencyOf(samples: { ms: number; path: string | null }[]): Suppo
   return { ...stats(samples.map((s) => s.ms)), byPath };
 }
 
-function viewOf(row: ActionRow, keys: Map<string, string>): SupportActionView {
+function viewOf(
+  row: ActionRow,
+  keys: Map<string, { key: string; project: string }>,
+): SupportActionView {
+  const item = row.feedbackId ? keys.get(row.feedbackId) : undefined;
   return {
     id: row.id,
     kind: row.kind,
@@ -125,7 +129,8 @@ function viewOf(row: ActionRow, keys: Map<string, string>): SupportActionView {
     tool: row.tool,
     input: row.input,
     output: row.output,
-    feedbackKey: row.feedbackId ? (keys.get(row.feedbackId) ?? null) : null,
+    feedbackKey: item?.key ?? null,
+    feedbackProject: item?.project ?? null,
     turn: row.sessionId && row.turnId ? { sessionId: row.sessionId, id: row.turnId } : null,
     at: row.createdAt.toISOString(),
   };
@@ -146,7 +151,8 @@ export async function supportActionsOf(
   if (!room || room.projectId !== projectId) return null;
   const { rows, cut } = await actionsOfRoom(room.id, ACTIONS_SHOWN, window);
   const ids = [...new Set(rows.flatMap((r) => (r.feedbackId ? [r.feedbackId] : [])))];
-  const items = await externalItemPhases(projectId, ids);
-  const keys = new Map([...items].map(([id, item]) => [id, item.key]));
+  // an item a followed project holds is read where it was filed, never within the room's project
+  // alone (ISS-1243)
+  const keys = await feedbackKeysOf(ids);
   return { actions: rows.map((r) => viewOf(r, keys)), truncated: cut };
 }

@@ -1284,6 +1284,8 @@ export interface SupportActionView {
 	input: unknown;
 	output: unknown;
 	feedbackKey: string | null;
+	/** The slug of the project the item was filed in, which for a followed project's record is not the room's (ISS-1243). */
+	feedbackProject: string | null;
 	/**
 	 * The session and turn that took it, where a turn did (ISS-1029): its record is read at
 	 * `GET /api/projects/:id/support/rooms/:roomId/turns/:id`.

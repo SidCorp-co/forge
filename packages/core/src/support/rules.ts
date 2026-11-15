@@ -82,6 +82,11 @@ export interface ItemResult {
   found?: string | null;
   /** The project's data policy keeps the item's words from the session. */
   withheld: boolean;
+  /**
+   * The slug of the project it was filed in, where that is not the room's own: a followed project's
+   * record is named with its project, since its key alone reads as the room's (ISS-1243).
+   */
+  elsewhere?: string | null;
 }
 
 /**
@@ -94,7 +99,7 @@ export interface ItemResult {
 export function resultNote(r: ItemResult): string | null {
   const post =
     "Post its result in this thread, once, in the asker's words: what changed for them, or that it will not be done. No keys, no process.";
-  const recorded = `${r.key}, recorded from this thread,`;
+  const recorded = `${r.key}${r.elsewhere ? ` of ${r.elsewhere}` : ''}, recorded from this thread,`;
   // the team's words are for the session to restate, never to paste
   const quoted = (lead: string, text: string | null) =>
     text?.trim() ? ` ${lead} (restate it, never paste it): "${text.trim()}"` : '';
