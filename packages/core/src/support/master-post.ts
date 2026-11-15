@@ -373,6 +373,7 @@ async function postInNamedThread(
     thread: input.thread,
     conversationId,
     ...admitted.value,
+    followsUp: input.followsUp,
   });
   if (!placed.ok) return placed;
   const posted = placed.value;

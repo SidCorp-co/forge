@@ -10,6 +10,7 @@
 //   correction is the same act, so it replaces rather than stacks;
 // - a master's post counts as the thread's result, so the room agent's one-result rule (REQ-77 BC-8)
 //   refuses it a second post there until the asker writes again (`thread-requests.ts`).
+// A post naming the told result it follows up on (ISS-872 `followsUp`) adds a line after it instead.
 // Images still follow as their own messages: the chat server attaches no file to an edited post.
 
 import type { ProvenMessage } from '@forge/contracts/messaging';
@@ -93,8 +94,10 @@ export async function postInOneVoice(input: {
   conversationId: string | null;
   text: string;
   proof: ProvenMessage;
+  /** A post naming the told result it follows up on adds to it, never erasing it (ISS-872). */
+  followsUp?: string | undefined;
 }): Promise<Outcome<Placed>> {
-  const answer = await answerToReplace(input.room, input.thread);
+  const answer = input.followsUp ? null : await answerToReplace(input.room, input.thread);
   if (!answer) {
     const posted = await postInThread(input);
     return { ok: true, value: { ...posted, replaced: null } };

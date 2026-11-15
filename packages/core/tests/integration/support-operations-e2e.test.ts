@@ -1,6 +1,7 @@
 // @direct-test-of packages/core/src/support/ops-scope.ts
 // @direct-test-of packages/core/src/support/ops-feedback-read.ts
 // @direct-test-of packages/core/src/support/ops-acts.ts
+// @direct-test-of packages/core/src/support/ops-types.ts
 //
 // REQ-75 r4 BC-20..BC-24, end to end: two bot accounts on one chat server, each with its role on
 // its rocketchat connection — babo (read, deliver) in an organization-wide operations room and in
