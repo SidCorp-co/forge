@@ -208,6 +208,7 @@ const ANY_ROOM = new Set<SupportActInput['action']>([
   'issues',
   'releases',
   'requirements',
+  'feedback',
 ]);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */

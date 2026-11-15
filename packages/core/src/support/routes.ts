@@ -32,6 +32,7 @@ import {
 import {
   operationsDraftFeedbackRequestSchema,
   operationsDraftRequirementRequestSchema,
+  operationsFeedbackRequestSchema,
   operationsIssuesRequestSchema,
   operationsMoveRequestSchema,
   operationsReleasesRequestSchema,
@@ -116,6 +117,7 @@ const SHAPES = {
   issues: '{ project, status?, key? }',
   releases: '{ project }',
   requirements: '{ project }',
+  feedback: '{ project, key? }',
   move: '{ thread, message, issue, to, reason?, project? }',
   requirementDraft: '{ thread, message, project, title, summary }',
   feedbackDraft:
@@ -317,6 +319,15 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(operationsRequirementsRequestSchema, SHAPES.requirements),
   (c) => act(c, c.req.valid('param').id, { action: 'requirements', ...c.req.valid('json') }),
+);
+
+// a reached project's feedback, as every room reads it (ISS-1243)
+supportRoutes.post(
+  '/:id/support/session/feedback',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(operationsFeedbackRequestSchema, SHAPES.feedback),
+  (c) => act(c, c.req.valid('param').id, { action: 'feedback', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/moves',

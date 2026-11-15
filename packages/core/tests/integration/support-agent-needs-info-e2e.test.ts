@@ -221,7 +221,8 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     expect(refusalCodes(out.outside ?? {}), JSON.stringify(out.outside)).toContain(
       'OPS_OUT_OF_SCOPE',
     );
-    expect(JSON.stringify(out.outside)).toContain(`follows ${HOME}, ${FE}`);
+    // ISS-1243: a room reaches its whole organization; a project outside it is refused, naming them
+    expect(JSON.stringify(out.outside)).toContain(`organization (${HOME}, ${FE})`);
   });
 
   it('names the read in the tool description and the brief', async () => {

@@ -1,3 +1,7 @@
+// @direct-test-of packages/core/src/support/ops-scope.ts
+// @direct-test-of packages/core/src/support/ops-feedback-read.ts
+// @direct-test-of packages/core/src/support/ops-acts.ts
+//
 // REQ-75 r4 BC-20..BC-24, end to end: two bot accounts on one chat server, each with its role on
 // its rocketchat connection — babo (read, deliver) in an organization-wide operations room and in
 // one project's group, sy (read, draft, research) in an organization-wide room — answered by
@@ -20,6 +24,7 @@ import {
   addProjectMember,
   bindTestRunner,
   createTestDevice,
+  createTestFeedback,
   createTestIssue,
   createTestProject,
   createTestUser,
@@ -397,12 +402,39 @@ describe('REQ-75 r4: operations rooms answer under their bot’s role (BC-20..BC
     expect(((wide.projects as { slug: string }[]) ?? []).map((p) => p.slug).sort()).toEqual(
       Object.values(slug).sort(),
     );
+    // ISS-1243 item 11: a project-scope room reaches its whole organization too, its home first
     const narrow = await ask('alice', 'group', { action: 'projects' });
-    expect(((narrow.projects as { slug: string }[]) ?? []).map((p) => p.slug)).toEqual([
-      slug.catalog,
-    ]);
-    const outside = await ask('alice', 'group', { action: 'issues', project: slug.forge });
-    expect(refusal(outside)?.code, JSON.stringify(outside)).toBe('OPS_OUT_OF_SCOPE');
+    const reached = ((narrow.projects as { slug: string }[]) ?? []).map((p) => p.slug);
+    expect(reached[0]).toBe(slug.catalog);
+    expect([...reached].sort()).toEqual(Object.values(slug).sort());
+    const sibling = await ask('alice', 'group', { action: 'issues', project: slug.forge });
+    expect(refusal(sibling), JSON.stringify(sibling)).toBeUndefined();
+  });
+
+  // ISS-1243 item 11: Forge-Communicate (room c4f706ae, 2026-11-15 15:36Z) answered the owner's ask
+  // for epod's feedback status with "this room is not granted the feedback list": no act read it
+  it('reads a reached project’s feedback, newest first, and one item by its key', async () => {
+    await createTestFeedback(home.social, ids.alice, 901);
+    await createTestFeedback(home.social, ids.alice, 902);
+    const list = await ask('alice', 'ops', { action: 'feedback', project: slug.social });
+    expect(refusal(list), JSON.stringify(list)).toBeUndefined();
+    expect(list).toMatchObject({ project: slug.social });
+    const keys = ((list.feedback as { key: string; phase: string }[]) ?? []).map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['FB-901', 'FB-902']));
+    const one = await ask('alice', 'group', {
+      action: 'feedback',
+      project: slug.social,
+      key: 'FB-902',
+    });
+    expect(one).toMatchObject({
+      feedback: [expect.objectContaining({ key: 'FB-902', title: 'feedback 902' })],
+    });
+    const none = await ask('alice', 'ops', {
+      action: 'feedback',
+      project: slug.social,
+      key: 'FB-999',
+    });
+    expect(refusal(none)?.code, JSON.stringify(none)).toBe('OPS_OUT_OF_SCOPE');
   });
 
   it('refuses a support group’s acts, research the role lacks, and a page that is not public', async () => {
