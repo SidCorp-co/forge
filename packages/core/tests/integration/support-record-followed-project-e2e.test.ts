@@ -9,8 +9,9 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
-import { createTestProject, rows } from '../helpers/factories.js';
+import { createTestIssue, createTestProject, rows } from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
+import type { TurnMessage } from '../helpers/support-session-box.js';
 import { refusalCodes, SupportWorld } from '../helpers/support-world.js';
 
 /**
@@ -21,6 +22,8 @@ import { refusalCodes, SupportWorld } from '../helpers/support-world.js';
  * @direct-test-of packages/core/src/feedback/external.ts
  * @direct-test-of packages/core/src/support/read.ts
  * @direct-test-of packages/core/src/support/result.ts
+ * @direct-test-of packages/core/src/support/routing-signals.ts
+ * @direct-test-of packages/core/src/support/prompt.ts
  */
 
 // ISS-1088, from FB-554: in adminhub-api's channel a record made for adminhub-fe was agreed to and
@@ -212,5 +215,63 @@ describe('ISS-1088: agree resolves a record in the project it was made for', () 
       sql`SELECT project_id FROM feedback WHERE title = ${title}`,
     );
     expect(filed).toEqual([{ project_id: feId }]);
+  });
+  it("hands each message the routing signals core holds: its sender, their history, its thread's records and the room's projects (ISS-1243)", async () => {
+    await w.settleWarm();
+    // alice's chat account is linked to the owner, who reported an issue in fe
+    const namespace = new URL(chat.serverUrl).host;
+    await db.execute(sql`
+      INSERT INTO assistant_speaker_links (source, external_namespace, external_id, user_id, confirmed_via)
+      VALUES ('rocketchat', ${namespace}, ${chat.alice.userId}, ${w.ownerId}, 'channel_email_match')`);
+    await db.execute(
+      sql`UPDATE users SET display_name = ${`Owner ${tag}`} WHERE id = ${w.ownerId}::uuid`,
+    );
+    const reported = await createTestIssue(feId, w.ownerId, 9_001, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+    const filed = await rows<{ fb_seq: number }>(
+      sql`SELECT fb_seq FROM feedback WHERE project_id = ${feId}::uuid ORDER BY created_at DESC`,
+    );
+    expect(filed).toHaveLength(2);
+    const heard: TurnMessage[] = [];
+    w.box.model = async (turn, act) => {
+      for (const m of turn.messages) {
+        if (m.from === 'forge') continue;
+        heard.push(m);
+        await act({
+          action: 'decide',
+          thread: m.thread,
+          message: m.message,
+          decision: 'silent',
+          signals: ['sender_history'],
+          confidence: 'high',
+          why: 'recorded for the test',
+        });
+      }
+    };
+    const fresh = await chat.say(chat.alice, `Is the CSV export coming ${tag}?`);
+    await expect.poll(() => heard.length, { timeout: 15_000 }).toBe(1);
+    // [ROUTING_UNSIGNALLED] before the fix: the head carried the words and roles alone
+    expect(heard[0]?.routing).toEqual({
+      roomProjects: [API, FE],
+      sender: {
+        linked: true,
+        account: `Owner ${tag}`,
+        pastProjects: [`${FE} ×2`],
+        filedFor: filed.map((f) => `${FE} FB-${f.fb_seq}`),
+        reported: [`${FE} ${reported.key}`],
+      },
+      thread: { records: [], decidedProject: null },
+    });
+    expect(heard[0]?.thread).toBe(fresh);
+    await w.settleWarm();
+    await chat.say(chat.alice, `any news on it ${tag}?`, feRecord.thread);
+    await expect.poll(() => heard.length, { timeout: 15_000 }).toBe(2);
+    expect(heard[1]?.routing?.thread).toEqual({
+      records: [feRecord.key.replace('FB-', `${FE} FB-`)],
+      decidedProject: null,
+    });
+    await w.settleWarm();
   });
 });

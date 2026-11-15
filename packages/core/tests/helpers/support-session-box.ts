@@ -43,6 +43,18 @@ export interface TurnMessage {
   images?: { count: number; mimes: string[]; read: string; omitted?: number };
   /** An earlier turn took it and left it unsettled: which hand this is and why (ISS-1236). */
   handedAgain?: { hand: number; why: string };
+  /** What core holds on its sender and its thread, to route it by (ISS-1243). */
+  routing?: {
+    roomProjects: string[];
+    sender: {
+      linked: boolean;
+      account: string | null;
+      pastProjects: string[];
+      filedFor: string[];
+      reported: string[];
+    };
+    thread: { records: string[]; decidedProject: string | null };
+  };
 }
 
 export interface Turn {
@@ -95,6 +107,7 @@ export function messagesOf(text: string): TurnMessage[] {
         ...(head.answersYourQuestion ? { answersYourQuestion: head.answersYourQuestion } : {}),
         ...(head.images ? { images: head.images } : {}),
         ...(head.handedAgain ? { handedAgain: head.handedAgain } : {}),
+        ...(head.routing ? { routing: head.routing } : {}),
         text: '',
       };
       out.push(current);
