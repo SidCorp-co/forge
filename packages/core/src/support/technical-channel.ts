@@ -99,7 +99,7 @@ async function postInDirect(
 /** The line the channel is handed: whose need, from which room and thread, then the agent's words. */
 async function headed(room: RoomRow, need: TechnicalNeed, thread: string, text: string) {
   const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
-  return `[${slug} · ${need}] from ${room.rid}, thread ${thread}:\n${text}`;
+  return `[${slug} | ${need}] from ${room.rid}, thread ${thread}:\n${text}`;
 }
 
 /**

@@ -17,6 +17,8 @@ import { code } from '../helpers/support-channel.js';
 // @direct-test-of packages/core/src/project-config/schema.ts
 // @direct-test-of packages/contracts/src/support-technical.ts
 // @direct-test-of packages/core/tests/helpers/support-chat-server.ts
+// @direct-test-of packages/core/src/support/permission-talk.ts
+// @direct-test-of packages/core/src/support/screen.ts
 //
 // ISS-1243 item 13 (owner 2026-11-15): a project names exactly one technical channel, its own thread
 // of the shared operations room or a direct message to one person (the owner by default), and a room
@@ -59,7 +61,7 @@ describe('a room agent raises what it needs in the one technical channel, and no
     // the owner is u-alice; the stand-in opens D-<username>
     const dm = w.stand.linesIn('D-alice');
     expect(dm.map((l) => l.text).join('\n')).toContain('I need the mailbox share grant for bob');
-    expect(dm.at(-1)?.text).toContain('· permission] from');
+    expect(dm.at(-1)?.text).toContain(' | permission] from');
     expect(w.threadLines(w.stand.rid, thread)).toEqual([]);
     const routed = await rows<{ tool: string; output: Record<string, unknown> }>(
       sql`SELECT tool, output FROM support_actions WHERE kind = 'routed' AND thread = ${thread}`,
@@ -98,5 +100,41 @@ describe('a room agent raises what it needs in the one technical channel, and no
     expect(shape.safeParse([{ kind: 'thread' }, { kind: 'dm' }]).success).toBe(false);
     expect(shape.safeParse({ kind: 'thread', user: 'u-x' }).success).toBe(false);
     expect(shape.safeParse({ kind: 'email' }).success).toBe(false);
+  });
+});
+
+// ISS-1243 item 12: a work thread is never told the agent lacks a permission or waits on a grant
+// (sid-email 06/11, in Vietnamese: no permission yet to share the mailbox); the screen refuses it by name, naming
+// the technical channel's door, and an answer about the user's own access still posts.
+describe('no permission talk in a work thread', () => {
+  it('refuses a post saying the agent lacks a permission, and posts the answer', async () => {
+    const outs: Record<string, unknown>[] = [];
+    const heard = await w.hear(
+      () => w.stand.say(w.stand.bob, 'can you share the sales mailbox with me?'),
+      async (_t, act, message) => {
+        const thread = message().thread;
+        for (const text of [
+          'Dạ em chưa có quyền tự share mailbox ạ, nhờ anh Chương cấp quyền giúp em.', // i18n-allow: the Vietnamese permission claim being policed
+          "I don't have permission to share mailboxes yet.",
+          'Your account has no permission on that mailbox; I raised it and it is in hand.',
+        ]) {
+          outs.push(await act({ action: 'reply', thread, text }));
+        }
+      },
+    );
+    expect(code(outs[0])).toBe('SUPPORT_PERMISSION_TALK');
+    expect(JSON.stringify(outs[0])).toContain('support.technical');
+    expect(code(outs[1])).toBe('SUPPORT_PERMISSION_TALK');
+    expect(outs[2]?.isError, JSON.stringify(outs[2])).toBe(false);
+    expect(w.threadLines(w.stand.rid, heard.id).map((l) => l.text)).toEqual([
+      'Your account has no permission on that mailbox; I raised it and it is in hand.',
+    ]);
+    const refused = await rows<{ output: { code: string } }>(
+      sql`SELECT output FROM support_actions WHERE kind = 'refused' AND thread = ${heard.id}`,
+    );
+    expect(refused.map((r) => r.output.code)).toEqual([
+      'SUPPORT_PERMISSION_TALK',
+      'SUPPORT_PERMISSION_TALK',
+    ]);
   });
 });
