@@ -29,6 +29,7 @@ import type { Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { liveIssueLeasesSql } from '../db/schema-issue-leases.js';
 import { refuser } from '../lib/refusal.js';
+import { JUDGING_RUN_ROLES } from './issue-resting.js';
 import { lockProjectScope, refuseScopeHeldForKeys } from './issue-scope.js';
 
 export const terminalSessionList = sql.join(
@@ -250,6 +251,14 @@ async function holdersOf(
   }));
 }
 
+/** Whether the run row `run` builds: a judge (`qa`, `reviewer`, either prefixed) waits behind a builder. */
+const buildsSql = (run: SQL) => sql`COALESCE(regexp_replace(
+  (SELECT jr.metadata ->> 'role' FROM pipeline_runs jr WHERE jr.id = ${run}), '^.*:', ''), '')
+  NOT IN (${sql.join(
+    Object.keys(JUDGING_RUN_ROLES).map((r) => sql`${r}`),
+    sql`, `,
+  )})`;
+
 /** `s` is a live run session of the same master, on the same box, as the session `of` names. */
 const siblingOf = (of: SQL) => sql`s.kind = ${RUN_SESSION_KIND}
   AND s.status NOT IN (${terminalSessionList})
@@ -258,8 +267,9 @@ const siblingOf = (of: SQL) => sql`s.kind = ${RUN_SESSION_KIND}
   AND s.parent_session_id = (SELECT me.parent_session_id FROM agent_sessions me WHERE me.id = ${of})`;
 
 /**
- * The keys of `keys` a live run of the same master on the same box holds (ISS-1245). A master builds
- * one issue in parts, each part a run of its own in its own tree and each taking a subagent slot;
+ * The keys of `keys` a live run of the same master on the same box holds (ISS-1245), where both runs
+ * build. A master builds one issue in parts, each part a run of its own in its own tree and each
+ * taking a subagent slot;
  * the first part's lease holds the issue for all of them, and passes to a part still live when it
  * ends ({@link passIssueLease}). A holder of any other master, or on another box, is not shared.
  */
@@ -278,7 +288,9 @@ async function heldBySibling(
          sql`, `,
        )})
        AND s.id <> ${args.sessionId}
-       AND ${siblingOf(sql`${args.sessionId}::uuid`)}`)) as unknown as Array<{ issue_key: string }>;
+       AND ${siblingOf(sql`${args.sessionId}::uuid`)}
+       AND ${buildsSql(sql`l.run_id`)}
+       AND ${buildsSql(sql`${args.runId}::uuid`)}`)) as unknown as Array<{ issue_key: string }>;
   return new Set([...rows].map((r) => String(r.issue_key)));
 }
 
