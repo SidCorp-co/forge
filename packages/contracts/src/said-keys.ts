@@ -1646,7 +1646,7 @@ export const SAID = {
 		vars: { issue: "said", waits: "agreement", date: "date" },
 	},
 	"feedback.rule.masterCutLate": {
-		en: "planned: {issue} {waits} at awaiting_release; the master's cut was due {date}, so a project.admin holder cuts it",
+		en: "planned: {issue} {waits} at awaiting_release; cut overdue since {date}, admin cuts",
 		vars: { issue: "said", waits: "agreement", date: "date" },
 	},
 	"feedback.rule.newRequirement": {

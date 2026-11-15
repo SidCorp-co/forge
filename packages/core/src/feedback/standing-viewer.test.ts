@@ -283,7 +283,7 @@ describe('an item planned on an issue at the release gate names who releases it'
       kind: 'you',
       who: 'You',
       act: 'cut the release that carries ISS-9',
-      rule: "planned: ISS-9 waits at awaiting_release; the master's cut was due 2026-10-05, so a project.admin holder cuts it",
+      rule: "planned: ISS-9 waits at awaiting_release; cut overdue since 2026-10-05, admin cuts",
     });
     expect(planned('manual', viewer(), ['Ana', 'Bo'], MASTER_CUT, late).waitingOn.who).toBe(
       'Ana, Bo',
