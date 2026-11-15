@@ -15,6 +15,7 @@
 // @direct-test-of packages/core/src/steward/door-wake.ts
 // @direct-test-of packages/core/src/steward/prompts.ts
 // @direct-test-of packages/core/src/steward-notes/store.ts
+// @direct-test-of packages/core/src/steward/runs-store.ts
 
 import type { Said } from '@forge/contracts/said';
 import {
@@ -220,6 +221,34 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     await steward.dispatchStewardRuns(later(t0));
     expect((await noteRunsOf(read.subject.id)).map((r) => r.state)).toEqual(['done']);
     await sweep(projectId, later(later(t0)));
+    expect(await noteRunsOf(read.subject.id)).toHaveLength(1);
+  });
+
+  it('is not raised again for a requirement dropped since: its run skipped subject_ended holds the basis (negative)', async () => {
+    // forge REQ-59, REQ-60 and REQ-61 (2026-11-14): dropped, still on the standing read, and a note
+    // run raised on each every sweep, each skipped subject_ended
+    const projectId = (await createTestProject(ownerId)).id;
+    const read = await requirement(projectId, 'Night shift handover sheet');
+    await noteWrittenBefore(projectId, read, new Date(Date.now() - 86_400_000));
+    ok(
+      await say('owner', 'POST', `/api/projects/${projectId}/requirements/${read.subject.key}/drop`, {
+        reason: 'the ward stopped night shifts',
+      }),
+      200,
+    );
+    const dropped = (await realStandings(projectId)).find((s) => s.subject.id === read.subject.id);
+    expect(dropped?.basis).toBeDefined();
+    const t0 = new Date();
+    await sweep(projectId, t0);
+    await settleOutbox();
+    resetScript();
+    await steward.dispatchStewardRuns(later(t0));
+    expect(
+      await rows<{ state: string; skip_reason: string | null }>(sql`
+        SELECT state, skip_reason FROM steward_runs WHERE subject_id = ${read.subject.id}`),
+    ).toEqual([{ state: 'skipped', skip_reason: 'subject_ended' }]);
+    await sweep(projectId, later(later(t0)));
+    await settleOutbox();
     expect(await noteRunsOf(read.subject.id)).toHaveLength(1);
   });
 

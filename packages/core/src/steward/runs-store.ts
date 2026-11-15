@@ -464,7 +464,10 @@ export async function spentSince(
  * the diagnosis that follows ends so unless an ask or a decision already held the standing, which the
  * sweep bounds on its own (`sweep.ts:diagnosedEnough`, ISS-1100). `queuedAfter` counts only the
  * runs queued after it: a note written under facts core has since reworded is rewritten by a run
- * queued after it was written, never the run that wrote it (ISS-1044).
+ * queued after it was written, never the run that wrote it (ISS-1044). A run skipped because its
+ * subject's life ended counts for as long as the basis holds: the standing read still lists a dropped
+ * requirement, and forge raised a note run on each of REQ-59, REQ-60 and REQ-61 every sweep, each
+ * skipped `subject_ended` (about 750 from 2026-11-14 to -15).
  */
 export async function ranOnBasis(
   subject: StandingSubject,
@@ -490,7 +493,7 @@ export async function ranOnBasis(
         eq(stewardRuns.basis, basis),
         sql`${act} = ANY(${stewardRuns.actsToRun})`,
         opts.queuedAfter ? gt(stewardRuns.queuedAt, opts.queuedAfter) : undefined,
-        sql`(${stewardRuns.state} IN ('queued', 'running') OR (${stewardRuns.state} = 'done' AND ${ended}) OR (${stewardRuns.state} = 'failed' AND ((${stewardRuns.failureKind} = 'refused' AND ${ended}) OR ${stewardRuns.endedAt} > now() - interval '1 hour')))`,
+        sql`(${stewardRuns.state} IN ('queued', 'running') OR (${stewardRuns.state} = 'skipped' AND ${stewardRuns.skipReason} = 'subject_ended') OR (${stewardRuns.state} = 'done' AND ${ended}) OR (${stewardRuns.state} = 'failed' AND ((${stewardRuns.failureKind} = 'refused' AND ${ended}) OR ${stewardRuns.endedAt} > now() - interval '1 hour')))`,
       ),
     )
     .limit(1);
