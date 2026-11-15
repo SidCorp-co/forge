@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.684] - 2026-11-15
+
+Steward triage drafts and new release judges start again each day
+
+### Fixed
+
+- **The steward's triage drafts and new release judges start again.** Old release follow-throughs no longer spend the whole day's runner jobs at midnight, and an item's note is rewritten at once instead of waiting a day behind its triage.
+
 ## [0.4.0-dev.683] - 2026-11-15
 
 A judge notes criteria replaced on purpose by later issues instead of failing them
