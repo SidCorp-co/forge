@@ -448,12 +448,13 @@ describe('ISS-915: the owner’s own request is his consent; everyone else agree
     expect(await deploys()).toBe(before + 1);
   });
 
-  it('still refuses a member’s earlier message as SUPPORT_AGREEMENT_BEFORE_PROPOSAL', async () => {
+  // ISS-1243 item 17: with no ruling naming who decides a filing, a member's own request files at once
+  it('files a member’s own earlier request at once, asking nobody', async () => {
     const before = await filings();
     const bob = await fileAndCite(chat.bob, 'please record that my invoices show the wrong VAT');
-    expect(String(bob.proposed.next)).not.toContain('their own request');
-    expect(code(bob.agreed), JSON.stringify(bob.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
-    expect(await filings()).toBe(before);
+    expect(String(bob.proposed.next)).toContain('their own request is their agreement');
+    expect(bob.agreed, JSON.stringify(bob.agreed)).toMatchObject({ recorded: true });
+    expect(await filings()).toBe(before + 1);
   });
 
   it('refuses by name, filing nothing, another writer’s message or one from another thread', async () => {

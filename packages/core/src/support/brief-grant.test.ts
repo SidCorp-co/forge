@@ -29,7 +29,8 @@ const check = (persona: string, grants?: { abilities: never[]; confirmers?: stri
 beforeEach(() => rulings.read.mockResolvedValue([]));
 
 describe('a persona and the grants on who agrees to one act (BC-11)', () => {
-  it('refuses the FB-566 brief while no ruling lets any member agree to a filing, naming both and the act', async () => {
+  it('refuses the FB-566 brief while a ruling names only another member for a filing, naming both and the act', async () => {
+    rulings.read.mockResolvedValue([ruling('tuyen', ['filing'])]);
     const refused = await check(FB_566);
     expect(refused).toHaveLength(1);
     expect(refused[0]?.path).toBe('/agent/persona');
@@ -41,6 +42,8 @@ describe('a persona and the grants on who agrees to one act (BC-11)', () => {
 
   it.each([
     ['a ruling lets any member file', FB_566, [ruling('*', ['filing'])], undefined],
+    // ISS-1243 item 17: with no ruling naming who decides a filing, any asker's own request files it
+    ['no ruling names who decides a filing', FB_566, [], undefined],
     [
       'a persona saying nothing of who agrees',
       'You answer customers of the shop in plain Vietnamese.',

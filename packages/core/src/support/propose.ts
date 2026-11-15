@@ -162,7 +162,9 @@ function nextStep(
   const why =
     consent.by === 'decider'
       ? `the project's ruling [knowledge:${consent.ruling}] names them the one who decides ${actsWords([fix.kind])}, so their own request is their agreement`
-      : 'in this room their own request is their agreement';
+      : consent.by === 'asker'
+        ? 'no ruling of the project names who decides a filing, so their own request is their agreement'
+        : 'in this room their own request is their agreement';
   const cite = request ? `"${request}"` : '<the id of their message asking for it>';
   return `Nothing was posted. @${asker.label ?? asker.key} asked for this themselves, and ${why}: call agree { thread, proposal: "${fix.code}", message: ${cite} } now, and ask them nothing.`;
 }

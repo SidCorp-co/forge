@@ -42,6 +42,15 @@ export async function deciderFor(
   return named.find((d) => !d.targets || (on !== null && d.targets.includes(on))) ?? null;
 }
 
+/**
+ * Forge's default for a filing (ISS-1243 item 17, owner 2026-11-15 "no ok gate"): where no ruling of
+ * the project names who decides one, its asker's own request is their agreement, filed at once. A
+ * ruling naming deciders for filings is the project's own rule and replaces the default (REQ-90).
+ */
+export async function askerFilesByDefault(projectId: string): Promise<boolean> {
+  return !(await rulingDecidersOf(projectId)).some((d) => d.acts.includes('filing'));
+}
+
 /** Who the project's rulings name for `act`, as a refusal teaches it: by name, or that none is named. */
 export async function decidersOfAct(
   room: Pick<RoomRow, 'projectId'>,

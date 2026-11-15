@@ -12,7 +12,7 @@ import {
   type ChannelRole,
 } from '@forge/contracts/support-channel';
 import { channelOf, memberOf } from './channel-store.js';
-import { deciderFor, type RulingDeciderRead } from './deciders.js';
+import { askerFilesByDefault, deciderFor, type RulingDeciderRead } from './deciders.js';
 import { isConfirmer } from './grants.js';
 import type { RoomRow } from './store.js';
 
@@ -40,14 +40,21 @@ export async function mayConfirmChange(
   );
 }
 
-/** Why an asker's own request is their consent: the room lets them confirm, or a ruling names them decider. */
-export type RequestConsent = { by: 'confirmer' } | ({ by: 'decider' } & RulingDeciderRead);
+/**
+ * Why an asker's own request is their consent: the room lets them confirm, a ruling names them
+ * decider, or it asks for a filing where no ruling says who decides one (ISS-1243 item 17).
+ */
+export type RequestConsent =
+  | { by: 'confirmer' }
+  | { by: 'asker' }
+  | ({ by: 'decider' } & RulingDeciderRead);
 
 /**
  * Whether an asker's own request is their consent to the change it asked for, whenever it was
  * written (ISS-915, ISS-953): the room already lets that writer confirm — the owner under owner
  * mode, a confirmer the binding names, or a member the channel record confirms in a confirm role —
- * or the project's rulings name them the one who decides that act (ISS-1042). Who that is stays
+ * or the project's rulings name them the one who decides that act (ISS-1042), or the act is a filing
+ * and no ruling names who decides one (ISS-1243, `askerFilesByDefault`). Who that is stays
  * data on the binding, the record and the rulings; a role the bot only inferred is no grant. Null
  * otherwise.
  */
@@ -61,7 +68,10 @@ export async function requestIsConsent(
 ): Promise<RequestConsent | null> {
   if (await mayConfirmChange(room, grants, asker)) return { by: 'confirmer' };
   const ruling = await deciderFor(room, act, asker, target);
-  return ruling ? { by: 'decider', ...ruling } : null;
+  if (ruling) return { by: 'decider', ...ruling };
+  // Forge's default where no ruling of the project says who decides a filing: whoever asks for one
+  // is entitled to, so it is filed at once and nobody is asked "ok" (ISS-1243 item 17)
+  return act === 'filing' && (await askerFilesByDefault(room.projectId)) ? { by: 'asker' } : null;
 }
 
 /** Who can confirm, as the thread and the session are told it. */

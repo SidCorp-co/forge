@@ -274,15 +274,20 @@ describe('ISS-1042: the member the project’s rulings name as decider agrees in
     expect(stored).toEqual([]);
   });
 
-  it('stops counting her once the ruling is gone, and the brief stops naming her', async () => {
+  // ISS-1243 item 17: with no ruling left naming who decides a filing, Forge's default files any
+  // asker's own request at once, hers as anyone's, and names no ruling for it
+  it('stops counting her as decider once the ruling is gone, and the brief stops naming her', async () => {
     const gone = await api(w.owner, 'DELETE', `/api/projects/${w.projectId}/knowledge/${RULING}`);
     expect(gone.status, JSON.stringify(gone.body)).toBe(200);
     const before = await filings();
-    const own = await ownRecordRequest(tuyen, 'release trước 640');
+    const own = await ownRecordRequest(tuyen, 'release trước 640'); // i18n-allow: a member's message
     expect(own.turn.text).not.toContain('@tuyen decides');
-    expect(String(own.proposed.next)).not.toContain('their own request');
-    expect(code(own.agreed), JSON.stringify(own.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
-    expect(await filings()).toBe(before);
+    expect(String(own.proposed.next)).toContain(
+      'no ruling of the project names who decides a filing',
+    );
+    expect(own.agreed, JSON.stringify(own.agreed)).toMatchObject({ recorded: true });
+    expect(await consentIn(own.thread)).toMatchObject({ output: { consent: 'own_request' } });
+    expect(await filings()).toBe(before + 1);
   });
 });
 
