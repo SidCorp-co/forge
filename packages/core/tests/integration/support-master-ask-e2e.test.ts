@@ -2,6 +2,7 @@
  * @direct-test-of packages/core/src/support/master-ask.ts
  * @direct-test-of packages/core/src/support/master-ask-routes.ts
  * @direct-test-of packages/core/src/support/shared-picture.ts
+ * @direct-test-of packages/core/src/db/schema-support-asks.ts
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';

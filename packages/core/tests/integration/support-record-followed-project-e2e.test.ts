@@ -244,7 +244,8 @@ describe('ISS-1088: agree resolves a record in the project it was made for', () 
     await expect.poll(() => heard.length, { timeout: 15_000 }).toBe(1);
     // [ROUTING_UNSIGNALLED] before the fix: the head carried the words and roles alone
     expect(heard[0]?.routing).toEqual({
-      roomProjects: [API, FE],
+      // every project of the organization the room reaches, its home first (item 11)
+      roomProjects: [API, FE, DOCS],
       sender: {
         linked: true,
         account: `Owner ${tag}`,
