@@ -5,6 +5,8 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type {
+  SupportApproveRequest,
+  SupportDecideRequest,
   SupportOwnerActRequest,
   SupportOwnerConsentRequest,
   SupportOwnerSignInRequest,
@@ -40,6 +42,7 @@ import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-a
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
 import { ownerAct } from './owner-act.js';
+import { attachApproval } from './owner-approves.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
 import { startOwnerSignIn } from './owner-sign-in.js';
@@ -48,6 +51,7 @@ import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
 import { decideReleaseFromMessage } from './release-decision.js';
+import { decideRouting } from './routing.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
 import { linkMember } from './speaker-link.js';
@@ -71,6 +75,8 @@ export type SupportActInput =
   | { action: 'tools' }
   | { action: 'reply'; thread: string; text: string; why?: string | undefined }
   | { action: 'silent'; thread: string; message?: string | undefined; reason: string }
+  | ({ action: 'decide' } & SupportDecideRequest)
+  | ({ action: 'approve' } & SupportApproveRequest)
   | ({ action: 'run' } & ToolCall)
   | ({ action: 'propose_fix'; asker: string } & ToolCall)
   | {
@@ -82,6 +88,7 @@ export type SupportActInput =
       whereSeen?: string | undefined;
       asker?: string | undefined;
       project?: string | undefined;
+      separate?: true | undefined;
     }
   | {
       action: 'move_issue';
@@ -259,6 +266,8 @@ async function recordNotGranted(
 const SHARED = new Set<SupportActInput['action']>([
   'reply',
   'silent',
+  // every room's agent records which project a message concerns and what it does with it (ISS-1243)
+  'decide',
   'thread',
   'channel',
   'member',
@@ -293,6 +302,14 @@ async function act(
       return reply(room, { thread: input.thread, text: input.text, why: input.why, turn });
     case 'silent':
       return staySilent(room, input);
+    case 'decide': {
+      const { action: _, ...request } = input;
+      return decideRouting(room, request);
+    }
+    case 'approve': {
+      const { action: _, ...request } = input;
+      return attachApproval(room, request);
+    }
     case 'run':
       return runDiagnose(room, { thread: input.thread, tool: input.tool, args: input.args ?? {} });
     case 'propose_fix': {

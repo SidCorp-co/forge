@@ -1,7 +1,10 @@
 // @direct-test-of packages/core/src/support/shared-group.ts
 // @direct-test-of packages/core/src/support/inbound.ts
+// @direct-test-of packages/core/src/support/turn-retry.ts
+// @direct-test-of packages/core/src/support/dispatch.ts
+// @direct-test-of packages/core/src/support/store.ts
 
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -9,7 +12,11 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { db } from '../../src/db/client.js';
+import { supportActions } from '../../src/db/schema-support.js';
 import { warmColdRooms } from '../../src/support/index.js';
+import { roomById } from '../../src/support/store.js';
+import { tellUnanswered } from '../../src/support/turn-retry.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
 import { addProjectMember, bindTestRunner, createTestProject, rows } from '../helpers/factories.js';
@@ -60,6 +67,22 @@ async function settled(id: string) {
   await idle();
   return { mail: await recordOf(room.mail, id), desk: await recordOf(room.desk, id) };
 }
+
+/** Wait until the room's session replied in the thread after the message: the thread is its now. */
+const repliedAfter = (roomId: string, messageId: string) =>
+  expect
+    .poll(
+      async () =>
+        (
+          await rows(sql`
+            SELECT 1 FROM support_actions r, support_actions m
+             WHERE m.room_id = ${roomId}::uuid AND m.kind = 'message_in' AND m.external_id = ${messageId}
+               AND r.room_id = m.room_id AND r.thread = m.thread AND r.kind = 'reply'
+               AND r.created_at > m.created_at`)
+        ).length,
+      { timeout: 20_000 },
+    )
+    .toBe(1);
 
 beforeAll(async () => {
   await w.start();
@@ -156,6 +179,52 @@ describe('a group two projects share on one bot (ISS-1220)', () => {
       });
       expect(posted.status, JSON.stringify(posted.body)).toBeLessThan(300);
     }
+  });
+
+  // ISS-1243, sid-email thread zUTf: sid-desk had replied there once, so every later message of it
+  // was handed to it as well as to sidcorp-mail, which had taken the thread over; and when a turn
+  // failed, sid-desk posted a failure line for a mail request that was not its own
+  it('leaves a thread to the binding whose session replied in it last: the other keeps it as context and posts no failure line', async () => {
+    const thread = await w.chat.say(w.chat.bob, `@${deskSlug} the desk printer is offline`);
+    await settled(thread);
+    await handedAs(room.desk, thread, 'you');
+    await repliedAfter(room.desk, thread);
+    // the mail project is named in the thread and answers there: the thread is mail's now
+    const named = await w.chat.say(w.chat.bob, `@${mailSlug} and my mailbox is full`, thread);
+    await settled(named);
+    await handedAs(room.mail, named, 'you');
+    await repliedAfter(room.mail, named);
+    const later = await w.chat.say(w.chat.bob, 'still full this morning', thread);
+    const got = await settled(later);
+    await handedAs(room.mail, later, 'nobody');
+    await repliedAfter(room.mail, later);
+    // [SHARED_THREAD_HANDED_TWICE] before the fix: the desk session was handed it too
+    expect(got.desk?.handed).toBe(false);
+    // naming the desk hands it the thread's message again, whoever holds the thread
+    const deskAgain = await w.chat.say(w.chat.bob, `@${deskSlug} is the printer back?`, thread);
+    await settled(deskAgain);
+    await handedAs(room.desk, deskAgain, 'you');
+    await repliedAfter(room.desk, deskAgain);
+    // the desk replied last now: an unaddressed message is the desk's, and mail keeps it as context
+    const deskHeld = await w.chat.say(w.chat.bob, 'it printed one page', thread);
+    const held = await settled(deskHeld);
+    await handedAs(room.desk, deskHeld, 'nobody');
+    expect(held.mail?.handed).toBe(false);
+    // a turn of mail that failed on the desk's thread posts no failure line for it
+    const desk = await roomById(room.mail);
+    const taken = await db
+      .select()
+      .from(supportActions)
+      .where(and(eq(supportActions.roomId, room.mail), eq(supportActions.externalId, deskHeld)));
+    expect(taken).toHaveLength(1);
+    const linesBefore = (await chat.botLines()).length;
+    await tellUnanswered(desk as NonNullable<typeof desk>, taken, 'the turn failed (test)');
+    const [failed] = await rows<{ output: Record<string, unknown> }>(sql`
+      SELECT output FROM support_actions
+       WHERE room_id = ${room.mail}::uuid AND kind = 'refused' AND tool = 'turn_failed'
+         AND output->'messages' ? ${String(taken[0]?.id)}`);
+    expect(failed?.output).toMatchObject({ posted: false, waitsOnAnswer: true, roomLineWhy: null });
+    expect((await chat.botLines()).length).toBe(linesBefore);
   });
 
   it('takes a save of the binding answering every message beside one answering only mentions, and refuses a second answerer', async () => {

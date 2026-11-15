@@ -251,7 +251,7 @@ describe('a door judging each action under its own request', () => {
     expect(record?.guideOf).toBe('action');
     expect(
       record?.guide.startsWith(
-        'record {thread, kind, title, summary, whereSeen?, asker?, project?}:',
+        'record {thread, kind, title, summary, whereSeen?, asker?, project?, separate?}:',
       ),
     ).toBe(true);
     expect(Object.keys(record?.input.properties as object)).toEqual(
@@ -263,6 +263,7 @@ describe('a door judging each action under its own request', () => {
         'whereSeen',
         'asker',
         'project',
+        'separate',
       ]),
     );
     expect(record?.input.required).toEqual(['thread', 'kind', 'title', 'summary']);
@@ -275,15 +276,15 @@ describe('a door judging each action under its own request', () => {
 
   it('refuses today’s record entry by name at registry build, naming the arguments it hides', () => {
     const entry = support.description.indexOf(
-      'record {thread, kind, title, summary, whereSeen?, asker?, project?}:',
+      'record {thread, kind, title, summary, whereSeen?, asker?, project?, separate?}:',
     );
     expect(entry).toBeGreaterThan(0);
     const description = support.description.replace(
-      'record {thread, kind, title, summary, whereSeen?, asker?, project?}:',
+      'record {thread, kind, title, summary, whereSeen?, asker?, project?, separate?}:',
       TODAY,
     );
     expect(() => actionCatalog([{ ...support, description }])).toThrow(
-      "mcp registry: forge_support's entry for record leaves out `whereSeen`, `project`, which its request takes",
+      "mcp registry: forge_support's entry for record leaves out `whereSeen`, `project`, `separate`, which its request takes",
     );
   });
 

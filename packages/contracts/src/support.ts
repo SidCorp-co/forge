@@ -798,6 +798,11 @@ export const SUPPORT_ACTION_KINDS = [
 	"answer_kept",
 	/** The session chose to post nothing for a message it was handed, with its reason (ISS-942). */
 	"silent",
+	/**
+	 * The session's routing decision for a message it was handed (ISS-1243): the project chosen, the
+	 * signals used, its confidence, and answer, gather, ask or silent with why.
+	 */
+	"routing_decided",
 ] as const;
 export type SupportActionKind = (typeof SUPPORT_ACTION_KINDS)[number];
 
@@ -913,6 +918,8 @@ export const SUPPORT_ACTIONS = [
 	"owner_sign_in",
 	"release_decision",
 	"silent",
+	"decide",
+	"approve",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -977,6 +984,74 @@ export const supportSilentRequestSchema = z.strictObject({
 		),
 	reason: supportWhySchema.describe("one line: why nothing is posted for it"),
 });
+/**
+ * What a room agent decided for a message it was handed (ISS-1243): to answer it, to gather more on
+ * its own first, to ask the person one short question, or to stay silent.
+ */
+export const SUPPORT_ROUTING_DECISIONS = [
+	"answer",
+	"gather",
+	"ask",
+	"silent",
+] as const;
+export type SupportRoutingDecision = (typeof SUPPORT_ROUTING_DECISIONS)[number];
+
+/**
+ * What a routing decision rested on (ISS-1243): the message's own words, who sent it, what that
+ * sender worked on before, the thread's history and the project its records went to, the room's
+ * projects, and a tracker or knowledge search.
+ */
+export const SUPPORT_ROUTING_SIGNALS = [
+	"message",
+	"sender",
+	"sender_history",
+	"thread_history",
+	"room_projects",
+	"search",
+] as const;
+export type SupportRoutingSignal = (typeof SUPPORT_ROUTING_SIGNALS)[number];
+
+export const SUPPORT_ROUTING_CONFIDENCES = ["high", "medium", "low"] as const;
+export type SupportRoutingConfidence =
+	(typeof SUPPORT_ROUTING_CONFIDENCES)[number];
+
+/**
+ * The session's routing decision for one message (ISS-1243), kept on the turn that made it: which
+ * project the message concerns, what that rested on, how sure, and whether it answers, gathers,
+ * asks or stays silent, and why. A silence decided here is the message's stated silence.
+ */
+export const supportDecideRequestSchema = z.strictObject({
+	thread: threadId,
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.optional()
+		.describe(
+			"the message you decide on, as it carries `message` in what you were handed",
+		),
+	decision: z
+		.enum(SUPPORT_ROUTING_DECISIONS)
+		.describe(
+			"answer it, gather more on your own first, ask the person one short question, or stay silent",
+		),
+	project: supportProjectSlugSchema
+		.optional()
+		.describe(
+			"the project the message concerns, one you follow by slug; omitted where it concerns none (chatter)",
+		),
+	signals: z
+		.array(z.enum(SUPPORT_ROUTING_SIGNALS))
+		.min(1)
+		.max(SUPPORT_ROUTING_SIGNALS.length)
+		.describe("what the decision rested on"),
+	confidence: z
+		.enum(SUPPORT_ROUTING_CONFIDENCES)
+		.describe("how sure you are of the project and the decision"),
+	why: supportWhySchema.describe("one line: why this decision"),
+});
+export type SupportDecideRequest = z.infer<typeof supportDecideRequestSchema>;
 export const supportRunRequestSchema = z.strictObject({
 	thread: threadId,
 	tool: z.string().min(1).max(48),
@@ -1004,7 +1079,41 @@ export const supportRecordRequestSchema = z.strictObject({
 	asker: z.string().min(1).max(64).optional(),
 	/** The project whose master it is for (ISS-874): a project you follow; your home when omitted. */
 	project: supportProjectSlugSchema.optional(),
+	/**
+	 * The owner asks for new work in a thread already holding an open item, and approves none of
+	 * them (ISS-1243): an approval goes to `approve` instead.
+	 */
+	separate: z
+		.literal(true)
+		.optional()
+		.describe(
+			"true only where the owner asks for new work beside an open item of the thread; his approval of that item is support.approve",
+		),
 });
+
+/**
+ * The owner's approval, in a thread, of an item recorded from it (ISS-1243): attached to that item
+ * as his approval, citing his message, never filed as a new item.
+ */
+export const supportApproveRequestSchema = z.strictObject({
+	thread: threadId,
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.describe("the owner's message that approves it"),
+	feedback: z
+		.string()
+		.regex(/^FB-\d+$/, "a Feedback key, FB-n")
+		.describe("the open item recorded from this thread that he approves"),
+	project: supportProjectSlugSchema
+		.optional()
+		.describe(
+			"the project that item was filed in, where two of the thread's share a key",
+		),
+});
+export type SupportApproveRequest = z.infer<typeof supportApproveRequestSchema>;
 
 /**
  * The person's plain answer to a proposal, as the session cites it (ISS-845): the proposal's handle
@@ -1284,6 +1393,8 @@ export interface SupportActionView {
 	input: unknown;
 	output: unknown;
 	feedbackKey: string | null;
+	/** The slug of the project the item was filed in, which for a followed project's record is not the room's (ISS-1243). */
+	feedbackProject: string | null;
 	/**
 	 * The session and turn that took it, where a turn did (ISS-1029): its record is read at
 	 * `GET /api/projects/:id/support/rooms/:roomId/turns/:id`.
@@ -1629,6 +1740,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_APPROVAL_NEEDED",
 	/** An owner act's agreement cited from a message the owner did not write (ISS-1014). */
 	"SUPPORT_OWNER_APPROVAL_NOT_HIS",
+	/** An approval cited from a message that is not the owner's own in the thread named (ISS-1243). */
+	"SUPPORT_APPROVAL_NOT_THE_OWNERS",
+	/** An approval naming no open item recorded from its thread (ISS-1243). */
+	"SUPPORT_APPROVAL_ITEM_UNKNOWN",
+	/** A record the owner asks for in a thread holding an open item, naming neither that it approves one nor that it is separate (ISS-1243). */
+	"SUPPORT_RECORD_IS_APPROVAL",
 	/** A release decision cited from a message that is no member's own in the thread named (ISS-1206). */
 	"SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE",
 	/** A release decision whose writer holds no releases.approve on the release's project (ISS-1206). */
@@ -1772,6 +1889,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CONSENT_NOT_THE_OWNER: 403,
 	SUPPORT_OWNER_APPROVAL_NEEDED: 409,
 	SUPPORT_OWNER_APPROVAL_NOT_HIS: 403,
+	SUPPORT_APPROVAL_NOT_THE_OWNERS: 403,
+	SUPPORT_APPROVAL_ITEM_UNKNOWN: 404,
+	SUPPORT_RECORD_IS_APPROVAL: 409,
 	SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE: 403,
 	SUPPORT_RELEASE_DECISION_NOT_PERMITTED: 403,
 	SUPPORT_RELEASE_VERSION_AMBIGUOUS: 400,

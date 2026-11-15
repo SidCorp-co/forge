@@ -20,6 +20,7 @@ import { actsWords } from './deciders.js';
 import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { namedProject } from './ops-scope.js';
 import { knownThread, threadUnknown } from './outcome.js';
+import { recordIsApproval } from './owner-approves.js';
 import type { RecordRequest } from './record.js';
 import { type Refusal, refusalOf } from './refusals.js';
 import { mintConfirmCode } from './rules.js';
@@ -253,6 +254,13 @@ export async function proposeRecord(
 ): Promise<ProposeOutcome> {
   const asked = await askerOf(room, input.thread, input.asker);
   if (!asked.ok) return asked;
+  // the owner's word in a thread holding an open item approves it, never files a new one (ISS-1243)
+  const approval = await recordIsApproval(room, {
+    thread: input.thread,
+    asker: asked.asker.key,
+    separate: input.separate,
+  });
+  if (approval) return approval;
   // a project outside the agent's set is refused now, before the asker is asked anything (ISS-874)
   const target = await namedProject(room, input.project);
   if (!target.ok) return target;

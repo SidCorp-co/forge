@@ -6,9 +6,14 @@ import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import {
   SUPPORT_ACTIONS,
   SUPPORT_RECORD_KINDS,
+  SUPPORT_ROUTING_CONFIDENCES,
+  SUPPORT_ROUTING_DECISIONS,
+  SUPPORT_ROUTING_SIGNALS,
   supportAgreeRequestSchema,
+  supportApproveRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
+  supportDecideRequestSchema,
   supportDeploymentRequestSchema,
   supportDeployRequestSchema,
   supportImageRequestSchema,
@@ -96,6 +101,8 @@ const REQUESTS = {
   tools: z.strictObject({}),
   reply: supportReplyRequestSchema,
   silent: supportSilentRequestSchema,
+  decide: supportDecideRequestSchema,
+  approve: supportApproveRequestSchema,
   run: supportRunRequestSchema,
   propose_fix: supportProposeFixRequestSchema,
   record: supportRecordRequestSchema,
@@ -163,6 +170,8 @@ const inputSchema = z.strictObject({
   ...supportSearchRequestSchema.partial().shape,
   ...supportReplyRequestSchema.partial().shape,
   ...supportSilentRequestSchema.partial().shape,
+  signals: supportDecideRequestSchema.shape.signals.optional(),
+  confidence: supportDecideRequestSchema.shape.confidence.optional(),
   ...supportProposeFixRequestSchema.partial().shape,
   ...supportRecordRequestSchema.partial().shape,
   ...operationsIssuesRequestSchema.partial().shape,
@@ -173,7 +182,18 @@ const inputSchema = z.strictObject({
   ...supportCommandRequestSchema.partial().shape,
   // the owner's consent or its withdrawal, for a product by its binding name (ISS-1013)
   // and a person's release decision, read from his own message (ISS-1206)
-  decision: z.enum(['agree', 'decline', 'give', 'withdraw', 'approve', 'return']).optional(),
+  // and a routing decision for a message (ISS-1243)
+  decision: z
+    .enum([
+      'agree',
+      'decline',
+      'give',
+      'withdraw',
+      'approve',
+      'return',
+      ...SUPPORT_ROUTING_DECISIONS,
+    ])
+    .optional(),
   version: supportReleaseDecisionRequestSchema.shape.version.optional(),
   product: supportOwnerConsentRequestSchema.shape.product,
   // the owner's cited agreement to an act its product gates on approval (ISS-1014)
@@ -195,9 +215,11 @@ const SHAPE = [
   'tools {}',
   'reply { thread, text, why? }',
   'silent { thread, message?, reason }',
+  `decide { thread, message?, decision: ${SUPPORT_ROUTING_DECISIONS.join(' | ')}, project?, signals: (${SUPPORT_ROUTING_SIGNALS.join(' | ')})[], confidence: ${SUPPORT_ROUTING_CONFIDENCES.join(' | ')}, why }`,
   'run { thread, tool, args? }',
   'propose_fix { thread, tool, args?, asker }',
-  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker?, project? }`,
+  `record { thread, kind: ${SUPPORT_RECORD_KINDS.join(' | ')}, title, summary, whereSeen?, asker?, project?, separate? }`,
+  'approve { thread, message, feedback, project? }',
   'move_issue { thread, message, issue, to, reason? }',
   'build { thread, branch, title, summary }',
   'deploy { thread, target }',
@@ -240,9 +262,11 @@ const DESCRIPTION = [
   'thread {thread}: the thread so far, oldest first, each message with its id, which agree cites. tools {}: the checks (diagnose) and changes (fix) this group grants you.',
   "reply {thread, text, why?}: post your answer in that thread; `why`, one line, says why the message asked for one. It is screened before it is posted; a refusal names what to rewrite. In a group the product's users read, any post holding a Forge issue key (a store's own order number such as RIV-68493 may stay), an MR or PR number, an environment variable name, a commit sha or a credential word is refused SUPPORT_INTERNAL_CODE.",
   'silent {thread, message?, reason}: post nothing for a message you were handed, saying why in one line (chatter, for someone else, already answered by a Technical member, working on it in the background): recorded on the room, never posted. Every message you are handed gets a reply, a refusal or this.',
+  "decide {thread, message?, decision, project?, signals, confidence, why}: for each message you were handed, record what you decided from its meaning before you act on it: answer it, gather more on your own first (the thread, the routing signals you were handed, a search of the projects you follow), ask the person one short question (only once gathering is exhausted), or stay silent; the project it concerns, by slug (one you follow; omitted where it concerns none); the signals it rested on (message, sender, sender_history, thread_history, room_projects, search); how sure you are; and why, one line. It is kept on your turn and counted; nothing is posted. decision silent is the message's stated silence too, so no support.silent is needed after it. A project you do not follow is refused OPS_OUT_OF_SCOPE and nothing is recorded.",
   'run {thread, tool, args}: run a granted diagnose check; you get what came back, and the thread is shown nothing.',
   'propose_fix {thread, tool, args, asker}: propose a granted fix for the person who asked (`from.id`). Nothing is posted: you are handed `proposal`, whom it waits on and when it expires. Ask that person in your own words; nothing runs until you cite their answer with agree.',
-  `record {thread, kind, title, summary, whereSeen?, asker?, project?}: propose recording what needs code or a decision as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}), on the project that owns it: name a project you follow as project, so its master gets it; your home when omitted. Nothing is posted and nothing is filed yet: you are handed \`proposal\`. Ask the asker (the thread's first writer unless named) in your own words whether to record it; when they agree in plain words, call agree. You are handed the key and the project it was filed in then, which you tell them even where you cannot read that project's feedback; where it cannot be filed, agree refuses SUPPORT_RECORD_NOT_FILED naming why, and the proposal still stands: once that is put right, cite the same answer again. You are told again once it is answered, shipped or declined, with what the team said or shipped: then post that result in its thread. Never post progress, and never promise a date.`,
+  `record {thread, kind, title, summary, whereSeen?, asker?, project?, separate?}: propose recording what needs code or a decision as Feedback for the team (kind ${SUPPORT_RECORD_KINDS.join(' | ')}), on the project that owns it: name a project you follow as project, so its master gets it; your home when omitted. Nothing is posted and nothing is filed yet: you are handed \`proposal\`. Ask the asker (the thread's first writer unless named) in your own words whether to record it; when they agree in plain words, call agree. You are handed the key and the project it was filed in then, which you tell them even where you cannot read that project's feedback; where it cannot be filed, agree refuses SUPPORT_RECORD_NOT_FILED naming why, and the proposal still stands: once that is put right, cite the same answer again. You are told again once it is answered, shipped or declined, with what the team said or shipped: then post that result in its thread. Never post progress, and never promise a date.`,
+  'approve {thread, message, feedback, project?}: the owner\'s own message in a thread approves an item recorded from it ("lên production", "đồng ý", a go on what it asked): attach it to that open item (FB-n, of project where two share the key) and file nothing new; his words are written on the item as his approval. A record the owner asks for in a thread holding an open item is refused SUPPORT_RECORD_IS_APPROVAL until you either approve that item or record again with separate: true for new work beside it. Refused by name, nothing attached: SUPPORT_APPROVAL_NOT_THE_OWNERS (not his own message in that thread), SUPPORT_APPROVAL_ITEM_UNKNOWN (no open item of the thread by that key). Nothing is posted.', // i18n-allow: the owner's own words the agent hears, verbatim
   "promise {thread, issue, environment, asker?, project?}: promise the person (`from.id` as asker; the thread's first writer when omitted) to tell them in this thread when an issue of a project you follow reaches an environment, named as the project calls it (staging, production; no deployment target id), whether or not it was filed from this thread. Nothing is posted: tell them in your own words, and never promise a date. Forge tells you once, when that environment first serves a build holding the issue's landing, or if the issue is dropped or the environment stops being tracked first: then tell them in this thread, naming the work as they know it. One you cannot keep is refused by name: SUPPORT_PROMISE_NOT_FOLLOWED (a project you do not follow), SUPPORT_PROMISE_ISSUE_UNKNOWN, SUPPORT_PROMISE_ISSUE_DROPPED, SUPPORT_PROMISE_ENVIRONMENT_UNTRACKED (listing the environments the project tracks); tell the person so in your words.",
   "image {message, n?}: read picture n (1 when omitted) of a member's message, whose head names `images` with their count: Forge fetches it from the chat server, which your box cannot reach, and hands it back as a viewable image block, its name framed as data. Read the pictures before you answer; never ask the person to describe one. One Forge cannot fetch is refused by name with why: SUPPORT_IMAGE_TOO_LARGE, SUPPORT_IMAGE_GONE, SUPPORT_IMAGE_REFUSED, SUPPORT_IMAGE_OFF_SERVER or SUPPORT_IMAGE_UNREACHABLE; a place the message holds no picture at, SUPPORT_IMAGE_UNKNOWN. Nothing is posted.",
   "agree {thread, proposal, message, decision?}: the person answered your proposal. Cite the id of their message (`message` in what you were handed); decision \"decline\" when they said no; any words of their own are their agreement; never ask anyone to type a set word. Forge checks the message is theirs (the asker, or for a build, a deploy, a host change or a channel fix a confirmer the room allows), in the proposal's thread, and written after the proposal (the owner's own request for it counts whenever he wrote it, and so does the own request of a member the project's rulings name as the one who decides that act, whose go in any words on a proposal put to them counts too: cite it at once, never ask them), then runs or files it and hands you what came of it: tell the person in your own words. A refusal names why; nothing is posted either way.",

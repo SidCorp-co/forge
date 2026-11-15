@@ -146,3 +146,27 @@ describe('the tools line names the binding each tool reads', () => {
     expect(line).toContain('- machines_sid (diagnose) on sidcorp: list machines');
   });
 });
+
+// ISS-1243 (owner, 2026-11-15): the agent decided the project and whether to answer from the words
+// alone; both briefs now tell it to read the routing signals first, gather before it asks, ask one
+// short question at most, stay silent where nothing needs saying, and record every decision.
+describe('every room brief decides each message from its meaning and records it', () => {
+  const opening = agentOpening({
+    projectName: 'P',
+    product: null,
+    channels: ['g1'],
+    ownerMode: false,
+  }).join('\n\n');
+  it.each([
+    ['the support brief', brief],
+    ['the channel agent opening', opening],
+  ])('%s routes by the signals, gathers before asking, and records the decision', (_, text) => {
+    expect(text).toContain('record the decision with support.decide');
+    expect(text).toContain("read its head's `routing` first, before any guess");
+    expect(text).toContain('on a vague message gather on your own first (decision gather)');
+    expect(text).toContain(
+      'ask the person one short question (decision ask) only once that is exhausted',
+    );
+    expect(text).toContain('asks no "ok?" of anyone whose own request already agrees to it');
+  });
+});

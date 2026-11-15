@@ -20,6 +20,7 @@ import { dropWaitingBefore, giveBackFailed, toldFailed } from './delivery.js';
 import { deliverWaiting } from './dispatch.js';
 import { tellRoomLastResort } from './last-resort.js';
 import { isCoreThread } from './rules.js';
+import { threadHeldByAnother } from './shared-group.js';
 import { type ActionRow, insertAction, type RoomRow } from './store.js';
 import { TOP_LEVEL } from './thread.js';
 
@@ -179,7 +180,13 @@ export async function tellUnanswered(
   );
   const left = taken.filter((m) => !told.has(m.id) && !heldTooLong(m, now));
   if (left.length === 0) return;
-  const waiting = left.filter(waitsOnAnswer);
+  // a thread another binding of a shared group holds is that session's to answer: this one posts no
+  // failure line for it (ISS-1243)
+  const held = new Set<string>();
+  for (const thread of new Set(left.map((m) => m.thread))) {
+    if (await threadHeldByAnother(room, thread)) held.add(thread);
+  }
+  const waiting = left.filter((m) => waitsOnAnswer(m) && !held.has(m.thread));
   const said =
     waiting.length > 0
       ? await tellRoomLastResort(

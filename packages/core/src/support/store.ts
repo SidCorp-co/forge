@@ -279,6 +279,27 @@ export async function sessionRepliedInThread(roomId: string, thread: string): Pr
   return Boolean(row);
 }
 
+/** Which of these rooms' sessions replied last in `thread`, by room id; null where none did. */
+export async function lastPosterInThread(
+  roomIds: readonly string[],
+  thread: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ roomId: supportActions.roomId })
+    .from(supportActions)
+    .where(
+      and(
+        inArray(supportActions.roomId, [...roomIds]),
+        eq(supportActions.thread, thread),
+        eq(supportActions.kind, 'reply'),
+        eq(supportActions.actorKind, 'session'),
+      ),
+    )
+    .orderBy(desc(supportActions.createdAt))
+    .limit(1);
+  return row?.roomId ?? null;
+}
+
 /** The member who wrote last in a thread: whom an operations room's act in it runs for. */
 export async function latestThreadWriter(
   roomId: string,

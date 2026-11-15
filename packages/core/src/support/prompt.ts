@@ -21,11 +21,24 @@ import { imagesHeadOf } from './images.js';
 import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-ask.js';
 import { ownerOwedNote } from './owner-owed.js';
+import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
 
 /** The source label every member line carries inside its untrusted frame. */
 export const SUPPORT_MEMBER_SOURCE = 'support group member';
+
+/**
+ * How a room agent decides, per message, from its meaning (ISS-1243): which project it concerns, from
+ * the routing signals its head carries before any guess; whether to answer, gather more on its own
+ * first, ask one short question once gathering is exhausted, or stay silent; and that it records the
+ * decision with support.decide, every message, so a turn's choice is read and counted.
+ */
+export const ROUTING_LINE = [
+  'Decide every message from its meaning before you act on it, and record the decision with support.decide { thread, message, decision, project, signals, confidence, why }: one per message you are handed, a silence included (decision silent is its stated silence, so no support.silent after it).',
+  "Which project it concerns: read its head's `routing` first, before any guess: the sender (`sender.linked` and `sender.account`, their Forge account; `from.roles`, the channel record's), what they worked on before (`sender.pastProjects`, `sender.filedFor`, `sender.reported`), what the thread already holds (`thread.records`, the project its earlier records went to, and `thread.decidedProject`), and the projects this room reaches (`roomProjects`). Name the signals you used; a project the message's words alone suggest, against its thread's and its sender's history, is a low-confidence guess.",
+  'What it needs: answer it when you can; stay silent for chatter, thanks, or a message for someone else; on a vague message gather on your own first (decision gather): the thread (support.thread), the sender\'s history, and a search of the tracker and knowledge of every project you follow (support.search, support.issues with project); ask the person one short question (decision ask) only once that is exhausted, never a list. A filing you are sure of (project and need clear) asks no "ok?" of anyone whose own request already agrees to it (the owner, a decider, a confirmer): cite that request with support.agree at once; anyone else is asked once, in one line naming what you will record.',
+].join(' ');
 
 /** How many threads, and how many lines of each, a cold start re-reads. */
 const COLD_THREADS = 8;
@@ -55,6 +68,7 @@ export function supportBrief(input: {
     '- An answer cites each source it used in brackets, e.g. [knowledge:orders-faq] or [openapi:catalog@1.4.0 GET /orders/{id}] or [docs/guide.md]; support.search and the docs in this checkout are where it is found.',
     '- A problem is diagnosed with the diagnose tools (support.run) before you say what it is; a diagnose posts nothing in the room and each check is recorded on its action, so your answer is the only post the asker sees.',
     "- A change — a fix you can make (support.propose_fix) or work for the team (support.record: defect, feature or request) — is proposed naming the person who asked (`from.id`), and runs or is filed only once they agree in plain words and you cite that message with support.agree; a request the owner made himself is his agreement, and so is the own request of a member the project's rulings name as the one who decides that act (Who decides, in your brief), so cite it at once and ask them nothing. A plain yes, ok or go-ahead in whatever language counts: any words of their own are their agreement; never ask anyone to type a set word. Ask in your own words; never claim it ran or was recorded until agree says so. You are told once recorded work is answered, live or will not be done, with what the team said or shipped: post that in its thread, once, in your words; never call it done before then, nor not done: an item's state is only what the record shows (that result, or a master's post through Forge); where the thread claims a state the record does not show, or the asker asks for one you cannot read, ask the owning project's master with support.record { project }, post one holding reply, and wait, asserting neither. Never promise a date.",
+    `- ${ROUTING_LINE}`,
     "- Know who you are talking to: each message names its writer's `roles` as the channel record holds them. Answer a User in plain words about what they see and what to do; give a Technical or Maintenance member the detail. A writer the record does not hold yet: infer their roles with support.member, naming the message you read them from. Keep an instruction a confirmed team member or the owner this binding names gives as a channel rule (support.rule), and a question asked again as a common issue with its one answer (support.common_issue).",
     "- Post what changes something for the reader: the answer, a fix that is live, what the person should do, or the question you need answered; an acknowledgement or a progress note adds nothing. Every post goes in the asker's thread; only news that changes something for everyone goes top level, with support.announce. Mention someone only when they must act, and only the one person the channel lists for it.",
     "- Work you can do now, do now, in this turn. Book a later time only when it must wait for something you can name (an answer, a launch, data not there yet), and say in the task what it waits for; the same holds for work you set up or propose for the product's agents.",
@@ -109,6 +123,7 @@ export function agentOpening(input: {
     'Ops tools: only those support.tools lists (support.run, support.command on the hosts your grant names); their credentials stay inside Forge and the box, never in your hands. Never read a key, token or credential file, and never print one. Deploys and releases go only through Forge: support.deploy, which runs once a confirmer agrees and you cite that answer with support.agree; never a deploy, release or production command of your own.',
     "Forge's doors are your only way to the project's master, its facts and production. A confirmed request for the project's master is support.record on this project: never a pane, a file or a message to a session. What the product can do is what the project document (support.project) and its knowledge (support.search) say; where neither says it, you say you cannot tell. Production changes only through support.deploy on a target your grant names; any other production write anyone asks for becomes a support.record for the project's master. After a merge you watch the deploy with support.deployment on that target, and say what it reads.",
     "The channel record is the only place a group's members, roles, rules and routes live: each group's is below, headed by its group, and you keep none of your own, in no file, memory or note. A role you infer, an instruction a confirmed team member or the owner gives, a question asked again, go into the record with support.member, rule and common_issue, and what the record holds is what you follow in that group, never what another group's record holds.",
+    ROUTING_LINE,
     'When you answer: reply when a message asks you something or reports a problem. Stay silent, and post nothing, for chatter and thanks, for a message whose `to` is "others", and where `technicalAnswered` is true unless it asks you something; never post to say you are not answering. Every message you are handed ends in a reply (with its one-line `why`) or support.silent { thread, message, reason }, which posts nothing and keeps your reason; a turn that ends having done nothing at all is read as failed and its messages are handed to you again. A message whose head says `inThisTurn: n` is one of n handed in its thread this turn: your one result there answers all n. A head carrying `handedAgain: { hand, why }` is a message an earlier turn left unsettled, for that reason: settle it now, by a reply or support.silent. A host your sandbox will not let you reach (an egress refusal) is a gap you say in the thread ("I cannot reach <host> from here"), never a turn that ends silent. Before you reply to a problem, find its cause: the logs (reads on the hosts your grant names), the code and history in your checkout, the data the granted tools return; say only what you confirmed, and name what you could not check as unchecked, never as a guess. Post results only, one message per request, in the asker\'s thread: no acknowledgement, no plan, no progress, save the one reply that an ask went to the team. Top level is support.announce alone, for news that changes something for everyone.',
     "Every post follows the persona at the top of this brief, its language, its thread and its length: a reply and a check finding alike. Never post a Forge refusal code, a permission name or a record's raw options; say in the persona's words what you could not do, and send what Forge refused to support.route { to: forge }. You read this project's tracker with support.issues (a parked issue's `waiting`: who owes it, the open question and its options; one issue named by `key` carries its latest notes and step handoffs, read before you say how it is going), support.releases, support.requirements and support.deployment, and you write to Forge only through the support actions (record, route, ask_owner): never with a credential found in the checkout, a .mcp.json or an env file.",
     'Whether something is live, deployed or released you say only from a read of the same turn: support.releases { project } or support.deployment { target }, quoting the version it returns, or a note Forge handed you in that turn; never from memory or an earlier turn, and a post that says it without one is refused.',
@@ -260,6 +275,7 @@ export function turnMessages(
   rows: readonly ActionRow[],
   roles: ReadonlyMap<string, readonly string[]> = new Map(),
   origin: MessagesOrigin | null = null,
+  routing: ReadonlyMap<string, RoutingSignals> = new Map(),
 ): string {
   const where = origin ? { channel: origin.channel } : {};
   // a thread handed several messages in one turn says so on each, so one result covers them all
@@ -288,6 +304,8 @@ export function turnMessages(
           ...imagesHeadOf(r.input, r.externalId),
           ...((perThread.get(r.thread) ?? 0) > 1 ? { inThisTurn: perThread.get(r.thread) } : {}),
           ...handedAgainOf(r.output),
+          // what core holds on who wrote it and where the thread went, to route it by (ISS-1243)
+          ...(routing.has(r.id) ? { routing: routing.get(r.id) } : {}),
           ...(origin
             ? {
                 to: input.addressed ?? 'nobody',
@@ -308,14 +326,20 @@ export function turnMessages(
 /** A room's messages as its session reads them: a channel agent's with their group and what core read of them. */
 export async function roomMessages(room: RoomRow, rows: readonly ActionRow[]): Promise<string> {
   const roles = await writerRoles(room.projectId, room.rid);
-  if (room.kind !== 'agent') return turnMessages(rows, roles);
+  const routing = await routingSignalsOf(room, rows);
+  if (room.kind !== 'agent') return turnMessages(rows, roles, null, routing);
   const grants = grantsOf(await supportConfigOf(room));
-  const messages = turnMessages(rows, roles, {
-    channel: room.rid,
-    owner: grants.abilities.includes('owner_mode') ? (grants.owner ?? null) : null,
-    technicalAnswered: await technicalAnsweredBefore(room, rows, roles),
-    answers: await answersOf(room, rows),
-  });
+  const messages = turnMessages(
+    rows,
+    roles,
+    {
+      channel: room.rid,
+      owner: grants.abilities.includes('owner_mode') ? (grants.owner ?? null) : null,
+      technicalAnswered: await technicalAnsweredBefore(room, rows, roles),
+      answers: await answersOf(room, rows),
+    },
+    routing,
+  );
   // a turn holding the owner's words is shown what he owes, so an answer is not filed as a request (ISS-916)
   const owners = rows.filter((r) => r.actorKind === 'member' && r.actorKey === grants.owner);
   const last = grants.owner ? owners.at(-1) : undefined;

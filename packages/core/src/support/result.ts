@@ -7,7 +7,7 @@
 // an answer is told as answered, with the answer, never as live; a decline carries its reason.
 
 import { recentIssueNotes } from '../comments/index.js';
-import { externalItemResults } from '../feedback/index.js';
+import { externalItemResults, feedbackKeysOf } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { handOnRooms } from './dispatch.js';
@@ -53,6 +53,8 @@ export async function tellProjectResults(projectId: string, handOn?: Set<string>
     projectId,
     links.map((l) => l.feedbackId),
   );
+  // the project each item was filed in, named on what a room is told of a followed project's record
+  const filedIn = await feedbackKeysOf(links.map((l) => l.feedbackId));
   let told = 0;
   const rooms = handOn ?? new Set<string>();
   for (const link of links) {
@@ -64,7 +66,9 @@ export async function tellProjectResults(projectId: string, handOn?: Set<string>
       !room || now.withheld || now.phase === 'declined'
         ? null
         : await foundOn(room, now.carrierIssueIds);
-    const note = resultNote({ ...now, found });
+    const project = filedIn.get(link.feedbackId)?.project ?? null;
+    const elsewhere = room && room.projectId !== projectId ? project : null;
+    const note = resultNote({ ...now, found, elsewhere });
     if (!note) continue;
     if (!(await advanceLink(link.feedbackId, link.lastPhase, now.phase, true))) continue;
     if (!room) continue;
@@ -88,7 +92,7 @@ export async function tellProjectResults(projectId: string, handOn?: Set<string>
       kind: 'result_told',
       actorKind: 'core',
       input: { from: link.lastPhase },
-      output: { phase: now.phase, feedbackKey: now.key, route: now.route },
+      output: { phase: now.phase, feedbackKey: now.key, project, route: now.route },
       feedbackId: link.feedbackId,
     });
     told++;
