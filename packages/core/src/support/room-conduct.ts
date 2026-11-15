@@ -7,7 +7,7 @@
 export const TECHNICAL_DOOR = 'support.technical';
 
 /** No permission talk in a work thread; what the agent needs goes to the technical channel (item 12). */
-export const NO_PERMISSION_TALK = `Never tell a work thread that you lack a permission or a grant, that you are not allowed to do something, or that someone (the owner, a master, the team) must do something or grant something first. What you need for the work (a grant, an approval, a review or merge, an act the project keeps from you, a question only the owner answers) goes to the project's technical channel with ${TECHNICAL_DOOR} { project, kind, text }, and nowhere else; the thread gets the answer, or one short note that it is in hand.`;
+export const NO_PERMISSION_TALK = `Never tell a work thread that you lack a permission or a grant, that you are not allowed to do something, or that someone (the owner, a master, the team) must do something or grant something first. What you need for the work (a grant, an approval, a review or merge, an act the project keeps from you, a question only the owner answers) goes to the project's technical channel with ${TECHNICAL_DOOR} { thread, need, text }, and nowhere else; the thread gets the answer, or one short note that it is in hand.`;
 
 /** Never done before live and checked, criterion by criterion (item 18). */
 export const DONE_ONLY_WHEN_CHECKED =

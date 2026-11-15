@@ -18,6 +18,7 @@ import type {
   SupportReleaseDecisionRequest,
 } from '@forge/contracts/support-channel';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
+import type { SupportTechnicalRequest } from '@forge/contracts/support-technical';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import {
   moveIssue,
@@ -52,6 +53,7 @@ import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
 import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
+import { raiseTechnical } from './technical-channel.js';
 import { TOP_LEVEL } from './thread.js';
 import { noteSessionAct } from './turn-acts.js';
 import { turnOfRequest } from './turn-of-act.js';
@@ -145,6 +147,7 @@ export type SupportActInput =
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
   | ({ action: 'owner_sign_in' } & SupportOwnerSignInRequest)
   | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
+  | ({ action: 'technical' } & SupportTechnicalRequest)
   | {
       action: 'read';
       name: string;
@@ -269,6 +272,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'ask_owner',
   // a member's picture reads the same in an operations room as in a support group (ISS-1010)
   'image',
+  // every room agent raises what it needs in its project's technical channel (ISS-1243)
+  'technical',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -401,6 +406,10 @@ async function act(
     case 'release_decision': {
       const { action: _, ...request } = input;
       return decideReleaseFromMessage(room, request);
+    }
+    case 'technical': {
+      const { action: _, ...request } = input;
+      return raiseTechnical(room, request);
     }
     case 'owner_sign_in':
       return startOwnerSignIn(room, {

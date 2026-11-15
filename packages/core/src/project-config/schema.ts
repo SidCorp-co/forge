@@ -15,6 +15,7 @@ import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
 import { supportApiBindingConfigSchema } from '@forge/contracts/support';
 import { rocketchatBindingTargetShape } from '@forge/contracts/support-channel';
+import { agentDenySchema, technicalChannelSchema } from '@forge/contracts/support-technical';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
@@ -345,6 +346,13 @@ export const projectDocumentSchema = z.strictObject({
       .min(1)
       .max(20),
   ).optional(),
+  // the one channel every room agent of the project raises a permission or approval it needs, a
+  // technical finding and an ask of the owner in, and nowhere else (ISS-1243, `support/technical-channel.ts`).
+  // Absent is a direct message to the owner the room's binding names.
+  technicalChannel: technicalChannelSchema.optional(),
+  // the acts with serious consequence the project keeps from its room agents, refused by name and
+  // raised in the technical channel (ISS-1243, `support/act-deny.ts`). Absent is all four; [] is none.
+  agentDeny: agentDenySchema.optional(),
   // the secrets the project's master or its declared runs act with, each naming its readers
   // (REQ-88, `acting-secrets-schema.ts`); read at `acting-secret-door.ts`. Absent is none.
   actingSecrets: actingSecretsSchema.optional(),
