@@ -39,7 +39,7 @@ import {
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
-import { safeRecordActivity, transitionIssueStatus } from '../issues/index.js';
+import { passIssueLease, safeRecordActivity, transitionIssueStatus } from '../issues/index.js';
 import { canonicalIssueKey, seqOfCanonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -184,8 +184,14 @@ export async function returnIssuesForRun(
     }
     const target = named as IssueStatus;
     if (heldElsewhere.has(key)) {
+      // a part of the issue its master still builds keeps it held (ISS-1245)
+      const heir = await passIssueLease(db, {
+        projectId: run.projectId,
+        issueKey: key,
+        fromRunId: runId,
+      });
       logger.info(
-        { runId, issueKey: key, status: issue.status },
+        { runId, issueKey: key, status: issue.status, leasePassedTo: heir },
         'run-issue-return: left an issue a live run session now holds',
       );
       continue;

@@ -17,7 +17,13 @@ impl Ledger {
         }
         let tx = self.conn.transaction().map_err(sql_err)?;
         for key in &new.issue_keys {
-            if let Some(holder) = Self::live_run_holding(&tx, &new.project_id, key, &new.boot_id)? {
+            if let Some(holder) = Self::live_run_holding(
+                &tx,
+                &new.project_id,
+                key,
+                &new.boot_id,
+                &new.master_session_id,
+            )? {
                 return Err(Error::Other(match Self::host_ended_by(&tx, &holder)? {
                     Some(by) => format!(
                         "ledger: issue {key} is held by run {holder}, which is not running: the Claude Code process its subagent ran in is gone{}. {}",
@@ -89,15 +95,18 @@ impl Ledger {
             .ok_or_else(|| Error::Other("ledger: run vanished after commit".into()))
     }
 
-    /// The live run holding `issue_key` of `project_id`. An issue key names an
-    /// issue only inside its project, so another project's ISS-533 is another
-    /// issue. A row that records no project cannot be told apart and still
-    /// holds.
+    /// The live run holding `issue_key` of `project_id` against a run `master`
+    /// declares. An issue key names an issue only inside its project, so another
+    /// project's ISS-533 is another issue. A row that records no project cannot be
+    /// told apart and still holds. A run of `master` itself whose pane is still
+    /// up holds nothing against it: a master builds one issue in parts, each part
+    /// a run in its own tree, and core holds the issue for all of them (ISS-1245).
     pub(crate) fn live_run_holding(
         tx: &rusqlite::Transaction<'_>,
         project_id: &str,
         issue_key: &str,
         boot_id: &str,
+        master: &str,
     ) -> Result<Option<String>> {
         tx.query_row(
             &format!(
@@ -105,9 +114,10 @@ impl Ledger {
                   WHERE i.issue_key = ?1 AND r.incarnation = 'live' AND r.boot_id = ?2
                     AND (r.project_id = ?3 OR r.project_id IS NULL)
                     AND NOT {CLOSED_BY_ITS_MARKS}
+                    AND NOT (r.master_session_id = ?4 AND r.host_ended_at_ms IS NULL)
                   LIMIT 1"
             ),
-            params![issue_key, boot_id, project_id],
+            params![issue_key, boot_id, project_id, master],
             |row| row.get::<_, String>(0),
         )
         .optional()
@@ -880,5 +890,54 @@ mod role_tests {
             .unwrap_err();
         assert!(both.to_string().contains("no issue beside it"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod shared_issue_tests {
+    use super::*;
+
+    fn part(run: &str, master: &str, tree: &str) -> NewRun {
+        NewRun {
+            run_id: run.into(),
+            project_id: "proj-1".into(),
+            master_session_id: master.into(),
+            worktree_path: tree.into(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-7".into()],
+            role: None,
+            requirement: None,
+            worktree_origin: TreeOrigin::Created,
+            worktree_base: None,
+        }
+    }
+
+    /// ISS-1245: a master builds one issue in parts, each a run in its own tree;
+    /// another master is still refused the issue, and one tree still holds one run.
+    #[test]
+    fn one_master_declares_parts_of_one_issue_in_trees_of_their_own() {
+        let mut led = Ledger::from_conn(Connection::open_in_memory().unwrap()).unwrap();
+        led.create_run_group(part("p1", "master-a", "/w/p1"))
+            .unwrap();
+        led.bind_agent("p1", "agent-1").unwrap();
+        led.create_run_group(part("p2", "master-a", "/w/p2"))
+            .expect("a second part of the master's own issue was refused");
+        led.bind_agent("p2", "agent-2").unwrap();
+        let other = led
+            .create_run_group(part("q1", "master-b", "/w/q1"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            other.contains("issue ISS-7 already belongs to live run"),
+            "{other}"
+        );
+        let same_tree = led
+            .create_run_group(part("p3", "master-a", "/w/p2"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            same_tree.contains("is already held by live run p2"),
+            "{same_tree}"
+        );
     }
 }

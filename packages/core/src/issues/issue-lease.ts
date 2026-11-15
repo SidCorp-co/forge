@@ -250,6 +250,70 @@ async function holdersOf(
   }));
 }
 
+/** `s` is a live run session of the same master, on the same box, as the session `of` names. */
+const siblingOf = (of: SQL) => sql`s.kind = ${RUN_SESSION_KIND}
+  AND s.status NOT IN (${terminalSessionList})
+  AND s.device_id = (SELECT me.device_id FROM agent_sessions me WHERE me.id = ${of})
+  AND s.parent_session_id IS NOT NULL
+  AND s.parent_session_id = (SELECT me.parent_session_id FROM agent_sessions me WHERE me.id = ${of})`;
+
+/**
+ * The keys of `keys` a live run of the same master on the same box holds (ISS-1245). A master builds
+ * one issue in parts, each part a run of its own in its own tree and each taking a subagent slot;
+ * the first part's lease holds the issue for all of them, and passes to a part still live when it
+ * ends ({@link passIssueLease}). A holder of any other master, or on another box, is not shared.
+ */
+async function heldBySibling(
+  executor: Tx,
+  args: { projectId: string; sessionId: string; keys: string[] },
+): Promise<Set<string>> {
+  if (args.keys.length === 0) return new Set();
+  const rows = (await executor.execute(sql`
+    SELECT l.issue_key
+      FROM issue_leases l
+      JOIN agent_sessions s ON s.id = l.session_id
+     WHERE l.project_id = ${args.projectId}
+       AND l.issue_key IN (${sql.join(
+         args.keys.map((k) => sql`${k}`),
+         sql`, `,
+       )})
+       AND s.id <> ${args.sessionId}
+       AND ${siblingOf(sql`${args.sessionId}::uuid`)}`)) as unknown as Array<{ issue_key: string }>;
+  return new Set([...rows].map((r) => String(r.issue_key)));
+}
+
+/**
+ * Pass the lease the ended run `fromRunId` held on `issueKey` to a live run of its master on its box
+ * that carries the key too: a part of the issue still being built (ISS-1245). Returns the run it
+ * passed to, or null where none carries it and the lease lapses with its holder as before.
+ */
+export async function passIssueLease(
+  executor: Pick<Tx, 'execute'>,
+  args: { projectId: string; issueKey: string; fromRunId: string },
+): Promise<string | null> {
+  const rows = (await executor.execute(sql`
+    UPDATE issue_leases l
+       SET session_id = heir.session_id, run_id = heir.run_id, device_id = heir.device_id
+      FROM (
+        SELECT s.id AS session_id, r.id AS run_id, s.device_id
+          FROM agent_sessions s
+          JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+          JOIN issue_leases held ON held.project_id = ${args.projectId}
+                                AND held.issue_key = ${args.issueKey}
+                                AND held.run_id = ${args.fromRunId}
+         WHERE r.id <> ${args.fromRunId}
+           AND COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) ? ${args.issueKey}
+           AND ${siblingOf(sql`held.session_id`)}
+         ORDER BY s.started_at NULLS LAST, s.id
+         LIMIT 1
+      ) heir
+     WHERE l.project_id = ${args.projectId}
+       AND l.issue_key = ${args.issueKey}
+       AND l.run_id = ${args.fromRunId}
+    RETURNING heir.run_id`)) as unknown as Array<{ run_id: string }>;
+  return rows[0] ? String(rows[0].run_id) : null;
+}
+
 /**
  * Take every key of one group, or none, inside the caller's transaction.
  * Per-key and in sorted order; why that is not the same as a sorted whole-group
@@ -300,6 +364,9 @@ export async function takeIssueLeases(
 
   let lost: string[] = [];
   for (const key of keys) if (!(await take(key))) lost.push(key);
+  if (lost.length === 0) return;
+  const shared = await heldBySibling(executor, { ...args, keys: lost });
+  lost = lost.filter((k) => !shared.has(k));
   if (lost.length === 0) return;
 
   // A holder whose session ended between the insert and this read is gone: take that key again

@@ -8,6 +8,8 @@
  * @direct-test-of packages/core/src/devices/run-session-routes.ts
  * @direct-test-of packages/core/src/masters/service.ts
  * @direct-test-of packages/core/src/masters/read.ts
+ * @direct-test-of packages/core/src/issues/issue-lease.ts
+ * @direct-test-of packages/core/src/devices/run-issue-return.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -184,5 +186,41 @@ describe('subagent slots at run declare', () => {
     const second = await preflight('lone', a, 'ISS-5');
     expect(codes(second)).toEqual(['RUN_SLOT_UNAVAILABLE']);
     expect(detail(second)).toContain('declares no `max_subagents`');
+  });
+
+  // a master building one issue in parts holds it through each part's run, each in a tree of its
+  // own and each taking a slot; another master is refused it by name, while any part still runs
+  it('opens two runs of one master over one issue, each a slot, and refuses another master', async () => {
+    await issue(a, 6);
+    const registered = async (who: string, name: string, size: number) =>
+      (
+        await say(who, 'POST', '/api/devices/me/master-session', {
+          projectId: a,
+          name,
+          maxJobPanes: 2,
+          maxSubagents: size,
+        })
+      ).status;
+    expect(await registered('box', `master-${a.slice(0, 4)}`, 4)).toBe(200);
+    expect(await registered('lone', 'lone-master', 2)).toBe(200);
+    const parts = [await open('box', a, 'ISS-6'), await open('box', a, 'ISS-6')];
+    for (const p of parts) expect(p.status, detail(p)).toBe(200);
+    const [first, second] = parts.map((p) => (p.json as Doc).sessionId as string);
+    const live = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM agent_sessions
+       WHERE device_id = ${boxId} AND project_id = ${a} AND kind = 'run_session'
+         AND status IN ('running', 'idle')`)) as unknown as Array<{ n: number }>;
+    expect(live[0]?.n).toBe(2);
+    const other = await open('lone', a, 'ISS-6');
+    expect(codes(other)).toEqual(['ISSUE_LEASE_HELD']);
+    // the first part ends: the lease passes to the part still building, and still refuses the other
+    expect((await close(first as string)).status).toBe(200);
+    const [lease] = (await db.execute(sql`
+      SELECT session_id::text AS session_id FROM issue_leases
+       WHERE project_id = ${a} AND issue_key = 'ISS-6'`)) as unknown as Array<{
+      session_id: string;
+    }>;
+    expect(lease?.session_id).toBe(second);
+    expect(codes(await open('lone', a, 'ISS-6'))).toEqual(['ISSUE_LEASE_HELD']);
   });
 });

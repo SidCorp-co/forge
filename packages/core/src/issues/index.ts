@@ -147,6 +147,7 @@ export {
   type IssueLeaseRelease,
   issueRunDeclaredSql,
   issueWorkInFlightSql,
+  passIssueLease,
   releaseIssueLeaseRow,
   takeIssueLeases,
 } from './issue-lease.js';
