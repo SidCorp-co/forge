@@ -8,7 +8,7 @@ import { forgeReads } from '../integrations/index.js';
 import { mentionsIn } from './channel.js';
 import type { Addressed } from './inbound.js';
 import { roomIsBound } from './rooms.js';
-import { type RoomRow, roomsOnRid } from './store.js';
+import { lastPosterInThread, type RoomRow, roomsOnRid } from './store.js';
 
 /** The projects holding the group beside a room's own, by slug, lower case. */
 export interface GroupSharers {
@@ -36,6 +36,8 @@ export interface GroupAddress {
   addressed: Addressed;
   /** Names another project of the group and not this one: that project's, context here. */
   forAnother: boolean;
+  /** Names this room's project by its name in a shared group: this project's, whoever holds the thread. */
+  namesThis: boolean;
 }
 
 /**
@@ -50,10 +52,30 @@ export function addressedInGroup(
   sharers: GroupSharers | null,
   mentionsOnly: boolean,
 ): GroupAddress {
-  if (!sharers) return { addressed: bare, forAnother: false };
+  const none = { forAnother: false, namesThis: false };
+  if (!sharers) return { addressed: bare, ...none };
   const named = new Set(mentionsIn(text).map((n) => n.toLowerCase()));
-  if (named.has(sharers.self)) return { addressed: 'you', forAnother: false };
-  if (sharers.others.some((s) => named.has(s))) return { addressed: 'others', forAnother: true };
-  if (mentionsOnly && bare === 'you') return { addressed: 'others', forAnother: false };
-  return { addressed: bare, forAnother: false };
+  if (named.has(sharers.self)) return { addressed: 'you', forAnother: false, namesThis: true };
+  if (sharers.others.some((s) => named.has(s))) {
+    return { addressed: 'others', forAnother: true, namesThis: false };
+  }
+  if (mentionsOnly && bare === 'you') return { addressed: 'others', ...none };
+  return { addressed: bare, ...none };
+}
+
+/**
+ * Whether another binding naming the room's group holds `thread` (ISS-1243): its session posted the
+ * thread's last reply. That thread is the holder's: this room keeps its messages as context, and
+ * posts no failure line there, unless a message names this room's project. A thread no session
+ * replied in is held by none. Before this, a mention-only binding that had once replied in a thread
+ * was handed every later message of it, though the other binding had taken it over (sid-email).
+ */
+export async function threadHeldByAnother(room: RoomRow, thread: string): Promise<boolean> {
+  const others: RoomRow[] = [];
+  for (const r of await roomsOnRid(room.rid)) {
+    if (r.bindingId !== room.bindingId && (await roomIsBound(r))) others.push(r);
+  }
+  if (others.length === 0) return false;
+  const holder = await lastPosterInThread([room.id, ...others.map((r) => r.id)], thread);
+  return holder !== null && holder !== room.id;
 }

@@ -52,6 +52,7 @@ import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
 import { openSessionTurn } from './session-turns.js';
+import { threadHeldByAnother } from './shared-group.js';
 import { insertAction, type RoomRow, roomById, roomsOfSession } from './store.js';
 import { lastSessionAct } from './turn-acts.js';
 import {
@@ -432,6 +433,8 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 /** Tell each thread with a message waiting that its assistant has no box to run on, once; the messages wait. */
 async function tellOffline(room: RoomRow): Promise<void> {
   for (const waiting of await undeliveredThreads(room.id)) {
+    // a thread another binding of a shared group holds is told nothing by this one (ISS-1243)
+    if (await threadHeldByAnother(room, waiting.thread)) continue;
     const told = await tellLastResort(room, waiting.thread, 'offline');
     if (!told.posted && told.why !== 'post-failed') continue;
     await insertAction({
