@@ -1,0 +1,1 @@
+**The steward's triage drafts and new release judges start again.** Old release follow-throughs no longer spend the whole day's runner jobs at midnight, and an item's note is rewritten at once instead of waiting a day behind its triage.

@@ -11,6 +11,7 @@
  * @direct-test-of packages/core/src/release-batch/steward-release-facts.ts
  * @direct-test-of packages/core/src/steward/door-writes.ts
  * @direct-test-of packages/core/src/steward/dispatch.ts
+ * @direct-test-of packages/core/src/steward/policy.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -254,6 +255,29 @@ describe('the runner jobs kept for release follow-throughs (4 of the default 10)
       'budget_spent',
       'budget_spent',
     ]);
+  });
+
+  // dev.683 (REQ-48 BC-1, BC-4, BC-10): a backlog of follow-throughs deferred to the next day, all
+  // due at 00:00Z, spent the whole day's 10 by 00:19Z three days running, and no triage draft or
+  // newer follow-through ever started. Past its kept 4 a follow-through waits while another run
+  // owing a job is due, and spends what is left once none is.
+  it('holds a follow-through past its kept 4 while a triage is due, and lets it spend the rest after', async () => {
+    const { admitRun } = await import('../../src/steward/policy.js');
+    // read after the claims below, whose `not_before` is the database's now()
+    const now = new Date(Date.now() + 60_000);
+    const kept: (string | null)[] = [];
+    for (const key of ['ISS-816', 'ISS-820', 'ISS-821', 'ISS-831']) {
+      const run = await claimed('issue', key, 'release.shipped', 'release_followthrough');
+      kept.push(await admitRun(run, ['release_followthrough'], now));
+    }
+    expect(kept).toEqual([null, null, null, null]);
+    const triage = await claimed('feedback', 'FB-646', 'feedback.filed', 'triage_draft');
+    const fifth = await claimed('issue', 'ISS-832', 'release.shipped', 'release_followthrough');
+
+    expect(await admitRun(fifth, ['release_followthrough'], now)).toBe('budget_spent');
+    expect(await admitRun(triage, ['triage_draft'], now)).toBeNull();
+    const sixth = await claimed('issue', 'ISS-835', 'release.shipped', 'release_followthrough');
+    expect(await admitRun(sixth, ['release_followthrough'], now)).toBeNull();
   });
 
   it('keeps ceil(40%) of a lowered cap: 2 of 3', async () => {

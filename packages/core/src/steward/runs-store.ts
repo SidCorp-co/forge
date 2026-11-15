@@ -161,6 +161,30 @@ export const liveStewardJobOf = (projectRef: ReturnType<typeof sql>) => sql`
           WHERE s.id::text = j.payload ->> 'stewardRunId' AND s.state IN ('queued', 'running')))`;
 
 /**
+ * Whether a run other than `exceptRunId` that owes a runner act and is no release follow-through is
+ * due and not yet started: the run a follow-through past its kept share would starve (`policy.ts`).
+ */
+export async function otherJobDue(
+  projectId: string,
+  now: Date,
+  exceptRunId: string,
+  tx?: Tx,
+): Promise<boolean> {
+  const runner = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
+  const [row] = rowsOf<{ due: boolean }>(
+    await (tx ?? db).execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM steward_runs s
+         WHERE s.project_id = ${projectId} AND s.id <> ${exceptRunId}::uuid
+           AND s.state IN ('queued', 'running') AND s.started_at IS NULL
+           AND s.not_before <= ${sqlTimestamp(now)}
+           AND s.acts_to_run && ${runner}
+           AND NOT (s.acts_to_run && ARRAY['release_followthrough']::text[])) AS due`),
+  );
+  return row?.due === true;
+}
+
+/**
  * Claim at most `limit` queued runs whose start has come as `running`: a handoff event's run first,
  * then the standing's backlog, each oldest first, so a sweep's hundred runs never starve a filed
  * item. A run owing only runner acts is left queued while its project has a steward job live; one
@@ -396,14 +420,22 @@ const GATEWAY_ACTS = STEWARD_ACTS.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gate
 export async function spentSince(
   projectId: string,
   dayStart: Date,
-  opts: { exceptRunId?: string; tx?: Tx; sweepOnly?: boolean; followthrough?: 'except' } = {},
+  opts: {
+    exceptRunId?: string;
+    tx?: Tx;
+    sweepOnly?: boolean;
+    followthrough?: 'except' | 'only';
+  } = {},
 ): Promise<{ gatewayTurns: number; runnerJobs: number }> {
   const standing = sql.raw(`ARRAY[${STANDING_TRIGGERS.map((t) => `'${t}'`).join(', ')}]::text[]`);
   const only = opts.sweepOnly ? sql`AND r.trigger = ANY(${standing})` : sql``;
+  const followthroughs = sql`(r.acts_to_run && ARRAY['release_followthrough']::text[])`;
   const others =
     opts.followthrough === 'except'
-      ? sql`AND NOT (r.acts_to_run && ARRAY['release_followthrough']::text[])`
-      : sql``;
+      ? sql`AND NOT ${followthroughs}`
+      : opts.followthrough === 'only'
+        ? sql`AND ${followthroughs}`
+        : sql``;
   const gateway = sql.raw(`ARRAY[${GATEWAY_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
   const runner = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
   const except = opts.exceptRunId ?? '00000000-0000-0000-0000-000000000000';

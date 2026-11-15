@@ -130,11 +130,16 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   let refused = await admitRun(run, taken, now);
   // a refused turn never ends the job it was carrying: the run waits for the job, and is read whole
   if (refused && behindJob) return 'job_live';
-  // the day's runner jobs are spent and its turns are not: the turns run now and the job waits for
-  // tomorrow's, as it waits behind a live job (ISS-618 c1, judged on dev.325: FB-292's note fit and
-  // the whole run was skipped, its triage with it)
+  // the day's runner jobs are spent, or the sweep's share of them, and its turns are not: the turns
+  // run now and the job waits for tomorrow's, as it waits behind a live job (ISS-618 c1, judged on
+  // dev.325: FB-292's note fit and the whole run was skipped, its triage with it; REQ-48 BC-7 on
+  // dev.683: FB-646's standing moved and its note waited a day behind the triage it carried)
   let carriedUntil: Date | null = null;
-  if (refused === 'budget_spent' && gateway.length > 0 && gateway.length < acts.length) {
+  if (
+    (refused === 'budget_spent' || refused === 'next_day') &&
+    gateway.length > 0 &&
+    gateway.length < acts.length
+  ) {
     if ((await admitRun(run, gateway, now)) === null) {
       taken = gateway;
       refused = null;

@@ -7,7 +7,8 @@
 // jobs (`FOLLOWTHROUGH_SHARE`, 4 of the default 10, ceil(40%) of a lowered cap) is kept for release
 // follow-throughs, the judge a shipped issue is owed: no other run may spend it (dev.287: four
 // triages and two follow-throughs spent the day by 02:38, and that release's three judges were
-// skipped). A handoff run the whole day, or the part of it not kept for follow-throughs, cannot pay
+// skipped); past it a follow-through spends only while no other run owing a job is due (dev.683: a
+// backlog of follow-throughs spent every day by 00:19Z). A handoff run the whole day, or the part of it not kept for follow-throughs, cannot pay
 // for is skipped `budget_spent`, except a release follow-through: it waits for the next day's budget
 // and says so on the issue (`dispatch.ts`).
 
@@ -21,7 +22,7 @@ import type { StewardBudgetView } from '@forge/contracts/steward-runtime';
 import { db, type Tx } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { isSweepTrigger, markStarted, spentSince, sweepQueued } from './runs-store.js';
+import { isSweepTrigger, markStarted, otherJobDue, spentSince, sweepQueued } from './runs-store.js';
 
 export interface StewardBudget {
   gatewayTurns: number;
@@ -115,26 +116,41 @@ export async function refusalOf(
   const day = utcDayStart(now);
   const cost = costOf(acts);
   const whole = fits(stance.budget, await spentSince(projectId, day, opts), cost);
-  const kept = await outsideReserve(projectId, day, acts, cost, stance.budget, opts);
+  const kept = await outsideReserve(projectId, day, now, acts, cost, stance.budget, opts);
   if (!opts.trigger || !isSweepTrigger(opts.trigger)) return whole && kept ? null : 'budget_spent';
   const swept = await spentSince(projectId, day, { ...opts, sweepOnly: true });
   return whole && kept && fits(sharesOf(stance.budget).sweep, swept, cost) ? null : 'next_day';
 }
 
-/** Whether a run that is not a follow-through fits what is left once the follow-throughs' jobs are kept. */
+/**
+ * Whether a run fits its side of the day's runner jobs. A run that is not a follow-through fits what
+ * is left once the follow-throughs' jobs are kept. A follow-through spends its kept share, and past it
+ * only while no other run owing a job is due: a backlog of deferred follow-throughs, all due at 00:00Z,
+ * spent the whole day by 00:19Z on 2026-11-13, -14 and -15, and no triage draft or newer follow-through
+ * started for two days (REQ-48 BC-1, BC-4, BC-10, judged on dev.683).
+ */
 async function outsideReserve(
   projectId: string,
   day: Date,
+  now: Date,
   acts: readonly StewardAct[],
   cost: StewardBudget,
   budget: StewardBudget,
   opts: { exceptRunId?: string; tx?: Tx },
 ): Promise<boolean> {
-  if (cost.runnerJobs === 0 || followsThrough(acts)) return true;
+  if (cost.runnerJobs === 0) return true;
+  const reserve = followthroughReserveOf(budget);
+  if (followsThrough(acts)) {
+    const own = await spentSince(projectId, day, { ...opts, followthrough: 'only' });
+    if (own.runnerJobs + cost.runnerJobs <= reserve) return true;
+    return !(await otherJobDue(projectId, now, opts.exceptRunId ?? NO_RUN, opts.tx));
+  }
   const others = await spentSince(projectId, day, { ...opts, followthrough: 'except' });
-  const open = { ...budget, runnerJobs: budget.runnerJobs - followthroughReserveOf(budget) };
+  const open = { ...budget, runnerJobs: budget.runnerJobs - reserve };
   return fits(open, others, cost);
 }
+
+const NO_RUN = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Take the claimed run up, or say why it may not run: the budget read and the start stamped under

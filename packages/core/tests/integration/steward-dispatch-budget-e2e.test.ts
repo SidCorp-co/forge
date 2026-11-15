@@ -2,7 +2,8 @@
 // steward job live. Its note turn fit, yet admitRun priced note and triage together, refused the
 // whole run budget_spent, and runOne ended it skipped: the note never ran, and nothing raised the
 // triage again before the item turned stuck. The turns that fit run now; the job waits for the next
-// UTC day as a queued run, and a run nothing fits today is deferred, never ended unrun.
+// UTC day as a queued run, and a run nothing fits today is deferred, never ended unrun. A sweep
+// run's turns run now too, where only its job waits for the next day (REQ-48 BC-7, dev.683).
 //
 // @direct-test-of packages/core/src/steward/dispatch.ts
 // @direct-test-of packages/core/src/steward/runs-store.ts
@@ -137,6 +138,34 @@ describe("a filed item's run starts within the bound while the day's runner jobs
     const [next] = await rows<{ acts: string[]; state: string; not_before: string }>(sql`
       SELECT acts_to_run AS acts, state, not_before::text FROM steward_runs
        WHERE subject_id = ${subject.id} AND id <> ${filed.runId}`);
+    expect(next).toMatchObject({ acts: ['triage_draft'], state: 'queued' });
+    expect(new Date(next?.not_before ?? 0).getTime()).toBe(midnight(now));
+  });
+
+  // REQ-48 BC-7, judged on dev.683: FB-646's standing moved at 01:45Z, and its run (a note and the
+  // triage it carried) waited whole for the next day, because a sweep-trigger run whose job the day
+  // cannot pay for was deferred `next_day` without its turns: the item showed no note for hours
+  it("runs a sweep run's note turn now, and its triage waits as the next run for the next day", async () => {
+    const pid = await spentDay();
+    const key = await createTestFeedback(pid, ownerId, 646);
+    const [fb] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${pid} AND fb_seq = 646`);
+    const [made] = await rows<{ id: string }>(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                acts_to_run, state, queued_at, not_before)
+      VALUES (${pid}, 'feedback', ${fb?.id}, ${key}, 'standing.changed', '[]'::jsonb,
+              ARRAY['note', 'triage_draft']::text[], 'queued', now() - interval '3 minutes',
+              now() - interval '1 minute')
+      RETURNING id`);
+    const now = new Date();
+    await dispatch(now);
+    const [run] = await rows<{ state: string; started_at: string | null; acts: string[] }>(sql`
+      SELECT state, started_at::text, acts_to_run AS acts FROM steward_runs WHERE id = ${made?.id}`);
+    expect(run?.started_at, "FB-646's note waited a day behind its triage").not.toBeNull();
+    expect(run).toMatchObject({ state: 'done', acts: ['note'] });
+    const [next] = await rows<{ acts: string[]; state: string; not_before: string }>(sql`
+      SELECT acts_to_run AS acts, state, not_before::text FROM steward_runs
+       WHERE subject_id = ${fb?.id} AND id <> ${made?.id}`);
     expect(next).toMatchObject({ acts: ['triage_draft'], state: 'queued' });
     expect(new Date(next?.not_before ?? 0).getTime()).toBe(midnight(now));
   });
