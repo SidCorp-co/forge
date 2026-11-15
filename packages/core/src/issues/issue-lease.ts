@@ -275,7 +275,7 @@ const siblingOf = (of: SQL) => sql`s.kind = ${RUN_SESSION_KIND}
  */
 async function heldBySibling(
   executor: Tx,
-  args: { projectId: string; sessionId: string; keys: string[] },
+  args: { projectId: string; sessionId: string; runId: string; keys: string[] },
 ): Promise<Set<string>> {
   if (args.keys.length === 0) return new Set();
   const rows = (await executor.execute(sql`
