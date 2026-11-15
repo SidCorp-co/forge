@@ -1638,8 +1638,16 @@ export const SAID = {
 		vars: { issue: "said", waits: "agreement" },
 	},
 	"feedback.rule.manualCut": {
-		en: "planned: {issue} {waits} at awaiting_release; a project.admin holder cuts it",
-		vars: { issue: "said", waits: "agreement" },
+		en: "planned: {issue} {waits} at awaiting_release; {why}, so a project.admin holder cuts it",
+		vars: { issue: "said", waits: "agreement", why: "text" },
+	},
+	"feedback.rule.masterCuts": {
+		en: "planned: {issue} {waits} at awaiting_release; the project's master cuts it by {date}",
+		vars: { issue: "said", waits: "agreement", date: "date" },
+	},
+	"feedback.rule.masterCutLate": {
+		en: "planned: {issue} {waits} at awaiting_release; the master's cut was due {date}, so a project.admin holder cuts it",
+		vars: { issue: "said", waits: "agreement", date: "date" },
 	},
 	"feedback.rule.newRequirement": {
 		en: "planned: a new requirement carries it",

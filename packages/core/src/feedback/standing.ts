@@ -18,6 +18,7 @@ import { type Said, say } from '@forge/contracts/said';
 import { type Standing, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing, StandingTimes } from '@forge/contracts/steward';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
+import type { OwedBy } from '@forge/contracts/who-owes';
 import { attentionGroupOf, type TurnGroup } from '../lib/attention-group.js';
 import { withTimes } from '../lib/standing-times.js';
 import {
@@ -180,6 +181,12 @@ export interface StandingFacts {
   carrierVersion?: string | null;
   /** Who holds the permission the carrier's release act takes (`RELEASE_ACT_PERMISSION`), by name. */
   releaseHolders?: readonly string[];
+  /**
+   * Who owes the `manual` model's cut by the one rule (`who-owes.ts:whoOwes`, `release.cut`), read with
+   * the project's policy and what the carriers at the gate carry that cannot be undone, as the release
+   * page reads its draft's cut (ISS-1232, ISS-1244). Read wherever `carrierRelease` is `manual`.
+   */
+  releaseCut?: OwedBy | null;
   /** Set while a snooze has not run out: the item is parked out of New until then. */
   snoozedUntil?: string | null;
   /** While it reads resolved, names a criterion and a sweep has dated it: when the record is read if nobody has answered. */
@@ -235,6 +242,7 @@ function waitingOf(
   revision: RevisionStage | null,
   viewer: StandingViewer,
   facts: StandingFacts,
+  clock: { since: Date; now: Date },
 ): Owed {
   const theirs = (w: FeedbackWaitingOn): Owed => ({ wait: w, yours: false });
   switch (phase) {
@@ -252,7 +260,7 @@ function waitingOf(
     case 'planned':
       if (route === 'issue') {
         return facts.carrierRelease
-          ? issueWait(carriers, viewer, { ...facts, carrierRelease: facts.carrierRelease })
+          ? issueWait(carriers, viewer, { ...facts, carrierRelease: facts.carrierRelease }, clock)
           : carrierWait(facts.carrier ?? null, carriers, facts.shippedFailing);
       }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
@@ -460,7 +468,12 @@ export function feedbackStandingOf(
   times: StandingTimes;
   chip: FeedbackRowChip;
 } {
-  const owed = waitingOf(phase, route, carriers, reporter, revision, viewer, facts);
+  const carrier = phase === 'planned' && route === 'issue' ? (facts.carrier ?? null) : null;
+  const since = carrier?.since ?? at.since;
+  const owed = waitingOf(phase, route, carriers, reporter, revision, viewer, facts, {
+    since,
+    now: at.now,
+  });
   const waiting = owed.yours
     ? waitingOn(
         'you',
@@ -468,7 +481,6 @@ export function feedbackStandingOf(
         { ref: owed.wait.ref, dueAt: owed.wait.dueAt },
       )
     : owed.wait;
-  const carrier = phase === 'planned' && route === 'issue' ? (facts.carrier ?? null) : null;
   const carried =
     carrier?.stuck && carrier.stuck.code !== 'blocked'
       ? { key: carrier.key, stuck: carrier.stuck }
@@ -476,7 +488,7 @@ export function feedbackStandingOf(
   const { group, times } = withTimes(
     { group: groupOf(phase, owed, facts), waitingOn: waiting },
     {
-      since: carrier?.since ?? at.since,
+      since,
       master: at.master,
       draftCarrier: phase === 'triaged' ? (facts.draftCarrier ?? null) : null,
       carried,

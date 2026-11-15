@@ -203,11 +203,20 @@ describe('a new item is placed by the one rule, read with the project policy', (
   });
 });
 
+const STRICT_CUT = {
+  by: 'person',
+  because: 'policy',
+  why: 'this project is strict (gates.profile)',
+} as const;
+const MASTER_CUT = { by: 'master', why: 'cutting a release is delivery' } as const;
+
 describe('an item planned on an issue at the release gate names who releases it', () => {
   const planned = (
     release: 'none' | 'approval' | 'manual' | 'automatic',
     v = viewer(),
     releaseHolders: readonly string[] = ['Ana', 'Bo'],
+    releaseCut: typeof STRICT_CUT | typeof MASTER_CUT = STRICT_CUT,
+    now = AT.now,
   ) =>
     feedbackStandingOf(
       'planned',
@@ -220,8 +229,9 @@ describe('an item planned on an issue at the release gate names who releases it'
         masterTriages: false,
         carrierRelease: release,
         releaseHolders,
+        releaseCut,
       },
-      AT,
+      { ...AT, now },
     );
 
   it('names the writers who release it where the project declares no release model', () => {
@@ -241,14 +251,43 @@ describe('an item planned on an issue at the release gate names who releases it'
     expect(planned('approval', viewer({ canApproveRelease: true })).waitingOn.who).toBe('You');
   });
 
-  it('names the admins cutting the release where production does not deploy on land, theirs alone', () => {
+  it('names the admins cutting the release where no master may cut it, theirs alone, saying why', () => {
     expect(planned('manual').waitingOn).toMatchObject({
       kind: 'person',
       who: 'Ana, Bo',
       act: 'cut the release that carries ISS-9',
+      rule: 'planned: ISS-9 waits at awaiting_release; this project is strict (gates.profile), so a project.admin holder cuts it',
     });
     expect(planned('manual', viewer({ canWrite: true })).waitingOn.who).toBe('Ana, Bo');
     expect(planned('manual', viewer({ canAdmin: true })).waitingOn.who).toBe('You');
+  });
+
+  // ISS-1244 (epod FB-66, 72, 76, 79, 84): every admin read "You: cut the release that carries
+  // ISS-173" while the project's master was cutting it
+  it("names the project's master where it holds the cut, on no admin's Needs you", () => {
+    const s = planned('manual', viewer({ canAdmin: true }), ['Ana', 'Bo'], MASTER_CUT);
+    expect(s.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: "The project's master",
+      act: 'cut the release that carries ISS-9',
+      rule: "planned: ISS-9 waits at awaiting_release; the project's master cuts it by 2026-10-05",
+      dueAt: '2026-10-05T00:00:00.000Z',
+    });
+    expect(s.attentionGroup).not.toBe('needs_you');
+  });
+
+  it("falls to the admins once the master's cut is past its due, saying so", () => {
+    const late = new Date('2026-10-06T00:00:00Z');
+    const s = planned('manual', viewer({ canAdmin: true }), ['Ana', 'Bo'], MASTER_CUT, late);
+    expect(s.waitingOn).toMatchObject({
+      kind: 'you',
+      who: 'You',
+      act: 'cut the release that carries ISS-9',
+      rule: "planned: ISS-9 waits at awaiting_release; the master's cut was due 2026-10-05, so a project.admin holder cuts it",
+    });
+    expect(planned('manual', viewer(), ['Ana', 'Bo'], MASTER_CUT, late).waitingOn.who).toBe(
+      'Ana, Bo',
+    );
   });
 
   it('says nobody holds the permission, and where it is granted, when nobody does', () => {

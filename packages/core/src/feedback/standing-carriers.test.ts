@@ -251,6 +251,11 @@ describe('a planned item waits on every carrier still owed, each named', () => {
         masterTriages: false,
         carrierRelease: 'manual',
         releaseHolders: ['Ada'],
+        releaseCut: {
+          by: 'person',
+          because: 'policy',
+          why: 'this project is strict (gates.profile)',
+        },
       },
       AT,
     ).waitingOn;

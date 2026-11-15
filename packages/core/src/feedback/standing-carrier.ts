@@ -9,8 +9,9 @@ import { RELEASE_ACT_PERMISSION } from '@forge/contracts/forecast';
 import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import { type Said, say } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn, waitingOn } from '@forge/contracts/standing';
-import type { StuckReading } from '@forge/contracts/steward';
+import { STANDING_DUE_WORKING_DAYS, type StuckReading } from '@forge/contracts/steward';
 import { issuesNamed } from '../lib/named-items.js';
+import { addWorkingDays } from '../lib/working-days.js';
 import type { Owed, PhaseFacts, StandingFacts, StandingViewer } from './standing.js';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
@@ -176,6 +177,7 @@ export function issueWait(
   carriers: readonly string[],
   viewer: StandingViewer,
   facts: StandingFacts & { carrierRelease: NonNullable<StandingFacts['carrierRelease']> },
+  clock: { since: Date; now: Date },
 ): Owed {
   const carrier = carriersPhrase(carriers);
   const issue = carrier ?? say('feedback.who.theLinkedIssue');
@@ -194,6 +196,16 @@ export function issueWait(
       yours: false,
     };
   }
+  if (release === 'manual') {
+    const cut = manualCut(issue, waits, ref.ref, facts, clock);
+    if ('master' in cut) return cut.master;
+    return personRelease(release, facts, {
+      act: say('standing.act.cutCarrierRelease', { what: issue }),
+      rule: cut.rule,
+      extra: ref,
+      yours: viewer.canAdmin,
+    });
+  }
   const version = facts.carrierVersion ?? null;
   const owed = {
     none: {
@@ -210,13 +222,57 @@ export function issueWait(
       extra: { ref: version },
       yours: viewer.canApproveRelease,
     },
-    manual: {
-      act: say('standing.act.cutCarrierRelease', { what: issue }),
-      rule: say('feedback.rule.manualCut', { issue, waits }),
-      extra: ref,
-      yours: viewer.canAdmin,
-    },
   }[release];
+  return personRelease(release, facts, owed);
+}
+
+/**
+ * The `manual` model's cut (ISS-1244): the project's master's where the one rule gives it the cut
+ * (`release.cut`: outside strict, nothing carried that cannot be undone), as the release page names
+ * it (ISS-1232), on no person's Needs you, admins included, until its due passes; the release-cut
+ * class's due (`STANDING_DUE_WORKING_DAYS.release_cut`) from when the wait began. Past that due, or
+ * where the rule gives the cut to a person, it is a project.admin holder's, and the rule says which.
+ */
+function manualCut(
+  issue: Said,
+  waits: 'wait' | 'waits',
+  ref: string | null,
+  facts: StandingFacts,
+  clock: { since: Date; now: Date },
+): { master: Owed } | { rule: Said } {
+  const cut = facts.releaseCut;
+  if (!cut) {
+    throw new Error(
+      'feedback standing: a carrier waits at a manual release with no releaseCut read; the reader reads who owes the cut (`who-owes.ts:whoOwes`, release.cut) wherever carrierRelease is manual',
+    );
+  }
+  if (cut.by === 'person')
+    return { rule: say('feedback.rule.manualCut', { issue, waits, why: cut.why }) };
+  const due = addWorkingDays(clock.since, STANDING_DUE_WORKING_DAYS.release_cut ?? 0);
+  const date = due.toISOString().slice(0, 10);
+  if (clock.now.getTime() > due.getTime()) {
+    return { rule: say('feedback.rule.masterCutLate', { issue, waits, date }) };
+  }
+  return {
+    master: {
+      wait: wait(
+        'agent',
+        MASTER,
+        say('standing.act.cutCarrierRelease', { what: issue }),
+        say('feedback.rule.masterCuts', { issue, waits, date }),
+        { ref, dueAt: due.toISOString() },
+      ),
+      yours: false,
+    },
+  };
+}
+
+/** A release act a person owes, by the holders of the permission it takes; nobody holding it says so. */
+function personRelease(
+  release: Exclude<NonNullable<StandingFacts['carrierRelease']>, 'automatic'>,
+  facts: StandingFacts,
+  owed: { act: Said; rule: Said; extra: { ref?: string | null }; yours: boolean },
+): Owed {
   const holders = facts.releaseHolders ?? [];
   if (holders.length === 0 && !owed.yours) {
     return {

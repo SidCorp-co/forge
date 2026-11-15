@@ -37,7 +37,7 @@ import {
   shippedCarriersOfTriaged,
   unreleasedCarrierKeys,
 } from './list-carriers.js';
-import { releaseGateOf, shippedCarriersOf } from './list-release.js';
+import { type ReleaseGate, releaseGateOf, shippedCarriersOf } from './list-release.js';
 import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import type { FeedbackActor, Row } from './read.js';
 import { routeIssuesOf } from './relations.js';
@@ -56,7 +56,7 @@ import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.j
 import type { ViewerCan } from './viewer-can.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
-export interface Linked extends StandingFacts {
+export interface Linked extends StandingFacts, Pick<ReleaseGate, 'releaseCut'> {
   prefix: string | null;
   issues: Map<
     string,
@@ -204,13 +204,14 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
   // a carrier closed met in scope waits for the release as one at the gate does
-  const atGate = issueRows.some(
-    (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
-  );
+  const atGate = issueRows
+    .filter((i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id))
+    .map((i) => i.id);
+  const owedPolicy = readOwedPolicy(projectId);
   const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
   const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound, held] =
     await Promise.all([
-      releaseGateOf(projectId, atGate),
+      releaseGateOf(projectId, atGate, owedPolicy),
       allRows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
       forgeOriginsOf(rows.map((r) => r.id)),
       standingFactsOf(projectId, allRows, issueRows, carrying),
@@ -218,21 +219,19 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
         projectId,
         issueRows.filter((i) => carrying.has(i.id) && !i.releaseVersion).map((i) => i.id),
       ),
-      readOwedPolicy(projectId),
+      owedPolicy,
       owesTriage ? runnerBoundIn(projectId) : true,
       heldCriteriaOf(shippedCarriersOfTriaged(allRows, routeIssues, issueRows)),
     ]);
-  const { release, releaseHolders } = gate;
   const linked: Linked = {
     untold: NONE_UNTOLD,
     origins,
     ...standing,
-    releaseHolders,
+    ...gate,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterTriages: whoOwes('feedback.triage', policy).by === 'master',
     runnerBound,
     masterVerifies: whoOwes('feedback.verify', policy).by === 'master',
-    release,
     prefix,
     providers: new Map(providerRows.map((p) => [p.id, p.slug])),
     mockups: await mockupsOf(rows),
@@ -443,6 +442,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
           ? l.release
           : null,
       releaseHolders: l.releaseHolders,
+      releaseCut: l.releaseCut,
       relayOwed: phase === 'resolved' && l.untold.untold.has(r.id),
       relayHolders: l.untold.relayHolders,
       reporterIsAgent: r.reporterAgency === 'agent',
