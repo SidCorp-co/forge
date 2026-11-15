@@ -1,38 +1,10 @@
-import { and, asc, inArray, isNull, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf, uuidArray } from '../db/raw-sql.js';
-import { rowsPerProject } from '../db/read-memo.js';
-import { issues } from '../db/schema.js';
-import { waitingForReleaseSql } from '../issues/index.js';
 
-/**
- * Every issue waiting unclaimed for a release on this project (`waitingForReleaseSql`: at the gate, or
- * closed met in scope with no shipped release holding it), oldest merge first: the roster a cut, the
- * draft and the sweep read. An issue a release run still claims after it ended is in none of
- * them; `ended-claims.ts:readEndedRunHolds` is the read that names it, beside each of these (ISS-961).
- */
-export async function waitingIssueIds(projectId: string): Promise<string[]> {
-  // the draft, each requirement's release leg and the release facts each ask it, and every project
-  // asked with it, in one read (ISS-1070 r6)
-  const rows = await rowsPerProject(
-    'waitingIssueIds',
-    projectId,
-    (ids) =>
-      db
-        .select({ id: issues.id, projectId: issues.projectId })
-        .from(issues)
-        .where(
-          and(
-            inArray(issues.projectId, [...ids]),
-            waitingForReleaseSql(sql`${issues}`),
-            isNull(issues.releaseBatchRunId),
-          ),
-        )
-        .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id)),
-    (r) => r.projectId,
-  );
-  return rows.map((r) => r.id);
-}
+// the roster a cut, the draft and the sweep read is the issues module's, so a feedback item's release
+// leg reads the same roster (ISS-1244)
+export { waitingIssueIds } from '../issues/index.js';
 
 /** An issue an open release run claims, the run, its version, and its latest approval's decision. */
 export interface RunClaim {

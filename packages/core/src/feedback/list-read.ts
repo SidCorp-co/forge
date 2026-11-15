@@ -204,9 +204,9 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   // an original read only as a root has its own standing read too: its duplicate reads it
   const carrying = new Set([...routeIssues.values()].flat());
   // a carrier closed met in scope waits for the release as one at the gate does
-  const atGate = issueRows
-    .filter((i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id))
-    .map((i) => i.id);
+  const atGate = issueRows.some(
+    (i) => (i.status === AT_RELEASE_GATE || i.unreleased) && carrying.has(i.id),
+  );
   const owedPolicy = readOwedPolicy(projectId);
   const owesTriage = allRows.some((r) => r.status === 'new' || r.status === 'reopened');
   const [gate, windowDays, origins, standing, shippedReleases, policy, runnerBound, held] =

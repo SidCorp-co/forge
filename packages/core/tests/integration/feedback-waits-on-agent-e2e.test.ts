@@ -11,6 +11,8 @@
  * @direct-test-of packages/core/src/feedback/triage.ts
  * @direct-test-of packages/core/src/feedback/list-read.ts
  * @direct-test-of packages/core/src/feedback/list-page-read.ts
+ * @direct-test-of packages/core/src/feedback/list-release.ts
+ * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
@@ -34,6 +36,7 @@ import {
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { agreedRequirement } from '../helpers/loop-close.js';
+import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 
 type Who = 'owner' | 'member';
@@ -436,5 +439,79 @@ describe('a duplicate is counted under its original, never beside it', () => {
     expect(
       standings.filter((s: Doc) => s.subject.kind === 'feedback').map((s: Doc) => s.subject.key),
     ).toEqual([root]);
+  });
+});
+
+// ISS-1244 (epod, 2026-11-15): with a manual release, five items carried by issues at
+// awaiting_release each read "You: cut the release that carries ISS-n" on the owner's Needs you,
+// while the project's master was cutting that release itself (ISS-1232). The cut is the master's by
+// the one rule outside strict, so no person's Needs you holds it; a release carrying what cannot be
+// undone gives it back to a person, saying why. Planted red on dev's `standing-carrier.ts`: the owner read all five as his.
+describe("a manual release the project's master cuts is on no person's Needs you (ISS-1244)", () => {
+  let epod = '';
+  const keys: string[] = [];
+  const carriers: Issue[] = [];
+  const on = (path: string) => `/api/projects/${epod}${path}`;
+  const ownersCuts = async () => {
+    const needs = ok(await say('owner', 'GET', on('/needs-you')));
+    return needs.items.filter((i: Doc) => keys.includes(i.key)).length as number;
+  };
+
+  beforeAll(async () => {
+    epod = (await createTestProject(ownerId)).id;
+    // production promotes on request: the manual release model, which a person or the master cuts
+    await seedProductionDeployTrigger(epod, ownerId, 'on-request');
+    for (const n of [1, 2, 3, 4, 5]) {
+      const fb = ok(
+        await say('owner', 'POST', on('/feedback'), {
+          kind: 'bug',
+          title: `Delivery note ${n} prints blank`,
+          screen: 'Orders',
+        }),
+        201,
+      ).feedback.key as string;
+      const made = ok(await say('owner', 'POST', on('/issues'), { title: `Print note ${n}` }), 201);
+      const carrier = { id: made.id as string, key: made.displayId as string };
+      ok(
+        await say('owner', 'POST', on(`/feedback/${fb}/triage`), {
+          answers: TRIAGE_ANSWERS,
+          route: 'issue',
+          issue: carrier.key,
+        }),
+      );
+      await seedIssueStatus(carrier.id, 'awaiting_release');
+      keys.push(fb);
+      carriers.push(carrier);
+    }
+  });
+
+  it('names the master cutting the release that carries each, and the owner owes none', async () => {
+    const list = ok(await say('owner', 'GET', on('/feedback')));
+    for (const [n, fb] of keys.entries()) {
+      const row = list.feedback.find((f: Doc) => f.key === fb);
+      expect(row.waitingOn).toMatchObject({
+        kind: 'agent',
+        who: MASTER,
+        act: `cut the release that carries ${carriers[n]?.key}`,
+        ref: carriers[n]?.key,
+      });
+      expect(row.waitingOn.rule).toMatch(/the project's master cuts it by \d{4}-\d{2}-\d{2}$/);
+      expect(row.attentionGroup).not.toBe('needs_you');
+    }
+    expect(await ownersCuts()).toBe(0);
+  });
+
+  it('is the admins’ where the release carries what cannot be undone, and says so', async () => {
+    const note = { section: 'Fixed', userFacing: 'Notes print', irreversible: 'drops print jobs' };
+    await rows(
+      sql`UPDATE issues SET release_notes = ${JSON.stringify(note)}::jsonb WHERE id = ${carriers[0]?.id}`,
+    );
+    expect(await ownersCuts()).toBe(5);
+    const row = ok(await say('owner', 'GET', on(`/feedback/${keys[1]}`))).feedback;
+    expect(row.waitingOn).toMatchObject({
+      kind: 'you',
+      act: `cut the release that carries ${carriers[1]?.key}`,
+    });
+    expect(row.waitingOn.rule).toContain('it carries what cannot be undone: drops print jobs');
   });
 });

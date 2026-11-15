@@ -335,6 +335,7 @@ export {
   waitingAtSql,
   waitingForReleaseSql,
 } from './waiting-for-release.js';
+export { waitingIssueIds } from './waiting-roster.js';
 export {
   type Carriage,
   type ChangedPaths,
