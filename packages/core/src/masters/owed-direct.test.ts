@@ -149,3 +149,42 @@ describe('masterWork names no plugin skill and no plugin verb, in either mode', 
     });
   }
 });
+
+// ISS-1243 items 14, 21: a room agent's ask waits with a person behind it, so the pass names it before
+// every other owed thing, says each ask's wait, and says a breach past the bound
+// @direct-test-of packages/core/src/masters/owed-agent-asks.ts
+describe("a room agent's ask comes first in the pass, its wait and breach said", () => {
+  const ask = (id: string, minutes: number, breached: boolean) => ({
+    id,
+    rid: 'room-1',
+    thread: 'th-1',
+    question: 'Is the size-M print rule live?',
+    waitedMs: minutes * 60_000,
+    breached,
+    boundMinutes: 10,
+  });
+  const owed = {
+    ...none,
+    triages: [{ key: 'FB-1' }],
+    agentAsks: [ask('a1', 3, false), ask('a2', 14, true)],
+  };
+
+  for (const mode of ['dispatch', 'direct'] as const) {
+    it(mode, () => {
+      const work = masterWork([issue('a')], owed, mode);
+      const first = work.nudge.indexOf('First, before any other work in this pass');
+      expect(first).toBeGreaterThan(-1);
+      expect(first).toBeLessThan(work.nudge.indexOf('FB-1'));
+      expect(work.nudge).toContain(
+        'a2 from room room-1 thread th-1, waiting 14 min, past the bound',
+      );
+      expect(work.nudge).toContain('1 has waited past the 10-minute bound');
+      expect(work.nudge).toContain('support/master-asks/<askId>/answer -X POST');
+      expect(work.owed).toBe(3);
+      // an answered ask leaves the work, so the digest moves and the box nudges again
+      expect(masterWork([issue('a')], { ...owed, agentAsks: [] }, mode).digest).not.toBe(
+        work.digest,
+      );
+    });
+  }
+});

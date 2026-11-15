@@ -5,8 +5,10 @@
 --      are set once a link or a naming confirms the person's Forge account.
 --   2. support_master_asks: a room agent's question to its project's master (or a followed
 --      project's), asked in its turn, with the answer and when it came; the wait is read from them.
+--   3. outbox_event_types takes `support.masterAsked`, the event an ask wakes its master by.
 --
 -- ROLLBACK:
+--   DELETE FROM outbox_event_types WHERE type = 'support.masterAsked'; (once no outbox row holds it)
 --   DROP TABLE IF EXISTS support_master_asks;
 --   DROP TABLE IF EXISTS chat_temporary_accounts;
 
@@ -64,4 +66,5 @@ BEGIN
   END IF;
 END $$;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "support_master_asks_open_idx" ON "support_master_asks" USING btree ("project_id", "asked_at") WHERE answered_at IS NULL;--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "support_master_asks_thread_idx" ON "support_master_asks" USING btree ("room_id", "thread");
+CREATE INDEX IF NOT EXISTS "support_master_asks_thread_idx" ON "support_master_asks" USING btree ("room_id", "thread");--> statement-breakpoint
+INSERT INTO "outbox_event_types" ("type") VALUES ('support.masterAsked') ON CONFLICT DO NOTHING;

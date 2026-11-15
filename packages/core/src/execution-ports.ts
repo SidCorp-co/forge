@@ -148,6 +148,7 @@ import {
 } from './steward/index.js';
 import {
   classifyCommand,
+  masterAsksOf,
   projectReadBox,
   secretEnvOf,
   unhandledMessagesOf,
@@ -279,6 +280,10 @@ async function liveChecksOwed(projectId: string) {
   ]);
   return { checks, judging: project ? judgingEnvironmentOf(project.document) : null, questioned };
 }
+
+/** Member messages a room could not take in the last day (ISS-1046). */
+const unhandledRoomMessagesOwed = (projectId: string) =>
+  unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000));
 
 export function provideExecutionPorts(): void {
   provideReleaseBatchPorts({
@@ -439,8 +444,8 @@ export function provideExecutionPorts(): void {
     masterMode: readMasterMode,
     draftCarriersWaiting: draftFeedbackCarriers,
     intakeFailuresOwed: intakeFailedRequirements,
-    unhandledRoomMessagesOwed: (projectId) =>
-      unhandledMessagesOf(projectId, new Date(Date.now() - 24 * 60 * 60_000)),
+    unhandledRoomMessagesOwed,
+    agentAsksOwed: async (projectId) => (await masterAsksOf(projectId, 'open')).asks,
     reviewsOwed: async (projectId) => owedReviews(projectId, await readVerifiedJudge(projectId)),
     liveChecksOwed,
     releaseHoldsOwed: agentOwedHolds,

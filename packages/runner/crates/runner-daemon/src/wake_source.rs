@@ -30,13 +30,16 @@ pub enum WakeSource {
     /// The project's steward asks the master to act on an item: nobody serves it, or its act is
     /// overdue (REQ-48 BC-5). Core keeps the ask among the owed work until the item's standing moves.
     Steward,
+    /// A room agent asked the master in its turn (ISS-1243): the person waits in the thread, so the
+    /// master takes the ask before any other work. Core keeps it among the owed work until answered.
+    AgentAsk,
 }
 
 impl WakeSource {
     /// The source `data` names, or why it is refused.
     pub fn of_frame(data: &serde_json::Value) -> Result<Self, String> {
         match data.get("source") {
-            None => Err("it names no source (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback, steward)".to_string()),
+            None => Err("it names no source (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback, steward, agent_ask)".to_string()),
             Some(serde_json::Value::String(s)) => match s.as_str() {
                 "issue" => Ok(WakeSource::Issue),
                 "answer" => Ok(WakeSource::Answer),
@@ -47,8 +50,9 @@ impl WakeSource {
                 "requirement" => Ok(WakeSource::Requirement),
                 "feedback" => Ok(WakeSource::Feedback),
                 "steward" => Ok(WakeSource::Steward),
+                "agent_ask" => Ok(WakeSource::AgentAsk),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback, steward)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback, steward, agent_ask)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -66,6 +70,7 @@ impl WakeSource {
             WakeSource::Requirement => "requirement",
             WakeSource::Feedback => "feedback",
             WakeSource::Steward => "steward",
+            WakeSource::AgentAsk => "agent_ask",
         }
     }
 }
@@ -98,6 +103,14 @@ mod tests {
         .expect("the runner refused a steward wake");
         assert_eq!(source, WakeSource::Steward);
         assert_eq!(source.label(), "steward");
+    }
+
+    #[test]
+    fn an_agent_ask_wake_is_read_by_its_name() {
+        let source = WakeSource::of_frame(&serde_json::json!({ "source": "agent_ask", "askId": "a" }))
+            .expect("the runner refused a room agent's ask");
+        assert_eq!(source, WakeSource::AgentAsk);
+        assert_eq!(source.label(), "agent_ask");
     }
 
     #[test]

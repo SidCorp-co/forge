@@ -78,7 +78,7 @@ describe('the dispatch guide teaches batches by default', () => {
       'Hand every build part to a general-purpose subagent, one per file-disjoint part',
     );
     expect(prose).toContain(
-      "Keep this session free to triage, answer a room agent's ask before any other work and land; build in it only a change too small to brief",
+      "Keep this session free to triage, answer a room agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief",
     );
     expect(prose).not.toContain('Build in this session, or hand each file-disjoint part');
     expect(prose).not.toContain('Its master builds instead of dispatching');
@@ -91,6 +91,22 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(prose).toContain('one issue is never split across releases');
     expect(prose).toContain('a large issue is built whole');
     expect(prose).toContain('goes into the next batch, never a release of its own');
+  });
+});
+
+// ISS-1243 items 20, 21: the master answers a room agent's ask before any other work, by the door
+// that hands it back into the agent's session, and reads the agent's open threads before it posts
+describe("the dispatch guide names the doors of a room agent's ask and its open threads", () => {
+  it('names the answer door, the asks read with its bound, and the open threads read', () => {
+    expect(prose).toContain("### Answering a room agent's ask");
+    expect(prose).toContain('Answer it before any other work');
+    expect(prose).toContain(
+      '`POST /api/projects/:id/support/master-asks/:askId/answer` `{ answer }`',
+    );
+    expect(prose).toContain(
+      '`GET /api/projects/:id/support/master-asks` lists the asks waiting on you, each with its wait, and counts those past the 10-minute bound as breached',
+    );
+    expect(prose).toContain('`GET /api/projects/:id/support/agent-threads`');
   });
 });
 

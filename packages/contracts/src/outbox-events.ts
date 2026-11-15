@@ -73,6 +73,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"standing.changed",
 	"release.held",
 	"decision.settled",
+	"support.masterAsked",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -517,6 +518,14 @@ export interface OutboxEventPayloads
 		projectId: string;
 		feedbackId: string;
 		severity: FeedbackSeverity;
+	};
+	/** A room agent asked a master in its turn; the master is woken at once and answers it first (ISS-1243). */
+	"support.masterAsked": {
+		askId: string;
+		/** The project whose master is asked. */
+		projectId: string;
+		roomId: string;
+		thread: string;
 	};
 	/** A person answered the last question holding an item's value check; the intake assistant drafts it again (REQ-65 BC-3). */
 	"intake.answered": {

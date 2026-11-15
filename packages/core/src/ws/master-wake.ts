@@ -27,6 +27,7 @@ export const MASTER_WAKE_SOURCES = [
   'requirement',
   'feedback',
   'steward',
+  'agent_ask',
 ] as const;
 type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
@@ -168,6 +169,22 @@ export async function wakeMastersForSteward(args: {
   });
 }
 
+/**
+ * A room agent asked this project's master in its turn (ISS-1243 items 14, 21): the person waits in
+ * the thread, so the master is woken at once and takes it first. The durable half is
+ * `masters/owed.ts` agentAsks, read on the next box sweep.
+ */
+async function wakeMastersForAgentAsk(args: {
+  projectId: string;
+  askId: string;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'agent_ask',
+    askId: args.askId,
+  });
+}
+
 async function publishWake(
   projectId: string,
   data: { projectId: string; source: MasterWakeSource } & Record<string, unknown>,
@@ -293,6 +310,13 @@ export function registerMasterWakeSubscribers(): void {
     handle: async (p) => {
       if (p.authorAgency !== 'agent') return;
       await wakeMastersForRequirement(p);
+    },
+  });
+
+  consume('support.masterAsked', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForAgentAsk({ projectId: p.projectId, askId: p.askId });
     },
   });
 
