@@ -16,7 +16,17 @@ export const AGENT_SESSION_STATUSES = [
 export type AgentSessionStatus = (typeof AGENT_SESSION_STATUSES)[number];
 
 /** Still the runner's: working, waiting to work, or between turns. */
-export const LIVE_SESSION_STATUSES: readonly AgentSessionStatus[] = ["queued", "running", "idle"];
+export const LIVE_SESSION_STATUSES: readonly AgentSessionStatus[] = [
+	"queued",
+	"running",
+	"idle",
+];
+
+/** A live session that has started: working or between turns, not still queued for its first. */
+export const STARTED_SESSION_STATUSES: readonly AgentSessionStatus[] = [
+	"idle",
+	"running",
+];
 
 /** `completed_via_recovery` and `cancelled_stale` end a session without failing it. */
 export const TERMINAL_AGENT_SESSION_STATUSES = [
@@ -34,7 +44,10 @@ export const CANCELLED_AGENT_SESSION_STATUSES: readonly AgentSessionStatus[] = [
 ];
 
 /** The sessions that wait on a runner: `idle` awaiting its next turn, or `queued` for one. */
-export const WAITING_SESSION_STATUSES: readonly AgentSessionStatus[] = ["idle", "queued"];
+export const WAITING_SESSION_STATUSES: readonly AgentSessionStatus[] = [
+	"idle",
+	"queued",
+];
 
 const ENDED: readonly AgentSessionStatus[] = TERMINAL_AGENT_SESSION_STATUSES;
 const move = (act: string) => ({ act, permission: null, guards: [] as const });
@@ -48,10 +61,20 @@ export const SESSION_MACHINE = defineMachine({
 	terminal: ENDED,
 	reasonRequired: [],
 	edges: [
-		...fromEach<AgentSessionStatus>(["idle", "running"], "queued", move("turn.queued")),
-		...fromEach<AgentSessionStatus>(WAITING_SESSION_STATUSES, "running", move("turn.started")),
-		...fromEach<AgentSessionStatus>(["queued", "running"], "idle", move("turn.ended")),
-		...ENDED.flatMap((to) => fromEach(LIVE_SESSION_STATUSES, to, move(`session.${to}`))),
+		...fromEach(STARTED_SESSION_STATUSES, "queued", move("turn.queued")),
+		...fromEach<AgentSessionStatus>(
+			WAITING_SESSION_STATUSES,
+			"running",
+			move("turn.started"),
+		),
+		...fromEach<AgentSessionStatus>(
+			["queued", "running"],
+			"idle",
+			move("turn.ended"),
+		),
+		...ENDED.flatMap((to) =>
+			fromEach(LIVE_SESSION_STATUSES, to, move(`session.${to}`)),
+		),
 		// A chat session takes another turn after it ended, and a worker revives a session a sweep
 		// failed; a user-cancelled session is refused before it reaches here.
 		...ENDED.flatMap((from) => [

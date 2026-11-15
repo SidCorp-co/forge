@@ -15,6 +15,7 @@
 
 import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import type { MasterSubagentSlots } from '@forge/contracts/master-standing';
+import { STARTED_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { memoizedRead } from '../db/read-memo.js';
@@ -25,7 +26,7 @@ import { refuseDevice } from './refusals.js';
 import { type SlotDemand, slotsFor } from './run-slots.js';
 
 /** The run-session statuses that hold a subagent slot: a queued declaration runs nothing yet. */
-const HOLDING = ['running', 'idle'] as const;
+const HOLDING = STARTED_SESSION_STATUSES;
 const URGENT = new Set(['critical', 'high']);
 
 export interface ProjectSlots {
