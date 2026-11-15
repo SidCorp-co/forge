@@ -24,6 +24,7 @@ describe('the support brief states goals, and the consent a change waits on', ()
       'their asking is their agreement, so cite it with support.agree at once',
     );
     expect(brief).not.toContain('runs or is filed only once they agree');
+    expect(brief).not.toContain("cite the asker's plain yes");
     expect(brief).not.toContain('type a code');
   });
 
