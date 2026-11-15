@@ -101,6 +101,12 @@ function checkAlone(acts: readonly StewardAct[]): {
   return { acts: checks, apart: acts.filter((a) => !CHECK_ACTS.includes(a)) };
 }
 
+/** Whether the run's subject has ended since it was taken up, so none of `acts` is owed it now. */
+async function endedSince(run: RunRow, acts: readonly StewardAct[]): Promise<boolean> {
+  const subject = await subjectOf(run.projectId, run.subjectKind, run.subjectId);
+  return !subject || actsOwedAt(subject.kind, subject.status, acts).length === 0;
+}
+
 /** Where a run stands after a tick: ended, waiting on the job it started, or behind its project's live steward job. */
 type RunOutcome = 'ended' | 'job_started' | 'job_live';
 
@@ -175,6 +181,14 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   const end = (e: RunEnd) => endRun(run.id, e, new Date(), { followUpNotBefore: carriedUntil });
   const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
   if (ran && ran.failures.length > 0) {
+    // the item ended while its turns ran: nothing is owed an ended item, so the run is skipped as one
+    // taken up after the end is, never failed (dev.682, dev.683: ISS-1240 and ISS-1241 were closed
+    // half a minute into their output check, the note door refused an item no longer open, and the
+    // run read failed, REQ-48 BC-6)
+    if (await endedSince(run, gateway)) {
+      await end({ state: 'skipped', reason: 'subject_ended' });
+      return 'ended';
+    }
     await end({ state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
     return 'ended';
   }
