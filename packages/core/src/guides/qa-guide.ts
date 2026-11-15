@@ -31,6 +31,9 @@ makes it with the pane's credential, so a judge needs no other tool to follow th
    owns the issue (\`PATCH /api/issues/:id/criteria/:n\`, which keeps its verdicts).
 4. **Only a demonstrated harm blocks.** The task cannot be done, its result is materially wrong, work
    is lost, or the way round it is one nobody would find. Anything else is a note, not a fail.
+   A criterion that no longer holds because a later landed issue changed it on purpose is no
+   regression: record it \`skipped\`, naming that issue and its criterion, never \`fail\`; the
+   master supersedes it.
 
 ### What your verdicts are held to
 Read these before judging anything, while whoever sent you can still equip you.

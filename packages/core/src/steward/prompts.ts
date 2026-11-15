@@ -80,6 +80,7 @@ const METHODS: Record<StewardAct, string> = {
   release_followthrough: [
     'Act: release follow-through (BC-10). The issue shipped. Read what it carried and the running build (`GET /api/issues/<id>/judged-build`).',
     'Judge each carried criterion on the running build and record a verdict (`POST /api/issues/<id>/verdicts`, identity `runtime`).',
+    'A criterion that no longer holds because a later landed issue changed it on purpose is no regression: record it `skipped`, naming that issue and its criterion, never `fail`, and wake the master to supersede it.',
     "Tell each requirement it delivers what shipped, in BA words (`POST /api/projects/<project>/requirements/<key>/comments`). Each feedback item routed to it asks its reporter to confirm by itself when the release ships, with the verdicts you record; tell an item's reporter (`POST …/feedback/<key>/tell-shipped`) only where its standing still waits on that relay.",
   ].join('\n'),
 };

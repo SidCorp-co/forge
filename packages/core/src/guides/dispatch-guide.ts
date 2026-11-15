@@ -147,6 +147,9 @@ records — before acting on it.
   environment are marks on the release. The run holding an issue closes it, each criterion it did
   not meet moved out first (\`CLOSE_CRITERION_UNPLACED\`); a report saying "closed" says met in
   scope, and whether its work is live is read from the release record.
+- A criterion a judge skipped because a later landed issue changed it on purpose is yours to
+  supersede, so no re-judge reopens its issue: \`POST /api/issues/:id/criteria/:n/supersede\`
+  \`{ by: <the later issue's key>, criterion: <its criterion now holding it>, reason }\`.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
   is written the wave is open, whatever its members' statuses say.
 
