@@ -92,7 +92,7 @@ the index below rather than worked out in the pane.
 ## Direct mode: a project that runs fast
 
 A project whose gate profile is not `strict` and that delivers fast (its `delivery.fast` is not
-`false`) runs **direct**: its master builds and records afterwards. Nothing else selects it, and
+`false`) runs **direct**: its master orchestrates the build and records afterwards. Nothing else selects it, and
 there is no switch of its own: outside `strict` the profile turns off every policy gate that asks a
 plan, a design, a review or a judge before a merge, and fast delivery already lands a change on its
 build and the tests related to what it changed. A project that sets `strict` turns those gates on,
@@ -112,8 +112,10 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   need, and released once, with the batch it lands in. You split and group the work inside it; a part
   becomes an issue of its own only for priority, a handoff or independent tracking. A batch is the
   issues in it, never a slice of one.
-- **Split it by files.** Build it in this session, or hand parts of it to general-purpose subagents,
-  each with a short prompt: its issues, its tree, the base branch and the standing rules. Builders
+- **Split it by files; subagents build.** Hand every build part to a general-purpose subagent,
+  each with a short prompt: its issues, its tree, the base branch and the standing rules. Your own
+  session stays free to triage, answer a room agent's ask before any other work and land; build in
+  it only a change too small to brief. Builders
   that run side by side hold disjoint files; issues that touch the same files go to one builder.
   File overlap and conflict risk are the only bound on how many run at once. No shipped role is
   dispatched, so nothing is declared and no brief is printed; the box's dispatch gate and the

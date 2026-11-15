@@ -68,10 +68,13 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge).not.toContain('land it on the base branch');
     expect(direct.nudge).not.toContain('its own tests pass');
     expect(direct.nudge).not.toContain('a close by anything but a release');
+    expect(direct.nudge).not.toContain('build the batch yourself');
     for (const said of [
       'Dispatch no runner role',
       'general-purpose subagents on disjoint files',
-      'build the batch yourself',
+      // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks
+      'hand every build part of the batch to general-purpose subagents on disjoint files',
+      "so your own pane stays free for triage, for a room agent's ask (it goes first) and for the landing; only a change too small to brief is built here",
       // ISS-1050: "its own tests" read as the whole suite, which a master ran before every landing
       "Land through the project's own landing route once the batch builds (typecheck included) and the tests related to its changed files pass",
       'the whole suite, lint and CI run after the push, and a red there is fixed forward',

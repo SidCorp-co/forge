@@ -70,6 +70,20 @@ describe('the dispatch guide teaches batches by default', () => {
     expect(DISPATCH_GUIDE.summary).not.toContain('yolo');
   });
 
+  // ISS-1243 item 22 (owner, 2026-11-15): the epod master hand-built ISS-167 in its own pane for
+  // 15+ minutes while a room and eight feedback issues waited, because step 2 offered "Build in this
+  // session" as the first choice
+  it('hands every build part to subagents and keeps the master session free to answer agents', () => {
+    expect(prose).toContain(
+      'Hand every build part to a general-purpose subagent, one per file-disjoint part',
+    );
+    expect(prose).toContain(
+      "Keep this session free to triage, answer a room agent's ask before any other work and land; build in it only a change too small to brief",
+    );
+    expect(prose).not.toContain('Build in this session, or hand each file-disjoint part');
+    expect(prose).not.toContain('Its master builds instead of dispatching');
+  });
+
   // ISS-1048 (owner, 2026-11-06): a master read a batch as any slice of work, split one large issue
   // into mini-batches and released each, and each live red became one more release
   it('never makes a batch smaller than an issue, and folds a live red into the next batch', () => {

@@ -515,6 +515,9 @@ mod tests {
             "**Three marks, never conflated.** An issue closes when its criteria are met in scope",
             "\"is it live\" is read from the release and never from `closed`",
             "the close names where each one went",
+            // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks
+            "**Split it by files; subagents build.** Hand every build part to a general-purpose subagent",
+            "Your own session stays free to triage, answer a room agent's ask before any other work and land; build in it only a change too small to brief.",
         ] {
             assert!(
                 prose.contains(word),
@@ -536,6 +539,7 @@ mod tests {
             "comment what shipped",
             "**What the batch leaves unclean is debt.**",
             "**A batch is never smaller than an issue.**",
+            "Build it in this session, or hand parts of it to general-purpose subagents",
         ] {
             assert!(
                 !prose.contains(gone),
