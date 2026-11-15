@@ -8,7 +8,7 @@ vi.hoisted(() => {
 
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
-import { rows } from '../helpers/factories.js';
+import { addProjectMember, createTestProject, rows } from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
@@ -16,6 +16,9 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/rooms.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/support-binding.ts
 // @direct-test-of packages/contracts/src/support-operations.ts
+// @direct-test-of packages/core/src/support/thread.ts
+// @direct-test-of packages/core/src/integrations/rocketchat/binding.ts
+// @direct-test-of packages/core/src/schedules/daily-review-dispatch.ts
 //
 // ISS-934: Forge-Communicate is an operations room every project of the organization shares, one
 // thread per project. A master's post there lands in its project's own thread, as the room's binding
@@ -152,5 +155,91 @@ describe("a master's post in the shared operations room (ISS-934)", () => {
     );
     expect(refusalOf(keyed)?.detail).not.toContain('top level of');
     expect(chat.linesIn(chat.rid).length).toBe(before);
+  });
+});
+
+// ISS-1242: Forge-Communicate is bound by forge alone, and a second binding naming its rid is refused
+// SUPPORT_ROOM_ANSWERED_TWICE, so every other project of the organization posts there through forge's
+// binding, in its own thread that binding records. On 2026-11-13 catalog-api's master was refused
+// SUPPORT_ROOM_UNKNOWN, and with epod's thread recorded on forge's binding the door still refused it.
+describe("a sibling project's master in the shared operations room (ISS-1242)", () => {
+  const SIBLING_THREAD = '86aGqsokzYezYNdvF';
+  let siblingId = '';
+  let siblingSlug = '';
+  const postAs = (body: unknown) =>
+    api(w.owner, 'POST', `/api/projects/${siblingId}/support/master-posts`, body);
+
+  beforeAll(async () => {
+    const [home] = await rows<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${w.projectId}::uuid`,
+    );
+    const sibling = await createTestProject(w.ownerId, { orgId: String(home?.org_id) });
+    siblingId = sibling.id;
+    await addProjectMember(siblingId, w.ownerId, 'owner');
+    [{ slug: siblingSlug } = { slug: '' }] = await rows<{ slug: string }>(
+      sql`SELECT slug FROM projects WHERE id = ${siblingId}::uuid`,
+    );
+  });
+
+  it('is refused by name while the room records no thread for it, naming the binding that would', async () => {
+    const res = await postAs({ text: REVIEW, rid: chat.rid });
+    const refusal = refusalOf(res);
+    expect(refusal?.code, JSON.stringify(res.body)).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
+    expect(refusal?.detail).toContain(
+      `document.target.operations.threads["${chat.rid}"]["${siblingSlug}"]`,
+    );
+    expect(refusal?.detail).toContain(bindingPath);
+  });
+
+  it('posts in its own thread the room’s binding records, recorded for it, and the daily review finds it', async () => {
+    const put = await writeOperations({
+      scope: 'forge',
+      threads: { [chat.rid]: { [slug]: THREAD, [siblingSlug]: SIBLING_THREAD } },
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    const before = chat.linesIn(chat.rid).length;
+    const res = await postAs({ text: REVIEW, rid: chat.rid });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ rid: chat.rid, thread: SIBLING_THREAD });
+    const named = await postAs({ text: REVIEW, rid: chat.rid, thread: SIBLING_THREAD });
+    expect(named.status, JSON.stringify(named.body)).toBe(201);
+    const lines = chat.linesIn(chat.rid).slice(before);
+    expect(lines.map((l) => l.tmid)).toEqual([SIBLING_THREAD, SIBLING_THREAD]);
+    const acts = await rows<{ thread: string; for: string | null }>(sql`
+      SELECT thread, input->>'for' AS for FROM support_actions
+       WHERE tool = 'master_post' AND input->>'for' = ${siblingId}`);
+    expect(acts).toEqual([
+      { thread: SIBLING_THREAD, for: siblingId },
+      { thread: SIBLING_THREAD, for: siblingId },
+    ]);
+    // the thread the daily review hands the sibling's master is read from the room's binding
+    const { projectThreadsOf } = await import('../../src/integrations/rocketchat/index.js');
+    expect(await projectThreadsOf(siblingId, siblingSlug)).toEqual([]);
+    expect(await projectThreadsOf(siblingId, siblingSlug, [w.projectId])).toEqual([
+      expect.objectContaining({ rid: chat.rid, thread: SIBLING_THREAD }),
+    ]);
+  });
+
+  it("is refused another project's thread there, naming its own, and posts nothing", async () => {
+    const before = chat.linesIn(chat.rid).length;
+    const res = await postAs({ text: REVIEW, rid: chat.rid, thread: THREAD });
+    const refusal = refusalOf(res);
+    expect(refusal?.code, JSON.stringify(res.body)).toBe('SUPPORT_THREAD_UNKNOWN');
+    expect(refusal?.detail).toContain(`this project's own there is ${SIBLING_THREAD}`);
+    expect(chat.linesIn(chat.rid).length).toBe(before);
+  });
+
+  it('is refused a project-scope operations room, which stays its home project’s', async () => {
+    const put = await writeOperations({
+      scope: 'project',
+      threads: { [chat.rid]: { [slug]: THREAD, [siblingSlug]: SIBLING_THREAD } },
+    });
+    expect(put.status, JSON.stringify(put.body)).toBe(200);
+    // the binding's change declares its rooms again, the room's scope with them
+    await settleOutbox();
+    const res = await postAs({ text: REVIEW, rid: chat.rid });
+    expect(refusalOf(res)?.code, JSON.stringify(res.body)).toBe('SUPPORT_ROOM_UNKNOWN');
+    const { projectThreadsOf } = await import('../../src/integrations/rocketchat/index.js');
+    expect(await projectThreadsOf(siblingId, siblingSlug, [w.projectId])).toEqual([]);
   });
 });

@@ -17,7 +17,9 @@
 // room's report thread, and where none can be opened it is refused by name. Images the post
 // names follow its text into the same room and thread, each checked before anything is posted
 // (ISS-1024, `master-post-images.ts`). A project a channel agent's binding names in `agent.projects`
-// posts into that agent's rooms as well, since the group cannot be bound to it a second time (ISS-1230).
+// posts into that agent's rooms as well, since the group cannot be bound to it a second time (ISS-1230),
+// and every project of the organization posts in its own recorded thread of an operations room another
+// project binds for all of them (`scope: forge`), and only there (ISS-1242).
 // A master edits or deletes its own post within a window (ISS-1238, `master-post-edit.ts`).
 
 import type { SupportMasterPostRequest } from '@forge/contracts/support-channel';
@@ -120,6 +122,8 @@ async function postableRoomsNaming(
  * group answered by one binding is never bound by a second (`SUPPORT_ROOM_ANSWERED_TWICE`), whose
  * remedy is to name the other projects there; each one so named posts its master's results into
  * that room too, on the room's record. Naming it took an admin of the named project (ISS-874).
+ * With them, each operations room a sibling binds for the whole organization (`scope: forge`): every
+ * project of it has its own thread there, recorded on that binding (ISS-1242, Forge-Communicate).
  */
 async function followedRoomsOf(projectId: string): Promise<Postable[]> {
   const siblings = await orgSiblingProjects(projectId);
@@ -129,12 +133,15 @@ async function followedRoomsOf(projectId: string): Promise<Postable[]> {
   for (const home of siblings) {
     if (home.id === projectId) continue;
     for (const room of await roomsOfProject(home.id)) {
-      if (!(await agentProjectSlugs(room)).includes(self.slug)) continue;
+      if (!isShared(room) && !(await agentProjectSlugs(room)).includes(self.slug)) continue;
       if (await roomIsBound(room)) out.push({ room, team: (await readersOf(room)) === 'team' });
     }
   }
   return out;
 }
+
+/** An operations room every project of its home's organization shares, one thread each. */
+const isShared = (room: RoomRow) => room.kind === 'operations' && room.scope === 'forge';
 
 const doorOf = (p: Postable): SessionDoor => (p.team ? 'operations-reply' : 'support-reply');
 const ridsOf = (ps: readonly Postable[]) => ps.map((p) => p.room.rid).join(', ');
@@ -172,7 +179,7 @@ async function roomRefusal(
   return no(
     'SUPPORT_ROOM_UNKNOWN',
     '/rid',
-    `${rid} is no room a binding of this project names, nor one whose binding names this project in agent.projects${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
+    `${rid} is no room a binding of this project names, nor one whose binding names this project in agent.projects, nor an operations room its organization shares${rooms.length ? `; its rooms are ${ridsOf(rooms)}` : ''}. Nothing was posted.`,
   );
 }
 
@@ -444,17 +451,32 @@ async function postAtTop(
   };
 }
 
-/** The room of the named ones whose recorded project thread is `thread`, or null. */
+/** The room of the named ones recording `thread` as the project's own thread, or null. */
 async function roomRecording(
+  projectId: string,
   rooms: readonly Postable[],
   rid: string | undefined,
   thread: string,
 ): Promise<Postable | null> {
   for (const at of rooms) {
     if (rid && at.room.rid !== rid) continue;
-    if ((await projectThreadOfRoom(at.room)) === thread) return at;
+    if ((await projectThreadOfRoom(at.room, projectId)) === thread) return at;
   }
   return null;
+}
+
+/**
+ * Why a shared operations room another project binds takes no post in `thread`: a project posts
+ * there only in its own recorded thread (ISS-1242), so the others' threads stay theirs.
+ */
+async function sharedThreadRefusal(actor: Actor, at: Postable, thread: string): Promise<Posted> {
+  const own = await topLevelThreadOf(at.room, actor.projectId);
+  if (!own.ok) return own;
+  return no(
+    'SUPPORT_THREAD_UNKNOWN',
+    '/thread',
+    `${at.room.rid} is an operations room every project of the organization shares, one thread per project, and this project's own there is ${own.value}, not ${thread}: name it as \`thread\`, or name none. Nothing was posted.`,
+  );
 }
 
 /**
@@ -476,15 +498,20 @@ export async function postAsMaster(actor: Actor, input: SupportMasterPostRequest
     return roomRefusal(actor.projectId, input.rid, rooms);
   }
   if (input.thread) {
-    const own = await roomRecording(rooms, input.rid, input.thread);
-    if (own) return postAtTop(actor, own, input.text, input.thread, images.value);
-    return postInNamedThread(actor, rooms, { ...input, thread: input.thread }, images.value);
+    const recording = await roomRecording(actor.projectId, rooms, input.rid, input.thread);
+    if (recording) return postAtTop(actor, recording, input.text, input.thread, images.value);
+    // another project's shared operations room takes this project's posts in its own thread alone
+    const shared = followed.filter((f) => isShared(f.room));
+    const named = input.rid ? shared.find((f) => f.room.rid === input.rid) : undefined;
+    if (named) return sharedThreadRefusal(actor, named, input.thread);
+    const open = rooms.filter((r) => !shared.includes(r));
+    return postInNamedThread(actor, open, { ...input, thread: input.thread }, images.value);
   }
   // naming no room, a post goes to the project's own; a followed room takes one it names
   const chosen = topLevelRoomOf(input.rid ? rooms : own, input.rid);
   if (!chosen.ok) return chosen;
   // a shared operations room takes it in the project's own thread; any other in its report thread
-  const to = await topLevelThreadOf(chosen.value.room);
+  const to = await topLevelThreadOf(chosen.value.room, actor.projectId);
   if (!to.ok) return to;
   return postAtTop(actor, chosen.value, input.text, to.value, images.value);
 }

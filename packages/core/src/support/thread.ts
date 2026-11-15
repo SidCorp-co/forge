@@ -11,11 +11,12 @@ import {
   findConversation,
   openConversation,
 } from '../conversations/index.js';
+import { findBindingWithConnectionById } from '../integrations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
   namespaceFromServerUrl,
-  projectThreadsOf,
   type ReplySendProof,
+  type RocketChatBindingConfig,
   type RocketChatButtonAttachment,
   type RocketChatRestAuth,
   resolveRoomPostAuth,
@@ -148,15 +149,23 @@ export async function noteInThread(conversationId: string, line: string): Promis
 export const TOP_LEVEL = 'top';
 
 /**
- * The project's own thread in an operations room (ISS-934), as the room's binding records it in
- * `operations.threads[rid][slug]`; null for any other room, or where none is recorded.
+ * A project's own thread in an operations room (ISS-934), as the room's binding records it in
+ * `operations.threads[rid][slug]`: the room's home project's by default, or `projectId`'s where the
+ * room is one every project of the organization shares (`scope: forge`, ISS-1242); null for any
+ * other room, or where none is recorded.
  */
-export async function projectThreadOfRoom(room: RoomRow): Promise<string | null> {
+export async function projectThreadOfRoom(
+  room: RoomRow,
+  projectId: string = room.projectId,
+): Promise<string | null> {
   if (room.kind !== 'operations') return null;
-  const slug = (await findProjectSlugs([room.projectId])).get(room.projectId);
+  if (projectId !== room.projectId && room.scope !== 'forge') return null;
+  const slug = (await findProjectSlugs([projectId])).get(projectId);
   if (!slug) return null;
-  const recorded = await projectThreadsOf(room.projectId, slug);
-  return recorded.find((t) => t.bindingId === room.bindingId && t.rid === room.rid)?.thread ?? null;
+  const pair = await findBindingWithConnectionById(room.bindingId);
+  if (!pair?.binding.active) return null;
+  const config = pair.binding.config as RocketChatBindingConfig | null;
+  return config?.operations?.threads?.[room.rid]?.[slug] ?? null;
 }
 
 /**
@@ -165,11 +174,14 @@ export async function projectThreadOfRoom(room: RoomRow): Promise<string | null>
  * scope) and recording none takes it nowhere, refused by name with the binding key that records it;
  * any other room at its top level (null).
  */
-export async function topLevelThreadOf(room: RoomRow): Promise<Outcome<string | null>> {
-  const thread = await projectThreadOfRoom(room);
+export async function topLevelThreadOf(
+  room: RoomRow,
+  projectId: string = room.projectId,
+): Promise<Outcome<string | null>> {
+  const thread = await projectThreadOfRoom(room, projectId);
   if (thread) return { ok: true, value: thread };
   if (room.kind !== 'operations' || room.scope !== 'forge') return { ok: true, value: null };
-  const slug = (await findProjectSlugs([room.projectId])).get(room.projectId) ?? room.projectId;
+  const slug = (await findProjectSlugs([projectId])).get(projectId) ?? projectId;
   return no(
     'SUPPORT_PROJECT_THREAD_UNRECORDED',
     '/thread',

@@ -8,6 +8,7 @@ import { projects } from '../db/schema.js';
 import { projectThreadsOf } from '../integrations/rocketchat/index.js';
 import { sentryReadTargets } from '../integrations/sentry/index.js';
 import { deliverDailyReview } from '../masters/index.js';
+import { orgSiblingProjects } from '../projects/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 
 export async function routeScheduleDailyReviewFire(
@@ -31,8 +32,13 @@ export async function routeScheduleDailyReviewFire(
     slug: project.slug,
     fireId,
     at: new Date(),
-    // the project's own Forge-Communicate thread the review is posted in (ISS-934)
-    threads: await projectThreadsOf(projectId, project.slug),
+    // the project's own Forge-Communicate thread the review is posted in (ISS-934), recorded on its
+    // own binding or on a sibling's binding of a room the whole organization shares (ISS-1242)
+    threads: await projectThreadsOf(
+      projectId,
+      project.slug,
+      (await orgSiblingProjects(projectId)).map((p) => p.id),
+    ),
     // the Sentry read's target labels, resolved as the read resolves them (ISS-973)
     sentryTargets: await sentryReadTargets(projectId),
   });

@@ -34,17 +34,29 @@ export interface ProjectThread {
 }
 
 /**
- * The project's own thread in each room its active Rocket.Chat bindings name, as each binding
- * records it in `operations.threads[rid][slug]` now: a room the projects of its scope share holds
- * one thread per project, and a master's post lands in its project's.
+ * The project's own thread in each room an active Rocket.Chat binding names, as the binding records
+ * it in `operations.threads[rid][slug]` now: a room the projects of its scope share holds one thread
+ * per project, and a master's post lands in its project's. The project's own bindings are read, and
+ * each sibling's (`siblingIds`, the other projects of its organization) whose operations room every
+ * project of the organization shares (`scope: forge`), where that room's thread for this project is
+ * recorded (ISS-1242: forge's binding recorded epod's thread in Forge-Communicate, and epod's own
+ * bindings never showed it).
  */
-export async function projectThreadsOf(projectId: string, slug: string): Promise<ProjectThread[]> {
+export async function projectThreadsOf(
+  projectId: string,
+  slug: string,
+  siblingIds: readonly string[] = [],
+): Promise<ProjectThread[]> {
   const out: ProjectThread[] = [];
-  for (const { binding } of await listActiveBindingsForProjectProvider(projectId, 'rocketchat')) {
-    const config = binding.config as RocketChatBindingConfig | null;
-    for (const rid of config?.rids ?? []) {
-      const thread = config?.operations?.threads?.[rid]?.[slug];
-      if (thread) out.push({ bindingId: binding.id, rid, thread });
+  const homes = [projectId, ...siblingIds.filter((id) => id !== projectId)];
+  for (const home of homes) {
+    for (const { binding } of await listActiveBindingsForProjectProvider(home, 'rocketchat')) {
+      const config = binding.config as RocketChatBindingConfig | null;
+      if (home !== projectId && config?.operations?.scope !== 'forge') continue;
+      for (const rid of config?.rids ?? []) {
+        const thread = config?.operations?.threads?.[rid]?.[slug];
+        if (thread) out.push({ bindingId: binding.id, rid, thread });
+      }
     }
   }
   return out;
