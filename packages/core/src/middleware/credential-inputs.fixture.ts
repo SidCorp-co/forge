@@ -168,7 +168,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
     field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
-    field:param:actId field:query:subject field:json:owner field:json:item field:json:mockup field:json:revises
+    field:param:actId field:query:subject field:json:owner field:json:item field:json:act field:json:mockup field:json:revises
     field:json:supersedes field:json:replaces field:json:updates field:param:rid field:param:ruleId
     field:param:username
     field:json:member field:json:threads field:json:after field:json:check
