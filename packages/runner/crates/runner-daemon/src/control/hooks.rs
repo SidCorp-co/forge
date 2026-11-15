@@ -774,9 +774,9 @@ mod role_tests {
         let (ctl, dir) = a_box(&["runner"]);
         std::fs::remove_dir_all(dir.join("marketplaces")).unwrap();
         declare(&ctl, "run-1");
-        assert!(dispatch_gate_reply(&ctl, dispatch("general-purpose", "toolu_h"), MASTER).ok);
+        assert!(dispatch_gate_reply(&ctl, dispatch("Explore", "toolu_h"), MASTER).ok);
         assert!(dispatch_gate_reply(&ctl, dispatch("forge:runner", "toolu_1"), MASTER).ok);
-        started(&ctl, "helper-1", "general-purpose");
+        started(&ctl, "helper-1", "Explore");
         assert_eq!(bound(&ctl, "run-1"), None, "a helper took the promise");
         started(&ctl, "agent-1", "forge:runner");
         assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));

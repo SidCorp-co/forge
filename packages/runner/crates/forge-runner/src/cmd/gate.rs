@@ -59,10 +59,14 @@ pub fn dispatch_in(payload: &[u8]) -> Payload {
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
     };
+    // Claude Code starts a general-purpose subagent for an Agent call naming no type, and that
+    // builds like any other (ISS-1245); any other tool naming none is no dispatch.
+    let starts_agent = matches!(field("tool_name").as_deref(), Some("Agent" | "Task"));
     let subagent_type = match v.get("tool_input") {
         None => return Payload::NotADispatch,
         Some(t) if !t.is_object() => return Payload::Malformed,
         Some(t) => match t.get("subagent_type") {
+            None if starts_agent => runner_core::dispatch_gate::BUILDER.to_string(),
             None => return Payload::NotADispatch,
             Some(r) => match r.as_str() {
                 None => return Payload::Malformed,
@@ -429,5 +433,27 @@ mod tests {
             frame["transcriptPath"],
             "/home/u/.claude/projects/p/c0.jsonl"
         );
+    }
+
+    /// ISS-1245: an Agent call naming no type starts a general-purpose
+    /// subagent, which builds and holds a slot, so it is a dispatch; another
+    /// tool naming none is not.
+    #[test]
+    fn an_agent_call_naming_no_type_is_a_general_purpose_dispatch() {
+        let untyped = serde_json::json!({
+            "tool_name": "Agent", "tool_input": {"prompt": "build it"}, "tool_use_id": "toolu_2"
+        });
+        let Payload::Dispatch(d) = dispatch_in(untyped.to_string().as_bytes()) else {
+            panic!("an untyped Agent call was not read as a dispatch");
+        };
+        assert_eq!(
+            d.subagent_type.as_deref(),
+            Some(runner_core::dispatch_gate::BUILDER)
+        );
+        let bash = serde_json::json!({"tool_name": "Bash", "tool_input": {"command": "ls"}});
+        assert!(matches!(
+            dispatch_in(bash.to_string().as_bytes()),
+            Payload::NotADispatch
+        ));
     }
 }

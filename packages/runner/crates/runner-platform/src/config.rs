@@ -224,6 +224,11 @@ pub struct RunnerSettings {
     pub duplex_max_sessions: u32,
     #[serde(default = "default_max_job_panes")]
     pub max_job_panes: u32,
+    /// How many subagents this box runs at once, across every project its masters serve
+    /// (ISS-1245): core shares them, one floor per project with work. Sized to the machine, never
+    /// to AI quota; unset, [`RunnerSettings::max_subagents`] reads it off the cores the OS reports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_subagents: Option<u32>,
     /// Hosts a confined chat session may reach beyond the model's endpoint, Forge core and its
     /// MCP servers — `host`, `host:port` or a URL. Each one is a place a prompt-injected chat
     /// can send what it reads, so the default is none.
@@ -241,6 +246,7 @@ impl Default for RunnerSettings {
         Self {
             duplex_max_sessions: default_duplex_max_sessions(),
             max_job_panes: default_max_job_panes(),
+            max_subagents: None,
             chat_egress_allow: Vec::new(),
             chat_panes: false,
         }
@@ -253,6 +259,38 @@ fn default_duplex_max_sessions() -> u32 {
 
 fn default_max_job_panes() -> u32 {
     2
+}
+
+/// Cores one subagent is given when the box declares no `max_subagents`: a subagent builds, tests
+/// and typechecks, so each is a few cores' work, not one.
+const CORES_PER_SUBAGENT: usize = 4;
+/// The most core takes (`MASTER_SUBAGENTS_MAX` in `@forge/contracts/master-standing`).
+pub const MAX_SUBAGENTS: u32 = 64;
+
+/// The subagents a box of `cores` runs at once when its config names none: one per
+/// [`CORES_PER_SUBAGENT`] cores, at least 1, at most [`MAX_SUBAGENTS`].
+pub fn subagents_for_cores(cores: usize) -> u32 {
+    let n = (cores / CORES_PER_SUBAGENT).max(1);
+    u32::try_from(n).unwrap_or(MAX_SUBAGENTS).min(MAX_SUBAGENTS)
+}
+
+impl RunnerSettings {
+    /// The `max_subagents` this box declares to core: its config's, or one sized to its cores. A
+    /// box whose OS cannot say how many cores it has is sized at the floor of 1, and says so.
+    pub fn max_subagents(&self) -> u32 {
+        if let Some(n) = self.max_subagents {
+            return n;
+        }
+        match std::thread::available_parallelism() {
+            Ok(cores) => subagents_for_cores(cores.get()),
+            Err(e) => {
+                tracing::warn!(
+                    "the OS did not say how many cores this box has ({e}), so it declares 1 subagent; set `max_subagents` under [runner] to size it"
+                );
+                1
+            }
+        }
+    }
 }
 
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
@@ -485,6 +523,22 @@ mod tests {
         assert!(err.contains(CONFIG_DIR_ENV), "{err}");
         assert!(err.contains("cfg/forge-runner"), "{err}");
         assert!(named_dir(Some(OsString::from("cfg"))).is_err());
+    }
+
+    #[test]
+    fn a_box_declares_the_subagents_its_config_names_or_one_per_four_cores() {
+        let named: Config = toml::from_str("[runner]\nmax_subagents = 6\n").unwrap();
+        assert_eq!(named.runner.max_subagents(), 6);
+        let unset: Config = toml::from_str("[runner]\n").unwrap();
+        assert_eq!(unset.runner.max_subagents, None);
+        assert!(!toml::to_string(&unset).unwrap().contains("max_subagents"));
+        assert!(unset.runner.max_subagents() >= 1);
+        use super::{subagents_for_cores, MAX_SUBAGENTS};
+        assert_eq!(subagents_for_cores(1), 1);
+        assert_eq!(subagents_for_cores(7), 1);
+        assert_eq!(subagents_for_cores(8), 2);
+        assert_eq!(subagents_for_cores(32), 8);
+        assert_eq!(subagents_for_cores(4096), MAX_SUBAGENTS);
     }
 
     #[test]

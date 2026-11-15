@@ -86,6 +86,15 @@ describe('the dispatch guide teaches batches by default', () => {
 
   // ISS-1048 (owner, 2026-11-06): a master read a batch as any slice of work, split one large issue
   // into mini-batches and released each, and each live red became one more release
+  // ISS-1245 (owner, 2026-11-16): a builder holds one of its project's subagent slots, so a direct
+  // master declares each builder's run too, and is told by name when its project has none free
+  it('declares each direct builder as a run, its slot, refused by name when none is free', () => {
+    expect(prose).toContain('Declare its run first, over the issues it builds');
+    expect(prose).toContain('the box refuses a builder dispatched without one');
+    expect(prose).toContain('`RUN_SLOT_UNAVAILABLE`');
+    expect(prose).not.toContain('no shipped role, no declaration');
+  });
+
   it('never makes a batch smaller than an issue, and folds a live red into the next batch', () => {
     expect(prose).toContain('A batch is never smaller than an issue');
     expect(prose).toContain('one issue is never split across releases');

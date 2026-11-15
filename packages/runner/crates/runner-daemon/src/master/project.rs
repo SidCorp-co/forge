@@ -233,8 +233,11 @@ pub(crate) async fn register_master(
     name: &str,
     running: bool,
 ) -> Option<master_api::MasterSession> {
-    let slots = sw.cfg.runner.max_job_panes.max(1);
-    match master_api::register(sw.client, project_id, name, slots).await {
+    let size = master_api::BoxSize {
+        max_job_panes: sw.cfg.runner.max_job_panes.max(1),
+        max_subagents: sw.cfg.runner.max_subagents(),
+    };
+    match master_api::register(sw.client, project_id, name, size).await {
         Ok(s) => Some(s),
         Err(e) => {
             tracing::warn!("[master] {slug}: cannot register with core: {e}");

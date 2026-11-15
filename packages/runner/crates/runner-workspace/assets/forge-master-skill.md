@@ -117,9 +117,13 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   session stays free to triage, answer a room agent's ask before any other work and land; build in
   it only a change too small to brief. Builders
   that run side by side hold disjoint files; issues that touch the same files go to one builder.
-  File overlap and conflict risk are the only bound on how many run at once. No shipped role is
-  dispatched, so nothing is declared and no brief is printed; the box's dispatch gate and the
-  plugin's brief gate both ask only of a shipped role.
+  File overlap and conflict risk bound how many run at once, and so do the project's subagent
+  slots. No shipped role is dispatched, so no brief is printed. Each builder's run is still declared
+  first, over the issues it builds, in a tree of its own (`forge-runner run declare`): the run is
+  one of the project's slots, and the box's dispatch gate refuses a general-purpose builder
+  dispatched without one. Core opens a run only while the project has a slot free and refuses
+  `RUN_SLOT_UNAVAILABLE` otherwise, naming its slots, how many are in use and that one frees when a
+  run closes. Close each run with `forge-runner run close` as its builder ends.
 - **Say where each issue is.** A builder here writes no step, so the step the claim wrote stands at
   `triage` unless you move it: when its build starts, move it to build
   (`forge-runner api issues/<id> -X PATCH -d '{"workState":{"step":"build"}}'`). Core moves it on by

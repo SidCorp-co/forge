@@ -23,11 +23,13 @@
 //! `PermissionDenied`, and `SubagentStart` names no tool call.
 //!
 //! The subject is a dispatch to a role this box's plugin copy actually ships,
-//! and that is a definition rather than an approximation:
-//! `assets/forge-master-skill.md` says a run IS "a subagent dispatched through
-//! a shipped role". A master that hands real work through some other
-//! `subagent_type` is outside this gate's reach, which is said out loud here
-//! rather than absorbed.
+//! or to [`BUILDER`], the general-purpose subagent a master in direct mode
+//! hands a part of a batch to. Each is a subagent that builds, so each holds
+//! one of its project's subagent slots, and the declaration is that slot's
+//! claim (ISS-1245): core opens the run only while the project has one free.
+//! A master that hands real work through some other `subagent_type` (a search
+//! with `Explore`, a plan with `Plan`) is outside this gate's reach, which is
+//! said out loud here rather than absorbed.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -41,6 +43,15 @@ A run you declared and decided not to use is closed with `forge-runner run close
 declaration for the next dispatch. Each verb's own `-h` says what it takes. \
 Without that row this box holds no record of what you handed out, so if this pane dies the issues \
 stay marked as being worked on with nobody working on them.";
+
+/// The subagent type Claude Code starts for a dispatch that names none, and
+/// the one a master in direct mode builds a part of a batch through. It builds,
+/// so it holds a subagent slot like a shipped role does (ISS-1245).
+pub const BUILDER: &str = "general-purpose";
+
+fn builder(name: &str) -> bool {
+    name.trim() == BUILDER
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Dispatch {
@@ -119,11 +130,13 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     let Some(role) = d.subagent_type.as_deref() else {
         return Verdict::NotOurs;
     };
-    let Some(roles) = f.roles else {
-        return Verdict::Unknown("the roles this box's plugin copy ships could not be read");
-    };
-    if shipped(roles, role).is_none() {
-        return Verdict::NotOurs;
+    if !builder(role) {
+        let Some(roles) = f.roles else {
+            return Verdict::Unknown("the roles this box's plugin copy ships could not be read");
+        };
+        if shipped(roles, role).is_none() {
+            return Verdict::NotOurs;
+        }
     }
     let Some(run_id) = f.pending_run else {
         return Verdict::Undeclared;
@@ -234,6 +247,15 @@ pub fn claims_the_run(
                 .to_string(),
         );
     };
+    // The builder passed the gate only by a declaration, which the gate promised to it.
+    if builder(role) {
+        return match promised_role {
+            Some(promised) if !builder(promised) => Err(format!(
+                "the run was promised to a `{promised}` dispatch and this subagent started as `{role}`"
+            )),
+            _ => Ok(()),
+        };
+    }
     let Some(roles) = roles else {
         if promised_role == Some(role) {
             return Ok(());
@@ -485,6 +507,49 @@ mod tests {
             Some(["forge:runner".to_string()].into_iter().collect())
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// ISS-1245: a general-purpose builder holds a subagent slot, so it is
+    /// dispatched only on a declaration, inventory or none; a search is not.
+    #[test]
+    fn a_general_purpose_builder_is_dispatched_only_on_a_declaration() {
+        let r = roles();
+        let builder = |tool_use: &str| Dispatch {
+            subagent_type: Some(BUILDER.into()),
+            ..asked(tool_use)
+        };
+        assert_eq!(
+            decide(&builder("t1"), &facts(&r, None, None, None)),
+            Verdict::Undeclared
+        );
+        let unread = Facts {
+            roles: None,
+            ..facts(&r, None, None, None)
+        };
+        assert_eq!(decide(&builder("t1"), &unread), Verdict::Undeclared);
+        assert_eq!(
+            decide(&builder("t1"), &facts(&r, Some("run-1"), None, None)),
+            Verdict::Covered {
+                run_id: "run-1".into()
+            }
+        );
+        let search = Dispatch {
+            subagent_type: Some("Explore".into()),
+            ..asked("t2")
+        };
+        assert_eq!(
+            decide(&search, &facts(&r, None, None, None)),
+            Verdict::NotOurs
+        );
+        assert_eq!(
+            claims_the_run(Some(BUILDER), Some(&r), Some(BUILDER)),
+            Ok(())
+        );
+        assert_eq!(claims_the_run(Some(BUILDER), None, None), Ok(()));
+        let why = claims_the_run(Some(BUILDER), Some(&r), Some("forge:runner"))
+            .expect_err("promised to a shipped role");
+        assert!(why.contains("promised to a `forge:runner`"), "{why}");
+        assert!(claims_the_run(Some("forge:runner"), Some(&r), Some(BUILDER)).is_err());
     }
 
     #[test]

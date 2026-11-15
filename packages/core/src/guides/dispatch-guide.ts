@@ -227,15 +227,21 @@ screens the words for the room's readers and records the post as the master's.
 ### Direct mode: a project that runs fast
 A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project
 document leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master orchestrates the
-build instead of dispatching shipped roles, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
-approval, design record, review or judge before the landing. It works in batches, as §4 splits them:
+build instead of dispatching shipped roles, so §5 and §6 do not apply but for the declaration: no
+shipped role, no printed brief, no plan approval, design record, review or judge before the landing.
+It works in batches, as §4 splits them:
 1. Take every issue the order admits, and each that arrives mid-batch. Claim each with a lease, as
    ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`. A batch is never smaller
    than an issue: one issue is never split across releases, and a large issue is built whole, in as
    many commits and builders as its files need, and released once with the batch it lands in.
 2. Hand every build part to a general-purpose subagent, one per file-disjoint part: its issues, its
-   tree, the base branch and the standing rules. Keep this session free to triage, answer a room
-   agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief. A gap a loose issue leaves is filled by
+   tree, the base branch and the standing rules. Declare its run first, over the issues it builds,
+   in a tree of its own (\`forge-runner run declare\`): the run is one of the project's subagent
+   slots, and the box refuses a builder dispatched without one. Core opens a run only while the
+   project has a slot free, and refuses \`RUN_SLOT_UNAVAILABLE\` naming its slots, how many are in use
+   and that one frees when a run closes; parts of one issue each declare it in their own tree, and
+   each run is closed as its builder ends.
+   Keep this session free to triage, answer a room agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief. A gap a loose issue leaves is filled by
    judgement, the assumption written as one line on the issue or in the commit body. A screen change a
    person asked for is not filled by judgement: before the build, each workflow they asked for (what
    they do and see, the keys and widths they named) is written as the issue's criteria. No issue gets

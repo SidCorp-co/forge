@@ -473,6 +473,10 @@ mod tests {
             "gate profile is not `strict` and that delivers fast",
             "general-purpose subagent",
             "No shipped role is dispatched",
+            // ISS-1245: each builder holds one of the project's subagent slots, claimed by its run
+            "Each builder's run is still declared first",
+            "refuses a general-purpose builder dispatched without one",
+            "`RUN_SLOT_UNAVAILABLE`",
             "No plan approval, no design record, no review and no judge",
             "work moves in **batches**, never one issue at a time",
             "so does each one that arrives while it runs",
@@ -540,6 +544,8 @@ mod tests {
             "**What the batch leaves unclean is debt.**",
             "**A batch is never smaller than an issue.**",
             "Build it in this session, or hand parts of it to general-purpose subagents",
+            // ISS-1245: a direct builder is declared, its run being its project's slot
+            "so nothing is declared and no brief is printed",
         ] {
             assert!(
                 !prose.contains(gone),

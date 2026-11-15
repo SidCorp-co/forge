@@ -18,13 +18,21 @@ pub struct MasterSession {
     pub name: String,
 }
 
+/// What a box declares about itself when its master registers: the job panes it opens for pool
+/// jobs, and the subagents it runs at once, which core shares among its projects (ISS-1245).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoxSize {
+    pub max_job_panes: u32,
+    pub max_subagents: u32,
+}
+
 pub async fn register(
     client: &CoreClient,
     project_id: &str,
     name: &str,
-    max_job_panes: u32,
+    size: BoxSize,
 ) -> Result<MasterSession> {
-    register_within(client, project_id, name, max_job_panes, CALL_DEADLINE).await
+    register_within(client, project_id, name, size, CALL_DEADLINE).await
 }
 
 /// [`register`], with the deadline a test can shorten.
@@ -32,16 +40,22 @@ pub async fn register_within(
     client: &CoreClient,
     project_id: &str,
     name: &str,
-    max_job_panes: u32,
+    size: BoxSize,
     deadline: Duration,
 ) -> Result<MasterSession> {
-    let body = serde_json::json!({
+    let req = client
+        .post("/api/devices/me/master-session")
+        .json(&register_body(project_id, name, size));
+    status::fetch_within(req, "master-session", deadline).await
+}
+
+fn register_body(project_id: &str, name: &str, size: BoxSize) -> serde_json::Value {
+    serde_json::json!({
         "projectId": project_id,
         "name": name,
-        "maxJobPanes": max_job_panes,
-    });
-    let req = client.post("/api/devices/me/master-session").json(&body);
-    status::fetch_within(req, "master-session", deadline).await
+        "maxJobPanes": size.max_job_panes,
+        "maxSubagents": size.max_subagents,
+    })
 }
 
 pub async fn close(client: &CoreClient, session_id: &str, reason: &str) -> Result<()> {
@@ -353,6 +367,28 @@ mod tests {
                 "writtenAgoMs": null,
                 "dispatched": ["ISS-1"],
                 "record": { "worked": false, "refusal": { "reason": "usage_limit", "detail": "limit" } }
+            })
+        );
+    }
+}
+
+#[cfg(test)]
+mod register_tests {
+    use super::*;
+
+    #[test]
+    fn a_registration_declares_the_box_size_core_shares_its_subagents_by() {
+        let size = BoxSize {
+            max_job_panes: 2,
+            max_subagents: 6,
+        };
+        assert_eq!(
+            register_body("p-1", "forge-master", size),
+            serde_json::json!({
+                "projectId": "p-1",
+                "name": "forge-master",
+                "maxJobPanes": 2,
+                "maxSubagents": 6
             })
         );
     }
