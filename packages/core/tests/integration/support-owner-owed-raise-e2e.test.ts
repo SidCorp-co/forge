@@ -1,5 +1,6 @@
 /**
  * @direct-test-of packages/core/src/support/owner-owed-raise.ts
+ * @direct-test-of packages/core/src/support/index.ts
  */
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -11,12 +12,7 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import { namespaceFromServerUrl } from '../../src/integrations/rocketchat/namespace.js';
-import {
-  handOwnerOwed,
-  owedThreadOf,
-  provideTechnicalRaise,
-  type TechnicalRaise,
-} from '../../src/support/owner-owed-raise.js';
+import { handOwnerOwed, owedThreadOf } from '../../src/support/owner-owed-raise.js';
 import { roomById } from '../../src/support/store.js';
 import { api, userToken } from '../helpers/api.js';
 import { createTestIssue, rows } from '../helpers/factories.js';
@@ -30,8 +26,6 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 const w = new AgentWorld();
 let chat: StandInRocketChat;
 let owner = '';
-/** What the technical channel was handed: builder B's raise, stood in for here. */
-const raised: { thread: string; need: string; text: string }[] = [];
 
 beforeAll(async () => {
   await w.openAgent();
@@ -41,11 +35,12 @@ beforeAll(async () => {
   await db.execute(sql`
     INSERT INTO assistant_speaker_links (source, external_namespace, external_id, user_id, confirmed_via)
     VALUES ('rocketchat', ${namespaceFromServerUrl(chat.serverUrl)}, ${OWNER_ID}, ${w.ownerId}, 'channel_email_match')`);
-  const stand: TechnicalRaise = async (_room, input) => {
-    raised.push(input);
-    return { ok: true, value: { channel: 'dm', rid: 'dm-owner', messageId: `m${raised.length}` } };
-  };
-  provideTechnicalRaise(stand);
+  // the technical channel is a direct message to the owner the binding names; the raise goes
+  // through the door registerSupportRooms wired at boot, not a stand-in
+  await db.execute(sql`
+    UPDATE project_config_documents
+       SET document = jsonb_set(document, '{technicalChannel}', '{"kind":"dm"}'::jsonb), revision = revision + 1
+     WHERE project_id = ${w.projectId}`);
 }, 120_000);
 
 afterAll(() => w.stop());
@@ -105,9 +100,9 @@ describe('ISS-1243 item 23: what waits on the owner, raised by the agent once pe
     expect(notes[0]?.text).toContain('Ship the size-M print rule before the catalog sync?');
     expect(notes[0]?.text).toContain('Recommended: yes');
     await expect.poll(() => raisedOut, { timeout: 15_000 }).toMatchObject({ raised: true });
-    expect(raised.filter((r) => r.thread === thread)).toEqual([
-      expect.objectContaining({ need: 'approval' }),
-    ]);
+    const dm = chat.linesIn('D-alice').filter((l) => l.text.includes('size M'));
+    expect(dm).toHaveLength(1);
+    expect(dm[0]?.text).toContain(' | approval] from');
     await expect.poll(() => code(again), { timeout: 15_000 }).toBe('SUPPORT_OWED_ALREADY_RAISED');
     await expect.poll(() => code(elsewhere), { timeout: 15_000 }).toBe('SUPPORT_OWED_UNKNOWN');
 

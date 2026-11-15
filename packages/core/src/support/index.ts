@@ -25,7 +25,7 @@ import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
-import { handAllOwnerOwed } from './owner-owed-raise.js';
+import { handAllOwnerOwed, provideTechnicalRaise } from './owner-owed-raise.js';
 import { tellAllPromises } from './promise-watch.js';
 import { handQuestionToChannelAgent } from './question-task.js';
 import {
@@ -37,6 +37,7 @@ import { registerSupportResults, tellAllResults } from './result.js';
 import { SUPPORT_SESSION_MARKER } from './rooms.js';
 import { tellLinked } from './speaker-link.js';
 import { agentSwitchGate } from './switches.js';
+import { raiseTechnical } from './technical-channel.js';
 import { warmColdRooms, warmProjectRooms, warmRoomsOfDevice } from './warm.js';
 
 export { classifyCommand } from './command-class.js';
@@ -87,6 +88,8 @@ export async function recoverSupportRooms(): Promise<void> {
  */
 export function registerSupportRooms(): void {
   provideSupportRoomHandler({ handle: handleSupportMessage });
+  // what waits on the owner is raised through the one door to his technical channel (ISS-1243 item 23)
+  provideTechnicalRaise(raiseTechnical);
   // a group an outside bot answers joins the channel agent only through its switch (REQ-77 BC-16)
   provideAgentSwitchGate(agentSwitchGate);
   provideAgentProjectsGate(agentProjectsGate);
