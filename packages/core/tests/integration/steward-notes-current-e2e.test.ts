@@ -231,9 +231,14 @@ describe('a note written under facts core has since reworded is re-diagnosed (IS
     const read = await requirement(projectId, 'Night shift handover sheet');
     await noteWrittenBefore(projectId, read, new Date(Date.now() - 86_400_000));
     ok(
-      await say('owner', 'POST', `/api/projects/${projectId}/requirements/${read.subject.key}/drop`, {
-        reason: 'the ward stopped night shifts',
-      }),
+      await say(
+        'owner',
+        'POST',
+        `/api/projects/${projectId}/requirements/${read.subject.key}/drop`,
+        {
+          reason: 'the ward stopped night shifts',
+        },
+      ),
       200,
     );
     const dropped = (await realStandings(projectId)).find((s) => s.subject.id === read.subject.id);
