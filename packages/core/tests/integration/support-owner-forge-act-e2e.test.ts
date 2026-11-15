@@ -194,6 +194,18 @@ describe("ISS-1243 item 24: the owner's Forge act is made as him from his own me
     ]);
   });
 
+  it('refuses by name an act with no path from chat, saying which acts and doors there are', async () => {
+    const closing = await askBy(chat.alice, 'đóng câu hỏi đó đi em', {
+      act: 'question.close',
+      item: 'REQ-801',
+    });
+    expect(code(closing.out), JSON.stringify(closing.out)).toBe(
+      'SUPPORT_FORGE_ACT_NO_CONSENT_PATH',
+    );
+    expect(JSON.stringify(closing.out)).toContain('answer_question');
+    expect(JSON.stringify(closing.out)).toContain('requirement.accept');
+  });
+
   it('refuses a field another act takes, naming it, before anything is read or done', async () => {
     const carried = await askBy(chat.alice, 'defer REQ-801', {
       ...DEFER,

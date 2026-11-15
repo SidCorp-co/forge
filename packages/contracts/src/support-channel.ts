@@ -276,8 +276,13 @@ export const supportForgeActRequestSchema = z.strictObject({
 		"the item's project: your own, or one you follow, by its slug",
 	),
 	act: z
-		.enum(SUPPORT_FORGE_ACTS)
-		.describe("the act, as the item's page names it"),
+		.string()
+		.trim()
+		.min(1)
+		.max(64)
+		.describe(
+			`the act, as the item's page names it: ${SUPPORT_FORGE_ACTS.join(", ")}; any other is refused by name, saying where it is made`,
+		),
 	item: z
 		.string()
 		.trim()

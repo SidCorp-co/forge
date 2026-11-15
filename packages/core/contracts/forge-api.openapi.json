@@ -50270,26 +50270,9 @@
                 "additionalProperties": false,
                 "properties": {
                   "act": {
-                    "description": "the act, as the item's page names it",
-                    "enum": [
-                      "requirement.propose",
-                      "requirement.agree",
-                      "requirement.accept",
-                      "requirement.return",
-                      "requirement.defer",
-                      "requirement.undefer",
-                      "requirement.drop",
-                      "requirement.accept_delivery",
-                      "workflow.propose",
-                      "workflow.approve",
-                      "workflow.return",
-                      "release.cut",
-                      "release.approve",
-                      "release.return",
-                      "issue.merge",
-                      "config.write",
-                      "binding.write"
-                    ],
+                    "description": "the act, as the item's page names it: requirement.propose, requirement.agree, requirement.accept, requirement.return, requirement.defer, requirement.undefer, requirement.drop, requirement.accept_delivery, workflow.propose, workflow.approve, workflow.return, release.cut, release.approve, release.return, issue.merge, config.write, binding.write; any other is refused by name, saying where it is made",
+                    "maxLength": 64,
+                    "minLength": 1,
                     "type": "string"
                   },
                   "baseRevision": {

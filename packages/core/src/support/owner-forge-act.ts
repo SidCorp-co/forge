@@ -14,7 +14,7 @@
 // quotes his message by id and thread, and the room's record keeps the act beside it.
 
 import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
-import type { SupportForgeActRequest } from '@forge/contracts/support-channel';
+import { SUPPORT_FORGE_ACTS, type SupportForgeActRequest } from '@forge/contracts/support-channel';
 import { makeItemAct, planItemAct } from '../assistant/index.js';
 import { applyMergeMarker, listIssues, settleReleaseOnMark } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -45,7 +45,7 @@ const doorSaid = (code: string, detail: string): OpsOutcome<never> => ({
 });
 
 /** The acts whose door takes no reason: his message is cited on the room's record alone. */
-const NO_REASON = new Set<SupportForgeActRequest['act']>([
+const NO_REASON = new Set<string>([
   'requirement.propose',
   'workflow.propose',
   'release.cut',
@@ -112,7 +112,16 @@ const FIELD_OF: Record<'carry' | 'commit' | 'document' | 'baseRevision', readonl
   baseRevision: ['config.write', 'binding.write'],
 };
 
+const FORGE_ACT = new Set<string>(SUPPORT_FORGE_ACTS);
+
 function shapeRefusal(input: SupportForgeActRequest): OpsOutcome<never> | null {
+  if (!FORGE_ACT.has(input.act)) {
+    return no(
+      'SUPPORT_FORGE_ACT_NO_CONSENT_PATH',
+      '/act',
+      `${input.act} is no act Forge makes as the owner from chat. The acts it makes as him are ${SUPPORT_FORGE_ACTS.join(', ')}; an open question he answers is recorded with answer_question citing his message, and an act in a product with owner_act. Anything else is made on its page by his own account. Nothing was done; tell him which`,
+    );
+  }
   for (const [field, acts] of Object.entries(FIELD_OF)) {
     if (input[field as keyof typeof FIELD_OF] !== undefined && !acts.includes(input.act)) {
       return no(
