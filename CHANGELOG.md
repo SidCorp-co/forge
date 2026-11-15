@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.683] - 2026-11-15
+
+A judge notes criteria replaced on purpose by later issues instead of failing them
+
+### Fixed
+
+- **A deliberate later change is no longer judged a regression.** A judge, and the steward's release check, skip a criterion a later issue changed on purpose, naming that issue; the master supersedes it, so the closed issue stays closed.
+
 ## [0.4.0-dev.682] - 2026-11-15
 
 Retire a closed issue's criterion a later issue changed on purpose

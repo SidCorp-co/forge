@@ -1,1 +1,0 @@
-**A deliberate later change is no longer judged a regression.** A judge, and the steward's release check, skip a criterion a later issue changed on purpose, naming that issue; the master supersedes it, so the closed issue stays closed.
