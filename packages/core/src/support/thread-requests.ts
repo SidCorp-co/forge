@@ -1,6 +1,6 @@
 // What a channel agent's thread owes: whether a request in it has no result yet (REQ-77 BC-8).
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { supportActions } from '../db/schema-support.js';
 
@@ -8,7 +8,7 @@ import { supportActions } from '../db/schema-support.js';
  * Whether a thread holds a request its replies have not answered: what a request is, for the one
  * result each gets (REQ-77 BC-8). A request is one handing of the thread's messages: an answer, a
  * note core tells the session and a member's message all count; the session's own checks and posts
- * do not. A message counts from when the session was handed it, never only from when it was
+ * do not, and a master's post there is a result as a reply is (ISS-1243). A message counts from when the session was handed it, never only from when it was
  * recorded: a result note core recorded while the session wrote its last reply, and handed it in the
  * next turn, is a request of its own (ISS-1117). So is one handed into the running turn while that
  * reply was being written, before it was recorded: two handings since the reply before last owe two
@@ -19,7 +19,16 @@ export async function unansweredInThread(roomId: string, thread: string): Promis
   const [last, before] = await db
     .select({ at: supportActions.createdAt })
     .from(supportActions)
-    .where(and(inThread, eq(supportActions.kind, 'reply')))
+    // a master's post in the thread is its result too: one voice per thread (ISS-1243, `one-voice.ts`)
+    .where(
+      and(
+        inThread,
+        or(
+          eq(supportActions.kind, 'reply'),
+          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, 'master_post')),
+        ),
+      ),
+    )
     .orderBy(desc(supportActions.createdAt))
     .limit(2);
   if (!last) return true;

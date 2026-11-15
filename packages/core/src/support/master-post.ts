@@ -36,6 +36,7 @@ import {
   postImagesAfter,
   stagePostImages,
 } from './master-post-images.js';
+import { postInOneVoice } from './one-voice.js';
 import { agentProjectSlugs } from './ops-scope.js';
 import { no, type Outcome } from './outcome.js';
 import { reportThreadFor } from './report-thread.js';
@@ -72,6 +73,8 @@ type Posted = Outcome<{
   messageId: string | null;
   thread?: string;
   attachments?: { attachmentId: string; messageId: string | null }[];
+  /** Whose answer the post replaced in place, so one voice stands in the thread (ISS-1243). */
+  replaced?: 'agent' | 'master';
 }>;
 
 /** The project a post was made for, recorded where the room is another project's (ISS-1230). */
@@ -364,12 +367,16 @@ async function postInNamedThread(
   if (!admitted.ok) return admitted;
   const staged = await stagePostImages(room, images);
   if (!staged.ok) return staged;
-  const posted = await postInThread({
+  // one voice: it replaces the bot's answer to the current request rather than standing beside it (ISS-1243)
+  const placed = await postInOneVoice({
     room,
     thread: input.thread,
-    text: admitted.value.text,
-    proof: admitted.value.proof,
+    conversationId,
+    ...admitted.value,
+    followsUp: input.followsUp,
   });
+  if (!placed.ok) return placed;
+  const posted = placed.value;
   const shown = await postImagesAfter(room, staged.value, input.thread, posted.messageId);
   await insertAction({
     roomId: room.id,
@@ -379,7 +386,13 @@ async function postInNamedThread(
     kind: 'routed',
     actorKind: 'session',
     tool: TOOL,
-    input: { text, by: actor.userId, ...forOf(actor, room), ...recordedImages(shown.posted) },
+    input: {
+      text,
+      by: actor.userId,
+      ...forOf(actor, room),
+      ...recordedImages(shown.posted),
+      ...(posted.replaced ? { replaced: posted.replaced } : {}),
+    },
     externalId: posted.messageId,
   });
   if (shown.failure) return shown.failure;
@@ -389,6 +402,7 @@ async function postInNamedThread(
       rid: room.rid,
       messageId: posted.messageId,
       thread: input.thread,
+      ...(posted.replaced ? { replaced: posted.replaced } : {}),
       ...answeredImages(shown.posted),
     },
   };

@@ -186,35 +186,25 @@ describe('ISS-1088: agree resolves a record in the project it was made for', () 
     await w.settleWarm();
   });
 
-  it('leaves a proposal standing when agree cannot file it, refuses by name, and files it on the next agree', async () => {
+  // ISS-1243 item 11: agent.projects is a hint, not a fence: a project of the organization the
+  // binding stops naming between the proposal and the agreement still takes the filing
+  it('files a proposal in the project it names after the binding stops naming it', async () => {
     const title = `Bulk mark orders valid ${tag}`;
     const { thread, proposal } = await proposeFrom(
       `Can I mark many orders valid ${tag}?`,
       title,
       FE,
     );
-    // fe leaves the set between the proposal and the agreement
     await writeAgent(agentBlock([DOCS]));
-    const first = await w.agreeBy(chat.alice, `ok go ahead ${tag}`, thread, proposal);
-    expect(refusalCodes(first.out), JSON.stringify(first.out)).toEqual([
-      'SUPPORT_RECORD_NOT_FILED',
-    ]);
-    const said = JSON.stringify(first.out);
-    expect(said).toContain('OPS_OUT_OF_SCOPE');
-    expect(said).toContain(`${proposal} still stands`);
-    expect(said).not.toContain('holds no feedback');
-    expect(await proposalState(proposal)).toBe('pending');
-    expect(await rows(sql`SELECT 1 FROM feedback WHERE title = ${title}`)).toEqual([]);
-    // fe is followed again: the same proposal files on the person's answer, cited again
-    await writeAgent(agentBlock([FE]));
-    const again = await w.agreeBy(chat.alice, `yes please ${tag}`, thread, proposal);
-    expect(refusalCodes(again.out), JSON.stringify(again.out)).toEqual([]);
-    expect(again.out).toMatchObject({ recorded: true, project: FE });
+    const agreed = await w.agreeBy(chat.alice, `ok go ahead ${tag}`, thread, proposal);
+    expect(refusalCodes(agreed.out), JSON.stringify(agreed.out)).toEqual([]);
+    expect(agreed.out).toMatchObject({ recorded: true, project: FE });
     expect(await proposalState(proposal)).toBe('ran');
     const filed = await rows<{ project_id: string }>(
       sql`SELECT project_id FROM feedback WHERE title = ${title}`,
     );
     expect(filed).toEqual([{ project_id: feId }]);
+    await writeAgent(agentBlock([FE]));
   });
   it("hands each message the routing signals core holds: its sender, their history, its thread's records and the room's projects (ISS-1243)", async () => {
     await w.settleWarm();

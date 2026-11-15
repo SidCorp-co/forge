@@ -34,12 +34,14 @@ import {
 import {
   operationsDraftFeedbackRequestSchema,
   operationsDraftRequirementRequestSchema,
+  operationsFeedbackRequestSchema,
   operationsIssuesRequestSchema,
   operationsMoveRequestSchema,
   operationsReleasesRequestSchema,
   operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
+import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
@@ -120,6 +122,7 @@ const SHAPES = {
   issues: '{ project, status?, key? }',
   releases: '{ project }',
   requirements: '{ project }',
+  feedback: '{ project, key? }',
   move: '{ thread, message, issue, to, reason?, project? }',
   requirementDraft: '{ thread, message, project, title, summary }',
   feedbackDraft:
@@ -141,6 +144,7 @@ const SHAPES = {
   checkResult: '{ check, finding: string | null }',
   gitCredential: '{ host, path }',
   image: '{ message, n? }',
+  technical: '{ thread, need: permission | approval | finding | ask, text }',
 } as const;
 
 supportRoutes.post(
@@ -335,6 +339,15 @@ supportRoutes.post(
   strictBody(operationsRequirementsRequestSchema, SHAPES.requirements),
   (c) => act(c, c.req.valid('param').id, { action: 'requirements', ...c.req.valid('json') }),
 );
+
+// a reached project's feedback, as every room reads it (ISS-1243)
+supportRoutes.post(
+  '/:id/support/session/feedback',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(operationsFeedbackRequestSchema, SHAPES.feedback),
+  (c) => act(c, c.req.valid('param').id, { action: 'feedback', ...c.req.valid('json') }),
+);
 supportRoutes.post(
   '/:id/support/session/moves',
   projectParam,
@@ -420,6 +433,15 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(supportAskOwnerRequestSchema, SHAPES.askOwner),
   (c) => act(c, c.req.valid('param').id, { action: 'ask_owner', ...c.req.valid('json') }),
+);
+
+// a need raised in the project's one technical channel, never in the asker's thread (ISS-1243)
+supportRoutes.post(
+  '/:id/support/session/technical-needs',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(supportTechnicalRequestSchema, SHAPES.technical),
+  (c) => act(c, c.req.valid('param').id, { action: 'technical', ...c.req.valid('json') }),
 );
 
 // a parked question handed to the channel agent, answered from the record or the owner's message (ISS-873)

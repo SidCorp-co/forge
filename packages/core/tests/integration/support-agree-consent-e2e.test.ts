@@ -128,14 +128,19 @@ describe('ISS-953: an asker the room lets confirm consents by their own request'
     expect(await filings()).toBe(before + 2);
   });
 
-  it('refuses a User’s own earlier request, and a confirmer’s earlier message cited for another asker', async () => {
+  // ISS-1243 item 17: with no ruling naming who decides a filing, a User's own request files at once
+  it('files a User’s own earlier request at once, and refuses a confirmer’s earlier message cited for another asker', async () => {
     const before = await filings();
     const bob = await writeRecordAndCite(
       chat.bob,
       'please record that my invoices show the wrong VAT',
     );
-    expect(String(bob.proposed.next)).not.toContain('their own request');
-    expect(code(bob.agreed), JSON.stringify(bob.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
+    expect(String(bob.proposed.next)).toContain('their own request is their agreement');
+    expect(bob.agreed, JSON.stringify(bob.agreed)).toMatchObject({ recorded: true });
+    expect(await consentIn(bob.thread)).toMatchObject({
+      actor_key: chat.bob.userId,
+      output: { consent: 'own_request' },
+    });
     const zedSaid = await w.hear(() => chat.say(zed, 'we should log the slow exports'));
     const cited = await writeRecordAndCite(chat.bob, 'please record the slow exports', {
       thread: zedSaid.id,
@@ -144,7 +149,7 @@ describe('ISS-953: an asker the room lets confirm consents by their own request'
     expect(code(cited.agreed), JSON.stringify(cited.agreed)).toBe(
       'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
     );
-    expect(await filings()).toBe(before);
+    expect(await filings()).toBe(before + 1);
   });
 });
 
@@ -223,9 +228,12 @@ describe('ISS-954: what the owner’s word without owner mode still does not set
     });
     expect(granted.status, JSON.stringify(granted.body)).toBeLessThan(300);
     await w.settleWarm();
+    // dave's earlier line cited for bob's filing is nobody's agreement; the refusal names the owner's order
+    const daveSaid = await w.hear(() => chat.say(dave, 'the shipping label prints blank'));
     const bob = await writeRecordAndCite(
       chat.bob,
       'please record that the shipping label prints blank',
+      { thread: daveSaid.id, cite: () => daveSaid.id },
     );
     expect(code(bob.agreed), JSON.stringify(bob.agreed)).toBe('SUPPORT_AGREEMENT_BEFORE_PROPOSAL');
     expect(JSON.stringify(bob.agreed)).toContain("the owner's order");

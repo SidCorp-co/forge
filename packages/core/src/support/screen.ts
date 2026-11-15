@@ -21,6 +21,7 @@ import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { readersOf } from './grants.js';
 import { no, type Outcome } from './outcome.js';
+import { permissionTalkRefusal } from './permission-talk.js';
 import { isCoreThread } from './rules.js';
 import { agreedFilingsIn, insertAction, type RoomRow, threadMembers } from './store.js';
 import { TOP_LEVEL } from './thread.js';
@@ -95,6 +96,8 @@ export async function screenForThread(
       `nothing was posted: ${barred}, and the post holds ${codes.map((c) => `${c.kind} "${c.quote}"`).join(', ')}. ${PLAIN_WORDS_SHAPE}. Codes are shown only in a reply inside the thread of a team member who asked for the detail.${ownCodes}`,
     );
   }
+  const talk = await permissionTalkRefusal(room, conversationId, thread, text, tool);
+  if (talk) return talk;
   const filed = await agreedFilingsIn(room.id, thread);
   const verdict = await screenReplyAtDoor(door, {
     projectId: room.projectId,

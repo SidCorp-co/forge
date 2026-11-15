@@ -225,6 +225,9 @@ export class StandInRocketChat implements ChatServer {
           },
         });
       }
+      case '/api/v1/im.create':
+        // the direct room between the bot and one account, named for it (ISS-1243's technical channel)
+        return json(200, { success: true, room: { _id: `D-${String(body.username)}` } });
       case '/api/v1/groups.history': {
         this.historyReads += 1;
         const rid = url.searchParams.get('roomId') ?? '';

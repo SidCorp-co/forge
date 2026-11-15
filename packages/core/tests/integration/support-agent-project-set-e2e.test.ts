@@ -186,22 +186,26 @@ describe('ISS-874: a channel agent follows the projects its binding names', () =
     const slugs = ((out.projects as { projects: { slug: string }[] }).projects ?? []).map(
       (p) => p.slug,
     );
-    expect(slugs).toEqual([API, FE]);
+    // ISS-1243: its home, then the projects its binding names as hints, then every other of its organization
+    expect(slugs).toEqual([API, FE, DOCS]);
     // with no project named, a read is the home project's: fe's page is not among its hits
     expect(JSON.stringify(out.home)).not.toContain('order-detail');
   });
 
-  it('refuses by name a project it does not follow, on every read and on a record', async () => {
+  // ISS-1243 item 11: agent.projects is a hint, not a fence: a sibling it does not name is read,
+  // and only a project outside the organization is refused
+  it('refuses by name a project outside its organization, on every read and on a record, and reads a sibling it does not name', async () => {
     const out: Record<string, unknown>[] = [];
+    const sibling: Record<string, unknown>[] = [];
     await onNextAsk(
       () => chat.say(chat.alice, 'And the other product?'),
       async (turn, act) => {
         const thread = turn.messages.find((m) => m.from !== 'forge')?.thread ?? '';
-        for (const project of [OUTSIDE, DOCS]) {
-          out.push(await act({ action: 'issues', project }));
-          out.push(await act({ action: 'search', query: 'orders', project }));
-          out.push(await act({ action: 'project', project }));
-        }
+        out.push(await act({ action: 'issues', project: OUTSIDE }));
+        out.push(await act({ action: 'search', query: 'orders', project: OUTSIDE }));
+        out.push(await act({ action: 'project', project: OUTSIDE }));
+        sibling.push(await act({ action: 'issues', project: DOCS }));
+        sibling.push(await act({ action: 'project', project: DOCS }));
         out.push(
           await act({
             action: 'record',
@@ -216,8 +220,9 @@ describe('ISS-874: a channel agent follows the projects its binding names', () =
     );
     for (const o of out) {
       expect(refusalCodes(o), JSON.stringify(o)).toContain('OPS_OUT_OF_SCOPE');
-      expect(JSON.stringify(o)).toContain(`follows ${API}, ${FE}`);
+      expect(JSON.stringify(o)).toContain(`organization (${API}, ${FE}, ${DOCS})`);
     }
+    for (const o of sibling) expect(refusalCodes(o), JSON.stringify(o)).toEqual([]);
   });
 
   it("files a record to the followed project it names, so it lands on that project's master", async () => {
@@ -426,7 +431,7 @@ describe('ISS-874: who may set the project set and the per-group settings', () =
     expect(JSON.stringify(second.body)).toContain(`project ${w.projectId}`);
   });
 
-  it('is general: another binding follows its own sibling, and one naming none reaches its home alone', async () => {
+  it('is general: another binding follows its own sibling, and one naming none reaches its organization, home first', async () => {
     const { projectsInScope } = await import('../../src/support/ops-scope.js');
     // an agent workspace and its web project, in an organization of their own
     const ws = await createTestProject(w.ownerId);
@@ -468,7 +473,8 @@ describe('ISS-874: who may set the project set and the per-group settings', () =
       kind: 'agent',
       scope: null,
     } as unknown as Parameters<typeof projectsInScope>[0];
-    expect((await projectsInScope(room)).map((p) => p.id)).toEqual([ws.id]);
+    // ISS-1243: naming none, it still reaches its whole organization, its home first
+    expect((await projectsInScope(room)).map((p) => p.id)).toEqual([ws.id, web.id]);
     const [b] = await rows<{ id: string; revision: number }>(
       sql`SELECT id, revision FROM integration_bindings WHERE project_id = ${ws.id}::uuid`,
     );

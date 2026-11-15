@@ -923,6 +923,7 @@ export const SUPPORT_ACTIONS = [
 	"ask_master",
 	"in_flight",
 	"raise_owed",
+	"technical",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -1623,6 +1624,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_RECORD_UNKNOWN",
 	/** An owner question's `forgeQuestion` names no open question of this project (ISS-871). */
 	"SUPPORT_OWNER_QUESTION_UNKNOWN",
+	/** The project names no technical channel core can post in: no person for a direct message, no recorded thread (ISS-1243). */
+	"SUPPORT_TECHNICAL_CHANNEL_UNNAMED",
+	/** The technical channel could not be posted in: the direct room did not open (ISS-1243). */
+	"SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE",
+	/** An act the project keeps from its room agents (`agentDeny`): refused, and raised in the technical channel (ISS-1243). */
+	"SUPPORT_ACT_DENIED",
+	/** A post telling a work thread the agent lacks a permission or someone must act first (ISS-1243). */
+	"SUPPORT_PERMISSION_TALK",
 	/** A git credential asked by a session that is no channel agent in owner mode (ISS-765). */
 	"SUPPORT_GIT_NOT_OWNER_MODE",
 	/** A git credential asked for a repository other than the project's own (ISS-765). */
@@ -1840,6 +1849,10 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_OWNER_NOT_NAMED: 409,
 	SUPPORT_OWNER_RECORD_UNKNOWN: 404,
 	SUPPORT_OWNER_QUESTION_UNKNOWN: 404,
+	SUPPORT_TECHNICAL_CHANNEL_UNNAMED: 409,
+	SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE: 503,
+	SUPPORT_ACT_DENIED: 403,
+	SUPPORT_PERMISSION_TALK: 400,
 	SUPPORT_GIT_NOT_OWNER_MODE: 403,
 	SUPPORT_GIT_NOT_OWN_REPO: 403,
 	SUPPORT_CHECK_UNKNOWN: 404,

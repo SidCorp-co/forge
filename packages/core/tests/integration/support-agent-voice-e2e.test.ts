@@ -125,37 +125,33 @@ describe('ISS-845: the agent is the only voice in a channel room', () => {
     expect(await linesIn(thread)).toEqual([]);
   });
 
-  it('refuses, to the agent and by name, a citation of another member, an earlier message or another thread', async () => {
+  it('refuses, to the agent and by name, a citation of another member or another thread, and files on the asker’s own request', async () => {
     const before = await filings();
-    const { thread, proposal } = await offered('Tìm kiếm không ra SKU 0042');
+    const { thread, proposal } = await offered('Tìm kiếm không ra SKU 0042'); // i18n-allow: a member's message
 
     const bob = await agreedBy(w.chat.bob, 'ok', thread, proposal);
     expect(codesOf(bob.out), JSON.stringify(bob.out)).toEqual(['SUPPORT_NOT_A_CONFIRMER']);
-
-    // the asker's own first message, written before the proposal, agrees to nothing
-    const early = await agreedBy(w.chat.alice, 'để mình xem', thread, proposal, () => ({
-      message: thread,
-    }));
-    expect(codesOf(early.out), JSON.stringify(early.out)).toEqual([
-      'SUPPORT_AGREEMENT_BEFORE_PROPOSAL',
-    ]);
 
     // an "ok" the asker wrote in another thread is no agreement in this one
     const elsewhere = await w.chat.say(w.chat.alice, 'ok');
     await w.settleWarm();
     const other = await agreedBy(w.chat.alice, 'chờ chút', thread, proposal, () => ({
+      // i18n-allow: a member's message
       message: elsewhere,
     }));
     expect(codesOf(other.out), JSON.stringify(other.out)).toEqual([
       'SUPPORT_AGREEMENT_OTHER_THREAD',
     ]);
-
     expect(await filings()).toBe(before);
     expect(await linesIn(thread)).toEqual([]);
 
-    // the proposal still waits: the asker's real agreement records it
-    const yes = await agreedBy(w.chat.alice, 'được, ghi lại giúp mình', thread, proposal);
-    expect(yes.out, JSON.stringify(yes.out)).toMatchObject({ recorded: true });
+    // ISS-1243 item 17: with no ruling naming who decides a filing, the asker's own request, written
+    // before the proposal, is their agreement: filed at once, nobody asked "ok"
+    const own = await agreedBy(w.chat.alice, 'để mình xem', thread, proposal, () => ({
+      // i18n-allow: a member's message
+      message: thread,
+    }));
+    expect(own.out, JSON.stringify(own.out)).toMatchObject({ recorded: true });
     expect(await filings()).toBe(before + 1);
     expect(await linesIn(thread)).toEqual([]);
   });

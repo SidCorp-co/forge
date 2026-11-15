@@ -58,7 +58,10 @@ export async function briefGrantRefusals(args: {
   const out: { path: string; detail: string }[] = [];
   for (const claim of claims) {
     const deciders = rulings.filter((d) => d.acts.includes(claim.act));
-    const anyone = deciders.some((d) => d.member === ANY_ROOM_MEMBER);
+    // with no ruling naming who decides a filing, any asker's own request files it (ISS-1243)
+    const anyone =
+      deciders.some((d) => d.member === ANY_ROOM_MEMBER) ||
+      (claim.act === 'filing' && deciders.length === 0);
     const named = deciders
       .filter((d) => d.member !== ANY_ROOM_MEMBER)
       .map((d) => d.member.toLowerCase());

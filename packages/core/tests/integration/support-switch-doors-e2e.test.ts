@@ -108,6 +108,8 @@ beforeAll(async () => {
         deployment: { binding: deployTarget, trigger: 'on-request' },
       },
     },
+    // Orbit lets its room agent propose a production deploy through Forge's door (ISS-1243 agentDeny)
+    extra: { agentDeny: [] },
   });
   await w.seedKnowledge(
     'orbit-capabilities',

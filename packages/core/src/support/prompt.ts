@@ -22,6 +22,7 @@ import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-ask.js';
 import { ownerOwedNote } from './owner-owed.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
+import { roomConductLines } from './room-conduct.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
 
@@ -88,6 +89,7 @@ export function supportBrief(input: {
           'You are handed the messages that mention you, and the replies mentioning nobody in a thread you have replied in; call support.thread for the rest of a thread.',
         ]
       : []),
+    ...roomConductLines(),
     toolsLine(input.tools),
     grantsLine(grantsOfConfig(config)),
     ...(input.channel ? [input.channel] : []),
@@ -177,7 +179,7 @@ export function readsLines(reads: readonly SupportRead[]): string {
 /** What the room's grant holds, as the brief lists it and a grant change re-tells it (BC-27). */
 export function grantsLine(g: SupportGrants): string {
   if (g.abilities.length === 0) {
-    return 'What this room grants you: no ability. Answer from search and the thread only; anything else is refused by name, naming who can grant it; Forge posts nothing, so tell the person in your own words.';
+    return 'What this room grants you: no ability. Answer from search and the thread only; anything else is refused by name, naming who can grant it; Forge posts nothing, and what you need goes to the technical channel, never into the thread.';
   }
   const lines = g.abilities.map((a) => {
     const reach =
@@ -200,8 +202,8 @@ export function grantsLine(g: SupportGrants): string {
   return `What this room grants you (anything else is refused by name):\n${lines.join('\n')}${confirmers}`;
 }
 
-const grantsOfConfig = (config: SupportRoomConfig | null): SupportGrants =>
-  config?.grants ?? { abilities: [] };
+// the grant the gate holds the room to, its default included (ISS-1243, `grants.ts:grantsOf`)
+const grantsOfConfig = (config: SupportRoomConfig | null): SupportGrants => grantsOf(config);
 
 /**
  * The tools the project grants, as the brief lists them and a grant change re-tells them: each

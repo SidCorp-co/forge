@@ -26,7 +26,7 @@ export type OperationsGrant = (typeof OPERATIONS_GRANTS)[number];
 
 /** Each grant in the words a refusal and the brief use. */
 export const OPERATIONS_GRANT_MEANING: Record<OperationsGrant, string> = {
-	read: "read the projects, issues, runners, masters and releases of this room's scope",
+	read: "read the projects, issues, feedback, runners, masters and releases of this room's scope",
 	deliver:
 		"move delivery: change an issue's status, with the asking member's own permissions",
 	draft:
@@ -91,6 +91,7 @@ export const OPERATIONS_ACTIONS = [
 	"issues",
 	"releases",
 	"requirements",
+	"feedback",
 	"move",
 	"draft_requirement",
 	"draft_feedback",
@@ -107,6 +108,7 @@ export const OPERATIONS_ACTION_GRANT: Record<
 	issues: "read",
 	releases: "read",
 	requirements: "read",
+	feedback: "read",
 	move: "deliver",
 	draft_requirement: "draft",
 	draft_feedback: "draft",
@@ -152,6 +154,15 @@ export const operationsReleasesRequestSchema = z.strictObject({
 });
 export const operationsRequirementsRequestSchema = z.strictObject({
 	project: projectRef,
+});
+/** A reached project's feedback, newest first, or one item by its key (ISS-1243). */
+export const operationsFeedbackRequestSchema = z.strictObject({
+	project: projectRef,
+	key: z
+		.string()
+		.trim()
+		.regex(/^FB-\d{1,9}$/i, "a feedback key, FB-n")
+		.optional(),
 });
 export const operationsMoveRequestSchema = z.strictObject({
 	thread: threadId,

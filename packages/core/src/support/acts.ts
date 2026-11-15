@@ -21,6 +21,7 @@ import type {
 } from '@forge/contracts/support-channel';
 import type { SupportAskMasterRequest } from '@forge/contracts/support-master-ask';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
+import type { SupportTechnicalRequest } from '@forge/contracts/support-technical';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import {
   moveIssue,
@@ -30,6 +31,7 @@ import {
   runCommand,
 } from './ability-acts.js';
 import { type RoomHint, sessionCaller } from './access.js';
+import { deniedActRefusal } from './act-deny.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
 import { checkResult } from './checks.js';
@@ -60,6 +62,7 @@ import { listTools, readThread, reply, runDiagnose, staySilent } from './service
 import { inFlightOf } from './shared-picture.js';
 import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
+import { raiseTechnical } from './technical-channel.js';
 import { TOP_LEVEL } from './thread.js';
 import { noteSessionAct } from './turn-acts.js';
 import { turnOfRequest } from './turn-of-act.js';
@@ -159,6 +162,7 @@ export type SupportActInput =
   | ({ action: 'ask_master' } & SupportAskMasterRequest)
   | { action: 'in_flight'; thread: string }
   | { action: 'raise_owed'; thread: string; text: string }
+  | ({ action: 'technical' } & SupportTechnicalRequest)
   | {
       action: 'read';
       name: string;
@@ -181,6 +185,9 @@ export async function supportAct(
   if (room.sessionId) noteSessionAct(room.sessionId);
   // the turn the act is in: its own row, since the session holds one token across turns (ISS-1202)
   const { turnId } = await turnOfRequest();
+  // an act the project keeps from its room agents goes to its technical channel instead (ISS-1243)
+  const denied = await deniedActRefusal(room, input);
+  if (denied) return denied;
   const out = isOperation(input)
     ? await operationsAct(room, input)
     : room.kind === 'support' || room.kind === 'agent' || SHARED.has(input.action)
@@ -219,6 +226,7 @@ const ANY_ROOM = new Set<SupportActInput['action']>([
   'issues',
   'releases',
   'requirements',
+  'feedback',
 ]);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
@@ -290,6 +298,8 @@ const SHARED = new Set<SupportActInput['action']>([
   'in_flight',
   // what waits on the owner, raised in the technical channel (ISS-1243)
   'raise_owed',
+  // every room agent raises what it needs in its project's technical channel (ISS-1243)
+  'technical',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -439,6 +449,10 @@ async function act(
       return inFlightOf(room, input.thread);
     case 'raise_owed':
       return raiseOwed(room, { thread: input.thread, text: input.text });
+    case 'technical': {
+      const { action: _, ...request } = input;
+      return raiseTechnical(room, request);
+    }
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

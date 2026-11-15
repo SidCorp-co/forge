@@ -15,7 +15,7 @@ import { feedbackKeysOf } from '../feedback/index.js';
 import { readSupportApis } from '../integrations/support-api/index.js';
 import { requireDeclaredOn } from '../permissions/index.js';
 import { latencySamples } from './delivery.js';
-import { answersOfConfig, readersOfConfig, supportConfigOf } from './grants.js';
+import { answersOfConfig, grantsOf, readersOfConfig, supportConfigOf } from './grants.js';
 import { roomHealth } from './health.js';
 import { roleOfRoom } from './ops-role.js';
 import { recentThreadsNamed } from './room-reads.js';
@@ -59,7 +59,8 @@ export async function supportRoomsOf(
         name,
         readers: readersOfConfig(r, config),
         answers: answersOfConfig(r, config),
-        grants: config?.grants ?? null,
+        // what the room holds, the default where its binding names no grant (ISS-1243)
+        grants: grantsOf(config),
         health,
         threads: (await recentThreads(r.id, 1000)).length,
         recentThreads: (await recentThreadsNamed(r.id, SUPPORT_ROOM_THREADS_LISTED)).map((t) => ({

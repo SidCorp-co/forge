@@ -1,9 +1,10 @@
-// What an operations room reaches (REQ-75 BC-20): `forge`, every project of its home project's
-// organization; `project`, the home project alone. Two rooms on one bot account reach what their
-// own bindings say, so the same bot reads the whole organization in one room and one project in
-// another. A channel agent reaches its home project and the siblings its binding's `agent.projects`
-// names (ISS-874), so one bot follows one product made of several projects. A project or an issue
-// outside the room's scope is refused by name, never searched for.
+// What a room reaches (REQ-75 BC-20, ISS-1243 item 11): every room agent, a support group's, a channel
+// agent's and an operations room's of either scope, reaches every project of its home project's
+// organization, its home first, routing by the turn's signals rather than by a list wired per room.
+// A channel agent's `agent.projects` (ISS-874) is a hint read next after its home, never a fence: it
+// still says which checkouts the agent's box mounts and where a product's other halves post. A
+// project outside the organization, or an issue under no prefix of it, is refused by name, never
+// searched for.
 
 import { findBindingWithConnectionById } from '../integrations/index.js';
 import type { RocketChatBindingConfig } from '../integrations/rocketchat/index.js';
@@ -35,14 +36,14 @@ async function reachOf(room: RoomRow): Promise<Reach> {
   const siblings = await orgSiblingProjects(room.projectId);
   const home = siblings.find((p) => p.id === room.projectId);
   if (!home) throw new Error(`support: room ${room.id}'s home project is gone`);
-  if (room.kind === 'operations' && room.scope === 'forge')
-    return { projects: siblings, unknown: [] };
+  // the projects a channel agent's binding names come right after its home, as hints (ISS-1243)
   const named = await agentProjectSlugs(room);
-  const followed = named.flatMap((slug) =>
+  const hinted = named.flatMap((slug) =>
     siblings.filter((p) => p.slug === slug && p.id !== home.id),
   );
+  const rest = siblings.filter((p) => p.id !== home.id && !hinted.includes(p));
   return {
-    projects: [home, ...followed],
+    projects: [home, ...hinted, ...rest],
     unknown: named.filter((slug) => !siblings.some((p) => p.slug === slug)),
   };
 }
@@ -52,14 +53,12 @@ export async function projectsInScope(room: RoomRow): Promise<ScopedProject[]> {
   return (await reachOf(room)).projects;
 }
 
-const scopeLine = (room: RoomRow, reach: Reach) => {
+const scopeLine = (reach: Reach) => {
   const slugs = reach.projects.map((p) => p.slug).join(', ');
   const gone = reach.unknown.length
     ? `; its binding also names ${reach.unknown.join(', ')}, which no project of this organization is now`
     : '';
-  return room.kind === 'agent'
-    ? `this channel agent follows ${slugs}${gone}`
-    : `this room's scope is ${room.scope ?? 'its own project'} (${slugs})`;
+  return `this room reaches every project of its organization (${slugs})${gone}`;
 };
 
 /** The project `slug` names, when the room reaches it. */
@@ -76,9 +75,7 @@ export async function projectInScope(
   return no(
     'OPS_OUT_OF_SCOPE',
     path,
-    room.kind === 'agent'
-      ? `project ${slug} is not one this agent follows: ${scopeLine(room, reach)}. A project admin adds it to the binding's agent.projects.`
-      : `project ${slug} is not in this room's reach: ${scopeLine(room, reach)}. Ask in a room whose scope reaches it.`,
+    `project ${slug} is no project of this room's organization: ${scopeLine(reach)}. Name one of them.`,
   );
 }
 
@@ -116,6 +113,6 @@ export async function projectOfKey(
   return no(
     'OPS_OUT_OF_SCOPE',
     '/issue',
-    `no project in this room's reach numbers its issues ${prefix}-n: ${scopeLine(room, reach)}`,
+    `no project in this room's reach numbers its issues ${prefix}-n: ${scopeLine(reach)}`,
   );
 }

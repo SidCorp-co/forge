@@ -229,7 +229,8 @@ describe('ISS-1012: a support room promises to tell a person when an issue reach
     expect(said).toContain('tracks no environment named \\"qa\\"');
     expect(said).toContain('the environments it tracks are staging, production');
     expect(said).toContain('`production` is deployed outside Forge with no source probe');
-    expect(said).toContain(`project ${outsider} is not`);
+    // a room reaches its whole organization, so only a project outside it is refused (ISS-1243)
+    expect(said).toContain(`project ${outsider} is no project of this room's organization`);
     expect(await promises()).toHaveLength(3);
   });
 

@@ -17,6 +17,7 @@ export type OperationsActInput =
     }
   | { action: 'releases'; project: string }
   | { action: 'requirements'; project: string }
+  | { action: 'feedback'; project: string; key?: string | undefined }
   | {
       action: 'move';
       thread: string;

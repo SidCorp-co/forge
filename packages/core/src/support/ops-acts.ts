@@ -9,6 +9,7 @@ import {
   OPERATIONS_ACTION_GRANT,
   type OperationsAction,
 } from '@forge/contracts/support-operations';
+import { feedbackRead } from './ops-feedback-read.js';
 import { issuesRead, projectsRead, releasesRead, requirementsRead } from './ops-reads.js';
 import { readPublicPage } from './ops-research.js';
 import { grantRefusal, roleOfRoom } from './ops-role.js';
@@ -34,7 +35,7 @@ export async function operationsAct(
       'OPS_NOT_AN_OPERATIONS_ROOM',
       '/action',
       room.kind === 'agent'
-        ? `${input.action} is an operations room's write; a channel agent writes through support.record, support.route and support.ask_owner, and reads projects, issues, releases and requirements`
+        ? `${input.action} is an operations room's write; a channel agent writes through support.record, support.route and support.ask_owner, and reads projects, issues, feedback, releases and requirements`
         : `${input.action} is an operations room's act, and this room is a support group`,
     );
   }
@@ -56,6 +57,8 @@ async function act(room: RoomRow, input: OperationsActInput): Promise<OpsOutcome
       return releasesRead(room, input.project);
     case 'requirements':
       return requirementsRead(room, input.project);
+    case 'feedback':
+      return feedbackRead(room, input);
     case 'move':
       return move(room, input);
     case 'draft_requirement':

@@ -178,9 +178,10 @@ describe("an owner-mode channel agent reads its own project's tracker (FB-448)",
       },
     );
     expect(JSON.stringify(out.other)).toContain('OPS_OUT_OF_SCOPE');
-    // a single-project agent follows its home alone, and is told how another is added (ISS-874)
-    expect(JSON.stringify(out.other)).toContain(`this channel agent follows ${slug}.`);
-    expect(JSON.stringify(out.other)).toContain("the binding's agent.projects");
+    // a project outside its organization is refused, naming what it reaches (ISS-1243)
+    expect(JSON.stringify(out.other)).toContain(
+      `this room reaches every project of its organization (${slug})`,
+    );
     expect(JSON.stringify(out.move)).toContain('OPS_NOT_AN_OPERATIONS_ROOM');
     expect(JSON.stringify(out.move)).toContain('a channel agent writes through support.record');
   });
