@@ -19,6 +19,11 @@ describe('the support brief states goals, and the consent a change waits on', ()
       'only once they agree in plain words and you cite that message with support.agree',
     );
     expect(brief).toContain('never claim it ran or was recorded until agree says so');
+    // ISS-1243 item 17: a filing asked for by its asker is agreed by the request itself.
+    expect(brief).toContain(
+      'their asking is their agreement, so cite it with support.agree at once',
+    );
+    expect(brief).not.toContain('runs or is filed only once they agree');
     expect(brief).not.toContain('type a code');
   });
 
