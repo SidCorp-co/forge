@@ -21,6 +21,7 @@ import { imagesHeadOf } from './images.js';
 import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-ask.js';
 import { ownerOwedNote } from './owner-owed.js';
+import { roomConductLines } from './room-conduct.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
 
@@ -74,6 +75,7 @@ export function supportBrief(input: {
           'You are handed the messages that mention you, and the replies mentioning nobody in a thread you have replied in; call support.thread for the rest of a thread.',
         ]
       : []),
+    ...roomConductLines(),
     toolsLine(input.tools),
     grantsLine(grantsOfConfig(config)),
     ...(input.channel ? [input.channel] : []),
@@ -162,7 +164,7 @@ export function readsLines(reads: readonly SupportRead[]): string {
 /** What the room's grant holds, as the brief lists it and a grant change re-tells it (BC-27). */
 export function grantsLine(g: SupportGrants): string {
   if (g.abilities.length === 0) {
-    return 'What this room grants you: no ability. Answer from search and the thread only; anything else is refused by name, naming who can grant it; Forge posts nothing, so tell the person in your own words.';
+    return 'What this room grants you: no ability. Answer from search and the thread only; anything else is refused by name, naming who can grant it; Forge posts nothing, and what you need goes to the technical channel, never into the thread.';
   }
   const lines = g.abilities.map((a) => {
     const reach =

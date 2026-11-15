@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { operationsBrief } from './ops-prompt.js';
 import { agentOpening, supportBrief, toolsLine } from './prompt.js';
+import { ANSWER_THE_ASKER, DONE_ONLY_WHEN_CHECKED, NO_PERMISSION_TALK } from './room-conduct.js';
 
 const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
 
@@ -144,5 +146,41 @@ describe('the tools line names the binding each tool reads', () => {
     ]);
     expect(line).toContain('- machines_moc (diagnose) on moc: list machines');
     expect(line).toContain('- machines_sid (diagnose) on sidcorp: list machines');
+  });
+});
+
+// ISS-1243 (owner 2026-11-15, AdminHub-Support): every room agent keeps permission talk out of a work
+// thread (item 12), says done only once live and checked criterion by criterion (item 18), and
+// answers the asker with the deliverable asked for, short (item 19), in each brief it is handed.
+describe('every room agent brief carries the room conduct', () => {
+  const channel = supportBrief({
+    projectName: 'P',
+    product: null,
+    tools: [],
+    opening: agentOpening({ projectName: 'P', product: null, channels: ['#c'], ownerMode: false }),
+  });
+  const operations = operationsBrief({
+    role: { name: 'ops', persona: 'You are ops.', grants: ['read'] } as unknown as Parameters<
+      typeof operationsBrief
+    >[0]['role'],
+    scope: 'org',
+    reach: [],
+  });
+
+  it('sends a permission need to the technical channel, never the thread', () => {
+    for (const text of [brief, channel, operations]) {
+      expect(text).toContain(NO_PERMISSION_TALK);
+      expect(text).toContain('support.technical');
+    }
+    expect(brief).not.toContain('Forge posts nothing, so tell the person in your own words');
+    expect(operations).not.toContain('who can do it instead');
+  });
+
+  it('says done only once live and checked against each thing asked', () => {
+    for (const text of [brief, channel, operations]) expect(text).toContain(DONE_ONLY_WHEN_CHECKED);
+  });
+
+  it('answers the asker with the deliverable asked for, short, steps only for a guide', () => {
+    for (const text of [brief, channel, operations]) expect(text).toContain(ANSWER_THE_ASKER);
   });
 });
