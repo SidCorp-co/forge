@@ -183,6 +183,14 @@ function MasterProperties({ m }: { m: MasterStanding }) {
           )}
         </Fact>
       </FactsGroup>
+      {m.slots ? (
+        <FactsGroup title={t("agents.master.subagents")}>
+          <Fact label={t("agents.master.subagentsHeld")}>{m.slots.subagents.held}</Fact>
+          <Fact label={t("agents.master.inUse")}>{m.slots.subagents.inUse}</Fact>
+          <Fact label={t("agents.master.subagentsWaiting")}>{m.slots.subagents.waiting}</Fact>
+          <Fact label={t("agents.master.subagentsBox")}>{m.slots.subagents.capacity ?? "?"}</Fact>
+        </FactsGroup>
+      ) : null}
       <FactsGroup title={t("runs.fact.box")}>
         <Fact label={t("runs.report.device")}>
           <span className="font-mono text-13">{m.device?.name ?? "—"}</span>

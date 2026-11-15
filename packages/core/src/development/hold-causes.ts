@@ -65,6 +65,7 @@ const GATE: Readonly<Record<string, SaidPlainKey>> = {
   contract_wait_unsettled: 'overview.hold.cause.gate.contractWaitUnsettled',
   pattern_review_pending: 'overview.hold.cause.gate.patternReviewPending',
   scope_held: 'overview.hold.cause.gate.scopeHeld',
+  slot_full: 'overview.hold.cause.gate.slotFull',
   runner_stale: 'overview.hold.cause.gate.runnerStale',
   runner_too_old: 'overview.hold.cause.gate.runnerTooOld',
 };

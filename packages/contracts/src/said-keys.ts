@@ -2720,6 +2720,7 @@ export const SAID = {
 		en: "A new pattern waits for review",
 	},
 	"overview.hold.cause.gate.scopeHeld": { en: "Another run holds its scope" },
+	"overview.hold.cause.gate.slotFull": { en: "Its project uses every slot" },
 	"overview.hold.cause.gate.runnerStale": {
 		en: "The runners have not checked in recently",
 	},

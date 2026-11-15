@@ -64,6 +64,7 @@ import {
   queueableRefusal,
   recordRefusedDeclaration,
 } from './run-session-queued.js';
+import { refuseRunWithoutSlot } from './run-slots-read.js';
 import { restartsSteps, takenBy } from './run-take.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
@@ -275,6 +276,8 @@ export async function openRunSession(args: {
         if (winner && winner.status !== 'queued') return { existing: winner };
         queued = winner;
       }
+      // under the box's slot lock, so two opens racing for its last free slot cannot both take it
+      await refuseRunWithoutSlot({ deviceId: args.deviceId, projectId: args.projectId, tx });
       if (queued) {
         await promoteQueuedDeclaration(tx, queued, metadata);
         if (takes) {

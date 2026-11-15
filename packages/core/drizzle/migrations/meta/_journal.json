@@ -4187,6 +4187,13 @@
       "when": 1839628800000,
       "tag": "0656_a_chat_sender_holds_a_temporary_account_and_an_agent_asks_its_master",
       "breakpoints": true
+    },
+    {
+      "idx": 658,
+      "version": "7",
+      "when": 1839801600000,
+      "tag": "0658_a_box_declares_its_subagent_slots",
+      "breakpoints": true
     }
   ]
 }

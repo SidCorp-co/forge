@@ -32,6 +32,7 @@ import {
   writeRunEvidence,
 } from './run-evidence.js';
 import { closeRunSession, openRunSession, preflightRunSession } from './run-session.js';
+import { refuseRunWithoutSlot } from './run-slots-read.js';
 import { runVerdict } from './run-verdict.js';
 
 const DEVICE_OWN = requiresNoPermission(
@@ -130,6 +131,8 @@ deviceRunSessionRoutes.post(
       ...(body.requirement ? { requirement: body.requirement } : {}),
       ...(body.role ? { role: body.role } : {}),
     });
+    // every run holds a subagent slot, a judge's too; the open asks again under the box's lock (ISS-1245)
+    await refuseRunWithoutSlot({ deviceId: c.get('device').id, projectId: body.projectId });
     return c.json({ ok: true as const });
   },
 );

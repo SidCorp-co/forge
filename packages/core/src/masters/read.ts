@@ -34,8 +34,10 @@ import {
   masterLastBeatSql,
   masterSilentSql,
   OCCUPYING,
+  readBoxSlotsForView,
   readDialogsAnswered,
   SESSION_SILENCE_TIMEOUT_S,
+  subagentSlotsOf,
 } from '../devices/index.js';
 import { NOT_PARKED } from '../jobs/index.js';
 import { runsOutOf, slotsHeld } from './held-reads.js';
@@ -299,10 +301,11 @@ async function standingOf(projectId: string): Promise<MasterStanding> {
     master.device_id && master.device_name !== null
       ? { id: master.device_id, name: master.device_name }
       : null;
-  const [open, held, runsOut] = await Promise.all([
+  const [open, held, runsOut, box] = await Promise.all([
     heldOpenPass(master.id),
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
     master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
+    device ? readBoxSlotsForView(device.id) : Promise.resolve(null),
   ]);
   const pass = open?.pass ?? null;
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
@@ -334,7 +337,14 @@ async function standingOf(projectId: string): Promise<MasterStanding> {
     since: read.since,
     pass,
     passIssueTitle,
-    slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, held) : null,
+    slots:
+      device && box
+        ? slotsOf(
+            { name: device.name, maxJobPanes: master.max_job_panes },
+            held,
+            subagentSlotsOf(box, projectId),
+          )
+        : null,
     lastBeatAt,
   };
 }

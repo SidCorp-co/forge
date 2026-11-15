@@ -3,6 +3,7 @@ import type {
   MasterOpenPass,
   MasterRefusal,
   MasterSlots,
+  MasterSubagentSlots,
 } from '@forge/contracts/master-standing';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
@@ -111,12 +112,14 @@ function undeclaredSlots(deviceName: string): MasterRefusal {
 export function slotsOf(
   device: { name: string; maxJobPanes: number | null },
   held: { jobPanes: number; runs: number },
+  subagents: MasterSubagentSlots,
 ): MasterSlots {
   return {
     inUse: held.jobPanes,
     max: device.maxJobPanes,
     runs: held.runs,
     undeclared: device.maxJobPanes === null ? undeclaredSlots(device.name) : null,
+    subagents,
   };
 }
 

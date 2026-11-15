@@ -97,7 +97,7 @@ const MASTER = {
   since: AT,
   pass: { id: "pass-9", sessionId: "m1", verb: "dispatch", startedAt: AT, issueKey: "ISS-3", trigger: "nudge" },
   lastPass: { id: "pass-8", sessionId: "m1", verb: "judge", startedAt: AT, endedAt: AT, issueKey: null, trigger: "unprompted", dispatched: ["ISS-4"], skipped: [{ issueKey: "ISS-5", refusal: "r" }], parked: ["ISS-6"], refused: null, recovers: null, closeReason: "turn_ended" },
-  slots: { inUse: 1, max: 3, runs: 1, undeclared: null },
+  slots: { inUse: 1, max: 3, runs: 1, undeclared: null, subagents: { held: 2, inUse: 1, waiting: 3, capacity: 4 } },
   runsOut: 1,
   lastBeatAt: AT,
   silentAfterSeconds: 300,

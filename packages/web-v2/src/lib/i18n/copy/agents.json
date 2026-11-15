@@ -383,6 +383,10 @@
     "agents.now.waiting": "{n} messages waiting",
     "agents.now.waitingOne": "1 message waiting",
     "agents.question.resource": "Resource needed",
-    "agents.question.answerWaiting": "Question waiting"
+    "agents.question.answerWaiting": "Question waiting",
+    "agents.master.subagents": "Subagents",
+    "agents.master.subagentsHeld": "Held",
+    "agents.master.subagentsWaiting": "Waiting",
+    "agents.master.subagentsBox": "Box"
   }
 }

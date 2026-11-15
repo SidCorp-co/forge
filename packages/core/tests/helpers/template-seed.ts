@@ -58,7 +58,10 @@ export async function seedFactoryWorld(): Promise<Record<string, number>> {
     await step('addProjectMember (project_members)', () =>
       addProjectMember(project.id, agent.id, 'member'),
     );
-    const device = await step('createTestDevice (devices)', () => createTestDevice(owner.id));
+    // a box as one stands before its runner declared a size (ISS-1245)
+    const device = await step('createTestDevice (devices)', () =>
+      createTestDevice(owner.id, { maxSubagents: null }),
+    );
     await step('bindTestRunner (runners)', () => bindTestRunner(project.id, device));
     const req = await step('createTestRequirement (requirements)', () =>
       createTestRequirement(project.id, 1, 'A seeded requirement'),

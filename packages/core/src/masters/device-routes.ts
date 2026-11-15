@@ -51,6 +51,7 @@ deviceMasterRoutes.post(
       projectId: body.projectId,
       name: body.name,
       maxJobPanes: body.maxJobPanes,
+      maxSubagents: body.maxSubagents,
     });
     if (!outcome.ok) return refused(c, outcome.refusals, 'MASTER_REFUSED');
     return c.json(outcome.session satisfies MasterSessionResponse);

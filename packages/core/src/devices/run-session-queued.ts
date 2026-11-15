@@ -43,6 +43,7 @@ export const QUEUED_BEHIND: Readonly<Record<string, string>> = {
   PATTERN_REVIEW_PENDING: 'pattern_review_pending',
   ISSUE_LEASE_HELD: 'issue_busy',
   ISSUE_SCOPE_HELD: 'scope_held',
+  RUN_SLOT_UNAVAILABLE: 'slot_full',
 };
 
 export interface DeclarationRefusal {

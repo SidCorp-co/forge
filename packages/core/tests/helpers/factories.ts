@@ -160,14 +160,26 @@ export async function addProjectMember(
 
 export async function createTestDevice(
   ownerId: string,
-  opts: { status?: 'online' | 'offline'; agentVersion?: string; name?: string } = {},
+  opts: {
+    status?: 'online' | 'offline';
+    agentVersion?: string;
+    name?: string;
+    /** The subagents its runner declared it runs at once (ISS-1245); null leaves it undeclared. */
+    maxSubagents?: number | null;
+  } = {},
 ): Promise<string> {
   const id = randomUUID();
+  // a box sized for the runs a test opens side by side, as a runner since ISS-1245 declares one
+  const maxSubagents = opts.maxSubagents === undefined ? 16 : opts.maxSubagents;
   await db.execute(sql`
     INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
     VALUES (${id}, ${ownerId}, ${opts.name ?? `device-${id.slice(0, 8)}`}, 'linux', ${opts.status ?? 'online'},
             ${opts.agentVersion ?? CLAIM_MIN_RUNNER})
   `);
+  // its own write, so an undeclared box is the row a database from before ISS-1245 holds
+  if (maxSubagents !== null) {
+    await db.execute(sql`UPDATE devices SET max_subagents = ${maxSubagents} WHERE id = ${id}`);
+  }
   return id;
 }
 

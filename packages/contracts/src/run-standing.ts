@@ -121,6 +121,7 @@ export const RUN_GATES = [
 	"contract_wait_unsettled",
 	"pattern_review_pending",
 	"scope_held",
+	"slot_full",
 	"runner_stale",
 	"runner_too_old",
 ] as const;

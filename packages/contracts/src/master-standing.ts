@@ -81,6 +81,8 @@ export interface MasterRefusal {
 }
 
 export const MASTER_JOB_PANES_MAX = 64;
+/** The most subagents a box may declare it runs at once (`devices.max_subagents`, ISS-1245). */
+export const MASTER_SUBAGENTS_MAX = 64;
 const MASTER_PASS_LIST_MAX = 200;
 const MASTER_PASS_ITEM_MAX = 200;
 const MASTER_PASS_REFUSAL_MAX = 1000;
@@ -93,8 +95,10 @@ export const masterSessionRequestSchema = z.strictObject({
 	projectId: z.uuid(),
 	name: z.string().min(1).max(120),
 	maxJobPanes: z.number().int().min(1).max(MASTER_JOB_PANES_MAX).optional(),
+	/** How many subagents the box runs at once, sized to the machine (ISS-1245); a runner before it sends none. */
+	maxSubagents: z.number().int().min(1).max(MASTER_SUBAGENTS_MAX).optional(),
 });
-export const MASTER_SESSION_SHAPE = `{ projectId: uuid, name: string (1-120), maxJobPanes: integer 1-${MASTER_JOB_PANES_MAX} }`;
+export const MASTER_SESSION_SHAPE = `{ projectId: uuid, name: string (1-120), maxJobPanes: integer 1-${MASTER_JOB_PANES_MAX}, maxSubagents?: integer 1-${MASTER_SUBAGENTS_MAX} }`;
 
 const passItem = z.string().trim().min(1).max(MASTER_PASS_ITEM_MAX);
 
@@ -312,6 +316,18 @@ export interface MasterSessionResponse {
 	maxJobPanes: number | null;
 }
 
+/** This project's subagent slots on its master's box (ISS-1245): a live slot is an open run session. */
+export interface MasterSubagentSlots {
+	/** What the box's one slot rule (core `devices/run-slots.ts:slotsFor`) gives the project now. */
+	held: number;
+	/** Its run sessions holding a subagent on the box now. */
+	inUse: number;
+	/** Its admissible issues nobody has started. */
+	waiting: number;
+	/** The box's declared `max_subagents`; null where its runner has not declared one. */
+	capacity: number | null;
+}
+
 export interface MasterSlots {
 	/** Job panes the box holds for pool jobs: the count `max` (devices.max_job_panes) caps. */
 	inUse: number;
@@ -320,6 +336,8 @@ export interface MasterSlots {
 	 *  max_job_panes does not cap them, so they are served beside the slots, never inside them. */
 	runs: number;
 	undeclared: MasterRefusal | null;
+	/** The project's subagent slots on the box, the one rule's answer. */
+	subagents: MasterSubagentSlots;
 }
 
 export interface MasterStanding {

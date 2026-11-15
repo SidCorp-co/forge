@@ -32,6 +32,8 @@ export const DEVICE_REFUSAL_CODES = [
 	"DEVICE_REVOKED",
 	"RUN_SESSION_REFUSED",
 	"RUNNER_NOT_ADMITTED",
+	/** A run declared while its project already uses every subagent slot it holds on the box (ISS-1245). */
+	"RUN_SLOT_UNAVAILABLE",
 	"WORKSPACE_HOLDER_REFUSED",
 	"ISSUE_LEASE_AMBIGUOUS",
 	/** A box's lease give-back named no run session over a lease a live run session of that box holds (ISS-752). */

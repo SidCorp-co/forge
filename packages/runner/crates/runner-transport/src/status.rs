@@ -342,7 +342,8 @@ fn codes_of(body: &str) -> Vec<String> {
 /// The take refusals core answers for when something holds the issues a run is declared
 /// over: every key of `run-session-queued.ts:QUEUED_BEHIND`, the refusals a declared run waits
 /// behind, which `run-session-queued.test.ts` pins this list to. Each lifts when the holder
-/// moves, never because the same bytes were sent again.
+/// moves, never because the same bytes were sent again: a slot frees when one of its project's
+/// runs closes (ISS-1245).
 pub const HELD_CODES: &[&str] = &[
     "ISSUE_BLOCKED",
     "WORKFLOW_DESIGN_NOT_APPROVED",
@@ -350,6 +351,7 @@ pub const HELD_CODES: &[&str] = &[
     "PATTERN_REVIEW_PENDING",
     "ISSUE_LEASE_HELD",
     "ISSUE_SCOPE_HELD",
+    "RUN_SLOT_UNAVAILABLE",
 ];
 
 /// The held code a `422` carries, or a `409`, the status core answers `ISSUE_LEASE_HELD`

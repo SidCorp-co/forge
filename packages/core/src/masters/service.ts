@@ -32,6 +32,7 @@ import {
   assertDeviceBoundToProject,
   ensureMasterSession,
   setMaxJobPanes,
+  setMaxSubagents,
 } from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { readMasterWork } from './owed.js';
@@ -60,9 +61,15 @@ export async function declareMasterSession(args: {
   projectId: string;
   name: string;
   maxJobPanes: number | undefined;
+  /** Undefined from a runner before ISS-1245, which leaves what the box last declared standing. */
+  maxSubagents?: number | undefined;
 }): Promise<MasterSessionOutcome> {
   const [device] = await db
-    .select({ agentVersion: devices.agentVersion, maxJobPanes: devices.maxJobPanes })
+    .select({
+      agentVersion: devices.agentVersion,
+      maxJobPanes: devices.maxJobPanes,
+      maxSubagents: devices.maxSubagents,
+    })
     .from(devices)
     .where(eq(devices.id, args.deviceId))
     .limit(1);
@@ -75,6 +82,9 @@ export async function declareMasterSession(args: {
   if (refusal) return { ok: false, refusals: [refusal] };
   if (args.maxJobPanes !== undefined && args.maxJobPanes !== device.maxJobPanes) {
     await setMaxJobPanes(args.deviceId, args.maxJobPanes);
+  }
+  if (args.maxSubagents !== undefined && args.maxSubagents !== device.maxSubagents) {
+    await setMaxSubagents(args.deviceId, args.maxSubagents);
   }
   const session = await ensureMasterSession(args);
   if (session.created) await pushProjectNow(db, args.projectId, 'master');

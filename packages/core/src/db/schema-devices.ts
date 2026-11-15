@@ -1,4 +1,4 @@
-import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
+import { MASTER_JOB_PANES_MAX, MASTER_SUBAGENTS_MAX } from '@forge/contracts/master-standing';
 import { type InferSelectModel, relations, sql } from 'drizzle-orm';
 import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
@@ -81,6 +81,10 @@ export const devices = pgTable(
     // the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
     // NULL is undeclared, served as such by masters/standing, never a guessed number
     maxJobPanes: integer('max_job_panes'),
+    // how many subagents the box runs at once, declared by its runner beside max_job_panes and sized to
+    // the machine (ISS-1245); NULL is undeclared, and `devices/run-slots.ts:slotsFor` then gives each
+    // project with work its floor alone
+    maxSubagents: integer('max_subagents'),
     machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -90,6 +94,10 @@ export const devices = pgTable(
     maxJobPanesChk: check(
       'devices_max_job_panes_chk',
       sql`${t.maxJobPanes} IS NULL OR ${t.maxJobPanes} BETWEEN 1 AND ${sql.raw(String(MASTER_JOB_PANES_MAX))}`,
+    ),
+    maxSubagentsChk: check(
+      'devices_max_subagents_chk',
+      sql`${t.maxSubagents} IS NULL OR ${t.maxSubagents} BETWEEN 1 AND ${sql.raw(String(MASTER_SUBAGENTS_MAX))}`,
     ),
   }),
 );
