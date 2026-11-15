@@ -1,0 +1,1 @@
+**Room agents route by evidence.** Each message reaches the agent with its sender's account and history and its thread's records; the agent records a counted routing decision per turn, a shared group's thread stays with its holder, and an owner's approval attaches to its item.
