@@ -192,7 +192,7 @@ describe('ISS-874: a channel agent follows the projects its binding names', () =
   });
 
   it('ISS-1243 item 11: refuses by name a project outside its organization, on every read and on a record, and reads a sibling it does not name', async () => {
-    const [out, sibling]: Record<string, unknown>[][] = [[], []];
+    const [out, sibling] = [[] as Record<string, unknown>[], [] as Record<string, unknown>[]];
     await onNextAsk(
       () => chat.say(chat.alice, 'And the other product?'),
       async (turn, act) => {
