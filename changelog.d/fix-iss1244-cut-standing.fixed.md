@@ -1,1 +1,1 @@
-**Needs you no longer tells every admin to cut a release the project's master cuts.** A feedback item waiting on a manual release names the master; it falls to an admin past the cut's due or when the release carries an irreversible change.
+**Needs you no longer tells admins to cut a release the project's master cuts.** The feedback item names the master, and falls to an admin only past the cut's due or when the release carries an irreversible change.
