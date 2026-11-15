@@ -336,8 +336,9 @@ export interface MasterSlots {
 	 *  max_job_panes does not cap them, so they are served beside the slots, never inside them. */
 	runs: number;
 	undeclared: MasterRefusal | null;
-	/** The project's subagent slots on the box, the one rule's answer. */
-	subagents: MasterSubagentSlots;
+	/** The project's subagent slots on the box, the one rule's answer: served on the project's own
+	 *  standing read (`GET /api/projects/:id/masters/standing`), null where another read embeds it. */
+	subagents: MasterSubagentSlots | null;
 }
 
 export interface MasterStanding {

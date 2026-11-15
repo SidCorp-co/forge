@@ -183,7 +183,7 @@ function MasterProperties({ m }: { m: MasterStanding }) {
           )}
         </Fact>
       </FactsGroup>
-      {m.slots ? (
+      {m.slots?.subagents ? (
         <FactsGroup title={t("agents.master.subagents")}>
           <Fact label={t("agents.master.subagentsHeld")}>{m.slots.subagents.held}</Fact>
           <Fact label={t("agents.master.inUse")}>{m.slots.subagents.inUse}</Fact>

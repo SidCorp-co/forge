@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
-import { listMasterPasses, readMasterStanding } from './read.js';
+import { listMasterPasses, readMasterStandingWithSlots } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});
@@ -29,7 +29,7 @@ masterStandingRoutes.get(
   zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    return c.json(await readMasterStanding(projectId));
+    return c.json(await readMasterStandingWithSlots(projectId));
   },
 );
 

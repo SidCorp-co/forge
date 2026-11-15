@@ -267,6 +267,18 @@ export function readMasterStanding(projectId: string): Promise<MasterStanding> {
   return memoizedRead(`masterStanding:${projectId}`, () => standingOf(projectId));
 }
 
+/**
+ * The standing the project's own read serves, with its subagent slots on its box (ISS-1245). Left off
+ * the standing every other read embeds: a page of projects, each on its own box, would read each box
+ * and its projects' admissible work once more per project.
+ */
+export async function readMasterStandingWithSlots(projectId: string): Promise<MasterStanding> {
+  const standing = await readMasterStanding(projectId);
+  if (!standing.slots || !standing.device) return standing;
+  const box = await readBoxSlotsForView(standing.device.id);
+  return { ...standing, slots: { ...standing.slots, subagents: subagentSlotsOf(box, projectId) } };
+}
+
 async function standingOf(projectId: string): Promise<MasterStanding> {
   const [master, lastPass] = await Promise.all([
     liveMaster(projectId),
@@ -301,11 +313,10 @@ async function standingOf(projectId: string): Promise<MasterStanding> {
     master.device_id && master.device_name !== null
       ? { id: master.device_id, name: master.device_name }
       : null;
-  const [open, held, runsOut, box] = await Promise.all([
+  const [open, held, runsOut] = await Promise.all([
     heldOpenPass(master.id),
     device ? slotsHeld(device.id) : Promise.resolve({ jobPanes: 0, runs: 0 }),
     master.device_id ? runsOutOf(projectId, master.device_id) : Promise.resolve(0),
-    device ? readBoxSlotsForView(device.id) : Promise.resolve(null),
   ]);
   const pass = open?.pass ?? null;
   const waitingOn = master.silent ? null : waitingOnDialog(master, device?.name ?? null);
@@ -337,14 +348,7 @@ async function standingOf(projectId: string): Promise<MasterStanding> {
     since: read.since,
     pass,
     passIssueTitle,
-    slots:
-      device && box
-        ? slotsOf(
-            { name: device.name, maxJobPanes: master.max_job_panes },
-            held,
-            subagentSlotsOf(box, projectId),
-          )
-        : null,
+    slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, held) : null,
     lastBeatAt,
   };
 }

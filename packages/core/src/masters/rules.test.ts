@@ -15,20 +15,19 @@ import {
 
 describe('masters/standing slots: in use counts what max_job_panes caps', () => {
   const box = { name: 'sid-xeon-1', maxJobPanes: 2 };
-  const subagents = { held: 2, inUse: 1, waiting: 3, capacity: 4 };
 
   it('counts job panes in use and serves the declared runs beside them, never over the cap', () => {
-    expect(slotsOf(box, { jobPanes: 0, runs: 3 }, subagents)).toEqual({
+    expect(slotsOf(box, { jobPanes: 0, runs: 3 })).toEqual({
       inUse: 0,
       max: 2,
       runs: 3,
       undeclared: null,
-      subagents,
+      subagents: null,
     });
   });
 
   it('counts every job pane the box holds', () => {
-    expect(slotsOf(box, { jobPanes: 2, runs: 1 }, subagents)).toMatchObject({
+    expect(slotsOf(box, { jobPanes: 2, runs: 1 })).toMatchObject({
       inUse: 2,
       max: 2,
       runs: 1,
@@ -36,7 +35,7 @@ describe('masters/standing slots: in use counts what max_job_panes caps', () => 
   });
 
   it('names the undeclared cap and still counts both', () => {
-    const s = slotsOf({ name: 'box', maxJobPanes: null }, { jobPanes: 1, runs: 2 }, subagents);
+    const s = slotsOf({ name: 'box', maxJobPanes: null }, { jobPanes: 1, runs: 2 });
     expect(s).toMatchObject({ inUse: 1, max: null, runs: 2 });
     expect(s.undeclared?.code).toBe('MASTER_SLOTS_UNDECLARED');
   });
@@ -62,11 +61,7 @@ describe('master refusals say their detail as a registry sentence', () => {
       passNotOpenRefusal({ passId: 'p9', named: null, open: null }),
       sessionEndedRefusal('ended', true),
       projectArchivedRefusal(new Date('2026-10-28T10:15:15.000Z')),
-      slotsOf(
-        { name: 'box', maxJobPanes: null },
-        { jobPanes: 0, runs: 0 },
-        { held: 0, inUse: 0, waiting: 0, capacity: null },
-      ).undeclared,
+      slotsOf({ name: 'box', maxJobPanes: null }, { jobPanes: 0, runs: 0 }).undeclared,
     ];
     expect(saidDisagreements(all)).toEqual([]);
     expect(passAlreadyOpenRefusal(open)?.detail).toContain(
