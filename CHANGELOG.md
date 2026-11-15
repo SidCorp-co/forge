@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.686] - 2026-11-15
+
+Every project's master can post in the shared Forge-Communicate operations room
+
+### Fixed
+
+- **Every project's master can post in Forge-Communicate again.** A project posts its daily review and results in its own thread of the organization's shared operations room, recorded on that room's binding, instead of being refused as an unknown room.
+
 ## [0.4.0-dev.685] - 2026-11-15
 
 A steward check on an issue closed mid-check ends skipped, not failed

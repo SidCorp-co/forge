@@ -1,1 +1,0 @@
-**Every project's master can post in Forge-Communicate again.** A project posts its daily review and results in its own thread of the organization's shared operations room, recorded on that room's binding, instead of being refused as an unknown room.
