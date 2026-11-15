@@ -25,6 +25,7 @@ import {
   putCriteria,
 } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
+import { supersedeCriterionTx, supersessionsOf } from './supersede.js';
 import { appendTracedCriteria } from './tie.js';
 import { countingOf } from './verdict-counting.js';
 import { recordVerdict } from './verdict-record.js';
@@ -67,14 +68,16 @@ export async function readCriteriaWithDrafts(issue: { id: string; projectId: str
  * (`criteria-weighing.ts`), and beside them the retired ones with every verdict each earned.
  */
 export async function readCriteriaAndRetired(issue: { id: string; projectId: string }) {
-  const [criteria, retired, weighing] = await Promise.all([
+  const [criteria, retired, weighing, superseded] = await Promise.all([
     readCriteriaWithDrafts(issue),
     listRetiredCriteria(db, issue.id),
     criteriaWeighingOf(issue),
+    supersessionsOf(db, issue.id),
   ]);
   return {
     criteria: criteria.map((c) => ({ ...c, weighing: weighingOf(weighing, c.n) })),
-    retired,
+    // a retired criterion a later issue superseded names that issue's criterion and why (ISS-1240)
+    retired: retired.map((r) => ({ ...r, supersededBy: superseded.get(r.id) ?? null })),
   };
 }
 
@@ -100,6 +103,11 @@ export async function replaceCriteria(
 /** Corrects one criterion's wording in one transaction, keeping its id and its verdicts. */
 export async function correctCriterion(args: Parameters<typeof rewordCriterion>[1]) {
   return db.transaction((tx) => rewordCriterion(tx, args));
+}
+
+/** Retires one landed criterion as superseded by a later landed issue's, in one transaction (ISS-1240). */
+export async function supersedeCriterion(args: Parameters<typeof supersedeCriterionTx>[1]) {
+  return db.transaction((tx) => supersedeCriterionTx(tx, args));
 }
 
 /** One live criterion as the criteria read shows it, with the history of its wording. */

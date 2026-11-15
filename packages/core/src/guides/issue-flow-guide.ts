@@ -146,6 +146,12 @@ To correct one criterion's wording and keep its verdicts, at any status:
 and trace, records the old and new text on its history (\`GET /api/issues/:id/criteria/:n\`), and is
 refused \`CRITERION_REWORD_TRACE\` where the correction changes the lead tag.
 
+When your landed change alters on purpose what a landed issue's criterion promised, supersede it, or a
+re-judge on a later build fails it and reopens that issue: on that issue,
+\`POST /api/issues/:id/criteria/:n/supersede\` \`{ by: <your issue's key>, criterion: <your criterion now holding it>, reason }\`, once yours is at
+\`awaiting_release\` or \`closed\`. It retires the criterion naming yours, and a verdict on it is refused
+naming yours.
+
 A criterion found wrong is rewritten in the field, with a \`correction\` record
 (\`POST /api/issues/:id/events\`) saying why — never relaxed to match what got built. Choices taken
 under an assumption are \`decision\` records carrying how to reverse them.

@@ -10,6 +10,8 @@
  *   GET  /api/issues/:id/criteria/:ref   one live criterion (`ref` its number or id) with its wording history
  *   PATCH /api/issues/:id/criteria/:ref  correct its wording: keeps its id and every verdict on it,
  *                                   recording the old and new text on its history
+ *   POST /api/issues/:id/criteria/:ref/supersede   retire a landed criterion as superseded by a later
+ *                                   landed issue's criterion, with why (REQ-48 BC-18, ISS-1240)
  *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording);
  *                                   the agents' act, refused from the web on a person's session (REQ-68 BC-6)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion, with the probe it keeps, answering
@@ -39,6 +41,7 @@ import {
   criteriaTracePostSchema,
   criterionParamSchema,
   criterionPatchSchema,
+  criterionSupersedeSchema,
   verdictPostSchema,
 } from './input-schemas.js';
 import {
@@ -48,6 +51,7 @@ import {
   readCriteriaAndRetired,
   readCriterion,
   replaceCriteria,
+  supersedeCriterion,
   traceCriteria,
 } from './service.js';
 
@@ -56,6 +60,7 @@ export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 issueCriteriaRoutes.use('/:id/criteria', requireAuth(), assertEmailVerified());
 // `/:id/criteria/:ref` also gates `/:id/criteria/traces`
 issueCriteriaRoutes.use('/:id/criteria/:ref', requireAuth(), assertEmailVerified());
+issueCriteriaRoutes.use('/:id/criteria/:ref/supersede', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/judged-build', requireAuth(), assertEmailVerified());
 
@@ -146,6 +151,28 @@ issueCriteriaRoutes.patch(
       // the id is kept, so every verdict recorded on the criterion stands on the corrected wording
       verdicts: { kept: done.keptVerdicts, voided: [] },
     });
+  },
+);
+
+issueCriteriaRoutes.post(
+  '/:id/criteria/:ref/supersede',
+  zValidator('param', criterionParamSchema),
+  requiresOnResolved('project.write', ISSUE_PROJECT),
+  zValidator('json', criterionSupersedeSchema),
+  async (c) => {
+    const { id, ref } = c.req.valid('param');
+    const { by, criterion, reason } = c.req.valid('json');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
+    const done = await supersedeCriterion({
+      issueId: issue.id,
+      ref,
+      by,
+      criterion,
+      reason,
+      actor: { type: 'user', id: c.get('userId'), agency: restActor(c).agency },
+    });
+    if (!done) throw notFound('issue not found');
+    return c.json({ superseded: done, ...(await criteriaShown(c.get('agency'), issue)) }, 201);
   },
 );
 

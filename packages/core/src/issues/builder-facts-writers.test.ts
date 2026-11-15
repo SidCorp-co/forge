@@ -47,6 +47,7 @@ const WRITERS: Record<(typeof BUILDER_INPUT_TABLES)[number]['table'], readonly s
     'issues/create-service.ts',
     'issues/criteria/criterion-reword.ts',
     'issues/criteria/store.ts',
+    'issues/criteria/supersede.ts',
     'issues/criteria/tie.ts',
     'issues/draft-release-notes.ts',
     'issues/field-writes.ts',
@@ -66,6 +67,7 @@ const WRITERS: Record<(typeof BUILDER_INPUT_TABLES)[number]['table'], readonly s
     'issues/criteria/criterion-reword.ts',
     'issues/criteria/retie.ts',
     'issues/criteria/store.ts',
+    'issues/criteria/supersede.ts',
     'issues/criteria/tie.ts',
   ],
 };

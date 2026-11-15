@@ -35,6 +35,14 @@ export const CRITERIA_REFUSAL_CODES = [
 	"CRITERION_REWORD_TRACE",
 	/** A criterion's short title over eight words (ISS-1131, `criterion-title.ts`). */
 	"CRITERION_TITLE_TOO_LONG",
+	/** A supersede on an issue not past its build (REQ-48 BC-18, ISS-1240): its criteria are still its own to rewrite. */
+	"CRITERION_SUPERSEDE_NOT_LANDED",
+	/** A supersede naming no issue of the project as the later one (ISS-1240). */
+	"CRITERION_SUPERSEDE_BY_UNKNOWN",
+	/** A supersede naming the issue itself as the later one (ISS-1240). */
+	"CRITERION_SUPERSEDE_SELF",
+	/** A supersede by a later issue that has not landed, so nothing has changed yet (ISS-1240). */
+	"CRITERION_SUPERSEDE_BY_UNLANDED",
 ] as const;
 export type CriteriaRefusalCode = (typeof CRITERIA_REFUSAL_CODES)[number];
 

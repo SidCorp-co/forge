@@ -34,6 +34,7 @@ import {
   environmentFault,
   readSourceDrafts,
 } from './storefront-draft.js';
+import { supersededVerdictDetail } from './supersede.js';
 import { unobservedRuntimeFault } from './unobserved-runtime.js';
 import { acceptanceShapeFault, acceptedOnOf } from './verdict-acceptance.js';
 import { keepFailAsCorrection } from './verdict-correction.js';
@@ -330,10 +331,13 @@ export async function recordVerdict(
     .limit(1);
   if (!criterion) {
     const live = await liveRows(tx, issue.id);
+    // a criterion a later issue superseded is named with that issue's, so a re-judge on a later
+    // build never reopens the issue for it (REQ-48 BC-18, ISS-1240)
+    const superseded = await supersededVerdictDetail(tx, issue.id, draft.criterion);
     throw verdictRefused({
       code: 'VERDICT_CRITERION_UNKNOWN',
       criterion: draft.criterion,
-      detail: `this issue has no criterion ${draft.criterion}; its criteria are ${
+      detail: `${superseded ? `${superseded} ` : ''}this issue has no criterion ${draft.criterion}; its criteria are ${
         live.length === 0
           ? 'none — write them first (`PUT /api/issues/:id/criteria`, or numbered `acceptanceCriteria`)'
           : live

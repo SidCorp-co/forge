@@ -60,6 +60,15 @@ export const criterionPatchSchema = z
   })
   .strict();
 
+/** A landed criterion retired as superseded by a later landed issue's criterion, and why (`supersede.ts`). */
+export const criterionSupersedeSchema = z
+  .object({
+    by: z.string().trim().min(1).max(200),
+    criterion: z.number().int().min(1),
+    reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
+  })
+  .strict();
+
 /** The business criteria to tie an issue to, by code; a code of the wrong shape is refused by name. */
 export const criteriaTracePostSchema = z
   .object({ codes: z.array(z.string().trim().min(1).max(32)).min(1).max(50) })
