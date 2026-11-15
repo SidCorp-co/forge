@@ -7,6 +7,7 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import { projectDocumentSchema } from '../../src/project-config/schema.js';
+import { DEFAULT_GRANT, grantsOf } from '../../src/support/grants.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
@@ -19,6 +20,8 @@ import { code } from '../helpers/support-channel.js';
 // @direct-test-of packages/core/tests/helpers/support-chat-server.ts
 // @direct-test-of packages/core/src/support/permission-talk.ts
 // @direct-test-of packages/core/src/support/screen.ts
+// @direct-test-of packages/core/src/support/act-deny.ts
+// @direct-test-of packages/core/src/support/grants.ts
 //
 // ISS-1243 item 13 (owner 2026-11-15): a project names exactly one technical channel, its own thread
 // of the shared operations room or a direct message to one person (the owner by default), and a room
@@ -136,5 +139,65 @@ describe('no permission talk in a work thread', () => {
       'SUPPORT_PERMISSION_TALK',
       'SUPPORT_PERMISSION_TALK',
     ]);
+  });
+});
+
+// ISS-1243 item 16: a room agent holds a support person's acts by default, and the project's deny list
+// keeps the serious ones from it, each refused by name and raised in the technical channel.
+describe('wide grants by default, with a deny list raised in the technical channel', () => {
+  it('holds recording and moving work where its binding names no grant', () => {
+    expect(grantsOf(null)).toEqual(DEFAULT_GRANT);
+    expect(DEFAULT_GRANT.abilities).toEqual(['file_items', 'deliver']);
+    expect(grantsOf({ grants: { abilities: [] } } as never).abilities).toEqual([]);
+  });
+
+  const setDoc = (path: string, value: unknown) =>
+    db.execute(
+      sql`UPDATE project_config_documents SET document = jsonb_set(document, ${`{${path}}`}::text[], ${JSON.stringify(value)}::jsonb), revision = revision + 1 WHERE project_id = ${w.projectId}`,
+    );
+
+  async function tryAct(args: Record<string, unknown>) {
+    let out: Record<string, unknown> = {};
+    const heard = await w.hear(
+      () => w.stand.say(w.stand.bob, 'please do it'),
+      async (_t, act, message) => {
+        out = await act({ ...args, thread: message().thread });
+      },
+    );
+    return { out, thread: heard.id };
+  }
+
+  it('refuses a production deploy and a data deletion by name, raising each in the technical channel', async () => {
+    await setChannel(null);
+    await setDoc('environments,dev,tier', 'production');
+    const before = w.stand.linesIn('D-alice').length;
+    const deploy = await tryAct({ action: 'deploy', target: w.devTarget });
+    expect(code(deploy.out), JSON.stringify(deploy.out)).toBe('SUPPORT_ACT_DENIED');
+    expect(JSON.stringify(deploy.out)).toContain('a production deploy');
+    expect(JSON.stringify(deploy.out)).toContain('agentDeny');
+    const wipe = await tryAct({
+      action: 'command',
+      host: 'web-1',
+      command: 'rm -rf /var/data/orders',
+    });
+    expect(code(wipe.out), JSON.stringify(wipe.out)).toBe('SUPPORT_ACT_DENIED');
+    const raised = w.stand
+      .linesIn('D-alice')
+      .slice(before)
+      .map((l) => l.text);
+    expect(raised).toHaveLength(2);
+    expect(raised[0]).toContain('a production deploy');
+    expect(raised[1]).toContain('deleting data');
+    expect(w.threadLines(w.stand.rid, deploy.thread)).toEqual([]);
+  });
+
+  it('lets the project take an act off the list: an empty list denies none', async () => {
+    await setDoc('agentDeny', []);
+    const deploy = await tryAct({ action: 'deploy', target: w.devTarget });
+    expect(deploy.out, JSON.stringify(deploy.out)).toMatchObject({ pending: true });
+    await setDoc('environments,dev,tier', 'dev');
+    await db.execute(
+      sql`UPDATE project_config_documents SET document = document - 'agentDeny' WHERE project_id = ${w.projectId}`,
+    );
   });
 });

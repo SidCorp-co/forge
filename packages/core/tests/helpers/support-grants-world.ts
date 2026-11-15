@@ -38,6 +38,9 @@ export class GrantedRoom {
           deployment: { binding: this.liveTarget, trigger: 'on-request' },
         },
       },
+      // REQ-75's production deploy waits on its approver here: the project keeps no act from its
+      // room agents (ISS-1243 agentDeny), so that gate is the one these tests read
+      extra: { agentDeny: [] },
     });
     await w.bind({ ...BASE, grants: { abilities: ['read_checkout', 'file_items'] } });
     this.roomId = String((await w.rooms())[0]?.id);

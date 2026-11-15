@@ -28,6 +28,7 @@ import {
   runCommand,
 } from './ability-acts.js';
 import { type RoomHint, sessionCaller } from './access.js';
+import { deniedActRefusal } from './act-deny.js';
 import { announce, inferMember, noteCommonIssue, routeNeed, ruleFromMessage } from './channel.js';
 import { sessionChannelView } from './channel-read.js';
 import { checkResult } from './checks.js';
@@ -170,6 +171,9 @@ export async function supportAct(
   if (room.sessionId) noteSessionAct(room.sessionId);
   // the turn the act is in: its own row, since the session holds one token across turns (ISS-1202)
   const { turnId } = await turnOfRequest();
+  // an act the project keeps from its room agents goes to its technical channel instead (ISS-1243)
+  const denied = await deniedActRefusal(room, input);
+  if (denied) return denied;
   const out = isOperation(input)
     ? await operationsAct(room, input)
     : room.kind === 'support' || room.kind === 'agent' || SHARED.has(input.action)

@@ -59,11 +59,17 @@ export async function readersOf(room: RoomRow): Promise<SupportReaders> {
   return readersOfConfig(room, await supportConfigOf(room));
 }
 
-const NO_GRANT: SupportGrants = { abilities: [] };
+/**
+ * What a room agent holds where its binding names no grant (ISS-1243 item 16): what a support person
+ * does without a target or a host named for it, recording work for the team and moving an issue as
+ * the member who asked, under that member's own permissions. A grant the binding names replaces it,
+ * and the project's deny list (`act-deny.ts`) keeps the serious acts from every room either way.
+ */
+export const DEFAULT_GRANT: SupportGrants = { abilities: ['file_items', 'deliver'] };
 
-/** What the room holds; a support group whose binding names no grant holds no ability. */
+/** What the room holds: its binding's grant, or the default where it names none. */
 export function grantsOf(config: SupportRoomConfig | null): SupportGrants {
-  return config?.grants ?? NO_GRANT;
+  return config?.grants ?? DEFAULT_GRANT;
 }
 
 /** Where a grant is made, said the same way by every refusal. */

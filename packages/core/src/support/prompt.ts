@@ -187,8 +187,8 @@ export function grantsLine(g: SupportGrants): string {
   return `What this room grants you (anything else is refused by name):\n${lines.join('\n')}${confirmers}`;
 }
 
-const grantsOfConfig = (config: SupportRoomConfig | null): SupportGrants =>
-  config?.grants ?? { abilities: [] };
+// the grant the gate holds the room to, its default included (ISS-1243, `grants.ts:grantsOf`)
+const grantsOfConfig = (config: SupportRoomConfig | null): SupportGrants => grantsOf(config);
 
 /**
  * The tools the project grants, as the brief lists them and a grant change re-tells them: each
