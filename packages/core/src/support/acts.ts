@@ -44,6 +44,7 @@ import { no } from './outcome.js';
 import { ownerAct } from './owner-act.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
+import { raiseOwed } from './owner-owed-raise.js';
 import { startOwnerSignIn } from './owner-sign-in.js';
 import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
@@ -150,6 +151,7 @@ export type SupportActInput =
   | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
   | ({ action: 'ask_master' } & SupportAskMasterRequest)
   | { action: 'in_flight'; thread: string }
+  | { action: 'raise_owed'; thread: string; text: string }
   | {
       action: 'read';
       name: string;
@@ -277,6 +279,8 @@ const SHARED = new Set<SupportActInput['action']>([
   // any room's agent asks a master, and reads what the masters hold for its thread (ISS-1243)
   'ask_master',
   'in_flight',
+  // what waits on the owner, raised in the technical channel (ISS-1243)
+  'raise_owed',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -416,6 +420,8 @@ async function act(
     }
     case 'in_flight':
       return inFlightOf(room, input.thread);
+    case 'raise_owed':
+      return raiseOwed(room, { thread: input.thread, text: input.text });
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

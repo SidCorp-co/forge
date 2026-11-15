@@ -48,3 +48,18 @@ export const supportMasterAskAnswerRequestSchema = z.strictObject({
 export const supportMasterAsksQuerySchema = z.strictObject({
 	state: z.enum(["open", "all"]).optional(),
 });
+
+/** The agent puts an item owed to the owner to him in the technical channel (ISS-1243 item 23). */
+export const supportRaiseOwedRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema.describe(
+		"the owed- task thread you were handed the item in",
+	),
+	text: z
+		.string()
+		.trim()
+		.min(3)
+		.max(2000)
+		.describe(
+			"the item in plain words, its options and your recommendation, as he reads it",
+		),
+});

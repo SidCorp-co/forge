@@ -25,6 +25,7 @@ import { expireSupportFixes } from './fixes.js';
 import { handleSupportMessage } from './inbound.js';
 import { INJECT_INTENT, onInjectRefused, settleInjects } from './inject.js';
 import { recoverLostTurns } from './lost-turns.js';
+import { handAllOwnerOwed } from './owner-owed-raise.js';
 import { tellAllPromises } from './promise-watch.js';
 import { handQuestionToChannelAgent } from './question-task.js';
 import {
@@ -54,6 +55,8 @@ export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';
 export async function followSupportResults(): Promise<void> {
   await tellAllResults();
   await tellAllPromises();
+  // what waits on each project's owner goes to its agent to raise, once per item (ISS-1243)
+  await handAllOwnerOwed();
   await deliverReleaseNotes();
 }
 

@@ -8,6 +8,7 @@ import {
   supportInFlightRequestSchema,
   supportMasterAskAnswerRequestSchema,
   supportMasterAsksQuerySchema,
+  supportRaiseOwedRequestSchema,
 } from '@forge/contracts/support-master-ask';
 import type { Hono } from 'hono';
 import { z } from 'zod';
@@ -37,6 +38,13 @@ export function mountMasterAskRoutes(app: Hono<{ Variables: AuthVars }>): void {
     SESSION_ONLY,
     strictBody(supportAskMasterRequestSchema, '{ thread, question, project? }'),
     (c) => act(c, c.req.valid('param').id, { action: 'ask_master', ...c.req.valid('json') }),
+  );
+  app.post(
+    '/:id/support/session/owed-raises',
+    projectParam,
+    SESSION_ONLY,
+    strictBody(supportRaiseOwedRequestSchema, '{ thread, text }'),
+    (c) => act(c, c.req.valid('param').id, { action: 'raise_owed', ...c.req.valid('json') }),
   );
   app.post(
     '/:id/support/session/in-flight',
