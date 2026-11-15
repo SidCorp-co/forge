@@ -8,6 +8,7 @@ vi.hoisted(() => {
 import { db } from '../../src/db/client.js';
 import { projectDocumentSchema } from '../../src/project-config/schema.js';
 import { DEFAULT_GRANT, grantsOf } from '../../src/support/grants.js';
+import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
 import { code } from '../helpers/support-channel.js';
@@ -22,6 +23,9 @@ import { code } from '../helpers/support-channel.js';
 // @direct-test-of packages/core/src/support/screen.ts
 // @direct-test-of packages/core/src/support/act-deny.ts
 // @direct-test-of packages/core/src/support/grants.ts
+// @direct-test-of packages/core/src/support/one-voice.ts
+// @direct-test-of packages/core/src/support/master-post.ts
+// @direct-test-of packages/core/src/support/thread-requests.ts
 //
 // ISS-1243 item 13 (owner 2026-11-15): a project names exactly one technical channel, its own thread
 // of the shared operations room or a direct message to one person (the owner by default), and a room
@@ -199,5 +203,70 @@ describe('wide grants by default, with a deny list raised in the technical chann
     await db.execute(
       sql`UPDATE project_config_documents SET document = document - 'agentDeny' WHERE project_id = ${w.projectId}`,
     );
+  });
+});
+
+// ISS-1243 item 15 (AdminHub-Support: a room agent's reply and a master's post in one thread within
+// ten minutes, 14 times; 7 corrections stacked): a master's post replaces the bot's answer to the
+// current request in place, a correction replaces rather than stacks, and the agent then posts no
+// second voice until the asker writes again.
+describe('one voice per thread', () => {
+  const masterPost = (text: string, thread: string) =>
+    api(w.owner, 'POST', `/api/projects/${w.projectId}/support/master-posts`, {
+      text,
+      rid: w.stand.rid,
+      thread,
+    });
+
+  it('replaces the agent’s answer, then its own, and leaves the agent no second post', async () => {
+    const asked = await w.hear(
+      () => w.stand.say(w.stand.bob, 'how do I export the month?'),
+      async (_t, act, message) => {
+        await act({
+          action: 'reply',
+          thread: message().thread,
+          text: 'Open Reports, then Export.',
+        });
+      },
+    );
+    expect(w.threadLines(w.stand.rid, asked.id).map((l) => l.text)).toEqual([
+      'Open Reports, then Export.',
+    ]);
+    const first = await masterPost('Open Reports, pick the month, then Export CSV.', asked.id);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body).toMatchObject({ replaced: 'agent' });
+    const fixed = await masterPost('Open Reports, pick the month, then Export XLSX.', asked.id);
+    expect(fixed.body).toMatchObject({ replaced: 'master' });
+    expect(w.threadLines(w.stand.rid, asked.id).map((l) => l.text)).toEqual([
+      'Open Reports, pick the month, then Export XLSX.',
+    ]);
+    // the agent may not stack a second voice beside the master's until the asker writes again
+    let again: Record<string, unknown> = {};
+    await w.hear(
+      () => w.stand.say(w.stand.bob, 'unrelated: is the shop open today?'),
+      async (_t, act, message) => {
+        again = await act({ action: 'reply', thread: asked.id, text: 'Use XLSX, as said.' });
+        await act({ action: 'reply', thread: message().thread, text: 'Yes, until 18:00.' });
+      },
+    );
+    expect(code(again), JSON.stringify(again)).toBe('SUPPORT_ONE_RESULT_PER_REQUEST');
+    expect(w.threadLines(w.stand.rid, asked.id)).toHaveLength(1);
+  });
+
+  it('posts a new line once a member has written since the last answer', async () => {
+    const asked = await w.hear(
+      () => w.stand.say(w.stand.bob, 'where is the invoice list?'),
+      async (_t, act, message) => {
+        await act({ action: 'reply', thread: message().thread, text: 'Under Billing.' });
+      },
+    );
+    await w.hear(() => w.stand.say(w.stand.bob, 'and the credit notes?', asked.id));
+    const post = await masterPost('Credit notes are under Billing, second tab.', asked.id);
+    expect(post.status, JSON.stringify(post.body)).toBe(201);
+    expect(post.body).not.toHaveProperty('replaced');
+    expect(w.threadLines(w.stand.rid, asked.id).map((l) => l.text)).toEqual([
+      'Under Billing.',
+      'Credit notes are under Billing, second tab.',
+    ]);
   });
 });

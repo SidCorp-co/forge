@@ -13,6 +13,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import { SupportWorld } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/master-post.ts
+// @direct-test-of packages/core/src/support/one-voice.ts
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/routes.ts
 // @direct-test-of packages/contracts/src/support-channel.ts
@@ -130,10 +131,9 @@ describe("ISS-943: a master posts in its project's support room", () => {
     expect(member.status, JSON.stringify(member.body)).toBe(201);
     const stranger = await post({ text: `@mallory ${RESULT}`, thread: started });
     expect(said(stranger), JSON.stringify(stranger.body)).toEqual([409, 'SUPPORT_MENTION_REFUSED']);
-    expect(threadLines(started).map((l) => l.text)).toEqual([
-      `@alice ${RESULT}`,
-      `@carol ${RESULT}`,
-    ]);
+    // one voice (ISS-1243): the second post replaced the first in place, nobody having written between
+    expect(threadLines(started).map((l) => l.text)).toEqual([`@carol ${RESULT}`]);
+    expect(member.body).toMatchObject({ replaced: 'master' });
   });
 
   // ISS-1107 (FB-565): an issue key is read by a prefix Forge issues, never by its shape, so a
@@ -168,7 +168,8 @@ describe("ISS-943: a master posts in its project's support room", () => {
     expect(said(await post({ text: 'Mình đang xem ISS-123 cho bạn nhé.', thread: asked }))).toEqual(
       [400, 'SUPPORT_INTERNAL_CODE'],
     );
-    expect(threadLines(asked).map((l) => l.text)).toEqual([order, collides]);
+    // one voice (ISS-1243): the declared code's post replaced the order post in place
+    expect(threadLines(asked).map((l) => l.text)).toEqual([collides]);
   });
 
   it("refuses a top-level post in the users' room, named or not, and posts nothing", async () => {
