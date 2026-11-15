@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.685] - 2026-11-15
+
+A steward check on an issue closed mid-check ends skipped, not failed
+
+### Fixed
+
+- **A steward check on an issue closed mid-turn no longer reads as failed.** It is skipped as ended, the same as a check taken up after the close, so a release's record shows no false steward failure.
+
 ## [0.4.0-dev.684] - 2026-11-15
 
 Steward triage drafts and new release judges start again each day
