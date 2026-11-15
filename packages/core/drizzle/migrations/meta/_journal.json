@@ -4173,6 +4173,13 @@
       "when": 1839369600000,
       "tag": "0653_a_room_keeps_its_report_thread",
       "breakpoints": true
+    },
+    {
+      "idx": 656,
+      "version": "7",
+      "when": 1839628800000,
+      "tag": "0656_a_chat_sender_holds_a_temporary_account_and_an_agent_asks_its_master",
+      "breakpoints": true
     }
   ]
 }

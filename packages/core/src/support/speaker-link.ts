@@ -17,6 +17,7 @@ import { grantsOf, isNamedOwner, supportConfigOf } from './grants.js';
 import { ownerSetupStep, recordKeptAnswers } from './kept-answers.js';
 import { knownThread, no, type Outcome, threadUnknown } from './outcome.js';
 import { insertAction, type RoomRow, roomById, threadMembers } from './store.js';
+import { linkTemporaryAccount } from './temporary-account.js';
 import { roomAuth } from './thread.js';
 
 const SOURCE = 'rocketchat';
@@ -86,6 +87,8 @@ export async function linkMember(
  */
 export async function tellLinked(linked: SpeakerLinked): Promise<void> {
   if (linked.source !== SOURCE) return;
+  // the temporary account the person wrote under records the account it now is (ISS-1243 item 10)
+  await linkTemporaryAccount(linked);
   const recorded = await recordKeptAnswers(linked);
   const written = await db
     .select({ roomId: supportActions.roomId, thread: supportActions.thread })
