@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.689] - 2026-11-15
+
+Every project with ready work holds a subagent slot on each runner box
+
+### Added
+
+- **Each project with work is guaranteed a subagent slot on its box.** A box declares how many subagents it runs; core shares them, one floor per project, and `run declare` is refused `RUN_SLOT_UNAVAILABLE` when its project has none free.
+
 ## [0.4.0-dev.688] - 2026-11-15
 
 Needs you names the project's master for its own release cuts
