@@ -8,7 +8,7 @@
 // with the options and its recommendation, and puts them to him with `raise_owed`, which posts them
 // in the project's technical channel (`technical-channel.ts:raiseTechnical`, item 13) and only there,
 // once. His reply in chat settles it, through the act made as him (`answer_question`,
-// `release_decision`, and the owner's Forge act of item 24).
+// `release_decision`, `owner_forge_act`).
 
 import { createHash } from 'node:crypto';
 import type { NeedsYouDecision } from '@forge/contracts/needs-you-decisions';
@@ -60,7 +60,7 @@ function taskNote(thread: string, project: string, d: NeedsYouDecision): string 
     : `No recommendation from the record (${d.noRecommendation}); give yours from what you read.`;
   return [
     `An item on ${project} waits on the owner (${d.key}, ${d.id}). Put it to him now with support.raise_owed { thread: "${thread}", text }: in his language, plain words with no code, what it is, the options and your recommendation, short. It is posted in the project's technical channel, once; post it nowhere else.`,
-    'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release); never send him to a page.',
+    'When he answers, in any words, settle it as him citing his own message (support.answer_question for a question, support.release_decision for a release decision, support.owner_forge_act for any other Forge act he asks: a requirement, a design, a release cut or approval with carry, a merge mark, config); never send him to a page.',
     `What is asked: ${d.question}`,
     `What it changes: ${d.changes}. Impact: ${d.impact}.`,
     `Options: ${answers.join('; ')}.`,

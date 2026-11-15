@@ -99,6 +99,8 @@ describe('ISS-1243 item 23: what waits on the owner, raised by the agent once pe
     await expect.poll(() => notes.length, { timeout: 15_000 }).toBe(1);
     expect(notes[0]?.text).toContain('Ship the size-M print rule before the catalog sync?');
     expect(notes[0]?.text).toContain('Recommended: yes');
+    // his reply is settled as him through the act that fits it, owner_forge_act included (item 24)
+    expect(notes[0]?.text).toContain('support.owner_forge_act');
     await expect.poll(() => raisedOut, { timeout: 15_000 }).toMatchObject({ raised: true });
     const dm = chat.linesIn('D-alice').filter((l) => l.text.includes('size M'));
     expect(dm).toHaveLength(1);
