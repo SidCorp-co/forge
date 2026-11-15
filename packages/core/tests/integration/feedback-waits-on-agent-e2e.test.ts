@@ -12,6 +12,7 @@
  * @direct-test-of packages/core/src/feedback/list-read.ts
  * @direct-test-of packages/core/src/feedback/list-page-read.ts
  * @direct-test-of packages/core/src/feedback/list-release.ts
+ * @direct-test-of packages/core/src/issues/waiting-roster.ts
  * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/lib/standing-times.ts
  */
