@@ -5,6 +5,7 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type {
+  SupportApproveRequest,
   SupportDecideRequest,
   SupportOwnerActRequest,
   SupportOwnerConsentRequest,
@@ -41,6 +42,7 @@ import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-a
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
 import { ownerAct } from './owner-act.js';
+import { attachApproval } from './owner-approves.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
 import { startOwnerSignIn } from './owner-sign-in.js';
@@ -74,6 +76,7 @@ export type SupportActInput =
   | { action: 'reply'; thread: string; text: string; why?: string | undefined }
   | { action: 'silent'; thread: string; message?: string | undefined; reason: string }
   | ({ action: 'decide' } & SupportDecideRequest)
+  | ({ action: 'approve' } & SupportApproveRequest)
   | ({ action: 'run' } & ToolCall)
   | ({ action: 'propose_fix'; asker: string } & ToolCall)
   | {
@@ -85,6 +88,7 @@ export type SupportActInput =
       whereSeen?: string | undefined;
       asker?: string | undefined;
       project?: string | undefined;
+      separate?: true | undefined;
     }
   | {
       action: 'move_issue';
@@ -301,6 +305,10 @@ async function act(
     case 'decide': {
       const { action: _, ...request } = input;
       return decideRouting(room, request);
+    }
+    case 'approve': {
+      const { action: _, ...request } = input;
+      return attachApproval(room, request);
     }
     case 'run':
       return runDiagnose(room, { thread: input.thread, tool: input.tool, args: input.args ?? {} });

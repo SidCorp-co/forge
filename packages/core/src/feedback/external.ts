@@ -19,7 +19,7 @@ import type { FeedbackExternalChannel } from '@forge/contracts/widget';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { users } from '../db/schema-auth.js';
-import { feedback } from '../db/schema-feedback.js';
+import { feedback, feedbackMessages } from '../db/schema-feedback.js';
 import { feedbackExternalReporters } from '../db/schema-feedback-external.js';
 import { projects } from '../db/schema-projects.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
@@ -195,6 +195,30 @@ export async function feedbackKeysOf(
     .innerJoin(projects, eq(projects.id, feedback.projectId))
     .where(inArray(feedback.id, [...feedbackIds]));
   return new Map(found.map((r) => [r.id, { key: feedbackKey(r.seq), project: r.project }]));
+}
+
+/**
+ * A note core writes on an item a channel filed, as the channel's own account (ISS-1243: the owner's
+ * approval in a room thread of the item recorded from it): an internal note for the project's
+ * people, stored under the project's data policy, never a message to its reporters. No person's
+ * permission is read: the channel's act that wrote it was checked by its caller.
+ */
+export async function noteOnFiled(input: {
+  projectId: string;
+  itemId: string;
+  by: string;
+  body: string;
+}): Promise<void> {
+  const body = storedText(await dataPolicyOf(input.projectId), input.body.trim()).text;
+  await db.insert(feedbackMessages).values({
+    projectId: input.projectId,
+    feedbackId: input.itemId,
+    audience: 'internal',
+    body,
+    recipients: [],
+    sentBy: input.by,
+    sentAgency: 'agent',
+  });
 }
 
 /** Where an item a channel followed stands, and what it told its reporter there (ISS-1032). */

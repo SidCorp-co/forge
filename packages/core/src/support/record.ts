@@ -25,6 +25,8 @@ export interface RecordRequest {
   whereSeen?: string | undefined;
   /** The project whose master it is for: one the channel agent follows; the home project when omitted (ISS-874). */
   project?: string | undefined;
+  /** New work the owner asks for beside an open item of the thread, approving none (ISS-1243). */
+  separate?: true | undefined;
 }
 
 /** The thread's link in Rocket.Chat, or the room and thread ids where the server gives none. */

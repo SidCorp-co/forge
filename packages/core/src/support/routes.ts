@@ -1,5 +1,6 @@
 import {
   supportAgreeRequestSchema,
+  supportApproveRequestSchema,
   supportBuildRequestSchema,
   supportCommandRequestSchema,
   supportDecideRequestSchema,
@@ -108,10 +109,11 @@ const SHAPES = {
   reply: '{ thread, text, why? }',
   silent: '{ thread, message?, reason }',
   decide: '{ thread, message?, decision, project?, signals, confidence, why }',
+  approve: '{ thread, message, feedback, project? }',
   run: '{ thread, tool, args? }',
   fix: '{ thread, tool, args?, asker }',
   record:
-    '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker?, project? }',
+    '{ thread, kind: defect | feature | request, title, summary, whereSeen?, asker?, project?, separate? }',
   agree: '{ thread, proposal, message, decision?: agree | decline }',
   link: '{ thread, member }',
   issues: '{ project, status?, key? }',
@@ -177,6 +179,13 @@ supportRoutes.post(
   SESSION_ONLY,
   strictBody(supportDecideRequestSchema, SHAPES.decide),
   (c) => act(c, c.req.valid('param').id, { action: 'decide', ...c.req.valid('json') }),
+);
+supportRoutes.post(
+  '/:id/support/session/approvals',
+  projectParam,
+  SESSION_ONLY,
+  strictBody(supportApproveRequestSchema, SHAPES.approve),
+  (c) => act(c, c.req.valid('param').id, { action: 'approve', ...c.req.valid('json') }),
 );
 supportRoutes.post(
   '/:id/support/session/checks',

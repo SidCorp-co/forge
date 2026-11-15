@@ -49481,6 +49481,87 @@
         ]
       }
     },
+    "/api/projects/{id}/support/session/approvals": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "feedback": {
+                    "description": "the open item recorded from this thread that he approves",
+                    "pattern": "^FB-\\d+$",
+                    "type": "string"
+                  },
+                  "message": {
+                    "description": "the owner's message that approves it",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "project": {
+                    "description": "the project that item was filed in, where two of the thread's share a key",
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "thread": {
+                    "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "thread",
+                  "message",
+                  "feedback"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/projects/{id}/support/session/builds": {
       "post": {
         "parameters": [
@@ -51675,6 +51756,11 @@
                     "maxLength": 100,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "separate": {
+                    "const": true,
+                    "description": "true only where the owner asks for new work beside an open item of the thread; his approval of that item is support.approve",
+                    "type": "boolean"
                   },
                   "summary": {
                     "maxLength": 4000,

@@ -919,6 +919,7 @@ export const SUPPORT_ACTIONS = [
 	"release_decision",
 	"silent",
 	"decide",
+	"approve",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -1078,7 +1079,41 @@ export const supportRecordRequestSchema = z.strictObject({
 	asker: z.string().min(1).max(64).optional(),
 	/** The project whose master it is for (ISS-874): a project you follow; your home when omitted. */
 	project: supportProjectSlugSchema.optional(),
+	/**
+	 * The owner asks for new work in a thread already holding an open item, and approves none of
+	 * them (ISS-1243): an approval goes to `approve` instead.
+	 */
+	separate: z
+		.literal(true)
+		.optional()
+		.describe(
+			"true only where the owner asks for new work beside an open item of the thread; his approval of that item is support.approve",
+		),
 });
+
+/**
+ * The owner's approval, in a thread, of an item recorded from it (ISS-1243): attached to that item
+ * as his approval, citing his message, never filed as a new item.
+ */
+export const supportApproveRequestSchema = z.strictObject({
+	thread: threadId,
+	message: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, "a Rocket.Chat message id")
+		.describe("the owner's message that approves it"),
+	feedback: z
+		.string()
+		.regex(/^FB-\d+$/, "a Feedback key, FB-n")
+		.describe("the open item recorded from this thread that he approves"),
+	project: supportProjectSlugSchema
+		.optional()
+		.describe(
+			"the project that item was filed in, where two of the thread's share a key",
+		),
+});
+export type SupportApproveRequest = z.infer<typeof supportApproveRequestSchema>;
 
 /**
  * The person's plain answer to a proposal, as the session cites it (ISS-845): the proposal's handle
@@ -1705,6 +1740,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWNER_APPROVAL_NEEDED",
 	/** An owner act's agreement cited from a message the owner did not write (ISS-1014). */
 	"SUPPORT_OWNER_APPROVAL_NOT_HIS",
+	/** An approval cited from a message that is not the owner's own in the thread named (ISS-1243). */
+	"SUPPORT_APPROVAL_NOT_THE_OWNERS",
+	/** An approval naming no open item recorded from its thread (ISS-1243). */
+	"SUPPORT_APPROVAL_ITEM_UNKNOWN",
+	/** A record the owner asks for in a thread holding an open item, naming neither that it approves one nor that it is separate (ISS-1243). */
+	"SUPPORT_RECORD_IS_APPROVAL",
 	/** A release decision cited from a message that is no member's own in the thread named (ISS-1206). */
 	"SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE",
 	/** A release decision whose writer holds no releases.approve on the release's project (ISS-1206). */
@@ -1848,6 +1889,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_CONSENT_NOT_THE_OWNER: 403,
 	SUPPORT_OWNER_APPROVAL_NEEDED: 409,
 	SUPPORT_OWNER_APPROVAL_NOT_HIS: 403,
+	SUPPORT_APPROVAL_NOT_THE_OWNERS: 403,
+	SUPPORT_APPROVAL_ITEM_UNKNOWN: 404,
+	SUPPORT_RECORD_IS_APPROVAL: 409,
 	SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE: 403,
 	SUPPORT_RELEASE_DECISION_NOT_PERMITTED: 403,
 	SUPPORT_RELEASE_VERSION_AMBIGUOUS: 400,

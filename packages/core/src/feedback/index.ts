@@ -27,6 +27,7 @@ export {
   externalItemResults,
   feedbackKeysOf,
   fileExternalFeedback,
+  noteOnFiled,
 } from './external.js';
 export { carryAgentReports } from './forge-carry.js';
 export {
