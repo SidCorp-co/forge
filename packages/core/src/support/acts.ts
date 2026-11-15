@@ -17,6 +17,7 @@ import type {
   ChannelRole,
   ChannelRoute,
   SupportAnswerQuestionRequest,
+  SupportForgeActRequest,
   SupportReleaseDecisionRequest,
 } from '@forge/contracts/support-channel';
 import type { SupportAskMasterRequest } from '@forge/contracts/support-master-ask';
@@ -49,6 +50,7 @@ import { ownerAct } from './owner-act.js';
 import { attachApproval } from './owner-approves.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
+import { ownerForgeAct } from './owner-forge-act.js';
 import { raiseOwed } from './owner-owed-raise.js';
 import { startOwnerSignIn } from './owner-sign-in.js';
 import { readProjectFacts } from './project-read.js';
@@ -163,6 +165,7 @@ export type SupportActInput =
   | { action: 'in_flight'; thread: string }
   | { action: 'raise_owed'; thread: string; text: string }
   | ({ action: 'technical' } & SupportTechnicalRequest)
+  | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
   | {
       action: 'read';
       name: string;
@@ -452,6 +455,10 @@ async function act(
     case 'technical': {
       const { action: _, ...request } = input;
       return raiseTechnical(room, request);
+    }
+    case 'owner_forge_act': {
+      const { action: _, ...request } = input;
+      return ownerForgeAct(room, request);
     }
     case 'owner_sign_in':
       return startOwnerSignIn(room, {

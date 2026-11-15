@@ -168,7 +168,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
     field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
-    field:param:actId field:query:subject field:json:owner field:json:mockup field:json:revises
+    field:param:actId field:query:subject field:json:owner field:json:item field:json:act field:json:mockup field:json:revises
     field:json:supersedes field:json:replaces field:json:updates field:param:rid field:param:ruleId
     field:param:username
     field:json:member field:json:threads field:json:after field:json:check
@@ -197,7 +197,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
     field:json:duties field:json:outsideBot
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
-    field:json:build field:json:capabilities field:json:carried field:json:category field:json:shippedIn
+    field:json:build field:json:capabilities field:json:carried field:json:carry field:json:category field:json:shippedIn
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks field:json:reruns
     field:json:condition
     field:json:clientVersion field:json:codes field:json:color field:json:config field:json:contract field:json:contracts field:json:acceptUnmeasured

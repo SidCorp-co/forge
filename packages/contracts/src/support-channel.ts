@@ -237,6 +237,111 @@ export type SupportReleaseDecisionRequest = z.infer<
 	typeof supportReleaseDecisionRequestSchema
 >;
 
+/**
+ * The Forge acts the owner asks for in chat that his room's agent makes as him (ISS-1243 item 24):
+ * each the act an item's page offers (`item-acts.ts`) or the merge mark, made through its own door.
+ */
+export const SUPPORT_FORGE_ACTS = [
+	"requirement.propose",
+	"requirement.agree",
+	"requirement.accept",
+	"requirement.return",
+	"requirement.defer",
+	"requirement.undefer",
+	"requirement.drop",
+	"requirement.accept_delivery",
+	"workflow.propose",
+	"workflow.approve",
+	"workflow.return",
+	"release.cut",
+	"release.approve",
+	"release.return",
+	"issue.merge",
+	"config.write",
+	"binding.write",
+] as const;
+export type SupportForgeAct = (typeof SUPPORT_FORGE_ACTS)[number];
+
+/**
+ * The owner's Forge act, made as him from his own message (ISS-1243 item 24): core reads who wrote
+ * the message from the chat server's record, never from its words, and only the owner the room's
+ * binding names acts; his own Forge account's grants decide, through the act's own door.
+ */
+export const supportForgeActRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	message: supportThreadIdSchema.describe(
+		"the owner's own message asking for the act, in that thread (`message` in what you were handed): the act is his",
+	),
+	project: supportProjectSlugSchema.describe(
+		"the item's project: your own, or one you follow, by its slug",
+	),
+	act: z
+		.string()
+		.trim()
+		.min(1)
+		.max(64)
+		.describe(
+			`the act, as the item's page names it: ${SUPPORT_FORGE_ACTS.join(", ")}; any other is refused by name, saying where it is made`,
+		),
+	item: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.describe(
+			"the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, or the project's slug for config.write",
+		),
+	reason: z
+		.string()
+		.trim()
+		.min(1)
+		.max(300)
+		.optional()
+		.describe(
+			"his why in a few words, where the act carries one; his message is quoted beside it either way",
+		),
+	carry: z
+		.union([
+			z.strictObject({ all: z.literal(true), why: z.string().trim().min(1) }),
+			z
+				.array(
+					z.strictObject({
+						issue: z.string().trim().min(1),
+						n: z.number().int().positive(),
+						why: z.string().trim().min(1),
+					}),
+				)
+				.min(1),
+		])
+		.optional()
+		.describe(
+			"release.approve only: the unproven criteria he lets go with it, [{ issue, n, why }] or { all: true, why }, as he said",
+		),
+	commit: z
+		.string()
+		.regex(/^[0-9a-f]{7,40}$/)
+		.optional()
+		.describe("issue.merge only: the commit it landed at, where he named one"),
+	baseRevision: z
+		.number()
+		.int()
+		.positive()
+		.nullable()
+		.optional()
+		.describe(
+			"config.write and binding.write: the revision of the document you read and changed, null where none is declared yet",
+		),
+	document: z
+		.record(z.string(), z.unknown())
+		.optional()
+		.describe(
+			"config.write and binding.write: the whole document as it is to stand, the one you read with his change made",
+		),
+});
+export type SupportForgeActRequest = z.infer<
+	typeof supportForgeActRequestSchema
+>;
+
 /** A question asked again, with its one answer (BC-36). */
 /** A common issue's question and its one answer, as the session notes it and as a person adds it. */
 const commonIssueQuestionSchema = z.string().trim().min(3).max(300);

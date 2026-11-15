@@ -10,7 +10,10 @@ import {
   supportOwnerCredentialRequestSchema,
   supportOwnerSignInRequestSchema,
 } from '@forge/contracts/support';
-import { supportReleaseDecisionRequestSchema } from '@forge/contracts/support-channel';
+import {
+  supportForgeActRequestSchema,
+  supportReleaseDecisionRequestSchema,
+} from '@forge/contracts/support-channel';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -79,6 +82,15 @@ export function mountOwnerRoutes(app: Hono<{ Variables: AuthVars }>): void {
       '{ thread, message, project, version, decision: approve | return, reason? }',
     ),
     (c) => act(c, c.req.valid('param').id, { action: 'release_decision', ...c.req.valid('json') }),
+  );
+
+  // the owner's Forge act, made as him from his own message (ISS-1243 item 24)
+  app.post(
+    '/:id/support/session/forge-acts',
+    projectParam,
+    SESSION_ONLY,
+    strictBody(supportForgeActRequestSchema, '{ thread, message, project, act, item, reason? }'),
+    (c) => act(c, c.req.valid('param').id, { action: 'owner_forge_act', ...c.req.valid('json') }),
   );
 
   // which products core keeps the owner's credential for: names, never values

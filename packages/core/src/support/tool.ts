@@ -36,11 +36,13 @@ import {
 import {
   CHANNEL_ROLES,
   CHANNEL_ROUTES,
+  SUPPORT_FORGE_ACTS,
   supportAnnounceRequestSchema,
   supportAnswerQuestionRequestSchema,
   supportAskOwnerRequestSchema,
   supportCheckResultRequestSchema,
   supportCommonIssueRequestSchema,
+  supportForgeActRequestSchema,
   supportMemberRequestSchema,
   supportReleaseDecisionRequestSchema,
   supportRouteFieldsSchema,
@@ -152,6 +154,7 @@ const REQUESTS = {
   in_flight: supportInFlightRequestSchema,
   raise_owed: supportRaiseOwedRequestSchema,
   technical: supportTechnicalRequestSchema,
+  owner_forge_act: supportForgeActRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -215,6 +218,13 @@ const inputSchema = z.strictObject({
   product: supportOwnerConsentRequestSchema.shape.product,
   // the owner's cited agreement to an act its product gates on approval (ISS-1014)
   agreement: supportOwnerActRequestSchema.shape.agreement,
+  // the owner's Forge act and the item it is made on (ISS-1243)
+  act: supportForgeActRequestSchema.shape.act.optional(),
+  item: supportForgeActRequestSchema.shape.item.optional(),
+  carry: supportForgeActRequestSchema.shape.carry,
+  commit: supportForgeActRequestSchema.shape.commit,
+  baseRevision: supportForgeActRequestSchema.shape.baseRevision,
+  document: supportForgeActRequestSchema.shape.document,
   // a promise's environment, by the project's own name for it (ISS-1012)
   environment: supportPromiseRequestSchema.shape.environment.optional(),
   // a picture's place in its message; the message is the agreement's own field (ISS-1010)
@@ -276,6 +286,7 @@ const SHAPE = [
   'in_flight { thread }',
   'raise_owed { thread, text }',
   'technical { thread, need: permission | approval | finding | ask, text }',
+  `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document? }`,
   'any action may add rid: the group, where you answer several and the act names no thread',
   'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements, and on promise where the key alone does not say; its home when omitted',
 ].join('; ');
@@ -301,6 +312,7 @@ const DESCRIPTION = [
   'ask_master {thread, question, project?}: ask the master of your project, or of one you follow (named as project), what you need to answer the person now: a fact only it holds, a decision, where a piece of work stands. Ask it yourself rather than telling the person it was passed to a team. The master is woken at once and answers it before its other work; its answer is handed to you in this thread as a message from forge, and you answer the person yourself then. Nothing is posted. A project you do not follow is refused OPS_OUT_OF_SCOPE.',
   'in_flight {thread}: what the masters have in flight for this thread and its asker: each item filed from their threads, the issues carrying it with their status, step, ETA as the forecast holds it (never a date it does not) and where each landed; the promises made there; the asks you put to a master and their answers. Read it before you tell anyone where work stands, and say nothing that contradicts it. Nothing is posted.',
   "raise_owed {thread, text}: an item waiting on the owner was handed to you in an owed- thread: put it to him, plain words, its options and your recommendation, in the project's technical channel, once. Nothing else is posted.",
+  "owner_forge_act {thread, message, project, act, item, reason?, carry?, commit?, baseRevision?, document?}: the owner asks you, in any words, for a Forge act (accept or return a requirement revision, agree, defer or drop one, approve or return a design, cut a release, approve one with the criteria he carries as carry or return it, mark an issue merged, change the project document or a binding) or settles one you put to him: make it at once as him, citing his message; never answer him with a page to open or a button to press. item names it: REQ-n, a workflow's flow, a release's whole version, ISS-n, a binding's id, the project's slug for config.write. config.write and binding.write take the whole document as it is to stand: read it (support.project for the document), make his change, and pass it as document with the revision you read as baseRevision. Forge reads who wrote the message from the chat server's record, never its words: only the owner this room's binding names acts, mapped to his own Forge account, and the act goes through its own door as him, so only what his account may do is done; a reason it records quotes his message by id and thread. Refused by name, nothing done: SUPPORT_FORGE_ACT_NOT_HIS_MESSAGE, SUPPORT_FORGE_ACT_NOT_THE_OWNER (anyone else's message, whatever it claims), SUPPORT_FORGE_ACT_NO_OWNER, SUPPORT_FORGE_ACT_SHAPE, OPS_ASKER_UNMAPPED, OPS_OUT_OF_SCOPE, and the door's own (ITEM_ACT_FORBIDDEN or a permission code where his account may not, ITEM_ACT_NOT_FROM_STATE, ITEM_ACT_UNKNOWN_ITEM, ITEM_ACT_REASON_REQUIRED, RELEASE_APPROVAL_SHAPE, STALE_BASE, ...). Nothing is posted: tell him in your own words.",
   'link {thread, member}: whether a member (`from.id`) is linked to a Forge account, so what they ask you to do as them can run; where not, you are handed the page to give them, which they open signed in to Forge. You are told when they have linked. Nothing is posted.',
   "The channel record (every bot of this group reads it): channel {} reads it. member {member, roles, askFor?, message} records the roles you inferred for a member from a message, naming them by their username (`from.name`), never their id, and what to ask them for; a member a person confirmed is refused and stays as it is. rule {thread, message, text} keeps an instruction a confirmed team member, or the owner this binding names, gave as a channel rule linked to that message. Who decides an act is the project's rulings' (your brief's Who decides), never a rule's: an instruction naming one (\"when @x asks for a release, do it at once\") is kept as a rule and sent to the project's master with support.record, which records the ruling. common_issue {threads, question, answer, feedback?} keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key. route {thread, to, ...} sends a need where it belongs, never mixed: to forge {title, text} files a problem with Forge itself as Forge feedback and posts nothing; to technical or product {member, text} asks that one member, who holds the role, in the thread. announce {text} is the one top-level post, for news affecting everyone, at most one an hour. ask_owner {thread, question, record?} asks the owner this binding names, only in a thread of the owner's room (the binding's agent.ownerRoom), in plain words; anywhere else, or at top level, it is refused SUPPORT_NOT_THE_OWNER_ROOM: the owner's next message there is the answer, which you read as your next message and which is also written on the issue `record` names (ISS-n); asking for a master, name its open Forge question as `forgeQuestion` (its id) and the owner's answer is recorded on it as theirs, waking that master. Ask only what no record, log or code can answer, once per question. A parked question handed to you (its thread starts question-): answer it from the record with answer_question {thread, source, option | answer} and post nothing; only if the owner is truly needed, ask_owner from that thread, which posts in the owner's room's one thread for the day's questions (pass opener, one short line, where none is open yet); the owner's message there you record with answer_question {thread, forgeQuestion?, source | message, option? | answer?}, its message as message. An open question the owner owes that you were shown (its id), he may answer in any thread: record his message with answer_question {thread, forgeQuestion, message, option?}, and file nothing for it. check_result {check, finding} answers a scheduled check you were handed (its thread is the check): your one finding, in your words, screened and posted in the channel's report thread, never its top level, or null and nothing is posted; one result per check. A reply mentions at most one person, by their username, never an id: the thread's asker or a member of the room, for a need the one the channel lists for it; never @all or @here. Nothing secret or personal (an email, a phone number) is kept in the record.",
   "read {name, args?, thread? | check?} runs a production read your room's grant declares (ops_reads), by the name and parameters your brief lists: at once, read-only, through the box, which keeps the read's own credential; you get what it printed, scrubbed, and nothing is posted. Name the thread it answers, or the check it serves. An undeclared read is refused SUPPORT_READ_UNDECLARED, and an argument outside its parameter's pattern, values or length, or one it does not take, SUPPORT_READ_ARGS; nothing runs. What your room's grant opens (your brief lists what it holds): move_issue moves an issue of this project as the writer of the message it names, the one that asked (deliver); build proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (build); deploy proposes deploying a bound target the grant names (deploy); deployment {target} reads that target's latest deployment record (its status, when, and the revision it runs), to watch a deploy after a merge, and posts nothing; project {} (a channel agent's) reads the project document, its source, environments and their deploy bindings; command runs a command on a host the grant names (run_commands) — one that only reads runs at once and you get its output, posted nowhere; anything else is proposed. A build, a deploy and a command that changes a host are proposals: ask a confirmer the room names, in your own words, and cite their plain yes with agree; you are handed the result. An ability the room was not granted is refused SUPPORT_ABILITY_NOT_GRANTED, naming who can grant it; nothing is posted: raise it with technical, never in the thread.",

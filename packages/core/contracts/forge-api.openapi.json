@@ -50682,6 +50682,179 @@
         ]
       }
     },
+    "/api/projects/{id}/support/session/forge-acts": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "act": {
+                    "description": "the act, as the item's page names it: requirement.propose, requirement.agree, requirement.accept, requirement.return, requirement.defer, requirement.undefer, requirement.drop, requirement.accept_delivery, workflow.propose, workflow.approve, workflow.return, release.cut, release.approve, release.return, issue.merge, config.write, binding.write; any other is refused by name, saying where it is made",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "baseRevision": {
+                    "anyOf": [
+                      {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "config.write and binding.write: the revision of the document you read and changed, null where none is declared yet"
+                  },
+                  "carry": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "all": {
+                            "const": true,
+                            "type": "boolean"
+                          },
+                          "why": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "all",
+                          "why"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "issue": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "n": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "why": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "issue",
+                            "n",
+                            "why"
+                          ],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    ],
+                    "description": "release.approve only: the unproven criteria he lets go with it, [{ issue, n, why }] or { all: true, why }, as he said"
+                  },
+                  "commit": {
+                    "description": "issue.merge only: the commit it landed at, where he named one",
+                    "pattern": "^[0-9a-f]{7,40}$",
+                    "type": "string"
+                  },
+                  "document": {
+                    "additionalProperties": {},
+                    "description": "config.write and binding.write: the whole document as it is to stand, the one you read with his change made",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "item": {
+                    "description": "the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, or the project's slug for config.write",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "message": {
+                    "description": "the owner's own message asking for the act, in that thread (`message` in what you were handed): the act is his",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "project": {
+                    "description": "the item's project: your own, or one you follow, by its slug",
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "his why in a few words, where the act carries one; his message is quoted beside it either way",
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "thread": {
+                    "description": "the thread: the id the message you answer carries as `thread` in what you were handed",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "thread",
+                  "message",
+                  "project",
+                  "act",
+                  "item"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-permission": {
+          "none": "only the room's own session, under its current turn's token, is admitted (support/access.ts)"
+        },
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/projects/{id}/support/session/git-credential": {
       "post": {
         "parameters": [
