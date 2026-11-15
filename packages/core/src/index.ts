@@ -35,7 +35,7 @@ import { contractHolding, contractVersionReads, interfaceContractsOf } from './e
 import { declaredRunSecretPorts, provideExecutionPorts } from './execution-ports.js';
 import { provideFastLanePorts } from './fast-lane/index.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
-import { releaseClaimsFor, releaseLegFor } from './forecast/index.js';
+import { readIssueForecast, releaseClaimsFor, releaseLegFor } from './forecast/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { valueCheckHeld } from './intake/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
@@ -170,7 +170,7 @@ import {
   staleOnTargetRevised,
   writeKeptPreview,
 } from './suggestions/index.js';
-import { registerSupportRooms } from './support/index.js';
+import { provideIssueForecastReader, registerSupportRooms } from './support/index.js';
 import { coreTimers } from './timer-registry.js';
 import { servedWebBuild } from './web-host/index.js';
 import { readServing } from './whats-new/index.js';
@@ -198,6 +198,8 @@ provideCredentialsPorts({
 providePermissionPorts();
 provideWorkPorts();
 provideExecutionPorts();
+// a room agent's picture of an issue's ETA reads the forecast, which support may not import (ISS-1243)
+provideIssueForecastReader(async (p, seq) => (await readIssueForecast(p, seq))?.forecast ?? null);
 // the fast lane reads an issue's approved preview from the previews module (REQ-39 BC-7)
 provideFastLanePorts({ approvedPreviewOf });
 provideStatusReportsPorts({

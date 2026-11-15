@@ -19,6 +19,7 @@ import type {
   SupportAnswerQuestionRequest,
   SupportReleaseDecisionRequest,
 } from '@forge/contracts/support-channel';
+import type { SupportAskMasterRequest } from '@forge/contracts/support-master-ask';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
 import type { SupportCallArgs } from '../integrations/support-api/index.js';
 import {
@@ -38,6 +39,7 @@ import { abilityRefusal, grantsOf, supportConfigOf } from './grants.js';
 import { readImage } from './images.js';
 import { endLastResortWait } from './last-resort.js';
 import { noteReleaseRead, unreadLiveClaim } from './live-claims.js';
+import { askMaster } from './master-ask.js';
 import { type OperationsActInput, type OpsOutcome, operationsAct } from './ops-acts.js';
 import { runRead } from './ops-read.js';
 import { no } from './outcome.js';
@@ -45,6 +47,7 @@ import { ownerAct } from './owner-act.js';
 import { attachApproval } from './owner-approves.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
+import { raiseOwed } from './owner-owed-raise.js';
 import { startOwnerSignIn } from './owner-sign-in.js';
 import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
@@ -54,6 +57,7 @@ import { decideReleaseFromMessage } from './release-decision.js';
 import { decideRouting } from './routing.js';
 import { search } from './search.js';
 import { listTools, readThread, reply, runDiagnose, staySilent } from './service.js';
+import { inFlightOf } from './shared-picture.js';
 import { linkMember } from './speaker-link.js';
 import { insertAction, type RoomRow } from './store.js';
 import { TOP_LEVEL } from './thread.js';
@@ -152,6 +156,9 @@ export type SupportActInput =
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
   | ({ action: 'owner_sign_in' } & SupportOwnerSignInRequest)
   | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
+  | ({ action: 'ask_master' } & SupportAskMasterRequest)
+  | { action: 'in_flight'; thread: string }
+  | { action: 'raise_owed'; thread: string; text: string }
   | {
       action: 'read';
       name: string;
@@ -278,6 +285,11 @@ const SHARED = new Set<SupportActInput['action']>([
   'ask_owner',
   // a member's picture reads the same in an operations room as in a support group (ISS-1010)
   'image',
+  // any room's agent asks a master, and reads what the masters hold for its thread (ISS-1243)
+  'ask_master',
+  'in_flight',
+  // what waits on the owner, raised in the technical channel (ISS-1243)
+  'raise_owed',
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -419,6 +431,14 @@ async function act(
       const { action: _, ...request } = input;
       return decideReleaseFromMessage(room, request);
     }
+    case 'ask_master': {
+      const { action: _, ...request } = input;
+      return askMaster(room, request, turn);
+    }
+    case 'in_flight':
+      return inFlightOf(room, input.thread);
+    case 'raise_owed':
+      return raiseOwed(room, { thread: input.thread, text: input.text });
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

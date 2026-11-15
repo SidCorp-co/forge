@@ -35,6 +35,7 @@ import {
   type RoomRow,
   sessionRepliedInThread,
 } from './store.js';
+import { senderAccount } from './temporary-account.js';
 import { roomAuth, threadConversationOf } from './thread.js';
 
 const RECEIVED_EMOJI = 'eyes';
@@ -169,6 +170,11 @@ async function takeIntoRoom(
   const thread = threadOf(m);
   const conversation = await threadConversationOf(room, namespace, thread);
   const author = { key: m.userId, label: m.username ?? null };
+  // a sender with no Forge account holds a temporary one from their first message (ISS-1243 item 10)
+  await senderAccount(
+    { source: 'rocketchat', namespace, externalId: author.key, label: author.label },
+    room.kind === 'operations' ? undefined : room.projectId,
+  );
   const recordAndFlag = async (
     message: RocketChatIncomingMessage,
     by: { key: string; label: string | null },

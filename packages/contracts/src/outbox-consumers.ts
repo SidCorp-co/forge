@@ -119,6 +119,7 @@ export const OUTBOX_CONSUMERS = {
 		"org-activity",
 	],
 	"feedback.filed": ["master-wake", "intake-assistant", "steward"],
+	"support.masterAsked": ["master-wake"],
 	"intake.answered": ["intake-assistant"],
 	"feedback.verifyAsked": ["notify-feedback"],
 	"feedback.verifySettled": [

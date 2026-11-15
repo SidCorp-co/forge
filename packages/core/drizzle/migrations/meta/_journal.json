@@ -4180,6 +4180,13 @@
       "when": 1839456000000,
       "tag": "0654_a_room_agent_records_its_routing_decision",
       "breakpoints": true
+    },
+    {
+      "idx": 656,
+      "version": "7",
+      "when": 1839628800000,
+      "tag": "0656_a_chat_sender_holds_a_temporary_account_and_an_agent_asks_its_master",
+      "breakpoints": true
     }
   ]
 }

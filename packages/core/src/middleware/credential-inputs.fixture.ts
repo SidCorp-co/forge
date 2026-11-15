@@ -128,7 +128,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   [ROW_KEYS]: words`
     param:bindingId param:file param:id param:projectId param:provider param:questionId param:slug param:target
     param:templateId param:version query:projectId
-    field:param:agentUserId field:param:aid field:param:approvalId field:param:at
+    field:param:agentUserId field:param:aid field:param:approvalId field:param:askId field:param:at
     field:param:attachmentId field:param:bid field:param:bindingId field:param:code
     field:param:commentId field:param:contract field:param:did field:param:doc field:param:draftId field:param:edgeId
     field:param:eventId

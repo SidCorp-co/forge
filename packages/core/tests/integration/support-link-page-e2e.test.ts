@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/support/temporary-account.ts
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +7,7 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
+import { senderAccount } from '../../src/support/temporary-account.js';
 import { api } from '../helpers/api.js';
 import { rows } from '../helpers/factories.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
@@ -38,6 +40,13 @@ type Out = Record<string, unknown>;
 const linksOf = async (externalId: string) =>
   rows<{ user_id: string; confirmed_via: string }>(
     sql`SELECT user_id, confirmed_via FROM assistant_speaker_links
+         WHERE source = 'rocketchat' AND external_id = ${externalId}`,
+  );
+
+// ISS-1243 item 10: a sender with no Forge account holds a temporary one from their first message
+const temporaryOf = async (externalId: string) =>
+  rows<{ id: string; external_label: string | null; linked_user_id: string | null }>(
+    sql`SELECT id, external_label, linked_user_id FROM chat_temporary_accounts
          WHERE source = 'rocketchat' AND external_id = ${externalId}`,
   );
 
@@ -80,6 +89,32 @@ describe('ISS-845: a chat account is linked on the link page, the agent the only
     });
     expect(await linksOf(w.chat.alice.userId)).toEqual([]);
 
+    // ISS-1243 item 10: her first message made her a temporary account, so who she is resolves for
+    // every reader; it is no users row and holds no login, password, token or grant: it cannot sign
+    // in, and nothing runs as it (the link act above still reads her as unlinked)
+    const [temporary] = await temporaryOf(w.chat.alice.userId);
+    expect(temporary).toMatchObject({ external_label: 'alice', linked_user_id: null });
+    const temporaryId = String(temporary?.id);
+    expect(await rows(sql`SELECT 1 FROM users WHERE id = ${temporaryId}::uuid`)).toEqual([]);
+    const columns = (
+      await rows<{ column_name: string }>(
+        sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'chat_temporary_accounts'`,
+      )
+    ).map((c) => c.column_name);
+    for (const credential of ['email', 'password_hash', 'token', 'role', 'grants']) {
+      expect(columns).not.toContain(credential);
+    }
+    const [{ ns } = { ns: '' }] = await rows<{ ns: string }>(
+      sql`SELECT external_namespace AS ns FROM chat_temporary_accounts WHERE id = ${temporaryId}::uuid`,
+    );
+    const who = { source: 'rocketchat' as const, namespace: ns, externalId: w.chat.alice.userId };
+    expect(await senderAccount(who, w.projectId)).toEqual({
+      kind: 'temporary',
+      temporaryAccountId: temporaryId,
+      label: 'alice',
+      chatKey: w.chat.alice.userId,
+    });
+
     // the member confirms on the page, signed in to Forge as themselves
     await w.settleWarm();
     const notes: string[] = [];
@@ -101,6 +136,23 @@ describe('ISS-845: a chat account is linked on the link page, the agent the only
     // asked again, the session reads the member as linked
     const again = await asked(w.chat.alice, 'Giờ được chưa?');
     expect(again.out).toMatchObject({ linked: true });
+
+    // linking kept her temporary account and its history: the same row records the account, and
+    // every message she wrote before reads as that account's
+    expect(await temporaryOf(w.chat.alice.userId)).toEqual([
+      { id: temporaryId, external_label: 'alice', linked_user_id: w.ownerId },
+    ]);
+    expect(await senderAccount(who, w.projectId)).toEqual({
+      kind: 'forge',
+      userId: w.ownerId,
+      temporaryAccountId: temporaryId,
+      chatKey: w.chat.alice.userId,
+    });
+    const written = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM support_actions
+           WHERE kind = 'message_in' AND actor_key = ${w.chat.alice.userId}`,
+    );
+    expect(written[0]?.n).toBeGreaterThanOrEqual(2);
 
     // nothing was posted, and no proof reached the session
     expect(await linesIn(thread)).toEqual([]);

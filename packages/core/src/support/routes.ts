@@ -59,6 +59,7 @@ import { mountTurnRecordRoutes } from './turn-record.js';
 
 export { ownerSignInCallbackRoutes } from './owner-routes.js';
 
+import { mountMasterAskRoutes } from './master-ask-routes.js';
 import { mountPromiseRoutes } from './promise-routes.js';
 import { supportRoomsOf } from './read.js';
 import { act, SESSION_ONLY } from './session-door.js';
@@ -484,6 +485,7 @@ mountRoomBriefRoutes(supportRoutes);
 mountReportThreadRoutes(supportRoutes);
 mountRunReadRoutes(supportRoutes);
 mountPromiseRoutes(supportRoutes);
+mountMasterAskRoutes(supportRoutes);
 mountOwnerRoutes(supportRoutes);
 
 const SUPPORT_READ = requiresOnParam('project.read', 'id');

@@ -68,10 +68,13 @@ describe('masterWork under direct mode: the pass is told to build, not to dispat
     expect(direct.nudge).not.toContain('land it on the base branch');
     expect(direct.nudge).not.toContain('its own tests pass');
     expect(direct.nudge).not.toContain('a close by anything but a release');
+    expect(direct.nudge).not.toContain('build the batch yourself');
     for (const said of [
       'Dispatch no runner role',
       'general-purpose subagents on disjoint files',
-      'build the batch yourself',
+      // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks
+      'hand every build part of the batch to general-purpose subagents on disjoint files',
+      "so your own pane stays free for triage, for a room agent's ask (it goes first) and for the landing; only a change too small to brief is built here",
       // ISS-1050: "its own tests" read as the whole suite, which a master ran before every landing
       "Land through the project's own landing route once the batch builds (typecheck included) and the tests related to its changed files pass",
       'the whole suite, lint and CI run after the push, and a red there is fixed forward',
@@ -143,6 +146,45 @@ describe('masterWork names no plugin skill and no plugin verb, in either mode', 
       const { nudge } = masterWork([issue('a')], owed, mode);
       expect(nudge).not.toMatch(plugin);
       expect(nudge).toContain('`forge-runner api guides/dispatch.md`');
+    });
+  }
+});
+
+// ISS-1243 items 14, 21: a room agent's ask waits with a person behind it, so the pass names it before
+// every other owed thing, says each ask's wait, and says a breach past the bound
+// @direct-test-of packages/core/src/masters/owed-agent-asks.ts
+describe("a room agent's ask comes first in the pass, its wait and breach said", () => {
+  const ask = (id: string, minutes: number, breached: boolean) => ({
+    id,
+    rid: 'room-1',
+    thread: 'th-1',
+    question: 'Is the size-M print rule live?',
+    waitedMs: minutes * 60_000,
+    breached,
+    boundMinutes: 10,
+  });
+  const owed = {
+    ...none,
+    triages: [{ key: 'FB-1' }],
+    agentAsks: [ask('a1', 3, false), ask('a2', 14, true)],
+  };
+
+  for (const mode of ['dispatch', 'direct'] as const) {
+    it(mode, () => {
+      const work = masterWork([issue('a')], owed, mode);
+      const first = work.nudge.indexOf('First, before any other work in this pass');
+      expect(first).toBeGreaterThan(-1);
+      expect(first).toBeLessThan(work.nudge.indexOf('FB-1'));
+      expect(work.nudge).toContain(
+        'a2 from room room-1 thread th-1, waiting 14 min, past the bound',
+      );
+      expect(work.nudge).toContain('1 has waited past the 10-minute bound');
+      expect(work.nudge).toContain('support/master-asks/<askId>/answer -X POST');
+      expect(work.owed).toBe(3);
+      // an answered ask leaves the work, so the digest moves and the box nudges again
+      expect(masterWork([issue('a')], { ...owed, agentAsks: [] }, mode).digest).not.toBe(
+        work.digest,
+      );
     });
   }
 });

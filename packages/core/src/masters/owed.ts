@@ -13,6 +13,7 @@ import { type GuideSlug, guideCall } from '../guides/index.js';
 import { agrees } from '../lib/plural.js';
 import { admissibleLine } from './admissible-line.js';
 import { lastFinishedPassStart } from './last-pass.js';
+import { agentAsksLine } from './owed-agent-asks.js';
 import { confirmsLine } from './owed-confirms.js';
 import { approvalsLine, returnedLine } from './owed-designs.js';
 import {
@@ -32,6 +33,7 @@ import { reviewsLine } from './owed-reviews.js';
 import { triagesLine } from './owed-triages.js';
 import { DIRECT_NUDGE, DIRECT_ORDER, NUDGE } from './pass-order.js';
 import {
+  type AgentAskOwed,
   type AgentConfirmOwed,
   type DesignApprovalOwed,
   type FilingOwed,
@@ -112,6 +114,7 @@ interface Owed {
   intakeFailures: { key: string; code: string }[];
   /** Member messages a room could not take in the last day, per room and cause (ISS-1046). */
   unhandledRoomMessages?: UnhandledRoomMessages[];
+  agentAsks?: AgentAskOwed[];
   reviews: ReviewOwed[];
   /** Issues the latest shipped release closed, each owing its live verdict (ISS-1200). */
   liveChecks: LiveCheckOwed[];
@@ -241,6 +244,7 @@ function wedgeLandedLine(landed: Owed['landedWork']): string {
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
 export function owedLine(owed: Owed): string {
   let line =
+    agentAsksLine(owed.agentAsks) +
     returnedLine(owed) +
     approvalsLine(owed.designApprovals) +
     answersLine(owed.answers) +
@@ -338,6 +342,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.carriers.map((c) => `carrier:${c.key}`),
     ...owed.intakeFailures.map((f) => `intake-failed:${f.key}|${f.code}`),
     ...(owed.unhandledRoomMessages ?? []).map((u) => `room-unhandled:${u.rid}|${u.code}`),
+    ...(owed.agentAsks ?? []).map((a) => `agent-ask:${a.id}|${a.breached}`),
     ...owed.reviews.map((r) => `review:${r.issueId}|${r.status}|${r.criteria.join(',')}`),
     ...owed.liveChecks.map((c) => `live-check:${c.version}|${c.issueId}`),
     ...owed.releaseHolds.map((h) => `release-hold:${h.issueId}|${h.code}`),
@@ -494,6 +499,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
       carriers,
       intakeFailures,
       unhandledRoomMessages,
+      agentAsks: (await ports.agentAsksOwed?.(projectId)) ?? [],
       reviews,
       ...liveChecks,
       releaseHolds,

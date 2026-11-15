@@ -15,6 +15,17 @@ export interface UnhandledRoomMessages {
   lastAt: string;
 }
 
+/** A room agent's ask waiting on this master (ISS-1243): its wait, and whether past the bound. */
+export interface AgentAskOwed {
+  id: string;
+  rid: string;
+  thread: string;
+  question: string;
+  waitedMs: number;
+  breached: boolean;
+  boundMinutes: number;
+}
+
 /** The next merge an accepted change-request release waits on (`release-batch/merges-owed.ts`). */
 export interface ReleaseMergeOwed {
   runId: string;
@@ -266,6 +277,8 @@ interface MastersPorts {
    * (ISS-1046): the master is told once per cause, never per message.
    */
   unhandledRoomMessagesOwed?(projectId: string): Promise<UnhandledRoomMessages[]>;
+  /** A room agent's asks of this master still unanswered, oldest first (ISS-1243). */
+  agentAsksOwed?(projectId: string): Promise<AgentAskOwed[]>;
   /**
    * The reviews the project's independent judge owes, which only the master declares (ISS-870): none
    * where its gate profile declares no independent judge.

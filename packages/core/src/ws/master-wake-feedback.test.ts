@@ -50,3 +50,31 @@ describe('feedback-lifecycle start: the master wake for filed feedback', () => {
     },
   );
 });
+
+// ISS-1243 items 14, 21: a room agent's ask of its master wakes every box of that project at once,
+// under its own source, which the runner reads by name (`master-wake-steward.test.ts`)
+describe("a room agent's ask: the master wake", () => {
+  beforeEach(() => {
+    published.length = 0;
+  });
+
+  it('is declared on the outbox for the master wake', () => {
+    expect(OUTBOX_CONSUMERS['support.masterAsked']).toEqual(['master-wake']);
+  });
+
+  it("wakes every box under the source 'agent_ask', naming the ask", async () => {
+    await consumerOf('support.masterAsked', 'master-wake')?.handle(
+      { askId: 'a1', projectId: 'p1', roomId: 'r1', thread: 't1' },
+      {} as never,
+    );
+    expect(published).toEqual([
+      {
+        room: 'device:box-1',
+        frame: {
+          event: 'master.wake',
+          data: { projectId: 'p1', source: 'agent_ask', askId: 'a1' },
+        },
+      },
+    ]);
+  });
+});

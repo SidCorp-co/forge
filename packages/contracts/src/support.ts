@@ -920,6 +920,9 @@ export const SUPPORT_ACTIONS = [
 	"silent",
 	"decide",
 	"approve",
+	"ask_master",
+	"in_flight",
+	"raise_owed",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -1772,6 +1775,14 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_DIRECT_TURN_SHAPE",
 	/** A turn no action of the room names (ISS-1029). */
 	"SUPPORT_TURN_UNKNOWN",
+	/** A master's answer naming no ask of a room agent to this project's master (ISS-1243). */
+	"SUPPORT_MASTER_ASK_UNKNOWN",
+	/** A master's answer to a room agent's ask that was already answered (ISS-1243). */
+	"SUPPORT_MASTER_ASK_ANSWERED",
+	/** A raise naming no thread an item owed to the owner was handed in (ISS-1243). */
+	"SUPPORT_OWED_UNKNOWN",
+	/** An item owed to the owner raised a second time (ISS-1243). */
+	"SUPPORT_OWED_ALREADY_RAISED",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1900,4 +1911,8 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,
 	SUPPORT_DIRECT_TURN_SHAPE: 400,
 	SUPPORT_TURN_UNKNOWN: 404,
+	SUPPORT_MASTER_ASK_UNKNOWN: 404,
+	SUPPORT_MASTER_ASK_ANSWERED: 409,
+	SUPPORT_OWED_UNKNOWN: 404,
+	SUPPORT_OWED_ALREADY_RAISED: 409,
 } as const satisfies RefusalStatuses<SupportRefusalCode>;

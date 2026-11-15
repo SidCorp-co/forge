@@ -72,7 +72,10 @@ export function provideNeedsYouDecisionRead(read: NeedsYouDecisionRead): void {
   decisionsOf = read;
 }
 
-function readDecisions(projectId: string, userId: string): Promise<readonly NeedsYouDecision[]> {
+export function readDecisions(
+  projectId: string,
+  userId: string,
+): Promise<readonly NeedsYouDecision[]> {
   if (!decisionsOf) {
     throw new Error(
       'act_on_decisions: no Needs-you read was provided, so no decision can be found to make; index.ts wires provideNeedsYouDecisionRead',

@@ -11,6 +11,7 @@ import {
   ROOM_IMAGE_CAPS,
   SUPPORT_MASTER_POST_EDIT_WINDOW_MS,
 } from '@forge/contracts/support';
+import { SUPPORT_MASTER_ASK_BOUND_MINUTES } from '@forge/contracts/support-master-ask';
 import { guideRef } from './guide-ref.js';
 import { OWED_NOW_RULE } from './owed-now.js';
 import type { CoreGuide } from './types.js';
@@ -21,7 +22,7 @@ export const DISPATCH_GUIDE: CoreGuide = {
   title: "Running a wave: a master's dispatch and fold",
   summary:
     "The method a project's master follows for one wave: read the order, triage each candidate, batch by files, give each run its tree and a brief, declare and record each dispatch, and fold what comes back — over REST and `forge-runner`; on a project that runs direct (not strict, fast delivery on), build, land, release and judge a whole batch at once instead.",
-  version: 9,
+  version: 10,
   body: `## Running a wave
 
 A wave is the set of runs one master pass sends out, and the fold is the reading of what came back.
@@ -153,6 +154,17 @@ records — before acting on it.
 - The fold ends with a \`fold\` record on the headline carrying the wave's one-line summary. Until it
   is written the wave is open, whatever its members' statuses say.
 
+### Answering a room agent's ask
+A room agent asks you in its turn (\`ask_master\`) while a person waits in its thread: the ask wakes
+you at once and your pass names it first. Answer it before any other work, from what you know or can
+read now, with \`POST /api/projects/:id/support/master-asks/:askId/answer\` \`{ answer }\`; the
+answer goes back into that agent's session, which tells the person itself, so you never post beside
+it. \`GET /api/projects/:id/support/master-asks\` lists the asks waiting on you, each with its wait,
+and counts those past the ${SUPPORT_MASTER_ASK_BOUND_MINUTES}-minute bound as breached (\`?state=all\`
+for the last week's). Before you post in a room or answer an ask, read its open threads,
+\`GET /api/projects/:id/support/agent-threads\`: who asked, whether a person waits on a reply, and
+the promises, items and asks open in each, so you neither contradict nor repeat what the agent said.
+
 ### Telling a room what came of it
 A result someone asked for in a chat room, a release line the room's users should hear, a daily
 review: the master posts it itself, in its own words, as the room's bot, through
@@ -214,15 +226,16 @@ screens the words for the room's readers and records the post as the master's.
 
 ### Direct mode: a project that runs fast
 A project whose gate profile is not \`strict\` (\`GET /api/projects/:id/gates\`) and whose project
-document leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master builds instead of
-dispatching, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
+document leaves \`delivery.fast\` on runs direct, and its nudge says so. Its master orchestrates the
+build instead of dispatching shipped roles, so §5 and §6 do not apply: no shipped role, no declaration, no printed brief, no plan
 approval, design record, review or judge before the landing. It works in batches, as §4 splits them:
 1. Take every issue the order admits, and each that arrives mid-batch. Claim each with a lease, as
    ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`. A batch is never smaller
    than an issue: one issue is never split across releases, and a large issue is built whole, in as
    many commits and builders as its files need, and released once with the batch it lands in.
-2. Build in this session, or hand each file-disjoint part to a general-purpose subagent: its issues,
-   its tree, the base branch and the standing rules. A gap a loose issue leaves is filled by
+2. Hand every build part to a general-purpose subagent, one per file-disjoint part: its issues, its
+   tree, the base branch and the standing rules. Keep this session free to triage, answer a room
+   agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief. A gap a loose issue leaves is filled by
    judgement, the assumption written as one line on the issue or in the commit body. A screen change a
    person asked for is not filled by judgement: before the build, each workflow they asked for (what
    they do and see, the keys and widths they named) is written as the issue's criteria. No issue gets
