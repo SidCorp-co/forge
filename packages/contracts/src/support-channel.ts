@@ -256,6 +256,9 @@ export const SUPPORT_FORGE_ACTS = [
 	"release.cut",
 	"release.approve",
 	"release.return",
+	"issue.merge",
+	"config.write",
+	"binding.write",
 ] as const;
 export type SupportForgeAct = (typeof SUPPORT_FORGE_ACTS)[number];
 
@@ -281,7 +284,7 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.min(1)
 		.max(200)
 		.describe(
-			"the item: REQ-n, a workflow's flow such as chat-turn, or a release version such as 0.19.0",
+			"the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, or the project's slug for config.write",
 		),
 	reason: z
 		.string()
@@ -291,6 +294,43 @@ export const supportForgeActRequestSchema = z.strictObject({
 		.optional()
 		.describe(
 			"his why in a few words, where the act carries one; his message is quoted beside it either way",
+		),
+	carry: z
+		.union([
+			z.strictObject({ all: z.literal(true), why: z.string().trim().min(1) }),
+			z
+				.array(
+					z.strictObject({
+						issue: z.string().trim().min(1),
+						n: z.number().int().positive(),
+						why: z.string().trim().min(1),
+					}),
+				)
+				.min(1),
+		])
+		.optional()
+		.describe(
+			"release.approve only: the unproven criteria he lets go with it, [{ issue, n, why }] or { all: true, why }, as he said",
+		),
+	commit: z
+		.string()
+		.regex(/^[0-9a-f]{7,40}$/)
+		.optional()
+		.describe("issue.merge only: the commit it landed at, where he named one"),
+	baseRevision: z
+		.number()
+		.int()
+		.positive()
+		.nullable()
+		.optional()
+		.describe(
+			"config.write and binding.write: the revision of the document you read and changed, null where none is declared yet",
+		),
+	document: z
+		.record(z.string(), z.unknown())
+		.optional()
+		.describe(
+			"config.write and binding.write: the whole document as it is to stand, the one you read with his change made",
 		),
 });
 export type SupportForgeActRequest = z.infer<

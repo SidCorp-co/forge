@@ -13,9 +13,14 @@
 // own grants decide and the door's refusal is passed on by its own name. The reason it records
 // quotes his message by id and thread, and the room's record keeps the act beside it.
 
+import { ITEM_ACT_NAMES, type ItemAct } from '@forge/contracts/item-acts';
 import type { SupportForgeActRequest } from '@forge/contracts/support-channel';
 import { makeItemAct, planItemAct } from '../assistant/index.js';
+import { applyMergeMarker, listIssues, settleReleaseOnMark } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
+import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
+import { writeBinding, writeProjectConfig } from '../project-config/index.js';
+import { decideApprovalOfVersion, parseDecision } from '../release-batch/index.js';
 import { memberMessage } from './channel-store.js';
 import { granters, grantsOf, supportConfigOf } from './grants.js';
 import { type Asker, forgeUserOfWriter } from './ops-asker.js';
@@ -44,6 +49,8 @@ const NO_REASON = new Set<SupportForgeActRequest['act']>([
   'requirement.propose',
   'workflow.propose',
   'release.cut',
+  'config.write',
+  'binding.write',
 ]);
 
 /** Who he is, by the chat server's record of who wrote `message`, or the refusal naming why not. */
@@ -94,7 +101,148 @@ function reasonOf(
   return input.reason ? `${input.reason.trim()}. ${cite}` : cite;
 }
 
+/** The acts an item's page offers, made through `item-act-doors.ts`. */
+const ITEM_ACT = new Set<string>(ITEM_ACT_NAMES);
+
+/** Which act each field belongs to: a field on any other act is the request's shape, refused. */
+const FIELD_OF: Record<'carry' | 'commit' | 'document' | 'baseRevision', readonly string[]> = {
+  carry: ['release.approve'],
+  commit: ['issue.merge'],
+  document: ['config.write', 'binding.write'],
+  baseRevision: ['config.write', 'binding.write'],
+};
+
+function shapeRefusal(input: SupportForgeActRequest): OpsOutcome<never> | null {
+  for (const [field, acts] of Object.entries(FIELD_OF)) {
+    if (input[field as keyof typeof FIELD_OF] !== undefined && !acts.includes(input.act)) {
+      return no(
+        'SUPPORT_FORGE_ACT_SHAPE',
+        `/${field}`,
+        `${field} belongs to ${acts.join(' and ')}, not ${input.act}; leave it out. Nothing was done`,
+      );
+    }
+  }
+  if (FIELD_OF.document.includes(input.act) && input.document === undefined) {
+    return no(
+      'SUPPORT_FORGE_ACT_SHAPE',
+      '/document',
+      `${input.act} writes the whole document as it is to stand: read it, make his change, and pass it as document with the revision you read as baseRevision. Nothing was done`,
+    );
+  }
+  return null;
+}
+
+/** His permission on the project, as the act's own route asks it, or the refusal it would meet. */
+async function permitted(
+  userId: string,
+  projectId: string,
+  permission: 'project.write' | 'project.admin',
+  what: string,
+): Promise<OpsOutcome<never> | null> {
+  const refused = await permissionRefusalFor(
+    actorFor(userId),
+    permission,
+    projectResource(projectId),
+    what,
+  );
+  return refused
+    ? { ok: false, refusals: [{ code: refused.code, path: '/act', detail: refused.detail }] }
+    : null;
+}
+
+/** An act on an item's page, read as him the way the page offers it, then made through its door. */
+async function itemAct(
+  input: SupportForgeActRequest,
+  reason: string | undefined,
+  at: { projectId: string; userId: string },
+): Promise<OpsOutcome<{ key: string; recorded: string }>> {
+  const act = input.act as ItemAct;
+  // read as him, as the item's page would offer it: his grants and the item's state decide
+  const plan = await planItemAct({ act, key: input.item, ...(reason ? { reason } : {}) }, at);
+  if (!plan.ok) return doorSaid(plan.code, plan.why);
+  if (act === 'release.approve' && input.carry) {
+    // the release door's own carry: the unproven criteria he lets go, kept on the approval
+    await decideApprovalOfVersion({
+      projectId: at.projectId,
+      version: plan.plan.ref,
+      userId: at.userId,
+      decision: parseDecision({ decision: 'approve', reason, carry: input.carry }),
+    });
+  } else {
+    const made = await makeItemAct(plan.plan, reason, at);
+    if (!made.ok) return doorSaid(made.code, `${made.detail}.`);
+  }
+  return { ok: true, value: { key: plan.key, recorded: plan.said } };
+}
+
+/** The merge mark, as `POST /api/issues/:id/merge` makes it: a person's claim that the work landed. */
+async function markMerged(
+  input: SupportForgeActRequest,
+  reason: string | undefined,
+  at: { projectId: string; userId: string },
+): Promise<OpsOutcome<{ key: string; recorded: string }>> {
+  const denied = await permitted(
+    at.userId,
+    at.projectId,
+    'project.write',
+    'marking an issue merged',
+  );
+  if (denied) return denied;
+  const listed = await listIssues(
+    at.projectId,
+    { key: input.item },
+    { sort: 'updatedAt:desc', limit: 1, offset: 0 },
+  );
+  const issue = listed.ok ? listed.rows[0] : undefined;
+  if (!issue) {
+    return no(
+      'OPS_ISSUE_UNKNOWN',
+      '/item',
+      `this project holds no issue ${input.item}. Nothing was done`,
+    );
+  }
+  const hookActor = { type: 'user' as const, id: at.userId, agency: 'human' as const };
+  const marked = await applyMergeMarker({
+    issue: { id: issue.id, projectId: at.projectId, mergedAt: issue.mergedAt ?? null },
+    op: 'mark',
+    ...(reason ? { note: reason } : {}),
+    ...(input.commit ? { commit: input.commit } : {}),
+    actor: { agency: 'human', commentAuthorId: at.userId, hookActor, box: null },
+  });
+  await settleReleaseOnMark(issue.id, hookActor);
+  return { ok: true, value: { key: input.item, recorded: `${marked.mark}: ${marked.markDetail}` } };
+}
+
+/** The project document or one binding, written whole at the revision read, as its door writes it. */
+async function writeDocument(
+  input: SupportForgeActRequest,
+  at: { projectId: string; userId: string },
+): Promise<OpsOutcome<{ key: string; recorded: string }>> {
+  const denied = await permitted(
+    at.userId,
+    at.projectId,
+    'project.admin',
+    input.act === 'config.write' ? 'changing the project document' : 'changing a binding',
+  );
+  if (denied) return denied;
+  const baseRevision = input.baseRevision ?? null;
+  const written =
+    input.act === 'config.write'
+      ? await writeProjectConfig({ ...at, baseRevision, raw: input.document })
+      : await writeBinding({ ...at, bindingId: input.item, baseRevision, raw: input.document });
+  if (!written.ok) return { ok: false, refusals: written.refusals.map((r) => ({ ...r })) };
+  return {
+    ok: true,
+    value: {
+      key: input.item,
+      recorded: `${input.act === 'config.write' ? 'the project document' : `binding ${input.item}`} at revision ${written.held.revision}`,
+    },
+  };
+}
+
 async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOutcome<unknown>> {
+  const shape = shapeRefusal(input);
+  if (shape) return shape;
   const him = await ownerOfMessage(room, input);
   if (!him.ok) return him;
   const project = await projectInScope(room, input.project);
@@ -102,26 +250,24 @@ async function act(room: RoomRow, input: SupportForgeActRequest): Promise<OpsOut
   const { asker, said } = him.value;
   const reason = reasonOf(room, input, said);
   const at = { projectId: project.value.id, userId: asker.userId };
-  return asAsker(asker, project.value.id, async (): Promise<OpsOutcome<unknown>> => {
-    // read as him, as the item's page would offer it: his grants and the item's state decide
-    const plan = await planItemAct(
-      { act: input.act, key: input.item, ...(reason ? { reason } : {}) },
-      at,
-    );
-    if (!plan.ok) return doorSaid(plan.code, plan.why);
-    const made = await makeItemAct(plan.plan, reason, at);
-    if (!made.ok) return doorSaid(made.code, `${made.detail}.`);
-    return {
-      ok: true,
-      value: {
-        act: input.act,
-        key: plan.key,
-        project: project.value.slug,
-        madeBy: asker.label ?? asker.key,
-        recorded: plan.said,
-      },
-    };
-  });
+  const made = await asAsker(asker, project.value.id, () =>
+    ITEM_ACT.has(input.act)
+      ? itemAct(input, reason, at)
+      : input.act === 'issue.merge'
+        ? markMerged(input, reason, at)
+        : writeDocument(input, at),
+  );
+  if (!made.ok) return made;
+  return {
+    ok: true,
+    value: {
+      act: input.act,
+      key: made.value.key,
+      project: project.value.slug,
+      madeBy: asker.label ?? asker.key,
+      recorded: made.value.recorded,
+    },
+  };
 }
 
 /**

@@ -82,6 +82,7 @@ export {
   listTestingProfiles,
   readPolicy as readEffectivePolicy,
   readProjectDocument,
+  writeProjectConfig,
 } from './service.js';
 export {
   hostOf,

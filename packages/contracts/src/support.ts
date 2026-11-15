@@ -1642,6 +1642,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_FORGE_ACT_NOT_THE_OWNER",
 	/** An owner's Forge act in a room whose binding names no owner (ISS-1243). */
 	"SUPPORT_FORGE_ACT_NO_OWNER",
+	/** An owner's Forge act carrying a field another act takes, or missing the document it writes (ISS-1243). */
+	"SUPPORT_FORGE_ACT_SHAPE",
 	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
@@ -1785,6 +1787,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_FORGE_ACT_NOT_HIS_MESSAGE: 403,
 	SUPPORT_FORGE_ACT_NOT_THE_OWNER: 403,
 	SUPPORT_FORGE_ACT_NO_OWNER: 403,
+	SUPPORT_FORGE_ACT_SHAPE: 400,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,

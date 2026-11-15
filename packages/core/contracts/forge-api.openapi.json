@@ -50285,12 +50285,92 @@
                       "workflow.return",
                       "release.cut",
                       "release.approve",
-                      "release.return"
+                      "release.return",
+                      "issue.merge",
+                      "config.write",
+                      "binding.write"
                     ],
                     "type": "string"
                   },
+                  "baseRevision": {
+                    "anyOf": [
+                      {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "config.write and binding.write: the revision of the document you read and changed, null where none is declared yet"
+                  },
+                  "carry": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "all": {
+                            "const": true,
+                            "type": "boolean"
+                          },
+                          "why": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "all",
+                          "why"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "issue": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "n": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "why": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "issue",
+                            "n",
+                            "why"
+                          ],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    ],
+                    "description": "release.approve only: the unproven criteria he lets go with it, [{ issue, n, why }] or { all: true, why }, as he said"
+                  },
+                  "commit": {
+                    "description": "issue.merge only: the commit it landed at, where he named one",
+                    "pattern": "^[0-9a-f]{7,40}$",
+                    "type": "string"
+                  },
+                  "document": {
+                    "additionalProperties": {},
+                    "description": "config.write and binding.write: the whole document as it is to stand, the one you read with his change made",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
                   "item": {
-                    "description": "the item: REQ-n, a workflow's flow such as chat-turn, or a release version such as 0.19.0",
+                    "description": "the item: REQ-n, a workflow's flow such as chat-turn, a release version such as 0.19.0, an issue ISS-n, a binding's id, or the project's slug for config.write",
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"

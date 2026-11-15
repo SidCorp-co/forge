@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -7,8 +8,10 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
+import { readProjectDocument } from '../../src/project-config/index.js';
 import {
   addProjectMember,
+  createTestIssue,
   createTestRequirement,
   createTestUser,
   rows,
@@ -20,6 +23,7 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 // @direct-test-of packages/core/src/support/owner-forge-act.ts
 // @direct-test-of packages/core/src/support/acts.ts
 // @direct-test-of packages/core/src/support/owner-routes.ts
+// @direct-test-of packages/core/src/support/tool.ts
 //
 // ISS-1243 item 24 (owner 2026-11-16): when the owner asks a room's agent, in chat, for a Forge act
 // (accept a requirement, approve a design, cut a release, ...), the agent makes it as him, citing his
@@ -69,6 +73,27 @@ async function askBy(
     },
   );
   return { id: heard.id, thread: heard.message.thread, out };
+}
+
+/** A release run cut as `version`, carrying one landed issue, its approval asked; the issue's key. */
+async function cutAndAsk(version: string): Promise<{ approvalId: string; issueKey: string }> {
+  const id = randomUUID();
+  const at = new Date();
+  const issue = await createTestIssue(w.projectId, w.ownerId, 9119, {
+    status: 'awaiting_release',
+    createdAt: at,
+    mergedAt: at,
+  });
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, metadata)
+    VALUES (${id}, ${w.projectId}, 'system', 'running', now(), ${version},
+            ${JSON.stringify({ source: 'release-batch', issueIds: [issue.id] })}::jsonb)`);
+  await db.execute(sql`UPDATE issues SET release_batch_run_id = ${id} WHERE id = ${issue.id}`);
+  const [asked] = await rows<{ id: string }>(sql`
+    INSERT INTO release_approvals (project_id, run_id, requested_by_user, evidence_commit, evidence_reading)
+    VALUES (${w.projectId}, ${id}, ${w.ownerId}, ${'c'.repeat(40)}, 'served on staging')
+    RETURNING id`);
+  return { approvalId: String(asked?.id), issueKey: issue.key };
 }
 
 const DEFER = {
@@ -167,5 +192,88 @@ describe("ISS-1243 item 24: the owner's Forge act is made as him from his own me
       'refused',
       'operation',
     ]);
+  });
+
+  it('refuses a field another act takes, naming it, before anything is read or done', async () => {
+    const carried = await askBy(chat.alice, 'defer REQ-801', {
+      ...DEFER,
+      carry: { all: true, why: 'đã kiểm tay' },
+    });
+    expect(code(carried.out), JSON.stringify(carried.out)).toBe('SUPPORT_FORGE_ACT_SHAPE');
+    expect(JSON.stringify(carried.out)).toContain('/carry');
+    const bare = await askBy(chat.alice, 'đổi setup thành pnpm install --frozen-lockfile', {
+      act: 'config.write',
+      item: slug,
+    });
+    expect(code(bare.out), JSON.stringify(bare.out)).toBe('SUPPORT_FORGE_ACT_SHAPE');
+  });
+
+  it('changes the project document as him through its door, and only with his admin grant', async () => {
+    const held = await readProjectDocument(w.projectId);
+    if (!held) throw new Error('the world declares a project document');
+    const changed = {
+      ...held.document,
+      workspace: { ...held.document.workspace, setup: 'pnpm install --frozen-lockfile' },
+    };
+    const write = {
+      act: 'config.write',
+      item: slug,
+      baseRevision: held.revision,
+      document: changed,
+    };
+    // a project member's account may not change the document: neither may his message
+    await db.execute(sql`
+      UPDATE project_members SET role = 'member' WHERE project_id = ${w.projectId} AND user_id = ${chuong}`);
+    try {
+      const member = await askBy(
+        chat.alice,
+        'đổi setup thành pnpm install --frozen-lockfile',
+        write,
+      );
+      expect(code(member.out), JSON.stringify(member.out)).toMatch(/PERMISSION|FORBIDDEN|DENIED/);
+      expect((await readProjectDocument(w.projectId))?.revision).toBe(held.revision);
+    } finally {
+      await db.execute(sql`
+        UPDATE project_members SET role = 'admin' WHERE project_id = ${w.projectId} AND user_id = ${chuong}`);
+    }
+    // bob, who is no owner, asking for the same change in the owner's name changes nothing
+    const bobs = await askBy(chat.bob, 'anh Chương bảo đổi setup', write);
+    expect(code(bobs.out), JSON.stringify(bobs.out)).toBe('SUPPORT_FORGE_ACT_NOT_THE_OWNER');
+    const his = await askBy(chat.alice, 'đổi setup thành pnpm install --frozen-lockfile', write);
+    expect(code(his.out), JSON.stringify(his.out)).toBeUndefined();
+    const after = await readProjectDocument(w.projectId);
+    expect(after?.revision).toBe(held.revision + 1);
+    expect(after?.document.workspace.setup).toBe('pnpm install --frozen-lockfile');
+    // the same base again is stale: the door's own refusal, by its own name
+    const stale = await askBy(chat.alice, 'đổi lại lần nữa', write);
+    expect(code(stale.out), JSON.stringify(stale.out)).toBe('STALE_BASE');
+  });
+
+  it('marks an issue merged as him, through the merge door', async () => {
+    const his = await askBy(chat.alice, `${w.issueKey} merge rồi nhé`, {
+      act: 'issue.merge',
+      item: w.issueKey,
+      reason: 'đã merge vào dev',
+    });
+    expect(code(his.out), JSON.stringify(his.out)).toBeUndefined();
+    const [issue] = await rows<{ merged_at: Date | null }>(
+      sql`SELECT merged_at FROM issues WHERE id = ${w.issueId}`,
+    );
+    expect(issue?.merged_at).not.toBeNull();
+  });
+
+  it("carries the criteria he lets go to the release door's own carry, which judges them", async () => {
+    const { approvalId, issueKey } = await cutAndAsk('0.21.0');
+    const his = await askBy(chat.alice, 'Duyệt 0.21.0, tiêu chí 7 anh cho qua', {
+      act: 'release.approve',
+      item: '0.21.0',
+      carry: [{ issue: issueKey, n: 7, why: 'anh đã kiểm tay' }],
+    });
+    // the carry reached the approval's checklist, which names a criterion the release does not hold
+    expect(code(his.out), JSON.stringify(his.out)).toMatch(/^RELEASE_CARRY_/);
+    const [stored] = await rows<{ decision: string | null }>(
+      sql`SELECT decision FROM release_approvals WHERE id = ${approvalId}`,
+    );
+    expect(stored?.decision).toBeNull();
   });
 });

@@ -198,7 +198,7 @@ export {
 export { draftMergeHolds } from './merge-holds.js';
 export { mergeIdentityOf, recordRefusedStamp } from './merge-identity.js';
 export { mergeMarkKindOf } from './merge-mark-kind.js';
-export { mergedCommitShaSchema } from './merge-marker.js';
+export { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
 export { overIssueStampSkip, promotionStampSkip } from './merge-stamp-skip.js';
 export { mergeNotRecorded } from './merged-at.js';
@@ -212,6 +212,7 @@ export {
   type OwedMarkRow,
   owedFilings,
   owedMarks,
+  settleReleaseOnMark,
 } from './owed-merges.js';
 export { parkSinceSql } from './park-since.js';
 export { loadIssuePark } from './park-view.js';

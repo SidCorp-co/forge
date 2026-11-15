@@ -1,0 +1,1 @@
+**The owner's Forge acts are made from his chat message.** Accepting a requirement, approving a design or release (with carry), cutting, marking merged and changing config run as him through each act's door; anyone else's message is refused.
