@@ -912,6 +912,7 @@ export const SUPPORT_ACTIONS = [
 	"owner_act",
 	"owner_sign_in",
 	"release_decision",
+	"forge_act",
 	"silent",
 ] as const;
 
@@ -1635,6 +1636,12 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_RELEASE_DECISION_NOT_PERMITTED",
 	/** A release decision naming no one whole version (ISS-1206). */
 	"SUPPORT_RELEASE_VERSION_AMBIGUOUS",
+	/** An owner's Forge act cited from a message that is no member's own in the thread named (ISS-1243). */
+	"SUPPORT_FORGE_ACT_NOT_HIS_MESSAGE",
+	/** An owner's Forge act cited from a message the room's named owner did not write, as the chat server signed it (ISS-1243). */
+	"SUPPORT_FORGE_ACT_NOT_THE_OWNER",
+	/** An owner's Forge act in a room whose binding names no owner (ISS-1243). */
+	"SUPPORT_FORGE_ACT_NO_OWNER",
 	/** A consent naming no product the project binds, or none where it binds several (ISS-1013). */
 	"SUPPORT_OWNER_PRODUCT_UNKNOWN",
 	/** No owner credential kept for the product, or one that cannot be used (ISS-1013). */
@@ -1775,6 +1782,9 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_RELEASE_DECISION_NOT_HIS_MESSAGE: 403,
 	SUPPORT_RELEASE_DECISION_NOT_PERMITTED: 403,
 	SUPPORT_RELEASE_VERSION_AMBIGUOUS: 400,
+	SUPPORT_FORGE_ACT_NOT_HIS_MESSAGE: 403,
+	SUPPORT_FORGE_ACT_NOT_THE_OWNER: 403,
+	SUPPORT_FORGE_ACT_NO_OWNER: 403,
 	SUPPORT_OWNER_PRODUCT_UNKNOWN: 404,
 	SUPPORT_OWNER_CREDENTIAL_MISSING: 409,
 	SUPPORT_DIRECT_TURN_NEEDS_ADMIN: 403,

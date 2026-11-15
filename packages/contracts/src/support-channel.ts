@@ -237,6 +237,66 @@ export type SupportReleaseDecisionRequest = z.infer<
 	typeof supportReleaseDecisionRequestSchema
 >;
 
+/**
+ * The Forge acts the owner asks for in chat that his room's agent makes as him (ISS-1243 item 24):
+ * each the act an item's page offers (`item-acts.ts`) or the merge mark, made through its own door.
+ */
+export const SUPPORT_FORGE_ACTS = [
+	"requirement.propose",
+	"requirement.agree",
+	"requirement.accept",
+	"requirement.return",
+	"requirement.defer",
+	"requirement.undefer",
+	"requirement.drop",
+	"requirement.accept_delivery",
+	"workflow.propose",
+	"workflow.approve",
+	"workflow.return",
+	"release.cut",
+	"release.approve",
+	"release.return",
+] as const;
+export type SupportForgeAct = (typeof SUPPORT_FORGE_ACTS)[number];
+
+/**
+ * The owner's Forge act, made as him from his own message (ISS-1243 item 24): core reads who wrote
+ * the message from the chat server's record, never from its words, and only the owner the room's
+ * binding names acts; his own Forge account's grants decide, through the act's own door.
+ */
+export const supportForgeActRequestSchema = z.strictObject({
+	thread: supportThreadIdSchema,
+	message: supportThreadIdSchema.describe(
+		"the owner's own message asking for the act, in that thread (`message` in what you were handed): the act is his",
+	),
+	project: supportProjectSlugSchema.describe(
+		"the item's project: your own, or one you follow, by its slug",
+	),
+	act: z
+		.enum(SUPPORT_FORGE_ACTS)
+		.describe("the act, as the item's page names it"),
+	item: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.describe(
+			"the item: REQ-n, a workflow's flow such as chat-turn, or a release version such as 0.19.0",
+		),
+	reason: z
+		.string()
+		.trim()
+		.min(1)
+		.max(300)
+		.optional()
+		.describe(
+			"his why in a few words, where the act carries one; his message is quoted beside it either way",
+		),
+});
+export type SupportForgeActRequest = z.infer<
+	typeof supportForgeActRequestSchema
+>;
+
 /** A question asked again, with its one answer (BC-36). */
 /** A common issue's question and its one answer, as the session notes it and as a person adds it. */
 const commonIssueQuestionSchema = z.string().trim().min(3).max(300);

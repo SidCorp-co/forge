@@ -45,6 +45,10 @@ export { composeLayers } from './prompt/layer.js';
 export { METHOD_LAYERS } from './prompt/layers.js';
 export { type PreCall, runTurnEvents, type ToolCallRecord } from './run-turn-core.js';
 export { provideNeedsYouDecisionRead } from './tools/decide-tool.js';
+// the acts an item's page offers, read and made as a person through each act's own door (REQ-69),
+// which a room agent makes as the owner from his signed message too (ISS-1243 item 24)
+export { makeItemAct } from './tools/item-act-doors.js';
+export { planItemAct } from './tools/item-act-plans.js';
 export { type ChatToolSpec, type ChatToolset, toolError } from './tools/mcp-adapter.js';
 export { provideChatTools } from './tools/registry.js';
 export type { WidgetDraftParams } from './tools/widget-draft-tool.js';

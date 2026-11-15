@@ -15,6 +15,7 @@ import type {
   ChannelRole,
   ChannelRoute,
   SupportAnswerQuestionRequest,
+  SupportForgeActRequest,
   SupportReleaseDecisionRequest,
 } from '@forge/contracts/support-channel';
 import { OPERATIONS_ACTIONS } from '@forge/contracts/support-operations';
@@ -42,6 +43,7 @@ import { no } from './outcome.js';
 import { ownerAct } from './owner-act.js';
 import { askOwner } from './owner-ask.js';
 import { ownerConsent } from './owner-consent.js';
+import { ownerForgeAct } from './owner-forge-act.js';
 import { startOwnerSignIn } from './owner-sign-in.js';
 import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
@@ -145,6 +147,7 @@ export type SupportActInput =
   | ({ action: 'owner_act' } & SupportOwnerActRequest)
   | ({ action: 'owner_sign_in' } & SupportOwnerSignInRequest)
   | ({ action: 'release_decision' } & SupportReleaseDecisionRequest)
+  | ({ action: 'forge_act' } & SupportForgeActRequest)
   | {
       action: 'read';
       name: string;
@@ -401,6 +404,10 @@ async function act(
     case 'release_decision': {
       const { action: _, ...request } = input;
       return decideReleaseFromMessage(room, request);
+    }
+    case 'forge_act': {
+      const { action: _, ...request } = input;
+      return ownerForgeAct(room, request);
     }
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
