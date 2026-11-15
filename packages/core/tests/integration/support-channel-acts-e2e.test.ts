@@ -351,7 +351,15 @@ describe("REQ-75 r6: #webmail's seed, and results never progress", () => {
        WHERE room_id = ${w.roomId}::uuid AND feedback_id = ${fid}::uuid
          AND kind IN ('progress_posted', 'result_told')`);
     expect(told).toEqual([
-      { kind: 'result_told', output: { phase: 'resolved', feedbackKey: key, project: expect.any(String), route: 'answer' } },
+      {
+        kind: 'result_told',
+        output: {
+          phase: 'resolved',
+          feedbackKey: key,
+          project: expect.any(String),
+          route: 'answer',
+        },
+      },
     ]);
     // the answer is read off the item, never kept on the link
     const [link] = await rows<Record<string, unknown>>(sql`

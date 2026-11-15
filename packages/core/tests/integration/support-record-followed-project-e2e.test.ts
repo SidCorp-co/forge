@@ -177,7 +177,9 @@ describe('ISS-1088: agree resolves a record in the project it was made for', () 
     const [note] = await rows<{ input: { note?: string } }>(sql`
       SELECT a.input FROM support_actions a JOIN feedback f ON f.id = a.feedback_id
        WHERE f.project_id = ${feId}::uuid AND a.kind = 'message_in'`);
-    expect(String(note?.input.note)).toContain(`${feRecord.key} of ${FE}, recorded from this thread`);
+    expect(String(note?.input.note)).toContain(
+      `${feRecord.key} of ${FE}, recorded from this thread`,
+    );
     await w.settleWarm();
   });
 
