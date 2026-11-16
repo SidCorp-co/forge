@@ -193,7 +193,7 @@ export const ROOM_ACT_CARDS = {
   },
   search: {
     purpose:
-      'Searches the knowledge and published API contracts of your project, or one you follow; each hit carries its citation.',
+      'Searches your project’s records, or a followed one’s, through the find door, and looks up its published API contracts; each hit carries its citation.',
     situations: [
       {
         when: 'someone asks how the product works or what an API takes',
@@ -201,6 +201,7 @@ export const ROOM_ACT_CARDS = {
       },
     ],
     practice: [
+      'The records are its terms, rules, knowledge, lessons and reference sources, in the find door’s ranks, a term found by any of its aliases; the API operations are a lookup of its current contracts, cited `openapi:`.',
       'What the product can do is what its knowledge and project document say; where neither says it, say you cannot tell.',
     ],
     example: { query: 'order export size column', project: 'adminhub-api' },

@@ -1,10 +1,13 @@
-// Search for a how-to answer (REQ-75 BC-2): the project's knowledge, as the find door recalls it
-// (ISS-1256), and the operations of its current published OpenAPI contracts, each hit carrying the
-// source the session cites.
+// Search for a how-to answer (REQ-75 BC-2): the project's records through the one find door
+// (ISS-1256), filtered to the types a room may read, and the operations of its current published
+// OpenAPI contracts, a contract lookup beside the search rather than a record type of it. Each hit
+// carries the source the session cites.
 
+import type { FindType } from '@forge/contracts/find';
 import { db } from '../db/client.js';
-import { recallKnowledge } from '../knowledge/index.js';
+import { findRecords } from '../knowledge/index.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
+import type { Found } from '../run-context/index.js';
 import { namedProject } from './ops-scope.js';
 import type { Outcome } from './outcome.js';
 import { noteRoomReached } from './room-reaches.js';
@@ -67,8 +70,31 @@ async function openApiHits(projectId: string, query: string): Promise<SearchHit[
 }
 
 /**
- * The project's knowledge and published API, for a how-to answer that cites its sources: the home
+ * The record types a room's search reads: the project's knowledge (its terms, rules, entries and
+ * lessons, and its org's rulings) and the reference sources it follows, as every room reads them
+ * through its own acts. Issues, requirements and feedback are an operations grant's reads, memory and
+ * decisions the project's agents' own, and a capability card is a door the room does not call.
+ */
+const ROOM_FIND_TYPES = [
+  'term',
+  'rule',
+  'knowledge',
+  'lesson',
+  'reference',
+] as const satisfies readonly FindType[];
+const ROOM_FIND_LIMIT = 8;
+/** The knowledge kind a knowledge type's record is, as the run-context record keeps it. */
+const KNOWLEDGE_KINDS: Partial<Record<FindType, string>> = {
+  term: 'glossary',
+  rule: 'rule',
+  knowledge: 'knowledge',
+  lesson: 'lesson',
+};
+
+/**
+ * The project's records and published API, for a how-to answer that cites its sources: the home
  * project's, or a project a channel agent follows that `project` names (ISS-874), whose hits cite it.
+ * The records are the find door's, in its ranks, over that one project alone.
  */
 export async function search(
   room: RoomRow,
@@ -79,28 +105,35 @@ export async function search(
   if (!named.ok) return named;
   const { id: projectId } = named.value;
   const from = projectId === room.projectId ? '' : `${named.value.slug}/`;
-  // the find door's knowledge, by keyword: any of the words, not all of them, since a member's
-  // question rarely repeats a page's every word, and a term's alias reaches the term (ISS-1256)
-  const { knowledge } = words(query).length
-    ? await recallKnowledge({
-        projectId,
-        reader: { userId: room.principalUserId, fence: [projectId] },
-        query,
-        scope: 'knowledge',
-        topK: 6,
-        strategy: 'keyword',
-      })
-    : { knowledge: [] };
-  // what the room's agent read, kept as a run's knowledge search is (ISS-1251)
-  noteRoomReached(room, projectId, 'search', { knowledge });
+  const records = await findRecords({
+    projectId,
+    reader: { userId: room.principalUserId, fence: [projectId] },
+    query,
+    types: ROOM_FIND_TYPES,
+    limit: ROOM_FIND_LIMIT,
+    askedBy: 'agent',
+  });
+  // what the room's agent read, kept as a run's search is (ISS-1251)
+  const found: Found = {
+    knowledge: records.flatMap((c) => {
+      const kind = KNOWLEDGE_KINDS[c.type];
+      return kind && c.key ? [{ slug: c.key, kind, body: c.text }] : [];
+    }),
+    records: records.flatMap((c) =>
+      c.type === 'reference' ? [{ kind: 'reference' as const, ref: c.ref, text: c.text }] : [],
+    ),
+  };
+  noteRoomReached(room, projectId, 'search', found);
   const api = (await openApiHits(projectId, query)).map((h) =>
     from ? { ...h, cite: h.cite.replace(/^openapi:/, `openapi:${from}`) } : h,
   );
   const hits = [
-    ...knowledge.map((k) => ({
-      cite: `knowledge:${from}${k.slug}`,
-      title: k.title,
-      excerpt: k.body.slice(0, 1200),
+    // a knowledge entry is cited by its slug, a reference source by its id
+    ...records.map((c) => ({
+      cite:
+        c.type === 'reference' ? `reference:${from}${c.ref}` : `knowledge:${from}${c.key ?? c.ref}`,
+      title: c.title,
+      excerpt: c.text.slice(0, 1200),
     })),
     ...api,
   ];

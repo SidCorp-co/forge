@@ -1,3 +1,4 @@
+import type { FindType } from '@forge/contracts/find';
 import type { ItemEmbeddingStatus } from '../db/schema-item-embeddings.js';
 import type { ProjectReader } from '../lib/authz.js';
 import { portSlot } from '../lib/port-slot.js';
@@ -21,6 +22,25 @@ export interface KnowledgeRecall {
   degraded?: boolean;
 }
 
+/** A find over one project's records of the named types, as a module downstream of knowledge asks it. */
+export interface KnowledgeFindInput {
+  projectId: string;
+  reader: ProjectReader;
+  query: string;
+  types: readonly FindType[];
+  limit: number;
+  askedBy: 'person' | 'agent';
+}
+
+/** One record the find door ranked, best first: its type, its own id, the key it is named by and its text. */
+export interface KnowledgeFoundRecord {
+  type: FindType;
+  ref: string;
+  key: string | null;
+  title: string;
+  text: string;
+}
+
 /**
  * What knowledge reaches but does not own. Memory imports knowledge, the find door ranks it, and
  * requirements and feedback sit downstream (Product design after Knowledge), so knowledge names what it needs and the
@@ -29,6 +49,8 @@ export interface KnowledgeRecall {
 export interface KnowledgePorts {
   /** Recall, as a filter of the find door (ISS-1256), which ranks knowledge beside every other type. */
   recall(input: KnowledgeRecallInput): Promise<KnowledgeRecall>;
+  /** One project's records of `types` in the find door's ranks (ISS-1256), its miss kept as a gap. */
+  find(input: KnowledgeFindInput): Promise<KnowledgeFoundRecord[]>;
   /** Flags the project's curated memories a change meets (REQ-89 BC-5); how many were flagged. */
   flagMemoryRecheck(projectId: string, change: RecheckChange): Promise<number>;
   /** Re-embeds a requirement from its owner's current head; null when it has none. */
@@ -44,8 +66,8 @@ export const provideKnowledgePorts = slot.provide;
 export const knowledgePort = slot.port;
 
 /**
- * Recall through the find door (ISS-1256), for a module downstream of knowledge that reaches the door
- * only through knowledge's face: the room's how-to search.
+ * The find door (ISS-1256), for a module downstream of knowledge that reaches the door only through
+ * knowledge's face: the room's how-to search.
  */
-export const recallKnowledge = (input: KnowledgeRecallInput): Promise<KnowledgeRecall> =>
-  knowledgePort('recall')(input);
+export const findRecords = (input: KnowledgeFindInput): Promise<KnowledgeFoundRecord[]> =>
+  knowledgePort('find')(input);

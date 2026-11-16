@@ -33,7 +33,11 @@ export {
 export { orgKnowledgeCreatedAt, orgOnDemandSlugsOf } from './org-knowledge.js';
 export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
 export { keywordOrgRecall, type OrgRecallHit, semanticOrgRecall } from './org-recall.js';
-export { provideKnowledgePorts, recallKnowledge } from './ports.js';
+export {
+  findRecords,
+  type KnowledgeFoundRecord,
+  provideKnowledgePorts,
+} from './ports.js';
 export {
   type Anchors,
   anchorsMet,
