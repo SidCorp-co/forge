@@ -25,7 +25,9 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
     db.execute(sql`
       SELECT s.name, s.project_id AS "projectId", length(s.description)::int AS size FROM skills s
       WHERE s.scope = 'global' OR s.project_id = ${projectId}::uuid
-      ORDER BY 2 DESC, 1`) as unknown as Promise<{ name: string; projectId: string | null; size: number }[]>,
+      ORDER BY 2 DESC, 1`) as unknown as Promise<
+      { name: string; projectId: string | null; size: number }[]
+    >,
   ]);
   const maps = await tier0Maps(projectId, catalog, await doorCalls(projectId, catalog, 30));
   const knowledge = always.reduce((n, f) => n + f.text.length, 0);

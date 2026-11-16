@@ -50,7 +50,9 @@ describe('matchRelease', () => {
   });
 
   it('counts no word most open items share, so "agent" alone matches nothing', () => {
-    expect(matchRelease(release('Agent improvements for every agent session.'), items, [])).toBeNull();
+    expect(
+      matchRelease(release('Agent improvements for every agent session.'), items, []),
+    ).toBeNull();
   });
 
   it('needs two shared words: one is no evidence', () => {

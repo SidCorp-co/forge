@@ -28,7 +28,12 @@ export const MEMORY_MIRROR_SOURCES = ["issue", "comment", "job"] as const;
 // The sources curated memory holds: what agents and people wrote down. A memory list, count and
 // recall read these alone; the mirrors are history and a search index, read only by name (REQ-89
 // BC-3, ISS-1121).
-export const MEMORY_AUTHORED_SOURCES = ["note", "knowledge", "policy", "decision"] as const;
+export const MEMORY_AUTHORED_SOURCES = [
+	"note",
+	"knowledge",
+	"policy",
+	"decision",
+] as const;
 
 // What a memory hit stands as, beside its text: `verified` when someone checked it after its last
 // write and within the project's note window, `unverified` otherwise. An unverified hit is a lead to
@@ -54,7 +59,13 @@ export interface MemoryStaleRef {
 	project?: string;
 }
 
-export const MEMORY_CITE_KINDS = ["issue", "requirement", "workflow", "commit", "release"] as const;
+export const MEMORY_CITE_KINDS = [
+	"issue",
+	"requirement",
+	"workflow",
+	"commit",
+	"release",
+] as const;
 export type MemoryCiteKind = (typeof MEMORY_CITE_KINDS)[number];
 
 /**
@@ -109,17 +120,25 @@ export interface MemoryRevision {
  * entry, what ends it. A write answers them as top-level fields; one it leaves out is stored as the
  * default and named in `owed` until a rewrite answers it.
  */
-export const MEMORY_CURATION_FIELDS = ["value", "type", "scope", "recheckWhen"] as const;
+export const MEMORY_CURATION_FIELDS = [
+	"value",
+	"type",
+	"scope",
+	"recheckWhen",
+] as const;
 export type MemoryCurationField = (typeof MEMORY_CURATION_FIELDS)[number];
 
 /** Each answer's own shape, as a warning names it. */
-export const MEMORY_CURATION_FIELD_SHAPES: Record<MemoryCurationField, string> = {
-	value: "value: string (1-500), how this helps later work; a save with no later-work value belongs in history (a comment on the issue), not memory",
-	type: 'type: "fact" (verified, naming what verified it), "hypothesis" (inferred) or "convention" (a way of working settled)',
-	scope: 'scope: string (1-500), where it applies, e.g. "every memory write of this project"',
-	recheckWhen:
-		'recheckWhen: string (1-1000), the change that means re-checking it; name paths (`packages/core/src/memory/indexer.ts`), routes (`POST /api/memory`), config keys or rule slugs so a landing touching one flags it',
-};
+export const MEMORY_CURATION_FIELD_SHAPES: Record<MemoryCurationField, string> =
+	{
+		value:
+			"value: string (1-500), how this helps later work; a save with no later-work value belongs in history (a comment on the issue), not memory",
+		type: 'type: "fact" (verified, naming what verified it), "hypothesis" (inferred) or "convention" (a way of working settled)',
+		scope:
+			'scope: string (1-500), where it applies, e.g. "every memory write of this project"',
+		recheckWhen:
+			"recheckWhen: string (1-1000), the change that means re-checking it; name paths (`packages/core/src/memory/indexer.ts`), routes (`POST /api/memory`), config keys or rule slugs so a landing touching one flags it",
+	};
 
 /** What a write left out is stored as. */
 export const MEMORY_UNSCOPED = "unscoped";
@@ -210,7 +229,13 @@ export const MEMORY_CHECK_AFTER_DAYS = 3;
  * or checked (`changed`), a record it cites no longer resolves (`gone`), a release or a landing flagged
  * it (`flagged`), or its writer left out a curation answer (`uncurated`, ISS-1121). A memory with none of them holds; the `stale` list is every memory with one.
  */
-export const MEMORY_CHECK_REASONS = ["unchecked", "changed", "gone", "flagged", "uncurated"] as const;
+export const MEMORY_CHECK_REASONS = [
+	"unchecked",
+	"changed",
+	"gone",
+	"flagged",
+	"uncurated",
+] as const;
 export type MemoryCheckReason = (typeof MEMORY_CHECK_REASONS)[number];
 
 export interface MemoryEntriesResponse {
@@ -246,5 +271,9 @@ export type RerankDegradedReason = (typeof RERANK_DEGRADED_REASONS)[number];
 export interface RerankReport {
 	path: RerankPath;
 	model?: string;
-	degraded?: { reason: RerankDegradedReason; unscored: number; candidates: number };
+	degraded?: {
+		reason: RerankDegradedReason;
+		unscored: number;
+		candidates: number;
+	};
 }

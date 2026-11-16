@@ -20,7 +20,11 @@ export const KNOWLEDGE_REFUSAL_STATUSES = {
 // What an entry of knowledge or memory is (REQ-89 BC-4): a verified fact, a hypothesis, or a
 // convention the owner settled. A write that names none is stored as a `hypothesis` and answered
 // with a warning: an inference written down never becomes a fact by being written (ISS-1121).
-export const CURATED_ENTRY_TYPES = ["fact", "hypothesis", "convention"] as const;
+export const CURATED_ENTRY_TYPES = [
+	"fact",
+	"hypothesis",
+	"convention",
+] as const;
 export type CuratedEntryType = (typeof CURATED_ENTRY_TYPES)[number];
 
 /** What a write that names no type is stored as. */
@@ -62,25 +66,42 @@ export interface RecheckDue {
 // of one of these kinds, and every org entry, is written with all three or refused
 // `KNOWLEDGE_PROVENANCE_MISSING` naming each one left out. A lesson keeps its own provenance in the
 // lessons module; an overview, scenario or glossary describes rather than asserts, and owes none.
-export const KNOWLEDGE_PROVENANCE_KINDS = ["reference", "guide", "workflow", "rule"] as const;
-export type KnowledgeProvenanceKind = (typeof KNOWLEDGE_PROVENANCE_KINDS)[number];
+export const KNOWLEDGE_PROVENANCE_KINDS = [
+	"reference",
+	"guide",
+	"workflow",
+	"rule",
+] as const;
+export type KnowledgeProvenanceKind =
+	(typeof KNOWLEDGE_PROVENANCE_KINDS)[number];
 
-export const KNOWLEDGE_PROVENANCE_FIELDS = ["source", "scope", "recheckWhen"] as const;
-export type KnowledgeProvenanceField = (typeof KNOWLEDGE_PROVENANCE_FIELDS)[number];
+export const KNOWLEDGE_PROVENANCE_FIELDS = [
+	"source",
+	"scope",
+	"recheckWhen",
+] as const;
+export type KnowledgeProvenanceField =
+	(typeof KNOWLEDGE_PROVENANCE_FIELDS)[number];
 
 export const KNOWLEDGE_SOURCE_MAX = 2000;
 export const KNOWLEDGE_SCOPE_MAX = 500;
 export const KNOWLEDGE_RECHECK_WHEN_MAX = 1000;
 
 /** The longest each provenance field may be, by field. */
-export const KNOWLEDGE_PROVENANCE_MAX: Record<KnowledgeProvenanceField, number> = {
+export const KNOWLEDGE_PROVENANCE_MAX: Record<
+	KnowledgeProvenanceField,
+	number
+> = {
 	source: KNOWLEDGE_SOURCE_MAX,
 	scope: KNOWLEDGE_SCOPE_MAX,
 	recheckWhen: KNOWLEDGE_RECHECK_WHEN_MAX,
 };
 
 /** Each field's own shape: what it holds, its length and an example, as a refusal names it. */
-export const KNOWLEDGE_PROVENANCE_FIELD_SHAPES: Record<KnowledgeProvenanceField, string> = {
+export const KNOWLEDGE_PROVENANCE_FIELD_SHAPES: Record<
+	KnowledgeProvenanceField,
+	string
+> = {
 	source:
 		`source: string (1-${KNOWLEDGE_SOURCE_MAX}), what the entry rests on: \`file.ts:symbol\` anchors, ` +
 		`an issue or requirement key, or a URL, e.g. "packages/core/src/knowledge/upsert.ts:upsertKnowledgeEntries, ISS-1064"`,

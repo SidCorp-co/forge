@@ -9,9 +9,9 @@
 // rated high holds its issue and is fixed in it (BC-3): the merge check counts no such red as debt,
 // and the debts door records one with a `RED_RATED_HIGH` warning, never a refusal (ISS-1251).
 
-import type { IssueStatusTone } from "./issue-vocabulary";
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
+import type { IssueStatusTone } from "./issue-vocabulary";
 import {
 	LANDING_SURFACE_LABELS,
 	type LandingSurface,

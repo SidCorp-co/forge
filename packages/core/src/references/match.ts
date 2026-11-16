@@ -125,4 +125,3 @@ export function freshReleases(
   } else fresh = [...releases];
   return fresh.slice(0, PER_READ).reverse();
 }
-
