@@ -5,8 +5,8 @@
 // A run takes its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as
 // one job. That job is a run on its project's box like any other (ISS-1255): it starts when the
 // project has a free slot (`devices/run-slots.ts:slotsFor`, asked through `refuseRunWithoutSlot`)
-// and waits for one, never for a day; a run that took its turns carries the job into the run its
-// end queues. Nothing here counts a slot: the steward's demand is read by the box's slot read.
+// and waits for one, never for a day, and a slot a master's declaration is queued for is that
+// declaration's (ISS-1260); a run that took its turns carries the job into the run its end queues. Nothing here counts a slot: the steward's demand is read by the box's slot read.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -138,7 +138,7 @@ async function slotFree(projectId: string, tick: Tick): Promise<boolean> {
   if (boxes.length === 0) return true;
   for (const deviceId of boxes) {
     try {
-      await refuseRunWithoutSlot({ deviceId, projectId });
+      await refuseRunWithoutSlot({ deviceId, projectId, yieldToQueued: true });
       return true;
     } catch (err) {
       if (!isSlotRefusal(err)) throw err;

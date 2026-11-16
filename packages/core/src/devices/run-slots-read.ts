@@ -13,7 +13,10 @@
  * by the run's close; no row of its own exists.
  */
 
-import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import {
+  RUN_DECLARATION_REFUSAL_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import type { MasterSubagentSlots } from '@forge/contracts/master-standing';
 import { STARTED_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { eq, sql } from 'drizzle-orm';
@@ -25,6 +28,7 @@ import { readAdmissibleIssues } from './admissible.js';
 import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
 import { type SlotDemand, slotsFor } from './run-slots.js';
+import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 /** The run-session statuses that hold a subagent slot: a queued declaration runs nothing yet. */
 const HOLDING = STARTED_SESSION_STATUSES;
@@ -162,14 +166,49 @@ function slotRefusal(projectId: string, box: BoxSlots, mine: ProjectSlots) {
 }
 
 /**
+ * The box run id of a declaration of this project queued on this box for a slot, while the box still
+ * re-sends it: one the reaper has not yet ended for silence. Null where none waits.
+ */
+async function slotWaiter(deviceId: string, projectId: string): Promise<string | null> {
+  const [row] = (await db.execute(sql`
+    SELECT r.metadata ->> 'boxRunId' AS box_run_id
+      FROM agent_sessions s JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+     WHERE s.kind = ${RUN_SESSION_KIND} AND s.status = 'queued'
+       AND s.project_id = ${projectId} AND s.device_id = ${deviceId}
+       AND r.metadata -> ${RUN_DECLARATION_REFUSAL_METADATA_KEY} ->> 'code' = 'RUN_SLOT_UNAVAILABLE'
+       AND COALESCE(s.last_heartbeat_at, s.created_at) >= now() - make_interval(secs => ${SESSION_SILENCE_TIMEOUT_S})
+     ORDER BY s.created_at
+     LIMIT 1
+  `)) as unknown as Array<{ box_run_id: string | null }>;
+  return row ? (row.box_run_id ?? 'unnamed') : null;
+}
+
+/**
  * Refuse a run this project has no free slot for on this box. Inside an open, `tx` serializes every
  * open on the box, so two declarations racing for the last slot cannot both take it.
+ *
+ * `yieldToQueued` is for work core starts on its own (the steward's jobs): a slot a master's
+ * declaration is queued for goes to that declaration on the box's next re-send, so such work is
+ * refused while one waits. A queued row holds no slot, and a tick that only asked whether one is free
+ * took it first every time (ISS-1260).
  */
 export async function refuseRunWithoutSlot(args: {
   deviceId: string;
   projectId: string;
   tx?: Tx;
+  yieldToQueued?: boolean;
 }): Promise<void> {
+  if (args.yieldToQueued) {
+    const waiter = await slotWaiter(args.deviceId, args.projectId);
+    if (waiter) {
+      throw refuseDevice(
+        'RUN_SLOT_UNAVAILABLE',
+        `project ${args.projectId} has a run declaration queued for a slot on this box (run ${waiter}), ` +
+          "so the next free slot is that run's: work core starts on its own waits until it binds or the box stops re-sending it.",
+        '/projectId',
+      );
+    }
+  }
   if (args.tx) await lockXact(args.tx, 'runSession', `slots:${args.deviceId}`);
   const box = await readBoxSlots(args.deviceId, {
     declaring: args.projectId,

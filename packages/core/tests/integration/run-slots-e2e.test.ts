@@ -6,6 +6,7 @@
  * @direct-test-of packages/core/src/devices/run-slots-read.ts
  * @direct-test-of packages/core/src/devices/run-session.ts
  * @direct-test-of packages/core/src/devices/run-session-routes.ts
+ * @direct-test-of packages/core/src/steward/dispatch.ts
  * @direct-test-of packages/core/src/masters/service.ts
  * @direct-test-of packages/core/src/masters/read.ts
  * @direct-test-of packages/core/src/issues/issue-lease.ts
@@ -144,6 +145,30 @@ describe('subagent slots at run declare', () => {
     expect(rows).toEqual([{ status: 'queued', gate: 'slot_full' }]);
     // the queued row holds no slot: the count is still two
     expect(detail(await preflight('box', a, 'ISS-3'))).toContain('2 are in use');
+  });
+
+  // ISS-1260: the steward's tick took the slot a queued declaration waited for, every time it freed
+  it('refuses work core starts on its own while a declaration waits for the slot, until the box stops re-sending it', async () => {
+    const { refuseRunWithoutSlot } = await import('../../src/devices/run-slots-read.js');
+    const refusal = async (yieldToQueued: boolean): Promise<string> => {
+      try {
+        await refuseRunWithoutSlot({ deviceId: boxId, projectId: a, yieldToQueued });
+        return 'admitted';
+      } catch (err) {
+        return String((err as Error).message ?? err);
+      }
+    };
+    expect(await refusal(true)).toContain('has a run declaration queued for a slot on this box');
+    // the declaration's own re-send and a master's declare ask without yielding, and read the count
+    expect(await refusal(false)).not.toContain('queued for a slot');
+    // a declaration the box stopped re-sending is the reaper's, and holds the slot for nobody
+    await db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now() - interval '1 day'
+       WHERE project_id = ${a} AND device_id = ${boxId} AND status = 'queued'`);
+    expect(await refusal(true)).not.toContain('queued for a slot');
+    await db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now()
+       WHERE project_id = ${a} AND device_id = ${boxId} AND status = 'queued'`);
   });
 
   it('gives a project that gets work its floor at once, past the box, stopping nothing', async () => {
