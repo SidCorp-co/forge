@@ -1,6 +1,6 @@
-# The master skill, the pipeline rules and the run tool reference become a rendered map and cards
+# The master skill and the pipeline rules become a rendered map and cards
 
-**Removed when:** the issue that renders these three texts from capability cards lands; until one is
+**Removed when:** the issue that renders the two texts left from capability cards lands; until one is
 filed, ISS-1251 carries this file, and the change that renders the last of them deletes it.
 
 ISS-1251's design ("Forge ships capabilities without shipping their use") gives every agent-facing
@@ -16,7 +16,7 @@ red flag agents actually hit, its audience and its replay scenarios. Every surfa
 
 Org knowledge `prompt-is-a-map` asks for exactly this: a few short always-on lines, detail fetched
 on demand. The card type and its registry are being built in ISS-1251. The room brief in
-`support/prompt.ts` is the first text rendered from them. This proposal covers the three texts that
+`support/prompt.ts` is the first text rendered from them. This proposal covers the texts that
 teach masters and runs and are still written by hand in code. The forge-plugin half (its skills,
 hooks and CLI help rendered from the same cards) is forge-plugin FB-87, not this repo's.
 
@@ -29,7 +29,7 @@ Each text below has the same three faults:
 Sizes were measured on 2026-11-16 at the head of `fix/iss1251-teach-not-force`, in characters of
 the composed text.
 
-## The three texts
+## The texts
 
 ### 1. The forge-master skill
 
@@ -87,43 +87,23 @@ the composed text.
   - Three cases in `packages/core/src/guides/direction.test.ts` that read the rendered fact.
   - Both become the cards' scenarios and a budget test on the rendered map.
 
-### 3. The run tool reference
-
-- **Where it lives:** `packages/core/src/prompt/facts/drive-rules.ts:STEP_TOOL_REFERENCE_TEXT` and
-  `packages/core/src/prompt/facts/drive-rules.ts:DRIVE_TOOL_REFERENCE_TEXT`, the "Reaching Forge"
-  block of every pipeline step and every drive run.
-- **Size:** 6 881 and 7 178 characters.
-- **Why code is the wrong home:**
-  - It is an inventory of doors ("the issue — `issues/<id>` to read …", "knowledge and memory —
-    …"), not situations.
-  - It carries every question shape and refusal code in full. A door's card holds those, and the
-    `issue-flow` guide holds them again.
-  - ISS-1251 rewrote only its Forge-feedback line into a situation.
-- **Target:**
-  - The block is deleted. Its situations join the `run` audience's Tier-0 map: before you build,
-    read the issue and its edges; when the business must decide, ask on the requirement; when the
-    work landed, stamp it; when a Forge door fails you, report it on its card.
-  - Each door's shape, example and refusals are its card, fetched with `forge_describe` or read in
-    the rendered guide.
-- **What pins it today:**
-  - `packages/core/src/prompt/facts/acts-taught.test.ts` (15 cases) asserts the question and merge
-    shapes and their refusal codes inside these two texts.
-  - Its check that every code it names is one core returns is still worth keeping. It becomes a
-    registry check: every refusal a card names is in its door's refusal codes.
-
 ## Order
 
-1. The run tool reference first. It is the smallest, core-only, and its doors' cards are the first
-   the registry needs anyway.
-2. The pipeline rules, once the cards of the transition, merge-mark and question doors exist.
-3. The master skill last. It needs a runner release, and the map it points at must already be served
+The run tool reference went first and is done: `prompt/facts/drive-rules.ts` keeps only the reads
+and points at the run's map (`prompt/door-map.ts`, rendered per project from the cards) and at
+`guides/doors.md`, and `prompt/facts/acts-taught.test.ts` asserts the cards instead.
+
+1. The pipeline rules, now that the cards of the transition, merge-mark and question doors exist.
+2. The master skill last. It needs a runner release, and the map it points at must already be served
    by the core the box talks to, so core ships the map first.
 
 ## Honest costs
 
-| Cost | Who pays it |
-|---|---|
-| An agent reads a map line and must fetch the card to act well, which is one more call per situation the first time; an agent that skips the fetch acts on the one-line situation alone | every master and run, in turns and tokens |
-| A box on an old runner keeps its hand-written skill until it upgrades, so during the move two forms of the master's teaching are live: the old asset and the served map | whoever cuts the runner release; the order above keeps it to one release window |
-| Exact-phrase tests become card scenarios replayed before a card changes, which are slower to run than a string assertion and need the replay corpus kept | the builder changing a card |
-| A lesson or project rule quoting the old wording reads stale until it is re-checked or folded into the card that replaced it | the lessons steward and project owners |
+- A run reads a door's card before its first use, one `guides/doors.md?door=` read per door it had
+  read inline before; a run that skips it acts from the map line alone.
+- The map is rendered per project at each prompt build, which costs a read of the door use and of the
+  cards' proposed deltas on every pipeline step.
+- A card's text is the one copy, so a card edit changes every surface at once and owes a
+  `cards:stamp`; a card nobody re-checks after a landing teaches the old door everywhere.
+- The master skill's half waits on a runner release, and boxes on an older runner keep the long
+  skill until they upgrade.
