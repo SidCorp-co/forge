@@ -1,6 +1,6 @@
 // The REST cards of the doors a project's knowledge and setup are kept through (ISS-1251): memory,
-// the find door over every record type (ISS-1256), knowledge, lessons and the steward's notes, labels, the project document, its ecosystem links, and
-// a reference source's citation.
+// the find door over every record type (ISS-1256), knowledge, lessons and the steward's notes,
+// labels, the project document, its ecosystem links, and a reference source's citation.
 
 import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import { REFERENCE_REST_CARD } from '@forge/contracts/references';

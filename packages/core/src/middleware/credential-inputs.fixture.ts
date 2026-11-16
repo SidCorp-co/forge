@@ -150,6 +150,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:pipelineRunId field:query:projectId field:query:requirement
     field:query:resourceUuid field:query:rootIssueId field:query:run field:query:runId field:query:session field:query:sessionId
     field:query:sourceRef field:query:feedback field:query:workflow field:query:ref field:query:actor
+    field:query:id field:json:conversation
     field:json:acceptedOn field:json:activeOrgId field:json:agentSessionId field:json:agent_id field:json:areaId
     field:json:assigneeId field:json:attachmentIds field:json:boundProjectId
     field:json:claimHolders field:json:claudeSessionId field:json:clientToken field:json:commits field:json:dependsOnId
@@ -262,7 +263,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
     field:query:key field:query:kind field:query:label field:query:labels field:query:metadataType
     field:query:module field:query:party field:query:q field:query:search field:query:status
-    field:query:area field:json:areas field:json:area field:json:q
+    field:query:area field:json:areas field:json:area field:json:q field:json:module field:json:status
     field:query:step field:query:steps field:query:verb field:query:view field:query:error
     field:query:errorCode field:query:method field:query:path field:query:query field:query:release
     field:query:window field:query:role field:query:since field:query:until field:query:door`,

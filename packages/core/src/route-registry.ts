@@ -70,7 +70,7 @@ import {
   feedbackServerKeyDoor,
   feedbackServerKeyRoutes,
 } from './feedback/routes.js';
-import { findRoutes } from './find/index.js';
+import { findRoutes } from './find/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import {
   agentReportsRetiredRoutes,
