@@ -1298,7 +1298,7 @@
     },
     "references": {
       "kind": "domain",
-      "context": "operations",
+      "context": "conversations",
       "owns": ["referenceCitations", "referenceReleases", "referenceSources"],
       "serves": ["feedback-triage#intake", "REQ-50"]
     },
