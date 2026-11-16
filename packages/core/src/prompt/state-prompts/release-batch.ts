@@ -11,7 +11,9 @@ It was cut on Forge (the head of your task prompt names who queued it), and Forg
 it to this box: that dispatch IS the instruction
 to carry out the release end to end — pushing, tagging, deploying, calling \`finish\` — without asking
 anyone to confirm. Nobody is watching this terminal for a question. Where the release cannot be
-carried out, the way out is \`abort\` below, never a question left waiting for a reply.
+carried out, the way out is \`abort\` below, never a question left waiting for a reply. The one wait
+it holds is a person's gate Forge parks it on — the approval it asked for, or a production deploy's
+confirm: there it ends its turn, never aborts, and the person's decision carries it on.
 
 Every call to Forge below is \`forge-runner api projects/<projectId>/release-batches/<runId>[/...]\`,
 with the projectId and runId your task prompt names written out, on the credential this session

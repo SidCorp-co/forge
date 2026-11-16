@@ -321,6 +321,7 @@ releaseBatchRoutes.post(
       pushed,
       carried,
       shippedIn,
+      agency: restActor(c).agency,
     });
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },

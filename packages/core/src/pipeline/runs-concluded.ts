@@ -24,7 +24,7 @@ import { RESULT_QUIET_MINUTES } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../lib/logger.js';
-import { awaitsProdConfirm, type LoopScope } from './ports.js';
+import { awaitsProdConfirm, type LoopScope, releaseRunParked } from './ports.js';
 import { closeRun } from './runs.js';
 
 export interface ConcludedRunReapResult {
@@ -111,6 +111,8 @@ export async function reapConcludedRuns(
   for (const row of candidates) {
     const outcome = outcomeFor(row.last_job_status);
     try {
+      // a release run parked on its approval stays open for that decision, every job ended (ISS-1253)
+      if (row.kind === 'system' && (await releaseRunParked(row.id))) continue;
       logger.info(
         {
           runId: row.id,

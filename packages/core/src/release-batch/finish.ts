@@ -4,6 +4,7 @@
 // `releasing-recovery.ts`. Forge reads no probe, deployment record or provider report to close, and
 // replays no kept probe (owner ruling 2026-11-01, `release-is-the-agents-record`).
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ReleaseVersionCarrier } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -28,6 +29,7 @@ import { type ClaimedRow, closeRoster, type RosterCloseResult } from './close-ro
 import { abortBlockedHold, heldFromUnattendedCut, writeReleaseHolds } from './hold.js';
 import { RECORDED_VERIFICATION } from './recorded.js';
 import { refuseRelease } from './refuse.js';
+import { refuseAbortWhileParked } from './release-park.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -204,6 +206,8 @@ interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
   shippedInRecorded: string[];
   /** Issues an earlier shipped release may hold, held for their agent's shipped-in record (ISS-888). */
   shippedInOwed: string[];
+  /** The version the run was cut with, which its end names (ISS-1253); null on a run nothing versioned. */
+  version: string | null;
   run: {
     status: PipelineRunStatus | null;
     wasAlreadyTerminal: boolean;
@@ -230,15 +234,18 @@ interface AbortReleaseBatchOptions {
   carried?: readonly ReleaseVersionCarrier[] | undefined;
   /** The earlier shipped release that already holds this roster, as the run read it with git. */
   shippedIn?: { version: string; evidence: string } | undefined;
+  /** Who is aborting: an agent's abort of a run parked on its approval is refused (ISS-1253). */
+  agency: ActorAgency;
 }
 
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
   actorUserId: string,
-  options: AbortReleaseBatchOptions = {},
+  options: AbortReleaseBatchOptions,
 ): Promise<AbortReleaseBatchResult> {
   refuseContradiction(options.pushed, options.carried);
+  await refuseAbortWhileParked(runId, options.agency);
   // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
   // What it says left the box is written under the version lock a re-cut decides under.
   const stampId = await db.transaction(async (tx) => {
@@ -286,9 +293,15 @@ export async function abortReleaseBatch(
   await closeRunIfOneShot(runId, 'cancelled');
 
   const after = await cancelConcludedRun(runId);
+  const [cut] = await db
+    .select({ version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
 
   return {
     ...recovery,
+    version: cut?.version ?? null,
     heldForPerson,
     shippedInRecorded: shipped.recorded,
     shippedInOwed: shipped.heldForAgent,

@@ -6,10 +6,9 @@
 // (`merges-owed.ts`, `masters/owed.ts`; REQ-71 BC-4).
 
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
-import { and, desc, eq, notInArray } from 'drizzle-orm';
-import { requestSessionSend } from '../agent-sessions/index.js';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import { pipelineRuns } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { peopleOf } from '../lib/people.js';
 import { consume } from '../outbox/index.js';
@@ -18,29 +17,12 @@ import { projectCreatorOf } from '../projects/index.js';
 import { mergeStepsOf, type ReleaseMergeStep } from './change-request-roster.js';
 import { settleChangeRequestRelease } from './change-request-settle.js';
 import { resolveReleaseChannels } from './channel.js';
+import { carryReleaseRunOn, type ResumeOutcome } from './confirm-resume.js';
 import { productionAsksConfirm } from './coolify-prod-gate.js';
 import { releaseBatchPath } from './plan.js';
 import { wakeMastersForRelease } from './provider-live.js';
 
 type Decided = OutboxEventPayload<'release.approvalDecided'>;
-
-/** The live session of the release job that runs this batch, or `null` where none is alive. */
-export async function releaseRunSession(runId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id })
-    .from(jobs)
-    .innerJoin(agentSessions, eq(agentSessions.id, jobs.agentSessionId))
-    .where(
-      and(
-        eq(jobs.pipelineRunId, runId),
-        eq(jobs.type, 'release_batch'),
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-      ),
-    )
-    .orderBy(desc(jobs.queuedAt))
-    .limit(1);
-  return row?.id ?? null;
-}
 
 /** What the run reads in its pane: the decision, who made it, and what it may do next. */
 export function decisionMessage(p: Decided, decidedBy: string, asksConfirm = false): string {
@@ -61,7 +43,7 @@ export function decisionMessage(p: Decided, decidedBy: string, asksConfirm = fal
   return `Release approval ${p.approvalId} was RETURNED by ${decidedBy} at ${p.decidedAt}: "${p.reason ?? ''}". No production act is allowed on release run ${p.runId}. Answer that reason, then ask again with POST ${path}/approvals, or abort the batch with the reason.`;
 }
 
-type Told = 'sent' | 'unpublished' | 'no_session' | 'master_woken' | 'no_master' | 'settled';
+type Told = ResumeOutcome | 'master_woken' | 'no_master' | 'settled';
 
 /** The merge order of a release that merges change requests, which runs no job; null otherwise. */
 async function mergeOrder(runId: string): Promise<ReleaseMergeStep[] | null> {
@@ -107,30 +89,24 @@ export async function tellReleaseRun(p: Decided): Promise<Told> {
     );
     return delivered > 0 ? 'master_woken' : 'no_master';
   }
-  const sessionId = await releaseRunSession(p.runId);
-  if (!sessionId) {
-    logger.warn(
-      { runId: p.runId, approvalId: p.approvalId, decision: p.decision },
-      'release-approval-wake: no live release session to tell; the decision stands on the run for the next one to read',
-    );
-    return 'no_session';
-  }
   const name = (await peopleOf([p.decidedBy])).get(p.decidedBy)?.name ?? p.decidedBy;
   const [channels, held] = await Promise.all([
     resolveReleaseChannels(p.projectId),
     readProjectDocument(p.projectId),
   ]);
-  const { published } = await requestSessionSend({
-    agentSessionId: sessionId,
-    kind: 'answer',
+  // the run that asked may have parked with its job ended (ISS-1253): the decision then queues the
+  // release job that carries it on, under the version it was cut with, rather than waiting for nobody
+  const told = await carryReleaseRunOn({
+    projectId: p.projectId,
+    runId: p.runId,
     intentId: p.approvalId,
     body: decisionMessage(p, name, productionAsksConfirm(channels, held?.document)),
   });
   logger.info(
-    { runId: p.runId, approvalId: p.approvalId, sessionId, published },
-    'release-approval-wake: the decision was handed to the release session that asked',
+    { runId: p.runId, approvalId: p.approvalId, decision: p.decision, told },
+    'release-approval-wake: the decision was handed to what carries the release run on',
   );
-  return published ? 'sent' : 'unpublished';
+  return told;
 }
 
 /** Register the consumer. Called once at boot from `outbox-consumers.ts`. */

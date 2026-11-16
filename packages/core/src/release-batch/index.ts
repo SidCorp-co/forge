@@ -100,6 +100,7 @@ export {
   listReleasesInPlay,
 } from './release-list-read.js';
 export { readReleaseOwes } from './release-owes.js';
+export { parkSentence, type ReleasePark, releaseRunParked } from './release-park.js';
 export { type ReleaseRecord, readRelease, readReleaseRecord } from './release-read.js';
 export type { WeighedIssue } from './release-read-views.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';

@@ -120,6 +120,8 @@ Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the ba
 If the first call is refused, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying so, with the refusal's text. Do not look for another credential on this machine.
 
 A deploy that answers \`pendingHumanConfirm\` waits on a person's confirm, named in its \`waitsOn\`; they are told in Needs you, and this run stays open for them. Hold it: never abort a release for that wait. Once they confirm, the deploy goes out on this run and you carry it on to \`finish\`.
+
+A production act refused \`RELEASE_AWAITING_APPROVAL\` waits on the approval this run asked for: the run is parked on it, holding its version and roster, and Forge refuses its abort by an agent. End your turn there. The decision reaches this run, in this session or as a new release job on it: an approval carries the release on under the same version; a return names why, and then you answer it and ask again, or abort with that reason.
 `;
 }
 

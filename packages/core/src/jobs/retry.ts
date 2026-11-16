@@ -24,6 +24,7 @@ import {
   classifyFailure,
   deriveActionFromKind,
   emitPipelineWedge,
+  releaseRunParked,
   resolvePipelineWedge,
   verifyRecovery,
 } from '../pipeline/index.js';
@@ -44,6 +45,9 @@ export interface RetryOutcome {
   newJobId?: string;
   reason?: string;
 }
+
+/** A release job that ended while its run was parked on a person's gate (ISS-1253). */
+export const RELEASE_PARKED = 'release_parked_on_person';
 
 /** Uniform cooldown between every retry. No phases, no Retry-After. */
 const RETRY_COOLDOWN_MS = 60_000;
@@ -308,6 +312,19 @@ export async function scheduleAutoRetryWithVerify(
 ): Promise<RetryOutcome> {
   const classified = await classifyAndPersist(job, reason);
   if (job.cancellationRequested) return { scheduled: false, reason: 'cancellation_requested' };
+  // a release job that ended while its run is parked on a person is not retried: a fresh agent every
+  // few minutes finds the same wait, and the person's decision queues the job that carries it on (ISS-1253)
+  const parked =
+    job.type === 'release_batch' && job.pipelineRunId
+      ? await releaseRunParked(job.pipelineRunId)
+      : null;
+  if (parked) {
+    logger.info(
+      { jobId: job.id, parked },
+      'retry: the release run is parked on a person, no retry',
+    );
+    return { scheduled: false, reason: RELEASE_PARKED };
+  }
   if (Object.hasOwn(POOL_UNRETRIED_JOB_TYPES, job.type)) {
     logger.info(
       { jobId: job.id, type: job.type },

@@ -154,10 +154,12 @@ import {
   judgedBuildOf,
   landedRecordOf,
   nextDraftVersion,
+  parkSentence,
   pendingProdConfirmsOfRuns,
   releasedLineReads,
   releaseEndsRun,
   releaseHoldsOf,
+  releaseRunParked,
   settleChangeRequestRelease,
   unobservedBuildOf,
 } from './release-batch/index.js';
@@ -209,6 +211,10 @@ function provideWorkPipelinePorts(): void {
     parkedOnAHuman,
     releaseEndsRun,
     awaitsProdConfirm,
+    releaseRunParked: async (runId) => {
+      const park = await releaseRunParked(runId);
+      return park ? parkSentence(park) : null;
+    },
     requestJobKill,
     gateReasonsForQueuedJobsIn,
     readRunGate,

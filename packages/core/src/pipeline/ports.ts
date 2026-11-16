@@ -112,6 +112,12 @@ interface PipelinePorts {
   releaseEndsRun: (metadata: SQL) => SQL;
   /** A release run waiting on a person's production confirm, which no sweep closes (ISS-1096). */
   awaitsProdConfirm: (metadata: SQL) => SQL;
+  /**
+   * Where a release run is parked on a person's gate, its approval or its production confirm, as
+   * one sentence; null where it is not (ISS-1253). A parked run is closed, retried or swept by none
+   * of its job's endings: the person's decision carries it on.
+   */
+  releaseRunParked: (runId: string) => Promise<string | null>;
   requestJobKill: (job: KillableJob, reason: string) => Promise<string>;
   gateReasonsForQueuedJobsIn: (
     projectIds: readonly string[],
@@ -191,6 +197,7 @@ export const killGraceMs = port('killGraceMs');
 export const parkedOnAHuman = port('parkedOnAHuman');
 export const releaseEndsRun = port('releaseEndsRun');
 export const awaitsProdConfirm = port('awaitsProdConfirm');
+export const releaseRunParked = port('releaseRunParked');
 export const voidCancelledRunQuestions = port('voidCancelledRunQuestions');
 export const requestJobKill = port('requestJobKill');
 export const gateReasonsForQueuedJobsIn = port('gateReasonsForQueuedJobsIn');

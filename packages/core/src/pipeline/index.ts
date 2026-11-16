@@ -45,6 +45,7 @@ export {
 export { type LiveReach, type LiveReachIssue, liveReachOfIssues } from './live-reach.js';
 export { type OneShotRunReapResult, reapOrphanedOneShotRuns } from './one-shot-reap.js';
 export { retryIssueDispatch, triggerPipelineStepManual } from './orchestrator.js';
+export { closeRunAfterJob, releaseRunParked } from './parked-run.js';
 export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';

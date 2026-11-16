@@ -447,7 +447,7 @@ export async function assertApprovalAllowsAttempt(runId: string, projectId: stri
   if (latest.decision === null) {
     throw refuseRelease(
       'RELEASE_AWAITING_APPROVAL',
-      `release run ${runId} waits for an admin to approve it; no production act is recorded before the decision`,
+      `release run ${runId} waits for an admin to approve it; no production act is recorded before the decision. The run is parked on that approval, holding its version and roster: end your turn and never abort it for this wait. The decision reaches this run, in this session or as a new release job on it (ISS-1253).`,
     );
   }
   throw refuseRelease(

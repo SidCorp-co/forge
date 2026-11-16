@@ -1,0 +1,1 @@
+**A release waiting on its approval keeps its version.** It waits for the approver instead of ending after about forty minutes and coming back as the next version; only their decision, or a person withdrawing it, ends it.

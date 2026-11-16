@@ -10,7 +10,7 @@ import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/sche
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { RunFailureCause } from '../pipeline/index.js';
-import { assertRunAcceptsWork, classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
+import { assertRunAcceptsWork, classifyFailure, closeRunAfterJob } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -240,7 +240,7 @@ export async function syncAgentSessionLifecycle(
       try {
         const runOutcome =
           outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
-        await closeRunIfOneShot(job.pipelineRunId, runOutcome, jobFailureCause(job));
+        await closeRunAfterJob(job.pipelineRunId, runOutcome, jobFailureCause(job));
       } catch (err) {
         logger.warn({ err, jobId: job.id }, 'agent-session-link: close-run (no-session) failed');
       }
@@ -268,7 +268,7 @@ export async function syncAgentSessionLifecycle(
     if (!options?.retryPending) {
       const runOutcome =
         outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
-      await closeRunIfOneShot(job.pipelineRunId, runOutcome, jobFailureCause(job));
+      await closeRunAfterJob(job.pipelineRunId, runOutcome, jobFailureCause(job));
     }
   } catch (err) {
     logger.warn(

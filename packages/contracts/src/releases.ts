@@ -1103,6 +1103,8 @@ const RELEASE_APPROVAL_REFUSAL_CODES = [
 	"RELEASE_AWAITING_APPROVAL",
 	"RELEASE_APPROVAL_RETURNED",
 	"RELEASE_APPROVAL_REQUIRED",
+	/** An agent's abort of a release run parked on its undecided approval: only the decision or a person ends it (ISS-1253). */
+	"RELEASE_ABORT_AWAITS_APPROVAL",
 	"RELEASE_VERSION_SHAPE",
 	/** A draft's approval asked where a draft is not what is approved: production is declared, or a run is cut (ISS-869). */
 	"RELEASE_DRAFT_NOT_APPROVABLE",
