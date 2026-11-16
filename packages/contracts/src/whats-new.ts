@@ -63,9 +63,6 @@ export interface WhatsNewFeed {
 	release: WhatsNewRelease | null;
 }
 
-/** Words a digest body may spend. */
-export const WHATS_NEW_DIGEST_WORDS_MAX = 120;
-
 /** The words a digest body counts, as a reader would count them. */
 export function digestWordCount(body: string): number {
 	return body.trim().split(/\s+/u).filter(Boolean).length;
