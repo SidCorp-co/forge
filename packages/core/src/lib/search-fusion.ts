@@ -10,22 +10,24 @@ const RRF_K = 60;
 /** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
 const HYBRID_ALPHA = 0.5;
 
+/** One ranked list a fusion takes, and its weight. */
+export interface RankedList<T> {
+  hits: readonly T[];
+  weight: number;
+}
+
 /**
- * Weighted reciprocal-rank fusion of a dense and a keyword list, the one fusion memory and
- * knowledge hybrid search share. The returned `score` is the fused RRF value.
+ * Weighted reciprocal-rank fusion of any number of ranked lists: each hit scores
+ * `weight / (RRF_K + rank)` in each list it is in, summed. Scores of different kinds (a cosine, a
+ * ts_rank) are never compared, only ranks. The first list a hit appears in gives the object kept.
  */
-export function fuseHybrid<T extends { id: string; score: number }>(
-  semantic: T[],
-  keyword: T[],
+export function fuseRanked<T extends { id: string; score: number }>(
+  lists: readonly RankedList<T>[],
   limit: number,
 ): T[] {
   const scoreMap = new Map<string, { score: number; hit: T }>();
-  const weighted: Array<[T[], number]> = [
-    [semantic, HYBRID_ALPHA],
-    [keyword, 1 - HYBRID_ALPHA],
-  ];
-  for (const [list, weight] of weighted) {
-    list.forEach((hit, rank) => {
+  for (const { hits, weight } of lists) {
+    hits.forEach((hit, rank) => {
       const rrfScore = weight / (RRF_K + rank + 1); // rank is 0-based, RRF uses 1-based
       const existing = scoreMap.get(hit.id);
       if (existing) existing.score += rrfScore;
@@ -36,4 +38,25 @@ export function fuseHybrid<T extends { id: string; score: number }>(
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(({ score, hit }) => ({ ...hit, score }));
+}
+
+/** The weights a keyword and a dense arm take in every hybrid fusion. */
+export const HYBRID_WEIGHTS = { semantic: HYBRID_ALPHA, keyword: 1 - HYBRID_ALPHA } as const;
+
+/**
+ * Weighted reciprocal-rank fusion of a dense and a keyword list, the one fusion memory and the find
+ * door share. The returned `score` is the fused RRF value.
+ */
+export function fuseHybrid<T extends { id: string; score: number }>(
+  semantic: T[],
+  keyword: T[],
+  limit: number,
+): T[] {
+  return fuseRanked(
+    [
+      { hits: semantic, weight: HYBRID_WEIGHTS.semantic },
+      { hits: keyword, weight: HYBRID_WEIGHTS.keyword },
+    ],
+    limit,
+  );
 }

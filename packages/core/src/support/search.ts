@@ -1,8 +1,9 @@
-// Search for a how-to answer (REQ-75 BC-2): the project's knowledge and the operations of its
-// current published OpenAPI contracts, each hit carrying the source the session cites.
+// Search for a how-to answer (REQ-75 BC-2): the project's knowledge, as the find door recalls it
+// (ISS-1256), and the operations of its current published OpenAPI contracts, each hit carrying the
+// source the session cites.
 
 import { db } from '../db/client.js';
-import { keywordSearchKnowledge } from '../knowledge/index.js';
+import { recallKnowledge } from '../knowledge/index.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
 import { namedProject } from './ops-scope.js';
 import type { Outcome } from './outcome.js';
@@ -77,9 +78,18 @@ export async function search(
   if (!named.ok) return named;
   const { id: projectId } = named.value;
   const from = projectId === room.projectId ? '' : `${named.value.slug}/`;
-  // any of the words, not all of them: a member's question rarely repeats a page's every word
-  const anyWord = words(query).join(' or ');
-  const knowledge = anyWord ? await keywordSearchKnowledge(projectId, anyWord, 6) : [];
+  // the find door's knowledge, by keyword: any of the words, not all of them, since a member's
+  // question rarely repeats a page's every word, and a term's alias reaches the term (ISS-1256)
+  const { knowledge } = words(query).length
+    ? await recallKnowledge({
+        projectId,
+        reader: { userId: room.principalUserId, fence: [projectId] },
+        query,
+        scope: 'knowledge',
+        topK: 6,
+        strategy: 'keyword',
+      })
+    : { knowledge: [] };
   const api = (await openApiHits(projectId, query)).map((h) =>
     from ? { ...h, cite: h.cite.replace(/^openapi:/, `openapi:${from}`) } : h,
   );

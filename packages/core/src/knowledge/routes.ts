@@ -17,8 +17,8 @@ import {
   slugSchema,
   upsertKnowledgeInputSchema,
 } from './entry-input.js';
+import { knowledgePort } from './ports.js';
 import { deleteKnowledgeEntry, listKnowledgeEntries, readKnowledgeEntry } from './service.js';
-import { runUnifiedSearch } from './unified-search.js';
 import { upsertKnowledgeEntry } from './upsert.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -70,6 +70,8 @@ const badSlug = (slug: string) =>
   );
 const notFound = () => new HTTPException(404, { message: 'knowledge entry not found' });
 
+export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
+
 export const knowledgeRoutes = gatedRoutes<{ Variables: AuthVars }>(
   requireAuth(),
   assertEmailVerified(),
@@ -115,7 +117,11 @@ knowledgeRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
 
-    const found = await runUnifiedSearch({ projectId: id, reader: requestReader(userId), ...body });
+    const found = await knowledgePort('recall')({
+      projectId: id,
+      reader: requestReader(userId),
+      ...body,
+    });
     recordReached(c, id, 'search', found);
     return c.json(found);
   },

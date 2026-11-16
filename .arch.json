@@ -58,6 +58,9 @@
     "core-feedback": [
       "packages/core/src/feedback/**"
     ],
+    "core-find": [
+      "packages/core/src/find/**"
+    ],
     "core-forecast": [
       "packages/core/src/forecast/**"
     ],

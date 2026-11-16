@@ -32,7 +32,8 @@ export {
 } from './module-fields.js';
 export { orgKnowledgeCreatedAt, orgOnDemandSlugsOf } from './org-knowledge.js';
 export { orgKnowledgeRoutes } from './org-knowledge-routes.js';
-export { provideKnowledgePorts } from './ports.js';
+export { keywordOrgRecall, type OrgRecallHit, semanticOrgRecall } from './org-recall.js';
+export { provideKnowledgePorts, recallKnowledge } from './ports.js';
 export {
   type Anchors,
   anchorsMet,
@@ -44,7 +45,12 @@ export {
   type RulingDeciderRead,
   rulingDecidersOf,
 } from './ruling-deciders.js';
-export { keywordSearchKnowledge, searchKnowledge } from './search.js';
+export {
+  type KnowledgeHit,
+  keywordSearchKnowledge,
+  queryVectorOf,
+  searchKnowledge,
+} from './search.js';
 export {
   type AlwaysInjectFact,
   getKnowledgeEntry,
@@ -57,4 +63,3 @@ export {
   selectOnDemandSourcesFromKnowledge,
   updateKnowledgeLinks,
 } from './service.js';
-export { recallKnowledgeAcross } from './unified-search.js';

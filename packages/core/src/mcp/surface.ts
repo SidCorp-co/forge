@@ -10,6 +10,7 @@
  * path; it is listed to no client, so an MCP client's model reaches it only through `forge_call`.
  */
 
+import { FIND_TYPES, type FindType } from '@forge/contracts/find';
 import type { McpListedTool, McpToolName } from '@forge/contracts/mcp-tools';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
@@ -19,11 +20,17 @@ import { EXAMPLE_PLACEHOLDERS, type McpContext, refusedAnswer } from '../lib/too
 import { renderedPermission } from '../middleware/declared-permission.js';
 import { type ActionEntry, doorOf, findActions } from './action-catalog.js';
 import { describedCard, proposedFor } from './cards.js';
+import { fetchHit, findRecords } from './find-records.js';
 import { argumentRefusals, shapeOf } from './input-gate.js';
 import { listedSchema } from './listed-schema.js';
 import { fetchRecord, searchRecords } from './records-search.js';
 
 const FIND_LIMIT = 20;
+
+/** The hit types `fetch` reads through the find door; an issue, requirement or knowledge id keeps its own read. */
+const FETCHED_BY_FIND = new Set<string>(
+  FIND_TYPES.filter((t) => !['issue', 'requirement', 'knowledge'].includes(t)),
+);
 
 /**
  * The Forge guide that says more about each door (REQ-78 BC-11): describe names it, and a client
@@ -57,8 +64,21 @@ const INPUTS = {
       .string()
       .max(200)
       .optional()
-      .describe('What you want to do, in words; none lists every action'),
+      .describe('What you want to do or find, in words; none lists every action'),
     limit: z.number().int().min(1).max(200).optional(),
+    projectId: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe(
+        'The project whose records to search; the bound or only project you read when absent',
+      ),
+    type: z
+      .array(z.enum(FIND_TYPES))
+      .max(FIND_TYPES.length)
+      .optional()
+      .describe('Only records of these types'),
   }),
   forge_describe: z.strictObject({
     action: z.string().min(1).max(80).describe('An action id forge_find returned'),
@@ -80,14 +100,14 @@ export type SurfaceTool = McpListedTool;
 
 const DESCRIPTIONS: Record<SurfaceTool, string> = {
   forge_find:
-    'Find Forge actions by what you want to do (draft a requirement, file feedback, answer a question, read an issue). Returns action ids, one line each. Read one with forge_describe, run it with forge_call.',
+    'Find Forge actions by what you want to do, and the project records your words name (terms by their aliases, rules, cards, requirements, issues, decisions). Returns action ids, one line each, and records ranked as the web search ranks them, each with its path. Read an action with forge_describe and run it with forge_call; read a record with fetch { id }.',
   forge_describe: "One action's input schema and its own guide. Read it before forge_call.",
   forge_call:
     "Run one action: { action: 'requirements.create', args: {...} }. The action's full input judges args; a wrong call is refused by name, saying what to fix.",
   search:
     'Search the issues, requirements and knowledge of the projects you can read. Returns { results: [{ id, title, url }] }.',
   fetch:
-    'Read one item search returned, by its id, or a Forge guide as guide:<slug> (guide:index lists them): { id, title, text, url, metadata }.',
+    'Read one item search or forge_find returned, by its id, or a Forge guide as guide:<slug> (guide:index lists them): { id, title, text, url, metadata }.',
 };
 
 /** The five tools `tools/list` answers, in the plain JSON Schema every importer reads. */
@@ -170,6 +190,15 @@ export async function callSurface(
     const query = (input.query as string | undefined) ?? '';
     const limit = (input.limit as number | undefined) ?? (query ? FIND_LIMIT : 200);
     const found = findActions(deps.catalog, query, limit);
+    // one door (ISS-1256): the words that find an action find the records they name, in the find's ranks
+    const records = query.trim()
+      ? await findRecords(deps.ctx.principal, {
+          query: query.trim(),
+          ...(input.projectId ? { projectId: input.projectId as string } : {}),
+          ...(input.type ? { type: input.type as FindType[] } : {}),
+          ...(input.limit ? { limit: input.limit as number } : {}),
+        })
+      : null;
     return deps.answer({
       actions: found.map((e) => `${e.id} — ${e.summary}`),
       ...(found.length === 0
@@ -177,7 +206,8 @@ export async function callSurface(
             none: `No action matches; doors: ${[...new Set([...deps.catalog.values()].map((e) => doorOf(e.tool)))].join(', ')}`,
           }
         : {}),
-      next: 'forge_describe { action } reads one; forge_call { action, args } runs it.',
+      ...(records ?? {}),
+      next: 'forge_describe { action } reads one; forge_call { action, args } runs it; fetch { id } reads a record.',
     });
   }
 
@@ -239,7 +269,12 @@ export async function callSurface(
     if (name === 'search') {
       return deps.answer(await searchRecords(deps.ctx.principal, input.query as string));
     }
-    return deps.answer(await fetchRecord(deps.ctx.principal, input.id as string));
+    const id = input.id as string;
+    return deps.answer(
+      FETCHED_BY_FIND.has(id.slice(0, id.indexOf(':')))
+        ? await fetchHit(deps.ctx.principal, id)
+        : await fetchRecord(deps.ctx.principal, id),
+    );
   } catch (err) {
     if (err instanceof RefusalError) {
       return deps.refusal(refusedAnswer(err.refusals, err.fallbackCode));

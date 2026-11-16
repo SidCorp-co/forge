@@ -38,6 +38,17 @@ const principal = {
   onBehalfOf: null,
 } as unknown as PrincipalVars['principal'];
 
+// the records half of forge_find reads Postgres, which this suite has none of (ISS-1256): it is the
+// find door's, proven against a real database in find-door-e2e.test.ts
+const records = vi.hoisted(() => ({ calls: [] as unknown[] }));
+vi.mock('./find-records.js', () => ({
+  findRecords: async (_p: unknown, input: unknown) => {
+    records.calls.push(input);
+    return { projectId: 'p', expanded: [], records: [], gap: true, degraded: true, open: '' };
+  },
+  fetchHit: async () => ({}),
+}));
+
 // a pat credential is no chat credential; the hold the process entry provides is never reached
 beforeAll(() => {
   provideChatWriteHold({
@@ -118,6 +129,22 @@ describe('forge_find and forge_describe', () => {
     expect(
       (found.data.actions as string[]).some((a) => a.startsWith('requirements.create — ')),
     ).toBe(true);
+  });
+
+  // ISS-1256: one door — the words that find an action search the project's records too
+  it('asks the find door for the records the same words name, and answers them beside the actions', async () => {
+    records.calls.length = 0;
+    const found = await call('forge_find', { query: 'chia slot', type: ['term'] });
+    expect(found.isError).toBe(false);
+    expect(records.calls).toEqual([{ query: 'chia slot', type: ['term'] }]);
+    expect(found.data).toMatchObject({ records: [], gap: true });
+    expect(Array.isArray(found.data.actions)).toBe(true);
+  });
+
+  it('searches no records when it lists every action', async () => {
+    records.calls.length = 0;
+    await call('forge_find', {});
+    expect(records.calls).toEqual([]);
   });
 
   it("answers one action's input and its own guide, and nothing of another action", async () => {

@@ -15,8 +15,8 @@ import {
   knowledgeKindEnum,
   upsertKnowledgeInputSchema,
 } from './entry-input.js';
+import { knowledgePort } from './ports.js';
 import { deleteKnowledgeEntry, listKnowledgeEntries, readKnowledgeEntry } from './service.js';
-import { runUnifiedSearch } from './unified-search.js';
 import { upsertKnowledgeEntry } from './upsert.js';
 
 const inputSchema = z
@@ -103,7 +103,7 @@ const actions: Record<Input['action'], (input: Input, reader: ProjectReader) => 
     },
     search: async ({ projectId, query, scope, topK, strategy }, reader) => {
       const text = required(query, 'query', 'search');
-      return runUnifiedSearch({ projectId, reader, query: text, scope, topK, strategy });
+      return knowledgePort('recall')({ projectId, reader, query: text, scope, topK, strategy });
     },
   };
 

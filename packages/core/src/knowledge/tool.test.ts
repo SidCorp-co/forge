@@ -6,7 +6,7 @@ vi.mock('./service.js', () => ({
   deleteKnowledgeEntry: vi.fn(),
   listKnowledgeEntries: vi.fn(),
 }));
-vi.mock('./unified-search.js', () => ({ runUnifiedSearch: vi.fn() }));
+vi.mock('./ports.js', () => ({ knowledgePort: () => vi.fn() }));
 vi.mock('./upsert.js', () => ({ upsertKnowledgeEntry: store.upsert }));
 vi.mock('../lib/tool.js', async (load) => ({
   ...(await load<typeof import('../lib/tool.js')>()),

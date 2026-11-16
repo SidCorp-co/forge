@@ -209,6 +209,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/find": {
+    "hash": "3c61b7d5e4e6c13e",
+    "on": "2026-11-16",
+    "by": "ISS-1256"
+  },
   "POST /api/projects/:id/interface/adopt": {
     "hash": "8e504c72826d6564",
     "on": "2026-11-16",

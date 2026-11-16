@@ -1,44 +1,33 @@
-// The home's search (ISS-919): any issue or feedback item of a project the person reads, by its key
-// or a title word, with where it stands — live (where, since when, in which version), moving (its
-// stage) or ended — from the same reads Moving and Live use.
+// The home's search (ISS-919): any issue or feedback item of a project the person reads, found
+// through the find door (ISS-1256), with where it stands — live (where, since when, in which
+// version), moving (its stage) or ended — from the same reads Moving and Live use.
 
 import type { FeedbackSummary } from '@forge/contracts/feedback';
 import type { HomeFoundItem, HomeFoundStanding } from '@forge/contracts/owner-home';
 import { HOME_FIND_LIMIT } from '@forge/contracts/owner-home';
 import type { ReleaseListResponse } from '@forge/contracts/releases';
-import { issueDisplayIds, listIssues } from '../issues/index.js';
+import { type IssueNative, runFind } from '../find/index.js';
+import type { ProjectReader } from '../lib/authz.js';
 import { feedbackProgress } from './feedback-views.js';
 import { wentLiveIn } from './home-live.js';
 import { carriersOf, type HomeProject, type HomeProjectReads } from './home-moving.js';
 import { feedbackEnded, feedbackStage, issueStage } from './home-stage.js';
 
-const KEY = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
-
-/** The project's first `HOME_FIND_LIMIT` matching issues, and how many match in all. */
-async function issuesMatching(projectId: string, q: string) {
-  const page = { sort: 'updatedAt:desc', limit: HOME_FIND_LIMIT, offset: 0 } as const;
-  const found = KEY.test(q)
-    ? await listIssues(projectId, { key: q }, page)
-    : await listIssues(projectId, { search: q }, page);
-  // a key the issue list refuses (FB-12, another prefix) names no issue of the project: none match
-  if (!found.ok && found.field === 'key') return { rows: [], total: 0 };
-  if (!found.ok) {
-    throw new Error(
-      `home find: the issue list refused its own read (${found.field}: ${found.message})`,
-    );
-  }
-  const keys = await issueDisplayIds(found.rows.map((r) => r.id));
-  const rows = found.rows.flatMap((r) => {
-    const key = keys.get(r.id);
-    return key ? [{ key, row: r }] : [];
+/**
+ * The project's issues and feedback items matching `q`, as a filter of the find door (ISS-1256): its
+ * ranks, its key match and its glossary expansion. A home search spans projects, so a miss in one is
+ * no gap of that project's.
+ */
+async function matching(projectId: string, q: string, reader: ProjectReader) {
+  const { fused } = await runFind({
+    projectId,
+    projectIds: [projectId],
+    query: { q, type: ['issue', 'feedback'], limit: HOME_FIND_LIMIT },
+    reader,
+    askedBy: 'person',
+    recordsGap: false,
   });
-  return { rows, total: found.total };
-}
-
-function feedbackMatching(all: readonly FeedbackSummary[], q: string): FeedbackSummary[] {
-  if (KEY.test(q)) return all.filter((s) => s.key.toLowerCase() === q.toLowerCase());
-  const word = q.toLowerCase();
-  return all.filter((s) => s.title.toLowerCase().includes(word));
+  return fused.filter((c) => c.type === 'issue' || c.type === 'feedback');
 }
 
 function feedbackStanding(
@@ -72,37 +61,36 @@ function issueStanding(
   return { kind: 'moving', stage };
 }
 
-/** One project's matches for `q`, and how many matched before its issue list's own cut. */
+/** One project's matches for `q`, at most `HOME_FIND_LIMIT` of them, and how many the door found. */
 export async function findIn(
   project: HomeProject,
   part: HomeProjectReads,
   releases: ReleaseListResponse,
   q: string,
+  reader: ProjectReader,
 ): Promise<{ items: HomeFoundItem[]; total: number }> {
   const of = { projectSlug: project.slug, projectName: project.name };
-  const issues = await issuesMatching(project.id, q);
-  const fromIssues = issues.rows.map(
-    ({ key, row }): HomeFoundItem => ({
-      kind: 'issue',
-      key,
-      title: row.title,
-      ...of,
-      standing: issueStanding(key, row.status, row.releaseBatchRunId !== null, part, releases),
-    }),
-  );
-  const fromFeedback = feedbackMatching(part.allFeedback, q).map(
-    (s): HomeFoundItem => ({
-      kind: 'feedback',
-      key: s.key,
-      title: s.title,
-      ...of,
-      standing: feedbackStanding(s, part, releases),
-    }),
-  );
-  return {
-    items: [...fromIssues, ...fromFeedback],
-    total: issues.total + fromFeedback.length,
-  };
+  const found = await matching(project.id, q, reader);
+  const feedbackById = new Map(part.allFeedback.map((s) => [s.id, s]));
+  const items = found.flatMap((c): HomeFoundItem[] => {
+    if (c.type === 'issue' && c.key) {
+      const claimed = (c.native as IssueNative | undefined)?.releaseBatchRunId != null;
+      const standing = issueStanding(c.key, c.status ?? '', claimed, part, releases);
+      return [{ kind: 'issue', key: c.key, title: c.title, ...of, standing }];
+    }
+    const s = feedbackById.get(c.ref);
+    if (c.type !== 'feedback' || !s) return [];
+    return [
+      {
+        kind: 'feedback',
+        key: s.key,
+        title: s.title,
+        ...of,
+        standing: feedbackStanding(s, part, releases),
+      },
+    ];
+  });
+  return { items: items.slice(0, HOME_FIND_LIMIT), total: items.length };
 }
 
 /** Every project's matches, an exact key first, at most `HOME_FIND_LIMIT`. */

@@ -12,7 +12,8 @@
  * labelled, with their type, and retired entries left out — not the model's grasp of a paraphrase,
  * which the live recall check on forge-dev reads.
  *
- * @direct-test-of packages/core/src/knowledge/unified-search.ts
+ * @direct-test-of packages/core/src/find/recall-filter.ts
+ * @direct-test-of packages/core/src/find/arms-knowledge.ts
  * @direct-test-of packages/core/src/knowledge/org-recall.ts
  * @direct-test-of packages/core/src/knowledge/search.ts
  * @direct-test-of packages/core/src/mcp/records-search.ts

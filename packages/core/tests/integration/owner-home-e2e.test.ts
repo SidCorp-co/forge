@@ -271,7 +271,10 @@ describe("a person's home", () => {
     // the busy project's 52 issues all hold `issue` in their title
     const many = ok(await say('busy', 'GET', '/api/me/home/find?q=issue'));
     expect(many.items as Doc[]).toHaveLength(HOME_FIND_LIMIT);
-    expect(many).toMatchObject({ total: HOME_MOVING_LIMIT + 2, truncated: true });
+    // ISS-1256: the home's search is a filter of the find door, whose arms read a ranked depth, so
+    // its total is what that depth matched, never a count of all 52
+    expect(many).toMatchObject({ truncated: true });
+    expect(many.total as number).toBeGreaterThan(HOME_FIND_LIMIT);
   });
 
   it('refuses a query too short to search, by name', async () => {

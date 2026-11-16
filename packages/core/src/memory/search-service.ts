@@ -65,7 +65,7 @@ interface RunMemorySearchInput {
   /** Who the hits are read for: a cite in a project they may not read is never read (REQ-30 BC-10). */
   reader: CiteReader;
   /**
-   * The query already embedded by the caller. `knowledge/unified-search.ts` holds one because it
+   * The query already embedded by the caller. The find door (`find/`) holds one because it
    * searches two stores from one query, and embedding it a second time here buys nothing but the
    * call. Absent, this function embeds the query itself as it always did.
    */

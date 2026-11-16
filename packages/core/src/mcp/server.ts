@@ -264,7 +264,7 @@ export function forgeMcpInstructions(): string {
   return `You are connected to Forge, where agents and people run one loop for a project: Product → Delivery → Release → Audit → Product. This server carries the Product side, for a person or an agent working as product owner, BA or project manager. Delivery (building, landing, deploying) is the project's master and its runs, working from a checkout.
 
 Load each layer only when your step needs it:
-1. \`forge_find { query }\` lists the actions for what you want, one line each. An action is \`<door>.<action>\`.
+1. \`forge_find { query }\` lists the actions for what you want, one line each, and the project's records your words name (a term by any of its aliases). An action is \`<door>.<action>\`; unsure where something lives, find it before reading code.
 2. \`forge_describe { action }\` gives one action's input, its guide, and in \`more\` the Forge guide to read for more.
 3. \`forge_call { action, args }\` runs it. A refusal names what to fix.
 4. A guide, when a describe or a refusal names one: \`fetch { id: "guide:<slug>" }\`; \`guide:index\` lists them, and \`guide:agent-setup\` names each role's.

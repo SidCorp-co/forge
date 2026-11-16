@@ -438,6 +438,28 @@
         "REQ-47"
       ]
     },
+    "find": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": [
+        "comments",
+        "feedback",
+        "findMisses",
+        "issueLabels",
+        "issues",
+        "knowledgeEntries",
+        "knowledgeRelations",
+        "labels",
+        "memories",
+        "orgKnowledgeEntries",
+        "projectWorkflows",
+        "projects",
+        "referenceSources",
+        "requirementRevisions",
+        "requirements"
+      ],
+      "serves": ["REQ-13", "REQ-11"]
+    },
     "forge-door": {
       "kind": "door",
       "context": "platform",
@@ -1195,7 +1217,7 @@
     "run-context": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["runContextReaches"],
+      "owns": ["findMisses", "runContextReaches"],
       "serves": ["REQ-13", "REQ-50"]
     },
     "runners": {

@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { knowledgeEntries } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { clampTopK } from '../lib/search-fusion.js';
 import { anyWordQuery } from './any-word.js';
 import { notAWithdrawnLesson } from './lesson-entries.js';
@@ -81,9 +82,9 @@ export async function searchKnowledge(
   return rows.map(({ distance, ...r }) => hitOf(r, 1 - Number(distance)));
 }
 
-/** Keyword search — Postgres FTS over the generated text_search column. */
+/** Keyword search — Postgres FTS over the generated text_search column, of one project or several. */
 export async function keywordSearchKnowledge(
-  projectId: string,
+  projectId: string | readonly string[],
   query: string,
   topK?: number,
 ): Promise<KnowledgeHit[]> {
@@ -112,4 +113,17 @@ export async function keywordSearchKnowledge(
     .orderBy(desc(sql`rank`))
     .limit(k);
   return rows.map(({ rank, ...r }) => hitOf(r, Number(rank)));
+}
+
+/**
+ * A query's vector as every knowledge search embeds it, or null where no embedding can be made: a
+ * caller then reads by keyword alone and says so. Any other failure is thrown.
+ */
+export async function queryVectorOf(query: string): Promise<number[] | null> {
+  try {
+    return await embed({ surface: 'knowledge' }, query);
+  } catch (err) {
+    if (err instanceof EmbeddingUnavailableError) return null;
+    throw err;
+  }
 }

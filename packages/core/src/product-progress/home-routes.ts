@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { withObservedReads } from '../db/observed-reads.js';
 import { withQueryLeg } from '../db/query-timing.js';
 import { readAcross } from '../db/read-memo.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole, requestReader } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requiresSelf } from '../permissions/index.js';
@@ -147,7 +147,7 @@ meHomeRoutes.get(
             readHomeProject(viewer, p.id),
             releasesOf(p.id),
           ]);
-          return findIn(p, part, releases, q);
+          return findIn(p, part, releases, q, requestReader(viewer.userId));
         },
         'home-find',
       ),

@@ -93,11 +93,11 @@ export interface HomeFoundItem {
 	standing: HomeFoundStanding;
 }
 
-/** `GET /api/me/home/find?q=`: at most `HOME_FIND_LIMIT` items, by key first, then title. */
+/** `GET /api/me/home/find?q=`: at most `HOME_FIND_LIMIT` items, by key first, then the find door's rank. */
 export interface HomeFindResponse {
 	q: string;
 	items: HomeFoundItem[];
-	/** How many items matched before the cut. */
+	/** How many items the find door matched before the cut: as deep as each of its arms reads, never a count of every match. */
 	total: number;
 	/** `items` holds fewer than `total`. */
 	truncated: boolean;

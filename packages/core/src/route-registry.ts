@@ -70,6 +70,7 @@ import {
   feedbackServerKeyDoor,
   feedbackServerKeyRoutes,
 } from './feedback/routes.js';
+import { findRoutes } from './find/index.js';
 import { forecastRoutes } from './forecast/index.js';
 import {
   agentReportsRetiredRoutes,
@@ -120,8 +121,7 @@ import {
   jobProjectRoutes,
   jobRoutes,
 } from './jobs/routes.js';
-import { orgKnowledgeRoutes } from './knowledge/index.js';
-import { knowledgeRoutes } from './knowledge/routes.js';
+import { knowledgeRoutes, orgKnowledgeRoutes } from './knowledge/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { lessonRoutes } from './lessons/index.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
@@ -488,7 +488,7 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   // retired by REQ-47 BC-8: each route answers where reports about Forge go now
   app.route('/api/agent-reports', agentReportsRetiredRoutes);
   app.route('/api/shares', shareOpenRoutes);
-  app.route('/api/projects', knowledgeRoutes);
+  app.route('/api/projects', knowledgeRoutes).route('/api/projects', findRoutes);
   app.route('/api/projects', runContextRoutes);
   app.route('/api/projects', agreementRoutes);
   app.route('/api/skills', skillCrudRoutes);

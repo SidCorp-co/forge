@@ -4,6 +4,7 @@
 // type, module and status, each carrying its tree path and the handle that opens it.
 
 import { z } from "zod";
+import type { ModuleStoredRelationKind } from "./module-map.js";
 
 /** Every record type the door finds, in the order its groups answer. */
 export const FIND_TYPES = [
@@ -67,7 +68,7 @@ const freeList = z
 	.pipe(z.array(z.string().min(1).max(80)).max(20));
 
 /**
- * A find, as `GET /api/projects/:id/find` takes it in its query and `forge_find` in its arguments.
+ * A find, as `POST /api/projects/:id/find` takes it in its body and `forge_find` in its arguments.
  * `module` takes module slugs, or `unplaced` for hits no module holds; `status` takes the statuses
  * the facets answer. `conversation` searches one room's transcript, which its own fence decides.
  */
@@ -89,9 +90,15 @@ export type FindQuery = z.infer<typeof findQuerySchema>;
 /** The module filter's value for hits no module holds. */
 export const FIND_UNPLACED_FILTER = "unplaced";
 
+/**
+ * The module a hit is placed in: `slug` and `name` are its business module (the root of its module
+ * labels, the pillar's row and the module facet), `path` the slug path to the label it is placed
+ * under (`execution/devices`).
+ */
 export interface FindHitModule {
 	slug: string;
 	name: string;
+	path: string;
 }
 
 /** One hit, the same for a person and an agent. */
@@ -111,7 +118,7 @@ export interface FindHit {
 	module: FindHitModule | null;
 	/** What the status facet counts it under; null where its type has no status. */
 	status: string | null;
-	/** Its place in the module tree: `[module name or Unplaced, type label]`. */
+	/** Its place in the module tree: `[business module name or Unplaced, type label]`. */
 	path: [string, string];
 	/** Which arms found it, and the alias that matched where the glossary expanded the query. */
 	match: { arms: FindMatchArm[]; alias: string | null };
@@ -143,7 +150,7 @@ export interface FindExpansion {
 export interface FindResult {
 	query: string;
 	expanded: FindExpansion[];
-	/** Hits by type, in `FIND_TYPES` order; a type with none is left out. */
+	/** Hits by type, each group where its best hit ranks, its hits best first; a type with none is left out. */
 	groups: FindGroup[];
 	/** Counted over every hit before the type, module and status filters. */
 	facets: { type: FindFacet[]; module: FindFacet[]; status: FindFacet[] };
@@ -155,6 +162,17 @@ export interface FindResult {
 	gap: boolean;
 }
 
+/**
+ * One relation of an opened term or rule (`contracts/module-map.ts`): which way it points from the
+ * hit, and the other end as its type and ref (a slug, `REQ-12 BC-3`, a card id, `file.ts:symbol`).
+ */
+export interface FindRelation {
+	kind: ModuleStoredRelationKind;
+	direction: "out" | "in";
+	type: string;
+	ref: string;
+}
+
 /** One opened hit: where a person reads it, and what it is linked to. */
 export interface FindOpened {
 	hit: FindHit;
@@ -162,6 +180,8 @@ export interface FindOpened {
 	url: string;
 	/** Its text, as far as this door serves it. */
 	text: string;
+	/** A term's or a rule's relations, each walkable by a find of its ref; empty for any other type. */
+	relations: FindRelation[];
 }
 
 export const findOpenQuerySchema = z.strictObject({

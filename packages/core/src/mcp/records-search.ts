@@ -1,7 +1,7 @@
 /**
  * `search` and `fetch`, the two tools ChatGPT's connector and deep research look for by name
- * (ISS-773): a keyword search over the issues, requirements and knowledge of the projects the caller
- * reads, and one of those items read whole by the id the search returned.
+ * (ISS-773): the find door over the issues, requirements and knowledge of the projects the caller
+ * reads (ISS-1256), and one of those items read whole by the id the search returned.
  *
  * Only a project the token reads is searched or fetched: an item of any other is not found, never
  * shown. Every title and text passes the project's data policy for its surface
@@ -11,15 +11,15 @@
 
 import type { Refusal } from '@forge/contracts/refusal';
 import { scrubSecretsDeep } from '@forge/observability';
-import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
+import { runFind } from '../find/index.js';
 import { getGuide, listGuides, servedGuideBody } from '../guides/index.js';
-import { recallKnowledgeAcross } from '../knowledge/index.js';
 import { type EgressSurface, egressShown } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
-import { loadVisibleProjectIdsForPrincipal } from '../lib/tool.js';
+import { loadVisibleProjectIdsForPrincipal, projectReaderOf } from '../lib/tool.js';
 import { webBaseUrl } from '../lib/web-base-url.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 
@@ -31,7 +31,6 @@ const SURFACE: Record<Kind, EgressSurface> = {
   knowledge: 'knowledge',
   org: 'knowledge',
 };
-const PER_KIND = 8;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type SearchResult = { id: string; title: string; url: string };
@@ -43,7 +42,6 @@ export type FetchedRecord = {
   metadata: Record<string, unknown>;
 };
 
-const like = (query: string) => `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const link = (path: string) => `${webBaseUrl() ?? ''}${path}`;
 
 async function slugsOf(projectIds: readonly string[]): Promise<Map<string, string>> {
@@ -55,93 +53,78 @@ async function slugsOf(projectIds: readonly string[]): Promise<Map<string, strin
   return new Map(rows.map((r) => [r.id, r.slug]));
 }
 
+/** The record types MCP `search` answers: the ones `fetch` reads whole. */
+const SEARCHED = ['issue', 'requirement', 'term', 'rule', 'lesson', 'knowledge'] as const;
+const PER_SEARCH = 24;
+
+/** A find hit as the id `fetch` reads: an org ruling under `org:`, any other entry under `knowledge:`. */
+function fetchIdOf(type: (typeof SEARCHED)[number], ref: string): string {
+  if (ref.startsWith('org:')) return ref;
+  return type === 'issue' || type === 'requirement' ? `${type}:${ref}` : `knowledge:${ref}`;
+}
+
 /**
- * The issues and requirements of the caller's projects whose title or text holds `query`, and the
- * knowledge they recall for it (REQ-89 BC-7, ISS-1121): their entries and lessons and their orgs'
- * rulings, ranked by meaning through the read `knowledge/search` serves, so a paraphrase or a
- * Vietnamese question finds the ruling it asks about. A retired or superseded entry is never a hit.
+ * The issues, requirements and knowledge of the caller's projects that match `query`, as a filter of
+ * the find door (ISS-1256): the same ranks `forge_find` and the REST find answer, the query expanded
+ * through the glossary, knowledge recalled by meaning (REQ-89 BC-7) beside the org's rulings, so a
+ * paraphrase or a Vietnamese question finds the ruling it asks about. A retired or superseded entry
+ * is never a hit.
  */
 export async function searchRecords(
   principal: McpPrincipal,
   query: string,
 ): Promise<{ results: SearchResult[] }> {
   const visible = await loadVisibleProjectIdsForPrincipal(principal);
-  if (visible.length === 0) return { results: [] };
-  const words = like(query.trim());
-  const [issueRows, requirementRows, knowledgeRows] = await Promise.all([
-    db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        seq: issues.issSeq,
-        title: issues.title,
-      })
-      .from(issues)
-      .where(
-        and(
-          inArray(issues.projectId, visible),
-          or(ilike(issues.title, words), ilike(issues.description, words)),
-        ),
-      )
-      .orderBy(desc(issues.updatedAt))
-      .limit(PER_KIND),
-    db
-      .select({
-        id: requirements.id,
-        projectId: requirements.projectId,
-        seq: requirements.reqSeq,
-        title: requirements.title,
-      })
-      .from(requirements)
-      .where(and(inArray(requirements.projectId, visible), ilike(requirements.title, words)))
-      .orderBy(desc(requirements.updatedAt))
-      .limit(PER_KIND),
-    recallKnowledgeAcross(visible, query.trim(), PER_KIND),
-  ]);
+  const home = principal.boundProjectId ?? (visible.length === 1 ? visible[0] : undefined);
+  const [first] = visible;
+  if (!first) return { results: [] };
+  const { fused } = await runFind({
+    projectId: home ?? first,
+    projectIds: visible,
+    query: { q: query.trim(), type: [...SEARCHED], limit: PER_SEARCH },
+    reader: projectReaderOf(principal),
+    askedBy: principal.agency === 'agent' ? 'agent' : 'person',
+    recordsGap: home !== undefined,
+  });
   const slugs = await slugsOf([
-    ...new Set(
-      [
-        ...issueRows,
-        ...requirementRows,
-        ...knowledgeRows.flatMap((r) => ('projectId' in r ? [r] : [])),
-      ].map((r) => r.projectId),
-    ),
+    ...new Set(fused.flatMap((c) => (c.projectId ? [c.projectId] : []))),
   ]);
   const shown = async (kind: Kind, projectId: string, title: string) =>
     (await egressShown(projectId, SURFACE[kind], { title }, `${kind} title`)).title;
   const results: SearchResult[] = [];
-  for (const r of issueRows) {
-    const slug = slugs.get(r.projectId) ?? '';
-    results.push({
-      id: `issue:${r.id}`,
-      title: `ISS-${r.seq} · ${await shown('issue', r.projectId, r.title)}`,
-      url: link(`/projects/${slug}/issues/${r.id}`),
-    });
-  }
-  for (const r of requirementRows) {
-    const slug = slugs.get(r.projectId) ?? '';
-    results.push({
-      id: `requirement:${r.id}`,
-      title: `REQ-${r.seq} · ${await shown('requirement', r.projectId, r.title)}`,
-      url: link(`/projects/${slug}/requirements/REQ-${r.seq}`),
-    });
-  }
-  for (const r of knowledgeRows) {
-    if (r.origin === 'org') {
+  for (const c of fused) {
+    if (!(SEARCHED as readonly string[]).includes(c.type)) continue;
+    const type = c.type as (typeof SEARCHED)[number];
+    const id = fetchIdOf(type, c.ref);
+    const slug = c.projectId ? (slugs.get(c.projectId) ?? '') : '';
+    if (!c.projectId) {
       // an org ruling reaches every project of its org; the org page is where it is read
+      const ruling = c.native as { type?: string } | undefined;
       results.push({
-        id: `org:${r.id}`,
-        title: `${r.slug} · ${r.title} (org ${r.type})`,
+        id,
+        title: `${c.key} · ${c.title} (org ${ruling?.type ?? 'convention'})`,
         url: link('/org'),
       });
-      continue;
+    } else if (type === 'issue') {
+      results.push({
+        id,
+        title: `${c.key} · ${await shown('issue', c.projectId, c.title)}`,
+        url: link(`/projects/${slug}/issues/${c.ref}`),
+      });
+    } else if (type === 'requirement') {
+      results.push({
+        id,
+        title: `${c.key} · ${await shown('requirement', c.projectId, c.title)}`,
+        url: link(`/projects/${slug}/requirements/${c.key}`),
+      });
+    } else {
+      const entry = c.native as { type?: string | null } | undefined;
+      results.push({
+        id,
+        title: `${await shown('knowledge', c.projectId, c.title)}${entry?.type ? ` (${entry.type})` : ''}`,
+        url: link(`/projects/${slug}/memory`),
+      });
     }
-    const slug = slugs.get(r.projectId) ?? '';
-    results.push({
-      id: `knowledge:${r.id}`,
-      title: `${await shown('knowledge', r.projectId, r.title)}${r.type ? ` (${r.type})` : ''}`,
-      url: link(`/projects/${slug}/memory`),
-    });
   }
   return scrubSecretsDeep({ results });
 }
