@@ -6,7 +6,7 @@ import { flagsOf } from './signals.js';
 
 const now = new Date('2026-11-16T00:00:00Z');
 const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000);
-const source = {
+const source: Parameters<typeof flagsOf>[0] = {
   addedAt: daysAgo(200),
   followReleases: true,
   repoArchived: false,
