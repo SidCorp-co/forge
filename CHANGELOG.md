@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.692] - 2026-11-16
+
+Room agents know who asks, read their guide, and audit each reply
+
+### Fixed
+
+- **Room agents now act on an owner's instruction and audit each reply they send.** They read who is asking and the thread first, and each self-audit verdict shows per project and bot.
+
 ## [0.4.0-dev.691] - 2026-11-16
 
 Owner asks read as plain questions, without internal ids
