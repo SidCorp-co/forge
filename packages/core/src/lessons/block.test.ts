@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { LessonEntry } from '../knowledge/index.js';
 import {
+  gistOf,
   LESSONS_MAP_MAX_CHARS,
   type LessonAudience,
+  lessonNamedIn,
   lessonsFor,
+  lessonsMapOverflow,
   lessonsMapText,
   restLessonDoors,
 } from './block.js';
@@ -39,18 +42,33 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     expect(lessonsMapText([reqs], aud({ produces: ['issue'], area: null }), 2)).toBeNull();
   });
 
-  it('names each slug with its scope and how to read, apply and raise, and no sentence', () => {
+  it('says for each lesson when it applies and its gist, and how to read, apply and raise', () => {
     const text = lessonsMapText(all, aud({ produces: ['requirement'], area: 'any' }), 3) ?? '';
     expect(text).toContain('### Lessons');
-    expect(text).toContain('lesson-2 [area Billing], lesson-3 [requirements], lesson-1 [all work]');
-    expect(text).not.toContain('Said once as rule');
+    expect(text).toContain(
+      [
+        'lesson-2, when working in Billing: Said once as rule 2.',
+        'lesson-3, when writing requirements: Said once as rule 3.',
+        'lesson-1, when any work: Said once as rule 1.',
+      ].join('\n'),
+    );
     expect(text).toContain('the read door');
     expect(text).toContain('Lessons applied: L-3, L-7');
     expect(text).toContain('(the raise door)');
     expect(text).not.toContain('the list door');
+    expect(lessonNamedIn(text, 'lesson-2')).toBe(true);
+    expect(lessonNamedIn(text, 'lesson-20')).toBe(false);
   });
 
-  it('holds its budget with five hundred lessons, counting the rest and naming the list door', () => {
+  it('cuts a long first sentence at a word, and carries only the first sentence', () => {
+    expect(gistOf('Keep it short. Then more.')).toBe('Keep it short.');
+    const long = `${'word '.repeat(40)}end.`;
+    const gist = gistOf(long);
+    expect(gist.length).toBeLessThanOrEqual(90);
+    expect(gist.endsWith('word…')).toBe(true);
+  });
+
+  it('holds its budget with five hundred lessons, the nearest first, counting the rest and naming the list door', () => {
     const many = Array.from({ length: 500 }, (_, i) =>
       entry(i + 1, {
         kind: 'area',
@@ -62,25 +80,30 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     for (const doorsOf of [doors, restLessonDoors('0b6f1f5e-7a7e-4c43-9d56-0c5e9a3b2f11')]) {
       const text = lessonsMapText(many, { produces: ['issue'], area: 'any', ...doorsOf }, 2) ?? '';
       expect(text.length).toBeLessThanOrEqual(LESSONS_MAP_MAX_CHARS);
-      const named = text.match(/lesson-\d+ \[/g)?.length ?? 0;
+      const named = text.match(/lesson-\d+, when /g)?.length ?? 0;
       expect(named).toBeGreaterThan(0);
-      expect(text).toContain(`, and ${500 - named} more: ${doorsOf.list}`);
-      expect(text).toContain('lesson-500 ['); // the newest first
-      expect(text).toContain('…]'); // a long area name is cut
+      expect(text).toContain(`${500 - named} more lessons, nearer other work: ${doorsOf.list}`);
+      expect(text).toContain('lesson-500, when '); // the newest first
+      expect(text).toContain('…:'); // a long area name is cut
+      expect(lessonsMapOverflow(many, { produces: ['issue'], area: 'any', ...doorsOf })).toEqual({
+        reach: 500,
+        named,
+        size: text.length,
+      });
     }
   });
 
-  it('says only the count and the list door where not one slug fits beside the frame', () => {
+  it('says only the count and the list door where not one line fits beside the frame', () => {
     const frame = lessonsMapText([project], aud({ produces: [], area: null }), 2) ?? '';
-    expect(frame).toContain('lesson-1 [all work]');
-    expect(frame).not.toContain('more:');
-    // a read door that leaves room for the count line and not for one slug
+    expect(frame).toContain('lesson-1, when any work: ');
+    expect(frame).not.toContain('more lesson');
+    // a read door that leaves room for the count line and not for one lesson's line
     const pad = 'f'.repeat(LESSONS_MAP_MAX_CHARS - frame.length + doors.fetch.length + 3);
     const tight = { produces: [], area: null, ...doors, fetch: pad, list: 'L' };
     const text = lessonsMapText([project], tight, 2) ?? '';
     expect(text.length).toBeLessThanOrEqual(LESSONS_MAP_MAX_CHARS);
-    expect(text).not.toContain('lesson-1 [');
-    expect(text).toContain('1 lessons: L');
+    expect(text).not.toContain('lesson-1, when');
+    expect(text).toContain('1 more lesson, nearer other work: L');
   });
 
   it('refuses by name a door too long for the budget, never a longer map', () => {

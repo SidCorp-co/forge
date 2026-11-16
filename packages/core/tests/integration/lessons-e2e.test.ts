@@ -231,15 +231,13 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
     const orientation = await servedCheckoutOrientation(w.projectId, 'lessons');
     const assistant = await block({ produces: ['chat', 'requirement'], area: 'any' });
     for (const text of [preamble, orientation, assistant]) {
-      expect(text).toContain(`lesson-${n} [all work]`);
+      expect(text).toContain(`lesson-${n}, when any work: Name the ward on every reminder.`);
       expect(text).toContain('Lessons applied: L-3, L-7');
       expect(text).toContain('until the steward settles it');
       expect(text).not.toContain('Use plain words, never codes.');
       expect(text).not.toMatch(/by a person|a person decides/);
     }
-    // the map names the lesson; its sentence is in no prompt, only where the agent reads it
-    expect(preamble).not.toContain('Name the ward on every reminder.');
-    expect(orientation).not.toContain('Name the ward on every reminder.');
+    // the map says when the lesson applies and its gist (ISS-1251); the agent reads it whole by its slug
     expect(assistant).toContain(`L-${n} [all work]: Name the ward on every reminder.`);
     expect(preamble).not.toMatch(/Project rules[\s\S]*lesson-/);
     // nor named twice: the guide index leaves the lesson to the lessons map

@@ -2,7 +2,9 @@ export { recordApplied, recordAppliedFromText } from './applied.js';
 export {
   LESSONS_MAP_MAX_CHARS,
   type LessonAudience,
+  lessonNamedIn,
   lessonsMapFor,
+  lessonsMapOverflow,
   lessonsMapText,
   restLessonDoors,
 } from './block.js';

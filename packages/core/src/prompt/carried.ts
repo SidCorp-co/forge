@@ -12,6 +12,7 @@ import {
   selectAlwaysInjectFromKnowledge,
   selectLessonEntries,
 } from '../knowledge/index.js';
+import { lessonNamedIn } from '../lessons/index.js';
 import { digestOf, sourcesOf } from '../run-context/index.js';
 import { checkoutOrientation } from './checkout-orientation.js';
 
@@ -32,10 +33,10 @@ export function carriedIn(
     ...rules
       .filter((r) => text.includes(r.text))
       .map((r) => ({ kind: 'rule' as const, ref: r.key, revision: digestOf(r.text) })),
-    // the lessons map names a lesson as `<slug> [<scope>]` (`lessons/block.ts:lessonsMapText`), and
-    // names only as many as fit; the rest it counts, and a lesson only counted did not reach the run
+    // the lessons map names only as many lessons as fit (`lessons/block.ts:lessonsMapText`); the rest
+    // it counts, and a lesson only counted did not reach the run
     ...lessons
-      .filter((l) => text.includes(`${l.slug} [`))
+      .filter((l) => lessonNamedIn(text, l.slug))
       .map((l) => ({ kind: 'lesson' as const, ref: l.slug, revision: digestOf(l.sentence) })),
     ...sourcesOf({ agreements: supplied }),
   ];
