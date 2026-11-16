@@ -7,8 +7,6 @@
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { Action } from './tool-args.js';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 /** When an agent reaches for a project's ecosystem records. */
 export const CARDS = {
   interface: {
@@ -29,7 +27,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['master'],
-    changed: CHANGED,
   },
   interface_write: {
     purpose:
@@ -58,7 +55,6 @@ export const CARDS = {
       document: '<the whole interface interface answered, with your change>',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   links: {
     purpose:
@@ -76,7 +72,6 @@ export const CARDS = {
     practice: ['Each link’s revision here is the baseRevision its link_update sends.'],
     example: { projectId: '<project uuid>' },
     audience: ['master'],
-    changed: CHANGED,
   },
   link_create: {
     purpose:
@@ -99,7 +94,6 @@ export const CARDS = {
         '<a link-v1 document: the consuming module, the contract, pinnedVersion, state, callSites>',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   link_update: {
     purpose:
@@ -132,7 +126,6 @@ export const CARDS = {
     redFlag:
       'Setting a link whose code is gone to unverified and leaving it: it still reads as a live use. Retire it: building with callSites [], then delete it.',
     audience: ['master'],
-    changed: CHANGED,
   },
   builder_runs: {
     purpose: 'Lists this project’s builder runs: the open one to work, and those before it.',
@@ -147,7 +140,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['master'],
-    changed: CHANGED,
   },
   builder_run: {
     purpose:
@@ -165,7 +157,6 @@ export const CARDS = {
     practice: ['trigger.head says which ref and commit the run maps, and how it was read.'],
     example: { projectId: '<project uuid>', run: '<builder run uuid>' },
     audience: ['master'],
-    changed: CHANGED,
   },
   builder_run_update: {
     purpose:
@@ -191,7 +182,6 @@ export const CARDS = {
       document: '<the whole builder-run-v1 document builder_run answered, with the step moved>',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   builder_run_supersede: {
     purpose:
@@ -215,7 +205,6 @@ export const CARDS = {
       reason: 'Opened at a push to main; this project builds from dev.',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   bus: {
     purpose:
@@ -236,7 +225,6 @@ export const CARDS = {
     ],
     example: { ecosystem: '<ecosystem uuid>' },
     audience: ['master'],
-    changed: CHANGED,
   },
   context: {
     purpose:
@@ -261,7 +249,6 @@ export const CARDS = {
       session: '<session uuid>',
     },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   contract_version_publish: {
     purpose:
@@ -293,7 +280,6 @@ export const CARDS = {
     redFlag:
       'Recording a version from a commit that has not landed: sourceRef is a commit on the base branch and the artifact that file byte for byte (CONTRACT_SOURCE_NOT_LANDED, CONTRACT_SOURCE_DIGEST_MISMATCH).',
     audience: ['master'],
-    changed: CHANGED,
   },
   contract_version_decide: {
     purpose:
@@ -318,6 +304,5 @@ export const CARDS = {
       decision: 'approve',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Partial<Record<Action, CapabilityCardBody>>;

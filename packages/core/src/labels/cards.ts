@@ -28,6 +28,5 @@ export const LABEL_REST_CARDS = {
     redFlag:
       'Naming a module in a design before the project has its label, or creating a second label beside a plain one.',
     audience: ['master'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<string, CapabilityCardBody>;

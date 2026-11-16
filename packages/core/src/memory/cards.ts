@@ -6,7 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const PROJECT = '6f1c2a0e-5b7d-4c1e-9a3f-2d8e4b6c7a10';
 const MEMORY_A = '3d9e1f42-7a6b-4c2d-8e1f-5a7b9c0d2e14';
 const MEMORY_B = '8b2c4d6e-1f3a-4b5c-9d7e-2a4c6e8f0b13';
@@ -37,7 +36,6 @@ export const MEMORY_REST_CARDS = {
       evidence: 'deploy-dev.yml now waits on /api/version sourceCommit; the note says it does not.',
     },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/memory/verify': {
     purpose: 'Stamps one or many memories, by id, as checked and still true now.',
@@ -53,7 +51,6 @@ export const MEMORY_REST_CARDS = {
     ],
     example: { ids: [MEMORY_A, MEMORY_B] },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/memory/retire': {
     purpose: 'Retires many memories in one call under one reason, or deletes them for good.',
@@ -80,6 +77,5 @@ export const MEMORY_REST_CARDS = {
     redFlag:
       'Retiring a sweep one memory per call: the memory write limit runs out before the sweep does.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

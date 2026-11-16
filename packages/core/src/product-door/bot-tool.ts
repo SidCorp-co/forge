@@ -79,7 +79,6 @@ const CARDS = {
     practice: ['A thread is a chat room of the project: the same one the Forge UI chat shows.'],
     example: { projectId: '<project uuid>', limit: 10 },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   open: {
     purpose: 'Opens a thread with the Forge bot, or resumes one, optionally about one record.',
@@ -104,7 +103,6 @@ const CARDS = {
       about: { kind: 'requirement', key: 'REQ-90' },
     },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   send: {
     purpose: 'Says one message to the Forge bot in a thread and waits a while for its turn.',
@@ -140,7 +138,6 @@ const CARDS = {
     redFlag:
       'Reusing one clientKey for a different message: it is refused BOT_CLIENT_KEY_REUSED and the message is not taken in; each new message takes a new key.',
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   read: {
     purpose: 'Reads the messages after a cursor in a bot thread, and the state of a turn.',
@@ -165,7 +162,6 @@ const CARDS = {
       waitSeconds: 30,
     },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   cancel: {
     purpose: 'Ends the turn a bot thread is running, where this server runs it.',
@@ -182,7 +178,6 @@ const CARDS = {
     ],
     example: { projectId: '<project uuid>', thread: '<thread uuid>' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<(typeof BOT_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

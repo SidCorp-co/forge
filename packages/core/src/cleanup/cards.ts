@@ -6,7 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const DEBT = '3d9f0b7a-1c2e-4f5a-8b6c-7e9d0a1b2c3d';
 
 export const CLEANUP_REST_CARDS = {
@@ -31,7 +30,6 @@ export const CLEANUP_REST_CARDS = {
     // ISS-780 / forge-plugin report: the drive skill marked merges without rating the change
     redFlag: 'Marking the merge unrated, so Audit cannot tell which landing to read first.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/cleanup-reports': {
     purpose:
@@ -58,7 +56,6 @@ export const CLEANUP_REST_CARDS = {
     redFlag:
       'Typing the base sha by hand or shortening it: the next window reads its range from it.',
     audience: ['run'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/debts/:debt/carry': {
     purpose:
@@ -78,7 +75,6 @@ export const CLEANUP_REST_CARDS = {
       endsWhen: 'The owner sets SENTRY_DSN on staging.',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/debts/:debt/evidence': {
     purpose: 'Keeps what you learned about an open debt on the debt itself.',
@@ -93,6 +89,5 @@ export const CLEANUP_REST_CARDS = {
       evidence: 'The red is the jsdom upgrade: 4 suites time out at 5 s since 0.4.0-dev.690.',
     },
     audience: ['run'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

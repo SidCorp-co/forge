@@ -7,8 +7,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const FEEDBACK_REST_CARDS = {
   'POST /api/projects/:id/feedback/:fb/triage': {
     purpose:
@@ -55,7 +53,6 @@ export const FEEDBACK_REST_CARDS = {
     redFlag:
       'Filing a new issue without reading the item’s similar items and open issues, or leaving triage to the owner.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/retarget': {
     purpose:
@@ -70,7 +67,6 @@ export const FEEDBACK_REST_CARDS = {
     example: { requirement: 'REQ-12', reason: 'REQ-12 BC-3 now records the reorder rule.' },
     // ISS-264: items about a screen could not move to the requirement that later recorded their rule
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/verify': {
     purpose: 'Confirms a resolved feedback item is fixed for its reporter, saying what was seen.',
@@ -95,7 +91,6 @@ export const FEEDBACK_REST_CARDS = {
     redFlag:
       'Verifying from the record alone, without running the fix on the build that serves it.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/reopen': {
     purpose: 'Sends a resolved item back to triage, saying what its fix does not answer.',
@@ -111,7 +106,6 @@ export const FEEDBACK_REST_CARDS = {
         'On 0.4.0-dev.690 a reorder with a sold-out line still fails when that line is the first.',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/confirm-wait': {
     purpose:
@@ -135,7 +129,6 @@ export const FEEDBACK_REST_CARDS = {
     redFlag:
       'Verifying before the event that tests the fix happened, or letting the confirm nudge repeat every pass.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/snooze': {
     purpose: 'Parks a new or reopened item out of New until a date, saying why.',
@@ -151,7 +144,6 @@ export const FEEDBACK_REST_CARDS = {
       reason: 'The reporter re-tests after the 1.31 release on 2026-11-24.',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/messages': {
     purpose:
@@ -176,7 +168,6 @@ export const FEEDBACK_REST_CARDS = {
     // bots-answer-users-by-name and agent-is-the-voice: core composes no notice for the agent
     redFlag: 'Writing an issue key, an error code or a table name to a reporter.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/verify-ask': {
     purpose:
@@ -190,6 +181,5 @@ export const FEEDBACK_REST_CARDS = {
     practice: ['You never ask yourself: a reporter verifies their own item instead.'],
     example: {},
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

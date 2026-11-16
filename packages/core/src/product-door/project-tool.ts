@@ -56,7 +56,6 @@ const CARDS = {
     redFlag:
       'Counting issues.list by hand to say how the project stands: it disagrees with the dashboard.',
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   needs_you: {
     purpose: 'Lists only the decisions waiting on you, each with the recommended answer and why.',
@@ -73,7 +72,6 @@ const CARDS = {
     practice: ['Answer each one on the item it shapes; notDecisions counts the rest of the list.'],
     example: { projectId: '<project uuid>', limit: 10 },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   decisions: {
     purpose: 'Reads the decisions recorded in the project, with who decided, when and why.',
@@ -90,7 +88,6 @@ const CARDS = {
     practice: ['Quote the recorded reason and the item it sits on, not your reading of it.'],
     example: { projectId: '<project uuid>', days: 30, limit: 20 },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<(typeof PROJECT_TOOL_READS)[number], CapabilityCardBody>;
 

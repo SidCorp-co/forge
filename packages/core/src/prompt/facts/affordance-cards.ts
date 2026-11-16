@@ -8,6 +8,7 @@ import {
   type CapabilityCardBody,
   capabilityCardSchema,
 } from '@forge/contracts/capability-cards';
+import { servedCard } from '../../lib/card-changed.js';
 
 /** A card judged whole as it is written, refused by name where it does not stand. */
 export const card = (id: string, owner: string, body: CapabilityCardBody): CapabilityCard => {
@@ -16,7 +17,7 @@ export const card = (id: string, owner: string, body: CapabilityCardBody): Capab
     const said = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`prompt: the capability card for ${id} does not stand: ${said}`);
   }
-  return { id, owner, ...parsed.data };
+  return servedCard(id, owner, parsed.data);
 };
 
 /** The cards, in the order the orientation's table lists their situations. */
@@ -35,7 +36,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Send the edge with the create when the blocker is known; a second call leaves a gap an open issue can dispatch through.',
     ],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/memory', 'memory', {
     purpose: 'Keeps a note or learning another agent on another issue would reuse.',
@@ -49,7 +49,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Search first and update the entry already held, rather than writing a second one beside it.',
     ],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('PUT /api/projects/:id/knowledge/:slug', 'knowledge', {
     purpose: "Writes one entry of the project's own prose: a rule, a guide, build commands.",
@@ -69,7 +68,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'One entry per slug; injection decides whether it reaches every prompt, so keep always-on entries few and short.',
     ],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/projects/:id/issues', 'issues', {
     purpose: 'Files work: born at draft for later, or with its body for work to report.',
@@ -86,7 +84,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     ],
     practice: ['Name the requirement and criteria it delivers where you already have them.'],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('PUT /api/projects/:id/policy', 'project-config', {
     purpose: "Changes the project's policy, written whole against the revision read.",
@@ -99,7 +96,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     ],
     practice: ['GET it first and send back the whole document with the baseRevision you read.'],
     audience: ['master'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('PUT /api/projects/:id/config', 'project-config', {
     purpose: 'Changes the project document, written whole against the revision read.',
@@ -138,7 +134,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     redFlag:
       'Sending a patch ({ base, patch } or only the keys that change), or gates changed in the document: refused CONFIG_WRITE_SHAPE and GATES_WRITTEN_THROUGH_THEIR_DOOR.',
     audience: ['master', 'person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/memory/search', 'memory', {
     purpose: 'Reads what earlier work learned before you design or fix.',
@@ -147,7 +142,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Treat a hit as point-in-time: an unverified one is a lead to check against the code, never a fact.',
     ],
     audience: ['master', 'run', 'bot'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/issues/:id/merge', 'issues', {
     purpose: 'Records where a change landed, the evidence a close and a release read.',
@@ -160,7 +154,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     ],
     practice: ['Verify the commit is on the target branch on the remote before you name it.'],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/issues/:id/transition', 'issues', {
     purpose: 'Moves an issue along its lifecycle, a park or a drop included.',
@@ -174,7 +167,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     ],
     practice: ['Say why in a comment first; closed means its criteria were met in scope.'],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/projects/:id/workflows/:workflow/design/propose', 'workflows', {
     purpose: "Proposes a revision of a workflow's design for approval.",
@@ -202,7 +194,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'A design resting on another one is approved only once its base is approved at the revision it names.',
     ],
     audience: ['master', 'run', 'person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/projects/:id/feedback', 'feedback', {
     purpose:
@@ -243,7 +234,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     redFlag:
       'Naming the target as its own field (screen: …, requirement: …) or naming two, or calling create: the action is submit, with one target { kind, ref }.',
     audience: ['master', 'run', 'bot', 'person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/projects/:projectId/debts', 'cleanup', {
     purpose: 'Records a defect that stands alone as debt for the Audit, with its evidence.',
@@ -260,7 +250,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     ],
     redFlag: 'A red rated high left as debt while the issue that met it lands.',
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/issues/:id/comments', 'comments', {
     purpose: "Writes on the issue what a person should know, in the agent's own words.",
@@ -275,7 +264,6 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Name an extra fix under Extra fixes:, or the issue that owns it where it is out of reach.',
     ],
     audience: ['master', 'run'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
 ];
 

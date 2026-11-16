@@ -6,8 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const QUESTION_REST_CARDS = {
   'POST /api/questions': {
     purpose: 'Asks a person a choice an issue waits on, with options and the one you recommend.',
@@ -53,7 +51,6 @@ export const QUESTION_REST_CARDS = {
     redFlag:
       'Asking the owner a routine choice, or parking the issue on prose with no question behind it.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/questions/:id/void': {
     purpose: 'Withdraws an open question that no longer needs an answer, saying why.',
@@ -66,7 +63,6 @@ export const QUESTION_REST_CARDS = {
     practice: ['Void only your own or your project’s question; an answered one is history.'],
     example: { reason: 'Settled by REQ-12 r3, which the owner agreed on 2026-11-07.' },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'PUT /api/questions/:id/plain': {
     purpose: 'Writes the plain summary a person reads before deciding an open question.',
@@ -84,6 +80,5 @@ export const QUESTION_REST_CARDS = {
         'Customers could reorder in one tap.\nIt waits on your choice for out-of-stock items.\nWe recommend reordering the rest.',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

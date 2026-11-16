@@ -6,8 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const STEWARD_REST_CARDS = {
   'POST /api/projects/:id/steward-runs/:runId/done': {
     purpose: 'Ends a steward job, naming each write that never landed.',
@@ -36,6 +34,5 @@ export const STEWARD_REST_CARDS = {
     redFlag:
       'Listing a refusal you already fixed by resending, or a probe you expected to be refused: the run closes failed.',
     audience: ['run'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

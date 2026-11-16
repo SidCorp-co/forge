@@ -8,8 +8,6 @@
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { ChannelAction } from '@forge/contracts/ecosystem';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 /** When an agent reaches for a project's ecosystem channel. */
 export const CARDS = {
   unanswered: {
@@ -33,7 +31,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['master', 'bot'],
-    changed: CHANGED,
   },
   inbox: {
     purpose: 'Lists the channel documents published to this project, owed or not.',
@@ -50,7 +47,6 @@ export const CARDS = {
     practice: ['Work unanswered first: the inbox adds only what owes no reply yet.'],
     example: { projectId: '<project uuid>' },
     audience: ['master', 'bot'],
-    changed: CHANGED,
   },
   read: {
     purpose: 'Reads one channel document this project sends or receives, by its number or uuid.',
@@ -69,7 +65,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', ref: 'FP-CN-3' },
     audience: ['master', 'bot'],
-    changed: CHANGED,
   },
   thread: {
     purpose: 'Reads a whole channel conversation, and any hold on it, from its opening number.',
@@ -86,7 +81,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', thread: 'FP-CN-3' },
     audience: ['master', 'bot'],
-    changed: CHANGED,
   },
   contracts: {
     purpose:
@@ -107,7 +101,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', project: '<provider project uuid>' },
     audience: ['master', 'bot'],
-    changed: CHANGED,
   },
   reply: {
     purpose: 'Drafts this project’s answer to a published document, addressed to its sender.',
@@ -135,7 +128,6 @@ export const CARDS = {
       body: '<the acknowledgement body the parent owes>',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   edit: {
     purpose: 'Rewrites a draft, or a document the approve gate returned, before it is submitted.',
@@ -161,7 +153,6 @@ export const CARDS = {
       body: '<the whole acknowledgement body, as the note asks>',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   submit: {
     purpose:
@@ -178,6 +169,5 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', ref: 'FP-ACK-2' },
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Partial<Record<ChannelAction, CapabilityCardBody>>;

@@ -7,7 +7,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const SHA = 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee';
 /** One check as a run records it, the example of both the check and the merge-check doors. */
 const TYPECHECK = {
@@ -46,7 +45,6 @@ export const ISSUE_REST_CARDS = {
     redFlag:
       'Clearing a mark and re-marking with the commit only in `note`: the issue then sits in no release.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/verdicts': {
     purpose: 'Records one judged criterion, with the build it was judged on and what proves it.',
@@ -81,7 +79,6 @@ export const ISSUE_REST_CARDS = {
     redFlag:
       'Holding verdicts to write at the end, or naming a short sha: a run that stops loses them, and a short sha is refused.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/merge-check': {
     purpose: 'Records the merge check run on the change rebased onto its base, before it lands.',
@@ -110,7 +107,6 @@ export const ISSUE_REST_CARDS = {
     // posted before the shape they used was served
     redFlag: 'Rebasing again after the check and landing the new head on the old report.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'PATCH /api/issues/:id': {
     purpose: 'Changes an issue’s own fields: its plan, notes, labels, criteria text or work step.',
@@ -133,7 +129,6 @@ export const ISSUE_REST_CARDS = {
     redFlag:
       'Patching a lease or a status by hand: the lease shape is the kernel’s, and a status moves only by transition.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'PUT /api/issues/:id/design': {
     purpose: 'Records how each criterion will be proven and which modules the change touches.',
@@ -166,7 +161,6 @@ export const ISSUE_REST_CARDS = {
     redFlag:
       'Naming every module whose registry line you touched, which collides with every live run (ISSUE_SCOPE_HELD).',
     audience: ['run'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/events': {
     purpose: 'Records a run’s own typed record on the issue: a decision, a correction, a wave.',
@@ -196,7 +190,6 @@ export const ISSUE_REST_CARDS = {
     redFlag:
       'Posting a verdict, transition or park as an event, or pasting a record into a comment: each has its own store.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'PUT /api/issues/:id/criteria': {
     purpose: 'Writes an issue’s whole criteria list, each traced to its requirement’s BC.',
@@ -221,7 +214,6 @@ export const ISSUE_REST_CARDS = {
     // criteria only in prose, and rewrites dropped their traces
     redFlag: 'Leaving the criteria in the description: a verdict has nothing to attach to.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/checks': {
     purpose: 'Records each check a run ran, with how long it took, on the issue.',
@@ -240,7 +232,6 @@ export const ISSUE_REST_CARDS = {
       checks: [TYPECHECK],
     },
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/review': {
     purpose: 'Records a review of a change by a run that did not build it, line by line.',
@@ -262,7 +253,6 @@ export const ISSUE_REST_CARDS = {
     // REVIEW_BY_BUILDER / REVIEW_RUN_UNNAMED: the building run reviewed itself, or a box call named no run
     redFlag: 'Reviewing your own build, or sending checks and tests in the review body.',
     audience: ['run'],
-    changed: CHANGED,
   },
   'PATCH /api/issues/:id/criteria/:ref': {
     purpose: 'Corrects one criterion’s wording at any status, keeping its verdicts and trace.',
@@ -283,7 +273,6 @@ export const ISSUE_REST_CARDS = {
     },
     redFlag: 'Relaxing a criterion to match what got built, rather than correcting its words.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/criteria/:ref/supersede': {
     purpose: 'Retires a landed issue’s criterion that your landed change alters on purpose.',
@@ -305,7 +294,6 @@ export const ISSUE_REST_CARDS = {
     redFlag:
       'Leaving the old criterion standing, so the next re-judge fails it and reopens a landed issue.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/criteria/traces': {
     purpose: 'Adds one criterion per requirement BC code, worded as the BC and traced to it.',
@@ -318,7 +306,6 @@ export const ISSUE_REST_CARDS = {
     practice: ['It ties no criterion you wrote: tag your own line `(REQ-n BC-m)` for that.'],
     example: { codes: ['BC-3', 'BC-4'] },
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/merge/correction': {
     purpose: 'Replaces a closed issue’s landing commit in place, moving no status.',
@@ -333,7 +320,6 @@ export const ISSUE_REST_CARDS = {
     // ISS-1027 / ISS-1226: a closed issue was unmarked and re-marked, which a closed issue refuses
     redFlag: 'Clearing a closed issue’s mark to re-mark it: a closed issue takes the correction.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/attachments': {
     purpose: 'Uploads a file to an issue that a verdict, comment or post can name.',
@@ -347,7 +333,6 @@ export const ISSUE_REST_CARDS = {
       'From a box, `forge-runner api issues/<id>/attachments -F file=@<path>`; a local path in evidence is refused.',
     ],
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/events/:eventId/withdraw': {
     purpose: 'Withdraws a decision record that should not stand, keeping it on the record.',
@@ -360,7 +345,6 @@ export const ISSUE_REST_CARDS = {
     practice: ['Its writer or a project admin may withdraw it.'],
     example: { reason: 'A probe of the route, not a decision.' },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/patterns': {
     purpose: 'Names the pattern a change builds to, from the project’s catalog or as a new one.',
@@ -380,6 +364,5 @@ export const ISSUE_REST_CARDS = {
     ],
     example: { pattern: 'core-module' },
     audience: ['run'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

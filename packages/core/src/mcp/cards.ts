@@ -5,6 +5,7 @@
 
 import { type CapabilityCard, capabilityCardSchema } from '@forge/contracts/capability-cards';
 import { type CardFreshness, cardFreshness } from '../lessons/index.js';
+import { servedCard } from '../lib/card-changed.js';
 import type { McpTool } from '../lib/tool.js';
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
 import { REST_TWINS } from './twins.js';
@@ -33,7 +34,7 @@ export function cardsOf(tool: McpTool, actions: readonly string[]): Map<string, 
       throw new Error(`mcp registry: ${tool.name}'s card for ${action} does not stand: ${said}`);
     }
     const id = `${tool.name.replace(/^forge_/, '')}.${action}`;
-    cards.set(action, { id, owner: featureOf(tool), ...parsed.data });
+    cards.set(action, servedCard(id, featureOf(tool), parsed.data));
   }
   // an act whose one card sits on its REST twin, the orientation's (`twins.ts`)
   for (const action of actions) {

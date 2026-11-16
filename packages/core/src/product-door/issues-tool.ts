@@ -235,7 +235,6 @@ const CARDS = {
     ],
     example: { projectId: '<project uuid>', statusNot: ['closed', 'dropped'], limit: 25 },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   get: {
     purpose:
@@ -256,7 +255,6 @@ const CARDS = {
     redFlag:
       'Sending a key in another shape (ISS602, #602): it is refused at /issue, not looked up.',
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   create: {
     purpose: 'Files delivery work at draft, where the project’s master admits it.',
@@ -292,7 +290,6 @@ const CARDS = {
     redFlag:
       'Asking the person whether to file, or listing criteria only in the description: the first parks routine work on him, the second leaves the issue with no criterion.',
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<(typeof ISSUES_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

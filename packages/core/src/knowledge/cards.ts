@@ -6,8 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const KNOWLEDGE_REST_CARDS = {
   'POST /api/projects/:id/knowledge/search': {
     purpose: 'Finds the project’s knowledge, lessons and org rulings by topic, ranked.',
@@ -31,7 +29,6 @@ export const KNOWLEDGE_REST_CARDS = {
     ],
     example: { query: 'when must an agent ask the owner to approve', topK: 5 },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'DELETE /api/projects/:id/knowledge/:slug': {
     purpose: 'Removes a project knowledge entry that is wrong, stale or merged into another.',
@@ -51,7 +48,6 @@ export const KNOWLEDGE_REST_CARDS = {
     ],
     example: {},
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'PUT /api/orgs/:orgId/knowledge/:slug': {
     purpose: 'Writes one org-wide ruling or guide that every project of the organisation reads.',
@@ -87,6 +83,5 @@ export const KNOWLEDGE_REST_CARDS = {
     redFlag:
       'Writing an org-wide way of working as a rule on each project: the copies drift apart and none is the source.',
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

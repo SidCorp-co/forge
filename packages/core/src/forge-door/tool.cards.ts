@@ -5,8 +5,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
   list: {
     purpose: 'Lists the feedback about Forge you reported, each with its phase and progress.',
@@ -19,7 +17,6 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     practice: ['Repeat `progress.says`, never a date it does not hold.'],
     example: {},
     audience: ['person', 'master', 'run'],
-    changed: CHANGED,
   },
   get: {
     purpose: 'Reads one item you reported: what its triage told you and, once shipped, its proof.',
@@ -37,7 +34,6 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     practice: ['Name the item by its key, FB-n.'],
     example: { feedback: 'FB-473' },
     audience: ['person', 'master', 'run'],
-    changed: CHANGED,
   },
   progress: {
     purpose: 'Reads only whether work on an item you reported runs, and when it is likely done.',
@@ -50,7 +46,6 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     practice: ['Say the forecast as the range it is, or plainly why there is none.'],
     example: { feedback: 'FB-473' },
     audience: ['person', 'master', 'run'],
-    changed: CHANGED,
   },
   verify: {
     purpose: 'Confirms that a shipped fix to an item you reported holds on the running build.',
@@ -76,7 +71,6 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     redFlag:
       'Verifying from the release notes or the merge, without running it on the shipped build.',
     audience: ['person', 'master', 'run'],
-    changed: CHANGED,
   },
   reopen: {
     purpose: 'Reopens a shipped item you reported whose fix does not hold on the running build.',
@@ -95,7 +89,6 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     // ISS-749: reopens answered without anything addressing them bounced between reporter and master
     redFlag: 'Filing a new item for a fix that did not hold, so the old one reads resolved.',
     audience: ['person', 'master', 'run'],
-    changed: CHANGED,
   },
   reply: {
     purpose: 'Answers back once to the answer standing on an item you reported.',
@@ -115,6 +108,5 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     // ISS-749: a second reply to one answer is FEEDBACK_REPLY_SPENT
     redFlag: 'Replying in pieces: the second reply to one answer is refused.',
     audience: ['person', 'master', 'run'],
-    changed: CHANGED,
   },
 };

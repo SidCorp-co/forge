@@ -6,8 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const WORKFLOW_REST_CARDS = {
   'POST /api/projects/:id/workflows/:workflow/builds': {
     purpose:
@@ -23,7 +21,6 @@ export const WORKFLOW_REST_CARDS = {
     ],
     example: { issue: 'ISS-612', steps: ['reorder'] },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/workflows/:workflow/observations': {
     purpose:
@@ -61,7 +58,6 @@ export const WORKFLOW_REST_CARDS = {
     // document itself, so plan and reading could not be told apart
     redFlag: 'Editing the design to match the code instead of recording what the code does.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/workflows/:workflow/design/repins': {
     purpose: 'Re-pins every design resting on an approved base to its new revision, in one act.',
@@ -80,6 +76,5 @@ export const WORKFLOW_REST_CARDS = {
       designs: [{ workflowId: '5c7e9a1b-3d5f-4a7b-8c9d-0e1f2a3b4c5d', revision: 2 }],
     },
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

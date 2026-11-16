@@ -260,7 +260,6 @@ export interface ReferenceSignalsResponse {
  * card the orientation's Tier-0 map renders for a master and its runs. Written from the situation
  * ISS-1252 names; the replayable scenarios are owed until one is written.
  */
-const changed = { on: "2026-11-16", by: "ISS-1252" };
 
 const FIRST_SITUATION =
 	"You face a design question or a defect with no settled answer in this repo";
@@ -294,7 +293,6 @@ export const REFERENCE_CARDS = {
 		redFlag:
 			"Copying a pattern from a source without citing it, or citing a source you never opened.",
 		audience: ["bot", "master", "run"],
-		changed,
 		scenarios: [],
 	},
 	cite: {
@@ -322,7 +320,6 @@ export const REFERENCE_CARDS = {
 		redFlag:
 			"A citation with no reason for its take or reject: it counts as use and teaches nothing.",
 		audience: ["bot", "master", "run"],
-		changed,
 		scenarios: [],
 	},
 	add: {
@@ -349,7 +346,6 @@ export const REFERENCE_CARDS = {
 			followReleases: true,
 		},
 		audience: ["bot", "master", "run", "person"],
-		changed,
 		scenarios: [],
 	},
 	propose: {
@@ -367,7 +363,6 @@ export const REFERENCE_CARDS = {
 		redFlag:
 			"Proposing every page read once; a source earns its place by repeated use.",
 		audience: ["bot", "master", "run"],
-		changed,
 		scenarios: [],
 	},
 } satisfies Record<string, CapabilityCardBody>;
@@ -386,6 +381,5 @@ export const REFERENCE_REST_CARD = {
 	practice: [...REFERENCE_CARDS.search.practice],
 	redFlag: REFERENCE_CARDS.search.redFlag,
 	audience: ["master", "run"],
-	changed,
 	scenarios: [],
 } satisfies CapabilityCardBody;

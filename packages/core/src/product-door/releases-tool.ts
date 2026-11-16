@@ -90,7 +90,6 @@ const CARDS = {
     ],
     example: { projectId: '<project uuid>', state: 'shipped', limit: 5 },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   get: {
     purpose:
@@ -115,7 +114,6 @@ const CARDS = {
     ],
     example: { projectId: '<project uuid>', version: '0.3.0' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   page: {
     purpose:
@@ -129,7 +127,6 @@ const CARDS = {
     practice: ['The page is written for its reader; for proof and blockers read releases.get.'],
     example: { projectId: '<project uuid>', version: '0.3.0', view: 'user' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   name: {
     purpose: 'Names a drafted or cut release and says in a few sentences what it brings.',
@@ -149,7 +146,6 @@ const CARDS = {
       summary: 'Checkout takes one page instead of three. Saved cards fill themselves in.',
     },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   decide: {
     purpose: 'Approves or returns the release a person is asked to approve, as their decision.',
@@ -177,7 +173,6 @@ const CARDS = {
       reason: 'Checked the notes with the team; ship it.',
     },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<(typeof RELEASES_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

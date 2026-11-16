@@ -5,7 +5,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const PROJECT = '0b8e6f4a-2c1d-4e3f-9a5b-7c6d8e9f0a1b';
 
 export const SCHEDULE_REST_CARDS = {
@@ -37,7 +36,6 @@ export const SCHEDULE_REST_CARDS = {
     redFlag:
       'Writing up, latency, error or disk monitoring as a script: that is the Prometheus integration’s.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'PUT /api/schedules/:id': {
     purpose:
@@ -53,7 +51,6 @@ export const SCHEDULE_REST_CARDS = {
     ],
     example: { enabled: false },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/schedules/:id/run': {
     purpose: 'Fires a schedule once now, outside its cron, and records the fire like any other.',
@@ -72,6 +69,5 @@ export const SCHEDULE_REST_CARDS = {
     ],
     example: {},
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

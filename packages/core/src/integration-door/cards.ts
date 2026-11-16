@@ -7,7 +7,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const ISSUE = '6f1c2a0e-5b7d-4c1e-9a3f-2d8e4b6c7a10';
 
 export const INTEGRATION_DOOR_REST_CARDS = {
@@ -31,7 +30,6 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       title: 'ISS-583: a park names what its question is about',
     },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/merge-pull-request': {
     purpose: 'Merges an issue’s open change request through core, recording the landing it makes.',
@@ -53,7 +51,6 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     },
     // ISS-852 / FB-457: a first merge refused as conflict merged on an identical call 20 s later
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/integrations/coolify/deploy': {
     purpose:
@@ -82,7 +79,6 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     redFlag:
       'Aborting the release when the deploy waits on a person’s confirm, or backgrounding the poll and ending the turn.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'PUT /api/projects/:projectId/integrations/coolify/env/:key': {
     purpose:
@@ -96,7 +92,6 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     practice: ['Values are masked on read: never paste one into a comment or a log.'],
     example: { value: 'https://staging.example.com', redeploy: false },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/integration-connections/:id/bindings': {
     purpose: 'Binds projects to a connection with what each watches, deploys or reads through it.',
@@ -127,7 +122,6 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     redFlag:
       'Building a watch script or a metrics parser in the project instead of binding it here.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/integration-connections/:id/monitoring/readiness': {
     purpose: 'Reads now what a Prometheus connection’s server can do, step by setup step.',
@@ -140,6 +134,5 @@ export const INTEGRATION_DOOR_REST_CARDS = {
     practice: ['Each false names the setup step that turns it true.'],
     example: {},
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

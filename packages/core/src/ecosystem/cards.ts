@@ -8,8 +8,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const ECOSYSTEM_REST_CARDS = {
   'POST /api/projects/:id/interface/adopt': {
     purpose:
@@ -29,7 +27,6 @@ export const ECOSYSTEM_REST_CARDS = {
     ],
     example: { contract: 'catalog-api/orders', version: '2.4.0' },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/contract-waits': {
     purpose:
@@ -49,7 +46,6 @@ export const ECOSYSTEM_REST_CARDS = {
       dueAt: '2026-11-30T00:00:00+07:00',
     },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/issues/:id/contract-waits/:waitId/retract': {
     purpose: 'Ends an issue’s wait on a contract version that it no longer needs, saying why.',
@@ -62,7 +58,6 @@ export const ECOSYSTEM_REST_CARDS = {
     practice: ['A wait the version’s approval settles needs no retract.'],
     example: { reason: 'Reorder now reads the lines from 2.3.0; it needs nothing 2.4.0 adds.' },
     audience: ['master'],
-    changed: CHANGED,
   },
   'DELETE /api/projects/:id/links/:link': {
     purpose:
@@ -82,6 +77,5 @@ export const ECOSYSTEM_REST_CARDS = {
     redFlag:
       'Leaving a link whose call sites are gone as unverified, so it reads as a live dependency.',
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

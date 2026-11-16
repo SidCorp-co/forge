@@ -85,7 +85,6 @@ const CARDS = {
     ],
     example: { archived: false },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   get: {
     purpose: 'Reads one project: your role, its members, its labels and its base branch.',
@@ -100,7 +99,6 @@ const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   create: {
     purpose:
@@ -121,7 +119,6 @@ const CARDS = {
     redFlag:
       'Stopping at slug and name as if that were the whole project: its description, repository and environments come from config.write.',
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<(typeof ACTIONS)[number], CapabilityCardBody>;
 

@@ -27,7 +27,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   gates_get: {
     purpose:
@@ -47,7 +46,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   gates_write: {
     purpose: 'Sets the project’s gate profile and overrides, kept with who changed them and why.',
@@ -68,7 +66,6 @@ export const CARDS = {
       reason: 'The team reviews every change before it lands.',
     },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   gate_profiles: {
     purpose:
@@ -82,7 +79,6 @@ export const CARDS = {
     practice: ['Name the kernel rules too: no profile relaxes them, so no choice turns them off.'],
     example: { projectId: '<project uuid>' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   // write's one card is its REST twin's, the orientation's (`mcp/twins.ts`)
 } satisfies Record<Exclude<ConfigAction, 'write'>, CapabilityCardBody>;

@@ -8,7 +8,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const RELEASE_SHA = 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee';
 
 export const REQUIREMENT_REST_CARDS = {
@@ -36,7 +35,6 @@ export const REQUIREMENT_REST_CARDS = {
     // owner 2026-11-07 on REQ-90, stuck at "You: agree r1": stop making me agree routine requirements
     redFlag: 'Parking a routine agree on the owner instead of agreeing it and recording why.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/revisions/:n/accept': {
     purpose:
@@ -51,7 +49,6 @@ export const REQUIREMENT_REST_CARDS = {
     example: { reason: 'Adds BC-4 for sold-out lines, as FB-212’s triage asked.' },
     // ISS-645: accepts recorded no reason, so a revision went current with no why
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/revisions/:n/return': {
     purpose: 'Sends a proposed revision back to draft, with what it must change.',
@@ -65,7 +62,6 @@ export const REQUIREMENT_REST_CARDS = {
     example: { reason: 'BC-3 opens with “Verify”; restate it as what holds on the product.' },
     // ISS-766: an author stuck on a proposed revision was sent between two refusals, never to return
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/repin': {
     purpose:
@@ -79,7 +75,6 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Only an agreed requirement; nothing moved is refused REQUIREMENT_PINS_CURRENT.'],
     example: { revision: 2, reason: 'The reorder design r4 was approved on 2026-11-15.' },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/issues': {
     purpose:
@@ -95,7 +90,6 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Outside strict a draft requirement links too; under strict only once agreed.'],
     example: { issue: 'ISS-640' },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/start-delivery': {
     purpose: 'Moves an agreed requirement to in delivery once a live issue builds it.',
@@ -111,7 +105,6 @@ export const REQUIREMENT_REST_CARDS = {
     example: { reason: 'ISS-640 builds BC-1 to BC-3.' },
     // ISS-1084: a held start-delivery was asked again and again while its delivery check could not finish
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/mark-delivered': {
     purpose: 'Moves a requirement in delivery to delivered once every live criterion passes.',
@@ -124,7 +117,6 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Agreed straight to delivered is no edge: start delivery first.'],
     example: { reason: 'BC-1 to BC-4 pass on 0.4.0-dev.690.' },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/accept': {
     purpose: 'Accepts a requirement’s delivery at its head, judged by the acceptance checklist.',
@@ -142,7 +134,6 @@ export const REQUIREMENT_REST_CARDS = {
     example: { revision: 2, reason: 'All four BCs pass on 0.4.0-dev.690; ISS-640 shipped.' },
     redFlag: 'Accepting by decision to clear a gap nobody decided to leave.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/requirements/:req/verdicts': {
     purpose:
@@ -170,6 +161,5 @@ export const REQUIREMENT_REST_CARDS = {
     // REQ-45 r3 BC-8 (ISS-588): issues were filed whose only work was verifying a shipped capability
     redFlag: 'Filing an issue whose only work is verifying something that already shipped.',
     audience: ['run', 'master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -87,7 +87,6 @@ const CARDS = {
     ],
     example: { projectId: '<project uuid>', issue: 'ISS-12' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   get: {
     purpose: 'Reads one question with every round, and the progress of the issue it parks.',
@@ -104,7 +103,6 @@ const CARDS = {
     practice: ['Answer the round get shows last; an earlier round is history.'],
     example: { projectId: '<project uuid>', questionId: '<question uuid>' },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   answer: {
     purpose: 'Records the answer a person gave you to a question they owe, as their own word.',
@@ -134,7 +132,6 @@ const CARDS = {
     redFlag:
       'Answering with the recommended option, or your own reading of the question, before the person has said: it is recorded as their word. Ask them and wait.',
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   ask: {
     purpose: 'Raises a person’s own question on an issue, owed a reply by the agent working it.',
@@ -153,7 +150,6 @@ const CARDS = {
       body: 'Does this change the export for existing users too?',
     },
     audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<(typeof QUESTIONS_TOOL_ACTIONS)[number], CapabilityCardBody>;
 

@@ -62,15 +62,13 @@ export const capabilityCardSchema = z
 		redFlag: line(CARD_LIMITS.redFlag).optional(),
 		audience: z.array(z.enum(CARD_AUDIENCES)).min(1),
 		/**
-		 * When the card's text last changed and the landing that changed it (`ISS-n`), written with the
-		 * change; the capabilities page reads a card's age from it.
+		 * Never written on the card: when its text last changed is read from the card ledger, which
+		 * `cards:stamp` writes from the card itself (`packages/core/src/lib/card-changed.ts`).
 		 */
 		changed: z
-			.strictObject({
-				on: z.iso.date(),
-				by: z
-					.string()
-					.regex(/^ISS-\d+$/, "the issue that landed the change, ISS-n"),
+			.never({
+				error:
+					"a card's changed is derived, never written: drop it and run `pnpm --filter @forge/core cards:stamp`",
 			})
 			.optional(),
 		/** The replayable cases that prove an agent uses it right, by name; empty until one is written. */
@@ -93,10 +91,21 @@ export type CapabilityCardBody = z.input<typeof capabilityCardSchema>;
 export type CapabilityCardFields = z.output<typeof capabilityCardSchema>;
 
 /** A card as served: its door, the feature that owns it, and what it says. */
-export interface CapabilityCard extends CapabilityCardFields {
+/** When a card's text last changed and the issue whose landing changed it, as its ledger holds. */
+export interface CardChanged {
+	on: string;
+	by: string;
+}
+
+export interface CapabilityCard extends Omit<CapabilityCardFields, "changed"> {
 	/** The door: `support.member`, `POST /api/projects/:id/feedback`. */
 	id: string;
 	owner: string;
+	/**
+	 * From the card ledger, present only while the ledger's hash is this text's: a card edited and not
+	 * stamped reads no date rather than an old one.
+	 */
+	changed?: CardChanged;
 }
 
 /** The situations of a card one audience meets. */

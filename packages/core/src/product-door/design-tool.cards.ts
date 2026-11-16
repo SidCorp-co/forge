@@ -5,8 +5,6 @@ import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { DESIGN_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { DESIGN_EXAMPLE_DOCUMENT } from './design-describe.js';
 
-const changed = { on: '2026-11-16', by: 'ISS-1251' };
-
 /** When a product role reaches for each design action (ISS-1251). */
 export const CARDS = {
   design_list: {
@@ -24,7 +22,6 @@ export const CARDS = {
     practice: ['The list carries no document: read one design whole with design_get.'],
     example: { projectId: '<project uuid>', view: 'summary' },
     audience: ['person'],
-    changed,
   },
   design_get: {
     purpose: 'Reads one design as it stands, a draft included, and whom it waits on.',
@@ -48,7 +45,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', workflowId: '<workflow uuid>', view: 'full' },
     audience: ['person'],
-    changed,
   },
   template_list: {
     purpose: 'Lists the templates a design may be drawn in, with their node types and edge kinds.',
@@ -68,7 +64,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>' },
     audience: ['person'],
-    changed,
   },
   design_create: {
     purpose: 'Writes a new workflow design at revision 1, as a draft.',
@@ -95,7 +90,6 @@ export const CARDS = {
       body: { baseRevision: null, document: DESIGN_EXAMPLE_DOCUMENT },
     },
     audience: ['person'],
-    changed,
   },
   design_revise: {
     purpose: 'Writes the next revision of a design, whole, on the revision you read.',
@@ -123,7 +117,6 @@ export const CARDS = {
       },
     },
     audience: ['person'],
-    changed,
   },
   design_decide: {
     purpose: 'Approves or returns the proposed revision of a design.',
@@ -152,7 +145,6 @@ export const CARDS = {
     redFlag:
       'Returning a test or abandoned design to be rid of it: a return asks its writer to revise it on every pass. Withdraw it instead.',
     audience: ['person'],
-    changed,
   },
   design_withdraw: {
     purpose: 'Takes back a design never approved; it leaves the list and Needs you.',
@@ -169,7 +161,6 @@ export const CARDS = {
       reason: 'A test design; it describes no flow of the product.',
     },
     audience: ['person'],
-    changed,
   },
   suggestion_list: {
     purpose: 'Lists the suggestions on a requirement, issue, feedback item or design.',
@@ -190,7 +181,6 @@ export const CARDS = {
     practice: ['Name exactly one target; view full reads each payload, summary leaves them out.'],
     example: { projectId: '<project uuid>', requirement: 'REQ-2', status: ['proposed'] },
     audience: ['person'],
-    changed,
   },
   suggestion_create: {
     purpose: 'Proposes a change that waits on a decision instead of changing the record.',
@@ -229,7 +219,6 @@ export const CARDS = {
     redFlag:
       'Guessing baseRevision: a number, 0 included, on a target with no revision is refused; send null there, and the revision you read elsewhere.',
     audience: ['person'],
-    changed,
   },
   suggestion_accept: {
     purpose: 'Accepts a suggestion, which writes what it proposes in the same act.',
@@ -258,7 +247,6 @@ export const CARDS = {
     redFlag:
       'Accepting a suggestion the record has already moved past, such as a triage on an item already triaged: it overwrites the decision taken since.',
     audience: ['person'],
-    changed,
   },
   suggestion_reject: {
     purpose: 'Rejects a suggestion, saying why, so the next one on that record does not repeat it.',
@@ -275,7 +263,6 @@ export const CARDS = {
       reason: 'REQ-1 covers reordering already; this one is about saved carts.',
     },
     audience: ['person'],
-    changed,
   },
   suggestion_revise: {
     purpose: 'Replaces a suggestion with your edited payload; the original is closed.',
@@ -300,7 +287,6 @@ export const CARDS = {
       reason: 'It repeats REQ-3, not REQ-1.',
     },
     audience: ['person'],
-    changed,
   },
   suggestion_withdraw: {
     purpose: 'Retracts a suggestion you produced, before anyone decides it.',
@@ -313,7 +299,6 @@ export const CARDS = {
     practice: ['Only its producer withdraws; anybody else rejects or revises it.'],
     example: { projectId: '<project uuid>', suggestionId: '<suggestion uuid>' },
     audience: ['person'],
-    changed,
   },
   mockup_list: {
     purpose: 'Lists the mockups proposed on one requirement, feedback item or issue.',
@@ -330,7 +315,6 @@ export const CARDS = {
     practice: ['Name exactly one of requirement, feedback or issue; prefer the requirement.'],
     example: { projectId: '<project uuid>', requirement: 'REQ-2' },
     audience: ['person'],
-    changed,
   },
   mockup_get: {
     purpose: 'Reads one mockup (MK-n): its kind, caption, status and content url.',
@@ -343,7 +327,6 @@ export const CARDS = {
     practice: ['Its comments are mockup_comments’; its content is at the url it names.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
     audience: ['person'],
-    changed,
   },
   mockup_comments: {
     purpose: 'Reads every comment on a mockup and its earlier revisions, and where each points.',
@@ -360,7 +343,6 @@ export const CARDS = {
     practice: ['A comment open on an earlier revision is still open until a revision settles it.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
     audience: ['person'],
-    changed,
   },
   mockup_comment: {
     purpose: 'Comments on a mockup, optionally pinned to a point or region of its frame.',
@@ -383,7 +365,6 @@ export const CARDS = {
       },
     },
     audience: ['person'],
-    changed,
   },
   mockup_propose: {
     purpose: 'Proposes a screen or call (MK-n) on the item it shapes, for a person to try.',
@@ -416,7 +397,6 @@ export const CARDS = {
     redFlag:
       'Building the mockup as a local file, pasting it in a chat, or publishing it elsewhere: nobody can find, comment on or pin it.',
     audience: ['person'],
-    changed,
   },
   mockup_accept: {
     purpose: 'Accepts a proposed mockup as what the screen should be.',
@@ -433,7 +413,6 @@ export const CARDS = {
       reason: 'The owner agreed.',
     },
     audience: ['person'],
-    changed,
   },
   mockup_return: {
     purpose: 'Returns a proposed mockup with the reason its next revision must answer.',
@@ -450,7 +429,6 @@ export const CARDS = {
       reason: 'Out-of-stock items must show before the cart fills.',
     },
     audience: ['person'],
-    changed,
   },
   mockup_withdraw: {
     purpose: 'Takes back a mockup its author proposed, while it still waits.',
@@ -463,7 +441,6 @@ export const CARDS = {
     practice: ['Only its author withdraws; anybody else returns it with a reason.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
     audience: ['person'],
-    changed,
   },
   // design_propose's one card is its REST twin's, the orientation's (`mcp/twins.ts`)
 } satisfies Record<

@@ -7,8 +7,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const STEWARD_NOTE_REST_CARDS = {
   'PUT /api/projects/:id/steward-notes/:subjectKind/:key': {
     purpose: 'Replaces the two-line note an open item shows on where it stands and what is next.',
@@ -41,6 +39,5 @@ export const STEWARD_NOTE_REST_CARDS = {
       runId: null,
     },
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

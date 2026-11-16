@@ -7,8 +7,6 @@
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { ACTIONS } from './feedback-tool.js';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 /** When a person's client or a room's agent reaches for a project's feedback door. */
 export const CARDS = {
   list: {
@@ -29,7 +27,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', phase: ['new', 'reopened'] },
     audience: ['person', 'bot'],
-    changed: CHANGED,
   },
   get: {
     purpose:
@@ -50,7 +47,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', feedback: 'FB-12' },
     audience: ['person', 'bot'],
-    changed: CHANGED,
   },
   clarify: {
     purpose:
@@ -73,7 +69,6 @@ export const CARDS = {
       recommended: 'Chrome on Android',
     },
     audience: ['person'],
-    changed: CHANGED,
   },
   attach: {
     purpose:
@@ -101,6 +96,5 @@ export const CARDS = {
       label: 'approved_design',
     },
     audience: ['person'],
-    changed: CHANGED,
   },
 } satisfies Partial<Record<(typeof ACTIONS)[number], CapabilityCardBody>>;

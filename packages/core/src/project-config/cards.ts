@@ -24,6 +24,5 @@ export const PROJECT_CONFIG_REST_CARDS = {
     // again to retype the whole secret
     redFlag: 'Asking a person to retype a secret’s whole value to add a sign-in route to it.',
     audience: ['master'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<string, CapabilityCardBody>;

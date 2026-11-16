@@ -19,6 +19,5 @@ export const MONITORING_REST_CARDS = {
     ],
     example: {},
     audience: ['master'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -5,8 +5,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 export const LESSON_REST_CARDS = {
   'POST /api/projects/:id/lessons/applied': {
     purpose: 'Records which approved lessons shaped one output, so a lesson in use is kept.',
@@ -26,7 +24,6 @@ export const LESSON_REST_CARDS = {
     // while the map teaches the `L-1` form
     redFlag: 'Sending the lesson as written in the map (`"L-3"`): the door takes the number only.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/lessons/:n/confusions': {
     purpose: 'Reports a lesson that conflicts, contradicts a requirement or cannot be applied.',
@@ -62,6 +59,5 @@ export const LESSON_REST_CARDS = {
       },
     },
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

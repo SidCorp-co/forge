@@ -7,8 +7,6 @@
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { ACTIONS } from './requirements-tool.js';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 /** When a person's client reaches for the requirement door, from how product roles used it. */
 export const CARDS = {
   list: {
@@ -30,7 +28,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', state: 'agreed' },
     audience: ['person'],
-    changed: CHANGED,
   },
   get: {
     purpose:
@@ -51,7 +48,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', requirement: 'REQ-12' },
     audience: ['person'],
-    changed: CHANGED,
   },
   similar: {
     purpose: 'Finds the requirements nearest a wish, so a wish already covered is revised there.',
@@ -71,7 +67,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', text: 'customers reorder a past order in one tap' },
     audience: ['person'],
-    changed: CHANGED,
   },
   create: {
     purpose: 'Drafts a new requirement at revision 1, with its criteria and why it is wanted.',
@@ -93,7 +88,6 @@ export const CARDS = {
     // ISS-117: REQ-14 was drafted as a duplicate of REQ-11, which already covered it
     redFlag: 'Drafting a second requirement for a wish one already covers: revise that one.',
     audience: ['person'],
-    changed: CHANGED,
   },
   revise: {
     purpose:
@@ -135,7 +129,6 @@ export const CARDS = {
     redFlag:
       'Sending only the criterion that changed: the list is the whole new set, so every code left out is retired.',
     audience: ['person'],
-    changed: CHANGED,
   },
   propose: {
     purpose: 'Puts a draft revision before the people who agree it.',
@@ -151,7 +144,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', requirement: 'REQ-12', revision: 2 },
     audience: ['person'],
-    changed: CHANGED,
   },
   withdraw: {
     purpose: 'Withdraws an open draft revision for good, saying why.',
@@ -176,7 +168,6 @@ export const CARDS = {
       reason: 'Written against the wrong requirement.',
     },
     audience: ['person'],
-    changed: CHANGED,
   },
   link_design: {
     purpose: 'Links an existing workflow design to a requirement, so its next agree pins it.',
@@ -192,7 +183,6 @@ export const CARDS = {
     ],
     example: { projectId: '<project uuid>', requirement: 'REQ-12', workflow: 'reorder' },
     audience: ['person'],
-    changed: CHANGED,
   },
   trace_criterion: {
     purpose: 'Traces one business criterion onto the steps and edges of a linked design.',
@@ -218,6 +208,5 @@ export const CARDS = {
       steps: ['fill-cart'],
     },
     audience: ['person'],
-    changed: CHANGED,
   },
 } satisfies Partial<Record<(typeof ACTIONS)[number], CapabilityCardBody>>;

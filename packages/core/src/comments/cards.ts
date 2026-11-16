@@ -7,8 +7,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
-
 const DECISION_PRACTICE = [
   'A dated reversedWhen (2026-12-01) ends the decision on that date; any other text is a condition it holds under.',
   'Say the choice and why in plain words; the decision is read back by forge_decisions and the steward.',
@@ -40,7 +38,6 @@ export const COMMENT_REST_CARDS = {
     redFlag:
       'Settling a requirement’s rule in an issue comment or the requirement’s prose, where no decision read finds it.',
     audience: ['master', 'run'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/workflows/:workflow/comments': {
     purpose: 'Records a decision, question or note on the workflow design it governs.',
@@ -62,7 +59,6 @@ export const COMMENT_REST_CARDS = {
     },
     // ISS-935: a workflow's wait was sent to the issue events door, which answered 404
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:id/feedback/:fb/comments': {
     purpose: 'Records a decision, question or note on the feedback item it governs.',
@@ -85,6 +81,5 @@ export const COMMENT_REST_CARDS = {
       },
     },
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;

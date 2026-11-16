@@ -6,7 +6,6 @@
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
-const CHANGED = { on: '2026-11-16', by: 'ISS-1251' } as const;
 const ISSUE = '6f1c2a0e-5b7d-4c1e-9a3f-2d8e4b6c7a10';
 
 export const RELEASE_REST_CARDS = {
@@ -36,7 +35,6 @@ export const RELEASE_REST_CARDS = {
     redFlag:
       'Recording a release from the merge alone, before reading that the running app serves it.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/release-batches': {
     purpose:
@@ -53,7 +51,6 @@ export const RELEASE_REST_CARDS = {
     ],
     example: { issueIds: [ISSUE], version: '0.27.0', name: 'Reorder in one tap' },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/release-batches/:runId/abort': {
     purpose: 'Ends a release run that cannot finish, saying why and what it left outside Forge.',
@@ -76,7 +73,6 @@ export const RELEASE_REST_CARDS = {
     // ISS-670's judge (2026-10-23): an abort sent as {} recorded "aborted by agent" with no reason
     redFlag: 'Aborting with an empty body: the run ends with no reason and its version undecided.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/release-batches/:runId/carried': {
     purpose:
@@ -90,7 +86,6 @@ export const RELEASE_REST_CARDS = {
     practice: ['It only adds; a run still open says it on its own abort instead.'],
     example: { carried: [{ kind: 'tag', name: 'dev-v0.4.0-dev.438' }] },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/shipped-in-records': {
     purpose: 'Closes an awaiting_release issue on a shipped release that already holds its commit.',
@@ -117,7 +112,6 @@ export const RELEASE_REST_CARDS = {
     redFlag:
       'Cutting a new, empty release for an issue whose commit an older release already shipped.',
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/release-batches/:runId/approvals': {
     purpose: 'Opens the approval request a production release waits on, with its evidence.',
@@ -138,7 +132,6 @@ export const RELEASE_REST_CARDS = {
       },
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/release-batches/:runId/method': {
     purpose: 'Says which method a release run works from, before it records anything else.',
@@ -151,7 +144,6 @@ export const RELEASE_REST_CARDS = {
     practice: ['Send it first in every release run.'],
     example: { skill: 'forge:release-flow', loaded: true },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/release-batches/:runId/shipped-commit': {
     purpose: 'Names the commit a release run shipped where its merge marks leave it unanswered.',
@@ -169,7 +161,6 @@ export const RELEASE_REST_CARDS = {
       evidence: '/api/version reports sourceCommit c82e7d7c3a.',
     },
     audience: ['master'],
-    changed: CHANGED,
   },
   'POST /api/projects/:projectId/releases/:version/repair': {
     purpose: 'Repairs a release recorded failed that did ship, keeping the failure on its record.',
@@ -188,6 +179,5 @@ export const RELEASE_REST_CARDS = {
     // ISS-928 / FB-484: the repair became a routine workaround for runs that ended failed with no code
     redFlag: 'Repairing every failed release by routine instead of reporting why runs end failed.',
     audience: ['master'],
-    changed: CHANGED,
   },
 } satisfies Record<string, CapabilityCardBody>;
