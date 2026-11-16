@@ -8,10 +8,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readAgreements } from '../../src/agreements/index.js';
 import { mintPat } from '../../src/credentials/pat.js';
 import { DISK_CRITICAL_FREE_PERCENT, DISK_WIRE_ROOTS } from '../../src/devices/disk-report.js';
+import { type ErrorTracker, provideErrorTracker } from '../../src/lib/error-tracking.js';
 import { checkoutOrientation } from '../../src/prompt/index.js';
 import { api, userToken } from '../helpers/api.js';
 import {
@@ -23,6 +24,26 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { groundBefore, type MigrationGround } from '../helpers/migration-ground.js';
+
+/**
+ * The project whose lessons map throws as it is composed, as one project's map over its budget did
+ * on forge-dev 2026-11-16 (FORGE-DEV-CORE-13); every other project's map is composed for real.
+ */
+const composeThrows = vi.hoisted(() => ({ projectId: null as string | null }));
+vi.mock('../../src/lessons/index.js', async (actual) => {
+  const real = await actual<typeof import('../../src/lessons/index.js')>();
+  return {
+    ...real,
+    lessonsMapText: (...args: Parameters<typeof real.lessonsMapText>) => {
+      const id = composeThrows.projectId;
+      if (id !== null && args[1].fetch?.includes(id))
+        throw new Error(
+          'lessons: the map for this audience takes 1201 characters, over its budget',
+        );
+      return real.lessonsMapText(...args);
+    },
+  };
+});
 
 const TAG = '0430_a_box_reports_what_its_scratch_has_left';
 
@@ -169,6 +190,49 @@ describe('a box reporting its facts', () => {
     // source is said to record none, never shown as if it rested on something (ISS-1064)
     expect(row?.orientation).toContain('- build-commands — source: none recorded');
     expect(row?.orientation).not.toContain('pnpm build');
+  });
+
+  it("serves every other project when one project's orientation cannot be composed, naming that one's failure in its entry and to the error tracker", async () => {
+    const healthy = await createTestProject(ownerId);
+    const broken = await createTestProject(ownerId);
+    await bindTestRunner(healthy.id, deviceId);
+    await bindTestRunner(broken.id, deviceId);
+    const reported: Array<{ err: unknown; tags: Record<string, string> | undefined }> = [];
+    provideErrorTracker({
+      captureException: (err, context) => reported.push({ err, tags: context.tags }),
+      captureMessage: () => {},
+      addBreadcrumb: () => {},
+      flush: async () => true,
+    } satisfies ErrorTracker);
+    composeThrows.projectId = broken.id;
+    try {
+      const res = await api(boxToken, 'GET', '/api/devices/me/runners');
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const served = res.body as unknown as Array<{ projectId: string; orientation: string }>;
+      const of = (id: string) => served.find((r) => r.projectId === id)?.orientation;
+      expect(of(healthy.id)).toBe(
+        checkoutOrientation(healthy.id, healthy.slug, {
+          entries: [],
+          guides: { project: [], org: [], sources: {} },
+          agreements: await readAgreements(healthy.id, null),
+        }),
+      );
+      // the broken project keeps its entry, its orientation the named absence of its rules
+      expect(of(broken.id)).toBe(
+        checkoutOrientation(broken.id, broken.slug, { unreadable: 'compose' }),
+      );
+      expect(of(broken.id)).toContain('could not be composed');
+      expect(reported).toHaveLength(1);
+      expect(reported[0]?.err).toBeInstanceOf(Error);
+      expect(String((reported[0]?.err as Error | undefined)?.message)).toMatch(/over its budget/);
+      expect(reported[0]?.tags).toMatchObject({
+        area: 'checkout-orientation',
+        project_id: broken.id,
+      });
+    } finally {
+      composeThrows.projectId = null;
+    }
   });
 
   it('answers a lease read with the lease alone, no issue standing beside it', async () => {

@@ -13,6 +13,7 @@ import {
 import { moduleMapLines } from '../labels/index.js';
 import { cardFreshness, lessonsMapText, restLessonDoors } from '../lessons/index.js';
 import { moduleLinesText } from '../lib/door-catalog.js';
+import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { AFFORDANCE_CARDS } from './facts/affordance-cards.js';
 import { guideIndexText } from './facts/guide-index.js';
@@ -29,7 +30,8 @@ export const ORIENTATION_GENERATED_LINE =
 
 /**
  * The project's always-applied rules as an orientation reads them: its `injection: 'always'`
- * knowledge entries, or `unreadable` where the knowledge store could not be read.
+ * knowledge entries, or `unreadable` where they could not be had: `read` where the knowledge store
+ * could not be read, `compose` where what was read could not be composed into the orientation.
  */
 export type OrientationRules =
   | {
@@ -52,14 +54,14 @@ export type OrientationRules =
       /** The project's module lines, one per business module (ISS-1256), its master's Tier-0 map of them. */
       modules?: readonly ModuleMapLine[];
     }
-  | { unreadable: true };
+  | { unreadable: 'read' | 'compose' };
 
 /** The rules block, or a named absence: a box told nothing would read a project with no rules. */
 function rulesText(projectId: string, rules: OrientationRules): string | null {
   if ('unreadable' in rules)
     return `## Project rules (always applied)
 
-The project's knowledge could not be read when this orientation was written, so its rules and working agreements are not here. Read them before you work: \`GET /api/projects/${projectId}/knowledge?injection=always\` and \`GET /api/projects/${projectId}/agreements\`.`;
+The project's knowledge could not be ${rules.unreadable === 'read' ? 'read' : 'composed into this orientation'} when this orientation was written, so its rules and working agreements are not here. Read them before you work: \`GET /api/projects/${projectId}/knowledge?injection=always\` and \`GET /api/projects/${projectId}/agreements\`.`;
   // a master and the runs it declares build issues, breakdowns, designs and revisions, and work
   // across areas, so the map names every area lesson labelled with its area (REQ-50 BC-3)
   const lessons = lessonsMapText(
@@ -144,8 +146,9 @@ function modulesBlock(rules: OrientationRules): string {
 
 /**
  * The orientation core serves a box for project `slug`, its rules read from the knowledge store. A
- * store that cannot be read is said in the orientation rather than failing the box's whole read,
- * which also carries which projects route to it.
+ * store that cannot be read, or rules that cannot be composed, is said in the orientation rather
+ * than failing the box's whole read, which carries every project the box is assigned: one project's
+ * failure never costs the others theirs (FORGE-DEV-CORE-13).
  */
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
@@ -174,9 +177,30 @@ export async function servedCheckoutOrientation(projectId: string, slug: string)
       { err: (err as Error).message, projectId },
       'checkout orientation: knowledge store unreadable, the orientation says so in place of the rules',
     );
-    rules = { unreadable: true };
+    rules = { unreadable: 'read' };
   }
-  return checkoutOrientation(projectId, slug, rules);
+  return composedOrNamedAbsence(projectId, slug, rules);
+}
+
+/**
+ * The orientation composed from `rules`, or, where composing them throws (a block over its budget),
+ * the named absence of the rules. That throw is a Forge defect, so it is reported to the error
+ * tracker as well as logged; the named absence itself composes no rule and never throws.
+ */
+function composedOrNamedAbsence(projectId: string, slug: string, rules: OrientationRules): string {
+  if ('unreadable' in rules) return checkoutOrientation(projectId, slug, rules);
+  try {
+    return checkoutOrientation(projectId, slug, rules);
+  } catch (err) {
+    logger.error(
+      { err: (err as Error).message, projectId },
+      'checkout orientation: the rules could not be composed, the orientation says so in place of the rules',
+    );
+    reportFailure(err, {
+      tags: { area: 'checkout-orientation', phase: 'compose', project_id: projectId },
+    });
+    return checkoutOrientation(projectId, slug, { unreadable: 'compose' });
+  }
 }
 
 /**

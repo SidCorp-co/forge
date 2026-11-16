@@ -236,9 +236,9 @@ describe('a run a master declares on a box reads the rules a core-built prompt c
   });
 
   it('says where to read the rules when the knowledge store could not be read', () => {
-    const body = checkoutOrientation('p-1', 'forge', { unreadable: true });
+    const body = checkoutOrientation('p-1', 'forge', { unreadable: 'read' });
     expect(body).toContain('## Project rules (always applied)');
-    expect(body).toContain('could not be read');
+    expect(body).toContain('could not be read when');
     expect(body).toContain('`GET /api/projects/p-1/knowledge?injection=always`');
   });
 });
@@ -418,7 +418,7 @@ describe('the orientation core serves reads the rules from the knowledge store',
   it('serves a named absence, not a failed read, when the store throws', async () => {
     store.read.mockRejectedValueOnce(new Error('connection refused'));
     const body = await servedCheckoutOrientation('p-1', 'forge');
-    expect(body).toBe(checkoutOrientation('p-1', 'forge', { unreadable: true }));
+    expect(body).toBe(checkoutOrientation('p-1', 'forge', { unreadable: 'read' }));
   });
 });
 
