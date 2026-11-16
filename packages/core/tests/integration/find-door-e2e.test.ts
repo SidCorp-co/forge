@@ -6,8 +6,9 @@
  * the REST find and `forge_find` in the same ranks; opening it answers its relations and counts the
  * read on the box's run; a find matching nothing is kept as a gap the gaps read shows.
  *
- * The embedder is a stand-in (`helpers/word-vector.ts`): what this proves is the door's read path —
- * the alias expansion, the fusion and the shape — not the model's grasp of a paraphrase.
+ * The embedder is a stand-in (`helpers/word-vector.ts:modelLikeVector`) with the live model's spread,
+ * every text half-similar to every other: what this proves is the door's read path — the alias
+ * expansion, the fusion, the dense floor and the shape — not the model's grasp of a paraphrase.
  *
  * @direct-test-of packages/core/src/find/service.ts
  * @direct-test-of packages/core/src/find/routes.ts
@@ -19,6 +20,8 @@
  * @direct-test-of packages/core/src/find/arms-shared.ts
  * @direct-test-of packages/core/src/mcp/find-records.ts
  * @direct-test-of packages/core/src/run-context/record.ts
+ * @direct-test-of packages/core/src/lib/search-fusion.ts
+ * @direct-test-of packages/core/src/labels/module-map-nodes.ts
  */
 
 import type { FindGapsView, FindOpened, FindResult } from '@forge/contracts/find';
@@ -37,13 +40,13 @@ import {
   rows,
 } from '../helpers/factories.js';
 import { pairTestBox } from '../helpers/paired-box.js';
-import { wordVector } from '../helpers/word-vector.js';
+import { modelLikeVector } from '../helpers/word-vector.js';
 
 vi.mock('../../src/integrations/llm/index.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  embed: async (_s: unknown, text: string) => wordVector(text),
-  embedQuery: async (_s: unknown, text: string) => wordVector(text),
-  embedBatch: async (_s: unknown, texts: string[]) => texts.map(wordVector),
+  embed: async (_s: unknown, text: string) => modelLikeVector(text),
+  embedQuery: async (_s: unknown, text: string) => modelLikeVector(text),
+  embedBatch: async (_s: unknown, texts: string[]) => texts.map(modelLikeVector),
 }));
 
 const ANCHOR = 'packages/core/src/devices/run-slots.ts:slotsFor';
@@ -59,7 +62,7 @@ async function knowledge(
   const [row] = await rows<{ id: string }>(sql`
     INSERT INTO knowledge_entries (project_id, kind, slug, title, body, embedding, entry_type, term, module_id)
     VALUES (${w.projectId}, ${kind}, ${slug}, ${title}, ${body},
-            ${`[${wordVector(`${title}\n\n${body}`).join(',')}]`}::vector, 'convention',
+            ${`[${modelLikeVector(`${title}\n\n${body}`).join(',')}]`}::vector, 'convention',
             ${extra.term ? JSON.stringify(extra.term) : null}::jsonb, ${extra.moduleId ?? null})
     RETURNING id`);
   return row?.id as string;
@@ -91,6 +94,8 @@ beforeAll(async () => {
 
   const execution = await moduleLabel('Execution', 'execution', null);
   const devices = await moduleLabel('Devices', 'devices', execution);
+  // named after the code module `schedules/`, so the schedule cards sit under Execution on the map
+  await moduleLabel('schedules', 'schedules', execution);
   w.termId = await knowledge(
     'glossary',
     'run-slots',
@@ -251,7 +256,46 @@ describe('criterion 4: "chia slot" finds the term Run slots first, with its path
   });
 });
 
+describe('criterion 4: a capability hit is pathed where the module map places it', () => {
+  it("places a card in the module its door's code lives in, on the find and on its open", async () => {
+    const card = 'POST /api/schedules/:id/run';
+    const found = await find({
+      q: 'fires a schedule once now outside its cron',
+      type: ['capability'],
+    });
+    const hit = flat(found).find((h) => h.ref === card);
+    const placed = {
+      path: ['Execution', 'Capabilities'],
+      module: { slug: 'execution', name: 'Execution', path: 'execution/schedules' },
+    };
+    expect(hit, 'the schedule card was not found').toBeDefined();
+    expect(hit, 'a capability hit is unplaced although its card names a module').toMatchObject(
+      placed,
+    );
+    const res = await api(
+      w.token,
+      'GET',
+      `/api/projects/${w.projectId}/find/open?id=${encodeURIComponent(`capability:${card}`)}`,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((res.body as unknown as FindOpened).hit).toMatchObject(placed);
+    // the map's Capabilities branch holds the same card under the same module
+    const branch = await api(w.token, 'GET', `/api/projects/${w.projectId}/modules/execution/map`);
+    expect(JSON.stringify(branch.body)).toContain(card);
+  });
+});
+
 describe('criterion 4: a find with no hit is a gap', () => {
+  it('answers nonsense with no hit although every dense arm has a nearest row', async () => {
+    // words the stand-in hashes onto no seeded word's dimension, so nothing here shares one
+    const missed = await find({ q: 'qzxv wbrlt plimbo' });
+    expect(missed, 'a dense hit under SEMANTIC_FLOOR counted as a match').toMatchObject({
+      gap: true,
+      total: 0,
+      groups: [],
+    });
+  });
+
   it('records the miss and shows it in the gaps read, most asked first', async () => {
     const missed = await find({ q: 'zzqx vortigaunt' });
     expect(missed).toMatchObject({ gap: true, total: 0, groups: [] });

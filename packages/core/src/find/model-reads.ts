@@ -2,12 +2,14 @@
 // their tree, the glossary's terms with their aliases, and the module each record is placed in. The
 // model's columns are the model's (`contracts/module-map.ts`): a term's aliases in
 // `knowledge_entries.term`, a record's module in its `module_id`, an issue's in its primary module
-// label. Nothing here infers a module: a record no agent placed reads as unplaced.
+// label, a capability card's in the module its door's code lives in. Nothing here infers a module: a
+// record no agent placed reads as unplaced.
 
 import type { FindHitModule, FindRelation } from '@forge/contracts/find';
 import type { TermAliases } from '@forge/contracts/module-map';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { capabilityPlacements } from '../labels/index.js';
 
 type ModuleRow = { id: string; slug: string; name: string; parent_id: string | null };
 
@@ -103,9 +105,15 @@ export async function glossaryTerms(projectIds: readonly string[]): Promise<Glos
 }
 
 /** The record kinds whose module is a `module_id` column of their own row. */
-export type PlacedKind = 'knowledge' | 'requirement' | 'reference' | 'decision' | 'issue';
+type ColumnPlacedKind = 'knowledge' | 'requirement' | 'reference' | 'decision' | 'issue';
 
-const PLACED_BY: Record<PlacedKind, ReturnType<typeof sql>> = {
+/**
+ * The record kinds a module places: a row's own `module_id`, or a capability card's, which sits in
+ * the module its door's code lives in, as the map's Capabilities branch places it.
+ */
+export type PlacedKind = ColumnPlacedKind | 'capability';
+
+const PLACED_BY: Record<ColumnPlacedKind, ReturnType<typeof sql>> = {
   knowledge: sql`SELECT id, module_id FROM knowledge_entries WHERE id = ANY`,
   requirement: sql`SELECT id, module_id FROM requirements WHERE id = ANY`,
   reference: sql`SELECT id, module_id FROM reference_sources WHERE id = ANY`,
@@ -116,12 +124,17 @@ const PLACED_BY: Record<PlacedKind, ReturnType<typeof sql>> = {
     WHERE il.issue_id = ANY`,
 };
 
-/** The module label each record of `kind` is placed in; a record placed in none is absent. */
+/**
+ * The module label each record of `kind` is placed in; a record placed in none is absent. A card is
+ * every project's, so its placement is read in `projectId`, the project the find runs in.
+ */
 export async function placementsOf(
   kind: PlacedKind,
   ids: readonly string[],
+  projectId: string,
 ): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();
+  if (kind === 'capability') return capabilityPlacements(projectId, ids);
   const order = kind === 'issue' ? sql` ORDER BY il.issue_id, il.is_primary DESC` : sql``;
   const rows = (await db.execute(sql`${PLACED_BY[kind]}(${uuidList(ids)})${order}`)) as unknown as {
     id: string;

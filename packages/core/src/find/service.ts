@@ -11,9 +11,10 @@ import { projects } from '../db/schema.js';
 import { queryVectorOf } from '../knowledge/index.js';
 import type { ProjectReader } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
+import { SEMANTIC_FLOOR } from '../lib/search-fusion.js';
 import { recordFindMiss } from '../run-context/index.js';
 import { keywordKnowledge, knowledgeCandidate, semanticKnowledge } from './arms-knowledge.js';
-import { itemArms, type MemoryArm, memoryArm, SEMANTIC_FLOOR } from './arms-memory.js';
+import { itemArms, type MemoryArm, memoryArm } from './arms-memory.js';
 import {
   decisionArm,
   feedbackArm,
@@ -129,7 +130,10 @@ async function armLists(
 }
 
 /** The module label each fused candidate is placed in, read per table. */
-async function placementsFor(fused: readonly Fused[]): Promise<Map<string, string>> {
+async function placementsFor(
+  fused: readonly Fused[],
+  projectId: string,
+): Promise<Map<string, string>> {
   const byKind = new Map<PlacedKind, Fused[]>();
   for (const c of fused) {
     if (!c.placed) continue;
@@ -138,7 +142,8 @@ async function placementsFor(fused: readonly Fused[]): Promise<Map<string, strin
   const out = new Map<string, string>();
   await Promise.all(
     [...byKind].map(async ([kind, cs]) => {
-      const held = await placementsOf(kind, [...new Set(cs.map((c) => c.placed?.id ?? ''))]);
+      const ids = [...new Set(cs.map((c) => c.placed?.id ?? ''))];
+      const held = await placementsOf(kind, ids, projectId);
       for (const c of cs) {
         const label = c.placed ? held.get(c.placed.id) : undefined;
         if (label) out.set(c.id, label);
@@ -173,7 +178,7 @@ export async function runFind(input: FindInput): Promise<FindOutcome> {
   const fused = fuseArms(lists);
   const [modules, placements, projectSlugs] = await Promise.all([
     moduleTree(projectIds),
-    placementsFor(fused),
+    placementsFor(fused, projectId),
     slugsOf(projectIds),
   ]);
   const shaped = shapeResult(fused, query, {

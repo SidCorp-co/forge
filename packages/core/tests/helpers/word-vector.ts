@@ -16,3 +16,17 @@ export function wordVector(text: string): number[] {
   if (!v.some((x) => x !== 0)) v[0] = 1;
   return v;
 }
+
+/**
+ * `wordVector` with the spread of the real embeddings model: every text shares one direction as
+ * strongly as all its words together, so two texts sharing no word sit at a cosine of 0.5 (forge-dev's
+ * model put nonsense queries at 0.43 to 0.544, `lib/search-fusion.ts:SEMANTIC_FLOOR`) and each shared
+ * word lifts them above it. A dense arm under this stand-in always has a nearest row, as it does live.
+ */
+export function modelLikeVector(text: string): number[] {
+  const words = wordVector(text);
+  const norm = Math.hypot(...words);
+  const v = words.map((x) => x / norm);
+  v[MEMORY_EMBEDDING_DIM - 1] = (v[MEMORY_EMBEDDING_DIM - 1] ?? 0) + 1;
+  return v;
+}

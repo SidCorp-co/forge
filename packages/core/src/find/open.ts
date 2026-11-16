@@ -271,7 +271,7 @@ const capabilityLoader: Loader = async (ref) => {
       text,
       projectId: null,
       status: null,
-      placed: null,
+      placed: { kind: 'capability', id: card.id },
     },
     path: (slug) => `/projects/${slug}/modules`,
     found: { records: [{ kind: 'capability', ref: card.id, text }] },
@@ -322,7 +322,9 @@ export async function openHit(input: {
   const projectOf = candidate.projectId ?? input.projectId;
   const [modules, placed, slugRow] = await Promise.all([
     moduleTree(input.projectIds),
-    candidate.placed ? placementsOf(candidate.placed.kind, [candidate.placed.id]) : new Map(),
+    candidate.placed
+      ? placementsOf(candidate.placed.kind, [candidate.placed.id], input.projectId)
+      : new Map(),
     db.select({ slug: projects.slug }).from(projects).where(eq(projects.id, projectOf)),
   ]);
   const slug = slugRow[0]?.slug ?? '';

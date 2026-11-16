@@ -47,7 +47,8 @@ export function capabilityArm(text: string, limit: number): Candidate[] {
       text: card.situations.map((s) => `When ${s.when} → ${s.do}`).join('\n'),
       projectId: null,
       status: null,
-      placed: null,
+      // the module its door's code lives in, as the map's Capabilities branch places it
+      placed: { kind: 'capability', id: card.id },
       score,
       arm: 'keyword',
     });

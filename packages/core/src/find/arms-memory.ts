@@ -12,6 +12,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { type NearestItem, nearestItems } from '../knowledge/index.js';
 import type { ProjectReader } from '../lib/authz.js';
 import { env } from '../lib/env.js';
+import { SEMANTIC_FLOOR } from '../lib/search-fusion.js';
 import { runMemorySearch } from '../memory/index.js';
 import {
   FEEDBACK_COLUMNS,
@@ -32,12 +33,6 @@ export interface MemoryArm {
   degraded: boolean;
   result: MemoryResult | null;
 }
-
-/**
- * A dense hit closer than this to the query is a match; one further is only the nearest of what is
- * there, and a find holding nothing nearer is a gap. Cosine similarity, 0 to 1.
- */
-export const SEMANTIC_FLOOR = 0.3;
 
 /**
  * One project's memory read by both arms of memory's own search, so each arm ranks on its own score:

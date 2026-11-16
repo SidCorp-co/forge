@@ -14,7 +14,10 @@ export interface Candidate {
   /** Null for what every project shares: a card, an org ruling. */
   projectId: string | null;
   status: string | null;
-  /** Which table's `module_id` places it, and the row it is read on; null where nothing can. */
+  /**
+   * What places it (a row's `module_id`, a card's code module) and the id it is read by; null where
+   * nothing can.
+   */
   placed: { kind: PlacedKind; id: string } | null;
   /** The arm's own score: a rank inside that arm, never compared across arms. */
   score: number;

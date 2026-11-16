@@ -10,6 +10,18 @@ const RRF_K = 60;
 /** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
 const HYBRID_ALPHA = 0.5;
 
+/**
+ * The cosine similarity a dense hit must reach to count as a match in the find door; under it a hit
+ * is only the nearest of what is there, and a find holding nothing else is a gap. A dense arm always
+ * answers its nearest rows, and the embedding model sets every text near half-similar to every other:
+ * measured on forge-dev (2026-11-16, knowledge recall), fourteen nonsense or off-topic queries
+ * ("zzqx flarn vobble", "qzxv wbrlt", "xyzzy", "the quick brown fox jumps", a Vietnamese sentence
+ * about a cat) topped out between 0.43 and 0.544, while queries naming what the project holds led at
+ * 0.584 to 0.666 and a thin real match ("run slots" → a lesson on waiting for a slot) sat at 0.557.
+ * 0.55 is the line between them; the 0.3 it replaces passed every nonsense query.
+ */
+export const SEMANTIC_FLOOR = 0.55;
+
 /** One ranked list a fusion takes, and its weight. */
 export interface RankedList<T> {
   hits: readonly T[];

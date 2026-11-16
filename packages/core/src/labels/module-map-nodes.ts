@@ -114,6 +114,24 @@ export function capabilityModules(
   });
 }
 
+/**
+ * The module label each of `cardIds` sits in, as the map's Capabilities branch places it
+ * (`capabilityModules`); a card no label holds is absent. The find door reads its capability hits'
+ * placement here, so a hit and the branch it opens on agree.
+ */
+export async function capabilityPlacements(
+  projectId: string,
+  cardIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (cardIds.length === 0) return new Map();
+  const wanted = new Set(cardIds);
+  return new Map(
+    capabilityModules(await mapModules(projectId)).flatMap(({ card, module }) =>
+      module && wanted.has(card.id) ? [[card.id, module.id] as const] : [],
+    ),
+  );
+}
+
 /** Every card the door catalog serves. */
 export function servedCards(): CapabilityCard[] {
   return doorCatalog().doors.flatMap((d) => (d.card ? [d.card] : []));
