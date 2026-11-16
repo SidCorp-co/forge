@@ -5,6 +5,7 @@ export {
   designHoldsOf,
   designUnapprovedSql,
 } from './build-gate.js';
+export { WORKFLOW_REST_CARDS } from './cards.js';
 export { workflowFlowsByIds, workflowFlowsOf } from './cited-workflows.js';
 export { DESIGN_DECISIONS } from './design.js';
 export { proposesWorkflowsOf } from './design-issue.js';

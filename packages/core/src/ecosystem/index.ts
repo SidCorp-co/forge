@@ -1,4 +1,5 @@
 export { readAdoptionRecord } from './adoption-record.js';
+export { ECOSYSTEM_REST_CARDS } from './cards.js';
 export { doorOf, tokenIdOf } from './channel-author.js';
 export { decideChannelGate } from './channel-gate.js';
 export { documentTypeWithArticle } from './channel-schema.js';
