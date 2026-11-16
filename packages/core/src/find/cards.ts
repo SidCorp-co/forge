@@ -33,5 +33,6 @@ export const FIND_REST_CARDS = {
     redFlag:
       'Grepping the code for a word a person used before finding it: their word is an alias.',
     audience: ['master', 'run', 'bot'],
+    family: 'knowledge',
   },
 } satisfies Record<string, CapabilityCardBody>;

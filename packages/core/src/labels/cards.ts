@@ -59,6 +59,7 @@ export const MODULE_CARDS = {
     ],
     example: { action: 'get', projectId: '<project uuid>', module: 'execution' },
     audience: ['bot', 'master', 'run', 'person'],
+    family: 'knowledge',
   },
   place: {
     purpose:
@@ -90,6 +91,7 @@ export const MODULE_CARDS = {
     },
     redFlag: 'Placing a record by the paths a change touched rather than by what it is about.',
     audience: ['master', 'run', 'person'],
+    family: 'knowledge',
   },
   relate: {
     purpose: 'Ties a term or a rule to what it is used in, governs, comes from or is anchored at.',
@@ -125,6 +127,7 @@ export const MODULE_CARDS = {
     redFlag:
       'Reaching for a generic "related" kind, or tying everything to everything: a relation says how two are tied.',
     audience: ['master', 'run', 'person'],
+    family: 'knowledge',
   },
   unrelate: {
     purpose: 'Removes one relation of the module map that was written wrong.',
@@ -139,5 +142,6 @@ export const MODULE_CARDS = {
     ],
     example: { action: 'unrelate', projectId: '<project uuid>', relationId: '<relation uuid>' },
     audience: ['master', 'run', 'person'],
+    family: 'knowledge',
   },
 } satisfies Record<string, CapabilityCardBody>;

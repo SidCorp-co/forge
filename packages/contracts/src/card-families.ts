@@ -29,12 +29,12 @@ export const CARD_FAMILIES = {
 	"issue-work": "you build an issue and record its proof",
 	"issue-landing": "a change is built and lands",
 	"issue-order": "work waits on later, another issue or a person",
-	knowledge: "a rule, guide or lesson is found, kept or applied",
+	knowledge: "a term, rule or lesson is found, kept or applied",
 	requirements: "a requirement moves from agreed to accepted",
 	design: "a design is proposed, built or re-pinned",
 	release: "a batch is cut, released or repaired",
 	ecosystem: "a contract moves, or a builder run is open",
-	setup: "the project's config, monitoring or schedules change",
+	setup: "config, monitoring or schedules change",
 	debt: "a defect stands alone, or a cleanup run ends",
 } as const;
 
