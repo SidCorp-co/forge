@@ -78,12 +78,12 @@ const USE: DoorUseView = {
 const PILES: PilesView = {
   projectId: P,
   piles: [
-    { pile: "always_knowledge", name: "always-on knowledge", size: 7200, cap: 6000, items: 14, carried: 14, over: true },
-    { pile: "lessons_map", name: "lessons map (runs)", size: 1100, cap: 1200, items: 22, carried: 18, over: true },
-    { pile: "tier0_map", name: "map (bot)", size: 900, cap: 2500, items: 9, carried: 9, over: false },
-    { pile: "tier0_map", name: "map (master)", size: 2100, cap: 2500, items: 21, carried: 21, over: false },
-    { pile: "tier0_map", name: "map (run)", size: 1800, cap: 2500, items: 17, carried: 17, over: false },
-    { pile: "skill_always_on", name: "forge-master", size: 600, cap: 1024, items: 1, carried: 1, over: false },
+    { pile: "always_knowledge", name: "always-on knowledge", size: 7200, cap: 6000, items: 14, carried: 14, over: true, ownerProjectId: P },
+    { pile: "lessons_map", name: "lessons map (runs)", size: 1100, cap: 1200, items: 22, carried: 18, over: true, ownerProjectId: P },
+    { pile: "tier0_map", name: "map (bot)", size: 900, cap: 2500, items: 9, carried: 9, over: false, ownerProjectId: null },
+    { pile: "tier0_map", name: "map (master)", size: 2100, cap: 2500, items: 21, carried: 21, over: false, ownerProjectId: null },
+    { pile: "tier0_map", name: "map (run)", size: 1800, cap: 2500, items: 17, carried: 17, over: false, ownerProjectId: null },
+    { pile: "skill_always_on", name: "forge-master", size: 600, cap: 1024, items: 1, carried: 1, over: false, ownerProjectId: null },
   ],
 };
 const EXTRA: CapabilitiesView = {

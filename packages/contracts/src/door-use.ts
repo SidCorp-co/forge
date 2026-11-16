@@ -209,6 +209,12 @@ export interface PileRow {
 	items: number;
 	carried: number;
 	over: boolean;
+	/**
+	 * The project whose text it is, so a consolidation it is due goes to that project: this project for
+	 * its knowledge, its lessons and its own skills; null for what Forge's code or a global skill holds
+	 * (the Tier-0 maps, from the cards), which goes to Forge.
+	 */
+	ownerProjectId: string | null;
 }
 
 export interface PilesView {

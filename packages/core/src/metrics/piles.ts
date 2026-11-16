@@ -23,9 +23,9 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
     selectAlwaysInjectFromKnowledge(projectId),
     selectLessonEntries(projectId),
     db.execute(sql`
-      SELECT s.name, length(s.description)::int AS size FROM skills s
+      SELECT s.name, s.project_id AS "projectId", length(s.description)::int AS size FROM skills s
       WHERE s.scope = 'global' OR s.project_id = ${projectId}::uuid
-      ORDER BY 2 DESC, 1`) as unknown as Promise<{ name: string; size: number }[]>,
+      ORDER BY 2 DESC, 1`) as unknown as Promise<{ name: string; projectId: string | null; size: number }[]>,
   ]);
   const maps = await tier0Maps(projectId, catalog, await doorCalls(projectId, catalog, 30));
   const knowledge = always.reduce((n, f) => n + f.text.length, 0);
@@ -39,6 +39,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       items: always.length,
       carried: always.length,
       over: knowledge > ALWAYS_INJECT_MAX_CHARS,
+      ownerProjectId: projectId,
     },
     {
       pile: 'lessons_map',
@@ -48,6 +49,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       items: map.reach,
       carried: map.named,
       over: map.named < map.reach,
+      ownerProjectId: projectId,
     },
     ...MAP_AUDIENCES.map((audience) => {
       const map = maps.get(audience) as Tier0Map;
@@ -60,6 +62,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
         carried: map.carried.length,
         // a map that cannot carry every card it teaches is due for merging, never cut
         over: map.carried.length < map.reach,
+        ownerProjectId: null,
       };
     }),
     ...skills.map((s) => ({
@@ -70,6 +73,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       items: 1,
       carried: 1,
       over: s.size > SKILL_ALWAYS_ON_MAX_CHARS,
+      ownerProjectId: s.projectId,
     })),
   ];
   return { projectId, piles };

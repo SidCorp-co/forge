@@ -72,9 +72,9 @@ const use: DoorUseView = {
 const piles: PilesView = {
   projectId: P,
   piles: [
-    { pile: "always_knowledge", name: "always-on knowledge", size: 7200, cap: 6000, items: 12, carried: 12, over: true },
-    { pile: "tier0_map", name: "map (bot)", size: 900, cap: 2500, items: 9, carried: 9, over: false },
-    { pile: "skill_always_on", name: "forge-master", size: 400, cap: 1024, items: 1, carried: 1, over: false },
+    { pile: "always_knowledge", name: "always-on knowledge", size: 7200, cap: 6000, items: 12, carried: 12, over: true, ownerProjectId: P },
+    { pile: "tier0_map", name: "map (bot)", size: 900, cap: 2500, items: 9, carried: 9, over: false, ownerProjectId: null },
+    { pile: "skill_always_on", name: "forge-master", size: 400, cap: 1024, items: 1, carried: 1, over: false, ownerProjectId: null },
   ],
 };
 

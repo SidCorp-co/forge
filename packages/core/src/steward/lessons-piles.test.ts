@@ -26,6 +26,7 @@ const pile = (row: Partial<PileRow> & Pick<PileRow, 'pile' | 'name'>): PileRow =
   items: 60,
   carried: 15,
   over: true,
+  ownerProjectId: null,
   ...row,
 });
 
