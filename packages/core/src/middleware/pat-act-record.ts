@@ -8,7 +8,12 @@
 
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { type AuditResultCode, writeMcpAudit } from '../credentials/mcp-audit.js';
+import {
+  type AuditResultCode,
+  auditResultOf,
+  refusalCodeOfBody,
+  writeMcpAudit,
+} from '../credentials/mcp-audit.js';
 import { scopeForMethod } from './pat-rest-surface.js';
 import { getClientIp } from './rate-limit.js';
 import type { PatPrincipal } from './require-pat.js';
@@ -18,12 +23,20 @@ const PROJECT_IN_PATH =
   /\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
 
 /** How an act ended, from the status it was answered with. */
-export function actResultOf(status: number): AuditResultCode {
-  if (status < 400) return 'ok';
-  if (status === 401 || status === 403) return 'forbidden';
-  if (status === 404) return 'not_found';
-  if (status === 429) return 'rate_limited';
-  return 'error';
+export const actResultOf = (status: number): AuditResultCode => auditResultOf(status);
+
+/**
+ * The code a refused answer carries in its body (ISS-1251), read off a copy after the answer is set,
+ * so the request is never held for it; null for an answer that is not JSON or names no code.
+ */
+function refusalCodeOf(res: Response | undefined): Promise<string | null> {
+  if (!res || !(res.headers.get('content-type') ?? '').includes('json')) {
+    return Promise.resolve(null);
+  }
+  return res
+    .clone()
+    .json()
+    .then(refusalCodeOfBody, () => null);
 }
 
 /** The project a path names, or null. */
@@ -55,6 +68,7 @@ export async function recordingPatAct(
         action: `${c.req.method} ${c.req.path}`.slice(0, 500),
         projectId: projectOfPath(c.req.path),
         resultCode: actResultOf(status ?? 500),
+        refusalCode: (status ?? 500) >= 400 ? refusalCodeOf(c.res) : null,
         ip: getClientIp(c) ?? null,
         userAgent: c.req.header('user-agent') ?? null,
       });

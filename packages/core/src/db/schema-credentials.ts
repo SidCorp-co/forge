@@ -75,6 +75,8 @@ export const mcpAuditLog = pgTable(
     action: text('action'),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
     resultCode: text('result_code').notNull(),
+    /** The code a refused call answered with (ISS-1251, migration 0672); null where it ended ok. */
+    refusalCode: text('refusal_code'),
     requestId: text('request_id'),
     ip: text('ip'),
     userAgent: text('user_agent'),

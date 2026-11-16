@@ -48,6 +48,11 @@ export const supportReplyVerdicts = pgTable(
     verdict: text('verdict', { enum: REPLY_VERDICTS }).notNull(),
     failed: text('failed').array().notNull().default(sql`'{}'::text[]`),
     findings: jsonb('findings').notNull().default(sql`'[]'::jsonb`),
+    /**
+     * The capabilities the agent's own audit says the reply should have reached for and did not, each
+     * `{ door, why }` (ISS-1251, migration 0672): the misses the capabilities page counts per card.
+     */
+    missed: jsonb('missed').notNull().default(sql`'[]'::jsonb`),
     correctionId: uuid('correction_id').references(() => corrections.id, { onDelete: 'set null' }),
     auditedAt: timestamp('audited_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -3,7 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const written: Array<Record<string, unknown>> = [];
-vi.mock('../credentials/mcp-audit.js', () => ({
+vi.mock('../credentials/mcp-audit.js', async (actual) => ({
+  ...(await actual<typeof import('../credentials/mcp-audit.js')>()),
   writeMcpAudit: (row: Record<string, unknown>) => written.push(row),
 }));
 
@@ -22,6 +23,11 @@ function app() {
   a.patch('/api/issues/:id', () => {
     throw new HTTPException(403, { message: 'no' });
   });
+  // a refusal answers its envelope (`lib/refusal.ts`): its code leads, and again under error
+  a.post('/api/issues/:id/merge', (c) =>
+    c.json({ code: 'MERGE_CHECK_MISSING', error: { code: 'MERGE_CHECK_MISSING' } }, 409),
+  );
+  a.post('/api/issues/:id/move', (c) => c.json({ error: { code: 'ISSUE_MOVE_REFUSED' } }, 400));
   return a;
 }
 
@@ -47,6 +53,18 @@ describe('every act a token makes over REST is recorded against it (REQ-27 BC-2)
   it('records a refused write as forbidden', async () => {
     await app().request('/api/issues/x', { method: 'PATCH' });
     expect(written.map((w) => w.resultCode)).toEqual(['forbidden']);
+  });
+
+  it('records a refused write with the refusal code its answer carries (ISS-1251)', async () => {
+    await app().request('/api/issues/x/merge', { method: 'POST' });
+    await app().request('/api/issues/x/move', { method: 'POST' });
+    await app().request(`/api/projects/${P}/issues`, { method: 'POST' });
+    expect(written.map((w) => w.resultCode)).toEqual(['error', 'error', 'ok']);
+    expect(await Promise.all(written.map((w) => w.refusalCode))).toEqual([
+      'MERGE_CHECK_MISSING',
+      'ISSUE_MOVE_REFUSED',
+      null,
+    ]);
   });
 
   it('records no row for a read', async () => {

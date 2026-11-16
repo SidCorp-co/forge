@@ -2,7 +2,12 @@ import { redactQueryParams, scrubLogText, scrubSecretsDeep } from '@forge/observ
 import { type CallToolResult, Server, type Tool } from '@modelcontextprotocol/server';
 import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
-import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
+import {
+  type AuditResultCode,
+  answeredAudit,
+  digestArgs,
+  writeMcpAudit,
+} from '../credentials/mcp-audit.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { RETIRED_MCP_TOOLS } from '../forge-door/index.js';
 import { RefusalError, thrownEnvelope } from '../lib/refusal.js';
@@ -195,8 +200,9 @@ export function createMcpServer(ctx: McpContext): Server {
     return runWithPatScope(patScope, async () => {
       const undeclared = actionRefusal(tool, args);
       if (undeclared) {
-        writeMcpAudit({ ...auditBase, resultCode: 'error' });
-        return refusalAnswer({ _mcpIsError: true, ...thrownEnvelope(undeclared) });
+        const answer = thrownEnvelope(undeclared);
+        writeMcpAudit({ ...auditBase, resultCode: 'error', refusalCode: answer.code });
+        return refusalAnswer({ _mcpIsError: true, ...answer });
       }
       const refusal = toolCallRefusal(tool, args, {
         grant: principal.permissions,
@@ -219,14 +225,15 @@ export function createMcpServer(ctx: McpContext): Server {
         // what the action declares is checked here, before its handler (REQ-12 BC-20)
         const result = await runDeclaredTool(tool, args, principal.userId);
         const refused = (result as { _mcpIsError?: unknown } | null)?._mcpIsError === true;
-        writeMcpAudit({ ...auditBase, resultCode: 'ok' });
+        // a refusal the door answered is a refused call, kept with its code, never an ok (ISS-1251)
+        writeMcpAudit({ ...auditBase, ...answeredAudit(result) });
         return refused ? refusalAnswer(result) : toToolCallContent(result);
       } catch (err) {
         if (err instanceof RefusalError) {
           const answer = thrownEnvelope(err);
           const resultCode =
             answer.status === 403 ? 'forbidden' : answer.status === 404 ? 'not_found' : 'error';
-          writeMcpAudit({ ...auditBase, resultCode });
+          writeMcpAudit({ ...auditBase, resultCode, refusalCode: answer.code });
           return refusalAnswer({ _mcpIsError: true, ...answer });
         }
         const { code, message } = classifyError(err);
