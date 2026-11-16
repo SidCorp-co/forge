@@ -31,6 +31,8 @@ const URGENT = new Set(['critical', 'high']);
 
 export interface ProjectSlots {
   projectId: string;
+  /** What the rule was asked for: its runs in use and the work waiting for one, a steward job's included. */
+  wants: number;
   /** What `slotsFor` gives the project on this box now. */
   slots: number;
   /** Its run sessions holding a subagent on this box now. */
@@ -107,6 +109,7 @@ export async function readBoxSlots(
     capacity,
     projects: demands.map((d) => ({
       projectId: d.projectId,
+      wants: d.wants,
       slots: slots.get(d.projectId) ?? 0,
       inUse: inUse.get(d.projectId) ?? 0,
       waiting: waiting.get(d.projectId)?.n ?? 0,
@@ -115,13 +118,16 @@ export async function readBoxSlots(
   };
 }
 
-/** One project's entry in its box's slots, as the master standing serves it. */
+/**
+ * One project's entry in its box's slots, as the master standing serves it. `waiting` is what the rule
+ * was asked for less what is in use, so a steward job waiting for a slot reads as a wait like any run's.
+ */
 export function subagentSlotsOf(box: BoxSlots, projectId: string): MasterSubagentSlots {
   const mine = box.projects.find((p) => p.projectId === projectId);
   return {
     held: mine?.slots ?? 0,
     inUse: mine?.inUse ?? 0,
-    waiting: mine?.waiting ?? 0,
+    waiting: Math.max(0, (mine?.wants ?? 0) - (mine?.inUse ?? 0)),
     capacity: box.capacity,
   };
 }

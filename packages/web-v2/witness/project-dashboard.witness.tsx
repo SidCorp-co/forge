@@ -78,7 +78,6 @@ const RELEASES = {
 };
 const MODULES = { modules: ["Patients", "Bookings", "Billing", "Staff", "Reports"].map((name, i) => ({ id: `m${i}`, name, slug: name.toLowerCase(), parentId: null })) };
 const CONFIG = { declared: true, revision: 1, document: { project: { description: "The clinic back office: patients, bookings and billing over one API." } } };
-const STEWARD_DAY = { day: NOW, resumesAt: NOW, handoff: { gatewayTurns: { spent: 6, of: 80 }, runnerJobs: { spent: 1, of: 4 } }, sweep: { gatewayTurns: { spent: 2, of: 120 }, runnerJobs: { spent: 0, of: 6 } }, paced: 0, quiet: null };
 
 const issue = (n: number, title: string, group: "moving" | "stuck") => {
   const base = STANDING_LIST.issues[group === "moving" ? 0 : 2];
@@ -119,7 +118,6 @@ const READS: [RegExp, () => unknown][] = [
   [/\/workflow-templates$/, () => ({ templates: [] })],
   [/\/config$/, () => CONFIG],
   [/\/modules\/rollup$/, () => MODULES],
-  [/\/steward-budget$/, () => STEWARD_DAY],
   [/^\/memory\/entries$/, () => ({ items: [], counts: { live: 0, superseded: 0, archived: 0 }, returned: 0, total: 0, limit: 100 })],
 ];
 /** Reads the page draws nothing from when they fail: refused, so the shot is not one still waiting. */

@@ -8,12 +8,12 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { invalid, noQuery, zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
 import { undoAct } from './acts-store.js';
 import { askStewardDecision } from './decision-ask.js';
 import { finishStewardJob } from './job.js';
-import { readStewardActs, readStewardBudget, readStewardRuns } from './read.js';
+import { readStewardActs, readStewardRuns } from './read.js';
 
 export const stewardRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -22,7 +22,6 @@ for (const path of [
   '/:id/steward-runs/*',
   '/:id/steward-acts',
   '/:id/steward-acts/*',
-  '/:id/steward-budget',
 ]) {
   stewardRoutes.use(path, requireAuth(), assertEmailVerified());
 }
@@ -114,10 +113,6 @@ stewardRoutes.get('/:id/steward-acts', projectParam, reads, runsQuery, async (c)
       subjectKey: c.req.valid('query').subject,
     }),
   ),
-);
-
-stewardRoutes.get('/:id/steward-budget', projectParam, reads, noQuery, async (c) =>
-  c.json(await readStewardBudget({ projectId: c.req.valid('param').id, userId: c.get('userId') })),
 );
 
 stewardRoutes.post('/:id/steward-acts/:actId/undo', actParam, writes, async (c) => {

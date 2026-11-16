@@ -316,13 +316,14 @@ export interface MasterSessionResponse {
 	maxJobPanes: number | null;
 }
 
-/** This project's subagent slots on its master's box (ISS-1245): a live slot is an open run session. */
+/** This project's subagent slots on its master's box (ISS-1245): a live slot is an open run session or a steward job. */
 export interface MasterSubagentSlots {
 	/** What the box's one slot rule (core `devices/run-slots.ts:slotsFor`) gives the project now. */
 	held: number;
 	/** Its run sessions holding a subagent on the box now. */
 	inUse: number;
-	/** Its admissible issues nobody has started. */
+	/** The work waiting for one of its slots: admissible issues nobody has started, and steward runs
+	 *  owing a runner job (ISS-1255), the one rule's demand less what is in use. */
 	waiting: number;
 	/** The box's declared `max_subagents`; null where its runner has not declared one. */
 	capacity: number | null;

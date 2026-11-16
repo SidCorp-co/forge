@@ -1,8 +1,7 @@
 // REQ-48 lane B (ISS-596): the steward runtime, driven through the real app, outbox and timers on a
 // throwaway Postgres, with the gateway a scripted provider. A requirement agreed and its breakdown
 // proposed fold into one debounced run; what arrives while a run runs is its one rerun, no act
-// dropped; a spent budget skips the run and the item says so; a stuck item is acted on within the
-// hour, not again on the same basis, and its acts are undone through the undo door or refused by
+// dropped; a stuck item is acted on within the hour, not again on the same basis, and its acts are undone through the undo door or refused by
 // name; and a steward turn reaches nothing outside its act's menu. The standing read is replaced
 // here by a scripted one of its contract type (`OpenStandingsRead`), so each case states exactly the
 // standing it acts on; the real read, provided at boot, is driven in steward-standing-e2e. A run a
@@ -268,43 +267,6 @@ describe("a trigger folds into the item's one live run (BC-1)", () => {
       await say('owner', 'POST', `/api/questions/${asked.id}/answer`, { round: 1, optionId: 'a' }),
     );
     expect(await breakdownsHeldBySteward(projectId)).toEqual([]);
-  });
-});
-
-describe('a spent day paces the sweep and says so (cost guard, REQ-48 BC-1)', () => {
-  it("waits a stuck item's run for the next day before any turn, and the Dashboard's read says why", async () => {
-    const issue = await createTestIssue(projectId, ownerId, 40, {
-      status: 'open',
-      createdAt: new Date(),
-    });
-    // the spend is stamped at the dispatch instant, so the two share a UTC day near midnight too
-    const at = new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000);
-    const spent = await rows<{ id: string }>(sql`
-      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
-                                state, turns, not_before, started_at, ended_at)
-      VALUES (${projectId}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb, ARRAY['stuck_diagnosis'],
-              'done', 200, now(), ${at.toISOString()}::timestamptz, now())
-      RETURNING id`);
-    standings = [stuckIssue(issue, 'spent-1')];
-    await emit('standing.stuck', standings[0]?.subject as StandingSubject, 'spent-1');
-    await settleOutbox();
-    resetScript();
-    await steward.dispatchStewardRuns(at);
-
-    const runs = await runsOf(issue.id);
-    const { nextUtcDay } = await import('../../src/steward/policy.js');
-    expect(runs.at(-1)).toMatchObject({ state: 'queued', skip_reason: null, started_at: null });
-    expect(new Date(runs.at(-1)?.not_before ?? 0).getTime()).toBeGreaterThanOrEqual(
-      nextUtcDay(new Date()).getTime() - 1_000,
-    );
-    expect(script.sent).toEqual([]);
-    const budget = ok(await as('GET', '/steward-budget'));
-    expect(budget).toMatchObject({ quiet: 'handoffs', paced: 1 });
-    await rows(sql`
-      UPDATE steward_runs SET state = 'skipped', skip_reason = 'subject_ended', ended_at = now()
-       WHERE subject_id = ${issue.id} AND state = 'queued' RETURNING id`);
-    await rows(sql`DELETE FROM steward_runs WHERE id = ${spent[0]?.id}`);
-    standings = [];
   });
 });
 

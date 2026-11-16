@@ -86,7 +86,6 @@ export const HOME_READS: [RegExp, () => unknown][] = [
   [/\/workflows$/, () => ({ workflows: [], returned: 0 })],
   [/\/workflow-templates$/, () => ({ templates: [] })],
   [/\/config$/, () => ({ declared: true, revision: 1, document: { project: { description: "The clinic back office: patients, bookings and billing over one API." } } })],
-  [/\/steward-budget$/, () => ({ day: NOW, resumesAt: NOW, handoff: { gatewayTurns: { spent: 6, of: 80 }, runnerJobs: { spent: 1, of: 4 } }, sweep: { gatewayTurns: { spent: 2, of: 120 }, runnerJobs: { spent: 0, of: 6 } }, paced: 0, quiet: null })],
   [/^\/memory\/entries$/, () => ({ items: [], counts: { live: 0, superseded: 0, archived: 0 }, returned: 0, total: 0, limit: 100 })],
 ];
 

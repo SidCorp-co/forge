@@ -123,7 +123,6 @@ const READS: [RegExp, () => unknown][] = [
   [/\/workflow-templates$/, () => ({ templates: [] })],
   [/\/config$/, () => ({ declared: true, revision: 1, document: { project: { description: "The clinic back office." } } })],
   [/\/modules\/rollup$/, () => ({ modules: [] })],
-  [/\/steward-budget$/, () => ({ day: AT, resumesAt: AT, handoff: { gatewayTurns: { spent: 0, of: 80 }, runnerJobs: { spent: 0, of: 4 } }, sweep: { gatewayTurns: { spent: 0, of: 120 }, runnerJobs: { spent: 0, of: 6 } }, paced: 0, quiet: null })],
   [/^\/memory\/entries$/, () => ({ items: [], counts: { live: 0, superseded: 0, archived: 0 }, returned: 0, total: 0, limit: 100 })],
   [/^\/conversations$/, () => ({ items: [ROOM_ROW], total: 1 })],
   [new RegExp(`^/conversations/${ROOM}$`), () => ROOM_DETAIL],
