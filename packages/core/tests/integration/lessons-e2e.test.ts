@@ -273,7 +273,7 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
     expect(ok(await say('member', 'GET', at(`/knowledge/lesson-${n}`)))).toMatchObject({
       injection: 'none',
     });
-    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`lesson-${n}, when`);
+    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`- lesson-${n}: `);
   });
 
   it('scopes by area and by kind of item', async () => {
@@ -287,14 +287,14 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
       areaId: null,
       itemKind: 'requirement',
     });
-    expect(await block({ produces: ['issue'], area: w.areaA })).toContain(`L-${billing}`);
-    expect(await block({ produces: ['issue'], area: w.areaB })).not.toContain(`L-${billing}`);
-    expect(await block({ produces: ['issue'], area: null })).not.toContain(`L-${reqs} `);
+    expect(await block({ produces: ['issue'], area: w.areaA })).toContain(`- lesson-${billing}: `);
+    expect(await block({ produces: ['issue'], area: w.areaB })).not.toContain(`- lesson-${billing}: `);
+    expect(await block({ produces: ['issue'], area: null })).not.toContain(`- lesson-${reqs}: `);
     expect(await block({ produces: ['requirement'], area: null })).toContain(
-      `L-${reqs} [writing requirements]`,
+      `When writing requirements:\n- lesson-${reqs}: `,
     );
     expect(await block({ produces: ['issue'], area: 'any' })).toContain(
-      `L-${billing} [working in Billing]: Show totals with tax.`,
+      `When working in Billing:\n- lesson-${billing}: Show totals with tax.`,
     );
   });
 

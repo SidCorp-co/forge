@@ -4,7 +4,9 @@ import { servedGuideBody } from '../guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
 import { provideDoorCatalog } from '../lib/door-catalog.js';
 import { servedDoorCatalog } from '../mcp/door-catalog.js';
+import { actionCatalog } from '../mcp/action-catalog.js';
 import { agentOpening, supportBrief } from './prompt.js';
+import { forgeSupportTool } from './tool.js';
 
 // ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
 // what the agent is taught is the brief and that guide as served, the agree card beneath its body
@@ -25,7 +27,6 @@ const taught = (b: string): string => {
 
 /** A sentence telling the agent to make a person type, write or say one set word. */
 const SET_WORD = /\b(type|write|say|reply)\b[^.]{0,40}["“'`](confirm|đồng ý|yes|ok|agree)/i; // i18n-allow: the Vietnamese set word the agent demanded
-const TEACHES = 'any words of their own are their agreement; never ask anyone to type a set word';
 /** The agree card's line, the one text teaching the act to the room agent (ISS-1251). */
 const CARD_TEACHES = 'Any words of their own agree; never ask anyone to type a set word';
 
@@ -62,7 +63,13 @@ describe('a plain agreement in any words is consent, never a set word', () => {
 
   it('the agree action says it and demands no word', () => {
     const d = described();
-    expect(d).toContain(TEACHES);
+    // the act's entry is its card's purpose, and forge_describe answers the card beside it (ISS-1251)
+    const tool = forgeSupportTool({
+      principal: { userId: 'u', tokenId: 't', projectIds: ['p'], boundProjectId: null },
+    } as never);
+    const card = actionCatalog([tool]).get('support.agree')?.card;
+    expect(card?.practice.some((line) => line.includes(CARD_TEACHES))).toBe(true);
+    expect(d).toContain('agree { thread, proposal, message, decision?: agree | decline }:');
     expect(d).not.toMatch(SET_WORD);
   });
 });
