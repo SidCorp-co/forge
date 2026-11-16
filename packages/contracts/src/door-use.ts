@@ -59,6 +59,13 @@ export interface DoorUseRow {
 	 * it is reached by situation through forge_find; empty without a card.
 	 */
 	tiers: Partial<Record<CardAudience, 0 | 1>>;
+	/**
+	 * The REST writes that do this MCP action's act: one act, one card, so their calls count here, and
+	 * no row of their own lists them. Empty where the door has none.
+	 */
+	twins: string[];
+	/** Of `calls`, those that came through a REST twin. */
+	viaTwins: number;
 	calls: number;
 	/** Calls that did not end `ok`, and a room act's refusals its room recorded. */
 	refused: number;

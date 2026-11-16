@@ -37,6 +37,8 @@ const door = (id: string, over: Partial<DoorUseRow>): DoorUseRow => ({
   feature: "forge_support",
   card: null,
   tiers: {},
+  twins: [],
+  viaTwins: 0,
   calls: 0,
   refused: 0,
   refusedBy: {},

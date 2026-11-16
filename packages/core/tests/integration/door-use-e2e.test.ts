@@ -157,11 +157,16 @@ describe("a project's door use counts each call against the catalog, the never-c
     expect(door(view, 'support.member').tiers).toEqual({});
     // a card's door is in each audience's map it teaches, at Tier 0 (carried) or Tier 1 (found)
     expect(Object.keys(door(view, 'feedback.door').tiers).sort()).toEqual(['bot', 'master', 'run']);
-    expect(door(view, 'POST /api/projects/:id/feedback')).toMatchObject({
-      surface: 'rest',
+    // a REST write that does an MCP action's act counts on that act's one row, under its one card
+    expect(door(view, 'project_feedback.submit')).toMatchObject({
+      surface: 'mcp',
+      twins: ['POST /api/projects/:id/feedback'],
       calls: 1,
+      viaTwins: 1,
       byAgent: { box: 1 },
+      card: { id: 'POST /api/projects/:id/feedback' },
     });
+    expect(view.doors.some((d) => d.door === 'POST /api/projects/:id/feedback')).toBe(false);
     // the catalog is the denominator: a door nobody called is listed, with 0
     expect(door(view, 'support.rule')).toMatchObject({ calls: 0, refused: 0, byAgent: {} });
     expect(view.totals.neverUsed).toBeGreaterThan(0);
@@ -342,7 +347,7 @@ describe('each pile a prompt carries reads against its cap', () => {
     expect(atTier(0)).toBe(master?.carried);
     expect(atTier(0) + atTier(1)).toBe(master?.items);
     // the one carded door this project called ranks into the map
-    expect(door(view, 'POST /api/projects/:id/feedback').tiers.master).toBe(0);
+    expect(door(view, 'project_feedback.submit').tiers.master).toBe(0);
     expect(piles.find((p) => p.name === 'map (bot)')?.items).toBeGreaterThan(0);
     expect(piles.find((p) => p.pile === 'skill_always_on' && p.size === 1100)).toMatchObject({
       cap: 1024,

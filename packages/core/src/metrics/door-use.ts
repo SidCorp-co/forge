@@ -137,6 +137,8 @@ export function tallyDoors(
         feature: d.feature,
         card: d.card ?? null,
         tiers: {},
+        twins: [...(d.twins ?? [])],
+        viaTwins: 0,
         ...EMPTY(),
       },
     ]),
@@ -151,6 +153,7 @@ export function tallyDoors(
       continue;
     }
     door.calls += row.calls;
+    if (row.tool === 'rest' && door.surface === 'mcp') door.viaTwins += row.calls;
     if (row.code !== 'ok') refuse(door, row.code, row.calls);
     door.byAgent[row.agent] = (door.byAgent[row.agent] ?? 0) + row.calls;
     const last = iso(row.last_at);
@@ -239,7 +242,7 @@ export async function readDoorUse(
   const maps = await tier0Maps(projectId, catalog, new Map(doors.map((d) => [d.door, d.calls])));
   for (const d of doors) {
     for (const audience of d.card?.audience ?? []) {
-      d.tiers[audience] = maps.get(audience)?.carried.includes(d.door) ? 0 : 1;
+      d.tiers[audience] = maps.get(audience)?.carried.includes(d.card?.id ?? d.door) ? 0 : 1;
     }
   }
   const shown = doors.filter(

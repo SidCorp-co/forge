@@ -29,40 +29,6 @@ export const CARDS = {
     audience: ['person'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
-  write: {
-    purpose: 'Writes the project document whole, against the revision you read.',
-    situations: [
-      {
-        when: 'a project was just created and has no description, repository, branches or environments',
-        do: 'write its first document with baseRevision null, shaped by the project-v1 schema and example describe names',
-      },
-      {
-        when: 'a person asks to change the description, the repository, a branch or an environment',
-        do: 'get the document, change only that, and write the whole of it back with the revision you read',
-        watch:
-          'a revision the document has moved past is refused by name: get it again and redo the change',
-      },
-      {
-        when: 'a person asks to change how much they must approve, or a gate',
-        do: 'use gates_write; send the document’s gates exactly as get answered them',
-      },
-    ],
-    practice: [
-      'Send the whole document every time; read its shape from describe’s schema, never from a refused write.',
-    ],
-    example: {
-      projectId: '<project uuid>',
-      baseRevision: 4,
-      document: '<the whole document config.get answered, with your change>',
-    },
-    // ISS-767: `{ base, patch }` is refused CONFIG_WRITE_SHAPE because it is the natural reading of a
-    // revisioned write; FB-596 (gwork, 2026-11-09): gates written here were refused
-    // GATES_WRITTEN_THROUGH_THEIR_DOOR, and the client learned the shape from a deliberately invalid write
-    redFlag:
-      'Sending a patch ({ base, patch } or only the keys that change), or gates changed in the document: refused CONFIG_WRITE_SHAPE and GATES_WRITTEN_THROUGH_THEIR_DOOR.',
-    audience: ['person'],
-    changed: { on: '2026-11-16', by: 'ISS-1251' },
-  },
   gates_get: {
     purpose:
       'Reads the project’s gate profile, each gate’s mode and where it came from, and the last changes with why.',
@@ -118,4 +84,5 @@ export const CARDS = {
     audience: ['person'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
-} satisfies Record<ConfigAction, CapabilityCardBody>;
+  // write's one card is its REST twin's, the orientation's (`mcp/twins.ts`)
+} satisfies Record<Exclude<ConfigAction, 'write'>, CapabilityCardBody>;

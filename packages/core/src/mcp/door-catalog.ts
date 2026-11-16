@@ -13,6 +13,7 @@ import { AFFORDANCE_CARDS } from '../prompt/index.js';
 import { actionCatalog, doorOf } from './action-catalog.js';
 import { REST_CARDS } from './rest-cards.js';
 import { mcpTools } from './server.js';
+import { REST_TWINS } from './twins.js';
 
 const WRITES = ['post', 'put', 'patch', 'delete'] as const;
 
@@ -68,12 +69,14 @@ export function mcpDoors(): CatalogDoor[] {
 /** The catalog over `doors`, answering which door a logged call is. */
 export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
   const byId = new Map(doors.map((d) => [d.id, d]));
+  // a REST door answers for itself, and a REST twin for the action it was folded into
   const routes = doors
-    .filter((d) => d.surface === 'rest')
-    .map((d) => {
-      const [method, template] = d.id.split(' ') as [string, string];
-      return { door: d, method, ...matcherOf(template) };
-    })
+    .flatMap((d) =>
+      [...(d.surface === 'rest' ? [d.id] : []), ...(d.twins ?? [])].map((id) => {
+        const [method, template] = id.split(' ') as [string, string];
+        return { door: d, method, ...matcherOf(template) };
+      }),
+    )
     .sort((a, b) => b.literals - a.literals);
   return {
     doors,
@@ -113,6 +116,51 @@ export function carded(doors: CatalogDoor[], cards: readonly CapabilityCard[]): 
   return out;
 }
 
+/**
+ * The doors with each REST twin folded into the MCP action whose act it does (`twins.ts`): one row,
+ * one card from whichever side carries it. A pair this build does not serve, or one carrying two
+ * cards, is refused by name.
+ */
+export function twinned(
+  doors: readonly CatalogDoor[],
+  twins: Readonly<Record<string, readonly string[]>> = REST_TWINS,
+): CatalogDoor[] {
+  const byId = new Map(doors.map((d) => [d.id, d]));
+  const missing: string[] = [];
+  const twice: string[] = [];
+  const folded = new Map<string, CatalogDoor>();
+  const gone = new Set<string>();
+  for (const [action, rest] of Object.entries(twins)) {
+    const door = byId.get(action);
+    const routes = rest.map((r) => byId.get(r));
+    if (door?.surface !== 'mcp') missing.push(action);
+    rest.forEach((r, i) => {
+      if (routes[i]?.surface !== 'rest') missing.push(r);
+    });
+    if (!door || routes.some((r) => !r)) continue;
+    const pair = [door, ...(routes as CatalogDoor[])];
+    // the action takes its twin's card where the act's one card sits on the REST side (`cards.ts`)
+    const cards = [
+      ...new Map(pair.flatMap((d) => (d.card ? [[d.card.id, d.card] as const] : []))).values(),
+    ];
+    if (cards.length > 1) twice.push(`${action} (${cards.map((c) => c.id).join(', ')})`);
+    const paths = [...new Set(pair.flatMap((d) => d.paths ?? []))];
+    folded.set(action, { ...door, ...(cards[0] ? { card: cards[0] } : {}), paths, twins: rest });
+    for (const r of rest) gone.add(r);
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `door catalog: a REST twin pair names ${missing.join(', ')}, which this build serves no such door as (mcp/twins.ts)`,
+    );
+  }
+  if (twice.length > 0) {
+    throw new Error(
+      `door catalog: one act carries two cards, ${twice.join('; ')}: keep one (mcp/twins.ts)`,
+    );
+  }
+  return doors.filter((d) => !gone.has(d.id)).map((d) => folded.get(d.id) ?? d);
+}
+
 let built: DoorCatalog | null = null;
 
 /** The catalog this build serves, read once: both sources are fixed for the life of the process. */
@@ -122,7 +170,7 @@ export function servedDoorCatalog(): DoorCatalog {
     readFileSync(resolve(CONTRACTS_DIR, 'forge-api.openapi.json'), 'utf8'),
   ) as OpenApi;
   built = catalogOf(
-    carded([...mcpDoors(), ...restDoors(document)], [...AFFORDANCE_CARDS, ...REST_CARDS]),
+    twinned(carded([...mcpDoors(), ...restDoors(document)], [...AFFORDANCE_CARDS, ...REST_CARDS])),
   );
   return built;
 }

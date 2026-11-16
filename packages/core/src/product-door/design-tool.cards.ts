@@ -125,31 +125,6 @@ export const CARDS = {
     audience: ['person'],
     changed,
   },
-  design_propose: {
-    purpose: 'Puts a revision of a design before its approver.',
-    situations: [
-      {
-        when: 'a draft design is finished and should be approved before anyone builds it',
-        do: 'propose the revision you wrote, naming the issue it is drawn under, and send the approver the design’s page',
-      },
-      {
-        when: 'a revision already waits on its approver and was drawn under the wrong issue',
-        do: 'propose it again with issue: no new revision is written, and the earlier issue is told',
-      },
-    ],
-    practice: [
-      'An issue that builds the design is not dispatched until it is approved, so propose before filing the build.',
-      'A design resting on another one is approved only once its base is approved at the revision it names.',
-    ],
-    example: {
-      projectId: '<project uuid>',
-      workflowId: '<workflow uuid>',
-      revision: 2,
-      issue: 'ISS-12',
-    },
-    audience: ['person'],
-    changed,
-  },
   design_decide: {
     purpose: 'Approves or returns the proposed revision of a design.',
     situations: [
@@ -490,4 +465,8 @@ export const CARDS = {
     audience: ['person'],
     changed,
   },
-} satisfies Record<(typeof DESIGN_TOOL_ACTIONS)[number], CapabilityCardBody>;
+  // design_propose's one card is its REST twin's, the orientation's (`mcp/twins.ts`)
+} satisfies Record<
+  Exclude<(typeof DESIGN_TOOL_ACTIONS)[number], 'design_propose'>,
+  CapabilityCardBody
+>;

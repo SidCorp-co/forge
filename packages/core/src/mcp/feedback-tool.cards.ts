@@ -52,43 +52,6 @@ export const CARDS = {
     audience: ['person', 'bot'],
     changed: CHANGED,
   },
-  submit: {
-    purpose: 'Files what a person reports or wishes about the project’s product, at phase new.',
-    situations: [
-      {
-        when: 'a person reports something broken or wrong in the product, or relays what a user reported',
-        do: 'submit it as a bug in their words, its target the requirement it touches, found with requirements.similar',
-      },
-      {
-        when: 'the report touches no requirement, issue, release, design or endpoint',
-        do: 'name the screen it was met on in words as its target, and leave whereSeen out',
-      },
-      {
-        when: 'what they report is about Forge itself, not their project’s product',
-        do: 'send it to the feedback door (feedback.submit) instead',
-        // ISS-538: a client met two feedback doors and a refusal pointing at the wrong one
-        watch:
-          'filed here, a Forge defect lands on the project’s own board, where Forge’s team does not triage it',
-      },
-    ],
-    practice: [
-      'The target is one { kind, ref }: a requirement REQ-n is best, else an issue, a release, a workflow or a screen.',
-      'Triage is not done here: the project’s master routes the item to its work.',
-    ],
-    example: {
-      projectId: '<project uuid>',
-      kind: 'bug',
-      title: 'Reorder leaves the cart empty',
-      body: 'Tapping Reorder on a past order shows an empty cart.',
-      target: { kind: 'screen', ref: 'order history page' },
-    },
-    // FB-598 and ISS-559: clients filled several target fields, or named the target as a loose field,
-    // and were refused FEEDBACK_TARGET_NOT_ONE; ISS-861: a guide sent clients to project_feedback.create
-    redFlag:
-      'Naming the target as its own field (screen: …, requirement: …) or naming two, or calling create: the action is submit, with one target { kind, ref }.',
-    audience: ['person'],
-    changed: CHANGED,
-  },
   clarify: {
     purpose:
       'Asks an item’s reporter one question, with the answer you recommend for them to send by one click.',

@@ -108,10 +108,36 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         when: "The project document (environments, `delivery`, release, bindings' targets)",
         do: 'GET `projects/<id>/config`, then PUT `{ baseRevision, document }`',
         watch: '`{ base, patch }` is refused `CONFIG_WRITE_SHAPE`; a stale revision by name',
+        for: ['master'],
+      },
+      {
+        when: 'a project was just created and has no description, repository, branches or environments',
+        do: 'write its first document with baseRevision null, shaped by the project-v1 schema and example describe names',
+        for: ['person'],
+      },
+      {
+        when: 'a person asks to change the description, the repository, a branch or an environment',
+        do: 'get the document, change only that, and write the whole of it back with the revision you read',
+        watch:
+          'a revision the document has moved past is refused by name: get it again and redo the change',
+        for: ['person'],
+      },
+      {
+        when: 'a person asks to change how much they must approve, or a gate',
+        do: 'use gates_write; send the document’s gates exactly as get answered them',
+        for: ['person'],
       },
     ],
-    practice: ['GET it first and PUT { baseRevision, document } whole.'],
-    audience: ['master'],
+    practice: [
+      'GET it first and PUT { baseRevision, document } whole.',
+      'Read its shape from describe’s schema, never from a refused write.',
+    ],
+    // ISS-767: `{ base, patch }` is refused CONFIG_WRITE_SHAPE because it is the natural reading of a
+    // revisioned write; FB-596 (gwork, 2026-11-09): gates written here were refused
+    // GATES_WRITTEN_THROUGH_THEIR_DOOR, and the client learned the shape from a deliberately invalid write
+    redFlag:
+      'Sending a patch ({ base, patch } or only the keys that change), or gates changed in the document: refused CONFIG_WRITE_SHAPE and GATES_WRITTEN_THROUGH_THEIR_DOOR.',
+    audience: ['master', 'person'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/memory/search', 'memory', {
@@ -157,10 +183,25 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         when: "Design work (a workflow's states, steps or rules)",
         do: 'a design revision on that workflow, proposed for approval; an issue holding only design moves to `closed` once its revisions are approved (`design_delivered`)',
         watch: 'a release skips a design-only issue (`RELEASE_ALL_DESIGN_ONLY`)',
+        for: ['master', 'run'],
+      },
+      {
+        when: 'a draft design is finished and should be approved before anyone builds it',
+        do: 'propose the revision you wrote, naming the issue it is drawn under, and send the approver the design’s page',
+        for: ['person'],
+      },
+      {
+        when: 'a revision already waits on its approver and was drawn under the wrong issue',
+        do: 'propose it again with issue: no new revision is written, and the earlier issue is told',
+        for: ['person'],
       },
     ],
-    practice: ['An issue holding only design closes once its revisions are approved.'],
-    audience: ['master', 'run'],
+    practice: [
+      'An issue holding only design closes once its revisions are approved.',
+      'An issue that builds the design is not dispatched until it is approved, so propose before filing the build.',
+      'A design resting on another one is approved only once its base is approved at the revision it names.',
+    ],
+    audience: ['master', 'run', 'person'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/projects/:id/feedback', 'feedback', {
@@ -171,10 +212,37 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         when: 'A product finding: it changes what a user sees or should expect (a feature you noticed), or a user or owner reported it',
         do: 'Feedback, `projects/<id>/feedback -X POST`; its triage leads to a requirement, then an issue',
         watch: 'a feature never starts as an issue an agent filed',
+        for: ['master', 'run', 'bot'],
+      },
+      {
+        when: 'a person reports something broken or wrong in the product, or relays what a user reported',
+        do: 'submit it as a bug in their words, its target the requirement it touches, found with requirements.similar',
+        for: ['person'],
+      },
+      {
+        when: 'the report touches no requirement, issue, release, design or endpoint',
+        do: 'name the screen it was met on in words as its target, and leave whereSeen out',
+        for: ['person'],
+      },
+      {
+        when: 'what they report is about Forge itself, not their project’s product',
+        do: 'send it to the feedback door (feedback.submit) instead',
+        // ISS-538: a client met two feedback doors and a refusal pointing at the wrong one
+        watch:
+          'filed here, a Forge defect lands on the project’s own board, where Forge’s team does not triage it',
+        for: ['person'],
       },
     ],
-    practice: ['Say where it was seen and what the person expected, in their words.'],
-    audience: ['master', 'run', 'bot'],
+    practice: [
+      'Say where it was seen and what the person expected, in their words.',
+      'The target is one { kind, ref }: a requirement REQ-n is best, else an issue, a release, a workflow or a screen.',
+      'Triage is not done here: the project’s master routes the item to its work.',
+    ],
+    // FB-598 and ISS-559: clients filled several target fields, or named the target as a loose field,
+    // and were refused FEEDBACK_TARGET_NOT_ONE; ISS-861: a guide sent clients to project_feedback.create
+    redFlag:
+      'Naming the target as its own field (screen: …, requirement: …) or naming two, or calling create: the action is submit, with one target { kind, ref }.',
+    audience: ['master', 'run', 'bot', 'person'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),
   card('POST /api/projects/:projectId/debts', 'cleanup', {
@@ -215,10 +283,12 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
 export function affordanceRows(cards: readonly CapabilityCard[] = AFFORDANCE_CARDS): string {
   return cards
     .flatMap((c) =>
-      c.situations.map((s) => {
-        const watch = s.watch ?? c.redFlag;
-        return `| ${s.when} | ${s.do} |${watch ? ` ${watch} ` : ' '}|`;
-      }),
+      c.situations
+        .filter((s) => !s.for || s.for.includes('master') || s.for.includes('run'))
+        .map((s) => {
+          const watch = s.watch ?? c.redFlag;
+          return `| ${s.when} | ${s.do} |${watch ? ` ${watch} ` : ' '}|`;
+        }),
     )
     .join('\n');
 }

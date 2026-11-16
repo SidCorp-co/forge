@@ -61,6 +61,14 @@ export function designDescribe(): Record<string, ActionDescribe> {
         },
       },
     },
+    design_propose: {
+      example: {
+        projectId: '<project uuid>',
+        workflowId: '<workflow uuid>',
+        revision: 2,
+        issue: 'ISS-12',
+      },
+    },
     template_list: {
       example: { projectId: '<project uuid>' },
     },

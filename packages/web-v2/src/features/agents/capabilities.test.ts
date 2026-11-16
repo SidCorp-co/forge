@@ -18,6 +18,8 @@ const door = (over: Partial<DoorUseRow> = {}): DoorUseRow => ({
   feature: "forge_support",
   card,
   tiers: { bot: 0 },
+  twins: [],
+  viaTwins: 0,
   calls: 8,
   refused: 0,
   refusedBy: {},

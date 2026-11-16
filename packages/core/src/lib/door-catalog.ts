@@ -6,6 +6,7 @@
 import {
   type CapabilityCard,
   type CardAudience,
+  situationsFor,
   TIER0_MAP_MAX_CHARS,
 } from '@forge/contracts/capability-cards';
 import type { DoorSurface } from '@forge/contracts/door-use';
@@ -24,6 +25,11 @@ export interface CatalogDoor {
   card?: CapabilityCard;
   /** The repository paths its door lives in (a file or a module's directory); empty where unknown. */
   paths?: readonly string[];
+  /**
+   * The REST writes that do this MCP action's act (`POST /api/forge/feedback/doors` for
+   * `feedback.door`): one act, one card, so a call through either counts on this door.
+   */
+  twins?: readonly string[];
 }
 
 export interface DoorCatalog {
@@ -61,17 +67,22 @@ export function tier0Map(
   calls: ReadonlyMap<string, number> = new Map(),
 ): Tier0Map {
   const taught = doors
-    .filter((d) => d.card?.audience.includes(audience))
+    .filter(
+      (d) => d.card?.audience.includes(audience) && situationsFor(d.card, audience).length > 0,
+    )
     .sort((a, b) => (calls.get(b.id) ?? 0) - (calls.get(a.id) ?? 0) || a.id.localeCompare(b.id));
   const lines: string[] = [];
   const carried: string[] = [];
   let size = -1;
   for (const d of taught) {
     const card = d.card as CapabilityCard;
+    // a master and its runs work over REST, so their map names an act's REST twin where it has one
+    const target =
+      (audience === 'master' || audience === 'run') && d.twins?.[0] ? d.twins[0] : d.id;
     const block = [
-      ...card.situations.map((s) => `- when ${s.when} → ${d.id}`),
+      ...situationsFor(card, audience).map((s) => `- when ${s.when} → ${target}`),
       // a situation a lesson folded in, shown until the card's code carries it
-      ...(proposed.get(card.id) ?? []).map((t) => `- (proposed) ${t} → ${d.id}`),
+      ...(proposed.get(card.id) ?? []).map((t) => `- (proposed) ${t} → ${target}`),
     ];
     const grows = block.join('\n').length + 1;
     if (size + grows > TIER0_MAP_MAX_CHARS) continue;

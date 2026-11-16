@@ -35,6 +35,11 @@ export const cardSituationSchema = z.strictObject({
 	do: line(CARD_LIMITS.situation),
 	/** What goes wrong in this situation, where it differs from the card's red flag. */
 	watch: line(CARD_LIMITS.redFlag).optional(),
+	/**
+	 * The audiences this situation is met by, where only some of the card's are: a master meets an
+	 * act over REST and a person over MCP, so one act's card says both. Absent, every audience.
+	 */
+	for: z.array(z.enum(CARD_AUDIENCES)).min(1).optional(),
 });
 export type CardSituation = z.infer<typeof cardSituationSchema>;
 
@@ -42,32 +47,48 @@ export type CardSituation = z.infer<typeof cardSituationSchema>;
  * What a door's card says beside the door itself. Its id and owner are the door's (the catalog
  * names them), so a card cannot drift from the door it sits next to.
  */
-export const capabilityCardSchema = z.strictObject({
-	purpose: line(CARD_LIMITS.purpose),
-	situations: z.array(cardSituationSchema).min(1).max(CARD_LIMITS.situations),
-	/** How to use it well, 1 to 3 lines. */
-	practice: z
-		.array(line(CARD_LIMITS.practice))
-		.min(1)
-		.max(CARD_LIMITS.practiceLines),
-	/** One worked call, valid against the door's input (checked when the registry is built). */
-	example: z.record(z.string(), z.unknown()).optional(),
-	/** The wrong way agents actually take; absent until one is seen. */
-	redFlag: line(CARD_LIMITS.redFlag).optional(),
-	audience: z.array(z.enum(CARD_AUDIENCES)).min(1),
-	/**
-	 * When the card's text last changed and the landing that changed it (`ISS-n`), written with the
-	 * change; the capabilities page reads a card's age from it.
-	 */
-	changed: z
-		.strictObject({
-			on: z.iso.date(),
-			by: z.string().regex(/^ISS-\d+$/, "the issue that landed the change, ISS-n"),
-		})
-		.optional(),
-	/** The replayable cases that prove an agent uses it right, by name; empty until one is written. */
-	scenarios: z.array(z.string().trim().min(1).max(120)).default([]),
-});
+export const capabilityCardSchema = z
+	.strictObject({
+		purpose: line(CARD_LIMITS.purpose),
+		situations: z.array(cardSituationSchema).min(1).max(CARD_LIMITS.situations),
+		/** How to use it well, 1 to 3 lines. */
+		practice: z
+			.array(line(CARD_LIMITS.practice))
+			.min(1)
+			.max(CARD_LIMITS.practiceLines),
+		/** One worked call, valid against the door's input (checked when the registry is built). */
+		example: z.record(z.string(), z.unknown()).optional(),
+		/** The wrong way agents actually take; absent until one is seen. */
+		redFlag: line(CARD_LIMITS.redFlag).optional(),
+		audience: z.array(z.enum(CARD_AUDIENCES)).min(1),
+		/**
+		 * When the card's text last changed and the landing that changed it (`ISS-n`), written with the
+		 * change; the capabilities page reads a card's age from it.
+		 */
+		changed: z
+			.strictObject({
+				on: z.iso.date(),
+				by: z
+					.string()
+					.regex(/^ISS-\d+$/, "the issue that landed the change, ISS-n"),
+			})
+			.optional(),
+		/** The replayable cases that prove an agent uses it right, by name; empty until one is written. */
+		scenarios: z.array(z.string().trim().min(1).max(120)).default([]),
+	})
+	.superRefine((card, ctx) => {
+		for (const [i, s] of card.situations.entries()) {
+			for (const a of s.for ?? []) {
+				if (!card.audience.includes(a)) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["situations", i, "for"],
+						message: `${a} is not among the card's audience (${card.audience.join(", ")})`,
+					});
+				}
+			}
+		}
+	});
 export type CapabilityCardBody = z.input<typeof capabilityCardSchema>;
 export type CapabilityCardFields = z.output<typeof capabilityCardSchema>;
 
@@ -77,3 +98,10 @@ export interface CapabilityCard extends CapabilityCardFields {
 	id: string;
 	owner: string;
 }
+
+/** The situations of a card one audience meets. */
+export const situationsFor = (
+	card: Pick<CapabilityCardFields, "situations">,
+	audience: CardAudience,
+): CardSituation[] =>
+	card.situations.filter((s) => !s.for || s.for.includes(audience));

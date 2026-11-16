@@ -6,6 +6,8 @@
 import { type CapabilityCard, capabilityCardSchema } from '@forge/contracts/capability-cards';
 import { type CardFreshness, cardFreshness } from '../lessons/index.js';
 import type { McpTool } from '../lib/tool.js';
+import { AFFORDANCE_CARDS } from '../prompt/index.js';
+import { REST_TWINS } from './twins.js';
 
 /** The feature an action belongs to: its tool, and the REST twin the tool names. */
 export const featureOf = (tool: Pick<McpTool, 'name' | 'route'>) =>
@@ -32,6 +34,12 @@ export function cardsOf(tool: McpTool, actions: readonly string[]): Map<string, 
     }
     const id = `${tool.name.replace(/^forge_/, '')}.${action}`;
     cards.set(action, { id, owner: featureOf(tool), ...parsed.data });
+  }
+  // an act whose one card sits on its REST twin, the orientation's (`twins.ts`)
+  for (const action of actions) {
+    const twins = REST_TWINS[`${tool.name.replace(/^forge_/, '')}.${action}`] ?? [];
+    const twin = AFFORDANCE_CARDS.find((c) => twins.includes(c.id));
+    if (twin && !cards.has(action)) cards.set(action, twin);
   }
   return cards;
 }
