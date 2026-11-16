@@ -480,7 +480,10 @@ mod tests {
             "No plan approval, no design record, no review and no judge",
             "work moves in **batches**, never one issue at a time",
             "so does each one that arrives while it runs",
-            "Builders that run side by side hold disjoint files; issues that touch the same files go to one builder.",
+            // ISS-1254: builders sharing one tree read each other's half-written files
+            "Each builder gets its own worktree and branch off the batch branch",
+            "no two builders share a tree",
+            "You fold each builder's commits into the batch branch (cherry-pick or merge) and remove its tree once it is folded.",
             "no issue gets its own full suite or its own release",
             // ISS-1048: epod read a batch as any slice of work, split one large issue into
             // mini-batches and released each; a batch is at least a whole issue
@@ -520,7 +523,7 @@ mod tests {
             "\"is it live\" is read from the release and never from `closed`",
             "the close names where each one went",
             // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks
-            "**Split it by files; subagents build.** Hand every build part to a general-purpose subagent",
+            "**One worktree per builder; subagents build.** Hand every build part to a general-purpose subagent",
             "Your own session stays free to triage, answer a room agent's ask before any other work and land; build in it only a change too small to brief.",
         ] {
             assert!(

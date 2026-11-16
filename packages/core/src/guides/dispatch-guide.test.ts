@@ -74,14 +74,26 @@ describe('the dispatch guide teaches batches by default', () => {
   // 15+ minutes while a room and eight feedback issues waited, because step 2 offered "Build in this
   // session" as the first choice
   it('hands every build part to subagents and keeps the master session free to answer agents', () => {
-    expect(prose).toContain(
-      'Hand every build part to a general-purpose subagent, one per file-disjoint part',
-    );
+    expect(prose).toContain('Hand every build part to a general-purpose subagent');
     expect(prose).toContain(
       "Keep this session free to triage, answer a room agent's ask before any other work (Answering a room agent's ask) and land; build in it only a change too small to brief",
     );
     expect(prose).not.toContain('Build in this session, or hand each file-disjoint part');
     expect(prose).not.toContain('Its master builds instead of dispatching');
+  });
+
+  // ISS-1254 (owner, 2026-11-16): parallel builders in one tree read each other's half-written
+  // files; each builder now has its own tree off the batch branch, folded in by the master
+  it('gives each builder its own worktree off the batch branch, folded and removed by the master', () => {
+    expect(prose).toContain('Each builder gets its own worktree and branch off the batch branch');
+    expect(prose).toContain(
+      '`git worktree add -b <batch-branch>-<part> <repo>/.claude/worktrees/<batch>-<part> <batch-branch>`',
+    );
+    expect(prose).toContain('no two builders share a tree');
+    expect(prose).toContain(
+      "Fold each builder's commits into the batch branch (cherry-pick or merge) and remove its tree once it is folded",
+    );
+    expect(prose).not.toContain('file-disjoint part');
   });
 
   // ISS-1048 (owner, 2026-11-06): a master read a batch as any slice of work, split one large issue

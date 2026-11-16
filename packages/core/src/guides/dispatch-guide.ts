@@ -234,8 +234,11 @@ It works in batches, as §4 splits them:
    ${guideRef('issue-flow')} (Take it) says, and move it to \`in_progress\`. A batch is never smaller
    than an issue: one issue is never split across releases, and a large issue is built whole, in as
    many commits and builders as its files need, and released once with the batch it lands in.
-2. Hand every build part to a general-purpose subagent, one per file-disjoint part: its issues, its
-   tree, the base branch and the standing rules. Declare its run first, over the issues it builds,
+2. Hand every build part to a general-purpose subagent: its issues, its tree, the batch branch and
+   the standing rules. Each builder gets its own worktree and branch off the batch branch
+   (\`git worktree add -b <batch-branch>-<part> <repo>/.claude/worktrees/<batch>-<part> <batch-branch>\`);
+   no two builders share a tree. Fold each builder's commits into the batch branch (cherry-pick or
+   merge) and remove its tree once it is folded. Declare its run first, over the issues it builds,
    in a tree of its own (\`forge-runner run declare\`): the run is one of the project's subagent
    slots, and the box refuses a builder dispatched without one. Core opens a run only while the
    project has a slot free, and refuses \`RUN_SLOT_UNAVAILABLE\` naming its slots, how many are in use

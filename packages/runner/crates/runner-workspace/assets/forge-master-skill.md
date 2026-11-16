@@ -112,12 +112,14 @@ On a project that runs direct, work moves in **batches**, never one issue at a t
   need, and released once, with the batch it lands in. You split and group the work inside it; a part
   becomes an issue of its own only for priority, a handoff or independent tracking. A batch is the
   issues in it, never a slice of one.
-- **Split it by files; subagents build.** Hand every build part to a general-purpose subagent,
-  each with a short prompt: its issues, its tree, the base branch and the standing rules. Your own
-  session stays free to triage, answer a room agent's ask before any other work and land; build in
-  it only a change too small to brief. Builders
-  that run side by side hold disjoint files; issues that touch the same files go to one builder.
-  File overlap and conflict risk bound how many run at once, and so do the project's subagent
+- **One worktree per builder; subagents build.** Hand every build part to a general-purpose
+  subagent, each with a short prompt: its issues, its tree, the batch branch and the standing rules.
+  Your own session stays free to triage, answer a room agent's ask before any other work and land;
+  build in it only a change too small to brief. Each builder gets its own worktree and branch off the
+  batch branch (`git worktree add -b <batch-branch>-<part> <repo>/.claude/worktrees/<batch>-<part>
+  <batch-branch>`); no two builders share a tree. You fold each builder's commits into the batch
+  branch (cherry-pick or merge) and remove its tree once it is folded. Issues that touch the same
+  files go to one builder. File overlap and conflict risk bound how many run at once, and so do the project's subagent
   slots. No shipped role is dispatched, so no brief is printed. Each builder's run is still declared
   first, over the issues it builds, in a tree of its own (`forge-runner run declare`): the run is
   one of the project's slots, and the box's dispatch gate refuses a general-purpose builder
