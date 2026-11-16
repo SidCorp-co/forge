@@ -231,7 +231,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:key field:json:url field:json:failure
     field:json:screenshot field:json:args
     field:json:impact field:json:debts field:json:cleared field:json:remains field:json:ci
-    field:json:set`,
+    field:json:set field:json:failed`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
@@ -257,7 +257,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:token_endpoint_auth_method field:query:client_id field:query:code_challenge
     field:query:redirect_uri field:query:resource field:query:scope`,
   'a filter, a sort, a page or a view of a read; a provider’s error code': words`
-    field:query:after field:query:archived field:query:before field:query:category
+    field:query:bot field:query:after field:query:archived field:query:before field:query:category
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
     field:query:key field:query:kind field:query:label field:query:labels field:query:metadataType
     field:query:module field:query:party field:query:q field:query:search field:query:status

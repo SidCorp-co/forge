@@ -5,6 +5,7 @@
 // the lessons store (REQ-50). The rubric is declared once, here, for every room, bot and project.
 
 import { z } from "zod";
+import { REASON_LINE_MAX } from "./reason-text.js";
 import { supportThreadIdSchema } from "./support.js";
 import {
 	SUPPORT_ROOM_KINDS,
@@ -68,7 +69,7 @@ export const supportAuditRequestSchema = z.strictObject({
 		.array(
 			z.strictObject({
 				line: z.enum(REPLY_RUBRIC_LINES),
-				why: z.string().trim().min(3).max(240),
+				why: z.string().trim().min(3).max(REASON_LINE_MAX),
 			}),
 		)
 		.max(REPLY_RUBRIC_LINES.length)

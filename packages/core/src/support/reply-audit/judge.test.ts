@@ -1,8 +1,11 @@
-import type { ReplyRubricLine } from '@forge/contracts/support-reply-audit';
+import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/support-reply-audit';
 import { describe, expect, it } from 'vitest';
+import { AUDIT_BRIEF_LINE, AUDIT_TOOL_TEXT } from './index.js';
 import { type AuditedReply, judgeReply } from './judge.js';
 
 // @direct-test-of packages/core/src/support/reply-audit/judge.ts
+// @direct-test-of packages/core/src/support/reply-audit/teach.ts
+// @direct-test-of packages/core/src/support/reply-audit/index.ts
 //
 // ISS-1250 (owner 2026-11-16): the five quoted epod turns of the shared operations room, replayed
 // through the verdict support.audit keeps. Even where the agent's own reading claims a pass, each
@@ -122,5 +125,10 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
     expect(judgeReply({ ...reply(TURNS['16/11 03:16'] ?? ''), apiHosts: [] }, []).verdict).toBe(
       'pass',
     );
+  });
+
+  it('teaches the tool every rubric line from the one rubric, and the brief the step', () => {
+    for (const line of REPLY_RUBRIC_LINES) expect(AUDIT_TOOL_TEXT).toContain(`${line} (`);
+    expect(AUDIT_BRIEF_LINE).toContain('support.audit');
   });
 });
