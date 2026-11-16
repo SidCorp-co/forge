@@ -184,6 +184,14 @@ export const ISSUE_RESTING_STATUSES: readonly IssueStatus[] = [
 /** The status an issue stands at while its release is waiting to be pressed. */
 export const BASE_MERGE_STATE: IssueStatus = "awaiting_release";
 
+/**
+ * Whether a status move lands an issue's code: leaving {@link BASE_MERGE_STATE}, or reaching
+ * `closed`. Memory's re-check and the lessons' invalidation both answer a landing by it.
+ */
+export const landsMerge = (move: { from: string; to: string }): boolean =>
+	(move.from === BASE_MERGE_STATE && move.to !== BASE_MERGE_STATE) ||
+	move.to === "closed";
+
 /** The status at which an autonomous project's driver is handed the issue. */
 export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = "open";
 

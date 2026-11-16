@@ -1,4 +1,4 @@
-import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
+import { landsMerge } from '@forge/contracts/issue-machine';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
@@ -355,18 +355,16 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
 /**
  * Memory's answer to an issue's move. At `closed` or `dropped`, the notes written for the issue
  * retire (ISS-1063, `note-lifetime.ts`). Whenever the move lands its `merged_at`, the entries naming
- * what the landing touched are flagged for a re-check (`recheck.ts`, REQ-89 BC-5), and (leaving
- * {@link BASE_MERGE_STATE}, or reaching `closed` — the "code landed" predicate `merged-at.ts` uses),
- * a durable pg-boss reconcile job is enqueued, once per issue by its singleton key.
+ * what the landing touched are flagged for a re-check (`recheck.ts`, REQ-89 BC-5), and a durable
+ * pg-boss reconcile job is enqueued, once per issue by its singleton key. Whether a move lands it is
+ * `@forge/contracts/issue-machine:landsMerge`, which the lessons' invalidation reads too.
  */
 export function registerMemoryReconcileTrigger(): void {
   consume('issue.transitioned', {
     name: 'memory-reconcile',
     handle: async (p) => {
       await retireNotesForMovedIssue(p);
-      const mergeLanded =
-        (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
-      if (!mergeLanded) return;
+      if (!landsMerge(p)) return;
       // what names a path, route, config key or rule this landing touched is flagged for a re-check
       await recheckForLanding(p.projectId, p.id);
       // the sender declares its queue: a process running this consumer without the worker (the

@@ -10,7 +10,7 @@
  * landing naming the card.
  */
 
-import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
+import { landsMerge } from '@forge/contracts/issue-machine';
 import { lessonAnchorKind } from '@forge/contracts/lessons';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -113,10 +113,6 @@ export async function invalidateForLanding(
     text: landed.text,
   });
 }
-
-/** The move that lands a merge, as memory's re-check reads it (`memory/reconcile.ts`). */
-export const landsMerge = (p: { from: string; to: string }) =>
-  (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
 
 export function registerLessonInvalidation(): void {
   consume('issue.transitioned', {
