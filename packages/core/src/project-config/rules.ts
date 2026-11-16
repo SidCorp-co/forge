@@ -5,6 +5,7 @@ import { hostOf } from '@forge/contracts/git-repository';
 import { MCP_LISTED_TOOLS, MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import { previewEnvironmentProblem } from '@forge/contracts/preview';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
+import { STEWARD_BUDGET_RETIRED_DETAIL } from '@forge/contracts/steward-runtime';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import { checkChangeRequestRelease } from './change-request-rule.js';
 import {
@@ -385,6 +386,7 @@ export function checkProjectConfig(
   out.push(...checkContentLanguage(doc));
   out.push(...checkRetiredApprovers(doc));
   out.push(...checkRetiredReadinessGate(doc));
+  out.push(...checkRetiredStewardBudget(doc));
   out.push(...checkChangeRequestRelease(doc));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
   return out;
@@ -444,6 +446,20 @@ function checkRetiredReadinessGate(doc: Pick<ProjectDocument, 'requirements'>): 
       path: pointer('requirements', 'readinessGate'),
       detail:
         'requirements.readinessGate is retired: every agree is judged by the requirement-ready checklist, and whether a person must agree is approvals.agree. Remove the key.',
+    },
+  ];
+}
+
+// The steward's daily budget is gone (ISS-1255): its runner jobs take the box's run slots and a
+// per-item runaway guard replaced its turn cap, so a write naming the budget is refused by name and
+// nobody sets a cap that no longer decides anything.
+function checkRetiredStewardBudget(doc: Pick<ProjectDocument, 'steward'>): ConfigRefusal[] {
+  if (doc.steward?.budget === undefined) return [];
+  return [
+    {
+      code: 'STEWARD_BUDGET_RETIRED',
+      path: pointer('steward', 'budget'),
+      detail: STEWARD_BUDGET_RETIRED_DETAIL,
     },
   ];
 }

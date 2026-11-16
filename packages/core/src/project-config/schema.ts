@@ -326,8 +326,9 @@ export const projectDocumentSchema = z.strictObject({
   // project adds to the built-in ones, and the deploy targets a web-only deploy fans out to (REQ-39
   // BC-7, BC-8; `@forge/contracts/fast-lane:classifyLane`). Absent, every change is full lane.
   fastLane: fastLaneSettingsSchema.optional(),
-  // whether the steward acts at this project's handoffs, and a daily budget lowering its default of
-  // 200 gateway turns and 10 runner jobs (REQ-48, `steward/policy.ts`). Absent is on at the default.
+  // whether the steward acts at this project's handoffs (REQ-48); absent is on. Its `budget` is
+  // retired (ISS-1255): refused on write (`rules.ts:checkRetiredStewardBudget`), never read, and
+  // migration 0664 stripped every stored one.
   steward: stewardPolicySchema.optional(),
   // the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
   // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that

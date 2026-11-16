@@ -44,6 +44,8 @@ const PURE_REFUSAL_CODES = [
 	"APPROVER_POLICY_RETIRED",
 	/** `requirements.readinessGate` is written; the ready checklist replaced it (REQ-34 r2). */
 	"READINESS_GATE_RETIRED",
+	/** `steward.budget` is written; the box's run slots and the per-item runaway guard replaced it (ISS-1255). */
+	"STEWARD_BUDGET_RETIRED",
 	/** `release.changeRequests` on a document that cannot release by merging change requests (REQ-63 BC-1). */
 	"CHANGE_REQUEST_RELEASE_UNSUPPORTED",
 ] as const;

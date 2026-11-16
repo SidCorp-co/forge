@@ -1,15 +1,14 @@
 // The steward runtime's own surface (REQ-48 BC-1, BC-12; lane B of docs/proposals/steward-agent.md):
 // the doors a steward gateway turn may call, each act's menu of them, the project policy that turns
-// the steward off or lowers its budget, and what the runs read and the undo door answer. The run and
+// the steward off, and what the runs read and the undo door answer. The run and
 // act records themselves are `steward.ts`'s, shared with lane A.
 
 import { z } from "zod";
 import type { ProjectPermission } from "./permissions.js";
-import {
-	STEWARD_DAILY_BUDGET,
-	type StewardAct,
-	type StewardActRecord,
-	type StewardRunView,
+import type {
+	StewardAct,
+	StewardActRecord,
+	StewardRunView,
 } from "./steward.js";
 
 /**
@@ -137,32 +136,35 @@ export const STEWARD_ACT_APPROVALS: Readonly<
 export const STEWARD_ACCOUNT_NAME = "Steward";
 
 /**
- * The project document's `steward` key: `enabled` (absent is on) and a budget that may only lower
- * `STEWARD_DAILY_BUDGET`, never raise it; a value past it is refused naming the field.
+ * Why `steward.budget` is refused (ISS-1255): what replaced the daily budget it lowered. Said by the
+ * write refusal (core `project-config/rules.ts:checkRetiredStewardBudget`) and by the schema where the
+ * value is not even in the old shape, so every write naming the key reads the same reason.
+ */
+export const STEWARD_BUDGET_RETIRED_DETAIL =
+	"steward.budget is retired: the steward's runner jobs take the box's run slots like every other run, and a per-item runaway guard stops a run that repeats its act. Remove the key; steward.enabled: false turns the steward off.";
+
+/**
+ * The project document's `steward` key: `enabled`, absent is on. `budget` is retired: it is parsed in
+ * its old shape only so a write naming it is refused by name; migration 0664 stripped every stored one.
  */
 export const stewardPolicySchema = z.strictObject({
 	enabled: z.boolean().optional(),
 	budget: z
-		.strictObject({
-			gatewayTurns: z
-				.number()
-				.int({
-					error: "steward.budget.gatewayTurns is a whole number of turns",
-				})
-				.min(0)
-				.max(STEWARD_DAILY_BUDGET.gatewayTurns, {
-					error: `steward.budget.gatewayTurns is at most ${STEWARD_DAILY_BUDGET.gatewayTurns}: the project policy lowers the steward's daily budget, never raises it`,
-				})
-				.optional(),
-			runnerJobs: z
-				.number()
-				.int({ error: "steward.budget.runnerJobs is a whole number of jobs" })
-				.min(0)
-				.max(STEWARD_DAILY_BUDGET.runnerJobs, {
-					error: `steward.budget.runnerJobs is at most ${STEWARD_DAILY_BUDGET.runnerJobs}: the project policy lowers the steward's daily budget, never raises it`,
-				})
-				.optional(),
-		})
+		.strictObject(
+			{
+				gatewayTurns: z
+					.number({ error: STEWARD_BUDGET_RETIRED_DETAIL })
+					.int({ error: STEWARD_BUDGET_RETIRED_DETAIL })
+					.min(0, { error: STEWARD_BUDGET_RETIRED_DETAIL })
+					.optional(),
+				runnerJobs: z
+					.number({ error: STEWARD_BUDGET_RETIRED_DETAIL })
+					.int({ error: STEWARD_BUDGET_RETIRED_DETAIL })
+					.min(0, { error: STEWARD_BUDGET_RETIRED_DETAIL })
+					.optional(),
+			},
+			{ error: STEWARD_BUDGET_RETIRED_DETAIL },
+		)
 		.optional(),
 });
 export type StewardPolicy = z.infer<typeof stewardPolicySchema>;
@@ -170,42 +172,6 @@ export type StewardPolicy = z.infer<typeof stewardPolicySchema>;
 /** `GET /api/projects/:id/steward-runs?subject=<REQ-n|FB-n|ISS-n>`: newest first. */
 export interface StewardRunsResponse {
 	runs: StewardRunView[];
-}
-
-/** One side of the steward's day: what it has spent, and what it may spend in all today. */
-export interface StewardShareView {
-	gatewayTurns: { spent: number; of: number };
-	runnerJobs: { spent: number; of: number };
-}
-
-/**
- * The handoffs' side: `kept` is the share no sweep run may spend, and `of` adds to it what the sweep
- * has not spent, since a handoff is never dropped for its share (ISS-1100: 10 runner jobs read "of 4").
- */
-export interface StewardHandoffShareView extends StewardShareView {
-	kept: { gatewayTurns: number; runnerJobs: number };
-}
-
-/**
- * `GET /api/projects/:id/steward-budget`: the steward's UTC day, so a person can see why it is quiet.
- * `handoff.of` is the day less what the sweep spent, and `sweep.of` its share, less what handoffs
- * spent past theirs, so neither side reads spent past what it may spend.
- * `quiet` is `handoffs` where the whole day is spent (no handoff gets a run until `resumesAt`),
- * `sweep` where only the sweep's share is spent (handoffs still run, `paced` stuck items wait), and
- * null where neither is.
- */
-export interface StewardBudgetView {
-	day: string;
-	resumesAt: string;
-	/**
-	 * Today's steward jobs (UTC day) have reached the project's daily budget, so judging and every
-	 * other runner act waits until `resumesAt` (ISS-1148): the Feedback list says so in one line.
-	 */
-	judgingPaused: boolean;
-	handoff: StewardHandoffShareView;
-	sweep: StewardShareView;
-	paced: number;
-	quiet: "handoffs" | "sweep" | null;
 }
 
 /** `GET /api/projects/:id/steward-acts?subject=KEY`: every act the steward took on one item, newest first, uncapped. */
