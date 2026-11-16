@@ -4224,19 +4224,6 @@
       "breakpoints": true
     },
     {
-      "idx": 660,
-      "breakpoints": true
-    },
-    {
-      "version": "7",
-      "when": 1840492800000,
-      "tag": "0666_a_lesson_names_its_anchor_and_a_change_to_it_invalidates_it",
-      "breakpoints": true
-    },
-    {
-      "breakpoints": true
-    },
-    {
       "idx": 667,
       "version": "7",
       "when": 1840579200000,
