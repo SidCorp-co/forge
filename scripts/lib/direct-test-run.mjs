@@ -171,7 +171,9 @@ export function runArchmap(root, touched, { exec = run } = {}) {
         name: 'archmap',
         kind: 'conformance',
         scope: scope.whole ? 'relations, whole tree' : 'relations',
-        command: show(argv),
+        // the paths are in `files`; the command names their count, as a vitest run's does, so a
+        // wide change stays within the checks route's command limit (check-runs.ts CHECK_RUN_LIMITS)
+        command: `${show(ARCHMAP.cmd)} <${scope.paths.length} files>`,
         files: scope.paths,
         result: r.ok ? 'pass' : 'fail',
         startedAt: r.startedAt,

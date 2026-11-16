@@ -294,6 +294,24 @@ describe("a builder's run checks the architecture contracts over what it touched
     ]);
   });
 
+  it('names the count of a wide change, so its record stays within the checks route limit', () => {
+    // check-runs.ts CHECK_RUN_LIMITS.text: a command over 500 is refused, and every check of the
+    // report with it (on 2026-11-17, 20 touched files made an 890-character command)
+    const paths = Array.from(
+      { length: 60 },
+      (_, i) => `packages/web-v2/src/features/a/page-${i}.tsx`,
+    );
+    for (const path of paths) {
+      mkdirSync(dirname(join(ready, path)), { recursive: true });
+      writeFileSync(join(ready, path), '');
+    }
+    const { exec } = recorder();
+    const out = runArchmap(ready, touchedOf(...paths), { exec });
+    expect(out.checks[0].files).toHaveLength(60);
+    expect(out.checks[0].command.length).toBeLessThanOrEqual(500);
+    expect(out.checks[0].command).toMatch(/<60 files>$/);
+  });
+
   it('a contract archmap finds broken is a red check', () => {
     const { exec } = recorder({ fails: () => true });
     const out = runArchmap(ready, touchedOf('packages/web-v2/src/features/a/page.tsx'), { exec });
