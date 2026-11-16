@@ -14,6 +14,7 @@ import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // @direct-test-of packages/core/src/support/owner-ask.ts
+// @direct-test-of packages/core/src/support/technical-channel.ts
 // @direct-test-of packages/core/src/support/owner-answer.ts
 // @direct-test-of packages/core/src/support/inbound.ts
 // @direct-test-of packages/core/src/integrations/rocketchat/connection-manager.ts
@@ -75,7 +76,12 @@ describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical chann
     expect(asked).toMatchObject({ mentioned: false, record: w.issueKey });
     // ISS-1246: posted in the project's technical channel and in no other room, the asker's included
     const line = askLine('May I restart the worker during business hours?');
-    expect(line.text).toContain(`| ask] from ${chat.rid}, thread ${thread.id}`);
+    // ISS-1249: the project's name in plain words, then the agent's own words, and no room or thread
+    // id; where the ask came from is the routed action's record below, never the posted text
+    const project = (await rows<{ name: string }>(sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`))[0]?.name;
+    expect(line.text).toBe(`${project} asks: May I restart the worker during business hours?`);
+    expect(line.text).not.toContain(chat.rid);
+    expect(line.text).not.toContain(thread.id);
     expect(threadLinesNow('')).toBe(before);
     const [routed] = await rows<{ output: { rid: string; channel: string } }>(sql`
       SELECT output FROM support_actions

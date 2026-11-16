@@ -323,11 +323,12 @@ describe('ISS-1246: a question for the owner goes only to the technical channel'
     );
     expect(out.isError, JSON.stringify(out)).toBe(false);
     expect(allLines()).toBe(before);
+    // ISS-1249: the project's name and a plain lead in the room's language, then the agent's words
+    const project = (await rows<{ name: string }>(sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`))[0]?.name;
     expect(chat.linesIn(DM).map((l) => l.text)).toEqual([
-      expect.stringContaining(
-        `| ask] from ${chat.rid}, thread ${thread.id}:\nAnh có đồng ý gửi lại đơn hôm nay không?`,
-      ),
+      `${project} hỏi: Anh có đồng ý gửi lại đơn hôm nay không?`,
     ]);
+    expect(chat.linesIn(DM)[0]?.text).not.toContain(thread.id);
     expect(await asksRecorded()).toBe(1);
   });
 

@@ -51,3 +51,24 @@ describe('internalCodesIn: issue keys are read by the prefixes Forge issues', ()
     expect(refusal?.shape).toMatch(/userFacingCodes/);
   });
 });
+
+// ISS-1249: the technical channel's line once opened with a header naming the asking room and
+// thread by id ("[slug | ask] from <rid>, thread <id>:"); the screen now reads the whole line, and
+// that header is refused by its rule while the plain lead that replaced it passes
+describe('internalCodesIn: the technical channel line', () => {
+  const prefixes = keyPrefixesOf([], []);
+  const question = 'May I restart the worker during business hours?';
+
+  it('refuses the old header, naming the room id and the question thread id it carried', () => {
+    const old = `[epod | ask] from 6a598fcc8cac369c05add4eb, thread question-983f2034-5743-4ba2-a1dc-43633306db4d-1:\n${question}`;
+    const refused = internalCodeRefusals(old, 'a line in the technical channel', prefixes);
+    expect(new Set(refused.map((r) => r.rule))).toEqual(new Set(['SUPPORT_INTERNAL_CODE']));
+    expect(refused.map((r) => r.quote)).toEqual(
+      expect.arrayContaining(['6a598fcc8cac369c05add4eb', '983f2034', '43633306db4d']),
+    );
+  });
+
+  it('passes the plain lead: the project, what it needs, then the words', () => {
+    expect(internalCodesIn(`epod asks: ${question}`, prefixes)).toEqual([]);
+  });
+});

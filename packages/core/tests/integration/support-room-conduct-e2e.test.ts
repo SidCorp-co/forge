@@ -68,7 +68,13 @@ describe('a room agent raises what it needs in the one technical channel, and no
     // the owner is u-alice; the stand-in opens D-<username>
     const dm = w.stand.linesIn('D-alice');
     expect(dm.map((l) => l.text).join('\n')).toContain('I need the mailbox share grant for bob');
-    expect(dm.at(-1)?.text).toContain(' | permission] from');
+    // ISS-1249: the project's name and the need in plain words, then the agent's, and no id
+    const project = (await rows<{ name: string }>(sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`))[0]?.name;
+    expect(dm.at(-1)?.text).toBe(
+      `${project} asks for a permission: I need the mailbox share grant for bob`,
+    );
+    expect(dm.at(-1)?.text).not.toContain(thread);
+    expect(dm.at(-1)?.text).not.toContain(w.stand.rid);
     expect(w.threadLines(w.stand.rid, thread)).toEqual([]);
     const routed = await rows<{ tool: string; output: Record<string, unknown> }>(
       sql`SELECT tool, output FROM support_actions WHERE kind = 'routed' AND thread = ${thread}`,

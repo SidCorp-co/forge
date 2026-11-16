@@ -186,7 +186,8 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
 
   it('asks the owner once, in plain words, in the technical channel alone; his reply to its line there answers it', async () => {
     const DM = 'D-alice';
-    const asks = () => chat.linesIn(DM).filter((l) => l.text.includes('| ask] from'));
+    const project = (await rows<{ name: string }>(sql`SELECT name FROM projects WHERE id = ${w.projectId}::uuid`))[0]?.name;
+    const asks = () => chat.linesIn(DM).filter((l) => l.text.startsWith(`${project} hỏi: `));
     const inGroups = [...chat.linesIn(chat.rid), ...chat.linesIn(chat.rid2)].length;
     const first = await parked('Should the banner rotate?');
     const outs: Record<string, unknown>[] = [];
@@ -222,9 +223,11 @@ describe('ISS-873: a parked question in a channel agent project posts nothing by
     expect(code(outs[2])).toBe('SUPPORT_OWNER_ALREADY_ASKED');
     expect(outs[3]?.isError, JSON.stringify(outs[3])).toBe(true);
     expect(JSON.stringify(outs[3])).toContain('opener');
-    expect(asks().map((l) => l.text.split('\n').at(-1))).toEqual([
-      'Banner trên trang chủ có tự chuyển không anh?',
+    // ISS-1249: the handed question's thread id is the record's, never the line's
+    expect(asks().map((l) => l.text)).toEqual([
+      `${project} hỏi: Banner trên trang chủ có tự chuyển không anh?`,
     ]);
+    expect(chat.linesIn(DM).some((l) => l.text.includes(thread1))).toBe(false);
     expect(asks().some((l) => l.text.includes('banner.rotate'))).toBe(false);
 
     // a second question asked the same way waits beside it
