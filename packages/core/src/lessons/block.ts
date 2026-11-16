@@ -112,8 +112,9 @@ export function lessonsMapText(
   let listed = 0;
   for (const item of items) {
     const next = listed + (shown > 0 ? 1 : 0) + item.length;
-    if (frame + next + moreLine(items.length - shown - 1, audience).length > LESSONS_MAP_MAX_CHARS)
-      break;
+    const more = moreLine(items.length - shown - 1, audience);
+    // the count line, where one is due, sits on a line of its own after this one
+    if (frame + next + (more ? 1 + more.length : 0) > LESSONS_MAP_MAX_CHARS) break;
     listed = next;
     shown += 1;
   }

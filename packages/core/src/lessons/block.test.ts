@@ -107,6 +107,19 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     expect(text).toContain('1 more lesson, nearer other work: L');
   });
 
+  it('counts the line break before the count line, so a map that fills its budget exactly is never one over', () => {
+    // forge-dev 2026-11-16: one project's map came to 1201 and the throw took down GET /devices/me/runners
+    const many = Array.from({ length: 60 }, (_, i) =>
+      entry(i + 1, { kind: 'project', areaId: null, areaName: null, itemKind: null }),
+    );
+    for (let pad = 0; pad <= 200; pad += 1) {
+      const at = { produces: [], area: null, ...doors, fetch: `the read door${'f'.repeat(pad)}` };
+      const text = lessonsMapText(many, at, 2) ?? '';
+      expect(text.length, `fetch door padded by ${pad}`).toBeLessThanOrEqual(LESSONS_MAP_MAX_CHARS);
+      expect(text).toContain('more lessons, nearer other work: the list door');
+    }
+  });
+
   it('refuses by name a door too long for the budget, never a longer map', () => {
     const wide = { produces: [], area: null, ...doors, raise: 'r'.repeat(LESSONS_MAP_MAX_CHARS) };
     expect(() => lessonsMapText([project], wide, 2)).toThrow(/over its budget/);
