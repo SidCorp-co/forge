@@ -16,8 +16,6 @@ import { ProductApi, refusalCodes, SupportWorld, type Turn } from '../helpers/su
 // The world runs the real Rocket.Chat connection manager against a chat server (a stand-in by
 // default, the Docker Rocket.Chat when SUPPORT_E2E_RC names one), and a box playing the session's
 // Claude Code, which acts only through `forge_support` under the token core hands each turn.
-//
-// @direct-test-of packages/core/src/support/room-reaches.ts
 
 const w = new SupportWorld();
 const { SECRET } = ProductApi;
@@ -118,24 +116,6 @@ describe('REQ-75: one group, one session, answered in its thread', () => {
       thread: id,
       from: { id: w.chat.alice.userId, name: w.chat.alice.username },
     });
-    // what the room's turns read is kept as a run's is (ISS-1251 c3): the act cards its brief
-    // carried and the knowledge its search returned, read under the room's kind beside the sessions'
-    let reads: { agent: string; kind: string; how: string; top: { ref: string }[] }[] = [];
-    for (let i = 0; i < 50; i += 1) {
-      const res = await api(w.owner, 'GET', `/api/projects/${w.projectId}/metrics/doors`);
-      expect(res.status, JSON.stringify(res.body)).toBe(200);
-      reads = (res.body as { reads: typeof reads }).reads.filter((r) => r.agent === 'room:support');
-      if (reads.some((r) => r.how === 'search') && reads.some((r) => r.how === 'prompt')) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    expect(reads).toContainEqual(
-      expect.objectContaining({
-        kind: 'knowledge',
-        how: 'search',
-        top: expect.arrayContaining([expect.objectContaining({ ref: 'catalog-export' })]),
-      }),
-    );
-    expect(reads).toContainEqual(expect.objectContaining({ kind: 'capability', how: 'prompt' }));
   });
 
   it('diagnoses with a granted tool, posts only its answer in the thread, records the check, and never prints the credential (BC-12, BC-15, BC-17)', async () => {

@@ -54,6 +54,9 @@ export const refusalCodes = (out: Record<string, unknown> | null | undefined): s
     []
   ).map((r) => r.code);
 
+/** One pile of what a room's turns read, as the door-use read lists it. */
+type RoomRead = { agent: string; kind: string; how: string; top: { ref: string }[] };
+
 export class SupportWorld {
   core!: Served;
   chat!: ChatServer;
@@ -264,6 +267,27 @@ export class SupportWorld {
     await expect
       .poll(async () => (await this.rooms())[0]?.sessionStatus, { timeout: 20_000 })
       .toBe('completed');
+  }
+
+  /**
+   * What the room's turns read, as the door-use read lists it under `room:<kind>` (ISS-1251), each
+   * `kind:how:ref`, once `ready` holds of it: the record is written off the act's path.
+   */
+  async roomReads(
+    kind: string,
+    ready: (reads: string[]) => boolean,
+    ms = 5_000,
+  ): Promise<string[]> {
+    const until = Date.now() + ms;
+    for (;;) {
+      const res = await api(this.owner, 'GET', `/api/projects/${this.projectId}/metrics/doors`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const reads = (res.body as { reads: RoomRead[] }).reads
+        .filter((r) => r.agent === `room:${kind}`)
+        .flatMap((r) => r.top.map((t) => `${r.kind}:${r.how}:${t.ref}`));
+      if (ready(reads) || Date.now() > until) return reads;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
   async rooms(): Promise<Record<string, unknown>[]> {

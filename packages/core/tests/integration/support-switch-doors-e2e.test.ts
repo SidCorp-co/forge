@@ -19,6 +19,7 @@ import { SupportWorld, type Turn } from '../helpers/support-world.js';
  * @direct-test-of packages/core/src/support/switch-view.ts
  * @direct-test-of packages/core/src/support/project-read.ts
  * @direct-test-of packages/core/src/support/channel-routes.ts
+ * @direct-test-of packages/core/src/support/room-reaches.ts
  */
 
 // ISS-775 (REQ-77 BC-16, BC-17, BC-22): OrbitInternal's switch checklist on the harness.
@@ -198,6 +199,12 @@ describe('ISS-775: OrbitInternal’s four moved duties pass on their Forge doors
     expect(out.document?.isError, JSON.stringify(out.document)).toBe(false);
     expect(JSON.stringify(out.document)).toContain(deployTarget);
     expect(JSON.stringify(out.knowledge)).toContain('orbit-capabilities');
+    // what the room's turn read is kept as a run's is, under room:<kind> (ISS-1251 c3)
+    const read = await w.roomReads('agent', (rs) =>
+      rs.includes('knowledge:search:orbit-capabilities'),
+    );
+    expect(read).toContain('knowledge:search:orbit-capabilities');
+    expect(read.some((r) => r.startsWith('capability:prompt:'))).toBe(true);
     expect(out.deploy, JSON.stringify(out.deploy)).toMatchObject({ pending: true });
     expect(out.watch, JSON.stringify(out.watch)).toMatchObject({
       target: deployTarget,
