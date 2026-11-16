@@ -9,8 +9,10 @@ import { CLEANUP_REST_CARDS } from '../cleanup/index.js';
 import { INTEGRATION_DOOR_REST_CARDS } from '../integration-door/index.js';
 import { ISSUE_REST_CARDS } from '../issues/index.js';
 import { KNOWLEDGE_REST_CARDS } from '../knowledge/index.js';
+import { LABEL_REST_CARDS } from '../labels/index.js';
 import { MEMORY_REST_CARDS } from '../memory/index.js';
 import { MONITORING_REST_CARDS } from '../monitoring/index.js';
+import { PROJECT_CONFIG_REST_CARDS } from '../project-config/index.js';
 import { card } from '../prompt/index.js';
 import { QUESTION_REST_CARDS } from '../questions/index.js';
 import { RELEASE_REST_CARDS } from '../release-batch/index.js';
@@ -34,4 +36,6 @@ export const REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('knowledge', KNOWLEDGE_REST_CARDS),
   ...ownedBy('steward', STEWARD_REST_CARDS),
   ...ownedBy('steward-notes', STEWARD_NOTE_REST_CARDS),
+  ...ownedBy('labels', LABEL_REST_CARDS),
+  ...ownedBy('project-config', PROJECT_CONFIG_REST_CARDS),
 ];

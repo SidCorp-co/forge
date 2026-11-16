@@ -8,6 +8,7 @@ export {
   slotFor,
   writeBindings,
 } from './bindings-many.js';
+export { PROJECT_CONFIG_REST_CARDS } from './cards.js';
 export { readContentLanguage } from './content-language.js';
 export { deployAdapterForBinding } from './deploy-adapters/index.js';
 export {
