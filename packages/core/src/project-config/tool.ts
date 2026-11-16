@@ -16,6 +16,7 @@ import {
   type ActionDescribe,
   type ContextScopedMcpToolFactory,
   type McpContext,
+  sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
@@ -30,6 +31,7 @@ import {
   writeGates,
 } from './gates.js';
 import { type Held, readProjectConfig, writeProjectConfig } from './service.js';
+import { CARDS } from './tool.cards.js';
 
 export const CONFIG_TOOL_READS = ['get', 'gates_get', 'gate_profiles'] as const;
 export const BINDINGS_TOOL_READS = ['get'] as const;
@@ -293,6 +295,8 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: CONFIG_DESCRIPTION,
   inputSchema: zodToMcpSchema(configInput),
   actionDescribe: configDescribe(),
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   route: '/api/projects',
   grant: {
     byAction: {

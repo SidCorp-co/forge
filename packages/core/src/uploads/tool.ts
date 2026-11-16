@@ -1,8 +1,14 @@
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { egressBytesAs } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
-import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import {
+  type ContextScopedMcpToolFactory,
+  refusedAnswer,
+  sourceOf,
+  zodToMcpSchema,
+} from '../lib/tool.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -43,8 +49,45 @@ async function mintDownloadTicket(
   };
 }
 
+/** When an agent reaches for an attachment's content (ISS-1251), from how runs, masters and clients used it. */
+const CARDS = {
+  fetch: {
+    purpose:
+      'Reads an attachment of an issue, comment, session or feedback item: an image as a viewable block, text inline.',
+    situations: [
+      {
+        when: 'an issue or comment you work carries a screenshot, mockup or log file that bears on the task',
+        do: 'fetch it with its target and attachmentId from attachments[].id, and read the content, not its name',
+      },
+      {
+        when: 'a feedback item you triage or answer carries a file',
+        do: 'fetch it with target feedback and the id project_feedback.get lists for it',
+        watch:
+          'a project that keeps reporter data from models refuses it ATTACHMENT_REFUSED; say so, never guess the content',
+      },
+      {
+        when: 'the file is a PDF or video, or larger than can be inlined',
+        do: 'fetch answers inlined false with its reason; download the bytes from downloadUrl onto disk and open that file',
+      },
+    ],
+    practice: [
+      'An image is a content block the structured answer does not repeat; read the block image.contentIndex names.',
+      'downloadUrl is a short-lived credential: never log it or paste it into a comment.',
+    ],
+    example: { data: { target: 'issue', attachmentId: '<attachment uuid>' } },
+    // ISS-602 (release judge K7 on dev.266): forge_uploads was sent a projectId, which its input does
+    // not take; the attachment names its own project
+    redFlag:
+      'Sending projectId or the target at the top level: fetch takes only data { target, attachmentId }, and the attachment names its project.',
+    audience: ['run', 'master', 'person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+} satisfies Record<'fetch', CapabilityCardBody>;
+
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   reach: 'project',
   route: '/api/issues',
   grant: 'issues:read',

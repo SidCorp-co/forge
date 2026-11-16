@@ -2,6 +2,7 @@
 // service its REST door calls (`projects/routes.ts`), so an MCP client can find the project it works
 // in and set one up. Reached as the `projects.*` actions through forge_call (ISS-773).
 
+import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import { scrubSecretsDeep } from '@forge/observability';
 import { z } from 'zod';
 import {
@@ -15,6 +16,7 @@ import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   patEffectiveProjectIds,
+  sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
@@ -63,6 +65,65 @@ const DESCRIBE = {
     example: { slug: 'shop', name: 'Shop' },
   },
 } as const;
+
+/** When a person's client reaches for the projects door (ISS-1251), from how product roles used it. */
+const CARDS = {
+  list: {
+    purpose: 'Lists the projects you can read, each with its id, slug, name and your role in it.',
+    situations: [
+      {
+        when: 'you start working for a person and do not yet hold the id of the project they mean',
+        do: 'list and match their words to a slug or name; every other action takes that id as projectId',
+      },
+      {
+        when: 'a person asks to set up a new project',
+        do: 'list first: a project with that slug or name may already exist, archived ones with archived true',
+      },
+    ],
+    practice: [
+      'A token fenced to some projects lists only those; a project missing here is outside the token, not absent.',
+    ],
+    example: { archived: false },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  get: {
+    purpose: 'Reads one project: your role, its members, its labels and its base branch.',
+    situations: [
+      {
+        when: 'a person asks who works on a project, what role they hold, or which branch it builds on',
+        do: 'get it by its id and answer from members, role and baseBranch',
+      },
+    ],
+    practice: [
+      'Environments, repository and testing profiles are not here: config.get reads the project document.',
+    ],
+    example: { projectId: '<project uuid>' },
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+  create: {
+    purpose:
+      'Creates a new project from a slug and a name, in your personal org or one you belong to.',
+    situations: [
+      {
+        when: 'a person asks to put a new product or repository on Forge and projects.list shows none for it',
+        do: 'create it with slug and name, then config.write its description, repository, branches and environments',
+      },
+    ],
+    practice: [
+      'Create holds a slug and a name only; the first config.write (baseRevision null) sets the rest.',
+      'A token fenced to projects is refused: a new project lies in none of them.',
+    ],
+    example: { slug: 'shop', name: 'Shop' },
+    // FB-596 (gwork set up over MCP, 2026-11-09): the client read create's slug and name as all a
+    // project holds and concluded its description and repository could not be set
+    redFlag:
+      'Stopping at slug and name as if that were the whole project: its description, repository and environments come from config.write.',
+    audience: ['person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
+  },
+} satisfies Record<(typeof ACTIONS)[number], CapabilityCardBody>;
 
 const parse = (args: unknown): Input => {
   const parsed = input.safeParse(args);
@@ -126,6 +187,8 @@ export const forgeProjectsTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(input),
   actionDescribe: DESCRIBE,
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   route: '/api/projects',
   grant: { byAction: { list: 'projects:read', get: 'projects:read', create: 'projects:write' } },
   reach: {
