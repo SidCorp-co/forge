@@ -1,12 +1,11 @@
 import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
-import { EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { type ContextScopedMcpToolFactory, projectReaderOf, zodToMcpSchema } from '../lib/tool.js';
 import { onArg } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
+import { memoryThroughFind, memorySearchInputSchema as searchInputSchema } from './find-port.js';
 import { getMemoryInputSchema, runMemoryGet, runMemoryGetOne } from './get-service.js';
 import { deleteMemory } from './indexer.js';
-import { runMemorySearch, memorySearchInputSchema as searchInputSchema } from './search-service.js';
 import { deleteMemoryInputSchema } from './service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
@@ -16,7 +15,8 @@ const ACTIONS = ['search', 'write', 'get', 'delete', 'feedback'] as const;
 const listedSchema = z
   .object({
     action: z.enum(ACTIONS),
-    ...searchInputSchema.partial().shape,
+    // `strategy` left out: the strict listing refuses it by name, as the search's own schema does
+    ...searchInputSchema.omit({ strategy: true }).partial().shape,
     ...getMemoryInputSchema.partial().shape,
     memoryId: z.uuid().optional(),
     ...writeMemoryInputSchema.partial().shape,
@@ -33,19 +33,9 @@ function withoutAction(args: Record<string, unknown>): Record<string, unknown> {
   return rest;
 }
 
-/** An embeddings outage answers the MCP caller as `UNAVAILABLE`, any other failure as itself. */
-async function orUnavailable<T>(run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (err) {
-    if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
-    throw err;
-  }
-}
-
 const DESCRIPTION =
   `Project memory, the same service \`/api/memory\` serves. Actions: ${ACTIONS.join(' | ')}. ` +
-  '`search` { query, topK?, sourceFilter?, strategy? }: semantic (default, cosine scores), keyword (Postgres FTS — exact identifiers, error codes) or hybrid (RRF fusion; scores are fused ranks). A semantic or hybrid search costs one embedding call (`embedMs`). When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. Rows carrying `via` are one-hop neighbours of an issue hit (score 0, context, not matches); a hit with `stale: true` was superseded (`supersededBy`). A subject several entries hold is answered once, by its newest entry, naming the others in `duplicates`. Hits are point-in-time: each carries standing (verified: checked since its last write and within the project note window; unverified: a lead to check against what is live, never a fact), writtenAt, asOf (the date it speaks as of — cite it with that date, never as how things stand now), verifiedAt, staleRefs naming each issue or requirement it cites that no longer resolves, and cites linking every issue, requirement, commit and release it names (a key beside another project of the organization is read there when you may read that project; one placed in a project it does not name, or in one you may not read, is unchecked with no project). A flagged hit carries staleReason. Each hit carries `curation` {type: fact | hypothesis | convention, scope, recheckWhen, value, endsWhen, owed}: a hypothesis is a lead, never a fact. A search reads curated memory (note, knowledge, policy, decision) unless sourceFilter names a mirror (issue, comment, job), which is history and a search index, never memory. Verify, then report with `feedback`. ' +
+  "`search` { query, topK?, sourceFilter? }: the find door's memory filter, in its order: keyword and meaning fused by rank, no `strategy` taken, `score` the fused score (read the order, never the value). When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. A hit with `stale: true` was superseded (`supersededBy`). A subject several entries hold is answered once, by its newest entry, naming the others in `duplicates`. Hits are point-in-time: each carries standing (verified: checked since its last write and within the project note window; unverified: a lead to check against what is live, never a fact), writtenAt, asOf (the date it speaks as of — cite it with that date, never as how things stand now), verifiedAt, staleRefs naming each issue or requirement it cites that no longer resolves, and cites linking every issue, requirement, commit and release it names (a key beside another project of the organization is read there when you may read that project; one placed in a project it does not name, or in one you may not read, is unchecked with no project). A flagged hit carries staleReason. Each hit carries `curation` {type: fact | hypothesis | convention, scope, recheckWhen, value, endsWhen, owed}: a hypothesis is a lead, never a fact. A search reads curated memory (note, knowledge, policy, decision; sourceFilter narrows it); a mirror is refused by name: issues are `find` with type issue, a comment or job copy is read through its issue. Verify, then report with `feedback`. " +
   "`write` { source (any but decision — a decision in force is a rule, a knowledge entry of kind rule, or a requirement, and a decision write is refused MEMORY_DECISION_NOT_MEMORY; a note naming no issue retires after the project's note window unverified, one naming its issue in metadata.issueId or metadata.about, or an issue key in endsWhen, when that issue is closed or dropped, unless verified since its last write; source issue with an issue's id or key is a learning about it, kept as its own note linked to it and answered with landedAs; any other comment, job or issue write is refused MEMORY_MIRROR_READ_ONLY, since those rows are core's copies), sourceRef, textContent, value, type (fact | hypothesis | convention), scope, recheckWhen, endsWhen?, updates?, metadata? }: before saving, answer how it helps later work (value), what it is (type), where it applies (scope) and the change that means re-checking it (recheckWhen: name paths, routes, config keys or rule slugs, so a landing touching one flags it); a temporary entry (a defect, a wait, a workaround) names what ends it in endsWhen: an issue key, a path, a route, a backticked config key or rule slug retires it when a landing or rule rewrite meets it; anything else (a plugin version) is warned ENDING_UNOBSERVED and flagged for re-check once the note window passes. A write leaving one out is stored as hypothesis and unscoped and answered with `warnings` naming each, and is listed as owing it until rewritten. Name another project's key as `<its slug> ISS-n`. A write on a subject already held updates that entry: the one `updates` names (an id or sourceRef), its own sourceRef, or the live entry of the same source whose text is near-identical, answered with `landedOn`; a rewrite REPLACES its body and the old one stays readable at `GET /api/memory/revisions`. Answers {id, embeddedAt, truncated, degraded, landedOn?, replaced?, warnings?}; `replaced: {revisionId}` names the revision that kept the old text (null when none was kept: same text, or a mirror source); read it with `get` { memoryId }. Agent-authored sources (note/knowledge/policy): textContent ≤8192 chars, the embedding window. Keep code out: a memory states the invariant in a sentence and points at the code by path and symbol or a commit, since copied code rots on the next commit; a fenced block over 5 lines is stored as written and answered with warning CODE_BLOCK_LONG, so rewrite it when the warning comes back. " +
   '`get` { memoryId } reads one entry by its id (any state; an unknown id is refused MEMORY_NOT_FOUND), else { source?, sourceRef?, metadataFilter?, includeArchived?, limit?, offset?, orderBy?, orderDir? }: natural-key lookup, no embedding; includeArchived also answers soft-deleted rows, each carrying archivedAt. ' +
   '`delete` { source, sourceRef }: idempotent, answers {deleted: the number of rows removed}. ' +
@@ -83,9 +73,13 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'search') {
       const input = searchInputSchema.parse(rest);
-      return orUnavailable(() =>
-        runMemorySearch({ ...input, surface: 'agent', reader: projectReaderOf(principal) }),
-      );
+      return memoryThroughFind({
+        projectId: input.projectId,
+        query: input.query,
+        topK: input.topK,
+        sourceFilter: input.sourceFilter,
+        reader: projectReaderOf(principal),
+      });
     }
 
     if (action === 'get') {

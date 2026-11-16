@@ -1,6 +1,5 @@
 import type { MemoryStanding, RerankReport } from '@forge/contracts/memory';
-import { z } from 'zod';
-import { type MemorySource, memorySources } from '../db/schema.js';
+import type { MemorySource } from '../db/schema.js';
 import {
   EmbeddingUnavailableError,
   embedQuery,
@@ -24,9 +23,10 @@ import {
 import { type CiteReader, resolveCitations } from './stale-refs.js';
 
 /**
- * Run a memory search. Shared between the `POST /api/memory/search` REST
- * route and the in-app assistant's memory search (ISS-202) so both surfaces
- * return the exact same shape.
+ * Read the memory store for a query: the find door's memory arm (`find/arms-memory.ts`) reads it by
+ * keyword and by meaning, and the note gate reads it for the notes nearest a draft. No door answers it
+ * directly: `POST /api/memory/search` and `forge_memory search` are the find door's memory filter
+ * (ISS-1256, `find-port.ts`).
  *
  * Strategies (memory-v2 phase 1):
  *  - `semantic` (default) — cosine over embeddings. Scores are similarity
@@ -40,17 +40,7 @@ import { type CiteReader, resolveCitations } from './stale-refs.js';
  * before invoking this function. `reader` decides which other projects a hit's cites are read in.
  */
 
-const memorySearchStrategies = ['semantic', 'keyword', 'hybrid'] as const;
-type MemorySearchStrategy = (typeof memorySearchStrategies)[number];
-
-/** A search request as `POST /api/memory/search` and `forge_memory` `search` both take it. */
-export const memorySearchInputSchema = z.object({
-  projectId: z.uuid(),
-  query: z.string().trim().min(1).max(4000),
-  topK: z.number().int().min(1).max(50).default(10),
-  sourceFilter: z.array(z.enum(memorySources)).optional(),
-  strategy: z.enum(memorySearchStrategies).default('semantic'),
-});
+type MemorySearchStrategy = 'semantic' | 'keyword' | 'hybrid';
 
 const memorySearchSurfaces = ['agent', 'web'] as const;
 type MemorySearchSurface = (typeof memorySearchSurfaces)[number];

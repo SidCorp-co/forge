@@ -1,6 +1,7 @@
+// `POST /api/memory/search`: the find door's memory filter (ISS-1256, `find-port.ts`), in the door's
+// order, the hits memory's own.
+
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { requestReader } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -8,7 +9,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireDeclaredOn, requiresOnResolved } from '../permissions/index.js';
 import { recordReached } from '../run-context/index.js';
-import { memorySearchInputSchema, runMemorySearch } from './search-service.js';
+import { memorySearchInputSchema, memoryThroughFind } from './find-port.js';
 
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
 memorySearchRoutes.use(
@@ -27,26 +28,13 @@ memorySearchRoutes.post(
 
     await requireDeclaredOn(body.projectId, userId, 'project.read');
 
-    let result: Awaited<ReturnType<typeof runMemorySearch>>;
-    try {
-      result = await runMemorySearch({
-        projectId: body.projectId,
-        query: body.query,
-        topK: body.topK,
-        sourceFilter: body.sourceFilter,
-        strategy: body.strategy,
-        surface: 'web',
-        reader: requestReader(userId),
-      });
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new HTTPException(503, {
-          message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
-        });
-      }
-      throw err;
-    }
+    const result = await memoryThroughFind({
+      projectId: body.projectId,
+      query: body.query,
+      topK: body.topK,
+      sourceFilter: body.sourceFilter,
+      reader: requestReader(userId),
+    });
     recordReached(c, body.projectId, 'search', { memory: result.hits });
     return c.json(result);
   },

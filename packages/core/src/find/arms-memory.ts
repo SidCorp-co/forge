@@ -4,6 +4,7 @@
 // (`item_embeddings`, knowledge's). No second store is written: an item with no vector is found by
 // its keyword arm alone.
 
+import { MEMORY_AUTHORED_SOURCES, type MemoryAuthoredSource } from '@forge/contracts/memory';
 import { and, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -46,6 +47,8 @@ export async function memoryArm(input: {
   /** `own-project` for a filter read for no one person: a cite in another project is never read. */
   reader: ProjectReader | 'own-project';
   limit: number;
+  /** The curated sources read, where a memory filter names some; absent, all of them and the issue copies. */
+  sources?: readonly MemoryAuthoredSource[];
 }): Promise<{ keyword: MemoryArm; semantic: MemoryArm | null }> {
   const read = (strategy: 'keyword' | 'semantic') =>
     runMemorySearch({
@@ -54,7 +57,7 @@ export async function memoryArm(input: {
       topK: input.limit,
       strategy,
       ...(strategy === 'semantic' && input.queryVec ? { queryVec: input.queryVec } : {}),
-      sourceFilter: ['note', 'knowledge', 'policy', 'decision', 'issue'],
+      sourceFilter: input.sources ? [...input.sources] : [...MEMORY_AUTHORED_SOURCES, 'issue'],
       surface: 'web',
       reader: input.reader,
     });

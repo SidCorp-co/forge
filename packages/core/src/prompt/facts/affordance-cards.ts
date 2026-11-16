@@ -204,6 +204,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     situations: [{ when: 'Context before you design or fix', do: '`memory/search -X POST`' }],
     practice: [
       'Treat a hit as point-in-time: an unverified one is a lead to check against the code, never a fact.',
+      'The hits are the find door’s memory filter in its order; issues are `find` with type issue.',
     ],
     example: {
       projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',

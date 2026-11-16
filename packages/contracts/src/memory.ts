@@ -34,6 +34,7 @@ export const MEMORY_AUTHORED_SOURCES = [
 	"policy",
 	"decision",
 ] as const;
+export type MemoryAuthoredSource = (typeof MEMORY_AUTHORED_SOURCES)[number];
 
 // What a memory hit stands as, beside its text: `verified` when someone checked it after its last
 // write and within the project's note window, `unverified` otherwise. An unverified hit is a lead to

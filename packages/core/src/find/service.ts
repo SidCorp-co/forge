@@ -5,6 +5,7 @@
 // recorded as a gap.
 
 import type { FindQuery, FindResult, FindType } from '@forge/contracts/find';
+import type { MemoryAuthoredSource } from '@forge/contracts/memory';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -52,6 +53,11 @@ export interface FindInput {
    * miss is no gap, since the other types were never asked.
    */
   filterOnly?: boolean;
+  /**
+   * The curated sources the memory arm reads, where a memory filter names some (`memory-filter.ts`);
+   * absent, every curated source and core's issue copies.
+   */
+  memorySources?: readonly MemoryAuthoredSource[];
 }
 
 /** What a find answered, and the fused candidates a filter of the door reads its own shape from. */
@@ -129,7 +135,14 @@ async function armLists(
     runs('decision') ? decisionArm(projectIds, phrases, k) : [],
     runs('reference') ? referenceArm(projectIds, phrases, k) : [],
     one && runs('memory')
-      ? memoryArm({ projectId, query: query.q, queryVec: vec, reader: input.reader, limit: k })
+      ? memoryArm({
+          projectId,
+          query: query.q,
+          queryVec: vec,
+          reader: input.reader,
+          limit: k,
+          ...(input.memorySources ? { sources: input.memorySources } : {}),
+        })
       : null,
     one && vec && runs('items') ? itemArms(projectId, vec, k) : null,
     query.conversation && runs('conversation')

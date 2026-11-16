@@ -2,7 +2,8 @@
 // upstream of issues, comments, jobs and requirements, so it is handed what it reads here, from the
 // owners' faces: the issue side in `memory-issue-reads.ts`, the project side below.
 
-import { provideMemoryIssueReads } from './memory/index.js';
+import { memoryThroughFind } from './find/index.js';
+import { provideMemoryFindPort, provideMemoryIssueReads } from './memory/index.js';
 import { memoryIssueSide } from './memory-issue-reads.js';
 import { readDeclaredSource, webUrlOf } from './project-config/index.js';
 import { orgSiblingProjects } from './projects/index.js';
@@ -11,6 +12,7 @@ import { requirementStatusesBySeq } from './requirements/index.js';
 import { workflowFlowsOf } from './workflows/index.js';
 
 export function provideMemoryDomainPorts(): void {
+  provideMemoryFindPort({ memoryThroughFind });
   provideMemoryIssueReads({
     ...memoryIssueSide,
     requirementStatuses: requirementStatusesBySeq,

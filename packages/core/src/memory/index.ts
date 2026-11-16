@@ -3,6 +3,7 @@ export { runConsolidationSweep } from './consolidation.js';
 export { runMemoryDecay } from './decay.js';
 export { runEmbeddingBackfill } from './embedding-backfill.js';
 export { registerMemoryExtraction } from './extraction.js';
+export { provideMemoryFindPort } from './find-port.js';
 export { deleteMemory, registerMemoryIndexer } from './indexer.js';
 export { provideMemoryIssueReads } from './ports.js';
 export { flagMemoriesForChange } from './recheck.js';
