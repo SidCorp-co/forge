@@ -92,7 +92,7 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
       'Name the unit beside every number.',
       'packages/core/src/units.ts',
     );
-    expect(await block(every)).toContain(`lesson-${touched}, when`);
+    expect(await block(every)).toContain(`- lesson-${touched}:`);
 
     await landedMove(await landed(71, [WIDGET, 'packages/core/src/widgets/index.ts']));
 
@@ -103,8 +103,8 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
     expect((await stateOf(touched))?.invalid_at).not.toBeNull();
     expect(await stateOf(other)).toMatchObject({ status: 'approved', invalid_at: null });
     const map = await block(every);
-    expect(map).not.toContain(`lesson-${touched}, when`);
-    expect(map).toContain(`lesson-${other}, when`);
+    expect(map).not.toContain(`- lesson-${touched}:`);
+    expect(map).toContain(`- lesson-${other}:`);
   });
 
   it('meets a requirement behaviour by the landing’s words, and nothing the landing does not name', async () => {
@@ -143,7 +143,7 @@ describe('a landing that touches a lesson’s anchor invalidates it (§5)', () =
       invalid_by: null,
     });
     expect((await lesson(n)).sentence).toBe('Cache the widget layout per theme.');
-    expect(await block(every)).toContain(`lesson-${n}, when`);
+    expect(await block(every)).toContain(`- lesson-${n}:`);
   });
 
   it('is retired by the re-check when the change made it wrong, kept for its history', async () => {
