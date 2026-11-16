@@ -20,6 +20,9 @@ export const WORKFLOW_REST_CARDS = {
       'The issue the design is drawn under is never its own build: link the build issues after it.',
     ],
     example: { issue: 'ISS-612', steps: ['reorder'] },
+    // forge: 7 of 8 links refused, among them issues already linked (WORKFLOW_BUILD_ALREADY_LINKED)
+    redFlag:
+      'Linking the same issue again, or dispatching it before the design it builds is approved.',
     family: 'design',
     audience: ['master', 'run'],
   },
@@ -77,6 +80,7 @@ export const WORKFLOW_REST_CARDS = {
       revision: 3,
       designs: [{ workflowId: '5c7e9a1b-3d5f-4a7b-8c9d-0e1f2a3b4c5d', revision: 2 }],
     },
+    redFlag: 'Posting the plan one dependent at a time, or dependents before their bases.',
     family: 'design',
     audience: ['master'],
   },

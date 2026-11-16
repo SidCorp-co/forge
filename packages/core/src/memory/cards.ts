@@ -35,6 +35,8 @@ export const MEMORY_REST_CARDS = {
       verdict: 'outdated',
       evidence: 'deploy-dev.yml now waits on /api/version sourceCommit; the note says it does not.',
     },
+    // forge: 2 of 3 reports refused, an outdated one with no evidence of what disproved it
+    redFlag: 'Reporting a memory outdated without the evidence that disproved it.',
     family: 'memory',
     audience: ['master', 'run'],
   },
@@ -58,6 +60,7 @@ export const MEMORY_REST_CARDS = {
       'Holding `project.write` is enough: a run’s or a master’s token may verify, not only a person.',
     ],
     example: { ids: [MEMORY_A, MEMORY_B] },
+    redFlag: 'Stamping memories verified without reading the code they describe.',
     family: 'memory',
     audience: ['master', 'run'],
   },

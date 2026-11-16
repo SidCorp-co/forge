@@ -84,6 +84,8 @@ export const QUESTION_REST_CARDS = {
     ],
     practice: ['Void only your own or your project’s question; an answered one is history.'],
     example: { reason: 'Settled by REQ-12 r3, which the owner agreed on 2026-11-07.' },
+    // forge: 2 of 25 voids refused
+    redFlag: 'Voiding a question a person still owes, to make the board read empty.',
     family: 'issue-order',
     audience: ['master', 'run'],
   },
@@ -102,6 +104,7 @@ export const QUESTION_REST_CARDS = {
       plain:
         'Customers could reorder in one tap.\nIt waits on your choice for out-of-stock items.\nWe recommend reordering the rest.',
     },
+    redFlag: 'Writing ids, codes or table names in the plain summary a person decides from.',
     family: 'issue-order',
     audience: ['master'],
   },

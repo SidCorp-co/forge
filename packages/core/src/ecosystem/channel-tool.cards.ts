@@ -1,9 +1,10 @@
 // The capability cards of `forge_channel` (ISS-1251), beside the door in `channel-tool.ts`, which would
-// otherwise cross its line budget. No issue or feedback records an agent working a real channel
-// document through these actions: they rest on the situations the ecosystem-inbox guide teaches a
-// master (worked over the REST twins from a checkout), and the reads on the chat assistant that holds
-// them in a person's chat, where a channel write is refused. register, outbox, draft, hold, release,
-// withdraw, supersede and gate carry no card: nothing records or teaches a situation for them.
+// otherwise cross its line budget. Few calls record an agent working a real channel document through
+// these actions (forge, 2026-10-17..11-16: 13 inbox reads and 2 document reads, none refused): they
+// rest on the situations and rules the ecosystem-inbox guide teaches a master (worked over the REST
+// twins from a checkout), on the reads of the chat assistant that holds them in a person's chat, and
+// on the refusals each write is built around (`channel-ends.ts`, `channel-holds.ts`,
+// `channel-tool-gate.ts`), which name the wrong way to take each.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { ChannelAction } from '@forge/contracts/ecosystem';
@@ -30,6 +31,7 @@ export const CARDS = {
       'From a checkout the same read is GET /api/projects/:id/channel/unanswered.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag: 'Ending a pass with the inbox it was nudged about untouched and no word on why.',
     family: 'channel',
     audience: ['master', 'bot'],
   },
@@ -47,6 +49,8 @@ export const CARDS = {
     ],
     practice: ['Work unanswered first: the inbox adds only what owes no reply yet.'],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Answering a non-binding change notice that owes nothing, ahead of what unanswered lists.',
     family: 'channel',
     audience: ['master', 'bot'],
   },
@@ -66,6 +70,8 @@ export const CARDS = {
       'Only a document this project sends or receives is readable; any other is refused as not a party.',
     ],
     example: { projectId: '<project uuid>', ref: 'FP-CN-3' },
+    redFlag:
+      'Replying from the nudge’s line alone without reading the document and its contract page.',
     family: 'channel',
     audience: ['master', 'bot'],
   },
@@ -83,6 +89,8 @@ export const CARDS = {
       'Name the number of the document that opened the conversation, not of a reply in it.',
     ],
     example: { projectId: '<project uuid>', thread: 'FP-CN-3' },
+    redFlag:
+      'Replying without reading the thread, so a held or already answered conversation is answered again.',
     family: 'channel',
     audience: ['master', 'bot'],
   },
@@ -104,6 +112,8 @@ export const CARDS = {
       'From a checkout the same read is GET /api/projects/<provider>/api-page.',
     ],
     example: { projectId: '<project uuid>', project: '<provider project uuid>' },
+    redFlag:
+      'Prescribing how the other side should build its contract, where the reply says what this project decided.',
     family: 'channel',
     audience: ['master', 'bot'],
   },
@@ -132,6 +142,8 @@ export const CARDS = {
       subject: 'Adapting to the orders field change',
       body: '<the acknowledgement body the parent owes>',
     },
+    redFlag:
+      'Replying with the wrong type for what the parent owes, or to a withdrawn or superseded document.',
     family: 'channel',
     audience: ['master'],
   },
@@ -158,6 +170,7 @@ export const CARDS = {
       subject: 'Adapting to the orders field change',
       body: '<the whole acknowledgement body, as the note asks>',
     },
+    redFlag: 'Sending only the changed field: the edit takes the whole content.',
     family: 'channel',
     audience: ['master'],
   },
@@ -175,7 +188,159 @@ export const CARDS = {
       'From a checkout: POST /api/projects/:id/channel/documents/<doc>/submit.',
     ],
     example: { projectId: '<project uuid>', ref: 'FP-ACK-2' },
+    redFlag:
+      'Submitting a draft the person has not confirmed, or reading the gate’s wait as published.',
     family: 'channel',
     audience: ['master'],
+  },
+  register: {
+    purpose:
+      'Lists every document of an ecosystem’s channel this project may read, by status and type.',
+    situations: [
+      {
+        when: 'a person asks what has been said between the projects of an ecosystem',
+        do: 'read the register, filtered by status or type, and answer from it',
+      },
+    ],
+    practice: ['Your own work is unanswered and inbox; the register is the whole record.'],
+    example: { projectId: '<project uuid>', status: 'awaiting', limit: 20 },
+    redFlag: 'Working the inbox from the register, where unanswered lists exactly what is owed.',
+    family: 'channel',
+    audience: ['master', 'bot'],
+  },
+  outbox: {
+    purpose: 'Lists the documents this project sent, with where each stands.',
+    situations: [
+      {
+        when: 'you need to know whether a document you sent was answered, withdrawn or is still waiting',
+        do: 'read the outbox and the thread of the one you need',
+      },
+    ],
+    practice: ['A document waiting at the approve gate is not published yet.'],
+    example: { projectId: '<project uuid>' },
+    redFlag:
+      'Sending a second document because the first has no answer yet, instead of reading its thread.',
+    family: 'channel',
+    audience: ['master', 'bot'],
+  },
+  draft: {
+    purpose:
+      'Drafts a new channel document: a change notice, an RFI or a change request to a project.',
+    situations: [
+      {
+        when: 'this project changes a contract others consume, or needs something from another project',
+        do: 'draft the document to that project with its type and subject, then submit it once confirmed',
+      },
+    ],
+    practice: [
+      'An answer to a document is reply, not draft: it carries inReplyTo.',
+      'The author is the token; a body naming an author is refused.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      type: 'change-notice',
+      to: ['<consumer project uuid>'],
+      subject: 'The orders field is renamed in 2.0',
+      body: '<what changes, when, and what the consumer must do>',
+    },
+    redFlag:
+      'Drafting a new document to answer one, which leaves the parent owed: reply carries inReplyTo.',
+    family: 'channel',
+    audience: ['master'],
+  },
+  hold: {
+    purpose: 'Holds a conversation for a person, so nothing is owed on it until they release it.',
+    situations: [
+      {
+        when: 'a person takes over a conversation with another project themselves',
+        do: 'hold its thread with the reason; it leaves unanswered until they release it',
+      },
+    ],
+    practice: ['A hold needs a reason; who may hold is the hold rule’s (HOLD_NOT_AUTHORISED).'],
+    example: {
+      projectId: '<project uuid>',
+      thread: 'FP-CN-3',
+      reason: 'The owner negotiates this change himself.',
+    },
+    redFlag:
+      'Holding a thread to clear it from your inbox, where only a person taking it over holds it.',
+    family: 'channel',
+    audience: ['person'],
+  },
+  release: {
+    purpose: 'Releases a held conversation, so it is owed again where its document owes a reply.',
+    situations: [
+      {
+        when: 'the person who held a thread hands it back',
+        do: 'release it; its document returns to unanswered',
+      },
+    ],
+    practice: ['THREAD_HELD means stop: a hold is a person’s to release.'],
+    example: { projectId: '<project uuid>', thread: 'FP-CN-3' },
+    // the ecosystem-inbox guide: never release a hold to get your reply through
+    redFlag: 'Releasing a person’s hold to get your reply through.',
+    family: 'channel',
+    audience: ['person'],
+  },
+  withdraw: {
+    purpose:
+      'Withdraws a document this project published, with the reason, so nothing is owed on it.',
+    situations: [
+      {
+        when: 'a document you sent no longer stands and nothing replaces it',
+        do: 'withdraw it with the reason; a reply to it is refused after',
+      },
+    ],
+    practice: ['A withdraw needs a reason (WITHDRAW_WITHOUT_REASON).'],
+    example: {
+      projectId: '<project uuid>',
+      ref: 'FP-CN-3',
+      reason: 'The rename was dropped from 2.0.',
+    },
+    redFlag: 'Withdrawing a document a newer one replaces, where supersede names the replacement.',
+    family: 'channel',
+    audience: ['master'],
+  },
+  supersede: {
+    purpose: 'Replaces a document this project published with a newer one, naming it and why.',
+    situations: [
+      {
+        when: 'you published a corrected document that replaces an earlier one',
+        do: 'supersede the earlier one by the newer one with the reason',
+      },
+    ],
+    practice: [
+      'The newer one must be a replacement of the same kind (SUPERSEDE_NOT_A_REPLACEMENT).',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      ref: 'FP-CN-3',
+      by: 'FP-CN-4',
+      reason: 'The field keeps its type.',
+    },
+    redFlag: 'Superseding with no reason, or by a document that is not its replacement.',
+    family: 'channel',
+    audience: ['master'],
+  },
+  gate: {
+    purpose: 'Approves or returns a document waiting at the approve gate, as an admin.',
+    situations: [
+      {
+        when: 'a document of your project waits at the approve gate on you',
+        do: 'approve it to publish it, or return it with a note saying what must change',
+      },
+    ],
+    practice: [
+      'A return needs a note (GATE_RETURN_WITHOUT_NOTE); the author edits and submits again.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      ref: 'FP-ACK-2',
+      decision: 'return',
+      note: 'Say when the consumer switches.',
+    },
+    redFlag: 'An agent approving its own document at the gate: an admin decides it.',
+    family: 'channel',
+    audience: ['person'],
   },
 } satisfies Partial<Record<ChannelAction, CapabilityCardBody>>;

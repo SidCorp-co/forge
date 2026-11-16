@@ -93,6 +93,9 @@ export const CLEANUP_REST_CARDS = {
     example: {
       evidence: 'The red is the jsdom upgrade: 4 suites time out at 5 s since 0.4.0-dev.690.',
     },
+    // forge: 9 of 73 additions refused
+    redFlag:
+      'Filing a new debt for what an open debt already holds, instead of adding evidence to it.',
     family: 'debt',
     audience: ['run'],
   },

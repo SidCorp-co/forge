@@ -26,6 +26,8 @@ export const ECOSYSTEM_REST_CARDS = {
       'A breaking version is not adopted here: it comes as a contract-change feedback with its own work.',
     ],
     example: { contract: 'catalog-api/orders', version: '2.4.0' },
+    redFlag:
+      'Re-pinning requirement baselines yourself on adopt, where whoever approves requirements does.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -46,6 +48,9 @@ export const ECOSYSTEM_REST_CARDS = {
       reason: 'Reorder reads the order lines 2.4.0 adds.',
       dueAt: '2026-11-30T00:00:00+07:00',
     },
+    // the door's own account: a wait on a version nobody publishes holds the issue out of admission
+    redFlag:
+      'Parking the issue on a person for a contract version, where a wait on the version wakes it itself.',
     family: 'issue-order',
     audience: ['master', 'run'],
   },
@@ -59,6 +64,7 @@ export const ECOSYSTEM_REST_CARDS = {
     ],
     practice: ['A wait the version’s approval settles needs no retract.'],
     example: { reason: 'Reorder now reads the lines from 2.3.0; it needs nothing 2.4.0 adds.' },
+    redFlag: 'Retracting a wait to dispatch the issue early while it still needs that version.',
     family: 'issue-order',
     audience: ['master'],
   },

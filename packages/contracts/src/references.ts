@@ -385,6 +385,12 @@ export const REFERENCE_REST_CARD = {
 		},
 	],
 	practice: [...REFERENCE_CARDS.search.practice],
+	example: {
+		ref: "https://docs.stripe.com/payments/checkout#reorder",
+		verdict: "take",
+		why: "Its reorder flow keeps the original line prices, as REQ-12 asks.",
+		about: "REQ-12",
+	},
 	redFlag: REFERENCE_CARDS.search.redFlag,
 	family: "references",
 	audience: ["master", "run"],

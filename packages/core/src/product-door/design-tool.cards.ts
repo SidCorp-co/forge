@@ -21,6 +21,9 @@ export const CARDS = {
     ],
     practice: ['The list carries no document: read one design whole with design_get.'],
     example: { projectId: '<project uuid>', view: 'summary' },
+    // forge, 2026-10-17..11-16: 12 of 13 calls refused (the log keeps no code); the input takes the
+    // project's uuid, which projects.list answers, and refuses a slug or a name by its pattern
+    redFlag: 'Naming the project by its slug or name instead of the uuid projects.list answers.',
     audience: ['person'],
   },
   design_get: {
@@ -44,6 +47,9 @@ export const CARDS = {
       'A design has no forecast of its own: say when it is likely done from the issues building it.',
     ],
     example: { projectId: '<project uuid>', workflowId: '<workflow uuid>', view: 'full' },
+    // forge, 2026-10-17..11-16: 7 of 7 calls refused (the log keeps no code); the input takes the
+    // project's uuid, which projects.list answers, and refuses a slug or a name by its pattern
+    redFlag: 'Reading a design by its flow’s name instead of its workflow id from design_list.',
     audience: ['person'],
   },
   template_list: {
@@ -63,6 +69,8 @@ export const CARDS = {
       'Guide workflow-templates says which template fits which question and what each type requires.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Drawing a design in a template without reading which node types and edge kinds it takes.',
     audience: ['person'],
   },
   design_create: {
@@ -89,6 +97,10 @@ export const CARDS = {
       projectId: '<project uuid>',
       body: { baseRevision: null, document: DESIGN_EXAMPLE_DOCUMENT },
     },
+    // forge, 2026-10-17..11-16: 16 of 24 creates refused, nodes and edges a template does not
+    // hold among them (WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE, WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE)
+    redFlag:
+      'Drawing nodes and edges the template does not hold, or leaving the design unlinked from its requirement.',
     audience: ['person'],
   },
   design_revise: {
@@ -116,6 +128,10 @@ export const CARDS = {
         document: { ...DESIGN_EXAMPLE_DOCUMENT, summary: 'A past order becomes a cart.' },
       },
     },
+    // forge, 2026-10-17..11-16: 45 of 63 revisions refused, a base revision moved past
+    // (WORKFLOW_DESIGN_REVISION_STALE) among them
+    redFlag:
+      'Writing a revision on a stale baseRevision, or only the steps that change instead of the whole document.',
     audience: ['person'],
   },
   design_decide: {
@@ -160,6 +176,8 @@ export const CARDS = {
       workflowId: '<workflow uuid>',
       reason: 'A test design; it describes no flow of the product.',
     },
+    // forge: 2 of 3 withdrawals refused; an approved design is refused (DESIGN_WITHDRAW_APPROVED)
+    redFlag: 'Withdrawing an approved design to retire it, where a revision changes it.',
     audience: ['person'],
   },
   suggestion_list: {
@@ -180,6 +198,7 @@ export const CARDS = {
     ],
     practice: ['Name exactly one target; view full reads each payload, summary leaves them out.'],
     example: { projectId: '<project uuid>', requirement: 'REQ-2', status: ['proposed'] },
+    redFlag: 'Proposing a suggestion without listing those already waiting on the same record.',
     audience: ['person'],
   },
   suggestion_create: {
@@ -262,6 +281,9 @@ export const CARDS = {
       suggestionId: '<suggestion uuid>',
       reason: 'REQ-1 covers reordering already; this one is about saved carts.',
     },
+    // forge: 6 of 28 rejections refused
+    redFlag:
+      'Rejecting with no reason the next proposal can answer, or rejecting where one slice needs revising.',
     audience: ['person'],
   },
   suggestion_revise: {
@@ -286,6 +308,8 @@ export const CARDS = {
       payload: { duplicateOf: 'REQ-3' },
       reason: 'It repeats REQ-3, not REQ-1.',
     },
+    redFlag:
+      'Revising someone else’s suggestion without suggestions.approve, or sending a patch instead of the whole payload.',
     audience: ['person'],
   },
   suggestion_withdraw: {
@@ -298,6 +322,8 @@ export const CARDS = {
     ],
     practice: ['Only its producer withdraws; anybody else rejects or revises it.'],
     example: { projectId: '<project uuid>', suggestionId: '<suggestion uuid>' },
+    // forge: 10 of 21 withdrawals refused, 3 of them forbidden: only its producer withdraws
+    redFlag: 'Withdrawing a suggestion you did not produce, where rejecting it is the act.',
     audience: ['person'],
   },
   mockup_list: {
@@ -314,6 +340,7 @@ export const CARDS = {
     ],
     practice: ['Name exactly one of requirement, feedback or issue; prefer the requirement.'],
     example: { projectId: '<project uuid>', requirement: 'REQ-2' },
+    redFlag: 'Proposing a mockup without reading the ones already proposed on the item.',
     audience: ['person'],
   },
   mockup_get: {
@@ -326,6 +353,8 @@ export const CARDS = {
     ],
     practice: ['Its comments are mockup_comments’; its content is at the url it names.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
+    // forge: all 6 reads refused (the log keeps no code)
+    redFlag: 'Reading a mockup by a file name or url instead of its MK-n key.',
     audience: ['person'],
   },
   mockup_comments: {
@@ -342,6 +371,7 @@ export const CARDS = {
     ],
     practice: ['A comment open on an earlier revision is still open until a revision settles it.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
+    redFlag: 'Revising a mockup without reading the comments pinned on its earlier revisions.',
     audience: ['person'],
   },
   mockup_comment: {
@@ -364,6 +394,8 @@ export const CARDS = {
         pin: { x: 0.7, y: 0.4 },
       },
     },
+    // forge: 5 of 8 comments refused, among them on closed mockups (MOCKUP_COMMENT_CLOSED)
+    redFlag: 'Commenting on a mockup already decided, where a new revision is the place.',
     audience: ['person'],
   },
   mockup_propose: {
@@ -412,6 +444,7 @@ export const CARDS = {
       mockup: 'MK-3',
       reason: 'The owner agreed.',
     },
+    redFlag: 'Accepting a mockup the person has not tried.',
     audience: ['person'],
   },
   mockup_return: {
@@ -428,6 +461,7 @@ export const CARDS = {
       mockup: 'MK-3',
       reason: 'Out-of-stock items must show before the cart fills.',
     },
+    redFlag: 'Returning a mockup with no reason its next revision can answer.',
     audience: ['person'],
   },
   mockup_withdraw: {
@@ -440,6 +474,7 @@ export const CARDS = {
     ],
     practice: ['Only its author withdraws; anybody else returns it with a reason.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
+    redFlag: 'Withdrawing a mockup a person already decided.',
     audience: ['person'],
   },
   // design_propose's one card is its REST twin's, the orientation's (`mcp/twins.ts`)

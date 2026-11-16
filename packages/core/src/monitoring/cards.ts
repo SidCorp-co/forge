@@ -18,6 +18,7 @@ export const MONITORING_REST_CARDS = {
       'It is shown once and a new one replaces the old; the agent runs on the host, never in the repo.',
     ],
     example: {},
+    redFlag: 'Putting the minted token in a file other users on the host can read, or in the repo.',
     family: 'setup',
     audience: ['master'],
   },

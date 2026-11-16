@@ -38,6 +38,10 @@ export const STEWARD_NOTE_REST_CARDS = {
       basis: 'waiting|person|release.approve|1.31.1',
       runId: null,
     },
+    // forge, 2026-10-17..11-16: 266 of 4,172 writes refused, chiefly notes that contradicted the
+    // item's standing (STEWARD_NOTE_CONTRADICTS) or cited what it does not hold (STEWARD_NOTE_CITE_UNKNOWN)
+    redFlag:
+      'Writing a note that says more than the item’s standing shows, or cites what it does not hold.',
     family: 'knowledge',
     audience: ['master'],
   },

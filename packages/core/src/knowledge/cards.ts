@@ -28,6 +28,8 @@ export const KNOWLEDGE_REST_CARDS = {
       '`keyword` matches every term at once, so a long question finds almost nothing with it.',
     ],
     example: { query: 'when must an agent ask the owner to approve', topK: 5 },
+    // forge: 2 of 889 searches rate-limited, both in loops that searched one topic again and again
+    redFlag: 'Searching the same topic in a loop instead of opening the hits by slug.',
     family: 'knowledge',
     audience: ['master', 'run'],
   },
@@ -48,6 +50,7 @@ export const KNOWLEDGE_REST_CARDS = {
       'A delete reaches running checkouts only when their orientation is next rewritten.',
     ],
     example: {},
+    redFlag: 'Deleting an entry before the one you keep says all it said.',
     family: 'knowledge',
     audience: ['master', 'run'],
   },

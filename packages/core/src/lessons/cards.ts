@@ -59,6 +59,10 @@ export const LESSON_REST_CARDS = {
         sentence: 'Show the stuck reason on hover, keeping the inline label to one word.',
       },
     },
+    // forge, 2026-10-17..11-16: 14 of 21 confusions refused, among them ones already decided
+    // (LESSON_CONFUSION_DECIDED) and ones quoting no sides (LESSON_CONFUSION_INVALID)
+    redFlag:
+      'Asking a person which lesson wins, where raising the confusion and going on is the act.',
     family: 'knowledge',
     audience: ['master', 'run'],
   },
