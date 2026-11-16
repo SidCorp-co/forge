@@ -187,10 +187,23 @@ describe("the person decides from the agent's plain line (ISS-1006)", () => {
   });
 
   it("says plainly that the agent wrote no line, and is still decided from its buttons", async () => {
-    listing(proposal({ summary: { ...RAW, plain: null } }));
+    listing(proposal({ summary: { ...RAW, plain: null, gist: null } }));
     renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
     expect((await screen.findByTestId("proposal-no-plain")).textContent).toBe("No summary");
+    expect(screen.queryByTestId("proposal-gist")).toBeNull();
     expect(screen.getByRole("button", { name: "Record it" })).toBeTruthy();
+  });
+
+  // the live judge on 0.4.0-dev.696: "No summary" and two buttons said nothing of what Record it records
+  it("shows the proposal's own summary line beside No summary, its raw fields still behind the fold", async () => {
+    listing(proposal({ kind: "requirement_revision", summary: { ...RAW, plain: null, gist: "Approvals lead with one plain decision." } }));
+    renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
+    const card = await screen.findByTestId("proposal-card");
+    expect(within(card).getByTestId("proposal-gist").textContent).toBe("Approvals lead with one plain decision.");
+    expect(within(card).getByTestId("proposal-no-plain").textContent).toBe("No summary");
+    expect(card.textContent).not.toMatch(/REQ-68|baseRevision|tldr/);
+    fireEvent.click(within(card).getByRole("button", { name: "Fold the card" }));
+    expect(within(card).getByTestId("proposal-gist").textContent).toBe("Approvals lead with one plain decision.");
   });
 
   it("folds to its one line and unfolds again, the buttons kept", async () => {

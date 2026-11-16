@@ -55,4 +55,16 @@ describe("the card shows fewer words than before (ISS-1006)", () => {
     console.info(`WORDS card=${n}`);
     expect(n).toBeLessThan(BEFORE_CARD);
   });
+
+  // the card whose agent wrote no line carries the proposal's own summary in its place (the judge on
+  // 0.4.0-dev.696): it adds that one line, and still shows fewer words than before
+  it("measures the card whose agent wrote no line, its own summary shown", async () => {
+    const tldr = "Approvals must lead with one plain-language decision and its consequence, then offer concise choices; supporting evidence stays available without competing with the action.";
+    const bare = { ...CARD, summary: { ...CARD.summary, plain: null, gist: tldr } };
+    fakeCore((c) => (c.method === "GET" && c.path.endsWith("/proposals") ? { body: { proposals: [bare] } } : undefined));
+    renderWithQuery(<ProposalCards conversationId={CARD.conversationId} threadLength={1} />);
+    const n = words((await screen.findByTestId("proposal-cards")).textContent ?? "");
+    console.info(`WORDS card-no-plain=${n}`);
+    expect(n).toBeLessThan(BEFORE_CARD);
+  });
 });

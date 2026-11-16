@@ -2,7 +2,9 @@
 // to are the ones core will write (REQ-30 BC-4: it names which existing requirement, feedback or
 // design the record relates to).
 
+import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
 import { describe, expect, it } from 'vitest';
+import { gistOf } from './gist.js';
 import {
   imagesLine,
   kindOfToolCall,
@@ -295,5 +297,46 @@ describe('the card shows everything the press writes (ISS-439 round 3, criterion
     });
     expect(shown.title).toBe('Move ISS-4 to open');
     expect(shown.lines).toEqual(['reason: asked in chat']);
+  });
+});
+
+// ISS-1006, the live judge on 0.4.0-dev.696: a card whose agent wrote no plain line still says what
+// Record it records, from the proposal's own summary line, its keys stripped.
+describe("a card's own summary line, where the agent wrote no plain line", () => {
+  const held = (kind: ChatProposalKind, args: unknown) => ({
+    kind,
+    call: { name: 'forge_requirement_revise', arguments: JSON.stringify(args) },
+    body: null,
+  });
+
+  it("reads a requirement's tldr, else its changeSummary, keys stripped", () => {
+    expect(
+      gistOf(
+        held('requirement_revision', {
+          requirement: 'REQ-68',
+          tldr: 'Approvals lead with one plain decision (REQ-68 BC-3).',
+          changeSummary: 'Make it readable',
+        }),
+      ),
+    ).toBe('Approvals lead with one plain decision.');
+    expect(
+      gistOf(held('requirement_draft', { title: 'x', changeSummary: 'Make  it\nreadable' })),
+    ).toBe('Make it readable');
+  });
+
+  it("reads an Agent session's held REST body the same way", () => {
+    expect(
+      gistOf({
+        kind: 'requirement_revision',
+        call: { method: 'POST', path: '/api/x', contentType: 'application/json' },
+        body: Buffer.from(JSON.stringify({ tldr: 'Approvals lead' })),
+      }),
+    ).toBe('Approvals lead');
+  });
+
+  it('is null where the proposal carries neither, or only keys, or is no requirement', () => {
+    expect(gistOf(held('requirement_revision', { requirement: 'REQ-68' }))).toBeNull();
+    expect(gistOf(held('requirement_revision', { tldr: 'REQ-68 BC-3' }))).toBeNull();
+    expect(gistOf(held('feedback', { tldr: 'Approvals lead' }))).toBeNull();
   });
 });

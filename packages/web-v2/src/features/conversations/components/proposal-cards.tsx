@@ -5,7 +5,8 @@
 // goes.
 //
 // The person decides from one plain line the proposing agent wrote (ISS-1006, owner 2026-11-05); where
-// it wrote none, the card says so in its place. The WHOLE proposal (ISS-439: a person agrees only to
+// it wrote none, the card says so, beside the proposal's own one-line summary where it has one (its
+// gist, core's read of the held call), so the person still reads what Record it records. The WHOLE proposal (ISS-439: a person agrees only to
 // what they could read) is one press away behind the closed "Technical" fold: every line core
 // summarised from the held call, none clipped, scrolling inside the fold. A card folds down to its one
 // line, and the cards together never take more than part of the room, so the chat stays readable.
@@ -76,6 +77,8 @@ function HeldProposal({
   const { summary } = proposal;
   const [folded, setFolded] = useState(false);
   const plain = summary.plain ?? null;
+  // where the agent wrote no line, the proposal's own summary still says what Record it records
+  const gist = summary.gist ?? null;
   return (
     <div data-testid="proposal-card" data-kind={proposal.kind} data-folded={folded} className="flex flex-col gap-1.5 border-l-2 border-line pl-3">
       <div className="flex min-w-0 items-start gap-2">
@@ -84,9 +87,16 @@ function HeldProposal({
             {plain}
           </p>
         ) : (
-          <p data-testid="proposal-no-plain" className="fg-caption min-w-0 flex-1 italic text-muted">
-            {t("conversations.proposal.noPlain")}
-          </p>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {gist && (
+              <p data-testid="proposal-gist" className={cn("fg-body-sm min-w-0 break-words text-fg", folded && "truncate")} title={folded ? gist : undefined}>
+                {gist}
+              </p>
+            )}
+            <p data-testid="proposal-no-plain" className="fg-caption italic text-muted">
+              {t("conversations.proposal.noPlain")}
+            </p>
+          </div>
         )}
         <IconButton
           icon={folded ? "chevronDown" : "chevronUp"}

@@ -87,6 +87,13 @@ export const chatProposalSummarySchema = z.strictObject({
 	lines: z.array(z.string()),
 	relates: z.array(z.string()),
 	plain: z.string().max(PLAIN_DECISION_MAX).nullable().optional(),
+	/**
+	 * The proposal's own one-line summary, read from the held call (a requirement's `tldr`, else its
+	 * `changeSummary`), its keys stripped: the card shows it beside "No summary" where the agent wrote
+	 * no plain line, so the person still reads what Record it records. Null where it carries neither;
+	 * absent on the stored summary, which the view fills.
+	 */
+	gist: z.string().nullable().optional(),
 });
 export type ChatProposalSummary = z.infer<typeof chatProposalSummarySchema>;
 

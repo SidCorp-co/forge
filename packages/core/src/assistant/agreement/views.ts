@@ -9,6 +9,7 @@ import type {
 import { inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
+import { gistOf } from './gist.js';
 import type { ChatProposalRow } from './store.js';
 
 /** The people proposals wait on, by their display name or email. */
@@ -35,6 +36,7 @@ export function viewOf(
     summary: {
       ...(row.summary as ChatProposalSummary),
       plain: (row.summary as ChatProposalSummary).plain ?? null,
+      gist: gistOf(row),
     },
     proposedTo: { userId: row.proposedTo, label: named.get(row.proposedTo) ?? null },
     canDecide: row.status === 'pending' && row.proposedTo === viewerId,

@@ -9,6 +9,7 @@
  *
  * @direct-test-of packages/core/src/requirements/agree.ts
  * @direct-test-of packages/core/src/assistant/agreement/routes.ts
+ * @direct-test-of packages/core/src/assistant/agreement/views.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -366,6 +367,7 @@ describe("an Agent-mode session's REST write is held the same way", () => {
     const revise = await say('agent', 'POST', at(`/requirements/${reqKey}/revisions`), {
       baseRevision: 1,
       reason: 'A draft also survives a reload.',
+      tldr: `A draft survives a reload too (${reqKey}).`,
       criteria: [{ body: 'A draft survives a tab switch and a reload.' }],
     });
     expect(codeOf(revise), JSON.stringify(revise.json)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
@@ -374,6 +376,10 @@ describe("an Agent-mode session's REST write is held the same way", () => {
       (p) => p.status === 'pending' && ['memory_note', 'requirement_revision'].includes(p.kind),
     );
     expect(waiting.map((p) => p.kind).sort()).toEqual(['memory_note', 'requirement_revision']);
+    // ISS-1006: a card whose session wrote no plain line reads the revision's own summary, keyless
+    const held = waiting.find((p) => p.kind === 'requirement_revision');
+    expect(held?.summary.plain).toBeNull();
+    expect(held?.summary.gist).toBe('A draft survives a reload too.');
     for (const p of waiting) {
       const r = await say(
         'owner',
