@@ -254,23 +254,52 @@ export function cardText(door: CatalogDoor, depth = 3): string {
 /**
  * The module lines of a Tier-0 map (ISS-1256): one line per business module, as `moduleMapLines`
  * ranks them, naming the door that reads its tree (Tier 1) — the REST read for a master and its runs,
- * which work over REST, `module.get` for every other audience — as many whole lines as
- * `TIER0_MODULE_LINES_MAX_CHARS` holds. Empty where the project has no module yet.
+ * which work over REST, `module.get` for every other audience. Past `TIER0_MODULE_LINES_MAX_CHARS`
+ * the lines are shortened, never dropped: the door is named once above them, then each purpose is
+ * cut, then left out; where even bare lines overrun, the last line counts the modules left and names the door that lists
+ * them. Empty where the project has no module yet.
  */
 export function moduleLinesText(lines: readonly ModuleMapLine[], audience: CardAudience): string {
   if (lines.length === 0) return '';
+  const rest = audience === 'master' || audience === 'run';
   const door = (slug: string) =>
-    audience === 'master' || audience === 'run'
-      ? `GET /api/projects/:id/modules/${slug}/map`
-      : `module.get ${slug}`;
+    rest ? `GET /api/projects/:id/modules/${slug}/map` : `module.get ${slug}`;
+  const gist = (said: string | null, max: number) => {
+    const first = (said?.split('\n')[0] ?? '').trim().replace(/[\s.,;:]+$/, '');
+    return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
+  };
+  // each form shorter than the one before: the door on every line, then named once above, then each
+  // purpose cut, then none
+  const forms = [
+    { doorEach: true, purpose: 90 },
+    { doorEach: false, purpose: 90 },
+    { doorEach: false, purpose: 50 },
+    { doorEach: false, purpose: 0 },
+  ] as const;
+  type Form = (typeof forms)[number];
+  const lineOf = (l: ModuleMapLine, form: Form) => {
+    const said = form.purpose > 0 ? gist(l.description, form.purpose) : '';
+    const reads = form.doorEach ? ` → ${door(l.slug)}` : '';
+    return `- ${l.name} (\`${l.slug}\`)${said ? `: ${said}` : ''}; ${l.terms} terms, ${l.rules} rules, ${l.openIssues} open${reads}`;
+  };
+  const sizeOf = (out: readonly string[]) => out.reduce((n, l) => n + l.length + 1, 0);
+  const text = (form: Form, out: readonly string[]) => {
+    const how = form.doorEach ? 'read its tree' : `read its tree with \`${door('<slug>')}\``;
+    return `### Modules\nBefore you work in a module, ${how} (its terms, rules, capabilities and requirements); when a person names a thing or an owner decides, write the term or rule under its module.\n${out.join('\n')}`;
+  };
+  for (const form of forms) {
+    const out = lines.map((l) => lineOf(l, form));
+    if (sizeOf(out) <= TIER0_MODULE_LINES_MAX_CHARS) return text(form, out);
+  }
+  const bare = forms[forms.length - 1] as Form;
+  const pointer = (left: number) =>
+    `- ${left} more modules: ${rest ? 'GET /api/projects/:id/modules/map' : 'module.pillar'}`;
+  const room = TIER0_MODULE_LINES_MAX_CHARS - pointer(lines.length).length - 1;
   const out: string[] = [];
-  let size = 0;
   for (const l of lines) {
-    const purpose = l.description ? `: ${l.description.split('\n')[0]?.slice(0, 90)}` : '';
-    const line = `- ${l.name} (\`${l.slug}\`)${purpose}; ${l.terms} terms, ${l.rules} rules, ${l.openIssues} open → ${door(l.slug)}`;
-    if (size + line.length + 1 > TIER0_MODULE_LINES_MAX_CHARS) continue;
-    size += line.length + 1;
+    const line = lineOf(l, bare);
+    if (sizeOf(out) + line.length + 1 > room) break;
     out.push(line);
   }
-  return `### Modules\nBefore you work in a module, read its tree (its terms, rules, capabilities and requirements); when a person names a thing or an owner decides, write the term or rule under its module.\n${out.join('\n')}`;
+  return text(bare, [...out, pointer(lines.length - out.length)]);
 }

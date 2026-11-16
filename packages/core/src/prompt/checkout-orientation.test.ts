@@ -27,9 +27,11 @@ vi.mock('../knowledge/index.js', () => ({
   selectOnDemandSourcesFromKnowledge: store.sources,
 }));
 
+import { TIER0_MODULE_LINES_MAX_CHARS } from '@forge/contracts/module-map';
 import { FORGE_AGREEMENTS } from '../agreements/forge-defaults.js';
 import { resolveAgreements } from '../agreements/resolve.js';
 import { LESSONS_MAP_MAX_CHARS } from '../lessons/index.js';
+import { moduleLinesText } from '../lib/door-catalog.js';
 import {
   checkoutOrientation,
   ORIENTATION_GENERATED_LINE,
@@ -80,6 +82,112 @@ describe("the master's map carries one line per module (ISS-1256)", () => {
     expect(checkoutOrientation('p-1', 'forge', { ...RULES, modules: [] })).not.toContain(
       '### Modules',
     );
+  });
+});
+
+describe('every module keeps its line on the map, shortened past the cap, never dropped (ISS-1256)', () => {
+  // forge-dev's twelve business modules (their purposes in English), whose whole lines overran the cap and lost four in silence
+  const FORGE_DEV = [
+    [
+      'Adapters',
+      'adapters',
+      'Technical layer — outside integrations: GitHub, GitLab, Sentry, Google, LLM, mail, Rocket.Chat.',
+    ],
+    [
+      'Conversations',
+      'conversations-2',
+      'Conversations & notices: assistant, conversation, chat log, notification.',
+    ],
+    [
+      'Ecosystem',
+      'ecosystem-2',
+      'Ecosystem: joining many projects — contract, channel, inbound webhook.',
+    ],
+    [
+      'Execution',
+      'execution',
+      'Agents & execution: agent, session, job, run, master, runner, device, skill, schedules.',
+    ],
+    [
+      'Identity & access',
+      'identity-access',
+      'Identity & access: sign-in, org, membership, permission, token.',
+    ],
+    [
+      'Knowledge',
+      'knowledge-2',
+      'Knowledge & memory: knowledge, memory, embeddings, guides, onboarding.',
+    ],
+    ['Operations', 'operations', 'Operations & measuring: metrics, usage, health, admin.'],
+    [
+      'Platform',
+      'platform',
+      'Technical layer — platform: DB, outbox, queue, MCP, WebSocket, middleware; every group uses it.',
+    ],
+    [
+      'Product design',
+      'product-design',
+      'Product design: requirement, workflow, mockup, proposal, feedback.',
+    ],
+    [
+      'Projects & config',
+      'projects-config',
+      'Projects & config: project, configuration, secrets, preferences.',
+    ],
+    [
+      'Release & deploy',
+      'release-deploy',
+      'Release & deploy: release batching, branches, git, Coolify deploys, versions.',
+    ],
+    [
+      'Work & delivery',
+      'work-delivery',
+      'Work: issue, status lifecycle, pipeline, questions, PM, comment, defect intake.',
+    ],
+  ].map(([name, slug, description]) => ({
+    name: name as string,
+    slug: slug as string,
+    description: description as string,
+    terms: 0,
+    rules: 0,
+    openIssues: 0,
+  }));
+  const linesOf = (text: string) => text.split('\n').filter((l) => l.startsWith('- '));
+
+  it.each(['master', 'run', 'bot'] as const)(
+    'carries all twelve of forge-dev for a %s, within the cap',
+    (audience) => {
+      const text = moduleLinesText(FORGE_DEV, audience);
+      const lines = linesOf(text);
+      expect(
+        lines.map((l) => /\(`([^`]+)`\)/.exec(l)?.[1]),
+        'a module line was dropped',
+      ).toEqual(FORGE_DEV.map((m) => m.slug));
+      expect(lines.join('\n').length).toBeLessThanOrEqual(TIER0_MODULE_LINES_MAX_CHARS);
+      expect(text, 'a purpose ends in its own stop before the counts').not.toMatch(/[.;:,];/);
+      expect(text).toContain(audience === 'bot' ? '`module.get <slug>`' : '/modules/<slug>/map');
+    },
+  );
+
+  it('ends a whole purpose without its own stop before the counts', () => {
+    const [execution] = linesOf(moduleLinesText(FORGE_DEV.slice(3, 4), 'master'));
+    expect(execution).toBe(
+      '- Execution (`execution`): Agents & execution: agent, session, job, run, master, runner, device, skill, schedules; 0 terms, 0 rules, 0 open → GET /api/projects/:id/modules/execution/map',
+    );
+  });
+
+  it('counts what cannot fit even bare, and names the door that lists them', () => {
+    const many = Array.from({ length: 80 }, (_, i) => ({
+      ...(FORGE_DEV[0] as (typeof FORGE_DEV)[number]),
+      name: `Module ${i}`,
+      slug: `module-${i}`,
+    }));
+    const lines = linesOf(moduleLinesText(many, 'master'));
+    const shown = lines.length - 1;
+    expect(lines.at(-1)).toBe(`- ${80 - shown} more modules: GET /api/projects/:id/modules/map`);
+    expect(shown).toBeGreaterThan(0);
+    expect(lines.join('\n').length).toBeLessThanOrEqual(TIER0_MODULE_LINES_MAX_CHARS);
+    expect(linesOf(moduleLinesText(many, 'bot')).at(-1)).toMatch(/ more modules: module\.pillar$/);
   });
 });
 
