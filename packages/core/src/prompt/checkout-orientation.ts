@@ -116,8 +116,8 @@ server in \`.mcp.json\` carries only what neither covers, and its instructions n
 - **When you work an issue**, read it, its comments and its edges first: \`/api/issues/<id>\`
   (\`forge issue\`, \`forge comment\`); the project's list is \`/api/projects/${projectId}/issues\`.
 - **When a Forge door, guide or skill fails you** (it refused what it should take, missed what you
-  needed, or taught you wrong), say so: \`POST /api/forge/feedback\`; its triage takes it to the
-  feature that owns it.
+  needed, or taught you wrong), say so: \`POST /api/forge/feedback/doors { verdict, door, what }\`
+  (\`did_not_help\`, \`unclear\` or \`missing\`) files it on the feature that owns the door.
 - **Before you write or tune this project's pipeline skills**, read the \`forge-skills\` MCP prompt.
 
 ${OPERATING_AFFORDANCES_TEXT}
