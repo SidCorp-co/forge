@@ -1,1 +1,0 @@
-**The steward's daily budget is gone from the project settings and the Feedback list.** A `steward.budget` key is refused by name, stored ones are stripped, and Feedback shows the run-slot wait instead of "judging resumes".

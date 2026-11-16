@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.694] - 2026-11-16
+
+Steward runner jobs take run slots by the work instead of a daily cap
+
+### Changed
+
+- **The steward's runner jobs wait for a box slot, never a day.** Its daily budget is gone: a triage or release judge starts when its project has a free slot, and an act repeated on an unmoved item is refused.
+- **The steward's daily budget is gone from the project settings and the Feedback list.** A `steward.budget` key is refused by name, stored ones are stripped, and Feedback shows the run-slot wait instead of "judging resumes".
+
 ## [0.4.0-dev.693] - 2026-11-16
 
 Parallel builders get their own worktrees and safer shared contracts

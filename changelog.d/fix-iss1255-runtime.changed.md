@@ -1,1 +1,0 @@
-**The steward's runner jobs wait for a box slot, never a day.** Its daily budget is gone: a triage or release judge starts when its project has a free slot, and an act repeated on an unmoved item is refused.
