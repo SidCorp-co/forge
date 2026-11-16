@@ -333,6 +333,7 @@ export const ROOM_ACT_CARDS = {
       thread: THREAD,
       message: MESSAGE,
       failed: [{ line: 'no_ui_directions', why: 'told the owner to press the approve button' }],
+      missed: [{ door: 'support.member', why: 'answered who may approve without reading the member card' }],
     },
     // ISS-1250, release 0.4.0-dev.692 at 05:18Z: Forge-Communicate's reply verdicts read 7 replies,
     // 0 audited

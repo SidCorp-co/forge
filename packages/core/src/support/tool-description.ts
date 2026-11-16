@@ -12,35 +12,7 @@ import { AUDIT_RUBRIC_TEXT } from './reply-audit/teach.js';
  * The entries of the acts no card covers yet, each what the act does in a sentence or two. An act's
  * entry goes when its card lands (`supportToolDescription` refuses both).
  */
-export const UNCARDED_ENTRIES: Readonly<Partial<Record<SupportAction, string>>> = {
-  tools: 'the checks (diagnose) and changes (fix) this group grants you.',
-  move_issue:
-    'moves an issue of this project as the writer of the message it names, the one that asked (grant deliver).',
-  build:
-    'proposes committing your working copy of the development branch on a feat/ or fix/ branch, pushing it and opening a change request into it (grant build): ask a confirmer the room names in your own words, and cite their plain yes with agree.',
-  deploy:
-    'proposes deploying a bound target the grant names (grant deploy): ask a confirmer the room names in your own words, and cite their plain yes with agree; watch it with deployment.',
-  command:
-    'runs a command on a host the grant names (grant run_commands): one that only reads runs at once and you get its output, posted nowhere; one that changes a host is a proposal a confirmer agrees to.',
-  channel: 'reads the channel record every bot of this group reads: its members, rules and common issues.',
-  common_issue:
-    "keeps a question asked in two or more threads with its one answer, a defect's naming its Feedback key.",
-  announce: 'the one top-level post, for news affecting everyone, at most one an hour.',
-  owner_consent:
-    'in the owner\'s own room only, records that the owner agreed (decision give) to this room acting as him in a product, by the name tools lists it under (omitted where the project binds one), or took it back (withdraw; product omitted withdraws every one). Read his meaning in his own words and cite his message; never ask him to type a set word. Nothing is posted.',
-  owner_act:
-    "in the owner's own room only, makes an act tools lists as kind owner in its product, as the owner, while his consent for that product stands; `message` is the message asking for it. Forge makes the call with the owner's credential, which you never see, and hands you the product's answer. A tool listed with approval needs his agreement: ask him what it will do, and call again with his message's id as agreement once he agrees in any words. Nothing is posted.",
-  owner_sign_in:
-    "in the owner's own room only, starts his sign-in to a product whose binding declares one: you are handed `url`, the link to give him in your own words, and when it expires; his confirmation there is his consent. Nothing is posted.",
-  projects: "an operations room's: reads the projects of the room's scope.",
-  requirements: "reads a project's requirements, each with where it stands.",
-  move: "an operations room's: changes an issue's status as the writer of message, under their own Forge permissions.",
-  draft_requirement:
-    "an operations room's: drafts a requirement for a person to decide, as the writer of message, under their own Forge permissions.",
-  draft_feedback:
-    "an operations room's: drafts feedback on a requirement, an issue or a screen, as the writer of message, under their own Forge permissions.",
-  research: "an operations room's: reads one public https page.",
-};
+export const UNCARDED_ENTRIES: Readonly<Partial<Record<SupportAction, string>>> = {};
 
 /** What an act's entry carries beyond its card's purpose: data the act is scored or called by. */
 const DERIVED: Readonly<Partial<Record<SupportAction, string>>> = {
