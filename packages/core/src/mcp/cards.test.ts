@@ -205,3 +205,20 @@ describe("a door's capability card (ISS-1251)", () => {
     expect(map.text.length).toBeLessThanOrEqual(2500);
   });
 });
+
+// ISS-1252: a room agent adds, cites and reads reference sources through forge_support, a master and
+// its runs through forge_references; one act is taught once to each audience, never by both cards
+describe('a reference act is taught once per audience', () => {
+  it.each([
+    ['support.references', 'references.search'],
+    ['support.reference_add', 'references.add'],
+    ['support.reference_cite', 'references.cite'],
+    ['support.reference_propose', 'references.propose'],
+  ])('%s teaches the room agent, %s masters and runs', (room, door) => {
+    const roomCard = catalog.get(room)?.card;
+    const doorCard = catalog.get(door)?.card;
+    expect(roomCard?.audience).toEqual(['bot']);
+    expect(doorCard?.audience).toEqual(expect.arrayContaining(['master', 'run']));
+    expect(doorCard?.audience.filter((a) => roomCard?.audience.includes(a))).toEqual([]);
+  });
+});

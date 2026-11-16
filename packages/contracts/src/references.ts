@@ -258,7 +258,9 @@ export interface ReferenceSignalsResponse {
 /**
  * The reference-sources door's capability cards, by MCP action (`forge_references`), and the REST
  * card the orientation's Tier-0 map renders for a master and its runs. Written from the situation
- * ISS-1252 names; the replayable scenarios are owed until one is written.
+ * ISS-1252 names; the replayable scenarios are owed until one is written. A room agent does these
+ * acts through `forge_support`, whose own cards teach it (`core/src/support/reference-cards.ts`):
+ * one teaching per act per audience, so none of these is the room agent's.
  */
 
 const FIRST_SITUATION =
@@ -292,7 +294,7 @@ export const REFERENCE_CARDS = {
 		},
 		redFlag:
 			"Copying a pattern from a source without citing it, or citing a source you never opened.",
-		audience: ["bot", "master", "run"],
+		audience: ["master", "run"],
 		scenarios: [],
 	},
 	cite: {
@@ -319,7 +321,7 @@ export const REFERENCE_CARDS = {
 		},
 		redFlag:
 			"A citation with no reason for its take or reject: it counts as use and teaches nothing.",
-		audience: ["bot", "master", "run"],
+		audience: ["master", "run"],
 		scenarios: [],
 	},
 	add: {
@@ -345,7 +347,7 @@ export const REFERENCE_CARDS = {
 			areas: ["parallel agents", "worktrees"],
 			followReleases: true,
 		},
-		audience: ["bot", "master", "run", "person"],
+		audience: ["master", "run", "person"],
 		scenarios: [],
 	},
 	propose: {
@@ -362,7 +364,7 @@ export const REFERENCE_CARDS = {
 		],
 		redFlag:
 			"Proposing every page read once; a source earns its place by repeated use.",
-		audience: ["bot", "master", "run"],
+		audience: ["master", "run"],
 		scenarios: [],
 	},
 } satisfies Record<string, CapabilityCardBody>;

@@ -1,7 +1,8 @@
 // The capability cards of a room agent's reference acts (ISS-1252; owner 2026-11-16: he adds a source
 // in plain words to the agent he talks to, and that agent records it; bots consult sources first).
-// The situations are the references door's own (`@forge/contracts/references:REFERENCE_CARDS`),
-// taught here through the acts a room agent holds; no red flag is written until a misuse is seen.
+// They are the one teaching of these acts for a room agent: the references door's own cards
+// (`@forge/contracts/references:REFERENCE_CARDS`) teach masters and runs, never the bot, so the act
+// is taught once per audience. No red flag is written until a misuse is seen.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { SupportAction } from './act-cards.js';
