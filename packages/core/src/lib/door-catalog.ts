@@ -145,6 +145,23 @@ function doorsLine(names: readonly string[]): string {
     .join(' · ');
 }
 
+/**
+ * A family's doors merged one step further, where naming each act would overflow the map: each tool
+ * once with how many of its acts the family holds (`issues.* (9) · cleanup.* (2)`).
+ */
+function toolsLine(names: readonly string[]): string {
+  const count = new Map<string, number>();
+  for (const n of names) {
+    const tool = n.split('.')[0] ?? n;
+    count.set(tool, (count.get(tool) ?? 0) + 1);
+  }
+  return [...count].map(([t, n]) => (n > 1 ? `${t}.* (${n})` : `${t}.*`)).join(' · ');
+}
+
+/** The line a map ends on where it merged a family's acts into their tools: how to find each act. */
+export const mergedLine =
+  '- a tool.* (n) is n acts: forge_find { query: "<your situation>" } names the one to use';
+
 /** The line a map ends on where it could not carry every card: how many, and where to find them. */
 export const moreLine = (left: number) =>
   `- ${left} more: forge_find { query: "<your situation>" } or guides/doors.md`;
@@ -154,8 +171,11 @@ export const moreLine = (left: number) =>
  * cards that teach it, most used first (`calls`, the door use of the window), each named by its
  * capability (`doorNames`). A card of a family (`card-families.ts`) is one name on its family's
  * line, "when <the family's situation> → its names"; a card of none gives each situation a line.
- * Whole blocks are carried within `TIER0_MAP_MAX_CHARS`; where they cannot all be, the map is a pile
- * due for merging and its last line says how many it left out and where they are found.
+ * Where naming every act would overflow `TIER0_MAP_MAX_CHARS`, the families that save most are
+ * merged one step further, each tool named once with its count of acts (`issues.* (9)`), and a last
+ * line says how to find the act; every card is still reached through its family's line. Only where
+ * the map overflows with every family merged is it a pile due for new families: whole blocks are
+ * carried and its last line says how many it left out and where they are found.
  */
 export function tier0Map(
   doors: readonly CatalogDoor[],
@@ -179,42 +199,61 @@ export function tier0Map(
   const blocks = [...groups.values()].map((members) => {
     const cards = members.map((d) => d.card as CapabilityCard);
     const family = cards[0]?.family;
-    return {
-      ids: cards.map((c) => c.id),
-      lines: [
-        ...(family
-          ? [`- when ${CARD_FAMILIES[family]} → ${doorsLine(members.map(nameOf))}`]
-          : situationsFor(cards[0] as CapabilityCard, audience).map(
-              (s) => `- when ${s.when} → ${nameOf(members[0] as CatalogDoor)}`,
-            )),
-        // a situation a lesson folded in, shown until the card's code carries it
-        ...members.flatMap((d) =>
-          (proposed.get(d.card?.id ?? '') ?? []).map((t) => `- (proposed) ${t} → ${nameOf(d)}`),
-        ),
-      ],
-    };
+    // a situation a lesson folded in, shown until the card's code carries it
+    const lessons = members.flatMap((d) =>
+      (proposed.get(d.card?.id ?? '') ?? []).map((t) => `- (proposed) ${t} → ${nameOf(d)}`),
+    );
+    const lines = family
+      ? [`- when ${CARD_FAMILIES[family]} → ${doorsLine(members.map(nameOf))}`, ...lessons]
+      : [
+          ...situationsFor(cards[0] as CapabilityCard, audience).map(
+            (s) => `- when ${s.when} → ${nameOf(members[0] as CatalogDoor)}`,
+          ),
+          ...lessons,
+        ];
+    const merged = family
+      ? [`- when ${CARD_FAMILIES[family]} → ${toolsLine(members.map(nameOf))}`, ...lessons]
+      : lines;
+    return { ids: cards.map((c) => c.id), lines, merged, use: lines };
   });
+  const sizeOf = (ls: readonly string[]) => ls.join('\n').length + 1;
+  const total = () => blocks.reduce((n, b) => n + sizeOf(b.use), -1);
+  if (total() > TIER0_MAP_MAX_CHARS) {
+    // merge the families that save most first, until the map and its pointer line fit
+    const room = TIER0_MAP_MAX_CHARS - mergedLine.length - 1;
+    const bySaving = blocks
+      .filter((b) => b.merged !== b.lines)
+      .sort((a, b) => sizeOf(b.lines) - sizeOf(b.merged) - (sizeOf(a.lines) - sizeOf(a.merged)));
+    for (const b of bySaving) {
+      if (total() <= room) break;
+      b.use = b.merged;
+    }
+  }
+  const anyMerged = blocks.some((b) => b.use !== b.lines);
   const fill = (cap: number) => {
     const lines: string[] = [];
     const carried: string[] = [];
     let size = -1;
     for (const b of blocks) {
-      const grows = b.lines.join('\n').length + 1;
+      const grows = sizeOf(b.use);
       if (size + grows > cap) continue;
       size += grows;
-      lines.push(...b.lines);
+      lines.push(...b.use);
       carried.push(...b.ids);
     }
     return { lines, carried };
   };
-  const whole = fill(TIER0_MAP_MAX_CHARS);
+  const tail = anyMerged ? [mergedLine] : [];
+  const whole = fill(TIER0_MAP_MAX_CHARS - (anyMerged ? mergedLine.length + 1 : 0));
   if (whole.carried.length === taught.length) {
-    return { text: whole.lines.join('\n'), carried: whole.carried, reach: taught.length };
+    return { text: [...whole.lines, ...tail].join('\n'), carried: whole.carried, reach: taught.length };
   }
   // the pointer to the cards left out is within the cap too, so room is kept for it
-  const kept = fill(TIER0_MAP_MAX_CHARS - moreLine(taught.length).length - 1);
+  const kept = fill(
+    TIER0_MAP_MAX_CHARS - moreLine(taught.length).length - 1 - (anyMerged ? mergedLine.length + 1 : 0),
+  );
   return {
-    text: [...kept.lines, moreLine(taught.length - kept.carried.length)].join('\n'),
+    text: [...kept.lines, ...tail, moreLine(taught.length - kept.carried.length)].join('\n'),
     carried: kept.carried,
     reach: taught.length,
   };

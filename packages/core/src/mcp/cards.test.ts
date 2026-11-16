@@ -4,7 +4,13 @@
 import { TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
 import { CARD_FAMILIES } from '@forge/contracts/card-families';
 import { describe, expect, it } from 'vitest';
-import { doorNames, moreLine, tier0Map } from '../lib/door-catalog.js';
+import {
+  type CatalogDoor,
+  doorNames,
+  mergedLine,
+  moreLine,
+  tier0Map,
+} from '../lib/door-catalog.js';
 import type { McpTool } from '../lib/tool.js';
 import { sourceOf } from '../lib/tool.js';
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
@@ -226,6 +232,22 @@ describe('a reference act is taught once per audience', () => {
   });
 });
 
+/**
+ * Whether a map reaches a door: a card of a family through its family's line naming the door's tool
+ * (each act, or the tool merged with its count), a card of none by its own name.
+ */
+function reaches(text: string, door: CatalogDoor, names: ReadonlyMap<string, string>): boolean {
+  const name = names.get(door.id) ?? door.id;
+  const [tool, act] = name.split('.') as [string, string];
+  const family = door.card?.family;
+  if (!family) return text.split('\n').some((l) => l.endsWith(`→ ${name}`));
+  const line = text.split('\n').find((l) => l.startsWith(`- when ${CARD_FAMILIES[family]} → `));
+  if (!line) return false;
+  const named = new RegExp(`${tool}\\.([a-z_]+ · )*${act}( · |$)`);
+  const merged = new RegExp(`(^|→ | · )${tool}\\.\\*( \\(\\d+\\))?( · |$)`);
+  return named.test(line) || merged.test(line);
+}
+
 // ISS-1251 criterion 5: a cap on the Tier-0 map triggers merging, never truncation. A card of a family
 // is one door on its family's line, so the room agent's map names every act it holds within its cap.
 describe('a Tier-0 map merges a family of acts into one line', () => {
@@ -265,13 +287,15 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
     expect(map.carried).toEqual(['support.b', 'support.a', 'other.c']);
   });
 
-  it('carries every act a room agent holds, each named on the bot map, within its cap', () => {
-    const map = tier0Map(servedDoorCatalog().doors, 'bot');
+  it('carries every act a room agent holds, each reached through its line, within its cap', () => {
+    const doors = servedDoorCatalog().doors;
+    const map = tier0Map(doors, 'bot');
     const acts = Object.keys(SUPPORT_ACT_CARDS);
     expect(map.carried.length).toBe(map.reach);
     for (const act of acts) {
       expect(map.carried, act).toContain(`support.${act}`);
-      expect(map.text, act).toMatch(new RegExp(`(support\\.| · )${act}( · |$|\\n)`, 'm'));
+      const door = doors.find((d) => d.id === `support.${act}`) as CatalogDoor;
+      expect(reaches(map.text, door, doorNames(doors)), act).toBe(true);
     }
     expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
   });
@@ -279,7 +303,7 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
   // ISS-1251 c5 (master, 2026-11-16): every audience's map names capabilities, never routes, and
   // every card it teaches is on it or behind its last line's count and the door that finds it
   it.each(['bot', 'master', 'run'] as const)(
-    'reaches every card the %s is taught, by capability name, within its cap',
+    'reaches every card the %s is taught through its family line or its name, within its cap',
     (audience) => {
       const doors = servedDoorCatalog().doors;
       const names = doorNames(doors);
@@ -289,9 +313,8 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
       const left = map.reach - map.carried.length;
       if (left > 0) expect(map.text.split('\n').at(-1)).toBe(moreLine(left));
       for (const id of map.carried) {
-        const door = doors.find((d) => d.card?.id === id);
-        const [tool, act] = (names.get(door?.id ?? '') ?? '').split('.');
-        expect(map.text, id).toMatch(new RegExp(`${tool}\\.([a-z_]+ · )*${act}( · |$|\\n)`, 'm'));
+        const door = doors.find((d) => d.card?.id === id) as CatalogDoor;
+        expect(reaches(map.text, door, names), id).toBe(true);
       }
       expect(left, `${audience} leaves ${left} cards to forge_find`).toBe(0);
     },
@@ -304,6 +327,25 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
     expect(left).toBeGreaterThan(0);
     expect(map.text.split('\n').at(-1)).toBe(moreLine(left));
     expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
+  });
+
+  it('merges a family into its tools with their counts before it leaves any card out', () => {
+    const many = Array.from({ length: 120 }, (_, i) =>
+      door(`thing${i % 3}.a_long_act_name_${i}`, 'issue-work'),
+    );
+    const map = tier0Map([...many, door('other.c')], 'bot');
+    expect(map.carried.length).toBe(121);
+    expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
+    expect(map.text.split('\n')).toEqual([
+      '- when you need other.c → other.c',
+      '- when a second case → other.c',
+      `- when ${CARD_FAMILIES['issue-work']} → thing0.* (40) · thing1.* (40) · thing2.* (40)`,
+      mergedLine,
+    ]);
+    // a family that fits is still named act by act
+    expect(tier0Map(many.slice(0, 2), 'bot').text).toBe(
+      `- when ${CARD_FAMILIES['issue-work']} → thing0.a_long_act_name_0 · thing1.a_long_act_name_1`,
+    );
   });
 
   it('names each REST door by its module and act, every name one door', () => {
