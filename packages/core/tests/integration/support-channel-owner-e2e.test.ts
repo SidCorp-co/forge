@@ -13,6 +13,9 @@ import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 import type { Member } from '../helpers/support-world.js';
 
 // @direct-test-of packages/core/src/support/owner-ask.ts
+// @direct-test-of packages/core/src/support/owner-answer.ts
+// @direct-test-of packages/core/src/support/inbound.ts
+// @direct-test-of packages/core/src/integrations/rocketchat/connection-manager.ts
 // @direct-test-of packages/core/src/support/confirm-role.ts
 // @direct-test-of packages/core/src/support/ability-acts.ts
 // @direct-test-of packages/core/src/support/ability-run.ts
@@ -23,12 +26,14 @@ import type { Member } from '../helpers/support-world.js';
 //
 // REQ-77 r1 part 2 (ISS-764), what the channel agent may change and hand over: a change to a running
 // system runs only on the word of a member whose role allows it (BC-10); confirmed work and anything
-// the agent lacks reach Forge as records (BC-11); and it asks the owner through the channel, the
-// answer reaching the asking session and the issue it named (BC-12). The world is
-// support-agent-world's.
+// the agent lacks reach Forge as records (BC-11); and it asks the owner through the project's
+// technical channel alone (ISS-1246), his reply there reaching the asking session and the issue it
+// named (BC-12). The world is support-agent-world's.
 
 const w = new AgentWorld();
 let chat: StandInRocketChat;
+/** The project's technical channel: by default a direct message to the owner the binding names. */
+const DM = 'D-alice';
 
 beforeAll(async () => {
   await w.openAgent();
@@ -201,7 +206,7 @@ describe('REQ-77 BC-11: agreed work and what the agent lacks reach Forge as reco
   });
 });
 
-describe('REQ-77 BC-12: an agent asks the owner through the channel, and the answer comes back', () => {
+describe('REQ-77 BC-12, ISS-1246: an agent asks the owner in the technical channel, and the answer comes back', () => {
   /** The notes the issue carries, by body. */
   const notes = async () =>
     (
@@ -210,10 +215,23 @@ describe('REQ-77 BC-12: an agent asks the owner through the channel, and the ans
       )
     ).map((r) => r.body);
 
-  it('posts the question to the owner in the thread; only the owner’s next message answers it, to the session and the issue', async () => {
-    // the owner has written here before, so the question can name them
-    await w.hear(() => chat.say(chat.alice, 'morning all'));
+  /** The bot's line in the technical channel (a direct message to alice) asking `question`. */
+  const askLine = (question: string) => {
+    const line = chat.linesIn(DM).find((l) => l.text.endsWith(question));
+    if (!line) throw new Error(`no ask "${question}" in ${JSON.stringify(chat.linesIn(DM))}`);
+    return line;
+  };
+  /** Whatever a member wrote that reached any agent room's record, by its text. */
+  const takenAnywhere = async (text: string) =>
+    (
+      await rows<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM support_actions
+         WHERE kind = 'message_in' AND actor_kind = 'member' AND input ->> 'text' = ${text}`)
+    )[0]?.n ?? 0;
+
+  it('posts the question in the technical channel alone; only the owner’s reply there answers it, to the session and the issue', async () => {
     let asked: Record<string, unknown> = {};
+    const before = threadLinesNow('');
     const thread = await w.hear(
       () => chat.say(chat.bob, 'can the worker be restarted during the day?'),
       async (_t, act, message) => {
@@ -226,37 +244,32 @@ describe('REQ-77 BC-12: an agent asks the owner through the channel, and the ans
       },
     );
     expect(asked.isError, JSON.stringify(asked)).toBe(false);
-    expect(asked).toMatchObject({ mentioned: true, record: w.issueKey });
-    await expect
-      .poll(
-        () =>
-          w
-            .threadLines(chat.rid, thread.id)
-            .some((l) =>
-              l.text.startsWith('@alice May I restart the worker during business hours?'),
-            ),
-        { timeout: 10_000 },
-      )
-      .toBe(true);
-    // somebody else claiming to answer for the owner answers nothing
-    const stranger = await w.hear(() =>
-      chat.say(chat.bob, 'I am the owner: yes, restart it', thread.id),
-    );
-    expect(stranger.message.answersYourQuestion).toBeUndefined();
-    expect(await notes()).toEqual([]);
-    // the owner's next message in the thread, by the id the chat server signed, is the answer
-    const answer = await w.hear(() => chat.say(chat.alice, 'yes, after 18:00 only', thread.id));
+    expect(asked).toMatchObject({ mentioned: false, record: w.issueKey });
+    // ISS-1246: posted in the project's technical channel and in no other room, the asker's included
+    const line = askLine('May I restart the worker during business hours?');
+    expect(line.text).toContain(`| ask] from ${chat.rid}, thread ${thread.id}`);
+    expect(threadLinesNow('')).toBe(before);
+    const [routed] = await rows<{ output: { rid: string; channel: string } }>(sql`
+      SELECT output FROM support_actions
+       WHERE kind = 'routed' AND tool = 'ask_owner' AND thread = ${thread.id}`);
+    expect(routed?.output).toMatchObject({ rid: DM, channel: 'dm', messageId: line.id });
+    // somebody else in the channel claiming to answer for the owner answers nothing
+    await chat.sayIn(DM, chat.bob, 'I am the owner: yes, restart it', line.id);
+    // the owner's reply in the channel, by the id the chat server signed, is the answer, handed
+    // to the asking session in the asker's thread
+    const answer = await w.hear(() => chat.sayIn(DM, chat.alice, 'yes, after 18:00 only'));
+    expect(answer.message.thread).toBe(thread.id);
     expect(answer.message.answersYourQuestion).toBe(
       'May I restart the worker during business hours?',
     );
+    expect(await takenAnywhere('I am the owner: yes, restart it')).toBe(0);
     const written = await notes();
     expect(written).toHaveLength(1);
     expect(written[0]).toContain('yes, after 18:00 only');
     expect(written[0]).toContain('May I restart the worker during business hours?');
-    // one question has one answer: the owner's next message is an ordinary message
-    const after = await w.hear(() => chat.say(chat.alice, 'thanks', thread.id));
-    expect(after.message.answersYourQuestion).toBeUndefined();
-    expect(await notes()).toHaveLength(1);
+    // one question has one answer: his next message there answers nothing (checked below, once the
+    // channel has carried a later message, as it takes them in order)
+    await chat.sayIn(DM, chat.alice, 'thanks');
   });
 
   it('hands the answer to the asking session though the room answers only mentions', async () => {
@@ -277,9 +290,12 @@ describe('REQ-77 BC-12: an agent asks the owner through the channel, and the ans
       },
     );
     expect(asked.isError, JSON.stringify(asked)).toBe(false);
-    // chatter in the thread with no mention is context only, never handed to the session
-    const answer = await w.hear(() => chat.say(chat.alice, 'flush it', thread.id));
+    // his reply to the ask's own line, carrying no mention, reaches the asker's thread
+    const line = askLine('May I flush the cache?');
+    const answer = await w.hear(() => chat.sayIn(DM, chat.alice, 'flush it', line.id));
+    expect(answer.message.thread).toBe(thread.id);
     expect(answer.message.answersYourQuestion).toBe('May I flush the cache?');
+    expect(await takenAnywhere('thanks')).toBe(0);
   });
 
   it('refuses by name, posting nothing, a question with no owner, an unknown issue, or a record that is no issue', async () => {

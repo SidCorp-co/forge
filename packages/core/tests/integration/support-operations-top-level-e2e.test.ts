@@ -8,7 +8,6 @@ vi.hoisted(() => {
 
 import { announce } from '../../src/support/channel.js';
 import { checkResult } from '../../src/support/checks.js';
-import { dayThreadFor } from '../../src/support/question-task.js';
 import { insertAction, type RoomRow, roomsOfProject } from '../../src/support/store.js';
 import { api } from '../helpers/api.js';
 import { settleOutbox } from '../helpers/ecosystem-world.js';
@@ -20,11 +19,10 @@ import { SupportWorld } from '../helpers/support-world.js';
 // @direct-test-of packages/core/src/support/read.ts
 // @direct-test-of packages/core/src/support/channel.ts
 // @direct-test-of packages/core/src/support/checks.ts
-// @direct-test-of packages/core/src/support/question-task.ts
 //
 // ISS-933: the warm sweep declares forge's shared Forge-Communicate operations room, where people
-// and other bots talk. Nothing a session posts reaches the room's top level: an announcement, the
-// day's questions opener and a check's finding land in the project's own thread its binding records,
+// and other bots talk. Nothing a session posts reaches the room's top level: an announcement and a
+// check's finding land in the project's own thread its binding records,
 // or are refused by name with none recorded. Which messages the session answers is its own judgement,
 // in its brief (owner ruling, forge decision 1592b79d): no code holds a member's message back.
 
@@ -94,22 +92,11 @@ afterAll(() => w.stop());
 
 describe('nothing reaches the top level of a forge-scope operations room (ISS-933)', () => {
   const NEWS = 'Bản phát hành mới đã lên, mọi thứ chạy bình thường.';
-  const OPENER = 'Câu hỏi hôm nay cho chủ dự án';
   const FINDING = 'Kiểm tra sáng nay: hàng đợi đang dồn, cần xem lại.';
 
-  /** A handed Forge question and a check firing, as core writes each into the room. */
+  /** A check firing, as core writes it into the room. */
   async function seed(tag: string) {
-    const handed = `handed-${tag}`;
     const check = `check-${tag}`;
-    await insertAction({
-      roomId: room.id,
-      projectId: room.projectId,
-      conversationId: null,
-      thread: handed,
-      kind: 'message_in',
-      actorKind: 'core',
-      input: { forgeQuestion: `q-${tag}`, round: 1 },
-    });
     await insertAction({
       roomId: room.id,
       projectId: room.projectId,
@@ -119,19 +106,17 @@ describe('nothing reaches the top level of a forge-scope operations room (ISS-93
       actorKind: 'core',
       input: { check: tag },
     });
-    return { handed, check };
+    return { check };
   }
 
-  it('refuses an announcement, the day opener and a check finding by name with no thread recorded', async () => {
+  it('refuses an announcement and a check finding by name with no thread recorded', async () => {
     const before = chat.linesIn(chat.rid).length;
-    const { handed, check } = await seed('none');
+    const { check } = await seed('none');
     const said = await announce(room, { text: NEWS });
     expect(codeOf(said)).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
     expect(said.ok ? '' : said.refusals[0]?.detail).toContain(
       `operations.threads["${chat.rid}"]["${slug}"]`,
     );
-    const opened = await dayThreadFor(room, { thread: handed, opener: OPENER });
-    expect(codeOf(opened)).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
     const found = await checkResult(room, { check, finding: FINDING });
     expect(codeOf(found)).toBe('SUPPORT_PROJECT_THREAD_UNRECORDED');
     expect(chat.linesIn(chat.rid).length, 'nothing was posted').toBe(before);
@@ -160,20 +145,14 @@ describe('nothing reaches the top level of a forge-scope operations room (ISS-93
     await settleOutbox();
     await w.settleWarm();
     const before = chat.linesIn(chat.rid).length;
-    const { handed, check } = await seed('recorded');
+    const { check } = await seed('recorded');
     const said = await announce(room, { text: NEWS });
     expect(said.ok, JSON.stringify(said)).toBe(true);
-    const opened = await dayThreadFor(room, { thread: handed, opener: OPENER });
-    expect(opened.ok, JSON.stringify(opened)).toBe(true);
-    expect(opened.ok ? opened.value.thread : null, "the day's thread is the project's").toBe(
-      THREAD,
-    );
     const found = await checkResult(room, { check, finding: FINDING });
     expect(found.ok, JSON.stringify(found)).toBe(true);
     const posted = chat.linesIn(chat.rid).slice(before);
     expect(posted.map((l) => [l.tmid, l.text])).toEqual([
       [THREAD, NEWS],
-      [THREAD, OPENER],
       [THREAD, FINDING],
     ]);
   });
