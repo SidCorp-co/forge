@@ -262,7 +262,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
     field:query:key field:query:kind field:query:label field:query:labels field:query:metadataType
     field:query:module field:query:party field:query:q field:query:search field:query:status
-    field:query:area field:json:areas
+    field:query:area field:json:areas field:json:area field:json:q
     field:query:step field:query:steps field:query:verb field:query:view field:query:error
     field:query:errorCode field:query:method field:query:path field:query:query field:query:release
     field:query:window field:query:role field:query:since field:query:until field:query:door`,

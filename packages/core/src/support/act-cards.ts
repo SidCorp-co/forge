@@ -11,6 +11,7 @@ import {
 } from '@forge/contracts/capability-cards';
 import type { SUPPORT_ACTIONS } from '@forge/contracts/support';
 import type { OperationsAction } from '@forge/contracts/support-operations';
+import { REFERENCE_ACT_CARDS } from './reference-cards.js';
 import { ROOM_ACT_CARDS } from './room-cards.js';
 import { WORK_ACT_CARDS } from './work-cards.js';
 
@@ -20,6 +21,7 @@ export type SupportAction = (typeof SUPPORT_ACTIONS)[number] | OperationsAction;
 export const SUPPORT_ACT_CARDS: Readonly<Partial<Record<SupportAction, CapabilityCardBody>>> = {
   ...ROOM_ACT_CARDS,
   ...WORK_ACT_CARDS,
+  ...REFERENCE_ACT_CARDS,
 };
 
 /** The door a room act is served as, and its card is keyed by: `support.member`. */

@@ -975,7 +975,7 @@
     "by": "ISS-1251"
   },
   "support.audit": {
-    "hash": "e28f83979fc8e4bb",
+    "hash": "8a7bd2ef436bae91",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -1000,7 +1000,7 @@
     "by": "ISS-1251"
   },
   "support.guide": {
-    "hash": "500f1434e64b1280",
+    "hash": "80e5b0cb15b2deb3",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -1064,6 +1064,26 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "support.reference_add": {
+    "hash": "0603abea4e530c5b",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "support.reference_cite": {
+    "hash": "57f162fa371e1db2",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "support.reference_propose": {
+    "hash": "805fc6fad4b2703b",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
+  "support.references": {
+    "hash": "73d30505d93b5b4d",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "support.release_decision": {
     "hash": "dbb134ca6168195b",
     "on": "2026-11-16",
@@ -1090,7 +1110,7 @@
     "by": "ISS-1251"
   },
   "support.run": {
-    "hash": "46c0623f197671fb",
+    "hash": "794f13c760d4b535",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },

@@ -304,7 +304,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'you posted a reply',
-        do: 'audit it at once with support.audit { thread, message, failed } against the rubric, honestly, and let what fails shape your next reply',
+        do: 'audit it at once with support.audit { thread, message, failed } against the rubric, and let what fails shape your next reply',
       },
     ],
     practice: ['message is the messageId reply answered you; failed is [] where every line holds.'],
@@ -325,7 +325,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'a situation needs more than its line in your brief',
-        do: 'read this room’s guide with support.guide {}, by situation; an act’s card (when, how, the wrong way) is forge_describe { action: "support.<act>" }',
+        do: 'read this room’s guide with support.guide {}, by situation; an act’s card is forge_describe { action: "support.<act>" }',
       },
     ],
     practice: [

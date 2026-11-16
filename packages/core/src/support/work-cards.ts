@@ -17,11 +17,12 @@ export const WORK_ACT_CARDS = {
     situations: [
       {
         when: 'something is reported broken',
-        do: 'diagnose it with support.run on a check support.tools lists before you say what it is; a diagnose posts nothing, so your answer is the only post the asker sees',
+        do: 'diagnose it with support.run on a check support.tools lists before you say what it is; a diagnose posts nothing',
       },
     ],
     practice: [
       'Say only what the check confirmed; name what you could not check as unchecked, never as a guess.',
+      'Each check is recorded on its action, so your answer is the only post the asker sees.',
     ],
     example: { thread: THREAD, tool: 'runs_list', args: { status: 'failed' } },
     audience: ['bot'],

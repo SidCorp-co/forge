@@ -22,7 +22,7 @@ import { imagesHeadOf } from './images.js';
 import { paramTakes } from './ops-read-args.js';
 import { answersOf } from './owner-answer.js';
 import { ownerOwedNote } from './owner-owed.js';
-import { roomConductLines } from './room-conduct.js';
+import { OWNER_MAP_ACTS, roomConductLines } from './room-conduct.js';
 import { type RoutingSignals, routingSignalsOf } from './routing-signals.js';
 import type { ActionRow, RoomRow } from './store.js';
 import { recentThreads, threadConversation, threadWritings } from './store.js';
@@ -119,6 +119,8 @@ export function agentOpening(input: {
     "Every message you are handed ends in a reply or support.silent { thread, message, reason }; a turn that ends having done nothing hands its messages to you again. Post results only, one per request, in the asker's thread, following the persona at the top of this brief; never a Forge refusal code, a permission name or a grant you lack.",
     'Whether something is live, deployed or released you say only from a read of the same turn: support.releases { project } or support.deployment { target }, quoting the version it returns, or a note Forge handed you in that turn; never from memory or an earlier turn, and a post that says it without one is refused.',
     "A question for the owner, yours, a project's or a master's, goes only to the project's technical channel, with support.ask_owner from the thread it arose in, in plain words with no issue key, MR number, variable name or sha. Never relay a project's or a master's question in any group.",
+    // where the owner speaks to the agent (ISS-1252): his "follow X for Y" is an add made as him
+    ...OWNER_MAP_ACTS.map(mapLine),
     ...(input.ownerRoom
       ? [
           `In the owner's room ${input.ownerRoom}, and only there, you act in a product as the owner where he asks: with his plain agreement recorded once by support.owner_consent citing his message (his word to stop withdraws it), each act is support.owner_act on a tool support.tools lists as kind owner; Forge makes the call with his credential, which you never hold. Where Forge keeps none, or his ended, support.owner_sign_in hands you a link for him to sign in to the product; his confirmation there is his consent.`,

@@ -3,6 +3,7 @@
 // only the room's own session, under the token its current turn was handed, is admitted.
 
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
+import { REFERENCE_KINDS } from '@forge/contracts/references';
 import {
   SUPPORT_ACTIONS,
   SUPPORT_RECORD_KINDS,
@@ -68,6 +69,12 @@ import {
   operationsRequirementsRequestSchema,
   operationsResearchRequestSchema,
 } from '@forge/contracts/support-operations';
+import {
+  supportReferenceAddRequestSchema,
+  supportReferenceCiteRequestSchema,
+  supportReferenceProposeRequestSchema,
+  supportReferencesRequestSchema,
+} from '@forge/contracts/support-references';
 import { supportAuditRequestSchema } from '@forge/contracts/support-reply-audit';
 import { supportTechnicalRequestSchema } from '@forge/contracts/support-technical';
 import { z } from 'zod';
@@ -113,6 +120,7 @@ export const SUPPORT_TOOL_READS: readonly string[] = [
   'in_flight',
   'asker',
   'guide',
+  'references',
 ];
 
 const ACTIONS = [...SUPPORT_ACTIONS, ...OPERATIONS_ACTIONS] as const;
@@ -170,6 +178,10 @@ const REQUESTS = {
   asker: supportAskerRequestSchema,
   guide: supportGuideRequestSchema,
   audit: supportAuditRequestSchema,
+  references: supportReferencesRequestSchema,
+  reference_add: supportReferenceAddRequestSchema,
+  reference_cite: supportReferenceCiteRequestSchema,
+  reference_propose: supportReferenceProposeRequestSchema,
 } as const satisfies Record<(typeof ACTIONS)[number], z.ZodType>;
 
 /** Each action's request as `forge_describe` answers it, its entry below naming exactly these (ISS-1033). */
@@ -250,6 +262,35 @@ const inputSchema = z.strictObject({
   to: z.enum([...ISSUE_STATUSES, ...CHANNEL_ROUTES]).optional(),
   // what a need raised in the technical channel is (ISS-1243)
   need: supportTechnicalRequestSchema.shape.need.optional(),
+  // a project's reference sources (ISS-1252): the fields their acts take beside the ones above
+  ...supportReferencesRequestSchema.partial().shape,
+  ...supportReferenceCiteRequestSchema.omit({ why: true, project: true }).partial().shape,
+  areas: supportReferenceAddRequestSchema.shape.areas.optional(),
+  priority: supportReferenceAddRequestSchema.shape.priority,
+  followReleases: supportReferenceAddRequestSchema.shape.followReleases,
+  shared: supportReferenceAddRequestSchema.shape.shared,
+  evidence: supportReferenceProposeRequestSchema.shape.evidence.optional(),
+  // a field two acts' requests both take, each judged by its own act's request: a record's or a
+  // draft's kind, or a reference source's; a page's or a source's address; a one-line why, or what a
+  // source teaches
+  kind: z
+    .enum([...SUPPORT_RECORD_KINDS, ...REFERENCE_KINDS])
+    .optional()
+    .describe(
+      `record, draft_feedback: ${SUPPORT_RECORD_KINDS.join(' | ')}; reference_add, reference_propose: ${REFERENCE_KINDS.join(' | ')}`,
+    ),
+  url: z
+    .string()
+    .max(2000)
+    .optional()
+    .describe("research: an https page; reference_add, reference_propose: the source's address"),
+  why: z
+    .string()
+    .max(600)
+    .optional()
+    .describe(
+      'reply, decide: one line, why; reference_add, reference_propose: what the project learns from the source; reference_cite: why you took or rejected it',
+    ),
   // a channel agent answers several groups: an act naming no thread or message of one names it here
   rid: channelRidSchema.optional(),
 });
@@ -306,6 +347,10 @@ const SHAPE = [
   'guide {}',
   'audit { thread, message, failed: [{ line, why }] }',
   `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document? }`,
+  'references { project?, area?, q? }',
+  `reference_add { thread, message, project?, kind: ${REFERENCE_KINDS.join(' | ')}, url, why, areas, title?, priority?, followReleases?, shared? }`,
+  'reference_cite { source, ref, verdict: take | reject, why, about?, project? }',
+  'reference_propose { kind, url, why, areas, evidence, title?, priority?, followReleases?, project? }',
   'any action may add rid: the group, where you answer several and the act names no thread',
   'a channel agent following several projects names one as project on search, project, record, issues, releases and requirements, and on promise where the key alone does not say; its home when omitted',
 ].join('; ');
@@ -340,6 +385,10 @@ const DESCRIPTION = [
   "In an operations room (your brief says which room you answer) the acts are your role's: projects, issues and releases read the projects of the room's scope (a parked issue's `waiting` says who owes what: its open question in plain words, the options, or the reason it gave); move changes an issue's status, and draft_requirement and draft_feedback draft product direction for a person to decide, each as the member who wrote last in the thread and under their own Forge permissions; research reads one public https page. An act your role is not granted, a project outside the scope, or a member Forge cannot name is refused by name: hand the act to the master of the project it concerns with ask_master (or raise a grant with technical), and never explain it in the thread. The support group acts (search, tools, run, propose_fix, record) are refused there, as these are in a support group.",
   "technical {thread, need, text}: raise what you need from the thread it arose in (a permission or an approval, a technical finding, an ask of the owner) in the project's one technical channel, and nowhere else: Forge posts it there (the project's own thread of the shared operations room, or a direct message to the person the project names, the owner by default) and records where; the thread is posted nothing, so tell it the answer or one short note that it is in hand. A channel the project names but Forge cannot reach is refused SUPPORT_TECHNICAL_CHANNEL_UNNAMED or SUPPORT_TECHNICAL_CHANNEL_UNREACHABLE, naming the project document key that fixes it.",
   AUDIT_TOOL_TEXT,
+  'references {project?, area?, q?}: the reference sources a project (your home, or one you follow) learns from first, every one or those an area or words name, each with why it is kept and its areas. Nothing is posted.',
+  "reference_add {thread, message, project?, kind, url, why, areas, title?, priority?, followReleases?, shared?}: add the source a person told you to follow or learn from, as them: `message` is their message asking for it, whose writer the add runs as, under their own Forge permission on the project (OPS_ASKER_UNMAPPED, or a permission code, where they may not; nothing is added). Refused by name: REFERENCE_SOURCE_DUPLICATE (already listed), REFERENCE_FOLLOW_UNSUPPORTED (only a github.com repository's releases are followed), REFERENCE_SHARED_FORBIDDEN (shared is the organization's, for its admin). Nothing is posted: tell them in your words.",
+  'reference_cite {source, ref, verdict, why, about?, project?}: record one use of a source, as yours: the source by id, address or name, what you read (a repo path, a doc page, a release), take or reject, why, and the work it was for (ISS-n, REQ-n, FB-n). A source the project does not list is refused SUPPORT_REFERENCE_UNKNOWN. Nothing is posted.',
+  'reference_propose {kind, url, why, areas, evidence, title?, priority?, followReleases?, project?}: propose a source you kept using that the project does not list, as yours, with the work it helped and what you took as evidence. Nothing is posted.',
   `A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and posts nothing. Actions: ${SHAPE}.`,
 ].join(' ');
 

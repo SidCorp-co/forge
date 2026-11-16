@@ -21,9 +21,16 @@ export const ROOM_MAP_ACTS = [
   'ask_master',
   'technical',
   'releases',
+  'references',
   'audit',
   'guide',
 ] as const satisfies readonly SupportAction[];
+
+/**
+ * The acts the map carries where the owner speaks to the agent: an operations room and a channel
+ * agent's groups, never a support group of the product's users.
+ */
+export const OWNER_MAP_ACTS = ['reference_add'] as const satisfies readonly SupportAction[];
 
 /** A person-facing link opens Forge's web app, never its API host (ISS-1250): no act, so no card. */
 export const linksOnWeb = (web: string): string =>

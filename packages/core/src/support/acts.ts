@@ -59,6 +59,7 @@ import { readProjectFacts } from './project-read.js';
 import { makePromise } from './promise.js';
 import { proposeFix, proposeRecord } from './propose.js';
 import { answerHandedQuestion } from './question-task.js';
+import { REFERENCE_ACTS, type ReferenceActInput, referenceAct } from './reference-acts.js';
 import { decideReleaseFromMessage } from './release-decision.js';
 import { auditReply } from './reply-audit/audit.js';
 import { roomGuideOf } from './room-guide.js';
@@ -172,6 +173,7 @@ export type SupportActInput =
   | ({ action: 'technical' } & SupportTechnicalRequest)
   | ({ action: 'audit' } & SupportAuditRequest)
   | ({ action: 'owner_forge_act' } & SupportForgeActRequest)
+  | ReferenceActInput
   | {
       action: 'read';
       name: string;
@@ -238,6 +240,8 @@ const ANY_ROOM = new Set<SupportActInput['action']>([
   'feedback',
   // the room agent's guide is the project's, or its organization's (ISS-1251)
   'guide',
+  // a project's reference sources, the same from any group (ISS-1252)
+  ...REFERENCE_ACTS,
 ]);
 
 /** What an act names that places it in one group of a channel agent's (REQ-77). */
@@ -316,6 +320,8 @@ const SHARED = new Set<SupportActInput['action']>([
   // and reads who wrote a message and the thread around it (ISS-1250), and its guide (ISS-1251)
   'asker',
   'guide',
+  // and reads a project's reference sources first, cites a use, and adds or proposes one (ISS-1252)
+  ...REFERENCE_ACTS,
 ]);
 
 const OPERATION_ACTIONS: readonly string[] = OPERATIONS_ACTIONS;
@@ -481,6 +487,11 @@ async function act(
       return roomGuideOf(room);
     case 'asker':
       return askerFacts(room, { thread: input.thread, message: input.message });
+    case 'references':
+    case 'reference_add':
+    case 'reference_cite':
+    case 'reference_propose':
+      return referenceAct(room, input);
     case 'owner_sign_in':
       return startOwnerSignIn(room, {
         thread: input.thread,

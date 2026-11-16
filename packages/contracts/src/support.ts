@@ -928,6 +928,11 @@ export const SUPPORT_ACTIONS = [
 	"asker",
 	"audit",
 	"guide",
+	// a project's reference sources: read first, cite a use, add one a person names, propose one (ISS-1252)
+	"references",
+	"reference_add",
+	"reference_cite",
+	"reference_propose",
 ] as const;
 
 export const supportSearchRequestSchema = z.strictObject({
@@ -1802,6 +1807,8 @@ export const SUPPORT_REFUSAL_CODES = [
 	"SUPPORT_OWED_UNKNOWN",
 	/** An item owed to the owner raised a second time (ISS-1243). */
 	"SUPPORT_OWED_ALREADY_RAISED",
+	/** A citation naming no active reference source of the project (ISS-1252). */
+	"SUPPORT_REFERENCE_UNKNOWN",
 ] as const;
 export type SupportRefusalCode = (typeof SUPPORT_REFUSAL_CODES)[number];
 
@@ -1867,6 +1874,7 @@ export const SUPPORT_REFUSAL_STATUSES = {
 	SUPPORT_GIT_NOT_OWN_REPO: 403,
 	SUPPORT_CHECK_UNKNOWN: 404,
 	SUPPORT_CHECK_ANSWERED: 409,
+	SUPPORT_REFERENCE_UNKNOWN: 404,
 	AGENT_SWITCH_UNKNOWN: 404,
 	AGENT_SWITCH_NOT_READY: 409,
 	AGENT_SWITCH_DONE: 409,
