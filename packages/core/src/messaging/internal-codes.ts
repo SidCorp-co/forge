@@ -1,5 +1,6 @@
 // The internal codes no room's reader is shown (ISS-872, ISS-873): an issue key, an MR or PR number,
-// an environment variable's name, a commit sha or a credential word. One list, read by the support
+// an environment variable's name, a commit sha (or a room id, thread id or uuid the same hex rule
+// catches, each named as what it is) or a credential word. One list, read by the support
 // session's screen (`support/screen.ts`) and by a chat room agent's question posts
 // (`assistant/chat-room/question-voice.ts`), each refusing by name with the one shape that passes.
 //
@@ -40,8 +41,32 @@ function issueKeyRe(prefixes: readonly string[]): RegExp | null {
   return new RegExp(`\\b(?:${prefixes.join('|')})-\\d{1,6}\\b`, 'g');
 }
 
-/** One kind of internal code besides an issue key, as the refusal names it, and how it is found. */
-const INTERNAL_CODES: readonly { kind: string; re: RegExp }[] = [
+/** A uuid, alone or as a Forge question thread's id (`question-<uuid>-<round>`). */
+const UUID_RE = /(question-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/**
+ * What a hex run the sha rule caught is, so the refusal points the writer at it: a run inside a
+ * question thread's id or another uuid, a chat server's 24-hex room id, else a commit sha. Names
+ * the match only; what is refused is the rule's.
+ */
+function hexRunKind(text: string, at: number, length: number): string {
+  for (const u of text.matchAll(UUID_RE)) {
+    if (at >= u.index && at + length <= u.index + u[0].length) {
+      return u[1] ? 'thread id' : 'uuid';
+    }
+  }
+  return length === 24 ? 'chat room id' : 'commit sha';
+}
+
+/**
+ * One kind of internal code besides an issue key, as the refusal names it, and how it is found;
+ * `named` names a match by what holds it where one rule catches more than one kind.
+ */
+const INTERNAL_CODES: readonly {
+  kind: string;
+  re: RegExp;
+  named?: (text: string, at: number, length: number) => string;
+}[] = [
   // GitLab's merge request reference (!5050), or a number said to be an MR or a PR
   { kind: 'MR or PR number', re: /(?<![\w!])!\d{1,7}\b/g },
   {
@@ -57,6 +82,7 @@ const INTERNAL_CODES: readonly { kind: string; re: RegExp }[] = [
   {
     kind: 'commit sha',
     re: /(?<![A-Za-z0-9])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![A-Za-z0-9])/g,
+    named: hexRunKind,
   },
   {
     kind: 'credential word',
@@ -75,9 +101,10 @@ export function internalCodesIn(
   const found: { kind: string; quote: string }[] = [];
   const key = issueKeyRe(keyPrefixes);
   const kinds = key ? [{ kind: ISSUE_KEY, re: key }, ...INTERNAL_CODES] : INTERNAL_CODES;
-  for (const { kind, re } of kinds) {
+  for (const { kind, re, named } of kinds) {
     for (const m of text.matchAll(re)) {
-      if (!found.some((f) => f.quote === m[0])) found.push({ kind, quote: m[0] });
+      if (found.some((f) => f.quote === m[0])) continue;
+      found.push({ kind: named ? named(text, m.index, m[0].length) : kind, quote: m[0] });
     }
   }
   return found;
@@ -85,7 +112,7 @@ export function internalCodesIn(
 
 /** The shape a post passes, said the same way by every refusal. */
 export const PLAIN_WORDS_SHAPE =
-  'Say it in plain words, with no issue key, MR or PR number, environment variable name, commit sha or credential word; an order number or a PO code such as PO001453760102901 may stay';
+  'Say it in plain words, with no issue key, MR or PR number, environment variable name, commit sha, room or thread id, uuid or credential word; an order number or a PO code such as PO001453760102901 may stay';
 
 /** The door for a product's own code read as an issue key, said by every refusal of one. */
 export const USER_FACING_CODES_DOOR =

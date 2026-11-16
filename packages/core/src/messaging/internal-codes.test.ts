@@ -66,6 +66,28 @@ describe('internalCodesIn: the technical channel line', () => {
     expect(refused.map((r) => r.quote)).toEqual(
       expect.arrayContaining(['6a598fcc8cac369c05add4eb', '983f2034', '43633306db4d']),
     );
+    // each named by what it is, so an agent told to rewrite looks for the ids, not a commit
+    expect(internalCodesIn(old, prefixes)).toEqual([
+      { kind: 'chat room id', quote: '6a598fcc8cac369c05add4eb' },
+      { kind: 'thread id', quote: '983f2034' },
+      { kind: 'thread id', quote: '43633306db4d' },
+    ]);
+  });
+
+  it('names a hex run by what holds it: a uuid, a room id, else a commit sha', () => {
+    expect(
+      internalCodesIn(
+        'Project 0b1c2d3e-4f50-4a6b-9c8d-7e6f5a4b3c2d moved, fix at 35846ed3.',
+        prefixes,
+      ),
+    ).toEqual([
+      { kind: 'uuid', quote: '0b1c2d3e' },
+      { kind: 'uuid', quote: '7e6f5a4b3c2d' },
+      { kind: 'commit sha', quote: '35846ed3' },
+    ]);
+    const [refusal] = internalCodeRefusals('room 6a598fcc8cac369c05add4eb', 'a room', prefixes);
+    expect(refusal?.why).toContain('chat room id "6a598fcc8cac369c05add4eb"');
+    expect(refusal?.shape).toContain('room or thread id');
   });
 
   it('passes the plain lead: the project, what it needs, then the words', () => {
