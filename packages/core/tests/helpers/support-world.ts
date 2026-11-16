@@ -107,7 +107,8 @@ export class SupportWorld {
     const o = await createTestUser({ verified: true });
     const s = await createTestUser({ verified: true });
     this.ownerId = o.id;
-    this.projectId = (await createTestProject(o.id)).id;
+    // named as a room's people know it: every technical post opens with the project's name (ISS-1249)
+    this.projectId = (await createTestProject(o.id, { name: 'Order desk' })).id;
     await addProjectMember(this.projectId, o.id, 'owner');
     this.owner = await userToken(o.id);
     this.stranger = await userToken(s.id);
