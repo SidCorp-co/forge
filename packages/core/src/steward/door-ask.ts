@@ -4,6 +4,7 @@
 // master, holds the move into delivery while open, and its answer is recorded there as a decision. It
 // asks the questions the gaps need: no count holds it (REQ-67 r2 BC-4).
 
+import { PLAIN_DECISION_RULE, plainDecisionSchema } from '@forge/contracts/plain-decision';
 import { z } from 'zod';
 import { doorName } from './door-call.js';
 import { cite, type DoorSpec, key, send } from './door-kit.js';
@@ -39,6 +40,13 @@ const askParams = z.strictObject({
   prompt: z.string().trim().min(10).max(2000),
   options: optionsParam,
   recommended: z.string().trim().min(1).max(40).describe('the id of the option you recommend'),
+  // ISS-1006: the same plain text steward_decide carries, stored on the round; none is still asked
+  plain: plainDecisionSchema
+    .min(1)
+    .optional()
+    .describe(
+      `what the answerer decides from, ${PLAIN_DECISION_RULE}; written for whoever owns the product`,
+    ),
 });
 
 export const ASK: DoorSpec<z.infer<typeof askParams>> = {
@@ -74,6 +82,7 @@ export const ASK: DoorSpec<z.infer<typeof askParams>> = {
             executedBy: 'agent',
           })),
           recommendedOptionId: args.recommended,
+          ...(args.plain ? { plain: args.plain } : {}),
         },
       },
       ctx,

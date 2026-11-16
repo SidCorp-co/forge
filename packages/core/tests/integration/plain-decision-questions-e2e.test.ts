@@ -8,6 +8,7 @@
 // @direct-test-of packages/core/src/questions/routes.ts
 // @direct-test-of packages/core/src/steward/door-decide.ts
 // @direct-test-of packages/core/src/steward/decision-ask.ts
+// @direct-test-of packages/core/src/steward/door-ask.ts
 // @direct-test-of packages/core/src/development/needs-you-decision-builders.ts
 
 import { sql } from 'drizzle-orm';
@@ -27,6 +28,7 @@ import {
   createTestIssue,
   createTestProject,
   createTestUser,
+  makeAgreeReady,
   rows,
 } from '../helpers/factories.js';
 import { underStrict } from '../helpers/project-controls.js';
@@ -46,6 +48,10 @@ let ownerId = '';
 let stewardId = '';
 let seq = 300;
 let diagnose: (issue: { id: string; key: string }, args: Record<string, unknown>) => Promise<void>;
+let intakeAsk: (
+  req: { id: string; key: string },
+  args: Record<string, unknown>,
+) => Promise<{ refused: string[]; error: string | null }>;
 
 const stepsOf = async (questionId: string) =>
   (await rows<{ steps: Doc[] }>(sql`SELECT steps FROM agent_questions WHERE id = ${questionId}`))[0]
@@ -126,6 +132,22 @@ beforeAll(async () => {
     resetScript();
     script.steps = [{ tool: { name: 'steward_decide', args } }, { text: 'Asked.' }];
     await runGatewayAct({ run, act: 'stuck_diagnosis', standing: null, stewardId });
+  };
+  intakeAsk = async (req, args) => {
+    const [made] = await rows<{ id: string }>(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, not_before, started_at, ended_at)
+      VALUES (${projectId}, 'requirement', ${req.id}, ${req.key}, 'requirement.agreed', '[]'::jsonb,
+              ARRAY['intake_check']::text[], 'done', now(), now(), now())
+      RETURNING id`);
+    const [run] = await db
+      .select()
+      .from(stewardRuns)
+      .where(eq(stewardRuns.id, made?.id ?? ''));
+    if (!run) throw new Error('the run row was not written');
+    resetScript();
+    script.steps = [{ tool: { name: 'steward_ask', args } }, { text: 'Asked.' }];
+    return runGatewayAct({ run, act: 'intake_check', standing: null, stewardId });
   };
 }, 120_000);
 
@@ -214,5 +236,59 @@ describe("the steward's decision carries the plain text too", () => {
     expect(q, 'the steward asked its decision').toBeDefined();
     expect(q?.steps[0]).not.toHaveProperty('plain');
     expect((await decisionOf(String(q?.id)))?.plain).toBeNull();
+  });
+});
+
+describe("the steward's question about a requirement carries the plain text too", () => {
+  async function agreedRequirement(title: string): Promise<{ id: string; key: string }> {
+    const at = (path: string) => `/api/projects/${projectId}/requirements${path}`;
+    const key = ok(
+      await say('owner', 'POST', at(''), {
+        title,
+        reason: 'the rule it states',
+        criteria: [{ body: 'Sales reads the weekly orders as a CSV file.' }],
+      }),
+      201,
+    ).key as string;
+    await makeAgreeReady(projectId, Number(key.slice(4)), ownerId);
+    ok(await say('owner', 'POST', at(`/${key}/revisions/1/propose`), {}));
+    ok(await say('owner', 'POST', at(`/${key}/revisions/1/accept`), { reason: 'BA review' }));
+    ok(await say('owner', 'POST', at(`/${key}/agree`), { revision: 1, reason: 'signed r1' }));
+    return { key, id: (ok(await say('owner', 'GET', at(`/${key}`))) as Doc).id as string };
+  }
+  const asked = async (requirementId: string) =>
+    (
+      await rows<{ id: string; steps: Doc[] }>(sql`
+        SELECT id, steps FROM agent_questions
+         WHERE about ->> 'requirementId' = ${requirementId} AND status = 'open'`)
+    )[0];
+  const ask = (key: string) => ({
+    about: key,
+    prompt: 'Which orders does the export carry, this week or every week?',
+    options: [
+      { id: 'week', label: 'This week only' },
+      { id: 'all', label: 'Every week' },
+    ],
+    recommended: 'week',
+  });
+
+  it('stores the steward_ask `plain` on the round, and the question reads it', async () => {
+    const req = await agreedRequirement('Orders export as CSV');
+    const out = await intakeAsk(req, { ...ask(req.key), plain: PLAIN });
+    expect(out).toMatchObject({ refused: [], error: null });
+    const q = await asked(req.id);
+    expect(q, 'the steward asked its question').toBeDefined();
+    expect(q?.steps[0]?.plain, JSON.stringify(q?.steps)).toBe(PLAIN);
+    expect(ok(await say('owner', 'GET', `/api/questions/${q?.id}`)).plain).toBe(PLAIN);
+  });
+
+  it('asks a steward_ask without `plain` all the same, and it reads none', async () => {
+    const req = await agreedRequirement('Orders export as a sheet');
+    const out = await intakeAsk(req, ask(req.key));
+    expect(out).toMatchObject({ refused: [], error: null });
+    const q = await asked(req.id);
+    expect(q, 'the steward asked its question').toBeDefined();
+    expect(q?.steps[0]).not.toHaveProperty('plain');
+    expect(ok(await say('owner', 'GET', `/api/questions/${q?.id}`)).plain).toBeNull();
   });
 });

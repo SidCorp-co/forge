@@ -36,4 +36,12 @@ describe('a steward act is told a goal, not a script', () => {
     expect(triage).toContain('a decline takes feedback.approve, and is asked of whoever holds it');
     expect(triage).not.toContain("a decline is a person's decision");
   });
+
+  // ISS-1006 (owner 2026-11-05): every door that asks is taught the plain text, the ask door too
+  it('teaches the plain text on every door that asks', () => {
+    for (const act of ['intake_check', 'breakdown_check'] as const) {
+      expect(actPrompt(act)).toContain('Every steward_ask carries `plain`');
+    }
+    expect(actPrompt('stuck_diagnosis')).toContain('Every steward_decide carries `plain`');
+  });
 });
