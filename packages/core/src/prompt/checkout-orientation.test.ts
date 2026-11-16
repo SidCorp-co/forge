@@ -1,3 +1,8 @@
+// The orientation's proposed rows are read through `lessons/proposed-deltas.ts`, whose rule (a
+// delta reaches the project that learned it and, naming none, every project) this suite holds.
+//
+// @direct-test-of packages/core/src/lessons/proposed-deltas.ts
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = vi.hoisted(() => ({
