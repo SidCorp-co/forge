@@ -78,8 +78,9 @@ once a day in the whole suite — not in each run, and not at a merge, where onl
 run. The Rust tests remain.
 
 **The builds do not typecheck** — `@forge/contracts` and `@forge/core` build with `--noCheck`.
-`pnpm tc:changed` typechecks the packages your branch touched, and every package importing one,
-against `origin/dev`.
+`pnpm tc:changed` typechecks the packages your branch touched, and every package importing one by
+its manifest or a tsconfig `paths` entry, against the branch it lands on; `pnpm verify` typechecks
+those importers too.
 
 Every other command is a `package.json` script — `pnpm run` in a package lists its own, turbo fans
 the shared ones out from the root, and `packages/runner` is cargo. Read them there, not here.

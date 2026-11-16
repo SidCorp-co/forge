@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { configsOf, typecheckPackage } from './tc-check.mjs';
+import { configsOf, selectPackages, typecheckPackage, workspacePackages } from './tc-check.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const bin = join(ROOT, 'node_modules', '.bin', 'tsgo');
@@ -95,5 +95,85 @@ describe('a package typechecked as a dev merge checks it', () => {
     expect(configsOf(root, 'packages/source-only')).toEqual(['tsconfig.json']);
     const results = await check('packages/source-only');
     expect(results.map((r) => [r.config, r.code])).toEqual([['tsconfig.json', 0]]);
+  });
+});
+
+describe('a shape changed in one package is checked in the packages importing it', () => {
+  let ws;
+  const writeWs = (files) => {
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(ws, path)), { recursive: true });
+      writeFileSync(join(ws, path), typeof text === 'string' ? text : JSON.stringify(text));
+    }
+  };
+
+  beforeAll(() => {
+    ws = mkdtempSync(join(tmpdir(), 'tc-consumers-'));
+    writeWs({
+      'packages/core/package.json': { name: '@fx/core' },
+      'packages/core/tsconfig.json': SOURCE_CONFIG,
+      'packages/core/src/public.ts': 'export interface Bucket { start: string }\n',
+      'packages/contracts/package.json': { name: '@fx/contracts' },
+      'packages/contracts/tsconfig.json': {
+        ...SOURCE_CONFIG,
+        compilerOptions: {
+          ...SOURCE_CONFIG.compilerOptions,
+          paths: { '@fx/core/public': ['../core/src/public.ts'] },
+        },
+      },
+      'packages/contracts/src/admin.ts': "export type { Bucket } from '@fx/core/public';\n",
+      'packages/web/package.json': { name: 'web', dependencies: { '@fx/contracts': '*' } },
+      'packages/web/tsconfig.json': {
+        ...SOURCE_CONFIG,
+        compilerOptions: {
+          ...SOURCE_CONFIG.compilerOptions,
+          paths: {
+            '@fx/contracts/*': ['../contracts/src/*'],
+            '@fx/core/public': ['../core/src/public.ts'],
+          },
+        },
+      },
+      'packages/web/src/panel.ts':
+        "import type { Bucket } from '@fx/contracts/admin';\nexport const keyOf = (b: Bucket): string => b.start;\n",
+      'packages/notes/package.json': { name: 'notes' },
+      'packages/notes/tsconfig.json': SOURCE_CONFIG,
+      'packages/notes/src/note.ts': 'export const note = 1;\n',
+    });
+  });
+
+  afterAll(() => rmSync(ws, { recursive: true, force: true }));
+
+  it('reads an import declared by a tsconfig paths entry alone, as by a manifest', () => {
+    const imports = Object.fromEntries(workspacePackages(ws).map((p) => [p.name, p.imports]));
+    expect(imports).toEqual({
+      '@fx/contracts': ['@fx/core'],
+      '@fx/core': [],
+      notes: [],
+      web: ['@fx/contracts', '@fx/core'],
+    });
+  });
+
+  it('a change to core selects every package importing it, transitively, and those are the consumers', () => {
+    const choice = selectPackages(workspacePackages(ws), ['packages/core/src/public.ts']);
+    const names = (list) => list.map((p) => p.name).sort();
+    expect(names(choice.touched)).toEqual(['@fx/core']);
+    expect(names(choice.selected)).toEqual(['@fx/contracts', '@fx/core', 'web']);
+    expect(names(choice.consumers)).toEqual(['@fx/contracts', 'web']);
+  });
+
+  it('a change nothing imports has no consumer', () => {
+    const choice = selectPackages(workspacePackages(ws), ['packages/notes/src/note.ts']);
+    expect(choice.consumers).toEqual([]);
+  });
+
+  it('a field renamed in core with core updated is red in the consumer, naming its file', async () => {
+    writeWs({ 'packages/core/src/public.ts': 'export interface Bucket { startAt: string }\n' });
+    const run = (dir) => typecheckPackage(ws, { dir }, { bin, engine: 'tsgo', cacheDir: ws });
+    const [core] = await run('packages/core');
+    const [web] = await run('packages/web');
+    expect(core.code).toBe(0);
+    expect(web.code).not.toBe(0);
+    expect(web.out).toContain('packages/web/src/panel.ts');
+    expect(web.out).toContain('TS2551');
   });
 });

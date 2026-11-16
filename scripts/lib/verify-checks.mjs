@@ -135,6 +135,16 @@ export const CHECKS = [
     unit: 'files',
   },
   {
+    axis: 'relations',
+    label: 'consumer types',
+    cmd: ['node', 'scripts/tc-changed.mjs', '--consumers'],
+    scanned: /^tc-changed: (\d+) consumer package\(s\)/m,
+    needs: ['deps'],
+    unit: 'consumer packages',
+    // 0 is the ordinary reading: a change no other package imports has no consumer to check.
+    scopeMayBeEmpty: true,
+  },
+  {
     axis: 'form',
     label: 'core lint',
     cmd: ['pnpm', '--filter', '@forge/core', 'lint'],

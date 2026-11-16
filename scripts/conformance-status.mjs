@@ -43,13 +43,14 @@ const PROBES = {
     ],
   },
   relations: {
-    gate: 'archmap check + check-module-boundaries + check-module-shape + check-root-dependencies',
+    gate: 'archmap check + check-module-boundaries + check-module-shape + check-root-dependencies + tc-changed --consumers',
     probe: ['./.forge/archmap/archmap', 'check'],
     needs: ['deps'],
     also: [
       { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-module-boundaries.mjs'] },
       { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-module-shape.mjs'] },
       { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-root-dependencies.mjs'] },
+      { from: 'none', needs: ['deps'], probe: ['node', 'scripts/tc-changed.mjs', '--consumers'] },
     ],
   },
   behaviour: {
