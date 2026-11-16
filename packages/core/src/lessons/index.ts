@@ -17,10 +17,10 @@ export {
 export {
   type CardFreshness,
   cardFreshness,
-  clearCardRecheck,
   markCardRecheckOwed,
   proposeCardDelta,
   recordScenarioRuns,
+  settleCardRecheck,
 } from './card-freshness.js';
 export { type ConfusionSettlement, decideConfusion, raiseConfusion } from './confusions.js';
 export { registerLessonCorrections } from './consumers.js';

@@ -4,6 +4,7 @@
 // `standing/` module serves. Read only inside a call, so an unprovided port fails the call that
 // needed it and names the provide it lacked.
 
+import type { PilesView } from '@forge/contracts/door-use';
 import type { Said } from '@forge/contracts/said';
 import type { WaitingOn } from '@forge/contracts/standing';
 import type { OpenStandingsRead } from '@forge/contracts/steward';
@@ -55,6 +56,11 @@ interface StewardPorts {
   releaseHoldingAct(projectId: string, issueId: string): Promise<HoldingRelease | null>;
   /** The release `version` names while it has not shipped (`carrying-release.ts:holdingReleaseOf`). */
   holdingRelease(projectId: string, version: string): Promise<HoldingRelease | null>;
+  /**
+   * Each text every prompt of the project carries, against its cap (the metrics read model's
+   * `piles.ts:readPiles`, ISS-1251): a pile past its cap is owed consolidation, never a cut.
+   */
+  piles(projectId: string): Promise<PilesView>;
 }
 
 /** A release that has not shipped and its own wait, as its page reads it. */

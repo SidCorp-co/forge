@@ -27,6 +27,7 @@ import {
   readmitLesson,
   recordScenarioRuns,
   retireLesson,
+  settleCardRecheck,
   unanchoredLessons,
 } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
@@ -175,6 +176,8 @@ export interface LifecycleTally {
   foldWaiting: number;
   /** Changes a replay did not adopt. */
   replayRefused: number;
+  /** Cards whose re-check this pass finished: no lesson anchored on one still waits re-checking. */
+  cardsRechecked: number;
 }
 
 export const emptyLifecycleTally = (): LifecycleTally => ({
@@ -185,6 +188,7 @@ export const emptyLifecycleTally = (): LifecycleTally => ({
   folded: 0,
   foldWaiting: 0,
   replayRefused: 0,
+  cardsRechecked: 0,
 });
 
 export interface LifecycleJudges {
@@ -250,54 +254,68 @@ async function recheckInvalid(
   j: LifecycleJudges,
   t: LifecycleTally,
 ) {
+  const cards = new Set<string>();
   for (const l of await invalidatedLessons(projectId)) {
-    const ref = lessonKey(l.number);
-    const answer = await j.recheck(projectId, l);
-    if (!answer) continue;
-    if (answer.verdict === 'retire') {
-      const why = `Re-checked after ${l.invalidBy}: ${answer.reason}`;
-      if (
-        await refusalLogged(projectId, ref, () =>
-          retireLesson({ projectId, ref, actor, reason: why }),
-        )
-      ) {
-        t.invalidRetired += 1;
-      }
-      continue;
-    }
-    const anchor = answer.anchor ? lessonAnchorSchema.safeParse(answer.anchor) : null;
-    const edit =
-      answer.verdict === 'edit'
-        ? {
-            sentence: answer.sentence ?? undefined,
-            anchor: anchor?.success ? anchor.data : undefined,
-          }
-        : undefined;
-    if (edit?.sentence) {
-      const input = {
-        change: edit.sentence,
-        was: l.sentence,
-        failures: l.failures,
-        goods: await goodCases(projectId, l.number),
-      };
-      const anchor = edit.anchor ?? l.anchor ?? '';
-      const card = anchor.startsWith('card:') ? await lessonsPorts().cardOf(anchor.slice(5)) : null;
-      if (!(await replayOnCard(projectId, j.replay, card, input, `${ref} edit`))) {
-        t.replayRefused += 1;
-        continue;
-      }
-    }
-    const done = await refusalLogged(projectId, ref, () =>
-      readmitLesson({
-        projectId,
-        ref,
-        actor,
-        edit,
-        reason: `Re-checked after ${l.invalidBy}: ${answer.reason}`,
-      }),
-    );
-    if (done) t.readmitted += 1;
+    if (l.anchor?.startsWith('card:')) cards.add(l.anchor.slice(5));
+    await recheckOne(projectId, actor, j, t, l);
   }
+  // a card a landing touched is re-checked through what was learned of it: done once none waits
+  for (const card of cards) if (await settleCardRecheck(card)) t.cardsRechecked += 1;
+}
+
+async function recheckOne(
+  projectId: string,
+  actor: LessonActor,
+  j: LifecycleJudges,
+  t: LifecycleTally,
+  l: LifecycleLesson,
+) {
+  const ref = lessonKey(l.number);
+  const answer = await j.recheck(projectId, l);
+  if (!answer) return;
+  if (answer.verdict === 'retire') {
+    const why = `Re-checked after ${l.invalidBy}: ${answer.reason}`;
+    if (
+      await refusalLogged(projectId, ref, () =>
+        retireLesson({ projectId, ref, actor, reason: why }),
+      )
+    ) {
+      t.invalidRetired += 1;
+    }
+    return;
+  }
+  const anchor = answer.anchor ? lessonAnchorSchema.safeParse(answer.anchor) : null;
+  const edit =
+    answer.verdict === 'edit'
+      ? {
+          sentence: answer.sentence ?? undefined,
+          anchor: anchor?.success ? anchor.data : undefined,
+        }
+      : undefined;
+  if (edit?.sentence) {
+    const input = {
+      change: edit.sentence,
+      was: l.sentence,
+      failures: l.failures,
+      goods: await goodCases(projectId, l.number),
+    };
+    const anchor = edit.anchor ?? l.anchor ?? '';
+    const card = anchor.startsWith('card:') ? await lessonsPorts().cardOf(anchor.slice(5)) : null;
+    if (!(await replayOnCard(projectId, j.replay, card, input, `${ref} edit`))) {
+      t.replayRefused += 1;
+      return;
+    }
+  }
+  const done = await refusalLogged(projectId, ref, () =>
+    readmitLesson({
+      projectId,
+      ref,
+      actor,
+      edit,
+      reason: `Re-checked after ${l.invalidBy}: ${answer.reason}`,
+    }),
+  );
+  if (done) t.readmitted += 1;
 }
 
 /**

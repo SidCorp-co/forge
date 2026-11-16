@@ -6,9 +6,9 @@
  * The capabilities page reads all three per card (`cardFreshness`).
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { cardDeltas, cardRechecks, cardScenarioRuns } from '../db/schema-lessons.js';
+import { cardDeltas, cardRechecks, cardScenarioRuns, lessons } from '../db/schema-lessons.js';
 import type { CardDelta } from './ports.js';
 
 /** Mark the card owed a re-check; touched again, it keeps its first `owedSince` and names the newest change. */
@@ -26,6 +26,25 @@ export async function clearCardRecheck(cardId: string): Promise<boolean> {
     .where(eq(cardRechecks.cardId, cardId))
     .returning({ cardId: cardRechecks.cardId });
   return gone.length > 0;
+}
+
+/**
+ * The steward's re-check of a card is done once no lesson anchored on it, in any project, still waits
+ * held for its re-check after the change that touched it: then the card is cleared. Whether it was.
+ */
+export async function settleCardRecheck(cardId: string): Promise<boolean> {
+  const [waiting] = await db
+    .select({ id: lessons.id })
+    .from(lessons)
+    .where(
+      and(
+        eq(lessons.anchor, `card:${cardId}`),
+        eq(lessons.status, 'held'),
+        isNotNull(lessons.invalidAt),
+      ),
+    )
+    .limit(1);
+  return waiting ? false : clearCardRecheck(cardId);
 }
 
 /** Keep one delta a lesson folded into its card, proposed until the card's code carries it; its id. */

@@ -62,6 +62,7 @@ import {
   type Replayer,
   runLessonLifecycle,
 } from './lessons-lifecycle.js';
+import { openPileConsolidations } from './lessons-piles.js';
 import {
   modelReviewer,
   modelSettler,
@@ -355,7 +356,7 @@ async function routeToForge(
 const retireWhy = (due: RetirementDue) =>
   due.reason === 'superseded'
     ? `Superseded by ${due.supersededBy ? lessonKey(due.supersededBy) : 'a newer lesson'}.`
-    : `No agent applied it in ${LESSON_UNUSED_DAYS} days.`;
+    : `No agent applied or opened it in ${LESSON_UNUSED_DAYS} days.`;
 
 /** Retire each lesson now due (BC-7), as the steward, with its reason; none is deleted. */
 async function retireDue(projectId: string, stewardId: string, now: Date): Promise<number> {
@@ -394,6 +395,8 @@ export interface LessonsPassTally extends SettleTally, LifecycleTally {
   checks: number;
   /** Lessons owed a check whose record does not say what they are about, and the steward gave none. */
   unclassified: number;
+  /** Consolidation items opened for piles past their cap (one per pile; a standing one is not reopened). */
+  consolidations: number;
   failed: number;
 }
 
@@ -437,6 +440,7 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
   await runLessonLifecycle(projectId, stewardId, judges, tally);
   tally.retired += await retireDue(projectId, stewardId, now);
   await fileChecks(projectId, stewardId, judges.classify, tally);
+  tally.consolidations += await openPileConsolidations(projectId, stewardId);
   await recordLessonsMonths(projectId, now);
 }
 
@@ -480,6 +484,7 @@ export async function runLessonsPass(
     retired: 0,
     checks: 0,
     unclassified: 0,
+    consolidations: 0,
     failed: 0,
     ...emptyLifecycleTally(),
   };

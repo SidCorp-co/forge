@@ -327,7 +327,7 @@ describe('the steward retires an unused or superseded lesson with a reason, neve
     const gone = await lesson(n);
     expect(gone).toMatchObject({
       status: 'retired',
-      decided_reason: 'No agent applied it in 30 days.',
+      decided_reason: 'No agent applied or opened it in 30 days.',
     });
     expect((await moves(gone.id as string)).at(-1)).toMatchObject({
       to_status: 'retired',

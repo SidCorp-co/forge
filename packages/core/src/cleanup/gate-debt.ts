@@ -26,28 +26,41 @@ const UNRATED =
   'strict (REQ-79 r6 BC-16); the cleanup run reads it and rates or clears it.';
 
 /** Write the debt unless the same one stands open; answers whether it was written. */
-export async function recordGateDebt(debt: GateDebt): Promise<boolean> {
-  const where = debt.where.slice(0, 500);
+export function recordGateDebt(debt: GateDebt): Promise<boolean> {
+  return recordForgeDebt({
+    projectId: debt.projectId,
+    item: {
+      kind: debt.kind,
+      check: debt.check,
+      where: debt.where,
+      detail: debt.detail,
+      impact: { type: 'logic', rating: 'medium', reason: UNRATED },
+    },
+  });
+}
+
+/**
+ * A finding Forge itself makes, as one open debt on the project's ledger for the cleanup run: written
+ * unless the same kind, check and place stands open, so a reading repeated every pass is one item.
+ * Answers whether it was written.
+ */
+export async function recordForgeDebt(debt: {
+  projectId: string;
+  item: DebtItem & { check: string };
+}): Promise<boolean> {
+  const where = debt.item.where.slice(0, 500);
   const written = await db.transaction(async (tx) => {
     // two doors reading one head at once leave one debt between them
     await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`gate-debt:${debt.projectId}:${debt.check}:${where}`}))`,
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`forge-debt:${debt.projectId}:${debt.item.check}:${where}`}))`,
     );
-    const key = { projectId: debt.projectId, kind: debt.kind, check: debt.check, where };
+    const key = { projectId: debt.projectId, kind: debt.item.kind, check: debt.item.check, where };
     if (await openDebtStands(tx, key)) return false;
     await insertDebts(tx, {
       projectId: debt.projectId,
       issueId: null,
       recordedBy: null,
-      items: [
-        {
-          kind: debt.kind,
-          check: debt.check,
-          where,
-          detail: debt.detail.slice(0, 2000),
-          impact: { type: 'logic', rating: 'medium', reason: UNRATED },
-        },
-      ],
+      items: [{ ...debt.item, where, detail: debt.item.detail.slice(0, 2000) }],
     });
     return true;
   });

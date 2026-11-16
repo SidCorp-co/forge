@@ -9,6 +9,9 @@
 // @direct-test-of packages/core/src/lessons/lifecycle-reads.ts
 // @direct-test-of packages/core/src/steward/lessons-lifecycle.ts
 // @direct-test-of packages/core/src/steward/lessons-review.ts
+// @direct-test-of packages/core/src/steward/lessons-piles.ts
+// @direct-test-of packages/core/src/lessons/card-freshness.ts
+// @direct-test-of packages/core/src/cleanup/gate-debt.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -318,6 +321,60 @@ describe('a landing touching a card-anchored lesson marks the card owed a re-che
     expect((await stateOf(n))?.status).toBe('held');
     const [fresh] = await cardFreshness(['iss1251.recheck-card']);
     expect(fresh?.recheckOwed).toMatchObject({ by: 'ISS-75 changed card:iss1251.recheck-card' });
+  });
+
+  it('clears the card once the steward re-checked every lesson on it, and not before', async () => {
+    const CARD = 'iss1251.recheck-two';
+    const first = await approvedOn('Greet the member by role.', `card:${CARD}`);
+    const second = await approvedOn('Show the member role in the header.', `card:${CARD}`);
+    const { invalidateLessonsForChange, cardFreshness } = await import(
+      '../../src/lessons/index.js'
+    );
+    await invalidateLessonsForChange(w.projectId, {
+      by: 'ISS-76',
+      paths: [],
+      text: `Reworks ${CARD}: roles are named.`,
+    });
+    const readmit = (only: number[]) => (l: unknown) =>
+      only.includes((l as { number: number }).number)
+        ? { verdict: 'readmit', sentence: null, anchor: null, reason: 'Roles still show.' }
+        : null;
+    const once = await pass({ recheck: readmit([first]) });
+    expect(once.cardsRechecked).toBe(0);
+    expect((await cardFreshness([CARD]))[0]?.recheckOwed).not.toBeNull();
+    const twice = await pass({ recheck: readmit([second]) });
+    expect(twice.cardsRechecked).toBe(1);
+    expect((await cardFreshness([CARD]))[0]?.recheckOwed).toBeNull();
+    expect((await stateOf(second))?.status).toBe('approved');
+  });
+});
+
+describe('a pile past its cap opens one consolidation item, never a cut (§5)', () => {
+  it('records one simplify debt for the always-on knowledge, once across passes, and cuts no entry', async () => {
+    const { ALWAYS_INJECT_MAX_CHARS } = await import('@forge/contracts/knowledge');
+    const body = 'Every prompt carries this line about the ward rota. '.repeat(40);
+    const slugs: string[] = [];
+    for (let i = 0; slugs.length * body.length <= ALWAYS_INJECT_MAX_CHARS; i++) {
+      slugs.push(`ward-rota-${i}`);
+      await rows(sql`
+        INSERT INTO knowledge_entries (project_id, slug, title, body, kind, injection)
+        VALUES (${w.projectId}, ${`ward-rota-${i}`}, ${`Ward rota ${i}`}, ${body}, 'guide', 'always')
+        RETURNING id`);
+    }
+    const first = await pass({});
+    const second = await pass({});
+    expect(first.consolidations).toBeGreaterThanOrEqual(1);
+    const debts = await rows<{ kind: string; location: string; detail: string }>(sql`
+      SELECT kind, location, detail FROM delivery_debts
+       WHERE project_id = ${w.projectId} AND check_name = 'pile:always_knowledge'`);
+    expect(debts).toHaveLength(1);
+    expect(debts[0]).toMatchObject({ kind: 'simplify', location: 'always-on knowledge' });
+    expect(debts[0]?.detail).toContain(`of ${ALWAYS_INJECT_MAX_CHARS} characters`);
+    expect(second.consolidations).toBe(0);
+    const [kept] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM knowledge_entries
+       WHERE project_id = ${w.projectId} AND slug LIKE 'ward-rota-%' AND archived_at IS NULL AND body = ${body}`);
+    expect(kept?.n).toBe(slugs.length);
   });
 });
 

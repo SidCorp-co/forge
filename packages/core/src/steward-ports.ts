@@ -10,6 +10,7 @@ import { provideLessonsPorts } from './lessons/index.js';
 import { cardPaths, doorCatalog } from './lib/door-catalog.js';
 import { masterAccountsOf } from './master-accounts.js';
 import { memoryIssueSide } from './memory-issue-reads.js';
+import { readPiles } from './metrics/index.js';
 import { getMockupAs } from './mockups/index.js';
 import {
   holdingReleaseOf,
@@ -38,6 +39,7 @@ export function provideStewardDomainPorts(
       (await masterTakesReleaseAct(projectId, act)) ?? masterTakesWait(projectId, act),
     releaseHoldingAct: (_projectId, issueId) => releaseHoldingActOf(issueId),
     holdingRelease: holdingReleaseOf,
+    piles: (projectId) => readPiles(projectId, doorCatalog()),
   });
   provideSuggestionsPorts({ stewardOf: heldStewardOf });
   provideReleasePagePorts({ releaseNamer: releaseNamerOf });
