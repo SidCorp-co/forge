@@ -22,6 +22,7 @@ import { namedProject } from './ops-scope.js';
 import type { OpsOutcome } from './ops-types.js';
 import { asAsker, refusalsOf } from './ops-writes.js';
 import { no } from './outcome.js';
+import { noteRoomReached } from './room-reaches.js';
 import type { RoomRow } from './store.js';
 
 type ReferencesReadInput = Omit<z.output<typeof supportReferencesRequestSchema>, 'project'> & {
@@ -101,6 +102,13 @@ export async function referencesRead(
   const sources = await searchSources(project.value.id, {
     ...(input.area ? { area: input.area } : {}),
     ...(input.q ? { q: input.q } : {}),
+  });
+  noteRoomReached(room, project.value.id, 'search', {
+    records: sources.map((s) => ({
+      kind: 'reference' as const,
+      ref: s.id,
+      text: `${s.title}\n${s.url}\n${s.why}`,
+    })),
   });
   return { ok: true, value: { project: project.value.slug, sources } };
 }

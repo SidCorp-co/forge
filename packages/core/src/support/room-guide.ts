@@ -9,6 +9,7 @@
 import { getGuide, servedGuideBody } from '../guides/index.js';
 import { readKnowledgeEntry } from '../knowledge/index.js';
 import type { Outcome } from './outcome.js';
+import { noteRoomReached } from './room-reaches.js';
 import type { RoomRow } from './store.js';
 
 /** The knowledge slug a project or its organization keeps its own room agent guide under. */
@@ -23,7 +24,19 @@ export interface RoomGuide {
   body: string;
 }
 
-export async function roomGuideOf(room: Pick<RoomRow, 'projectId'>): Promise<Outcome<RoomGuide>> {
+export async function roomGuideOf(
+  room: Pick<RoomRow, 'projectId' | 'sessionId'>,
+): Promise<Outcome<RoomGuide>> {
+  const guide = await guideOf(room);
+  // the guide the room's agent read, kept as an opened knowledge entry is (ISS-1251): the project's or
+  // its organization's entry by its slug, Forge's own by the guide's name
+  noteRoomReached(room, room.projectId, 'get', {
+    knowledge: [{ slug: guide.value.slug, body: guide.value.body }],
+  });
+  return guide;
+}
+
+async function guideOf(room: Pick<RoomRow, 'projectId'>): Promise<{ ok: true; value: RoomGuide }> {
   const shipped = getGuide(SHIPPED_ROOM_GUIDE);
   if (!shipped)
     throw new Error(`support: the shipped guide ${SHIPPED_ROOM_GUIDE} is not registered`);

@@ -52,6 +52,7 @@ import { projectsInScope } from './ops-scope.js';
 import { ownViewOf } from './owner-git.js';
 import { agentOpening, coldThreads, roomMessages, supportBrief } from './prompt.js';
 import { roomLessonsNews } from './reply-audit/lessons-news.js';
+import { noteTurnCarried } from './room-reaches.js';
 import { roomWithSession, type SessionRow, sessionOf, sessionToHand } from './room-session.js';
 import { agentMarkerOf } from './rooms.js';
 import { openSessionTurn } from './session-turns.js';
@@ -292,8 +293,11 @@ export async function handTurn(
   // the project's lessons about chat replies, on a cold turn and whenever they changed (ISS-1250)
   const lessons = 'warmUp' in body && !cold ? null : await roomLessonsNews(room, cold);
   if (cold) {
-    parts.push(await briefOf(room, project.name, followed));
+    const brief = await briefOf(room, project.name, followed);
+    parts.push(brief);
     if (lessons) parts.push(lessons);
+    // what the turn was given, kept as a run's is: the lessons and cards its brief carries (ISS-1251)
+    noteTurnCarried(room, session.id, [brief, lessons ?? ''].join('\n\n'));
     // a channel agent re-reads every group it answers, each thread naming its channel
     const rooms = room.kind === 'agent' ? await roomsOfSession(session.id) : [room];
     for (const r of rooms) {
@@ -304,6 +308,7 @@ export async function handTurn(
   } else if (!('warmUp' in body)) {
     // a warm session reads the channel record again when it changed since it was told (BC-41)
     const news = await channelNews(room);
+    if (lessons) noteTurnCarried(room, session.id, lessons);
     if (news || lessons) {
       parts.push(...[news, lessons].filter((p): p is string => p !== null));
       if ('messages' in body) parts.push('New messages:');

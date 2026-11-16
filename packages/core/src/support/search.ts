@@ -7,6 +7,7 @@ import { recallKnowledge } from '../knowledge/index.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
 import { namedProject } from './ops-scope.js';
 import type { Outcome } from './outcome.js';
+import { noteRoomReached } from './room-reaches.js';
 import type { RoomRow } from './store.js';
 import { scrubbedForRoom } from './thread.js';
 
@@ -90,6 +91,8 @@ export async function search(
         strategy: 'keyword',
       })
     : { knowledge: [] };
+  // what the room's agent read, kept as a run's knowledge search is (ISS-1251)
+  noteRoomReached(room, projectId, 'search', { knowledge });
   const api = (await openApiHits(projectId, query)).map((h) =>
     from ? { ...h, cite: h.cite.replace(/^openapi:/, `openapi:${from}`) } : h,
   );
