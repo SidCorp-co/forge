@@ -16,6 +16,7 @@ import {
   type FollowedRelease,
   readFollowedRepo,
 } from '../integrations/github/index.js';
+import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
 import { listOrgProjects } from '../orgs/index.js';
 import { freshReleases, matchRelease, type OpenItem } from './match.js';
@@ -184,6 +185,27 @@ export async function followSource(
 }
 
 /**
+ * One source of the pass. A source that throws (a read timed out, an idea refused) is settled with
+ * its error and reported, so it is not read first again with its error unrecorded, starving every
+ * source behind it; the pass goes on to the next.
+ */
+async function followIsolated(
+  source: SourceRow,
+  read: ReleaseReader,
+  now: Date,
+): Promise<FollowOutcome> {
+  try {
+    return await followSource(source, read, now);
+  } catch (err) {
+    const said = err instanceof Error ? err.message : String(err);
+    logger.error({ err, source: source.id }, `reference-releases: ${source.title} threw`);
+    reportFailure(err, { tags: { area: 'reference-releases' }, extra: { source: source.id } });
+    await settle(source.id, { lastCheckedAt: now, followError: said });
+    return { source: source.title, act: 'failed', ideas: [], silent: 0, said };
+  }
+}
+
+/**
  * The scheduled pass (`timer-registry.ts`, `reference-releases`): every active followed source, the
  * least recently read first, until GitHub's rate limit is spent.
  */
@@ -204,7 +226,7 @@ export async function followAllSources(
     .orderBy(sql`${referenceSources.lastCheckedAt} ASC NULLS FIRST`);
   const tally = { read: 0, ideas: 0, silent: 0, failed: 0, stopped: null as string | null };
   for (const source of sources) {
-    const one = await followSource(source, read, now);
+    const one = await followIsolated(source, read, now);
     tally.read += 1;
     tally.ideas += one.ideas.length;
     tally.silent += one.silent;

@@ -4,7 +4,8 @@
  * github.com repository are refused by name; a followed source's release that shares distinctive
  * words with an open issue files ONE idea on that issue, naming the release, and a release about
  * nothing open stays silent on the timeline and files nothing, a second read filing nothing again;
- * a citation is counted on the source's signals; and a source nobody cited for 90 days is flagged.
+ * a source whose read throws is settled with its error and the pass reads the next; a citation is
+ * counted on the source's signals; and a source nobody cited for 90 days is flagged.
  * The releases are fixtures handed to the follow pass: no network.
  *
  * @direct-test-of packages/core/src/references/routes.ts
@@ -21,7 +22,7 @@ import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import type { FollowedRead } from '../../src/integrations/github/index.js';
-import { followSource, type ReleaseReader } from '../../src/references/follow.js';
+import { followAllSources, followSource, type ReleaseReader } from '../../src/references/follow.js';
 import { activeSourcesOf } from '../../src/references/read.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import {
@@ -161,6 +162,49 @@ describe("a followed source's releases digested (c2)", () => {
       sql`SELECT count(*)::int AS n FROM feedback WHERE project_id = ${project.id}`,
     );
     expect(again[0]?.n).toBe(1);
+  });
+});
+
+describe('a source whose read throws, in the scheduled pass', () => {
+  it('is settled with its error, and the source behind it is still read', async () => {
+    for (const name of ['broken', 'healthy']) {
+      const added = await api(jwt, 'POST', base(), {
+        kind: 'repo',
+        url: `https://github.com/acme-${name}/lib`,
+        why: `a ${name} source`,
+        areas: ['follow pass'],
+        followReleases: true,
+      });
+      expect(added.status, JSON.stringify(added.body)).toBe(201);
+    }
+    // the broken source is read first (never checked), the healthy one next
+    await db.execute(
+      sql`UPDATE reference_sources SET last_checked_at = '2000-01-01T00:00:00Z' WHERE title = 'acme-healthy/lib'`,
+    );
+    const asked: string[] = [];
+    const read: ReleaseReader = async (repo) => {
+      asked.push(repo);
+      if (repo === 'acme-broken/lib') throw new Error('The operation was aborted due to timeout');
+      return { ok: true, repo: { archived: false, pushedAt: null }, unchanged: true, etag: null };
+    };
+    const now = new Date();
+    const tally = await followAllSources(read, now);
+    expect(asked.slice(0, 2)).toEqual(['acme-broken/lib', 'acme-healthy/lib']);
+    expect(tally.failed).toBe(1);
+    expect(tally.stopped).toBeNull();
+
+    const settled = await rows<{ title: string; follow_error: string | null; checked: boolean }>(
+      sql`SELECT title, follow_error, last_checked_at = ${now.toISOString()}::timestamptz AS checked
+          FROM reference_sources WHERE title LIKE 'acme-%' ORDER BY title`,
+    );
+    expect(settled).toEqual([
+      {
+        title: 'acme-broken/lib',
+        follow_error: 'The operation was aborted due to timeout',
+        checked: true,
+      },
+      { title: 'acme-healthy/lib', follow_error: null, checked: true },
+    ]);
   });
 });
 
