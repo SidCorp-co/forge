@@ -47,6 +47,7 @@ const DOOR_GUIDES: Record<McpToolName, GuideSlug | null> = {
   forge_ecosystem: 'ecosystem-inbox',
   forge_feedback: null,
   forge_support: null,
+  forge_references: null,
 };
 
 const INPUTS = {

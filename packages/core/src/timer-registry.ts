@@ -32,6 +32,7 @@ import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pi
 import { runPipelineSweep } from './pipeline-sweep.js';
 import { sweepPreviews } from './previews/index.js';
 import { sweepQuestionSuggestions } from './questions/index.js';
+import { followReferences } from './references/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
 import { criteriaFactsTick } from './requirements/index.js';
@@ -156,8 +157,7 @@ function stewardTimers(): Timer[] {
       ),
     },
     {
-      // REQ-68 BC-7, BC-8: a decision whose item moved is voided, an unanswered round is reminded on
-      // day 3, and on day 14 the agent proposes deferring or dropping the requirement it holds up
+      // REQ-68 BC-7, BC-8: a moved item's decision is voided; reminded day 3, deferral asked day 14
       kind: 'cluster',
       name: 'decision-upkeep',
       cron: '*/5 * * * *',
@@ -190,8 +190,7 @@ function stewardTimers(): Timer[] {
       ),
     },
     {
-      // REQ-50 BC-2, BC-5..BC-7: corrections grouped into proposed lessons, each proposal and
-      // confusion settled by the steward, due lessons retired, checks filed (`steward/lessons-pass.ts`)
+      // REQ-50 BC-2, BC-5..BC-7: lessons proposed, settled, retired, checks filed (lessons-pass.ts)
       kind: 'cluster',
       name: 'lessons-pass',
       cron: '*/10 * * * *',
@@ -482,6 +481,7 @@ export function coreTimers(): Timer[] {
       run: logged('integrations-health-sweep: complete', runIntegrationsHealthSweep),
     },
     { kind: 'cluster', name: 'admin-alert-sweep', cron: '*/5 * * * *', run: () => runAlertSweep() },
+    { kind: 'cluster', name: 'reference-releases', cron: '41 */6 * * *', run: followReferences },
     ...requirementTimers(),
     ...stewardTimers(),
 

@@ -1296,6 +1296,12 @@
       "owns": ["stewardAccounts", "stewardActs", "stewardRuns"],
       "serves": ["REQ-48"]
     },
+    "references": {
+      "kind": "domain",
+      "context": "operations",
+      "owns": ["referenceCitations", "referenceReleases", "referenceSources"],
+      "serves": ["feedback-triage#intake", "REQ-50"]
+    },
     "steward-notes": {
       "kind": "domain",
       "context": "design",

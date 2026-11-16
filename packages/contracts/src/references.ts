@@ -168,6 +168,9 @@ export const REFERENCE_REFUSAL_CODES = [
 ] as const;
 export type ReferenceRefusalCode = (typeof REFERENCE_REFUSAL_CODES)[number];
 
+/** The actions of the MCP door `forge_references` that read; every other one writes. */
+export const REFERENCES_TOOL_READS = ["search", "signals", "timeline"] as const;
+
 /** The `owner/name` of a github.com repository address, or null where it names none. */
 export function githubRepoOf(address: string): string | null {
 	const m =

@@ -185,6 +185,7 @@ import {
 } from './projects/routes.js';
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
+import { referenceSourceRoutes } from './references/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { releasePageRoutes } from './release-page/routes.js';
 import { reportQueryRoutes } from './report-queries/routes.js';
@@ -235,8 +236,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 
 /** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the published API and tool contracts, the build's trace, the feedback widget, the monitoring doors (each by its own bearer) and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
-  // a product server's feedback key, answered first; since ISS-925 no router under /api/projects gates
-  // past its own routes (`middleware/gated-routes.ts`), so its place no longer decides that it is reached
+  // a product server's feedback key, first; no router gates past its own routes since ISS-925
   app.route('/api/projects', feedbackServerKeyDoor);
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
@@ -268,8 +268,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
     mcpMethodNotAllowed,
   );
 
-  // the install routes reach nothing outside themselves (.arch.json install-is-pure), so the
-  // validator closing their query is held where they are mounted
+  // install routes reach nothing else (.arch.json install-is-pure): their query validator is here
   declareInstallRoutes(app, PUBLIC_INSTALL_PATHS);
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   app.route('/api', pluginArchiveRoutes);
@@ -329,6 +328,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/support', ownerSignInCallbackRoutes);
   app.route('/api/projects', standingRoutes);
   app.route('/api/projects', stewardNoteRoutes);
+  app.route('/api/projects', referenceSourceRoutes);
   app.route('/api/projects', feedbackChecklistRoutes);
   app.route('/api/projects', mockupRoutes);
   app.route('/api/projects', lessonRoutes);

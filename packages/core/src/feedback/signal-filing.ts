@@ -98,7 +98,10 @@ export async function fileBySignal(input: {
 export async function fileSignalFeedback(input: {
   projectId: string;
   actor: FeedbackActor;
-  request: Pick<CreateFeedbackRequest, 'kind' | 'title' | 'body' | 'severity' | 'screen'>;
+  request: Pick<
+    CreateFeedbackRequest,
+    'kind' | 'title' | 'body' | 'severity' | 'screen' | 'issue' | 'requirement'
+  >;
   signalKey: string;
   source: OccurrenceSource;
   said?: string;
@@ -107,6 +110,8 @@ export async function fileSignalFeedback(input: {
     kind: input.request.kind,
     title: input.request.title,
     ...(input.request.screen ? { screen: input.request.screen } : {}),
+    ...(input.request.issue ? { issue: input.request.issue } : {}),
+    ...(input.request.requirement ? { requirement: input.request.requirement } : {}),
     ...(input.request.severity ? { severity: input.request.severity } : {}),
     ...(input.request.body !== undefined ? { body: input.request.body } : {}),
   });
