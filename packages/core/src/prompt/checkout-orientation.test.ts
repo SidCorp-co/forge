@@ -341,9 +341,9 @@ describe('the orientation core serves reads the rules from the knowledge store',
         agreements: INHERITED,
       }),
     );
-    expect(body).toContain('lesson-3, when any work: ');
+    expect(body).toContain('When any work:\n- lesson-3: ');
     expect(body).toContain('`GET /api/projects/p-1/knowledge/<slug>`');
-    expect(body).toContain('lesson-3, when any work: Slice a breakdown by screen, never by table.');
+    expect(body).toContain('- lesson-3: Slice a breakdown by screen, never by table.');
   });
 
   it("names the project's and its org's on-demand guides, the org's marked, read through the project door", async () => {
@@ -406,9 +406,9 @@ describe('the orientation core serves reads the rules from the knowledge store',
     expect(full.length - bare.length).toBeLessThanOrEqual(
       LESSONS_MAP_MAX_CHARS + GUIDE_INDEX_MAX_CHARS + 4,
     );
-    expect(full).toContain('lesson-500, when any work: Lesson sentence number 500, which is long');
+    expect(full).toContain('When any work:\n- lesson-500: Lesson sentence number 500, which is long');
     expect(full).toMatch(
-      /\d+ more lessons, nearer other work: `GET \/api\/projects\/p-1\/knowledge\?kind=lesson/,
+      /\d+ more lessons, nearer other work: `GET …\/knowledge\?kind=lesson/,
     );
     expect(full).toMatch(
       /- and \d+ more: `forge-runner api projects\/p-1\/knowledge\?injection=on_demand`/,

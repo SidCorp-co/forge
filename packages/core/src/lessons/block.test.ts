@@ -47,9 +47,12 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     expect(text).toContain('### Lessons');
     expect(text).toContain(
       [
-        'lesson-2, when working in Billing: Said once as rule 2.',
-        'lesson-3, when writing requirements: Said once as rule 3.',
-        'lesson-1, when any work: Said once as rule 1.',
+        'When working in Billing:',
+        '- lesson-2: Said once as rule 2.',
+        'When writing requirements:',
+        '- lesson-3: Said once as rule 3.',
+        'When any work:',
+        '- lesson-1: Said once as rule 1.',
       ].join('\n'),
     );
     expect(text).toContain('the read door');
@@ -64,7 +67,7 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     expect(gistOf('Keep it short. Then more.')).toBe('Keep it short.');
     const long = `${'word '.repeat(40)}end.`;
     const gist = gistOf(long);
-    expect(gist.length).toBeLessThanOrEqual(90);
+    expect(gist.length).toBeLessThanOrEqual(72);
     expect(gist.endsWith('word…')).toBe(true);
   });
 
@@ -80,10 +83,10 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     for (const doorsOf of [doors, restLessonDoors('0b6f1f5e-7a7e-4c43-9d56-0c5e9a3b2f11')]) {
       const text = lessonsMapText(many, { produces: ['issue'], area: 'any', ...doorsOf }, 2) ?? '';
       expect(text.length).toBeLessThanOrEqual(LESSONS_MAP_MAX_CHARS);
-      const named = text.match(/lesson-\d+, when /g)?.length ?? 0;
+      const named = text.match(/^- lesson-\d+: /gm)?.length ?? 0;
       expect(named).toBeGreaterThan(0);
       expect(text).toContain(`${500 - named} more lessons, nearer other work: ${doorsOf.list}`);
-      expect(text).toContain('lesson-500, when '); // the newest first
+      expect(text).toContain('- lesson-500: '); // the newest first
       expect(text).toContain('…:'); // a long area name is cut
       expect(lessonsMapOverflow(many, { produces: ['issue'], area: 'any', ...doorsOf })).toEqual({
         reach: 500,
@@ -94,16 +97,39 @@ describe('a prompt carries a map of the lessons, never their sentences (ISS-867,
     }
   });
 
+  it("names many lessons of a real project's size, its frame taking little of the budget (ISS-1251)", () => {
+    // forge-dev 2026-11-16: forge's run map named 1 of 82 lessons, its frame taking most of the 1200
+    const sentence = (n: number) =>
+      `Keep each owed action consistent across attention counts, home summaries and lists, rule ${n}.`;
+    const areas = ['Chat and assistant', 'Screens and copy', 'Delivery'];
+    const real = Array.from({ length: 82 }, (_, i) => ({
+      ...entry(i + 1, {
+        kind: 'area',
+        areaId: `a-${i % 3}`,
+        areaName: areas[i % 3] ?? null,
+        itemKind: null,
+      }),
+      sentence: sentence(i + 1),
+    }));
+    const doorsOf = restLessonDoors('d1bb4907-74d9-4228-85ff-76121523af7d');
+    const map = lessonsMapOverflow(real, { produces: ['issue'], area: 'any', ...doorsOf });
+    expect(map.size).toBeLessThanOrEqual(LESSONS_MAP_MAX_CHARS);
+    expect(map.named).toBeGreaterThanOrEqual(8);
+    // the project's path is spelled once, never once per door
+    const text = lessonsMapText(real, { produces: ['issue'], area: 'any', ...doorsOf }, 2) ?? '';
+    expect(text.split('d1bb4907-74d9-4228-85ff-76121523af7d').length - 1).toBe(1);
+  });
+
   it('says only the count and the list door where not one line fits beside the frame', () => {
     const frame = lessonsMapText([project], aud({ produces: [], area: null }), 2) ?? '';
-    expect(frame).toContain('lesson-1, when any work: ');
+    expect(frame).toContain('When any work:\n- lesson-1: ');
     expect(frame).not.toContain('more lesson');
     // a read door that leaves room for the count line and not for one lesson's line
     const pad = 'f'.repeat(LESSONS_MAP_MAX_CHARS - frame.length + doors.fetch.length + 3);
     const tight = { produces: [], area: null, ...doors, fetch: pad, list: 'L' };
     const text = lessonsMapText([project], tight, 2) ?? '';
     expect(text.length).toBeLessThanOrEqual(LESSONS_MAP_MAX_CHARS);
-    expect(text).not.toContain('lesson-1, when');
+    expect(text).not.toContain('- lesson-1:');
     expect(text).toContain('1 more lesson, nearer other work: L');
   });
 
