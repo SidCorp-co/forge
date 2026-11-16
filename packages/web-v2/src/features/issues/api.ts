@@ -66,7 +66,8 @@ export const issuesApi = {
     const params = new URLSearchParams();
     params.set("limit", String(pageSize));
     params.set("offset", String((page - 1) * pageSize));
-    params.set("sort", opts.sort ?? "createdAt:desc");
+    // a search with no sort chosen reads in the find door's order (ISS-1256)
+    if (opts.sort || !opts.q) params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
     params.set("withFailureInfo", "1");
     params.set("withPipelineHealth", "1");

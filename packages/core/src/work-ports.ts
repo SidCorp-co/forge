@@ -54,6 +54,7 @@ import {
   listFeedbackAs,
   triageOutcomesOf,
 } from './feedback/index.js';
+import { issueIdsThroughFind } from './find/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
 import {
@@ -307,6 +308,7 @@ export function provideWorkPorts(): void {
   provideCommitPlacement({ commitPlacedOnLanding });
   provideIssuePorts({
     projectCreatorOf,
+    issueIdsFound: issueIdsThroughFind,
     keepCorrection: recordCorrection,
     settleOpenQuestions,
     withdrawParkQuestions,

@@ -17,8 +17,8 @@ const KEY_LIKE = /^[a-z][a-z0-9]*-\d+$/i;
 const PICK_LIMIT = 8;
 
 /**
- * The project's issues matching what a person typed: the issue a key names first, then those whose
- * title or body mentions the text, newest first. A key core cannot read is refused by name.
+ * The project's issues matching what a person typed: the issue a key names first, then those the
+ * find door keeps for the text, in its order (ISS-1256). A key core cannot read is refused by name.
  */
 export async function pickIssues(projectId: string, text: string): Promise<IssuePick[]> {
   const base = `/projects/${projectId}/issues/search?limit=${PICK_LIMIT}`;

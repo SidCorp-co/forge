@@ -1,3 +1,7 @@
+// `GET /api/projects/:id/issues/search`: the issue list with its filters, its `q` the find door's issue
+// filter (ISS-1256, `listIssues`'s `search`): the issues `POST /find` keeps for those words, in its
+// order unless a `sort` is sent.
+
 import { z } from 'zod';
 import type { IssueStatus } from '../db/schema.js';
 import { listResponse } from '../lib/pagination.js';

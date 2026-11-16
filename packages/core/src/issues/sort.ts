@@ -36,6 +36,9 @@ const leadingOrder: Record<IssueSort, SQL> = {
   'priority:desc': sql`${priorityRank} DESC`,
 };
 
+/** The order that ends every issue order, so a page at an offset never skips or repeats a row. */
+export const issueTiebreak = (): SQL[] => [...TIEBREAK];
+
 export function buildIssueOrderBy(sort: IssueSort): SQL[] {
   return [leadingOrder[sort], ...TIEBREAK];
 }

@@ -1,8 +1,8 @@
 // The keyword arms over the records a key or a title names (ISS-1256): issues, requirements, feedback,
 // decisions and reference sources. Each matches every phrase of the expanded query as a substring of
-// its title and text, or its key exactly, most recently changed first. The issue arm reads through the
-// issue list's own predicate (`issues/search-predicate.ts`), so an issue matches here as it matches
-// on the issue list.
+// its title and text, or its key exactly, most recently changed first. The issue arm's predicate is
+// `issues/search-predicate.ts`; the issue list's text filter is this door's issue filter
+// (`issue-filter.ts`), so an issue is listed for words exactly where it is found for them.
 
 import { and, desc, eq, ilike, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

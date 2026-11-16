@@ -29,9 +29,9 @@ import { buildCreatedByCondition, buildOriginCondition } from './creator.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 import { REST_ISSUE_LIST_COLUMNS } from './list-projection.js';
-import { holdsOpenHumanQuestion, usageSessionMatch } from './ports.js';
-import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
-import { buildIssueOrderBy, type IssueSort } from './sort.js';
+import { holdsOpenHumanQuestion, issueIdsFound, usageSessionMatch } from './ports.js';
+import { matchedSearchFieldsSql } from './search-predicate.js';
+import { buildIssueOrderBy, type IssueSort, issueTiebreak } from './sort.js';
 
 /** Every filter the issue list takes; both REST list routes read the same set. */
 type IssueListFilters = {
@@ -50,6 +50,10 @@ type IssueListFilters = {
   createdAfter?: Date | undefined;
   createdBefore?: Date | undefined;
   updatedAfter?: Date | undefined;
+  /**
+   * Words the list is narrowed by: the issues the find door's issue filter keeps for them, in its
+   * order where no `sort` is sent (ISS-1256), never a substring match of the list's own.
+   */
   search?: string | undefined;
   /** Label names or ids; an unknown name is dropped, and none resolving matches nothing. */
   label?: readonly string[] | undefined;
@@ -58,7 +62,8 @@ type IssueListFilters = {
 };
 
 type IssueListPage = {
-  sort: IssueSort;
+  /** Absent: a `search` list in the find door's order, any other newest first. */
+  sort?: IssueSort | undefined;
   limit: number;
   offset: number;
   withBuckets?: boolean | undefined;
@@ -75,7 +80,23 @@ export interface IssueBuckets {
   readonly waitingOnPersonByStatus: Record<string, number>;
 }
 
-function pageQuery(where: SQL | undefined, page: IssueListPage, search: string | undefined) {
+/** The order a page reads in: the sort sent, else the find door's rank of a search, else newest first. */
+function orderOf(page: IssueListPage, ranked: readonly string[] | null): SQL[] {
+  if (page.sort || !ranked) return buildIssueOrderBy(page.sort ?? 'createdAt:desc');
+  if (ranked.length === 0) return issueTiebreak();
+  const ids = sql.join(
+    ranked.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  return [sql`array_position(ARRAY[${ids}]::uuid[], ${issues.id})`, ...issueTiebreak()];
+}
+
+function pageQuery(
+  where: SQL | undefined,
+  page: IssueListPage,
+  search: string | undefined,
+  ranked: readonly string[] | null,
+) {
   const columns = search
     ? { ...REST_ISSUE_LIST_COLUMNS, matchedFields: matchedSearchFieldsSql(search) }
     : REST_ISSUE_LIST_COLUMNS;
@@ -83,7 +104,7 @@ function pageQuery(where: SQL | undefined, page: IssueListPage, search: string |
     .select(columns)
     .from(issues)
     .where(where)
-    .orderBy(...buildIssueOrderBy(page.sort))
+    .orderBy(...orderOf(page, ranked))
     .limit(page.limit)
     .offset(page.offset);
 }
@@ -166,7 +187,8 @@ export async function listIssues(
     if (!parsed.ok) return { ok: false, field: 'key', message: parsed.message };
     both(eq(issues.issSeq, parsed.issSeq));
   }
-  if (filters.search) both(buildIssueSearchCondition(filters.search));
+  const ranked = filters.search ? await issueIdsFound(projectId, filters.search) : null;
+  if (ranked) both(ranked.length > 0 ? inArray(issues.id, ranked) : sql`false`);
   if (filters.status?.length) {
     const atStatus = inArray(issues.status, [...filters.status]);
     conditions.push(
@@ -198,7 +220,7 @@ export async function listIssues(
   const where = and(...conditions);
   const [[{ n } = { n: 0 }], rows, buckets] = await Promise.all([
     db.select({ n: count() }).from(issues).where(where),
-    pageQuery(where, page, filters.search),
+    pageQuery(where, page, filters.search, ranked),
     page.withBuckets ? countBuckets(axisFree) : Promise.resolve(null),
   ]);
   return { ok: true, rows, total: Number(n), buckets };

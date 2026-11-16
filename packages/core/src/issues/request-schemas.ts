@@ -85,7 +85,8 @@ export const issueListFilterFields = {
   key: issueKeyFilterSchema.optional(),
   label: oneOrMany(z.string().trim().min(1)),
   module: oneOrMany(z.string().trim().min(1)),
-  sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
+  // absent: a `search` list reads in the find door's order (ISS-1256), any other newest first
+  sort: z.enum(issueSortValues).optional(),
   withAgentSessions: z.coerce.boolean().optional().default(false),
   /** ISS-1237 — archived issues are left out unless asked for; a `key` is retrieval and always answers. */
   includeArchived: z.stringbool().optional(),
