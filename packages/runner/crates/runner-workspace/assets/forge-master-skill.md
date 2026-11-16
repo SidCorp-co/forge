@@ -373,8 +373,8 @@ reading and dispatch it; where it finds the row is not work, say why on it and d
 Outside direct mode, every issue goes out this way.
 
 `forge-runner run declare` writes the row naming which issues a subagent is being given and which
-tree it works in. This is no longer advice: dispatch a shipped role with nothing declared and the
-call is refused before it runs, in these words:
+tree it works in. That row is the kernel's record of the run, so a shipped role dispatched with
+nothing declared is refused before it runs, in these words:
 
 > Refused: nothing on this box has been told about the work you are handing out.
 
