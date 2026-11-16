@@ -53,6 +53,7 @@ const LOCK_NAMESPACES = {
   supportDispatch: 41,
   feedbackServerKey: 42,
   supportOwnerCredential: 43,
+  referenceSources: 60,
   releaseVersion: 1120,
 } as const;
 

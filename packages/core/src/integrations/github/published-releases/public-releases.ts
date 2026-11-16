@@ -18,7 +18,8 @@ export interface PublicRelease {
   assets: PublicReleaseAsset[];
 }
 
-function apiHeaders(): Record<string, string> {
+/** The headers every read of GitHub's public API sends; the instance's token where one is set. */
+export function publicApiHeaders(): Record<string, string> {
   const h: Record<string, string> = {
     'user-agent': USER_AGENT,
     accept: 'application/vnd.github+json',
@@ -30,7 +31,7 @@ function apiHeaders(): Record<string, string> {
 
 export async function listRepoReleases(repo: string): Promise<PublicRelease[]> {
   const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=50`, {
-    headers: apiHeaders(),
+    headers: publicApiHeaders(),
   });
   if (!res.ok) throw new Error(`GitHub releases API ${res.status}`);
   return (await res.json()) as PublicRelease[];
@@ -45,7 +46,7 @@ export async function latestCommitUnder(
   const url =
     `https://api.github.com/repos/${repo}/commits` +
     `?sha=${encodeURIComponent(branch)}&path=${encodeURIComponent(path)}&per_page=1`;
-  const res = await fetch(url, { headers: apiHeaders() });
+  const res = await fetch(url, { headers: publicApiHeaders() });
   if (!res.ok) throw new Error(`GitHub commits API ${res.status}`);
   const rows = (await res.json()) as Array<{ sha?: unknown }>;
   const sha = Array.isArray(rows) ? rows[0]?.sha : undefined;
