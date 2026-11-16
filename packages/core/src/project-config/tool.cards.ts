@@ -26,6 +26,9 @@ export const CARDS = {
       'An environment with no URL has none; never guess a host from another one.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Guessing a host from another environment, or reading a secret:// reference as the credential.',
+    family: 'setup',
     audience: ['person'],
   },
   gates_get: {
@@ -45,6 +48,9 @@ export const CARDS = {
       'Quote who changed a gate and why from its changes, not your reading of the profile.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Saying why a gate is set from your reading of the profile, where its changes record who set it and why.',
+    family: 'setup',
     audience: ['person'],
   },
   gates_write: {
@@ -65,6 +71,9 @@ export const CARDS = {
       profile: 'standard',
       reason: 'The team reviews every change before it lands.',
     },
+    redFlag:
+      'Writing a profile the person did not decide, or overrides for gates their profile already sets as they want.',
+    family: 'setup',
     audience: ['person'],
   },
   gate_profiles: {
@@ -78,7 +87,57 @@ export const CARDS = {
     ],
     practice: ['Name the kernel rules too: no profile relaxes them, so no choice turns them off.'],
     example: { projectId: '<project uuid>' },
+    redFlag: 'Telling a person a profile turns a kernel rule off: no profile relaxes them.',
+    family: 'setup',
     audience: ['person'],
   },
   // write's one card is its REST twin's, the orientation's (`mcp/twins.ts`)
 } satisfies Record<Exclude<ConfigAction, 'write'>, CapabilityCardBody>;
+
+/**
+ * When an agent reaches for a project's integration bindings: the forge masters' reads and writes
+ * over this door (forge, 2026-10-17..11-16: 3 reads, 6 writes, every write refused), and the
+ * envelope the door shares with config.write.
+ */
+export const BINDINGS_CARDS = {
+  get: {
+    purpose:
+      'Reads a project’s integration bindings as documents: role, connection, target and instructions, and each revision.',
+    situations: [
+      {
+        when: 'you need where a binding points (a host’s project, a deploy target, a monitoring target) or are about to change it',
+        do: 'get the binding: its revision is the baseRevision write sends, its document what you change',
+      },
+    ],
+    practice: [
+      'A binding with no document form is listed under unrepresentable, and its one read is refused BINDING_NOT_REPRESENTABLE.',
+    ],
+    example: { projectId: '<project uuid>', binding: '<binding uuid>' },
+    redFlag:
+      'Looking for a credential here: a connection’s credential stays in core, and a binding names only its connection.',
+    family: 'setup',
+    audience: ['master'],
+  },
+  write: {
+    purpose: 'Rewrites one binding document whole: its target, instructions or connection.',
+    situations: [
+      {
+        when: 'a binding’s target or instructions are wrong, and the project admin decided the right ones',
+        do: 'get it, change the document, and write it whole with the revision get answered',
+        watch:
+          '{ base, patch } is refused CONFIG_WRITE_SHAPE, and a revision the binding moved past is refused by name',
+      },
+    ],
+    practice: ['It takes project.admin; removing a binding is a person’s act on its own door.'],
+    example: {
+      projectId: '<project uuid>',
+      binding: '<binding uuid>',
+      baseRevision: 2,
+      document: '<the whole binding document get answered, with your change>',
+    },
+    redFlag:
+      'Writing a binding from memory: all 6 writes on forge (2026-10-17..11-16) were refused. Get it, change it, write it whole.',
+    family: 'setup',
+    audience: ['master'],
+  },
+} satisfies Record<'get' | 'write', CapabilityCardBody>;

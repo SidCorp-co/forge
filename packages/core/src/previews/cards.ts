@@ -23,6 +23,7 @@ export const PREVIEW_REST_CARDS = {
     // forge: its one call in the window landed, a master probing it
     redFlag:
       'Opening a preview to test your own change, where a judge run on the deployed build is the act.',
+    family: 'product.requirement',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

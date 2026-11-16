@@ -1,8 +1,8 @@
 // The room acts' capability cards (ISS-1251), one per act a room agent actually uses, declared on
 // forge_support (`tool.ts`) so forge_find and forge_describe answer them, and rendered into each room
 // brief's map (`room-conduct.ts`): a map line is its act's lead situation, so the card is the one
-// text that teaches the act. An act with no recorded use carries no card; ISS-1251's no-use list
-// says why each one does not.
+// text that teaches the act. Every act carries one: an act with little recorded use is taught from
+// the rule or refusal it was built around (`ops-cards.ts`).
 
 import {
   type CapabilityCardBody,
@@ -11,6 +11,7 @@ import {
 } from '@forge/contracts/capability-cards';
 import type { SUPPORT_ACTIONS } from '@forge/contracts/support';
 import type { OperationsAction } from '@forge/contracts/support-operations';
+import { OPS_ACT_CARDS } from './ops-cards.js';
 import { REFERENCE_ACT_CARDS } from './reference-cards.js';
 import { ROOM_ACT_CARDS } from './room-cards.js';
 import { WORK_ACT_CARDS } from './work-cards.js';
@@ -22,6 +23,7 @@ export const SUPPORT_ACT_CARDS: Readonly<Partial<Record<SupportAction, Capabilit
   ...ROOM_ACT_CARDS,
   ...WORK_ACT_CARDS,
   ...REFERENCE_ACT_CARDS,
+  ...OPS_ACT_CARDS,
 };
 
 /** The door a room act is served as, and its card is keyed by: `support.member`. */

@@ -19,6 +19,8 @@ export const CARD_FAMILIES = {
 		"you would say done or live, or a person waits on or decides a release",
 	"room.hand-on":
 		"you cannot make an act, lack a grant, or a need belongs to someone else",
+	"room.work":
+		"a member asks you to move an issue, draft work or read a web page",
 	"room.owner":
 		"only the owner can answer or decide, or he answered or asked you to act",
 	references: "a source is to be read first, cited or proposed",
@@ -36,8 +38,17 @@ export const CARD_FAMILIES = {
 	ecosystem: "a contract moves, or a builder run is open",
 	setup: "config, monitoring or schedules change",
 	debt: "a defect stands alone, or a cleanup run ends",
+	steward: "the steward moved, asked or wrote something wrong here",
 	rooms: "a chat room is told a result, or asked you something",
 	onboarding: "you onboard a project: ask, report designs, close",
+	"product.status":
+		"a person asks how the project or its work stands, or what waits on them",
+	"product.requirement":
+		"a person drafts, revises, traces or tries what is wanted",
+	"product.ask": "a question is owed an answer, or a person asks one",
+	"product.release":
+		"a person asks what shipped, or names or decides a release",
+	"product.bot": "a person wants a report or a job of several steps",
 } as const;
 
 export type CardFamily = keyof typeof CARD_FAMILIES;

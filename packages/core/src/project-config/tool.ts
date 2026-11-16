@@ -31,7 +31,7 @@ import {
   writeGates,
 } from './gates.js';
 import { type Held, readProjectConfig, writeProjectConfig } from './service.js';
-import { CARDS } from './tool.cards.js';
+import { BINDINGS_CARDS, CARDS } from './tool.cards.js';
 
 export const CONFIG_TOOL_READS = ['get', 'gates_get', 'gate_profiles'] as const;
 export const BINDINGS_TOOL_READS = ['get'] as const;
@@ -316,6 +316,8 @@ export const forgeBindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_bindings',
   description: BINDINGS_DESCRIPTION,
   inputSchema: zodToMcpSchema(bindingsInput),
+  cards: BINDINGS_CARDS,
+  source: sourceOf(import.meta.url),
   route: '/api/projects',
   grant: { byAction: { get: 'projects:read', write: 'projects:write' } },
   reach: 'project',

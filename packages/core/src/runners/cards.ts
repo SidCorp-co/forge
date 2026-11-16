@@ -22,6 +22,7 @@ export const RUNNER_REST_CARDS = {
     },
     // forge: the one agent call was forbidden: registering a runner is a person's act
     redFlag: 'An agent registering a runner for itself: a person adds a box’s runner.',
+    family: 'setup',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

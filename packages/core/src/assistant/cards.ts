@@ -18,6 +18,7 @@ export const ASSISTANT_REST_CARDS = {
     example: {},
     // forge: the one agent call was refused
     redFlag: 'An agent opening a BA room for itself to work a requirement it can revise directly.',
+    family: 'product.requirement',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

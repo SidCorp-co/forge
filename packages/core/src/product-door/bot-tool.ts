@@ -78,6 +78,9 @@ const CARDS = {
     ],
     practice: ['A thread is a chat room of the project: the same one the Forge UI chat shows.'],
     example: { projectId: '<project uuid>', limit: 10 },
+    redFlag:
+      'Opening a new thread to follow up on one already under way, so the bot loses what was said.',
+    family: 'product.bot',
     audience: ['person'],
   },
   open: {
@@ -102,6 +105,8 @@ const CARDS = {
       title: 'REQ-90 blockers',
       about: { kind: 'requirement', key: 'REQ-90' },
     },
+    redFlag: 'Opening a bot thread for one read or one write the action itself does.',
+    family: 'product.bot',
     audience: ['person'],
   },
   send: {
@@ -137,6 +142,7 @@ const CARDS = {
     // bot-actions.ts BOT_CLIENT_KEY_REUSED, written for REQ-91 BC-6 (ISS-1115): one key reused for a new message
     redFlag:
       'Reusing one clientKey for a different message: it is refused BOT_CLIENT_KEY_REUSED and the message is not taken in; each new message takes a new key.',
+    family: 'product.bot',
     audience: ['person'],
   },
   read: {
@@ -161,6 +167,8 @@ const CARDS = {
       after: 12,
       waitSeconds: 30,
     },
+    redFlag: 'Sending the message again while its turn is processing, where read follows it.',
+    family: 'product.bot',
     audience: ['person'],
   },
   cancel: {
@@ -177,6 +185,9 @@ const CARDS = {
       'Cancel stops the turn, not what it already wrote: read the thread for what it did.',
     ],
     example: { projectId: '<project uuid>', thread: '<thread uuid>' },
+    redFlag:
+      'Reading a cancel as undoing the turn: what it already wrote stays, so read the thread.',
+    family: 'product.bot',
     audience: ['person'],
   },
 } satisfies Record<(typeof BOT_TOOL_ACTIONS)[number], CapabilityCardBody>;

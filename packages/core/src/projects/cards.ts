@@ -14,6 +14,7 @@ export const PROJECT_REST_CARDS = {
     example: {},
     // the door's org.admin floor: an agent's credential is refused it
     redFlag: 'An agent archiving a project to quiet its board: archiving is an owner’s decision.',
+    family: 'setup',
     audience: ['person'],
   },
   'POST /api/projects/:id/unarchive': {
@@ -22,6 +23,7 @@ export const PROJECT_REST_CARDS = {
     practice: ['It takes org.admin.'],
     example: {},
     redFlag: 'An agent unarchiving a project to file work on it without the owner’s word.',
+    family: 'setup',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

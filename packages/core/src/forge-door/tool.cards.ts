@@ -16,6 +16,8 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     ],
     practice: ['Repeat `progress.says`, never a date it does not hold.'],
     example: {},
+    redFlag:
+      'Reporting a Forge defect again because the earlier item is out of sight: list first, then reply on it or reopen it.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
@@ -34,6 +36,8 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     ],
     practice: ['Name the item by its key, FB-n.'],
     example: { feedback: 'FB-473' },
+    redFlag:
+      'Confirming a shipped item from its phase alone, without reading `shipEvidence` against what you saw (REQ-66 BC-8).',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
@@ -47,6 +51,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     ],
     practice: ['Say the forecast as the range it is, or plainly why there is none.'],
     example: { feedback: 'FB-473' },
+    redFlag: 'Telling the forecast as a promised date, where it is a range or plainly none.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },

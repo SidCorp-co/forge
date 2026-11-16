@@ -59,6 +59,27 @@ export const MODULE_CARDS = {
     ],
     example: { action: 'get', projectId: '<project uuid>', module: 'execution' },
     audience: ['bot', 'master', 'run', 'person'],
+    redFlag:
+      'Acting on a term or rule flagged for re-check without opening the code it is anchored at.',
+    family: 'knowledge',
+  },
+  pillar: {
+    purpose:
+      'Reads the module map in rows: each business module with a count per type, its open issues, and the Unplaced row.',
+    situations: [
+      {
+        when: 'you need which modules exist, or where the map is thin, before placing or reading one',
+        do: 'read pillar, then module.get the module your work sits in',
+      },
+      {
+        when: 'the Unplaced row holds records',
+        do: 'place each one your work meets by what it is about',
+      },
+    ],
+    practice: ['A count of 0 is a gap to fill when your work meets one, never a reason to stop.'],
+    example: { action: 'pillar', projectId: '<project uuid>' },
+    redFlag: 'Answering what a module holds from its counts, where module.get reads its tree.',
+    audience: ['master', 'run', 'person'],
     family: 'knowledge',
   },
   place: {
@@ -142,6 +163,8 @@ export const MODULE_CARDS = {
     ],
     example: { action: 'unrelate', projectId: '<project uuid>', relationId: '<relation uuid>' },
     audience: ['master', 'run', 'person'],
+    redFlag:
+      'Removing a relation to clear a re-check flag: a stale term or rule is rewritten to match its code.',
     family: 'knowledge',
   },
 } satisfies Record<string, CapabilityCardBody>;

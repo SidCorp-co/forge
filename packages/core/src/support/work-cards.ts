@@ -25,6 +25,8 @@ export const WORK_ACT_CARDS = {
       'Each check is recorded on its action, so your answer is the only post the asker sees.',
     ],
     example: { thread: THREAD, tool: 'runs_list', args: { status: 'failed' } },
+    redFlag:
+      'Saying what is wrong before a check confirmed it, or giving what you could not check as a guess.',
     family: 'room.diagnose',
     audience: ['bot'],
   },
@@ -64,6 +66,8 @@ export const WORK_ACT_CARDS = {
       args: { order: 'RIV-68493' },
       asker: 'Yt8kWq3NcRe5HmP2v',
     },
+    redFlag:
+      'Telling the thread a fix is done, or on its way, before the asker’s own yes is cited with support.agree.',
     family: 'room.diagnose',
     audience: ['bot'],
   },
@@ -137,6 +141,8 @@ export const WORK_ACT_CARDS = {
       check: 'check:stock-sync:2026-11-16',
       finding: 'The 06:00 stock sync left 12 SKUs unmatched, all from the new supplier sheet.',
     },
+    redFlag:
+      'Posting a finding at the top level, or one result per detail: a check takes one finding, or null.',
     family: 'room.diagnose',
     audience: ['bot'],
   },
@@ -174,6 +180,8 @@ export const WORK_ACT_CARDS = {
     ],
     practice: ['Name the target as your grant lists it.'],
     example: { target: '6f1c2a0e-5b7d-4c1e-9a3f-2d8e4b6c7a10' },
+    redFlag:
+      'Saying a merge reached a target without quoting the revision its latest deployment reads.',
     family: 'room.live',
     audience: ['bot'],
   },
@@ -208,6 +216,8 @@ export const WORK_ACT_CARDS = {
     ],
     practice: ['It reads the same from any of your groups, over every project you follow.'],
     example: { project: 'epod', key: 'ISS-167' },
+    redFlag:
+      'Answering how work goes from an issue’s status alone, where its notes, handoffs and `waiting` say who owes what.',
     family: 'room.facts',
     audience: ['bot'],
   },
@@ -240,6 +250,7 @@ export const WORK_ACT_CARDS = {
     ],
     practice: ['You are told when they have linked: make the act then.'],
     example: { thread: THREAD, member: 'Yt8kWq3NcRe5HmP2v' },
+    redFlag: 'Making the act as a member before you are told they linked.',
     family: 'room.record',
     audience: ['bot'],
   },

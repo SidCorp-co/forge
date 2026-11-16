@@ -234,6 +234,9 @@ const CARDS = {
       'For how the project stands overall, project.status reads it in one call.',
     ],
     example: { projectId: '<project uuid>', statusNot: ['closed', 'dropped'], limit: 25 },
+    redFlag:
+      'Reading closed as live: an issue closes when its criteria are met, and whether it is live is the release record’s.',
+    family: 'product.status',
     audience: ['person'],
   },
   get: {
@@ -254,6 +257,7 @@ const CARDS = {
     // ISS-891: `ISS602`, `#602` and `ISS-602x` were sent as keys and refused
     redFlag:
       'Sending a key in another shape (ISS602, #602): it is refused at /issue, not looked up.',
+    family: 'product.status',
     audience: ['person'],
   },
   create: {
@@ -289,6 +293,7 @@ const CARDS = {
     // criteria only in the description (the create answers a warning for it)
     redFlag:
       'Asking the person whether to file, or listing criteria only in the description: the first parks routine work on him, the second leaves the issue with no criterion.',
+    family: 'product.status',
     audience: ['person'],
   },
 } satisfies Record<(typeof ISSUES_TOOL_ACTIONS)[number], CapabilityCardBody>;

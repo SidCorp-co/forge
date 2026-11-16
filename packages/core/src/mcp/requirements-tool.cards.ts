@@ -1,8 +1,8 @@
 // forge_requirements' capability cards (ISS-1251), apart from the tool only for its length. Written
 // from how product clients used the door: the drafts and revisions of ISS-538, ISS-829 and ISS-766,
 // the duplicate draft of ISS-117, the stuck draft of ISS-733, and the design a person could not link
-// or trace from MCP (FB-622, FB-219). progress, unlink_design and answer carry no card: nothing
-// records a use of them (the no-use list of ISS-1251 names what each could become).
+// or trace from MCP (FB-622, FB-219). progress, unlink_design and answer rest on the door's own
+// description and the refusals it names, and answer on the rule that a person's answer is theirs.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { ACTIONS } from './requirements-tool.js';
@@ -27,6 +27,8 @@ export const CARDS = {
       'For how the project stands overall, project.status reads it in one call.',
     ],
     example: { projectId: '<project uuid>', state: 'agreed' },
+    redFlag: 'Telling a person a date or done that `progress.says` does not hold.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   get: {
@@ -47,6 +49,9 @@ export const CARDS = {
       'Name it by its key, REQ-12; a project holding no such key answers NOT_FOUND.',
     ],
     example: { projectId: '<project uuid>', requirement: 'REQ-12' },
+    redFlag:
+      'Revising from memory without get: baseRevision goes stale (REQUIREMENT_REVISION_STALE) and the criteria codes are lost.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   similar: {
@@ -66,6 +71,9 @@ export const CARDS = {
       'A hit can be a dropped requirement, which takes no revision: get it before revising.',
     ],
     example: { projectId: '<project uuid>', text: 'customers reorder a past order in one tap' },
+    redFlag:
+      'Reading provider_not_configured or withheld_by_policy as none similar, and drafting a duplicate (ISS-117).',
+    family: 'product.requirement',
     audience: ['person'],
   },
   create: {
@@ -87,6 +95,7 @@ export const CARDS = {
     },
     // ISS-117: REQ-14 was drafted as a duplicate of REQ-11, which already covered it
     redFlag: 'Drafting a second requirement for a wish one already covers: revise that one.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   revise: {
@@ -128,6 +137,7 @@ export const CARDS = {
     // 37 criteria; ISS-855, ISS-856 and ISS-865 then briefed "send the whole criteria list"
     redFlag:
       'Sending only the criterion that changed: the list is the whole new set, so every code left out is retired.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   propose: {
@@ -143,6 +153,9 @@ export const CARDS = {
       'Accepting and agreeing are not done here: the master’s outside a strict project, a person’s on its page in one.',
     ],
     example: { projectId: '<project uuid>', requirement: 'REQ-12', revision: 2 },
+    redFlag:
+      'Proposing a draft unread: a code the head held that the draft lacks is retired once it is accepted.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   withdraw: {
@@ -167,6 +180,9 @@ export const CARDS = {
       revision: 2,
       reason: 'Written against the wrong requirement.',
     },
+    redFlag:
+      'Withdrawing another author’s draft without requirements.approve, or one still proposed, which its approver returns first.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   link_design: {
@@ -182,6 +198,8 @@ export const CARDS = {
       'Link before you trace: a trace onto an unlinked design is refused REQUIREMENT_DESIGN_UNLINKED.',
     ],
     example: { projectId: '<project uuid>', requirement: 'REQ-12', workflow: 'reorder' },
+    redFlag: 'Reading the link as pinned: only the next agree pins the design’s approved revision.',
+    family: 'product.requirement',
     audience: ['person'],
   },
   trace_criterion: {
@@ -207,6 +225,66 @@ export const CARDS = {
       workflow: 'reorder',
       steps: ['fill-cart'],
     },
+    redFlag:
+      'Sending only the steps added: each call writes the criterion’s whole trace, so a step left out is cleared.',
+    family: 'product.requirement',
+    audience: ['person'],
+  },
+  progress: {
+    purpose:
+      'Reads how one requirement’s delivery goes: runs, whom it waits on, its issues and an estimate.',
+    situations: [
+      {
+        when: 'a person asks when a requirement will be done, or what holds it',
+        do: 'read progress and tell them `progress.says`, naming whom it waits on',
+      },
+    ],
+    practice: [
+      'eta is an estimate with its basis and confidence, or the reason no date can be given.',
+    ],
+    example: { projectId: '<project uuid>', requirement: 'REQ-12' },
+    redFlag:
+      'Giving a date the block does not hold, or none where eta says why no date can be given.',
+    family: 'product.requirement',
+    audience: ['person'],
+  },
+  unlink_design: {
+    purpose: 'Removes a design’s link to a requirement, and every criterion’s trace onto it.',
+    situations: [
+      {
+        when: 'a design was linked to the wrong requirement, or no longer serves it',
+        do: 'unlink it by its flow name, then link and trace the design that does',
+      },
+    ],
+    practice: ['Every trace onto the design goes with the link: trace again after relinking.'],
+    example: { projectId: '<project uuid>', requirement: 'REQ-12', workflow: 'reorder' },
+    redFlag:
+      'Unlinking to clear a stale trace, which drops every criterion’s trace: trace_criterion rewrites one.',
+    family: 'product.requirement',
+    audience: ['person'],
+  },
+  answer: {
+    purpose: 'Answers a question standing on a requirement, in the person’s own words.',
+    situations: [
+      {
+        when: 'the person you work with answered a question get lists on the requirement',
+        do: 'answer it with their option or their words, naming the question and its round',
+        watch: 'QUESTION_NOT_OPEN: it is already answered',
+      },
+    ],
+    practice: [
+      'When they have not said, ask them: the answer is theirs, recorded with your token.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      requirement: 'REQ-12',
+      questionId: '<question uuid>',
+      round: 1,
+      answer: 'Only the items still on sale.',
+    },
+    redFlag:
+      'Answering on your own reading of the question, the spec or the code, where the person has not said.',
+    family: 'product.requirement',
     audience: ['person'],
   },
 } satisfies Partial<Record<(typeof ACTIONS)[number], CapabilityCardBody>>;

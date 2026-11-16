@@ -55,6 +55,7 @@ const CARDS = {
     // ISS-1183: a product role answered "how does it stand" by walking issues.list and counting
     redFlag:
       'Counting issues.list by hand to say how the project stands: it disagrees with the dashboard.',
+    family: 'product.status',
     audience: ['person'],
   },
   needs_you: {
@@ -71,6 +72,9 @@ const CARDS = {
     ],
     practice: ['Answer each one on the item it shapes; notDecisions counts the rest of the list.'],
     example: { projectId: '<project uuid>', limit: 10 },
+    redFlag:
+      'Asking a person something without reading needs_you, when it already waits on them with a recommendation.',
+    family: 'product.status',
     audience: ['person'],
   },
   decisions: {
@@ -87,6 +91,9 @@ const CARDS = {
     ],
     practice: ['Quote the recorded reason and the item it sits on, not your reading of it.'],
     example: { projectId: '<project uuid>', days: 30, limit: 20 },
+    redFlag:
+      'Deciding again what decisions holds in force, or quoting your reading of it in place of its recorded reason.',
+    family: 'product.status',
     audience: ['person'],
   },
 } satisfies Record<(typeof PROJECT_TOOL_READS)[number], CapabilityCardBody>;

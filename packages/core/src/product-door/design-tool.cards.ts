@@ -24,6 +24,7 @@ export const CARDS = {
     // forge, 2026-10-17..11-16: 12 of 13 calls refused (the log keeps no code); the input takes the
     // project's uuid, which projects.list answers, and refuses a slug or a name by its pattern
     redFlag: 'Naming the project by its slug or name instead of the uuid projects.list answers.',
+    family: 'design',
     audience: ['person'],
   },
   design_get: {
@@ -50,6 +51,7 @@ export const CARDS = {
     // forge, 2026-10-17..11-16: 7 of 7 calls refused (the log keeps no code); the input takes the
     // project's uuid, which projects.list answers, and refuses a slug or a name by its pattern
     redFlag: 'Reading a design by its flow’s name instead of its workflow id from design_list.',
+    family: 'design',
     audience: ['person'],
   },
   template_list: {
@@ -71,6 +73,7 @@ export const CARDS = {
     example: { projectId: '<project uuid>' },
     redFlag:
       'Drawing a design in a template without reading which node types and edge kinds it takes.',
+    family: 'design',
     audience: ['person'],
   },
   design_create: {
@@ -101,6 +104,7 @@ export const CARDS = {
     // hold among them (WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE, WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE)
     redFlag:
       'Drawing nodes and edges the template does not hold, or leaving the design unlinked from its requirement.',
+    family: 'design',
     audience: ['person'],
   },
   design_revise: {
@@ -132,6 +136,7 @@ export const CARDS = {
     // (WORKFLOW_DESIGN_REVISION_STALE) among them
     redFlag:
       'Writing a revision on a stale baseRevision, or only the steps that change instead of the whole document.',
+    family: 'design',
     audience: ['person'],
   },
   design_decide: {
@@ -160,6 +165,7 @@ export const CARDS = {
     // FB-272: a throwaway design was returned to get rid of it, and the master was asked to revise it on every pass
     redFlag:
       'Returning a test or abandoned design to be rid of it: a return asks its writer to revise it on every pass. Withdraw it instead.',
+    family: 'design',
     audience: ['person'],
   },
   design_withdraw: {
@@ -178,6 +184,7 @@ export const CARDS = {
     },
     // forge: 2 of 3 withdrawals refused; an approved design is refused (DESIGN_WITHDRAW_APPROVED)
     redFlag: 'Withdrawing an approved design to retire it, where a revision changes it.',
+    family: 'design',
     audience: ['person'],
   },
   suggestion_list: {
@@ -199,6 +206,7 @@ export const CARDS = {
     practice: ['Name exactly one target; view full reads each payload, summary leaves them out.'],
     example: { projectId: '<project uuid>', requirement: 'REQ-2', status: ['proposed'] },
     redFlag: 'Proposing a suggestion without listing those already waiting on the same record.',
+    family: 'design',
     audience: ['person'],
   },
   suggestion_create: {
@@ -237,6 +245,7 @@ export const CARDS = {
     // FB-152 and ISS-476: callers tried 0 and 1 for a revisionless target, and a model typed the base itself
     redFlag:
       'Guessing baseRevision: a number, 0 included, on a target with no revision is refused; send null there, and the revision you read elsewhere.',
+    family: 'design',
     audience: ['person'],
   },
   suggestion_accept: {
@@ -265,6 +274,7 @@ export const CARDS = {
     // FB-411: the steward accepted its own feedback_triage on items the master had already triaged, voiding his decision
     redFlag:
       'Accepting a suggestion the record has already moved past, such as a triage on an item already triaged: it overwrites the decision taken since.',
+    family: 'design',
     audience: ['person'],
   },
   suggestion_reject: {
@@ -284,6 +294,7 @@ export const CARDS = {
     // forge: 6 of 28 rejections refused
     redFlag:
       'Rejecting with no reason the next proposal can answer, or rejecting where one slice needs revising.',
+    family: 'design',
     audience: ['person'],
   },
   suggestion_revise: {
@@ -310,6 +321,7 @@ export const CARDS = {
     },
     redFlag:
       'Revising someone else’s suggestion without suggestions.approve, or sending a patch instead of the whole payload.',
+    family: 'design',
     audience: ['person'],
   },
   suggestion_withdraw: {
@@ -324,6 +336,7 @@ export const CARDS = {
     example: { projectId: '<project uuid>', suggestionId: '<suggestion uuid>' },
     // forge: 10 of 21 withdrawals refused, 3 of them forbidden: only its producer withdraws
     redFlag: 'Withdrawing a suggestion you did not produce, where rejecting it is the act.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_list: {
@@ -341,6 +354,7 @@ export const CARDS = {
     practice: ['Name exactly one of requirement, feedback or issue; prefer the requirement.'],
     example: { projectId: '<project uuid>', requirement: 'REQ-2' },
     redFlag: 'Proposing a mockup without reading the ones already proposed on the item.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_get: {
@@ -355,6 +369,7 @@ export const CARDS = {
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
     // forge: all 6 reads refused (the log keeps no code)
     redFlag: 'Reading a mockup by a file name or url instead of its MK-n key.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_comments: {
@@ -372,6 +387,7 @@ export const CARDS = {
     practice: ['A comment open on an earlier revision is still open until a revision settles it.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
     redFlag: 'Revising a mockup without reading the comments pinned on its earlier revisions.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_comment: {
@@ -396,6 +412,7 @@ export const CARDS = {
     },
     // forge: 5 of 8 comments refused, among them on closed mockups (MOCKUP_COMMENT_CLOSED)
     redFlag: 'Commenting on a mockup already decided, where a new revision is the place.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_propose: {
@@ -428,6 +445,7 @@ export const CARDS = {
     // ISS-78: every mockup discussed with the owner lived in ~/forge-local-docs/*.html, outside the item it shaped
     redFlag:
       'Building the mockup as a local file, pasting it in a chat, or publishing it elsewhere: nobody can find, comment on or pin it.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_accept: {
@@ -445,6 +463,7 @@ export const CARDS = {
       reason: 'The owner agreed.',
     },
     redFlag: 'Accepting a mockup the person has not tried.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_return: {
@@ -462,6 +481,7 @@ export const CARDS = {
       reason: 'Out-of-stock items must show before the cart fills.',
     },
     redFlag: 'Returning a mockup with no reason its next revision can answer.',
+    family: 'design',
     audience: ['person'],
   },
   mockup_withdraw: {
@@ -475,6 +495,7 @@ export const CARDS = {
     practice: ['Only its author withdraws; anybody else returns it with a reason.'],
     example: { projectId: '<project uuid>', mockup: 'MK-3' },
     redFlag: 'Withdrawing a mockup a person already decided.',
+    family: 'design',
     audience: ['person'],
   },
   // design_propose's one card is its REST twin's, the orientation's (`mcp/twins.ts`)

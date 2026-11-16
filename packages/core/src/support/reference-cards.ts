@@ -24,6 +24,8 @@ export const REFERENCE_ACT_CARDS = {
       'Name the file, doc or release you used in your answer, and say what you take and what you reject.',
     ],
     example: { project: 'epod', area: 'theme' },
+    redFlag:
+      'Researching the open web from zero while the project names sources it trusts for that area.',
     family: 'references',
     audience: ['bot'],
   },
@@ -51,6 +53,7 @@ export const REFERENCE_ACT_CARDS = {
       areas: ['worktrees'],
       followReleases: true,
     },
+    redFlag: 'Sending the owner to a screen to add the source himself.',
     family: 'references',
     audience: ['bot'],
   },
@@ -74,6 +77,8 @@ export const REFERENCE_ACT_CARDS = {
       why: 'one worktree per task under the repo, removed when the task lands',
       about: 'ISS-167',
     },
+    redFlag:
+      'A citation with no reason for its take or reject: it counts as use and teaches nothing.',
     family: 'references',
     audience: ['bot'],
   },
@@ -95,6 +100,7 @@ export const REFERENCE_ACT_CARDS = {
       areas: ['theme'],
       evidence: 'ISS-160 and ISS-167 took its section schema layout',
     },
+    redFlag: 'Proposing a page read once: a source earns its place by repeated use.',
     family: 'references',
     audience: ['bot'],
   },

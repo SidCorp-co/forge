@@ -84,6 +84,8 @@ const CARDS = {
       'A token fenced to some projects lists only those; a project missing here is outside the token, not absent.',
     ],
     example: { archived: false },
+    redFlag: 'Telling a person a project does not exist because a fenced token does not list it.',
+    family: 'product.status',
     audience: ['person'],
   },
   get: {
@@ -98,6 +100,9 @@ const CARDS = {
       'Environments, repository and testing profiles are not here: config.get reads the project document.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Answering where a project deploys from get, which holds no environments: config.get reads them.',
+    family: 'product.status',
     audience: ['person'],
   },
   create: {
@@ -118,6 +123,7 @@ const CARDS = {
     // project holds and concluded its description and repository could not be set
     redFlag:
       'Stopping at slug and name as if that were the whole project: its description, repository and environments come from config.write.',
+    family: 'setup',
     audience: ['person'],
   },
 } satisfies Record<(typeof ACTIONS)[number], CapabilityCardBody>;

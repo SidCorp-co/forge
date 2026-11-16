@@ -1,8 +1,8 @@
 // The capability cards of `forge_ecosystem` (ISS-1251), beside the door in `tool.ts`, which would
 // otherwise cross its line budget. They are written from what masters met working builder runs, links
 // and contract versions in the epod-catalog and autoflow ecosystems (FB-169, FB-283, FB-320, FB-372,
-// FB-501), worked over the REST twins the ecosystem-inbox guide teaches, and from that guide. link and
-// builder_run_create carry no card: nothing records or teaches a situation for them.
+// FB-501), worked over the REST twins the ecosystem-inbox guide teaches, and from that guide; the red
+// flags name the refusals that guide teaches each write around.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { Action } from './tool-args.js';
@@ -26,6 +26,8 @@ export const CARDS = {
       'commitmentsSetBy says who set the commitments; without commitments.write send them back as they stand.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Writing the interface from memory without reading it, so its revision is stale and its commitments are dropped.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -82,6 +84,8 @@ export const CARDS = {
     ],
     practice: ['Each link’s revision here is the baseRevision its link_update sends.'],
     example: { projectId: '<project uuid>' },
+    redFlag:
+      'Creating a second link for a use a link already holds, instead of updating that one (LINK_DUPLICATE).',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -105,6 +109,8 @@ export const CARDS = {
       document:
         '<a link-v1 document: the consuming module, the contract, pinnedVersion, state, callSites>',
     },
+    redFlag:
+      'Linking what another project uses of yours: a run maps only what this project’s own code calls.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -153,6 +159,7 @@ export const CARDS = {
       'One run per ecosystem is open at a time: work the open one, never open another beside it.',
     ],
     example: { projectId: '<project uuid>' },
+    redFlag: 'Opening a run beside the open one (BUILDER_RUN_ALREADY_OPEN): work the open one.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -171,6 +178,8 @@ export const CARDS = {
     ],
     practice: ['trigger.head says which ref and commit the run maps, and how it was read.'],
     example: { projectId: '<project uuid>', run: '<builder run uuid>' },
+    redFlag:
+      'Mapping a run whose head is not the branch this project builds from, instead of superseding it.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -197,6 +206,8 @@ export const CARDS = {
       baseRevision: 5,
       document: '<the whole builder-run-v1 document builder_run answered, with the step moved>',
     },
+    redFlag:
+      'Marking a step succeeded that did not run, or writing superseded here: a run that cannot finish truly is superseded.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -221,6 +232,8 @@ export const CARDS = {
       run: '<builder run uuid>',
       reason: 'Opened at a push to main; this project builds from dev.',
     },
+    redFlag:
+      'Superseding a run to escape a step that failed, where the failure is written on the step with its detail.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -242,6 +255,8 @@ export const CARDS = {
       'A project-fenced token reads it for an ecosystem its project is a member of.',
     ],
     example: { ecosystem: '<ecosystem uuid>' },
+    redFlag:
+      'Passing a projectId to bus: it names an ecosystem by its uuid, and a projectId beside it is refused.',
     family: 'ecosystem',
     audience: ['master'],
   },
@@ -267,6 +282,8 @@ export const CARDS = {
       paths: ['apps/web/src/api/orders.ts'],
       session: '<session uuid>',
     },
+    redFlag:
+      'Editing code that calls another project’s contract without loading context first, so the diff since the pinned version goes unread.',
     family: 'ecosystem',
     audience: ['master', 'run'],
   },
@@ -333,6 +350,8 @@ export const CARDS = {
     ],
     practice: [
       'Consumers pin and adopt only an approved version, and the approval settles the issues waiting on it.',
+      // ecosystem/contract/approval.ts:approverRefusal over permissions/master-acts.ts:MASTER_GRANTS
+      'contracts.approve is held by the provider project’s admins (an org owner or admin is one on each of its projects), a member its grant names approver, and outside strict its master; anyone else is refused PERMISSION_FORBIDDEN.',
     ],
     example: {
       projectId: '<project uuid>',
@@ -340,6 +359,47 @@ export const CARDS = {
       version: '1.2.0',
       decision: 'approve',
     },
+    redFlag:
+      'Approving a version that is not the artifact that landed, or returning one with no reason.',
+    family: 'ecosystem',
+    audience: ['master'],
+  },
+  link: {
+    purpose:
+      'Reads one link whole: its consumer module, contract, call sites, pinned version, state and revision.',
+    situations: [
+      {
+        when: 'you are about to update or retire one link',
+        do: 'read it: its revision is the baseRevision link_update sends',
+      },
+    ],
+    practice: ['links lists them all; link reads the one you change.'],
+    example: { projectId: '<project uuid>', link: '<link uuid>' },
+    redFlag:
+      'Updating a link from the list’s line alone, so its call sites are rewritten from memory.',
+    family: 'ecosystem',
+    audience: ['master'],
+  },
+  builder_run_create: {
+    purpose:
+      'Opens a builder run by hand where no run is open, with the steps the project’s source type derives.',
+    situations: [
+      {
+        when: 'no run is open and the code changed in a way no join or push to the built branch opened one for',
+        do: 'open one with baseRevision null, then work its steps in order',
+        watch: 'a run already open is refused BUILDER_RUN_ALREADY_OPEN: work that one',
+      },
+    ],
+    practice: [
+      'A join and a push to the branch this project builds from open a run themselves; this is for the rest.',
+    ],
+    example: {
+      projectId: '<project uuid>',
+      baseRevision: null,
+      document: '<a builder-run-v1 document: the ecosystem and its manual trigger>',
+    },
+    redFlag:
+      'Opening a run beside the open one, or to replace a stale one, which builder_run_supersede does.',
     family: 'ecosystem',
     audience: ['master'],
   },

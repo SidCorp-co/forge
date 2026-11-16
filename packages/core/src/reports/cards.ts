@@ -19,6 +19,7 @@ export const REPORT_REST_CARDS = {
     example: { params: {} },
     // forge: its one call in the window landed, a master probing it
     redFlag: 'Running a template to read data the asker cannot reach: its queries run as them.',
+    family: 'product.bot',
     audience: ['person'],
   },
   'POST /api/projects/:id/executions': {
@@ -33,6 +34,7 @@ export const REPORT_REST_CARDS = {
     example: { language: 'javascript', script: 'return inputs.length;', inputs: ['run_1'] },
     // forge: the one agent call was forbidden (assistant.exec)
     redFlag: 'An agent running scripts here to compute what it can compute in its own session.',
+    family: 'product.bot',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

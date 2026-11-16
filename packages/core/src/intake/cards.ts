@@ -18,6 +18,7 @@ export const INTAKE_REST_CARDS = {
     example: { question: 1, option: 'today' },
     // forge: 1 of the 2 answers refused, an option the question did not offer
     redFlag: 'An agent answering the reporter’s question for them.',
+    family: 'product.ask',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

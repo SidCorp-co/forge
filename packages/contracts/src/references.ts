@@ -349,6 +349,8 @@ export const REFERENCE_CARDS = {
 			areas: ["parallel agents", "worktrees"],
 			followReleases: true,
 		},
+		redFlag:
+			"Adding a source no one asked for: an agent's own find is a proposal with its evidence.",
 		family: "references",
 		audience: ["master", "run", "person"],
 		scenarios: [],
@@ -365,8 +367,104 @@ export const REFERENCE_CARDS = {
 		practice: [
 			"Name the work it helped as evidence, by key, and what you took from it.",
 		],
+		example: {
+			action: "propose",
+			projectId: "<project uuid>",
+			kind: "repo",
+			url: "https://github.com/stablyai/orca",
+			why: "parallel CLI agents in isolated git worktrees",
+			areas: ["worktrees"],
+			evidence: "ISS-12 and ISS-31 took its worktree-per-task layout",
+		},
 		redFlag:
 			"Proposing every page read once; a source earns its place by repeated use.",
+		family: "references",
+		audience: ["master", "run"],
+		scenarios: [],
+	},
+	update: {
+		purpose:
+			"Changes one source the project learns from: why, its areas, its priority, or whether its releases are followed.",
+		situations: [
+			{
+				when: "The owner changes what a source is for, or a search by area misses it",
+				do: "`references.update` the source with its areas and why as they now stand",
+			},
+		],
+		practice: [
+			"An org's source is its admin's to change (REFERENCE_SHARED_FORBIDDEN).",
+		],
+		example: {
+			action: "update",
+			projectId: "<project uuid>",
+			source: "stablyai/orca",
+			areas: ["parallel agents", "worktrees", "tmux"],
+		},
+		redFlag:
+			"Rewriting why in your own words where the owner gave his: it is what the next agent reads.",
+		family: "references",
+		audience: ["master", "person"],
+		scenarios: [],
+	},
+	remove: {
+		purpose:
+			"Removes a source, kept with its citations and timeline and never served again.",
+		situations: [
+			{
+				when: "The owner decides remove on a source signals flagged",
+				do: "`references.remove` it with his reason",
+			},
+		],
+		practice: [
+			"Keep, replace or remove is a person's decision on a flagged source.",
+		],
+		example: {
+			action: "remove",
+			projectId: "<project uuid>",
+			source: "stablyai/orca",
+			reason: "Archived upstream; the owner replaced it.",
+		},
+		redFlag:
+			"Removing a flagged source on the flag alone, before a person decided keep, replace or remove.",
+		family: "references",
+		audience: ["master", "person"],
+		scenarios: [],
+	},
+	signals: {
+		purpose:
+			"Reads, per source, its citations, the ideas its releases filed and its flags for keep, replace or remove.",
+		situations: [
+			{
+				when: "An audit or the owner asks which sources still earn their place",
+				do: "read signals and put each flagged source to him with its flag and its citations",
+			},
+		],
+		practice: [
+			"A flag is archived, unmaintained or uncited for 90 days; an empty one is good standing.",
+		],
+		example: { action: "signals", projectId: "<project uuid>" },
+		redFlag:
+			"Reading a source with no recent citation as useless without its taken and rejected counts.",
+		family: "references",
+		audience: ["master"],
+		scenarios: [],
+	},
+	timeline: {
+		purpose:
+			"Lists the releases read from a followed source, each an idea on the item it may help, or silent.",
+		situations: [
+			{
+				when: "You work an item a followed source's release may help",
+				do: "read its timeline, open the release, and cite it with take or reject",
+			},
+		],
+		practice: ["Read the release itself, never its line here."],
+		example: {
+			action: "timeline",
+			projectId: "<project uuid>",
+			source: "stablyai/orca",
+		},
+		redFlag: "Taking a release from its timeline line without opening it.",
 		family: "references",
 		audience: ["master", "run"],
 		scenarios: [],

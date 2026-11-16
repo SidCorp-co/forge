@@ -86,6 +86,9 @@ const CARDS = {
       'Page with nextCursor while hasMore; a locked option is one the person may not choose.',
     ],
     example: { projectId: '<project uuid>', issue: 'ISS-12' },
+    redFlag:
+      'Telling a person a listed question is theirs: list holds every open one, whoever owes it; theirs is project.needs_you.',
+    family: 'product.ask',
     audience: ['person'],
   },
   get: {
@@ -102,6 +105,9 @@ const CARDS = {
     ],
     practice: ['Answer the round get shows last; an earlier round is history.'],
     example: { projectId: '<project uuid>', questionId: '<question uuid>' },
+    redFlag:
+      'Answering a round get no longer shows last, or retrying after QUESTION_ROUND_STALE without getting it again.',
+    family: 'product.ask',
     audience: ['person'],
   },
   answer: {
@@ -131,6 +137,7 @@ const CARDS = {
     // QUESTION_TOKEN_NOT_OWN / QUESTION_OWED_BY_PERSON, written so an answer is the word of whoever owes it
     redFlag:
       'Answering with the recommended option, or your own reading of the question, before the person has said: it is recorded as their word. Ask them and wait.',
+    family: 'product.ask',
     audience: ['person'],
   },
   ask: {
@@ -149,6 +156,9 @@ const CARDS = {
       issue: 'ISS-12',
       body: 'Does this change the export for existing users too?',
     },
+    redFlag:
+      'Asking on an issue a doubt about what is wanted (the requirement’s) or a problem a user hit (Feedback’s).',
+    family: 'product.ask',
     audience: ['person'],
   },
 } satisfies Record<(typeof QUESTIONS_TOOL_ACTIONS)[number], CapabilityCardBody>;

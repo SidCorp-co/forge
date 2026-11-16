@@ -89,6 +89,8 @@ const CARDS = {
       'A release’s issues and proof are releases.get’s; say a date only as the progress gives it.',
     ],
     example: { projectId: '<project uuid>', state: 'shipped', limit: 5 },
+    redFlag: 'Saying when the draft is out from a date its progress does not give.',
+    family: 'product.release',
     audience: ['person'],
   },
   get: {
@@ -113,6 +115,9 @@ const CARDS = {
       'Read the version a person names; project.status sends a release without its issue list.',
     ],
     example: { projectId: '<project uuid>', version: '0.3.0' },
+    redFlag:
+      'Repeating that a release has no record, or shipped nothing, without getting that version.',
+    family: 'product.release',
     audience: ['person'],
   },
   page: {
@@ -126,6 +131,9 @@ const CARDS = {
     ],
     practice: ['The page is written for its reader; for proof and blockers read releases.get.'],
     example: { projectId: '<project uuid>', version: '0.3.0', view: 'user' },
+    redFlag:
+      'Reading proof or blockers off the page, which is written for its reader: releases.get holds them.',
+    family: 'product.release',
     audience: ['person'],
   },
   name: {
@@ -145,6 +153,9 @@ const CARDS = {
       name: 'Faster checkout',
       summary: 'Checkout takes one page instead of three. Saved cards fill themselves in.',
     },
+    redFlag:
+      'Naming a release without project admin (12 of 130 calls on forge refused forbidden, 2026-10-17..11-16), or naming it by its version or issue list.',
+    family: 'product.release',
     audience: ['person'],
   },
   decide: {
@@ -172,6 +183,9 @@ const CARDS = {
       decision: 'approve',
       reason: 'Checked the notes with the team; ship it.',
     },
+    redFlag:
+      'Deciding a release no person asked you to decide, or carrying unproven criteria they did not accept.',
+    family: 'product.release',
     audience: ['person'],
   },
 } satisfies Record<(typeof RELEASES_TOOL_ACTIONS)[number], CapabilityCardBody>;

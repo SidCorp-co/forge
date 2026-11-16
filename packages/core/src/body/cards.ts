@@ -18,6 +18,7 @@ export const BODY_REST_CARDS = {
     // forge: the one agent call was refused; a body written through its door is screened there
     redFlag:
       'An agent previewing a comment here before posting, where the write door answers the same.',
+    family: 'product.requirement',
     audience: ['person'],
   },
 } satisfies Record<string, CapabilityCardBody>;

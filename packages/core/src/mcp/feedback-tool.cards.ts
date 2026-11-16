@@ -1,8 +1,8 @@
 // project_feedback's capability cards (ISS-1251), apart from the tool only for its length. Written
 // from how product clients and channel agents used the door: the single target of FB-598 and
 // ISS-559, the submit a guide misnamed create (ISS-861), the approved screenshots of FB-474, and the
-// channel agent's reads of ISS-1091 and ISS-1093. progress and similar carry no card: nothing records
-// a use of them (the no-use list of ISS-1251 names what each could become).
+// channel agent's reads of ISS-1091 and ISS-1093; progress and similar from the door's own
+// description and the duplicates a triage files (FB-520 was filed beside ISS-1005).
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 import type { ACTIONS } from './feedback-tool.js';
@@ -26,6 +26,7 @@ export const CARDS = {
       'Feedback about Forge itself is the feedback door’s (feedback.list), not this one.',
     ],
     example: { projectId: '<project uuid>', phase: ['new', 'reopened'] },
+    redFlag: 'Filing another item for what list with q already holds.',
     family: 'project-feedback',
     audience: ['person', 'bot'],
   },
@@ -47,6 +48,8 @@ export const CARDS = {
       'Its attachments are listed here; uploads.fetch reads one.',
     ],
     example: { projectId: '<project uuid>', feedback: 'FB-12' },
+    redFlag:
+      'Telling a requester an item’s phase from a list row, where its own read follows the work it was routed to.',
     family: 'project-feedback',
     audience: ['person', 'bot'],
   },
@@ -70,6 +73,9 @@ export const CARDS = {
       needed: 'the browser and its version',
       recommended: 'Chrome on Android',
     },
+    redFlag:
+      'Asking several questions in one call, or asking the reporter what the item already says.',
+    family: 'project-feedback',
     audience: ['person'],
   },
   attach: {
@@ -97,6 +103,41 @@ export const CARDS = {
       contentBase64: 'iVBORw0KGgo=',
       label: 'approved_design',
     },
+    redFlag: 'Saying redacted: true on an image where something personal shows.',
+    family: 'project-feedback',
+    audience: ['person'],
+  },
+  progress: {
+    purpose:
+      'Reads how the work an item was routed to goes: runs, whom it waits on and an estimate.',
+    situations: [
+      {
+        when: 'a requester asks when what they reported will be fixed',
+        do: 'read progress and tell them `progress.says`',
+      },
+    ],
+    practice: ['eta is an estimate with its basis, or the reason no date can be given.'],
+    example: { projectId: '<project uuid>', feedback: 'FB-12' },
+    redFlag: 'Promising a requester a date the block does not hold.',
+    family: 'project-feedback',
+    audience: ['person', 'bot'],
+  },
+  similar: {
+    purpose: 'Finds the feedback items nearest one item, to spot a duplicate before it is triaged.',
+    situations: [
+      {
+        when: 'you triage an item and it may report what another already does',
+        do: 'call similar on it and route it with the item it duplicates',
+      },
+    ],
+    practice: [
+      'not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar.',
+    ],
+    example: { projectId: '<project uuid>', feedback: 'FB-12' },
+    // FB-520 was filed as a duplicate of ISS-1005, the similar read never taken
+    redFlag:
+      'Triaging an item into new work without reading similar, or reading a withheld answer as none similar.',
+    family: 'project-feedback',
     audience: ['person'],
   },
 } satisfies Partial<Record<(typeof ACTIONS)[number], CapabilityCardBody>>;

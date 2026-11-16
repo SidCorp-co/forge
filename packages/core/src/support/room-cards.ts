@@ -180,6 +180,7 @@ export const ROOM_ACT_CARDS = {
     ],
     practice: ['Cite an earlier message by its id rather than asking the person to say it again.'],
     example: { thread: THREAD },
+    redFlag: 'Asking a person to say again what the thread already holds.',
     family: 'room.message',
     audience: ['bot'],
   },
@@ -196,6 +197,8 @@ export const ROOM_ACT_CARDS = {
       'What the product can do is what its knowledge and project document say; where neither says it, say you cannot tell.',
     ],
     example: { query: 'order export size column', project: 'adminhub-api' },
+    redFlag:
+      'Saying the product does something no hit and no project document says, or answering without the hit’s cite.',
     family: 'room.facts',
     audience: ['bot'],
   },
@@ -290,6 +293,8 @@ export const ROOM_ACT_CARDS = {
       title: 'support.agree answers that a just-filed record holds no feedback',
       text: 'agree on proposal K7QX2M filed FB-12 in adminhub-fe, then answered “holds no feedback”.',
     },
+    redFlag:
+      'Posting the refusal code in the thread, or mentioning a member the channel does not list for that route.',
     family: 'room.hand-on',
     audience: ['bot'],
   },
@@ -317,10 +322,13 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'you posted a reply',
-        do: 'audit it at once with support.audit { thread, message, failed, missed? } against the rubric, and name in missed each capability the reply should have reached for, by its forge_find name; let what fails shape your next reply',
+        do: 'audit it at once with support.audit { thread, message, failed, missed? }; let what fails shape your next reply',
       },
     ],
-    practice: ['message is the messageId reply answered you; failed is [] where every line holds.'],
+    practice: [
+      'message is the messageId reply answered you; failed is [] where every line holds.',
+      'Name in missed each capability the reply should have reached for, by its forge_find name.',
+    ],
     example: {
       thread: THREAD,
       message: MESSAGE,
@@ -346,6 +354,8 @@ export const ROOM_ACT_CARDS = {
       'A project or its organization may keep its own guide (knowledge entry room-agent-guide): follow it over what you recall.',
     ],
     example: {},
+    redFlag:
+      'Answering a situation from what you recall of the guide, where the project keeps its own.',
     family: 'room.facts',
     audience: ['bot'],
   },
@@ -368,6 +378,8 @@ export const ROOM_ACT_CARDS = {
         'Add Varnish to the forge-ops deploy job now (recommended, ten minutes) or after the release?',
       record: 'ISS-201',
     },
+    redFlag:
+      'Asking the owner what a record, a log or the code answers, or asking him again from another thread.',
     family: 'room.owner',
     audience: ['bot'],
   },
@@ -412,6 +424,7 @@ export const ROOM_ACT_CARDS = {
       thread: 'owed-release-0-19-0',
       text: 'adminhub-api 0.19.0 waits on your approval: approve it (recommended, every check is green) or return it.',
     },
+    redFlag: 'Raising one owed item twice, or without its options and your recommendation.',
     family: 'room.owner',
     audience: ['bot'],
   },
