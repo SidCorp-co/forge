@@ -206,8 +206,10 @@ export interface ReferenceReleaseView {
 	url: string;
 	publishedAt: string | null;
 	outcome: ReferenceReleaseOutcome;
-	/** The open item it may help, `ISS-n` or `REQ-n`, and the words that matched. */
-	matched: { ref: string; terms: string[] } | null;
+	/** The open item it may help, `ISS-n` or `REQ-n`, and the model's one line on how. */
+	matched: { ref: string; why: string } | null;
+	/** Why a silent release was not judged (no vector or no model); null where it was. */
+	notJudged: string | null;
 	/** The idea it filed, `FB-n`. */
 	idea: string | null;
 	readAt: string;

@@ -5,7 +5,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
@@ -137,15 +137,18 @@ export interface NearestItem {
 }
 
 /** The embedded items of one kind in `projectId` nearest to `vector`, comparing only vectors of
- *  the same model, nearest first; `exclude` leaves the asking item out. */
+ *  the same model, nearest first; `exclude` leaves the asking item out, and `among` reads only
+ *  those items. */
 export async function nearestItems(by: {
   projectId: string;
   kind: ItemKind;
   vector: number[];
   model: string;
   exclude?: string;
+  among?: readonly string[];
   limit: number;
 }): Promise<NearestItem[]> {
+  if (by.among?.length === 0) return [];
   const distance = cosineDistance(itemEmbeddings.embedding, by.vector);
   const rows = await db
     .select({
@@ -161,6 +164,7 @@ export async function nearestItems(by: {
         eq(itemEmbeddings.status, 'embedded'),
         eq(itemEmbeddings.model, by.model),
         ...(by.exclude ? [ne(itemEmbeddings.itemId, by.exclude)] : []),
+        ...(by.among ? [inArray(itemEmbeddings.itemId, [...by.among])] : []),
       ),
     )
     .orderBy(distance)

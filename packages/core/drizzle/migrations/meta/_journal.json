@@ -4278,6 +4278,13 @@
       "when": 1841184000000,
       "tag": "0674_an_owner_ask_is_found_by_its_room",
       "breakpoints": true
+    },
+    {
+      "idx": 675,
+      "version": "7",
+      "when": 1841270400000,
+      "tag": "0675_a_followed_release_matches_by_judgement_not_words",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,8 @@
-// Whether a followed source's release touches one of the project's open problems (ISS-1252):
-// deterministic word matching, explained by the words it matched. A release matches an open item when
-// at least MIN_SHARED of the item's distinctive words appear in the release's tag, name or notes; a
-// word most open items share is no evidence and is not counted. An area the source and the item both
-// name adds weight, never a match on its own. No model reads the release, so a test needs no network.
+// Whether a followed source's release touches one of the project's open problems (ISS-1252): the
+// open items nearest the release's lead text by meaning are shortlisted, and the fast model judges
+// each pair, asked whether the release concretely changes or fixes what the item describes. Only a
+// yes is a match, carrying the model's one-line why. Where no vector or no model can be had, the
+// release is not judged and says why by name: it never falls back to matching words.
 
 import { REFERENCE_FIRST_READ_DAYS } from '@forge/contracts/references';
 import type { FollowedRelease } from '../integrations/github/index.js';
@@ -27,84 +27,76 @@ export interface ReleaseText {
   body: string;
 }
 
-export interface ReleaseMatch {
-  item: OpenItem;
-  terms: string[];
-  score: number;
-}
+/** The notes a release is embedded by: its first lines say what it is; the rest is lists of commits. */
+export const RELEASE_LEAD_CHARS = 1000;
 
-/** Distinctive words an item and a release must both hold. */
-export const MIN_SHARED = 2;
-/** A word in more than this share of the open items is too common to say which one a release helps. */
-const COMMON_SHARE = 0.25;
-/** The notes read: a release's first lines say what it is; the rest is lists of commits. */
-const BODY_CHARS = 6000;
-
-const STOP = new Set(
-  (
-    'about above after again also always among another because been before being below between both ' +
-    'cannot could does doing down during each either every from further have having here into itself ' +
-    'just less made make many more most much must need never none once only other over same should ' +
-    'since some such than that their them then there these they this those through under until upon ' +
-    'very were what when where whether which while whom whose will with within without would your ' +
-    'added adds bump bumped change changed changes chore docs feat fixed fixes improve improved ' +
-    'improvement minor patch release released releases update updated updates version versions ' +
-    'issue issues pull merge merged thanks contributor contributors first full changelog note notes ' +
-    'support supports work works working used uses using still now new'
-  ).split(' '),
-);
-
-/** A word reduced to the form both sides share: a plural, tense or final `e` dropped. */
-function stem(word: string): string {
-  let w = word;
-  if (w.length > 5 && w.endsWith('ing')) w = w.slice(0, -3);
-  else if (w.length > 4 && w.endsWith('ed')) w = w.slice(0, -2);
-  else if (/(?:s|x|z|ch|sh)es$/.test(w)) w = w.slice(0, -2);
-  else if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
-  return w.length > 4 && w.endsWith('e') ? w.slice(0, -1) : w;
-}
-
-/** The distinctive words of a text, each in its shared form. */
-export function wordsOf(text: string): Set<string> {
-  const out = new Set<string>();
-  for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
-    if (raw.length < 4 || /^\d+$/.test(raw) || STOP.has(raw)) continue;
-    out.add(stem(raw));
-  }
-  return out;
-}
+/** The text a release is shortlisted by: its name and the first part of its notes. */
+export const releaseLead = (release: ReleaseText): string =>
+  `${release.name ?? release.tag}\n\n${release.body.trim().slice(0, RELEASE_LEAD_CHARS)}`;
 
 /**
- * The open item `release` most likely helps, with the words both hold, or null where none holds
- * MIN_SHARED distinctive words in common with it. Ties go to an issue before a requirement, then the
- * item listed first.
+ * The cosine an open item must reach to the release's lead to be judged at all. It shortlists; it is
+ * never the match, because no cosine separates a release that helps from one that does not: measured
+ * on forge-dev (2026-11-17, the release lead against core's issue copies and the stored requirement
+ * vectors), the 39 releases the word matcher filed wrongly (FB-651..686, FB-688..690) reached the
+ * open items at up to 0.656 (openclaw 2026.11.5-beta.1 against ISS-1252), while the one real partial
+ * match (coolify v4.7.0 against ISS-1082) sat at 0.652, and every release's 50th-nearest issue at
+ * 0.58 to 0.65. Release-style paraphrases of open requirements led at 0.662 (REQ-43) to 0.794
+ * (REQ-104). 0.6 keeps every real match measured, and leaves the judging to the model.
  */
-export function matchRelease(
-  release: ReleaseText,
-  items: readonly OpenItem[],
-  sourceAreas: readonly string[],
-): ReleaseMatch | null {
-  const said = wordsOf(`${release.tag} ${release.name ?? ''} ${release.body.slice(0, BODY_CHARS)}`);
-  const itemWords = items.map((i) => wordsOf(`${i.title} ${i.areas.join(' ')}`));
-  const seenIn = new Map<string, number>();
-  for (const words of itemWords) for (const w of words) seenIn.set(w, (seenIn.get(w) ?? 0) + 1);
-  const common = Math.max(2, Math.ceil(items.length * COMMON_SHARE));
-  const areas = new Set(sourceAreas.map((a) => a.toLowerCase()));
+export const SHORTLIST_FLOOR = 0.6;
+/** The most open items judged for one release, nearest first. */
+export const SHORTLIST_SIZE = 3;
 
-  let best: ReleaseMatch | null = null;
-  items.forEach((item, i) => {
-    const words = itemWords[i] ?? new Set<string>();
-    const terms = [...words].filter((w) => said.has(w) && (seenIn.get(w) ?? 0) <= common).sort();
-    if (terms.length < MIN_SHARED) return;
-    const sharesArea = item.areas.some((a) => areas.has(a.toLowerCase()));
-    const score = terms.length + (sharesArea ? 1 : 0);
-    const better =
-      !best ||
-      score > best.score ||
-      (score === best.score && item.kind === 'issue' && best.item.kind !== 'issue');
-    if (better) best = { item, terms, score };
-  });
-  return best;
+/** An open item near a release, and how near. */
+export interface NearItem {
+  item: OpenItem;
+  similarity: number;
+}
+
+/** The open items nearest a release's lead, nearest first; or why none could be read. */
+export type NearestOpen = (
+  projectId: string,
+  lead: string,
+  items: readonly OpenItem[],
+) => Promise<{ ok: true; near: NearItem[] } | { ok: false; why: string }>;
+
+/** The model's answer for one release and one open item; or why it gave none. */
+export type JudgeRelease = (
+  projectId: string,
+  release: ReleaseText & { source: string },
+  item: OpenItem,
+) => Promise<{ ok: true; helps: boolean; why: string } | { ok: false; why: string }>;
+
+export type ReleaseMatch =
+  | { kind: 'helps'; item: OpenItem; why: string; similarity: number }
+  | { kind: 'none' }
+  | { kind: 'unjudged'; why: string };
+
+/**
+ * The open item `release` helps, as the model judged the shortlist nearest first; `none` where it
+ * judged no pair a match, or nothing is near enough to judge; `unjudged`, naming why, where no vector
+ * or no answer could be had.
+ */
+export async function matchRelease(
+  projectId: string,
+  release: ReleaseText & { source: string },
+  items: readonly OpenItem[],
+  ports: { nearest: NearestOpen; judge: JudgeRelease },
+): Promise<ReleaseMatch> {
+  if (items.length === 0) return { kind: 'none' };
+  const near = await ports.nearest(projectId, releaseLead(release), items);
+  if (!near.ok) return { kind: 'unjudged', why: near.why };
+  const shortlist = near.near
+    .filter((n) => n.similarity >= SHORTLIST_FLOOR)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, SHORTLIST_SIZE);
+  for (const { item, similarity } of shortlist) {
+    const verdict = await ports.judge(projectId, release, item);
+    if (!verdict.ok) return { kind: 'unjudged', why: verdict.why };
+    if (verdict.helps) return { kind: 'helps', item, why: verdict.why.trim(), similarity };
+  }
+  return { kind: 'none' };
 }
 
 /**

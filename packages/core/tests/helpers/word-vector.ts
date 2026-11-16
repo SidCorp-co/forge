@@ -30,3 +30,16 @@ export function modelLikeVector(text: string): number[] {
   v[MEMORY_EMBEDDING_DIM - 1] = (v[MEMORY_EMBEDDING_DIM - 1] ?? 0) + 1;
   return v;
 }
+
+/**
+ * A vector at exactly `cosine` to `query`'s `modelLikeVector`, as a pgvector literal: the query's
+ * direction mixed with one dimension it does not use, picked from `seed`.
+ */
+export function vectorAt(query: string, cosine: number, seed: number): string {
+  const q = modelLikeVector(query);
+  const norm = Math.hypot(...q);
+  const free = q.findIndex((x, i) => i > 0 && i >= seed % 1000 && x === 0);
+  const v = q.map((x) => (x / norm) * cosine);
+  v[free] = Math.sqrt(1 - cosine * cosine);
+  return `[${v.join(',')}]`;
+}

@@ -1,72 +1,135 @@
-// ISS-1252: a followed source's release becomes an idea only where it shares distinctive words with
-// an open item; a release about nothing open stays silent; only what is new since the last read is
-// digested, and a first read takes only the recent releases.
+// ISS-1252 c2: a followed source's release becomes an idea only where the fast model judges that it
+// helps one of the open items nearest it; a release about nothing open stays silent however near it
+// sits and whatever words it shares; one no vector or no model can read is not judged, and says why;
+// only what is new since the last read is digested, and a first read takes only the recent releases.
 
-import { describe, expect, it } from 'vitest';
-import { freshReleases, matchRelease, type OpenItem, wordsOf } from './match.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  freshReleases,
+  type JudgeRelease,
+  matchRelease,
+  type NearestOpen,
+  type OpenItem,
+  RELEASE_LEAD_CHARS,
+  releaseLead,
+  SHORTLIST_FLOOR,
+} from './match.js';
+import { FORGE_OPEN_ITEMS, RELEASE_NOTES } from './releases.fixture.js';
 
-const items: OpenItem[] = [
-  {
-    kind: 'issue',
-    id: 'i-1',
-    ref: 'ISS-12',
-    title: 'Parallel runs collide in one worktree when two agents share a branch',
-    areas: ['runner'],
-  },
-  {
-    kind: 'issue',
-    id: 'i-2',
-    ref: 'ISS-13',
-    title: 'The agent answers the owner in the wrong language',
-    areas: ['support'],
-  },
-  {
-    kind: 'requirement',
-    id: 'r-1',
-    ref: 'REQ-4',
-    title: 'Every agent run keeps its worktree isolated from the other runs',
-    areas: ['runner'],
-  },
-  { kind: 'issue', id: 'i-3', ref: 'ISS-14', title: 'Agent session agent agent', areas: [] },
-];
+const release = (key: keyof typeof RELEASE_NOTES, source: string) => {
+  const r = RELEASE_NOTES[key];
+  return { tag: r.name, name: r.name, body: r.body, source };
+};
 
-const release = (body: string, tag = 'v1.2.0') => ({ tag, name: null, body });
+/** Every open item at `similarity` to any release: the stored vectors as a fixture. */
+const allAt =
+  (similarity: number): NearestOpen =>
+  async (_p, _lead, items) => ({ ok: true, near: items.map((item) => ({ item, similarity })) });
+
+/** The model as it should judge: coolify's queued-deploy cancel helps ISS-1082, nothing else helps. */
+const strictJudge = vi.fn<JudgeRelease>(async (_p, r, item) =>
+  r.body.includes('queued webhook deployments') && item.ref === 'ISS-1082'
+    ? {
+        ok: true,
+        helps: true,
+        why: 'It cancels older queued webhook deploys, so a push no longer waits behind stale ones.',
+      }
+    : { ok: true, helps: false, why: 'It is about something else.' },
+);
+
+const ports = (nearest: NearestOpen, judge: JudgeRelease = strictJudge) => ({ nearest, judge });
 
 describe('matchRelease', () => {
-  it('files on the open item the release shares two distinctive words with, naming them', () => {
-    const m = matchRelease(
-      release('Each parallel task now gets an isolated git worktree; branches no longer collide.'),
-      items,
-      ['worktrees'],
+  it('keeps orca 1.4.255 and Claude Code v2.1.323 silent, though they sit near forge open items and share their words', async () => {
+    for (const r of [release('orca', 'stablyai/orca'), release('claudeCode', 'Claude Code CLI')]) {
+      strictJudge.mockClear();
+      const m = await matchRelease('p', r, FORGE_OPEN_ITEMS, ports(allAt(0.66)));
+      expect(m, r.source).toEqual({ kind: 'none' });
+      // near enough to be shortlisted: the cosine let them through, the judgement kept them out
+      expect(strictJudge).toHaveBeenCalled();
+    }
+  });
+
+  it('files coolify v4.7.0 on the ISS-1082-like item, with the why the model gave', async () => {
+    const m = await matchRelease(
+      'p',
+      release('coolify', 'coollabsio/coolify'),
+      FORGE_OPEN_ITEMS,
+      ports(allAt(0.652)),
     );
-    expect(m?.item.ref).toBe('ISS-12');
-    expect(m?.terms).toEqual(['branch', 'collid', 'parallel', 'worktre']);
+    expect(m).toMatchObject({ kind: 'helps', item: { ref: 'ISS-1082' }, similarity: 0.652 });
+    expect(m.kind === 'helps' && m.why).toMatch(/queued webhook deploys/);
   });
 
-  it('stays silent on a release that touches no open problem', () => {
-    expect(
-      matchRelease(release('Dark mode for the settings page and a faster font loader.'), items, []),
-    ).toBeNull();
+  it(`asks the model nothing about an item under the shortlist floor ${SHORTLIST_FLOOR}`, async () => {
+    const judge = vi.fn<JudgeRelease>(async () => ({ ok: true, helps: true, why: 'yes' }));
+    const m = await matchRelease(
+      'p',
+      release('coolify', 'coollabsio/coolify'),
+      FORGE_OPEN_ITEMS,
+      ports(allAt(SHORTLIST_FLOOR - 0.01), judge),
+    );
+    expect(m).toEqual({ kind: 'none' });
+    expect(judge).not.toHaveBeenCalled();
   });
 
-  it('counts no word most open items share, so "agent" alone matches nothing', () => {
-    expect(
-      matchRelease(release('Agent improvements for every agent session.'), items, []),
-    ).toBeNull();
+  it('judges the three nearest items, nearest first', async () => {
+    const items: OpenItem[] = [0.61, 0.7, 0.65, 0.68].map((s, i) => ({
+      kind: 'issue',
+      id: `i-${i}`,
+      ref: `ISS-${i}`,
+      title: String(s),
+      areas: [],
+    }));
+    const nearest: NearestOpen = async (_p, _l, list) => ({
+      ok: true,
+      near: list.map((item) => ({ item, similarity: Number(item.title) })),
+    });
+    const asked: string[] = [];
+    const judge: JudgeRelease = async (_p, _r, item) => {
+      asked.push(item.ref);
+      return { ok: true, helps: false, why: 'no' };
+    };
+    await matchRelease('p', release('orca', 'o'), items, ports(nearest, judge));
+    expect(asked).toEqual(['ISS-1', 'ISS-3', 'ISS-2']);
   });
 
-  it('needs two shared words: one is no evidence', () => {
-    expect(matchRelease(release('A new worktree command.'), items, [])).toBeNull();
+  it('is not judged, by name, where no vector can be had, and never matches by its words', async () => {
+    const judge = vi.fn<JudgeRelease>();
+    const m = await matchRelease(
+      'p',
+      release('orca', 'stablyai/orca'),
+      FORGE_OPEN_ITEMS,
+      ports(
+        async () => ({ ok: false, why: 'no vector for the release (provider_not_configured)' }),
+        judge,
+      ),
+    );
+    expect(m).toEqual({
+      kind: 'unjudged',
+      why: 'no vector for the release (provider_not_configured)',
+    });
+    expect(judge).not.toHaveBeenCalled();
   });
 
-  it('prefers the issue to the requirement on an equal score', () => {
-    const m = matchRelease(release('worktree isolated parallel runs'), items, []);
-    expect(m?.item.kind).toBe('issue');
+  it('is not judged, by name, where the model gives no answer', async () => {
+    const m = await matchRelease(
+      'p',
+      release('coolify', 'coollabsio/coolify'),
+      FORGE_OPEN_ITEMS,
+      ports(allAt(0.7), async () => ({
+        ok: false,
+        why: 'not judged: no fast model is set up to judge it',
+      })),
+    );
+    expect(m).toEqual({ kind: 'unjudged', why: 'not judged: no fast model is set up to judge it' });
   });
 
-  it('reads a word in its shared form, plurals and tenses folded', () => {
-    expect([...wordsOf('Worktrees collided matches')]).toEqual(['worktre', 'collid', 'match']);
-    expect([...wordsOf('worktree collide')]).toEqual(['worktre', 'collid']);
+  it('shortlists by the release name and the first part of its notes', () => {
+    const body = `${'a'.repeat(RELEASE_LEAD_CHARS)}TAIL`;
+    expect(releaseLead({ tag: 'v1', name: null, body })).toBe(
+      `v1\n\n${'a'.repeat(RELEASE_LEAD_CHARS)}`,
+    );
   });
 });
 

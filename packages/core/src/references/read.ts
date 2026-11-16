@@ -142,14 +142,15 @@ export async function timelineOf(
       url: r.url,
       publishedAt: iso(r.publishedAt),
       outcome: r.outcome,
-      matched: r.matchedRef ? { ref: r.matchedRef, terms: r.matchedTerms ?? [] } : null,
+      matched: r.matchedRef ? { ref: r.matchedRef, why: r.why ?? '' } : null,
+      notJudged: r.matchedRef ? null : r.why,
       idea: r.feedbackId ? (ideaKeys.get(r.feedbackId)?.key ?? null) : null,
       readAt: r.readAt.toISOString(),
     })),
   };
 }
 
-/** The ids of the ideas each source filed for `projectId`, keyed by source. */
+/** The ids of the ideas each source filed for `projectId`, keyed by source, each idea once. */
 export async function ideasBySource(
   projectId: string,
   sourceIds: readonly string[],
@@ -166,9 +167,12 @@ export async function ideasBySource(
         eq(referenceReleases.outcome, 'idea'),
       ),
     );
+  // the releases of one pass that help one item share its idea
+  const ideas = new Map<string, Set<string>>();
   for (const r of rows) {
     if (!r.feedbackId) continue;
-    out.set(r.sourceId, [...(out.get(r.sourceId) ?? []), r.feedbackId]);
+    ideas.set(r.sourceId, (ideas.get(r.sourceId) ?? new Set()).add(r.feedbackId));
   }
+  for (const [sourceId, ids] of ideas) out.set(sourceId, [...ids]);
   return out;
 }

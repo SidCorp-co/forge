@@ -166,6 +166,35 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
 }
 
 /**
+ * Core's copies of the issues `issueIds` names nearest `queryVec`, nearest first, each issue once
+ * with the cosine of its nearest copy. An issue whose copy has no vector (an embeddings outage, a
+ * project that keeps content in place) is not among them.
+ */
+export async function nearestIssueCopies(input: {
+  projectId: string;
+  queryVec: number[];
+  issueIds: readonly string[];
+  limit: number;
+}): Promise<{ issueId: string; similarity: number }[]> {
+  if (input.issueIds.length === 0) return [];
+  const distance = cosineDistance(memories.embedding, input.queryVec);
+  const rows = await db
+    .select({ issueId: memories.sourceRef, distance: sql<number>`min(${distance})`.as('distance') })
+    .from(memories)
+    .where(
+      and(
+        ...baseWhereClauses({ projectId: input.projectId, sourceFilter: ['issue'] }),
+        isNotNull(memories.embedding),
+        inArray(memories.sourceRef, [...input.issueIds]),
+      ),
+    )
+    .groupBy(memories.sourceRef)
+    .orderBy(asc(sql`distance`))
+    .limit(input.limit);
+  return rows.map((r) => ({ issueId: r.issueId, similarity: 1 - Number(r.distance) }));
+}
+
+/**
  * Keyword strategy — Postgres FTS over the generated `text_search` column
  * (GIN-indexed, migration 0105). `websearch_to_tsquery` accepts free-form
  * user queries (quoted phrases, `-exclusions`, `or`) and never throws on

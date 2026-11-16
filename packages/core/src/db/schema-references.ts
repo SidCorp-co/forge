@@ -116,9 +116,10 @@ export const referenceReleases = pgTable(
     url: text('url').notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     outcome: text('outcome', { enum: REFERENCE_RELEASE_OUTCOMES }).notNull(),
-    /** The open item it may help, `ISS-n` or `REQ-n`, and the words both hold. */
+    /** The open item it may help, `ISS-n` or `REQ-n`. */
     matchedRef: text('matched_ref'),
-    matchedTerms: text('matched_terms').array(),
+    /** On an idea, the model's one line on how it helps; on a silent row, why it was not judged. */
+    why: text('why'),
     feedbackId: uuid('feedback_id').references(() => feedback.id, { onDelete: 'set null' }),
     readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
   },

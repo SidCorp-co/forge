@@ -8,6 +8,7 @@ export { provideMemoryIssueReads } from './ports.js';
 export { flagMemoriesForChange } from './recheck.js';
 export { registerMemoryReconcileTrigger, registerMemoryReconcileWorker } from './reconcile.js';
 export { foreignScriptChars } from './script-guard.js';
+export { nearestIssueCopies } from './search.js';
 export { runMemorySearch } from './search-service.js';
 export { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
 export { runMemoryWrite } from './write-service.js';
