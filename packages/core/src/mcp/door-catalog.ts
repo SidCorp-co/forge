@@ -74,18 +74,25 @@ export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
     .flatMap((d) =>
       [...(d.surface === 'rest' ? [d.id] : []), ...(d.twins ?? [])].map((id) => {
         const [method, template] = id.split(' ') as [string, string];
-        return { door: d, method, ...matcherOf(template) };
+        return { id, door: d, method, ...matcherOf(template) };
       }),
     )
     .sort((a, b) => b.literals - a.literals);
+  const routeOf = (action: string) => {
+    const [method, path] = action.split(' ');
+    if (!method || !path) return undefined;
+    return routes.find((r) => r.method === method && r.re.test(path));
+  };
   return {
     doors,
     doorOf({ tool, action }) {
       if (!action) return null;
       if (tool !== 'rest') return byId.get(`${doorOf(tool)}.${action}`) ?? null;
-      const [method, path] = action.split(' ');
-      if (!method || !path) return null;
-      return routes.find((r) => r.method === method && r.re.test(path))?.door ?? null;
+      return routeOf(action)?.door ?? null;
+    },
+    viaTwin({ tool, action }) {
+      const route = tool === 'rest' && action ? routeOf(action) : undefined;
+      return route !== undefined && route.id !== route.door.id;
     },
   };
 }
@@ -133,11 +140,11 @@ export function twinned(
   for (const [action, rest] of Object.entries(twins)) {
     const door = byId.get(action);
     const routes = rest.map((r) => byId.get(r));
-    if (door?.surface !== 'mcp') missing.push(action);
+    if (!door) missing.push(action);
     rest.forEach((r, i) => {
       if (routes[i]?.surface !== 'rest') missing.push(r);
     });
-    if (!door || routes.some((r) => !r)) continue;
+    if (!door || routes.some((r) => r?.surface !== 'rest')) continue;
     const pair = [door, ...(routes as CatalogDoor[])];
     // the action takes its twin's card where the act's one card sits on the REST side (`cards.ts`)
     const cards = [

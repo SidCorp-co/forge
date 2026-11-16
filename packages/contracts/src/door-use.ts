@@ -60,8 +60,8 @@ export interface DoorUseRow {
 	 */
 	tiers: Partial<Record<CardAudience, 0 | 1>>;
 	/**
-	 * The REST writes that do this MCP action's act: one act, one card, so their calls count here, and
-	 * no row of their own lists them. Empty where the door has none.
+	 * The REST writes that do this door's act: one act, one card, so their calls count here, and no row
+	 * of their own lists them. Empty where the door has none.
 	 */
 	twins: string[];
 	/** Of `calls`, those that came through a REST twin. */

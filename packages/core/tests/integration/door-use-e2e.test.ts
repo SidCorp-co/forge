@@ -352,6 +352,10 @@ describe('each pile a prompt carries reads against its cap', () => {
     expect(piles.find((p) => p.pile === 'skill_always_on' && p.size === 1100)).toMatchObject({
       cap: 1024,
       over: true,
+      ownerProjectId: w.project,
     });
+    // a pile's consolidation goes to whose text it is: this project's knowledge, Forge's maps
+    expect(piles.find((p) => p.pile === 'always_knowledge')?.ownerProjectId).toBe(w.project);
+    expect(master?.ownerProjectId).toBeNull();
   });
 });

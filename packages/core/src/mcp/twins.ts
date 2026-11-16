@@ -1,5 +1,6 @@
-// The REST writes that do an MCP action's act (ISS-1251): one capability, one card, so a REST twin
-// carries no card of its own and a call through either surface counts on the one door. Each pair
+// The REST writes that do another door's act (ISS-1251), an MCP action's or a REST write's: one
+// capability, one card, so a REST twin carries no card of its own and a call through either counts on
+// the one door. Each pair
 // was read from the action's handler calling what the route calls (builder H's survey). The door
 // catalog folds each twin into its action and refuses a pair either side of which this build does
 // not serve, or which carries two cards (`door-catalog.ts:twinned`).
@@ -42,7 +43,10 @@ export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
   'design.mockup_return': ['POST /api/projects/:id/mockups/:mk/return'],
   'design.mockup_withdraw': ['POST /api/projects/:id/mockups/:mk/withdraw'],
   'design.mockup_comment': ['POST /api/projects/:id/mockups/:mk/comments'],
-  'releases.decide': ['POST /api/projects/:projectId/releases/:version/approval'],
+  'releases.decide': [
+    'POST /api/projects/:projectId/releases/:version/approval',
+    'POST /api/projects/:projectId/release-batches/:runId/approvals/:approvalId/decision',
+  ],
   'releases.name': ['PUT /api/projects/:projectId/releases/:version/naming'],
   'projects.create': ['POST /api/projects'],
   'config.write': ['PUT /api/projects/:id/config'],
@@ -72,4 +76,8 @@ export const REST_TWINS: Readonly<Record<string, readonly string[]>> = {
   'bot.open': ['POST /api/conversations'],
   'bot.send': ['POST /api/conversations/:id/messages'],
   'bot.cancel': ['POST /api/conversations/:id/stop'],
+  // an item about Forge waits on its confirm by the same body as a project's item does
+  'POST /api/projects/:id/feedback/:fb/confirm-wait': [
+    'POST /api/forge/feedback/:key/confirm-wait',
+  ],
 };

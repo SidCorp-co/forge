@@ -153,7 +153,7 @@ export function tallyDoors(
       continue;
     }
     door.calls += row.calls;
-    if (row.tool === 'rest' && door.surface === 'mcp') door.viaTwins += row.calls;
+    if (catalog.viaTwin({ tool: row.tool, action: row.action })) door.viaTwins += row.calls;
     if (row.code !== 'ok') refuse(door, row.code, row.calls);
     door.byAgent[row.agent] = (door.byAgent[row.agent] ?? 0) + row.calls;
     const last = iso(row.last_at);

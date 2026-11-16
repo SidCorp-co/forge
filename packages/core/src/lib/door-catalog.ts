@@ -26,8 +26,8 @@ export interface CatalogDoor {
   /** The repository paths its door lives in (a file or a module's directory); empty where unknown. */
   paths?: readonly string[];
   /**
-   * The REST writes that do this MCP action's act (`POST /api/forge/feedback/doors` for
-   * `feedback.door`): one act, one card, so a call through either counts on this door.
+   * The REST writes that do this door's act (`POST /api/forge/feedback/doors` for `feedback.door`):
+   * one act, one card, so a call through either counts on this door.
    */
   twins?: readonly string[];
 }
@@ -36,6 +36,8 @@ export interface DoorCatalog {
   doors: readonly CatalogDoor[];
   /** The door a logged call names, or null where the catalog holds none for it. */
   doorOf(call: { tool: string; action: string | null }): CatalogDoor | null;
+  /** Whether a logged call reached its door through a REST twin rather than the door itself. */
+  viaTwin(call: { tool: string; action: string | null }): boolean;
 }
 
 const slot = portSlot<{ doorCatalog(): DoorCatalog }>('door-catalog', 'provideDoorCatalog');
