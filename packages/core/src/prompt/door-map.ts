@@ -25,5 +25,5 @@ export async function runDoorMap(projectId: string): Promise<string> {
   const map = tier0Map(doorCatalog().doors, 'run', proposed, calls);
   return `## Your map
 When you meet one of these, use the door it names; before its first use, read its card (\`guides/doors.md?door=<the door>\`).
-${map.text}${map.carried.length < map.reach ? `\nMore doors, each by its situation: \`guides/doors.md\`.` : ''}`;
+${map.text}`;
 }

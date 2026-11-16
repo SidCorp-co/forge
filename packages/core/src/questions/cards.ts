@@ -71,6 +71,7 @@ export const QUESTION_REST_CARDS = {
     // (questions/owed.ts) answers asks of the owner for what the agent decides (decision-authority)
     redFlag:
       'Asking the owner a routine choice, or parking the issue on prose with no question behind it.',
+    family: 'issue-order',
     audience: ['run', 'master'],
   },
   'POST /api/questions/:id/void': {
@@ -83,6 +84,7 @@ export const QUESTION_REST_CARDS = {
     ],
     practice: ['Void only your own or your project’s question; an answered one is history.'],
     example: { reason: 'Settled by REQ-12 r3, which the owner agreed on 2026-11-07.' },
+    family: 'issue-order',
     audience: ['master', 'run'],
   },
   'PUT /api/questions/:id/plain': {
@@ -100,6 +102,7 @@ export const QUESTION_REST_CARDS = {
       plain:
         'Customers could reorder in one tap.\nIt waits on your choice for out-of-stock items.\nWe recommend reordering the rest.',
     },
+    family: 'issue-order',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

@@ -2,12 +2,18 @@
 // rendered from the door catalog, so a door is taught in one place and every page that names it
 // reads the same card. `doors.md` is the page of every door by the situation that calls for it.
 
-import { cardText, type DoorCatalog, doorCatalog } from '../lib/door-catalog.js';
+import { cardText, type DoorCatalog, doorCatalog, doorNames } from '../lib/door-catalog.js';
 import type { ForgeGuide } from './types.js';
 
-/** The catalog door a guide or a reader names: an MCP action, a REST write, or a REST twin of one. */
+/**
+ * The catalog door a guide or a reader names: an MCP action, a REST write, a REST twin of one, or the
+ * capability name a Tier-0 map gives it (`issues.merge`).
+ */
 export function doorNamed(catalog: DoorCatalog, id: string) {
-  return catalog.doors.find((d) => d.id === id || d.twins?.includes(id) || d.card?.id === id);
+  const names = doorNames(catalog.doors);
+  return catalog.doors.find(
+    (d) => d.id === id || d.twins?.includes(id) || d.card?.id === id || names.get(d.id) === id,
+  );
 }
 
 /** The guide's body with the cards of the doors it acts through beneath it. */

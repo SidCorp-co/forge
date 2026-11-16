@@ -34,6 +34,7 @@ export const REQUIREMENT_REST_CARDS = {
     },
     // owner 2026-11-07 on REQ-90, stuck at "You: agree r1": stop making me agree routine requirements
     redFlag: 'Parking a routine agree on the owner instead of agreeing it and recording why.',
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/revisions/:n/accept': {
@@ -48,6 +49,7 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['A blank reason is refused REQUIREMENT_SIGNOFF_REASON_REQUIRED.'],
     example: { reason: 'Adds BC-4 for sold-out lines, as FB-212’s triage asked.' },
     // ISS-645: accepts recorded no reason, so a revision went current with no why
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/revisions/:n/return': {
@@ -61,6 +63,7 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['A proposed revision cannot be edited or replaced; this is the way back to draft.'],
     example: { reason: 'BC-3 opens with “Verify”; restate it as what holds on the product.' },
     // ISS-766: an author stuck on a proposed revision was sent between two refusals, never to return
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/repin': {
@@ -74,6 +77,7 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Only an agreed requirement; nothing moved is refused REQUIREMENT_PINS_CURRENT.'],
     example: { revision: 2, reason: 'The reorder design r4 was approved on 2026-11-15.' },
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/issues': {
@@ -89,6 +93,7 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Outside strict a draft requirement links too; under strict only once agreed.'],
     example: { issue: 'ISS-640' },
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/start-delivery': {
@@ -104,6 +109,7 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['Nothing moves on its own and no notice announces it.'],
     example: { reason: 'ISS-640 builds BC-1 to BC-3.' },
     // ISS-1084: a held start-delivery was asked again and again while its delivery check could not finish
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/mark-delivered': {
@@ -116,6 +122,7 @@ export const REQUIREMENT_REST_CARDS = {
     ],
     practice: ['Agreed straight to delivered is no edge: start delivery first.'],
     example: { reason: 'BC-1 to BC-4 pass on 0.4.0-dev.690.' },
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/accept': {
@@ -133,6 +140,7 @@ export const REQUIREMENT_REST_CARDS = {
     practice: ['A correction after it comes in as feedback; a new revision accepted re-agrees it.'],
     example: { revision: 2, reason: 'All four BCs pass on 0.4.0-dev.690; ISS-640 shipped.' },
     redFlag: 'Accepting by decision to clear a gap nobody decided to leave.',
+    family: 'requirements',
     audience: ['master'],
   },
   'POST /api/projects/:id/requirements/:req/verdicts': {
@@ -160,6 +168,7 @@ export const REQUIREMENT_REST_CARDS = {
     },
     // REQ-45 r3 BC-8 (ISS-588): issues were filed whose only work was verifying a shipped capability
     redFlag: 'Filing an issue whose only work is verifying something that already shipped.',
+    family: 'requirements',
     audience: ['run', 'master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

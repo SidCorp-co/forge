@@ -294,6 +294,7 @@ export const REFERENCE_CARDS = {
 		},
 		redFlag:
 			"Copying a pattern from a source without citing it, or citing a source you never opened.",
+		family: "references",
 		audience: ["master", "run"],
 		scenarios: [],
 	},
@@ -321,6 +322,7 @@ export const REFERENCE_CARDS = {
 		},
 		redFlag:
 			"A citation with no reason for its take or reject: it counts as use and teaches nothing.",
+		family: "references",
 		audience: ["master", "run"],
 		scenarios: [],
 	},
@@ -347,6 +349,7 @@ export const REFERENCE_CARDS = {
 			areas: ["parallel agents", "worktrees"],
 			followReleases: true,
 		},
+		family: "references",
 		audience: ["master", "run", "person"],
 		scenarios: [],
 	},
@@ -364,6 +367,7 @@ export const REFERENCE_CARDS = {
 		],
 		redFlag:
 			"Proposing every page read once; a source earns its place by repeated use.",
+		family: "references",
 		audience: ["master", "run"],
 		scenarios: [],
 	},
@@ -382,6 +386,7 @@ export const REFERENCE_REST_CARD = {
 	],
 	practice: [...REFERENCE_CARDS.search.practice],
 	redFlag: REFERENCE_CARDS.search.redFlag,
+	family: "references",
 	audience: ["master", "run"],
 	scenarios: [],
 } satisfies CapabilityCardBody;

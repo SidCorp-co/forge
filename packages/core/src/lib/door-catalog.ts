@@ -64,27 +64,97 @@ export interface Tier0Map {
   reach: number;
 }
 
+/** The name a REST door's act takes where its module has an MCP tool by another name. */
+const MODULE_PREFIX: Readonly<Record<string, string>> = {
+  feedback: 'project_feedback',
+  'integration-door': 'integration',
+  'project-config': 'config',
+  'release-batch': 'releases',
+};
+const METHOD_VERB: Readonly<Record<string, string>> = {
+  PUT: 'set',
+  PATCH: 'edit',
+  DELETE: 'delete',
+};
+
 /**
- * A family's doors on one line: an MCP action whose tool the door before it names is written by its
- * action alone (`support.decide · asker · thread`), so the line names every door and repeats no tool.
+ * Each door's capability name, the way an MCP action is named (`issues.merge`): an action keeps its
+ * own id, and a REST door takes its owning module and its act, the last literal segment of its path
+ * (the one before it where the last is the module's own resource, `comments.requirements`), led by
+ * its method's verb where it is not a POST (`issues.set_criteria`). Two doors one name would take
+ * are told apart by the segment before (`requirements.revisions_accept`), or by the scope it
+ * is in where an action already holds the name (`issues.create_in_project`). The map names this;
+ * the card the agent opens carries the route.
  */
-function doorsLine(targets: readonly string[]): string {
-  const toolOf = (t: string | undefined) => (t && !t.includes(' ') ? t.split('.')[0] : null);
-  return targets
-    .map((t, i) => {
-      const tool = toolOf(t);
-      return tool && tool === toolOf(targets[i - 1]) ? t.slice(tool.length + 1) : t;
+export function doorNames(doors: readonly CatalogDoor[]): ReadonlyMap<string, string> {
+  const derived = doors.map((d) => {
+    if (d.surface !== 'rest' || !d.card) return { d, name: d.id, alt: d.id, scoped: d.id };
+    const owner = d.card.owner;
+    const prefix = MODULE_PREFIX[owner] ?? owner.replace(/-/g, '_');
+    const [method = 'POST', path = ''] = d.id.split(' ');
+    const literals = path
+      .split('/')
+      .filter((p) => p && p !== 'api' && !p.startsWith(':'))
+      .map((p) => p.replace(/-/g, '_'));
+    const own = (l: string | undefined) =>
+      l !== undefined &&
+      [owner.replace(/-/g, '_'), `${owner}s`, `${owner}es`, prefix].some(
+        (o) => o.replace(/-/g, '_') === l,
+      );
+    let act = literals.at(-1);
+    if (own(act)) act = literals.at(-2) === 'projects' ? undefined : literals.at(-2);
+    const verb = METHOD_VERB[method] ?? (act ? '' : 'create');
+    const name = (a: string | undefined) =>
+      `${prefix}.${[verb, a].filter((x) => x && !own(x)).join('_') || 'create'}`;
+    const before = literals.at(-2);
+    const scope = literals[0] && !own(literals[0]) ? literals[0].replace(/s$/, '') : null;
+    return {
+      d,
+      name: name(act),
+      // two doors one name: the segment before tells them apart, else the scope the door is in
+      alt: before && !own(before) && before !== 'projects' ? name(`${before}_${act}`) : name(act),
+      scoped: `${name(act)}${scope ? `_in_${scope}` : ''}`,
+    };
+  });
+  const tally = (names: readonly string[]) => {
+    const count = new Map<string, number>();
+    for (const n of names) count.set(n, (count.get(n) ?? 0) + 1);
+    return (n: string) => (count.get(n) ?? 0) > 1;
+  };
+  const first = tally(derived.map((x) => x.name));
+  const second = derived.map((x) => (first(x.name) ? x.alt : x.name));
+  const still = tally(second);
+  return new Map(
+    derived.map((x, i) => [x.d.id, still(second[i] as string) ? x.scoped : (second[i] as string)]),
+  );
+}
+
+/**
+ * A family's doors on one line, each tool written once before its first act (`issues.merge · move ·
+ * close`), so the line names every door and repeats no tool.
+ */
+function doorsLine(names: readonly string[]): string {
+  const toolOf = (n: string) => n.split('.')[0] ?? n;
+  const tools = [...new Set(names.map(toolOf))];
+  return tools
+    .map((t) => {
+      const acts = names.filter((n) => toolOf(n) === t).map((n) => n.slice(t.length + 1));
+      return `${t}.${acts.join(' · ')}`;
     })
     .join(' · ');
 }
 
+/** The line a map ends on where it could not carry every card: how many, and where to find them. */
+export const moreLine = (left: number) =>
+  `- ${left} more: forge_find { query: "<your situation>" } or guides/doors.md`;
+
 /**
- * The Tier-0 map of one audience (ISS-1251): the cards that teach it, most used first (`calls`, the
- * door use of the window). A card of a family (`card-families.ts`) is one door on its family's line,
- * "when <the family's situation> → its doors", so a cap is met by merging lines, never by dropping a
- * door; a card of none gives each of its situations a line. Whole blocks are carried within
- * `TIER0_MAP_MAX_CHARS`; a map that cannot carry every card is a pile due for merging, and the rest
- * are Tier 1, reached by situation through `forge_find`.
+ * The Tier-0 map of one audience (ISS-1251 criterion 5: a cap triggers merging, never truncation): the
+ * cards that teach it, most used first (`calls`, the door use of the window), each named by its
+ * capability (`doorNames`). A card of a family (`card-families.ts`) is one name on its family's
+ * line, "when <the family's situation> → its names"; a card of none gives each situation a line.
+ * Whole blocks are carried within `TIER0_MAP_MAX_CHARS`; where they cannot all be, the map is a pile
+ * due for merging and its last line says how many it left out and where they are found.
  */
 export function tier0Map(
   doors: readonly CatalogDoor[],
@@ -97,39 +167,56 @@ export function tier0Map(
       (d) => d.card?.audience.includes(audience) && situationsFor(d.card, audience).length > 0,
     )
     .sort((a, b) => (calls.get(b.id) ?? 0) - (calls.get(a.id) ?? 0) || a.id.localeCompare(b.id));
-  // a master and its runs work over REST, so their map names an act's REST twin where it has one
-  const target = (d: CatalogDoor) =>
-    (audience === 'master' || audience === 'run') && d.twins?.[0] ? d.twins[0] : d.id;
+  const names = doorNames(doors);
+  const nameOf = (d: CatalogDoor) => names.get(d.id) ?? d.id;
   // one block per family, ranked by its most used door, and one per card of none
   const groups = new Map<string, CatalogDoor[]>();
   for (const d of taught) {
     const key = d.card?.family ?? `door:${d.id}`;
     groups.set(key, [...(groups.get(key) ?? []), d]);
   }
-  const lines: string[] = [];
-  const carried: string[] = [];
-  let size = -1;
-  for (const members of groups.values()) {
+  const blocks = [...groups.values()].map((members) => {
     const cards = members.map((d) => d.card as CapabilityCard);
     const family = cards[0]?.family;
-    const block = [
-      ...(family
-        ? [`- when ${CARD_FAMILIES[family]} → ${doorsLine(members.map(target))}`]
-        : situationsFor(cards[0] as CapabilityCard, audience).map(
-            (s) => `- when ${s.when} → ${target(members[0] as CatalogDoor)}`,
-          )),
-      // a situation a lesson folded in, shown until the card's code carries it
-      ...members.flatMap((d) =>
-        (proposed.get(d.card?.id ?? '') ?? []).map((t) => `- (proposed) ${t} → ${target(d)}`),
-      ),
-    ];
-    const grows = block.join('\n').length + 1;
-    if (size + grows > TIER0_MAP_MAX_CHARS) continue;
-    size += grows;
-    lines.push(...block);
-    carried.push(...cards.map((c) => c.id));
+    return {
+      ids: cards.map((c) => c.id),
+      lines: [
+        ...(family
+          ? [`- when ${CARD_FAMILIES[family]} → ${doorsLine(members.map(nameOf))}`]
+          : situationsFor(cards[0] as CapabilityCard, audience).map(
+              (s) => `- when ${s.when} → ${nameOf(members[0] as CatalogDoor)}`,
+            )),
+        // a situation a lesson folded in, shown until the card's code carries it
+        ...members.flatMap((d) =>
+          (proposed.get(d.card?.id ?? '') ?? []).map((t) => `- (proposed) ${t} → ${nameOf(d)}`),
+        ),
+      ],
+    };
+  });
+  const fill = (cap: number) => {
+    const lines: string[] = [];
+    const carried: string[] = [];
+    let size = -1;
+    for (const b of blocks) {
+      const grows = b.lines.join('\n').length + 1;
+      if (size + grows > cap) continue;
+      size += grows;
+      lines.push(...b.lines);
+      carried.push(...b.ids);
+    }
+    return { lines, carried };
+  };
+  const whole = fill(TIER0_MAP_MAX_CHARS);
+  if (whole.carried.length === taught.length) {
+    return { text: whole.lines.join('\n'), carried: whole.carried, reach: taught.length };
   }
-  return { text: lines.join('\n'), carried, reach: taught.length };
+  // the pointer to the cards left out is within the cap too, so room is kept for it
+  const kept = fill(TIER0_MAP_MAX_CHARS - moreLine(taught.length).length - 1);
+  return {
+    text: [...kept.lines, moreLine(taught.length - kept.carried.length)].join('\n'),
+    carried: kept.carried,
+    reach: taught.length,
+  };
 }
 
 /**

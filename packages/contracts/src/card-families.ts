@@ -21,14 +21,21 @@ export const CARD_FAMILIES = {
 		"you cannot make an act, lack a grant, or a need belongs to someone else",
 	"room.owner":
 		"only the owner can answer or decide, or he answered or asked you to act",
-	"room.references":
-		"a source, link or document is to be read first, cited, followed or proposed",
-	channel:
-		"a channel document is owed, or someone asks what other projects sent, await or offer",
-	"project-feedback":
-		"a product finding is to be filed, or someone asks what became of a report",
-	"forge-feedback": "Forge itself, or one of its doors or guides, failed you",
-	memory: "you need what earlier work settled before you design or fix",
+	references: "a source is to be read first, cited or proposed",
+	channel: "a channel document is owed or asked about",
+	"project-feedback": "a product finding is filed, worked or asked after",
+	"forge-feedback": "Forge failed you, or what you reported moved",
+	memory: "you need or curate what earlier work settled",
+	"issue-work": "you build an issue and record its proof",
+	"issue-landing": "a change is built and lands",
+	"issue-order": "work waits on later, another issue or a person",
+	knowledge: "a rule, guide or lesson is found, kept or applied",
+	requirements: "a requirement moves from agreed to accepted",
+	design: "a design is proposed, built or re-pinned",
+	release: "a batch is cut, released or repaired",
+	ecosystem: "a contract moves, or a builder run is open",
+	setup: "the project's config, monitoring or schedules change",
+	debt: "a defect stands alone, or a cleanup run ends",
 } as const;
 
 export type CardFamily = keyof typeof CARD_FAMILIES;

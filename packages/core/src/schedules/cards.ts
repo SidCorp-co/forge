@@ -35,6 +35,7 @@ export const SCHEDULE_REST_CARDS = {
     // buy-before-build (forge ISS-1225): production monitoring hand-rolled as watch scripts
     redFlag:
       'Writing up, latency, error or disk monitoring as a script: that is the Prometheus integration’s.',
+    family: 'setup',
     audience: ['master'],
   },
   'PUT /api/schedules/:id': {
@@ -50,6 +51,7 @@ export const SCHEDULE_REST_CARDS = {
       'A declaration that stops reading fails each firing by name before the script runs.',
     ],
     example: { enabled: false },
+    family: 'setup',
     audience: ['master'],
   },
   'POST /api/schedules/:id/run': {
@@ -68,6 +70,7 @@ export const SCHEDULE_REST_CARDS = {
       'Read the fire’s record, not the answer: GET …/automation/fires/:fireId keeps every call and filing.',
     ],
     example: {},
+    family: 'setup',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

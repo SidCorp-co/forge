@@ -37,6 +37,7 @@ export const COMMENT_REST_CARDS = {
     // asks each decision to live on the item it shapes
     redFlag:
       'Settling a requirement’s rule in an issue comment or the requirement’s prose, where no decision read finds it.',
+    family: 'requirements',
     audience: ['master', 'run'],
   },
   'POST /api/projects/:id/workflows/:workflow/comments': {
@@ -58,6 +59,7 @@ export const COMMENT_REST_CARDS = {
       },
     },
     // ISS-935: a workflow's wait was sent to the issue events door, which answered 404
+    family: 'design',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/comments': {
@@ -80,6 +82,7 @@ export const COMMENT_REST_CARDS = {
         reversedWhen: '2026-11-25',
       },
     },
+    family: 'project-feedback',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

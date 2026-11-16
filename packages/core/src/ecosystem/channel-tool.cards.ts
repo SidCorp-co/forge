@@ -132,6 +132,7 @@ export const CARDS = {
       subject: 'Adapting to the orders field change',
       body: '<the acknowledgement body the parent owes>',
     },
+    family: 'channel',
     audience: ['master'],
   },
   edit: {
@@ -157,6 +158,7 @@ export const CARDS = {
       subject: 'Adapting to the orders field change',
       body: '<the whole acknowledgement body, as the note asks>',
     },
+    family: 'channel',
     audience: ['master'],
   },
   submit: {
@@ -173,6 +175,7 @@ export const CARDS = {
       'From a checkout: POST /api/projects/:id/channel/documents/<doc>/submit.',
     ],
     example: { projectId: '<project uuid>', ref: 'FP-ACK-2' },
+    family: 'channel',
     audience: ['master'],
   },
 } satisfies Partial<Record<ChannelAction, CapabilityCardBody>>;

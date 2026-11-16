@@ -26,6 +26,7 @@ export const CARDS = {
       'commitmentsSetBy says who set the commitments; without commitments.write send them back as they stand.',
     ],
     example: { projectId: '<project uuid>' },
+    family: 'ecosystem',
     audience: ['master'],
   },
   interface_write: {
@@ -54,6 +55,7 @@ export const CARDS = {
       baseRevision: 3,
       document: '<the whole interface interface answered, with your change>',
     },
+    family: 'ecosystem',
     audience: ['master'],
   },
   links: {
@@ -71,6 +73,7 @@ export const CARDS = {
     ],
     practice: ['Each link’s revision here is the baseRevision its link_update sends.'],
     example: { projectId: '<project uuid>' },
+    family: 'ecosystem',
     audience: ['master'],
   },
   link_create: {
@@ -93,6 +96,7 @@ export const CARDS = {
       document:
         '<a link-v1 document: the consuming module, the contract, pinnedVersion, state, callSites>',
     },
+    family: 'ecosystem',
     audience: ['master'],
   },
   link_update: {
@@ -125,6 +129,7 @@ export const CARDS = {
     // set unverified with a note and left standing
     redFlag:
       'Setting a link whose code is gone to unverified and leaving it: it still reads as a live use. Retire it: building with callSites [], then delete it.',
+    family: 'ecosystem',
     audience: ['master'],
   },
   builder_runs: {
@@ -139,6 +144,7 @@ export const CARDS = {
       'One run per ecosystem is open at a time: work the open one, never open another beside it.',
     ],
     example: { projectId: '<project uuid>' },
+    family: 'ecosystem',
     audience: ['master'],
   },
   builder_run: {
@@ -156,6 +162,7 @@ export const CARDS = {
     ],
     practice: ['trigger.head says which ref and commit the run maps, and how it was read.'],
     example: { projectId: '<project uuid>', run: '<builder run uuid>' },
+    family: 'ecosystem',
     audience: ['master'],
   },
   builder_run_update: {
@@ -181,6 +188,7 @@ export const CARDS = {
       baseRevision: 5,
       document: '<the whole builder-run-v1 document builder_run answered, with the step moved>',
     },
+    family: 'ecosystem',
     audience: ['master'],
   },
   builder_run_supersede: {
@@ -204,6 +212,7 @@ export const CARDS = {
       run: '<builder run uuid>',
       reason: 'Opened at a push to main; this project builds from dev.',
     },
+    family: 'ecosystem',
     audience: ['master'],
   },
   bus: {
@@ -224,6 +233,7 @@ export const CARDS = {
       'A project-fenced token reads it for an ecosystem its project is a member of.',
     ],
     example: { ecosystem: '<ecosystem uuid>' },
+    family: 'ecosystem',
     audience: ['master'],
   },
   context: {
@@ -248,6 +258,7 @@ export const CARDS = {
       paths: ['apps/web/src/api/orders.ts'],
       session: '<session uuid>',
     },
+    family: 'ecosystem',
     audience: ['master', 'run'],
   },
   contract_version_publish: {
@@ -279,6 +290,7 @@ export const CARDS = {
     // the landed artifact, and the contract holder returned it
     redFlag:
       'Recording a version from a commit that has not landed: sourceRef is a commit on the base branch and the artifact that file byte for byte (CONTRACT_SOURCE_NOT_LANDED, CONTRACT_SOURCE_DIGEST_MISMATCH).',
+    family: 'ecosystem',
     audience: ['master'],
   },
   contract_version_decide: {
@@ -303,6 +315,7 @@ export const CARDS = {
       version: '1.2.0',
       decision: 'approve',
     },
+    family: 'ecosystem',
     audience: ['master'],
   },
 } satisfies Partial<Record<Action, CapabilityCardBody>>;

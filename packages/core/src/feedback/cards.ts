@@ -52,6 +52,7 @@ export const FEEDBACK_REST_CARDS = {
     // yolo new feedback sat in the owner's queue, never routed by the master
     redFlag:
       'Filing a new issue without reading the item’s similar items and open issues, or leaving triage to the owner.',
+    family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/retarget': {
@@ -66,6 +67,7 @@ export const FEEDBACK_REST_CARDS = {
     practice: ['Exactly one target, with your reason; it works at any phase.'],
     example: { requirement: 'REQ-12', reason: 'REQ-12 BC-3 now records the reorder rule.' },
     // ISS-264: items about a screen could not move to the requirement that later recorded their rule
+    family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/verify': {
@@ -90,6 +92,7 @@ export const FEEDBACK_REST_CARDS = {
     // ISS-311: verified items said nothing of what was done and seen on which version
     redFlag:
       'Verifying from the record alone, without running the fix on the build that serves it.',
+    family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/reopen': {
@@ -105,6 +108,7 @@ export const FEEDBACK_REST_CARDS = {
       reason:
         'On 0.4.0-dev.690 a reorder with a sold-out line still fails when that line is the first.',
     },
+    family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/confirm-wait': {
@@ -128,6 +132,7 @@ export const FEEDBACK_REST_CARDS = {
     // ISS-902 (FB-480): with no wait on the record, the confirm nudge repeated on every master pass
     redFlag:
       'Verifying before the event that tests the fix happened, or letting the confirm nudge repeat every pass.',
+    family: 'project-feedback',
     audience: ['master', 'run'],
   },
   'POST /api/projects/:id/feedback/:fb/snooze': {
@@ -143,6 +148,7 @@ export const FEEDBACK_REST_CARDS = {
       until: '2026-11-25T09:00:00+07:00',
       reason: 'The reporter re-tests after the 1.31 release on 2026-11-24.',
     },
+    family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/messages': {
@@ -167,6 +173,7 @@ export const FEEDBACK_REST_CARDS = {
     },
     // bots-answer-users-by-name and agent-is-the-voice: core composes no notice for the agent
     redFlag: 'Writing an issue key, an error code or a table name to a reporter.',
+    family: 'project-feedback',
     audience: ['master'],
   },
   'POST /api/projects/:id/feedback/:fb/verify-ask': {
@@ -180,6 +187,7 @@ export const FEEDBACK_REST_CARDS = {
     ],
     practice: ['You never ask yourself: a reporter verifies their own item instead.'],
     example: {},
+    family: 'project-feedback',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

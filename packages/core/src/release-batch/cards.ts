@@ -34,6 +34,7 @@ export const RELEASE_REST_CARDS = {
     // door did not weigh; it now refuses them
     redFlag:
       'Recording a release from the merge alone, before reading that the running app serves it.',
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/release-batches': {
@@ -50,6 +51,7 @@ export const RELEASE_REST_CARDS = {
       'A release cut by hand names you as its cutter; the sweep’s cut names no person.',
     ],
     example: { issueIds: [ISSUE], version: '0.27.0', name: 'Reorder in one tap' },
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/abort': {
@@ -72,6 +74,7 @@ export const RELEASE_REST_CARDS = {
     },
     // ISS-670's judge (2026-10-23): an abort sent as {} recorded "aborted by agent" with no reason
     redFlag: 'Aborting with an empty body: the run ends with no reason and its version undecided.',
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/carried': {
@@ -85,6 +88,7 @@ export const RELEASE_REST_CARDS = {
     ],
     practice: ['It only adds; a run still open says it on its own abort instead.'],
     example: { carried: [{ kind: 'tag', name: 'dev-v0.4.0-dev.438' }] },
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/shipped-in-records': {
@@ -111,6 +115,7 @@ export const RELEASE_REST_CARDS = {
     // `corrects` existed; masters had recorded late marks by hand for days (ISS-813 to ISS-879)
     redFlag:
       'Cutting a new, empty release for an issue whose commit an older release already shipped.',
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/approvals': {
@@ -131,6 +136,7 @@ export const RELEASE_REST_CARDS = {
         reading: 'Staging serves c82e7d7c3a; every criterion of the roster passes there.',
       },
     },
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/method': {
@@ -143,6 +149,7 @@ export const RELEASE_REST_CARDS = {
     ],
     practice: ['Send it first in every release run.'],
     example: { skill: 'forge:release-flow', loaded: true },
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/shipped-commit': {
@@ -160,6 +167,7 @@ export const RELEASE_REST_CARDS = {
       commit: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee',
       evidence: '/api/version reports sourceCommit c82e7d7c3a.',
     },
+    family: 'release',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/releases/:version/repair': {
@@ -178,6 +186,7 @@ export const RELEASE_REST_CARDS = {
     },
     // ISS-928 / FB-484: the repair became a routine workaround for runs that ended failed with no code
     redFlag: 'Repairing every failed release by routine instead of reporting why runs end failed.',
+    family: 'release',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

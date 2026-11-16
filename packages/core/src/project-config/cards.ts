@@ -23,6 +23,7 @@ export const PROJECT_CONFIG_REST_CARDS = {
     // ISS-1140: judge-login's refusal named a fix no door accepted, so masters asked for the password
     // again to retype the whole secret
     redFlag: 'Asking a person to retype a secret’s whole value to add a sign-in route to it.',
+    family: 'setup',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

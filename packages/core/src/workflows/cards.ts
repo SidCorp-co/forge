@@ -20,6 +20,7 @@ export const WORKFLOW_REST_CARDS = {
       'The issue the design is drawn under is never its own build: link the build issues after it.',
     ],
     example: { issue: 'ISS-612', steps: ['reorder'] },
+    family: 'design',
     audience: ['master', 'run'],
   },
   'POST /api/projects/:id/workflows/:workflow/observations': {
@@ -57,6 +58,7 @@ export const WORKFLOW_REST_CARDS = {
     // ISS-145: the drift check and the product-map refresh wrote what the code holds into the design
     // document itself, so plan and reading could not be told apart
     redFlag: 'Editing the design to match the code instead of recording what the code does.',
+    family: 'design',
     audience: ['run', 'master'],
   },
   'POST /api/projects/:id/workflows/:workflow/design/repins': {
@@ -75,6 +77,7 @@ export const WORKFLOW_REST_CARDS = {
       revision: 3,
       designs: [{ workflowId: '5c7e9a1b-3d5f-4a7b-8c9d-0e1f2a3b4c5d', revision: 2 }],
     },
+    family: 'design',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

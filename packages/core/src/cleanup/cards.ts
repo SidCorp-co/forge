@@ -29,6 +29,7 @@ export const CLEANUP_REST_CARDS = {
     },
     // ISS-780 / forge-plugin report: the drive skill marked merges without rating the change
     redFlag: 'Marking the merge unrated, so Audit cannot tell which landing to read first.',
+    family: 'issue-landing',
     audience: ['run', 'master'],
   },
   'POST /api/projects/:projectId/cleanup-reports': {
@@ -55,6 +56,7 @@ export const CLEANUP_REST_CARDS = {
     // now refused CLEANUP_BASE_NOT_ON_BRANCH
     redFlag:
       'Typing the base sha by hand or shortening it: the next window reads its range from it.',
+    family: 'debt',
     audience: ['run'],
   },
   'POST /api/projects/:projectId/debts/:debt/carry': {
@@ -74,6 +76,7 @@ export const CLEANUP_REST_CARDS = {
       costs: 'Staging errors are not reported.',
       endsWhen: 'The owner sets SENTRY_DSN on staging.',
     },
+    family: 'debt',
     audience: ['master'],
   },
   'POST /api/projects/:projectId/debts/:debt/evidence': {
@@ -88,6 +91,7 @@ export const CLEANUP_REST_CARDS = {
     example: {
       evidence: 'The red is the jsdom upgrade: 4 suites time out at 5 s since 0.4.0-dev.690.',
     },
+    family: 'debt',
     audience: ['run'],
   },
 } satisfies Record<string, CapabilityCardBody>;

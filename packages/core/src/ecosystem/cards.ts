@@ -26,6 +26,7 @@ export const ECOSYSTEM_REST_CARDS = {
       'A breaking version is not adopted here: it comes as a contract-change feedback with its own work.',
     ],
     example: { contract: 'catalog-api/orders', version: '2.4.0' },
+    family: 'ecosystem',
     audience: ['master'],
   },
   'POST /api/issues/:id/contract-waits': {
@@ -45,6 +46,7 @@ export const ECOSYSTEM_REST_CARDS = {
       reason: 'Reorder reads the order lines 2.4.0 adds.',
       dueAt: '2026-11-30T00:00:00+07:00',
     },
+    family: 'issue-order',
     audience: ['master', 'run'],
   },
   'POST /api/issues/:id/contract-waits/:waitId/retract': {
@@ -57,6 +59,7 @@ export const ECOSYSTEM_REST_CARDS = {
     ],
     practice: ['A wait the version’s approval settles needs no retract.'],
     example: { reason: 'Reorder now reads the lines from 2.3.0; it needs nothing 2.4.0 adds.' },
+    family: 'issue-order',
     audience: ['master'],
   },
   'DELETE /api/projects/:id/links/:link': {
@@ -76,6 +79,7 @@ export const ECOSYSTEM_REST_CARDS = {
     // ISS-790: with no retire door a consumer left a dead link at `unverified` with a note
     redFlag:
       'Leaving a link whose call sites are gone as unverified, so it reads as a live dependency.',
+    family: 'ecosystem',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

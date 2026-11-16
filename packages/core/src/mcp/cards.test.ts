@@ -4,7 +4,7 @@
 import { TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
 import { CARD_FAMILIES } from '@forge/contracts/card-families';
 import { describe, expect, it } from 'vitest';
-import { tier0Map } from '../lib/door-catalog.js';
+import { doorNames, moreLine, tier0Map } from '../lib/door-catalog.js';
 import type { McpTool } from '../lib/tool.js';
 import { sourceOf } from '../lib/tool.js';
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
@@ -274,6 +274,50 @@ describe('a Tier-0 map merges a family of acts into one line', () => {
       expect(map.text, act).toMatch(new RegExp(`(support\\.| · )${act}( · |$|\\n)`, 'm'));
     }
     expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
+  });
+
+  // ISS-1251 c5 (master, 2026-11-16): every audience's map names capabilities, never routes, and
+  // every card it teaches is on it or behind its last line's count and the door that finds it
+  it.each(['bot', 'master', 'run'] as const)(
+    'reaches every card the %s is taught, by capability name, within its cap',
+    (audience) => {
+      const doors = servedDoorCatalog().doors;
+      const names = doorNames(doors);
+      const map = tier0Map(doors, audience);
+      expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
+      expect(map.text).not.toMatch(/→ (POST|PUT|PATCH|DELETE) \//);
+      const left = map.reach - map.carried.length;
+      if (left > 0) expect(map.text.split('\n').at(-1)).toBe(moreLine(left));
+      for (const id of map.carried) {
+        const door = doors.find((d) => d.card?.id === id);
+        const [tool, act] = (names.get(door?.id ?? '') ?? '').split('.');
+        expect(map.text, id).toMatch(new RegExp(`${tool}\\.([a-z_]+ · )*${act}( · |$|\\n)`, 'm'));
+      }
+      expect(left, `${audience} leaves ${left} cards to forge_find`).toBe(0);
+    },
+  );
+
+  it('names a door left out by the count on its last line, within its cap', () => {
+    const many = Array.from({ length: 60 }, (_, i) => door(`thing.a${i}`));
+    const map = tier0Map(many, 'bot');
+    const left = 60 - map.carried.length;
+    expect(left).toBeGreaterThan(0);
+    expect(map.text.split('\n').at(-1)).toBe(moreLine(left));
+    expect(map.text.length).toBeLessThanOrEqual(TIER0_MAP_MAX_CHARS);
+  });
+
+  it('names each REST door by its module and act, every name one door', () => {
+    const doors = servedDoorCatalog().doors;
+    const names = doorNames(doors);
+    const of = (id: string) => names.get(id);
+    expect(of('POST /api/issues/:id/merge')).toBe('issues.merge');
+    expect(of('PUT /api/issues/:id/criteria')).toBe('issues.set_criteria');
+    expect(of('POST /api/projects/:id/requirements/:req/comments')).toBe('comments.requirements');
+    expect(of('POST /api/projects/:id/requirements/:req/revisions/:n/accept')).toBe(
+      'requirements.revisions_accept',
+    );
+    const carded = doors.filter((d) => d.card).map((d) => names.get(d.id));
+    expect(carded.filter((n, i) => carded.indexOf(n) !== i)).toEqual([]);
   });
 
   it('gives every card the room agent is taught a family, so none takes lines of its own', () => {

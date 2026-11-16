@@ -38,6 +38,7 @@ export const STEWARD_NOTE_REST_CARDS = {
       basis: 'waiting|person|release.approve|1.31.1',
       runId: null,
     },
+    family: 'knowledge',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

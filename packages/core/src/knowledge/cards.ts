@@ -28,6 +28,7 @@ export const KNOWLEDGE_REST_CARDS = {
       '`keyword` matches every term at once, so a long question finds almost nothing with it.',
     ],
     example: { query: 'when must an agent ask the owner to approve', topK: 5 },
+    family: 'knowledge',
     audience: ['master', 'run'],
   },
   'DELETE /api/projects/:id/knowledge/:slug': {
@@ -47,6 +48,7 @@ export const KNOWLEDGE_REST_CARDS = {
       'A delete reaches running checkouts only when their orientation is next rewritten.',
     ],
     example: {},
+    family: 'knowledge',
     audience: ['master', 'run'],
   },
   'PUT /api/orgs/:orgId/knowledge/:slug': {
@@ -82,6 +84,7 @@ export const KNOWLEDGE_REST_CARDS = {
     // rules; ISS-1222 c2 is the right path from a fenced master (entry handed to an org admin)
     redFlag:
       'Writing an org-wide way of working as a rule on each project: the copies drift apart and none is the source.',
+    family: 'knowledge',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

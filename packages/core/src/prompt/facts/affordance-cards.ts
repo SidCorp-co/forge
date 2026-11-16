@@ -35,6 +35,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Send the edge with the create when the blocker is known; a second call leaves a gap an open issue can dispatch through.',
     ],
+    family: 'issue-order',
     audience: ['master', 'run'],
   }),
   card('POST /api/memory', 'memory', {
@@ -48,6 +49,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Search first and update the entry already held, rather than writing a second one beside it.',
     ],
+    family: 'memory',
     audience: ['master', 'run'],
   }),
   card('PUT /api/projects/:id/knowledge/:slug', 'knowledge', {
@@ -67,6 +69,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'One entry per slug; injection decides whether it reaches every prompt, so keep always-on entries few and short.',
     ],
+    family: 'knowledge',
     audience: ['master', 'run'],
   }),
   card('POST /api/projects/:id/issues', 'issues', {
@@ -83,6 +86,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       },
     ],
     practice: ['Name the requirement and criteria it delivers where you already have them.'],
+    family: 'issue-order',
     audience: ['master', 'run'],
   }),
   card('PUT /api/projects/:id/policy', 'project-config', {
@@ -95,6 +99,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       },
     ],
     practice: ['GET it first and send back the whole document with the baseRevision you read.'],
+    family: 'setup',
     audience: ['master'],
   }),
   card('PUT /api/projects/:id/config', 'project-config', {
@@ -133,6 +138,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     // GATES_WRITTEN_THROUGH_THEIR_DOOR, and the client learned the shape from a deliberately invalid write
     redFlag:
       'Sending a patch ({ base, patch } or only the keys that change), or gates changed in the document: refused CONFIG_WRITE_SHAPE and GATES_WRITTEN_THROUGH_THEIR_DOOR.',
+    family: 'setup',
     audience: ['master', 'person'],
   }),
   card('POST /api/memory/search', 'memory', {
@@ -166,6 +172,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       },
     ],
     practice: ['Verify the commit is on the target branch on the remote before you name it.'],
+    family: 'issue-landing',
     audience: ['master', 'run'],
   }),
   card('POST /api/issues/:id/transition', 'issues', {
@@ -209,6 +216,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'The status moves only here: `issues/<id> -X PATCH` writes fields, never the status.',
       'One park waits on one fact: `awaitsDesign` beside `awaitsMerge`, or `about` off a `needs_info` park, is `NEEDS_NOT_APPLICABLE`; `about` beside either is `QUESTION_ABOUT_ON_MERGE_WAIT` or `QUESTION_ABOUT_ON_DESIGN_WAIT`; no `reason` or `waitingKind` is a 422.',
     ],
+    family: 'issue-landing',
     audience: ['master', 'run'],
   }),
   card('POST /api/projects/:id/workflows/:workflow/design/propose', 'workflows', {
@@ -236,6 +244,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'An issue that builds the design is not dispatched until it is approved, so propose before filing the build.',
       'A design resting on another one is approved only once its base is approved at the revision it names.',
     ],
+    family: 'design',
     audience: ['master', 'run', 'person'],
   }),
   card('POST /api/projects/:id/feedback', 'feedback', {
@@ -293,6 +302,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       "A red you rate high stays the issue's to fix: it is recorded, and its RED_RATED_HIGH warning says so.",
     ],
     redFlag: 'A red rated high left as debt while the issue that met it lands.',
+    family: 'debt',
     audience: ['master', 'run'],
   }),
   card('POST /api/issues/:id/comments', 'comments', {
@@ -307,6 +317,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Name an extra fix under Extra fixes:, or the issue that owns it where it is out of reach.',
     ],
+    family: 'issue-work',
     audience: ['master', 'run'],
   }),
 ];

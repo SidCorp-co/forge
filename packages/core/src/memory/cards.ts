@@ -35,6 +35,7 @@ export const MEMORY_REST_CARDS = {
       verdict: 'outdated',
       evidence: 'deploy-dev.yml now waits on /api/version sourceCommit; the note says it does not.',
     },
+    family: 'memory',
     audience: ['master', 'run'],
   },
   'POST /api/memory/verify': {
@@ -57,6 +58,7 @@ export const MEMORY_REST_CARDS = {
       'Holding `project.write` is enough: a run’s or a master’s token may verify, not only a person.',
     ],
     example: { ids: [MEMORY_A, MEMORY_B] },
+    family: 'memory',
     audience: ['master', 'run'],
   },
   'POST /api/memory/retire': {
@@ -83,6 +85,7 @@ export const MEMORY_REST_CARDS = {
     // 2026-11-07, which is why this door takes a list
     redFlag:
       'Retiring a sweep one memory per call: the memory write limit runs out before the sweep does.',
+    family: 'memory',
     audience: ['master', 'run'],
   },
 } satisfies Record<string, CapabilityCardBody>;

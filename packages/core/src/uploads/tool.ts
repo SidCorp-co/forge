@@ -79,6 +79,7 @@ const CARDS = {
     // not take; the attachment names its own project
     redFlag:
       'Sending projectId or the target at the top level: fetch takes only data { target, attachmentId }, and the attachment names its project.',
+    family: 'issue-work',
     audience: ['run', 'master', 'person'],
   },
 } satisfies Record<'fetch', CapabilityCardBody>;

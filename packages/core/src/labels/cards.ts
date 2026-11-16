@@ -27,6 +27,7 @@ export const LABEL_REST_CARDS = {
     // refused PERMISSION_FORBIDDEN (project.admin)
     redFlag:
       'Naming a module in a design before the project has its label, or creating a second label beside a plain one.',
+    family: 'design',
     audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;

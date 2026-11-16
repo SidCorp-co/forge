@@ -44,6 +44,7 @@ export const ISSUE_REST_CARDS = {
     // already-shipped issue in no release; MARK_ALREADY_STANDS is the refusal that asks for the clear
     redFlag:
       'Clearing a mark and re-marking with the commit only in `note`: the issue then sits in no release.',
+    family: 'issue-landing',
     audience: ['master', 'run'],
   },
   'POST /api/issues/:id/verdicts': {
@@ -78,6 +79,7 @@ export const ISSUE_REST_CARDS = {
     // short shas and observable passes with no probe were each refused
     redFlag:
       'Holding verdicts to write at the end, or naming a short sha: a run that stops loses them, and a short sha is refused.',
+    family: 'issue-work',
     audience: ['run', 'master'],
   },
   'POST /api/issues/:id/merge-check': {
@@ -106,6 +108,7 @@ export const ISSUE_REST_CARDS = {
     // MERGE_BEHIND_BASE: reports from a branch behind its base were refused; ISS-472 saw reports
     // posted before the shape they used was served
     redFlag: 'Rebasing again after the check and landing the new head on the old report.',
+    family: 'issue-landing',
     audience: ['master', 'run'],
   },
   'PATCH /api/issues/:id': {
@@ -128,6 +131,7 @@ export const ISSUE_REST_CARDS = {
     // FB-503: a lease patched in another shape was stored and only the next move refused it NO_HOLDER
     redFlag:
       'Patching a lease or a status by hand: the lease shape is the kernel’s, and a status moves only by transition.',
+    family: 'issue-work',
     audience: ['master', 'run'],
   },
   'PUT /api/issues/:id/design': {
@@ -160,6 +164,7 @@ export const ISSUE_REST_CARDS = {
     // ISSUE_SCOPE_HELD: designs naming registry owners as modules collided with every live run
     redFlag:
       'Naming every module whose registry line you touched, which collides with every live run (ISSUE_SCOPE_HELD).',
+    family: 'issue-work',
     audience: ['run'],
   },
   'POST /api/issues/:id/events': {
@@ -189,6 +194,7 @@ export const ISSUE_REST_CARDS = {
     // were posted as events or pasted into comments
     redFlag:
       'Posting a verdict, transition or park as an event, or pasting a record into a comment: each has its own store.',
+    family: 'issue-work',
     audience: ['master', 'run'],
   },
   'PUT /api/issues/:id/criteria': {
@@ -213,6 +219,7 @@ export const ISSUE_REST_CARDS = {
     // memory triage-issue-criteria-on-record and CRITERIA_TRACE_DROPPED: triage-filed issues carried
     // criteria only in prose, and rewrites dropped their traces
     redFlag: 'Leaving the criteria in the description: a verdict has nothing to attach to.',
+    family: 'issue-work',
     audience: ['master', 'run'],
   },
   'POST /api/issues/:id/checks': {
@@ -231,6 +238,7 @@ export const ISSUE_REST_CARDS = {
       head: SHA,
       checks: [TYPECHECK],
     },
+    family: 'issue-work',
     audience: ['run', 'master'],
   },
   'POST /api/issues/:id/review': {
@@ -252,6 +260,7 @@ export const ISSUE_REST_CARDS = {
     },
     // REVIEW_BY_BUILDER / REVIEW_RUN_UNNAMED: the building run reviewed itself, or a box call named no run
     redFlag: 'Reviewing your own build, or sending checks and tests in the review body.',
+    family: 'issue-work',
     audience: ['run'],
   },
   'PATCH /api/issues/:id/criteria/:ref': {
@@ -272,6 +281,7 @@ export const ISSUE_REST_CARDS = {
       reason: 'The old text named the wrong page.',
     },
     redFlag: 'Relaxing a criterion to match what got built, rather than correcting its words.',
+    family: 'issue-work',
     audience: ['run', 'master'],
   },
   'POST /api/issues/:id/criteria/:ref/supersede': {
@@ -293,6 +303,7 @@ export const ISSUE_REST_CARDS = {
     // ISS-1240 / ISS-1241: a change that moved an older promise left it standing for a re-judge to fail
     redFlag:
       'Leaving the old criterion standing, so the next re-judge fails it and reopens a landed issue.',
+    family: 'issue-work',
     audience: ['run', 'master'],
   },
   'POST /api/issues/:id/criteria/traces': {
@@ -305,6 +316,7 @@ export const ISSUE_REST_CARDS = {
     ],
     practice: ['It ties no criterion you wrote: tag your own line `(REQ-n BC-m)` for that.'],
     example: { codes: ['BC-3', 'BC-4'] },
+    family: 'issue-work',
     audience: ['run', 'master'],
   },
   'POST /api/issues/:id/merge/correction': {
@@ -319,6 +331,7 @@ export const ISSUE_REST_CARDS = {
     example: { commit: SHA, reason: 'The branch merged at this commit, not the one first read.' },
     // ISS-1027 / ISS-1226: a closed issue was unmarked and re-marked, which a closed issue refuses
     redFlag: 'Clearing a closed issue’s mark to re-mark it: a closed issue takes the correction.',
+    family: 'issue-landing',
     audience: ['master'],
   },
   'POST /api/issues/:id/attachments': {
@@ -332,6 +345,7 @@ export const ISSUE_REST_CARDS = {
     practice: [
       'From a box, `forge-runner api issues/<id>/attachments -F file=@<path>`; a local path in evidence is refused.',
     ],
+    family: 'issue-work',
     audience: ['run', 'master'],
   },
   'POST /api/issues/:id/events/:eventId/withdraw': {
@@ -344,6 +358,7 @@ export const ISSUE_REST_CARDS = {
     ],
     practice: ['Its writer or a project admin may withdraw it.'],
     example: { reason: 'A probe of the route, not a decision.' },
+    family: 'issue-work',
     audience: ['master', 'run'],
   },
   'POST /api/issues/:id/patterns': {
@@ -363,6 +378,7 @@ export const ISSUE_REST_CARDS = {
       'An approved new pattern’s catalog page lands in the same change.',
     ],
     example: { pattern: 'core-module' },
+    family: 'issue-work',
     audience: ['run'],
   },
 } satisfies Record<string, CapabilityCardBody>;

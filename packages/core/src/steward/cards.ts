@@ -33,6 +33,7 @@ export const STEWARD_REST_CARDS = {
     // corrected by a resend were listed, and the run closed failed though every write landed
     redFlag:
       'Listing a refusal you already fixed by resending, or a probe you expected to be refused: the run closes failed.',
+    family: 'debt',
     audience: ['run'],
   },
 } satisfies Record<string, CapabilityCardBody>;

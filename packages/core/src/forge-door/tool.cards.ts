@@ -16,6 +16,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     ],
     practice: ['Repeat `progress.says`, never a date it does not hold.'],
     example: {},
+    family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
   get: {
@@ -33,6 +34,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     ],
     practice: ['Name the item by its key, FB-n.'],
     example: { feedback: 'FB-473' },
+    family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
   progress: {
@@ -45,6 +47,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     ],
     practice: ['Say the forecast as the range it is, or plainly why there is none.'],
     example: { feedback: 'FB-473' },
+    family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
   verify: {
@@ -70,6 +73,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     // REQ-66 BC-8: an agent's verify without evidence is refused FEEDBACK_EVIDENCE_REQUIRED
     redFlag:
       'Verifying from the release notes or the merge, without running it on the shipped build.',
+    family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
   reopen: {
@@ -88,6 +92,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     },
     // ISS-749: reopens answered without anything addressing them bounced between reporter and master
     redFlag: 'Filing a new item for a fix that did not hold, so the old one reads resolved.',
+    family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
   reply: {
@@ -107,6 +112,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
     },
     // ISS-749: a second reply to one answer is FEEDBACK_REPLY_SPENT
     redFlag: 'Replying in pieces: the second reply to one answer is refused.',
+    family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
   },
 };

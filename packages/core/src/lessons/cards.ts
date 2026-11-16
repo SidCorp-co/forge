@@ -23,6 +23,7 @@ export const LESSON_REST_CARDS = {
     // ISS-601 judge: `{lessons:["L-1"]}` was refused BAD_REQUEST "expected number, received string"
     // while the map teaches the `L-1` form
     redFlag: 'Sending the lesson as written in the map (`"L-3"`): the door takes the number only.',
+    family: 'knowledge',
     audience: ['master', 'run'],
   },
   'POST /api/projects/:id/lessons/:n/confusions': {
@@ -58,6 +59,7 @@ export const LESSON_REST_CARDS = {
         sentence: 'Show the stuck reason on hover, keeping the inline label to one word.',
       },
     },
+    family: 'knowledge',
     audience: ['master', 'run'],
   },
 } satisfies Record<string, CapabilityCardBody>;
