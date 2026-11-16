@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.690] - 2026-11-16
+
+Room agents ask the owner in the project's one technical channel
+
+### Changed
+
+- **A room agent's question to the owner is posted only in the project's technical channel.** His reply there reaches the asking thread and the question it names; the owner's room and its daily questions thread no longer take asks.
+
 ## [0.4.0-dev.689] - 2026-11-15
 
 Every project with ready work holds a subagent slot on each runner box
