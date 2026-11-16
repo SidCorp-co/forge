@@ -90,6 +90,12 @@ export interface McpTool {
    * accepts as written. The registry refuses a field the action's input does not take.
    */
   actionDescribe?: Readonly<Record<string, ActionDescribe>>;
+  /**
+   * Each action's own entry, `name { args }: what it does`, where the tool renders them one by one
+   * (`support/tool-description.ts`): read alone, so a word of one entry that happens to be another
+   * action's name is never taken for that action's entry. Absent, each is found in the description.
+   */
+  actionEntries?: Readonly<Record<string, string>>;
   /** Each action's capability card (ISS-1251): when to reach for it, how, and what goes wrong. */
   cards?: Readonly<Record<string, CapabilityCardBody>>;
   /**

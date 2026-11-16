@@ -7,4 +7,4 @@ export { codeFindings, judgeReply } from './judge.js';
 export { roomLessonsNews } from './lessons-news.js';
 export { replyVerdictsOf } from './read.js';
 export { mountReplyVerdictRoutes } from './route.js';
-export { AUDIT_TOOL_TEXT } from './teach.js';
+export { AUDIT_RUBRIC_TEXT } from './teach.js';

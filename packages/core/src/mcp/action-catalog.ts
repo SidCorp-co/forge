@@ -394,6 +394,7 @@ function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
     });
   }
   const text = tool.description;
+  if (tool.actionEntries) return actions.map((action) => ownEntry(tool, action, listed));
   const found = actions.map((action) => {
     const entry = entryOf(text, action);
     if (!entry) {
@@ -443,6 +444,32 @@ function entriesWithoutPermission(tool: McpTool): ActionEntry[] {
       ),
     };
   });
+}
+
+/** An action's entry where its tool renders each one alone (`McpTool.actionEntries`): all of it its guide. */
+function ownEntry(tool: McpTool, action: string, listed: Schema): ActionEntry {
+  const door = doorOf(tool.name);
+  const text = tool.actionEntries?.[action];
+  const entry = text ? entryOf(text, action) : null;
+  if (!text || !entry || entry.listed || entry.start !== 0) {
+    throw new Error(
+      `mcp registry: ${tool.name}'s entry for ${action} is not one \`${action} { args }: what it does\`, so forge_describe has no guide to answer for ${door}.${action} (mcp/action-catalog.ts)`,
+    );
+  }
+  return {
+    id: `${door}.${action}`,
+    tool: tool.name,
+    action,
+    summary: summaryOf(text.slice(entry.body)),
+    guide: text.trim(),
+    guideOf: 'action' as const,
+    input: (tool.actionRequests ? requestInput : narrowedInput)(
+      tool,
+      action,
+      listed,
+      entry.argsText ? argumentsIn(entry.argsText) : [],
+    ),
+  };
 }
 
 /** Every action of `tools`, by id. */

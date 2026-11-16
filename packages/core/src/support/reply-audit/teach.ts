@@ -7,5 +7,8 @@ import { REPLY_RUBRIC, REPLY_RUBRIC_LINES } from '@forge/contracts/support-reply
 /** The rubric as the agent reads it: each line's key and what it asks. */
 const RUBRIC = REPLY_RUBRIC_LINES.map((k) => `${k} (${REPLY_RUBRIC[k]})`).join('; ');
 
-/** support.audit's entry in the room tool's description (`tool.ts`). */
-export const AUDIT_TOOL_TEXT = `audit {thread, message, failed, missed?}: right after each reply you post, score it against the rubric and keep the verdict; message is the messageId reply answered you, failed each line it fails with why ([] where none), missed each capability the reply should have reached for and did not, as forge_find names it ({door: "support.member", why}), left out where none. Rubric: ${RUBRIC}. Forge checks the lines code can tell beside your reading and answers the verdict; a failed line becomes a correction your lessons draw from. Nothing is posted or changed in the thread: do better on the next reply.`;
+/**
+ * The rubric support.audit's entry in the room tool's description carries beside its card's purpose
+ * (`support/tool-description.ts`): the lines an agent scores its reply against.
+ */
+export const AUDIT_RUBRIC_TEXT = `Rubric: ${RUBRIC}; failed names each line the reply fails with why ([] where none).`;
