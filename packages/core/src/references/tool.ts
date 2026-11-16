@@ -29,6 +29,7 @@ import {
   sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { need } from '../lib/tool-args.js';
 import { onArg } from '../permissions/index.js';
 import { searchSources, timelineOf } from './read.js';
 import { addSource, citeSource, proposeSource, removeSource, updateSource } from './service.js';
@@ -117,21 +118,11 @@ function judged<T extends z.ZodType>(
   };
 }
 
-const ENTRY = ['kind', 'url', 'title', 'why', 'areas', 'priority', 'followReleases'] as const;
+/** The source an action names; an empty one is refused at `/source` as one not sent. */
+const namedSource = (input: Input): string =>
+  need({ source: input.source || undefined }, input.action, 'source').source;
 
-const needSource = (input: Input) =>
-  input.source
-    ? null
-    : refusedAnswer(
-        [
-          {
-            code: 'BAD_REQUEST',
-            path: '/source',
-            detail: `${input.action} names the source, by id, address or name`,
-          },
-        ],
-        'REFERENCE_REFUSED',
-      );
+const ENTRY = ['kind', 'url', 'title', 'why', 'areas', 'priority', 'followReleases'] as const;
 
 function answered<T extends object>(out: ({ ok: true } & T) | { ok: false; refusals: Refusal[] }) {
   return out.ok ? out : refusedAnswer(out.refusals, 'REFERENCE_REFUSED');
@@ -187,51 +178,46 @@ export const forgeReferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
           : r.answer;
       }
       case 'update': {
-        const missing = needSource(input);
-        if (missing) return missing;
+        const source = namedSource(input);
         const r = judged(referenceUpdateRequestSchema, input, ENTRY, REFERENCE_UPDATE_SHAPE);
         return r.ok
           ? answered(
               await updateSource({
                 projectId,
                 actor,
-                ref: input.source as string,
+                ref: source,
                 request: r.value,
               }),
             )
           : r.answer;
       }
       case 'remove': {
-        const missing = needSource(input);
-        if (missing) return missing;
+        const source = namedSource(input);
         const r = judged(referenceRemoveRequestSchema, input, ['reason'], '{ reason }');
         return r.ok
           ? answered(
               await removeSource({
                 projectId,
                 actor,
-                ref: input.source as string,
+                ref: source,
                 reason: r.value.reason,
               }),
             )
           : r.answer;
       }
       case 'cite': {
-        const missing = needSource(input);
-        if (missing) return missing;
+        const source = namedSource(input);
         const r = judged(
           referenceCiteRequestSchema,
           input,
           ['ref', 'verdict', 'why', 'about'],
           REFERENCE_CITE_SHAPE,
         );
-        return r.ok
-          ? citeSource({ projectId, actor, ref: input.source as string, request: r.value })
-          : r.answer;
+        return r.ok ? citeSource({ projectId, actor, ref: source, request: r.value }) : r.answer;
       }
       case 'timeline': {
-        const missing = needSource(input);
-        return missing ?? timelineOf(projectId, input.source as string);
+        const source = namedSource(input);
+        return timelineOf(projectId, source);
       }
     }
   },

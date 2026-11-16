@@ -17,12 +17,8 @@ import {
   relate,
   unrelate,
 } from '../labels/index.js';
-import {
-  type ContextScopedMcpToolFactory,
-  refusedAnswer,
-  sourceOf,
-  zodToMcpSchema,
-} from '../lib/tool.js';
+import { type ContextScopedMcpToolFactory, sourceOf, zodToMcpSchema } from '../lib/tool.js';
+import { need, zodArgumentRefusal } from '../lib/tool-args.js';
 import { onArg } from '../permissions/index.js';
 
 const ACTIONS = ['get', 'pillar', 'place', 'relate', 'unrelate'] as const;
@@ -66,12 +62,6 @@ const DESCRIPTION = [
   'A term itself is written as a knowledge entry of kind glossary (`module`, `term: { aliases: { vi, code, industry }, namedBy: { who, quote } }`, `anchor`).',
 ].join(' ');
 
-const missing = (action: string, field: string) =>
-  refusedAnswer(
-    [{ code: 'BAD_REQUEST', path: `/${field}`, detail: `${action} names \`${field}\`` }],
-    'MODULE_MAP_REFUSED',
-  );
-
 export const forgeModuleTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_module',
   reach: 'project',
@@ -97,16 +87,19 @@ export const forgeModuleTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'pillar':
         return readModulePillar(projectId);
       case 'get':
-        return input.module ? readModuleTree(projectId, input.module) : missing('get', 'module');
+        // an empty or null module is one not sent, refused at /module with the tool's shape
+        return readModuleTree(
+          projectId,
+          need({ module: input.module || undefined }, 'get', 'module').module,
+        );
       case 'place': {
         const parsed = modulePlacementSchema.safeParse({
           type: input.type,
           ref: input.ref,
           module: input.module,
         });
-        return parsed.success
-          ? placeRecord(projectId, parsed.data)
-          : missing('place', String(parsed.error.issues[0]?.path[0] ?? 'type'));
+        if (!parsed.success) throw zodArgumentRefusal(parsed.error);
+        return placeRecord(projectId, parsed.data);
       }
       case 'relate': {
         const parsed = moduleRelationWriteSchema.safeParse({
@@ -114,17 +107,17 @@ export const forgeModuleTool: ContextScopedMcpToolFactory = (ctx) => ({
           from: input.from,
           to: input.to,
         });
-        if (!parsed.success)
-          return missing('relate', String(parsed.error.issues[0]?.path[0] ?? 'kind'));
+        if (!parsed.success) throw zodArgumentRefusal(parsed.error);
         return relate(projectId, parsed.data, {
           userId: ctx.principal.userId,
           agency: principalAgency(ctx.principal),
         });
       }
       case 'unrelate':
-        return input.relationId
-          ? unrelate(projectId, input.relationId)
-          : missing('unrelate', 'relationId');
+        return unrelate(
+          projectId,
+          need({ relationId: input.relationId || undefined }, 'unrelate', 'relationId').relationId,
+        );
     }
   },
 });
