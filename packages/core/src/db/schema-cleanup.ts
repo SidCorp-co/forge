@@ -176,10 +176,6 @@ export const deliveryDebts = pgTable(
       'delivery_debts_carried_whole_chk',
       sql`(${t.carriedAt} IS NULL AND ${t.carriedTrades} IS NULL AND ${t.carriedCosts} IS NULL AND ${t.carriedEndsWhen} IS NULL) OR (${t.carriedAt} IS NOT NULL AND ${t.carriedTrades} IS NOT NULL AND ${t.carriedCosts} IS NOT NULL AND ${t.carriedEndsWhen} IS NOT NULL)`,
     ),
-    redNotHighChk: check(
-      'delivery_debts_red_not_high_chk',
-      sql`${t.kind} <> 'red' OR ${t.impactRating} <> 'high'`,
-    ),
     clearedChk: check(
       'delivery_debts_cleared_chk',
       sql`(${t.clearedAt} IS NULL) = (${t.clearedHow} IS NULL)`,

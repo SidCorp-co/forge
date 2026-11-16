@@ -4229,6 +4229,13 @@
       "when": 1839974400000,
       "tag": "0660_a_lesson_names_its_anchor_and_a_change_to_it_invalidates_it",
       "breakpoints": true
+    },
+    {
+      "idx": 661,
+      "version": "7",
+      "when": 1840060800000,
+      "tag": "0661_a_red_rated_high_is_recorded_as_debt_with_a_warning",
+      "breakpoints": true
     }
   ]
 }

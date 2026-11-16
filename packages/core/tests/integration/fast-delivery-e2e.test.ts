@@ -156,10 +156,19 @@ describe('cleanup debt (BC-3, BC-1)', () => {
     });
   });
 
-  it('refuses a red rated high by name: it holds the issue, which fixes it', async () => {
+  // ISS-1251: where a defect goes is the agent's call, taught and shown, never refused
+  it('records a red rated high and says it holds the issue, so the Audit sees the choice', async () => {
     const res = await debts({ items: [red('medium'), red('high')] });
-    expect([res.status, codes(res)]).toEqual([422, ['DEBT_RED_HOLDS_THE_ISSUE']]);
-    expect((await ledger()).body.open).toEqual([]);
+    expect(res.status).toBe(201);
+    expect(res.body.debts).toHaveLength(2);
+    expect(res.body.warnings.map((w: { code: string; path: string }) => [w.code, w.path])).toEqual([
+      ['RED_RATED_HIGH', '/items/1/impact/rating'],
+    ]);
+    const open = (await ledger()).body.open;
+    expect(open.map((d: { impact: { rating: string } }) => d.impact.rating).sort()).toEqual([
+      'high',
+      'medium',
+    ]);
   });
 
   it('is refused on a project that turned fast delivery off', async () => {

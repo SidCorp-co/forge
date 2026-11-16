@@ -179,8 +179,10 @@ to exactly one of three places:
 - **The fix needs it**, to bound its impact or to prove itself → **fix it**, whoever caused it.
 - **It stands alone** → record it as debt for the Audit, with its evidence:
   `POST /api/projects/:id/debts` (`red`, `debt` or `simplify`, where, what, and its impact). It is
-  not done inside the fix. A red rated high is refused as debt and stays the issue's to fix
-  (`packages/core/src/cleanup/rules.ts:debtRefusals`), and so is everything on a project that turned fast delivery off.
+  not done inside the fix. A red rated high stays the issue's to fix: the merge check counts it as
+  no debt, and the debts door records one with a warning saying so
+  (`packages/core/src/cleanup/rules.ts:debtWarnings`). A project that turned fast delivery off takes
+  no debt at all.
 - **Out of reach** → routed to whoever owns it, by one of the routes the Forge orientation names — core composes it
   (`packages/core/src/prompt/checkout-orientation.ts`) and the runner writes it into `CLAUDE.local.md`.
 

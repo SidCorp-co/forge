@@ -5,8 +5,9 @@
 //
 // A rating is the change's system impact by type: `type` is the landing surface it touches
 // (`./landing-artifacts.ts`), `rating` low, medium or high, high covering severe. A change rated high
-// lands and ships on its build like any other, and the audit owes it a cleanup report (BC-5); a red
-// rated high is no debt at all, it holds its issue (BC-3).
+// lands and ships on its build like any other, and the audit owes it a cleanup report (BC-5). A red
+// rated high holds its issue and is fixed in it (BC-3): the merge check counts no such red as debt,
+// and the debts door records one with a `RED_RATED_HIGH` warning, never a refusal (ISS-1251).
 
 import type { IssueStatusTone } from "./issue-vocabulary";
 import { z } from "zod";
@@ -122,6 +123,17 @@ export const recordDebtsRequestSchema = z.strictObject({
 export type RecordDebtsRequest = z.infer<typeof recordDebtsRequestSchema>;
 
 /**
+ * What the debts door says about an item it recorded and the writer should not miss (ISS-1251):
+ * `RED_RATED_HIGH`, a red the writer rated high, which holds its issue and is fixed there (BC-3).
+ */
+export interface DebtWarning {
+	code: "RED_RATED_HIGH";
+	/** The item's rating, as a JSON pointer into the write. */
+	path: string;
+	detail: string;
+}
+
+/**
  * `POST /api/projects/:id/debts/:debt/carry` (BC-10): a debt no change can clear, carried as a priced
  * amnesty. A carried debt still remains on every report until it is cleared, and never turns one red.
  */
@@ -181,7 +193,6 @@ export type CleanupReportRequest = z.infer<typeof cleanupReportRequestSchema>;
 export const CLEANUP_REFUSAL_CODES = [
 	"CLEANUP_REFUSED",
 	"FAST_DELIVERY_OFF",
-	"DEBT_RED_HOLDS_THE_ISSUE",
 	"CLEANUP_REPORT_INCOMPLETE",
 	"CLEANUP_DEBT_UNKNOWN",
 	"CLEANUP_DEBT_NAMED_TWICE",

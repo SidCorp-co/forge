@@ -3,7 +3,7 @@
  */
 import type { CleanupReportRequest } from '@forge/contracts/cleanup';
 import { describe, expect, it } from 'vitest';
-import { cleanupBrief, debtRefusals, reportOwed, reportRefusals, windowOffWords } from './rules.js';
+import { cleanupBrief, debtWarnings, reportOwed, reportRefusals, windowOffWords } from './rules.js';
 
 const impact = (rating: 'low' | 'medium' | 'high') =>
   ({ type: 'data', rating, reason: `rated ${rating}` }) as const;
@@ -22,7 +22,7 @@ const open = [
 ];
 
 describe('debt an agent records (REQ-79 BC-3)', () => {
-  it('takes a red rated low or medium, and refuses a red rated high: it holds its issue', () => {
+  it('takes every red, and names back a red rated high: it holds its issue (ISS-1251: warned, never refused)', () => {
     const red = (rating: 'low' | 'medium' | 'high') => ({
       kind: 'red' as const,
       check: 'verify',
@@ -30,16 +30,17 @@ describe('debt an agent records (REQ-79 BC-3)', () => {
       detail: 'copy budget over',
       impact: impact(rating),
     });
-    expect(debtRefusals([red('low'), red('medium')])).toEqual([]);
-    const refused = debtRefusals([red('medium'), red('high')]);
-    expect(refused.map((r) => [r.code, r.path])).toEqual([
-      ['DEBT_RED_HOLDS_THE_ISSUE', '/items/1/impact/rating'],
+    expect(debtWarnings([red('low'), red('medium')])).toEqual([]);
+    const warned = debtWarnings([red('medium'), red('high')]);
+    expect(warned.map((w) => [w.code, w.path])).toEqual([
+      ['RED_RATED_HIGH', '/items/1/impact/rating'],
     ]);
+    expect(warned[0]?.detail).toContain('is fixed in it');
   });
 
-  it('takes debt and simplification rated high: only a red holds its issue', () => {
+  it('names no debt or simplification rated high: only a red holds its issue', () => {
     expect(
-      debtRefusals([{ kind: 'debt', where: 'x', detail: 'y', impact: impact('high') }]),
+      debtWarnings([{ kind: 'debt', where: 'x', detail: 'y', impact: impact('high') }]),
     ).toEqual([]);
   });
 });

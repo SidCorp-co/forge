@@ -9,6 +9,7 @@ import {
   type CleanupRefusalCode,
   type CleanupReportRequest,
   type DebtItem,
+  type DebtWarning,
   HOLDING_RATING,
   type Impact,
 } from '@forge/contracts/cleanup';
@@ -24,15 +25,20 @@ export interface CleanupRefusal {
 export const FAST_DELIVERY_OFF_DETAIL =
   "this project turned fast delivery off (`delivery.fast: false` in its project document), so a red is fixed in the issue that met it and nothing is left as cleanup debt (REQ-79 BC-1). Turn it back on with `delivery.fast: true`, or drop the setting: fast delivery is every project's default";
 
-/** Each red rated high among `items`: it holds its issue, so it is never debt (BC-3). */
-export function debtRefusals(items: readonly DebtItem[]): CleanupRefusal[] {
+/**
+ * Each red rated high among `items`, recorded and named back (BC-3, ISS-1251): such a red holds its
+ * issue and is fixed in it, so the answer says so where the writer reads it. The choice stays the
+ * writer's, and the debt row shows the Audit what it chose; the merge check still counts no red
+ * rated high as debt.
+ */
+export function debtWarnings(items: readonly DebtItem[]): DebtWarning[] {
   return items.flatMap((d, i) =>
     d.kind === 'red' && d.impact.rating === HOLDING_RATING
       ? [
           {
-            code: 'DEBT_RED_HOLDS_THE_ISSUE' as const,
+            code: 'RED_RATED_HIGH' as const,
             path: `/items/${i}/impact/rating`,
-            detail: `\`${d.check ?? d.where}\` is a red you rate ${HOLDING_RATING}: a red rated ${HOLDING_RATING} holds the issue and is fixed in it, whoever caused it, so it is never cleanup debt (REQ-79 BC-3). Fix it in this change, or, where it is not that severe, rate it low or medium with why. Nothing was recorded`,
+            detail: `\`${d.check ?? d.where}\` is a red you rate ${HOLDING_RATING}, recorded as debt: a red rated ${HOLDING_RATING} holds the issue and is fixed in it, whoever caused it (REQ-79 BC-3), and a merge check never counts it as debt. Fix it in this change, or, where it is not that severe, rate it low or medium with why`,
           },
         ]
       : [],

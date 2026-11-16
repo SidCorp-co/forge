@@ -39,7 +39,8 @@ project document, and then a merge check asks every check and a red is fixed in 
   not, passes and is recorded as cleanup debt:
   \`POST /api/projects/:id/debts\` \`{ issue, items: [{ kind: red | debt | simplify, check, where, detail, impact: { type, rating, reason } }] }\`,
   or, in a merge check report, \`debts\` naming each red check by its \`check\` name. A red you rate
-  high holds the issue and is fixed in it (\`DEBT_RED_HOLDS_THE_ISSUE\`). Debt you saw and did not
+  high holds the issue and is fixed in it: a merge check never counts it as debt, and the debts door
+  records one with a \`RED_RATED_HIGH\` warning saying so. Debt you saw and did not
   cause, or code worth simplifying, is recorded the same way, as \`debt\` or \`simplify\`.
 - **The record says what passed.** A passing merge check's record reads \`lane: fast-delivery\`, the
   checks above (\`fast\` on a preview-approved fast-lane change, \`full\` where the project turned fast

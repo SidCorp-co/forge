@@ -10,6 +10,7 @@ import type {
   CleanupReportView,
   DebtEvidenceRequest,
   DebtLedgerView,
+  DebtWarning,
   Impact,
   ImpactView,
   RecordDebtsRequest,
@@ -31,7 +32,7 @@ import { type CleanupWindow, fireProjectOf, readCleanupWindow } from '../schedul
 import { checkReportBase } from './report-base.js';
 import {
   type CleanupRefusal,
-  debtRefusals,
+  debtWarnings,
   FAST_DELIVERY_OFF_DETAIL,
   reportOwed,
   reportRefusals,
@@ -122,13 +123,17 @@ export async function recordDebts(args: {
   projectId: string;
   request: RecordDebtsRequest;
   userId: string;
-}): Promise<{ debts: string[]; window: CleanupWindow | null; windowOff: string | null }> {
+}): Promise<{
+  debts: string[];
+  window: CleanupWindow | null;
+  windowOff: string | null;
+  warnings: DebtWarning[];
+}> {
   const { projectId, request, userId } = args;
+  // the project's owner turned fast delivery off: that is the project's policy, not the writer's choice
   if (!(await readFastDelivery(projectId))) {
     throw refuse('FAST_DELIVERY_OFF', FAST_DELIVERY_OFF_DETAIL, '/items');
   }
-  const refusals = debtRefusals(request.items);
-  if (refusals.length) throw new RefusalError(refusals, 'CLEANUP_REFUSED');
   let issueId: string | null = null;
   if (request.issue) {
     const issue = await issueOf(projectId, request.issue, userId);
@@ -148,7 +153,12 @@ export async function recordDebts(args: {
     recordedBy: userId,
   });
   const window = await readCleanupWindow(projectId);
-  return { debts, window, windowOff: windowOffWords(projectId, window) };
+  return {
+    debts,
+    window,
+    windowOff: windowOffWords(projectId, window),
+    warnings: debtWarnings(request.items),
+  };
 }
 
 /**

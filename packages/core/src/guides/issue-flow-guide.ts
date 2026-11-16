@@ -510,7 +510,8 @@ Each defect you see goes to exactly one place (guide \`what-is-an-issue\`, *Wher
 - **It stands alone**: record it as debt for the Audit, with its evidence —
   \`POST /api/projects/:id/debts\` \`{ issue, items: [{ kind, check?, where, detail, impact }] }\` — and
   do not do it inside the fix. Recorded there it is discharged; mentioned only in a comment it is
-  not. A red you rate high is refused as debt and stays this issue's to fix.
+  not. A red you rate high stays this issue's to fix: the debts door records it with a
+  \`RED_RATED_HIGH\` warning saying so, and a merge check never counts it as debt.
 - **Out of reach**: routed to whoever owns it — a comment on the issue that owns it and a \`routed\`
   record on this one naming where it went, a \`blocks\` edge onto the issue that would ship without
   it, or \`needs_info\` on this one.
