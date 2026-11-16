@@ -137,6 +137,9 @@ live paths.
 
 ### Refuse by name; never absorb
 
+**This covers kernel input and contract breaks, never how an agent behaves** — an agent that works
+the wrong way is not wrong input (last paragraph).
+
 **A loud break beats a silent substitution.** A refactor that cannot do what was asked fails where
 the gap is, never at the nearest thing that still returns: do not widen a filter to swallow it, do
 not fall back to the path being replaced, do not delete the rows that no longer fit. A migration
@@ -154,13 +157,19 @@ Three things wear that face, and only the first is the caller's:
   *silently, forever*. Fix it to fail loudly, and plant the malformed input to watch it go red
   before the fix counts.
 - **An affordance defect** → the wrong use IS the natural reading. One reader misreading buys a
-  clearer error; the same affordance biting twice buys a redesign, and "we will document it better"
-  is how that redesign gets deferred again.
+  clearer error; the same affordance biting twice buys a redesign — for an agent, a better tool or
+  teaching placed in what it reads as it acts, never a refusal of the use — and "we will document
+  it better" somewhere it does not read is how that redesign gets deferred again.
 
 Which you may absorb follows `VISION: kernel-hard-policy-soft`. **Kernel input** — job, session,
 run, state, transition, evidence, retry, escalation — has zero tolerance. **Policy input** may
 normalize, but an unreported normalization is a guess. A wrong use already load-bearing in the
-field is a priced amnesty named with its issue and the condition that ends it.
+field is a priced amnesty named with its issue and the condition that ends it. **Agent behaviour
+is neither**: an agent that skips a step, picks a worse route or writes a weak reply is answered
+with a tool it can call, teaching in the guide, skill or brief it reads, and its result shown to a
+person — never with a refusal, a step core takes on its behalf or a hard-coded flow. Find which
+text it followed and fix that text first. Safety bars (secrets, credentials, what leaks to a user)
+are not behaviour and stay.
 
 ### A defect you see has a place
 

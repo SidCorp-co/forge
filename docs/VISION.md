@@ -177,8 +177,15 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
    verified · what failed · what may retry · what needs quarantine · what needs human judgment.
 4. **kernel-hard-policy-soft** — mechanism and policy are separated. The kernel owns strict
    invariants (job · session · run · state · evidence · transition · retry · failure · escalation)
-   and guarantees safety; policy stays soft (pipeline · skills · prompts · project config · gates ·
-   routing) so projects control behaviour.
+   and guarantees safety: input that would break one is refused by name. Policy stays soft
+   (pipeline · skills · prompts · project config · gates · routing) so projects control behaviour.
+   Beyond the kernel, an agent is made able, never forced: it is given tools it calls when it judges
+   it needs them, taught how and when to use them in what it already reads, and what it did is shown
+   so a person can judge the teaching and improve it. Forge does not take a step on an agent's
+   behalf, fill in its work, rewrite or block its reply, or refuse a policy choice; an agent that
+   works the wrong way is answered with a better tool or clearer teaching. Safety bars — a secret
+   kept out of what a reader sees, a credential kept on its own side — are the kernel's safety, not
+   policy.
 
 ### The unit of work
 
@@ -204,11 +211,13 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
 
 ### Who acts
 
-10. **agents-and-humans-share-the-lifecycle** — not separate workflows. The system decides who acts
-    next by capability, context and authority, and authority widens on the record of results.
+10. **agents-and-humans-share-the-lifecycle** — not separate workflows. Who acts next follows
+    capability, context and authority, and authority widens on the record of results. An agent works
+    the lifecycle as a person does: with the tools it is given and the method it reads, on the
+    record.
 11. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: the
-    agent decides and records, and **a person is brought in only for a decision serious enough to
-    need one** — irreversible, real money, credentials, product direction. A routine approval is a
+    agent decides and records, and **brings a person in only for a decision serious enough to need
+    one** — irreversible, real money, credentials, product direction. A routine approval is a
     bottleneck wearing the name of a safeguard.
 12. **measured-together-never-apart** — a single operating number is a number that can be gamed.
     Driving interventions toward zero by no longer surfacing what needs one is `state-never-lies`
@@ -253,7 +262,7 @@ not taken, and a document that prices everything except itself has taken one unp
 | `execution-stays-on-your-runners` | you bring and pay for the model accounts and keys, and you keep a runner alive on infrastructure you own. There is no sign-in-and-go path, and when execution capacity runs out it is your fleet that is short |
 | One instance, one tenant | you install, upgrade, back up and monitor it, once per team. No shared plane absorbs an outage on your behalf, and nobody else's upgrade fixes your instance |
 | `issue-is-the-currency` | work that would have been a message becomes an issue with a state and an audit trail. On the day you only wanted a quick fix, that discipline is friction — and it is the product, not an accident of it |
-| `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf |
+| `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf. And agents are taught, not fenced: one can take a wrong turn its teaching did not cover, and what that costs is reading what it did and fixing the teaching, not a wall that stops the next one |
 | `state-never-lies` | evidence takes time, and it is paid after the landing rather than before it. A batch that builds and passes the tests related to its changes lands, checked wide early only where it touches shared logic, billing, permissions or data; the whole suite runs after the push and a red is fixed forward in the next batch; a live judge reads the criteria on the running build and the release records it; and what the batch still owes is recorded as debt for the audit — never reported as released or confirmed before it is |
 | `route-judgment-not-bottlenecks` | agents will decide things you would have decided differently, and you are not asked first unless it is irreversible, real money, credentials or product direction. Every decision is recorded where it shapes the product, so it can be read and reversed; a project that wants a person on more of them sets `strict` and pays in waiting |
 | `trust-gates-capability` | capability whose value is obvious to you waits behind kernel work you did not ask for. Reach is earned rather than scheduled, which means asking for it does not move it |
