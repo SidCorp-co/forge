@@ -282,7 +282,7 @@ async function followIsolated(
     logger.error({ err, source: source.id }, `reference-releases: ${source.title} threw`);
     reportFailure(err, { tags: { area: 'reference-releases' }, extra: { source: source.id } });
     await settle(source.id, { lastCheckedAt: now, followError: said });
-    return { source: source.title, act: 'failed', ideas: [], silent: 0, said };
+    return { source: source.title, act: 'failed', ideas: [], silent: 0, unjudged: 0, said };
   }
 }
 
