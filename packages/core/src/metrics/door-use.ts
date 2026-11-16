@@ -24,7 +24,7 @@ import type { RunContextHow, RunContextSourceKind } from '@forge/contracts/run-c
 import { type SQL, sql } from 'drizzle-orm';
 import { SESSION_TURN_TOKEN_PREFIX, TOKEN_HOLDER_PREFIXES } from '../credentials/pat-format.js';
 import { db } from '../db/client.js';
-import { cardFreshness } from '../lessons/index.js';
+import { proposedSituations } from '../lessons/index.js';
 import { type DoorCatalog, doorNames, type Tier0Map, tier0Map } from '../lib/door-catalog.js';
 
 const DAY_MS = 86_400_000;
@@ -324,16 +324,7 @@ export async function tier0Maps(
   catalog: DoorCatalog,
   calls: ReadonlyMap<string, number>,
 ): Promise<Map<CardAudience, Tier0Map>> {
-  const proposed = new Map(
-    (await cardFreshness()).map((f) => [
-      f.cardId,
-      f.proposedDeltas
-        .filter(
-          (d) => d.field === 'situation' && (d.projectId === null || d.projectId === projectId),
-        )
-        .map((d) => d.text),
-    ]),
-  );
+  const proposed = await proposedSituations(projectId);
   return new Map(MAP_AUDIENCES.map((a) => [a, tier0Map(catalog.doors, a, proposed, calls)]));
 }
 

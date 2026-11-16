@@ -4,27 +4,13 @@
 // is the only always-on teaching of the doors a run acts through.
 
 import { moduleMapLines } from '../labels/index.js';
-import { cardFreshness } from '../lessons/index.js';
+import { proposedSituations } from '../lessons/index.js';
 import { doorCallsOf, doorCatalog, moduleLinesText, tier0Map } from '../lib/door-catalog.js';
-
-/** By card id, the situations this project's lessons folded into a card its code does not carry yet. */
-async function proposedOf(projectId: string): Promise<Map<string, string[]>> {
-  return new Map(
-    (await cardFreshness()).map((f) => [
-      f.cardId,
-      f.proposedDeltas
-        .filter(
-          (d) => d.field === 'situation' && (d.projectId === null || d.projectId === projectId),
-        )
-        .map((d) => d.text),
-    ]),
-  );
-}
 
 export async function runDoorMap(projectId: string): Promise<string> {
   const [calls, proposed, modules] = await Promise.all([
     doorCallsOf(projectId, 30),
-    proposedOf(projectId),
+    proposedSituations(projectId),
     moduleMapLines(projectId),
   ]);
   const map = tier0Map(doorCatalog().doors, 'run', proposed, calls);

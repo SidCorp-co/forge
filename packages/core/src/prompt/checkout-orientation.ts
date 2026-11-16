@@ -11,7 +11,7 @@ import {
   selectOnDemandSourcesFromKnowledge,
 } from '../knowledge/index.js';
 import { moduleMapLines } from '../labels/index.js';
-import { cardFreshness, lessonsMapText, restLessonDoors } from '../lessons/index.js';
+import { lessonsMapText, proposedSituations, restLessonDoors } from '../lessons/index.js';
 import { moduleLinesText } from '../lib/door-catalog.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
@@ -211,7 +211,10 @@ async function proposedSituationsOrUnknown(
   projectId: string,
 ): Promise<Map<string, string[]> | undefined> {
   try {
-    return await proposedSituations(projectId);
+    return await proposedSituations(
+      projectId,
+      AFFORDANCE_CARDS.map((c) => c.id),
+    );
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },
@@ -219,19 +222,4 @@ async function proposedSituationsOrUnknown(
     );
     return undefined;
   }
-}
-
-/** The situations this project's lessons folded into the orientation's cards, by card id. */
-async function proposedSituations(projectId: string): Promise<Map<string, string[]>> {
-  const fresh = await cardFreshness(AFFORDANCE_CARDS.map((c) => c.id));
-  return new Map(
-    fresh.map((f) => [
-      f.cardId,
-      f.proposedDeltas
-        .filter(
-          (d) => d.field === 'situation' && (d.projectId === null || d.projectId === projectId),
-        )
-        .map((d) => d.text),
-    ]),
-  );
 }

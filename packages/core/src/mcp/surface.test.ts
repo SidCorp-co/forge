@@ -18,8 +18,8 @@ import { mcpRequestClass } from './request-class.js';
 
 // describe answers a carded action's card with the lessons proposed for it, read from Postgres, which
 // this suite has none of (ISS-1251): a card here carries none proposed
-vi.mock('../lessons/index.js', async (actual) => ({
-  ...(await actual<typeof import('../lessons/index.js')>()),
+vi.mock('../lessons/card-freshness.js', async (actual) => ({
+  ...(await actual<typeof import('../lessons/card-freshness.js')>()),
   cardFreshness: async () => [],
 }));
 

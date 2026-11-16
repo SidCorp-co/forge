@@ -15,11 +15,12 @@ import type { McpListedTool, McpToolName } from '@forge/contracts/mcp-tools';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { GuideSlug } from '../guides/index.js';
+import { proposedDeltasFor } from '../lessons/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { EXAMPLE_PLACEHOLDERS, type McpContext, refusedAnswer } from '../lib/tool.js';
 import { renderedPermission } from '../middleware/declared-permission.js';
 import { type ActionEntry, doorOf, findActions } from './action-catalog.js';
-import { describedCard, proposedFor } from './cards.js';
+import { describedCard } from './cards.js';
 import { fetchHit, findRecords } from './find-records.js';
 import { argumentRefusals, shapeOf } from './input-gate.js';
 import { listedSchema } from './listed-schema.js';
@@ -215,6 +216,10 @@ export async function callSurface(
   if (name === 'forge_describe') {
     const entry = entryOr(deps, input.action as string);
     if (!isEntry(entry)) return entry;
+    const card = entry.card;
+    const proposed = card
+      ? (await proposedDeltasFor(deps.ctx.boundProjectId ?? null, [card.id])).get(card.id)
+      : undefined;
     return deps.answer({
       action: entry.id,
       summary: entry.summary,
@@ -226,15 +231,7 @@ export async function callSurface(
         : {}),
       ...(entry.documentSchema ? { documentSchema: entry.documentSchema } : {}),
       ...(entry.example ? exampleOf(entry) : {}),
-      ...(entry.card
-        ? {
-            card: describedCard(
-              entry.card,
-              await proposedFor(entry.card.id, deps.ctx.boundProjectId ?? null),
-              entry.example !== undefined,
-            ),
-          }
-        : {}),
+      ...(card ? { card: describedCard(card, proposed, entry.example !== undefined) } : {}),
       call: `forge_call { action: "${entry.id}", args }`,
       ...moreOf(entry),
     });

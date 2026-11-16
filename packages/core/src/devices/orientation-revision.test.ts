@@ -38,8 +38,8 @@ vi.mock('../labels/index.js', () => ({ moduleMapLines: async () => [] }));
 const cards = vi.hoisted(() => ({
   proposed: [] as { cardId: string; text: string }[],
 }));
-vi.mock('../lessons/index.js', async (actual) => ({
-  ...(await actual<typeof import('../lessons/index.js')>()),
+vi.mock('../lessons/card-freshness.js', async (actual) => ({
+  ...(await actual<typeof import('../lessons/card-freshness.js')>()),
   cardFreshness: async (ids: readonly string[]) => {
     if (knowledge.fail) throw new Error('knowledge store down');
     return ids.map((cardId) => ({

@@ -9,8 +9,8 @@ const store = vi.hoisted(() => ({
 }));
 const agreements = vi.hoisted(() => ({ read: vi.fn() }));
 const freshness = vi.hoisted(() => ({ read: vi.fn() }));
-vi.mock('../lessons/index.js', async (actual) => ({
-  ...(await actual<typeof import('../lessons/index.js')>()),
+vi.mock('../lessons/card-freshness.js', async (actual) => ({
+  ...(await actual<typeof import('../lessons/card-freshness.js')>()),
   cardFreshness: freshness.read,
 }));
 vi.mock('../agreements/index.js', async (actual) => ({

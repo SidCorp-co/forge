@@ -77,6 +77,7 @@ export {
   recordLessonsMonths,
 } from './month.js';
 export { type CardDelta, type CardText, lessonsPorts, provideLessonsPorts } from './ports.js';
+export { proposedDeltasFor, proposedSituations } from './proposed-deltas.js';
 export { lessonRoutes } from './routes.js';
 export {
   type CardScenario,

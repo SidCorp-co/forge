@@ -4,7 +4,7 @@
 // tool does not take, or one that does not stand, is refused by name when the registry is built.
 
 import { type CapabilityCard, capabilityCardSchema } from '@forge/contracts/capability-cards';
-import { type CardFreshness, cardFreshness } from '../lessons/index.js';
+import type { CardFreshness } from '../lessons/index.js';
 import { servedCard } from '../lib/card-changed.js';
 import type { McpTool } from '../lib/tool.js';
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
@@ -98,11 +98,3 @@ export const describedCard = (
       }
     : {}),
 });
-
-/** The deltas proposed for a card that reach a project: its own and those for every project. */
-export async function proposedFor(cardId: string, projectId: string | null): Promise<Proposed[]> {
-  const [fresh] = await cardFreshness([cardId]);
-  return (fresh?.proposedDeltas ?? []).filter(
-    (d) => d.projectId === null || d.projectId === projectId,
-  );
-}
