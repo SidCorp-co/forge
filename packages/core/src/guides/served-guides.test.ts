@@ -6,8 +6,13 @@
 import { WORKFLOW_LIMITS, WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { supportBrief } from '../support/prompt.js';
 import { guideRoutes } from './routes.js';
+
+// a served guide renders the cards of the doors it acts through (ISS-1251)
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
 
 async function served(slug: string): Promise<string> {
   const res = await guideRoutes.request(`/guides/${slug}.md`);
@@ -210,5 +215,39 @@ describe('the chat-link guide a channel agent reads (ISS-878)', () => {
     const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
     expect(brief).toContain('GET /api/guides/link-chat-account.md');
     expect(brief).not.toContain('Known gap');
+  });
+});
+
+describe('a door is taught on its card, and every page that names it renders that card (ISS-1251)', () => {
+  it('serves the method guide with the cards of the doors it acts through beneath it', async () => {
+    const flow = await served('issue-flow');
+    const doors = between(flow, '## The doors this guide acts through', '\u0000');
+    for (const door of ['`POST /api/questions`', '`POST /api/issues/:id/transition`']) {
+      expect(doors).toContain(door);
+    }
+    expect(doors).toContain('QUESTION_ABOUT_SHAPE');
+  });
+
+  it('lists every door by the situation that calls for it, and serves one door by name', async () => {
+    const all = await guideRoutes.request('/guides/doors.md');
+    expect(all.status).toBe(200);
+    const page = await all.text();
+    expect(page).toContain('## For a run');
+    expect(page).toMatch(/- when .+ → `POST \/api\/questions`/);
+    const one = await guideRoutes.request(
+      `/guides/doors.md?door=${encodeURIComponent('POST /api/forge/feedback/doors')}`,
+    );
+    expect(one.status).toBe(200);
+    const card = await one.text();
+    expect(card.startsWith('# `feedback.door`')).toBe(true);
+    expect(card).toContain('The same act over REST: `POST /api/forge/feedback/doors`');
+  });
+
+  it('refuses a door it does not serve by name, saying how a door is named', async () => {
+    const res = await guideRoutes.request(
+      `/guides/doors.md?door=${encodeURIComponent('POST /api/nowhere')}`,
+    );
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain('POST /api/nowhere is no door Forge serves');
   });
 });

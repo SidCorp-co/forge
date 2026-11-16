@@ -1,4 +1,3 @@
-import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 import { guideRef } from '../../guides/index.js';
 
 export const DRIVE_RULES_TEXT = `## Driver Rules
@@ -34,34 +33,27 @@ Nobody reads this terminal. What a person should know goes on the issue as a com
 const REACHING_FORGE_HEAD = `## Reaching Forge
 Reach Forge through \`forge-runner api <path>\`, which supplies the \`/api/\` prefix and the access token this box stored (\`$FORGE_PAT\` wins where one is exported). Write \`<projectId>\` out as the projectId the Project Context block names, never as a shell variable. A path with no handler answers 404 — it never falls back, and \`forge-runner api\` refuses a path with an empty segment by name. REST is the one door: the Forge MCP server carries only the few tools named at the bottom of this section.`;
 
-const ISSUE_AND_COMMENTS = `- **the issue** — \`issues/<id>\` to read (its edges at \`issues/<id>/dependencies\`) · \`issues/<id> -X PATCH\` writes the FIELDS (\`plan\`, \`acceptanceCriteria\`, \`sessionContext\`, \`releaseNotes\`, \`labels\`, \`workState\`) and nothing else; the status is a state-machine move and goes through \`issues/<id>/transition -X POST -d '{"toStatus":"in_progress"}'\` (with \`reason\`, \`waitingKind\` and \`needs\` for a park; a park is only for an act a person owes; waiting on another issue's landing is no park but a \`blocks\` edge, the issue left where it is, and a park naming another issue's mark is refused \`QUESTION_MERGE_IS_ORDERING\`; a park waiting on this issue's own landing being recorded sends \`"awaitsMerge":{"issueId":"<id>"}\` naming this issue instead of describing it in \`needs\`, and the stamp of its merge mark answers it — a mark already standing is refused \`QUESTION_MERGE_ALREADY_MARKED\`, so carry on). The project's list is \`projects/<projectId>/issues\`; there is no \`GET /api/issues\`. A \`blocks\` edge is \`issues/<dependent>/dependencies -X POST\`.
-- **a business question** — what the business wants (a rule, who may do what, a contract's shape) is the requirement's to settle: ask it with \`questions -X POST -d '{"issueId":"<id>","prompt":"...","options":[...],"recommendedOptionId":"...","about":{"requirement":null},"plain":"..."}'\` (\`plain\` is what the person decides from: ${PLAIN_DECISION_RULE}) (\`about\` is always one object: \`{"requirement":null}\` for the requirement this issue delivers, \`{"requirement":"REQ-n"}\` for another by its key or id, \`{"feedback":null}\` for the feedback item this issue carries, \`{"feedback":"FB-n"}\` for one by its key, or \`{"contract":"<project>/<contract>"}\`; a bare \`REQ-n\` or any other shape is refused \`QUESTION_ABOUT_SHAPE\`; on an issue that delivers a requirement or carries feedback, a question or park with \`needs\` and no \`about\` is refused \`QUESTION_ABOUT_REQUIRED\`, since it is asked and answered on that item, never on the issue), then park without \`needs\` and the park waits on it — or, asked in words, park once with \`needs\` and the same \`about\`; the answer is recorded on the requirement as a decision. One that stands on no issue sends \`"projectId":"<projectId>"\` in place of \`issueId\`, with \`about\` naming the requirement by its key (\`QUESTION_SUBJECT_REQUIRED\` without one). Refused \`QUESTION_ABOUT_UNKNOWN\` or \`QUESTION_ABOUT_NO_REQUIREMENT\` where \`about\` names nothing, and \`QUESTION_ABOUT_ON_MERGE_WAIT\` or \`QUESTION_ABOUT_ON_DESIGN_WAIT\` on a wait for a merge mark or a design decision.
-- **comments** — \`issues/<id>/comments\` to read, \`issues/<id>/comments -X POST -d '{"body":"..."}'\` to write (\`"parentId":"<commentId>"\` makes it a reply). An edit is \`comments/<commentId> -X PATCH\`, and a thread's replies are \`comments/<commentId>/replies\`.`;
-
-const SETTINGS_KNOWLEDGE_MERGE = `- **project settings** — \`projects/<projectId>\` carries the branch config, \`projects/<projectId>/config\` the project document (environments, promotions, testing), and \`projects/<projectId>/policy\` the policy your run is dispatched under: \`qa\`, intake, and each status's model and denied tools. The project's own prose — build and test commands, its release procedure, whatever else its owner wrote — is NOT there: it is \`projects/<projectId>/knowledge\`, one entry per slug, on the line below.
-- **knowledge and memory** — \`projects/<projectId>/knowledge\` for curated entries (\`/<slug>\` to read one, \`-X PUT\` to write it, \`knowledge/search -X POST\`), \`memory/search\` and \`memory\` for the semantic store, \`memory/feedback\` to report a hit verified or stale, \`memory/revisions?projectId=<id>&sourceRef=<ref>\` to read a body some later write replaced.
-- **the merge marker** — \`issues/<id>/merge\` (\`-X POST\` to stamp, \`-X DELETE\` to retract). On a project whose \`source.type\` is not \`git\` the stamp carries \`landing\`, where the work landed, and no \`target\`; an entry of its \`artifacts\` that another open issue's own release will ship carries \`"carriedBy":"<that issue's key>"\`, so this release reports it carried and that one verifies it (refused \`ARTIFACT_CARRIER_UNKNOWN\`, \`ARTIFACT_CARRIER_SELF\`, \`ARTIFACT_CARRIER_SHIPPED\` or \`ARTIFACT_CARRIER_DESIGN\` where it cannot be). The stamp records the merge and moves no status: once it stands, move the issue to \`awaiting_release\` yourself (\`issues/<id>/transition\`); what happens after it — the verdict, your close once its criteria are met in scope, a design-only close — is in \`${guideRef('issue-flow')}\`.
+/**
+ * What a run reads before it acts (ISS-1251): reads are no doors and carry no card, so they are named
+ * here; every act is a door whose card the run's map names by situation (`## Your map`, rendered per
+ * project from the cards) and whose practice, example and refusals its card page holds.
+ */
+const READS_AND_CARDS = `- **your map** — the \`## Your map\` block below names, for each situation you meet, the door to use. Before a door's first use in this run, read its card: \`guides/doors.md?door=<the door as the map names it>\` gives its practice, one worked call and the refusals agents meet; \`guides/doors.md\` lists every door by situation.
+- **what you read** — the issue is \`issues/<id>\`, its edges \`issues/<id>/dependencies\` and its comments \`issues/<id>/comments\`; the project's list is \`projects/<projectId>/issues\` (there is no \`GET /api/issues\`). The branch config is \`projects/<projectId>\`, the project document \`projects/<projectId>/config\`, the policy your run is dispatched under \`projects/<projectId>/policy\`, and the project's own prose (build and test commands, its release procedure) \`projects/<projectId>/knowledge\`, one entry per slug.
 - **guides** — \`guides\` lists them and \`guides/<slug>.md\` reads one.`;
-
-const REPORTS_AND_ECOSYSTEM = `- **when Forge itself fails you** — a door or a guide did not help, was unclear, or the one you needed is missing: \`forge/feedback/doors -X POST -d '{"verdict":"did_not_help|unclear|missing","door":"POST /api/projects/:id/feedback","what":"what you were doing and what it did or lacked"}'\` files it on the feature that owns the door (\`door\` is a route, an MCP action, or teaching as \`guide:<slug>\`, \`skill:<name>\`). Other friction with Forge itself (its CLI, routes, guides, skills): \`forge/feedback -X POST -d '{"kind":"change_request","title":"...","whereSeen":"forge claim --next"}'\` files it into Forge's own home project as you, with your live job as where it came from (\`body\`, \`severity\`, \`signalKey\` and \`clientVersion\` are optional; a report whose \`signalKey\` an open item holds joins it); \`forge/feedback\` lists yours and how each is going. A problem with this project's own product is its feedback, \`projects/<projectId>/feedback\`.
-- **the ecosystem channel and builder runs** — \`projects/<projectId>/channel/…\`, \`projects/<projectId>/links\`, \`projects/<projectId>/builder-runs\` and \`projects/<projectId>/interface\`; \`guides/ecosystem-inbox.md\` is the order of the work.`;
 
 const MCP_TAIL = `Of the Forge MCP server's tools, a run needs only what no shell command can do: \`forge_call { action: "uploads.fetch", args }\` reads an attachment as a viewable image block, and a connected integration's block below names the tools it needs — those are correct as written.`;
 
 export const DRIVE_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
 
-${ISSUE_AND_COMMENTS}
+${READS_AND_CARDS}
 - **your run and its phase journal** — \`projects/<projectId>/pipeline-runs?issueId=<id>&status=running\` finds the run; \`pipeline-runs/<run>/phases -X POST\` declares a phase and \`pipeline-runs/<run>/phases/end -X POST\` closes it. \`pipeline-runs/<run>/resume-point\` answers the one phase you are to restart at, or \`null\`; \`GET pipeline-runs/<run>/phases\` lists the whole journal in order, which is what a session reads to see what the ones before it did.
-${SETTINGS_KNOWLEDGE_MERGE}
-${REPORTS_AND_ECOSYSTEM}
 
 ${MCP_TAIL}`;
 
 export const STEP_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
 
-${ISSUE_AND_COMMENTS}
+${READS_AND_CARDS}
 - **step handoffs** — \`issue-step-contexts?projectId=<projectId>&issueId=<id>\` reads the prior steps' handoffs; \`issue-step-contexts -X POST\` writes yours.
-${SETTINGS_KNOWLEDGE_MERGE}
-${REPORTS_AND_ECOSYSTEM}
 
 ${MCP_TAIL}`;

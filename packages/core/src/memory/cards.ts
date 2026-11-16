@@ -44,6 +44,13 @@ export const MEMORY_REST_CARDS = {
         when: 'you went through the memories that read needs-checking and found them still true',
         do: 'verify them in one call, naming the project in `?projectId` and each memory id in `ids`',
       },
+      {
+        // REQ-89 BC-5 r4: a flagged entry leaves service until confirmed, a decision in force does not
+        when: 'an entry a change flagged is out of service until you confirm or rewrite it: `flagged` in `GET /api/memory/entries`, `recheckDue` in `GET /api/projects/<id>/knowledge`',
+        do: 'check it against the code; confirm a memory that still holds here, and rewrite one that does not (a knowledge entry with `PUT …/knowledge/<slug>`)',
+        watch:
+          'a decision in force (a rule, a ruling or an agreement) stays served while flagged, so re-check it before you rely on it',
+      },
     ],
     practice: [
       'Takes ids, up to 200; one unknown id refuses the whole call MEMORY_NOT_FOUND and stamps none.',

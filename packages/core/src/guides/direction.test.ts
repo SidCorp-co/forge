@@ -10,6 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { composeLayers } from '../assistant/prompt/layer.js';
 import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { renderFact } from '../prompt/facts/registry.js';
 import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
 import { provideAssistantMethod } from './assistant-method-guide.js';
@@ -19,6 +21,8 @@ import { guideRoutes } from './routes.js';
 
 // What the composition root hands in at boot, so every guide the registry lists is served.
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
+// a served guide renders the cards of the doors it acts through (ISS-1251)
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
 
 async function served(slug: string): Promise<string> {
   const res = await guideRoutes.request(`/guides/${slug}.md`);

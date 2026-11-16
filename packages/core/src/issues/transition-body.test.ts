@@ -17,6 +17,8 @@ import { composeLayers } from '../assistant/prompt/layer.js';
 import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
 import { provideAssistantMethod } from '../guides/assistant-method-guide.js';
 import { getGuide, listGuides } from '../guides/registry.js';
+import { cardText } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import {
   DRIVE_RULES_TEXT,
   DRIVE_TOOL_REFERENCE_TEXT,
@@ -176,6 +178,10 @@ const SERVED: ReadonlyArray<readonly [string, string]> = [
   ['drive tool reference', DRIVE_TOOL_REFERENCE_TEXT],
   ['step tool reference', STEP_TOOL_REFERENCE_TEXT],
   ['operating affordances', OPERATING_AFFORDANCES_TEXT],
+  // a door's card is served teaching too (ISS-1251): the transition card names its fields
+  ...servedDoorCatalog()
+    .doors.filter((d) => d.card)
+    .map((d) => [`card ${d.id}`, cardText(d)] as const),
 ];
 
 const findings = SERVED.flatMap(([source, text]) => transitionNames(source, text));
@@ -195,7 +201,7 @@ describe('the guides name only transition fields the route takes (ISS-566)', () 
       'pipeline-and-issue-lifecycle',
       'issue-flow',
       'workflow-design',
-      'drive tool reference',
+      'card POST /api/issues/:id/transition',
     ]) {
       expect(guides, guide).toContain(guide);
     }

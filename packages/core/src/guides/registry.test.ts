@@ -3,9 +3,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { composeLayers } from '../assistant/prompt/layer.js';
 import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { provideAssistantMethod } from './assistant-method-guide.js';
 import { getGuide, listGuides } from './registry.js';
 import { guideRoutes } from './routes.js';
+
+// a served guide renders the cards of the doors it acts through (ISS-1251)
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
 
 // The OpenAPI contract is generated from `app.routes`, what Hono dispatches on, and
 // `check-api-contracts` holds it byte-equal to the mounted app, so a path it lacks is one no request

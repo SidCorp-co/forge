@@ -5,6 +5,7 @@
 // the asks, voids and refusals on forge's issues.
 
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
+import { PLAIN_DECISION_RULE } from '@forge/contracts/plain-decision';
 
 export const QUESTION_REST_CARDS = {
   'POST /api/questions': {
@@ -13,15 +14,35 @@ export const QUESTION_REST_CARDS = {
       {
         when: 'your issue cannot go on without a business rule or a contract shape only a person decides',
         do: 'ask it about the requirement, feedback item or contract it belongs to, then park the issue on it',
+        watch: `\`plain\` is what the person decides from: ${PLAIN_DECISION_RULE}`,
       },
       {
         when: 'a choice is yours or your master’s to take under the project’s gate profile',
         do: 'decide it and record the decision on the item, or ask the master with blockerKind master_or_peer',
         watch: 'a routine question to a person is refused QUESTION_AGENT_DECIDES',
       },
+      {
+        when: 'the question belongs to another requirement, a feedback item or a contract, not the one your issue delivers',
+        do: 'name it in `about`, always one object: `{"requirement":"REQ-n"}`, `{"feedback":null}` for the item your issue carries, `{"feedback":"FB-n"}`, or `{"contract":"<project>/<contract>"}`',
+        watch:
+          'a bare `REQ-n` or any other shape is refused `QUESTION_ABOUT_SHAPE`; an `about` naming nothing `QUESTION_ABOUT_UNKNOWN`, `QUESTION_ABOUT_NO_REQUIREMENT` or, with no feedback item or several, `QUESTION_ABOUT_NO_FEEDBACK`',
+      },
+      {
+        when: 'the question stands on no issue',
+        do: 'send `projectId` in place of `issueId`, with `about` naming the requirement by its key',
+        watch:
+          'there `{"requirement":null}` names nothing; no `about` is refused `QUESTION_SUBJECT_REQUIRED`, no `projectId` `QUESTION_PROJECT_REQUIRED`',
+      },
+      {
+        when: 'your issue already waits on a merge mark or a design decision',
+        do: 'let that wait answer it: a question is not asked on top of it',
+        watch:
+          'an ask there is refused `QUESTION_ABOUT_ON_MERGE_WAIT` or `QUESTION_ABOUT_ON_DESIGN_WAIT`',
+      },
     ],
     practice: [
-      'about is one object ({ requirement: null } for the issue’s own); a bare REQ-n is refused.',
+      'about is one object, `{"requirement":null}` for the requirement your issue delivers; the answer is recorded on that item as a decision.',
+      'Ask, then park without `needs` and the park waits on the question; or, asked in words, park once with `needs` and the same `about`.',
       'Recommend one option and say why in plain words; the person answers by one click.',
     ],
     example: {

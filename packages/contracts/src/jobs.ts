@@ -181,6 +181,7 @@ export type PreambleBlockId =
 	| "project-context"
 	| "forge-facts"
 	| "working-agreements"
+	| "door-map"
 	| "state-block"
 	| "contract-context"
 	| "artifact-context"

@@ -1,15 +1,21 @@
 // @direct-test-of packages/core/src/guides/
+// @direct-test-of packages/core/src/questions/cards.ts
+// @direct-test-of packages/core/src/prompt/facts/affordance-cards.ts
 // The issue-flow method is what a run reads at the moment it parks, asks or marks. Each act that
-// says what it waits on or carries is named there with the refusals that hold it, and every refusal
-// the method names is one core can return: a misspelt code teaches a refusal no reader will meet.
+// says what it waits on or carries is named there, as served with the cards of the doors it acts
+// through (ISS-1251), with the refusals that hold it, and every refusal the method names is one core
+// can return: a misspelt code teaches a refusal no reader will meet.
 
 import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
 import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { RELEASE_CLIP_MAX_BYTES, RELEASE_CLIP_MAX_SECONDS } from '@forge/contracts/release-page';
 import { DESIGN_REFUSAL_CODES } from '@forge/contracts/workflows';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { memorySources } from '../db/schema-vocabulary.js';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { getGuide } from './registry.js';
+import { servedGuideBody } from './served.js';
 
 const CODES = new Set<string>([...QUESTION_REFUSAL_CODES, ...MERGE_REFUSAL_CODES]);
 const named = (body: string) => [
@@ -17,13 +23,20 @@ const named = (body: string) => [
 ];
 // a key quoted on its own is the bare string the ask route refuses, unless the sentence says so
 const bareRequirementKeys = (text: string) =>
-  text.split("'REQ-n'").length -
-  text.split("{ requirement: 'REQ-n' }").length -
-  (text.split("bare `'REQ-n'`").length - 1);
-const body = (slug: string) => getGuide(slug)?.body ?? '';
+  text.split('"REQ-n"').length - text.split('{"requirement":"REQ-n"}').length;
+beforeAll(() => {
+  provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
+});
+const body = (slug: string) => {
+  const guide = getGuide(slug);
+  return guide ? servedGuideBody(guide) : '';
+};
 
 describe('the issue-flow method teaches the acts that name what they wait on', () => {
-  const flow = body('issue-flow');
+  let flow = '';
+  beforeAll(() => {
+    flow = body('issue-flow');
+  });
 
   it.each([
     [
@@ -31,9 +44,9 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       [
         '`POST /api/questions`',
         '`about`',
-        '{ requirement: null }',
-        "{ contract: '<project>/<contract>' }",
-        "{ requirement: 'REQ-n' }",
+        '{"requirement":null}',
+        '{"contract":"<project>/<contract>"}',
+        '{"requirement":"REQ-n"}',
         'QUESTION_ABOUT_UNKNOWN',
         'QUESTION_ABOUT_NO_REQUIREMENT',
         'QUESTION_ABOUT_SHAPE',
@@ -41,12 +54,12 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     ],
     [
       'a park asked in words names what it is about itself (ISS-583)',
-      ['takes the same `about` beside `needs`', 'QUESTION_ABOUT_ON_DESIGN_WAIT'],
+      ['park once with `needs` and the same `about`', 'QUESTION_ABOUT_ON_DESIGN_WAIT'],
     ],
     [
       'a park on its own landing waits on its merge mark',
       [
-        '`awaitsMerge: { issueId }`',
+        '`"awaitsMerge":{"issueId":"<id>"}`',
         'QUESTION_MERGE_ALREADY_MARKED',
         'QUESTION_ABOUT_ON_MERGE_WAIT',
       ],
@@ -54,9 +67,9 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     [
       'ordering between issues is a blocks edge, never a park (ISS-738)',
       [
-        "Waiting on another issue's landing is not a park: ordering between issues is a `blocks` edge",
-        "`{ dependsOnId, kind: 'blocks' }`",
-        'only for an act a person owes',
+        "Waiting on another issue's landing is not a park but a `blocks` edge",
+        '`issues/<dependent>/dependencies -X POST`',
+        'a park is only for an act a person owes',
         'QUESTION_MERGE_IS_ORDERING',
       ],
     ],
@@ -85,7 +98,7 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     [
       'a landing names what another issue carries',
       [
-        '`carriedBy',
+        '`"carriedBy":"<that issue\'s key>"`',
         'ARTIFACT_CARRIER_UNKNOWN',
         'ARTIFACT_CARRIER_SELF',
         'ARTIFACT_CARRIER_SHIPPED',
@@ -146,7 +159,7 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
 
   it('offers a requirement key as `about` only under `requirement`', () => {
     expect(bareRequirementKeys(flow)).toBe(0);
-    expect(bareRequirementKeys("`{ requirement: null }`, or `'REQ-n'`")).toBe(1);
+    expect(bareRequirementKeys('`{"requirement":null}`, or `"REQ-n"`')).toBe(1);
   });
 
   it('catches a refusal no code list holds', () => {
@@ -183,7 +196,7 @@ describe('the workflow-design guide clears pin-only dependents in one act', () =
 describe('a judge records a clip of each observable criterion it judges (REQ-40 BC-4)', () => {
   // J7 on 0.4.0-dev.223: none of 30 observable QA verdicts carried a clip, and nothing in the
   // method a judge reads asked for one
-  const flow = body('issue-flow');
+  const flow = getGuide('issue-flow')?.body ?? '';
   const verdicts = flow.slice(flow.indexOf('### 5.'), flow.indexOf('### 6.'));
 
   it('asks for the clip in the verdict section, cited in the verdict evidence', () => {

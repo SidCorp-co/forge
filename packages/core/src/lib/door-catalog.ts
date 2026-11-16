@@ -40,9 +40,16 @@ export interface DoorCatalog {
   viaTwin(call: { tool: string; action: string | null }): boolean;
 }
 
-const slot = portSlot<{ doorCatalog(): DoorCatalog }>('door-catalog', 'provideDoorCatalog');
+interface DoorCatalogPorts {
+  doorCatalog(): DoorCatalog;
+  /** This project's calls per door over the last `days`, which ranks a Tier-0 map (the door use read). */
+  doorCalls(projectId: string, days: number): Promise<ReadonlyMap<string, number>>;
+}
+const slot = portSlot<DoorCatalogPorts>('door-catalog', 'provideDoorCatalog');
 export const provideDoorCatalog = slot.provide;
 export const doorCatalog = (): DoorCatalog => slot.get().doorCatalog();
+export const doorCallsOf = (projectId: string, days: number) =>
+  slot.get().doorCalls(projectId, days);
 
 /** The paths a card's door lives in: a landing touching one owes the card a re-check. */
 export const cardPaths = (cardId: string): readonly string[] =>
@@ -93,4 +100,35 @@ export function tier0Map(
     carried.push(card.id);
   }
   return { text: lines.join('\n'), carried, reach: taught.length };
+}
+
+/**
+ * One door's card as Tier 1 reads it (ISS-1251): what it is for, each situation and what to do in it,
+ * how to use it well, one worked call and the wrong way agents take. Every page that teaches a door
+ * renders it from here, so the card is the one copy.
+ */
+export function cardText(door: CatalogDoor, depth = 3): string {
+  const card = door.card;
+  const heading = `${'#'.repeat(depth)} \`${door.id}\``;
+  if (!card) return `${heading}\n\nNo card is written for this door yet.`;
+  const also = door.twins?.length
+    ? `\n\nThe same act over REST: ${door.twins.map((t) => `\`${t}\``).join(', ')}.`
+    : '';
+  const situations = card.situations.map(
+    (s) =>
+      `- When ${s.when}: ${s.do.replace(/\.$/, '')}.${s.watch ? ` Watch: ${s.watch.replace(/\.$/, '')}.` : ''}${
+        s.for ? ` (${s.for.join(', ')})` : ''
+      }`,
+  );
+  return [
+    `${heading}\n\n${card.purpose}${also}`,
+    situations.join('\n'),
+    card.practice.map((p) => `- ${p}`).join('\n'),
+    card.example
+      ? `Example:\n\n\`\`\`json\n${JSON.stringify(card.example, null, 2)}\n\`\`\``
+      : null,
+    card.redFlag ? `Red flag: ${card.redFlag}` : null,
+  ]
+    .filter((p): p is string => p !== null)
+    .join('\n\n');
 }

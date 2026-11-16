@@ -151,6 +151,18 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         do: 'mark it merged (`issues/<id>/merge -X POST`, naming where it landed), then move it to `awaiting_release` and close it while you hold it, each criterion it did not meet named in `unmet` with where it goes; the release record says when it is live (with no production environment, `projects/<projectId>/release-records`)',
         watch: 'an unmet criterion with nowhere to go is refused `CLOSE_CRITERION_UNPLACED`',
       },
+      {
+        when: 'your change landed on the branch it was cut for',
+        do: 'stamp `{"target":"base","commit":"<whole sha>"}`; the stamp records the merge and moves no status, so move the issue to `awaiting_release` yourself',
+        for: ['run'],
+      },
+      {
+        when: 'the work landed outside git (a CMS, a docs store, a storefront)',
+        do: 'stamp `landing`, where it landed, and no `target`; an entry of `artifacts` another open issue\'s release will ship carries `"carriedBy":"<that issue\'s key>"`',
+        watch:
+          'refused `ARTIFACT_CARRIER_UNKNOWN`, `ARTIFACT_CARRIER_SELF`, `ARTIFACT_CARRIER_SHIPPED` or `ARTIFACT_CARRIER_DESIGN` where it cannot be',
+        for: ['run'],
+      },
     ],
     practice: ['Verify the commit is on the target branch on the remote before you name it.'],
     audience: ['master', 'run'],
@@ -164,8 +176,30 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         watch:
           '`closed` says its criteria were met in scope (`CLOSE_REQUIRES_SHIPPED`, `DESIGN_NOT_DELIVERED`)',
       },
+      {
+        when: "your issue waits on another issue's landing",
+        do: 'leave it where it is and add a `blocks` edge (`issues/<dependent>/dependencies -X POST`): a park is only for an act a person owes',
+        watch: "a park naming another issue's mark is refused `QUESTION_MERGE_IS_ORDERING`",
+        for: ['run'],
+      },
+      {
+        when: 'your issue waits on its own landing being recorded',
+        do: 'park it through `issues/<id>/transition` with `"awaitsMerge":{"issueId":"<id>"}`, naming this issue instead of describing it in `needs`; the stamp of its merge mark answers it',
+        watch: 'a mark already standing is refused `QUESTION_MERGE_ALREADY_MARKED`: carry on',
+        for: ['run'],
+      },
+      {
+        when: 'a person owes an answer, a decision or a resource you cannot make',
+        do: 'park it through `issues/<id>/transition`, sending `{"toStatus":"needs_info"}` with `reason`, `waitingKind` and `needs` on the one call, `needs` written as the ask itself',
+        watch:
+          'on an issue that delivers a requirement or carries feedback, `needs` with no `about` is refused `QUESTION_ABOUT_REQUIRED`: name the item it is asked on',
+        for: ['run'],
+      },
     ],
-    practice: ['Say why in a comment first; closed means its criteria were met in scope.'],
+    practice: [
+      'Say why in a comment first; closed means its criteria were met in scope.',
+      'The status moves only here: `issues/<id> -X PATCH` writes fields, never the status.',
+    ],
     audience: ['master', 'run'],
   }),
   card('POST /api/projects/:id/workflows/:workflow/design/propose', 'workflows', {
@@ -267,12 +301,11 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
   }),
 ];
 
-/** A situation in the orientation a master or its runs meet. */
-const forMasterOrRun = (s: CapabilityCard['situations'][number]) =>
-  !s.for || s.for.includes('master') || s.for.includes('run');
+/** A situation in the orientation a master meets; a run reads its own in its map. */
+const forMaster = (s: CapabilityCard['situations'][number]) => !s.for || s.for.includes('master');
 
 /**
- * The orientation table's rows: one per situation a master or its runs meet, each with what to watch
+ * The orientation table's rows: one per situation a master meets, each with what to watch
  * for in it, and after a card's own rows each situation a lesson folded into it (`proposed`, by card
  * id), marked as proposed until the card's code carries it.
  */
@@ -282,7 +315,7 @@ export function affordanceRows(
 ): string {
   return cards
     .flatMap((c) => {
-      const own = c.situations.filter(forMasterOrRun);
+      const own = c.situations.filter(forMaster);
       const does = own[0]?.do ?? '';
       return [
         ...own.map((s) => {

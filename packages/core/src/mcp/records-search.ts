@@ -15,7 +15,7 @@ import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, knowledgeEntries, orgKnowledgeEntries, projects } from '../db/schema.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
-import { getGuide, listGuides } from '../guides/index.js';
+import { getGuide, listGuides, servedGuideBody } from '../guides/index.js';
 import { recallKnowledgeAcross } from '../knowledge/index.js';
 import { type EgressSurface, egressShown } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -194,7 +194,7 @@ function fetchGuide(id: string): FetchedRecord {
   return {
     id,
     title: guide.title,
-    text: guide.body,
+    text: servedGuideBody(guide),
     url: link(`/guides/${guide.slug}`),
     metadata: { slug: guide.slug, version: guide.version, audience: guide.audience },
   };

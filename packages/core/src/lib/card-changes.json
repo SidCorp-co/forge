@@ -95,7 +95,7 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/merge": {
-    "hash": "35bbd9344e082977",
+    "hash": "e8c269d589b142d4",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -125,7 +125,7 @@
     "by": "ISS-1251"
   },
   "POST /api/issues/:id/transition": {
-    "hash": "1e9803c74fe9fcc8",
+    "hash": "b2970559d5ecb171",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -155,7 +155,7 @@
     "by": "ISS-1251"
   },
   "POST /api/memory/verify": {
-    "hash": "080e408fe0df5e17",
+    "hash": "6f15039e71e62db4",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
@@ -405,7 +405,7 @@
     "by": "ISS-1251"
   },
   "POST /api/questions": {
-    "hash": "39f1e14a320050fd",
+    "hash": "084bc3e08240f41a",
     "on": "2026-11-16",
     "by": "ISS-1251"
   },

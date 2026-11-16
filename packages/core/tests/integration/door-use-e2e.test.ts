@@ -29,6 +29,7 @@ vi.hoisted(() => {
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
+import { buildPipelinePreambleStructured } from '../../src/prompt/system.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -357,5 +358,22 @@ describe('each pile a prompt carries reads against its cap', () => {
     // a pile's consolidation goes to whose text it is: this project's knowledge, Forge's maps
     expect(piles.find((p) => p.pile === 'always_knowledge')?.ownerProjectId).toBe(w.project);
     expect(master?.ownerProjectId).toBeNull();
+  });
+});
+
+describe("a run's preamble carries its map, ranked by what this project's agents called (ISS-1251)", () => {
+  it('names the door this project called most first, by its REST twin, under its situation', async () => {
+    const built = await buildPipelinePreambleStructured(w.project, { step: 'drive' });
+    expect(built.blocks.map((b) => b.id)).toContain('door-map');
+    const map = built.content.slice(built.content.indexOf('## Your map'));
+    const lines = map.split('\n').filter((l) => l.startsWith('- when '));
+    expect(lines.length).toBeGreaterThan(0);
+    // the run-taught door this project called most leads, named as a run reaches it: its REST twin
+    const top = (await doorsOf()).doors
+      .filter((d) => d.card?.audience.includes('run') && d.calls > 0)
+      .sort((a, b) => b.calls - a.calls)[0] as DoorUseRow;
+    expect(lines[0]).toContain(`→ ${top.twins[0] ?? top.door}`);
+    expect(lines.some((l) => l.endsWith('→ POST /api/projects/:id/feedback'))).toBe(true);
+    expect(built.content).toContain('`guides/doors.md?door=<the door as the map names it>`');
   });
 });

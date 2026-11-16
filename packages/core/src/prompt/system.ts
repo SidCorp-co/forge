@@ -24,6 +24,7 @@ import { estimateTokens } from '../lib/token-estimator.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/index.js';
 import { promotedBranch, readProjectDocument, readReleasePath } from '../project-config/index.js';
 import { carriedIn } from './carried.js';
+import { runDoorMap } from './door-map.js';
 import { loadActiveIntegrationRows, renderIntegrations } from './facts/integration-facts.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
@@ -294,6 +295,8 @@ export async function buildPipelinePreambleStructured(
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });
     // after the facts: the map depends on the issue, so the shared cacheable prefix stays whole
     if (agreements.body) sections.push({ id: 'working-agreements', body: agreements.body });
+    // the run's Tier-0 map, ranked by what this project's agents called (ISS-1251)
+    sections.push({ id: 'door-map', body: await runDoorMap(projectId) });
     carried = carriedIn(
       `${factsBlock}\n\n${agreements.body ?? ''}`,
       factInputs.alwaysInjectFacts,

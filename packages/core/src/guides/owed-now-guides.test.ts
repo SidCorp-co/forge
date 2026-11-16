@@ -6,7 +6,12 @@
 // (ISS-1113). Every guide a master or a run reads says an owed act with a date is owed now, the date
 // only its latest day.
 import { describe, expect, it } from 'vitest';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { guideRoutes } from './routes.js';
+
+// a served guide renders the cards of the doors it acts through (ISS-1251)
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
 
 async function served(slug: string): Promise<string> {
   const res = await guideRoutes.request(`/guides/${slug}.md`);

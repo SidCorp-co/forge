@@ -1,6 +1,10 @@
-// A run reads its tracker door and its release block at the moment it parks, asks, marks or aborts.
-// Each act that says what it waits on or carries is named there with the refusals that hold it, and
-// every refusal named is one core can return: a misspelt code teaches a refusal no reader will meet.
+// @direct-test-of packages/core/src/questions/cards.ts
+// @direct-test-of packages/core/src/prompt/facts/affordance-cards.ts
+// A run reads its map and its release block at the moment it parks, asks, marks or aborts; each door
+// it acts through teaches itself on its card (ISS-1251), read before its first use. Each act that
+// says what it waits on or carries is named on its door's card with the refusals that hold it, and
+// every refusal any card names is one core can return: a misspelt code teaches a refusal no reader
+// will meet.
 
 import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
 import { MEMORY_REFUSAL_CODES } from '@forge/contracts/memory';
@@ -9,6 +13,8 @@ import { RELEASE_BLOCKER_CODES, RELEASE_REFUSAL_CODES } from '@forge/contracts/r
 import { describe, expect, it } from 'vitest';
 import { memorySources } from '../../db/schema-vocabulary.js';
 import { ISSUE_FLOW_GUIDE } from '../../guides/issue-flow-guide.js';
+import { type CatalogDoor, cardText } from '../../lib/door-catalog.js';
+import { servedDoorCatalog } from '../../mcp/door-catalog.js';
 import { releaseBatchStatePrompt } from '../state-prompts/release-batch.js';
 import {
   DRIVE_RULES_TEXT,
@@ -21,9 +27,10 @@ const CODES = new Set<string>([
   ...MERGE_REFUSAL_CODES,
   ...RELEASE_REFUSAL_CODES,
   ...RELEASE_BLOCKER_CODES,
+  ...MEMORY_REFUSAL_CODES,
 ]);
 const unknown = (text: string) =>
-  [...text.matchAll(/\b(?:QUESTION|ARTIFACT_CARRIER|RELEASE)_[A-Z_]+\b/g)]
+  [...text.matchAll(/\b(?:QUESTION|ARTIFACT_CARRIER|RELEASE|MEMORY)_[A-Z_]+\b/g)]
     .map((m) => m[0])
     .filter((code) => !CODES.has(code));
 
@@ -31,36 +38,44 @@ const unknown = (text: string) =>
 const bareRequirementKeys = (text: string) =>
   text.split('"REQ-n"').length - text.split('{"requirement":"REQ-n"}').length;
 
-const DOORS = [
-  ['a drive run', DRIVE_TOOL_REFERENCE_TEXT],
-  ['a pipeline step', STEP_TOOL_REFERENCE_TEXT],
-] as const;
+const catalog = servedDoorCatalog();
+const card = (id: string) =>
+  cardText(catalog.doors.find((d) => d.id === id || d.card?.id === id) as CatalogDoor);
+const ASK = card('POST /api/questions');
+const MOVE = card('POST /api/issues/:id/transition');
+const MARK = card('POST /api/issues/:id/merge');
 
-describe("a run's tracker door teaches the acts that name what they wait on", () => {
-  it.each(DOORS)('%s parks on a merge mark by name', (_who, text) => {
+describe("a run's doors teach, on their cards, the acts that name what they wait on", () => {
+  it.each([
+    ['a drive run', DRIVE_TOOL_REFERENCE_TEXT],
+    ['a pipeline step', STEP_TOOL_REFERENCE_TEXT],
+  ])('%s is pointed at its map and at the card of a door before its first use', (_who, text) => {
+    expect(text).toContain('`## Your map`');
+    expect(text).toContain('`guides/doors.md?door=<the door as the map names it>`');
+    expect(unknown(text)).toEqual([]);
+  });
+
+  it('parks on a merge mark by name', () => {
     for (const word of ['"awaitsMerge":{"issueId":"<id>"}', 'QUESTION_MERGE_ALREADY_MARKED']) {
-      expect(text).toContain(word);
+      expect(MOVE).toContain(word);
     }
   });
 
-  it.each(DOORS)(
-    '%s sends ordering between issues to a blocks edge, not a park (ISS-738)',
-    (_who, text) => {
-      for (const word of [
-        'a park is only for an act a person owes',
-        "waiting on another issue's landing is no park but a `blocks` edge",
-        'QUESTION_MERGE_IS_ORDERING',
-        'naming this issue instead of describing it',
-      ]) {
-        expect(text).toContain(word);
-      }
-      expect(text).not.toContain("a park that waits on another issue's landing sends");
-    },
-  );
-
-  it.each(DOORS)('%s asks a business question about its requirement', (_who, text) => {
+  it('sends ordering between issues to a blocks edge, not a park (ISS-738)', () => {
     for (const word of [
-      '"about":{"requirement":null}',
+      'a park is only for an act a person owes',
+      "your issue waits on another issue's landing",
+      '`blocks` edge',
+      'QUESTION_MERGE_IS_ORDERING',
+      'naming this issue instead of describing it',
+    ]) {
+      expect(MOVE).toContain(word);
+    }
+  });
+
+  it('asks a business question about its requirement', () => {
+    for (const word of [
+      '{"requirement":null}',
       '{"contract":"<project>/<contract>"}',
       'QUESTION_ABOUT_UNKNOWN',
       'QUESTION_ABOUT_NO_REQUIREMENT',
@@ -70,34 +85,38 @@ describe("a run's tracker door teaches the acts that name what they wait on", ()
       '{"requirement":"REQ-n"}',
       'QUESTION_ABOUT_SHAPE',
     ]) {
-      expect(text).toContain(word);
+      expect(ASK).toContain(word);
     }
+    expect(MOVE).toContain('QUESTION_ABOUT_REQUIRED');
   });
 
-  it.each(DOORS)('%s teaches `about` only in the shape the ask route takes', (_who, text) => {
-    const taught = [...text.matchAll(/\{"(?:requirement|contract)":(?:null|"[^"]*")\}/g)].map(
-      (m) => m[0],
-    );
-    expect(taught.length).toBeGreaterThanOrEqual(3);
+  it('teaches `about` only in the shape the ask route takes', () => {
+    const taught = [
+      ...ASK.matchAll(/\{"(?:requirement|contract|feedback)":(?:null|"[^"]*")\}/g),
+    ].map((m) => m[0]);
+    expect(taught.length).toBeGreaterThanOrEqual(4);
     for (const about of taught) {
       const sent = JSON.parse(about.replace('<project>/<contract>', 'billing/invoices'));
       expect(questionAboutRequestSchema.safeParse(sent).success, about).toBe(true);
     }
-    expect(bareRequirementKeys(text)).toBe(0);
+    expect(bareRequirementKeys(ASK)).toBe(0);
   });
 
   it('catches a requirement key offered bare as `about`', () => {
     expect(bareRequirementKeys('`{"requirement":null}`; or `"REQ-n"`')).toBe(1);
   });
 
-  it.each(DOORS)('%s marks an artifact another issue carries', (_who, text) => {
+  it('marks an artifact another issue carries', () => {
     for (const word of ['"carriedBy":"<that issue\'s key>"', 'ARTIFACT_CARRIER_SHIPPED']) {
-      expect(text).toContain(word);
+      expect(MARK).toContain(word);
     }
   });
 
-  it.each(DOORS)('%s names only refusals core returns', (_who, text) => {
-    expect(unknown(text)).toEqual([]);
+  it('every card names only refusals core returns', () => {
+    const named = catalog.doors.flatMap((d) =>
+      d.card ? unknown(cardText(d)).map((code) => `${d.id}: ${code}`) : [],
+    );
+    expect(named).toEqual([]);
   });
 });
 

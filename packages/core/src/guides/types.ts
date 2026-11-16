@@ -11,6 +11,11 @@ export interface ForgeGuide {
   version: number;
   /** Markdown body, NT1 altitude. */
   body: string;
+  /**
+   * The doors the guide's method acts through (ISS-1251): their cards are rendered under the body when
+   * the guide is served, so the guide keeps the method and the card is the one copy of each door.
+   */
+  doors?: readonly string[];
 }
 
 export type CoreGuide = ForgeGuide & { slug: GuideSlug };

@@ -78,6 +78,7 @@ import { CHAT_RECORD_VETS, servedDoorCatalog } from './mcp/index.js';
 import { registerMemoryReconcileWorker } from './memory/index.js';
 import { provideMemoryDomainPorts } from './memory-ports.js';
 import { provideMessageReads } from './messaging/reads.js';
+import { doorCalls } from './metrics/index.js';
 import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { allowedOrigins, corsMiddleware } from './middleware/cors.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -261,7 +262,10 @@ provideReportPorts();
 provideStandingPorts();
 provideChatTools(CHAT_PROVIDED_TOOLS);
 provideHeldWriteVets(CHAT_RECORD_VETS);
-provideDoorCatalog({ doorCatalog: servedDoorCatalog });
+provideDoorCatalog({
+  doorCatalog: servedDoorCatalog,
+  doorCalls: (projectId, days) => doorCalls(projectId, servedDoorCatalog(), days),
+});
 // the decisions the chat makes on the person's word (REQ-41 BC-25) are the ones their Needs you reads
 provideNeedsYouDecisionRead(async (projectId, userId) => {
   const access = await loadProjectAccess(projectId, userId);

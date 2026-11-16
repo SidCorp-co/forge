@@ -24,7 +24,13 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue or a batch, every tracker act a REST call: read it whole, take it, write criteria (a plan where the work needs one), build in its own tree, prove it, land, mark the merge, move it to `awaiting_release`, and close it once its criteria are met in scope.',
-  version: 16,
+  version: 17,
+  doors: [
+    'POST /api/questions',
+    'POST /api/issues/:id/transition',
+    'POST /api/issues/:id/merge',
+    'POST /api/issues/:id/dependencies',
+  ],
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -215,27 +221,9 @@ A question only a person can answer parks the issue:
 \`needs\` written as the ask.
 
 A question about what the business wants — a rule, who may do what, a contract's shape — belongs to
-the requirement, not to this issue. Ask it first, naming what it is about:
-\`POST /api/questions\` \`{ issueId, prompt, options, recommendedOptionId, about }\`, \`about\` being
-always one object: \`{ requirement: null }\` for the requirement this issue delivers,
-\`{ requirement: 'REQ-n' }\` for another by its key or id, \`{ feedback: null }\` for the feedback
-item this issue carries, \`{ feedback: 'FB-n' }\` for one by its key or id, or
-\`{ contract: '<project>/<contract>' }\`. On an issue that delivers a requirement or carries
-feedback, a question a person owes is always asked about that item: one with no \`about\` is refused
-\`QUESTION_ABOUT_REQUIRED\` naming it, the waits on a merge mark or a design decision aside, so it is
-listed on the item and answered there, never parked on the issue alone (REQ-67 BC-5).
-A bare \`'REQ-n'\` or any other shape is refused \`QUESTION_ABOUT_SHAPE\`. Then park with \`needs\`
-left out, and the park waits on that question. A question asked in words needs no second call: the
-park takes the same \`about\` beside \`needs\`, and the question it mints carries it. Either way it
-stays on this issue, is listed on the requirement, names it to the person answering, and its answer
-is recorded there as a decision. An \`about\` naming nothing is \`QUESTION_ABOUT_UNKNOWN\`;
-\`{ requirement: null }\` on an issue that delivers no requirement is
-\`QUESTION_ABOUT_NO_REQUIREMENT\`, and \`{ feedback: null }\` on one carrying no item, or several, is
-\`QUESTION_ABOUT_NO_FEEDBACK\`. A business question that stands on no issue is asked with
-\`projectId\` in place of \`issueId\` and \`about\` naming the requirement by its key or the contract;
-it is listed on that requirement and on Needs you, and its answer is recorded there as a decision.
-On no issue, \`{ requirement: null }\` names nothing (\`QUESTION_ABOUT_NO_REQUIREMENT\`), and a
-missing \`about\` or \`projectId\` is \`QUESTION_SUBJECT_REQUIRED\` or \`QUESTION_PROJECT_REQUIRED\`.
+the requirement, not to this issue: ask it on that item with \`POST /api/questions\`, then park on it,
+so it is listed there and its answer is recorded there as a decision (REQ-67 BC-5). What \`about\`
+names, a question that stands on no issue, and the refusals each meets: the question card below.
 
 Every question a person decides carries \`plain\`: what they decide from, ${PLAIN_DECISION_RULE}.
 For example, in the project's content language: "Customers get an Export CSV button on the orders
@@ -245,19 +233,9 @@ and \`about\` stay for the record; the person reads \`plain\` and the options' l
 sits behind a closed section. A question without \`plain\` is still asked, and the screen says you
 wrote none.
 
-Waiting on another issue's landing is not a park: ordering between issues is a \`blocks\` edge,
-\`POST /api/issues/:id/dependencies\` \`{ dependsOnId, kind: 'blocks' }\`, with this issue left
-where it is. \`needs_info\` reads on every board as a person owing an answer, so it is
-only for an act a person owes; a park naming another issue's mark is refused
-\`QUESTION_MERGE_IS_ORDERING\`.
-
-Waiting on this issue's own landing being recorded by a person is \`awaitsMerge: { issueId }\` on
-the park, naming this issue, never the condition written into \`needs\`: the stamp that writes
-its merge mark answers the question and moves it back. A mark that already stands is refused
-\`QUESTION_MERGE_ALREADY_MARKED\` — the condition holds, so carry on. A wait on a mark is never
-also \`about\` a requirement (\`QUESTION_ABOUT_ON_MERGE_WAIT\`), nor a wait on a design decision
-(\`QUESTION_ABOUT_ON_DESIGN_WAIT\`):
-the mark or the decision answers it, so the business question is asked on its own.
+Waiting on another issue's landing is not a park but a \`blocks\` edge, the issue left where it
+is, and waiting on this issue's own landing is a park its merge mark answers: how each is written,
+and what each is refused, is the transition card below.
 
 ### 4. Build
 - One branch, cut from \`baseBranch\`, in a worktree of its own — the brief names it.
@@ -450,12 +428,8 @@ landing and moved, its key in its own commit subject so the mark reads the commi
    \`FAST_LANE_UNVERIFIED\` where that range cannot be read whole. It is verified by the commit the
    web build serves.
    Where the project's work lands outside git, the mark carries \`landing\` and \`artifacts\`
-   \`[{ surface, ref, change }]\` instead of a commit. An artifact this landing touched that another
-   open issue's own release will ship carries \`carriedBy: '<that issue's key>'\`: this issue's
-   release reports it carried and that issue's release verifies it. A carrier must be another issue
-   of this project, not closed or dropped, and a design revision is never carried
-   (\`ARTIFACT_CARRIER_UNKNOWN\`, \`ARTIFACT_CARRIER_SELF\`, \`ARTIFACT_CARRIER_SHIPPED\`,
-   \`ARTIFACT_CARRIER_DESIGN\`).
+   \`[{ surface, ref, change }]\` instead of a commit; an artifact another open issue's own release
+   will ship names that issue as its carrier, as the merge card below says.
 3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, title, userFacing, adminSteps? } }\`:
    what a user will now see, in their words and in the project's content language (its
    \`## Content language\` block names it; the answer carries a \`warnings\` entry naming the field and

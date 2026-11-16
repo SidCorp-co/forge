@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { cardText, doorCatalog } from '../lib/door-catalog.js';
 import { env } from '../lib/env.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { noQuery } from '../middleware/zod-validator.js';
+import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam, requiresPublic } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/index.js';
 import { resolveGuide } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
+import { doorNamed, doorsPage, servedGuideBody } from './served.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -48,10 +51,11 @@ projectGuideRoutes.get(
     if (!guide) {
       throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
     }
+    const body = servedGuideBody(guide);
     if (isMarkdown) {
-      return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
+      return c.body(body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
     }
-    return c.json({ guide });
+    return c.json({ guide: { ...guide, body } });
   },
 );
 
@@ -110,6 +114,31 @@ guideRoutes.get('/llms.txt', GUIDE_CORPUS, noQuery, (c) => {
   return c.body(lines.join('\n'), 200, { 'content-type': 'text/plain; charset=utf-8' });
 });
 
+/**
+ * Every door by the situation that calls for it, or one door's card (`?door=`), rendered from the
+ * cards (ISS-1251): the page a run's map points at before a door's first use.
+ */
+guideRoutes.get(
+  '/guides/doors.md',
+  GUIDE_CORPUS,
+  zValidator('query', z.strictObject({ door: z.string().trim().min(3).max(300).optional() })),
+  (c) => {
+    const { door } = c.req.valid('query');
+    const catalog = doorCatalog();
+    c.header('Cache-Control', 'public, max-age=300');
+    const md = { 'content-type': 'text/markdown; charset=utf-8' };
+    if (!door) return c.body(doorsPage(catalog), 200, md);
+    const found = doorNamed(catalog, door);
+    if (!found) {
+      throw new HTTPException(404, {
+        message: `${door} is no door Forge serves: name an MCP action (\`feedback.door\`) or a REST write as the contract lists it (\`POST /api/projects/:id/feedback\`); every door: guides/doors.md`,
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+    return c.body(`${cardText(found, 1)}\n`, 200, md);
+  },
+);
+
 // Hono routes `:slug` as a literal path segment — it will NOT split
 // `deploy-safety.md` into a separate `.md` route. Strip the suffix inside
 // this one handler instead and switch the response shape/content-type.
@@ -127,8 +156,9 @@ guideRoutes.get('/guides/:slug', GUIDE_CORPUS, noQuery, (c) => {
   }
 
   c.header('Cache-Control', 'public, max-age=300');
+  const body = servedGuideBody(guide);
   if (isMarkdown) {
-    return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
+    return c.body(body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
   }
-  return c.json({ guide });
+  return c.json({ guide: { ...guide, body } });
 });
