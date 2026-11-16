@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.695] - 2026-11-16
+
+Steward runs take allocated slots; releases parked on approval keep their version
+
+### Fixed
+
+- **A release waiting on its approval keeps its version.** It waits for the approver instead of ending after about forty minutes and coming back as the next version; only their decision, or a person withdrawing it, ends it.
+- **A steward run the retired daily budget had deferred to the next UTC day is now due at once.** It waits only for its project's run slot, as every steward run does since the budget was retired.
+
 ## [0.4.0-dev.694] - 2026-11-16
 
 Steward runner jobs take run slots by the work instead of a daily cap
