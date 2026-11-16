@@ -1,3 +1,4 @@
+import { CARD_AUDIENCES } from '@forge/contracts/capability-cards';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -9,7 +10,7 @@ import { requiresOnParam, requiresPublic } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/index.js';
 import { resolveGuide } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
-import { doorNamed, doorsPage, servedGuideBody } from './served.js';
+import { audienceMapPage, doorNamed, doorsPage, servedGuideBody } from './served.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
@@ -115,18 +116,30 @@ guideRoutes.get('/llms.txt', GUIDE_CORPUS, noQuery, (c) => {
 });
 
 /**
- * Every door by the situation that calls for it, or one door's card (`?door=`), rendered from the
- * cards (ISS-1251): the page a run's map points at before a door's first use.
+ * Every door by the situation that calls for it, one door's card (`?door=`), or one audience's Tier-0
+ * map (`?audience=`, the master skill's map), rendered from the cards (ISS-1251): the page a run's
+ * map points at before a door's first use.
  */
 guideRoutes.get(
   '/guides/doors.md',
   GUIDE_CORPUS,
-  zValidator('query', z.strictObject({ door: z.string().trim().min(3).max(300).optional() })),
+  zValidator(
+    'query',
+    z
+      .strictObject({
+        door: z.string().trim().min(3).max(300).optional(),
+        audience: z.enum(CARD_AUDIENCES).optional(),
+      })
+      .refine((q) => !(q.door && q.audience), {
+        message: 'name one door or one audience, never both',
+      }),
+  ),
   (c) => {
-    const { door } = c.req.valid('query');
+    const { door, audience } = c.req.valid('query');
     const catalog = doorCatalog();
     c.header('Cache-Control', 'public, max-age=300');
     const md = { 'content-type': 'text/markdown; charset=utf-8' };
+    if (audience) return c.body(audienceMapPage(catalog, audience), 200, md);
     if (!door) return c.body(doorsPage(catalog), 200, md);
     const found = doorNamed(catalog, door);
     if (!found) {

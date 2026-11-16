@@ -360,207 +360,6 @@ mod tests {
     /// A release reads what each landing changed from its mark; a master marking outside git without
     /// `artifacts` leaves every row unclassified, so the skill names the list and its surfaces.
     #[test]
-    fn the_skill_tells_a_master_a_mark_names_its_artifacts() {
-        for word in [
-            "`artifacts`",
-            "`[{surface, ref, change}]`",
-            "`design`",
-            "`commit`",
-        ] {
-            assert!(
-                ASSET.contains(word),
-                "forge-master-skill.md no longer names {word}, so a master's marks leave its releases unclassified"
-            );
-        }
-    }
-
-    /// A note written in the wrong language reaches the project's users as two languages on one release,
-    /// so the skill tells the master which language and where to read it.
-    #[test]
-    fn the_skill_tells_a_master_a_release_note_is_in_the_content_language() {
-        for word in [
-            "content language",
-            "`releaseNotes.userFacing`",
-            "/content-language",
-        ] {
-            assert!(
-                ASSET.contains(word),
-                "forge-master-skill.md no longer names {word}, so a master writes a release note in whatever language the issue was"
-            );
-        }
-    }
-
-    /// A note with no title is refused at its write and a release with no name opens on a bare
-    /// version, so the skill tells the master both are written, and where.
-    #[test]
-    fn the_skill_tells_a_master_to_title_notes_and_name_releases() {
-        for word in [
-            "`releaseNotes.title`",
-            "`releaseNotes.adminSteps`",
-            "/naming -X PUT",
-        ] {
-            assert!(
-                ASSET.contains(word),
-                "forge-master-skill.md no longer names {word}, so a master writes notes a release refuses or cuts a release nobody named"
-            );
-        }
-    }
-
-    /// Ordering between issues parked at `needs_info` reads on every board as a person owing an
-    /// answer nobody owes (ISS-738), so the skill points ordering at a blocks edge and names the
-    /// refusal a park on another issue's mark meets.
-    #[test]
-    fn the_skill_tells_a_master_ordering_is_a_blocks_edge() {
-        for word in [
-            "**Ordering between issues is a blocks edge, never a park.**",
-            "`{dependsOnId, kind: \"blocks\"}`",
-            "only for an act a person owes",
-            "`QUESTION_MERGE_IS_ORDERING`",
-            "`awaitsMerge: {issueId}` naming itself",
-        ] {
-            assert!(
-                ASSET.contains(word),
-                "forge-master-skill.md no longer names {word}, so a master parks a row at needs_info for another issue's landing"
-            );
-        }
-        assert!(
-            !ASSET.contains("A row waiting on another issue's landing parks"),
-            "forge-master-skill.md again tells a master to park a row on another issue's landing"
-        );
-    }
-
-    /// A park described in prose wakes nobody when the mark lands, a business question asked with
-    /// no `about` never reaches its requirement, a carried artifact left unsaid is verified on the
-    /// wrong release, a silent abort blocks the next cut, and a pin-only dependent proposed again is
-    /// one review per design where one act clears them all: the skill names each act and its refusal.
-    #[test]
-    fn the_skill_teaches_the_acts_that_name_what_they_wait_on() {
-        for word in [
-            "`awaitsMerge: {issueId}`",
-            "`QUESTION_MERGE_ALREADY_MARKED`",
-            "`about`",
-            "`{requirement: \"REQ-n\"}`",
-            "`QUESTION_ABOUT_SHAPE`",
-            "`QUESTION_ABOUT_ON_MERGE_WAIT`",
-            "`forge-runner question ask --requirement REQ-n`",
-            "`QUESTION_SUBJECT_REQUIRED`",
-            "`carriedBy`",
-            "`ARTIFACT_CARRIER_SHIPPED`",
-            "`carried`",
-            "/release-batches/<runId>/carried",
-            "`RELEASE_VERSION_UNDECIDED`",
-            "/design/repins",
-            "`WORKFLOW_REPIN_PENDING_CHANGE`",
-        ] {
-            assert!(
-                ASSET.contains(word),
-                "forge-master-skill.md no longer names {word}, so a master parks, asks, marks or aborts without saying what the act waits on or carries"
-            );
-        }
-    }
-
-    /// Owner, 2026-10-30: a project that runs fast pays a dispatched runner, a printed brief, a plan,
-    /// a design and a judge before every landing for nothing. The skill selects direct mode from
-    /// what the project declares, says what the master does instead, and keeps the kernel it does
-    /// not relax. Owner, 2026-11-01 (batch-delivery, ISS-845): it does so in batches split by
-    /// files, landing, releasing and judging once per batch.
-    #[test]
-    fn the_skill_teaches_direct_mode_and_the_kernel_it_keeps() {
-        // read as prose, wherever a line wraps and whichever line ending the checkout carries
-        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
-        for word in [
-            "## Direct mode: a project that runs fast",
-            "gate profile is not `strict` and that delivers fast",
-            "general-purpose subagent",
-            "No shipped role is dispatched",
-            // ISS-1245: each builder holds one of the project's subagent slots, claimed by its run
-            "Each builder's run is still declared first",
-            "refuses a general-purpose builder dispatched without one",
-            "`RUN_SLOT_UNAVAILABLE`",
-            "No plan approval, no design record, no review and no judge",
-            "work moves in **batches**, never one issue at a time",
-            "so does each one that arrives while it runs",
-            // ISS-1254: builders sharing one tree read each other's half-written files
-            "Each builder gets its own worktree and branch off the batch branch",
-            "no two builders share a tree",
-            "You fold each builder's commits into the batch branch (cherry-pick or merge) and remove its tree once it is folded.",
-            "no issue gets its own full suite or its own release",
-            // ISS-1048: epod read a batch as any slice of work, split one large issue into
-            // mini-batches and released each; a batch is at least a whole issue
-            "**An issue is one verifiable outcome, and a batch is never smaller than one.**",
-            "One issue is never split across releases",
-            "a large issue is built whole",
-            "goes into the next batch, never a release of its own",
-            // ISS-951: an in-pane build writes no step, so the master writes build when it starts
-            "\"workState\":{\"step\":\"build\"}",
-            "each assumption one line on the issue or in its commit body",
-            // ISS-1050: "its own tests" read as the whole suite, which a master ran before landing
-            "**Once per batch: one landing.** **Land through the project's own landing route** once the merged batch builds (typecheck included) and the tests related to its changed files pass",
-            "The whole suite, lint and CI run after the push, and a red there is fixed forward",
-            "A project rule that asks for more before landing still holds",
-            // ISS-1050 (REQ-79 BC-21): what a batch leaves unclean is debt, for the cleanup run
-            "**The fix does what bounds its impact or proves it; what it leaves unclean is debt.**",
-            "is recorded as debt with its evidence through the debts door (`forge-runner api projects/<projectId>/debts`, POST)",
-            "never fixed inside the batch and never filed as an issue",
-            "fixed forward in the next batch",
-            "**Once per batch: one release and one live judge pass.**",
-            "Where the project lands by change request",
-            "Push to the base branch only where the project lands by push",
-            "mark it merged at the landing sha",
-            "move it to `awaiting_release`",
-            "comment what landed",
-            "only what you checked live",
-            "a move that is not a legal edge, or that lacks its reason",
-            "`awaiting_release` without a recorded merge",
-            "by anyone but the issue's holder",
-            // ISS-1062: the holder closes an issue met in scope, each unmet criterion moved out first
-            "a close without its recorded merge, or leaving a criterion it did not meet with nowhere to go",
-            "naming each criterion it did not meet and where it goes in `unmet` on the move",
-            "Outside direct mode, every issue goes out this way.",
-            // ISS-1057 round 2: blast radius chooses the checks, and three marks stay apart
-            "a change that touches shared logic, billing, permissions or data is checked wide early",
-            "**Three marks, never conflated.** An issue closes when its criteria are met in scope",
-            "\"is it live\" is read from the release and never from `closed`",
-            "the close names where each one went",
-            // ISS-1243 item 22: subagents build, the master's session stays free for agents' asks
-            "**One worktree per builder; subagents build.** Hand every build part to a general-purpose subagent",
-            "Your own session stays free to triage, answer a room agent's ask before any other work and land; build in it only a change too small to brief.",
-        ] {
-            assert!(
-                prose.contains(word),
-                "forge-master-skill.md no longer says {word:?}, so a master on a project that runs fast dispatches and waits as every other project does, or builds there without the kernel"
-            );
-        }
-        // ISS-845 (FB-453): yolo alone no longer selects it, and a bare push to the base branch
-        // would override a project whose branches change only by merged MR
-        // ISS-845 (batch-delivery): the issue-by-issue build is gone
-        for gone in [
-            "gate profile is `yolo`",
-            "**Land on the base branch**",
-            "Take each issue in this session",
-            "once it builds and its own tests pass",
-            "its own tests pass",
-            "today, a close by anything but a release",
-            "Today the kernel still makes the close the release's act",
-            "its build and its own tests",
-            "comment what shipped",
-            "**What the batch leaves unclean is debt.**",
-            "**A batch is never smaller than an issue.**",
-            "Build it in this session, or hand parts of it to general-purpose subagents",
-            // ISS-1245: a direct builder is declared, its run being its project's slot
-            "so nothing is declared and no brief is printed",
-        ] {
-            assert!(
-                !prose.contains(gone),
-                "forge-master-skill.md still says {gone:?}, so a master outside yolo keeps dispatching, or pushes past a project that lands by MR"
-            );
-        }
-    }
-
-    /// Owner, 2026-11-01 (ISS-861): a master is given its goal, its tools and the kernel limits,
-    /// never a report ritual — no decision record on every row it does not take, no posture to
-    /// classify each pass, no why-not account of the rest.
-    #[test]
     fn the_skill_asks_no_pass_ritual() {
         let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
         for gone in [
@@ -579,12 +378,7 @@ mod tests {
                 "forge-master-skill.md again says {gone:?}, a report ritual the owner cut (ISS-861)"
             );
         }
-        for kept in [
-            "## A pass",
-            "leave no row resting with nobody acting on it",
-            "parked at `needs_info` with that act as the question",
-            "## Declare a run before you dispatch it",
-        ] {
+        for kept in ["## A pass", "leave no row resting with nobody acting on it"] {
             assert!(
                 prose.contains(kept),
                 "forge-master-skill.md no longer says {kept:?}, so the goal or a kernel limit went with the ritual"
@@ -596,44 +390,6 @@ mod tests {
     /// among them, because nothing drew the product lane apart from the technical one. Owner,
     /// 2026-11-07 (ISS-1057): a standalone technical defect is debt for Audit, an issue of its own
     /// only for priority, handoff or tracking, and only what the fix needs is fixed inside it.
-    #[test]
-    fn the_skill_gives_each_finding_its_place() {
-        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
-        for word in [
-            "**What you find goes to its place.**",
-            "**Product**",
-            "It goes in as Feedback",
-            "A feature never starts as an issue you filed.",
-            "**Inside the fix**: a defect the fix needs, to bound its impact or to prove itself",
-            "**Debt for Audit**: a technical defect that stands alone",
-            "a missing index, an untyped contract",
-            "never done inside the fix",
-            "**An issue of its own**: only where a technical finding needs its own priority",
-            "technical backlog",
-            "`what-is-an-issue`",
-            "declared under `Extra fixes:`",
-        ] {
-            assert!(
-                prose.contains(word),
-                "forge-master-skill.md no longer says {word:?}, so a master files a product finding straight into Delivery, a technical one with no module, or cleans inside the fix"
-            );
-        }
-        for gone in [
-            "**What you find goes in its lane.**",
-            "**Inside the issue being built**: a defect there is fixed in that issue",
-            "It stays in Delivery, in the technical backlog of its module",
-        ] {
-            assert!(
-                !prose.contains(gone),
-                "forge-master-skill.md again says {gone:?}, which files standalone debt as an issue or fixes it inside the fix"
-            );
-        }
-    }
-
-    /// Owner direction, 2026-11-07 (ISS-1057): the loop is Product → Delivery → Release → Audit →
-    /// Product, agents decide and execute on the record, and a person is asked only for money,
-    /// credentials or product direction. A master that read a routine approval as a safeguard
-    /// parked work on people who had set the policy already.
     #[test]
     fn the_skill_places_the_master_in_the_loop_and_asks_no_routine_approval() {
         let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -651,7 +407,6 @@ mod tests {
             "under `strict` too, only for such a decision",
             "only where the project's policy turns release approval on",
             "**Authority widens by results:**",
-            "Neither the landing nor the release waits on a cleanup report.",
         ] {
             assert!(
                 prose.contains(word),
@@ -675,31 +430,39 @@ mod tests {
     }
 
     // a batch built while its issues read `open` shows them stuck on a dispatch that already happened
-    #[test]
-    fn the_skill_claims_each_issue_before_a_builder_starts_on_it() {
-        let prose = ASSET.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(
-            prose.contains("Take it names before any builder starts on it, so it reads `in_progress` while it is built"),
-            "forge-master-skill.md no longer says to lease an issue before its builder starts, so a batch is built while its issues read `open`"
-        );
-        assert!(
-            !prose.contains("bring the records up to date after"),
-            "forge-master-skill.md again lets the records follow the build"
-        );
-    }
-
+    /// ISS-1251: the skill is a map. What a master does in each situation, the doors' cards and the
+    /// method are rendered by the core the box talks to (core's `guides/master-guide.test.ts` pins what
+    /// it serves), so a teaching change needs no runner release and no box teaches an older method.
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [
             "`forge-runner api guides`",
             "`dispatch`",
+            "`forge-master`",
             "`issue-flow`",
             "`forge-runner api <path>`",
+            "`forge-runner api 'guides/doors.md?audience=master'`",
+            "`forge-runner api 'guides/doors.md?door=<the door>'`",
         ] {
             assert!(
                 ASSET.contains(door),
                 "forge-master-skill.md no longer names {door}, so a master has no route to its method or its tracker that its own core serves"
             );
         }
+        for method in [
+            "## Direct mode",
+            "## What is yours and nowhere else",
+            "## Declare a run before you dispatch it",
+        ] {
+            assert!(
+                !ASSET.contains(method),
+                "forge-master-skill.md holds {method:?} again, a method the core serves, which a runner release would freeze on every box"
+            );
+        }
+        assert!(
+            ASSET.len() < 10_000,
+            "forge-master-skill.md is {} bytes: the skill is a map, its method served by core",
+            ASSET.len()
+        );
     }
 }

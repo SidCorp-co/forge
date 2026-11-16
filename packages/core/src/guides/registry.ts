@@ -22,6 +22,7 @@ import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { DISPATCH_GUIDE } from './dispatch-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
 import { FAST_DELIVERY_GUIDE } from './fast-delivery-guide.js';
+import { FORGE_MASTER_GUIDE } from './master-guide.js';
 import { FEEDBACK_TRIAGE_GUIDE } from './feedback-guide.js';
 import { ISSUE_FLOW_GUIDE } from './issue-flow-guide.js';
 import {
@@ -176,7 +177,7 @@ Upload the file from disk instead of inlining base64 bytes into a request: a mul
     title: 'Start here: the loop, and the guide for your role',
     summary:
       'Start here: the Product → Delivery → Release → Audit loop, which guide each role reads first (product owner, BA or project manager; master; builder; judge; auditor; chat assistant), and, in a Forge-managed repo, the recall-first rule, draft vs open and what is worth watching.',
-    version: 5,
+    version: 6,
     body: `## Start here
 
 Forge runs one loop for a project: **Product → Delivery → Release → Audit → Product**. The Product
@@ -189,7 +190,7 @@ is asked only for what is irreversible, real money, credentials or a new product
 | You are | You work in | Read first |
 |---|---|---|
 | A product owner, BA or project manager, person or agent, on MCP or the web | requirements, designs, feedback, releases, decisions | \`product-role\`, then \`requirement-lifecycle\`, \`feedback-triage\`, \`workflow-design\` |
-| A project's master | triage, admission, dispatch, landing, release | \`runs-and-masters\`, \`dispatch\`, \`fast-delivery\` |
+| A project's master | triage, admission, dispatch, landing, release | \`forge-master\`, \`runs-and-masters\`, \`dispatch\`, \`fast-delivery\` |
 | A run building one issue in a checkout | one issue, from open to landed | \`issue-flow\`, \`what-is-an-issue\`, \`writing-an-issue\`, then the rest of this page |
 | A judge | an issue's criteria on the running build | \`qa\` |
 | The cleanup run | what landed and how it ran | \`cleanup-audit\` |
@@ -360,6 +361,7 @@ section, which is why this migration is what turns the feature on.`,
   LINK_CHAT_GUIDE,
   ROOM_AGENT_GUIDE,
   PRODUCT_ROLE_GUIDE,
+  FORGE_MASTER_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

@@ -2,7 +2,14 @@
 // rendered from the door catalog, so a door is taught in one place and every page that names it
 // reads the same card. `doors.md` is the page of every door by the situation that calls for it.
 
-import { cardText, type DoorCatalog, doorCatalog, doorNames } from '../lib/door-catalog.js';
+import type { CardAudience } from '@forge/contracts/capability-cards';
+import {
+  cardText,
+  type DoorCatalog,
+  doorCatalog,
+  doorNames,
+  tier0Map,
+} from '../lib/door-catalog.js';
 import type { ForgeGuide } from './types.js';
 
 /**
@@ -59,5 +66,20 @@ practice, one worked call and the wrong way agents take: \`guides/doors.md?door=
 ${sections.join('\n\n')}
 
 ${catalog.doors.length - taught.length} of ${catalog.doors.length} doors carry no card yet.
+`;
+}
+
+/**
+ * One audience's Tier-0 map (ISS-1251): a line per situation, "when X → the door", the page a master's
+ * skill points at, so the situations a master meets are rendered from the cards by the core its box
+ * talks to rather than written into the skill a runner release ships.
+ */
+export function audienceMapPage(catalog: DoorCatalog, audience: CardAudience): string {
+  return `# Your map (${audience})
+
+When you meet one of these, use the door it names; before its first use, read its card
+(\`guides/doors.md?door=<the door>\`).
+
+${tier0Map(catalog.doors, audience).text}
 `;
 }
