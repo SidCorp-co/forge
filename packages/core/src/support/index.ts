@@ -46,6 +46,7 @@ export { forgetMemberships } from './health.js';
 export { masterAsksOf } from './master-ask.js';
 export { roomWriterUserId } from './ops-asker.js';
 export { unhandledMessagesOf } from './room-reads.js';
+export { SUPPORT_REST_CARDS } from './rest-cards.js';
 export { supportRoutes } from './routes.js';
 export { provideIssueForecastReader } from './shared-picture.js';
 export { forgeSupportTool, SUPPORT_TOOL_READS } from './tool.js';

@@ -36,6 +36,8 @@ export const CARD_FAMILIES = {
 	ecosystem: "a contract moves, or a builder run is open",
 	setup: "config, monitoring or schedules change",
 	debt: "a defect stands alone, or a cleanup run ends",
+	rooms: "a chat room is told a result, or asked you something",
+	onboarding: "you onboard a project: ask, report designs, close",
 } as const;
 
 export type CardFamily = keyof typeof CARD_FAMILIES;

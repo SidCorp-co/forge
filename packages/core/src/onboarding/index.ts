@@ -1,3 +1,4 @@
+export { ONBOARDING_REST_CARDS } from './cards.js';
 export { onboardingSubmittedIn } from './agent-writes.js';
 export {
   firstRequirementsJourneys,

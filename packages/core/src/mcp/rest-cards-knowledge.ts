@@ -1,6 +1,7 @@
 // The REST cards of the doors a project's knowledge and setup are kept through (ISS-1251): memory,
 // the find door over every record type (ISS-1256), knowledge, lessons and the steward's notes,
-// labels, the project document, its ecosystem links, and a reference source's citation.
+// labels, the project document, its ecosystem links, a reference source's citation, a master's posts
+// in its project's chat rooms and the shares it makes.
 
 import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import { REFERENCE_REST_CARD } from '@forge/contracts/references';
@@ -11,8 +12,10 @@ import { LABEL_REST_CARDS } from '../labels/index.js';
 import { LESSON_REST_CARDS } from '../lessons/index.js';
 import { MEMORY_REST_CARDS } from '../memory/index.js';
 import { PROJECT_CONFIG_REST_CARDS } from '../project-config/index.js';
+import { SHARE_REST_CARDS } from '../shares/index.js';
 import { STEWARD_REST_CARDS } from '../steward/index.js';
 import { STEWARD_NOTE_REST_CARDS } from '../steward-notes/index.js';
+import { SUPPORT_REST_CARDS } from '../support/index.js';
 import { ownedBy } from './owned-cards.js';
 
 export const PROJECT_KNOWLEDGE_REST_CARDS: readonly CapabilityCard[] = [
@@ -25,6 +28,8 @@ export const PROJECT_KNOWLEDGE_REST_CARDS: readonly CapabilityCard[] = [
   ...ownedBy('ecosystem', ECOSYSTEM_REST_CARDS),
   ...ownedBy('lessons', LESSON_REST_CARDS),
   ...ownedBy('find', FIND_REST_CARDS),
+  ...ownedBy('support', SUPPORT_REST_CARDS),
+  ...ownedBy('shares', SHARE_REST_CARDS),
   ...ownedBy('references', {
     'POST /api/projects/:id/reference-sources/:source/citations': REFERENCE_REST_CARD,
   }),

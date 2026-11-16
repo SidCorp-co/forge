@@ -317,7 +317,7 @@ export const ROOM_ACT_CARDS = {
     situations: [
       {
         when: 'you posted a reply',
-        do: 'audit it at once with support.audit { thread, message, failed } against the rubric, and let what fails shape your next reply',
+        do: 'audit it at once with support.audit { thread, message, failed, missed? } against the rubric, and name in missed each capability the reply should have reached for, by its forge_find name; let what fails shape your next reply',
       },
     ],
     practice: ['message is the messageId reply answered you; failed is [] where every line holds.'],
@@ -329,7 +329,7 @@ export const ROOM_ACT_CARDS = {
     // ISS-1250, release 0.4.0-dev.692 at 05:18Z: Forge-Communicate's reply verdicts read 7 replies,
     // 0 audited
     redFlag:
-      'Posting and moving on: after the audit door shipped, the first seven Forge-Communicate replies carried no verdict.',
+      'Posting and moving on, or auditing with missed left out where the reply skipped an act: the first seven Forge-Communicate replies carried no verdict.',
     family: 'room.answer',
     audience: ['bot'],
   },

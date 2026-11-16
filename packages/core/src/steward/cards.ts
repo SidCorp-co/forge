@@ -1,6 +1,6 @@
-// The capability card of the steward door a steward job calls over REST itself (ISS-1251), beside its
-// route (`routes.ts`), keyed by the door as the published contract lists it and built into the door
-// catalog by `mcp/rest-cards.ts`. The decision door is posted by the gateway's own code
+// The capability cards of the steward doors a steward job and a master call over REST (ISS-1251),
+// beside their routes (`routes.ts`), keyed by the door as the published contract lists it and
+// built into the door catalog by `mcp/rest-cards.ts`. The decision door is posted by the gateway's own code
 // (`door-decide.ts`), never by the model, so it carries no card. Written from the steward jobs that
 // ended failed on forge's issues and from the job's brief (`job.ts:jobDoneStep`).
 
@@ -35,5 +35,22 @@ export const STEWARD_REST_CARDS = {
       'Listing a refusal you already fixed by resending, or a probe you expected to be refused: the run closes failed.',
     family: 'debt',
     audience: ['run'],
+  },
+  'POST /api/projects/:id/steward-acts/:actId/undo': {
+    purpose: 'Reverses one act the steward made, through that act’s inverse door.',
+    situations: [
+      {
+        when: 'the steward moved, asked or wrote something that was wrong for this project',
+        do: 'read its acts on the subject (GET …/steward-acts?subject=), then undo that act by its id',
+      },
+    ],
+    practice: [
+      'An act no door undoes is refused STEWARD_ACT_NOT_UNDOABLE, naming how a person overrides it.',
+    ],
+    example: {},
+    // forge, 2026-10-17..11-16: all 11 undos refused, 7 naming an act this project holds no steward
+    // act as (STEWARD_ACT_UNKNOWN): an issue's event or a comment id sent as the act's
+    redFlag: 'Undoing by an id that is not a steward act’s (an event’s, a comment’s): read the acts first.',
+    audience: ['master'],
   },
 } satisfies Record<string, CapabilityCardBody>;
