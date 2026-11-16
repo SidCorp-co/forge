@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.702] - 2026-11-16
+
+Followed releases suggest only real matches; a failed session start frees the run slot
+
+### Fixed
+
+- **A followed project's release becomes an idea only when it really helps an open item.** The model judges the nearest open items, not shared words; several releases helping one item file one idea, and without a model they stay silent.
+- **A job whose session failed before starting gives its hold back.** The hold sweep returns it within a minute, naming the session and why, and the next take briefs a fresh session, so the project's run slot frees.
+
 ## [0.4.0-dev.701] - 2026-11-16
 
 Tool cards with agent self-audits, and search that ignores nonsense matches
