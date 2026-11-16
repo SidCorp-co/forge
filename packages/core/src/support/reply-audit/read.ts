@@ -5,6 +5,7 @@
 import {
   REPLY_VERDICTS_LIMIT,
   type ReplyFinding,
+  type ReplyMiss,
   type ReplyRubricLine,
   type ReplyVerdictsQuery,
   type ReplyVerdictsView,
@@ -80,6 +81,7 @@ export async function replyVerdictsOf(
       verdict: r.verdict,
       failed: r.failed as ReplyRubricLine[],
       findings: r.findings as ReplyFinding[],
+      missed: r.missed as ReplyMiss[],
       correctionId: r.correctionId,
       auditedAt: r.auditedAt.toISOString(),
     })),

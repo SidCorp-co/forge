@@ -345,7 +345,7 @@ const SHAPE = [
   'technical { thread, need: permission | approval | finding | ask, text }',
   'asker { thread, message }',
   'guide {}',
-  'audit { thread, message, failed: [{ line, why }] }',
+  'audit { thread, message, failed: [{ line, why }], missed?: [{ door, why }] }',
   `owner_forge_act { thread, message, project, act: ${SUPPORT_FORGE_ACTS.join(' | ')}, item, reason?, carry?, commit?, baseRevision?, document? }`,
   'references { project?, area?, q? }',
   `reference_add { thread, message, project?, kind: ${REFERENCE_KINDS.join(' | ')}, url, why, areas, title?, priority?, followReleases?, shared? }`,

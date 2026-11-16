@@ -52,6 +52,15 @@ export interface ReplyFinding {
 	by: ReplyFinder;
 }
 
+/** The most capabilities one audit names as missed. */
+export const SUPPORT_AUDIT_MISSED_MAX = 8;
+
+/** A capability an audit says its reply missed, by the door id the catalog names it with. */
+export interface ReplyMiss {
+	door: string;
+	why: string;
+}
+
 /**
  * support.audit: the agent's own reading of one reply it posted, by its chat message id: each rubric
  * line it fails, with why; an empty list where it fails none.
@@ -76,6 +85,18 @@ export const supportAuditRequestSchema = z.strictObject({
 		.describe(
 			"each rubric line the reply fails, with why; [] where it fails none",
 		),
+	missed: z
+		.array(
+			z.strictObject({
+				door: z.string().trim().min(3).max(300),
+				why: z.string().trim().min(3).max(REASON_LINE_MAX),
+			}),
+		)
+		.max(SUPPORT_AUDIT_MISSED_MAX)
+		.optional()
+		.describe(
+			"each capability this reply should have reached for and did not, by its name as forge_find lists it (`support.member`), with why; leave it out where none",
+		),
 });
 export type SupportAuditRequest = z.infer<typeof supportAuditRequestSchema>;
 
@@ -84,6 +105,8 @@ export interface SupportAuditView {
 	verdict: ReplyVerdict;
 	failed: ReplyRubricLine[];
 	findings: ReplyFinding[];
+	/** The capabilities the agent said this reply missed; the capabilities page counts them per card. */
+	missed: ReplyMiss[];
 	/** The room correction a failed verdict became in the lessons store. */
 	correctionId: string | null;
 	/** The reply was audited before; this is that verdict, unchanged. */
@@ -116,6 +139,7 @@ export interface ReplyVerdictView {
 	verdict: ReplyVerdict;
 	failed: ReplyRubricLine[];
 	findings: ReplyFinding[];
+	missed: ReplyMiss[];
 	correctionId: string | null;
 	auditedAt: string;
 }
