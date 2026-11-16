@@ -1,7 +1,8 @@
 // Opening one hit of the find door (ISS-1256): the record its id names, read whole where the reader
-// reads its project, with the web path that shows it. What it returns is what the opener's read
-// records (ISS-1251 §3's read signal, `run-context`), so a module tree can say how often agents read
-// a node. An id naming nothing the reader reads is refused by name, never answered empty.
+// reads its project, with the web path that shows it. Every open is recorded as a read, whoever
+// opens it (`run-context`): a run's under its session, a person's or a run-less credential's under
+// the reader's account, so a module tree counts how often every reader reads a node. An id naming
+// nothing the reader reads is refused by name, never answered empty.
 
 import {
   FIND_ORG_REF_PREFIX,
