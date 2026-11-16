@@ -6,12 +6,12 @@
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import { forgeFeedbackTool } from '../forge-door/index.js';
-import { forgeModuleTool } from '../labels/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import {
   forgeBotTool,
   forgeDesignTool,
   forgeIssuesTool,
+  forgeModuleTool,
   forgeProjectTool,
   forgeQuestionsTool,
   forgeReleasesProductTool,

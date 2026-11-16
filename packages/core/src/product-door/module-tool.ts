@@ -1,6 +1,6 @@
-// forge_module: the module map from an MCP client (ISS-1256). Each action calls what its REST twin
-// under /api/projects/:id/modules calls, judged by the contracts schema the route judges it by; the
-// cards (`cards.ts:MODULE_CARDS`) teach when to reach for it, and nothing here makes an agent do so.
+// forge_module: the module map from an MCP client (ISS-1256), a product-layer door over the labels
+// module's module map. Each action calls what its REST twin under /api/projects/:id/modules calls, judged by the contracts schema the route judges it by; the
+// cards (`labels/cards.ts:MODULE_CARDS`) teach when to reach for it, and nothing here makes an agent do so.
 
 import {
   MODULE_TOOL_READS,
@@ -10,15 +10,20 @@ import {
 import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import {
+  MODULE_CARDS,
+  placeRecord,
+  readModulePillar,
+  readModuleTree,
+  relate,
+  unrelate,
+} from '../labels/index.js';
+import {
   type ContextScopedMcpToolFactory,
   refusedAnswer,
   sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { onArg } from '../permissions/index.js';
-import { MODULE_CARDS } from './cards.js';
-import { readModulePillar, readModuleTree } from './module-map-read.js';
-import { placeRecord, relate, unrelate } from './module-map-write.js';
 
 const ACTIONS = ['get', 'pillar', 'place', 'relate', 'unrelate'] as const;
 const READS = new Set<string>(MODULE_TOOL_READS);

@@ -62,8 +62,8 @@ beforeAll(async () => {
   jwt = await userToken(owner.id);
   const execution = await moduleLabel('Execution', 'execution', null);
   await moduleLabel('devices', 'devices', execution);
-  // the module map's own doors live in `labels`, so its cards sit under Execution in this project
-  await moduleLabel('labels', 'labels', execution);
+  // the module map's MCP door lives in `product-door`, so its cards sit under Execution here
+  await moduleLabel('product-door', 'product-door', execution);
   await moduleLabel('Knowledge', 'knowledge-2', null);
   await createTestRequirement(project.id, 48, 'An agent stands at every handoff');
   await createTestRequirement(project.id, 2, 'Nobody placed this one');

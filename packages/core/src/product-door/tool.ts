@@ -5,6 +5,7 @@
 export { forgeBotTool } from './bot-tool.js';
 export { forgeDesignTool } from './design-tool.js';
 export { forgeIssuesTool } from './issues-tool.js';
+export { forgeModuleTool } from './module-tool.js';
 export { forgeProjectTool } from './project-tool.js';
 export { forgeQuestionsTool } from './questions-tool.js';
 export { forgeReleasesProductTool } from './releases-tool.js';

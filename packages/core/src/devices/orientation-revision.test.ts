@@ -28,6 +28,9 @@ vi.mock('../knowledge/index.js', () => {
   };
 });
 
+// a project with no module yet: the orientation's module lines are empty (ISS-1256)
+vi.mock('../labels/index.js', () => ({ moduleMapLines: async () => [] }));
+
 /**
  * The situations this project's lessons folded into an orientation card (ISS-1251): one more thing
  * the orientation is composed from, read from the card ledger rather than the knowledge store.
