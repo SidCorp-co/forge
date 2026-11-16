@@ -54,6 +54,7 @@ export const FEEDBACK_REST_CARDS = {
       'Filing a new issue without reading the item’s similar items and open issues, or leaving triage to the owner.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['FB-520 filed as a duplicate of ISS-1005 without reading its similar items'],
   },
   'POST /api/projects/:id/feedback/:fb/retarget': {
     purpose:
@@ -96,6 +97,7 @@ export const FEEDBACK_REST_CARDS = {
       'Verifying from the record alone, without running the fix on the build that serves it.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['feedback verified from the record, saying nothing of what was run: ISS-311'],
   },
   'POST /api/projects/:id/feedback/:fb/reopen': {
     purpose: 'Sends a resolved item back to triage, saying what its fix does not answer.',

@@ -26,6 +26,7 @@ export const CARDS = {
     redFlag: 'Naming the project by its slug or name instead of the uuid projects.list answers.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a project named by its slug: 12 of 13 design lists refused'],
   },
   design_get: {
     purpose: 'Reads one design as it stands, a draft included, and whom it waits on.',
@@ -106,6 +107,7 @@ export const CARDS = {
       'Drawing nodes and edges the template does not hold, or leaving the design unlinked from its requirement.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a design drawn with nodes its template does not hold'],
   },
   design_revise: {
     purpose: 'Writes the next revision of a design, whole, on the revision you read.',
@@ -138,6 +140,7 @@ export const CARDS = {
       'Writing a revision on a stale baseRevision, or only the steps that change instead of the whole document.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a design revised on a stale base: WORKFLOW_DESIGN_REVISION_STALE'],
   },
   design_decide: {
     purpose: 'Approves or returns the proposed revision of a design.',
@@ -247,6 +250,7 @@ export const CARDS = {
       'Guessing baseRevision: a number, 0 included, on a target with no revision is refused; send null there, and the revision you read elsewhere.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['baseRevision guessed as 0 on a target with no revision: FB-152'],
   },
   suggestion_accept: {
     purpose: 'Accepts a suggestion, which writes what it proposes in the same act.',
@@ -338,6 +342,7 @@ export const CARDS = {
     redFlag: 'Withdrawing a suggestion you did not produce, where rejecting it is the act.',
     family: 'design',
     audience: ['person'],
+    scenarios: ['a suggestion withdrawn by someone else: forbidden'],
   },
   mockup_list: {
     purpose: 'Lists the mockups proposed on one requirement, feedback item or issue.',

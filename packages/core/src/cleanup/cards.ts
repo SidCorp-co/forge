@@ -31,6 +31,7 @@ export const CLEANUP_REST_CARDS = {
     redFlag: 'Marking the merge unrated, so Audit cannot tell which landing to read first.',
     family: 'issue-landing',
     audience: ['run', 'master'],
+    scenarios: ['a merge marked unrated: ISS-780'],
   },
   'POST /api/projects/:projectId/cleanup-reports': {
     purpose:
@@ -98,6 +99,7 @@ export const CLEANUP_REST_CARDS = {
       'Filing a new debt for what an open debt already holds, instead of adding evidence to it.',
     family: 'debt',
     audience: ['run'],
+    scenarios: ['a new debt filed for what an open debt holds'],
   },
   'DELETE /api/projects/:projectId/debts/:debt/carry': {
     purpose: 'Withdraws the carry on a debt, so reports read it red again until it is cleared.',

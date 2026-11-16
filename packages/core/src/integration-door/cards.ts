@@ -88,6 +88,7 @@ export const INTEGRATION_DOOR_REST_CARDS = {
       'Aborting the release when the deploy waits on a person’s confirm, or backgrounding the poll and ending the turn.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a release aborted on pendingHumanConfirm: ISS-1096'],
   },
   'PUT /api/projects/:projectId/integrations/coolify/env/:key': {
     purpose:

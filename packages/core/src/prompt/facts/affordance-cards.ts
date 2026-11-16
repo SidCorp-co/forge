@@ -72,6 +72,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Writing a decision in force as memory, or a second entry beside the one already held.',
     family: 'memory',
     audience: ['master', 'run'],
+    scenarios: ['a memory written beside the entry already held: 41 of 86 refused'],
   }),
   card('PUT /api/projects/:id/knowledge/:slug', 'knowledge', {
     purpose: "Writes one entry of the project's own prose: a rule, a guide, build commands.",
@@ -132,6 +133,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     redFlag: 'Filing a feature or a user’s finding as an issue, where it starts as feedback.',
     family: 'issue-order',
     audience: ['master', 'run'],
+    scenarios: ['a user’s finding filed as an issue instead of feedback'],
   }),
   card('PUT /api/projects/:id/policy', 'project-config', {
     purpose: "Changes the project's policy, written whole against the revision read.",
@@ -211,6 +213,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     redFlag: 'Acting on an unverified hit as a fact without checking it against the code.',
     family: 'memory',
     audience: ['master', 'run', 'bot'],
+    scenarios: ['an unverified memory hit acted on as a fact'],
   }),
   card('POST /api/issues/:id/merge', 'issues', {
     purpose: 'Records where a change landed, the evidence a close and a release read.',
@@ -244,6 +247,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Stamping a commit that is not this issue’s own landing, such as the branch head before a squash.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a merge stamped at the branch head before the squash'],
   }),
   card('POST /api/issues/:id/transition', 'issues', {
     purpose: 'Moves an issue along its lifecycle, a park or a drop included.',
@@ -298,6 +302,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Parking an issue that waits on another issue’s landing, where a blocks edge orders it.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['an issue parked on another issue’s landing: QUESTION_MERGE_IS_ORDERING'],
   }),
   card('POST /api/projects/:id/workflows/:workflow/design/propose', 'workflows', {
     purpose: "Proposes a revision of a workflow's design for approval.",
@@ -403,6 +408,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     },
     family: 'debt',
     audience: ['master', 'run'],
+    scenarios: ['a red rated high left as debt while the issue landed'],
   }),
   card('POST /api/issues/:id/comments', 'comments', {
     purpose: "Writes on the issue what a person should know, in the agent's own words.",
@@ -425,6 +431,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'Mentioning a standalone defect only in a comment, where it belongs on the debt ledger.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a standalone defect left in an issue comment, recorded nowhere'],
   }),
 ];
 

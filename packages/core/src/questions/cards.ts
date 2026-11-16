@@ -73,6 +73,10 @@ export const QUESTION_REST_CARDS = {
       'Asking the owner a routine choice, or parking the issue on prose with no question behind it.',
     family: 'issue-order',
     audience: ['run', 'master'],
+    scenarios: [
+      'a routine choice asked of the owner, `about` sent as a bare key: QUESTION_ABOUT_SHAPE',
+      'the Google-connect choice put to the owner: two options, a recommendation',
+    ],
   },
   'POST /api/questions/:id/void': {
     purpose: 'Withdraws an open question that no longer needs an answer, saying why.',
@@ -88,6 +92,7 @@ export const QUESTION_REST_CARDS = {
     redFlag: 'Voiding a question a person still owes, to make the board read empty.',
     family: 'issue-order',
     audience: ['master', 'run'],
+    scenarios: ['a question the work settled, left for the owner to click'],
   },
   'PUT /api/questions/:id/plain': {
     purpose: 'Writes the plain summary a person reads before deciding an open question.',

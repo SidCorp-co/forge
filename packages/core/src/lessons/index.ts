@@ -76,5 +76,16 @@ export {
   lessonsMonthText,
   recordLessonsMonths,
 } from './month.js';
-export { type CardDelta, lessonsPorts, provideLessonsPorts } from './ports.js';
+export { type CardDelta, type CardText, lessonsPorts, provideLessonsPorts } from './ports.js';
 export { lessonRoutes } from './routes.js';
+export {
+  type CardScenario,
+  improves,
+  replayChange,
+  replayScenario,
+  replayScenarios,
+  type ScenarioRun,
+  type ScenarioVerdict,
+  teachingOf,
+  withDelta,
+} from './scenario-replay.js';

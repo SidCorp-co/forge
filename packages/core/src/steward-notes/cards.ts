@@ -44,5 +44,6 @@ export const STEWARD_NOTE_REST_CARDS = {
       'Writing a note that says more than the item’s standing shows, or cites what it does not hold.',
     family: 'knowledge',
     audience: ['master'],
+    scenarios: ['a steward note saying more than the item’s standing: STEWARD_NOTE_CONTRADICTS'],
   },
 } satisfies Record<string, CapabilityCardBody>;

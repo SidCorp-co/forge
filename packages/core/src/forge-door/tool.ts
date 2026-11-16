@@ -176,6 +176,7 @@ const CARDS = {
       'Working around a Forge defect in silence, so the next agent meets it again and nobody hears.',
     family: 'forge-feedback',
     audience: ['bot', 'master', 'run', 'person'],
+    scenarios: ['a Forge defect worked around in silence'],
   },
   door: {
     purpose: 'Tells the feature that owns a door or a piece of teaching that it failed you.',

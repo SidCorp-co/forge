@@ -146,6 +146,7 @@ export const CARDS = {
       'Setting a link whose code is gone to unverified and leaving it: it still reads as a live use. Retire it: building with callSites [], then delete it.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a dead link set unverified and left standing: ISS-790'],
   },
   builder_runs: {
     purpose: 'Lists this project’s builder runs: the open one to work, and those before it.',
@@ -210,6 +211,7 @@ export const CARDS = {
       'Marking a step succeeded that did not run, or writing superseded here: a run that cannot finish truly is superseded.',
     family: 'ecosystem',
     audience: ['master'],
+    scenarios: ['a builder run step marked succeeded that did not run'],
   },
   builder_run_supersede: {
     purpose:
@@ -302,7 +304,8 @@ export const CARDS = {
       {
         when: 'you choose the version to record',
         do: 'take the next in the interface’s scheme: on semver a breaking measurement owes a MAJOR and an additive one a MINOR',
-        watch: 'one too small or outside the scheme is refused VERSION_BUMP_TOO_SMALL or VERSION_NOT_IN_SCHEME',
+        watch:
+          'one too small or outside the scheme is refused VERSION_BUMP_TOO_SMALL or VERSION_NOT_IN_SCHEME',
       },
       {
         when: 'you send the artifact',

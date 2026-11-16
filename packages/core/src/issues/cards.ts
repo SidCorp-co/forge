@@ -46,6 +46,7 @@ export const ISSUE_REST_CARDS = {
       'Clearing a mark and re-marking with the commit only in `note`: the issue then sits in no release.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a mark cleared and re-made with its commit only in the note'],
   },
   'POST /api/issues/:id/verdicts': {
     purpose: 'Records one judged criterion, with the build it was judged on and what proves it.',
@@ -81,6 +82,7 @@ export const ISSUE_REST_CARDS = {
       'Holding verdicts to write at the end, or naming a short sha: a run that stops loses them, and a short sha is refused.',
     family: 'issue-work',
     audience: ['run', 'master'],
+    scenarios: ['verdicts held to the end, a short sha named: VERDICT_COMMIT_NOT_FULL'],
   },
   'POST /api/issues/:id/merge-check': {
     purpose: 'Records the merge check run on the change rebased onto its base, before it lands.',
@@ -110,6 +112,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Rebasing again after the check and landing the new head on the old report.',
     family: 'issue-landing',
     audience: ['master', 'run'],
+    scenarios: ['a report from a branch behind its base: MERGE_BEHIND_BASE'],
   },
   'PATCH /api/issues/:id': {
     purpose: 'Changes an issue’s own fields: its plan, notes, labels, criteria text or work step.',
@@ -133,6 +136,7 @@ export const ISSUE_REST_CARDS = {
       'Patching a lease or a status by hand: the lease shape is the kernel’s, and a status moves only by transition.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a lease patched in another shape, refused only at the next move: FB-503'],
   },
   'PUT /api/issues/:id/design': {
     purpose: 'Records how each criterion will be proven and which modules the change touches.',
@@ -166,6 +170,7 @@ export const ISSUE_REST_CARDS = {
       'Naming every module whose registry line you touched, which collides with every live run (ISSUE_SCOPE_HELD).',
     family: 'issue-work',
     audience: ['run'],
+    scenarios: ['every module whose registry line was touched named: ISSUE_SCOPE_HELD'],
   },
   'POST /api/issues/:id/events': {
     purpose: 'Records a run’s own typed record on the issue: a decision, a correction, a wave.',
@@ -196,6 +201,7 @@ export const ISSUE_REST_CARDS = {
       'Posting a verdict, transition or park as an event, or pasting a record into a comment: each has its own store.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['a park posted as an event: EVENT_KIND_KERNEL_ONLY'],
   },
   'PUT /api/issues/:id/criteria': {
     purpose: 'Writes an issue’s whole criteria list, each traced to its requirement’s BC.',
@@ -221,6 +227,7 @@ export const ISSUE_REST_CARDS = {
     redFlag: 'Leaving the criteria in the description: a verdict has nothing to attach to.',
     family: 'issue-work',
     audience: ['master', 'run'],
+    scenarios: ['criteria kept only in the description: a verdict has nothing to attach to'],
   },
   'POST /api/issues/:id/checks': {
     purpose: 'Records each check a run ran, with how long it took, on the issue.',
@@ -244,6 +251,7 @@ export const ISSUE_REST_CARDS = {
       'Reusing one check id for a different check, or resending what a merge check already recorded.',
     family: 'issue-work',
     audience: ['run', 'master'],
+    scenarios: ['a check id reused for another check: CHECK_RUN_CONFLICT'],
   },
   'POST /api/issues/:id/review': {
     purpose: 'Records a review of a change by a run that did not build it, line by line.',
@@ -309,6 +317,7 @@ export const ISSUE_REST_CARDS = {
       'Leaving the old criterion standing, so the next re-judge fails it and reopens a landed issue.',
     family: 'issue-work',
     audience: ['run', 'master'],
+    scenarios: ['an old promise left standing for a re-judge to fail: ISS-1240'],
   },
   'POST /api/issues/:id/criteria/traces': {
     purpose: 'Adds one criterion per requirement BC code, worded as the BC and traced to it.',
@@ -358,6 +367,7 @@ export const ISSUE_REST_CARDS = {
       'Citing a local file path in a verdict’s evidence instead of uploading the file first.',
     family: 'issue-work',
     audience: ['run', 'master'],
+    scenarios: ['a local file path cited as a verdict’s evidence'],
   },
   'POST /api/issues/:id/events/:eventId/withdraw': {
     purpose: 'Withdraws a decision record that should not stand, keeping it on the record.',

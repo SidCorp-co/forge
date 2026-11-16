@@ -32,6 +32,7 @@ export const KNOWLEDGE_REST_CARDS = {
     redFlag: 'Searching the same topic in a loop instead of opening the hits by slug.',
     family: 'knowledge',
     audience: ['master', 'run'],
+    scenarios: ['one topic searched in a loop until rate-limited'],
   },
   'DELETE /api/projects/:id/knowledge/:slug': {
     purpose: 'Removes a project knowledge entry that is wrong, stale or merged into another.',

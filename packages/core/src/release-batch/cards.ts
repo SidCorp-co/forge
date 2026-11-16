@@ -57,6 +57,7 @@ export const RELEASE_REST_CARDS = {
       'Naming a version by hand that is taken or behind the project’s line, where the next free one would do.',
     family: 'release',
     audience: ['master'],
+    scenarios: ['a release version named by hand that was taken: RELEASE_CUT_VERSION_TAKEN'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/abort': {
     purpose: 'Ends a release run that cannot finish, saying why and what it left outside Forge.',
@@ -164,6 +165,7 @@ export const RELEASE_REST_CARDS = {
       'Deploying or recording before announcing the method: the run is refused RELEASE_NOTHING_RECORDED.',
     family: 'release',
     audience: ['run'],
+    scenarios: ['a deploy before the method: RELEASE_NOTHING_RECORDED'],
   },
   'POST /api/projects/:projectId/release-batches/:runId/shipped-commit': {
     purpose: 'Names the commit a release run shipped where its merge marks leave it unanswered.',

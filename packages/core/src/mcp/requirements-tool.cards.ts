@@ -139,6 +139,7 @@ export const CARDS = {
       'Sending only the criterion that changed: the list is the whole new set, so every code left out is retired.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['REQ-75 revised with only the reworded BC-12, which would retire 37 criteria'],
   },
   propose: {
     purpose: 'Puts a draft revision before the people who agree it.',
@@ -157,6 +158,7 @@ export const CARDS = {
       'Proposing a draft unread: a code the head held that the draft lacks is retired once it is accepted.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a draft proposed unread, retiring a code the head held'],
   },
   withdraw: {
     purpose: 'Withdraws an open draft revision for good, saying why.',
@@ -229,6 +231,7 @@ export const CARDS = {
       'Sending only the steps added: each call writes the criterion’s whole trace, so a step left out is cleared.',
     family: 'product.requirement',
     audience: ['person'],
+    scenarios: ['a criterion traced with only the steps added, clearing the rest'],
   },
   progress: {
     purpose:

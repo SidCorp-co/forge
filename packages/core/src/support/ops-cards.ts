@@ -25,6 +25,9 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Telling a person you cannot check something before reading what this room grants.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: [
+      'a fix the room grants left to the owner: “I cannot install it on the live system”',
+    ],
   },
   channel: {
     purpose:
@@ -43,6 +46,7 @@ export const OPS_ACT_CARDS = {
       'Following what another group’s record holds, or a note of your own, over this group’s record.',
     family: 'room.record',
     audience: ['bot'],
+    scenarios: ['a member the channel does not list mentioned for a route: @phatpt'],
   },
   common_issue: {
     purpose:
@@ -63,6 +67,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Answering the same question afresh in each thread instead of keeping it once.',
     family: 'room.record',
     audience: ['bot'],
+    scenarios: ['one answer on MangoTee lines posted afresh in two threads nine seconds apart'],
   },
   announce: {
     purpose: 'Posts the one top-level message, news affecting everyone, at most once an hour.',
@@ -81,6 +86,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Announcing what one thread asked about, or mentioning a person in an announcement.',
     family: 'room.answer',
     audience: ['bot'],
+    scenarios: ['an announcement mentioning two people and asking them to type OK'],
   },
   move_issue: {
     purpose:
@@ -104,6 +110,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Naming someone else’s message to move an issue the asker may not move.',
     family: 'room.work',
     audience: ['bot'],
+    scenarios: ['a move refused SUPPORT_ABILITY_NOT_GRANTED, its grant explained'],
   },
   build: {
     purpose:
@@ -158,6 +165,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Running a command where a check or a read the room grants answers the same.',
     family: 'room.diagnose',
     audience: ['bot'],
+    scenarios: ['a command refused for a grant the room does not hold'],
   },
   owner_consent: {
     purpose:
@@ -174,6 +182,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Asking the owner to type a set word to consent: his plain words are his agreement.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['the owner asked to type a set word before an act runs as him'],
   },
   owner_act: {
     purpose:
@@ -195,6 +204,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Making an owner act from any room but his own, or one he did not ask for in it.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['the owner told to fill the MangoTee lines himself'],
   },
   owner_sign_in: {
     purpose: 'Starts the owner’s sign-in to a product, handing you the link to give him.',
@@ -211,6 +221,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Asking the owner for a password or token instead of giving him the sign-in link.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['the owner asked for another token for forge-ops'],
   },
   projects: {
     purpose:
@@ -226,6 +237,7 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Explaining a project outside the room’s scope instead of handing it on.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['asking which project instead of reading the room’s projects'],
   },
   requirements: {
     purpose:
@@ -241,6 +253,10 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Drafting a requirement for a wish a listed requirement already covers.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: [
+      'the Google-connect requirement named by its key and title',
+      'a person-facing link on the API host',
+    ],
   },
   move: {
     purpose: 'Moves an issue of a project in this room’s scope as the member whose message asked.',
@@ -285,6 +301,7 @@ export const OPS_ACT_CARDS = {
       'Telling the member the requirement is agreed or planned: it is a draft until a person decides it.',
     family: 'room.work',
     audience: ['bot'],
+    scenarios: ['a requirement drafted and told as waiting on the owner, not agreed'],
   },
   draft_feedback: {
     purpose:
@@ -324,5 +341,6 @@ export const OPS_ACT_CARDS = {
     redFlag: 'Researching the open web while the project names reference sources for that area.',
     family: 'room.work',
     audience: ['bot'],
+    scenarios: ['supplier API docs asked for, the public pages never read'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

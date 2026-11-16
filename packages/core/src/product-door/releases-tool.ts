@@ -157,6 +157,7 @@ const CARDS = {
       'Naming a release without project admin (12 of 130 calls on forge refused forbidden, 2026-10-17..11-16), or naming it by its version or issue list.',
     family: 'product.release',
     audience: ['person'],
+    scenarios: ['a release named without project admin: forbidden'],
   },
   decide: {
     purpose: 'Approves or returns the release a person is asked to approve, as their decision.',

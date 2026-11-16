@@ -36,6 +36,7 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Parking a routine agree on the owner instead of agreeing it and recording why.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['the owner made to agree a routine requirement: REQ-90'],
   },
   'POST /api/projects/:id/requirements/:req/revisions/:n/accept': {
     purpose:
@@ -53,6 +54,7 @@ export const REQUIREMENT_REST_CARDS = {
       'Accepting with no reason or before its checklist holds: 37 of 123 accepts on forge were refused.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: ['a revision accepted with no reason: ISS-645'],
   },
   'POST /api/projects/:id/requirements/:req/revisions/:n/return': {
     purpose: 'Sends a proposed revision back to draft, with what it must change.',
@@ -105,6 +107,9 @@ export const REQUIREMENT_REST_CARDS = {
       'Linking an issue another requirement already holds instead of unlinking it there first.',
     family: 'requirements',
     audience: ['master'],
+    scenarios: [
+      'an issue linked that another requirement holds: REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
+    ],
   },
   'POST /api/projects/:id/requirements/:req/start-delivery': {
     purpose: 'Moves an agreed requirement to in delivery once a live issue builds it.',
@@ -183,6 +188,7 @@ export const REQUIREMENT_REST_CARDS = {
     redFlag: 'Filing an issue whose only work is verifying something that already shipped.',
     family: 'requirements',
     audience: ['run', 'master'],
+    scenarios: ['an issue filed to verify what already shipped: ISS-588'],
   },
   'POST /api/projects/:id/requirements/:req/drop': {
     purpose: 'Drops a requirement that is not going to be built, with the reason it goes.',

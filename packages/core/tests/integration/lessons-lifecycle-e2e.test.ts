@@ -11,6 +11,7 @@
 // @direct-test-of packages/core/src/steward/lessons-review.ts
 // @direct-test-of packages/core/src/steward/lessons-piles.ts
 // @direct-test-of packages/core/src/lessons/card-freshness.ts
+// @direct-test-of packages/core/src/lessons/scenario-replay.ts
 // @direct-test-of packages/core/src/cleanup/gate-debt.ts
 
 import { randomUUID } from 'node:crypto';
@@ -207,6 +208,27 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
     { when: 'someone asks about a member', do: 'answer from the member record' },
   ];
 
+  const PRACTICE = 'Read the member record before you answer.';
+  /** The card's two scenarios: each holds while the card says what its good use needs. */
+  const SCENARIOS = [
+    {
+      name: 'asks-unknown-member',
+      card: CARD,
+      source: 'the lessons world',
+      situation: 'a stranger writes',
+      good: 'read the member record first',
+      teaches: [/read the member record/i],
+    },
+    {
+      name: 'answers-known-member',
+      card: CARD,
+      source: 'the lessons world',
+      situation: 'a member asks about a member',
+      good: 'answer from the member record',
+      teaches: [/answer from the member record/i],
+    },
+  ];
+
   /** The steward's pass with a card registry that carries `CARD`, its scenarios and its situations. */
   async function passWithCard(answers: Parameters<typeof pass>[0], situations = BEFORE_FOLD) {
     const { lessonsPorts, provideLessonsPorts } = await import('../../src/lessons/index.js');
@@ -214,14 +236,7 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
     provideLessonsPorts({
       ...before,
       cardOf: async (id) =>
-        id === CARD
-          ? {
-              id,
-              scenarios: ['asks-unknown-member', 'answers-known-member'],
-              situations,
-              practice: ['Read the member record before you answer.'],
-            }
-          : null,
+        id === CARD ? { id, scenarios: SCENARIOS, situations, practice: [PRACTICE] } : null,
     });
     try {
       return await pass(answers);
@@ -298,6 +313,39 @@ describe('a lesson that holds is folded into its card and retired (§4)', () => 
       passed: false,
       change: `L-${n} fold`,
     });
+  });
+
+  it('refuses a fold that drops what a scenario needs, though the model’s replay adopts it', async () => {
+    const n = await approvedOn('Answer before reading any record.', `card:${CARD}`);
+    await db.execute(
+      sql`UPDATE lessons SET applied_count = 3 WHERE project_id = ${w.projectId} AND number = ${n}`,
+    );
+    const tally = await passWithCard({
+      fold: (l) =>
+        (l as { number: number }).number === n
+          ? {
+              field: 'bestPractice',
+              op: 'update',
+              text: 'Answer at once.',
+              replaces: PRACTICE,
+              reason: 'Applied three times.',
+            }
+          : null,
+      replay: (input) => ({
+        fixed: (input as { failures: string[] }).failures.length,
+        broken: [],
+        reason: 'Nothing breaks.',
+      }),
+    });
+    expect(tally.replayRefused).toBeGreaterThanOrEqual(1);
+    expect((await stateOf(n))?.status).toBe('approved');
+    const { cardFreshness } = await import('../../src/lessons/index.js');
+    const [fresh] = await cardFreshness([CARD]);
+    expect(fresh?.scenarios.find((x) => x.name === 'asks-unknown-member')).toMatchObject({
+      passed: false,
+      change: `L-${n} fold`,
+    });
+    expect(fresh?.proposedDeltas.map((d) => d.text)).not.toContain('Answer at once.');
   });
 
   it('applies a proposed delta at the card’s re-check once its code carries the line, and not before', async () => {

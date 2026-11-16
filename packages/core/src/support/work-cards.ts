@@ -29,6 +29,7 @@ export const WORK_ACT_CARDS = {
       'Saying what is wrong before a check confirmed it, or giving what you could not check as a guess.',
     family: 'room.diagnose',
     audience: ['bot'],
+    scenarios: ['a cause stated before any check: “this is a defect for the technical team”'],
   },
   read: {
     purpose:
@@ -49,6 +50,7 @@ export const WORK_ACT_CARDS = {
       'Telling a thread you cannot read logs or data before trying the reads your brief lists.',
     family: 'room.diagnose',
     audience: ['bot'],
+    scenarios: ['Catalog’s logs said unreadable though catalog-api is a followed project'],
   },
   propose_fix: {
     purpose:
@@ -101,6 +103,7 @@ export const WORK_ACT_CARDS = {
       'Asking the asker to say ok before filing what their own request asked for: cite that request with support.agree at once.',
     family: 'room.consent',
     audience: ['bot'],
+    scenarios: ['the feature decider asked to reply “ok” before her own request is filed'],
   },
   agree: {
     purpose:
@@ -126,6 +129,7 @@ export const WORK_ACT_CARDS = {
       'Asking the owner or a named decider to agree to what they asked for themselves: their own request is the agreement.',
     family: 'room.consent',
     audience: ['bot'],
+    scenarios: ['a decider’s own request refused as agreement: SUPPORT_AGREEMENT_BEFORE_PROPOSAL'],
   },
   check_result: {
     purpose:
@@ -145,6 +149,7 @@ export const WORK_ACT_CARDS = {
       'Posting a finding at the top level, or one result per detail: a check takes one finding, or null.',
     family: 'room.diagnose',
     audience: ['bot'],
+    scenarios: ['a morning check with nothing to say answered null'],
   },
   releases: {
     purpose:
@@ -168,6 +173,7 @@ export const WORK_ACT_CARDS = {
     redFlag: 'Saying a release is or is not live with no release read in that turn.',
     family: 'room.live',
     audience: ['bot'],
+    scenarios: ['a release said live with no release read: SUPPORT_LIVE_CLAIM_UNREAD'],
   },
   deployment: {
     purpose:
@@ -184,6 +190,7 @@ export const WORK_ACT_CARDS = {
       'Saying a merge reached a target without quoting the revision its latest deployment reads.',
     family: 'room.live',
     audience: ['bot'],
+    scenarios: ['a fix on the production branch, its deploy unread'],
   },
   project: {
     purpose:
@@ -220,6 +227,7 @@ export const WORK_ACT_CARDS = {
       'Answering how work goes from an issue’s status alone, where its notes, handoffs and `waiting` say who owes what.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['an issue’s state told from its notes and handoffs, the latest round named'],
   },
   feedback: {
     purpose:
@@ -238,6 +246,7 @@ export const WORK_ACT_CARDS = {
       'Telling the owner the room cannot read feedback: on 15/11 the bot said so and named a settings change that does not exist.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['the room told it cannot read feedback, and that no master is on'],
   },
   link: {
     purpose:
@@ -253,6 +262,7 @@ export const WORK_ACT_CARDS = {
     redFlag: 'Making the act as a member before you are told they linked.',
     family: 'room.record',
     audience: ['bot'],
+    scenarios: ['the owner’s answer unrecorded: his chat account linked to no Forge account'],
   },
   release_decision: {
     purpose:
@@ -279,6 +289,7 @@ export const WORK_ACT_CARDS = {
       'Asking the owner again, or to click, after he said go: adminhub-api 0.19.0 asked him three times on 10/11.',
     family: 'room.live',
     audience: ['bot'],
+    scenarios: ['adminhub-api 0.19.0 asked of the owner three times after he approved'],
   },
   owner_forge_act: {
     purpose:
@@ -305,5 +316,6 @@ export const WORK_ACT_CARDS = {
       'Telling the owner to press a button to settle something he just decided: on 16/11 the bot sent him to click an answer it could record as him.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['a question the owner owes sent to him to click, after the work settled it'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;

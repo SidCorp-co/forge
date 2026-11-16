@@ -1,5 +1,6 @@
 import type { MockupView } from '@forge/contracts/mockups';
 import { portSlot } from '../lib/port-slot.js';
+import type { CardScenario } from './scenario-replay.js';
 
 // What lessons reads from the modules above it, handed in by the process entry at boot (ADR 0008:
 // a domain imports only its own context or one before it). Read only inside a call.
@@ -24,19 +25,21 @@ interface LessonsPorts {
     issueId: string,
   ): Promise<{ key: string; text: string; paths: string[] | null; why?: string } | null>;
   /**
-   * The capability card registry (ISS-1251 §1): a card by its id, with the names of its scenarios and
-   * its current text,
-   * or null where no door carries that card; and, where the registry knows them, the paths its door
-   * lives in. Without paths, a card anchor is met by a landing naming the card.
+   * The capability card registry (ISS-1251 §1): a card by its id, with its scenarios and its current
+   * text, or null where no door carries that card; and, where the registry knows them, the paths its
+   * door lives in. Without paths, a card anchor is met by a landing naming the card.
    */
   cardOf(cardId: string): Promise<CardText | null>;
   cardPaths?(cardId: string): Promise<readonly string[]>;
 }
 
-/** A card as its code holds it now: its scenarios' names, and the text its surfaces render. */
+/** A card as its code holds it now: its scenarios, and the text its surfaces render. */
 export interface CardText {
   id: string;
-  scenarios: readonly string[];
+  /** The replayable cases its `scenarios` names (`scenario-replay.ts`). */
+  scenarios: readonly CardScenario[];
+  /** What the card's audience reads every turn beside it (a room agent's map), where it teaches the card's situations too. */
+  context?: string;
   situations: readonly { when: string; do: string; watch?: string | undefined }[];
   practice: readonly string[];
   redFlag?: string;

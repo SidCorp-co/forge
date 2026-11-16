@@ -37,6 +37,7 @@ export const SUPPORT_REST_CARDS = {
       'Posting at a users’ room’s top level, or telling a thread a result it was already told.',
     family: 'rooms',
     audience: ['master'],
+    scenarios: ['the ePOD release posts told in the asker’s thread once checked live'],
   },
   'PATCH /api/projects/:id/support/master-posts/:messageId': {
     purpose: 'Replaces the words of a post you made in a room, within its edit window.',

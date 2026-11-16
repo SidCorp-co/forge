@@ -80,6 +80,7 @@ export const FEEDBACK_CARDS: Readonly<Record<string, CapabilityCardBody>> = {
       'Verifying from the release notes or the merge, without running it on the shipped build.',
     family: 'forge-feedback',
     audience: ['person', 'master', 'run'],
+    scenarios: ['Forge feedback verified without evidence: FEEDBACK_EVIDENCE_REQUIRED'],
   },
   reopen: {
     purpose: 'Reopens a shipped item you reported whose fix does not hold on the running build.',

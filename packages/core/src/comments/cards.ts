@@ -39,6 +39,7 @@ export const COMMENT_REST_CARDS = {
       'Settling a requirement’s rule in an issue comment or the requirement’s prose, where no decision read finds it.',
     family: 'requirements',
     audience: ['master', 'run'],
+    scenarios: ['a requirement’s rule settled in an issue comment: ISS-739'],
   },
   'POST /api/projects/:id/workflows/:workflow/comments': {
     purpose: 'Records a decision, question or note on the workflow design it governs.',
@@ -89,6 +90,7 @@ export const COMMENT_REST_CARDS = {
       'Routing or answering the item in a comment, where its triage or a reply to the reporter is the act.',
     family: 'project-feedback',
     audience: ['master'],
+    scenarios: ['a feedback item routed in a comment instead of its triage'],
   },
   'PATCH /api/comments/:id': {
     purpose: 'Corrects a comment you wrote on an issue: its words, or what kind of comment it is.',

@@ -139,6 +139,7 @@ const CARDS = {
       'Answering with the recommended option, or your own reading of the question, before the person has said: it is recorded as their word. Ask them and wait.',
     family: 'product.ask',
     audience: ['person'],
+    scenarios: ['a question answered for the person with the recommended option: FB-181'],
   },
   ask: {
     purpose: 'Raises a person’s own question on an issue, owed a reply by the agent working it.',

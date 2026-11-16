@@ -7,8 +7,11 @@
 //    flag (an ADD or UPDATE delta, proposed until the card's code carries it, `lessons/card-freshness.ts`),
 //    then retired: the card is its durable home.
 // Replay: the change is read against the failures it claims to fix (its corrections) and the good
-// cases it must not break (the approved lessons in force); one that fixes none of its failures, or
-// breaks a good case, is not adopted. Every model call here is a parameter, so a test gives its own.
+// cases it must not break (the approved lessons in force, and its card's scenarios); one that fixes
+// none of its failures, or breaks a good case, is not adopted. A change to a card's teaching is also
+// replayed on the card's scenarios as the card reads before and after it (`lessons/scenario-replay.ts`),
+// with no model: one that makes a scenario that held fail is not adopted, whatever the model says.
+// Every model call here is a parameter, so a test gives its own.
 
 import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import { LESSON_LIMITS, lessonAnchorSchema, lessonKey } from '@forge/contracts/lessons';
@@ -18,8 +21,11 @@ import {
   anchorLesson,
   applyCarriedDeltas,
   type CardDelta,
+  type CardScenario,
+  type CardText,
   cardsWithProposedDeltas,
   gatherInput,
+  improves,
   invalidatedLessons,
   type LessonActor,
   type LifecycleLesson,
@@ -28,9 +34,13 @@ import {
   proposeCardDelta,
   readmitLesson,
   recordScenarioRuns,
+  replayChange,
+  replayScenarios,
   retireLesson,
   settleCardRecheck,
+  teachingOf,
   unanchoredLessons,
+  withDelta,
 } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -264,8 +274,16 @@ async function recheckInvalid(
     if (l.anchor?.startsWith('card:')) cards.add(l.anchor.slice(5));
     await recheckOne(projectId, actor, j, t, l);
   }
-  // a card a landing touched is re-checked through what was learned of it: done once none waits
-  for (const card of cards) if (await settleCardRecheck(card)) t.cardsRechecked += 1;
+  // a card a landing touched is re-checked through what was learned of it: done once none waits, and
+  // its scenarios are replayed on the text the landing left it with
+  for (const id of cards) {
+    if (!(await settleCardRecheck(id))) continue;
+    t.cardsRechecked += 1;
+    const card = await lessonsPorts().cardOf(id);
+    if (card && card.scenarios.length > 0) {
+      await recordScenarioRuns(id, 're-check', replayScenarios(card.scenarios, teachingOf(card)));
+    }
+  }
 }
 
 async function recheckOne(
@@ -306,7 +324,12 @@ async function recheckOne(
     };
     const anchor = edit.anchor ?? l.anchor ?? '';
     const card = anchor.startsWith('card:') ? await lessonsPorts().cardOf(anchor.slice(5)) : null;
-    if (!(await replayOnCard(projectId, j.replay, card, input, `${ref} edit`))) {
+    // a lesson is served beside its card, so the card teaches its text with the lesson's sentence
+    const read = (c: CardText, sentence: string) => `${teachingOf(c)}\n${sentence}`;
+    const teaching = card
+      ? { before: read(card, l.sentence), after: read(card, edit.sentence) }
+      : null;
+    if (!(await replayOnCard(projectId, j.replay, card, teaching, input, `${ref} edit`))) {
       t.replayRefused += 1;
       return;
     }
@@ -323,31 +346,55 @@ async function recheckOne(
   if (done) t.readmitted += 1;
 }
 
+/** A scenario as a good case the model's replay must not break, named so its answer can quote it. */
+const goodCase = (s: CardScenario) =>
+  `${s.name}: when ${s.situation}, ${s.good}${s.bad ? ` (never: ${s.bad})` : ''}`;
+
 /**
- * Replay a change to a card's teaching and keep each of the card's scenarios' result: a scenario the
- * replay names as broken failed, every other passed. Whether the change is adopted.
+ * Replay a change to a card's teaching and keep each of the card's scenarios' result: a scenario fails
+ * where the teaching as the change leaves it no longer says what its good use needs, or where the
+ * model's replay names it broken. The change is adopted only where it improves the card: no scenario
+ * that held before fails after it, the model breaks no good case, and it fixes a past failure or makes
+ * a scenario hold that failed before. Whether it is adopted.
  */
 async function replayOnCard(
   projectId: string,
   replay: Replayer,
-  card: { id: string; scenarios: readonly string[] } | null,
+  card: CardText | null,
+  teaching: { before: string; after: string } | null,
   input: ReplayInput,
   change: string,
 ): Promise<boolean> {
-  const withScenarios = card ? { ...input, goods: [...card.scenarios, ...input.goods] } : input;
+  const scenarios = card?.scenarios ?? [];
+  const withScenarios = { ...input, goods: [...scenarios.map(goodCase), ...input.goods] };
   const answer = await replay(projectId, withScenarios);
-  if (answer && card && card.scenarios.length > 0) {
+  const verdict = replayChange(scenarios, teaching?.before ?? '', teaching?.after ?? '');
+  const brokenBy = (name: string) => answer?.broken.find((b) => b.includes(name));
+  if (card && scenarios.length > 0) {
     await recordScenarioRuns(
       card.id,
       change,
-      card.scenarios.map((scenario) => ({
-        scenario,
-        passed: !answer.broken.includes(scenario),
-        reason: answer.reason,
-      })),
+      verdict.after.map((run) => {
+        const broken = brokenBy(run.scenario);
+        return broken && run.passed
+          ? {
+              scenario: run.scenario,
+              passed: false,
+              reason: `the replay found it broken: ${broken}`,
+            }
+          : run;
+      }),
     );
   }
-  return adopts(answer, withScenarios);
+  if (verdict.regressed.length > 0) {
+    logger.info(
+      { projectId, card: card?.id, change, regressed: verdict.regressed },
+      'steward: a change to a card is not adopted, it fails a scenario that held',
+    );
+  }
+  const clean = answer !== null && answer.broken.length === 0;
+  const fixed = answer !== null && (withScenarios.failures.length === 0 || answer.fixed > 0);
+  return clean && improves(verdict, fixed);
 }
 
 async function foldHolding(
@@ -377,16 +424,17 @@ async function foldHolding(
       failures: l.failures,
       goods: await goodCases(projectId, l.number),
     };
-    if (!(await replayOnCard(projectId, j.replay, card, input, `${ref} fold`))) {
-      t.replayRefused += 1;
-      continue;
-    }
     const delta: CardDelta = {
       field: answer.field,
       op: answer.op,
       text: answer.text,
       ...(answer.op === 'update' && answer.replaces ? { replaces: answer.replaces } : {}),
     };
+    const teaching = { before: teachingOf(card), after: teachingOf(withDelta(card, delta)) };
+    if (!(await replayOnCard(projectId, j.replay, card, teaching, input, `${ref} fold`))) {
+      t.replayRefused += 1;
+      continue;
+    }
     const id = await proposeCardDelta(cardId, delta, { projectId, lesson: ref });
     const why = `Folded into card ${cardId} as a ${answer.field} (${answer.op}, delta ${id}): ${answer.reason}`;
     if (

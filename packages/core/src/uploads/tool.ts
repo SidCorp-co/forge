@@ -81,6 +81,7 @@ const CARDS = {
       'Sending projectId or the target at the top level: fetch takes only data { target, attachmentId }, and the attachment names its project.',
     family: 'issue-work',
     audience: ['run', 'master', 'person'],
+    scenarios: ['forge_uploads sent a projectId: ISS-602'],
   },
 } satisfies Record<'fetch', CapabilityCardBody>;
 

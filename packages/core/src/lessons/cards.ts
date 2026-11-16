@@ -65,5 +65,6 @@ export const LESSON_REST_CARDS = {
       'Asking a person which lesson wins, where raising the confusion and going on is the act.',
     family: 'knowledge',
     audience: ['master', 'run'],
+    scenarios: ['a confusion raised on a decided lesson: LESSON_CONFUSION_DECIDED'],
   },
 } satisfies Record<string, CapabilityCardBody>;

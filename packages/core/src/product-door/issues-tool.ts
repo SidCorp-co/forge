@@ -259,6 +259,7 @@ const CARDS = {
       'Sending a key in another shape (ISS602, #602): it is refused at /issue, not looked up.',
     family: 'product.status',
     audience: ['person'],
+    scenarios: ['an issue key sent as ISS602'],
   },
   create: {
     purpose: 'Files delivery work at draft, where the project’s master admits it.',

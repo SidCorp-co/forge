@@ -63,6 +63,7 @@ export const WORKFLOW_REST_CARDS = {
     redFlag: 'Editing the design to match the code instead of recording what the code does.',
     family: 'design',
     audience: ['run', 'master'],
+    scenarios: ['the design edited to match the code: ISS-145'],
   },
   'POST /api/projects/:id/workflows/:workflow/design/repins': {
     purpose: 'Re-pins every design resting on an approved base to its new revision, in one act.',

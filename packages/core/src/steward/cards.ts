@@ -35,6 +35,7 @@ export const STEWARD_REST_CARDS = {
       'Listing a refusal you already fixed by resending, or a probe you expected to be refused: the run closes failed.',
     family: 'debt',
     audience: ['run'],
+    scenarios: ['a refusal already fixed by a resend listed in done: the run closed failed'],
   },
   'POST /api/projects/:id/steward-acts/:actId/undo': {
     purpose: 'Reverses one act the steward made, through that act’s inverse door.',

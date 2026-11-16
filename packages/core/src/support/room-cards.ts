@@ -44,6 +44,7 @@ export const ROOM_ACT_CARDS = {
       'Picking the project from the message’s words alone, against its thread and sender: sid-desk filed mail-server work that sidcorp-mail owned.',
     family: 'room.message',
     audience: ['bot'],
+    scenarios: ['mail-server work filed under sid-desk from the words alone'],
   },
   asker: {
     purpose:
@@ -66,6 +67,7 @@ export const ROOM_ACT_CARDS = {
       'Reading a ruling alone: on 16/11 the owner’s “language per the setting” answered the post just above it on ePOD’s errors, and the bot took it for its own settings.',
     family: 'room.message',
     audience: ['bot'],
+    scenarios: ['a ruling read alone: “language per the setting” after the 02:18 post'],
   },
   member: {
     purpose:
@@ -92,6 +94,7 @@ export const ROOM_ACT_CARDS = {
       'Leaving the record empty: Forge-Communicate held no member on 16/11, so its bot answered the organization’s owner as a stranger.',
     family: 'room.record',
     audience: ['bot'],
+    scenarios: ['a member record left empty: the owner answered as a stranger'],
   },
   rule: {
     purpose:
@@ -116,6 +119,7 @@ export const ROOM_ACT_CARDS = {
       'Taking a ruling on the product for a channel rule: on 16/11 the owner’s language ruling was about ePOD’s errors, not the room.',
     family: 'room.record',
     audience: ['bot'],
+    scenarios: ['a ruling on the product taken for a channel rule'],
   },
   reply: {
     purpose:
@@ -141,6 +145,7 @@ export const ROOM_ACT_CARDS = {
       'Relaying “passed to the team, will report back” when the answer can be had now: ask the master in the turn and answer yourself.',
     family: 'room.answer',
     audience: ['bot'],
+    scenarios: ['a relay posted instead of the answer: “passed to the team, will report back”'],
   },
   silent: {
     purpose:
@@ -165,6 +170,7 @@ export const ROOM_ACT_CARDS = {
       'Posting in a thread another binding holds: in sid-email, sid-desk posted a failure line on sidcorp-mail’s request.',
     family: 'room.answer',
     audience: ['bot'],
+    scenarios: ['a failure line posted on a mail request another binding holds'],
   },
   thread: {
     purpose: 'Reads a thread so far, oldest first, each message with the id you cite it by.',
@@ -183,6 +189,7 @@ export const ROOM_ACT_CARDS = {
     redFlag: 'Asking a person to say again what the thread already holds.',
     family: 'room.message',
     audience: ['bot'],
+    scenarios: ['asking which of two the person meant when the thread said it'],
   },
   search: {
     purpose:
@@ -201,6 +208,7 @@ export const ROOM_ACT_CARDS = {
       'Saying the product does something no hit and no project document says, or answering without the hit’s cite.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['what the product does told with no hit cited'],
   },
   image: {
     purpose:
@@ -218,6 +226,7 @@ export const ROOM_ACT_CARDS = {
     redFlag: 'Asking the person to describe a screenshot you can read.',
     family: 'room.message',
     audience: ['bot'],
+    scenarios: ['one user, forty posts: instruction, error screenshot, new instruction'],
   },
   ask_master: {
     purpose:
@@ -250,6 +259,7 @@ export const ROOM_ACT_CARDS = {
       'Explaining grants or sending the owner to a screen instead of handing the act on: on 16/11 the bot told him to set ePOD’s language in Forge’s settings himself.',
     family: 'room.hand-on',
     audience: ['bot'],
+    scenarios: ['the owner told to set ePOD’s language in Forge’s settings himself'],
   },
   technical: {
     purpose:
@@ -272,6 +282,7 @@ export const ROOM_ACT_CARDS = {
       'Telling a user thread you lack a permission or wait on someone: 114 posts did that across the rooms from 01/11 to 15/11.',
     family: 'room.hand-on',
     audience: ['bot'],
+    scenarios: ['a missing grant told to the user thread: “I may not share the mailbox yet”'],
   },
   route: {
     purpose:
@@ -297,6 +308,7 @@ export const ROOM_ACT_CARDS = {
       'Posting the refusal code in the thread, or mentioning a member the channel does not list for that route.',
     family: 'room.hand-on',
     audience: ['bot'],
+    scenarios: ['a mention of a member the channel does not list: @phatpt'],
   },
   in_flight: {
     purpose:
@@ -315,6 +327,7 @@ export const ROOM_ACT_CARDS = {
       'Telling a thread work is done from memory or the thread’s own claims: AdminHub-Support was told on 12/11 that rules were live which were not built.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['MangoTee country rules told live on 12/11 that were not built'],
   },
   audit: {
     purpose:
@@ -333,7 +346,9 @@ export const ROOM_ACT_CARDS = {
       thread: THREAD,
       message: MESSAGE,
       failed: [{ line: 'no_ui_directions', why: 'told the owner to press the approve button' }],
-      missed: [{ door: 'support.member', why: 'answered who may approve without reading the member card' }],
+      missed: [
+        { door: 'support.member', why: 'answered who may approve without reading the member card' },
+      ],
     },
     // ISS-1250, release 0.4.0-dev.692 at 05:18Z: Forge-Communicate's reply verdicts read 7 replies,
     // 0 audited
@@ -341,6 +356,7 @@ export const ROOM_ACT_CARDS = {
       'Posting and moving on, or auditing with missed left out where the reply skipped an act: the first seven Forge-Communicate replies carried no verdict.',
     family: 'room.answer',
     audience: ['bot'],
+    scenarios: ['eight Forge-Communicate replies, none audited'],
   },
   guide: {
     purpose:
@@ -359,6 +375,7 @@ export const ROOM_ACT_CARDS = {
       'Answering a situation from what you recall of the guide, where the project keeps its own.',
     family: 'room.facts',
     audience: ['bot'],
+    scenarios: ['answering from the brief recalled instead of the room’s guide'],
   },
   ask_owner: {
     purpose:
@@ -383,6 +400,7 @@ export const ROOM_ACT_CARDS = {
       'Asking the owner what a record, a log or the code answers, or asking him again from another thread.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['an owner question asked in plain words, with options and a recommendation'],
   },
   answer_question: {
     purpose:
@@ -410,6 +428,7 @@ export const ROOM_ACT_CARDS = {
       'Filing the owner’s answer as a new request instead of recording it on the question he owed.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['the owner’s answer refused: his chat account linked to no Forge account'],
   },
   raise_owed: {
     purpose:
@@ -428,6 +447,7 @@ export const ROOM_ACT_CARDS = {
     redFlag: 'Raising one owed item twice, or without its options and your recommendation.',
     family: 'room.owner',
     audience: ['bot'],
+    scenarios: ['requests waiting on the owner in Activity, never put to him in chat'],
   },
   approve: {
     purpose:
@@ -446,6 +466,7 @@ export const ROOM_ACT_CARDS = {
       'Filing the owner’s approval as a new item: 16 of 79 records into the AdminHub projects were approvals of items already open.',
     family: 'room.consent',
     audience: ['bot'],
+    scenarios: ['the owner’s approvals filed as new feedback: FB-15..19 in thread BeK4G'],
   },
   promise: {
     purpose:
@@ -466,5 +487,6 @@ export const ROOM_ACT_CARDS = {
       'Posting a second result in a thread whose person waits on work recorded elsewhere: promise them instead.',
     family: 'room.live',
     audience: ['bot'],
+    scenarios: ['a second result posted where the person waits on work recorded elsewhere'],
   },
 } satisfies Partial<Record<SupportAction, CapabilityCardBody>>;
