@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
+import { actCard, mapLine } from './act-cards.js';
 import { operationsBrief } from './ops-prompt.js';
-import { agentOpening, grantsLine, SUPPORT_MAP, supportBrief, toolsLine } from './prompt.js';
-import {
-  ANSWER_THE_ASKER,
-  DONE_ONLY_WHEN_CHECKED,
-  linksOnWeb,
-  NO_PERMISSION_TALK,
-  roomConductLines,
-} from './room-conduct.js';
+import { agentOpening, grantsLine, SUPPORT_MAP_ACTS, supportBrief, toolsLine } from './prompt.js';
+import { linksOnWeb, ROOM_MAP_ACTS, roomConductLines } from './room-conduct.js';
+
+// ISS-1251: a map line is its act's card's lead situation, rendered; the card is the one text
+const NO_PERMISSION_TALK = mapLine('ask_master');
+const DONE_ONLY_WHEN_CHECKED = mapLine('releases');
+const ANSWER_THE_ASKER = mapLine('asker');
 
 // ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
 // what the agent is taught is the brief and that guide together
@@ -248,7 +248,7 @@ describe('every room agent brief carries the room conduct', () => {
     }
     expect(NO_PERMISSION_TALK).toContain('support.ask_master');
     expect(NO_PERMISSION_TALK).toContain('never send anyone, the owner included, to a page');
-    expect(NO_PERMISSION_TALK).toContain('A refusal from Forge is a problem to solve');
+    expect(actCard('ask_master').situations[1]?.do).toContain('a refusal is a problem to solve');
     // who is asking, and the thread around the ruling, are read through asker before acting on it
     expect(ANSWER_THE_ASKER).toContain('support.asker { thread, message }');
     expect(ANSWER_THE_ASKER).toContain('to the owner, the decision or result first');
@@ -264,9 +264,28 @@ describe('every room agent brief carries the room conduct', () => {
 // detail in the room agent's guide; every map line opens on the situation it is for.
 describe('the room brief is a map of situations', () => {
   it('opens each map and conduct line on its situation, and stays short', () => {
-    for (const m of SUPPORT_MAP) expect(m.line).toMatch(/^- When /);
-    for (const line of roomConductLines('http://w')) expect(line).toMatch(/^(When|After) /);
+    for (const line of [...SUPPORT_MAP_ACTS.map(mapLine), ...roomConductLines('http://w')]) {
+      expect(line).toMatch(/^- When [^:]+: /);
+    }
     expect(brief.length).toBeLessThan(5_000);
     expect(ROOM_AGENT_GUIDE.body).toContain('### Deciding each message');
+  });
+
+  // ISS-1251 (owner 2026-11-16, one capability, one card): the brief repeats no act's teaching
+  // beside its card; each map line is the card's lead situation, naming the act it reaches for, so
+  // a card's text change is the brief's change
+  it('renders each map line from the card of the act it names', () => {
+    for (const act of [...SUPPORT_MAP_ACTS, ...ROOM_MAP_ACTS]) {
+      const line = mapLine(act);
+      const [lead] = actCard(act).situations;
+      expect(line, act).toContain(`support.${act}`);
+      expect(line, act).toContain(lead?.when);
+      expect(brief, act).toContain(line);
+    }
+  });
+
+  it('carries the member record’s line, so a writer the record lacks is kept (ISS-1251 proof 1)', () => {
+    expect(brief).toContain(mapLine('member'));
+    expect(mapLine('member')).toContain('support.member { member, roles, message }');
   });
 });

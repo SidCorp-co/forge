@@ -1,6 +1,7 @@
 import { REPLY_RUBRIC_LINES, type ReplyRubricLine } from '@forge/contracts/support-reply-audit';
 import { describe, expect, it } from 'vitest';
-import { AUDIT_BRIEF_LINE, AUDIT_TOOL_TEXT } from './index.js';
+import { mapLine } from '../act-cards.js';
+import { AUDIT_TOOL_TEXT } from './index.js';
 import { type AuditedReply, judgeReply } from './judge.js';
 
 // @direct-test-of packages/core/src/support/reply-audit/judge.ts
@@ -129,6 +130,9 @@ describe('support.audit keeps the verdict on a reply the agent posted (ISS-1250)
 
   it('teaches the tool every rubric line from the one rubric, and the brief the step', () => {
     for (const line of REPLY_RUBRIC_LINES) expect(AUDIT_TOOL_TEXT).toContain(`${line} (`);
-    expect(AUDIT_BRIEF_LINE).toContain('support.audit');
+    // the brief's line is support.audit's card, rendered (ISS-1251)
+    expect(mapLine('audit')).toMatch(
+      /^- When you posted a reply: audit it at once with support\.audit /,
+    );
   });
 });
