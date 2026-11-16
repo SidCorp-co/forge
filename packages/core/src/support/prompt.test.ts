@@ -35,7 +35,9 @@ describe('the support brief states goals, and the consent a change waits on', ()
   });
 
   it('keeps the consent and the claim a change waits on, in the agent own words', () => {
-    expect(taught(brief)).toContain('Nothing runs and nothing is posted until agree cites their answer');
+    expect(taught(brief)).toContain(
+      'Nothing runs and nothing is posted until agree cites their answer',
+    );
     expect(taught(brief)).toContain('never claim it ran until agree says so');
     // ISS-1243 item 17: a filing asked for by its asker is agreed by the request itself.
     expect(taught(brief)).toContain(
@@ -190,7 +192,9 @@ describe('every room brief decides each message from its meaning and records it'
   ])('%s routes by the signals, gathers before asking, and records the decision', (_, text) => {
     expect(taught(text)).toContain('record that with support.decide, one per message');
     expect(taught(text)).toContain("its head's `routing` before any guess");
-    expect(taught(text)).toContain('When a message is vague: gather on your own first (decision gather');
+    expect(taught(text)).toContain(
+      'When a message is vague: gather on your own first (decision gather',
+    );
     expect(taught(text)).toContain(
       'ask the person one short question (decision ask) only once that is exhausted',
     );
@@ -293,9 +297,12 @@ describe('the room brief is a map of situations', () => {
     for (const door of ROOM_AGENT_GUIDE.doors ?? []) {
       expect(GUIDE, door).toContain(`### \`${door}\``);
       const act = door.replace(/^support\./, '') as Parameters<typeof actCard>[0];
-      for (const s of actCard(act).situations) expect(ROOM_AGENT_GUIDE.body, door).not.toContain(s.do);
+      for (const s of actCard(act).situations)
+        expect(ROOM_AGENT_GUIDE.body, door).not.toContain(s.do);
     }
-    expect(ROOM_AGENT_GUIDE.doors).toEqual(expect.arrayContaining(['support.decide', 'support.agree']));
+    expect(ROOM_AGENT_GUIDE.doors).toEqual(
+      expect.arrayContaining(['support.decide', 'support.agree']),
+    );
   });
 
   it('carries the member record’s line, so a writer the record lacks is kept (ISS-1251 proof 1)', () => {

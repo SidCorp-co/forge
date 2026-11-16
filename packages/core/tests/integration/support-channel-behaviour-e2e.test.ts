@@ -132,8 +132,12 @@ describe('REQ-77 BC-6: it replies when asked or told of a problem, and is silent
     // ISS-1251: the brief is a map naming the room agent's guide, which carries this detail
     expect(w.brief()).toContain('support.guide {}');
     const text = `${w.brief()}\n\n${servedGuideBody(ROOM_AGENT_GUIDE)}`;
-    expect(text).toContain('When a message asks you something or reports a problem: post one result');
-    expect(text).toContain('When a message is chatter or thanks, is for someone else (`to` others)');
+    expect(text).toContain(
+      'When a message asks you something or reports a problem: post one result',
+    );
+    expect(text).toContain(
+      'When a message is chatter or thanks, is for someone else (`to` others)',
+    );
     expect(text).toContain('`to` "others" marks one written for someone else');
     expect(text).toContain('`technicalAnswered` true one a Technical member already answered');
   });

@@ -237,7 +237,7 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     const opened = w.box.turns.map((t) => t.text).join('\n');
     expect(opened).toContain('support.guide {}');
     const briefed = `${opened}\n${servedGuideBody(ROOM_AGENT_GUIDE)}`;
-    expect(briefed).toContain("support.issues { project, key }");
+    expect(briefed).toContain('support.issues { project, key }');
     expect(briefed).toContain("a parked issue's `waiting` says who owes what");
   });
 });

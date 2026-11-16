@@ -149,7 +149,9 @@ describe('the room agent reads its guide: its organization’s where it keeps on
         FROM projects WHERE id = ${w.projectId}::uuid`);
     const kept = await guide();
     expect(kept).toMatchObject({ from: 'org', slug: 'room-agent-guide' });
-    expect(String(kept.body)).toMatch(/^When the owner rules, hand it on\.\n\n## The doors this guide acts through/);
+    expect(String(kept.body)).toMatch(
+      /^When the owner rules, hand it on\.\n\n## The doors this guide acts through/,
+    );
     expect(String(kept.body)).toContain('### `support.decide`');
   });
 });
