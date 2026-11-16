@@ -35,6 +35,12 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Send the edge with the create when the blocker is known; a second call leaves a gap an open issue can dispatch through.',
     ],
+    example: {
+      dependsOnId: '5b0c9a3e-7f21-4d8e-9a6b-2c1d4e5f6a7b',
+      kind: 'blocks',
+      reason: 'The reorder screen reads the order cache this issue adds.',
+    },
+    redFlag: 'Writing the order in prose (“after ISS-640”) instead of a blocks edge: prose gates nothing.',
     family: 'issue-order',
     audience: ['master', 'run'],
   }),
@@ -49,6 +55,18 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Search first and update the entry already held, rather than writing a second one beside it.',
     ],
+    example: {
+      projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
+      source: 'note',
+      sourceRef: 'order-cache-invalidation',
+      textContent: 'The order cache is cleared by the orders write path only; a direct SQL fix leaves it stale.',
+      type: 'fact',
+      scope: 'packages/core/src/orders',
+      recheckWhen: 'when the orders write path changes',
+    },
+    // forge, 2026-10-17..11-16: 41 of 86 writes refused, among them decisions in force
+    // (MEMORY_DECISION_NOT_MEMORY) and texts past the embedding window (MEMORY_TEXT_TOO_LONG)
+    redFlag: 'Writing a decision in force as memory, or a second entry beside the one already held.',
     family: 'memory',
     audience: ['master', 'run'],
   }),
@@ -74,6 +92,14 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'One entry per slug; injection decides whether it reaches every prompt, so keep always-on entries few and short.',
     ],
+    example: {
+      title: 'Reorder',
+      kind: 'glossary',
+      body: 'Placing a past order again with its lines and address.',
+      module: 'orders',
+      injection: 'on_demand',
+    },
+    redFlag: 'Marking an entry injection always for detail a prompt needs only on demand.',
     family: 'knowledge',
     audience: ['master', 'run'],
   }),
@@ -91,6 +117,16 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       },
     ],
     practice: ['Name the requirement and criteria it delivers where you already have them.'],
+    example: {
+      title: 'The reorder button reads the cache before an order is written',
+      description: 'A reorder right after checkout shows the order before the last one.',
+      priority: 'medium',
+      category: 'bug',
+      status: 'draft',
+    },
+    // forge, 2026-10-17..11-16: 25 of 318 creates refused; the orientation's watch is that `open`
+    // triages and dispatches it, and a feature never starts as an issue an agent filed
+    redFlag: 'Filing a feature or a user’s finding as an issue, where it starts as feedback.',
     family: 'issue-order',
     audience: ['master', 'run'],
   }),
@@ -104,6 +140,16 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       },
     ],
     practice: ['GET it first and send back the whole document with the baseRevision you read.'],
+    example: {
+      baseRevision: 2,
+      document: {
+        $schema: 'https://forge.sidcorp.co/schemas/policy-v1.json',
+        version: 1,
+        qa: 'self',
+        intake: { mode: 'auto' },
+      },
+    },
+    redFlag: 'Sending only the keys that change: the policy is written whole against the revision read.',
     family: 'setup',
     audience: ['master'],
   }),
@@ -143,6 +189,7 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     // GATES_WRITTEN_THROUGH_THEIR_DOOR, and the client learned the shape from a deliberately invalid write
     redFlag:
       'Sending a patch ({ base, patch } or only the keys that change), or gates changed in the document: refused CONFIG_WRITE_SHAPE and GATES_WRITTEN_THROUGH_THEIR_DOOR.',
+    example: { baseRevision: 7, document: { description: 'Storefront for the shop.' } },
     family: 'setup',
     audience: ['master', 'person'],
   }),
@@ -152,6 +199,12 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Treat a hit as point-in-time: an unverified one is a lead to check against the code, never a fact.',
     ],
+    example: {
+      projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
+      query: 'order cache invalidation',
+      topK: 5,
+    },
+    redFlag: 'Acting on an unverified hit as a fact without checking it against the code.',
     family: 'memory',
     audience: ['master', 'run', 'bot'],
   }),
@@ -176,7 +229,14 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         for: ['run'],
       },
     ],
-    practice: ['Verify the commit is on the target branch on the remote before you name it.'],
+    practice: [
+      'Verify the commit is on the target branch on the remote before you name it: after a squash merge that is the squash commit; work outside git names `landing` and no commit.',
+      'Name what you have (commit and target, landing, artifacts, a liveReading {url,status}); it is recorded as given with who said it, and a named commit is read against the repository as a reading, never a refusal.',
+    ],
+    example: { target: 'base', commit: 'c82e7d7c3a339c5035efea3bcbb8b6f45c9510ee' },
+    // issues/merge-correction.ts: MR 5162's merge stamped a closed issue with a commit over its real
+    // landing; forge, 2026-10-17..11-16: 75 of 677 stamps refused
+    redFlag: 'Stamping a commit that is not this issue’s own landing, such as the branch head before a squash.',
     family: 'issue-landing',
     audience: ['master', 'run'],
   }),
@@ -219,8 +279,17 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Say why in a comment first; closed means its criteria were met in scope.',
       'The status moves only here: `issues/<id> -X PATCH` writes fields, never the status.',
-      'One park waits on one fact: `awaitsDesign` beside `awaitsMerge`, or `about` off a `needs_info` park, is `NEEDS_NOT_APPLICABLE`; `about` beside either is `QUESTION_ABOUT_ON_MERGE_WAIT` or `QUESTION_ABOUT_ON_DESIGN_WAIT`; no `reason` or `waitingKind` is a 422.',
+      'A park takes reason and waitingKind on the one call (WAITING_KIND_REQUIRED, TRANSITION_REASON_REQUIRED); a move outside the lifecycle is ILLEGAL_TRANSITION, naming the legal ones.',
     ],
+    example: {
+      toStatus: 'needs_info',
+      reason: 'The owner decides whether a reorder keeps the old prices.',
+      waitingKind: 'needs_decision',
+      needs: 'Does a reorder keep the prices of the original order, or take today’s?',
+    },
+    // forge, 2026-10-17..11-16: 264 of 1,828 moves refused; a park naming another issue's landing
+    // is QUESTION_MERGE_IS_ORDERING, a blocks edge's job
+    redFlag: 'Parking an issue that waits on another issue’s landing, where a blocks edge orders it.',
     family: 'issue-landing',
     audience: ['master', 'run'],
   }),
@@ -249,6 +318,8 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       'An issue that builds the design is not dispatched until it is approved, so propose before filing the build.',
       'A design resting on another one is approved only once its base is approved at the revision it names.',
     ],
+    example: { workflowId: '3d2b8c4e-1a5f-4e7d-9b6c-0f1e2d3c4b5a', revision: 3, issue: 'ISS-640' },
+    redFlag: 'Filing or dispatching the build of a design before its revision is proposed and approved.',
     family: 'design',
     audience: ['master', 'run', 'person'],
   }),
@@ -290,6 +361,12 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     // and were refused FEEDBACK_TARGET_NOT_ONE; ISS-861: a guide sent clients to project_feedback.create
     redFlag:
       'Naming the target as its own field (screen: …, requirement: …) or naming two, or calling create: the action is submit, with one target { kind, ref }.',
+    example: {
+      kind: 'bug',
+      title: 'Reorder shows the order before the last one',
+      body: 'Right after checkout, Reorder on the order page lists the previous order’s lines.',
+      target: { kind: 'requirement', ref: 'REQ-12' },
+    },
     family: 'project-feedback',
     audience: ['master', 'run', 'bot', 'person'],
   }),
@@ -307,6 +384,16 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
       "A red you rate high stays the issue's to fix: it is recorded, and its RED_RATED_HIGH warning says so.",
     ],
     redFlag: 'A red rated high left as debt while the issue that met it lands.',
+    example: {
+      items: [
+        {
+          kind: 'simplify',
+          where: 'packages/core/src/orders/cache.ts:readOrder',
+          detail: 'Two cache reads repeat one query; one read would do.',
+          impact: { rating: 'low', type: 'logic', reason: 'One extra query per order page.' },
+        },
+      ],
+    },
     family: 'debt',
     audience: ['master', 'run'],
   }),
@@ -322,6 +409,12 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
     practice: [
       'Name an extra fix under Extra fixes:, or the issue that owns it where it is out of reach.',
     ],
+    example: {
+      body: 'Extra fixes: the order cache was not cleared on reorder; fixed in orders/cache.ts.',
+    },
+    // forge, 2026-10-17..11-16: 98 of 7,257 comments refused; a defect only mentioned in a comment is
+    // not discharged (CLAUDE.md, "A defect you see has a place")
+    redFlag: 'Mentioning a standalone defect only in a comment, where it belongs on the debt ledger.',
     family: 'issue-work',
     audience: ['master', 'run'],
   }),
