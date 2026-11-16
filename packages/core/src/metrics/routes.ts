@@ -6,6 +6,7 @@ import { doorCatalog } from '../lib/door-catalog.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { noQuery, zValidator } from '../middleware/zod-validator.js';
 import { requiresOnParam } from '../permissions/index.js';
+import { capabilitiesRoutes } from './capabilities.js';
 import { readDoorUse } from './door-use.js';
 import { projectHealth } from './health.js';
 import { readPiles } from './piles.js';
@@ -20,6 +21,7 @@ import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 export const projectMetricsRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectMetricsRoutes.use('/:id/metrics/*', requireAuth(), assertEmailVerified());
+projectMetricsRoutes.route('/', capabilitiesRoutes);
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -96,5 +98,5 @@ projectMetricsRoutes.get(
   zValidator('param', idParamSchema),
   requiresOnParam('project.read', 'id'),
   noQuery,
-  async (c) => c.json(await readPiles(c.req.valid('param').id)),
+  async (c) => c.json(await readPiles(c.req.valid('param').id, doorCatalog())),
 );

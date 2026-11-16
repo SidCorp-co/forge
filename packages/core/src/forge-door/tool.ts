@@ -173,6 +173,7 @@ const CARDS = {
     redFlag:
       'Working around a Forge defect in silence, so the next agent meets it again and nobody hears.',
     audience: ['bot', 'master', 'run', 'person'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
   door: {
     purpose: 'Tells the feature that owns a door or a piece of teaching that it failed you.',
@@ -201,6 +202,7 @@ const CARDS = {
     redFlag:
       'Giving up on a door, or guessing around it, without saying so: the feature never learns it failed.',
     audience: ['bot', 'master', 'run'],
+    changed: { on: '2026-11-16', by: 'ISS-1251' },
   },
 } satisfies Record<string, CapabilityCardBody>;
 

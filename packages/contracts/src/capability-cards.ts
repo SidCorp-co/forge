@@ -9,6 +9,9 @@ import { z } from "zod";
 export const CARD_AUDIENCES = ["bot", "master", "run", "person"] as const;
 export type CardAudience = (typeof CARD_AUDIENCES)[number];
 
+/** The most characters the Tier-0 map of one audience takes: a line per situation, "when X → door". */
+export const TIER0_MAP_MAX_CHARS = 2500;
+
 export const CARD_LIMITS = {
 	purpose: 160,
 	situation: 600,
@@ -52,6 +55,16 @@ export const capabilityCardSchema = z.strictObject({
 	/** The wrong way agents actually take; absent until one is seen. */
 	redFlag: line(CARD_LIMITS.redFlag).optional(),
 	audience: z.array(z.enum(CARD_AUDIENCES)).min(1),
+	/**
+	 * When the card's text last changed and the landing that changed it (`ISS-n`), written with the
+	 * change; the capabilities page reads a card's age from it.
+	 */
+	changed: z
+		.strictObject({
+			on: z.iso.date(),
+			by: z.string().regex(/^ISS-\d+$/, "the issue that landed the change, ISS-n"),
+		})
+		.optional(),
 	/** The replayable cases that prove an agent uses it right, by name; empty until one is written. */
 	scenarios: z.array(z.string().trim().min(1).max(120)).default([]),
 });

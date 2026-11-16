@@ -55,8 +55,10 @@ export interface DoorUseRow {
 	/** Its capability card: what teaches an agent when to reach for it; null where none is written. */
 	card: CapabilityCard | null;
 	calls: number;
-	/** Calls that did not end `ok` (refused, forbidden, not found, failed). */
+	/** Calls that did not end `ok`, and a room act's refusals its room recorded. */
 	refused: number;
+	/** `refused` by code: the log's result code (forbidden, not_found, error) or a room act's refusal code. */
+	refusedBy: Record<string, number>;
 	/** Calls by agent kind; a kind that made none is absent. */
 	byAgent: Record<DoorAgentKind, number>;
 	lastAt: string | null;
@@ -83,6 +85,14 @@ export interface DoorLessonAppliedRow {
 
 export const DOOR_USE_TOP = 5;
 
+/** One UTC day of the window: every logged call of the project that day, and those not `ok`. */
+export interface DoorUseDay {
+	/** `YYYY-MM-DD`. */
+	day: string;
+	calls: number;
+	refused: number;
+}
+
 export interface DoorUseView {
 	projectId: string;
 	window: { days: number; since: string; until: string };
@@ -90,6 +100,8 @@ export interface DoorUseView {
 	doors: DoorUseRow[];
 	/** The catalog's size, and how many of its doors no agent called in the window. */
 	totals: { doors: number; neverUsed: number; calls: number; taught: number };
+	/** Every day of the window, a day with no call included. */
+	days: DoorUseDay[];
 	/** Logged calls that name no door of the catalog (a retired tool, a route since removed), by name. */
 	unmatched: { door: string; calls: number }[];
 	reads: DoorReadRow[];
@@ -162,7 +174,12 @@ export const DOOR_REPORT_REFUSAL_STATUSES = {
 export const SKILL_ALWAYS_ON_MAX_CHARS = 1024;
 
 /** The learned and taught texts every prompt carries, each under its own cap (ISS-1251). */
-export const PILES = ["always_knowledge", "lessons_map", "skill_always_on"] as const;
+export const PILES = [
+	"always_knowledge",
+	"lessons_map",
+	"skill_always_on",
+	"tier0_map",
+] as const;
 export type Pile = (typeof PILES)[number];
 
 /**
@@ -171,7 +188,7 @@ export type Pile = (typeof PILES)[number];
  */
 export interface PileRow {
 	pile: Pile;
-	/** The pile's own name: `always-on knowledge`, `lessons map (runs)`, or the skill's name. */
+	/** The pile's own name: `always-on knowledge`, `lessons map (runs)`, `map (bot)`, or the skill's name. */
 	name: string;
 	/** Characters it takes in every prompt that carries it. */
 	size: number;

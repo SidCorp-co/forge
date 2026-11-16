@@ -3,7 +3,7 @@
 // builds it and the composition root hands it here, so a read model or another door counts and checks
 // against it without importing the MCP door, and nobody keeps a list of doors by hand.
 
-import type { CapabilityCard } from '@forge/contracts/capability-cards';
+import type { CapabilityCard, CardAudience } from '@forge/contracts/capability-cards';
 import type { DoorSurface } from '@forge/contracts/door-use';
 import { portSlot } from './port-slot.js';
 
@@ -29,3 +29,18 @@ export interface DoorCatalog {
 const slot = portSlot<{ doorCatalog(): DoorCatalog }>('door-catalog', 'provideDoorCatalog');
 export const provideDoorCatalog = slot.provide;
 export const doorCatalog = (): DoorCatalog => slot.get().doorCatalog();
+
+/**
+ * The Tier-0 map of one audience (ISS-1251): one line per situation of every card that teaches it,
+ * "when X → door", which an agent carries every turn and opens the card from when the situation
+ * arises. It is never cut to fit: a map past `TIER0_MAP_MAX_CHARS` is a pile due for merging.
+ */
+export function tier0Map(doors: readonly CatalogDoor[], audience: CardAudience): string {
+  return doors
+    .flatMap((d) =>
+      d.card?.audience.includes(audience)
+        ? d.card.situations.map((s) => `- when ${s.when} → ${d.id}`)
+        : [],
+    )
+    .join('\n');
+}

@@ -5,17 +5,21 @@
  * that owns it or retiring it, never for a cut: this read says which are due, and by how much.
  */
 
+import { type CardAudience, TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
 import { type PileRow, type PilesView, SKILL_ALWAYS_ON_MAX_CHARS } from '@forge/contracts/door-use';
 import { ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { selectAlwaysInjectFromKnowledge, selectLessonEntries } from '../knowledge/index.js';
 import { lessonsMapOverflow, restLessonDoors } from '../lessons/index.js';
+import { type DoorCatalog, tier0Map } from '../lib/door-catalog.js';
 
 /** The audience whose map is the widest: a run, which builds issues and works in any area. */
 const RUN_AUDIENCE = { produces: ['issue'] as const, area: 'any' as const };
 
-export async function readPiles(projectId: string): Promise<PilesView> {
+const MAP_AUDIENCES: readonly CardAudience[] = ['bot', 'master', 'run'];
+
+export async function readPiles(projectId: string, catalog: DoorCatalog): Promise<PilesView> {
   const [always, lessons, skills] = await Promise.all([
     selectAlwaysInjectFromKnowledge(projectId),
     selectLessonEntries(projectId),
@@ -45,6 +49,19 @@ export async function readPiles(projectId: string): Promise<PilesView> {
       carried: map.named,
       over: map.named < map.reach,
     },
+    ...MAP_AUDIENCES.map((audience) => {
+      const map = tier0Map(catalog.doors, audience);
+      const lines = map ? map.split('\n').length : 0;
+      return {
+        pile: 'tier0_map' as const,
+        name: `map (${audience})`,
+        size: map.length,
+        cap: TIER0_MAP_MAX_CHARS,
+        items: lines,
+        carried: lines,
+        over: map.length > TIER0_MAP_MAX_CHARS,
+      };
+    }),
     ...skills.map((s) => ({
       pile: 'skill_always_on' as const,
       name: s.name,

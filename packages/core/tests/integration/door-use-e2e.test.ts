@@ -150,6 +150,7 @@ describe("a project's door use counts each call against the catalog, the never-c
       surface: 'mcp',
       calls: 2,
       refused: 1,
+      refusedBy: { forbidden: 1 },
       byAgent: { 'agent-account': 1, box: 1 },
     });
     expect(door(view, 'support.member').feature).toContain('forge_support');
@@ -163,6 +164,14 @@ describe("a project's door use counts each call against the catalog, the never-c
     expect(view.totals.neverUsed).toBeGreaterThan(0);
     expect(view.totals.doors).toBe(view.doors.length);
     expect(view.unmatched).toEqual([{ door: 'forge_gone.old', calls: 1 }]);
+    // every day of the window, today holding the planted calls of this project
+    expect(view.days).toHaveLength(31);
+    expect(view.days.at(-1)).toMatchObject({
+      day: new Date().toISOString().slice(0, 10),
+      calls: 4,
+      refused: 1,
+    });
+    expect(view.days.slice(0, -1).every((d) => d.calls === 0)).toBe(true);
     expect(view.limits.length).toBeGreaterThan(0);
   });
 
@@ -317,6 +326,11 @@ describe('each pile a prompt carries reads against its cap', () => {
       over: false,
     });
     expect(piles.find((p) => p.pile === 'lessons_map')).toMatchObject({ cap: 1200, items: 0 });
+    // the Tier-0 map of each audience, rendered from the cards that teach it
+    const master = piles.find((p) => p.name === 'map (master)');
+    expect(master).toMatchObject({ pile: 'tier0_map', cap: 2500 });
+    expect(master?.items).toBeGreaterThanOrEqual(15);
+    expect(piles.find((p) => p.name === 'map (bot)')?.items).toBeGreaterThan(0);
     expect(piles.find((p) => p.pile === 'skill_always_on' && p.size === 1100)).toMatchObject({
       cap: 1024,
       over: true,

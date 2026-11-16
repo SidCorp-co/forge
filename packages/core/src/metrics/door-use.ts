@@ -11,6 +11,7 @@ import {
   DOOR_USE_TOP,
   type DoorLessonAppliedRow,
   type DoorReadRow,
+  type DoorUseDay,
   type DoorUseQuery,
   type DoorUseRow,
   type DoorUseView,
@@ -58,23 +59,53 @@ export type CallRow = {
   tool: string;
   action: string | null;
   agent: string;
+  /** How the call ended: `ok`, or the code the log keeps (forbidden, not_found, error, rate_limited). */
+  code: string;
   calls: number;
-  refused: number;
   last_at: Date | string | null;
 };
 
+/** A refused room act's code, as the room's record keeps it (`support_actions` kind `refused`). */
+export type ActRefusalRow = { act: string; code: string; n: number };
+
+/** The logged calls of one project in the window: named it, or made on a credential fenced to it alone. */
+const scopedCalls = (projectId: string, since: Date) => sql`
+  FROM mcp_audit_log a
+  LEFT JOIN personal_access_tokens t ON t.id = a.token_id
+  LEFT JOIN users u ON u.id = a.user_id
+  WHERE a.created_at >= ${since.toISOString()}::timestamptz AND a.tool <> 'rate_limit'
+    AND COALESCE(a.project_id, t.bound_project_id,
+      CASE WHEN cardinality(t.project_ids) = 1 THEN t.project_ids[1] END) = ${projectId}::uuid`;
+
 async function callRows(projectId: string, since: Date): Promise<CallRow[]> {
   const rows = await db.execute(sql`
-    SELECT a.tool, a.action, ${tokenAgent()} AS agent, count(*)::int AS calls,
-      (count(*) FILTER (WHERE a.result_code <> 'ok'))::int AS refused, max(a.created_at) AS last_at
-    FROM mcp_audit_log a
-    LEFT JOIN personal_access_tokens t ON t.id = a.token_id
-    LEFT JOIN users u ON u.id = a.user_id
-    WHERE a.created_at >= ${since.toISOString()}::timestamptz AND a.tool <> 'rate_limit'
-      AND COALESCE(a.project_id, t.bound_project_id,
-        CASE WHEN cardinality(t.project_ids) = 1 THEN t.project_ids[1] END) = ${projectId}::uuid
-    GROUP BY 1, 2, 3`);
+    SELECT a.tool, a.action, ${tokenAgent()} AS agent, a.result_code AS code, count(*)::int AS calls,
+      max(a.created_at) AS last_at
+    ${scopedCalls(projectId, since)}
+    GROUP BY 1, 2, 3, 4`);
   return rows as unknown as CallRow[];
+}
+
+/** Each refused room act by its code: a refusal a room agent met is answered `ok` on the MCP log. */
+async function actRefusals(projectId: string, since: Date): Promise<ActRefusalRow[]> {
+  return (await db.execute(sql`
+    SELECT x.tool AS act, COALESCE(x.output ->> 'code', 'refused') AS code, count(*)::int AS n
+    FROM support_actions x
+    WHERE x.project_id = ${projectId}::uuid AND x.kind = 'refused' AND x.tool IS NOT NULL
+      AND x.created_at >= ${since.toISOString()}::timestamptz
+    GROUP BY 1, 2`)) as unknown as ActRefusalRow[];
+}
+
+/** Every UTC day of the window with its calls and refusals, a day with none included. */
+async function dayRows(projectId: string, since: Date, now: Date): Promise<DoorUseDay[]> {
+  return (await db.execute(sql`
+    SELECT to_char(d.day, 'YYYY-MM-DD') AS day, count(c.code)::int AS calls,
+      (count(c.code) FILTER (WHERE c.code <> 'ok'))::int AS refused
+    FROM generate_series(${since.toISOString().slice(0, 10)}::date, ${now.toISOString().slice(0, 10)}::date,
+      interval '1 day') AS d(day)
+    LEFT JOIN (SELECT (a.created_at AT TIME ZONE 'UTC')::date AS day, a.result_code AS code
+      ${scopedCalls(projectId, since)}) c ON c.day = d.day::date
+    GROUP BY d.day ORDER BY d.day`)) as unknown as DoorUseDay[];
 }
 
 const iso = (at: Date | string | null) =>
@@ -83,6 +114,7 @@ const iso = (at: Date | string | null) =>
 const EMPTY = () => ({
   calls: 0,
   refused: 0,
+  refusedBy: {} as Record<string, number>,
   byAgent: {} as Record<string, number>,
   lastAt: null as string | null,
 });
@@ -91,6 +123,7 @@ const EMPTY = () => ({
 export function tallyDoors(
   catalog: DoorCatalog,
   rows: readonly CallRow[],
+  refusals: readonly ActRefusalRow[] = [],
 ): { doors: DoorUseRow[]; unmatched: { door: string; calls: number }[] } {
   const doors = new Map<string, DoorUseRow>(
     catalog.doors.map((d) => [
@@ -115,10 +148,14 @@ export function tallyDoors(
       continue;
     }
     door.calls += row.calls;
-    door.refused += row.refused;
+    if (row.code !== 'ok') refuse(door, row.code, row.calls);
     door.byAgent[row.agent] = (door.byAgent[row.agent] ?? 0) + row.calls;
     const last = iso(row.last_at);
     if (last && (!door.lastAt || last > door.lastAt)) door.lastAt = last;
+  }
+  for (const r of refusals) {
+    const door = doors.get(`support.${r.act}`);
+    if (door) refuse(door, r.code, r.n);
   }
   return {
     doors: [...doors.values()].sort((a, b) => b.calls - a.calls || a.door.localeCompare(b.door)),
@@ -126,6 +163,11 @@ export function tallyDoors(
       .map(([door, calls]) => ({ door, calls }))
       .sort((a, b) => b.calls - a.calls || a.door.localeCompare(b.door)),
   };
+}
+
+function refuse(door: DoorUseRow, code: string, n: number): void {
+  door.refused += n;
+  door.refusedBy[code] = (door.refusedBy[code] ?? 0) + n;
 }
 
 type ReachRow = { agent: string; kind: string; how: string; ref: string; n: number };
@@ -183,12 +225,14 @@ export async function readDoorUse(
   now: Date = new Date(),
 ): Promise<DoorUseView> {
   const since = new Date(now.getTime() - query.days * DAY_MS);
-  const [calls, reads, lessonsApplied] = await Promise.all([
+  const [calls, refusals, days, reads, lessonsApplied] = await Promise.all([
     callRows(projectId, since),
+    actRefusals(projectId, since),
+    dayRows(projectId, since, now),
     readRows(projectId, since),
     lessonRows(projectId, since),
   ]);
-  const { doors, unmatched } = tallyDoors(catalog, calls);
+  const { doors, unmatched } = tallyDoors(catalog, calls, refusals);
   const shown = doors.filter(
     (d) =>
       (!query.surface || d.surface === query.surface) &&
@@ -204,6 +248,7 @@ export async function readDoorUse(
       calls: doors.reduce((n, d) => n + d.calls, 0),
       taught: doors.filter((d) => d.card !== null).length,
     },
+    days,
     unmatched,
     reads,
     lessonsApplied,

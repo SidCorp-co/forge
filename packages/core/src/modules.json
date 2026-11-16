@@ -820,6 +820,8 @@
       "reads": [
         "activityLog",
         "agentSessions",
+        "feedback",
+        "feedbackOccurrences",
         "issueStepContexts",
         "issues",
         "jobs",
@@ -832,6 +834,7 @@
         "runContextReaches",
         "runnerEvents",
         "skills",
+        "supportActions",
         "supportRooms",
         "usageRecords",
         "users"
