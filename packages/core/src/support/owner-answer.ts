@@ -3,7 +3,7 @@
 // asker's thread, marked the answer to that question, and is written on the issue and the Forge
 // question the ask named (ISS-871). Nobody else's message answers it, whatever it says.
 
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { resolveSpeaker } from '../assistant/index.js';
 import { postIssueNotice } from '../comments/index.js';
 import { appendMessagesIn } from '../conversations/index.js';
@@ -22,16 +22,24 @@ import { type ActionRow, insertAction, type RoomRow, roomById } from './store.js
 import { roomAuth, scrubbedForRoom } from './thread.js';
 
 const ANSWER = 'owner_answer';
+/**
+ * An owed item the agent put to the owner (`owner-owed-raise.ts:raiseOwed`, ISS-1243 item 23): a post
+ * in the technical channel waiting on his reply as an ask does, matched by the same rule. His reply
+ * reaches the owed- thread as his message, and the agent settles it as him from there.
+ */
+const RAISE_OWED = 'raise_owed';
 
-/** The asks posted in a room of the technical channel that nothing has answered yet, oldest first. */
+/** The asks and owed raises posted in a room of the technical channel his reply has not answered yet, oldest first. */
 async function openAsksAt(rid: string): Promise<ActionRow[]> {
   const asks = await db
     .select()
     .from(supportActions)
     .where(
       and(
-        eq(supportActions.kind, 'routed'),
-        eq(supportActions.tool, ASK),
+        or(
+          and(eq(supportActions.kind, 'routed'), eq(supportActions.tool, ASK)),
+          and(eq(supportActions.kind, 'operation'), eq(supportActions.tool, RAISE_OWED)),
+        ),
         sql`${supportActions.output} ->> 'rid' = ${rid}`,
       ),
     )
@@ -80,7 +88,7 @@ export async function settleOwnerAnswer(input: {
   // where it was written: the project's thread of the shared room, or the direct message itself
   const here = open.filter((a) => {
     const at = a.output as AskedAt;
-    return at.thread === null || at.thread === thread;
+    return at.channel === 'dm' || at.thread === thread;
   });
   const rooms = new Map<string, RoomRow>();
   const his: ActionRow[] = [];
@@ -116,7 +124,9 @@ async function tellSeveralWait(
   asks: readonly ActionRow[],
   message: string,
 ): Promise<void> {
-  const questions = asks.map((a) => `"${(a.input as AskInput).question}"`).join('; ');
+  const questions = asks
+    .map((a) => `"${(a.input as AskInput).question ?? `the item put to him from ${a.thread}`}"`)
+    .join('; ');
   for (const ask of asks) {
     const room = rooms.get(ask.roomId) as RoomRow;
     await insertAction({

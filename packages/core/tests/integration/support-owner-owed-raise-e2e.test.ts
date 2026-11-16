@@ -1,6 +1,7 @@
 /**
  * @direct-test-of packages/core/src/support/owner-owed-raise.ts
  * @direct-test-of packages/core/src/support/index.ts
+ * @direct-test-of packages/core/src/support/owner-answer.ts
  */
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -21,7 +22,8 @@ import { code } from '../helpers/support-channel.js';
 import type { StandInRocketChat } from '../helpers/support-chat-server.js';
 
 // ISS-1243 item 23 (owner, 2026-11-16): every decision his Needs you lists is handed to the
-// project's agent once, and the agent puts it to him in the technical channel once, nowhere else.
+// project's agent once, and the agent puts it to him in the technical channel once, nowhere else;
+// his reply there reaches the agent in the item's thread (ISS-1246).
 
 const w = new AgentWorld();
 let chat: StandInRocketChat;
@@ -111,5 +113,24 @@ describe('ISS-1243 item 23: what waits on the owner, raised by the agent once pe
     // a second sweep hands nothing it handed before
     expect((await handOwnerOwed(room)).handed).toBe(0);
     expect(chat.linesIn(chat.rid).some((l) => l.text.includes('size M'))).toBe(false);
+
+    // ISS-1246: his reply to the raise in the direct message reaches the owed- thread as his own
+    // message, to settle as him; bob's reply there reaches nothing
+    const reached: { from: unknown; text: string }[] = [];
+    await w.settleWarm();
+    w.box.model = async (turn) => {
+      for (const m of turn.messages) if (m.thread === thread) reached.push(m);
+    };
+    await chat.sayIn('D-alice', chat.bob, 'Có, ship luôn', dm[0]?.id);
+    await chat.sayIn('D-alice', chat.alice, 'Có, ship trước khi sync');
+    await expect
+      .poll(() => reached.some((m) => m.text === 'Có, ship trước khi sync'), { timeout: 15_000 })
+      .toBe(true);
+    expect(reached.some((m) => m.text === 'Có, ship luôn')).toBe(false);
+    const taken = await rows<{ actor_key: string }>(sql`
+      SELECT actor_key FROM support_actions
+       WHERE room_id = ${room.id}::uuid AND thread = ${thread} AND kind = 'message_in'
+         AND actor_kind = 'member'`);
+    expect(taken.map((t) => t.actor_key)).toEqual([OWNER_ID]);
   });
 });
