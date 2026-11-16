@@ -238,7 +238,7 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
       expect(text).not.toMatch(/by a person|a person decides/);
     }
     // the map says when the lesson applies and its gist (ISS-1251); the agent reads it whole by its slug
-    expect(assistant).toContain(`L-${n} [all work]: Name the ward on every reminder.`);
+    expect(assistant).toContain(`L-${n} [any work]: Name the ward on every reminder.`);
     expect(preamble).not.toMatch(/Project rules[\s\S]*lesson-/);
     // nor named twice: the guide index leaves the lesson to the lessons map
     expect(preamble).not.toContain(`- lesson-${n}`);
@@ -273,7 +273,7 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
     expect(ok(await say('member', 'GET', at(`/knowledge/lesson-${n}`)))).toMatchObject({
       injection: 'none',
     });
-    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`lesson-${n} [`);
+    expect(await block({ produces: ['issue'], area: 'any' })).not.toContain(`lesson-${n}, when`);
   });
 
   it('scopes by area and by kind of item', async () => {
@@ -291,10 +291,10 @@ describe('an approved lesson reaches every agent in its scope by retrieval, and 
     expect(await block({ produces: ['issue'], area: w.areaB })).not.toContain(`L-${billing}`);
     expect(await block({ produces: ['issue'], area: null })).not.toContain(`L-${reqs} `);
     expect(await block({ produces: ['requirement'], area: null })).toContain(
-      `L-${reqs} [requirements]`,
+      `L-${reqs} [writing requirements]`,
     );
     expect(await block({ produces: ['issue'], area: 'any' })).toContain(
-      `L-${billing} [area Billing]: Show totals with tax.`,
+      `L-${billing} [working in Billing]: Show totals with tax.`,
     );
   });
 

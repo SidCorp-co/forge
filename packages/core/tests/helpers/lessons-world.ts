@@ -235,7 +235,8 @@ export async function ownProject(): Promise<{ id: string; stewardId: string }> {
 
 /**
  * What an agent of this audience learns: the lessons map its prompt carries, then each lesson the map
- * names as the agent retrieves it, through the project's knowledge door (`L-<n> [scope]: sentence`).
+ * names as the agent retrieves it, through the project's knowledge door: `L-<n> [<when>]: sentence`,
+ * labelled with the situation the map's line gives it.
  * Empty where no lesson reaches it.
  */
 export async function block(audience: { produces: string[]; area: string | null | 'any' }) {
@@ -243,7 +244,7 @@ export async function block(audience: { produces: string[]; area: string | null 
   const doors = { fetch: 'the read door', list: 'the list door', raise: 'test' };
   const map = (await lessonsMapFor(w.projectId, { ...audience, ...doors } as never, 2)) ?? '';
   const read: string[] = [];
-  for (const [, slug, n, label] of map.matchAll(/(lesson-(\d+)) \[([^\]]+)\]/g)) {
+  for (const [, slug, n, label] of map.matchAll(/^(lesson-(\d+)), when ([^:\n]+): /gm)) {
     const got = await say('member', 'GET', at(`/knowledge/${slug}`));
     if (got.status !== 200) throw new Error(`${slug} is named and not readable: ${got.status}`);
     read.push(`L-${n} [${label}]: ${got.json.body}`);
