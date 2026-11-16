@@ -126,7 +126,6 @@ export const UNCARDED_DOORS: Readonly<Record<keyof typeof UNCARDED_WHY, readonly
     'DELETE /api/projects/:id/feedback/:fb/reporter-data',
     'POST /api/projects/:id/feedback/server-keys',
     'DELETE /api/projects/:id/feedback/server-keys/:keyId',
-    'POST /api/projects/:id/feedback/similar',
     'POST /api/projects/:id/intake-drafts/:ref/keep',
     'POST /api/projects/:id/jobs',
     'PUT /api/projects/:id/master-charter',

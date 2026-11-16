@@ -36,6 +36,15 @@ export const PRODUCT_SCENARIOS: readonly CardScenario[] = [
     teaches: [/low, medium or high/i, /about to mark its merge/i],
   },
   {
+    name: 'FB-546 filed beside FB-500, which already reported NO_PULL_REQUEST',
+    card: 'POST /api/projects/:id/feedback/similar',
+    source: `FB-546, routed a duplicate of FB-500; ${WINDOW}: 13 calls by box credentials`,
+    situation: 'A run was refused NO_PULL_REQUEST by merge-pull-request and is about to file it',
+    bad: 'FB-546 was filed though FB-500 already reported the same refusal',
+    good: 'send the draft to feedback/similar first, and comment on FB-500 instead of filing',
+    teaches: [/before you file/i, /comment on that item instead of filing a second/i],
+  },
+  {
     name: 'feedback verified from the record, saying nothing of what was run: ISS-311',
     card: 'POST /api/projects/:id/feedback/:fb/verify',
     source: 'ISS-311: verified items said nothing of what was done and seen on which version',

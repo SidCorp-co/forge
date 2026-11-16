@@ -384,6 +384,11 @@
     "on": "2026-11-16",
     "by": "ISS-1251"
   },
+  "POST /api/projects/:id/feedback/similar": {
+    "hash": "3dd9269ed9db4578",
+    "on": "2026-11-16",
+    "by": "ISS-1251"
+  },
   "POST /api/projects/:id/find": {
     "hash": "b69a35736426c1e9",
     "on": "2026-11-16",

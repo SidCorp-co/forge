@@ -1,5 +1,6 @@
 // The capability cards of the feedback doors a project's master calls over REST to triage, move and
-// settle what its users report (ISS-1251), beside their routes (`routes.ts`), keyed by the door as the
+// settle what its users report, and a master or run reads a draft finding against before filing it
+// (ISS-1251), beside their routes (`routes.ts`), keyed by the door as the
 // published contract lists it and built into the door catalog by `mcp/rest-cards.ts`. Filing, asking
 // the reporter and attaching are forge_project_feedback's, so their REST twins carry no second card.
 // Written from the feedback-triage guide, the owner's rulings that a master triages and confirms
@@ -8,6 +9,34 @@
 import type { CapabilityCardBody } from '@forge/contracts/capability-cards';
 
 export const FEEDBACK_REST_CARDS = {
+  'POST /api/projects/:id/feedback/similar': {
+    purpose:
+      'Reads the filed feedback items most like a draft not yet filed, so a finding joins the item already holding it.',
+    situations: [
+      {
+        when: 'you are about to file a finding as feedback',
+        do: 'send its title and body here before you file, and where a hit already reports it, comment on that item instead of filing a second',
+        watch:
+          'a status of not_embedded, provider_not_configured, failed or withheld_by_policy says nothing was compared, never that none is similar',
+      },
+    ],
+    practice: [
+      'Read the hits’ titles and keys; one naming the same refusal or screen is the same finding.',
+      'Nothing is filed or written by this read.',
+    ],
+    example: {
+      title:
+        'merge-pull-request refuses NO_PULL_REQUEST without saying the MR title must lead with the issue key',
+      body: 'An MR titled for the issue was refused NO_PULL_REQUEST.',
+    },
+    // forge, 2026-10-17..11-16: 13 calls by box credentials, which uncarded-doors.ts had declared a
+    // person's door; FB-546 was filed beside FB-500 and routed as its duplicate
+    redFlag:
+      'Filing a finding without reading what is already filed, so its owner triages it twice.',
+    family: 'project-feedback',
+    audience: ['master', 'run'],
+    scenarios: ['FB-546 filed beside FB-500, which already reported NO_PULL_REQUEST'],
+  },
   'POST /api/projects/:id/feedback/:fb/triage': {
     purpose:
       'Triages a feedback item in one act: the checklist’s answers and the route that carries it.',
