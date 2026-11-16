@@ -1,1 +1,1 @@
-**A room agent's question to the owner is posted only in the project's technical channel.** His reply there, by his chat account, reaches the asking thread and the question it names; the owner's room and its daily questions thread no longer take asks.
+**A room agent's question to the owner is posted only in the project's technical channel.** His reply there reaches the asking thread and the question it names; the owner's room and its daily questions thread no longer take asks.

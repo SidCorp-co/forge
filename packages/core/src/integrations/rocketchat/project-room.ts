@@ -10,7 +10,7 @@ interface RoomBinding {
  * The room this project's messages go to, or null when nobody has bound one. A support group is
  * never it: the people there are a product's users, not the team a parked question is for; nor is an
  * operations room, which its own session answers; nor a channel agent's room, whose agent is handed
- * the question itself and asks it, if at all, in the owner's room (ISS-873).
+ * the question itself and asks it, if at all, in the project's technical channel (ISS-873, ISS-1246).
  */
 export async function roomForProject(projectId: string): Promise<RoomBinding | null> {
   const bindings = await activeRocketChatBinding(projectId).then((p) => (p ? [p] : []));

@@ -180,8 +180,9 @@ function roomOverrideRefusals(
 }
 
 /**
- * The owner's room is a channel agent's (ISS-872): the one group it asks the owner in, so it is one
- * of the groups the binding answers, and a support group's block names none.
+ * The owner's room is a channel agent's (ISS-872): the one group where it acts as the owner, with his
+ * consent, so it is one of the groups the binding answers, and a support group's block names none.
+ * It takes no question for the owner: every ask goes to the technical channel (ISS-1246).
  */
 function ownerRoomRefusals(
   config: Record<string, unknown>,
@@ -195,7 +196,7 @@ function ownerRoomRefusals(
         code: 'SUPPORT_OWNER_ROOM_UNKNOWN',
         path: '/support/ownerRoom',
         detail:
-          "the owner's room is a channel agent's, where it asks the owner: move this binding's block from `support` to `agent`, or drop ownerRoom",
+          "the owner's room is a channel agent's, where it acts as the owner: move this binding's block from `support` to `agent`, or drop ownerRoom",
       },
     ];
   }
@@ -205,7 +206,7 @@ function ownerRoomRefusals(
     {
       code: 'SUPPORT_OWNER_ROOM_UNKNOWN',
       path: '/agent/ownerRoom',
-      detail: `the owner's room ${room} is no group this binding's agent answers, so a question for the owner would go nowhere; name one of ${held.answered.join(', ') || 'the groups in `rids`'}`,
+      detail: `the owner's room ${room} is no group this binding's agent answers, so the owner's consent would be taken nowhere; name one of ${held.answered.join(', ') || 'the groups in `rids`'}`,
     },
   ];
 }
