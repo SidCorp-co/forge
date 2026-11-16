@@ -26,10 +26,11 @@ import {
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { issueArchiveSide } from './archive.js';
 import { buildCreatedByCondition, buildOriginCondition } from './creator.js';
+import { issueIdsFound } from './find-port.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 import { REST_ISSUE_LIST_COLUMNS } from './list-projection.js';
-import { holdsOpenHumanQuestion, issueIdsFound, usageSessionMatch } from './ports.js';
+import { holdsOpenHumanQuestion, usageSessionMatch } from './ports.js';
 import { matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, type IssueSort, issueTiebreak } from './sort.js';
 

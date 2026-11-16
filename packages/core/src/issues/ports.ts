@@ -114,12 +114,6 @@ type MergeCheckOf = { issueId: string; projectId: string; report: MergeCheckRepo
 
 interface IssuePorts {
   projectCreatorOf: (projectId: string) => Promise<string | null>;
-  /**
-   * The ids of the project's issues the find door's issue filter keeps for `q`, in its order
-   * (`find/issue-filter.ts`, ISS-1256): the issue list's text filter, a read model the kernel may
-   * not import.
-   */
-  issueIdsFound: (projectId: string, q: string) => Promise<string[]>;
   settleOpenQuestions: (
     tx: Tx,
     args: {
@@ -438,7 +432,6 @@ const issuePorts = slot.get;
 const { port } = slot;
 
 export const projectCreatorOf = port('projectCreatorOf');
-export const issueIdsFound = port('issueIdsFound');
 
 export const settleOpenQuestions = port('settleOpenQuestions');
 export const masterServingOf = port('masterServingOf');

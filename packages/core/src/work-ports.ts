@@ -67,6 +67,7 @@ import {
   provideCleanupLandingPort,
   provideCommitPlacement,
   provideFailReturnPort,
+  provideIssueFindPort,
   provideIssuePorts,
   provideReleasedLineReads,
   provideRequestHeadPort,
@@ -278,6 +279,7 @@ function provideIssueSidePorts(): void {
     betaKeysOfIssue: async (issueId) => betaKeysOf(issueId, await feedbackIdsRoutingTo(issueId)),
   });
   provideBetaPortPorts({ createFeedback, triageOutcomesOf, feedbackIdOfSeq });
+  provideIssueFindPort({ issueIdsFound: issueIdsThroughFind });
   provideRequestHeadPort({
     requestHeadOf: (projectId, head, landing) =>
       readMergedHead(
@@ -308,7 +310,6 @@ export function provideWorkPorts(): void {
   provideCommitPlacement({ commitPlacedOnLanding });
   provideIssuePorts({
     projectCreatorOf,
-    issueIdsFound: issueIdsThroughFind,
     keepCorrection: recordCorrection,
     settleOpenQuestions,
     withdrawParkQuestions,
