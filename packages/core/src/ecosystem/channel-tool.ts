@@ -3,7 +3,12 @@ import { CHANNEL_ACTIONS, CHANNEL_WRITES, type ChannelAction } from '@forge/cont
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from '../lib/tool.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  refusedAnswer,
+  sourceOf,
+} from '../lib/tool.js';
 import { byRule, onResolved, requireDeclaredOn, toolPermissionFor } from '../permissions/index.js';
 import { ecosystemReadFence } from './access.js';
 import { readApiPage } from './api-page.js';
@@ -15,6 +20,7 @@ import { inbox, outbox, readAs, threadAs, unanswered } from './channel-read.js';
 import { readRegister } from './channel-register.js';
 import { UUID_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
+import { CARDS } from './channel-tool.cards.js';
 import {
   CHANNEL_ACTION_INPUTS,
   CHANNEL_INPUT_SCHEMA,
@@ -345,6 +351,8 @@ export const forgeChannelTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: CHANNEL_INPUT_SCHEMA,
   actionInputs: CHANNEL_ACTION_INPUTS,
+  cards: CARDS,
+  source: sourceOf(import.meta.url),
   route: '/api/projects',
   grant: {
     byAction: Object.fromEntries(CHANNEL_ACTIONS.map((a) => [a, grantOf(a)])) as Record<
