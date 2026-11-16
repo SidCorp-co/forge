@@ -182,10 +182,10 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
    Beyond the kernel, an agent is made able, never forced: it is given tools it calls when it judges
    it needs them, taught how and when to use them in what it already reads, and what it did is shown
    so a person can judge the teaching and improve it. Forge does not take a step on an agent's
-   behalf, fill in its work, rewrite or block its reply, or refuse a policy choice; an agent that
-   works the wrong way is answered with a better tool or clearer teaching. Safety bars — a secret
-   kept out of what a reader sees, a credential kept on its own side — are the kernel's safety, not
-   policy.
+   behalf, fill in its work, rewrite or block its reply, or refuse a choice the project's policy
+   leaves to it; an agent that works the wrong way is answered with a better tool or clearer
+   teaching. Safety bars — a secret kept out of what a reader sees, a credential kept on its own
+   side — are the kernel's safety, not policy.
 
 ### The unit of work
 
