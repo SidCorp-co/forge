@@ -14,11 +14,11 @@ export function returnedLine(owed: {
   const { designs, revisions } = owed;
   if (designs.length > 0) {
     const keys = designs.map((d) => `${d.flow} r${d.revision}, workflow ${d.workflowId}`);
-    line += ` ${designs.length} returned design${agrees(designs.length, ' owes', 's owe')} a revision no issue carries (${keys.join('; ')}): read each return's reason (\`forge-runner api projects/<projectId>/workflows/<workflowId>/design\`), then get the next revision written and proposed in a declared run, or record why it waits; ${method('workflow-design')} is how a revision is written and proposed, and the forge-master skill's returned-work section is the master's part.`;
+    line += ` ${designs.length} returned design${agrees(designs.length, ' owes', 's owe')} a revision no issue carries (${keys.join('; ')}): read each return's reason (\`forge-runner api projects/<projectId>/workflows/<workflowId>/design\`), then get the next revision written and proposed in a declared run, or record why it waits; ${method('workflow-design')} is how a revision is written and proposed, and ${method('forge-master')}, its *Returned work*, is the master's part.`;
   }
   if (revisions.length > 0) {
     const keys = revisions.map((r) => `${r.key} r${r.revision}`);
-    line += ` ${revisions.length} returned requirement revision${agrees(revisions.length, ' owes', 's owe')} a revise (${keys.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`, its revision's \`returnReason\`), then write and propose it again, or drop it; ${method('requirement-lifecycle')} is how, and the forge-master skill's returned-work section is the master's part.`;
+    line += ` ${revisions.length} returned requirement revision${agrees(revisions.length, ' owes', 's owe')} a revise (${keys.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`, its revision's \`returnReason\`), then write and propose it again, or drop it; ${method('requirement-lifecycle')} is how, and ${method('forge-master')}, its *Returned work*, is the master's part.`;
   }
   return line;
 }

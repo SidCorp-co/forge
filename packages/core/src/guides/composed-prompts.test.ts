@@ -181,6 +181,16 @@ describe('the master nudge names a guide by slug, never restates one', () => {
       expect(owedLine({ ...none, [kind]: [item] })).toContain(`\`${guideCall(guide)}\``);
     },
   );
+
+  it.each(['designs', 'revisions', 'triages'] as const)(
+    "names the master's part of %s by a section the forge-master guide holds",
+    (kind) => {
+      const line = owedLine({ ...none, [kind]: [OWED_KINDS[kind].item] });
+      const section = /guides\/forge-master\.md`, its \*([^*]+)\*/.exec(line)?.[1];
+      expect(section, line).toBeDefined();
+      expect(getGuide('forge-master')?.body).toContain(`**${section}`);
+    },
+  );
 });
 
 describe('the chat system prompt is the source of its method guide, and restates no other', () => {
