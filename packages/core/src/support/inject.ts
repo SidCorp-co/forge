@@ -11,6 +11,7 @@ import {
   sessionRowById,
   sessionSendStanding,
 } from '../agent-sessions/index.js';
+import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { logger } from '../lib/logger.js';
 import {
   claimUndelivered,
@@ -21,12 +22,16 @@ import {
   unclaim,
   unsettledInjects,
 } from './delivery.js';
-import { type DeliverOutcome, deliverWaiting } from './dispatch.js';
+import { COMPLETED, type DeliverOutcome, deliverWaiting, retryFailedTurn } from './dispatch.js';
 import { roomMessages } from './prompt.js';
 import type { SessionRow } from './room-session.js';
 import { type RoomRow, roomById } from './store.js';
 
 const INJECT_LEAD = 'More messages arrived in the group while you were working:';
+
+/** A session's end that failed or cancelled its turn, rather than completing it or still running. */
+const failedEnd = (status: string) =>
+  (terminalAgentSessionStatuses as readonly string[]).includes(status) && !COMPLETED.has(status);
 
 /** The prefix of every write the support domain makes into a running turn. */
 export const INJECT_INTENT = 'support:';
@@ -79,6 +84,13 @@ export async function settleInjects(roomId?: string): Promise<string[]> {
     if (standing.applied || standing.confirmed === 'delivered') {
       await settleInjected([row.id]);
     } else if (standing.outcome === 'gone' || standing.outcome === 'undelivered') {
+      // the box refused it because the turn had ended: where that turn failed, its give-back runs
+      // first, as its bridge would, so this message's try is counted with every other the turn
+      // took; given back uncounted, it ran one try behind them
+      const session = await sessionRowById(room.sessionId);
+      if (session && failedEnd(session.status)) {
+        await retryFailedTurn(row.roomId, session, row.id);
+      }
       await giveBackInjected([row.id]);
       back.add(row.roomId);
     }

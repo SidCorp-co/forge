@@ -3,6 +3,7 @@
 // @direct-test-of packages/core/src/support/turn-retry.ts
 // @direct-test-of packages/core/src/support/dispatch.ts
 // @direct-test-of packages/core/src/support/delivery.ts
+// @direct-test-of packages/core/src/support/inject.ts
 // @direct-test-of packages/core/src/agent-sessions/chat-turn.ts
 // @direct-test-of packages/core/src/agent-sessions/events-routes.ts
 
@@ -14,7 +15,11 @@ vi.hoisted(() => {
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 5).toString('base64');
 });
 
-import { dispatchChatTurn, sessionRowById } from '../../src/agent-sessions/index.js';
+import {
+  dispatchChatTurn,
+  provideTerminalSessionBridge,
+  sessionRowById,
+} from '../../src/agent-sessions/index.js';
 import {
   LAST_RESORT_LINES,
   ROOM_STILL_QUEUED_LINES,
@@ -22,6 +27,8 @@ import {
 } from '../../src/conversations/last-resort.js';
 import { db } from '../../src/db/client.js';
 import { supportActions } from '../../src/db/schema-support.js';
+import { onSupportTurnEnded } from '../../src/support/dispatch.js';
+import type { SessionRow } from '../../src/support/room-session.js';
 import { roomById } from '../../src/support/store.js';
 import { RETRY_DELAYS_MS, tellUnanswered } from '../../src/support/turn-retry.js';
 import { rows } from '../helpers/factories.js';
@@ -331,4 +338,68 @@ describe('ISS-977: one session, one turn', () => {
     w.box.finishTurns = true;
     await w.box.finish(sessionId, 'claude-retry');
   }, 60_000);
+});
+
+// Debt 88cadd1d (seen in 2 of 20 loaded runs of support-held-turn-bound-e2e): the box ends a turn
+// and only then takes a message core wrote into it, so it acks the write `gone`. When that refusal
+// is settled before the failed turn's bridge reads the turn, the message was given back with its
+// try uncounted, and ran one try behind the others the turn was handed.
+describe('ISS-977: a write the box refused after its turn failed', () => {
+  it('counts the failed try for the refused message as for every other the turn took, whichever is read first', async () => {
+    await w.settleWarm();
+    sessionId = String((await w.rooms())[0]?.sessionId);
+    const seen: Turn[] = [];
+    w.box.finishTurns = false;
+    w.box.model = async (turn) => {
+      seen.push(turn);
+    };
+    // a turn takes alice's message and runs on
+    await w.chat.say(w.chat.alice, 'Is checkout down?');
+    await expect.poll(() => handed(seen, 'Is checkout down?'), { timeout: 15_000 }).toBe(1);
+    // the box ends the turn before it takes what core writes next: bob's message is acked gone
+    w.box.lose(sessionId);
+    await w.chat.say(w.chat.bob, 'my cart page is blank');
+    const refused = async () =>
+      (
+        await rows<{ intent: string }>(sql`
+          SELECT intent_id AS intent FROM session_inbox
+           WHERE agent_session_id = ${sessionId}::uuid AND kind = 'inject' AND send_outcome = 'gone'`)
+      ).map((r) => r.intent);
+    await expect.poll(refused, { timeout: 15_000 }).toHaveLength(1);
+    // the turn's failure commits while the refusal still reads it running, and its bridge is late:
+    // the refusal, reading it ended, settles the write first
+    const late: SessionRow[] = [];
+    provideTerminalSessionBridge('supportRoom', async (row) => {
+      late.push(row);
+    });
+    play(seen, new Map());
+    w.box.turnEnd = 'failed';
+    try {
+      await w.box.finish(sessionId, 'claude-ended');
+      await expect.poll(() => late.length, { timeout: 15_000 }).toBe(1);
+      const injected = async () =>
+        (
+          await rows<{ n: number }>(sql`
+            SELECT count(*)::int AS n FROM support_actions
+             WHERE room_id = ${roomId}::uuid AND kind = 'message_in' AND output ? 'injectSeq'`)
+        )[0]?.n;
+      await expect.poll(injected, { timeout: 15_000 }).toBe(0);
+    } finally {
+      provideTerminalSessionBridge('supportRoom', onSupportTurnEnded);
+    }
+    w.box.turnEnd = 'completed';
+    await onSupportTurnEnded(late[0] as SessionRow);
+    // each waits out the same back-off, its one failed try counted
+    const tries = await rows<{ text: string; tries: number | null; delivered: boolean }>(sql`
+      SELECT input->>'text' AS text, (output->>'tries')::int AS tries,
+             delivered_at IS NOT NULL AS delivered
+        FROM support_actions
+       WHERE room_id = ${roomId}::uuid AND kind = 'message_in'
+         AND input->>'text' IN ('Is checkout down?', 'my cart page is blank')
+       ORDER BY created_at`);
+    expect(tries).toEqual([
+      { text: 'Is checkout down?', tries: 1, delivered: false },
+      { text: 'my cart page is blank', tries: 1, delivered: false },
+    ]);
+  }, 90_000);
 });

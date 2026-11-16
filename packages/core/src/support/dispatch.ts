@@ -537,18 +537,24 @@ async function retryUnansweredTurn(roomId: string, row: SessionRow): Promise<voi
 }
 
 /** The ends of a turn that finished it; every other end left its messages unanswered. */
-const COMPLETED = new Set<string>(['completed', 'completed_via_recovery']);
+export const COMPLETED = new Set<string>(['completed', 'completed_via_recovery']);
 
 /**
  * A turn that failed or was cancelled gives back each message it took and left unanswered, to be
  * tried again, naming the end as the try's cause (ISS-977); a warm-up that fails gives back only
- * what was written into it.
+ * what was written into it. Given `holding`, only where that message is one of them: a write the box
+ * refused after the turn ended runs this before its own give-back (`inject.ts:settleInjects`).
  */
-async function retryFailedTurn(roomId: string, row: SessionRow): Promise<void> {
+export async function retryFailedTurn(
+  roomId: string,
+  row: SessionRow,
+  holding?: string,
+): Promise<void> {
   const room = await roomById(roomId);
   if (!room) return;
   // a message handed to the next turn after this one ended is that turn's, not this one's
   const taken = await unansweredOfLastTurn(room.id, lastTurn.get(room.id) ?? null, row.updatedAt);
+  if (holding && !taken.some((m) => m.id === holding)) return;
   // the reason, never the detail: a detail can carry the turn's own prompt, members' words included
   const why = row.failureReason ? ` (${row.failureReason})` : '';
   await retryOrTell(room, taken, `the session's turn ended ${row.status} before it answered${why}`);

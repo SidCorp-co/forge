@@ -280,7 +280,10 @@ export async function oldestReadyAt(roomId: string): Promise<Date | null> {
   return row?.at ? new Date(row.at) : null;
 }
 
-/** A message the box did not take into a turn waits again for the next one. */
+/**
+ * A message the box did not take into a turn waits again for the next one. One a failed turn's
+ * give-back already handed back (`giveBackFailed` drops its `injectSeq`) is left as that left it.
+ */
 export async function giveBackInjected(ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
   await db
@@ -289,7 +292,12 @@ export async function giveBackInjected(ids: readonly string[]): Promise<void> {
       deliveredAt: null,
       output: sql`COALESCE(${supportActions.output}, '{}'::jsonb) - 'injectSeq' - 'path'`,
     })
-    .where(inArray(supportActions.id, [...ids]));
+    .where(
+      and(
+        inArray(supportActions.id, [...ids]),
+        sql`COALESCE(${supportActions.output}, '{}'::jsonb) ? 'injectSeq'`,
+      ),
+    );
 }
 
 /**
