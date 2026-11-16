@@ -1,13 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { servedGuideBody } from '../guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { agentOpening, supportBrief } from './prompt.js';
 
 // ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
-// what the agent is taught is the brief and that guide together
+// what the agent is taught is the brief and that guide as served, the agree card beneath its body
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
+const GUIDE = servedGuideBody(ROOM_AGENT_GUIDE);
 const taught = (b: string): string => {
   expect(b).toContain('support.guide {}');
-  return `${b}\n\n${ROOM_AGENT_GUIDE.body}`;
+  return `${b}\n\n${GUIDE}`;
 };
 
 // @direct-test-of packages/core/src/support/prompt.ts
@@ -21,6 +26,8 @@ const taught = (b: string): string => {
 /** A sentence telling the agent to make a person type, write or say one set word. */
 const SET_WORD = /\b(type|write|say|reply)\b[^.]{0,40}["“'`](confirm|đồng ý|yes|ok|agree)/i; // i18n-allow: the Vietnamese set word the agent demanded
 const TEACHES = 'any words of their own are their agreement; never ask anyone to type a set word';
+/** The agree card's line, the one text teaching the act to the room agent (ISS-1251). */
+const CARD_TEACHES = 'Any words of their own agree; never ask anyone to type a set word';
 
 const briefs = [
   supportBrief({ projectName: 'P', product: null, tools: [] }),
@@ -48,7 +55,7 @@ const described = (): string => {
 describe('a plain agreement in any words is consent, never a set word', () => {
   it('the room brief teaches it and demands no word', () => {
     for (const b of briefs) {
-      expect(taught(b)).toContain(TEACHES);
+      expect(taught(b)).toContain(CARD_TEACHES);
       expect(b).not.toMatch(SET_WORD);
     }
   });

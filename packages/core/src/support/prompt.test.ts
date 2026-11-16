@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { servedGuideBody } from '../guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../guides/room-agent-guide.js';
+import { provideDoorCatalog } from '../lib/door-catalog.js';
+import { servedDoorCatalog } from '../mcp/door-catalog.js';
 import { actCard, mapLine } from './act-cards.js';
 import { operationsBrief } from './ops-prompt.js';
 import { agentOpening, grantsLine, SUPPORT_MAP_ACTS, supportBrief, toolsLine } from './prompt.js';
@@ -11,10 +14,13 @@ const DONE_ONLY_WHEN_CHECKED = mapLine('releases');
 const ANSWER_THE_ASKER = mapLine('asker');
 
 // ISS-1251: the brief is a map naming the room agent's guide, where each line's detail now lives;
-// what the agent is taught is the brief and that guide together
+// what the agent is taught is the brief and that guide as support.guide serves it, the cards of the
+// acts it works through beneath its body
+provideDoorCatalog({ doorCatalog: servedDoorCatalog, doorCalls: async () => new Map() });
+const GUIDE = servedGuideBody(ROOM_AGENT_GUIDE);
 const taught = (b: string): string => {
   expect(b).toContain('support.guide {}');
-  return `${b}\n\n${ROOM_AGENT_GUIDE.body}`;
+  return `${b}\n\n${GUIDE}`;
 };
 
 const brief = supportBrief({ projectName: 'P', product: null, tools: [] });
@@ -29,13 +35,11 @@ describe('the support brief states goals, and the consent a change waits on', ()
   });
 
   it('keeps the consent and the claim a change waits on, in the agent own words', () => {
-    expect(taught(brief)).toContain(
-      'only once they agree in plain words and you cite that message with support.agree',
-    );
-    expect(taught(brief)).toContain('never claim it ran or was recorded until agree says so');
+    expect(taught(brief)).toContain('Nothing runs and nothing is posted until agree cites their answer');
+    expect(taught(brief)).toContain('never claim it ran until agree says so');
     // ISS-1243 item 17: a filing asked for by its asker is agreed by the request itself.
     expect(taught(brief)).toContain(
-      'their asking is their agreement, so cite it with support.agree at once',
+      'filing what their own request asked for: cite that request with support.agree at once',
     );
     expect(taught(brief)).not.toContain('runs or is filed only once they agree');
     expect(taught(brief)).not.toContain("cite the asker's plain yes");
@@ -45,9 +49,8 @@ describe('the support brief states goals, and the consent a change waits on', ()
   // ISS-1162 (REQ-75 BC-12): a diagnose posts nothing in the room; its check is on the action.
   it('says a diagnose posts nothing in the room and its check is recorded on the action', () => {
     expect(taught(brief)).not.toContain('the group sees each check');
-    expect(taught(brief)).toContain(
-      'a diagnose posts nothing in the room and each check is recorded on its action',
-    );
+    expect(taught(brief)).toContain('a diagnose posts nothing');
+    expect(taught(brief)).toContain('Each check is recorded on its action');
   });
 
   // ISS-1205 (FB-607, L-47): work that can be done now is done now; a later time names what it waits on.
@@ -96,7 +99,7 @@ describe('the room brief teaches an ask it cannot do to wait on the master', () 
 
   it('routes it to the owning project’s master, holds once, and replies only with what was done', () => {
     expect(taught(channel)).toContain(
-      'a request through support.record { project } to the master of the project that owns it',
+      'a request with support.record { kind: request, project } for the master of the project that owns it',
     );
     expect(taught(channel)).toContain('post one reply that it went to the team');
     expect(taught(channel)).toContain(
@@ -185,9 +188,9 @@ describe('every room brief decides each message from its meaning and records it'
     ['the support brief', brief],
     ['the channel agent brief', opening],
   ])('%s routes by the signals, gathers before asking, and records the decision', (_, text) => {
-    expect(taught(text)).toContain('record the decision with support.decide');
-    expect(taught(text)).toContain("read its head's `routing` first, before any guess");
-    expect(taught(text)).toContain('on a vague message gather on your own first (decision gather)');
+    expect(taught(text)).toContain('record that with support.decide, one per message');
+    expect(taught(text)).toContain("its head's `routing` before any guess");
+    expect(taught(text)).toContain('When a message is vague: gather on your own first (decision gather');
     expect(taught(text)).toContain(
       'ask the person one short question (decision ask) only once that is exhausted',
     );
@@ -253,7 +256,7 @@ describe('every room agent brief carries the room conduct', () => {
     expect(ANSWER_THE_ASKER).toContain('support.asker { thread, message }');
     expect(ANSWER_THE_ASKER).toContain('to the owner, the decision or result first');
     expect(operations).toMatch(/Your acts: [^.]*\basker\b[^.]*\./);
-    expect(taught(brief)).toContain('read them with support.asker');
+    expect(taught(brief)).toContain('support.asker suggests roles the record lacks');
     for (const text of [brief, channel, operations]) {
       expect(taught(text)).toContain(linksOnWeb('http://localhost:3000'));
     }
@@ -268,7 +271,7 @@ describe('the room brief is a map of situations', () => {
       expect(line).toMatch(/^- When [^:]+: /);
     }
     expect(brief.length).toBeLessThan(5_000);
-    expect(ROOM_AGENT_GUIDE.body).toContain('### Deciding each message');
+    expect(ROOM_AGENT_GUIDE.body).toContain('### Reading a message');
   });
 
   // ISS-1251 (owner 2026-11-16, one capability, one card): the brief repeats no act's teaching
@@ -282,6 +285,17 @@ describe('the room brief is a map of situations', () => {
       expect(line, act).toContain(lead?.when);
       expect(brief, act).toContain(line);
     }
+  });
+
+  // ISS-1251: the guide keeps what no act teaches; each act it works through renders its card
+  // beneath it, so an act's teaching is never written twice
+  it('serves the guide with the card of each act it works through, and no copy of one', () => {
+    for (const door of ROOM_AGENT_GUIDE.doors ?? []) {
+      expect(GUIDE, door).toContain(`### \`${door}\``);
+      const act = door.replace(/^support\./, '') as Parameters<typeof actCard>[0];
+      for (const s of actCard(act).situations) expect(ROOM_AGENT_GUIDE.body, door).not.toContain(s.do);
+    }
+    expect(ROOM_AGENT_GUIDE.doors).toEqual(expect.arrayContaining(['support.decide', 'support.agree']));
   });
 
   it('carries the member record’s line, so a writer the record lacks is kept (ISS-1251 proof 1)', () => {

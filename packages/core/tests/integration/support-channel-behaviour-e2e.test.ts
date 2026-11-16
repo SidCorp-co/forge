@@ -7,6 +7,7 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
+import { servedGuideBody } from '../../src/guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../../src/guides/room-agent-guide.js';
 import { rows } from '../helpers/factories.js';
 import { AgentWorld } from '../helpers/support-agent-world.js';
@@ -130,11 +131,11 @@ describe('REQ-77 BC-6: it replies when asked or told of a problem, and is silent
   it('is briefed to stay silent on chatter, on messages for others, and where Technical answered', () => {
     // ISS-1251: the brief is a map naming the room agent's guide, which carries this detail
     expect(w.brief()).toContain('support.guide {}');
-    const text = `${w.brief()}\n\n${ROOM_AGENT_GUIDE.body}`;
-    expect(text).toContain('reply when a message asks you something or reports a problem');
-    expect(text).toContain('Stay silent, and post nothing, for chatter and thanks');
-    expect(text).toContain('whose `to` is "others"');
-    expect(text).toContain('`technicalAnswered` is true');
+    const text = `${w.brief()}\n\n${servedGuideBody(ROOM_AGENT_GUIDE)}`;
+    expect(text).toContain('When a message asks you something or reports a problem: post one result');
+    expect(text).toContain('When a message is chatter or thanks, is for someone else (`to` others)');
+    expect(text).toContain('`to` "others" marks one written for someone else');
+    expect(text).toContain('`technicalAnswered` true one a Technical member already answered');
   });
 });
 
@@ -142,11 +143,11 @@ describe('REQ-77 BC-7: it finds the cause before it replies to a problem', () =>
   it('is briefed to read the logs, the code and the data, and to say only what it confirmed', () => {
     // ISS-1251: the brief is a map naming the room agent's guide, which carries this detail
     expect(w.brief()).toContain('support.guide {}');
-    const text = `${w.brief()}\n\n${ROOM_AGENT_GUIDE.body}`;
+    const text = `${w.brief()}\n\n${servedGuideBody(ROOM_AGENT_GUIDE)}`;
     expect(text).toContain('find its cause: the logs');
     expect(text).toContain('the code and history in your checkout');
     expect(text).toContain('the data the granted tools return');
-    expect(text).toContain('say only what you confirmed');
+    expect(text).toContain('Say only what the check confirmed');
     expect(text).toContain('name what you could not check as unchecked, never as a guess');
   });
 });

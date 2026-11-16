@@ -140,15 +140,16 @@ describe('the room agent reads its guide: its organization’s where it keeps on
     const shipped = await guide();
     expect(shipped.isError, JSON.stringify(shipped)).toBe(false);
     expect(shipped).toMatchObject({ from: 'forge', slug: 'room-agent' });
-    expect(String(shipped.body)).toContain('### Deciding each message');
+    expect(String(shipped.body)).toContain('### Reading a message');
+    // the cards of the acts it works through are served beneath the body, a kept body's too
+    expect(String(shipped.body)).toContain('### `support.decide`');
     await db.execute(sql`
       INSERT INTO org_knowledge_entries (org_id, slug, title, body, injection)
       SELECT org_id, 'room-agent-guide', 'Room agent guide', 'When the owner rules, hand it on.', 'on_demand'
         FROM projects WHERE id = ${w.projectId}::uuid`);
-    expect(await guide()).toMatchObject({
-      from: 'org',
-      slug: 'room-agent-guide',
-      body: 'When the owner rules, hand it on.',
-    });
+    const kept = await guide();
+    expect(kept).toMatchObject({ from: 'org', slug: 'room-agent-guide' });
+    expect(String(kept.body)).toMatch(/^When the owner rules, hand it on\.\n\n## The doors this guide acts through/);
+    expect(String(kept.body)).toContain('### `support.decide`');
   });
 });

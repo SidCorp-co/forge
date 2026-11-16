@@ -9,6 +9,7 @@ vi.hoisted(() => {
 
 import { db } from '../../src/db/client.js';
 import type { QuestionOption } from '../../src/db/schema-questions.js';
+import { servedGuideBody } from '../../src/guides/index.js';
 import { ROOM_AGENT_GUIDE } from '../../src/guides/room-agent-guide.js';
 import {
   addProjectMember,
@@ -235,9 +236,8 @@ describe('ISS-877: a channel agent reads what a parked issue waits on, and from 
     // clause and no more (ISS-1251: the brief is a map, its detail the guide)
     const opened = w.box.turns.map((t) => t.text).join('\n');
     expect(opened).toContain('support.guide {}');
-    const briefed = `${opened}\n${ROOM_AGENT_GUIDE.body}`;
-    expect(briefed).toContain(
-      "support.issues (a parked issue's `waiting`: who owes it, the open question and its options;",
-    );
+    const briefed = `${opened}\n${servedGuideBody(ROOM_AGENT_GUIDE)}`;
+    expect(briefed).toContain("support.issues { project, key }");
+    expect(briefed).toContain("a parked issue's `waiting` says who owes what");
   });
 });
