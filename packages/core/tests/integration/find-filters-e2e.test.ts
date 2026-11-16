@@ -20,6 +20,11 @@
  * @direct-test-of packages/core/src/mcp/records-search.ts
  * @direct-test-of packages/core/src/product-progress/home-find.ts
  * @direct-test-of packages/core/src/assistant/tools/transcript-search-tool.ts
+ * @direct-test-of packages/core/src/assistant/tools/transcript-port.ts
+ * @direct-test-of packages/core/src/issues/find-port.ts
+ * @direct-test-of packages/core/src/issues/sort.ts
+ * @direct-test-of packages/core/src/knowledge-ports.ts
+ * @direct-test-of packages/core/src/find/index.ts
  */
 
 import type { FindHit, FindResult, FindType } from '@forge/contracts/find';

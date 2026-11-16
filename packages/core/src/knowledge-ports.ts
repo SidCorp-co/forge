@@ -1,12 +1,13 @@
 // What knowledge reaches but does not own, composed at the root (ADR 0008): recall through the find
-// door and a find of one project's records filtered to the types a caller names (ISS-1256), memory's re-check of what a rewritten rule names (REQ-89 BC-5, ISS-1121), and the
-// re-embedding of the requirements and feedback items whose vectors knowledge keeps.
+// door and a find of one project's records filtered to the types a caller names (ISS-1256), memory's
+// search as the door's memory filter, memory's re-check of what a rewritten rule names (REQ-89 BC-5,
+// ISS-1121), and the re-embedding of the requirements and feedback items whose vectors knowledge keeps.
 
 import { embedFeedback } from './feedback/index.js';
-import { recallThroughFind, runFind } from './find/index.js';
+import { memoryThroughFind, recallThroughFind, runFind } from './find/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
 import { moduleBySlug } from './labels/index.js';
-import { flagMemoriesForChange } from './memory/index.js';
+import { flagMemoriesForChange, provideMemoryFindPort } from './memory/index.js';
 import { embedRequirementHead } from './requirements/index.js';
 
 export function provideKnowledgeDomainPorts(): void {
@@ -31,4 +32,5 @@ export function provideKnowledgeDomainPorts(): void {
     reembedFeedback: embedFeedback,
     moduleIdOf: async (projectId, slug) => (await moduleBySlug(projectId, slug)).id,
   });
+  provideMemoryFindPort({ memoryThroughFind });
 }
