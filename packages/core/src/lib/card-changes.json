@@ -285,9 +285,9 @@
     "by": "ISS-1251"
   },
   "POST /api/memory/search": {
-    "hash": "70d3d6d6c3701476",
+    "hash": "8835d10d92bed2ec",
     "on": "2026-11-16",
-    "by": "ISS-1251"
+    "by": "ISS-1256"
   },
   "POST /api/memory/verify": {
     "hash": "5b2289940736ee96",
@@ -405,9 +405,9 @@
     "by": "ISS-1251"
   },
   "POST /api/projects/:id/knowledge/search": {
-    "hash": "4f8c656c06a606e7",
+    "hash": "09dfc230dc9a8d65",
     "on": "2026-11-16",
-    "by": "ISS-1251"
+    "by": "ISS-1256"
   },
   "POST /api/projects/:id/labels": {
     "hash": "9314ccf6c43d20b3",
