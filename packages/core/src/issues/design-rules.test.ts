@@ -204,6 +204,6 @@ describe('the module scope (ISS-609)', () => {
     expect(out.refusals.map((r) => [r.code, r.path])).toEqual([
       ['DESIGN_MODULE_UNKNOWN', '/modules/2'],
     ]);
-    expect(out.refusals[0]?.detail).toContain('modules/rollup lists them');
+    expect(out.refusals[0]?.detail).toContain('modules/map lists them');
   });
 });

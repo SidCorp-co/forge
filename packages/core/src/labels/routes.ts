@@ -15,7 +15,6 @@ import { moduleDetailOf } from './module-detail-read.js';
 import { knowledgeReadIn } from './module-map-reach.js';
 import { readModulePillar, readModuleTree } from './module-map-read.js';
 import { placeRecord, relate, unrelate } from './module-map-write.js';
-import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
   assertDemotionIsLegal,
   assertKnowledgeNodeIsForModule,
@@ -24,7 +23,6 @@ import {
   assertParentIsLegal,
   deriveModuleSlug,
 } from './module-service.js';
-import { moduleRollupWithStanding } from './module-standing-read.js';
 import { labelAttachmentCount, labelHead, listProjectLabels } from './read.js';
 import { createLabel, deleteLabel, updateLabel } from './service.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
@@ -58,9 +56,6 @@ const labelPatchSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-const rollupQuerySchema = z.object({
-  activeWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
-});
 const moduleDetailParamSchema = z.object({
   id: z.uuid(),
   module: z.string().trim().min(1).max(128),
@@ -125,21 +120,6 @@ labelProjectRoutes.get(
   requiresOnParam('project.read', 'id'),
   noQuery,
   async (c) => c.json(await listProjectLabels(c.req.valid('param').id)),
-);
-
-labelProjectRoutes.get(
-  '/:id/modules/rollup',
-  zValidator('param', idParamSchema),
-  requiresOnParam('project.read', 'id'),
-  zValidator('query', rollupQuerySchema),
-  async (c) => {
-    const { id: projectId } = c.req.valid('param');
-    const { activeWithinDays } = c.req.valid('query');
-
-    return c.json(
-      await moduleRollupWithStanding(projectId, activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS),
-    );
-  },
 );
 
 labelProjectRoutes.get(

@@ -51,19 +51,6 @@ export const MODULE_LANDINGS_SHOWN = 10;
 export const MODULE_KEY_PATHS_SHOWN = 12;
 export const MODULE_BODY_LIMIT = 24000;
 
-export interface ModuleCounts {
-	total: number;
-	open: number;
-	closed: number;
-	dropped: number;
-	recentlyActive: number;
-}
-
-export interface ModuleAttributionCounts {
-	primary: ModuleCounts;
-	secondary: ModuleCounts;
-}
-
 export interface ModuleRef {
 	id: string;
 	slug: string;
@@ -100,47 +87,9 @@ export interface ModuleStanding
 	childCount: number;
 }
 
-export interface ModuleRollupRow {
-	id: string;
-	name: string;
-	slug: string | null;
-	path: string;
-	description: string | null;
-	knowledgeEntryId: string | null;
-	color: string;
-	parentId: string | null;
-	depth: number;
-	own: ModuleAttributionCounts;
-	inherited: ModuleAttributionCounts;
-	rollup: ModuleAttributionCounts;
-	standing: ModuleStanding;
-}
-
 export interface ModuleIssuesRead {
 	returned: number;
 	open: number;
-}
-
-/**
- * A coupling between two sibling modules (children of `parentId`, or roots when it is null), rolled
- * up from every pair of modules beneath them. `sharedIssues` counts distinct unarchived issues
- * carrying a module from each side.
- */
-export interface ModuleLevelCoupling {
-	parentId: string | null;
-	aId: string;
-	bId: string;
-	sharedIssues: number;
-	weight: number;
-}
-
-export interface ModuleRollupResponse {
-	activeWithinDays: number;
-	generatedAt: string;
-	modules: ModuleRollupRow[];
-	couplings: ModuleLevelCoupling[];
-	unassigned: ModuleCounts;
-	issuesRead: ModuleIssuesRead;
 }
 
 export type ModuleUnavailable = { available: false; reason: string };
@@ -204,27 +153,6 @@ export interface ModuleDetail {
 	contracts: ModuleUnavailable;
 	owner: ModuleUnavailable;
 	issuesRead: ModuleIssuesRead;
-}
-
-/** Where a traced unit lives: a core module, a web-v2 feature directory or a runner crate. */
-export const CODE_TRACE_SCOPES = ["core", "web", "runner"] as const;
-export type CodeTraceScope = (typeof CODE_TRACE_SCOPES)[number];
-
-/**
- * One unit of the build's requirement trace (packages/core/src/modules.json `serves`): the
- * requirement keys, workflow steps (`<workflow>#<step>`) and `via:<unit>` it serves.
- */
-export interface CodeTraceUnit {
-	scope: CodeTraceScope;
-	unit: string;
-	serves: string[];
-}
-
-export interface CodeTraceResponse {
-	units: CodeTraceUnit[];
-	total: number;
-	/** Units whose `serves` is empty. */
-	untraced: number;
 }
 
 /** Each module's path from its root (`parent/child`), by id; a parent cycle stops where it repeats. */

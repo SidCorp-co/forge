@@ -1,25 +1,12 @@
-import {
-  MODULE_LANDINGS_SHOWN,
-  type ModuleIssuesRead,
-  type ModuleRollupResponse,
-  type ModuleRollupRow,
-  modulePaths,
-} from '@forge/contracts/modules';
+import { MODULE_LANDINGS_SHOWN, type ModuleIssuesRead } from '@forge/contracts/modules';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { activeIssuePrefix, listIssueStanding } from '../issues/index.js';
+import type { listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { levelCouplings, moduleRollup, readIssueModuleSets } from './module-rollup.js';
-import {
-  deriveStandings,
-  type LandingRow,
-  type ModuleNode,
-  type OpenIssue,
-  type TraceRow,
-} from './module-standing.js';
+import type { LandingRow, ModuleNode, OpenIssue, TraceRow } from './module-standing.js';
 
 export interface ModuleViewer {
   userId: string;
@@ -200,48 +187,3 @@ export const issuesReadOf = (
   returned: list.issues.length,
   open: list.counts.open,
 });
-
-export async function moduleRollupWithStanding(
-  projectId: string,
-  activeWithinDays: number,
-): Promise<ModuleRollupResponse> {
-  const [counts, nodes, list, prefix, traces, issueModules] = await Promise.all([
-    moduleRollup(projectId, activeWithinDays),
-    readNodes(projectId),
-    listIssueStanding(projectId, 'open'),
-    activeIssuePrefix(projectId),
-    readTraces(projectId),
-    readIssueModuleSets(projectId),
-  ]);
-  const latest = await readLatestLandings(projectId, prefix);
-  const standings = deriveStandings({
-    nodes,
-    openIssues: openIssuesOf(list),
-    latestLandings: latest,
-    traces,
-  });
-  const paths = modulePaths(nodes);
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const modules = counts.modules.map((row): ModuleRollupRow => {
-    const node = byId.get(row.id);
-    const standing = standings.get(row.id);
-    if (!node || !standing) {
-      throw new Error(`modules/rollup: module ${row.id} has counts but no label row or standing`);
-    }
-    return {
-      ...row,
-      path: paths.get(row.id) ?? node.slug,
-      description: node.description,
-      knowledgeEntryId: node.knowledgeEntryId,
-      standing,
-    };
-  });
-  return {
-    activeWithinDays: counts.activeWithinDays,
-    generatedAt: counts.generatedAt,
-    modules,
-    couplings: levelCouplings({ nodes, issueModules }),
-    unassigned: counts.unassigned,
-    issuesRead: issuesReadOf(list),
-  };
-}

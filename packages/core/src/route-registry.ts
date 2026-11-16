@@ -26,7 +26,6 @@ import {
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
 import { cleanupIssueRoutes, cleanupProjectRoutes } from './cleanup/index.js';
-import { codeTraceRoutes } from './code-trace.js';
 import {
   commentRoutes,
   entityCommentRoutes,
@@ -276,7 +275,6 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const path of ['/api/openapi.json', '/api/mcp-tools.json'])
     app.use(path, CONTRACT_IS_PUBLIC);
   app.route('/api', publishedContractRoutes());
-  app.route('/api', codeTraceRoutes);
   // a client site's visitor, never a Forge user: the site key, the session token or the status link
   app.route('/api/widget', widgetRoutes);
   app.route('/api/monitoring', monitoringDoorRoutes);

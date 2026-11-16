@@ -34,42 +34,5 @@ export type ModelTier = schema.ModelTier;
 
 export type ProjectMember = typeof schema.projectMembers.$inferSelect;
 
-export interface ModuleCounts {
-  total: number;
-  open: number;
-  closed: number;
-  dropped: number;
-  recentlyActive: number;
-}
-
-/** ISS-949 — primary and secondary attributions, counted apart and never summed. */
-export interface ModuleAttributionCounts {
-  primary: ModuleCounts;
-  secondary: ModuleCounts;
-}
-
-export interface ModuleRollupRow {
-  id: string;
-  name: string;
-  slug: string | null;
-  color: string;
-  parentId: string | null;
-  depth: number;
-  /** Issues attributed to this module itself. */
-  own: ModuleAttributionCounts;
-  /** Issues attributed to a descendant, minus what `own` already counts for that kind. */
-  inherited: ModuleAttributionCounts;
-  /** `own + inherited`, which is addition exactly because `inherited` excluded the overlap. */
-  rollup: ModuleAttributionCounts;
-}
-
-export interface ModuleRollupResponse {
-  activeWithinDays: number;
-  generatedAt: string;
-  modules: ModuleRollupRow[];
-  /** Issues carrying no module attribution at all. */
-  unassigned: ModuleCounts;
-}
-
 // ISS-271 — runner row now carries the per (device × project) repo checkout
 // (`repoPath`/`branch`), the server source of truth for the runner working dir.

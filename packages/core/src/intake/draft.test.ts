@@ -217,7 +217,7 @@ describe('an intake draft reads the product record and nothing else (BC-11)', ()
         if (/\/db\/schema/.test(from) && !allowedTables.has(from))
           faults.push(`${file} reads ${from}`);
         if (
-          /\/(issues|comments|memory|git|integrations\/source-host|repo-projection|code-trace)(\/|\.)/.test(
+          /\/(issues|comments|memory|git|integrations\/source-host|repo-projection)(\/|\.)/.test(
             from,
           )
         ) {

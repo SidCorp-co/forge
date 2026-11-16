@@ -141,10 +141,7 @@ through a module that serves one directly. The same file declares `serves` for e
 directory (`web`) and each runner crate (`runner`). `scripts/check-module-shape.mjs` refuses an
 empty `serves`, a reference `.forge/design-index.json` does not hold, and a `via:` to a unit that
 serves nothing directly, with nothing frozen, so any untraced unit fails; the snapshot
-is rewritten by `scripts/refresh-design-index.mjs`, so verify reads no network. `GET
-/api/projects/:id/code-trace` serves the build's trace (`packages/core/src/code-trace.ts:codeTrace`)
-to the project whose declared repository is this one, and an empty trace to every other; the
-Modules screen shows it beside each module named after a core module.
+is rewritten by `scripts/refresh-design-index.mjs`, so verify reads no network.
 
 | Kind | Holds | Must not |
 |---|---|---|

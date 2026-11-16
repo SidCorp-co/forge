@@ -167,7 +167,7 @@ export function resolveModules(
     const why =
       modules.length === 0
         ? `\`${name}\` is not a module: this project declares no module labels, so a design names none. Send \`modules: []\`, which holds the whole project; no administrator action is required`
-        : `\`${name}\` is not a module of this project; name a module label by its name or id (GET /api/projects/:id/modules/rollup lists them)`;
+        : `\`${name}\` is not a module of this project; name a module label by its name or id (GET /api/projects/:id/modules/map lists them)`;
     refusals.push(refusal('DESIGN_MODULE_UNKNOWN', why, `/modules/${at}`));
   }
   return { ids, refusals };
