@@ -1,3 +1,9 @@
+export {
+  type AnchorChange,
+  anchorMet,
+  invalidateForLanding,
+  invalidateLessonsForChange,
+} from './anchors.js';
 export { recordApplied, recordAppliedFromText } from './applied.js';
 export {
   LESSONS_MAP_MAX_CHARS,
@@ -13,12 +19,14 @@ export { registerLessonCorrections } from './consumers.js';
 export { type ThreadPost, threadLines } from './correction-thread.js';
 export { type CorrectionInput, recordCorrection } from './corrections.js';
 export {
+  anchorLesson,
   approveLesson,
   classifyLesson,
   type LessonActor,
   type LessonEdit,
   type LessonMoved,
   proposeLesson,
+  readmitLesson,
   rejectLesson,
   retireLesson,
 } from './decide.js';
@@ -44,10 +52,16 @@ export {
   retirementsDue,
 } from './gather.js';
 export {
+  invalidatedLessons,
+  type LifecycleLesson,
+  lessonsThatHold,
+  unanchoredLessons,
+} from './lifecycle-reads.js';
+export {
   type LessonsMonth,
   lessonsMonth,
   lessonsMonthText,
   recordLessonsMonths,
 } from './month.js';
-export { provideLessonsPorts } from './ports.js';
+export { type CardDelta, lessonsPorts, provideLessonsPorts } from './ports.js';
 export { lessonRoutes } from './routes.js';

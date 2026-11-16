@@ -29,6 +29,8 @@ export const OUTBOX_CONSUMERS = {
 		"master-wake",
 		"notify-transitions",
 		"memory-reconcile",
+		// a landing touching a lesson's anchor invalidates the lesson (ISS-1251)
+		"lessons-invalidate",
 		"issue-move-reactions",
 		"steward",
 		"support-results",

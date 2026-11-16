@@ -16,6 +16,7 @@ import { conversationMessages, conversations } from '../db/schema-conversations.
 import { callFastModelObject } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
+import { registerLessonInvalidation } from './anchors.js';
 import { type ThreadPost, threadBefore, threadLines } from './correction-thread.js';
 import { recordCorrection } from './corrections.js';
 import { lessonsPorts } from './ports.js';
@@ -156,6 +157,7 @@ export async function correctionFromReply(
 }
 
 export function registerLessonCorrections(): void {
+  registerLessonInvalidation();
   consume('mockup.transitioned', {
     name: 'lessons-corrections',
     handle: async (p) => {

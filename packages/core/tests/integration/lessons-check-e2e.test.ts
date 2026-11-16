@@ -20,6 +20,7 @@ import {
   openLessonsWorld,
   pass,
   proposal,
+  TEST_ANCHOR,
   w,
 } from '../helpers/lessons-world.js';
 
@@ -207,6 +208,7 @@ describe('a lesson says what it is about when it is drafted', () => {
         sentence: 'Say what a lesson is about.',
         scope: { kind: 'project' },
         about: 'screen' as never,
+        anchor: TEST_ANCHOR,
         corrections: [said],
       },
     }).then(

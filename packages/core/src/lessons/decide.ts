@@ -44,6 +44,7 @@ export interface LessonEdit {
   sentence?: string | undefined;
   scope?: LessonScope | undefined;
   about?: LessonAbout | undefined;
+  anchor?: string | undefined;
 }
 
 export const kernelActor = (actor: LessonActor) => ({
@@ -187,6 +188,7 @@ export async function proposeLesson(input: {
         sentence: body.sentence,
         ...scope,
         about,
+        anchor: body.anchor,
         proposedBy: actor.userId,
         proposedAgency: actor.agency,
         supersedesId: supersedes?.id ?? null,
@@ -222,6 +224,7 @@ export async function approveLesson(input: {
       ...(input.edit?.sentence ? { sentence: input.edit.sentence } : {}),
       ...(input.edit?.scope ? await scopeColumns(tx, input.projectId, input.edit.scope) : {}),
       ...(input.edit?.about !== undefined ? { about: aboutOf(input.edit.about) } : {}),
+      ...(input.edit?.anchor ? { anchor: input.edit.anchor } : {}),
     };
     const now = new Date();
     movedRow(
@@ -350,4 +353,97 @@ export async function retireLesson(input: {
     return row.id;
   });
   return movedOf(input.projectId, id);
+}
+
+/**
+ * A landing touched what an approved lesson is about (ISS-1251 §5): it is held, kept for its history
+ * and served to no agent, with when and what touched it, until the steward re-admits, edits or retires
+ * it. Core records the fact the landing made true, so the mover is the system; a lesson already held
+ * or decided is left as it is. Answers whether this call invalidated it.
+ */
+export async function invalidateLessonIn(tx: Tx, row: LessonRow, by: string): Promise<boolean> {
+  if (row.status !== 'approved') return false;
+  const now = new Date();
+  movedRow(
+    await transition(tx, LESSON_MACHINE, {
+      to: 'held',
+      expect: 'approved',
+      set: { invalidAt: now, invalidBy: by.slice(0, 500), updatedAt: now },
+      where: eq(lessons.id, row.id),
+      reason: `Invalidated: ${by}`.slice(0, 2000),
+      actor: { type: 'system' },
+      source: 'lessons',
+      returning: ['id'],
+    }),
+  );
+  await withdrawLessonEntry(tx, row);
+  return true;
+}
+
+/**
+ * The steward's re-check of an invalidated lesson, re-admitted as it reads or edited (its sentence or
+ * its anchor), saying why: it is served again from this call. A lesson that stands or was never
+ * invalidated is refused by name.
+ */
+export async function readmitLesson(input: {
+  projectId: string;
+  ref: string;
+  actor: LessonActor;
+  edit?: LessonEdit | undefined;
+  reason: string;
+}): Promise<LessonMoved> {
+  await requireDecider(input.actor, input.projectId, 're-admitting a lesson');
+  const id = await db.transaction(async (tx) => {
+    await lockLessons(tx, input.projectId);
+    const row = await lessonIn(tx, input.projectId, input.ref);
+    if (row.status !== 'held' || row.invalidAt === null) {
+      throw refuse(
+        'LESSON_DECIDED',
+        `${lessonKey(row.number)} is ${row.status}${row.invalidAt ? '' : ' and was never invalidated'}; re-admitting takes a lesson a landing invalidated`,
+        '/lesson',
+      );
+    }
+    const now = new Date();
+    movedRow(
+      await transition(tx, LESSON_MACHINE, {
+        to: 'approved',
+        expect: 'held',
+        set: {
+          ...(input.edit?.sentence ? { sentence: input.edit.sentence } : {}),
+          ...(input.edit?.anchor ? { anchor: input.edit.anchor } : {}),
+          invalidAt: null,
+          invalidBy: null,
+          updatedAt: now,
+        },
+        where: eq(lessons.id, row.id),
+        reason: input.reason,
+        actor: kernelActor(input.actor),
+        source: 'lessons',
+        returning: ['id'],
+      }),
+    );
+    await publishLesson(tx, await lessonIn(tx, input.projectId, row.id));
+    return row.id;
+  });
+  return movedOf(input.projectId, id);
+}
+
+/** Name what a lesson drafted before anchors is about, once; whether this call named it. */
+export async function anchorLesson(input: {
+  projectId: string;
+  ref: string;
+  actor: LessonActor;
+  anchor: string;
+}): Promise<boolean> {
+  await requireDecider(input.actor, input.projectId, 'anchoring a lesson');
+  return db.transaction(async (tx) => {
+    await lockLessons(tx, input.projectId);
+    const row = await lessonIn(tx, input.projectId, input.ref);
+    const set = await tx
+      .update(lessons)
+      .set({ anchor: input.anchor, updatedAt: new Date() })
+      .where(and(eq(lessons.id, row.id), isNull(lessons.anchor)))
+      .returning({ id: lessons.id });
+    return set.length > 0;
+  });
 }

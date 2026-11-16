@@ -10,11 +10,13 @@
 
 import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import {
+  LESSON_ANCHOR_SHAPE,
   LESSON_ITEM_KINDS,
   LESSON_PROPOSE_MIN,
   LESSON_UNUSED_DAYS,
   type LessonAbout,
   type LessonScope,
+  lessonAnchorSchema,
   lessonKey,
 } from '@forge/contracts/lessons';
 import { cutAtWord } from '@forge/contracts/title-text';
@@ -47,6 +49,19 @@ import { markUntrusted } from '../lib/untrusted-text.js';
 import { findProjectSlugs } from '../projects/index.js';
 import { stewardAccountOf } from './account.js';
 import { ABOUT_WORDS, type Classifier, modelClassifier } from './lessons-classify.js';
+import {
+  type Anchorer,
+  emptyLifecycleTally,
+  type Folder,
+  type LifecycleTally,
+  modelAnchorer,
+  modelFolder,
+  modelRechecker,
+  modelReplayer,
+  type Rechecker,
+  type Replayer,
+  runLessonLifecycle,
+} from './lessons-lifecycle.js';
 import {
   modelReviewer,
   modelSettler,
@@ -93,6 +108,8 @@ export const groupingSchema = z.object({
         scope: z.enum(['project', 'area', 'item_kind']),
         // read as said, so a proposal naming none, or another word, is refused by name, not dropped unread
         about: z.string().nullish(),
+        // read as said, so a proposal naming no anchor is dropped by name, never admitted unanchored
+        anchor: z.string().nullish(),
         areaId: z.string().nullish(),
         itemKind: z.enum(LESSON_ITEM_KINDS).nullish(),
         corrections: z.array(z.string()),
@@ -119,6 +136,7 @@ export function groupingPrompt(input: {
     '2. Link a correction to an existing lesson only when it repeats that lesson (`links`: its `correction` id and the `lesson` number).',
     `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative \`sentence\` an agent can apply, the \`corrections\` ids it came from, and a \`scope\`: \`project\`, \`area\` (with the corrections' \`areaId\`) or \`item_kind\` (with an \`itemKind\`: requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
     `Every proposal says what it is about in ${ABOUT_WORDS}`,
+    `Every proposal names its \`anchor\`, what the lesson is about, so the change that moves it retires it: ${LESSON_ANCHOR_SHAPE}. Take it from the corrections' items and threads; a group whose anchor they do not show is left for a correction that shows it.`,
     'Corrections on different items make the same point when one general mistake lies behind them: the same rule missed, the same kind of check skipped, the same wording or habit corrected. Say that general rule, not the item.',
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     "Before you draft from a correction that carries its thread, read the thread: the person's words answer the posts before them, so the lesson is about what those posts are about (a product's own messages, a record, a step), never by default about the assistant's own reply.",
@@ -162,6 +180,16 @@ async function proposeGroups(
   for (const p of answer.proposals) {
     const corrections = [...new Set(p.corrections.filter((c) => ids.has(c)))];
     const scope = scopeOf(p);
+    const anchor = lessonAnchorSchema.safeParse(p.anchor ?? '');
+    if (!anchor.success) {
+      // an unanchored lesson is not admitted (ISS-1251 §4): the draft says what it is missing
+      dropped += 1;
+      logger.warn(
+        { projectId, sentence: p.sentence, anchor: p.anchor ?? null, shape: LESSON_ANCHOR_SHAPE },
+        'steward: a proposed group names no anchor it can be invalidated by; it was not proposed',
+      );
+      continue;
+    }
     if (corrections.length < LESSON_PROPOSE_MIN || !scope) {
       // a group the model named that cannot become a lesson is said, never skipped in silence
       dropped += 1;
@@ -188,6 +216,7 @@ async function proposeGroups(
           scope,
           // proposeLesson refuses a missing or unknown one by name, with the valid shape
           about: p.about as LessonAbout,
+          anchor: anchor.data,
           corrections,
           ...(p.supersedes ? { supersedes: p.supersedes } : {}),
         },
@@ -351,7 +380,7 @@ async function retireDue(projectId: string, stewardId: string, now: Date): Promi
   return retired;
 }
 
-export interface LessonsPassTally extends SettleTally {
+export interface LessonsPassTally extends SettleTally, LifecycleTally {
   projects: number;
   /** Corrections the steward rejected as not corrections; `rejected` counts proposals it rejected. */
   correctionsRejected: number;
@@ -373,6 +402,10 @@ interface Judges {
   review: Reviewer;
   settle: Settler;
   classify: Classifier;
+  anchor: Anchorer;
+  recheck: Rechecker;
+  fold: Folder;
+  replay: Replayer;
 }
 
 async function passProject(projectId: string, now: Date, judges: Judges, tally: LessonsPassTally) {
@@ -401,6 +434,7 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
     }
   }
   await settleLessons(projectId, stewardId, judges, tally);
+  await runLessonLifecycle(projectId, stewardId, judges, tally);
   tally.retired += await retireDue(projectId, stewardId, now);
   await fileChecks(projectId, stewardId, judges.classify, tally);
   await recordLessonsMonths(projectId, now);
@@ -414,6 +448,10 @@ export async function runLessonsPass(
     review?: Reviewer;
     settle?: Settler;
     classify?: Classifier;
+    anchor?: Anchorer;
+    recheck?: Rechecker;
+    fold?: Folder;
+    replay?: Replayer;
     projectIds?: readonly string[];
   } = {},
 ): Promise<LessonsPassTally> {
@@ -423,6 +461,10 @@ export async function runLessonsPass(
     review: opts.review ?? modelReviewer,
     settle: opts.settle ?? modelSettler,
     classify: opts.classify ?? modelClassifier,
+    anchor: opts.anchor ?? modelAnchorer,
+    recheck: opts.recheck ?? modelRechecker,
+    fold: opts.fold ?? modelFolder,
+    replay: opts.replay ?? modelReplayer,
   };
   const tally: LessonsPassTally = {
     projects: 0,
@@ -439,6 +481,7 @@ export async function runLessonsPass(
     checks: 0,
     unclassified: 0,
     failed: 0,
+    ...emptyLifecycleTally(),
   };
   for (const projectId of opts.projectIds ?? (await projectsWithLessonWork(now))) {
     if (!(await stewardStanceOf(projectId)).enabled) continue;

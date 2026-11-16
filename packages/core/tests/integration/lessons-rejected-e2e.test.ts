@@ -19,6 +19,7 @@ import {
   pass,
   proposal,
   say,
+  TEST_ANCHOR,
 } from '../helpers/lessons-world.js';
 
 openLessonsWorld();
@@ -85,6 +86,7 @@ describe('a rejected correction feeds no lesson (BC-2)', () => {
         sentence: 'Name the ward.',
         scope: { kind: 'project' },
         about: 'app',
+        anchor: TEST_ANCHOR,
         corrections: [a, gone],
       },
     }).then(

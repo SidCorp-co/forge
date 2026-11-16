@@ -101,6 +101,32 @@ export const LESSON_PROPOSE_MIN = 2;
 export const LESSON_CHECK_AFTER = 3;
 /** Days unused before the steward retires a lesson (BC-7). */
 export const LESSON_UNUSED_DAYS = 30;
+/** Times applied, never corrected or confused since, after which a lesson holds and is folded into its card (ISS-1251). */
+export const LESSON_FOLD_AFTER_APPLIED = 3;
+
+/**
+ * What a lesson is about, so the change that moves it retires its text (ISS-1251 §5): a capability
+ * card (`card:<id>`), a requirement's behaviour (`REQ-<n> BC-<m>`), or code (`<path>` or
+ * `<path>:<symbol>`). A landing that touches the anchor invalidates the lesson; it is kept for its
+ * history and served to no agent until the steward re-admits, edits or retires it.
+ */
+export const LESSON_ANCHOR_RE =
+	/^(card:[a-z0-9][a-z0-9._-]{1,119}|REQ-[1-9]\d{0,5} BC-[1-9]\d{0,3}|[A-Za-z0-9_.@-]+(\/[A-Za-z0-9_.@-]+)*\.[a-z]{1,5}(:[A-Za-z_$][\w$.]{0,119})?)$/;
+export const LESSON_ANCHOR_SHAPE =
+	"anchor: card:<id> (a capability card), REQ-<n> BC-<m> (a requirement's behaviour), or <path> / <path>:<symbol> (code, e.g. packages/core/src/lessons/block.ts:lessonsMapText)";
+export type LessonAnchorKind = "card" | "bc" | "code";
+
+/** The kind of an anchor that matches `LESSON_ANCHOR_RE`. */
+export function lessonAnchorKind(anchor: string): LessonAnchorKind {
+	if (anchor.startsWith("card:")) return "card";
+	if (anchor.startsWith("REQ-")) return "bc";
+	return "code";
+}
+export const lessonAnchorSchema = z
+	.string()
+	.trim()
+	.max(240)
+	.regex(LESSON_ANCHOR_RE, LESSON_ANCHOR_SHAPE);
 /** How often the steward's lessons pass runs. */
 export const LESSONS_PASS_MS = 10 * 60_000;
 
@@ -170,6 +196,7 @@ export const proposeLessonRequestSchema = z.strictObject({
 	sentence,
 	scope: lessonScopeSchema,
 	about: z.enum(LESSON_ABOUTS),
+	anchor: lessonAnchorSchema,
 	corrections: z.array(z.uuid()).min(1).max(LESSON_LIMITS.correctionsPerLesson),
 	supersedes: lessonNumber.optional(),
 });

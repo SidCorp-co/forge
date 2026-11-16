@@ -4222,6 +4222,13 @@
       "when": 1840492800000,
       "tag": "0666_a_routed_items_triage_draft_is_skipped",
       "breakpoints": true
+    },
+    {
+      "idx": 660,
+      "version": "7",
+      "when": 1839974400000,
+      "tag": "0660_a_lesson_names_its_anchor_and_a_change_to_it_invalidates_it",
+      "breakpoints": true
     }
   ]
 }

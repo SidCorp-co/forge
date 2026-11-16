@@ -18,6 +18,32 @@ interface LessonsPorts {
     roomId: string,
     writer: { key: string; label: string | null },
   ): Promise<string | null>;
+  /** What an issue's landing changed: its key, its words and its paths, or why none were read. */
+  landedChange(
+    projectId: string,
+    issueId: string,
+  ): Promise<{ key: string; text: string; paths: string[] | null; why?: string } | null>;
+  /**
+   * The capability card registry (ISS-1251 §1), where one is provided: the paths a card's door lives
+   * in, marking a card owed a re-check, and folding a lesson that holds into its card as one delta.
+   * Absent, a card anchor is met by a landing naming it, and a lesson waiting to fold waits.
+   */
+  cardPaths?(cardId: string): Promise<readonly string[]>;
+  cardRecheckOwed?(cardId: string, by: string): Promise<void>;
+  foldIntoCard?(
+    cardId: string,
+    delta: CardDelta,
+    by: string,
+  ): Promise<{ ok: true } | { ok: false; why: string }>;
+}
+
+/** One delta a lesson that holds adds to or changes in its card (ADD, UPDATE), never a rewrite. */
+export interface CardDelta {
+  field: 'situation' | 'bestPractice' | 'redFlag';
+  op: 'add' | 'update';
+  text: string;
+  /** For an update: the line it replaces, as the card holds it. */
+  replaces?: string;
 }
 
 const slot = portSlot<LessonsPorts>('lessons', 'provideLessonsPorts');

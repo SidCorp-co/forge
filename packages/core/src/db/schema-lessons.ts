@@ -77,10 +77,26 @@ export const lessons = pgTable(
     routedFeedbackId: uuid('routed_feedback_id').references(() => feedback.id, {
       onDelete: 'set null',
     }),
+    /**
+     * What it is about (0660, ISS-1251): `card:<id>`, `REQ-<n> BC-<m>` or `<path>[:<symbol>]`. Null on
+     * a lesson drafted before, which the steward anchors from its record or lists as owing one.
+     */
+    anchor: text('anchor'),
+    /** When a landing touched its anchor, and which with what (`ISS-12: <path>`); null while it stands. */
+    invalidAt: timestamp('invalid_at', { withTimezone: true }),
+    invalidBy: text('invalid_by'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     numberUq: uniqueIndex('lessons_project_number_uq').on(t.projectId, t.number),
+    anchorChk: check(
+      'lessons_anchor_chk',
+      sql`${t.anchor} IS NULL OR length(${t.anchor}) BETWEEN 3 AND 240`,
+    ),
+    invalidByChk: check(
+      'lessons_invalid_by_chk',
+      sql`(${t.invalidAt} IS NULL) = (${t.invalidBy} IS NULL)`,
+    ),
     statusIdx: index('lessons_project_status_idx').on(t.projectId, t.status),
     numberChk: check('lessons_number_chk', sql`${t.number} >= 1`),
     sentenceChk: check('lessons_sentence_chk', sql`length(${t.sentence}) BETWEEN 1 AND 240`),

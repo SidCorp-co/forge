@@ -36,6 +36,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { isRefusal, type RefusalError } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
+import { adopts, type Replayer } from './lessons-lifecycle.js';
 import { lessonScopeText } from './lessons-scope.js';
 
 const JUDGE_MAX_TOKENS = 800;
@@ -215,7 +216,7 @@ async function reviewOne(
   projectId: string,
   actor: LessonActor,
   lesson: ProposedLesson,
-  input: { approved: GatherLesson[]; review: Reviewer },
+  input: { approved: GatherLesson[]; review: Reviewer; replay: Replayer },
   tally: SettleTally,
 ): Promise<void> {
   const key = lessonKey(lesson.number);
@@ -232,6 +233,25 @@ async function reviewOne(
   if (answer.verdict === 'reject') {
     const done = await refusedWaits(
       () => rejectLesson({ projectId, ref: key, actor, reason: answer.reason }),
+      refused,
+    );
+    if (done) tally.rejected += 1;
+    return;
+  }
+  // replay before adopt (ISS-1251 §5): the lesson as it would read is replayed on the failures it came
+  // from and the lessons in force; one that fixes none of them, or breaks one, is not adopted
+  const replay = {
+    change: edit?.sentence ?? lesson.sentence,
+    was: null,
+    failures: lesson.corrections.map((c) => c.reason),
+    goods: input.approved.map((l) => `${lessonKey(l.number)}: ${l.sentence}`),
+  };
+  const replayed = await input.replay(projectId, replay);
+  if (!replayed) return wait(tally, projectId, key, 'the replay gave no answer', back);
+  if (!adopts(replayed, replay)) {
+    const why = `Replay did not adopt it: fixed ${replayed.fixed} of ${replay.failures.length} failures${replayed.broken.length ? `, broke ${replayed.broken.length} good case(s)` : ''}; ${replayed.reason}`;
+    const done = await refusedWaits(
+      () => rejectLesson({ projectId, ref: key, actor, reason: why.slice(0, 2000) }),
       refused,
     );
     if (done) tally.rejected += 1;
@@ -281,7 +301,7 @@ async function settleOne(
 export async function settleLessons(
   projectId: string,
   stewardId: string,
-  judges: { review: Reviewer; settle: Settler },
+  judges: { review: Reviewer; settle: Settler; replay: Replayer },
   tally: SettleTally,
 ): Promise<void> {
   const actor: LessonActor = { userId: stewardId, agency: 'agent' };
@@ -289,7 +309,13 @@ export async function settleLessons(
   if (proposed.length > 0) {
     const approved = (await gatherInput(projectId)).lessons.filter((l) => l.status === 'approved');
     for (const lesson of proposed) {
-      await reviewOne(projectId, actor, lesson, { approved, review: judges.review }, tally);
+      await reviewOne(
+        projectId,
+        actor,
+        lesson,
+        { approved, review: judges.review, replay: judges.replay },
+        tally,
+      );
     }
   }
   for (const confusion of await openConfusions(projectId)) {

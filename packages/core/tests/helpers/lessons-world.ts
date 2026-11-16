@@ -76,6 +76,11 @@ export async function pass(answer: {
   settle?: Answer<Doc, Doc>;
   /** What the steward says a lesson owed a check is about, where its record does not say. */
   classify?: Answer<Doc, Doc>;
+  /** The lifecycle steps' answers (ISS-1251): an anchor owed, a re-check, a fold, and a replay. */
+  anchor?: Answer<Doc, Doc>;
+  recheck?: Answer<Doc, Doc>;
+  fold?: Answer<Doc, Doc>;
+  replay?: Answer<Doc, Doc>;
   now?: Date;
   /** The project the pass runs over: the world's own unless a case opened one of its own. */
   project?: string;
@@ -95,6 +100,19 @@ export async function pass(answer: {
     review: async (_p, input) => answerOf(answer.review, input as never) as never,
     settle: async (_p, input) => answerOf(answer.settle, input as never) as never,
     classify: async (_p, input) => answerOf(answer.classify, input as never) as never,
+    // the lifecycle steps answer nothing unless a case gives their answers, and a replay adopts by
+    // default, fixing every failure it is shown, so a case about something else is never held by it
+    anchor: async (_p, l) => answerOf(answer.anchor, l as never) as never,
+    recheck: async (_p, l) => answerOf(answer.recheck, l as never) as never,
+    fold: async (_p, l) => answerOf(answer.fold, l as never) as never,
+    replay: async (_p, input) =>
+      (answer.replay
+        ? answerOf(answer.replay, input as never)
+        : {
+            fixed: input.failures.length,
+            broken: [],
+            reason: 'It fixes what it came from.',
+          }) as never,
   });
   expect(tally.failed, 'a lessons pass failed on the project').toBe(0);
   return tally;
@@ -161,12 +179,22 @@ export async function numberOf(sentence: string): Promise<number> {
 }
 
 /** A proposal the grouping answers; it says it is about a process unless `scope` says otherwise. */
+/** The anchor a test's lesson names unless the case names its own: code no landing in a test touches. */
+export const TEST_ANCHOR = 'packages/core/src/lessons/decide.ts:proposeLesson';
+
 export const proposal = (
   sentence: string,
   corrections: string[],
   scope: Doc = { scope: 'project', areaId: null, itemKind: null },
   supersedes: number | null = null,
-) => ({ sentence, corrections, about: 'process', ...scope, supersedes });
+) => ({
+  sentence,
+  corrections,
+  about: 'process',
+  anchor: TEST_ANCHOR,
+  ...scope,
+  supersedes,
+});
 
 /** An approved lesson: proposed by the steward from two corrections, approved by its review. */
 export async function approved(sentence: string, scope?: Doc): Promise<number> {
@@ -187,7 +215,13 @@ export async function proposed(sentence: string, project = w.projectId): Promise
   const made = await proposeLesson({
     projectId: project,
     actor: { userId: await stewardAccountOf(project), agency: 'agent' },
-    body: { sentence, scope: { kind: 'project' }, about: 'process', corrections: [one] },
+    body: {
+      sentence,
+      scope: { kind: 'project' },
+      about: 'process',
+      anchor: TEST_ANCHOR,
+      corrections: [one],
+    },
   });
   return Number(made.key.slice(2));
 }

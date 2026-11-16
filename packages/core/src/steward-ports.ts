@@ -8,6 +8,7 @@
 import { masterTakesWait } from './development/index.js';
 import { provideLessonsPorts } from './lessons/index.js';
 import { masterAccountsOf } from './master-accounts.js';
+import { memoryIssueSide } from './memory-issue-reads.js';
 import { getMockupAs } from './mockups/index.js';
 import {
   holdingReleaseOf,
@@ -43,5 +44,6 @@ export function provideStewardDomainPorts(
     mockupOf: async (projectId, mockupId, viewer) =>
       (await getMockupAs(viewer, projectId, mockupId)) ?? null,
     roomWriterOf: roomWriterUserId,
+    landedChange: memoryIssueSide.landedChange,
   });
 }
