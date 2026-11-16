@@ -29,6 +29,7 @@ vi.hoisted(() => {
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
 import { db } from '../../src/db/client.js';
+import { doorCatalog, doorNames } from '../../src/lib/door-catalog.js';
 import { buildPipelinePreambleStructured } from '../../src/prompt/system.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
@@ -339,15 +340,15 @@ describe('each pile a prompt carries reads against its cap', () => {
     // the Tier-0 map of each audience, rendered from the cards that teach it
     const master = piles.find((p) => p.name === 'map (master)');
     expect(master).toMatchObject({ pile: 'tier0_map', cap: 2500 });
-    // more cards teach a master than its map holds: the most used are carried whole, the rest are
-    // Tier 1, and each door's row says which
-    expect(master?.items).toBeGreaterThan(master?.carried ?? 0);
-    expect(master?.carried).toBeGreaterThan(0);
-    expect(master?.over).toBe(true);
+    // every card that teaches a master is on its map, merged into its family's line within the cap
+    // (ISS-1251 c5: merging, never truncation), so none is left to Tier 1 and the pile is not over
+    expect(master?.carried).toBe(master?.items);
+    expect(master?.size).toBeLessThanOrEqual(2500);
+    expect(master?.over).toBe(false);
     const view = await doorsOf();
     const atTier = (n: 0 | 1) => view.doors.filter((d) => d.tiers.master === n).length;
     expect(atTier(0)).toBe(master?.carried);
-    expect(atTier(0) + atTier(1)).toBe(master?.items);
+    expect(atTier(1)).toBe(0);
     // the one carded door this project called ranks into the map
     expect(door(view, 'project_feedback.submit').tiers.master).toBe(0);
     expect(piles.find((p) => p.name === 'map (bot)')?.items).toBeGreaterThan(0);
@@ -363,18 +364,24 @@ describe('each pile a prompt carries reads against its cap', () => {
 });
 
 describe("a run's preamble carries its map, ranked by what this project's agents called (ISS-1251)", () => {
-  it('names the door this project called most first, by its REST twin, under its situation', async () => {
+  it('names the door this project called most first, by its capability, on its family line', async () => {
     const built = await buildPipelinePreambleStructured(w.project, { step: 'drive' });
     expect(built.blocks.map((b) => b.id)).toContain('door-map');
     const map = built.content.slice(built.content.indexOf('## Your map'));
     const lines = map.split('\n').filter((l) => l.startsWith('- when '));
     expect(lines.length).toBeGreaterThan(0);
-    // the run-taught door this project called most leads, named as a run reaches it: its REST twin
+    // the run-taught door this project called most leads, named by its capability, never a route
+    // (the card it opens carries the route): its family's line comes first
     const top = (await doorsOf()).doors
       .filter((d) => d.card?.audience.includes('run') && d.calls > 0)
       .sort((a, b) => b.calls - a.calls)[0] as DoorUseRow;
-    expect(lines[0]).toContain(`→ ${top.twins[0] ?? top.door}`);
-    expect(lines.some((l) => l.endsWith('→ POST /api/projects/:id/feedback'))).toBe(true);
+    const named = (name: string) => {
+      const [tool, act] = name.split('.');
+      return new RegExp(`→ (.* · )?${tool}\\.([a-z_]+ · )*${act}( · |$)`);
+    };
+    expect(lines[0]).toMatch(named(doorNames(doorCatalog().doors).get(top.door) ?? top.door));
+    expect(lines.some((l) => named('project_feedback.submit').test(l))).toBe(true);
+    expect(lines.filter((l) => / (POST|PUT|PATCH|DELETE) \//.test(l))).toEqual([]);
     expect(built.content).toContain('`guides/doors.md?door=<the door as the map names it>`');
   });
 });
