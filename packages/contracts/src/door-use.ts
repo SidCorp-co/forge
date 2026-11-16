@@ -4,7 +4,7 @@
 // a door or a piece of teaching failed it, which becomes feedback on the feature that owns it.
 
 import { z } from "zod";
-import type { CapabilityCard } from "./capability-cards.js";
+import type { CapabilityCard, CardAudience } from "./capability-cards.js";
 import type { FeedbackKind } from "./feedback-terms.js";
 import { forgeFeedbackFromSchema } from "./forge-feedback.js";
 import type { RefusalStatuses } from "./refusal.js";
@@ -54,6 +54,11 @@ export interface DoorUseRow {
 	feature: string;
 	/** Its capability card: what teaches an agent when to reach for it; null where none is written. */
 	card: CapabilityCard | null;
+	/**
+	 * Per audience its card teaches: 0 where that audience's Tier-0 map carries it (every turn), 1 where
+	 * it is reached by situation through forge_find; empty without a card.
+	 */
+	tiers: Partial<Record<CardAudience, 0 | 1>>;
 	calls: number;
 	/** Calls that did not end `ok`, and a room act's refusals its room recorded. */
 	refused: number;

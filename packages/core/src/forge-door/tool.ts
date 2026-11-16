@@ -23,6 +23,7 @@ import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   refusedAnswer,
+  sourceOf,
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { need } from '../lib/tool-args.js';
@@ -352,6 +353,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   cards: CARDS,
+  source: sourceOf(import.meta.url),
   actionDescribe: {
     submit: {
       example: {

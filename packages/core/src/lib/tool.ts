@@ -92,6 +92,11 @@ export interface McpTool {
   actionDescribe?: Readonly<Record<string, ActionDescribe>>;
   /** Each action's capability card (ISS-1251): when to reach for it, how, and what goes wrong. */
   cards?: Readonly<Record<string, CapabilityCardBody>>;
+  /**
+   * The file declaring the tool, repository-relative (`sourceOf(import.meta.url)`): where its cards'
+   * door lives, so a landing touching it owes the cards a re-check. Required of a tool with cards.
+   */
+  source?: string;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -199,4 +204,16 @@ export function refusedAnswer(
   fallbackCode: string,
 ): RefusalEnvelope & { _mcpIsError: true } {
   return { _mcpIsError: true, ...refusalEnvelope(refusals, fallbackCode) };
+}
+
+/**
+ * The repository path of the module at `metaUrl` (`import.meta.url`), from a source or a built tree:
+ * `packages/core/src/forge-door/tool.ts` from `…/src/forge-door/tool.ts` or `…/dist/forge-door/tool.js`.
+ */
+export function sourceOf(metaUrl: string): string {
+  const path = new URL(metaUrl).pathname;
+  const at = Math.max(path.lastIndexOf('/src/'), path.lastIndexOf('/dist/'));
+  if (at < 0) throw new Error(`sourceOf: ${path} lies under no src/ or dist/ of core`);
+  const rest = path.slice(path.indexOf('/', at + 1) + 1).replace(/\.js$/, '.ts');
+  return `packages/core/src/${rest}`;
 }

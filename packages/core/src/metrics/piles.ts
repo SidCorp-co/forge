@@ -5,19 +5,18 @@
  * that owns it or retiring it, never for a cut: this read says which are due, and by how much.
  */
 
-import { type CardAudience, TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
+import { TIER0_MAP_MAX_CHARS } from '@forge/contracts/capability-cards';
 import { type PileRow, type PilesView, SKILL_ALWAYS_ON_MAX_CHARS } from '@forge/contracts/door-use';
 import { ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { selectAlwaysInjectFromKnowledge, selectLessonEntries } from '../knowledge/index.js';
 import { lessonsMapOverflow, restLessonDoors } from '../lessons/index.js';
-import { type DoorCatalog, tier0Map } from '../lib/door-catalog.js';
+import type { DoorCatalog, Tier0Map } from '../lib/door-catalog.js';
+import { doorCalls, MAP_AUDIENCES, tier0Maps } from './door-use.js';
 
 /** The audience whose map is the widest: a run, which builds issues and works in any area. */
 const RUN_AUDIENCE = { produces: ['issue'] as const, area: 'any' as const };
-
-const MAP_AUDIENCES: readonly CardAudience[] = ['bot', 'master', 'run'];
 
 export async function readPiles(projectId: string, catalog: DoorCatalog): Promise<PilesView> {
   const [always, lessons, skills] = await Promise.all([
@@ -28,6 +27,7 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       WHERE s.scope = 'global' OR s.project_id = ${projectId}::uuid
       ORDER BY 2 DESC, 1`) as unknown as Promise<{ name: string; size: number }[]>,
   ]);
+  const maps = await tier0Maps(projectId, catalog, await doorCalls(projectId, catalog, 30));
   const knowledge = always.reduce((n, f) => n + f.text.length, 0);
   const map = lessonsMapOverflow(lessons, { ...RUN_AUDIENCE, ...restLessonDoors(projectId) });
   const piles: PileRow[] = [
@@ -50,16 +50,16 @@ export async function readPiles(projectId: string, catalog: DoorCatalog): Promis
       over: map.named < map.reach,
     },
     ...MAP_AUDIENCES.map((audience) => {
-      const map = tier0Map(catalog.doors, audience);
-      const lines = map ? map.split('\n').length : 0;
+      const map = maps.get(audience) as Tier0Map;
       return {
         pile: 'tier0_map' as const,
         name: `map (${audience})`,
-        size: map.length,
+        size: map.text.length,
         cap: TIER0_MAP_MAX_CHARS,
-        items: lines,
-        carried: lines,
-        over: map.length > TIER0_MAP_MAX_CHARS,
+        items: map.reach,
+        carried: map.carried.length,
+        // a map that cannot carry every card it teaches is due for merging, never cut
+        over: map.carried.length < map.reach,
       };
     }),
     ...skills.map((s) => ({

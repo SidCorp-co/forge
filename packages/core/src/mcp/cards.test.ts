@@ -2,17 +2,21 @@
 // found by the situation an agent is in, and is answered with the action's input.
 
 import { describe, expect, it } from 'vitest';
+import { tier0Map } from '../lib/door-catalog.js';
 import type { McpTool } from '../lib/tool.js';
+import { sourceOf } from '../lib/tool.js';
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
 import { actionCatalog, findActions } from './action-catalog.js';
-import { cardsOf, withCard } from './cards.js';
-import { carded, catalogOf } from './door-catalog.js';
+import { cardsOf, describedCard, withCard } from './cards.js';
+import { carded, catalogOf, mcpDoors } from './door-catalog.js';
 import { mcpTools } from './server.js';
 
 const catalog = actionCatalog(mcpTools({ principal: { userId: 'cards-test' } } as never));
 
-const tool = (cards: McpTool['cards']) =>
-  ({ name: 'forge_thing', route: '/api/things', cards }) as unknown as McpTool;
+const tool = (
+  cards: McpTool['cards'],
+  source: string | undefined = 'packages/core/src/thing/tool.ts',
+) => ({ name: 'forge_thing', route: '/api/things', cards, source }) as unknown as McpTool;
 const body = {
   purpose: 'Does the thing.',
   situations: [{ when: 'you need the thing', do: 'call it' }],
@@ -100,5 +104,104 @@ describe("a door's capability card (ISS-1251)", () => {
     }));
     expect(catalogOf(carded(rest, AFFORDANCE_CARDS)).doors.every((d) => d.card)).toBe(true);
     expect(() => carded(rest.slice(1), AFFORDANCE_CARDS)).toThrow(/a capability card names/);
+  });
+
+  it('names the paths its door lives in, and refuses a carded tool that names no source', () => {
+    expect(sourceOf('file:///app/dist/forge-door/tool.js')).toBe(
+      'packages/core/src/forge-door/tool.ts',
+    );
+    expect(sourceOf('file:///r/packages/core/src/mcp/x.ts')).toBe('packages/core/src/mcp/x.ts');
+    expect(mcpDoors().find((d) => d.id === 'feedback.door')?.paths).toEqual([
+      'packages/core/src/forge-door',
+    ]);
+    const rest = AFFORDANCE_CARDS.map((c) => ({
+      id: c.id,
+      surface: 'rest' as const,
+      summary: null,
+      feature: 'x',
+    }));
+    expect(carded(rest, AFFORDANCE_CARDS).find((d) => d.id === 'POST /api/memory')?.paths).toEqual([
+      'packages/core/src/memory',
+    ]);
+    expect(() =>
+      cardsOf(
+        tool(
+          {
+            get: {
+              ...body,
+              situations: [...body.situations],
+              practice: [...body.practice],
+              audience: ['run'],
+            },
+          },
+          '',
+        ),
+        ['get'],
+      ),
+    ).toThrow(/names no source/);
+  });
+
+  it('shows a lesson folded into a card as proposed until its code carries it', () => {
+    const card = catalog.get('feedback.door')?.card;
+    if (!card) throw new Error('feedback.door has no card');
+    const said = describedCard(card, [
+      {
+        id: 'd1',
+        field: 'situation',
+        op: 'add',
+        text: 'when a refusal named no fix',
+        replaces: null,
+        fromLesson: 'L-9',
+        projectId: null,
+        at: '2026-11-16T00:00:00Z',
+      },
+    ]);
+    expect(said).toMatchObject({
+      proposed: [{ field: 'situation', text: 'when a refusal named no fix', from: 'L-9' }],
+    });
+    expect(describedCard(card)).not.toHaveProperty('proposed');
+    const doors = [
+      { id: 'feedback.door', surface: 'mcp' as const, summary: null, feature: 'f', card },
+    ];
+    const map = tier0Map(
+      doors,
+      'bot',
+      new Map([['feedback.door', ['when a refusal named no fix']]]),
+    ).text;
+    expect(map).toContain('- (proposed) when a refusal named no fix → feedback.door');
+    expect(tier0Map(doors, 'person')).toEqual({ text: '', carried: [], reach: 0 });
+  });
+
+  it('carries the most used cards whole within its cap, and leaves the rest to Tier 1', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      id: `thing.a${i}`,
+      surface: 'mcp' as const,
+      summary: null,
+      feature: 'f',
+      card: {
+        id: `thing.a${i}`,
+        owner: 'f',
+        purpose: 'p',
+        situations: [
+          { when: `you are in situation number ${i} of a long list of them`, do: 'call it' },
+        ],
+        practice: ['x'],
+        audience: ['run' as const],
+        scenarios: [],
+      },
+    }));
+    const map = tier0Map(
+      many,
+      'run',
+      new Map(),
+      new Map([
+        ['thing.a39', 9],
+        ['thing.a7', 3],
+      ]),
+    );
+    expect(map.reach).toBe(40);
+    expect(map.carried.slice(0, 2)).toEqual(['thing.a39', 'thing.a7']);
+    expect(map.carried.length).toBeLessThan(40);
+    expect(map.text.length).toBeLessThanOrEqual(2500);
   });
 });

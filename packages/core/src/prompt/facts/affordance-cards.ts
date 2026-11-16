@@ -9,7 +9,8 @@ import {
   capabilityCardSchema,
 } from '@forge/contracts/capability-cards';
 
-const card = (id: string, owner: string, body: CapabilityCardBody): CapabilityCard => {
+/** A card judged whole as it is written, refused by name where it does not stand. */
+export const card = (id: string, owner: string, body: CapabilityCardBody): CapabilityCard => {
   const parsed = capabilityCardSchema.safeParse(body);
   if (!parsed.success) {
     const said = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
@@ -185,7 +186,11 @@ export const AFFORDANCE_CARDS: readonly CapabilityCard[] = [
         watch: 'cleanup done inside the fix; a defect only mentioned in a comment',
       },
     ],
-    practice: ["Name where, what and its impact; a red rated high stays the issue's to fix."],
+    practice: [
+      'Name where, what and its impact.',
+      "A red you rate high stays the issue's to fix: it is recorded, and its RED_RATED_HIGH warning says so.",
+    ],
+    redFlag: 'A red rated high left as debt while the issue that met it lands.',
     audience: ['master', 'run'],
     changed: { on: '2026-11-16', by: 'ISS-1251' },
   }),

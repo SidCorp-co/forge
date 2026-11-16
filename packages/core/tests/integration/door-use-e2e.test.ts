@@ -154,6 +154,8 @@ describe("a project's door use counts each call against the catalog, the never-c
       byAgent: { 'agent-account': 1, box: 1 },
     });
     expect(door(view, 'support.member').feature).toContain('forge_support');
+    expect(door(view, 'support.member').tiers).toEqual({});
+    expect(door(view, 'feedback.door').tiers).toEqual({ bot: 0, master: 0, run: 0 });
     expect(door(view, 'POST /api/projects/:id/feedback')).toMatchObject({
       surface: 'rest',
       calls: 1,
@@ -330,6 +332,7 @@ describe('each pile a prompt carries reads against its cap', () => {
     const master = piles.find((p) => p.name === 'map (master)');
     expect(master).toMatchObject({ pile: 'tier0_map', cap: 2500 });
     expect(master?.items).toBeGreaterThanOrEqual(15);
+    expect(master?.carried).toBe(master?.items);
     expect(piles.find((p) => p.name === 'map (bot)')?.items).toBeGreaterThan(0);
     expect(piles.find((p) => p.pile === 'skill_always_on' && p.size === 1100)).toMatchObject({
       cap: 1024,

@@ -4,12 +4,14 @@
 // (`contracts/forge-api.openapi.json`). A REST read is not a door here: no log records one.
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { CapabilityCard } from '@forge/contracts/capability-cards';
 import { CONTRACTS_DIR } from '../api-contract/routes.js';
 import type { CatalogDoor, DoorCatalog } from '../lib/door-catalog.js';
+import declaration from '../modules.json' with { type: 'json' };
 import { AFFORDANCE_CARDS } from '../prompt/index.js';
 import { actionCatalog, doorOf } from './action-catalog.js';
+import { REST_CARDS } from './rest-cards.js';
 import { mcpTools } from './server.js';
 
 const WRITES = ['post', 'put', 'patch', 'delete'] as const;
@@ -52,12 +54,14 @@ export function mcpDoors(): CatalogDoor[] {
   // handler runs, so the context names no caller
   const tools = mcpTools({ principal: { userId: 'door-catalog' } } as never);
   const twin = new Map(tools.map((t) => [t.name, t.route ? [t.route].flat().join(', ') : null]));
+  const sources = new Map(tools.map((t) => [t.name, t.source ? [dirname(t.source)] : []]));
   return [...actionCatalog(tools).values()].map((e) => ({
     id: e.id,
     surface: 'mcp' as const,
     summary: e.summary,
     feature: twin.get(e.tool) ? `${e.tool} (${twin.get(e.tool)})` : e.tool,
     ...(e.card ? { card: e.card } : {}),
+    paths: sources.get(e.tool) ?? [],
   }));
 }
 
@@ -83,13 +87,23 @@ export function catalogOf(doors: readonly CatalogDoor[]): DoorCatalog {
   };
 }
 
+/** A REST card's door lives in the module that owns it, which `modules.json` must declare. */
+function moduleDirOf(card: CapabilityCard): string {
+  if (!Object.hasOwn(declaration.modules, card.owner)) {
+    throw new Error(
+      `door catalog: the card for ${card.id} is owned by ${card.owner}, which modules.json declares no module (mcp/door-catalog.ts)`,
+    );
+  }
+  return `packages/core/src/${card.owner}`;
+}
+
 /** The doors with the REST cards written for them; a card for a door no source lists is refused by name. */
 export function carded(doors: CatalogDoor[], cards: readonly CapabilityCard[]): CatalogDoor[] {
   const byId = new Map(cards.map((c) => [c.id, c]));
   const out = doors.map((d) => {
     const card = byId.get(d.id);
     byId.delete(d.id);
-    return card ? { ...d, card } : d;
+    return card ? { ...d, card, paths: [moduleDirOf(card)] } : d;
   });
   if (byId.size > 0) {
     throw new Error(
@@ -107,6 +121,8 @@ export function servedDoorCatalog(): DoorCatalog {
   const document = JSON.parse(
     readFileSync(resolve(CONTRACTS_DIR, 'forge-api.openapi.json'), 'utf8'),
   ) as OpenApi;
-  built = catalogOf(carded([...mcpDoors(), ...restDoors(document)], AFFORDANCE_CARDS));
+  built = catalogOf(
+    carded([...mcpDoors(), ...restDoors(document)], [...AFFORDANCE_CARDS, ...REST_CARDS]),
+  );
   return built;
 }

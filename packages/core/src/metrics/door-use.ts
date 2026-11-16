@@ -7,6 +7,7 @@
  * so a door no agent ever reached for shows, with 0.
  */
 
+import type { CardAudience } from '@forge/contracts/capability-cards';
 import {
   DOOR_USE_TOP,
   type DoorLessonAppliedRow,
@@ -20,7 +21,8 @@ import type { RunContextHow, RunContextSourceKind } from '@forge/contracts/run-c
 import { type SQL, sql } from 'drizzle-orm';
 import { SESSION_TURN_TOKEN_PREFIX, TOKEN_HOLDER_PREFIXES } from '../credentials/pat-format.js';
 import { db } from '../db/client.js';
-import type { DoorCatalog } from '../lib/door-catalog.js';
+import { cardFreshness } from '../lessons/index.js';
+import { type DoorCatalog, type Tier0Map, tier0Map } from '../lib/door-catalog.js';
 
 const DAY_MS = 86_400_000;
 
@@ -134,6 +136,7 @@ export function tallyDoors(
         summary: d.summary,
         feature: d.feature,
         card: d.card ?? null,
+        tiers: {},
         ...EMPTY(),
       },
     ]),
@@ -233,6 +236,12 @@ export async function readDoorUse(
     lessonRows(projectId, since),
   ]);
   const { doors, unmatched } = tallyDoors(catalog, calls, refusals);
+  const maps = await tier0Maps(projectId, catalog, new Map(doors.map((d) => [d.door, d.calls])));
+  for (const d of doors) {
+    for (const audience of d.card?.audience ?? []) {
+      d.tiers[audience] = maps.get(audience)?.carried.includes(d.door) ? 0 : 1;
+    }
+  }
   const shown = doors.filter(
     (d) =>
       (!query.surface || d.surface === query.surface) &&
@@ -254,4 +263,43 @@ export async function readDoorUse(
     lessonsApplied,
     limits: DOOR_USE_LIMITS,
   };
+}
+
+/** The audiences a Tier-0 map is carried for: a person's client finds every door by situation. */
+export const MAP_AUDIENCES: readonly CardAudience[] = ['bot', 'master', 'run'];
+
+/**
+ * Each audience's Tier-0 map in this project: its cards ranked by this project's calls, with the
+ * situations lessons folded into a card shown as proposed until the card's code carries them.
+ */
+export async function tier0Maps(
+  projectId: string,
+  catalog: DoorCatalog,
+  calls: ReadonlyMap<string, number>,
+): Promise<Map<CardAudience, Tier0Map>> {
+  const proposed = new Map(
+    (await cardFreshness()).map((f) => [
+      f.cardId,
+      f.proposedDeltas
+        .filter(
+          (d) => d.field === 'situation' && (d.projectId === null || d.projectId === projectId),
+        )
+        .map((d) => d.text),
+    ]),
+  );
+  return new Map(MAP_AUDIENCES.map((a) => [a, tier0Map(catalog.doors, a, proposed, calls)]));
+}
+
+/** This project's calls per door over the last `days`, for ranking a Tier-0 map. */
+export async function doorCalls(
+  projectId: string,
+  catalog: DoorCatalog,
+  days: number,
+  now: Date = new Date(),
+): Promise<Map<string, number>> {
+  const { doors } = tallyDoors(
+    catalog,
+    await callRows(projectId, new Date(now.getTime() - days * DAY_MS)),
+  );
+  return new Map(doors.map((d) => [d.door, d.calls]));
 }

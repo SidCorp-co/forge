@@ -18,7 +18,7 @@ import { RefusalError } from '../lib/refusal.js';
 import { EXAMPLE_PLACEHOLDERS, type McpContext, refusedAnswer } from '../lib/tool.js';
 import { renderedPermission } from '../middleware/declared-permission.js';
 import { type ActionEntry, doorOf, findActions } from './action-catalog.js';
-import { describedCard } from './cards.js';
+import { describedCard, proposedFor } from './cards.js';
 import { argumentRefusals, shapeOf } from './input-gate.js';
 import { listedSchema } from './listed-schema.js';
 import { fetchRecord, searchRecords } from './records-search.js';
@@ -193,7 +193,14 @@ export async function callSurface(
         : {}),
       ...(entry.documentSchema ? { documentSchema: entry.documentSchema } : {}),
       ...(entry.example ? exampleOf(entry) : {}),
-      ...(entry.card ? { card: describedCard(entry.card) } : {}),
+      ...(entry.card
+        ? {
+            card: describedCard(
+              entry.card,
+              await proposedFor(entry.card.id, deps.ctx.boundProjectId ?? null),
+            ),
+          }
+        : {}),
       call: `forge_call { action: "${entry.id}", args }`,
       ...moreOf(entry),
     });
