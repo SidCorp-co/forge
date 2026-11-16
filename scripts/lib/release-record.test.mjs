@@ -1,3 +1,5 @@
+// @direct-test-of scripts/lib/changelog-fragments.mjs
+
 import { describe, expect, it } from 'vitest';
 import { judge } from './release-record.mjs';
 
@@ -127,7 +129,7 @@ describe('a fragment that is not one is refused by path', () => {
   });
 });
 
-describe("the two forms What's new reads", () => {
+describe('a tour line, and a digest that is no longer a fragment', () => {
   const at = (file, text) =>
     judge({
       head: RECORD,
@@ -136,16 +138,17 @@ describe("the two forms What's new reads", () => {
     });
   const words = (n) => `**Title.** ${Array.from({ length: n - 1 }, () => 'w').join(' ')}`;
 
-  it('a digest may spend 120 words where an entry spends 40, and 121 is refused', () => {
-    expect(at('digest-2026-w41.digest.md', words(120)).code).toBe(0);
-    expect(rules(at('digest-2026-w41.digest.md', words(121)))).toEqual(['entry-budget']);
-    expect(rules(at('a.fixed.md', words(41)))).toEqual(['entry-budget']);
+  it("a week's digest is refused by path, naming the section the list does not hold", () => {
+    const verdict = at('digest-2026-w41.digest.md', '**Week.** Things.');
+    expect(rules(verdict)).toEqual(['fragment-shape']);
+    expect(verdict.violations[0].detail).toContain(
+      '`changelog.d/digest-2026-w41.digest.md` names section `digest`, which is not one of `added`, `changed`, `fixed`, `removed`, `security`',
+    );
   });
 
-  it('a digest not named for its week is refused by path', () => {
-    const verdict = at('weekly.digest.md', '**Week.** Things.');
-    expect(rules(verdict)).toEqual(['fragment-shape']);
-    expect(verdict.violations[0].detail).toContain('changelog.d/weekly.digest.md');
+  it('a digest-length entry spends the 40 words every entry spends', () => {
+    expect(rules(at('a.fixed.md', words(41)))).toEqual(['entry-budget']);
+    expect(rules(at('digest-2026-w41.fixed.md', words(120)))).toEqual(['entry-budget']);
   });
 
   it('a tour line is not part of the entry, so the entry keeps its words', () => {

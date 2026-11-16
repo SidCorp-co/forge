@@ -13,8 +13,8 @@ One change, one file: `changelog.d/<name>.<section>.md`.
 ```
 
 The in-app What's new no longer reads this record: it shows the release the instance serves, from
-that release's own page. A closing `tour: <id>` line and a `digest-<year>-w<nn>.digest.md` fragment are
-still accepted by the record gate and folded by the release, but nothing reads them, so write neither.
+that release's own page. A closing `tour: <id>` line is still accepted and folded, but nothing reads
+it, so write none. A `digest-<year>-w<nn>.digest.md` fragment is refused like any other section.
 
 `scripts/cut-release.sh` folds every file here into the new version section of `CHANGELOG.md` and
 deletes them in the release commit. `CHANGELOG.md` holds released sections only, and

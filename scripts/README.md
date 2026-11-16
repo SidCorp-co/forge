@@ -930,11 +930,11 @@ folds every fragment the moved head carries — landed meanwhile, edited or dele
 into the same version. A commit about to ship that still carries a path under `changelog.d/` but its
 README, or a fragment the fold refuses, stops the cut `RELEASE_FRAGMENT_UNFOLDED`, naming each, with
 nothing pushed (ISS-578).
-Two fragment forms are folded though nothing reads them any more, since What's new shows the release
-the instance serves (REQ-40) and not this record: an entry may close with one line `tour: <id>`,
-folded as an invisible `<!-- tour: <id> -->`, and a week's digest is `digest-<year>-w<nn>.digest.md`,
-folded under `### Digest` as `<!-- digest: <week> -->` and held to `DIGEST_WORD_BUDGET` words instead
-of `ENTRY_WORD_BUDGET`.
+An entry may close with one line `tour: <id>`, folded as an invisible `<!-- tour: <id> -->`, though
+nothing reads it any more, since What's new shows the release the instance serves (REQ-40) and not
+this record. A week's digest fragment (`digest-<year>-w<nn>.digest.md`) is refused `fragment-shape`
+like any other section the list does not name: nothing has read one since ISS-492, and the `### Digest`
+sections already released stay in `CHANGELOG.md` as history.
 
 **Why fragments.** While unreleased entries were lines under `## [Unreleased]`, a release inserting
 its version heading under that line and a branch appending an entry below it edited neighbouring
@@ -953,7 +953,7 @@ Rules:
 |---|---|
 | `unreleased-in-record` | `CHANGELOG.md` carries a `## [Unreleased]` heading — a writer following the guidance fragments replaced. Each entry under it is named with the fragment path to move it to |
 | `entry-outside-a-fragment` | an entry this change adds sits in a version section the base revision already held, and is not a correction of a published entry — the merge that slid a branch's entry under a release. A version section new at HEAD is a release, or several in a promotion, and passes |
-| `fragment-shape` | a file under `changelog.d/` is not named `<name>.<section>.md`, is empty, holds a heading, a list marker or a second paragraph, or does not open with a bold lead; a digest is not named `digest-<year>-w<nn>` or carries a `tour:` line |
+| `fragment-shape` | a file under `changelog.d/` is not named `<name>.<section>.md`, is empty, holds a heading, a list marker or a second paragraph, or does not open with a bold lead; its section is not one of `added`, `changed`, `fixed`, `removed`, `security` (a `.digest.md` included) |
 | `structure` | one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
 | `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |

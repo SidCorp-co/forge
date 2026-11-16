@@ -25,25 +25,7 @@ export function fragmentFiles(files) {
  */
 export const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Security'];
 
-/**
- * The section of a week's digest: an agent's short summary of one ISO week, written as a fragment
- * `digest-<year>-w<nn>.digest.md` and folded by the release under `### Digest`, ahead of the
- * entries. It is not a release-note section; it carries its own word budget.
- */
-export const DIGEST = 'Digest';
-
-/** Words a digest may spend; the same number as `WHATS_NEW_DIGEST_WORDS_MAX` in packages/contracts. */
-export const DIGEST_WORD_BUDGET = 120;
-
-const SECTION_BY_SUFFIX = new Map([...SECTIONS, DIGEST].map((s) => [s.toLowerCase(), s]));
-
-const DIGEST_NAME = /^digest-(\d{4})-w(\d{2})$/;
-
-/** The ISO week a digest fragment's name carries, as `2026-W41`, or null for a name that is not one. */
-export function digestWeekOf(name) {
-  const m = DIGEST_NAME.exec(String(name ?? ''));
-  return m ? `${m[1]}-W${m[2]}` : null;
-}
+const SECTION_BY_SUFFIX = new Map(SECTIONS.map((s) => [s.toLowerCase(), s]));
 
 /**
  * A fragment may close with one line `tour: <id>`: the product tour its entry offers as "Show me".
@@ -94,14 +76,6 @@ export function readFragment(fileName, text) {
   const tourLine = TOUR_LINE.exec(body);
   const tour = tourLine ? tourLine[1] : null;
   if (tourLine) body = body.slice(0, tourLine.index).trim();
-  if (section === DIGEST) {
-    if (!digestWeekOf(named?.[1])) {
-      problems.push(
-        'is a digest but its name is not `digest-<year>-w<nn>` (such as `digest-2026-w41`): the name carries the ISO week it summarises',
-      );
-    }
-    if (tour) problems.push('is a digest and cannot offer a tour');
-  }
   if (body === '') problems.push('is empty');
   else {
     if (/\n\s*\n/.test(body)) {
@@ -126,7 +100,6 @@ export function readFragment(fileName, text) {
     section: section ?? null,
     entry: normaliseEntry(body),
     tour,
-    week: section === DIGEST ? digestWeekOf(named?.[1]) : null,
     problems,
   };
 }

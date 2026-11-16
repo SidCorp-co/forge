@@ -85,13 +85,12 @@ describe('the release writer refuses what it cannot write', () => {
   });
 });
 
-describe("the release writer folds the forms What's new reads", () => {
-  it("an entry's tour line becomes an invisible comment; a digest leads, marked with its week", () => {
+describe('the release writer folds a tour line, and no digest', () => {
+  it("an entry's tour line becomes an invisible comment", () => {
     const out = assembleRelease(
       HEADER + OLDER,
       [
         { file: 'iss-x.added.md', text: '**A new screen.** It opens.\ntour: integrations\n' },
-        { file: 'digest-2026-w41.digest.md', text: '**The week.** Screens and fixes.\n' },
         { file: 'iss-y.fixed.md', text: '**A fix.** Done.\n' },
       ],
       '1.0.0',
@@ -99,20 +98,24 @@ describe("the release writer folds the forms What's new reads", () => {
       'H',
     );
     expect(out).toContain(
-      '### Digest\n\n- <!-- digest: 2026-W41 --> **The week.** Screens and fixes.\n\n### Added\n\n' +
-        '- **A new screen.** It opens. <!-- tour: integrations -->\n\n### Fixed\n\n- **A fix.** Done.\n',
+      '### Added\n\n- **A new screen.** It opens. <!-- tour: integrations -->\n\n### Fixed\n\n- **A fix.** Done.\n',
     );
   });
 
-  it('a digest not named for a week is refused by file', () => {
+  it("a week's digest is refused by file like any section the list does not name, and nothing is folded", () => {
     expect(() =>
       assembleRelease(
         HEADER + OLDER,
-        [{ file: 'weekly.digest.md', text: '**W.** x' }],
+        [
+          { file: 'iss-y.fixed.md', text: '**A fix.** Done.\n' },
+          { file: 'digest-2026-w41.digest.md', text: '**The week.** Screens and fixes.\n' },
+        ],
         '1.0.0',
         'd',
         'H',
       ),
-    ).toThrow('changelog.d/weekly.digest.md');
+    ).toThrow(
+      /changelog\.d\/digest-2026-w41\.digest\.md names section `digest`, which is not one of/,
+    );
   });
 });

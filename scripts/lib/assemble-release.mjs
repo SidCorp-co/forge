@@ -7,23 +7,16 @@ import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import {
-  DIGEST,
-  FRAGMENT_DIR,
-  fragmentFiles,
-  readFragment,
-  SECTIONS,
-} from './changelog-fragments.mjs';
+import { FRAGMENT_DIR, fragmentFiles, readFragment, SECTIONS } from './changelog-fragments.mjs';
 
 const RELEASED = /^## \[/m;
 
 /**
- * One fragment as its bullet: a digest leads with the week it summarises and an entry that offers a
- * tour closes with it, both as HTML comments that render as nothing. No reader of them remains,
- * since What's new shows the release the instance serves rather than this record.
+ * One fragment as its bullet: an entry that offers a tour closes with it as an HTML comment that
+ * renders as nothing. No reader of it remains, since What's new shows the release the instance
+ * serves rather than this record.
  */
 function bullet(f) {
-  if (f.section === DIGEST) return `- <!-- digest: ${f.week} --> ${f.entry}`;
   return f.tour ? `- ${f.entry} <!-- tour: ${f.tour} -->` : `- ${f.entry}`;
 }
 
@@ -47,15 +40,13 @@ export function assembleRelease(record, fragments, version, date, headline) {
       bad.map((f) => `${FRAGMENT_DIR}/${f.file} ${f.problems.join('; ')}`).join('\n'),
     );
   }
-  const blocks = [DIGEST, ...SECTIONS]
-    .map((section) => {
-      const entries = read
-        .filter((f) => f.section === section)
-        .sort((a, b) => a.file.localeCompare(b.file))
-        .map((f) => bullet(f));
-      return entries.length > 0 ? `### ${section}\n\n${entries.join('\n')}\n\n` : '';
-    })
-    .join('');
+  const blocks = SECTIONS.map((section) => {
+    const entries = read
+      .filter((f) => f.section === section)
+      .sort((a, b) => a.file.localeCompare(b.file))
+      .map((f) => bullet(f));
+    return entries.length > 0 ? `### ${section}\n\n${entries.join('\n')}\n\n` : '';
+  }).join('');
   const section = `## [${version}] - ${date}\n\n${headline}\n\n${blocks}`;
   const at = record.search(RELEASED);
   if (at === -1) return `${record.replace(/\n*$/, '\n\n')}${section.replace(/\n+$/, '\n')}`;
