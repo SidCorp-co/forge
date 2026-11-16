@@ -1,0 +1,15 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!tests/**",
+        "$TURBO_ROOT$/packages/contracts/scripts/publish-dist.mjs"
+      ]
+    }
+  }
+}

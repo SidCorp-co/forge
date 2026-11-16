@@ -1,9 +1,12 @@
 // How a fresh build reaches dist without dist ever being absent (ISS-1254). The build emits into a
 // staging directory of its own inside dist, then moves each file over its old one by rename, which
-// replaces it in one step: a process importing @forge/contracts meanwhile reads every module whole,
-// the old one or the new one, and never a missing dist or a half-written file. The build this
-// replaced removed dist first, and a builder's tests failed mid-import while another builder rebuilt.
+// replaces it in one step: a process importing the package meanwhile reads every module whole, the
+// old one or the new one, and never a missing dist or a half-written file. The build this replaced
+// removed dist first, and a builder's tests failed mid-import while another builder rebuilt.
+// @forge/contracts and @forge/observability both build through `emitAndPublish`; observability's
+// build emitted in place over its own dist, so a reader could catch a module half-written.
 
+import { spawnSync } from "node:child_process";
 import {
 	mkdirSync,
 	mkdtempSync,
@@ -66,4 +69,23 @@ export function publish(staged, dist) {
 	for (const rel of filesUnder(dist))
 		if (!kept.has(rel)) rmSync(join(dist, rel));
 	rmSync(staged, { recursive: true, force: true });
+}
+
+/**
+ * Emit the package at `pkg` with `tsgo <args> --outDir <staging>` and publish the result into
+ * `<pkg>/dist`. A failed emit publishes nothing and leaves dist as it was. Returns tsgo's exit status.
+ */
+export function emitAndPublish(pkg, args) {
+	const dist = join(pkg, "dist");
+	const staged = stagingDir(dist);
+	const emitted = spawnSync("tsgo", [...args, "--outDir", staged], {
+		cwd: pkg,
+		stdio: "inherit",
+	}).status;
+	if (emitted !== 0) {
+		rmSync(staged, { recursive: true, force: true });
+		return emitted ?? 1;
+	}
+	publish(staged, dist);
+	return 0;
 }

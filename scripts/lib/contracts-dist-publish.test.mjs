@@ -1,4 +1,5 @@
 // @direct-test-of packages/contracts/scripts/build.mjs
+// @direct-test-of packages/observability/scripts/build.mjs
 //
 // A rebuild of @forge/contracts never leaves a reader without its dist (ISS-1254). One builder's
 // tests failed mid-import while another rebuilt contracts, because the build removed dist before it
@@ -105,6 +106,11 @@ function removeThenWrite(dist, round) {
   writeBuild(dist, round);
 }
 
+/** Observability's build before it published the same way: each module written over its old one. */
+function writeInPlace(dist, round) {
+  writeBuild(dist, round);
+}
+
 describe('a contracts rebuild under a reader', () => {
   it('a reader never misses a module or reads one half-written while the build publishes', async () => {
     const { dist, counts } = await readWhileRebuilding(stagedBuild, 15);
@@ -118,6 +124,11 @@ describe('a contracts rebuild under a reader', () => {
   it('the old shape, dist removed and written again, is caught by the same reader', async () => {
     const { counts } = await readWhileRebuilding(removeThenWrite, 15);
     expect(counts.missing + counts.torn).toBeGreaterThan(0);
+  });
+
+  it('the shape observability had, each module written in place over dist, is caught as torn', async () => {
+    const { counts } = await readWhileRebuilding(writeInPlace, 15);
+    expect(counts.torn).toBeGreaterThan(0);
   });
 
   it('a module the new build no longer emits leaves dist, and a dead build’s staging is reaped', () => {

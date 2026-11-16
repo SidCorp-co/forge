@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "build": "tsgo -p tsconfig.json",
+    "build": "node scripts/build.mjs",
     "clean": "rm -rf dist"
   },
   "files": [

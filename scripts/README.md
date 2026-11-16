@@ -1163,12 +1163,14 @@ to source). Before any selected test runs, `lib/package-builds.mjs` rebuilds eac
 none older than its source. A build that fails or leaves its dist short is refused
 `PACKAGE_BUILD_STALE`, naming the package, its dist, the first file that does not match, the
 collections that load it and the command; no test runs, and both entrypoints exit 2 (ISS-587).
-A rebuild never takes dist away from a reader: contracts' build emits into a staging directory
-inside dist and renames each file over its old one (`packages/contracts/scripts/publish-dist.mjs`),
-so a test importing contracts while another run rebuilds it reads each module whole, old or new. Its
-build removed dist first, and one builder's tests failed mid-import while another rebuilt
-(ISS-1254); `lib/contracts-dist-publish.test.mjs` reads every module in a second process through 15
-rebuilds and holds the old shape to going red under the same reader. `contracts:generate` writes
+A rebuild never takes dist away from a reader: contracts' and observability's builds each emit into
+a staging directory inside dist and rename each file over its old one
+(`packages/contracts/scripts/publish-dist.mjs:emitAndPublish`, which
+`packages/observability/scripts/build.mjs` imports), so a test importing either while another run rebuilds it reads each
+module whole, old or new. Contracts' build removed dist first, and one builder's tests failed
+mid-import while another rebuilt (ISS-1254); observability's emitted in place over its dist, where a
+reader could catch a module half-written. `lib/contracts-dist-publish.test.mjs` reads every module
+in a second process through 15 rebuilds and holds the old shape to going red under the same reader. `contracts:generate` writes
 each artifact beside itself and renames it into place the same way.
 `pnpm verify` loads the same two builds (`VERIFY_LOADS_BUILT`), so the merge check rebuilds whichever
 of them its tests did not before verify starts, refused the same way: a change selecting no core test
