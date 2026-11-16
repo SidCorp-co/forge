@@ -9,6 +9,7 @@ import { DOOR_SURFACES } from "@forge/contracts/door-use";
 import { CountSection, ExpandRow, ExpandRows, ListSearch, ListToolbar, SegmentedControl, StatusChip, useUrlChoice, useUrlParams } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { cn } from "@/lib/utils/cn";
 import { CAP_STANDING_TONE, CAP_STANDINGS, type CapDoor, type CapStanding, capDoorsOf, doorTitle, standingCounts } from "../capabilities";
 import { useCapabilityExtra, useDoorUse, usePiles } from "../hooks";
 import { CapabilitiesBand } from "./capabilities-band";
@@ -31,8 +32,8 @@ function DoorLine({ d }: { d: CapDoor }) {
   const t = useCopy();
   const title = doorTitle(d.row);
   return (
-    <span className="flex min-w-0 flex-1 items-center gap-3">
-      <span className={title.mono ? "min-w-0 flex-1 truncate font-mono text-12-5 text-fg" : "min-w-0 flex-1 truncate"}>{title.text}</span>
+    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
+      <span className={cn("min-w-0 flex-1 truncate max-md:basis-full", title.mono && "font-mono text-12-5 text-fg")}>{title.text}</span>
       <span className="flex-none text-12 tabular-nums text-muted" data-testid="cap-calls-count">
         {t("agents.cap.calls", { n: d.row.calls })}
       </span>
