@@ -108,15 +108,17 @@ memory. Reach it through the REST API (\`forge-runner api <path>\`) or the \`for
 server in \`.mcp.json\` carries only what neither covers, and its instructions name those tools.
 
 - **projectId:** \`${projectId}\`  ·  **slug:** \`${slug}\`
-- **Recall memory FIRST** — project memory is NOT auto-loaded. Before any task needing
-  project context: \`POST /api/memory/search { "projectId": "${projectId}", "query": <topic>, "topK": 5 }\`.
-  Treat hits as point-in-time; each carries its \`standing\`, and an \`unverified\` one is a lead to
-  check against live code/git, never a fact.
-- Codebase & project knowledge: \`GET /api/projects/${projectId}/knowledge\` or \`forge knowledge\`.
-- Issues / tasks / status / dependencies: \`forge issue\`, \`forge new\`, \`forge comment\`, or
-  \`/api/projects/${projectId}/issues\` and \`/api/issues/<id>\`.
-- Before writing, rewriting, or tuning this project's pipeline skills, read the \`forge-skills\`
-  MCP prompt (the always-latest authoring guide).
+- **Before you design or fix, recall what earlier work settled** — memory is not loaded for you:
+  \`POST /api/memory/search { "projectId": "${projectId}", "query": <topic>, "topK": 5 }\`. A hit is
+  point-in-time: an \`unverified\` \`standing\` is a lead to check against live code/git, never a fact.
+- **When you need the project's own words** (build commands, a rule, a guide):
+  \`GET /api/projects/${projectId}/knowledge\` or \`forge knowledge\`.
+- **When you work an issue**, read it, its comments and its edges first: \`/api/issues/<id>\`
+  (\`forge issue\`, \`forge comment\`); the project's list is \`/api/projects/${projectId}/issues\`.
+- **When a Forge door, guide or skill fails you** (it refused what it should take, missed what you
+  needed, or taught you wrong), say so: \`POST /api/forge/feedback\`; its triage takes it to the
+  feature that owns it.
+- **Before you write or tune this project's pipeline skills**, read the \`forge-skills\` MCP prompt.
 
 ${OPERATING_AFFORDANCES_TEXT}
 ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;

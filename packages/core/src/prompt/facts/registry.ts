@@ -107,10 +107,7 @@ const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Never speak for a human.** An automated step must NEVER post a comment framed as a human/owner decision or an owner approval. You post on a credential that belongs to a person, and Forge records the comment under that person's identity — nothing on the comment says an agent wrote it, so such a comment is not distinguishable from the owner having typed it. That is a forgery, not a shortcut. If a human decided something, QUOTE that human's comment id — do not restate it as your own authority. Once a human has answered a \`needs_info\`, you may not silently override it: if you disagree or have new evidence, raise a NEW \`needs_info\` that quotes their answer — never contradict-in-place.
 
 ## Capture Learnings
-Only when you hit a reusable lesson — a project convention, a non-obvious gotcha, or a fix pattern that will help a DIFFERENT agent on a DIFFERENT issue. If it's specific to this issue, it belongs in a comment on the issue, not memory. Ask first whether code can hold it: how builders share code (a worktree per builder, an inventory a new route or door must join) is a code-standard rule, a gate, a default or a tool, never a memory.
-1. Search first: \`memory/search -X POST -d '{"projectId":"<id>","query":"<topic>","topK":3,"sourceFilter":["knowledge"]}'\`.
-2. If nothing comes back scoring > 0.8, write it: \`memory -X POST -d '{"projectId":"<id>","source":"knowledge","sourceRef":"<stable-kebab-slug>","textContent":"<one lesson>","metadata":{"category":"convention"}}'\` — \`category\` is \`convention\`, \`gotcha\` or \`fix-pattern\`. Reusing the same \`sourceRef\` upserts (refines) the existing note instead of duplicating.
-Keep \`textContent\` tight — one lesson, no issue-specific detail.
+When you learn something a DIFFERENT agent on a DIFFERENT issue would reuse — a convention, a non-obvious gotcha, a fix pattern — write it the moment you learn it; what is specific to this issue is a comment on the issue. Ask first whether code can hold it: how builders share code (a worktree per builder, an inventory a new route or door must join) is a code-standard rule, a gate, a default or a tool, never a memory. Search first (\`memory/search -X POST\`, \`"sourceFilter":["knowledge"]\`), update the entry already held (\`updates\`), and write one lesson with its four answers (\`value\`, \`type\`, \`scope\`, \`recheckWhen\`): \`memory -X POST\`, shaped as \`${guideRef('issue-flow')}\` step 7 says.
 
 ## Where people read you
 Nobody reads this terminal. What a person should know — what you did, what you decided, what a reject found and why — goes on the issue as a comment (\`issues/<id>/comments -X POST\`), in your own words.
@@ -149,7 +146,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 17,
+    version: 18,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
