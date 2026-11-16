@@ -1,0 +1,1 @@
+**A job whose session failed before starting gives its hold back.** The hold sweep returns it within a minute, naming the session and why, and the next take briefs a fresh session, so the project's run slot frees.

@@ -167,32 +167,63 @@ export async function releaseHoldsOf(sessionId: string): Promise<number> {
   return released;
 }
 
+/** A hold the sweep gave back, with why: its master is gone, or the job's own session ended unstarted. */
+export interface ReleasedHold {
+  jobId: string;
+  formerHolder: string;
+  /** The holding master's status, `no_session` where its row is gone. */
+  masterStatus: string;
+  /** The job's session that ended without starting (ISS-1258); null where the master is the cause. */
+  endedSession: { id: string; status: string; failureReason: string | null } | null;
+}
+
 /**
- * Release the holds of master sessions that are terminal or silent, with each former holder.
- * `silent` is the reaper's own predicate over a session alias (`devices/master-silence.ts`), so a
- * silent master whose child is still beating keeps its holds exactly as the reaper keeps it, and
- * the run standing's hold clock reads the same beat; a terminal one does not. A hold whose master
- * has no row is released once it is `staleSeconds` old.
+ * Release every hold nothing will start: its master is terminal or silent, or it has no row and the
+ * hold is `staleSeconds` old, or the job's own session (`jobs.agent_session_id`, minted at the
+ * prepare) ended without starting. `silent` is the reaper's own predicate over a session alias
+ * (`devices/master-silence.ts`), so a silent master whose child is still beating keeps its holds
+ * exactly as the reaper keeps it, and the run standing's hold clock reads the same beat; a terminal
+ * one does not. A session still queued is starting, however slowly, and keeps its hold: the queue
+ * hop (`queue-hop.ts:reapQueueHop`) is what ends one that never starts, and this sweep follows it.
  */
-export async function releaseHoldsOfDeadMasters(
+export async function releaseDeadHolds(
   silent: (alias: string) => SQL,
   staleSeconds: number,
-): Promise<Array<{ jobId: string; formerHolder: string; masterStatus: string }>> {
+): Promise<ReleasedHold[]> {
   const doomed = (await db.execute(sql`
-    SELECT j.id, j.held_by, COALESCE(s.status, 'no_session') AS master_status
+    SELECT j.id, j.held_by, COALESCE(s.status, 'no_session') AS master_status,
+           js.id AS session_id, js.status AS session_status, js.failure_reason
     FROM jobs j
     LEFT JOIN agent_sessions s ON s.id = j.held_by
+    LEFT JOIN agent_sessions js ON js.id = j.agent_session_id
+      AND js.status IN (${TERMINAL}) AND js.started_at IS NULL
     WHERE j.held_by IS NOT NULL
       AND (
         s.status IN (${TERMINAL})
         OR (s.id IS NOT NULL AND ${silent('s')})
         OR (s.id IS NULL AND j.held_at < now() - make_interval(secs => ${staleSeconds}))
+        OR js.id IS NOT NULL
       )
-  `)) as unknown as Array<{ id: string; held_by: string; master_status: string }>;
-  const released: Array<{ jobId: string; formerHolder: string; masterStatus: string }> = [];
+  `)) as unknown as Array<{
+    id: string;
+    held_by: string;
+    master_status: string;
+    session_id: string | null;
+    session_status: string | null;
+    failure_reason: string | null;
+  }>;
+  const released: ReleasedHold[] = [];
   for (const r of doomed) {
     if (await releaseOne(r.id, r.held_by)) {
-      released.push({ jobId: r.id, formerHolder: r.held_by, masterStatus: r.master_status });
+      released.push({
+        jobId: r.id,
+        formerHolder: r.held_by,
+        masterStatus: r.master_status,
+        endedSession:
+          r.session_id === null || r.session_status === null
+            ? null
+            : { id: r.session_id, status: r.session_status, failureReason: r.failure_reason },
+      });
     }
   }
   return released;

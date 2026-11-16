@@ -26,8 +26,9 @@ export {
   dispatchHeldJob,
   type HoldRefusal,
   holdQueuedJob,
+  type ReleasedHold,
+  releaseDeadHolds,
   releaseHoldsOf,
-  releaseHoldsOfDeadMasters,
   releaseJobHold,
 } from './master-holds.js';
 export { parkedOnAHuman } from './park-deadline.js';

@@ -3,7 +3,7 @@ import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
-import { releaseHoldsOf, releaseHoldsOfDeadMasters } from '../jobs/index.js';
+import { releaseDeadHolds, releaseHoldsOf } from '../jobs/index.js';
 import { logger } from '../lib/logger.js';
 import { masterSilentSql } from './master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
@@ -61,20 +61,35 @@ export async function reapSilentMasters(): Promise<number> {
 }
 
 /**
- * Release holds belonging to master sessions that are terminal or silent, and
- * log each holder so the pool tells "nobody wanted this" from "its holder died".
+ * Release the holds nothing will start, and log each one with why, so the pool tells "nobody wanted
+ * this" from "its holder died" from "its own session ended unstarted": a master terminal or silent,
+ * or the held job's own session ended without starting (ISS-1258), whatever its master's state.
  *
  * The silence arm carries the SAME child-liveness guard as
  * {@link reapSilentMasters}: without it the box that function spares loses every
  * job it held one statement later. A TERMINAL master is not guarded.
  */
 export async function reapDeadMasterHolds(): Promise<number> {
-  const released = await releaseHoldsOfDeadMasters(masterSilentSql, SESSION_SILENCE_TIMEOUT_S);
+  const released = await releaseDeadHolds(masterSilentSql, SESSION_SILENCE_TIMEOUT_S);
   for (const row of released) {
-    logger.warn(
-      { jobId: row.jobId, masterSessionId: row.formerHolder, masterStatus: row.masterStatus },
-      'master-reaper: released a hold whose master is gone',
-    );
+    const base = {
+      jobId: row.jobId,
+      masterSessionId: row.formerHolder,
+      masterStatus: row.masterStatus,
+    };
+    if (row.endedSession) {
+      logger.warn(
+        {
+          ...base,
+          sessionId: row.endedSession.id,
+          sessionStatus: row.endedSession.status,
+          failureReason: row.endedSession.failureReason,
+        },
+        `master-reaper: released a hold whose job's session ${row.endedSession.id} ended ${row.endedSession.status} (${row.endedSession.failureReason ?? 'no reason recorded'}) without starting`,
+      );
+      continue;
+    }
+    logger.warn(base, 'master-reaper: released a hold whose master is gone');
   }
   return released.length;
 }

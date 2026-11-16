@@ -1,12 +1,18 @@
 import type { FailureCause } from '@forge/contracts/failure-causes';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, notInArray } from 'drizzle-orm';
 import {
   insertSessionRow,
   sessionAudienceById,
   transitionSessions,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/schema.js';
+import {
+  type AgentSessionStatus,
+  agentSessions,
+  issues,
+  jobs,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { RunFailureCause } from '../pipeline/index.js';
@@ -108,9 +114,31 @@ function sessionMetadata(
 }
 
 /**
+ * The session a job is linked to, unless that session has ended: a held job whose session ended
+ * before its start is given back (`master-holds.ts:releaseDeadHolds`), and the next prepare must
+ * brief a session that can still start, never the ended one (ISS-1258: steward job bace631e was
+ * stamped `dispatched` on its failed session e1d4b5ef, so nothing ever ran it).
+ */
+async function liveLinkedSession(job: JobRow): Promise<string | null> {
+  if (!job.agentSessionId) return null;
+  const [row] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.id, job.agentSessionId),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
  * The job's pipeline session, created `queued` and linked in one transaction under the run's
  * guard: a run that no longer takes work refuses it `RUN_NOT_ACCEPTING_WORK`, and every failure
- * reaches the caller.
+ * reaches the caller. A linked session that has ended is replaced, never handed out again; it
+ * stays on record under its own `metadata.jobId`.
  *
  * It opens as a root. The master in `jobs.held_by` is the session the box held the job under, not
  * the process it runs in: the box starts a pool job in a pane of its own and supervises it there,
@@ -121,7 +149,8 @@ export async function ensureAgentSessionForJob(
   job: JobRow,
   context: { repoPath: string | null; resume: ResumeRecord },
 ): Promise<string> {
-  if (job.agentSessionId) return job.agentSessionId;
+  const linked = await liveLinkedSession(job);
+  if (linked) return linked;
   const parentSession = await loadRetryParentSession(job);
   const issue = await loadIssueFacts(job);
   const skillName = deriveSkillName(job.payload);

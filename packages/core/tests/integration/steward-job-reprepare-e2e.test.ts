@@ -9,14 +9,20 @@
  *   briefed with it may still be working the job (ISS-1004, FB-511), so only the job's end takes it.
  * - Each prepare's token has a name of its own under the job's, and the job's end revokes every one.
  * - A prepare whose steward cannot act on the project is refused by name, not INTERNAL_ERROR.
+ * - A held job whose own session ended unstarted while its master lives is given back by the hold
+ *   sweep, naming the session and why, and prepares again on a fresh session (ISS-1258); one whose
+ *   session is still starting keeps its hold.
  *
  * @direct-test-of packages/core/src/steward/job.ts
  * @direct-test-of packages/core/src/steward/credential.ts
  * @direct-test-of packages/core/src/jobs/prepare-claimed-job.ts
+ * @direct-test-of packages/core/src/jobs/master-holds.ts
+ * @direct-test-of packages/core/src/jobs/agent-session-link.ts
+ * @direct-test-of packages/core/src/devices/master-reaper.ts
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api } from '../helpers/api.js';
 import {
@@ -40,6 +46,7 @@ let projectId = '';
 let ownerId = '';
 let boxPat = '';
 let sessionId = '';
+let boxId = '';
 let seq = 0;
 
 beforeAll(async () => {
@@ -51,6 +58,7 @@ beforeAll(async () => {
   projectId = (await createTestProject(ownerId)).id;
   await addProjectMember(projectId, ownerId, 'admin');
   const box = await createTestDevice(ownerId);
+  boxId = box;
   await bindTestRunner(projectId, box);
   boxPat = (
     await mintPat({
@@ -235,5 +243,136 @@ describe('a steward job prepared twice (ISS-972)', () => {
         INSERT INTO project_members
         SELECT * FROM jsonb_populate_record(NULL::project_members, ${JSON.stringify(member?.row)}::jsonb)`);
     }
+  });
+});
+
+/** The pipeline session a prepare minted for the job, which the box runs it under. */
+function preparedSession(prepared: Doc): string {
+  const id = (prepared.prepared as { agentSessionId?: string } | undefined)?.agentSessionId;
+  if (!id) throw new Error('the prepare answered no agent session');
+  return id;
+}
+
+const sessionRow = async (id: string) =>
+  (
+    await rows<{ status: string; failure_reason: string | null; started_at: Date | null }>(sql`
+      SELECT status, failure_reason, started_at FROM agent_sessions WHERE id = ${id}`)
+  )[0];
+
+const jobRow = async (jobId: string) =>
+  (
+    await rows<{ status: string; held_by: string | null; agent_session_id: string | null }>(sql`
+      SELECT status, held_by, agent_session_id FROM jobs WHERE id = ${jobId}`)
+  )[0];
+
+/**
+ * The queue hop over one session, as the loop monitor runs it: `queueCutoff` is the instant a
+ * session dispatched before, and never heard from, has waited too long.
+ */
+async function queueHop(session: string, queueCutoff: Date): Promise<void> {
+  const { reapQueueHop } = await import('../../src/jobs/queue-hop.js');
+  const { agentSessions } = await import('../../src/db/schema.js');
+  const { eq } = await import('drizzle-orm');
+  await reapQueueHop({
+    now: new Date(),
+    queueCutoff,
+    quietCutoff: new Date(0),
+    projectFilter: eq(agentSessions.id, session),
+  });
+}
+
+/** One pass of the hold sweep, with what it logged about `jobId`. */
+async function sweepHolds(jobId: string): Promise<{ logged: Array<Record<string, unknown>> }> {
+  const { reapDeadMasterHolds } = await import('../../src/devices/master-reaper.js');
+  const { logger } = await import('../../src/lib/logger.js');
+  const warn = vi.spyOn(logger, 'warn');
+  try {
+    await reapDeadMasterHolds();
+    const logged = warn.mock.calls
+      .map(([fields]) => fields as unknown)
+      .filter((f): f is Record<string, unknown> => typeof f === 'object' && f !== null)
+      .filter((f) => f.jobId === jobId);
+    return { logged };
+  } finally {
+    warn.mockRestore();
+  }
+}
+
+/** The subagent slots this project's runs and steward jobs hold on the box: what `RUN_SLOT_UNAVAILABLE` reads. */
+async function slotsInUse(): Promise<number> {
+  const { readBoxSlots } = await import('../../src/devices/run-slots-read.js');
+  const box = await readBoxSlots(boxId);
+  return box.projects.find((p) => p.projectId === projectId)?.inUse ?? 0;
+}
+
+describe('a held job whose own session ended unstarted (ISS-1258)', () => {
+  // forge-dev 2026-11-16: steward job bace631e, held by live master 739cd707, kept its hold for two
+  // hours after its session e1d4b5ef failed queue_timeout, and the project's run slot with it
+  it('is given back naming the session and why, and prepares again on a fresh session', async () => {
+    const { runId, jobId } = await stewardJob();
+    const first = await prepare(jobId);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const ended = preparedSession(first.body);
+
+    await queueHop(ended, new Date(Date.now() + 60_000));
+    expect(await sessionRow(ended)).toEqual({
+      status: 'failed',
+      failure_reason: 'queue_timeout',
+      started_at: null,
+    });
+    expect((await sessionRow(sessionId))?.status).toBe('running');
+    expect(await jobRow(jobId)).toMatchObject({ status: 'queued', held_by: sessionId });
+
+    const { logged } = await sweepHolds(jobId);
+    expect(await jobRow(jobId)).toMatchObject({ status: 'queued', held_by: null });
+    expect(logged).toEqual([
+      expect.objectContaining({
+        masterSessionId: sessionId,
+        masterStatus: 'running',
+        sessionId: ended,
+        sessionStatus: 'failed',
+        failureReason: 'queue_timeout',
+      }),
+    ]);
+
+    const inUse = await slotsInUse();
+    const again = await prepare(jobId);
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    const fresh = preparedSession(again.body);
+    expect(fresh).not.toBe(ended);
+    expect((await sessionRow(fresh))?.status).toBe('queued');
+    expect((await sessionRow(ended))?.status).toBe('failed');
+
+    const started = await call(boxPat, 'POST', '/api/devices/me/pool/start', { jobId, sessionId });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    expect(await jobRow(jobId)).toMatchObject({ status: 'dispatched', agent_session_id: fresh });
+    const done = await call(
+      briefToken(again.body),
+      'POST',
+      `/api/projects/${projectId}/steward-runs/${runId}/done`,
+      { refused: [] },
+    );
+    expect([done.status, done.body], JSON.stringify(done.body)).toEqual([200, { state: 'done' }]);
+    expect(await slotsInUse()).toBe(inUse - 1);
+  });
+
+  it('keeps the hold of a job whose session is still starting inside the queue window', async () => {
+    const { jobId } = await stewardJob();
+    const prepared = await prepare(jobId);
+    expect(prepared.status, JSON.stringify(prepared.body)).toBe(200);
+    const starting = preparedSession(prepared.body);
+
+    const { getLoopThresholds } = await import('../../src/jobs/loop-monitor-thresholds.js');
+    await queueHop(starting, new Date(Date.now() - getLoopThresholds().queueMs));
+    const { logged } = await sweepHolds(jobId);
+
+    expect((await sessionRow(starting))?.status).toBe('queued');
+    expect(await jobRow(jobId)).toMatchObject({
+      status: 'queued',
+      held_by: sessionId,
+      agent_session_id: starting,
+    });
+    expect(logged).toEqual([]);
+    await giveBack(jobId);
   });
 });

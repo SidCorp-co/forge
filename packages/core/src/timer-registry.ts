@@ -377,7 +377,7 @@ export function coreTimers(): Timer[] {
       name: 'master-hold-reaper',
       cron: '* * * * *',
       // Masters first: closing one returns its own holds and its children's leases; the hold
-      // sweep then catches a hold whose session row is gone or whose master this pass kept.
+      // sweep then catches a hold whose master row is gone, or whose job's own session ended unstarted.
       run: async () => {
         const closed = await reapSilentMasters();
         if (closed > 0) logger.info({ closed }, 'master-reaper: sweep closed silent masters');
