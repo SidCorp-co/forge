@@ -115,7 +115,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     header:ratelimit-name header:ratelimit-reset header:referer header:retry-after
     header:sec-fetch-dest header:user-agent header:x-forwarded-for
     header:x-forwarded-host header:x-forwarded-proto header:x-next-page header:x-real-ip
-    header:x-request-id`,
+    header:x-request-id header:etag header:x-ratelimit-remaining header:x-ratelimit-reset`,
   'whether a sign-in page follows a sign-out (`session=ended`), so a demo core shows its form': words`
     query:session`,
   'a header core’s own clients send: what they render, the project an /mcp call names, the run a box read is recorded against, the plugin version a narrowing is weighed against': words`
@@ -143,7 +143,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:scheduleId field:param:scope field:param:sessionId field:param:shareId
     field:param:sid field:param:skillId field:param:slug field:param:templateId
     field:param:turnId field:param:userId field:param:version field:param:waitId
-    field:param:workflow field:param:workflowId field:param:roomId
+    field:param:workflow field:param:workflowId field:param:roomId field:param:source
     field:query:assignee field:query:assigneeId field:query:connectionId field:query:createdBy
     field:query:deviceId field:query:installation_id field:query:integrationId field:query:issue
     field:query:issueId field:query:memoryId field:query:orgId field:query:rid field:query:project
@@ -190,7 +190,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:lines field:json:sides field:json:withoutClip field:json:rationale field:json:said
     field:json:statement field:json:askFor field:json:question field:json:words field:json:finding
     field:json:misread
-    field:json:trades field:json:costs field:json:endsWhen`,
+    field:json:trades field:json:costs field:json:endsWhen field:json:what`,
   'a command a support room runs on a host its grant names, and what the box answers it ran; core checks the grant before the box is asked, and the output is scrubbed before anyone reads it': words`
     field:json:command field:json:stdout field:json:stderr`,
   'a structured part of a record core validates and stores; it admits nobody': words`
@@ -231,7 +231,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:key field:json:url field:json:failure
     field:json:screenshot field:json:args
     field:json:impact field:json:debts field:json:cleared field:json:remains field:json:ci
-    field:json:set field:json:failed`,
+    field:json:set field:json:failed
+    field:json:door`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt
@@ -261,6 +262,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
     field:query:key field:query:kind field:query:label field:query:labels field:query:metadataType
     field:query:module field:query:party field:query:q field:query:search field:query:status
+    field:query:area field:json:areas
     field:query:step field:query:steps field:query:verb field:query:view field:query:error
     field:query:errorCode field:query:method field:query:path field:query:query field:query:release
     field:query:window field:query:role field:query:since field:query:until`,
